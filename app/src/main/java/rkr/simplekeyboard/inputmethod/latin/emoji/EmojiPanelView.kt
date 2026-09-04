@@ -240,6 +240,11 @@ class EmojiPanelView @JvmOverloads constructor(
     private val tabBarPx = dp(TAB_BAR_DP)
     private val searchBarPx = dp(SEARCH_BAR_DP)
     private val sectionHeaderPx = dp(SECTION_HEADER_DP)
+    // Scratch for the navigation-bar overlap measured in onLayout: reused, so nothing is
+    // allocated on a layout pass.
+    private val visibleFrameScratch = Rect()
+    private val locationScratch = IntArray(2)
+
     private val floatingKeyPx = dp(FLOATING_KEY_DP)
     private val floatingInsetPx = dp(FLOATING_INSET_DP)
     private val searchPillInsetPx = dp(SEARCH_PILL_INSET_DP).toFloat()
@@ -479,11 +484,38 @@ class EmojiPanelView @JvmOverloads constructor(
         setMeasuredDimension(width, resolveSize(desiredHeight, heightMeasureSpec))
     }
 
+    /**
+     * Re-measures how far the panel reaches under the navigation bar. Called from [onLayout],
+     * because that is where both terms are final: the panel's own position on screen and the
+     * frame the system bars leave free.
+     *
+     * [getWindowVisibleDisplayFrame] is the seam that makes this work without asking which Android
+     * version is running. It reports the same bottom — the top edge of the navigation bar — on
+     * every platform; what differs is how far the IME window itself reaches past it. Subtracting
+     * one from the other gives the real overlap: zero through Android 14, where the framework lays
+     * the input view out above the bar, and the bar's height from Android 15, where it does not.
+     */
+    private fun updateBottomInset() {
+        getWindowVisibleDisplayFrame(visibleFrameScratch)
+        getLocationOnScreen(locationScratch)
+        val overlap = locationScratch[1] + height - visibleFrameScratch.bottom
+        if (state.setBottomInset(overlap.coerceAtLeast(0))) {
+            invalidateAccessibilityRootIfExploring()
+            invalidate()
+        }
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        updateBottomInset()
+    }
+
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         state.setColumns(currentColumns())
         applyMetrics()
         state.setViewport(width, height)
+        updateBottomInset()
         emojiPaint.textSize = state.cellHeight() * EMOJI_TEXT_SCALE
         emojiPaint.getFontMetrics(emojiFontMetrics)
         tabPaint.textSize = tabBarPx * TAB_TEXT_SCALE

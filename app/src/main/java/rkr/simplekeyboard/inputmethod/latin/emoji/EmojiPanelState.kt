@@ -48,6 +48,7 @@ internal class EmojiPanelState {
 
     private var panelWidth = 0
     private var panelHeight = 0
+    private var bottomInsetPx = 0
     private var columns = PORTRAIT_COLUMNS
     private var minCellPx = 0
     private var maxCellPx = 0
@@ -141,6 +142,21 @@ internal class EmojiPanelState {
         swipeMinPx = px.coerceAtLeast(0)
     }
 
+    /**
+     * How far the panel reaches under the navigation bar, in px. The view measures it from its own
+     * position on screen; this class only arranges what it is given, exactly as it does with every
+     * other metric. Returns true when the value actually changed, so the caller redraws only then.
+     */
+    fun setBottomInset(px: Int): Boolean {
+        val value = px.coerceAtLeast(0)
+        if (value == bottomInsetPx) {
+            return false
+        }
+        bottomInsetPx = value
+        clampScroll()
+        return true
+    }
+
     fun setViewport(width: Int, height: Int) {
         val newWidth = width.coerceAtLeast(0)
         val widthChanged = newWidth != panelWidth
@@ -173,7 +189,27 @@ internal class EmojiPanelState {
     /** Top of the scrolling content area: below the tab row and the search band. */
     fun gridTop(): Int = tabBarPx + searchBarPx
 
-    fun gridHeight(): Int = (panelHeight - gridTop()).coerceAtLeast(0)
+    /**
+     * The bottom of the area the panel may actually use: its own height minus the strip the
+     * navigation bar covers.
+     *
+     * The panel's box is the keyboard's box — same height, same position, and both of them reach
+     * the bottom of the IME window. Whether that bottom is also the bottom of the SCREEN is a
+     * platform decision: through Android 14 the framework laid the input view out above the
+     * navigation bar, and from Android 15 it does not, so the window's last [bottomInsetPx] pixels
+     * sit under the bar. The letter keyboard survives that unaided because its rows never fill its
+     * box; the panel's floating keys are pinned to the box's bottom edge and landed inside the bar,
+     * where the system takes the touches and the user could not get back to the letters
+     * (defect Д-1, `docs/DEVICE-UAT-1.9.12.md`).
+     *
+     * Every measurement that means "the bottom of the panel" goes through here, so the grid stops
+     * scrolling at the bar instead of under it and the floating keys, their touch targets and their
+     * accessibility bounds all move together. With [bottomInsetPx] at 0 — every platform that
+     * insets the input view itself — the arithmetic is exactly what it was.
+     */
+    private fun usableHeight(): Int = (panelHeight - bottomInsetPx).coerceAtLeast(0)
+
+    fun gridHeight(): Int = (usableHeight() - gridTop()).coerceAtLeast(0)
 
     /** Kept as the name the accessibility and fling paths use; the viewport is the grid itself. */
     fun gridViewportHeight(): Int = gridHeight()
@@ -363,9 +399,9 @@ internal class EmojiPanelState {
 
     fun searchRight(): Int = (panelWidth - floatingInsetPx).coerceAtLeast(floatingInsetPx)
 
-    fun floatingTop(): Int = (panelHeight - floatingInsetPx - floatingPx).coerceAtLeast(0)
+    fun floatingTop(): Int = (usableHeight() - floatingInsetPx - floatingPx).coerceAtLeast(0)
 
-    fun floatingBottom(): Int = (panelHeight - floatingInsetPx).coerceAtLeast(0)
+    fun floatingBottom(): Int = (usableHeight() - floatingInsetPx).coerceAtLeast(0)
 
     fun backLeft(): Int = floatingInsetPx
 

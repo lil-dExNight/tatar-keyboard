@@ -173,6 +173,78 @@ class EmojiPanelStateTest {
         assertEquals(400 - gridTopPx, state.gridHeight())
     }
 
+    // --- Нижний инсет под панелью навигации (дефект Д-1) ----------------------------------------
+
+    /**
+     * Everything that means "the bottom of the panel" moves up together by the navigation-bar
+     * overlap: the floating keys, their touch targets (the same two numbers back the hit test) and
+     * the scrolling viewport. Before the fix the keys were pinned to the panel's own bottom edge,
+     * which from Android 15 lies UNDER the bar — the system took the touches and the user could not
+     * leave the panel (docs/DEVICE-UAT-1.9.12.md, Д-1).
+     */
+    @Test
+    fun bottomInsetLiftsFloatingKeysAndShrinksTheViewport() {
+        val state = configuredState(snapshotOf(50))
+        val navBarPx = 96
+
+        assertEquals(400 - floatingInsetPx, state.floatingBottom())
+        assertEquals(400 - floatingInsetPx - floatingPx, state.floatingTop())
+        assertEquals(400 - gridTopPx, state.gridHeight())
+
+        assertTrue("первая установка инсета обязана считаться изменением",
+            state.setBottomInset(navBarPx))
+
+        assertEquals(400 - navBarPx - floatingInsetPx, state.floatingBottom())
+        assertEquals(400 - navBarPx - floatingInsetPx - floatingPx, state.floatingTop())
+        assertEquals(400 - navBarPx - gridTopPx, state.gridHeight())
+    }
+
+    /** The floating keys must end strictly above the strip the navigation bar covers. */
+    @Test
+    fun floatingKeysNeverReachIntoTheInsetStrip() {
+        val state = configuredState(snapshotOf(50))
+        val navBarPx = 96
+        state.setBottomInset(navBarPx)
+        val insetTop = 400 - navBarPx
+        assertTrue(
+            "низ плавающих клавиш ${state.floatingBottom()} не должен заходить за $insetTop",
+            state.floatingBottom() <= insetTop,
+        )
+        assertTrue(state.floatingTop() < state.floatingBottom())
+    }
+
+    /** A platform that insets the input view itself reports no overlap, and nothing moves. */
+    @Test
+    fun zeroBottomInsetLeavesTheGeometryExactlyAsItWas() {
+        val state = configuredState(snapshotOf(50))
+        val floatingBottom = state.floatingBottom()
+        val floatingTop = state.floatingTop()
+        val gridHeight = state.gridHeight()
+
+        assertFalse("нулевой инсет — не изменение", state.setBottomInset(0))
+        assertEquals(floatingBottom, state.floatingBottom())
+        assertEquals(floatingTop, state.floatingTop())
+        assertEquals(gridHeight, state.gridHeight())
+    }
+
+    /** Repeating the same overlap is not a change, so a layout pass never forces a needless redraw. */
+    @Test
+    fun repeatedBottomInsetIsNotReportedAsAChange() {
+        val state = configuredState(snapshotOf(50))
+        assertTrue(state.setBottomInset(96))
+        assertFalse(state.setBottomInset(96))
+        assertTrue(state.setBottomInset(0))
+    }
+
+    /** A negative overlap is meaningless and is clamped, never applied as a growth. */
+    @Test
+    fun negativeBottomInsetIsClampedToZero() {
+        val state = configuredState(snapshotOf(50))
+        val floatingBottom = state.floatingBottom()
+        assertFalse(state.setBottomInset(-50))
+        assertEquals(floatingBottom, state.floatingBottom())
+    }
+
     // --- Sections ------------------------------------------------------------------------------
 
     /**
