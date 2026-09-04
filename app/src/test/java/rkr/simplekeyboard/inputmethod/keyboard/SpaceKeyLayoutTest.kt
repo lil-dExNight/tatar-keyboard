@@ -64,6 +64,11 @@ class SpaceKeyLayoutTest {
          * own takes. Both come from the row files that include these layouts:
          *  - res/xml/row_qwerty4.xml          Row keyWidth 10%p, 15+10+[50]+10+15 = 100
          *  - res/xml-sw600dp/row_qwerty4.xml  Row keyWidth  9%p, 10+9+[63]+9+9   = 100
+         *
+         * The Cyrillic layouts (tatar, russian) go through res/xml/row_cyrillic4.xml, which on the
+         * phone delegates to row_qwerty4.xml and on sw600dp repeats the tablet row with the
+         * trailing Spacer replaced by the Enter key — the same 9%p, so both budgets below are
+         * unchanged by it.
          */
         private val BUDGET = mapOf(
             "key_space_5kw.xml" to Geometry(defaultKeyWidth = 10.0, total = 50.0),

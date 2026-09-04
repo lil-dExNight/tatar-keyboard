@@ -46,5 +46,5 @@
             latin:keyWidth="fillRight" />
     </Row>
     <include
-        latin:keyboardLayout="@xml/row_qwerty4" />
+        latin:keyboardLayout="@xml/row_cyrillic4" />
 </merge>
