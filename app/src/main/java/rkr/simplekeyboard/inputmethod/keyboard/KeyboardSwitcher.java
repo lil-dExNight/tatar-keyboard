@@ -53,6 +53,15 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
     private static final String TAG = KeyboardSwitcher.class.getSimpleName();
 
     private MainKeyboardView mKeyboardView;
+
+    /**
+     * The user's "Bottom offset" in px, as last handed to the keyboard geometry. The letter
+     * keyboard lifts its rows by it; the emoji panel has to reserve the same strip, or it fills
+     * the space the user deliberately freed and the surface jumps when the two swap
+     * (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-1). Kept here because {@link #showEmojiPanel} runs long
+     * after {@link #loadKeyboard} and has no SettingsValues of its own.
+     */
+    private int mKeyboardBottomOffset;
     private InputView mCurrentInputView;
     private boolean mEmojiPanelShown;
     private boolean mEmojiSearchShown;
@@ -128,6 +137,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         final int keyboardWidth = mLatinIME.getMaxWidth();
         final int keyboardHeight = ResourceUtils.getKeyboardHeight(res, settingsValues);
         final int keyboardBottomOffset = ResourceUtils.getKeyboardBottomOffset(res, settingsValues);
+        mKeyboardBottomOffset = keyboardBottomOffset;
         builder.setKeyboardTheme(mKeyboardTheme.mThemeId);
         builder.setKeyboardGeometry(keyboardWidth, keyboardHeight, keyboardBottomOffset);
         builder.setSubtype(mRichImm.getCurrentSubtype());
@@ -406,6 +416,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         if (panel == null) {
             return;
         }
+        panel.setKeyboardBottomOffsetPx(mKeyboardBottomOffset);
         panel.setListener(this);
         if (mEmojiSkinTones != null) {
             panel.setSkinTones(mEmojiSkinTones);

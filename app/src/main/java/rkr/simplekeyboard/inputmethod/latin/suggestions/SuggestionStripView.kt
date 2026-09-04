@@ -65,8 +65,8 @@ class SuggestionStripView @JvmOverloads constructor(
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            TEXT_SIZE_SP,
+            TypedValue.COMPLEX_UNIT_DIP,
+            TEXT_SIZE_DP,
             resources.displayMetrics,
         )
     }
@@ -481,7 +481,14 @@ class SuggestionStripView @JvmOverloads constructor(
         const val VIRTUAL_ID_LEFT = 0
         const val VIRTUAL_ID_CENTER = 1
         const val VIRTUAL_ID_RIGHT = 2
-        private const val TEXT_SIZE_SP = 17f
+        // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
+        // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
+        // 40dp, вкладки 44dp, строка поиска 50dp, заголовок секции 30dp), а системный
+        // масштаб шрифта растит только текст. При font_scale 2.0 полоса подсказок
+        // вырождалась в «Мини… · Минем · Мини…» — две ячейки из трёх неразличимы ровно для
+        // тех, кому крупный шрифт и нужен (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-3).
+        // Клавиши раскладки всегда считались в dp; здесь то же правило.
+        private const val TEXT_SIZE_DP = 17f
         private const val HORIZONTAL_TEXT_PADDING_DP = 8f
         private const val SEPARATOR_ALPHA = 0x30
         private const val DEFAULT_PRESSED_COLOR = 0x22000000

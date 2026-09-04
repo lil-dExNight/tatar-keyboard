@@ -178,16 +178,45 @@ internal class EmojiPanelState {
 
     // --- Bands --------------------------------------------------------------------------------
 
-    fun tabBarHeight(): Int = tabBarPx
+    /**
+     * How much the two fixed bands are squeezed so the scrolling content keeps a floor.
+     *
+     * The tab row and the search band are constants in dp, but the panel's height is the
+     * keyboard's — and the keyboard is a user setting. At "Keyboard height 50 %" the bands ate
+     * almost everything left after the navigation-bar reservation and under one row of emoji
+     * remained visible, with the floating "АБВ" key sitting on the section header
+     * (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-2).
+     *
+     * So the bands yield first: they shrink only as far as the content floor demands, never below
+     * [MIN_BAND_SCALE] of their asked size, and never at all while everything fits. At full height
+     * the factor is exactly 1 and every measurement is what it always was.
+     */
+    private fun bandScale(): Float {
+        val bands = tabBarPx + searchBarPx
+        if (bands <= 0) {
+            return 1f
+        }
+        val usable = usableHeight()
+        val floor = headerPx + CONTENT_FLOOR_ROWS * minCellPx
+        if (bands + floor <= usable) {
+            return 1f
+        }
+        val available = (usable - floor).coerceAtLeast(0)
+        return (available.toFloat() / bands).coerceIn(MIN_BAND_SCALE, 1f)
+    }
 
-    fun searchBarTop(): Int = tabBarPx
+    private fun scaled(px: Int): Int = (px * bandScale()).toInt()
 
-    fun searchBarHeight(): Int = searchBarPx
+    fun tabBarHeight(): Int = scaled(tabBarPx)
+
+    fun searchBarTop(): Int = scaled(tabBarPx)
+
+    fun searchBarHeight(): Int = scaled(searchBarPx)
 
     fun headerHeight(): Int = headerPx
 
     /** Top of the scrolling content area: below the tab row and the search band. */
-    fun gridTop(): Int = tabBarPx + searchBarPx
+    fun gridTop(): Int = tabBarHeight() + searchBarHeight()
 
     /**
      * The bottom of the area the panel may actually use: its own height minus the strip the
@@ -523,7 +552,7 @@ internal class EmojiPanelState {
             if (inRect(x, y, backLeft(), top, backRight(), bottom)) return BACK_TARGET
             if (inRect(x, y, deleteLeft(), top, deleteRight(), bottom)) return DELETE_TARGET
         }
-        if (tabBarPx > 0 && y < tabBarPx) {
+        if (tabBarHeight() > 0 && y < tabBarHeight()) {
             val tabs = tabCount()
             if (tabs <= 0) return NO_TARGET
             // The side insets belong to the outermost tabs rather than being dead space.
@@ -531,7 +560,7 @@ internal class EmojiPanelState {
             while (tab < tabs - 1 && x >= tabRight(tab)) tab++
             return TAB_TARGET_BASE - tab
         }
-        if (searchBarPx > 0 && y < tabBarPx + searchBarPx) {
+        if (searchBarHeight() > 0 && y < gridTop()) {
             return if (x >= searchLeft() && x < searchRight()) SEARCH_TARGET else NO_TARGET
         }
         val height = cellHeight()
@@ -728,6 +757,20 @@ internal class EmojiPanelState {
 
         const val PORTRAIT_COLUMNS = 8
         const val LANDSCAPE_COLUMNS = 12
+        /**
+         * The floor the tab row and the search band may be squeezed to (Р-2). Below this they stop
+         * reading as tappable bands, so the panel would rather keep them and show less content.
+         */
+        private const val MIN_BAND_SCALE = 0.6f
+
+        /**
+         * How many minimum-height rows the content is entitled to before the bands start yielding.
+         * One row plus a header is what a squeezed panel already showed, so guaranteeing only that
+         * would leave Р-2 exactly where it was; two rows is the smallest floor at which the squeeze
+         * changes anything a user can see.
+         */
+        private const val CONTENT_FLOOR_ROWS = 2
+
         const val MIN_CELL_DP = 36
         const val MAX_CELL_DP = 56
 

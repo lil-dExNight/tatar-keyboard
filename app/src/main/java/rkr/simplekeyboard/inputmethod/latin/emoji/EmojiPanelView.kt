@@ -81,9 +81,16 @@ class EmojiPanelView @JvmOverloads constructor(
     }
 
     private companion object {
-        private const val LABEL_TEXT_SIZE_SP = 16f
-        private const val HEADER_TEXT_SIZE_SP = 14f
-        private const val SEARCH_TEXT_SIZE_SP = 15f
+        // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
+        // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
+        // 40dp, вкладки 44dp, строка поиска 50dp, заголовок секции 30dp), а системный
+        // масштаб шрифта растит только текст. При font_scale 2.0 полоса подсказок
+        // вырождалась в «Мини… · Минем · Мини…» — две ячейки из трёх неразличимы ровно для
+        // тех, кому крупный шрифт и нужен (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-3).
+        // Клавиши раскладки всегда считались в dp; здесь то же правило.
+        private const val LABEL_TEXT_SIZE_DP = 16f
+        private const val HEADER_TEXT_SIZE_DP = 14f
+        private const val SEARCH_TEXT_SIZE_DP = 15f
 
         // Glyph size as a fraction of the cell. The old panel squeezed the cell to fit whole rows
         // and drew at 0.62 of the squeezed height, which is what made the emoji look small next to
@@ -207,16 +214,16 @@ class EmojiPanelView @JvmOverloads constructor(
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            LABEL_TEXT_SIZE_SP,
+            TypedValue.COMPLEX_UNIT_DIP,
+            LABEL_TEXT_SIZE_DP,
             resources.displayMetrics,
         )
     }
     private val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.LEFT
         textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            HEADER_TEXT_SIZE_SP,
+            TypedValue.COMPLEX_UNIT_DIP,
+            HEADER_TEXT_SIZE_DP,
             resources.displayMetrics,
         )
         isFakeBoldText = true
@@ -224,8 +231,8 @@ class EmojiPanelView @JvmOverloads constructor(
     private val searchTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.LEFT
         textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            SEARCH_TEXT_SIZE_SP,
+            TypedValue.COMPLEX_UNIT_DIP,
+            SEARCH_TEXT_SIZE_DP,
             resources.displayMetrics,
         )
     }
@@ -244,6 +251,14 @@ class EmojiPanelView @JvmOverloads constructor(
     // allocated on a layout pass.
     private val visibleFrameScratch = Rect()
     private val locationScratch = IntArray(2)
+
+    /**
+     * The user's "Bottom offset" in px, handed over by the switcher when the panel is shown. The
+     * letter keyboard lifts its rows by it; without the same reservation here the panel filled the
+     * strip the user freed and the two surfaces jumped apart when swapped
+     * (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-1).
+     */
+    private var keyboardBottomOffsetPx = 0
 
     private val floatingKeyPx = dp(FLOATING_KEY_DP)
     private val floatingInsetPx = dp(FLOATING_INSET_DP)
@@ -499,9 +514,19 @@ class EmojiPanelView @JvmOverloads constructor(
         getWindowVisibleDisplayFrame(visibleFrameScratch)
         getLocationOnScreen(locationScratch)
         val overlap = locationScratch[1] + height - visibleFrameScratch.bottom
-        if (state.setBottomInset(overlap.coerceAtLeast(0))) {
+        val reserved = overlap.coerceAtLeast(0) + keyboardBottomOffsetPx
+        if (state.setBottomInset(reserved)) {
             invalidateAccessibilityRootIfExploring()
             invalidate()
+        }
+    }
+
+    /** Hands over the keyboard's "Bottom offset" so the panel reserves the same strip. */
+    fun setKeyboardBottomOffsetPx(px: Int) {
+        val value = px.coerceAtLeast(0)
+        if (value != keyboardBottomOffsetPx) {
+            keyboardBottomOffsetPx = value
+            updateBottomInset()
         }
     }
 

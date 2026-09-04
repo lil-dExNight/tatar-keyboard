@@ -245,6 +245,60 @@ class EmojiPanelStateTest {
         assertEquals(floatingBottom, state.floatingBottom())
     }
 
+    // --- Сжатие фиксированных полос при нехватке высоты (Р-2) ------------------------------------
+
+    /** While everything fits, the bands are exactly what the view asked for — nothing is scaled. */
+    @Test
+    fun bandsKeepTheirAskedSizeWhileThereIsRoom() {
+        val state = configuredState(snapshotOf(50))
+        assertEquals(tabBarPx, state.tabBarHeight())
+        assertEquals(searchBarPx, state.searchBarHeight())
+        assertEquals(gridTopPx, state.gridTop())
+    }
+
+    /**
+     * When the panel is too short, the bands yield instead of the content: the grid keeps at least
+     * a header plus one minimum row, which is what "less than one row of emoji" cost the user at
+     * Keyboard height 50 % (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-2).
+     */
+    @Test
+    fun bandsShrinkSoTheGridKeepsItsFloor() {
+        val floor = headerPx + 2 * minCellPx
+        val short = 180
+        val state = configuredState(snapshotOf(50), height = short)
+
+        assertTrue("полосы обязаны сжаться", state.tabBarHeight() < tabBarPx)
+        assertTrue(state.searchBarHeight() < searchBarPx)
+        assertEquals(state.tabBarHeight() + state.searchBarHeight(), state.gridTop())
+        assertTrue(
+            "сетке должно остаться не меньше пола ($floor): ${state.gridHeight()}",
+            state.gridHeight() >= floor,
+        )
+    }
+
+    /** The squeeze has a floor of its own: bands never shrink away to nothing. */
+    @Test
+    fun bandsNeverShrinkBelowTheirFloor() {
+        val state = configuredState(snapshotOf(50), height = 80)
+        assertTrue(state.tabBarHeight() >= (tabBarPx * 0.6f).toInt())
+        assertTrue(state.searchBarHeight() >= (searchBarPx * 0.6f).toInt())
+        assertTrue("полосы обязаны остаться видимыми", state.tabBarHeight() > 0)
+    }
+
+    /**
+     * The navigation-bar reservation counts against the same budget: taking 96 px away can be what
+     * pushes a panel that used to fit into the squeeze.
+     */
+    @Test
+    fun bottomInsetCanTriggerTheSqueeze() {
+        val state = configuredState(snapshotOf(50), height = 200)
+        assertEquals("без инсета всё ещё помещается", tabBarPx, state.tabBarHeight())
+
+        state.setBottomInset(96)
+        assertTrue("после резервирования навбара полосы обязаны сжаться",
+            state.tabBarHeight() < tabBarPx)
+    }
+
     // --- Sections ------------------------------------------------------------------------------
 
     /**

@@ -87,9 +87,16 @@ class EmojiSearchView @JvmOverloads constructor(
         private const val CARET_STROKE_DP = 1.5f
         /** Air between the caret's right edge and the first letter of the hint. */
         private const val HINT_GAP_DP = 3f
+        // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
+        // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
+        // 40dp, вкладки 44dp, строка поиска 50dp, заголовок секции 30dp), а системный
+        // масштаб шрифта растит только текст. При font_scale 2.0 полоса подсказок
+        // вырождалась в «Мини… · Минем · Мини…» — две ячейки из трёх неразличимы ровно для
+        // тех, кому крупный шрифт и нужен (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-3).
+        // Клавиши раскладки всегда считались в dp; здесь то же правило.
 
-        private const val QUERY_TEXT_SIZE_SP = 16f
-        private const val MESSAGE_TEXT_SIZE_SP = 14f
+        private const val QUERY_TEXT_SIZE_DP = 16f
+        private const val MESSAGE_TEXT_SIZE_DP = 14f
         private const val RESULT_TEXT_SCALE = 0.62f
 
         private const val PILL_ALPHA = 0xE0
@@ -129,16 +136,16 @@ class EmojiSearchView @JvmOverloads constructor(
     private val queryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.LEFT
         textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            QUERY_TEXT_SIZE_SP,
+            TypedValue.COMPLEX_UNIT_DIP,
+            QUERY_TEXT_SIZE_DP,
             resources.displayMetrics,
         )
     }
     private val messagePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.LEFT
         textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP,
-            MESSAGE_TEXT_SIZE_SP,
+            TypedValue.COMPLEX_UNIT_DIP,
+            MESSAGE_TEXT_SIZE_DP,
             resources.displayMetrics,
         )
     }
