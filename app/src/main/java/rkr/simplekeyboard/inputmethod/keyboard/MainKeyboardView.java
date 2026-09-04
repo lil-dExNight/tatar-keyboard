@@ -647,10 +647,10 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         // Draw language text with shadow
         final float descent = paint.descent();
         final float textHeight = -paint.ascent() + descent;
-        final float baseline = height / 2 + textHeight / 2;
+        final float baseline = height / 2f + textHeight / 2;
         paint.setColor(mLanguageOnSpacebarTextColor);
         paint.setAlpha(mLanguageOnSpacebarFinalAlpha);
-        canvas.drawText(language, width / 2, baseline - descent, paint);
+        canvas.drawText(language, width / 2f, baseline - descent, paint);
         paint.clearShadowLayer();
         paint.setTextScaleX(1.0f);
     }

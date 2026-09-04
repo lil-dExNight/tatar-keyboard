@@ -114,7 +114,8 @@ public final class KeyboardId {
         });
     }
 
-    private boolean equals(final KeyboardId other) {
+    /** Renamed off `equals` so it cannot be read as an overload of {@link Object#equals}. */
+    private boolean equalsId(final KeyboardId other) {
         if (other == this)
             return true;
         return other.mElementId == mElementId
@@ -172,7 +173,7 @@ public final class KeyboardId {
 
     @Override
     public boolean equals(final Object other) {
-        return other instanceof KeyboardId && equals((KeyboardId) other);
+        return other instanceof KeyboardId && equalsId((KeyboardId) other);
     }
 
     @Override

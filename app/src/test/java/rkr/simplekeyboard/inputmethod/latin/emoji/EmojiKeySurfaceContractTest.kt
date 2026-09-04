@@ -170,8 +170,8 @@ class EmojiKeySurfaceContractTest {
     fun theEmojiFlagIsDeliberatelyAbsentFromKeyboardIdEqualityLikeTheNumberRow() {
         val keyboardId = java("rkr/simplekeyboard/inputmethod/keyboard/KeyboardId.java")
         val hashBody = keyboardId.substringAfter("private static int computeHashCode(")
-            .substringBefore("private boolean equals(")
-        val equalsBody = keyboardId.substringAfter("private boolean equals(final KeyboardId other)")
+            .substringBefore("private boolean equalsId(")
+        val equalsBody = keyboardId.substringAfter("private boolean equalsId(final KeyboardId other)")
             .substringBefore("private static boolean isAlphabetKeyboard(")
         // Same reason mShowNumberRow is absent: the prefChangeListener clears the cache instead.
         assertFalse(hashBody.contains("mShowEmojiKey"))

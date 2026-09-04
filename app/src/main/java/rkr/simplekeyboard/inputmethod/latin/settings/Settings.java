@@ -209,12 +209,17 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
                     case PREF_KEYBOARD_COLOR:
                         Log.i(TAG, "Loading restriction: " + key + "=" + appRestrictions.getString(key));
                         String color = appRestrictions.getString(key);
-                        if (color.startsWith("#")) {
+                        // getString даёт null, если ограничение задано значением другого типа
+                        // (или отсутствует): без этой проверки загрузка политик падала с NPE.
+                        if (color != null && color.startsWith("#")) {
                             try {
                                 color = "FF" + color.substring(1);
                                 prefsEditor.putInt(key, Integer.parseUnsignedInt(color, 16));
                                 break;
-                            } catch (NumberFormatException ignored) { }
+                            } catch (NumberFormatException ignored) {
+                                // Значение не разбирается как цвет — падать на политике нельзя,
+                                // поэтому ключ просто снимается ниже и остаётся дефолт.
+                            }
                         }
                         prefsEditor.remove(key);
                         break;

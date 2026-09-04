@@ -373,9 +373,9 @@ public final class KeyboardLayoutSet {
                     return KeyboardId.MODE_URL;
                 } else if (variation == InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE) {
                     return KeyboardId.MODE_IM;
-                } else if (variation == InputType.TYPE_TEXT_VARIATION_FILTER) {
-                    return KeyboardId.MODE_TEXT;
                 } else {
+                    // Сюда же попадает TYPE_TEXT_VARIATION_FILTER: у него отдельная ветка
+                    // возвращала ровно MODE_TEXT и была неотличима от общей.
                     return KeyboardId.MODE_TEXT;
                 }
             default:
