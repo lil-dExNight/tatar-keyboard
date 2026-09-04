@@ -10,8 +10,8 @@
 - `CLEANUP.md` — журнал очистки документации; свидетельства в `cleanup/`.
 - `RESTRUCTURE.md` — журнал кампании аудита/реструктуризации/оптимизации (2026-08-30).
 - `RESTRUCTURE-PLAN.md` — утверждённый план той же кампании.
-- `APK-AUDIT-1.9.12.md` — аудит артефакта текущего релиза (1.9.12);
-  `APK-AUDIT-1.9.11.md`, `APK-AUDIT-1.9.10.md`, `APK-AUDIT-1.9.9.md`,
+- `APK-AUDIT-1.9.13.md` — аудит артефакта текущего релиза (1.9.13);
+  `APK-AUDIT-1.9.12.md`, `APK-AUDIT-1.9.11.md`, `APK-AUDIT-1.9.10.md`, `APK-AUDIT-1.9.9.md`,
   `APK-AUDIT-1.9.8.md`,
   `APK-AUDIT-1.9.7.md`, `APK-AUDIT-1.9.6.md`, `APK-AUDIT-1.9.5.md` — предыдущих;
   аудиты более ранних версий — в `archive/apk-audits/`.
