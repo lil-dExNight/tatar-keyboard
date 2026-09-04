@@ -1,5 +1,5 @@
-• Татарский поиск эмодзи покрывает почти весь набор: «этэч» находит 🐓; словарь «слово → эмодзи» дополнен до 3 976 словоформ
-• Эмодзи-подсказки включены по умолчанию и понимают конфузиблы: «йорэк » → ❤️
-• Полоса поиска эмодзи больше не дохнет после скрытия клавиатуры — поиск честно сбрасывается
-• Предсказания надёжнее: закрыты attach-гонки, первое слово не теряет предсказание после свайпа курсора
-• Мелкая безопасность: диалоги защищены от tapjacking; словари и таблицы не изменились; сети нет
+• Tatar emoji search now covers almost the whole set: "этэч" finds 🐓; the word-to-emoji dictionary grew to 3,976 forms
+• Emoji suggestions are on by default and understand common misspellings: "йорэк " → ❤️
+• The emoji search strip no longer dies after the keyboard is hidden
+• Predictions are steadier: attach races closed, the first word keeps its prediction after a cursor swipe
+• Dialogs protected against tapjacking; dictionaries unchanged; no network

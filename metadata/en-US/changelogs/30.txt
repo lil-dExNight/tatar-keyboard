@@ -1,0 +1,5 @@
+• Suggestions stay readable at any system font size — keyboard text no longer grows with the system scale while its band stays fixed
+• The emoji panel now respects the "Bottom offset" setting and rises together with the keyboard
+• The emoji panel no longer suffocates at a small keyboard height: the tab and search bands give way first
+• Release notes for the English listing are in English again
+• Dictionaries and prediction tables unchanged; one permission — vibration; no network

@@ -1,4 +1,4 @@
-• Исправлено: подсказки больше не пропадают посреди слова при обычном наборе
-• Причина — нулевой идентификатор системного сообщения: его отмена стирала и доставку найденных подсказок
-• Замер на живой клавиатуре: было 58 пустых полос из 66 нажатий, стало 0
-• Словари, таблицы предсказаний, раскладки и разрешения не изменились ни байтом
+• Fixed: suggestions no longer vanish mid-word during ordinary typing
+• The cause was a zero system-message id: cancelling it also wiped the delivery of the suggestions already found
+• Measured on a live keyboard: 58 empty strips out of 66 key presses before, 0 after
+• Dictionaries, prediction tables, layouts and permissions are unchanged to the byte

@@ -1,4 +1,4 @@
-• Предсказания следующего слова выучили разговорный язык на обеих раскладках (обучение добавило Tatoeba/OpenSubtitles к новостным корпусам)
-• Татарская: заговорили повеления шалтырат, сөйлә, утыр, җибәр, эшлә, укы; у «кит» теперь видно «әле»
-• Русская: 57 молчавших слов топа заговорили — «позвонишь», «прощай», «погоди»…
-• Словари прежние; разрешений по-прежнему одно — вибрация
+• Next-word prediction learned everyday speech on both layouts (training added Tatoeba and OpenSubtitles to the news corpora)
+• Tatar: the imperatives шалтырат, сөйлә, утыр, җибәр, эшлә, укы now speak; "кит" now shows "әле"
+• Russian: 57 silent words from the frequency top now speak — "позвонишь", "прощай", "погоди"…
+• Dictionaries unchanged; still a single permission — vibration

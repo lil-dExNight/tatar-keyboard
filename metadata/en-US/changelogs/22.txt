@@ -1,4 +1,4 @@
-• На татарской раскладке — знак ₽, клавиша «АБВ» и русские кавычки
-• TalkBack объявляет смену языка; поиск эмодзи понимает татарский (200 слов)
-• Быстрее превью клавиш; baseline-профиль покрывает подсказки; иконки легче (WebP)
-• Словари и подсказки — байт в байт прежние; разрешение по-прежнему одно, VIBRATE
+• The Tatar layout gains the ₽ sign, an "АБВ" key and Russian quotation marks
+• TalkBack announces a language switch; emoji search understands Tatar (200 words)
+• Faster key preview; the baseline profile now covers suggestions; lighter icons (WebP)
+• Dictionaries and suggestions are unchanged to the byte; still a single permission, VIBRATE

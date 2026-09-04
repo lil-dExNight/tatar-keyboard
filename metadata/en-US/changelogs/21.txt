@@ -1,4 +1,4 @@
-• Клавиатура легче на 16,8 %: APK 2 111 775 Б
-• Убраны 75 локалей и ~70 неиспользуемых раскладок форка — остались татарский, русский, английский
-• Убран мёртвый код и неиспользуемые темы; добавлен baseline-профиль
-• Словари и подсказки — байт в байт прежние; разрешение по-прежнему одно, VIBRATE
+• The keyboard is 16.8% lighter: APK 2,111,775 bytes
+• 75 locales and about 70 unused layouts inherited from the fork are gone — Tatar, Russian and English remain
+• Dead code and unused themes removed; a baseline profile added
+• Dictionaries and suggestions are unchanged to the byte; still a single permission, VIBRATE

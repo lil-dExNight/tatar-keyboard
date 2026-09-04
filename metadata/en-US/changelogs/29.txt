@@ -1,5 +1,5 @@
-• На планшетах у татарской и русской раскладок вернулась клавиша Enter — раньше при ширине экрана от 600dp её не было вообще
-• Панель эмодзи на Android 15 больше не уходит под системную панель навигации: кнопки «АБВ» и удаления снова нажимаются
-• Сетка эмодзи тоже останавливается над системной полосой, а не прячется под ней
-• На Android 14 и ниже поведение не изменилось
-• Словари и таблицы предсказаний прежние; разрешение одно — VIBRATE, сети нет
+• On tablets the Tatar and Russian layouts have their Enter key back — at screen widths from 600dp it was missing entirely
+• On Android 15 the emoji panel no longer slides under the system navigation bar: the "АБВ" and delete keys can be pressed again
+• The emoji grid also stops above the system bar instead of hiding beneath it
+• On Android 14 and below nothing changed
+• Dictionaries and prediction tables unchanged; a single permission — vibration; no network

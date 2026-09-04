@@ -1,4 +1,4 @@
-• Эмодзи-подсказки в полосе над клавиатурой (русский и татарский): набрали слово, поставили пробел — подходящий эмодзи появляется в конце полосы, тап добавляет его в текст
-• По умолчанию выключено — включается отдельным переключателем «Подсказки эмодзи» в настройках
-• Курируемый словарь из 3 825 словоформ; слова-ловушки («можно», «работа»…) эмодзи не подсказывают
-• Предсказания и словари не изменились; разрешений по-прежнему одно — вибрация; сети нет
+• Emoji suggestions in the strip above the keyboard (Russian and Tatar): type a word, press space, and a matching emoji appears at the end of the strip; a tap adds it to your text
+• Off by default — turned on by its own "Emoji suggestions" switch in the settings
+• A curated dictionary of 3,825 word forms; trap words ("можно", "работа"…) suggest no emoji
+• Predictions and dictionaries unchanged; still a single permission — vibration; no network

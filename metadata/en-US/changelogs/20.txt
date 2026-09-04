@@ -1,4 +1,4 @@
-• «Кил», «кит», «кайт» и ещё десять частых повелений теперь предлагают продолжения
-• Тринадцать форм внесены в таблицу предсказаний адресно, по правилу, записанному до замеров
-• Слов в словарь не добавлено; всё, что предсказывалось раньше, предсказывает так же
-• Разрешения, раскладки и оба словаря — байт в байт прежние
+• "Кил", "кит", "кайт" and ten more frequent imperatives now offer continuations
+• Thirteen forms were entered into the prediction table deliberately, by a rule written down before the measurements
+• No words were added to the dictionary; everything predicted before is predicted the same way
+• Permissions, layouts and both dictionaries are unchanged to the byte

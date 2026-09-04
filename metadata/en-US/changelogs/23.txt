@@ -1,3 +1,3 @@
-• Русские предсказания следующего слова перепакованы от текущего словаря: дрейф 4 195 голов закрыт
-• Что предсказывало — предсказывает прежнее: у 99,5 % сохранившихся голов тройка та же
-• Таблица легче на 7,5 КБ; татарская и словари — байт в байт прежние
+• Russian next-word predictions repacked against the current dictionary: a drift of 4,195 heads closed
+• What was predicted is still predicted: 99.5% of the surviving heads keep the same three words
+• The table is 7.5 KB lighter; the Tatar table and both dictionaries are unchanged to the byte
