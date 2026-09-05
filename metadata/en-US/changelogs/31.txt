@@ -1,0 +1,4 @@
+• Managed-policy setup no longer fails as a whole: a keyboard-colour restriction of the wrong type used to abort the entire load, so no policy applied. Now it is ignored and the rest apply
+• The language label on the space bar is centred exactly — rounding could shift it half a pixel
+• Internal tidy-up in the keyboard-mode choice and a private helper name
+• Layouts, dictionaries and prediction tables unchanged; one permission — vibration; no network
