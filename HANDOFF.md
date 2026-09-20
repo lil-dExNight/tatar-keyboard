@@ -1,3 +1,17 @@
+# HANDOFF — TT-NEXTWORD-FILL complete (committed; device UAT passed 2026-09-21)
+
+> **2026-09-21 update:** the device half of Phase D is DONE — the POCO C71 returned and
+> the full UAT passed (operator scenario chain: `сцләм` → сәләм → [сәләмә, һәм, белән] →
+> tap һәм → 3 cells → commit сәләмә → [һәм, белән, да]; 15 regression rows PASS; cold
+> start medians 251/273 ms < 400; crash buffer empty). Fresh signed APK 1 849 555 B,
+> SHA-256 `4eda0e5c…88d5ad89` (differs from the 2026-09-20 `d210f0c9…` build only by the
+> embedded git HEAD in `META-INF/version-control-info.textproto`; per-commit the pack is
+> deterministic — two same-day runs identical). The mission is committed (`d1e418d3` +
+> `9833892b` on top of tag v2.0.0). Open: Phase E (independent re-verification) and the
+> operator's release decision. The 2026-09-20 entry below stays as that day's record.
+
+---
+
 # HANDOFF — TT-NEXTWORD-FILL phases A–D landed (uncommitted; device UAT blocked on absent hardware)
 
 **State as of 2026-09-20.** Release **2.0.0 / versionCode 32** is committed and tagged
