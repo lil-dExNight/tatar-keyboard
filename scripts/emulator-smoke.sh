@@ -7,6 +7,10 @@
 # набор «мин» (tt) / «при» (ru) / «hi» (en) с проверкой подсказок →
 # переключение сабтипов глобусом tt→ru→en→tt → эмодзи-панель (долгий тап
 # запятой) с коммитом эмодзи → пустой crash-буфер.
+# TT-SUGGESTIONS P5: back on the tt layout, two word-form probes (татар, сакчы)
+# type a word + space and tap the middle suggestion cell, reading the field to
+# prove what the strip committed (tap-and-read; the IME window is invisible to
+# uiautomator). Details at the probes below.
 #
 # Флаги:
 #   --avd <имя>      AVD (по умолчанию tt_suggest_a14)
@@ -264,7 +268,12 @@ SHELL ime list -s > "$OUTDIR/ime-list.txt" 2>&1 || true
 SUGGESTIONS=off
 PREFS_PATH="/data/user_de/0/$PKG/shared_prefs/${PKG}_preferences.xml"
 if A shell "run-as $PKG true" >/dev/null 2>&1; then
-    A shell "run-as $PKG cat $PREFS_PATH" 2>/dev/null | tr -d '\r' > "$OUTDIR/prefs-before.xml"
+    # `|| true`: on a clean AVD (or with -no-snapshot-save discarding every
+    # previous session) the prefs file does not exist yet and run-as cat exits
+    # non-zero — with pipefail + set -e that killed the script BEFORE the python
+    # below could write its minimal stub, with no RESULT line (hit 2026-09-20 on
+    # tt_suggest_a14). The missing-file fallback is the documented path.
+    A shell "run-as $PKG cat $PREFS_PATH" 2>/dev/null | tr -d '\r' > "$OUTDIR/prefs-before.xml" || true
     python3 - "$OUTDIR/prefs-before.xml" > "$OUTDIR/prefs-new.xml" <<'PYEOF'
 import re
 import sys
@@ -432,6 +441,70 @@ EN_HI="0.5500,0.7575 0.7500,0.6829"                          # h i
 GLOBE="0.30,0.9075"
 COMMA="0.2009,0.9075"
 
+# Full letter map of the tt layout (screen fractions, calibrated for 1080×2280),
+# derived from rows_tatar.xml: extra row 6×16.667% at y≈0.665 (matches PROBE_KEY),
+# rows 1–2 11×9.091% at y≈0.7206/0.7851, row 3 = shift 10.8% + 9×8.711% + delete
+# at y≈0.8474 (м/и/н land on the same keys as TT_MIN above).
+tt_word_coords() {                       # tt_word_coords "татар" → "x,y x,y ..."
+    python3 - "$1" <<'PYEOF'
+import sys
+
+ROWS = ("әөүҗңһ", 0.6650), ("йцукенгшщзх", 0.7206), ("фывапролджэ", 0.7851)
+ROW3 = "ячсмитьбю"  # 10.8% shift key, then 9 keys of 8.711%
+
+coords = {}
+for letters, y in ROWS:
+    for i, ch in enumerate(letters):
+        coords[ch] = f"{(i + 0.5) / len(letters):.4f},{y}"
+for i, ch in enumerate(ROW3):
+    coords[ch] = f"{0.108 + (i + 0.5) * 0.08711:.4f},0.8474"
+
+try:
+    print(" ".join(coords[ch] for ch in sys.argv[1]))
+except KeyError as exc:
+    sys.exit(f"no tt key for {exc.args[0]!r}")
+PYEOF
+}
+
+# Middle suggestion cell (cell 2 of 3 — equal thirds, SuggestionStripState).
+# y measured on the tt 5-row layout (1080×2280, 40dp strip = 110 px): the strip
+# spans ~1308–1418 px directly above the keyboard → centre ≈ 1363 px ≈ 0.598.
+STRIP_CELL2="0.5000,0.5980"
+
+second_word_after() {                    # second_word_after "<text>" "<word>" → token after last <word>
+    python3 - "$1" "$2" <<'PYEOF'
+import sys
+
+tokens = sys.argv[1].split()
+try:
+    at = len(tokens) - 1 - tokens[::-1].index(sys.argv[2])
+    print(tokens[at + 1] if at + 1 < len(tokens) else "")
+except ValueError:
+    print("")
+PYEOF
+}
+
+# type_tt_and_tap_cell2 <word> <tag>: type <word> + space on the tt layout,
+# screenshot the strip, tap the middle suggestion cell (only when suggestions
+# are on), read the field again. Stdout: field-after-space <TAB> field-after-tap.
+type_tt_and_tap_cell2() {
+    local word="$1" tag="$2" coords mid after
+    coords=$(tt_word_coords "$word")
+    type_word "$coords"
+    TAPF ${SPACE%,*} ${SPACE#*,}
+    sleep 2                              # the NEXT_WORD answer is asynchronous
+    mid=$(field_text)
+    SHOT "smoke-wordform-${tag}.png"
+    if [ "$SUGGESTIONS" = on ]; then
+        TAPF ${STRIP_CELL2%,*} ${STRIP_CELL2#*,}
+        sleep 1
+        after=$(field_text)
+    else
+        after="$mid"
+    fi
+    printf '%s\t%s\n' "$mid" "$after"
+}
+
 # ── tt: «мин» ──
 typed_checks tt "мин" "$TT_MIN" '^мин$'
 TAPF ${SPACE%,*} ${SPACE#*,}
@@ -528,6 +601,57 @@ sleep 1
 
 switch_and_check tt tatar
 SHOT smoke-tt-back.png
+
+# ── word forms after a committed tt word + space (TT-SUGGESTIONS P3/P5) ──
+# Tap-and-read, not pixel diff: uiautomator does not see the IME window, so the
+# strip content is proven by tapping the middle cell and reading the try-it
+# field. Two probes against the shipped assets:
+#  1. татар — the pinned schema-3 table carries three successors for it (теле,
+#     дәүләт, телен; re-measured on the shipped assets 2026-09-20), so no strip
+#     cell is free and cell 2 MUST commit дәүләт: bigram successors keep
+#     priority and forms never displace them (CompositePrefixComputer). A form
+#     here, or any other word, is a contract breach.
+#  2. сакчы — a dictionary word the table does NOT carry as a head, so all
+#     three cells are free and cell 2 MUST commit an inflected form of сакчы
+#     (top forms by frequency on the shipped dictionary: сакчысы, сакчылар,
+#     сакчысын). This is the on-device proof of the P3 after-word forms.
+wf=$(type_tt_and_tap_cell2 "татар" tatar)
+wf_mid="${wf%$'\t'*}"
+wf_after="${wf#*$'\t'}"
+w2=$(second_word_after "$wf_after" "татар")
+if [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "__NOFIELD__" ]; then
+    result FAIL wordform-tt-татар "try-it field not in the dump"
+elif ! echo "$wf_mid" | grep -qE 'татар $'; then
+    result FAIL wordform-tt-татар "татар did not commit; field: '$wf_mid'"
+elif [ "$SUGGESTIONS" != on ]; then
+    result SKIP wordform-tt-татар "suggestions not enabled (non-debuggable package)"
+elif [ "$wf_after" = "$wf_mid" ]; then
+    result FAIL wordform-tt-татар "middle cell tap committed nothing; field: '$wf_after'"
+elif [ "$w2" = "дәүләт" ]; then
+    result PASS wordform-tt-татар "cell 2 = дәүләт: successors fill all 3 cells, forms keep free-cell priority (pinned)"
+elif echo "$w2" | grep -qE '^татар.'; then
+    result PASS wordform-tt-татар "cell 2 = $w2: a form of татар took a free cell"
+else
+    result FAIL wordform-tt-татар "cell 2 committed '$w2' (expected дәүләт or a татар form); field: '$wf_after'"
+fi
+
+wf=$(type_tt_and_tap_cell2 "сакчы" sakcy)
+wf_mid="${wf%$'\t'*}"
+wf_after="${wf#*$'\t'}"
+w2=$(second_word_after "$wf_after" "сакчы")
+if [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "__NOFIELD__" ]; then
+    result FAIL wordform-tt-сакчы "try-it field not in the dump"
+elif ! echo "$wf_mid" | grep -qE 'сакчы $'; then
+    result FAIL wordform-tt-сакчы "сакчы did not commit; field: '$wf_mid'"
+elif [ "$SUGGESTIONS" != on ]; then
+    result SKIP wordform-tt-сакчы "suggestions not enabled (non-debuggable package)"
+elif [ "$wf_after" = "$wf_mid" ]; then
+    result FAIL wordform-tt-сакчы "middle cell tap committed nothing; field: '$wf_after'"
+elif echo "$w2" | grep -qE '^сакчы.'; then
+    result PASS wordform-tt-сакчы "cell 2 = $w2: inflected form offered in a free cell and committed"
+else
+    result FAIL wordform-tt-сакчы "cell 2 committed '$w2' (expected a сакчы form); field: '$wf_after'"
+fi
 
 # ── эмодзи-панель: долгий тап запятой, тап по первой ячейке сетки ──
 before_emoji=$(field_text)

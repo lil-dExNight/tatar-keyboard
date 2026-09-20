@@ -41,6 +41,15 @@
   закрыто 5, среди них настоящий латентный NPE в загрузке управляемых политик
   (ограничение цвета не-строкового типа роняло весь разбор). Остальные 59
   разобраны по классам с обоснованием, почему остаются.
+- `TT-SUGGESTIONS-PLAN.md` — approved plan of the Tatar prediction mission
+  (P0–P5): pinned eval harness, build-time paradigm generator, dictionary
+  expansion, runtime word-form suggestions, sentence-start predictions.
+  **All six phases done 2026-09-19…20.**
+- `TT-SUGGESTIONS.md` — mission report for the same (2026-09-19…20): baselines,
+  generator validation (kaikki recall 90.34 %), Tatar dictionary 100 000 →
+  110 000 entries, same-stem boost 57.58 → 62.82 %, strip-empty at sentence
+  start 100 → 0 %, final gates and emulator smoke. Uncommitted — awaits the
+  operator's commit/release decision.
 - `RESEARCH-FIXES.md` — миссия починки находок ресерча (2026-09-04, релиз 1.9.14):
   текст клавиатурных поверхностей переведён с sp на dp (Р-3), панель эмодзи
   уважает «Нижний отступ» (Р-1) и сжимает свои полосы при малой высоте (Р-2);

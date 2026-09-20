@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+Tatar prediction learns the language's morphology: after a committed word the strip offers its inflected forms, complete words rank their own continuations first, and the strip is no longer empty at the start of a sentence.
+
+### What changed
+
+- **Word-form suggestions after a Tatar word:** type `сакчы` + space and the strip offers its inflected forms (`сакчысы · сакчылар · сакчысын`), ranked by frequency, in the cells the next-word predictions leave free — predictions keep priority and are never displaced. Part of the existing Tatar suggestions toggle
+- **Complete words rank their own continuations first:** a typed Tatar word of 4+ letters now completes to its own forms — `татар` suggests `татарлар, татарча, татарлары` instead of the toponyms `татарстан*`. Short prefixes behave exactly as before
+- **Sentence-start suggestions (Tatar):** the strip offers the most frequent sentence-initial words at the start of a field and after `.`/`!`/`?`/`…` + space, where it used to be empty
+- **Larger Tatar dictionary:** 100 000 → 110 000 entries — 9 052 corpus-attested word forms produced by the project's own build-time paradigm generator plus 948 conversational words; word coverage on the held-out eval set 93.49 → 94.31 % of tokens. No previously known word was dropped
+
+### What stayed the same
+
+- Russian dictionary and prediction tables are byte-identical; layouts, personal dictionary, emoji — unchanged
+- One permission only — VIBRATE; no INTERNET, gate verified on the built APK
+- Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
+
 ## [1.9.15] — 2026-09-05
 
 Служебный релиз: разобран накопленный backlog статического анализатора, среди находок оказался настоящий дефект в загрузке корпоративных политик.

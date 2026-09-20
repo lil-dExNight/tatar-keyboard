@@ -1,3 +1,53 @@
+# HANDOFF — TT-SUGGESTIONS mission complete (uncommitted; no version bump)
+
+**State as of 2026-09-20.** The TT-SUGGESTIONS mission (plan
+`docs/TT-SUGGESTIONS-PLAN.md`, report `docs/TT-SUGGESTIONS.md`) is complete —
+all six phases P0–P5 landed in the working tree on top of the 1.9.15 release
+commit. **Nothing is committed**; the changeset awaits the operator's commit and
+release decision. Version is NOT bumped (still 1.9.15 / versionCode 31).
+
+What landed:
+
+- **Tatar dictionary 100 000 → 110 000 entries**: +9 052 corpus-attested
+  inflected forms from the project's own paradigm generator
+  (`scripts/wordform_gen.py`, validated against kaikki.org tables at 90.34 %
+  recall) + 948 conversational words; zero 1.8.4 words displaced. Tatar bigram
+  table re-bound to the new dictionary (same 10 204 heads, 40 735 pairs).
+  Russian assets byte-identical.
+- **Word-form suggestions after a committed word + space** (Tatar, suggestion
+  toggle): strip cells left free by bigram successors fill with the word's
+  inflected forms, frequency-ranked (сакчы → сакчысы · сакчылар · сакчысын);
+  successors keep priority (татар → теле · дәүләт · телен — no free cell, no
+  forms, by design).
+- **Same-stem boost at complete-word prefixes** (≥ 4 code points): татар now
+  completes to татарлар, татарча, татарлары instead of татарстан*; eval
+  same-stem top-3 57.58 → 62.82 %, cp1–cp3 completion byte-identical.
+- **Sentence-start predictions** (Tatar): field start and after `.`/`!`/`?`/`…`
+  + space paint a pinned 64-word table (`tatar_sentstart_v1.txt`);
+  strip-empty-at-sentence-start 100 → 0 % on the pinned eval set.
+- **Emulator smoke extended** with two tap-and-read word-form probes; one
+  latent script defect fixed (silent death on a clean AVD when the prefs file
+  is absent — `|| true` on the run-as read).
+
+Gates (all 2026-09-20):
+
+| Gate | Result |
+|---|---|
+| `./gradlew test --rerun-tasks` | **1191 / 0 failures** (128 suites) |
+| python suites (15 files) | **455 OK** (1 pre-existing skip) |
+| `./gradlew lintRelease` | green (0 errors, 31 documented warnings) |
+| `rebuild_assets.py --check --allow-known-drift` | ok (tt 3/0, ru 2/0 as pinned) |
+| `scripts/check-no-internet.sh` (release APK) | both levels |
+| `scripts/release_check.sh --quick` | **OVERALL PASS** |
+| emulator smoke (`tt_suggest_a14`) | **20 PASS / 0 FAIL / 1 SKIP** (en by design) |
+| release APK | **1 849 555 B** ≤ 3 145 728, SHA-256 `36d80c99…4d03455ee619`, cert `98ca6feb…42ad` |
+
+Open: commit + version bump + release are the operator's call; on-device UAT of
+the new suggestions (POCO C71) and TalkBack re-check pending; the plan's
+external items (relicensing letters, Common Voice) untouched.
+
+---
+
 # HANDOFF — релиз 1.9.15 (backlog error-prone закрыт)
 
 **Состояние на 2026-09-05.** Собран и проаудирован **1.9.15 / versionCode 31**:
