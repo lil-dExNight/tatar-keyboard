@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-Tatar prediction learns the language's morphology: after a committed word the strip offers its inflected forms, complete words rank their own continuations first, and the strip is no longer empty at the start of a sentence.
+Tatar prediction learns the language's morphology: after a committed word the strip offers its inflected forms, complete words rank their own continuations first, and the strip is no longer empty at the start of a sentence. Accepting a suggestion now immediately offers the next word, and a mistyped Tatar word that matches nothing exactly offers the nearest dictionary words one letter away.
 
 ### What changed
 
@@ -10,6 +10,8 @@ Tatar prediction learns the language's morphology: after a committed word the st
 - **Complete words rank their own continuations first:** a typed Tatar word of 4+ letters now completes to its own forms — `татар` suggests `татарлар, татарча, татарлары` instead of the toponyms `татарстан*`. Short prefixes behave exactly as before
 - **Sentence-start suggestions (Tatar):** the strip offers the most frequent sentence-initial words at the start of a field and after `.`/`!`/`?`/`…` + space, where it used to be empty
 - **Larger Tatar dictionary:** 100 000 → 110 000 entries — 9 052 corpus-attested word forms produced by the project's own build-time paradigm generator plus 948 conversational words; word coverage on the held-out eval set 93.49 → 94.31 % of tokens. No previously known word was dropped
+- **Predictions continue right after a tapped suggestion:** accepting a word from the strip immediately offers the next word's predictions — previously the strip stayed empty until the next keystroke
+- **Typo suggestions on an otherwise empty strip (Tatar):** when a typed prefix of 4+ letters matches nothing exactly, the strip offers the nearest dictionary words one letter away — `сцләм` suggests `сәләм` in the first cell by the fifth letter. Correctly typed prefixes are never affected: the correction tier only fills a strip that would stay empty
 
 ### What stayed the same
 

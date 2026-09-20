@@ -779,3 +779,17 @@ E3b recovery@3 seed=20260727 prefix_cp=3 combined_set=286681 recovered=6402 reco
 +104 Б — набор `SHIPPED_FUZZY_EDIT_CLASSES` и три проверки принадлежности в `collectFuzzy`. Ни
 ассета, ни разрешения не добавлено. `assembleDebug`, `assembleDebugAndroidTest`,
 `lintVitalRelease`, `assembleRelease` — BUILD SUCCESSFUL, всё offline.
+
+---
+
+> **Сноска, 2026-09-20 (TT-TYPO-NEXT Phase B, docs/TT-TYPO-NEXT.md).** Офлайн-модель геометрии
+> этого документа (и старая `E3bTestFixtures`) НЕ учитывала `horizontalGap` (1.739 %p,
+> `res/values/config.xml`): на устройстве `KeyboardRow` вычитает зазор из ширины каждой клавиши,
+> поэтому `right == left` для соседей по ряду не выполняется никогда — 33 «same-row» пары из
+> таблицы §2 (65 пар) на устройстве не существуют, выживают ровно 32 кросс-рядные (включая ц↔ә).
+> Равенство исправленной офлайн-модели устройству доказано дампом живой клавиатуры на POCO C71
+> (32/32, побайтно). Замеры E3a/E3b выше сняты на 65-парной модели по обе стороны (движок через
+> фикстуру и набор опечаток) — самосогласованы, но не device-true; это не меняет ни вердиктов
+> (порог 17.48 % мёртв методологически независимо от модели), ни решения об отключении классов.
+> С того же дня `SHIPPED_FUZZY_EDIT_CLASSES` заменён per-engine `FuzzyEditPolicy`
+> (`TdictPrefixIndex.open`), а `E3bComputeInstrumentationTest` реально прогнан на устройстве.

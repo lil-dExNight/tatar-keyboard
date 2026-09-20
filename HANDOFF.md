@@ -1,3 +1,51 @@
+# HANDOFF — TT-TYPO-NEXT mission complete (uncommitted; no version bump)
+
+**State as of 2026-09-20.** The TT-TYPO-NEXT mission (plan
+`docs/TT-TYPO-NEXT-PLAN.md`, report `docs/TT-TYPO-NEXT.md`) is complete — phases A, B
+(measured, not shipped), C (measured, not shipped), C2 (shipped) and D (gates + release
+APK + device UAT + docs) all landed in the working tree on top of the committed
+TT-SUGGESTIONS changeset (commits `cb59c52a`…`873ef35e`; the previous HANDOFF entry's
+"uncommitted" note for TT-SUGGESTIONS is stale — the operator committed it). **The
+TT-TYPO-NEXT changeset itself is NOT committed**; it awaits the operator's commit and
+release decision. Version is NOT bumped (still 1.9.15 / versionCode 31).
+
+What landed:
+
+- **Predictions right after a suggestion tap** (Phase A, shipped): a tap-commit now
+  issues the follow-up lookup itself — the strip immediately shows the accepted word's
+  next-word predictions instead of staying empty until the next keystroke. The D1-era
+  empty-band pin was amended to the frozen E5 contract.
+- **Typo recovery class #4 in the Tatar engine** (Phase C2, shipped): full
+  single-substitution recovery, probe-first with per-position range narrowing, gated on
+  exact==0 ∧ ≥ 4 code points — `сцләм` → `сәләм` in cell 1 by the 5th letter. Corrected
+  gates: lift +27.24 pp ≥ +10 pp, activation 21.14 % ≤ 25 %, device probe p95 3.306 ms ≤
+  3.5 ms. Class #2 (Phase B) failed its gates honestly (recovery 0.909×/1.002× vs 1.5×,
+  pollution 7.93 % vs 2 %) and stays off — machinery present, unwired, fully tested.
+- **Russian engine byte-identical** (DEFAULT policy, pinned).
+- Emulator smoke gained the `tap-followup-tt-сакчы` probe; the E3b device instrumentation
+  now runs both fuzzy policies on hardware (POCO C71).
+
+Gates (all 2026-09-20, Phase D full rerun):
+
+| Gate | Result |
+|---|---|
+| `./gradlew test --rerun-tasks` | **1234 / 0 failures** (134 suites) |
+| python suites (15 files) | **474 OK** |
+| `./gradlew lintRelease --rerun-tasks` | green |
+| `rebuild_assets.py --check --allow-known-drift` | ok (tt 3/0, ru 2/0 as pinned) |
+| `scripts/check-no-internet.sh` (release APK) | both levels |
+| `scripts/release_check.sh --quick` | **8/8 artifact checks PASS** |
+| release APK | **1 849 555 B** ≤ 3 145 728, SHA-256 `32cd873b…4a821ab6`, cert `98ca6feb…42ad` |
+| device UAT (POCO C71) | **16/16 PASS** — `docs/TT-TYPO-NEXT.md` Phase D, evidence `build/device-uat-2026-09-20/` |
+
+Open: commit + version bump + release are the operator's call (both mission changesets:
+TT-TYPO-NEXT; TT-SUGGESTIONS is committed but unreleased); the plan's Phase-D task 4
+(independent re-verification by a fresh agent) is the orchestrator's item; TalkBack
+re-check pending; the TT-SUGGESTIONS plan's external items (relicensing letters, Common
+Voice) untouched.
+
+---
+
 # HANDOFF — TT-SUGGESTIONS mission complete (uncommitted; no version bump)
 
 **State as of 2026-09-20.** The TT-SUGGESTIONS mission (plan

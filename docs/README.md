@@ -50,6 +50,30 @@
   110 000 entries, same-stem boost 57.58 → 62.82 %, strip-empty at sentence
   start 100 → 0 %, final gates and emulator smoke. Uncommitted — awaits the
   operator's commit/release decision.
+- `TT-TYPO-NEXT-PLAN.md` — approved plan of the typo-recovery / tap-followup
+  mission (phases A–D): predictions right after an accepted suggestion, then
+  calibrated typo recovery in the strip.
+- `TT-TYPO-NEXT.md` — mission report for the same. Phase A done 2026-09-20:
+  the strip shows next-word predictions immediately after a suggestion tap
+  (a tap-commit now issues the follow-up lookup itself); the D1-era empty-band
+  pin was amended to the E5 contract; emulator smoke gained the
+  `tap-followup-tt-сакчы` probe. Phase B measured 2026-09-20, verdict NOT
+  SHIPPED: the device-true geometry model (offline == live POCO C71 dump,
+  32/32 pairs), the per-engine `FuzzyEditPolicy` seam and the same-length bonus
+  landed as tested infrastructure, but gate G1 (recovery lift 0.909×/1.002× vs
+  the required 1.5×) and gate G2 (pollution 7.93 % vs 2 %) failed, so edit
+  class #2 stays off and every engine runs the pre-Phase-B default. Phase C
+  measured the same day: the probe-first full single-substitution class #4
+  ({1,4}+bonus, gated on an empty exact pass at ≥ 4 cp) failed its first
+  measurement round; Phase C2 (orchestrator amendment — same-set lift gate,
+  activation-rate cap, device budget) re-engineered the probe path
+  (no-cache search + per-position range narrowing, device 31.6 → 3.3 ms p95)
+  and ALL corrected gates passed: **class #4 ships in the Tatar engine and
+  `сцләм` offers `сәләм` in cell 1 by the 5th letter**; Russian untouched.
+  Phase D done 2026-09-20: full gates green, signed release APK (1 849 555 B,
+  SHA-256 `32cd873b…`), device UAT on the POCO C71 16/16 PASS (tap→predictions,
+  the сцләм ladder, no-pollution, cold start 253/265 ms median, clean crash
+  buffer). Uncommitted — awaits the operator's commit/release decision.
 - `RESEARCH-FIXES.md` — миссия починки находок ресерча (2026-09-04, релиз 1.9.14):
   текст клавиатурных поверхностей переведён с sp на dp (Р-3), панель эмодзи
   уважает «Нижний отступ» (Р-1) и сжимает свои полосы при малой высоте (Р-2);

@@ -810,3 +810,90 @@ own section; P5 changed no asset, no pin, no test threshold.
 Commit decision (the changeset is intentionally uncommitted), version bump and release
 (`release_pack.sh` artifact ready), the external items of the plan (relicensing letters,
 Common Voice corpus), on-device UAT of the new suggestions on the POCO C71, TalkBack.
+
+> Footnote 2026-09-20: the POCO C71 on-device UAT is **done** — see the DEVICE-UAT
+> section below; all 20 checklist rows PASS, cold start 261/270 ms median, no bugs found.
+> Remaining from the list above: the commit/release decision, the external plan items,
+> TalkBack.
+
+## DEVICE-UAT 2026-09-20 — on-device validation of the TT-SUGGESTIONS build (POCO C71)
+
+Full UAT cycle of the signed release APK `app-release-zopfli.apk` (SHA-256
+`36d80c99de1138c475cdf1b394950ef765d47138351c556b187d4d03455ee619`, verified against
+the P5 pin before install; reports versionName 1.9.15 / versionCode 31) on the physical
+POCO C71 (Xiaomi 25028PC03G `serenity`, Android 15 Go SDK 35, 720×1640 @ 320 dpi,
+three-button navigation — the same device as `docs/DEVICE-UAT-1.9.12.md`).
+
+Install: clean `adb install -r` (the app was NOT installed on the device beforehand, so
+no signature or personal-dictionary concern applied; `firstInstallTime == lastUpdateTime`).
+Suggestions were opted in through the app's own UI (release package is not debuggable, so
+the emulator smoke's `run-as` pref path does not apply): SetupActivity → Open settings →
+Preferences → "Word suggestions" switch (`04-suggestions-toggled.xml`).
+
+Method notes: uiautomator does not see the IME window, so the strip was proven two ways —
+screenshot crops read by the operator (pixel evidence), and tap-the-cell-then-read-the-field
+(the tap-and-read pattern of the P5 emulator probes). All key coordinates were recalibrated
+for 720×1640 from screenshots of this build (the emulator-smoke 1080×2280 fractions do NOT
+transfer): tt extra row y=1110, rows y=1206/1301/1396, bottom row y=1491; ru/en rows
+y=1150/1264/1377; strip ≈ y 980–1060 with three equal-thirds cells at x=120/360/600. With
+the keyboard up the try-it field leaves the visible hierarchy (adjustResize shrinks the
+window to ~980 px) — the setup screen must be scrolled down first, then the field sits at
+[48,699][672,812]. Evidence: `build/device-uat-2026-09-20/` (gitignored build dir).
+
+### Checklist
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 1 | Install, enable, select IME; SetupActivity in focus | PASS | `install.log`, `01-setup-activity.png` |
+| 2 | tt layout, fifth row ә ө ү җ ң һ; typing `сәлам` | PASS | `09-tt-salam-typed.png` |
+| 3 | tt prefix suggestions with same-stem boost: `сәлам` → сәламе · сәламнәр · сәламнәре | PASS | `09-tt-salam-strip.png` |
+| 4 | **(b)** same-stem boost: `татар` prefix → татарлар · татарча · татарлары, NO татарстан* | PASS | `10-tt-tatar-prefix-strip.png` |
+| 5 | **(c)** `татар`+space → bigram successors теле · дәүләт · телен, forms absent (contract); cell-2 tap commits `дәүләт ` | PASS | `11-tt-tatar-space-strip.png`, `12-tt-tatar-cell2-committed.png` |
+| 6 | **(a)** `сакчы`+space → сакчысы · сакчылар · сакчысын; cell-2 tap commits `сакчы сакчылар ` | PASS | `13-tt-sakcy-space-strip.png`, `14-tt-sakcy-cell2-committed.png` |
+| 7 | **(d)** sentence start: empty field → бу · ул · ә; after `. ` → бу · ул · ә (twice, incl. after double-space period); cell-2 tap commits `ул ` | PASS | `05b-keyboard-now.png`, `42-sentstart-fieldstart-strip.png`, `15-tt-sentstart-after-period-strip.png`, `32-double-space-strip.png` |
+| 8 | **(e)** ru `майор` → майора · майором · майору (frequency order, no Tatar-style boost) | PASS | `17-ru-mayor-strip.png` |
+| 9 | ru baseline: `прив` → привет · привести · привело | PASS | `18-ru-priv-strip.png` |
+| 10 | Language switching globe tt→ru→en→tt (identified per layout) | PASS | `16-after-globe1.png`, `19-globe-a.png`, `19-globe-b.png`, `30-on-tt.png` |
+| 11 | en layout: `hi` typed, strip hidden (no en dictionary, by design) | PASS | `20-en-hi-strip.png` |
+| 12 | Symbols `?123` (digit committed) and `#+=` layer; ABC back | PASS | `21-symbols.png`, `22-symbols2.png` |
+| 13 | Emoji panel: long-press comma opens it (АБВ/backspace above the navbar — the 1.9.12 Д-1 fix holds on this Android 15 device), grid tap commits 😀, АБВ returns to letters | PASS | `24-emoji-panel.png`, `25-emoji-committed.png`, `26-after-abv.png` |
+| 14 | Emoji-suggest tail cell: `сәлам`+space → биреп · белән · 👋 | PASS | `33-emoji-suggest-salam-strip.png` |
+| 15 | Long-press alternate: а → popup Ә, commits ә (single-moreKey panel anchored at the finger — release on the anchor cell selects it; same mechanism the comma→emoji long-press relies on; matches the 1.9.12 UAT) | PASS | `35-longpress-hold-zoom.png` |
+| 16 | Manual shift + auto double-space→period: `Аб`+␣␣ → `Аб. ` | PASS | `32-double-space.png` |
+| 17 | Backspace repeat: 1.5 s hold deleted ~25 chars | PASS | field readback in session log |
+| 18 | Rotation: landscape rebuild (navbar to the side, no overlap), back to portrait | PASS | `27-landscape.png`, `28-portrait-back.png` |
+| 19 | Sustained Tatar paragraph typing, 193 chars in 86 s with live suggestions — every character landed in order, zero drops, no autocorrect corruption, no jank or crash | PASS | `31-paragraph.png`, `31-paragraph-field.txt` |
+| 20 | Crash/stability: `logcat -b crash` EMPTY after the whole cycle; full logcat has no FATAL EXCEPTION / ANR for the package (only MIUI `WindowManager dispatchAppVisibility` W-warnings at my own force-stop instants) | PASS | `50-logcat-crash.txt` (0 lines), `51-logcat-full.txt` |
+
+### Cold start (force-stop → `am start -W`, TotalTime, ms)
+
+| Entry point | run 1 | run 2 | run 3 | median |
+|---|---:|---:|---:|---:|
+| SetupActivity (launcher) | 281 | 261 | 239 | **261** |
+| SettingsActivity (exported legacy) | 270 | 256 | 274 | **270** |
+
+Budget < 400 ms holds with 30 %+ headroom (comparable to the 300.6 ms framestats-based
+measurement at 1.9.13). NOTE: `SettingsHostActivity` (the modern settings UI reached from
+SetupActivity) is `android:exported="false"` — `am start` on it fails with
+SecurityException (`41-amstart-raw.txt`), so the two exported entry points were measured
+instead. NOTE 2: this is a sideloaded APK — `dumpsys package dexopt` shows
+`[status=verify] [reason=install]`, i.e. the baseline profile is NOT applied; a Play
+install would not be slower.
+
+### Bugs found
+
+**None.** Every TT-SUGGESTIONS scenario (a–e) and every reused 1.9.12 baseline scenario
+passed on the first run; no code changes were needed, so the repo gates were not re-run in
+this session (nothing to validate — the working tree is untouched).
+
+Two observations that are NOT defects, recorded for the operator:
+
+* The first probe typed into the try-it field while it was scrolled out of the visible
+  hierarchy — keystrokes land in the focused editor regardless of visibility; a
+  coordinate race during keyboard re-raise produced one stray `ө` in a scratch field.
+  Harness artefact, not an app defect.
+* Stationary long-press on a key with a single more-key (а) commits that alternate (ә)
+  without an explicit panel pick — the panel is anchored at the finger and the anchor
+  cell is what the release hits (`MoreKeysKeyboardView.showMoreKeysPanel` origin math).
+  This is the same long-standing behavior the comma→emoji long-press depends on and
+  matches the 1.9.12 UAT's PASS for "а → ә".
