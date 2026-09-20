@@ -52,9 +52,14 @@ class TatBigrValidatorTest {
         // Schema 3 since 2026-09-01 (SIZE-2, docs/SIZE-SCHEMA3.md): content carried over from the
         // schema-2 asset verbatim — 10 204 heads and 40 734 pairs are the 2026-08-31
         // conversational repack's (docs/CORPUS-CONVERSATIONAL-TT.md); only the encoding changed.
+        // Repacked 2026-09-20 (TT-SUGGESTIONS P2) against the 110 000-entry dictionary: the head
+        // set is identical (generated forms enter far below the H = 10 132 cutoff) and the same
+        // three -гәнчә converbs are dropped pairless; ten pairs whose successor was outside the
+        // old dictionary now count (бервакытта → бернәрсәдә, …), so the pair total moves
+        // 40 734 -> 40 735.
         assertEquals(10_204, validated.headCount)
-        assertEquals(134_664, validated.rawSize)
-        assertEquals(40_734, validated.pairCount)
+        assertEquals(134_938, validated.rawSize)
+        assertEquals(40_735, validated.pairCount)
     }
 
     /**

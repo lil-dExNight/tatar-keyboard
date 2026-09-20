@@ -500,7 +500,9 @@ class DictionaryPackTest(unittest.TestCase):
 
     def test_committed_asset_provenance_notice_and_review(self) -> None:
         asset = ASSET.read_bytes()
-        parsed = pack.validate_asset(asset, expected_count=100_000)
+        # 110 000 since 2026-09-20 (TT-SUGGESTIONS P2: +9 052 admitted generated forms,
+        # +645 more accepted conversational words than at 100k; nothing displaced).
+        parsed = pack.validate_asset(asset, expected_count=110_000)
         # Пины поставляемого ассета (схема 2, SIZE-1) живут в Kotlin-контракте;
         # архивный DICTIONARY-D1A.md описывает schema-1 сборку и не переписывается.
         contract = (

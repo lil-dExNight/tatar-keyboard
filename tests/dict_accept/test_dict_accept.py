@@ -398,12 +398,20 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
                 self.assertIsNotNone(entry["after_rank"],
                                      msg=f"{tag}: {word} не попал в словарь")
 
-    def test_acceptance_only_adds_and_displaces_never_shrinks(self) -> None:
-        for tag in ("rus", "tat"):
-            self.assertEqual(self.report[tag]["entries_after"], 100_000)
-            self.assertGreater(self.report[tag]["words_added"], 0)
-            self.assertEqual(self.report[tag]["words_added"],
-                             self.report[tag]["words_displaced"])
+    def test_added_and_displaced_counts_match_the_documented_rules(self) -> None:
+        # rus, как в 1.9.1: отсечка 100 000, разговорные слова вытесняют хвост Leipzig
+        # ровно на своё число.
+        self.assertEqual(self.report["rus"]["entries_after"], 100_000)
+        self.assertGreater(self.report["rus"]["words_added"], 0)
+        self.assertEqual(self.report["rus"]["words_added"],
+                         self.report["rus"]["words_displaced"])
+        # tat, с 2026-09-20 (TT-SUGGESTIONS P2, docs/TT-SUGGESTIONS.md): отсечка поднята
+        # до 110 000 именно чтобы словоформы никого не вытесняли — добавлено ровно
+        # 10 000 слов к составу 1.8.4 (948 разговорных против 303 при старой отсечке,
+        # плюс 9 052 допущенных словоформы), вытеснено 0.
+        self.assertEqual(self.report["tat"]["entries_after"], 110_000)
+        self.assertEqual(self.report["tat"]["words_added"], 10_000)
+        self.assertEqual(self.report["tat"]["words_displaced"], 0)
 
     def test_mozhna_pair_shows_single_word_on_prefix(self) -> None:
         # Условие готовности tt-dict-widen: на префиксе `можн` нет пары

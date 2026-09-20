@@ -63,11 +63,15 @@ object AutocorrectPolicy {
      * Minimum frequency of the candidate. NOT an assigned number: it is the frequency of the word at
      * rank 10 000 as MEASURED in the shipped `tatar_top100k_v1` artifact. Autocorrect changes text
      * the user has already typed, so the candidate has to be a word people actually write; for scale,
-     * rank 20 000 in the same artifact is already frequency 149.
+     * rank 20 000 in the same artifact is already frequency 153.
      *
      * The tie to the artifact is deliberate and binding: if the asset is ever rebuilt, this number is
      * re-measured the same way and written down again. Quoting "403" after the artifact changes is
-     * forbidden by the contract.
+     * forbidden by the contract. Re-measured 2026-09-20 (TT-SUGGESTIONS P2): rank 10 000 is
+     * frequency 411 (`чиновниклар`), rank 20 000 is 153 (`хәмзин`) — on BOTH the 1.9.1 artifact and
+     * the 110 000-entry P2 one (the P2 additions all sit at frequency <= 10, far below this rank;
+     * the quoted 403/149 were the 1.8.4 measurements that the 1.9.x repacks had moved without the
+     * re-measurement this contract requires).
      */
-    const val MIN_CANDIDATE_FREQUENCY: Long = 403L
+    const val MIN_CANDIDATE_FREQUENCY: Long = 411L
 }

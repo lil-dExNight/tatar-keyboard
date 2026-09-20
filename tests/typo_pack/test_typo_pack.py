@@ -19,14 +19,6 @@ PACK_SCRIPT = ROOT / "scripts" / "typo_pack.py"
 LAYOUT_DIR = ROOT / "app" / "src" / "main" / "res" / "xml"
 DICTIONARY = ROOT / "app" / "src" / "main" / "assets" / "dictionaries" / "tatar_top100k_v1.tdict.zlib"
 
-# Pinned numbers for the committed dictionary (rkr...DictionaryArtifactSpec.TATAR_TOP100K_V1).
-EXPECTED_ASSET_SHA256 = (
-    "76bd5a39bc1091e7e85279e058385321db231084c269fd0a000f7ecb59bce7ac"
-)
-EXPECTED_RAW_SHA256 = (
-    "8f434ec7cfd718df31b4410e55d36cbb914d2497ec265f89db3aaf48ec625f76"
-)
-
 
 def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -354,10 +346,12 @@ class CommittedInputsSmokeTest(unittest.TestCase):
     def test_real_build_matches_recorded_set_identity(self) -> None:
         typo_set, neighbor_map = pack.generate(DICTIONARY, LAYOUT_DIR)
         # Recorded in docs/DICTIONARY-E3.md and asserted identically by the Kotlin calibration test.
-        self.assertEqual(typo_set.size, 87360)
+        # Recalibrated 2026-09-20 (TT-SUGGESTIONS P2): the dictionary grew to 110 000 entries,
+        # so the reproducible set grew with it (87 360 -> 96 118 rows).
+        self.assertEqual(typo_set.size, 96118)
         self.assertEqual(
             typo_set.sha256,
-            "da186d8e494a64636eec622b2a68be0efe45157b037fdcf2a1a6bb53a22b19e4",
+            "1bf09f403a288c111a1607c83eecee3faa410ee5669015b558e292cbe28e9aee",
         )
         self.assertEqual(typo_set.variant_p95, 3)
         self.assertEqual(len({frozenset((n, p)) for n, ps in neighbor_map.items() for p in ps}), 10)
@@ -474,20 +468,22 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_class1_class2_class3_recorded_identities(self) -> None:
+        # Recalibrated 2026-09-20 (TT-SUGGESTIONS P2) for the 110 000-entry dictionary:
+        # 87 360 / 99 654 / 99 642 -> 96 118 / 109 649 / 109 637 rows.
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1)
-        self.assertEqual(one.size, 87360)
+        self.assertEqual(one.size, 96118)
         self.assertEqual(
-            one.sha256, "da186d8e494a64636eec622b2a68be0efe45157b037fdcf2a1a6bb53a22b19e4"
+            one.sha256, "1bf09f403a288c111a1607c83eecee3faa410ee5669015b558e292cbe28e9aee"
         )
         two, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=2)
-        self.assertEqual(two.size, 99654)
+        self.assertEqual(two.size, 109649)
         self.assertEqual(
-            two.sha256, "55139280eac6712f059b55a267f09851d0c9e5020e6338a7b6c00b7a23b6faa0"
+            two.sha256, "89ef264634a45001514f70cc43eceb3a85995855b9ced424b7de482c6c76c97b"
         )
         three, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=3)
-        self.assertEqual(three.size, 99642)
+        self.assertEqual(three.size, 109637)
         self.assertEqual(
-            three.sha256, "48254141fd83abe9d55c8c1bd70ef6efbd4f9105275909b2e12cd2fd60c03654"
+            three.sha256, "539a701aa80778bb62f5cb0d9a324cdbac7f611262a0eb5bc7af7fb7d6ef5a42"
         )
 
 

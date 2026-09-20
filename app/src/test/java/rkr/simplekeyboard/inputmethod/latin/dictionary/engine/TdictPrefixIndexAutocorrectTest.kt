@@ -82,9 +82,11 @@ class TdictPrefixIndexAutocorrectTest {
 
     @Test
     fun aCandidateBelowTheFrequencyThresholdIsNotAdvised() {
-        assertEquals(403L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY)
-        val below = index(listOf("китап" to 402L))
-        val atThreshold = index(listOf("китап" to 403L))
+        // Re-measured 2026-09-20 (TT-SUGGESTIONS P2) on the 110 000-entry artifact:
+        // 403 -> 411 (frequency of rank 10 000).
+        assertEquals(411L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY)
+        val below = index(listOf("китап" to 410L))
+        val atThreshold = index(listOf("китап" to 411L))
 
         assertNull(advise(below, "китәп"))
         assertEquals("китап", advise(atThreshold, "китәп")?.replacement)

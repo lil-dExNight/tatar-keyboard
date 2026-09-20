@@ -512,23 +512,71 @@ def load_baseline(tag: str, directory: Path):
     return dict(zip(parsed.words, parsed.frequencies)), asset
 
 
-def merged_entries(tag: str, baseline: Path):
+def read_extra_entries(path: Path, tag: str) -> dict[str, int]:
+    """Дополнительные записи (слово<TAB>частота), вливаемые в состав сверх приёмки.
+
+    С 2026-09-20 (TT-SUGGESTIONS P2) так подаются порождённые словоформы татарского
+    (scripts/wordform_gen.py, допущенные корпусной засвидетельствованностью —
+    см. scripts/rebuild_assets.py). Формат и фильтр — те же, что у конвейера: слово
+    обязано пройти `dictionary_coverage.normalize_word` для языка без изменений,
+    частота — положительный u32; дубль или битая строка останавливают сборку
+    (fail-closed, как у всего пайплайна).
+    """
+    import dictionary_coverage as cov
+    language = cov.language_for(tag)
+    out: dict[str, int] = {}
+    with path.open(encoding="utf-8", newline="") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 2 or not fields[0] or not fields[1]:
+                raise SystemExit(
+                    f"{path}:{line_number}: ожидалась строка слово<TAB>частота, "
+                    f"получено {len(fields)} полей")
+            word, reason = cov.normalize_word(fields[0], language.alphabet)
+            if reason is not None or word != fields[0]:
+                raise SystemExit(
+                    f"{path}:{line_number}: слово {fields[0]!r} не канонично "
+                    f"({reason or 'не NFC/нижний регистр'})")
+            try:
+                frequency = int(fields[1])
+            except ValueError:
+                raise SystemExit(
+                    f"{path}:{line_number}: частота {fields[1]!r} не число")
+            if not 0 < frequency <= 0xFFFF_FFFF:
+                raise SystemExit(
+                    f"{path}:{line_number}: частота {frequency} не положительный u32")
+            if word in out:
+                raise SystemExit(f"{path}:{line_number}: дубль слова {word!r}")
+            out[word] = frequency
+    return out
+
+
+def merged_entries(tag: str, baseline: Path, top: int = 100_000,
+                   extra: dict[str, int] | None = None):
     """Состав нового ассета и частоты в нём.
 
-    СОСТАВ — поставляемые слова плюс принятые, и ничего больше: отклонённое не входит ни при
-    какой частоте. ЧАСТОТА — письменная плюс разговорная, у КАЖДОГО слова состава, включая те,
-    что стояли в словаре и раньше. Это прямо записано в досье: «Частоты и биграммы берём из
-    всего корпуса… Здесь ничего не режем», и режется только состав.
+    СОСТАВ — поставляемые слова плюс принятые, плюс (с 2026-09-20, TT-SUGGESTIONS P2)
+    дополнительные записи из `extra` — и ничего больше: отклонённое не входит ни при
+    какой частоте. ЧАСТОТА — письменная плюс разговорная, у КАЖДОГО слова состава,
+    включая те, что стояли в словаре и раньше. Это прямо записано в досье: «Частоты
+    и биграммы берём из всего корпуса… Здесь ничего не режем», и режется только состав.
+    Запись из `extra`, совпавшая с существующим словом состава, — не операция:
+    существующая частота сохраняется.
 
-    Отсечка жёстко 100 000 записей: слова не добавляются, а вытесняют самые редкие.
+    Отсечка жёстко `top` записей: слова не добавляются, а вытесняют самые редкие.
     """
     shipped, _asset = load_baseline(tag, baseline)
     accepted = read_accepted(tag)
     conv = read_conv_freq(tag)
     composition = set(shipped) | set(accepted)
     merged = {word: shipped.get(word, 0) + conv.get(word, 0) for word in composition}
-    top = sorted(merged.items(), key=lambda kv: (-kv[1], kv[0]))[:100_000]
-    return shipped, accepted, sorted(top, key=lambda kv: kv[0])
+    for word, frequency in (extra or {}).items():
+        if word not in merged:
+            merged[word] = frequency
+    top_entries = sorted(merged.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
+    return shipped, accepted, sorted(top_entries, key=lambda kv: kv[0])
 
 
 def pack(args) -> int:
@@ -537,11 +585,18 @@ def pack(args) -> int:
     import dictionary_coverage as cov
     import corpuslib as CL
     baseline = Path(args.baseline)
+    tags = (args.only,) if args.only else ("rus", "tat")
     result = {}
-    for tag in ("rus", "tat"):
+    for tag in tags:
         language = cov.language_for(tag)
+        extra = None
+        if args.extra_entries is not None:
+            # --extra-entries/--top осмыслены только с --only: они поязыковые, а без --only
+            # собирались бы оба языка с одними и теми же дополнительными записями.
+            extra = read_extra_entries(Path(args.extra_entries), tag)
         shipped, before = load_baseline(tag, baseline)
-        _shipped, accepted, entries = merged_entries(tag, baseline)
+        _shipped, accepted, entries = merged_entries(
+            tag, baseline, top=args.top, extra=extra)
         raw = dp.serialize_entries(entries, schema=dp.SCHEMA_ID_V2)
         asset = dp.compress_raw(raw)
         target = CL.SHIPPED[tag]
@@ -565,6 +620,9 @@ def pack(args) -> int:
             "sha256_after": hashlib.sha256(asset).hexdigest(),
             "raw_sha256_after": hashlib.sha256(raw).hexdigest(),
         }
+        if extra is not None:
+            result[tag]["extra_entries_offered"] = len(extra)
+            result[tag]["extra_entries_that_entered"] = len(words & set(extra))
         if args.write:
             dp.validate_asset(asset, language=language)
             _atomic_write(target, asset)
@@ -618,8 +676,22 @@ def main(argv=None) -> int:
                     help="каталог с ассетами 1.8.4; SHA-256 сверяется точно")
     pk.add_argument("--write", action="store_true",
                     help="записать ассеты в app/src/main/assets (без флага только измеряет)")
+    pk.add_argument("--only", choices=("rus", "tat"), default=None,
+                    help="собрать только один язык; второй ассет не читается и не пишется")
+    pk.add_argument("--extra-entries", default=None, metavar="TSV",
+                    help="дополнительные записи слово<TAB>частота, вливаемые в состав "
+                         "(с 2026-09-20 — допущенные словоформы татарского, TT-SUGGESTIONS "
+                         "P2); требует --only, потому что записи поязыковые")
+    pk.add_argument("--top", type=int, default=100_000,
+                    help="размер отсечки состава (по умолчанию %(default)s); требует --only, "
+                         "если отличается от умолчания")
     pk.set_defaults(func=pack)
     args = parser.parse_args(argv)
+    if args.command == "pack":
+        if args.extra_entries is not None and args.only is None:
+            parser.error("--extra-entries требует --only (записи поязыковые)")
+        if args.top != 100_000 and args.only is None:
+            parser.error("--top, отличный от умолчания, требует --only")
     return args.func(args)
 
 

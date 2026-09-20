@@ -16,9 +16,10 @@ Two committed inputs, no third:
   is the same principle the engine's ``KeyNeighborTableBuilder`` follows.
 * the committed dictionary asset
   (``app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib``): the words are its
-  100,000-entry vocabulary, pinned by SHA-256 on both the compressed asset and the
-  inflated raw file. The JVM calibration test enumerates the very same asset and applies
-  the identical selection rule, so the two produce the same reproducible set.
+  110,000-entry vocabulary (110,000 since 2026-09-20, TT-SUGGESTIONS P2), pinned by
+  SHA-256 on both the compressed asset and the inflated raw file. The JVM calibration
+  test enumerates the very same asset and applies the identical selection rule, so the
+  two produce the same reproducible set.
 
 Neither the licensed source corpus nor the emitted typo set is committed to git: the set
 is fully reproducible from this generator and the two inputs above (see docs/DICTIONARY-E3.md).
@@ -58,13 +59,16 @@ from typing import Iterable, Sequence, TextIO
 # 2026-09-01 (SIZE-1): словарь перешёл на schema 2 (front-coding + varint-частоты,
 # docs/SIZE-SCHEMA2.md) — состав, порядок и частоты слов побайтно те же, поэтому
 # наборы опечаток не пересобираются; поменялись только пины упаковки.
+# 2026-09-20 (TT-SUGGESTIONS P2, docs/TT-SUGGESTIONS.md): словарь расширен допущенными
+# словоформами до 110 000 записей — наборы опечаток пересобраны с нового состава, пины
+# ниже пересчитаны.
 EXPECTED_ASSET_SHA256 = (
-    "cb34fe7d48bbaa73002a2d19e3696610c6e493d61a2a72355382e46987918119"
+    "e653ef6ee9d88fd25cd7802e59bb57b954be80d9b7ea897c849be66919fa96ed"
 )
 EXPECTED_RAW_SHA256 = (
-    "922d14f200ef650f69c45b18183ec30a48c7989cd0b520c5de59215592770130"
+    "3634f021c056b90ab1eb042bf6bccfa1413d31af96993120e77bdcf843152518"
 )
-EXPECTED_ENTRY_COUNT = 100_000
+EXPECTED_ENTRY_COUNT = 110_000
 
 # --- Deterministic-selection knobs (also documented in docs/DICTIONARY-E3.md). --------
 # The seed is fixed for all time; a change is a written decision, not a silent bump.

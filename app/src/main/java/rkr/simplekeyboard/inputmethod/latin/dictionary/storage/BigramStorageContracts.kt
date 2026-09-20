@@ -127,6 +127,12 @@ data class BigramArtifactSpec(
          * schema-2 asset, corpus-free and verified word-for-word identical (all 10 204 heads,
          * 40 734 pairs): word blobs are gone, heads and successes are varint indices into the
          * dictionary pinned by [expectedDictionaryRawSha256].
+         *
+         * Repacked 2026-09-20 (TT-SUGGESTIONS P2, `docs/TT-SUGGESTIONS.md`) against the
+         * 110 000-entry dictionary: the head set is identical (admitted word forms enter far
+         * below the H = 10 132 cutoff), the same three `-гәнчә` converbs stay pairless
+         * (`scripts/known_asset_drift.json` keeps 3/0), and ten pairs whose successor was outside
+         * the old dictionary now count — 40 734 → 40 735 pairs.
          */
         @JvmField
         val TATAR_BIGRAMS_V1 = BigramArtifactSpec(
@@ -136,14 +142,14 @@ data class BigramArtifactSpec(
             subtypeId = PersonalSubtypes.TATAR_RU,
             storageDirectoryName = "bigrams",
             assetPath = "bigrams/tatar_bigrams_v1.tatbigr.zlib",
-            expectedCompressedSize = 81_028,
+            expectedCompressedSize = 81_476,
             expectedCompressedSha256 =
-                "b1b92914b27f595aef728435d991322abdffdc43c8a32ed3b64584ae5cfa087f",
-            expectedRawSize = 134_664,
+                "ce8169ae1f25d5e2a83946890961b0e72e00d39b4b2a99434c5b4ae8b6e3c042",
+            expectedRawSize = 134_938,
             expectedRawSha256 =
-                "93789e5323ac9fd1f580cf0032c002ff64154d3ea6adc18bb41772177af9b1c0",
+                "a9157aea26f03dd148185edef5a77846994343b10d4103bd882e7e6337038a0e",
             expectedDictionaryRawSha256 =
-                "922d14f200ef650f69c45b18183ec30a48c7989cd0b520c5de59215592770130",
+                "3634f021c056b90ab1eb042bf6bccfa1413d31af96993120e77bdcf843152518",
             expectedHeadCount = 10_204,
         )
 

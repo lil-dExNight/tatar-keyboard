@@ -108,6 +108,13 @@ data class DictionaryArtifactSpec(
          * are unchanged, so the file NAME still changes — it carries the raw SHA-256 — and a
          * device updating from 1.8.4 or 1.9.0 inflates the new file once and drops the old one
          * through the ordinary retention path.
+         *
+         * Repacked 2026-09-20 (TT-SUGGESTIONS P2, `docs/TT-SUGGESTIONS.md`): the entry cap moved
+         * 100 000 → 110 000 — the largest measured size that keeps the compressed budget — so the
+         * dictionary now also carries 9 052 corpus-attested word forms generated at build time by
+         * the project's own paradigm generator (`scripts/wordform_gen.py`, frequency = corpus
+         * count) plus 645 further conversational words that the old cap had cut. No 1.8.4 word
+         * is displaced. The family, the schema and the file-name rule are unchanged.
          */
         @JvmField
         val TATAR_TOP100K_V1 = DictionaryArtifactSpec(
@@ -116,13 +123,13 @@ data class DictionaryArtifactSpec(
             storageDirectoryName = "dictionaries",
             generation = 1,
             assetPath = "dictionaries/tatar_top100k_v1.tdict.zlib",
-            expectedCompressedSize = 501_683,
+            expectedCompressedSize = 542_493,
             expectedCompressedSha256 =
-                "cb34fe7d48bbaa73002a2d19e3696610c6e493d61a2a72355382e46987918119",
-            expectedRawSize = 1_162_870,
+                "e653ef6ee9d88fd25cd7802e59bb57b954be80d9b7ea897c849be66919fa96ed",
+            expectedRawSize = 1_276_289,
             expectedRawSha256 =
-                "922d14f200ef650f69c45b18183ec30a48c7989cd0b520c5de59215592770130",
-            expectedEntryCount = 100_000,
+                "3634f021c056b90ab1eb042bf6bccfa1413d31af96993120e77bdcf843152518",
+            expectedEntryCount = 110_000,
             bigrams = BigramArtifactSpec.TATAR_BIGRAMS_V1,
         )
 

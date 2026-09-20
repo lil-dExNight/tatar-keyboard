@@ -251,9 +251,11 @@ class E3aRecoveryCalibrationTest {
         // Independently produced by `python3 scripts/typo_pack.py build ...` on the same committed
         // asset (see docs/DICTIONARY-E3.md). The equality of these with the JVM-built set is the
         // cross-implementation "same reproducible set" proof.
-        private const val GENERATOR_SET_SIZE = 87_360
+        // Recalibrated 2026-09-20 (TT-SUGGESTIONS P2): the dictionary grew to 110 000 entries,
+        // so the reproducible set grew with it (87 360 -> 96 118 rows, new SHA-256).
+        private const val GENERATOR_SET_SIZE = 96_118
         private const val GENERATOR_SET_SHA256 =
-            "da186d8e494a64636eec622b2a68be0efe45157b037fdcf2a1a6bb53a22b19e4"
+            "1bf09f403a288c111a1607c83eecee3faa410ee5669015b558e292cbe28e9aee"
 
         // Contract target and the chosen tolerance (docs/DICTIONARY-E3.md).
         private const val CONTRACT_RECOVERY_PP = 14.2

@@ -1,0 +1,63 @@
+# Tatar word-form exceptions for scripts/wordform_gen.py (TT-SUGGESTIONS P1).
+#
+# Format: UTF-8, LF, one rule per line: kind<TAB>stem<TAB>payload...
+# Lines starting with '#' and blank lines are skipped. The file is loaded
+# fail-closed: any structural error (unknown kind, wrong field count, empty
+# field, a word outside the normalized Tatar alphabet, duplicates, an unknown
+# override label) aborts the build. This file is pinned by SHA-256 in
+# tests/wordform_gen/test_wordform_gen.py.
+#
+# kind=voicing  payload: VOICED_STEM
+#   Possessive-family forms (noun.p1/p2/p3/p1pl/p2pl and the noun.p3.* case
+#   forms built on noun.p3) attach to VOICED_STEM; plural, the six cases,
+#   noun.p3pl and derivational forms attach to the plain stem. Models
+#   stem-final п→б / к→г voicing before vocalic possessive suffixes
+#   (китап→китабы but китапка). VOICED_STEM must differ from stem in the final
+#   letter only, п→б or к→г.
+# kind=pronoun  payload: FORM [<TAB>FORM ...]
+#   Suppletive paradigm: exactly these forms are emitted (label noun.pron) and
+#   regular noun generation for the stem is suppressed (мин → минем миңа …,
+#   no минләр). Verb and derivational generation still apply (минде is a real
+#   form of минү).
+# kind=override payload: LABEL=FORM [<TAB>LABEL=FORM ...]
+#   Replaces the generated form for LABEL (a generator label such as
+#   verb.pres.3sg or noun.p3). Overriding a person-bearing base
+#   (verb.pres.3sg, noun.p3) re-derives the forms built on it (кара → карам…;
+#   су → суын/суына/суында/суыннан). An override whose label the stem never
+#   emits is an error when that stem is processed.
+#
+voicing	китап	китаб
+voicing	төп	төб
+voicing	балык	балыг
+override	кара	verb.pres.3sg=кара
+# Simple future of the -ыр/-ер monosyllable class (the rule generates -ар/-әр
+# for monosyllables, -ыр/-ер for longer stems; these six are lexical
+# exceptions, attested in kaikki.org Tatar verb tables: барыр, булыр, алыр,
+# тулыр, йөрер; калыр added from standard grammar).
+override	бар	verb.fut.3sg=барыр
+override	бул	verb.fut.3sg=булыр
+override	ал	verb.fut.3sg=алыр
+override	кал	verb.fut.3sg=калыр
+override	тул	verb.fut.3sg=тулыр
+override	йөр	verb.fut.3sg=йөрер
+# уку is suppletive: укы- for present/past (укый, укыды, укыган, уку) but ук-
+# before the future and the negative suffixes (kaikki-attested: укар, укачак,
+# укмый, укмас, укмыйча; укмады/укмаган from standard grammar). The 3sg
+# overrides re-derive their person forms (укмыйм, укмадым…).
+override	укы	verb.masdar=уку
+override	укы	verb.fut.3sg=укар
+override	укы	verb.deffut.3sg=укачак
+override	укы	verb.pres.neg.3sg=укмый
+override	укы	verb.fut.neg.3sg=укмас
+override	укы	verb.past.neg.3sg=укмады
+override	укы	verb.rpast.neg.3sg=укмаган
+override	укы	verb.ger.neg=укмыйча
+# Masdar of ю ("to wash") is юу, not the glide-spelled *юю.
+override	ю	verb.masdar=юу
+pronoun	мин	минем	миңа	мине	миндә	миннән
+pronoun	син	синең	сиңа	сине	синдә	синнән
+pronoun	ул	аның	аңа	аны	анда	аннан
+pronoun	бу	моның	моңа	моны	монда	моннан
+pronoun	без	безнең	безгә	безне	бездә	бездән
+pronoun	сез	сезнең	сезгә	сезне	сездә	сездән
+pronoun	алар	аларның	аларга	аларны	аларда	алардан

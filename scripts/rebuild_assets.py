@@ -12,11 +12,17 @@
 
 делает по порядку:
 
-  1. пересборку ОБОИХ словарей через существующий entry point
-     `scripts/dict_accept.py pack --write` (состав = ассет 1.8.4 + принятое приёмкой,
-     частоты = Leipzig + разговорные из `docs/archive/dictionary/dict-accept/conv-freq-*`;
+  0. (татарский, с 2026-09-20 — TT-SUGGESTIONS P2) стадию словоформ
+     `build_admitted_wordforms`: основы — состав словаря до отсечки, кандидаты —
+     `scripts/wordform_gen.py`, допуск — засвидетельствованность в Leipzig tt
+     `*-words.txt` тех же двух корпусов, что обучают таблицу, плюс закоммиченный
+     conv-freq-tt.tsv; частота = корпусное число;
+  1. пересборку словарей через существующий entry point
+     `scripts/dict_accept.py pack --write` (состав = ассет 1.8.4 + принятое приёмкой
+     + допущенные словоформы у татарского, частоты = Leipzig + разговорные из
+     `docs/archive/dictionary/dict-accept/conv-freq-*`; отсечка — `DictionaryAsset.top`;
      SHA-256 основы сверяется самим dict_accept, поверх пересобранного не соберётся);
-  2. перепаковку ОБЕИХ таблиц биграмм через `scripts/bigram_asset_pack.py pack` с
+  2. перепаковку таблиц биграмм через `scripts/bigram_asset_pack.py pack` с
      параметрами последних поставленных упаковок: татарская H = 10 132, K = 4,
      `--extra-heads scripts/bigram_extra_heads_tat.txt`; русская H = 10 000, K = 4
      (`docs/archive/bigrams/IMPERATIVE-HEADS.md` и `RUSSIAN-BIGRAMS.md`);
@@ -24,11 +30,17 @@
      записей/голов) в `DictionaryStorageContracts.kt` и `BigramStorageContracts.kt`;
   4. ту же проверку согласованности, что и `--check`.
 
+`--only tatar|russian` ограничивает пересборку одной стороной: её словарём, её таблицей
+и её пинами. Входы другой стороны не нужны (русские корпуса для `--only tatar` не
+требуются), а её ассеты и пины обязаны остаться побайтно теми же — это проверяется
+снимком SHA-256 до и после, а шаг 4 по-прежнему сверяет все четыре ассета.
+
 Входы пересборки, которых в репозитории нет (и быть не должно — лицензии):
 
-  * `--baseline` — каталог с двумя ассетами 1.8.4. Достаются из git:
-      git show 4ca191a7:app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib > ...
-      git show 4ca191a7:app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib > ...
+  * `--baseline` — каталог с двумя ассетами 1.8.4. Достаются из git (коммит релиза
+    1.8.4); правильность гарантирует не имя коммита, а пины SHA-256 в dict_accept:
+      git show <1.8.4>:app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib > ...
+      git show <1.8.4>:app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib > ...
   * `--corpus-dir` (по умолчанию `~/corpora-leipzig`) — Leipzig `*-sentences.txt`:
     tat_mixed_2015_1M, tat_web_2018_1M, rus_news_2022_1M, rus_news_2019_1M,
     rus_wikipedia_2021_1M, плюс разговорные входы обеих таблиц:
@@ -36,7 +48,8 @@
     сборки — docs/CORPUS-CONVERSATIONAL-RU.md) и `tt_conv_train90-sentences.txt`
     (тем же днём, часть B — docs/CORPUS-CONVERSATIONAL-TT.md). Нужны только таблицам
     биграмм; словарям корпус не нужен (разговорные частоты закоммичены в conv-freq-*.tsv
-    ровно для этого).
+    ровно для этого). С P2 татарской стороне нужны ещё и `*-words.txt` двух татарских
+    корпусов — частотный источник допуска словоформ.
 
 Режим проверки (ничего не пересобирает, корпуса и baseline не нужны):
 
@@ -77,8 +90,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import bigram_asset_pack  # noqa: E402
+import dict_accept  # noqa: E402
 import dictionary_coverage as coverage  # noqa: E402
 import dictionary_pack  # noqa: E402
+import wordform_gen  # noqa: E402
 from bigram_pack import select_heads  # noqa: E402
 
 STORAGE_DIR = Path("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/dictionary/storage")
@@ -95,6 +110,7 @@ class DictionaryAsset:
     tag: str  # тег dictionary_coverage: "tat" / "rus"
     spec: str  # имя константы в DictionaryStorageContracts.kt
     asset: str  # путь относительно корня репозитория
+    top: int = 100_000  # размер отсечки состава при пересборке
 
 
 @dataclass(frozen=True)
@@ -109,11 +125,21 @@ class BigramAsset:
     train: tuple[str, ...]  # имена *-sentences.txt в каталоге корпусов
 
 
+# Отсечка состава татарского словаря с 2026-09-20 (TT-SUGGESTIONS P2,
+# docs/TT-SUGGESTIONS.md, раздел P2): выбрана замером — наибольшее N из
+# {100 000, 110 000, 120 000}, при котором собранный с допущенными словоформами ассет
+# влезает в бюджеты (сжатый ≤ 580 000 байт при потолке схемы 600 000; сырой
+# ≤ 1 400 000). Замер 2026-09-20: 100 000 → 501 683 (формы не входят — граница выше
+# их частот), 110 000 → 542 493 (входят 9 052 формы, ничего не вытеснено),
+# 120 000 → 580 805 — за пределом. Меняется только вместе с новым замером.
+TATAR_DICTIONARY_TOP = 110_000
+
 DICTIONARIES = (
     DictionaryAsset(
         tag="tat",
         spec="TATAR_TOP100K_V1",
         asset="app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
+        top=TATAR_DICTIONARY_TOP,
     ),
     DictionaryAsset(
         tag="rus",
@@ -172,6 +198,107 @@ BIGRAMS = (
         ),
     ),
 )
+
+
+# --- стадия словоформ (TT-SUGGESTIONS P2, 2026-09-20) -----------------------------------------
+#
+# Татарский словарь собирается с допущенными порождёнными словоформами
+# (scripts/wordform_gen.py). Допуск — засвидетельствованность в частотных источниках
+# пайплайна: Leipzig *-words.txt тех же двух корпусов, что обучают татарскую таблицу
+# биграмм, плюс закоммиченный conv-freq-tt.tsv. tat_news_2015_1M сознательно НЕ входит:
+# это замороженный письменный held-out замеров (E5a), и подмешивать его в решения о
+# поставляемых данных нельзя; у базового словаря 1.8.4 его частоты в составе есть
+# (D1a предшествует тому разбиению), у допускаемых форм — нет, вклад записан в отчёт.
+WORDFORM_EXCEPTIONS = Path("scripts/wordform_exceptions_tat.tsv")
+WORDFORM_FREQUENCY_SOURCES = (
+    "tat_mixed_2015_1M-words.txt",
+    "tat_web_2018_1M-words.txt",
+)
+
+
+def build_admitted_wordforms(
+    root: Path, baseline: Path, corpus_dir: Path, work_dir: Path
+) -> Path:
+    """Допущенные словоформы татарского словаря: word<TAB>freq TSV в work_dir.
+
+    Основы — весь состав словаря ДО отсечки (поставляемые 1.8.4 ∪ принятые приёмкой),
+    частоты у него не нужны. Кандидат допускается, если его суммарное число вхождений в
+    источниках выше нуля; частота — это само число. Форма, уже стоящая в составе, —
+    не операция (её частота не меняется). Ход детерминирован: основы отсортированы,
+    запись атомарная, отчёт без полей времени. Сломанная таблица исключений или
+    битый вход падают fail-closed (WordformError / MalformedRowError).
+    """
+    language = coverage.language_for("tat")
+    shipped, _asset = dict_accept.load_baseline("tat", baseline)
+    accepted = dict_accept.read_accepted("tat")
+    stems = sorted(set(shipped) | set(accepted))
+
+    frequencies: dict[str, int] = dictionary_pack.CheckedFrequencyCounter()
+    for name in WORDFORM_FREQUENCY_SOURCES:
+        path = corpus_dir / name
+        with path.open("r", encoding="utf-8-sig", newline="") as stream:
+            coverage.read_source(
+                stream, str(path), frequencies,
+                skip_malformed=False, alphabet=language.alphabet,
+            )
+    conversational = dict_accept.read_conv_freq("tat")
+    exceptions = wordform_gen.load_exceptions(root / WORDFORM_EXCEPTIONS)
+
+    composition = set(stems)
+    admitted: dict[str, int] = {}
+    stats: dict[str, object] = {
+        "stems": 0,
+        "stems_skipped_no_harmony": 0,
+        "dual_harmony_stems": 0,
+        # Счётчики generated/already_present/unattested — построчные: одна и та же форма,
+        # порождённая двумя основами или двумя метками, считается на каждой строке.
+        "generated_rows": 0,
+        "rows_already_in_composition": 0,
+        "rows_unattested": 0,
+    }
+    for stem in stems:
+        variants = wordform_gen.harmony_variants(stem)
+        if not variants:
+            stats["stems_skipped_no_harmony"] += 1
+            continue
+        stats["stems"] += 1
+        if len(variants) > 1:
+            stats["dual_harmony_stems"] += 1
+        for _label, form in wordform_gen.generate_all(stem, exceptions):
+            if form == stem:
+                continue  # голая основа (verb.imp.2sg) уже стоит в составе
+            stats["generated_rows"] += 1
+            if form in composition:
+                stats["rows_already_in_composition"] += 1
+                continue
+            count = frequencies.get(form, 0) + conversational.get(form, 0)
+            if count == 0:
+                stats["rows_unattested"] += 1
+                continue
+            admitted[form] = count
+    stats["admitted_forms"] = len(admitted)
+
+    data = "".join(f"{form}\t{admitted[form]}\n" for form in sorted(admitted)).encode("utf-8")
+    out = work_dir / "wordforms-admitted-tt.tsv"
+    wordform_gen.write_atomic(out, data)
+    report = {
+        **stats,
+        "frequency_sources": list(WORDFORM_FREQUENCY_SOURCES)
+        + ["docs/archive/dictionary/dict-accept/conv-freq-tt.tsv"],
+        "output": str(out),
+        "output_bytes": len(data),
+        "output_sha256": hashlib.sha256(data).hexdigest(),
+    }
+    wordform_gen.write_atomic(
+        work_dir / "wordforms-admitted-tt.json",
+        (json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
+    print(
+        f"стадия словоформ: основ {stats['stems']}, допущено форм "
+        f"{stats['admitted_forms']} из {stats['generated_rows']} порождённых строк",
+        file=sys.stderr,
+    )
+    return out
 
 
 # --- пины: чтение и запись Kotlin-контрактов ------------------------------------------------
@@ -636,11 +763,71 @@ def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: Bigra
     return argv
 
 
+def dict_accept_argv(
+    root: Path,
+    baseline: Path,
+    work_dir: Path,
+    dictionary: DictionaryAsset,
+    extra_entries: Path | None,
+) -> list[str]:
+    """Командная строка пересборки одного словаря — отдельной функцией, чтобы тест её видел."""
+    argv = [
+        sys.executable,
+        str(root / "scripts/dict_accept.py"),
+        "--json-out",
+        str(work_dir / f"dict-accept-pack-{dictionary.tag}.json"),
+        "pack",
+        "--baseline",
+        str(baseline),
+        "--write",
+        "--only",
+        dictionary.tag,
+        "--top",
+        str(dictionary.top),
+    ]
+    if extra_entries is not None:
+        argv += ["--extra-entries", str(extra_entries)]
+    return argv
+
+
 def _run_step(argv: list[str], cwd: Path) -> None:
     print("+ " + " ".join(argv[1:]), file=sys.stderr)
     completed = subprocess.run(argv, cwd=cwd, check=False)
     if completed.returncode != 0:
         raise SystemExit(f"шаг пересборки упал с кодом {completed.returncode}: {argv[1]}")
+
+
+def _side_snapshot(root: Path, tags: frozenset[str]) -> dict[str, object]:
+    """SHA-256 ассетов и пины контрактов языков `tags` — опора гарантии `--only`.
+
+    Снимок берётся ДО первого шага пересборки и сверяется после записи пинов: в режиме
+    `--only` сторона, которую не выбрали, обязана остаться побайтно той же — и файлами,
+    и блоками контракта.
+    """
+    snapshot: dict[str, object] = {}
+    for dictionary in DICTIONARIES:
+        if dictionary.tag not in tags:
+            continue
+        asset = root / dictionary.asset
+        snapshot[f"asset:{dictionary.asset}"] = (
+            hashlib.sha256(asset.read_bytes()).hexdigest() if asset.is_file() else None
+        )
+        snapshot[f"pins:{dictionary.spec}"] = read_pins(
+            root / DICT_CONTRACT, dictionary.spec, "DictionaryArtifactSpec",
+            "expectedEntryCount",
+        )
+    for bigram in BIGRAMS:
+        if bigram.tag not in tags:
+            continue
+        asset = root / bigram.asset
+        snapshot[f"asset:{bigram.asset}"] = (
+            hashlib.sha256(asset.read_bytes()).hexdigest() if asset.is_file() else None
+        )
+        snapshot[f"pins:{bigram.spec}"] = read_pins(
+            root / BIGRAM_CONTRACT, bigram.spec, "BigramArtifactSpec",
+            "expectedHeadCount", linked=True,
+        )
+    return snapshot
 
 
 def run_rebuild(
@@ -649,20 +836,42 @@ def run_rebuild(
     corpus_dir: Path,
     work_dir: Path,
     known_drift_path: Path | None,
+    only: str | None = None,
     stream: TextIO = sys.stdout,
 ) -> int:
-    # Сначала собираются ВСЕ недостающие входы: падать на третьем часу работы из-за
-    # файла, которого не было с самого начала, недопустимо.
+    # `--only tatar|russian` пересобирает одну сторону: её словарь, её таблицу биграмм
+    # и её пины. Другая сторона не требует своих входов (русские корпуса для `--only
+    # tatar` не нужны) и обязана остаться побайтно той же — проверяется снимком до/после.
+    selected = frozenset(
+        ("tat", "rus") if only is None else ({"tatar": "tat", "russian": "rus"}[only],)
+    )
+    untouched = _side_snapshot(
+        root, frozenset(d.tag for d in DICTIONARIES) - selected
+    )
+
+    # Сначала собираются ВСЕ недостающие входы выбранных языков: падать на третьем часу
+    # работы из-за файла, которого не было с самого начала, недопустимо.
     missing = []
-    for name in ("tatar_top100k_v1.tdict.zlib", "russian_top100k_v1.tdict.zlib"):
+    for dictionary in DICTIONARIES:
+        if dictionary.tag not in selected:
+            continue
+        name = Path(dictionary.asset).name
         if not (baseline / name).is_file():
             missing.append(str(baseline / name))
     for bigram in BIGRAMS:
+        if bigram.tag not in selected:
+            continue
         for name in bigram.train:
             if not (corpus_dir / name).is_file():
                 missing.append(str(corpus_dir / name))
         if bigram.extra_heads is not None and not (root / bigram.extra_heads).is_file():
             missing.append(str(root / bigram.extra_heads))
+    if "tat" in selected:
+        for name in WORDFORM_FREQUENCY_SOURCES:
+            if not (corpus_dir / name).is_file():
+                missing.append(str(corpus_dir / name))
+        if not (root / WORDFORM_EXCEPTIONS).is_file():
+            missing.append(str(root / WORDFORM_EXCEPTIONS))
     if missing:
         print("error: не хватает входов пересборки:", file=sys.stderr)
         for path in missing:
@@ -672,29 +881,34 @@ def run_rebuild(
 
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Оба словаря. dict_accept сам сверяет baseline по SHA-256 и падает, если ему
-    # подсунули уже пересобранный ассет.
-    _run_step(
-        [
-            sys.executable,
-            str(root / "scripts/dict_accept.py"),
-            "--json-out",
-            str(work_dir / "dict-accept-pack.json"),
-            "pack",
-            "--baseline",
-            str(baseline),
-            "--write",
-        ],
-        cwd=root,
-    )
+    # 1. Словари выбранных языков. dict_accept сам сверяет baseline по SHA-256 и падает,
+    # если ему подсунули уже пересобранный ассет. Татарский перед сборкой проходит
+    # стадию словоформ (P2): допущенные формы ложатся в --extra-entries.
+    wordforms: Path | None = None
+    if "tat" in selected:
+        wordforms = build_admitted_wordforms(root, baseline, corpus_dir, work_dir)
+    for dictionary in DICTIONARIES:
+        if dictionary.tag not in selected:
+            continue
+        _run_step(
+            dict_accept_argv(
+                root, baseline, work_dir, dictionary,
+                wordforms if dictionary.tag == "tat" else None,
+            ),
+            cwd=root,
+        )
 
-    # 2. Обе таблицы биграмм — от свежих словарей шага 1.
+    # 2. Таблицы биграмм выбранных языков — от свежих словарей шага 1.
     for bigram in BIGRAMS:
+        if bigram.tag not in selected:
+            continue
         _run_step(bigram_pack_argv(root, corpus_dir, work_dir, bigram), cwd=root)
 
-    # 3. Пины всех четырёх ассетов, одной операцией на файл контракта.
+    # 3. Пины выбранных ассетов, одной операцией на файл контракта.
     dict_updates = {
-        d.spec: measure_dictionary(root / d.asset, d.tag) for d in DICTIONARIES
+        d.spec: measure_dictionary(root / d.asset, d.tag)
+        for d in DICTIONARIES
+        if d.tag in selected
     }
     write_pins(
         root / DICT_CONTRACT, dict_updates, "DictionaryArtifactSpec", "expectedEntryCount"
@@ -706,13 +920,30 @@ def run_rebuild(
             b.dictionary,
         )
         for b in BIGRAMS
+        if b.tag in selected
     }
     write_pins(
         root / BIGRAM_CONTRACT, bigram_updates, "BigramArtifactSpec", "expectedHeadCount"
     )
     print("пины переписаны в обоих контрактах", file=sys.stderr)
 
-    # 4. Проверка результата той же процедурой, что работает в --check.
+    # 3b. В режиме --only невыбранная сторона обязана остаться побайтно той же.
+    if only is not None:
+        after = _side_snapshot(
+            root, frozenset(d.tag for d in DICTIONARIES) - selected
+        )
+        moved = [key for key, before in untouched.items() if after[key] != before]
+        if moved:
+            print(
+                f"error: --only {only}: невыбранная сторона изменилась:",
+                file=sys.stderr,
+            )
+            for key in moved:
+                print(f"  {key}", file=sys.stderr)
+            return 2
+
+    # 4. Проверка результата той же процедурой, что работает в --check; сверяются
+    # все четыре ассета, в том числе нетронутая сторона.
     result = run_check(root, known_drift_path, stream)
     print(
         "дальше руками: прогнать гейты (JVM + python + lintRelease + check-no-internet), "
@@ -729,6 +960,15 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--check",
         action="store_true",
         help="только проверка согласованности: ничего не пересобирает и не пишет",
+    )
+    parser.add_argument(
+        "--only",
+        choices=("tatar", "russian"),
+        default=None,
+        help="пересобрать только одну сторону: её словарь (у татарской — со стадией "
+        "словоформ), её таблицу биграмм и её пины; входы другой стороны не нужны, а её "
+        "ассеты и пины обязаны остаться побайтно теми же (снимок SHA-256 до и после). "
+        "Финальная проверка сверяет все четыре ассета. С --check не совместимо",
     )
     parser.add_argument(
         "--allow-known-drift",
@@ -776,6 +1016,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if known_drift is not None and not known_drift.is_absolute():
         known_drift = root / known_drift
     if args.check:
+        if args.only is not None:
+            print("error: --only относится к пересборке; --check всегда сверяет все "
+                  "четыре ассета", file=sys.stderr)
+            return 2
         return run_check(root, known_drift)
     if args.baseline is None:
         print("error: для пересборки нужен --baseline (или запустите --check)",
@@ -783,9 +1027,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     work_dir = args.work_dir if args.work_dir is not None else root / DEFAULT_WORK_DIR
     try:
-        return run_rebuild(root, args.baseline, args.corpus_dir, work_dir, known_drift)
+        return run_rebuild(
+            root, args.baseline, args.corpus_dir, work_dir, known_drift, only=args.only
+        )
     except ContractError as error:
         print(f"error: контракт не разобрался: {error}", file=sys.stderr)
+        return 2
+    except wordform_gen.WordformError as error:
+        print(f"error: стадия словоформ: {error}", file=sys.stderr)
         return 2
 
 

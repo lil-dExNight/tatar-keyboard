@@ -21,8 +21,10 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 
 import bigram_asset_pack  # noqa: E402
+import dict_accept  # noqa: E402
 import dictionary_pack  # noqa: E402
 import rebuild_assets  # noqa: E402
+import wordform_gen  # noqa: E402
 
 # Words of the synthetic dictionary, most frequent first. The alphabet is the Tatar one:
 # every letter here is also valid for the shipped assets, so the same validators apply.
@@ -30,7 +32,8 @@ WORDS = ["мәхәббәт", "китап", "су", "әни", "әти", "өлкә
 FREQUENCIES = [900, 800, 700, 600, 500, 400]
 
 
-def build_dictionary_asset(directory: Path, words=WORDS, frequencies=FREQUENCIES) -> Path:
+def build_dictionary_asset(directory: Path, words=WORDS, frequencies=FREQUENCIES,
+                           name="tatar_top100k_v1.tdict.zlib") -> Path:
     words_path = directory / "words.txt"
     words_path.write_text(
         "".join(
@@ -40,13 +43,14 @@ def build_dictionary_asset(directory: Path, words=WORDS, frequencies=FREQUENCIES
         encoding="utf-8",
     )
     built = dictionary_pack.build_dictionary([words_path], len(words))
-    asset_path = directory / "tatar_top100k_v1.tdict.zlib"
+    asset_path = directory / name
     asset_path.write_bytes(built.asset)
     return asset_path
 
 
 def build_bigram_asset(directory: Path, heads, table, dictionary_asset: Path,
-                       successes_per_head=2) -> Path:
+                       successes_per_head=2,
+                       name="tatar_bigrams_v1.tatbigr.zlib") -> Path:
     """Schema 3: таблица кросс-референсит словарь фикстуры — индексы и его raw SHA-256."""
     import hashlib
 
@@ -56,7 +60,7 @@ def build_bigram_asset(directory: Path, heads, table, dictionary_asset: Path,
         heads, table, successes_per_head, word_index,
         hashlib.sha256(parsed_dictionary.raw).digest(),
     )
-    asset_path = directory / "tatar_bigrams_v1.tatbigr.zlib"
+    asset_path = directory / name
     asset_path.write_bytes(result.compressed)
     return asset_path
 
@@ -108,6 +112,8 @@ def write_fake_contracts(root: Path) -> None:
     bigram_contract.parent.mkdir(parents=True, exist_ok=True)
     bigram_contract.write_text(
         BIGRAM_BLOCK.format(spec="TATAR_BIGRAMS_V1", family="tatar_bigrams", sha=SHA0)
+        + "\n"
+        + BIGRAM_BLOCK.format(spec="RUSSIAN_BIGRAMS_V1", family="russian_bigrams", sha=SHA0)
         + "\n",
         encoding="utf-8",
     )
@@ -364,6 +370,216 @@ class PackArgvTest(unittest.TestCase):
             self.assertIn(f"/corpora/{name}-sentences.txt", text)
         # С части A (2026-08-31) — разговорный вход, docs/CORPUS-CONVERSATIONAL-RU.md.
         self.assertIn("/corpora/rus_conv_thinned60-sentences.txt", text)
+
+
+class DictAcceptArgvTest(unittest.TestCase):
+    """The canned dictionary-rebuild commands, pinned like the bigram ones."""
+
+    def test_tatar_command_carries_top_and_extra_entries(self):
+        dictionary = rebuild_assets.DICTIONARIES[0]
+        argv = rebuild_assets.dict_accept_argv(
+            Path("/root"), Path("/baseline"), Path("/work"), dictionary,
+            Path("/work/wordforms-admitted-tt.tsv"))
+        text = " ".join(argv)
+        self.assertIn("pack", text)
+        self.assertIn("--baseline /baseline", text)
+        self.assertIn("--write", text)
+        self.assertIn("--only tat", text)
+        self.assertIn(f"--top {dictionary.top}", text)
+        self.assertIn("--extra-entries /work/wordforms-admitted-tt.tsv", text)
+        self.assertIn("/work/dict-accept-pack-tat.json", text)
+
+    def test_russian_command_has_no_extra_entries(self):
+        dictionary = rebuild_assets.DICTIONARIES[1]
+        argv = rebuild_assets.dict_accept_argv(
+            Path("/root"), Path("/baseline"), Path("/work"), dictionary, None)
+        text = " ".join(argv)
+        self.assertIn("--only rus", text)
+        self.assertIn("--top 100000", text)
+        self.assertNotIn("--extra-entries", text)
+
+
+class OnlyModeTest(unittest.TestCase):
+    """`--only`: one side rebuilds, the other must stay byte-identical."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        write_fake_contracts(self.root)
+        dictionaries = self.root / "app/src/main/assets/dictionaries"
+        dictionaries.mkdir(parents=True)
+        build_dictionary_asset(dictionaries)
+        build_dictionary_asset(dictionaries, words=["мама", "папа", "работа"],
+                               frequencies=[30, 20, 10],
+                               name="russian_top100k_v1.tdict.zlib")
+        bigrams = self.root / "app/src/main/assets/bigrams"
+        bigrams.mkdir(parents=True)
+        build_bigram_asset(bigrams, WORDS[:3], {word: [(WORDS[0], 10)] for word in WORDS[:3]},
+                           dictionaries / "tatar_top100k_v1.tdict.zlib")
+        build_bigram_asset(bigrams, ["мама"], {"мама": [("папа", 5)]},
+                           dictionaries / "russian_top100k_v1.tdict.zlib",
+                           name="russian_bigrams_v1.tatbigr.zlib")
+        self._saved = (rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS)
+        rebuild_assets.DICTIONARIES = (
+            rebuild_assets.DictionaryAsset(
+                tag="tat", spec="TATAR_TOP100K_V1",
+                asset="app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib"),
+            rebuild_assets.DictionaryAsset(
+                tag="rus", spec="RUSSIAN_TOP100K_V1",
+                asset="app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib"),
+        )
+        rebuild_assets.BIGRAMS = (
+            rebuild_assets.BigramAsset(
+                tag="tat", spec="TATAR_BIGRAMS_V1",
+                asset="app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
+                dictionary="tat", heads=3, successes_per_head=2,
+                extra_heads=None, train=("tt_corpus-sentences.txt",)),
+            rebuild_assets.BigramAsset(
+                tag="rus", spec="RUSSIAN_BIGRAMS_V1",
+                asset="app/src/main/assets/bigrams/russian_bigrams_v1.tatbigr.zlib",
+                dictionary="rus", heads=1, successes_per_head=2,
+                extra_heads=None, train=("rus_corpus-sentences.txt",)),
+        )
+        self.addCleanup(self._restore)
+        self.baseline = self.root / "baseline"
+        self.baseline.mkdir()
+        (self.baseline / "tatar_top100k_v1.tdict.zlib").write_bytes(b"tt")
+        (self.baseline / "russian_top100k_v1.tdict.zlib").write_bytes(b"ru")
+        self.corpora = self.root / "corpora"
+        self.corpora.mkdir()
+
+    def _restore(self):
+        rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS = self._saved
+
+    def run_rebuild(self, only):
+        return rebuild_assets.run_rebuild(
+            self.root, self.baseline, self.corpora, self.root / "work", None, only=only)
+
+    def test_only_tatar_needs_no_russian_inputs(self):
+        # The tatar inputs are complete (train + words files); the russian corpus is
+        # absent and must NOT be required in --only tatar. The exceptions table is not
+        # in the fake tree, so the first run stops at the input gate with exit 2…
+        for name in rebuild_assets.WORDFORM_FREQUENCY_SOURCES:
+            (self.corpora / name).write_text("", encoding="utf-8")
+        (self.corpora / "tt_corpus-sentences.txt").write_text("", encoding="utf-8")
+        self.assertEqual(2, self.run_rebuild("tatar"))
+        # …and with the exceptions table present the gate passes: the run proceeds into
+        # the wordform stage and dies on the fake baseline bytes (dict_accept refuses a
+        # non-1.8.4 SHA) — a SystemExit, not the input-gate return code.
+        scripts_dir = self.root / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "wordform_exceptions_tat.tsv").write_text("# empty\n",
+                                                                 encoding="utf-8")
+        with self.assertRaises(SystemExit) as caught:
+            self.run_rebuild("tatar")
+        self.assertIn("не ассет 1.8.4", str(caught.exception))
+
+    def test_only_russian_needs_no_tatar_inputs(self):
+        # No tatar corpus, no words files, no exceptions table — the russian side is
+        # complete, so the input gate passes and the run dies at the pack step (the
+        # fake root has no scripts/dict_accept.py for the subprocess).
+        (self.corpora / "rus_corpus-sentences.txt").write_text("", encoding="utf-8")
+        with self.assertRaises(SystemExit) as caught:
+            self.run_rebuild("russian")
+        self.assertIn("шаг пересборки упал", str(caught.exception))
+
+    def test_untouched_side_snapshot_detects_asset_and_pin_moves(self):
+        snapshot = rebuild_assets._side_snapshot(self.root, frozenset({"rus"}))
+        # Nothing moved: a fresh snapshot equals the taken one.
+        self.assertEqual(snapshot, rebuild_assets._side_snapshot(self.root, frozenset({"rus"})))
+        # Move the russian asset: the snapshot must catch it.
+        asset = self.root / "app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib"
+        asset.write_bytes(asset.read_bytes() + b"x")
+        moved = rebuild_assets._side_snapshot(self.root, frozenset({"rus"}))
+        self.assertNotEqual(snapshot, moved)
+        self.assertEqual(snapshot["pins:RUSSIAN_TOP100K_V1"], moved["pins:RUSSIAN_TOP100K_V1"])
+
+    def test_check_rejects_only(self):
+        code = rebuild_assets.main(["--check", "--only", "tatar", "--root", str(self.root)])
+        self.assertEqual(2, code)
+
+
+class WordformStageTest(unittest.TestCase):
+    """build_admitted_wordforms on a tiny synthetic tree: attestation, merge, fail-closed."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.baseline = self.root / "baseline"
+        self.baseline.mkdir()
+        self.corpora = self.root / "corpora"
+        self.corpora.mkdir()
+        self.work = self.root / "work"
+        # Baseline tatar dictionary: китап (voicing exception), су, яз.
+        asset = build_dictionary_asset(
+            self.baseline, words=["китап", "су", "яз"], frequencies=[300, 200, 400])
+        import hashlib
+        self.baseline_sha = hashlib.sha256(asset.read_bytes()).hexdigest()
+        # Committed-side dict_accept inputs: accepted queue + conversational counts.
+        self.dict_accept_out = self.root / "dict-accept"
+        self.dict_accept_out.mkdir()
+        (self.dict_accept_out / "accepted-tt.tsv").write_text(
+            "# head\nword\theldout_hits\ttrain_freq\ttrain_freq_clean\tsources\t"
+            "license_status\tcap_ratio\tenters_top100k\trule\trule_detail\n"
+            "эшләп\t1\t9\t9\tTatoeba\tok\t0.00\tyes\ttwo-corpora\tx\n",
+            encoding="utf-8")
+        (self.dict_accept_out / "conv-freq-tt.tsv").write_text(
+            "# head\nword\tconv_freq\nкитаплар\t3\n", encoding="utf-8")
+        # Leipzig words files: китаплар attested 10 (so 10+3 after the conv sum),
+        # китабы 5 (the voicing exception form), суга 4, язар 7.
+        for name in rebuild_assets.WORDFORM_FREQUENCY_SOURCES:
+            (self.corpora / name).write_text(
+                "1\tкитаплар\t5\n2\tкитабы\t2\n3\tсуга\t4\n", encoding="utf-8")
+        # Second source adds the rest, so the merge across files is exercised too.
+        second = self.corpora / rebuild_assets.WORDFORM_FREQUENCY_SOURCES[1]
+        second.write_text("1\tкитаплар\t5\n2\tкитабы\t3\n3\tязар\t7\n", encoding="utf-8")
+        self._saved = (dict_accept.BASELINE_SHA256, dict_accept.OUT_DIR)
+        dict_accept.BASELINE_SHA256 = {**dict_accept.BASELINE_SHA256,
+                                       "tat": self.baseline_sha}
+        dict_accept.OUT_DIR = self.dict_accept_out
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        dict_accept.BASELINE_SHA256, dict_accept.OUT_DIR = self._saved
+
+    def test_admission_merge_and_sum(self):
+        # root = the real repository: the exceptions table (китап → китаб voicing) is
+        # committed there; the fake tree carries no scripts/.
+        out = rebuild_assets.build_admitted_wordforms(
+            REPOSITORY_ROOT, self.baseline, self.corpora, self.work)
+        rows = dict(
+            line.split("\t")
+            for line in out.read_text(encoding="utf-8").splitlines()
+        )
+        # Attested in both Leipzig files: 5 + 5, plus 3 conversational.
+        self.assertEqual("13", rows["китаплар"])
+        # The voicing exception form (китап → китабы): 2 + 3.
+        self.assertEqual("5", rows["китабы"])
+        self.assertEqual("4", rows["суга"])
+        self.assertEqual("7", rows["язар"])
+        # Nothing unattested, nothing already in the composition (китап/су/яз/эшләп
+        # itself), nothing doubled.
+        self.assertEqual(4, len(rows))
+        report = json.loads((self.work / "wordforms-admitted-tt.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(4, report["admitted_forms"])
+        self.assertEqual(4, report["stems"])  # китап, су, яз + accepted эшләп
+        self.assertGreater(report["generated_rows"], 100)
+        self.assertGreater(report["rows_unattested"], 0)
+
+    def test_stage_is_deterministic(self):
+        first = rebuild_assets.build_admitted_wordforms(
+            REPOSITORY_ROOT, self.baseline, self.corpora, self.work)
+        second = rebuild_assets.build_admitted_wordforms(
+            REPOSITORY_ROOT, self.baseline, self.corpora, self.work)
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+
+    def test_missing_exceptions_table_fails_closed(self):
+        with self.assertRaises(wordform_gen.ExceptionsError):
+            rebuild_assets.build_admitted_wordforms(
+                self.root / "no-such-root", self.baseline, self.corpora, self.work)
 
 
 class RealTreeTest(unittest.TestCase):

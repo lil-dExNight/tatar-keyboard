@@ -315,10 +315,11 @@ class AutocorrectControllerTest {
     @Test
     fun aCandidateBelowTheFrequencyThresholdIsRefusedByTheControllerToo() {
         // The engine already applies the threshold; the controller re-checks it, because one side of
-        // a two-sided decision must not be the only place a rule lives.
+        // a two-sided decision must not be the only place a rule lives. 410 is one below
+        // MIN_CANDIDATE_FREQUENCY (411 since the 2026-09-20 P2 rebuild).
         val h = Harness()
         h.start()
-        h.advise("китәп", "китап", frequency = 402L)
+        h.advise("китәп", "китап", frequency = 410L)
 
         h.typeWord("китәп")
         h.separator(' ')
