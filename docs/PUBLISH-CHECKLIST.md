@@ -1,4 +1,34 @@
-# PUBLISH-CHECKLIST — публикация v1.9.15
+# PUBLISH-CHECKLIST — публикация v2.0.0
+
+> **Retargeted 2026-09-20 to candidate v2.0.0 / versionCode 32** — two
+> missions ship together: TT-SUGGESTIONS (`docs/TT-SUGGESTIONS.md`: Tatar
+> dictionary 100 000 → 110 000 entries with generated word forms, word-form
+> suggestions after word + space, same-stem boost, sentence-start
+> predictions) and TT-TYPO-NEXT (`docs/TT-TYPO-NEXT.md`: predictions right
+> after a suggestion tap; typo corrections on an empty strip via fuzzy
+> class #4, Tatar only). Current artifact — `dist/tatar-keyboard-2.0.0.apk`
+> (1 849 555 B, SHA-256
+> `6f51cb60be4e028fdf44f97000c899c4378b6d618d633a51ed0c32f43bf01e7c`), audit —
+> `docs/APK-AUDIT-2.0.0.md`. The notes about 1.9.15 and earlier below stay
+> as history; their checkmarks and numbers do not carry over.
+>
+> Candidate differences the procedure must account for: store changelog —
+> `metadata/en-US/changelogs/32.txt` (+ ru-RU and tt copies, all ≤ 500 B);
+> **the Tatar dictionary and the Tatar bigram table CHANGED** (word forms;
+> 501 683 → 542 493 B and 81 028 → 81 476 B, pins re-pinned, 16/16 pin
+> values matched in release_check), **`assets/dictionaries/tatar_sentstart_v1.txt`
+> is NEW** (1 838 B, 64 records; text asset — not in the pin gate, pinned by
+> the python/JVM contract suites), and `assets/dictionaries/NOTICE.txt`
+> changed (word-form provenance). The Russian dictionary, the Russian bigram
+> table and all five emoji assets are byte-identical (CRC32-verified against
+> the 1.9.15 APK). On update from 1.9.15 the device re-inflates exactly the
+> tt dictionary + tt bigram table once (new raw SHA-256 in the on-device
+> file names — the standard path); everything else, including the personal
+> dictionary and settings, is untouched — update with `adb install -r` over
+> the previous build kept all data on the POCO C71 (evidence
+> `build/device-uat-2026-09-20/`). Gates: `release_check.sh --full`
+> **13/13 PASS** on the candidate. Publishing, push and tags are the
+> operator's actions.
 
 > **Перецелено 2026-09-05 на кандидата v1.9.15 / versionCode 31** — разбор
 > backlog'а error-prone (`docs/ERRORPRONE-TRIAGE.md`), среди находок настоящий

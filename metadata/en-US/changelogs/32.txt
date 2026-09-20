@@ -1,0 +1,6 @@
+• Word forms: a Tatar word + space fills the free strip cells with its inflections
+• A typed Tatar word ranks its own continuations first (татар → татарлар)
+• Sentence-start predictions where the strip was empty (field start, after «. »)
+• Tatar dictionary 100 000 → 110 000 entries, incl. 9 052 generated word forms
+• Predictions appear right after a tapped suggestion, before the next keystroke
+• Typo fixes on an empty strip (Tatar): сцләм offers сәләм

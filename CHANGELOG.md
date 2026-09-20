@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.0.0] — 2026-09-20
 
 Tatar prediction learns the language's morphology: after a committed word the strip offers its inflected forms, complete words rank their own continuations first, and the strip is no longer empty at the start of a sentence. Accepting a suggestion now immediately offers the next word, and a mistyped Tatar word that matches nothing exactly offers the nearest dictionary words one letter away.
 

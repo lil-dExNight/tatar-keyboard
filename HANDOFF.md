@@ -1,3 +1,52 @@
+# HANDOFF — release 2.0.0 prepared (uncommitted; tag/push/publish are next)
+
+**State as of 2026-09-20.** Release **2.0.0 / versionCode 32** is prepared on
+top of the committed mission work (HEAD `bb0807bd`; the TT-TYPO-NEXT entry
+below is stale in one detail — the operator has committed both missions). The
+release engineering itself (version bump, changelogs, this entry, the audit
+and the checklist retarget) is **uncommitted** and awaits the operator's
+review, commit, tag and publish.
+
+What the release ships: TT-SUGGESTIONS (`docs/TT-SUGGESTIONS.md` — Tatar
+dictionary 100 000 → 110 000 with generated word forms, word-form suggestions
+after word + space, same-stem boost, sentence-start predictions) and
+TT-TYPO-NEXT (`docs/TT-TYPO-NEXT.md` — predictions right after a suggestion
+tap; typo corrections on an empty strip via fuzzy class #4, Tatar only).
+
+Release changes in the working tree:
+
+- `app/build.gradle`: versionCode 31 → 32, versionName "1.9.15" → "2.0.0".
+- `CHANGELOG.md`: the Unreleased section became `## [2.0.0] — 2026-09-20`
+  (no fresh empty Unreleased — the file's convention keeps none).
+- Store changelogs `metadata/{en-US,ru-RU,tt}/changelogs/32.txt` — six
+  bullets per locale, 497 / 496 / 486 B (all ≤ the 500-byte Fastlane limit).
+- `docs/APK-AUDIT-2.0.0.md` — new audit (per-entry asset comparison vs the
+  1.9.15 APK); `docs/PUBLISH-CHECKLIST.md` retargeted to 2.0.0/32;
+  `docs/README.md` index line updated.
+
+Gates (all 2026-09-20, all green):
+
+| Gate | Result |
+|---|---|
+| python suites (`for f in tests/*/test_*.py`) | **474 tests, 15 files, 0 failing files** (1 pre-existing skip) |
+| `./gradlew test --rerun-tasks` | **1 235 tests, 134 suites, 0 failures/errors/skipped** |
+| `./gradlew lintRelease --rerun-tasks` | green (21 tasks executed) |
+| `rebuild_assets.py --check --allow-known-drift` | `"ok": true` (tt 3/0, ru 2/0 as pinned) |
+| `scripts/release_pack.sh` | unsigned 1 869 287 B → signed zopfli **1 849 555 B** ≤ 3 145 728 (headroom 41.2 %), SHA-256 **`6f51cb60be4e028fdf44f97000c899c4378b6d618d633a51ed0c32f43bf01e7c`**, v2-only, cert `98ca6feb…42ad` |
+| `check-no-internet.sh dist/tatar-keyboard-2.0.0.apk` | both levels OK |
+| `release_check.sh --full dist/tatar-keyboard-2.0.0.apk` | **OVERALL PASS — 13/13** (incl. version 2.0.0/32, changelog 32.txt, delta vs 1.9.15 +53 336 B / +3.0 %) |
+
+Artifact: **`dist/tatar-keyboard-2.0.0.apk`** (local, git-ignored) — publish
+exactly these bytes; do not rebuild before publishing.
+
+Next operator actions: review the diff → commit → tag `v2.0.0` → push →
+GitHub Release with the APK from `dist/` → store upload (32.txt notes are in
+place for en-US/ru-RU/tt). On update from 1.9.15 the device re-inflates only
+the tt dictionary + tt bigram table once (new hashes in device file names);
+details in `docs/APK-AUDIT-2.0.0.md`.
+
+---
+
 # HANDOFF — TT-TYPO-NEXT mission complete (uncommitted; no version bump)
 
 **State as of 2026-09-20.** The TT-TYPO-NEXT mission (plan
