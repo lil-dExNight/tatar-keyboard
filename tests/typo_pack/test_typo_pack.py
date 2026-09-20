@@ -98,7 +98,7 @@ def _asset_file(data: bytes):
         yield path
 
 
-def run_main(dictionary: Path, output: Path, *, sha=None, raw_sha=None, entries=None) -> int:
+def run_main(dictionary: Path, output: Path, *, sha=None, raw_sha=None, entries=None, extra_args=()) -> int:
     """Invoke the CLI entry point with the pins patched to the fixture; returns the exit code."""
     overrides = {
         "EXPECTED_ASSET_SHA256": sha if sha is not None else sha256_bytes(FIXTURE_ASSET),
@@ -116,6 +116,7 @@ def run_main(dictionary: Path, output: Path, *, sha=None, raw_sha=None, entries=
                     "--dictionary", str(dictionary),
                     "--layout-dir", str(LAYOUT_DIR),
                     "--output", str(output),
+                    *extra_args,
                 ]
             )
     finally:
@@ -358,7 +359,7 @@ class CommittedInputsSmokeTest(unittest.TestCase):
 
 
 class GeometricMapTest(unittest.TestCase):
-    """Edit class #2 geometric neighbours reconstructed from rows_tatar.xml (never hard-coded)."""
+    """Edit class #2 geometric neighbours — device-true (gap-aware) model, Phase B."""
 
     def setUp(self) -> None:
         self.geo = pack.read_layout_geometry(LAYOUT_DIR)
@@ -367,19 +368,32 @@ class GeometricMapTest(unittest.TestCase):
     def test_thirty_seven_letter_keys(self) -> None:
         self.assertEqual(len(self.geo), 37)
 
-    def test_sixty_five_undirected_pairs_and_symmetry(self) -> None:
+    def test_thirty_two_undirected_pairs_and_symmetry(self) -> None:
+        # The horizontal gap kills every same-row "touch" on device: exactly the 32 cross-row
+        # pairs survive (docs/TT-TYPO-NEXT.md).
         undirected = set()
         for node, partners in self.geometric_map.items():
             for partner in partners:
                 undirected.add(frozenset((node, partner)))
                 self.assertIn(node, self.geometric_map[partner])
-        self.assertEqual(len(undirected), 65)
+        self.assertEqual(len(undirected), 32)
 
-    def test_average_fanout_is_3_51_and_max_is_5(self) -> None:
+    def test_no_same_row_pair_survives_the_gap(self) -> None:
+        row_of = {key.code_point: key.row for key in self.geo}
+        for node, partners in self.geometric_map.items():
+            for partner in partners:
+                self.assertNotEqual(row_of[node], row_of[partner])
+
+    def test_the_mission_pair_survives(self) -> None:
+        # ц sits one row below ә with ~79 % overlap — the pair that turns "сцләм" into "сәләм".
+        self.assertIn(ord("ә"), self.geometric_map[ord("ц")])
+        self.assertIn(ord("ц"), self.geometric_map[ord("ә")])
+
+    def test_average_fanout_and_max(self) -> None:
         total = sum(len(v) for v in self.geometric_map.values())
         self.assertEqual(len(self.geometric_map), 37)
-        self.assertAlmostEqual(total / 37, 3.51, places=2)
-        self.assertEqual(max(len(v) for v in self.geometric_map.values()), 5)
+        self.assertAlmostEqual(total / 37, 64 / 37, places=4)
+        self.assertEqual(max(len(v) for v in self.geometric_map.values()), 3)
 
     def test_fifth_row_letters_connect_to_the_alphabet(self) -> None:
         for letter in "әөүҗңһ":
@@ -388,7 +402,114 @@ class GeometricMapTest(unittest.TestCase):
             self.assertTrue(any(chr(cp) not in "әөүҗңһ" for cp in partners))
 
     def test_a_specific_neighbour_set(self) -> None:
-        self.assertEqual("".join(chr(cp) for cp in self.geometric_map[ord("к")]), "аеуө")
+        self.assertEqual("".join(chr(cp) for cp in self.geometric_map[ord("к")]), "аө")
+
+
+class DeviceGeometryModelTest(unittest.TestCase):
+    """The Phase-B device-true geometry model (KeyboardBuilder/KeyboardRow/Key reproduced)."""
+
+    def test_gap_and_paddings_are_read_from_the_base_config(self) -> None:
+        gap, left_pad, right_pad = pack.read_keyboard_gaps(
+            ROOT / "app" / "src" / "main" / "res" / "values" / "config.xml"
+        )
+        self.assertEqual((gap, left_pad, right_pad), (1.739, 0.870, 0.870))
+
+    def test_device_round_is_half_up_like_math_round(self) -> None:
+        # Python's round() is banker's rounding; the device applies Math.round (floor(x + 0.5)).
+        self.assertEqual(pack._device_round(0.5), 1)
+        self.assertEqual(pack._device_round(1.5), 2)
+        self.assertEqual(pack._device_round(-0.5), 0)
+        self.assertEqual(pack._device_round(98.18), 98)
+
+    def test_zero_gap_reproduces_the_pre_phase_b_edge_to_edge_model(self) -> None:
+        # With a zero gap the device formula degenerates to keys that DO touch — the old model's
+        # 65 pairs (33 same-row + 32 cross-row) come back, which cross-checks the formula.
+        legacy = pack.read_layout_geometry(
+            LAYOUT_DIR, gap_percent=0.0, left_padding_percent=0.0, right_padding_percent=0.0
+        )
+        legacy_map = pack.build_geometric_map(legacy)
+        undirected = {frozenset((n, p)) for n, ps in legacy_map.items() for p in ps}
+        self.assertEqual(len(undirected), 65)
+
+    def test_pair_set_is_identical_across_all_shipped_configs_and_widths(self) -> None:
+        # Every shipped config variant (phone/tablet x portrait/landscape) and a width sweep must
+        # yield the same 32 pairs — the reference width is a modelling device, not a knob.
+        rows = pack._row_width_specs(LAYOUT_DIR)
+        rows_path = LAYOUT_DIR / "rows_tatar.xml"
+        import xml.etree.ElementTree as ET
+
+        root = ET.parse(rows_path).getroot()
+        row_widths = [
+            pack._parse_percent(row.get(f"{{{pack._ANDROID_RES_AUTO}}}keyWidth"))
+            for row in root.findall("Row")
+        ]
+        resolved = [
+            [(spec, row_width if width is None else width) for spec, width in entries]
+            for entries, row_width in zip(rows, row_widths)
+        ]
+        res_dir = ROOT / "app" / "src" / "main" / "res"
+        configs = sorted(res_dir.glob("values*/config.xml"))
+        self.assertEqual(len(configs), 6)
+        reference = None
+        for config in configs:
+            gap, left_pad, right_pad = pack.read_keyboard_gaps(config)
+            for width in (320, 480, 720, 1080, 1440, 2400, 4000):
+                geo = pack.build_device_geometry(
+                    resolved,
+                    gap_percent=gap,
+                    left_padding_percent=left_pad,
+                    right_padding_percent=right_pad,
+                    width_px=width,
+                )
+                pairs = {
+                    frozenset((n, p))
+                    for n, ps in pack.build_geometric_map(geo).items()
+                    for p in ps
+                }
+                self.assertEqual(len(pairs), 32, msg=f"{config} @ {width}px")
+                if reference is None:
+                    reference = pairs
+                self.assertEqual(pairs, reference, msg=f"{config} @ {width}px")
+
+
+class PrefixWindowCliTest(unittest.TestCase):
+    """TT-TYPO-NEXT Phase B: the typo window is a CLI argument (the 5-cp window is the сцләм case)."""
+
+    def test_default_window_stays_three_code_points(self) -> None:
+        with _asset_file(FIXTURE_ASSET) as asset, tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "typo_set.txt"
+            code = run_main(asset, out)
+            self.assertEqual(code, 0)
+            self.assertEqual(
+                pack.build_typo_set(FIXTURE_WORDS, pack.read_layout_neighbor_map(LAYOUT_DIR)).data,
+                out.read_bytes(),
+            )
+
+    def test_five_code_point_window_changes_the_set(self) -> None:
+        with _asset_file(FIXTURE_ASSET) as asset, tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "typo_set5.txt"
+            code = run_main(asset, out, extra_args=["--prefix-code-points", "5"])
+            self.assertEqual(code, 0)
+            five = out.read_bytes()
+            self.assertNotEqual(
+                pack.build_typo_set(FIXTURE_WORDS, pack.read_layout_neighbor_map(LAYOUT_DIR)).data,
+                five,
+            )
+            # Every emitted typo prefix is exactly 5 code points with one letter swapped.
+            neighbor_map = pack.read_layout_neighbor_map(LAYOUT_DIR)
+            for line in five.decode("utf-8").splitlines():
+                original, typo = line.split("\t")
+                self.assertEqual(len(typo), 5)
+                differing = [i for i in range(5) if typo[i] != original[i]]
+                self.assertEqual(len(differing), 1)
+                self.assertIn(ord(typo[differing[0]]), neighbor_map.get(ord(original[differing[0]]), ()))
+
+    def test_a_nonpositive_window_fails_closed(self) -> None:
+        with _asset_file(FIXTURE_ASSET) as asset, tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "typo_set0.txt"
+            code = run_main(asset, out, extra_args=["--prefix-code-points", "0"])
+            self.assertEqual(code, 2)
+            self.assertFalse(out.exists())
 
 
 class GeometricTypoSetTest(unittest.TestCase):
@@ -434,11 +555,71 @@ class TranspositionTypoSetTest(unittest.TestCase):
         self.assertEqual(first.sha256, second.sha256)
 
 
+class LayoutAlphabetTest(unittest.TestCase):
+    """The class #4 alphabet — the layout's typeable letters (== KeyNeighborTable.nodes)."""
+
+    def setUp(self) -> None:
+        self.alphabet = pack.read_layout_alphabet(LAYOUT_DIR)
+
+    def test_thirty_nine_letters_from_the_layout(self) -> None:
+        # 37 letter keys of rowkeys_tatar*.xml plus the more-key-only ё and ъ.
+        self.assertEqual(len(self.alphabet), 39)
+        self.assertEqual(tuple(sorted(self.alphabet)), self.alphabet)
+
+    def test_more_key_only_letters_are_included(self) -> None:
+        self.assertIn(ord("ё"), self.alphabet)
+        self.assertIn(ord("ъ"), self.alphabet)
+
+    def test_every_layout_letter_is_present(self) -> None:
+        for letter in "әөүҗңһйцукенгшщзхфывапролджэячсмитьбю":
+            self.assertIn(ord(letter), self.alphabet)
+
+    def test_missing_layout_dir_raises(self) -> None:
+        with self.assertRaises(pack.TypoPackError):
+            pack.read_layout_alphabet(ROOT / "does" / "not" / "exist")
+
+
+class SubstitutionTypoSetTest(unittest.TestCase):
+    """Edit class #4: full single substitution over the layout alphabet (Phase C)."""
+
+    def setUp(self) -> None:
+        self.alphabet = pack.read_layout_alphabet(LAYOUT_DIR)
+
+    def test_exactly_one_substitution_inside_the_prefix(self) -> None:
+        typo_set = pack.build_substitution_typo_set(FIXTURE_WORDS, self.alphabet)
+        for original, typo in typo_set.rows:
+            original_prefix = [ord(ch) for ch in original][:3]
+            typo_prefix = [ord(ch) for ch in typo]
+            self.assertEqual(len(typo_prefix), 3)
+            differing = [i for i in range(3) if typo_prefix[i] != original_prefix[i]]
+            self.assertEqual(len(differing), 1, msg=f"{original!r}->{typo!r}")
+            position = differing[0]
+            self.assertIn(typo_prefix[position], self.alphabet)
+            self.assertNotEqual(typo_prefix[position], original_prefix[position])
+
+    def test_every_word_with_enough_letters_is_eligible(self) -> None:
+        typo_set = pack.build_substitution_typo_set(FIXTURE_WORDS, self.alphabet)
+        # Every fixture word of >= 3 code points is eligible (the alphabet always has substitutes).
+        expected = sum(1 for word in FIXTURE_WORDS if len(word) >= 3)
+        self.assertEqual(typo_set.size, expected)
+
+    def test_probe_count_stats(self) -> None:
+        typo_set = pack.build_substitution_typo_set(FIXTURE_WORDS, self.alphabet)
+        # 3 code points x (39 - 1) = 114 probes per row.
+        self.assertEqual(typo_set.variant_p50, 114)
+        self.assertEqual(typo_set.variant_max, 114)
+
+    def test_substitution_set_is_byte_identical(self) -> None:
+        first = pack.build_substitution_typo_set(FIXTURE_WORDS, self.alphabet)
+        second = pack.build_substitution_typo_set(FIXTURE_WORDS, self.alphabet)
+        self.assertEqual(first.sha256, second.sha256)
+
+
 class EditClassDispatchTest(unittest.TestCase):
     def test_generate_dispatches_each_edit_class_to_a_distinct_set(self) -> None:
         with _asset_file(FIXTURE_ASSET) as asset:
             shas = {}
-            for edit_class in (1, 2, 3):
+            for edit_class in (1, 2, 3, 4):
                 typo_set, _ = pack.generate(
                     asset, LAYOUT_DIR,
                     expected_asset_sha256=sha256_bytes(FIXTURE_ASSET),
@@ -448,8 +629,8 @@ class EditClassDispatchTest(unittest.TestCase):
                 )
                 self.assertGreater(typo_set.size, 0)
                 shas[edit_class] = typo_set.sha256
-        # The three edit classes are genuinely different transformations.
-        self.assertEqual(len(set(shas.values())), 3)
+        # The four edit classes are genuinely different transformations.
+        self.assertEqual(len(set(shas.values())), 4)
 
     def test_unknown_edit_class_raises(self) -> None:
         with _asset_file(FIXTURE_ASSET) as asset:
@@ -470,6 +651,9 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
     def test_class1_class2_class3_recorded_identities(self) -> None:
         # Recalibrated 2026-09-20 (TT-SUGGESTIONS P2) for the 110 000-entry dictionary:
         # 87 360 / 99 654 / 99 642 -> 96 118 / 109 649 / 109 637 rows.
+        # Recalibrated 2026-09-20 (TT-TYPO-NEXT Phase B): the geometry model learned the
+        # horizontal gap, so the class #2 set identity changed (the device-true 32-pair
+        # relation); classes #1 and #3 do not involve geometry and are unchanged.
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1)
         self.assertEqual(one.size, 96118)
         self.assertEqual(
@@ -478,12 +662,42 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
         two, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=2)
         self.assertEqual(two.size, 109649)
         self.assertEqual(
-            two.sha256, "89ef264634a45001514f70cc43eceb3a85995855b9ced424b7de482c6c76c97b"
+            two.sha256, "f64f46506ec5c0be19aabc496b11da5c3ca9d875631dc25c6e1d511a87dce9d3"
         )
         three, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=3)
         self.assertEqual(three.size, 109637)
         self.assertEqual(
             three.sha256, "539a701aa80778bb62f5cb0d9a324cdbac7f611262a0eb5bc7af7fb7d6ef5a42"
+        )
+
+    @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
+    def test_class1_and_class2_five_code_point_window_identities(self) -> None:
+        # Phase B second window (the сцләм case).
+        one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1, prefix_code_points=5)
+        self.assertEqual(one.size, 102478)
+        self.assertEqual(
+            one.sha256, "1c0bd7e7cbf523306e69214d05fd0833022d5322143a1f435a8c4f8ce7f953c6"
+        )
+        two, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=2, prefix_code_points=5)
+        self.assertEqual(two.size, 104955)
+        self.assertEqual(
+            two.sha256, "165dbaac09b47d333c5abb10a9e5df47d32671613f023747b3f4933258142d0f"
+        )
+
+    @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
+    def test_class4_recorded_identities(self) -> None:
+        # TT-TYPO-NEXT Phase C (2026-09-20): the full single-substitution sets on the committed
+        # 110k asset, both windows, layout-derived alphabet of 39 letters.
+        four3, alphabet = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=4)
+        self.assertEqual(four3.size, 109649)
+        self.assertEqual(
+            four3.sha256, "30897644f3bd5e6ade1f67df2d1498c3ea2676dcb6b635208a0ad510f46ba072"
+        )
+        self.assertEqual(len(alphabet), 39)
+        four5, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=4, prefix_code_points=5)
+        self.assertEqual(four5.size, 104955)
+        self.assertEqual(
+            four5.sha256, "c35c97701e8ab593f1010476877aff846005f66b92a0eac8e7549c9b87c0327b"
         )
 
 

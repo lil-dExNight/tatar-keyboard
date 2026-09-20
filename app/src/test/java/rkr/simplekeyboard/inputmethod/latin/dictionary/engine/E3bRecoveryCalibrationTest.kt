@@ -40,6 +40,12 @@ import kotlin.math.ceil
  * word, and the same layout-derived geometry drives class #2. The recovery number is measured on
  * the whole combined set (the contract's denominator) with the full engine and reported; the
  * threshold verdict is printed, not tuned.
+ *
+ * 2026-09-20 (TT-TYPO-NEXT Phase B): the fixture geometry is now device-true (the horizontal gap
+ * kills the 33 same-row pairs — 65 -> 32 pairs, class-#2 set re-pinned), and the engine under test
+ * runs the per-engine [FuzzyEditPolicy] of [TdictPrefixIndex.open] — DEFAULT here (class #1 only),
+ * exactly as since the 2026-07-27 E3b verdict. The "full engine" phrasing above is the historic
+ * E3b setup; the current Phase-B calibration lives in [TtTypoPhaseBCalibrationTest].
  */
 class E3bRecoveryCalibrationTest {
 
@@ -297,12 +303,16 @@ class E3bRecoveryCalibrationTest {
         // `python3 scripts/typo_pack.py build --edit-class {1,2,3} ...` on the committed asset.
         // Recalibrated 2026-09-20 (TT-SUGGESTIONS P2) for the 110 000-entry dictionary:
         // 87 360 / 99 654 / 99 642 -> 96 118 / 109 649 / 109 637 rows.
+        // Recalibrated 2026-09-20 (TT-TYPO-NEXT Phase B): the offline geometry model learned the
+        // horizontal gap, so the class #2 set now derives from the DEVICE-true 32-pair relation
+        // (the same-row pairs of the edge-to-edge model never existed on device). Classes #1 and
+        // #3 do not involve geometry and are unchanged.
         private const val CLASS1_SIZE = 96_118
         private const val CLASS1_SHA256 =
             "1bf09f403a288c111a1607c83eecee3faa410ee5669015b558e292cbe28e9aee"
         private const val CLASS2_SIZE = 109_649
         private const val CLASS2_SHA256 =
-            "89ef264634a45001514f70cc43eceb3a85995855b9ced424b7de482c6c76c97b"
+            "f64f46506ec5c0be19aabc496b11da5c3ca9d875631dc25c6e1d511a87dce9d3"
         private const val CLASS3_SIZE = 109_637
         private const val CLASS3_SHA256 =
             "539a701aa80778bb62f5cb0d9a324cdbac7f611262a0eb5bc7af7fb7d6ef5a42"

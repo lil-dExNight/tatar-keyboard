@@ -89,6 +89,7 @@ import rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsValues;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.EditorSurface;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.EngineHandle;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.MappedEngineHandle;
@@ -587,10 +588,18 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // decides, and the rule follows the family's language tag across repacks. The Russian
             // engine is started with null and never applies Tatar rules.
             final DictionaryArtifactSpec dictionaryArtifact = DictionaryArtifactSpec.forSubtype(subtypeId);
-            final TatarSuffixRules suffixRules = dictionaryArtifact != null
-                    && PersonalSubtypes.TATAR_RU.equals(dictionaryArtifact.getLanguageTag())
-                    ? TatarSuffixRules.INSTANCE : null;
-            return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules);
+            final boolean tatarEngine = dictionaryArtifact != null
+                    && PersonalSubtypes.TATAR_RU.equals(dictionaryArtifact.getLanguageTag());
+            final TatarSuffixRules suffixRules = tatarEngine ? TatarSuffixRules.INSTANCE : null;
+            // TT-TYPO-NEXT Phases B/C/C2 (docs/TT-TYPO-NEXT.md): the fuzzy pass is per-engine via
+            // FuzzyEditPolicy. The Tatar engine ships TATAR — class #1 (long-press) plus class #4
+            // (probe-first full single substitution, gated on an empty exact pass at >= 4 code
+            // points) with the same-length bonus — the configuration the corrected C2 gates
+            // measured and passed (2026-09-20). The Russian engine is started with null —
+            // FuzzyEditPolicy.DEFAULT, bit-identical to the pre-Phase-B behavior.
+            final FuzzyEditPolicy fuzzyEditPolicy = tatarEngine ? FuzzyEditPolicy.TATAR : null;
+            return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules,
+                    fuzzyEditPolicy);
         };
 
         mSuggestionsController = new SuggestionsController(

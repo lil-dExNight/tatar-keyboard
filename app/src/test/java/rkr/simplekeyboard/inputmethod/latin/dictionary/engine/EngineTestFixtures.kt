@@ -14,6 +14,7 @@ internal object EngineTestFixtures {
     fun index(
         entries: List<Pair<String, Long>>,
         suffixTable: InflectedSuffixTable? = null,
+        fuzzyEditPolicy: FuzzyEditPolicy? = null,
     ): TdictPrefixIndex {
         val raw = DictionaryTestFixtures.raw(entries)
         return requireNotNull(
@@ -23,6 +24,7 @@ internal object EngineTestFixtures {
                 entries.size.toLong(),
                 raw.size.toLong(),
                 suffixTable,
+                fuzzyEditPolicy,
             ),
         )
     }

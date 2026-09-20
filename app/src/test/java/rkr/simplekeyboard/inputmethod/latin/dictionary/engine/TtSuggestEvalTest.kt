@@ -320,12 +320,18 @@ class TtSuggestEvalTest {
                     validated.rawSha256,
                 )
                 val raw = dictRawFile.readBytes()
-                // The production Tatar engine is constructed with the P3 suffix rules: the eval
-                // index carries them too, and a second rules-free instance is the boost control.
+                // The production Tatar engine is constructed with the P3 suffix rules and —
+                // since TT-TYPO-NEXT Phase C2 — the TATAR fuzzy policy (class #1 + the gated
+                // class #4 + the same-length bonus): the eval index carries both, and a second
+                // rules-free instance is the boost control. The policy is provably inert on these
+                // metrics (class #4 fires only on an empty exact pass at >= 4 code points, and
+                // fuzzy candidates only ever fill cells the exact pass left free), so the pinned
+                // counters do not move.
                 dictionary = requireNotNull(
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(raw), identity,
                         validated.entryCount, validated.rawSize, TatarSuffixRules,
+                        FuzzyEditPolicy.TATAR,
                     ),
                 )
                 controlDictionary = requireNotNull(

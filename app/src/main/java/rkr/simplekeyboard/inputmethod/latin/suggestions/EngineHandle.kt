@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupToken
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
@@ -142,6 +143,13 @@ class MappedEngineHandle private constructor(
          * both engine addons — the same-stem boost table of the prefix pass and the after-word
          * forms of the NEXT_WORD slot. The Tatar engine is started with it, the Russian engine with
          * null, and neither behavior exists without it.
+         *
+         * [fuzzyEditPolicy] is the TT-TYPO-NEXT wiring (docs/TT-TYPO-NEXT.md): the Tatar engine
+         * ships [FuzzyEditPolicy.TATAR] — class #1 (always) plus class #4 (probe-first full
+         * single substitution, gated on an empty exact pass at >= 4 code points) with the
+         * same-length bonus, the configuration the corrected C2 gates measured and passed
+         * (2026-09-20). Engines started with null run [FuzzyEditPolicy.DEFAULT], bit-identical
+         * to the pre-Phase-B behavior — the Russian engine included.
          */
         @JvmStatic
         @JvmOverloads
@@ -150,6 +158,7 @@ class MappedEngineHandle private constructor(
             callback: ResultCallback,
             personalCandidates: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
             suffixRules: TatarSuffixRules? = null,
+            fuzzyEditPolicy: FuzzyEditPolicy? = null,
         ): MappedEngineHandle? {
             val handoff = ResultHandoff { result ->
                 callback.onResult(result.token, result.suggestions, result.kind)
@@ -159,6 +168,7 @@ class MappedEngineHandle private constructor(
                 personalCandidates = personalCandidates,
                 suffixTable = suffixRules,
                 afterWordFormsFactory = suffixRules,
+                fuzzyEditPolicy = fuzzyEditPolicy,
             ) ?: return null
             return MappedEngineHandle(engine)
         }

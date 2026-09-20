@@ -243,7 +243,9 @@ class MappedDictionaryEngine private constructor(
          * [suffixTable]/[afterWordFormsFactory] are the P3 word-form wiring (docs/TT-SUGGESTIONS.md):
          * the Tatar engine is started with both, every other engine with nulls — a null table keeps
          * the exact pass byte-identical to the frozen D1 behavior and a null factory keeps
-         * NEXT_WORD the pure bigram list.
+         * NEXT_WORD the pure bigram list. [fuzzyEditPolicy] is the TT-TYPO-NEXT Phase-B wiring of
+         * the same kind (docs/TT-TYPO-NEXT.md): null is [FuzzyEditPolicy.DEFAULT] — class #1 only,
+         * no same-length bonus, exactly the pre-Phase-B shipped behavior.
          */
         fun start(
             catalog: PublishedDictionaryCatalog,
@@ -254,6 +256,7 @@ class MappedDictionaryEngine private constructor(
             personalCandidates: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
             suffixTable: InflectedSuffixTable? = null,
             afterWordFormsFactory: AfterWordFormsFactory? = null,
+            fuzzyEditPolicy: FuzzyEditPolicy? = null,
         ): MappedDictionaryEngine? {
             val lease = try {
                 catalog.acquireLatestForActivation()
@@ -262,7 +265,7 @@ class MappedDictionaryEngine private constructor(
             } ?: return null
             return startOwnedLease(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
-                suffixTable, afterWordFormsFactory,
+                suffixTable, afterWordFormsFactory, fuzzyEditPolicy,
             )
         }
 
@@ -275,6 +278,7 @@ class MappedDictionaryEngine private constructor(
             personalCandidates: PersonalCandidateSource,
             suffixTable: InflectedSuffixTable?,
             afterWordFormsFactory: AfterWordFormsFactory?,
+            fuzzyEditPolicy: FuzzyEditPolicy?,
         ): MappedDictionaryEngine? {
             val dictionary = lease.dictionary
             val identity = DictionaryIdentity(
@@ -293,6 +297,7 @@ class MappedDictionaryEngine private constructor(
                     dictionary.entryCount,
                     dictionary.rawSize,
                     suffixTable,
+                    fuzzyEditPolicy,
                 ) ?: throw IllegalArgumentException("validated dictionary layout mismatch")
                 val executor = executorFactory()
                 createdExecutor = executor

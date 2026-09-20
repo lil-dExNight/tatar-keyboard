@@ -79,6 +79,43 @@ class RealDictionaryPrefixIndexTest {
         assertTrue("one-letter p95=${p95Nanos / 1_000_000.0}ms", p95Nanos <= 5_000_000L)
     }
 
+    /**
+     * TT-TYPO-NEXT Phases B/C (G3/G3-C, host): the same p95 measurement over the 22 review
+     * prefixes, but with the calibrated Tatar fuzzy policy (Phase C: classes #1 + #4 +
+     * same-length bonus) and the layout-derived neighbour table engaged. Most of these prefixes
+     * fill all three cells from the exact pass, so this measures the COMMON typing path with the
+     * fuzzy pass armed — the typo-set p95 lives in [TtTypoPhaseBCalibrationTest] (Phase B) and
+     * [TtTypoPhaseCCalibrationTest] (Phase C).
+     */
+    @Test
+    fun computeP95WithTheTatarFuzzyPolicyOverReviewPrefixesIsAtMostFiveMilliseconds() {
+        val index = requireNotNull(tatarPolicyIndex)
+        val prefixes = reviewRows().map {
+            ImmutableUtf8Prefix.copyOf(it.first.toByteArray(Charsets.UTF_8))
+        }
+        repeat(500) { index.lookup(prefixes[it % prefixes.size]) }
+
+        val timings = LongArray(2_000)
+        var consumed = 0L
+        for (sample in timings.indices) {
+            val prefix = prefixes[sample % prefixes.size]
+            val started = System.nanoTime()
+            val results = index.lookup(prefix)
+            timings[sample] = System.nanoTime() - started
+            for (result in results) consumed = consumed * 31 + result.length
+        }
+        timings.sort()
+        val p95Nanos = timings[ceil(timings.size * 0.95).toInt() - 1]
+        val medianNanos = timings[timings.size / 2]
+        println(
+            "PhaseB review-prefix compute policy=tatar " +
+                "median=${"%.3f".format(java.util.Locale.ROOT, medianNanos / 1_000_000.0)} ms " +
+                "p95=${"%.3f".format(java.util.Locale.ROOT, p95Nanos / 1_000_000.0)} ms consumed=$consumed",
+        )
+        assertTrue("tatar-policy p95=${p95Nanos / 1_000_000.0}ms", p95Nanos <= 5_000_000L)
+        assertTrue(consumed != Long.MIN_VALUE)
+    }
+
     @Test
     fun requestToNonApplyingHandoffP95IsAtMostSixteenMilliseconds() {
         val index = requireNotNull(realIndex)
@@ -132,6 +169,8 @@ class RealDictionaryPrefixIndexTest {
 
     companion object {
         private var realIndex: TdictPrefixIndex? = null
+        // Phase B (G3): the same dictionary under the calibrated Tatar fuzzy policy.
+        private var tatarPolicyIndex: TdictPrefixIndex? = null
 
         @JvmStatic
         @BeforeClass
@@ -161,6 +200,15 @@ class RealDictionaryPrefixIndexTest {
                     validated.rawSize,
                 )
                 check(realIndex != null)
+                tatarPolicyIndex = TdictPrefixIndex.open(
+                    ByteBuffer.wrap(raw),
+                    identity,
+                    validated.entryCount,
+                    validated.rawSize,
+                    null,
+                    FuzzyEditPolicy.TATAR,
+                )?.also { it.updateKeyNeighbors(E3bTestFixtures.tatarNeighborTable()) }
+                check(tatarPolicyIndex != null)
             } finally {
                 rawFile.delete()
             }

@@ -49,6 +49,15 @@ internal object FuzzyPrefixVariants {
     }
 
     /**
+     * VariantConsumer that also learns WHICH position was substituted. Only the class #4
+     * generator uses it: the probe path narrows its search by the shared prefix of the typed word
+     * up to that position (TT-TYPO-NEXT Phase C2).
+     */
+    fun interface PositionedVariantConsumer {
+        fun onVariant(position: Int, variantUtf8: ByteArray, length: Int)
+    }
+
+    /**
      * Edit class #1: replace one letter with a long-press partner, in every position that has one.
      *
      * Decodes the first [prefixLength] bytes of [prefixUtf8] into [codePointScratch], then for every
@@ -128,6 +137,53 @@ internal object FuzzyPrefixVariants {
             codePointScratch[position] = first
             codePointScratch[position + 1] = second
             emitted++
+        }
+        return emitted
+    }
+
+    /**
+     * Edit class #4 (TT-TYPO-NEXT Phase C): replace one letter with EVERY letter of the layout's
+     * typeable alphabet, in every position — the full single-substitution class. The alphabet is
+     * [alphabet] — the layout-derived node set of the keyboard (`KeyNeighborTable.nodes`), never a
+     * hard-coded letter list. Emission order is position ascending, then alphabet (code-point)
+     * ascending; the position's own letter is skipped (it would reproduce the prefix).
+     *
+     * This generator is PROBE-FIRST by contract: it emits n×alphabet candidates and the consumer
+     * is expected to answer each with a cheap existence probe (binary search, no range scan) and to
+     * full-scan only survivors. [maxVariants] therefore bounds the PROBES, not the survivors — the
+     * survivor cap lives in the caller's budget (TdictPrefixIndex.MAX_FUZZY_VARIANTS), and the
+     * probe count itself is bounded by MAX_PREFIX_BYTES x alphabet size (see MAX_FUZZY_PROBES).
+     *
+     * Returns the number of variants emitted, or -1 when the prefix could not be decoded or when
+     * [maxVariants] would be exceeded (fail-closed: the caller drops the whole fuzzy level).
+     */
+    fun generateFullSubstitutionVariants(
+        prefixUtf8: ByteArray,
+        prefixLength: Int,
+        alphabet: IntArray,
+        codePointScratch: IntArray,
+        variantScratch: ByteArray,
+        maxVariants: Int,
+        consumer: PositionedVariantConsumer,
+    ): Int {
+        val codePointCount = decodeCodePoints(prefixUtf8, prefixLength, codePointScratch)
+        if (codePointCount < 0) return -1
+        var emitted = 0
+        for (position in 0 until codePointCount) {
+            val original = codePointScratch[position]
+            for (letter in alphabet) {
+                if (letter == original) continue
+                if (emitted >= maxVariants) {
+                    codePointScratch[position] = original
+                    return -1
+                }
+                codePointScratch[position] = letter
+                val length = encodeCodePoints(codePointScratch, codePointCount, variantScratch)
+                consumer.onVariant(position, variantScratch, length)
+                emitted++
+            }
+            // Restore this position before moving on, so exactly one letter differs per variant.
+            codePointScratch[position] = original
         }
         return emitted
     }

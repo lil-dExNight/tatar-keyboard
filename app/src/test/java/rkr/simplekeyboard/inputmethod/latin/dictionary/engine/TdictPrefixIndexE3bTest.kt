@@ -6,11 +6,13 @@ import org.junit.Test
 
 /**
  * Engine (shipped live path) behaviour for edit classes #2 (geometric neighbour) and #3 (adjacent
- * transposition) after the E3b verdict (PROPOSALS.md, section "Контракт текста", line "Итог,
- * 2026-07-27"; docs/DICTIONARY-E3.md): both classes are excluded from the shipped fuzzy pass
- * ([TdictPrefixIndex.SHIPPED_FUZZY_EDIT_CLASSES]) and are therefore unreachable through lookup().
- * Their generators stay in the tree as infrastructure and are still exercised directly by
- * [FuzzyPrefixVariantsE3bTest]; only class #1 (long-press partner) runs on the live path.
+ * transposition) on an engine WITHOUT an explicit fuzzy policy — [FuzzyEditPolicy.DEFAULT], which
+ * is the E3b verdict (PROPOSALS.md, section "Контракт текста", line "Итог, 2026-07-27";
+ * docs/archive/missions/DICTIONARY-E3.md) and, since TT-TYPO-NEXT Phase B, the Russian engine's
+ * configuration: classes #2/#3 are unreachable through lookup(). Their generators stay in the
+ * tree as infrastructure and are still exercised directly by [FuzzyPrefixVariantsE3bTest]; only
+ * class #1 (long-press partner) runs on this live path. (The Tatar engine's #1+#2 policy is
+ * pinned by [TdictPrefixIndexShippedFuzzyClassesTest].)
  *
  * The geometric table is used precisely so the disabled classes WOULD have contributed — the tests
  * assert they do not.

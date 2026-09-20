@@ -177,4 +177,52 @@ class TdictPrefixIndexFuzzyTest {
         assertTrue("few=$few many=$many bytes/lookup", abs(many - few) <= 8L)
         assertTrue("many=$many bytes/lookup", many <= 8L)
     }
+
+    // TT-TYPO-NEXT Phase C (G3-C): the same allocation contract with edit class #4 engaged — the
+    // calibrated Tatar policy {1, 4}, so the heavy arm runs the probe-first full substitution
+    // (152 probes, 0 survivors, 0 scanned variants). Both prefixes return the SAME empty result
+    // (the result-list materialization of a non-empty lookup is pre-existing and out of scope);
+    // the probe path and the bonus branch are primitive arithmetic — they allocate nothing.
+    @Test
+    fun perLookupAllocationWithTheTatarPolicyDoesNotDependOnTheNumberOfProbes() {
+        val bean = ManagementFactory.getThreadMXBean() as? ThreadMXBean
+        assumeTrue(bean != null && bean.isThreadAllocatedMemorySupported)
+        val threadBean = bean!!
+        threadBean.isThreadAllocatedMemoryEnabled = true
+        val threadId = Thread.currentThread().id
+
+        val geometricTable = E3bTestFixtures.tatarNeighborTable()
+        val index = EngineTestFixtures.index(
+            listOf("мин" to 5L, "син" to 5L),
+            fuzzyEditPolicy = FuzzyEditPolicy.TATAR,
+        )
+        index.updateKeyNeighbors(geometricTable)
+        // "abc": no letter is in the table at all -> 0 variants, 0 probes. "мсмә": 4 code points
+        // with an empty exact pass -> the class #4 gate fires; with the Phase-C2 range narrowing
+        // only positions 0 ("*смә", whole dictionary) and 1 ("м*мә", the "мин" range) are probed —
+        // 2 x 38 = 76 probes, no survivor.
+        val fewVariants = ImmutableUtf8Prefix.copyOf("abc".toByteArray(Charsets.UTF_8))
+        val manyProbes = ImmutableUtf8Prefix.copyOf("мсмә".toByteArray(Charsets.UTF_8))
+        assertTrue(index.lookup(fewVariants).isEmpty())
+        assertTrue(index.lookup(manyProbes).isEmpty())
+        assertEquals(76, index.lastFuzzyProbeCount)
+
+        repeat(50_000) {
+            index.lookup(fewVariants)
+            index.lookup(manyProbes)
+        }
+
+        val iterations = 200_000
+        fun perLookupBytes(prefix: ImmutableUtf8Prefix): Long {
+            val before = threadBean.getThreadAllocatedBytes(threadId)
+            for (i in 0 until iterations) index.lookup(prefix)
+            val after = threadBean.getThreadAllocatedBytes(threadId)
+            return (after - before) / iterations
+        }
+
+        val few = perLookupBytes(fewVariants)
+        val many = perLookupBytes(manyProbes)
+        assertTrue("few=$few many=$many bytes/lookup", abs(many - few) <= 8L)
+        assertTrue("many=$many bytes/lookup", many <= 8L)
+    }
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Build the deterministic E3a class-#1 typo set used to calibrate recovery@3.
+"""Build the deterministic edit-class typo sets used to calibrate recovery@3 (E3a/E3b,
+TT-TYPO-NEXT Phase B).
 
 The tool uses only the Python standard library. It emits a reproducible set of edit
 class #1 typos -- the contract's "замена буквы на её long-press партнёра" -- as a
@@ -10,10 +11,16 @@ word itself.
 
 Two committed inputs, no third:
 
-* the keyboard layout (``res/xml/rowkeys_tatar*.xml``): the long-press pairs are read
-  from the ``latin:moreKeys`` attributes and symmetrized + de-duplicated exactly as
-  ``KeyNeighborTable`` does on the device. Not a single pair is hard-coded here -- this
-  is the same principle the engine's ``KeyNeighborTableBuilder`` follows.
+* the keyboard layout (``res/xml/rowkeys_tatar*.xml`` — and, for the class #2 geometric
+  relation, ``res/xml/rows_tatar.xml`` plus the gap/padding fractions of
+  ``res/values/config.xml``): the long-press pairs are read from the ``latin:moreKeys``
+  attributes and symmetrized + de-duplicated exactly as ``KeyNeighborTable`` does on the
+  device, and the geometry reproduces the device layout formula (KeyboardBuilder /
+  KeyboardRow / Key, horizontal gap included — see the "Geometric adjacency" section
+  below). Not a single pair is hard-coded here -- this is the same principle the engine's
+  ``KeyNeighborTableBuilder`` follows. Since TT-TYPO-NEXT Phase B (2026-09-20) the pair
+  set this model yields is PROVEN equal to the on-device one (the instrumentation dump on
+  a POCO C71, docs/TT-TYPO-NEXT.md).
 * the committed dictionary asset
   (``app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib``): the words are its
   110,000-entry vocabulary (110,000 since 2026-09-20, TT-SUGGESTIONS P2), pinned by
@@ -234,13 +241,30 @@ def read_layout_neighbor_map(layout_dir: Path) -> dict[int, tuple[int, ...]]:
 # Geometric adjacency (edit class #2), reconstructed from the layout geometry (never hard-coded).
 # --------------------------------------------------------------------------------------
 # The row structure and key widths come from res/xml/rows_tatar.xml; the per-row key order comes
-# from the included rowkeys_tatar*.xml. Geometry is reconstructed on a fixed integer grid (percent
-# width x1000, rounded once) so the offline model and the JVM test derive the identical relation:
-# the neighbour rule is scale-invariant and uses exact integer arithmetic, so a device build reading
-# real pixel geometry yields the same pairs. Nothing is hard-coded: both the widths and the key
-# order are read from the layout resources.
+# from the included rowkeys_tatar*.xml. Nothing is hard-coded: the widths, the key order and the
+# gap/padding fractions are all read from the committed resources.
+#
+# TT-TYPO-NEXT Phase B (docs/TT-TYPO-NEXT.md) — the model is now DEVICE-TRUE. The pre-Phase-B
+# model packed keys edge-to-edge on a percent grid, which made same-row keys "touch"
+# (right == left) and produced 33 same-row pairs the device never has: on a real build
+# KeyboardRow subtracts the horizontal gap from every key's width and advances the next key by
+# the full PADDED width (keyWidth + horizontalGap), so on device right < left for every same-row
+# pair and the "touch" relation never fires. The model below reproduces the device formula
+# (KeyboardBuilder/KeyboardRow/Key) on a fixed integer grid — a 100 000-px reference width, one
+# grid unit = 0.001 %p — with one rounding per key edge, exactly as Key does (Math.round):
+#
+#   gap, leftPad, rightPad = fractions of the screen width, from res/values/config.xml;
+#   baseWidth = width - leftPad - rightPad + gap
+#   x_0 = leftPad;  x_{k+1} = x_k + frac_k * baseWidth        (the gap cancels in the advance)
+#   width_k = frac_k * baseWidth - gap, clamped so x_k + width_k <= width - rightPad
+#   key.left = round(x_k);  key.right = round(x_k + width_k)
+#
+# The resulting pair set is identical for all six shipped config variants (values*/config.xml)
+# and across a 320..4000 px width sweep; tests/typo_pack asserts that stability, so the reference
+# width is a modelling device, not a calibration knob.
 _ROWS_TATAR_FILE = "rows_tatar.xml"
-_GEOMETRY_SCALE = 1000
+_VALUES_CONFIG_FILE = "config.xml"
+_GEOMETRY_REFERENCE_WIDTH = 100_000
 _GEOMETRIC_OVERLAP_PERCENT = 35
 
 
@@ -252,10 +276,17 @@ class _GeoKey:
     right: int
 
 
-def _parse_percent(value: str) -> int:
-    """Parse a `NN.NNN%p` layout width into integer grid units (percent x _GEOMETRY_SCALE)."""
+def _parse_percent(value: str) -> float:
+    """Parse a `NN.NNN%p` (or plain `NN.NNN%`) fraction into percent points (1.739 -> 1.739)."""
     stripped = value.replace("%p", "").replace("%", "").strip()
-    return round(float(stripped) * _GEOMETRY_SCALE)
+    return float(stripped)
+
+
+def _device_round(value: float) -> int:
+    """Round half up, matching java.lang.Math.round used by Key for its pixel edges."""
+    import math
+
+    return math.floor(value + 0.5)
 
 
 def _read_row_key_specs(xml_path: Path) -> list[str]:
@@ -274,8 +305,40 @@ def _read_row_key_specs(xml_path: Path) -> list[str]:
     return specs
 
 
-def read_layout_geometry(layout_dir: Path) -> list[_GeoKey]:
-    """Reconstruct the integer geometry of every letter key from res/xml/rows_tatar.xml."""
+def read_keyboard_gaps(config_path: Path) -> tuple[float, float, float]:
+    """Read (horizontalGap, leftPadding, rightPadding) in percent points from a values config."""
+    if not config_path.is_file():
+        raise TypoPackError(f"values config is missing: {config_path}")
+    try:
+        root = ElementTree.parse(config_path).getroot()
+    except (ElementTree.ParseError, OSError) as error:
+        raise TypoPackError(f"cannot parse values config {config_path}: {error}") from error
+    wanted = {
+        "config_key_horizontal_gap": None,
+        "config_keyboard_left_padding": None,
+        "config_keyboard_right_padding": None,
+    }
+    for fraction in root.iter("fraction"):
+        name = fraction.get("name")
+        if name in wanted and fraction.text:
+            wanted[name] = _parse_percent(fraction.text)
+    missing = [name for name, value in wanted.items() if value is None]
+    if missing:
+        raise TypoPackError(f"{config_path.name}: missing fractions {missing}")
+    return (
+        wanted["config_key_horizontal_gap"],
+        wanted["config_keyboard_left_padding"],
+        wanted["config_keyboard_right_padding"],
+    )
+
+
+def _row_width_specs(layout_dir: Path) -> list[list[tuple[str | None, "float | str | None"]]]:
+    """Parse rows_tatar.xml into rows of (single-char keySpec or None, width percent or fill).
+
+    A None width is the row's default keyWidth; the string "fill" is fillRight (the trailing
+    delete key). Non-letter keys (shift, delete) keep their width entry — they move the x
+    advance exactly like on device — but carry no keySpec and produce no geometry record.
+    """
     rows_path = layout_dir / _ROWS_TATAR_FILE
     if not rows_path.is_file():
         raise TypoPackError(f"layout resource is missing: {rows_path}")
@@ -286,39 +349,125 @@ def read_layout_geometry(layout_dir: Path) -> list[_GeoKey]:
     key_spec_attr = f"{{{_ANDROID_RES_AUTO}}}keySpec"
     key_width_attr = f"{{{_ANDROID_RES_AUTO}}}keyWidth"
     layout_attr = f"{{{_ANDROID_RES_AUTO}}}keyboardLayout"
-    geo_keys: list[_GeoKey] = []
-    row_index = 0
+    rows: list[list[tuple[str | None, float | str | None]]] = []
     for row in root.findall("Row"):
         row_width_attr = row.get(key_width_attr)
-        row_width = _parse_percent(row_width_attr) if row_width_attr else 0
-        x = 0
+        row_width = _parse_percent(row_width_attr) if row_width_attr else 0.0
+        entries: list[tuple[str | None, float | str | None]] = []
         for child in row:
             if child.tag == "Key":
                 width_attr = child.get(key_width_attr)
+                width: float | str | None
                 if width_attr == "fillRight":
-                    # Trailing non-letter key (delete); its width is not needed for letters.
-                    continue
-                width = _parse_percent(width_attr) if width_attr else row_width
+                    width = "fill"
+                elif width_attr is not None:
+                    width = _parse_percent(width_attr)
+                else:
+                    width = None  # the row default applies
                 spec = child.get(key_spec_attr)
-                if spec is not None and len(spec) == 1:
-                    normalized = _normalize_letter(ord(spec))
-                    if normalized is not None:
-                        geo_keys.append(_GeoKey(normalized, row_index, x, x + width))
-                x += width
+                entries.append((spec if spec is not None and len(spec) == 1 else None, width))
             elif child.tag == "include":
                 include_layout = child.get(layout_attr)
                 if include_layout is None:
                     continue
                 name = include_layout.split("/")[-1] + ".xml"
                 for spec in _read_row_key_specs(layout_dir / name):
-                    normalized = _normalize_letter(ord(spec))
-                    if normalized is not None:
-                        geo_keys.append(_GeoKey(normalized, row_index, x, x + row_width))
-                    x += row_width
-        row_index += 1
+                    entries.append((spec, None))
+        rows.append(entries)
+    return rows
+
+
+def build_device_geometry(
+    rows: Sequence[Sequence[tuple[str | None, "float | str"]]],
+    *,
+    gap_percent: float,
+    left_padding_percent: float,
+    right_padding_percent: float,
+    width_px: int = _GEOMETRY_REFERENCE_WIDTH,
+) -> list[_GeoKey]:
+    """Reproduce the device key rectangles (KeyboardBuilder/KeyboardRow/Key) on an integer grid.
+
+    The input rows are (single-char keySpec or None, width in percent points or "fill") with the
+    row default already resolved by the caller. Edges are rounded once per key with the same
+    half-up rule Key applies (Math.round), so the relation derived from the result is the one a
+    device build computes on real pixels.
+    """
+    gap = gap_percent / 100.0 * width_px
+    left_pad = left_padding_percent / 100.0 * width_px
+    right_pad = right_padding_percent / 100.0 * width_px
+    base_width = width_px - left_pad - right_pad + gap
+    right_edge = width_px - right_pad
+    geo_keys: list[_GeoKey] = []
+    for row_index, entries in enumerate(rows):
+        x = left_pad
+        for spec, width in entries:
+            if width == "fill":
+                # fillRight takes the rest of the row; it is the trailing delete key, never a
+                # letter, and nothing follows it — so it only bounds the previous key's clamp.
+                break
+            assert width is not None  # resolved by the caller
+            key_width = width / 100.0 * base_width - gap
+            if x + key_width > right_edge:
+                key_width = right_edge - x
+            if spec is not None:
+                normalized = _normalize_letter(ord(spec))
+                if normalized is not None:
+                    geo_keys.append(
+                        _GeoKey(normalized, row_index, _device_round(x), _device_round(x + key_width))
+                    )
+            x += key_width + gap
     if not geo_keys:
         raise TypoPackError("layout resources yielded no letter geometry")
     return geo_keys
+
+
+def read_layout_geometry(
+    layout_dir: Path,
+    *,
+    gap_percent: float | None = None,
+    left_padding_percent: float | None = None,
+    right_padding_percent: float | None = None,
+    width_px: int = _GEOMETRY_REFERENCE_WIDTH,
+) -> list[_GeoKey]:
+    """Device-true integer geometry of every letter key of the Tatar alphabet layout.
+
+    The gap/padding fractions default to the base phone config (res/values/config.xml, resolved
+    relative to ``layout_dir``); tests pass explicit values to prove the pair set is identical
+    under every shipped config variant and screen width.
+    """
+    raw_rows = _row_width_specs(layout_dir)
+    row_widths: list[float] = []
+    rows_path = layout_dir / _ROWS_TATAR_FILE
+    try:
+        root = ElementTree.parse(rows_path).getroot()
+    except (ElementTree.ParseError, OSError) as error:
+        raise TypoPackError(f"cannot parse layout resource {rows_path}: {error}") from error
+    key_width_attr = f"{{{_ANDROID_RES_AUTO}}}keyWidth"
+    for row in root.findall("Row"):
+        row_width_attr = row.get(key_width_attr)
+        row_widths.append(_parse_percent(row_width_attr) if row_width_attr else 0.0)
+    if len(row_widths) != len(raw_rows):
+        raise TypoPackError("row count mismatch while resolving row default widths")
+    resolved: list[list[tuple[str | None, float | str]]] = []
+    for entries, row_width in zip(raw_rows, row_widths):
+        resolved.append(
+            [(spec, row_width if width is None else width) for spec, width in entries]
+        )
+    if gap_percent is None or left_padding_percent is None or right_padding_percent is None:
+        config_path = layout_dir.parent / "values" / _VALUES_CONFIG_FILE
+        gap, left_pad, right_pad = read_keyboard_gaps(config_path)
+        gap_percent = gap if gap_percent is None else gap_percent
+        left_padding_percent = left_pad if left_padding_percent is None else left_padding_percent
+        right_padding_percent = (
+            right_pad if right_padding_percent is None else right_padding_percent
+        )
+    return build_device_geometry(
+        resolved,
+        gap_percent=gap_percent,
+        left_padding_percent=left_padding_percent,
+        right_padding_percent=right_padding_percent,
+        width_px=width_px,
+    )
 
 
 def build_geometric_map(geo_keys: Sequence[_GeoKey]) -> dict[int, tuple[int, ...]]:
@@ -359,6 +508,44 @@ def read_layout_geometric_map(layout_dir: Path) -> dict[int, tuple[int, ...]]:
     if not geometric_map:
         raise TypoPackError("layout geometry yielded no geometric neighbour")
     return geometric_map
+
+
+# --------------------------------------------------------------------------------------
+# The typeable alphabet (edit class #4, TT-TYPO-NEXT Phase C) — read from the layout, never
+# hard-coded. Exactly the KeyNeighborTable.nodes set: every letter key of the rowkeys_tatar*.xml
+# files plus every letter appearing in their latin:moreKeys (ё and ъ are more-key-only letters).
+# --------------------------------------------------------------------------------------
+def read_layout_alphabet(layout_dir: Path) -> tuple[int, ...]:
+    """The layout's typeable letters as a sorted tuple of code points (== KeyNeighborTable.nodes)."""
+    letters: set[int] = set()
+    for name in _TATAR_ROWKEY_FILES:
+        path = layout_dir / name
+        if not path.is_file():
+            raise TypoPackError(f"layout resource is missing: {path}")
+        try:
+            root = ElementTree.parse(path).getroot()
+        except (ElementTree.ParseError, OSError) as error:
+            raise TypoPackError(f"cannot parse layout resource {path}: {error}") from error
+        key_spec_attr = f"{{{_ANDROID_RES_AUTO}}}keySpec"
+        more_keys_attr = f"{{{_ANDROID_RES_AUTO}}}moreKeys"
+        for key in root.iter("Key"):
+            spec = key.get(key_spec_attr)
+            if spec is not None and len(spec) == 1:
+                normalized = _normalize_letter(ord(spec))
+                if normalized is not None:
+                    letters.add(normalized)
+            more_keys = key.get(more_keys_attr)
+            if more_keys:
+                for token in more_keys.split(","):
+                    token = token.strip()
+                    if len(token) != 1:
+                        continue
+                    normalized = _normalize_letter(ord(token))
+                    if normalized is not None:
+                        letters.add(normalized)
+    if not letters:
+        raise TypoPackError("layout resources yielded no alphabet letter")
+    return tuple(sorted(letters))
 
 
 # --------------------------------------------------------------------------------------
@@ -685,6 +872,50 @@ def build_transposition_typo_set(
     return _finish_typo_set(rows, variant_counts, scanned, words, max_rows, "class #3")
 
 
+def build_substitution_typo_set(
+    words: Sequence[str],
+    alphabet: Sequence[int],
+    *,
+    seed: int = TYPO_SEED,
+    prefix_code_points: int = PREFIX_CODE_POINTS,
+    max_rows: int | None = None,
+) -> TypoSet:
+    """Edit class #4 (Phase C): replace one prefix letter with an arbitrary alphabet letter.
+
+    For every word of at least ``prefix_code_points`` code points, the eligible choices are
+    ``(position, letter)`` for every position in the window and every alphabet letter other than
+    the position's own — the full single-substitution class the engine generates probe-first.
+    One choice is picked deterministically (the same ``(seed, word)`` primitive as the other
+    classes). Enumeration order is position ascending, then letter code point ascending, matching
+    the JVM test.
+    """
+    if prefix_code_points <= 0:
+        raise TypoPackError("prefix length must be positive")
+    rows: list[tuple[str, str]] = []
+    variant_counts: list[int] = []
+    scanned = 0
+    for word in words:
+        code_points = [ord(character) for character in word]
+        if len(code_points) < prefix_code_points:
+            continue
+        scanned += 1
+        eligible: list[tuple[int, int]] = []
+        for position in range(prefix_code_points):
+            for letter in alphabet:
+                if letter != code_points[position]:
+                    eligible.append((position, letter))
+        if not eligible:
+            continue
+        position, letter = eligible[selection_index(word, len(eligible), seed=seed)]
+        typo_code_points = code_points[:prefix_code_points]
+        typo_code_points[position] = letter
+        typo_prefix = "".join(chr(cp) for cp in typo_code_points)
+        rows.append((word, typo_prefix))
+        # The engine emits one probe per (position, other letter).
+        variant_counts.append(prefix_code_points * (len(alphabet) - 1))
+    return _finish_typo_set(rows, variant_counts, scanned, words, max_rows, "class #4")
+
+
 def _finish_typo_set(
     rows: list[tuple[str, str]],
     variant_counts: list[int],
@@ -747,6 +978,12 @@ def generate(
             words, seed=seed, prefix_code_points=prefix_code_points
         )
         return typo_set, {}
+    if edit_class == 4:
+        alphabet = read_layout_alphabet(layout_dir)
+        typo_set = build_substitution_typo_set(
+            words, alphabet, seed=seed, prefix_code_points=prefix_code_points
+        )
+        return typo_set, {cp: () for cp in alphabet}
     raise TypoPackError(f"unknown edit class {edit_class}")
 
 
@@ -786,16 +1023,24 @@ def _pairs_json(neighbor_map: dict[int, tuple[int, ...]]) -> list[dict[str, obje
 def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    build = commands.add_parser("build", help="generate the class #1/#2/#3 typo set")
+    build = commands.add_parser("build", help="generate the class #1/#2/#3/#4 typo set")
     build.add_argument("--dictionary", type=Path, required=True)
     build.add_argument("--layout-dir", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
     build.add_argument(
         "--edit-class",
         type=int,
-        choices=(1, 2, 3),
+        choices=(1, 2, 3, 4),
         default=1,
-        help="1 = long-press partner (default), 2 = geometric neighbour, 3 = adjacent transposition",
+        help="1 = long-press partner (default), 2 = geometric neighbour, 3 = adjacent "
+        "transposition, 4 = full single substitution over the layout alphabet (Phase C)",
+    )
+    build.add_argument(
+        "--prefix-code-points",
+        type=int,
+        default=PREFIX_CODE_POINTS,
+        help="typo window in Unicode code points (default %(default)s = the engine's "
+        "MIN_FUZZY_PREFIX_CODE_POINTS; TT-TYPO-NEXT Phase B also calibrates a 5-cp window)",
     )
     return parser
 
@@ -818,7 +1063,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 expected_raw_sha256=EXPECTED_RAW_SHA256,
                 expected_entry_count=EXPECTED_ENTRY_COUNT,
                 seed=TYPO_SEED,
-                prefix_code_points=PREFIX_CODE_POINTS,
+                prefix_code_points=args.prefix_code_points,
                 edit_class=args.edit_class,
             )
             write_atomic(args.output, typo_set.data)
@@ -826,8 +1071,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 {
                     "edit_class": args.edit_class,
                     "eligible_count": typo_set.eligible_count,
-                    "long_press_pairs": _pairs_json(neighbor_map),
-                    "prefix_code_points": PREFIX_CODE_POINTS,
+                    # Class #4: the map carries one (empty) entry per alphabet letter.
+                    "alphabet_size": len(neighbor_map) if args.edit_class == 4 else None,
+                    "long_press_pairs": _pairs_json(neighbor_map) if args.edit_class != 4 else [],
+                    "prefix_code_points": args.prefix_code_points,
                     "scanned_count": typo_set.scanned_count,
                     "seed": TYPO_SEED,
                     "set_bytes": len(typo_set.data),

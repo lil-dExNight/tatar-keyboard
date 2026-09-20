@@ -7,33 +7,58 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
  * neighbour is derived and the class #1 tests exercise long-press alone — this fixture reconstructs
  * the real Tatar layout geometry so [KeyNeighborTable] derives the edit class #2 relation.
  *
- * The reconstruction mirrors `res/xml/rows_tatar.xml` on a fixed integer grid (layout percent width
- * x1000, rounded once): the fifth row of six 16.667%p keys, two rows of eleven 9.091%p keys, and a
- * bottom row of nine 8.711%p letter keys offset by the 10.8%p shift key. Both the row/column key
- * order and the long-press `moreKeys` mirror `rowkeys_tatar*.xml`. Production still derives the same
- * relation from the live keyboard (`KeyNeighborTableBuilder.fromKeyboard`); the offline generator
- * `scripts/typo_pack.py` reconstructs the identical grid, and the equality is proven by the
- * byte-identical typo-set SHA-256 in [E3bRecoveryCalibrationTest].
+ * TT-TYPO-NEXT Phase B (docs/TT-TYPO-NEXT.md): the reconstruction is now DEVICE-TRUE. The
+ * pre-Phase-B grid packed keys edge-to-edge, which made same-row keys "touch" (`right == left`)
+ * and produced 33 same-row pairs the device never has: on a real build KeyboardRow subtracts the
+ * horizontal gap (`config_key_horizontal_gap`, 1.739%p on a phone) from every key's width and
+ * advances the next key by the full PADDED width, so `right < left` for every same-row pair and
+ * only the 32 cross-row pairs survive. The grid below reproduces the device formula
+ * (KeyboardBuilder/KeyboardRow/Key) on a 100 000-px reference width with one Math.round per key
+ * edge; the identical relation is reconstructed offline by `scripts/typo_pack.py` from the same
+ * committed resources (layout XML for widths/order, `res/values/config.xml` for the gap), the
+ * byte-identical class-#2 typo-set SHA-256 in [E3bRecoveryCalibrationTest] proves the two agree,
+ * and the Phase-B instrumentation run dumps the live on-device table for comparison.
  *
- * Building a fixture from explicit key descriptors is a test concern; no production source carries a
- * Cyrillic literal or a hard-coded key pair (asserted by [E3bEngineSourceContractTest]).
+ * Production still derives the relation from the live keyboard
+ * (`KeyNeighborTableBuilder.fromKeyboard`). Building a fixture from explicit key descriptors is a
+ * test concern; no production source carries a Cyrillic literal or a hard-coded key pair (asserted
+ * by [E3bEngineSourceContractTest]).
  */
 internal object E3bTestFixtures {
 
-    // Row geometry: (keyWidth, leftOffset) in grid units, from rows_tatar.xml percent widths x1000.
-    private fun rowGeometry(row: Int): Pair<Int, Int> = when (row) {
-        0 -> 16667 to 0      // fifth row: 16.667%p, full width
-        1 -> 9091 to 0       // rowkeys_tatar1: 9.091%p
-        2 -> 9091 to 0       // rowkeys_tatar2: 9.091%p
-        3 -> 8711 to 10800   // rowkeys_tatar3: 8.711%p, offset by the 10.8%p shift key
-        else -> error("unexpected row $row")
-    }
+    // The device formula (see above) on the reference grid. The gap/padding values mirror
+    // res/values/config.xml (phone portrait); the pair set is proven identical under every shipped
+    // config variant by the typo_pack python tests, so one variant is enough here.
+    private const val GRID_WIDTH = 100_000.0
+    private const val GAP = 1.739 / 100.0 * GRID_WIDTH
+    private const val PADDING = 0.870 / 100.0 * GRID_WIDTH
+    private const val BASE_WIDTH = GRID_WIDTH - 2 * PADDING + GAP
+    private const val RIGHT_EDGE = GRID_WIDTH - PADDING
 
+    // Key widths in percent points, mirroring rows_tatar.xml: the extra row of six 16.667%p keys,
+    // two rows of eleven 9.091%p keys, and the bottom letter row behind the 10.8%p shift key (the
+    // fillRight delete key only bounds the last key's clamp and carries no letter).
+    private val ROW_WIDTHS = listOf(
+        listOf(16.667, 16.667, 16.667, 16.667, 16.667, 16.667),
+        listOf(9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091),
+        listOf(9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091),
+        listOf(10.8, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711),
+    )
+
+    /**
+     * The key at index [col] of [row] (the bottom row's shift key counts, so its letters start at
+     * col 1), with the device-modelled edges: x advances by padded widths, the key itself is the
+     * padded width minus the gap, clamped to the padded right edge, rounded once per edge exactly
+     * as Key does.
+     */
     private fun geoKey(base: Char, row: Int, col: Int, vararg partners: Char): KeyNeighborTable.RawKey {
-        val (width, offset) = rowGeometry(row)
-        val left = offset + col * width
+        val widths = ROW_WIDTHS[row]
+        var x = PADDING
+        for (index in 0 until col) x += widths[index] / 100.0 * BASE_WIDTH
+        var width = widths[col] / 100.0 * BASE_WIDTH - GAP
+        if (x + width > RIGHT_EDGE) width = RIGHT_EDGE - x
         return KeyNeighborTable.RawKey(
-            base.code, left, row, left + width, row + 1,
+            base.code, Math.round(x).toInt(), row, Math.round(x + width).toInt(), row + 1,
             IntArray(partners.size) { partners[it].code },
         )
     }
@@ -44,7 +69,7 @@ internal object E3bTestFixtures {
             subtypeId,
             true,
             listOf(
-                // Row 0 — fifth row: ә ө ү җ ң һ
+                // Row 0 — the extra Tatar row: ә ө ү җ ң һ
                 geoKey('ә', 0, 0), geoKey('ө', 0, 1), geoKey('ү', 0, 2),
                 geoKey('җ', 0, 3), geoKey('ң', 0, 4), geoKey('һ', 0, 5),
                 // Row 1: й ц у к е н г ш щ з х
@@ -57,10 +82,10 @@ internal object E3bTestFixtures {
                 geoKey('а', 2, 3, 'ә'), geoKey('п', 2, 4), geoKey('р', 2, 5),
                 geoKey('о', 2, 6, 'ө'), geoKey('л', 2, 7), geoKey('д', 2, 8),
                 geoKey('ж', 2, 9, 'җ'), geoKey('э', 2, 10, 'ә'),
-                // Row 3: я ч с м и т ь б ю
-                geoKey('я', 3, 0), geoKey('ч', 3, 1), geoKey('с', 3, 2),
-                geoKey('м', 3, 3), geoKey('и', 3, 4), geoKey('т', 3, 5),
-                geoKey('ь', 3, 6, 'ъ'), geoKey('б', 3, 7), geoKey('ю', 3, 8),
+                // Row 3 (behind the shift key): я ч с м и т ь б ю
+                geoKey('я', 3, 1), geoKey('ч', 3, 2), geoKey('с', 3, 3),
+                geoKey('м', 3, 4), geoKey('и', 3, 5), geoKey('т', 3, 6),
+                geoKey('ь', 3, 7, 'ъ'), geoKey('б', 3, 8), geoKey('ю', 3, 9),
             ),
         )
 }

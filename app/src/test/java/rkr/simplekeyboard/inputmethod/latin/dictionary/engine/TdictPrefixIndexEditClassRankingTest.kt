@@ -46,14 +46,15 @@ class TdictPrefixIndexEditClassRankingTest {
         index.lookup(ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8)))
 
     /**
-     * Clause 1, brought to the E3b verdict (2026-07-27; PROPOSALS.md "Контракт текста", "Итог"):
-     * classes #2 and #3 are excluded from the shipped fuzzy pass
-     * ([TdictPrefixIndex.SHIPPED_FUZZY_EDIT_CLASSES]). The original clause asserted "class #1 always
-     * outranks class #2 at any frequency" via the live path; with class #2 off that path, the class
-     * #2 candidate "көмеш" (frequency 9 999, reached only by the у→ө geometric neighbour) never
-     * appears at all, and only the class #1 candidate "күмеш" (у→ү long-press) does. The
-     * class-first order in [ranksBefore] is retained as infrastructure (a constant tie now that a
-     * single class ships), so this stronger shipped guarantee replaces the multi-class assertion.
+     * Clause 1, brought to the E3b verdict (2026-07-27; PROPOSALS.md "Контракт текста", "Итог") and
+     * read through the TT-TYPO-NEXT Phase-B policy seam: this engine is opened WITHOUT an explicit
+     * fuzzy policy, i.e. [FuzzyEditPolicy.DEFAULT] — class #1 only, exactly the pre-Phase-B shipped
+     * behavior (and the Russian engine's configuration). The original clause asserted "class #1
+     * always outranks class #2 at any frequency" via the live path; with class #2 off this path,
+     * the class #2 candidate "көмеш" (frequency 9 999, reached only by the у→ө geometric neighbour)
+     * never appears at all, and only the class #1 candidate "күмеш" (у→ү long-press) does. The
+     * class-first order in [ranksBefore] is retained as infrastructure, so this stronger default
+     * guarantee replaces the multi-class assertion.
      */
     @Test
     fun theClass2CandidateNeverAppearsBecauseClass2IsOffTheShippedPath() {

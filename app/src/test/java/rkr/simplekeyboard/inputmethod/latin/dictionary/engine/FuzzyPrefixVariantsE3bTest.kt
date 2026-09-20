@@ -30,28 +30,27 @@ class FuzzyPrefixVariantsE3bTest {
 
     @Test
     fun geometricPassReplacesEveryPositionWithEachNeighbourInOrder() {
-        // "кит": к→[а,е,у,ө], и→[м,р,т], т→[и,о,ь] (sorted by code point).
+        // Device-true geometry (Phase B): "кит": к→[а,ө], и→[р], т→[о] (sorted by code point).
         val (emitted, variants) = geometricVariantsOf("кит")
-        assertEquals(10, emitted)
-        assertEquals(
-            listOf("аит", "еит", "уит", "өит", "кмт", "крт", "ктт", "кии", "кио", "киь"),
-            variants,
-        )
+        assertEquals(4, emitted)
+        assertEquals(listOf("аит", "өит", "крт", "кио"), variants)
     }
 
     @Test
     fun geometricVariantsReEncodeToValidUtf8ForFifthRowLetters() {
         // Replacing into/around the two-byte fifth-row letters must produce valid UTF-8, not a
-        // truncated byte edit. "әни": ә→[й,ц,ө]; every variant round-trips through UTF-8.
+        // truncated byte edit. "әни": ә→[й,ц] (its cross-row neighbours on device); every variant
+        // round-trips through UTF-8.
         val (_, variants) = geometricVariantsOf("әни")
         assertTrue(variants.all { it.length == "әни".length })
         assertTrue(variants.contains("йни"))
-        assertTrue(variants.contains("өни"))
+        assertTrue(variants.contains("цни"))
     }
 
     @Test
     fun geometricPassFailsClosedWhenTheBudgetIsExceeded() {
-        val (emitted, _) = geometricVariantsOf("кит", maxVariants = 5)
+        // "кит" emits 4 variants (see above), so a budget of 3 overflows mid-generation.
+        val (emitted, _) = geometricVariantsOf("кит", maxVariants = 3)
         assertEquals(-1, emitted)
     }
 

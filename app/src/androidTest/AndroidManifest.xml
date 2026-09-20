@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  E3b/Phase-B instrumental harness manifest. The test APK runs on the SDK's LEGACY
+  instrumentation runner (android.test.InstrumentationTestRunner), whose classes live in the
+  platform's optional android.test.runner shared library on API 24+ — without this uses-library
+  declaration the package manager cannot resolve the runner and `am instrument` fails with
+  "Unable to find instrumentation info". Debug androidTest only; the release APK is unaffected
+  (asserted by the E3b zero-byte-delta proof, docs/archive/missions/DICTIONARY-E3.md).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <uses-library
+            android:name="android.test.runner"
+            android:required="false" />
+    </application>
+</manifest>

@@ -4,25 +4,35 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
- * The E3b verdict as an executable contract (PROPOSALS.md, section "Контракт текста", line "Итог,
- * 2026-07-27"; docs/DICTIONARY-E3.md): the shipped fuzzy pass runs edit class #1 (long-press
- * partner) ONLY. Classes #2 (geometric neighbour) and #3 (transposition) are excluded from the live
- * path in EXACTLY ONE named place — [TdictPrefixIndex.SHIPPED_FUZZY_EDIT_CLASSES] — while their
- * generators remain in the tree as infrastructure (exercised directly by [FuzzyPrefixVariantsE3bTest]).
+ * The fuzzy-class contract as an executable policy pin. Before TT-TYPO-NEXT Phase B the shipped
+ * set lived in one global constant (`TdictPrefixIndex.SHIPPED_FUZZY_EDIT_CLASSES`, class #1 only —
+ * the E3b verdict); Phase B turned it into the per-engine [FuzzyEditPolicy] injected through
+ * [TdictPrefixIndex.open] (docs/TT-TYPO-NEXT.md):
  *
- * This file carries the source-contract assertion (only class #1 is enabled, visible in that one
- * place) and functional assertions that, on prefixes where classes #2/#3 WOULD have produced
- * matching variants, the shipped result equals the class-#1-only result.
+ *  - [FuzzyEditPolicy.DEFAULT] — class #1 (long-press partner) only, no same-length bonus — is
+ *    bit-identical to the pre-Phase-B shipped behavior. Every engine opened without an explicit
+ *    policy runs it (the Russian engine ships exactly this).
+ *  - [FuzzyEditPolicy.TATAR] — the SHIPPED Tatar configuration since Phase C2 (2026-09-20):
+ *    class #1 (always) + class #4 (probe-first full single substitution, gated on an EMPTY exact
+ *    pass at >= 4 code points) + the same-length bonus. (The Phase-B candidate {1,2} failed gate
+ *    G1 and was never wired; class #3 was never re-calibrated.)
+ *
+ * The generators of the unwired classes remain in the tree as infrastructure (exercised directly
+ * by [FuzzyPrefixVariantsE3bTest] / [FuzzyPrefixVariantsPhaseCTest]).
  */
 class TdictPrefixIndexShippedFuzzyClassesTest {
     private val geometricTable = E3bTestFixtures.tatarNeighborTable()
     private val codePointScratch = IntArray(64)
     private val variantScratch = ByteArray(256)
 
-    private fun index(entries: List<Pair<String, Long>>): TdictPrefixIndex {
-        val index = EngineTestFixtures.index(entries)
+    private fun index(
+        entries: List<Pair<String, Long>>,
+        policy: FuzzyEditPolicy? = null,
+    ): TdictPrefixIndex {
+        val index = EngineTestFixtures.index(entries, fuzzyEditPolicy = policy)
         index.updateKeyNeighbors(geometricTable)
         return index
     }
@@ -58,39 +68,52 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
     }
 
     /**
-     * Source contract: the single named switch enables class #1 only. This is the one place the
-     * live path consults, so classes #2 and #3 are provably absent from it.
+     * Source contract, part 1: the DEFAULT policy — every engine without an explicit one, the
+     * Russian engine included — is exactly the pre-Phase-B shipped configuration: class #1 only,
+     * no same-length bonus. This is the one place the default live path consults, so classes #2
+     * and #3 are provably absent from it.
      */
     @Test
-    fun theShippedFuzzyPassEnablesOnlyEditClassOne() {
-        val shipped = TdictPrefixIndex.SHIPPED_FUZZY_EDIT_CLASSES.toList()
-        assertEquals(listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS), shipped)
-        assertFalse("class #2 must not ship", shipped.contains(TdictPrefixIndex.EDIT_CLASS_GEOMETRIC))
-        assertFalse("class #3 must not ship", shipped.contains(TdictPrefixIndex.EDIT_CLASS_TRANSPOSITION))
+    fun theDefaultPolicyIsExactlyThePrePhaseBShippedConfiguration() {
+        assertEquals(
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
+            FuzzyEditPolicy.DEFAULT.editClasses.toList(),
+        )
+        assertFalse(FuzzyEditPolicy.DEFAULT.sameLengthBonus)
     }
 
     /**
-     * Functional: on a prefix where class #2 WOULD produce a matching variant, the shipped result
-     * equals the class-#1-only result. Premise proven directly from the generators — class #2 turns
-     * "аит" into "кит" (а→к geometric), which the block of "китап" begins with, while class #1
-     * produces no matching variant. The class-#1-only result is therefore empty, and so is the
-     * shipped lookup.
+     * Source contract, part 2: the TATAR policy (Phase C) runs class #1 always plus class #4
+     * (probe-first full single substitution, itself gated on an empty exact pass at >= 4 code
+     * points), with the same-length bonus — and neither class #2 nor class #3.
      */
     @Test
-    fun onAClass2PrefixTheShippedResultEqualsTheClass1OnlyResult() {
+    fun theTatarPolicyRunsClassesOneAndFourWithTheSameLengthBonus() {
+        assertEquals(
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+            FuzzyEditPolicy.TATAR.editClasses.toList(),
+        )
+        assertTrue(FuzzyEditPolicy.TATAR.sameLengthBonus)
+        assertFalse(FuzzyEditPolicy.TATAR.editClasses.contains(TdictPrefixIndex.EDIT_CLASS_GEOMETRIC))
+        assertFalse(FuzzyEditPolicy.TATAR.editClasses.contains(TdictPrefixIndex.EDIT_CLASS_TRANSPOSITION))
+    }
+
+    /** An engine opened without a policy gets the default one — the pre-Phase-B behavior. */
+    @Test
+    fun anEngineOpenedWithoutAPolicyKeepsClass2OffTheLivePath() {
+        // Premise: class #2 turns "аит" into "кит" (а→к geometric), which the block of "китап"
+        // begins with, while class #1 produces no matching variant.
         assertTrue("premise: class #2 would match", geometricVariantsOf("аит").contains("кит"))
         assertFalse("premise: class #1 would not match", longPressVariantsOf("аит").contains("кит"))
         val index = index(listOf("китап" to 10L))
         assertEquals(emptyList<String>(), lookup(index, "аит"))
     }
 
-    /**
-     * Functional: on a prefix where class #3 WOULD produce a matching variant, the shipped result
-     * equals the class-#1-only result. Class #3 turns "икт" into "кит" (adjacent swap), matching
-     * "китап"; class #1 produces no matching variant, so both results are empty.
-     */
+    /** Under the default policy a class #3 transposition likewise stays off the live path. */
     @Test
-    fun onAClass3PrefixTheShippedResultEqualsTheClass1OnlyResult() {
+    fun anEngineOpenedWithoutAPolicyKeepsClass3OffTheLivePath() {
+        // Premise: class #3 turns "икт" into "кит" (adjacent swap), matching "китап"; class #1
+        // produces no matching variant.
         assertTrue("premise: class #3 would match", transpositionVariantsOf("икт").contains("кит"))
         assertFalse("premise: class #1 would not match", longPressVariantsOf("икт").contains("кит"))
         val index = index(listOf("китап" to 10L))
@@ -98,15 +121,77 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
     }
 
     /**
-     * Positive control: class #1 still recovers on the shipped path, and a class-#2 sibling that a
-     * full #1+#2 pass would additionally surface does NOT appear. "кум" → class #1 (у→ү) → "күмеш";
-     * class #2 (у→ө) would add "көм*", i.e. "көмеш" (far higher frequency), but it is dropped.
+     * Under the default policy class #4 never fires either — even where its activation gate
+     * (empty exact pass, >= 4 code points) would be met. "аита" corrects to "китап" only through
+     * a full-substitution variant (а→к at position 0: no long-press partner and, at 4 code
+     * points, no class-#2 policy is wired here either).
      */
     @Test
-    fun class1StillRecoversWhileItsClass2SiblingIsDropped() {
-        assertTrue("premise: class #2 would add \"көм\"", geometricVariantsOf("кум").contains("көм"))
+    fun anEngineOpenedWithoutAPolicyKeepsClass4OffTheLivePath() {
+        val index = index(listOf("китап" to 10L))
+        assertEquals(emptyList<String>(), lookup(index, "аита"))
+    }
+
+    /** The TATAR policy recovers the gated class-#4 case the default policy provably misses. */
+    @Test
+    fun theTatarPolicyRecoversTheGatedClass4Case() {
+        val index = index(listOf("китап" to 10L), FuzzyEditPolicy.TATAR)
+        assertEquals(listOf("китап"), lookup(index, "аита"))
+    }
+
+    /**
+     * The class-#4 activation gate: the same lookup under the TATAR policy does NOT fire class #4
+     * when the exact pass found anything — so "китап" (an exact continuation of "кита") is the
+     * only candidate and no substitution noise appears beside it.
+     */
+    @Test
+    fun theTatarPolicyNeverFiresClass4WhenTheExactPassFoundAnything() {
+        val index = index(
+            // Code-point sorted, as the tdict fixture requires: битап < китап.
+            listOf("битап" to 9_999L, "китап" to 10L),
+            FuzzyEditPolicy.TATAR,
+        )
+        assertEquals(listOf("китап"), lookup(index, "кита"))
+    }
+
+    /**
+     * Positive control: class #1 keeps working under the TATAR policy and still outranks class #4
+     * at any frequency. "кумеш" → class #1 (у→ү) → "күмеш"; class #4 (у→ө among all others) adds
+     * "көмеш" — with the far higher frequency, yet ranked second by the class key.
+     */
+    @Test
+    fun class1StillOutranksClass4UnderTheTatarPolicy() {
         // Code-point sorted: ү (U+04AF) precedes ө (U+04E9) at the second position.
-        val index = index(listOf("күмеш" to 5L, "көмеш" to 9_999L))
-        assertEquals(listOf("күмеш"), lookup(index, "кум"))
+        val index = index(listOf("күмеш" to 5L, "көмеш" to 9_999L), FuzzyEditPolicy.TATAR)
+        assertEquals(listOf("күмеш", "көмеш"), lookup(index, "кумеш"))
+    }
+
+    /** The TATAR policy keeps class #3 off the live path as well. */
+    @Test
+    fun theTatarPolicyKeepsClass3OffTheLivePath() {
+        // A 4-code-point transposition "икта" -> "кита" meets the class-#4 activation gate, but a
+        // swap is not a substitution, so nothing is recovered.
+        val index = index(listOf("китап" to 10L), FuzzyEditPolicy.TATAR)
+        assertEquals(emptyList<String>(), lookup(index, "икта"))
+    }
+
+    /**
+     * Source contract, part 3 — the production wiring itself. LatinIME is an Android service and
+     * cannot run under the JVM harness, so the wiring is pinned on its source text with the same
+     * dual-path lookup the resource contracts use: the Tatar engine must receive
+     * [FuzzyEditPolicy.TATAR] and every other engine null (= [FuzzyEditPolicy.DEFAULT]).
+     */
+    @Test
+    fun latinImeWiresTheTatarPolicyToTheTatarEngineOnly() {
+        val candidates = listOf(
+            File("src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java"),
+            File("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java"),
+        )
+        val source = candidates.firstOrNull { it.isFile }?.readText()
+            ?: error("cannot locate LatinIME.java from ${File(".").absolutePath}")
+        assertTrue(
+            "the Tatar engine ships FuzzyEditPolicy.TATAR, others ship null (= DEFAULT)",
+            source.contains("tatarEngine ? FuzzyEditPolicy.TATAR : null"),
+        )
     }
 }
