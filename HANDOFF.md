@@ -1,3 +1,35 @@
+# HANDOFF — TT-NEXTWORD-FILL phases A–D landed (uncommitted; device UAT blocked on absent hardware)
+
+**State as of 2026-09-20.** Release **2.0.0 / versionCode 32** is committed and tagged
+(`f88f750b`; the entry below, written before the commit, is stale in that detail). On top
+of it, **uncommitted**: the TT-NEXTWORD-FILL mission (plan `docs/TT-NEXTWORD-FILL-PLAN.md`,
+report `docs/TT-NEXTWORD-FILL.md`) — after a committed word the strip fills cells left
+free by bigram successors and word forms with the language's global top-frequency words
+(tt pool top-8: һәм, белән, да, бу, дә, дип, ул, өчен; ru: я, не, в, и, что…). Origin:
+the operator's 2.0.0 bug report (after accepting сәләм the strip offered only сәләмә;
+after сәләмә it went empty). Eval: strip-empty-after-word 33.30 % → 0.0000 %, all other
+`TtSuggestEvalTest` metrics unchanged. Bigram successors, word forms and the emoji tail
+keep priority; the committed word and already-shown words are excluded. Recorded
+consequence: the companion-language NEXT_WORD fill no longer fires after a commit (the
+band is always full now) — deliberate.
+
+Phase D state: **all gates green** (1 257 JVM / 474 python / lint / asset pins /
+check-no-internet both levels / release_check --quick 8/8), signed release APK
+**1 849 555 B** ≤ 3 145 728, SHA-256 `d210f0c9…26158a55`, cert `98ca6feb…42ad`, version
+still 2.0.0/32 (no bump — post-release work). **Device UAT BLOCKED**: the POCO C71 was
+physically disconnected all session (`adb devices` empty, no Xiaomi in `lsusb`); the
+operator's scenario was replayed on the emulator instead (12 rows PASS, evidence
+`build/device-uat-2026-09-20/emulator-fallback/`), including the honest finding that the
+plan's literal `сэлэм` (two э) cannot offer сәләм by the single-edit design — the
+operator's 2.0.0 tap of it came from their personal dictionary.
+
+Open: the device replay (install + UAT table + cold start + crash buffer) the moment the
+phone is back on USB — helpers `build/device-uat-2026-09-20/lib.sh`/`coords.py` are
+calibrated for the POCO C71 (720×1640) and ready; Phase E (independent re-verification);
+commit/release decision is the operator's.
+
+---
+
 # HANDOFF — release 2.0.0 prepared (uncommitted; tag/push/publish are next)
 
 **State as of 2026-09-20.** Release **2.0.0 / versionCode 32** is prepared on

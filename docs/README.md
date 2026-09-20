@@ -75,6 +75,19 @@
   SHA-256 `32cd873b…`), device UAT on the POCO C71 16/16 PASS (tap→predictions,
   the сцләм ladder, no-pollution, cold start 253/265 ms median, clean crash
   buffer). Uncommitted — awaits the operator's commit/release decision.
+- `TT-NEXTWORD-FILL-PLAN.md` — approved plan of the never-empty-strip mission
+  (phases A–E, post-2.0.0): after a committed word, cells left free by bigram
+  successors and word forms fill with the language's global top-frequency words.
+- `TT-NEXTWORD-FILL.md` — mission report for the same. Phases A–C done
+  2026-09-20: `TdictPrefixIndex.topFrequentWords`, the `FallbackWords` seam
+  (order bigrams > forms > fallback; never displaces; committed word excluded;
+  emoji tail kept), eval strip-empty-after-word 33.30 % → 0. Phase D done the
+  same day: all gates green, signed APK 1 849 555 B (SHA-256 `d210f0c9…`) —
+  device UAT BLOCKED (the POCO C71 was physically disconnected all session; the
+  operator's scenario was replayed on the emulator instead, 12 rows PASS,
+  including the finding that the literal `сэлэм` with two э cannot offer сәләм
+  by the single-edit design). Device replay and Phase E (independent
+  re-verification) pending. Uncommitted — awaits the operator's decision.
 - `RESEARCH-FIXES.md` — миссия починки находок ресерча (2026-09-04, релиз 1.9.14):
   текст клавиатурных поверхностей переведён с sp на dp (Р-3), панель эмодзи
   уважает «Нижний отступ» (Р-1) и сжимает свои полосы при малой высоте (Р-2);

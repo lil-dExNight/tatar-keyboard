@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+The strip after a committed word is never empty: predictions now fall back to the language's most frequent words.
+
+### What changed
+
+- **Predictions after a committed word always fill the strip:** when a committed word has few or no next-word predictions or word forms, the remaining cells show the language's most frequent words (Tatar: һәм, белән, да…; Russian: я, не, в…). Bigram predictions, word forms and the emoji cell keep priority and are never displaced; the word just committed is never re-offered
+
+### What stayed the same
+
+- Dictionaries, prediction tables, layouts, emoji — unchanged; the fallback is computed from the shipped dictionary at engine start, no new assets
+- One permission only — VIBRATE; no INTERNET, gate verified on the built APK
+- Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
+
 ## [2.0.0] — 2026-09-20
 
 Tatar prediction learns the language's morphology: after a committed word the strip offers its inflected forms, complete words rank their own continuations first, and the strip is no longer empty at the start of a sentence. Accepting a suggestion now immediately offers the next word, and a mistyped Tatar word that matches nothing exactly offers the nearest dictionary words one letter away.
