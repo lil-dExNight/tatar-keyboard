@@ -1,0 +1,2 @@
+• Never-empty strip: after a committed word, the cells left free by next-word predictions and word forms now fill with the language's most frequent words (tt: һәм · белән · да; ru: я · не · в)
+• Code-only release: dictionaries, prediction tables, layouts and emoji are byte-identical; one permission — vibration; no network

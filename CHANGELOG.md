@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.0.1] — 2026-09-21
 
 The strip after a committed word is never empty: predictions now fall back to the language's most frequent words.
 

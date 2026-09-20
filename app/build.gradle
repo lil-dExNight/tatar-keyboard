@@ -23,8 +23,8 @@ android {
         applicationId "org.tatarkeyboard.ime"
         minSdkVersion 24
         targetSdkVersion 37
-        versionCode 32
-        versionName "2.0.0"
+        versionCode 33
+        versionName "2.0.1"
         // Phase 3b: the app ships three locales only — Tatar, Russian, English. Also strips
         // the dozens of translations pulled in by androidx.customview.
         resConfigs "tt", "ru", "en"

@@ -1,4 +1,29 @@
-# PUBLISH-CHECKLIST — публикация v2.0.0
+# PUBLISH-CHECKLIST — публикация v2.0.1
+
+> **Retargeted 2026-09-21 to candidate v2.0.1 / versionCode 33** — one
+> user-facing change over 2.0.0: TT-NEXTWORD-FILL (`docs/TT-NEXTWORD-FILL.md`)
+> — after a committed word the strip cells left free by next-word predictions
+> and word forms fill with the language's most frequent words (tt: һәм, белән,
+> да…; ru: я, не, в…); the strip after a word is never empty. Origin: the
+> operator's 2.0.0 bug report. Current artifact — `dist/tatar-keyboard-2.0.1.apk`
+> (1 849 555 B, SHA-256
+> `53cb4c2709c09fd30e8bf553e36f821f722480bce3da2373289997658a8c02a4`), audit —
+> `docs/APK-AUDIT-2.0.1.md`. The notes about 2.0.0 and earlier below stay as
+> history; their checkmarks and numbers do not carry over.
+>
+> Candidate differences the procedure must account for: store changelog —
+> `metadata/en-US/changelogs/33.txt` (+ ru-RU and tt copies, all ≤ 500 B).
+> **Code-only release**: every shipped data asset is byte-identical to 2.0.0
+> (CRC32-verified per entry: both dictionaries, both bigram tables,
+> `tatar_sentstart_v1.txt`, all NOTICE files, all five emoji assets;
+> `resources.arsc` and all `res/` entries unchanged; only the two dex files,
+> the manifest version lines, the embedded git HEAD and the regenerated
+> `baseline.prof` differ). On update from 2.0.0 the device **re-inflates
+> NOTHING** — no artifact hash changed, the inflated files stay valid;
+> update with `adb install -r` over 2.0.0 kept all data on the POCO C71
+> (device UAT 2026-09-21, evidence `build/device-uat-2026-09-21/`). Gates:
+> `release_check.sh --full` **13/13 PASS** on the candidate. Publishing,
+> push and tags are the operator's actions.
 
 > **Retargeted 2026-09-20 to candidate v2.0.0 / versionCode 32** — two
 > missions ship together: TT-SUGGESTIONS (`docs/TT-SUGGESTIONS.md`: Tatar

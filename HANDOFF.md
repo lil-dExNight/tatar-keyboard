@@ -1,3 +1,53 @@
+# HANDOFF — release 2.0.1 prepared (uncommitted; tag/push/publish are next)
+
+**State as of 2026-09-21.** Release **2.0.1 / versionCode 33** is prepared on
+top of the committed TT-NEXTWORD-FILL mission (HEAD `7fea9797`, clean tree).
+The release engineering itself (version bump, changelogs, this entry, the
+audit and the checklist retarget) is **uncommitted** and awaits the operator's
+review, commit, tag and publish.
+
+What the release ships: one user-facing change over 2.0.0 — after a committed
+word the strip cells left free by next-word predictions and word forms fill
+with the language's most frequent words (never-empty strip; both Tatar and
+Russian). Code-only release: every shipped data asset is byte-identical to
+2.0.0 (CRC32-verified per entry), so updating re-inflates nothing on the
+device.
+
+Release changes in the working tree:
+
+- `app/build.gradle`: versionCode 32 → 33, versionName "2.0.0" → "2.0.1".
+- `CHANGELOG.md`: the Unreleased section became `## [2.0.1] — 2026-09-21`.
+- Store changelogs `metadata/{en-US,ru-RU,tt}/changelogs/33.txt` — 348 / 432 /
+  425 B (all ≤ the 500-byte Fastlane limit).
+- `docs/APK-AUDIT-2.0.1.md` — new audit (per-entry CRC32 comparison vs the
+  2.0.0 APK); `docs/PUBLISH-CHECKLIST.md` retargeted to 2.0.1/33;
+  `docs/README.md` index line updated.
+
+Gates (all 2026-09-21, all green):
+
+| Gate | Result |
+|---|---|
+| python suites (`for f in tests/*/test_*.py`) | **474 tests, 15 files, 0 failing files** (1 pre-existing skip) |
+| `./gradlew test --rerun-tasks` | **1 257 tests, 136 suites, 0 failures/errors/skipped** |
+| `./gradlew lintRelease --rerun-tasks` | green (21 tasks executed) |
+| `rebuild_assets.py --check --allow-known-drift` | `"ok": true` (tt 3/0, ru 2/0 as pinned) |
+| `scripts/release_pack.sh` | unsigned 1 869 779 B → signed zopfli **1 849 555 B** ≤ 3 145 728 (headroom 41.2 %), SHA-256 **`53cb4c2709c09fd30e8bf553e36f821f722480bce3da2373289997658a8c02a4`**, v2-only, cert `98ca6feb…42ad` |
+| `check-no-internet.sh dist/tatar-keyboard-2.0.1.apk` | both levels OK |
+| `release_check.sh --full dist/tatar-keyboard-2.0.1.apk` | **OVERALL PASS — 13/13** (incl. version 2.0.1/33, changelog 33.txt, delta vs 2.0.0 +0 B / +0.0 %) |
+
+Artifact: **`dist/tatar-keyboard-2.0.1.apk`** (local, git-ignored) — publish
+exactly these bytes; do not rebuild before publishing. GitHub Release notes
+text is prepared at `/tmp/relnotes-2.0.1.md` (same structure as the 2.0.0
+notes).
+
+Next operator actions: review the diff → commit → tag `v2.0.1` → push →
+GitHub Release with the APK from `dist/` → store upload (33.txt notes are in
+place for en-US/ru-RU/tt). NOTE: `gh` on this machine has pull-only access
+(reads work — the 2.0.0 release was fetched with `gh release view`), so the
+release object is published manually via the web UI, as 2.0.0 was.
+
+---
+
 # HANDOFF — TT-NEXTWORD-FILL complete (committed; device UAT passed 2026-09-21)
 
 > **2026-09-21 update:** the device half of Phase D is DONE — the POCO C71 returned and
