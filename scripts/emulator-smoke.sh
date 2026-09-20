@@ -11,6 +11,9 @@
 # type a word + space and tap the middle suggestion cell, reading the field to
 # prove what the strip committed (tap-and-read; the IME window is invisible to
 # uiautomator). Details at the probes below.
+# TT-TYPO-NEXT Phase A: the сакчы probe is extended by a second cell-2 tap that
+# proves the strip shows predictions for the just-committed word right after
+# the first tap, without waiting for a keystroke.
 #
 # Флаги:
 #   --avd <имя>      AVD (по умолчанию tt_suggest_a14)
@@ -651,6 +654,37 @@ elif echo "$w2" | grep -qE '^сакчы.'; then
     result PASS wordform-tt-сакчы "cell 2 = $w2: inflected form offered in a free cell and committed"
 else
     result FAIL wordform-tt-сакчы "cell 2 committed '$w2' (expected a сакчы form); field: '$wf_after'"
+fi
+
+# ── TT-TYPO-NEXT Phase A: predictions right after the accepted suggestion ──
+# The сакчы probe's cell-2 tap committed an inflected form (сакчылар on the
+# shipped assets) with a trailing space. Before the fix the strip stayed empty
+# until the next keystroke — SuggestionsController.onTap never re-issued a
+# lookup; now the tap itself issues the NEXT_WORD request for the committed
+# word (сакчылар is not a bigram head, so the follow-up band is its after-word
+# forms — сакчылары, сакчыларына, сакчыларын on the shipped assets — and every
+# one of them starts with сакчы). Tap-and-read, like the probes above: a second
+# cell-2 tap must commit one more сакчы* word; an empty follow-up band commits
+# nothing.
+if [ "$SUGGESTIONS" != on ]; then
+    result SKIP tap-followup-tt-сакчы "suggestions not enabled (non-debuggable package)"
+elif [ "$wf_after" = "__NOFIELD__" ] || [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "$wf_mid" ]; then
+    result SKIP tap-followup-tt-сакчы "the сакчы probe above already failed; nothing to follow up on"
+else
+    sleep 2                          # the follow-up NEXT_WORD answer is asynchronous
+    TAPF ${STRIP_CELL2%,*} ${STRIP_CELL2#*,}
+    sleep 1
+    wf_again=$(field_text)
+    w3=$(second_word_after "$wf_again" "$w2")
+    if [ "$wf_again" = "__NOFIELD__" ]; then
+        result FAIL tap-followup-tt-сакчы "try-it field not in the dump"
+    elif [ "$wf_again" = "$wf_after" ]; then
+        result FAIL tap-followup-tt-сакчы "strip stayed empty after the accepted suggestion; field: '$wf_again'"
+    elif echo "$w3" | grep -qE '^сакчы.'; then
+        result PASS tap-followup-tt-сакчы "cell 2 of the follow-up band = $w3: predictions for the accepted word without a keystroke"
+    else
+        result FAIL tap-followup-tt-сакчы "follow-up cell 2 committed '$w3' (expected a form of $w2); field: '$wf_again'"
+    fi
 fi
 
 # ── эмодзи-панель: долгий тап запятой, тап по первой ячейке сетки ──

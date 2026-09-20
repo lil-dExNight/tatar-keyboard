@@ -2200,6 +2200,16 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
+                // A tap-commit never reaches onTextChanged() (no InputTransaction wraps it) and the
+                // settle backstop self-cuts on requestSessionId == sessionId, so unless the
+                // follow-up lookup is issued right here the band stays empty until the next
+                // keystroke. The editor's text cache is synchronously current at this point: with
+                // the auto-space appended this falls into the NEXT_WORD path for the word just
+                // committed (E5, docs/archive/PROPOSALS.md — predictions after an ACCEPTED word);
+                // without it the committed word is the new trailing prefix, exactly as after typed
+                // input. The session is deliberately NOT bumped: the commit is part of this
+                // session's text, and a late onCursorMoveSettled must still self-cut.
+                requestCurrentPrefix()
             }
             return
         }
@@ -2212,6 +2222,9 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
+                // Same reasoning as the PREFIX branch above: the predictions for the word just
+                // committed are requested from here, or they never are.
+                requestCurrentPrefix()
             }
         }
     }

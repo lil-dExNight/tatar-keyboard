@@ -92,6 +92,12 @@ class SuggestionsControllerEmojiSuggestTest {
         override fun cachedNextWordContext(): String = contextWord
         override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
             predictedCommits.add(expectedContextWord to suggestion)
+            // Model the synchronous cache update the production commit performs (see
+            // SuggestionsControllerTest.FakeEditor): the inserted text plus its auto-space leave
+            // an empty trailing word, and the committed word becomes the NEXT_WORD context — or no
+            // context at all when the cell held no word (an emoji commits no letters).
+            word = ""
+            contextWord = if (suggestion.any { Character.isLetter(it) }) suggestion else ""
             return true
         }
     }
@@ -529,6 +535,25 @@ class SuggestionsControllerEmojiSuggestTest {
         requireNotNull(h.strip.tap).onTap("❤️")
 
         assertTrue(h.editor.predictedCommits.isEmpty())
+    }
+
+    @Test
+    fun theBandAfterAnAcceptedWordCellStillCarriesTheEmojiTail() {
+        // TT-TYPO-NEXT Phase A: the follow-up lookup after a tap-commit goes through the ordinary
+        // NEXT_WORD fill path, so the emoji tail rule applies to it unchanged.
+        val h = harnessWithMapping("tt", "китте", "❤️")
+        h.start(tatar)
+        h.typeWordAndSpace("башка") // no mapping for the FIRST context: a plain one-word band
+        h.deliver(tatar, listOf("китте"))
+        assertEquals(listOf("китте"), h.strip.lastCells())
+
+        requireNotNull(h.strip.tap).onTap("китте")
+
+        // The accepted word became the context synchronously, so the follow-up request is for IT...
+        assertEquals(listOf("башка", "китте"), h.engine(tatar).nextWordRequests)
+        // ...and its band gets the emoji tail exactly like a band built after typed input.
+        h.deliver(tatar, listOf("бирегә"))
+        assertEquals(listOf("бирегә", "❤️"), h.strip.lastCells())
     }
 
     // --- Accessibility --------------------------------------------------------------------------

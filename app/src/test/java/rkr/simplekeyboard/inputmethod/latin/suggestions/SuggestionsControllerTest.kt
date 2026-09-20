@@ -85,7 +85,9 @@ class SuggestionsControllerTest {
 
         override fun commitSuggestion(expectedPrefix: String, suggestion: String): Boolean {
             commits.add(expectedPrefix to suggestion)
-            return commitResult
+            if (!commitResult) return false
+            applySuccessfulInsert(suggestion)
+            return true
         }
 
         override fun hasKnownCursor(): Boolean = knownCursor
@@ -97,7 +99,28 @@ class SuggestionsControllerTest {
 
         override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
             predictedCommits.add(expectedContextWord to suggestion)
-            return predictedCommitResult
+            if (!predictedCommitResult) return false
+            applySuccessfulInsert(suggestion)
+            return true
+        }
+
+        /**
+         * Models what a successful production commit leaves in the RichInputConnection text cache
+         * SYNCHRONOUSLY, before the call returns (InputLogic.replaceTrailingWord /
+         * commitPredictedWord edit the cache inside the same batch edit): the committed word takes
+         * the cursor, and the auto-space rule decides the shape — with the space appended the
+         * trailing word is empty and the committed word becomes the NEXT_WORD context; without it
+         * (the text after the cursor already separates the word) the committed word IS the new
+         * trailing word, exactly as if the user had typed it.
+         */
+        private fun applySuccessfulInsert(suggestion: String) {
+            if (TatarWordUtils.needsAutoSpace(textAfterCursor)) {
+                word = ""
+                nextWordContext = suggestion
+            } else {
+                word = suggestion
+                nextWordContext = ""
+            }
         }
     }
 
@@ -435,29 +458,161 @@ class SuggestionsControllerTest {
     }
 
     @Test
-    fun bandStaysEmptyAndVisibleAfterTheAutoSpacedCommitEndsTheWord() {
+    fun acceptedPrefixSuggestionIsFollowedByNextWordPredictionsForTheAcceptedWord() {
+        // The E5 contract (docs/archive/PROPOSALS.md, "## E5"): after an ACCEPTED or typed word and
+        // a space the strip shows the continuations of the word that was just committed — a tap is
+        // no exception. This test pinned the pre-NEXT_WORD behavior as
+        // bandStaysEmptyAndVisibleAfterTheAutoSpacedCommitEndsTheWord (D1 era); the empty band it
+        // asserted was a defect, not a design (TT-TYPO-NEXT Phase A, amendment recorded in
+        // docs/TT-TYPO-NEXT.md on 2026-09-20).
         val h = Harness()
         h.controller.onStartInput(eligible = true)
         h.editor.word = "сүз"
         h.controller.onTextChanged()
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзләр", "сүзлек"), LookupKind.PREFIX)
-        val shownBefore = h.strip.shown.size
+        val prefixesBefore = h.engine.requestedPrefixes.size
         val hideBefore = h.strip.hideCount
 
         h.editor.commitResult = true
         h.strip.listener!!.onTap("сүзләр")
-        // The commit appends a space, so the trailing word is empty afterwards. Whatever text
-        // event follows must keep the reserved 40dp band and must not repaint the old words.
-        h.editor.word = ""
-        h.controller.onTextChanged()
 
-        assertEquals(shownBefore, h.strip.shown.size)
+        // The successful commit consumed the prefix and appended the auto-space, so the controller
+        // immediately issues a NEXT_WORD request for the word it just committed — without waiting
+        // for another keystroke — and never re-requests the consumed prefix.
+        assertEquals(listOf("сүз" to "сүзләр"), h.editor.commits)
+        assertEquals(
+            listOf("сүзләр"),
+            h.engine.requestedContexts.map { String(it, Charsets.UTF_8) },
+        )
+        assertEquals(prefixesBefore, h.engine.requestedPrefixes.size)
+        // The band stays reserved and visible throughout; it never hides.
         assertEquals(hideBefore, h.strip.hideCount)
         assertTrue(h.strip.visible)
-        // A second tap on the words that are no longer bound must not commit again.
-        val commitsAfterTap = h.editor.commits.size
+        // A repeat tap while the follow-up request is still in flight commits nothing: both
+        // displayed* bindings were dropped and nothing new has been bound yet.
         h.strip.listener!!.onTap("сүзләр")
-        assertEquals(commitsAfterTap, h.editor.commits.size)
+        assertEquals(listOf("сүз" to "сүзләр"), h.editor.commits)
+        // The moment the answer arrives the strip shows the accepted word's successors.
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("дип", "дигән"), LookupKind.NEXT_WORD)
+        assertEquals(Triple("дип", "дигән", null), h.strip.shown.last())
+        assertTrue(h.strip.visible)
+    }
+
+    @Test
+    fun tapOnNextWordPredictionChainsPredictionsForTheNewlyCommittedWord() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true)
+
+        h.editor.word = ""
+        h.editor.nextWordContext = "сүз"
+        h.controller.onTextChanged()
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("өйгә", "китте"), LookupKind.NEXT_WORD)
+        assertEquals(Triple("өйгә", "китте", null), h.strip.shown.last())
+
+        h.editor.predictedCommitResult = true
+        h.strip.listener!!.onTap("өйгә")
+
+        // The commit inserted "өйгә " (auto-space), so the NEXT_WORD context advanced to the word
+        // just committed and predictions chain: a fresh NEXT_WORD request for "өйгә" is issued
+        // inside the tap, without waiting for a keystroke.
+        assertEquals(listOf("сүз" to "өйгә"), h.editor.predictedCommits)
+        assertEquals(
+            listOf("сүз", "өйгә"),
+            h.engine.requestedContexts.map { String(it, Charsets.UTF_8) },
+        )
+        assertTrue("the NEXT_WORD tap must not touch the PREFIX path", h.engine.requestedPrefixes.isEmpty())
+
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("керде"), LookupKind.NEXT_WORD)
+        assertEquals(Triple("керде", null, null), h.strip.shown.last())
+    }
+
+    @Test
+    fun refusedCommitsIssueNoFollowUpRequest() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true)
+
+        // PREFIX branch: the editor refuses the commit (a stale tap it caught itself), so nothing
+        // about the text changed and no follow-up lookup may be issued.
+        h.editor.word = "сүз"
+        h.controller.onTextChanged()
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзләр"), LookupKind.PREFIX)
+        var prefixesBefore = h.engine.requestedPrefixes.size
+        var contextsBefore = h.engine.requestedContexts.size
+
+        h.editor.commitResult = false
+        h.strip.listener!!.onTap("сүзләр")
+
+        assertEquals(listOf("сүз" to "сүзләр"), h.editor.commits) // the attempt itself was made
+        assertEquals(prefixesBefore, h.engine.requestedPrefixes.size)
+        assertEquals(contextsBefore, h.engine.requestedContexts.size)
+
+        // NEXT_WORD branch, same rule.
+        h.editor.word = ""
+        h.editor.nextWordContext = "сүз"
+        h.controller.onTextChanged()
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("өйгә"), LookupKind.NEXT_WORD)
+        prefixesBefore = h.engine.requestedPrefixes.size
+        contextsBefore = h.engine.requestedContexts.size
+
+        h.editor.predictedCommitResult = false
+        h.strip.listener!!.onTap("өйгә")
+
+        assertEquals(listOf("сүз" to "өйгә"), h.editor.predictedCommits)
+        assertEquals(prefixesBefore, h.engine.requestedPrefixes.size)
+        assertEquals(contextsBefore, h.engine.requestedContexts.size)
+    }
+
+    @Test
+    fun lateCursorMoveSettledAfterATapDoesNotDuplicateTheFollowUpRequest() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true)
+        h.editor.word = "сүз"
+        h.controller.onTextChanged()
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзләр"), LookupKind.PREFIX)
+        val prefixesBefore = h.engine.requestedPrefixes.size
+
+        h.strip.listener!!.onTap("сүзләр")
+        assertEquals(1, h.engine.requestedContexts.size)
+
+        // The cache reload behind the tap's own commit can still deliver a cursor-settled report.
+        // The follow-up request issued by the tap is already in flight for THIS session, so the
+        // requestSessionId == sessionId guard must cut the backstop — no duplicate lookup.
+        h.controller.onCursorMoveSettled()
+        assertEquals(1, h.engine.requestedContexts.size)
+        assertEquals(prefixesBefore, h.engine.requestedPrefixes.size)
+
+        // And once the answer has landed the band is bound again, which is the other guard.
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("дип"), LookupKind.NEXT_WORD)
+        h.controller.onCursorMoveSettled()
+        assertEquals(1, h.engine.requestedContexts.size)
+        assertEquals(prefixesBefore, h.engine.requestedPrefixes.size)
+    }
+
+    @Test
+    fun commitWithoutAutoSpaceFallsIntoThePrefixPathForTheCommittedWord() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true)
+        // The text after the cursor already separates the word (hugging punctuation), so the commit
+        // appends no space (InputLogic's needsAutoSpace rule) and the committed word becomes the new
+        // trailing word: the follow-up lookup is a PREFIX request, exactly as after typed input.
+        h.editor.word = "сүз"
+        h.editor.textAfterCursor = ", дигән"
+        h.controller.onTextChanged()
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзләр"), LookupKind.PREFIX)
+        val prefixesBefore = h.engine.requestedPrefixes.size
+
+        h.strip.listener!!.onTap("сүзләр")
+
+        assertEquals(listOf("сүз" to "сүзләр"), h.editor.commits)
+        assertEquals(prefixesBefore + 1, h.engine.requestedPrefixes.size)
+        assertTrue(
+            h.engine.requestedPrefixes.last()
+                .contentEquals("сүзләр".toByteArray(Charsets.UTF_8)),
+        )
+        assertTrue(
+            "no trailing space, no NEXT_WORD moment",
+            h.engine.requestedContexts.isEmpty(),
+        )
     }
 
     @Test
