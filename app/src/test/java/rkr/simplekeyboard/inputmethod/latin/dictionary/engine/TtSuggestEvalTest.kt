@@ -20,6 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatBigrValidator
@@ -225,6 +226,40 @@ class TtSuggestEvalTest {
         assertEquals(PIN_SENTSTART_TOP3_HITS, hits)
     }
 
+    /**
+     * TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the strip-empty-after-word rate over the eval
+     * set — for each unique eval word as the committed context, whether the production NEXT_WORD
+     * answer (bigram successors + after-word forms) is EMPTY. Measured twice in one run: WITHOUT
+     * the fallback (the pre-fill production shape) and WITH it — the before/after evidence of the
+     * fill. The after value is pinned at 0: with the top-frequency pool wired, a committed word's
+     * strip is never empty while suggestions are on.
+     */
+    @Test
+    fun stripEmptyAfterWordRateOnTheEvalSet() {
+        val index = requireNotNull(dictionaryIndex)
+        val bigrams = requireNotNull(bigramIndex)
+        val forms = TatarSuffixRules.createAfterWordForms(index)
+        val beforeComputer = CompositePrefixComputer(index, PersonalCandidateSource.EMPTY, forms)
+            .also { it.attachBigramSource(bigrams) }
+        val afterComputer = CompositePrefixComputer(
+            index, PersonalCandidateSource.EMPTY, forms,
+            GlobalTopFrequencyFallbackFactory.createFallbackWords(index),
+        ).also { it.attachBigramSource(bigrams) }
+        var emptyBefore = 0
+        var emptyAfter = 0
+        for (word in uniqueWords) {
+            val query = ImmutableUtf8Prefix.copyOf(word.toByteArray(Charsets.UTF_8))
+            if (beforeComputer.predict(query).isEmpty()) emptyBefore++
+            if (afterComputer.predict(query).isEmpty()) emptyAfter++
+        }
+        println("EVAL|nextword_empty_words_before|$emptyBefore")
+        println("EVAL|nextword_empty_words_after|$emptyAfter")
+        println("EVAL|nextword_empty_before_pct|${format(emptyBefore * 100.0 / uniqueWords.size)}")
+        println("EVAL|nextword_empty_after_pct|${format(emptyAfter * 100.0 / uniqueWords.size)}")
+        assertEquals(PIN_NEXTWORD_EMPTY_BEFORE, emptyBefore)
+        assertEquals(0, emptyAfter)
+    }
+
     @Test
     fun evalSetShapeMatchesThePinnedSet() {
         assertEquals(PIN_EVAL_LINES, evalLines.size)
@@ -271,6 +306,10 @@ class TtSuggestEvalTest {
         // P4 sentence-start metric, measured 2026-09-20 on the committed table against the pinned
         // eval set: 123 of 1 000 first words are in the top-3 (бу, ул, ә).
         private const val PIN_SENTSTART_TOP3_HITS = 123
+        // TT-NEXTWORD-FILL (2026-09-20): unique eval words whose committed-word strip is empty
+        // WITHOUT the fallback (the pre-fill production shape). With the fallback the count is
+        // pinned at 0 by the assertion in the test.
+        private const val PIN_NEXTWORD_EMPTY_BEFORE = 889
 
         private lateinit var evalLines: List<String>
         private lateinit var uniqueWords: List<String>

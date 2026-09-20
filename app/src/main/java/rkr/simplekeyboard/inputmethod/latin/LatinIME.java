@@ -89,7 +89,9 @@ import rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsValues;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.EditorSurface;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.EngineHandle;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FallbackWordsFactory;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.GlobalTopFrequencyFallbackFactory;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.MappedEngineHandle;
@@ -598,8 +600,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // measured and passed (2026-09-20). The Russian engine is started with null —
             // FuzzyEditPolicy.DEFAULT, bit-identical to the pre-Phase-B behavior.
             final FuzzyEditPolicy fuzzyEditPolicy = tatarEngine ? FuzzyEditPolicy.TATAR : null;
+            // TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): every shipped-language engine (the
+            // artifact registry decides) gets the global top-frequency fallback for its NEXT_WORD
+            // slot — the factory builds the pool from the engine's OWN dictionary, so the Tatar
+            // engine falls back to Tatar top words and the Russian one to Russian top words. A
+            // fill-only change: the fallback never displaces bigram successors, word forms or the
+            // emoji tail, and it never fires before the bigram source is attached.
+            final FallbackWordsFactory fallbackWordsFactory = dictionaryArtifact != null
+                    ? GlobalTopFrequencyFallbackFactory.INSTANCE : null;
             return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules,
-                    fuzzyEditPolicy);
+                    fuzzyEditPolicy, fallbackWordsFactory);
         };
 
         mSuggestionsController = new SuggestionsController(

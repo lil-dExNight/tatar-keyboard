@@ -323,4 +323,108 @@ class CompositePrefixComputerTest {
         // precedes, or reorders it.
         assertEquals(listOf("бакча", "капка"), result)
     }
+
+    // --- TT-NEXTWORD-FILL: the global top-frequency fallback of the NEXT_WORD slot -------------
+
+    /** A fake fallback with the production exclusion semantics, so the merge itself is measured. */
+    private fun fakeFallback(words: List<String>): FallbackWords =
+        FallbackWords { context, alreadyShown, maxOut ->
+            words.filter { it != context.decodeUtf8() && !alreadyShown.contains(it) }.take(maxOut)
+        }
+
+    @Test
+    fun theFallbackFillsTheCellsBigramsAndFormsLeaveFree() {
+        // The chain is bigram successors > after-word forms > fallback, one cell each.
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм", "белән")),
+        )
+        computer.attachBigramSource(NextWordComputer { listOf("эшләгән") })
+
+        assertEquals(listOf("эшләгән", "сүзләр", "һәм"), computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun theFallbackNeverDisplacesBigramsOrForms() {
+        val bigrams = listOf("эшләгән", "белән", "туры")
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
+        )
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        // Three successors take all three cells: the forms and the fallback are never consulted
+        // beyond the room check, and the list is the bigram list itself.
+        assertSame(bigrams, computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun theFallbackIsNotOfferedBeforeABigramSourceIsAttached() {
+        // The NEXTWORD-RACE repair re-issues the request when the attach lands, but only while the
+        // band holds no active-language word; a fallback-only band painted from "not attached yet"
+        // would suppress it — the exact rule the forms already live by.
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм", "белән", "да")),
+        )
+
+        assertTrue(computer.predict(prefix("сүз")).isEmpty())
+    }
+
+    @Test
+    fun aBrokenFallbackLeavesTheBigramsAndFormsUntouched() {
+        val broken = FallbackWords { _, _, _ -> throw IllegalStateException("broken") }
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")), broken,
+        )
+        computer.attachBigramSource(NextWordComputer { listOf("эшләгән") })
+
+        assertEquals(listOf("эшләгән", "сүзләр"), computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun brokenFormsDoNotTakeTheFallbackDown() {
+        val broken = AfterWordForms { _, _, _ -> throw IllegalStateException("broken") }
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            broken, fakeFallback(listOf("һәм", "белән")),
+        )
+        computer.attachBigramSource(NextWordComputer { listOf("эшләгән") })
+
+        assertEquals(listOf("эшләгән", "һәм", "белән"), computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun withoutAFallbackTheNextWordAnswerIsUnchanged() {
+        val bigrams = listOf("эшләгән")
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр")),
+        )
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        // Exactly the pre-fill answer: bigrams + forms, and no third source.
+        assertEquals(listOf("эшләгән", "сүзләр"), computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun theRealFallbackExcludesTheCommittedWordAndTheAlreadyShown() {
+        // The production implementation against a fixed pool: the committed word drops out, an
+        // already-shown word drops out, the pool's own order stands.
+        val fallback = GlobalTopFrequencyFallback(listOf("һәм", "белән", "да", "бу"))
+        assertEquals(
+            listOf("да", "бу"),
+            fallback.fallbackWords(prefix("һәм"), listOf("белән"), 3),
+        )
+    }
+
+    @Test
+    fun theRealFallbackNeverExceedsMaxOutAndNeverDuplicates() {
+        val fallback = GlobalTopFrequencyFallback(listOf("һәм", "белән", "да", "бу"))
+        assertEquals(1, fallback.fallbackWords(prefix("сүз"), emptyList(), 1).size)
+        assertTrue(fallback.fallbackWords(prefix("сүз"), emptyList(), 0).isEmpty())
+        val filled = fallback.fallbackWords(prefix("һәм"), listOf("белән", "да", "бу"), 3)
+        assertTrue(filled.isEmpty())
+        assertEquals(filled.distinct(), filled)
+    }
 }

@@ -301,6 +301,19 @@ class SuggestionsControllerEmojiSuggestTest {
     }
 
     @Test
+    fun theEmojiTailSurvivesAFallbackFilledBand() {
+        // TT-NEXTWORD-FILL: the fallback fills the NEXT_WORD cells the bigrams and forms leave
+        // free, so a mapped context word can now arrive with a FULL three-word band — the emoji
+        // still takes the tail cell and the two front words keep their order.
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("йөрәкләр", "һәм", "белән"))
+
+        assertEquals(listOf("йөрәкләр", "һәм", "❤️"), h.strip.lastCells())
+    }
+
+    @Test
     fun theEmojiOpensTheBandWhenNoBigramAnswers() {
         val h = harnessWithMapping("tt", "йөрәк", "❤️")
         h.start(tatar)

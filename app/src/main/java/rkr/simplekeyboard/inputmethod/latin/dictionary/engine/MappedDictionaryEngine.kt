@@ -245,7 +245,10 @@ class MappedDictionaryEngine private constructor(
          * the exact pass byte-identical to the frozen D1 behavior and a null factory keeps
          * NEXT_WORD the pure bigram list. [fuzzyEditPolicy] is the TT-TYPO-NEXT Phase-B wiring of
          * the same kind (docs/TT-TYPO-NEXT.md): null is [FuzzyEditPolicy.DEFAULT] — class #1 only,
-         * no same-length bonus, exactly the pre-Phase-B shipped behavior.
+         * no same-length bonus, exactly the pre-Phase-B shipped behavior. [fallbackWordsFactory] is
+         * the TT-NEXTWORD-FILL wiring (docs/TT-NEXTWORD-FILL.md): built per engine from that
+         * engine's own dictionary, so both shipped languages fill their still-empty NEXT_WORD cells
+         * with their own top-frequency words; null keeps the pre-fill behavior byte-identical.
          */
         fun start(
             catalog: PublishedDictionaryCatalog,
@@ -257,6 +260,7 @@ class MappedDictionaryEngine private constructor(
             suffixTable: InflectedSuffixTable? = null,
             afterWordFormsFactory: AfterWordFormsFactory? = null,
             fuzzyEditPolicy: FuzzyEditPolicy? = null,
+            fallbackWordsFactory: FallbackWordsFactory? = null,
         ): MappedDictionaryEngine? {
             val lease = try {
                 catalog.acquireLatestForActivation()
@@ -265,7 +269,7 @@ class MappedDictionaryEngine private constructor(
             } ?: return null
             return startOwnedLease(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
-                suffixTable, afterWordFormsFactory, fuzzyEditPolicy,
+                suffixTable, afterWordFormsFactory, fuzzyEditPolicy, fallbackWordsFactory,
             )
         }
 
@@ -279,6 +283,7 @@ class MappedDictionaryEngine private constructor(
             suffixTable: InflectedSuffixTable?,
             afterWordFormsFactory: AfterWordFormsFactory?,
             fuzzyEditPolicy: FuzzyEditPolicy?,
+            fallbackWordsFactory: FallbackWordsFactory?,
         ): MappedDictionaryEngine? {
             val dictionary = lease.dictionary
             val identity = DictionaryIdentity(
@@ -312,6 +317,10 @@ class MappedDictionaryEngine private constructor(
                 // the frequencies of that same dictionary.
                 val computer = CompositePrefixComputer(
                     index, personalCandidates, afterWordFormsFactory?.createAfterWordForms(index),
+                    // TT-NEXTWORD-FILL: the factory computes the top-frequency pool HERE — one
+                    // linear scan of the freshly opened dictionary on this background startup
+                    // thread, at most once per engine, before the engine's lookup worker exists.
+                    fallbackWordsFactory?.createFallbackWords(index),
                 )
                 val engine = LatestOnlyPrefixEngine(
                     identity,

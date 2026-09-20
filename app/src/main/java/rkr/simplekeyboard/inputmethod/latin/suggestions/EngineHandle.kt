@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FallbackWordsFactory
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupToken
@@ -150,6 +151,10 @@ class MappedEngineHandle private constructor(
          * same-length bonus, the configuration the corrected C2 gates measured and passed
          * (2026-09-20). Engines started with null run [FuzzyEditPolicy.DEFAULT], bit-identical
          * to the pre-Phase-B behavior — the Russian engine included.
+         *
+         * [fallbackWordsFactory] is the TT-NEXTWORD-FILL wiring (docs/TT-NEXTWORD-FILL.md): both
+         * shipped languages get the factory — it builds the top-frequency pool from the engine's
+         * own dictionary at startup, so each language's NEXT_WORD fallback is its own.
          */
         @JvmStatic
         @JvmOverloads
@@ -159,6 +164,7 @@ class MappedEngineHandle private constructor(
             personalCandidates: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
             suffixRules: TatarSuffixRules? = null,
             fuzzyEditPolicy: FuzzyEditPolicy? = null,
+            fallbackWordsFactory: FallbackWordsFactory? = null,
         ): MappedEngineHandle? {
             val handoff = ResultHandoff { result ->
                 callback.onResult(result.token, result.suggestions, result.kind)
@@ -169,6 +175,7 @@ class MappedEngineHandle private constructor(
                 suffixTable = suffixRules,
                 afterWordFormsFactory = suffixRules,
                 fuzzyEditPolicy = fuzzyEditPolicy,
+                fallbackWordsFactory = fallbackWordsFactory,
             ) ?: return null
             return MappedEngineHandle(engine)
         }

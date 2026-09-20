@@ -80,6 +80,9 @@ internal class CompositePrefixComputer(
     // P3: after-word forms of the NEXT_WORD slot (docs/TT-SUGGESTIONS.md). Null for an engine
     // without word-form rules (the Russian one) — its NEXT_WORD answers stay the pure bigram list.
     private val afterWordForms: AfterWordForms? = null,
+    // TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the global top-frequency fill of the NEXT_WORD
+    // cells still empty after bigrams and forms. Null keeps the pre-fill behavior byte-identical.
+    private val fallbackWords: FallbackWords? = null,
 ) : PrefixComputer, KeyNeighborSink, NextWordComputer {
 
     /**
@@ -117,32 +120,51 @@ internal class CompositePrefixComputer(
      * NEXT_WORD read side. There is no personal-dictionary or E3 fuzzy involvement here — E5 has
      * no personal bigrams (PROPOSALS.md, "E5c. Один вычислитель, один токен") — so the word list
      * is the bigram source's, plus the P3 after-word forms appended into the cells the bigram
-     * successors leave free. Bigram successors keep priority: forms never displace them, never
-     * duplicate them, and never push the list past the three strip cells.
+     * successors leave free, plus the TT-NEXTWORD-FILL global top-frequency words in the cells
+     * still empty after that (docs/TT-NEXTWORD-FILL.md). The priority chain is bigram successors
+     * > word forms > fallback: a later source never displaces, never duplicates, and never pushes
+     * the list past the three strip cells.
      *
      * Before a bigram source is attached (or after a corrupted/missing table failed to open) this
-     * returns an empty list WITHOUT offering forms — the exact "0 predictions, no effect on prefix
-     * suggestions or ordinary input" shape the contract requires. That is not merely conservative:
-     * the first-NEXT_WORD race repair (docs/NEXTWORD-RACE.md, [SuggestionsController]
-     * onBigramAttached) re-issues the request once the attach lands, and it only fires while the
-     * active language has put no word on the band. A forms-only band painted from "not attached
-     * yet" would suppress that re-request and the bigram successors — which outrank forms — would
-     * never appear until the next keystroke.
+     * returns an empty list WITHOUT offering forms OR the fallback — the exact "0 predictions, no
+     * effect on prefix suggestions or ordinary input" shape the contract requires. That is not
+     * merely conservative: the first-NEXT_WORD race repair (docs/NEXTWORD-RACE.md,
+     * [SuggestionsController] onBigramAttached) re-issues the request once the attach lands, and
+     * it only fires while the active language has put no word on the band. A forms-or-fallback
+     * band painted from "not attached yet" would suppress that re-request and the bigram
+     * successors — which outrank both — would never appear until the next keystroke.
      */
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
         val source = bigramSource ?: return emptyList()
-        val bigrams = source.predict(normalizedContextWordUtf8)
-        val forms = afterWordForms ?: return bigrams
-        if (bigrams.size >= CELL_COUNT) return bigrams
-        // Fail closed toward the bigram-only list, the exact posture the personal source has on
-        // the prefix path: broken forms must never take the bigram successors down with them.
-        val extras = try {
-            forms.formsOf(normalizedContextWordUtf8, bigrams, CELL_COUNT - bigrams.size)
-        } catch (_: RuntimeException) {
-            return bigrams
+        var result = source.predict(normalizedContextWordUtf8)
+        if (result.size < CELL_COUNT) {
+            val forms = afterWordForms
+            if (forms != null) {
+                // Fail closed toward the bigram-only list, the exact posture the personal source has
+                // on the prefix path: broken forms must never take the bigram successors down with
+                // them.
+                val extras = try {
+                    forms.formsOf(normalizedContextWordUtf8, result, CELL_COUNT - result.size)
+                } catch (_: RuntimeException) {
+                    null
+                }
+                if (!extras.isNullOrEmpty()) result = result + extras
+            }
         }
-        if (extras.isEmpty()) return bigrams
-        return bigrams + extras
+        if (result.size < CELL_COUNT) {
+            val fallback = fallbackWords
+            if (fallback != null) {
+                // Same fail-closed posture as the forms: a broken fallback leaves everything the
+                // earlier sources produced exactly as it was.
+                val extras = try {
+                    fallback.fallbackWords(normalizedContextWordUtf8, result, CELL_COUNT - result.size)
+                } catch (_: RuntimeException) {
+                    null
+                }
+                if (!extras.isNullOrEmpty()) result = result + extras
+            }
+        }
+        return result
     }
 
     override fun updateKeyNeighbors(table: KeyNeighborTable?) {

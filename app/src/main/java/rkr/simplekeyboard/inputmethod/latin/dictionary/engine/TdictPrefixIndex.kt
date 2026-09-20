@@ -144,7 +144,8 @@ internal class TdictPrefixIndex private constructor(
     private val blockIndexOffset: Int,
     private val suffixTable: InflectedSuffixTable?,
     private val fuzzyPolicy: FuzzyEditPolicy,
-) : ClassifiedPrefixComputer, KeyNeighborSink, BigramDictionary, WordFrequencySource {
+) : ClassifiedPrefixComputer, KeyNeighborSink, BigramDictionary, WordFrequencySource,
+    TopFrequencySource {
     // Reusable per-index scratch. The index stops being fully immutable: these buffers are touched
     // ONLY inside lookup(), whose exclusivity is guaranteed by LatestOnlyPrefixEngine serialization
     // (at most one active worker). updateKeyNeighbors() only swaps a @Volatile reference.
@@ -966,6 +967,48 @@ internal class TdictPrefixIndex private constructor(
     override fun frequencyOf(word: String): Long {
         val bytes = word.toByteArray(Charsets.UTF_8)
         return frequencyOf(bytes, bytes.size)
+    }
+
+    /**
+     * TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the [count] most frequent words of the
+     * dictionary, in the frozen ranking order (frequency descending, then code-point ascending —
+     * UTF-8 byte order is code-point order, so the same comparator as the lookup path applies).
+     *
+     * ONE linear scan of the dictionary: blocks decode sequentially through the shared block cache
+     * (each block decoded exactly once), the top-N selection state is two fixed primitive arrays,
+     * and the tie-break compare reads both words through the no-cache [decodeWordInto] — so the
+     * scan allocates nothing per entry and never touches the per-keystroke structures differently
+     * than any other read. It runs at engine START (the fallback factory builds the pool there),
+     * at most once per engine; it is never on the lookup path.
+     */
+    override fun topFrequentWords(count: Int): List<String> {
+        require(count >= 0)
+        if (count == 0) return emptyList()
+        val topIndices = IntArray(count)
+        val topFrequencies = LongArray(count)
+        var size = 0
+        for (index in 0 until entryCount) {
+            val frequency = frequencyAt(index)
+            var insertion = size
+            for (slot in 0 until size) {
+                if (frequency > topFrequencies[slot] ||
+                    (frequency == topFrequencies[slot] && compareWords(index, topIndices[slot]) < 0)
+                ) {
+                    insertion = slot
+                    break
+                }
+            }
+            if (insertion >= count) continue
+            val newSize = minOf(count, size + 1)
+            for (slot in newSize - 1 downTo insertion + 1) {
+                topIndices[slot] = topIndices[slot - 1]
+                topFrequencies[slot] = topFrequencies[slot - 1]
+            }
+            topIndices[insertion] = index
+            topFrequencies[insertion] = frequency
+            size = newSize
+        }
+        return (0 until size).map { decodeWord(topIndices[it]) }
     }
 
     override fun wordAt(index: Int): String = decodeWord(index)
