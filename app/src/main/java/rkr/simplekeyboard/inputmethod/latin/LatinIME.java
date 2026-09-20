@@ -92,6 +92,7 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.EngineHandle;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.MappedEngineHandle;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferEnvironment;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferFlagStore;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferPresenter;
@@ -533,6 +534,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
+            public boolean isAtSentenceStart() {
+                // P4 (docs/TT-SUGGESTIONS.md): the same cache and the same cache-start provenance
+                // as cachedNextWordContext above — the detector, not a re-derivation, decides.
+                return TatarWordUtils.INSTANCE.isSentenceStartContext(
+                        mInputLogic.mConnection.getCachedTextBeforeCursor(),
+                        mInputLogic.mConnection.cacheReachedTextStart());
+            }
+
+            @Override
             public boolean commitPredictedWord(final String expectedContextWord,
                     final String suggestion) {
                 final boolean committed =
@@ -572,7 +582,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             final PersonalCandidateSource personalCandidates =
                     PersonalDictionaries.sourceFor(this, subtypeId,
                             () -> Settings.readPersonalDictionaryEnabled(mDevicePrefs));
-            return MappedEngineHandle.start(catalog, resultCallback, personalCandidates);
+            // P3 (docs/TT-SUGGESTIONS.md): the Tatar word-form rules ride the same per-language
+            // seam as the personal source — the artifact registry, not a call-site string,
+            // decides, and the rule follows the family's language tag across repacks. The Russian
+            // engine is started with null and never applies Tatar rules.
+            final DictionaryArtifactSpec dictionaryArtifact = DictionaryArtifactSpec.forSubtype(subtypeId);
+            final TatarSuffixRules suffixRules = dictionaryArtifact != null
+                    && PersonalSubtypes.TATAR_RU.equals(dictionaryArtifact.getLanguageTag())
+                    ? TatarSuffixRules.INSTANCE : null;
+            return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules);
         };
 
         mSuggestionsController = new SuggestionsController(

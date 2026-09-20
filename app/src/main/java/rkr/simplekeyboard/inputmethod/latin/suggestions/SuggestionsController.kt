@@ -111,6 +111,15 @@ interface EditorSurface {
     fun cachedNextWordContext(): String = ""
 
     /**
+     * P4 sentence-start detection over the live cache (docs/TT-SUGGESTIONS.md): true when the
+     * cursor sits where a new sentence begins — the start of the field, or sentence-ending
+     * punctuation followed by space(s) — by [TatarWordUtils.isSentenceStartContext]'s exact rules,
+     * cache-start provenance included. Defaults to false so an editor surface written before P4
+     * keeps compiling and simply never shows sentence-start predictions.
+     */
+    fun isAtSentenceStart(): Boolean = false
+
+    /**
      * The THIRD insertion path of the frozen text contract (E5d): commits a predicted next word.
      * Unlike [commitSuggestion] and [replaceTypedWord], this one deletes NOTHING — NEXT_WORD only
      * ever fires on an empty prefix, so there is nothing trailing to remove; it only inserts, with
@@ -120,7 +129,10 @@ interface EditorSurface {
      * same two checks the other two paths make), an EMPTY trailing word (a non-empty one means the
      * user typed something after the request was built — the tap is stale), and the live context
      * word re-extracted by [cachedNextWordContext]'s own algorithm matching [expectedContextWord]
-     * exactly. Defaults to false, like [replaceTypedWord] and [revertTypedWord].
+     * exactly. P4 adds one case to that equality: at a sentence start the context word is EMPTY on
+     * both sides, and the production path then additionally requires the live position to still be
+     * a sentence start ([isAtSentenceStart]), so a tap after ", " commits nothing. Defaults to
+     * false, like [replaceTypedWord] and [revertTypedWord].
      */
     fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean = false
 }
@@ -310,6 +322,10 @@ class SuggestionsController internal constructor(
     // fail-closed shape a missing asset has.
     private val emojiSuggestPreparationFactory: (ExecutorService) -> EmojiSuggestPreparation? =
         { null },
+    // P4 sentence-start table (docs/TT-SUGGESTIONS.md): same trailing-default shape — no factory,
+    // no source, no sentence-start band, and every pre-P4 test constructor keeps compiling.
+    private val sentStartPreparationFactory: (ExecutorService) -> SentStartPreparation? =
+        { null },
 ) {
     /** Production entry point (frozen contract). */
     constructor(
@@ -332,6 +348,7 @@ class SuggestionsController internal constructor(
             DeviceProtectedBigramPreparation.create(context, executor, subtypeId)
         },
         { executor -> AssetEmojiSuggestPreparation(context, executor) },
+        { executor -> AssetSentStartPreparation(context, executor) },
     )
 
     /** Test entry point: injects a synchronous poster + executor and pre-marks the dictionary. */
@@ -558,6 +575,18 @@ class SuggestionsController internal constructor(
 
     /** Set the moment the one-per-process load is requested; a failure is not retried. */
     private var emojiPreparationRequested: Boolean = false
+
+    // --- Sentence-start state (P4, docs/TT-SUGGESTIONS.md). The exact emoji-suggest shape: the
+    // source is immutable once loaded, the band carries no sentence-start state of its own beyond
+    // the empty-context binding, and every failure direction is silent.
+    /** The loaded table, or null while it has never finished loading. Load failure is terminal. */
+    private var sentStartSource: SentStartSource? = null
+
+    /** Lazily built loading seam; null means fail-closed, with no sentence-start band ever. */
+    private var sentStartPreparation: SentStartPreparation? = null
+
+    /** Set the moment the one-per-process load is requested; a failure is not retried. */
+    private var sentStartPreparationRequested: Boolean = false
 
     /**
      * One replacement, as far as the undo is concerned. There is no history: at most one of these
@@ -1680,6 +1709,12 @@ class SuggestionsController internal constructor(
     private fun requestNextWordContext(activeEngine: EngineHandle) {
         val context = editor.cachedNextWordContext()
         if (context.isEmpty()) {
+            // P4 (docs/TT-SUGGESTIONS.md): an empty context at a sentence boundary is not silence
+            // but a fresh sentence start, answered synchronously from the sentence-start table —
+            // no engine request is issued, so the bigram successors and the P3 after-word forms
+            // are suppressed for this slot by construction (a sentence boundary resets context).
+            // Anywhere else the frozen "no prediction without a context word" behavior stands.
+            if (requestSentenceStart()) return
             clearToReservedBand()
             return
         }
@@ -1705,6 +1740,103 @@ class SuggestionsController internal constructor(
         if (token == null) {
             clearToReservedBand()
         }
+    }
+
+    // --- Sentence start (P4, docs/TT-SUGGESTIONS.md) ---------------------------------------------
+
+    /**
+     * Paints the sentence-start band when the current position is one, synchronously — the table
+     * is static, so there is no engine request, no token and no callback, and the whole paint
+     * happens on the UI thread inside the request path, exactly where a NEXT_WORD request would
+     * have been issued. Returns false (the caller then falls back to the reserved empty band) in
+     * every no-show direction, all silent by design: the active language is not Tatar (the only
+     * language that ships a table — the Russian slot behaves byte-identically to before), the
+     * position is not a sentence start, the table is missing/broken/still loading, or it has
+     * nothing to offer.
+     *
+     * The band is bound to the EMPTY context — the one value [displayedContextWord] can hold that
+     * the NEXT_WORD path never binds (it refuses an empty context outright) — and the tap path
+     * commits it through the same E5d predicted-word editor call, whose production implementation
+     * re-derives the live sentence start before editing. [requestSessionId] is stamped NO_SESSION
+     * on purpose: no engine request is outstanding, so nothing in flight — a late prefix result of
+     * the word before the period above all — may ever land on top of this band, the exact
+     * protection [clearToReservedBand] buys with the same stamp. No companion is ever asked either:
+     * its query would be the empty context, which [requestCompanionFill] rejects itself.
+     */
+    private fun requestSentenceStart(): Boolean {
+        if (activeLanguage != DEFAULT_LANGUAGE) return false
+        if (!editor.isAtSentenceStart()) return false
+        if (sentStartSource == null) {
+            // Not loaded yet: start the one-time background load. Re-read the field afterwards —
+            // a preparation that answers synchronously (a direct test executor) has already
+            // published the source by the time the call returns.
+            maybePrepareSentStart()
+        }
+        val source = sentStartSource ?: return false
+        val words = try {
+            source.topWords(SuggestionStripState.CELL_COUNT)
+        } catch (_: RuntimeException) {
+            return false
+        }
+        if (words.isEmpty()) return false
+        displayedPrefix = null
+        pendingContextWord = SENTENCE_START_CONTEXT
+        displayedContextWord = SENTENCE_START_CONTEXT
+        displayedSessionId = sessionId
+        bandHasActiveLanguageWord = true
+        requestSessionId = NO_SESSION
+        clearCompanionRequest()
+        showBand(words)
+        return true
+    }
+
+    /**
+     * Starts the one-per-process background load of the sentence-start table, at most once. A
+     * factory or executor failure is silent and terminal: a sentence start simply shows the
+     * reserved empty band, exactly as before the feature existed.
+     */
+    private fun maybePrepareSentStart() {
+        if (destroyed || sentStartPreparationRequested) return
+        val backgroundExecutor = backgroundExecutor() ?: return
+        val preparation = sentStartPreparation ?: run {
+            val created = try {
+                sentStartPreparationFactory(backgroundExecutor)
+            } catch (_: Throwable) {
+                null
+            } ?: return
+            sentStartPreparation = created
+            created
+        }
+        sentStartPreparationRequested = true
+        try {
+            preparation.prepare { source ->
+                // The callback may run on the background executor. Marshal onto the serialized UI
+                // owner before touching any controller state.
+                uiPoster.post { onSentStartReady(source) }
+            }
+        } catch (_: Throwable) {
+            // Silent: the band behaves exactly as if the table did not exist.
+        }
+    }
+
+    /**
+     * The table finished loading. A sentence start reached BEFORE the table arrived showed the
+     * reserved empty band; fill it now rather than after the next keystroke — but only if the live
+     * editor state is still exactly a sentence-start moment with nothing bound, the same
+     * re-derivation [onEmojiSuggestReady] performs, so a load that finished after the user typed
+     * on changes nothing.
+     */
+    private fun onSentStartReady(source: SentStartSource?) {
+        if (destroyed) return
+        sentStartSource = source ?: return
+        if (!eligible) return
+        if (usableEngine() == null) return
+        if (displayedPrefix != null || displayedContextWord != null) return
+        if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
+        if (editor.cachedWordBeforeCursor().isNotEmpty()) return
+        if (editor.cachedNextWordContext().isNotEmpty()) return
+        // Not a sentence start (or not Tatar): requestSentenceStart's own guards say no.
+        requestSentenceStart()
     }
 
     /**
@@ -2100,6 +2232,15 @@ class SuggestionsController internal constructor(
         // Sentinel for "no request is outstanding". [sessionId] starts at 0 and only ever grows,
         // so this can never be mistaken for a live generation.
         private const val NO_SESSION = -1L
+
+        /**
+         * The [displayedContextWord]/[pendingContextWord] binding of a sentence-start band (P4):
+         * the empty string, the one context value the NEXT_WORD path never binds — it refuses an
+         * empty context outright — so it names "a sentence start" unambiguously. The tap path
+         * commits it through the ordinary E5d predicted-word call, whose production implementation
+         * re-derives the live sentence start before editing.
+         */
+        private const val SENTENCE_START_CONTEXT = ""
         /** No proper prefix of the current run has come back empty yet. */
         private const val NO_EMPTY_RESULT = -1
     }

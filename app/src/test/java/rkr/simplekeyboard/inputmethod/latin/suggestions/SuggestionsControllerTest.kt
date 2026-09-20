@@ -21,7 +21,14 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.CompositePrefixComputer
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.EngineTestFixtures
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LatestOnlyPrefixEngine
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupToken
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ManualEngineExecutor
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ResultHandoff
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 
@@ -1325,5 +1332,103 @@ class SuggestionsControllerTest {
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("өйгә"), LookupKind.NEXT_WORD)
         assertTrue(h.strip.visible)
         assertEquals(1, h.strip.shown.size)
+    }
+
+    // --- P3 after-word forms through the real engine (docs/TT-SUGGESTIONS.md) --------------------
+    //
+    // The merge itself is pinned in CompositePrefixComputerTest and TatarAfterWordFormsTest; what
+    // is proven here is the full path the user sees: committed word + space -> engine worker ->
+    // strip cells (bigram successors first, then the forms) -> tap commits through the NEXT_WORD
+    // insertion path. The handle drives a real LatestOnlyPrefixEngine over a fixture dictionary and
+    // a fixture bigram table, with the executor run inline so the answer lands synchronously — a
+    // shape the controller already digests (SuggestionsControllerBigramAttachTest).
+
+    private class RealNextWordEngineHandle(
+        private val delegate: LatestOnlyPrefixEngine,
+        private val executor: ManualEngineExecutor,
+    ) : EngineHandle {
+        override fun request(editorSessionId: Long, subtypeId: String, prefixUtf8: ByteArray): Any? =
+            delegate.request(editorSessionId, subtypeId, prefixUtf8)?.also { executor.runAll() }
+
+        override fun requestNextWord(
+            editorSessionId: Long,
+            subtypeId: String,
+            contextWordUtf8: ByteArray,
+        ): Any? = delegate.requestNextWord(editorSessionId, subtypeId, contextWordUtf8)
+            ?.also { executor.runAll() }
+
+        override fun isCurrent(token: Any): Boolean =
+            token is LookupToken && delegate.isCurrent(token)
+
+        override fun finishInput() = delegate.finishInput()
+
+        override fun destroy(timeoutMs: Long): Boolean = true
+    }
+
+    private fun realTatarNextWordEngine(
+        h: Harness,
+        bigramSuccessors: List<String>,
+    ): RealNextWordEngineHandle {
+        val dictionary = EngineTestFixtures.index(
+            listOf(
+                "татар" to 134_412L,
+                "татарлар" to 12_085L,
+                "татарның" to 2_752L,
+                "татарча" to 9_093L,
+            ),
+        )
+        val computer = CompositePrefixComputer(
+            dictionary,
+            PersonalCandidateSource.EMPTY,
+            TatarSuffixRules.createAfterWordForms(dictionary),
+        )
+        computer.attachBigramSource(
+            EngineTestFixtures.bigramIndex(listOf("татар" to bigramSuccessors)),
+        )
+        val executor = ManualEngineExecutor()
+        val delegate = LatestOnlyPrefixEngine(
+            dictionary.identity,
+            computer,
+            executor,
+            ResultHandoff { result ->
+                // The callback arrives at engine start, which the controller performs after this
+                // handle is handed over — read it lazily.
+                h.capturedCallback!!.onResult(result.token, result.suggestions, result.kind)
+            },
+        )
+        return RealNextWordEngineHandle(delegate, executor)
+    }
+
+    @Test
+    fun committedTatarWordPlusSpaceOffersItsInflectionsAfterTheBigramSuccessors() {
+        val h = Harness()
+        h.factoryResult = realTatarNextWordEngine(h, listOf("белән"))
+        h.controller.onStartInput(eligible = true)
+
+        h.editor.word = ""
+        h.editor.nextWordContext = "татар"
+        h.controller.onTextChanged()
+
+        // The bigram successor keeps the lead; the strip cells it leaves free carry the forms of
+        // татар, frequency-ranked (12 085 > 9 093 > the unshown татарның 2 752).
+        assertEquals(Triple("белән", "татарлар", "татарча"), h.strip.shown.last())
+
+        // A form cell commits exactly like a predicted word: the NEXT_WORD insertion path.
+        h.strip.listener!!.onTap("татарча")
+        assertEquals(listOf("татар" to "татарча"), h.editor.predictedCommits)
+        assertTrue(h.editor.commits.isEmpty())
+    }
+
+    @Test
+    fun bigramSuccessorsTakingAllThreeCellsLeaveNoRoomForForms() {
+        val h = Harness()
+        h.factoryResult = realTatarNextWordEngine(h, listOf("белән", "дип", "туры"))
+        h.controller.onStartInput(eligible = true)
+
+        h.editor.word = ""
+        h.editor.nextWordContext = "татар"
+        h.controller.onTextChanged()
+
+        assertEquals(Triple("белән", "дип", "туры"), h.strip.shown.last())
     }
 }

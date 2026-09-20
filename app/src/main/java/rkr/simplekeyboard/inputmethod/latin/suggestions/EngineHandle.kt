@@ -137,6 +137,11 @@ class MappedEngineHandle private constructor(
          * The [catalog] is the one the controller already owns
          * ([SuggestionsController.engineCatalog]): the engine neither builds a second store nor
          * spawns a throwaway executor of its own.
+         *
+         * [suffixRules] is the P3 word-form wiring (docs/TT-SUGGESTIONS.md): the one object carries
+         * both engine addons — the same-stem boost table of the prefix pass and the after-word
+         * forms of the NEXT_WORD slot. The Tatar engine is started with it, the Russian engine with
+         * null, and neither behavior exists without it.
          */
         @JvmStatic
         @JvmOverloads
@@ -144,12 +149,16 @@ class MappedEngineHandle private constructor(
             catalog: PublishedDictionaryCatalog,
             callback: ResultCallback,
             personalCandidates: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
+            suffixRules: TatarSuffixRules? = null,
         ): MappedEngineHandle? {
             val handoff = ResultHandoff { result ->
                 callback.onResult(result.token, result.suggestions, result.kind)
             }
             val engine = MappedDictionaryEngine.start(
-                catalog, handoff, personalCandidates = personalCandidates,
+                catalog, handoff,
+                personalCandidates = personalCandidates,
+                suffixTable = suffixRules,
+                afterWordFormsFactory = suffixRules,
             ) ?: return null
             return MappedEngineHandle(engine)
         }

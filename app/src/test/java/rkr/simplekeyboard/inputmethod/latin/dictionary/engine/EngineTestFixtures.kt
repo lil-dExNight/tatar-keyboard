@@ -11,7 +11,10 @@ internal object EngineTestFixtures {
     val identity = DictionaryIdentity(1, 2, 1, "a".repeat(64))
     val bigramIdentity = BigramTableIdentity(1, "tt", 3, 1, "b".repeat(64))
 
-    fun index(entries: List<Pair<String, Long>>): TdictPrefixIndex {
+    fun index(
+        entries: List<Pair<String, Long>>,
+        suffixTable: InflectedSuffixTable? = null,
+    ): TdictPrefixIndex {
         val raw = DictionaryTestFixtures.raw(entries)
         return requireNotNull(
             TdictPrefixIndex.open(
@@ -19,6 +22,7 @@ internal object EngineTestFixtures {
                 identity,
                 entries.size.toLong(),
                 raw.size.toLong(),
+                suffixTable,
             ),
         )
     }

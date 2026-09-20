@@ -1,0 +1,78 @@
+# Tatar sentence-start suggestions, v1 (TT-SUGGESTIONS, phase P4).
+#
+# Source: sentence-initial tokens of the Leipzig Corpora Collection Tatar corpora
+# tat_mixed_2015_1M and tat_web_2018_1M
+# (https://wortschatz.uni-leipzig.de/en/download/tat).
+# License: Creative Commons Attribution 4.0 International (CC BY 4.0),
+# https://creativecommons.org/licenses/by/4.0/ -- see NOTICE.txt beside this file.
+#
+# Pipeline: the first whitespace token of every sentence, hugging punctuation
+# stripped (the dict_tokens rule), normalized exactly like the dictionary pipeline
+# (NFC, lowercase, Tatar alphabet filter), kept only when present in the shipped
+# Tatar dictionary -- the table can never offer a word the keyboard does not know.
+# Rows: word<TAB>sentence-initial occurrences, sorted by count descending, word
+# ascending.
+бу	72870
+ул	45080
+ә	36362
+бүген	30538
+аның	26859
+шулай	24127
+алар	22610
+әлеге	21298
+әмма	18443
+шул	17449
+татарстан	15728
+без	15641
+анда	14902
+шуңа	13746
+мин	13264
+ләкин	12806
+тр	11936
+хәзер	11499
+узган	10221
+чөнки	10120
+казан	9951
+быел	9812
+бүгенге	9657
+безнең	9203
+бер	9055
+татар	8970
+моннан	8705
+менә	8535
+аларның	8064
+тик	7585
+яңа	7462
+әгәр	7412
+шушы	7329
+аны	7061
+һәм	6897
+биредә	6837
+халык	6696
+соңгы	6693
+иң	6666
+казанда	6573
+хәзерге	6551
+беренче	6215
+мондый	5679
+россия	5480
+татарстанда	5396
+аннан	5394
+әле	5256
+русия	5165
+республика	5078
+мәсәлән	4970
+кичә	4833
+билгеле	4683
+икенче	4681
+ике	4609
+су	4554
+әлбәттә	4468
+монда	4465
+авыл	4330
+түбән	4317
+район	4172
+инде	4125
+һәр	4124
+моның	4073
+нәтиҗәдә	3984

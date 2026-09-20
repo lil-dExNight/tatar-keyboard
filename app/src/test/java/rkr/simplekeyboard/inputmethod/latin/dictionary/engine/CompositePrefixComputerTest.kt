@@ -239,6 +239,68 @@ class CompositePrefixComputerTest {
         assertEquals(0, personalCalls)
     }
 
+    // --- P3: after-word forms of the NEXT_WORD slot (docs/TT-SUGGESTIONS.md) ---------------------
+
+    private fun fakeForms(forms: List<String>): AfterWordForms =
+        AfterWordForms { _, _, maxOut -> forms.take(maxOut) }
+
+    @Test
+    fun formsFillTheCellsTheBigramSuccessorsLeaveFree() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр", "сүзем")),
+        )
+        computer.attachBigramSource(NextWordComputer { listOf("эшләгән") })
+
+        assertEquals(listOf("эшләгән", "сүзләр", "сүзем"), computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun bigramSuccessorsAreNeverDisplacedByForms() {
+        val bigrams = listOf("эшләгән", "белән", "туры")
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр")),
+        )
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        // Three successors take all three cells: the forms are never even consulted beyond the
+        // room check, and the list is the bigram list itself.
+        assertSame(bigrams, computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun withoutFormsTheNextWordAnswerIsThePureBigramList() {
+        val bigrams = listOf("эшләгән")
+        val computer = CompositePrefixComputer(FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY)
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        assertSame(bigrams, computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun formsAreNotOfferedBeforeABigramSourceIsAttached() {
+        // The first-NEXT_WORD race repair (docs/NEXTWORD-RACE.md) re-issues the request when the
+        // attach lands, but only while the band holds no active-language word; a forms-only band
+        // painted from "not attached yet" would suppress it and the bigram successors — which
+        // outrank forms — would never appear until the next keystroke.
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр")),
+        )
+
+        assertTrue(computer.predict(prefix("сүз")).isEmpty())
+    }
+
+    @Test
+    fun aBrokenFormsSourceLeavesTheBigramAnswerUntouched() {
+        val bigrams = listOf("эшләгән")
+        val broken = AfterWordForms { _, _, _ -> throw IllegalStateException("broken") }
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, broken,
+        )
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        assertSame(bigrams, computer.predict(prefix("сүз")))
+    }
+
     @Test
     fun predictionsIgnorePersonalDictionaryEntirely() {
         // E5d, "Контракт текста" amendment, пункт 3: "Личных биграмм в E5 нет ... таблица биграмм

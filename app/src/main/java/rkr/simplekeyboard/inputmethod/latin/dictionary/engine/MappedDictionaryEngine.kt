@@ -239,6 +239,11 @@ class MappedDictionaryEngine private constructor(
          * Acquires and consumes a catalog lease. Call off the UI thread: catalog validation and
          * mmap both perform file I/O. On success the lease is owned exclusively by the returned
          * engine until destroy; on every failure it is closed here exactly once.
+         *
+         * [suffixTable]/[afterWordFormsFactory] are the P3 word-form wiring (docs/TT-SUGGESTIONS.md):
+         * the Tatar engine is started with both, every other engine with nulls — a null table keeps
+         * the exact pass byte-identical to the frozen D1 behavior and a null factory keeps
+         * NEXT_WORD the pure bigram list.
          */
         fun start(
             catalog: PublishedDictionaryCatalog,
@@ -247,6 +252,8 @@ class MappedDictionaryEngine private constructor(
                 ExecutorServiceEngineExecutor::singleThread,
             mapper: DictionaryMapper = FILE_MAPPER,
             personalCandidates: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
+            suffixTable: InflectedSuffixTable? = null,
+            afterWordFormsFactory: AfterWordFormsFactory? = null,
         ): MappedDictionaryEngine? {
             val lease = try {
                 catalog.acquireLatestForActivation()
@@ -255,6 +262,7 @@ class MappedDictionaryEngine private constructor(
             } ?: return null
             return startOwnedLease(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
+                suffixTable, afterWordFormsFactory,
             )
         }
 
@@ -265,6 +273,8 @@ class MappedDictionaryEngine private constructor(
             executorFactory: () -> EngineExecutor,
             mapper: DictionaryMapper,
             personalCandidates: PersonalCandidateSource,
+            suffixTable: InflectedSuffixTable?,
+            afterWordFormsFactory: AfterWordFormsFactory?,
         ): MappedDictionaryEngine? {
             val dictionary = lease.dictionary
             val identity = DictionaryIdentity(
@@ -282,6 +292,7 @@ class MappedDictionaryEngine private constructor(
                     identity,
                     dictionary.entryCount,
                     dictionary.rawSize,
+                    suffixTable,
                 ) ?: throw IllegalArgumentException("validated dictionary layout mismatch")
                 val executor = executorFactory()
                 createdExecutor = executor
@@ -290,7 +301,13 @@ class MappedDictionaryEngine private constructor(
                 // because only there are both the candidate classes and the frequencies known. The
                 // engine's public surface does not widen: what goes out through PrefixComputer.lookup
                 // is still a List<String>, and there is no second request, token or isCurrent.
-                val computer = CompositePrefixComputer(index, personalCandidates)
+                //
+                // The after-word forms are created against THIS engine's index: a schema-3 bigram
+                // table links itself to one dictionary by raw SHA-256, and the forms must rank by
+                // the frequencies of that same dictionary.
+                val computer = CompositePrefixComputer(
+                    index, personalCandidates, afterWordFormsFactory?.createAfterWordForms(index),
+                )
                 val engine = LatestOnlyPrefixEngine(
                     identity,
                     computer,

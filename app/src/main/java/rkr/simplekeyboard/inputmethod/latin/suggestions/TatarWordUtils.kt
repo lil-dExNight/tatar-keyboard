@@ -89,10 +89,11 @@ object TatarWordUtils {
      * or more U+0020 and nothing else. A newline, tab, NBSP, or any punctuation right before the
      * cursor yields "" — not because those characters cannot end a word, but because the contract
      * reserves NEXT_WORD for the plain "finished a word, pressed space" moment and deliberately
-     * excludes sentence starts and positions right after punctuation (no start-of-sentence table
-     * exists, and this exclusion doubles as the thing that keeps NEXT_WORD out of the
-     * auto-capitalization codepath). This function IS that exclusion: it is a side effect of the
-     * separator rule, not a second check layered on top of it.
+     * excludes sentence starts and positions right after punctuation (the bigram table is a
+     * word-context table and stays one; sentence starts are answered separately from the P4
+     * sentence-start table — [isSentenceStartContext] — and this exclusion still doubles as the
+     * thing that keeps NEXT_WORD out of the auto-capitalization codepath). This function IS that
+     * exclusion: it is a side effect of the separator rule, not a second check layered on top of it.
      *
      * The word itself is [extractTrailingWord] of the text before the separator run — the exact same
      * word-boundary algorithm PREFIX mode uses, so "context word" and "prefix" agree on what a word
@@ -136,6 +137,63 @@ object TatarWordUtils {
         if (!cacheReachedTextStart && separatorStart - word.length == 0) return ""
         return word
     }
+
+    /**
+     * The P4 sentence-start detection (docs/TT-SUGGESTIONS.md): true when the cursor sits where a
+     * new sentence begins, i.e. the text before it either IS the start of the field or ends in a
+     * run of sentence-ending punctuation ('.', '!', '?', '…') followed by one or more U+0020.
+     *
+     * This amends the frozen "no prediction after punctuation" contract deliberately and narrowly:
+     * it is a DETECTOR, not a relaxation of [extractNextWordContext] — the bigram table is still
+     * never consulted at these positions (a sentence boundary resets the context), and the set of
+     * sentence-ending characters is exactly the four above. Anything else before the space run —
+     * a word, a comma, a quote, a closing parenthesis — is not a sentence start. The punctuation
+     * run must directly follow a letter ("сүз. ", "нәрсә?! ") or open the field: a digit+period
+     * ("5. ") is a number, not a sentence end. Closing quotes/brackets after the period ("сүз.» ")
+     * are an accepted miss — over-matching would offer sentence starts mid-sentence, which is the
+     * worse direction.
+     *
+     * [cacheReachedTextStart] carries the same provenance as in [extractNextWordContext]
+     * (docs/NEXTWORD-RACE.md): an empty or all-spaces cache, and a punctuation run touching index
+     * 0, are only trusted when the cache provably reached the start of the text — a truncated
+     * window may hide the word that actually precedes. The single-argument overload cannot tell,
+     * so it treats those conservatively (false), while mid-text cases like "сүз. " need no
+     * provenance: the period is visible right where it matters.
+     *
+     * Allocation-free; the scans are bounded by the cache size
+     * ([rkr.simplekeyboard.inputmethod.latin.common.Constants.EDITOR_CONTENTS_CACHE_SIZE]).
+     */
+    @JvmStatic
+    fun isSentenceStartContext(textBeforeCursor: CharSequence?): Boolean =
+        isSentenceStartContext(textBeforeCursor, cacheReachedTextStart = false)
+
+    /** The two-argument form of [isSentenceStartContext]; see its contract for the rules. */
+    @JvmStatic
+    fun isSentenceStartContext(textBeforeCursor: CharSequence?, cacheReachedTextStart: Boolean): Boolean {
+        if (textBeforeCursor == null) return false
+        val length = textBeforeCursor.length
+        var separatorStart = length
+        while (separatorStart > 0 && textBeforeCursor[separatorStart - 1] == ' ') {
+            separatorStart--
+        }
+        if (separatorStart == 0) {
+            // Empty text, or nothing but spaces: a genuine field start only when the cache
+            // provably reached the start of the text.
+            return cacheReachedTextStart
+        }
+        if (separatorStart == length) return false // no trailing U+0020 run at all
+        var punctStart = separatorStart
+        while (punctStart > 0 && isSentenceEndingPunctuation(textBeforeCursor[punctStart - 1])) {
+            punctStart--
+        }
+        if (punctStart == separatorStart) return false // the space run follows no sentence end
+        if (punctStart == 0) return cacheReachedTextStart // the run opens the field, or hides a cut
+        return Character.isLetter(textBeforeCursor[punctStart - 1])
+    }
+
+    /** The four sentence-ending characters of the P4 contract: '.', '!', '?', '…' (U+2026). */
+    private fun isSentenceEndingPunctuation(ch: Char): Boolean =
+        ch == '.' || ch == '!' || ch == '?' || ch == '…'
 
     /**
      * True when the text before the cursor ends in a word that holds at least [minLetters] letters,

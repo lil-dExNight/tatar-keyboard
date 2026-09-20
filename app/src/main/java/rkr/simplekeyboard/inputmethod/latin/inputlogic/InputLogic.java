@@ -665,12 +665,20 @@ public final class InputLogic {
      * expectedContextWord}. Deletes zero characters; inserts {@code suggestion} with the same
      * auto-space rule an accepted suggestion uses.
      *
-     * @param expectedContextWord the context word the prediction was computed for.
+     * <p>P4 (docs/TT-SUGGESTIONS.md) adds one case to the context check: at a sentence start the
+     * bound context is EMPTY — the sentence-start table answers where there is no previous word —
+     * and the equality check then passes only if the live context is empty too, with one
+     * additional requirement: the live position must still be a sentence start by the exact
+     * detector the request was built with. Without it an empty expected context would match any
+     * context-free position (after ", " just as after ". "), and a stale tap would edit there.
+     *
+     * @param expectedContextWord the context word the prediction was computed for; empty only for
+     *        a sentence-start prediction (P4).
      * @param suggestion the predicted word to insert.
      * @return {@code true} if the word was committed, {@code false} otherwise (no edit).
      */
     public boolean commitPredictedWord(final String expectedContextWord, final String suggestion) {
-        if (TextUtils.isEmpty(expectedContextWord) || TextUtils.isEmpty(suggestion)) {
+        if (expectedContextWord == null || TextUtils.isEmpty(suggestion)) {
             return false;
         }
         if (mConnection.hasSelection()) {
@@ -694,6 +702,14 @@ public final class InputLogic {
                         mConnection.cacheReachedTextStart());
         if (!expectedContextWord.equals(liveContext)) {
             // Stale tap: the context word no longer matches. Do not edit.
+            return false;
+        }
+        if (expectedContextWord.isEmpty()
+                && !TatarWordUtils.isSentenceStartContext(mConnection.getCachedTextBeforeCursor(),
+                        mConnection.cacheReachedTextStart())) {
+            // An empty context binds only at a sentence start (P4); the position no longer being
+            // one (or never having been one — a context-free mid-sentence position matches the
+            // equality check too) means the tap is stale. Do not edit.
             return false;
         }
         // The space rides along inside the SAME commitText, exactly like the other two paths.

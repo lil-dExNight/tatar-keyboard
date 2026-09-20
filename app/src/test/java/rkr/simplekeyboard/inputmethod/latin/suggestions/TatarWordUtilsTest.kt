@@ -203,6 +203,76 @@ class TatarWordUtilsTest {
         assertEquals("", TatarWordUtils.extractNextWordContext(""))
     }
 
+    // --- isSentenceStartContext (P4, docs/TT-SUGGESTIONS.md) --------------------------------------
+
+    @Test
+    fun sentenceStartAfterEachOfTheFourEndingCharacters() {
+        assertTrue(TatarWordUtils.isSentenceStartContext("сүз. "))
+        assertTrue(TatarWordUtils.isSentenceStartContext("сүз! "))
+        assertTrue(TatarWordUtils.isSentenceStartContext("сүз? "))
+        assertTrue(TatarWordUtils.isSentenceStartContext("сүз… "))
+    }
+
+    @Test
+    fun sentenceStartAcceptsRunsOfEndingPunctuationAndSpaces() {
+        assertTrue(TatarWordUtils.isSentenceStartContext("сүз... "))
+        assertTrue(TatarWordUtils.isSentenceStartContext("нәрсә?!  "))
+        assertTrue(TatarWordUtils.isSentenceStartContext("сүз.… "))
+    }
+
+    @Test
+    fun sentenceStartIsFalseWithoutATrailingSpaceRun() {
+        // The prediction moment is the space after the sentence end, not the period itself.
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз."))
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз"))
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз.\n")) // a newline is not U+0020
+    }
+
+    @Test
+    fun sentenceStartIsFalseAfterAWordOrOtherPunctuation() {
+        assertFalse(TatarWordUtils.isSentenceStartContext("яз сүз "))
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз, "))
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз: "))
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз» ")) // closing quote, no period
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз.» ")) // quote after the period
+        assertFalse(TatarWordUtils.isSentenceStartContext("(сүз.) "))
+        assertFalse(TatarWordUtils.isSentenceStartContext("5. ")) // a number, not a sentence end
+    }
+
+    @Test
+    fun sentenceStartAtTheFieldStartNeedsTheCacheProvenance() {
+        // An empty or all-spaces text is a field start only when the cache provably reached the
+        // start of the text; the single-argument overload cannot tell and stays conservative.
+        assertTrue(TatarWordUtils.isSentenceStartContext("", true))
+        assertTrue(TatarWordUtils.isSentenceStartContext("  ", true))
+        assertFalse(TatarWordUtils.isSentenceStartContext(""))
+        assertFalse(TatarWordUtils.isSentenceStartContext("  "))
+        assertFalse(TatarWordUtils.isSentenceStartContext(null))
+        assertFalse(TatarWordUtils.isSentenceStartContext(null, true))
+    }
+
+    @Test
+    fun sentenceStartWithPunctuationAtIndexZeroNeedsTheCacheProvenance() {
+        // ". " is a field that begins with a period only when nothing was cut off before it.
+        assertTrue(TatarWordUtils.isSentenceStartContext(". ", true))
+        assertFalse(TatarWordUtils.isSentenceStartContext(". "))
+        assertFalse(TatarWordUtils.isSentenceStartContext(". ", false))
+    }
+
+    @Test
+    fun sentenceStartAndNextWordContextNeverAnswerTheSamePosition() {
+        // The two detectors are complementary by construction: wherever a context word exists the
+        // position is not a sentence start, and wherever a sentence start is detected the context
+        // is empty (the frozen NEXT_WORD exclusion of punctuation is unchanged).
+        for (text in listOf("сүз. ", "сүз! ", "сүз… ", "сүз.» ", "сүз, ", "")) {
+            if (TatarWordUtils.isSentenceStartContext(text, true)) {
+                assertEquals("", TatarWordUtils.extractNextWordContext(text, true))
+            }
+        }
+        assertFalse(TatarWordUtils.isSentenceStartContext("яз сүз ", true))
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз ", true))
+    }
+
     @Test
     fun extractTrailingWordEmptyForLoneCombiningMark() {
         // A mark with no base letter in the run is an orphan, not a word.

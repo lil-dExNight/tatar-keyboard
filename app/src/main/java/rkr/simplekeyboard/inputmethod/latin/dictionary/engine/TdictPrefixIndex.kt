@@ -16,6 +16,34 @@ internal fun interface PrefixComputer {
 }
 
 /**
+ * P3 same-stem boost seam (docs/TT-SUGGESTIONS.md): a language-specific table of inflectional
+ * suffix forms, consulted by the exact pass of [TdictPrefixIndex.lookup] when the typed prefix is
+ * itself a complete dictionary word. The remainder of a candidate comes straight off the mapped
+ * buffer in at most two contiguous pieces (a schema-2 word is a shared prefix of its block's first
+ * word plus a suffix of its own), so the test takes them as two byte ranges and must never
+ * allocate. The Tatar engine is constructed with `TatarSuffixRules`; the Russian engine passes
+ * null and never applies Tatar rules.
+ */
+fun interface InflectedSuffixTable {
+    fun isInflectedContinuation(
+        bytes: ByteBuffer,
+        firstStart: Int,
+        firstLength: Int,
+        secondStart: Int,
+        secondLength: Int,
+    ): Boolean
+}
+
+/**
+ * Exact whole-word frequency of a dictionary: the P3 after-word forms keep only generated
+ * candidates the dictionary actually carries. [TdictPrefixIndex] is the implementation; the
+ * sentinel for "absent" is 0 (schema 2 stores strictly positive frequencies).
+ */
+fun interface WordFrequencySource {
+    fun frequencyOf(word: String): Long
+}
+
+/**
  * A [PrefixComputer] that also reports how many of the results it just returned were EXACT
  * dictionary candidates; the rest are fuzzy (E3).
  *
@@ -100,14 +128,22 @@ private inline fun isValidUtf8Scalar(size: Int, byteAt: (Int) -> Int): Boolean {
     return true
 }
 
-/** Immutable schema-2 reader. The supplied buffer must already have passed D1b validation. */
+/**
+ * Immutable schema-2 reader. The supplied buffer must already have passed D1b validation.
+ *
+ * [suffixTable] is the P3 same-stem boost table (docs/TT-SUGGESTIONS.md): null for an engine that
+ * never boosts (the Russian one, and every fixture that predates P3 — their behavior is
+ * byte-identical to the frozen D1 pass). It is consulted by the exact pass only, and only when the
+ * typed prefix is itself a complete dictionary word.
+ */
 internal class TdictPrefixIndex private constructor(
     private val bytes: ByteBuffer,
     val identity: DictionaryIdentity,
     override val entryCount: Int,
     private val blockCount: Int,
     private val blockIndexOffset: Int,
-) : ClassifiedPrefixComputer, KeyNeighborSink, BigramDictionary {
+    private val suffixTable: InflectedSuffixTable?,
+) : ClassifiedPrefixComputer, KeyNeighborSink, BigramDictionary, WordFrequencySource {
     // Reusable per-index scratch. The index stops being fully immutable: these buffers are touched
     // ONLY inside lookup(), whose exclusivity is guaranteed by LatestOnlyPrefixEngine serialization
     // (at most one active worker). updateKeyNeighbors() only swaps a @Volatile reference.
@@ -130,6 +166,15 @@ internal class TdictPrefixIndex private constructor(
     private var cachedBlock = -1
     private val rankedIndices = IntArray(MAX_RESULTS)
     private val rankedFrequencies = LongArray(MAX_RESULTS)
+    // P3 same-stem boost (docs/TT-SUGGESTIONS.md): the two tracks of the dual-track exact pass —
+    // candidates whose remainder is a known suffix, and the rest. Fixed-size scratch, allocated
+    // once per index; the pass itself stays allocation-free.
+    private val stemTrackIndices = IntArray(MAX_RESULTS)
+    private val stemTrackFrequencies = LongArray(MAX_RESULTS)
+    private val stemTrackClasses = IntArray(MAX_RESULTS)
+    private val otherTrackIndices = IntArray(MAX_RESULTS)
+    private val otherTrackFrequencies = LongArray(MAX_RESULTS)
+    private val otherTrackClasses = IntArray(MAX_RESULTS)
     // Edit class carried alongside every ranked slot as a plain primitive int — no boxing, no
     // collection. Exact candidates all carry EDIT_CLASS_EXACT, so the class key is a no-op tie on
     // the exact level and its frozen order is unchanged; fuzzy candidates carry their generating
@@ -331,24 +376,91 @@ internal class TdictPrefixIndex private constructor(
         autocorrectMatchIndex = entry
     }
 
-    /** The frozen D1 exact pass: fills [rankedIndices] with up to [MAX_RESULTS] and returns count. */
+    /**
+     * The frozen D1 exact pass: fills [rankedIndices] with up to [MAX_RESULTS] and returns count.
+     *
+     * P3 (docs/TT-SUGGESTIONS.md): with a suffix table injected AND the typed prefix being itself a
+     * complete dictionary word of at least [MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS] code points,
+     * the pass runs dual-track — candidates whose remainder is a known suffix rank before unrelated
+     * continuations, frequency order preserved within each group, the typed word itself still
+     * excluded. Every other case is byte-identical to the frozen pass. The complete-word test costs
+     * no search of its own: [lowerBound] has already landed on the entry when the prefix is one.
+     *
+     * The length gate (P3 refinement, 2026-09-20): a short complete word (су, ал, өй) is a common
+     * MID-TYPING state — the user is usually on the way to a longer word, so its inflections must
+     * not displace unrelated continuations; a long one is likely an intentional word end. The
+     * threshold mirrors [AutocorrectPolicy.MIN_WORD_CODE_POINTS], the one other place the engine
+     * treats a typed word as "settled enough to act on". It also keeps the eval proxies honest:
+     * the completion metric types 1–3 code-point prefixes, which the gate exempts entirely.
+     */
     private fun collectExact(prefixLength: Int): Int {
         val start = lowerBound(exactScratch, prefixLength, 0)
         val end = upperBound(exactScratch, prefixLength, start)
         if (start >= end) return 0
-        var resultCount = 0
+        val table = suffixTable
+        if (table == null ||
+            countCodePointsByLeadBytes(exactScratch, prefixLength) <
+            MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS ||
+            !wordEquals(start, exactScratch, prefixLength)
+        ) {
+            var resultCount = 0
+            scanBlockRange(
+                start, end, exactScratch, prefixLength,
+                onEntry = { _, equalsQuery, _, _, _, _ ->
+                    if (equalsQuery) SCAN_SKIP else SCAN_TAKE
+                },
+                onFrequency = { index, frequency, _ ->
+                    resultCount = insertRanked(
+                        rankedIndices, rankedFrequencies, rankedClasses, resultCount, MAX_RESULTS,
+                        index, frequency, EDIT_CLASS_EXACT,
+                    )
+                },
+            )
+            return resultCount
+        }
+        var stemCount = 0
+        var otherCount = 0
         scanBlockRange(
             start, end, exactScratch, prefixLength,
-            onEntry = { index, equalsQuery ->
-                if (equalsQuery) SCAN_SKIP else SCAN_TAKE
+            onEntry = { _, equalsQuery, remFirstStart, remFirstLength, remSecondStart, remSecondLength ->
+                when {
+                    equalsQuery -> SCAN_SKIP
+                    table.isInflectedContinuation(
+                        bytes, remFirstStart, remFirstLength, remSecondStart, remSecondLength,
+                    ) -> SCAN_TAKE_STEM
+                    else -> SCAN_TAKE
+                }
             },
-            onFrequency = { index, frequency ->
-                resultCount = insertRanked(
-                    rankedIndices, rankedFrequencies, rankedClasses, resultCount, MAX_RESULTS,
-                    index, frequency, EDIT_CLASS_EXACT,
-                )
+            onFrequency = { index, frequency, verdict ->
+                if (verdict == SCAN_TAKE_STEM) {
+                    stemCount = insertRanked(
+                        stemTrackIndices, stemTrackFrequencies, stemTrackClasses,
+                        stemCount, MAX_RESULTS, index, frequency, EDIT_CLASS_EXACT,
+                    )
+                } else {
+                    otherCount = insertRanked(
+                        otherTrackIndices, otherTrackFrequencies, otherTrackClasses,
+                        otherCount, MAX_RESULTS, index, frequency, EDIT_CLASS_EXACT,
+                    )
+                }
             },
         )
+        // Same-stem candidates first, then the rest fill the cells they leave — all within
+        // MAX_RESULTS, both tracks already in the frozen (frequency, code point) order.
+        var resultCount = 0
+        for (slot in 0 until stemCount) {
+            rankedIndices[resultCount] = stemTrackIndices[slot]
+            rankedFrequencies[resultCount] = stemTrackFrequencies[slot]
+            rankedClasses[resultCount] = stemTrackClasses[slot]
+            resultCount++
+        }
+        for (slot in 0 until otherCount) {
+            if (resultCount >= MAX_RESULTS) break
+            rankedIndices[resultCount] = otherTrackIndices[slot]
+            rankedFrequencies[resultCount] = otherTrackFrequencies[slot]
+            rankedClasses[resultCount] = otherTrackClasses[slot]
+            resultCount++
+        }
         return resultCount
     }
 
@@ -446,7 +558,7 @@ internal class TdictPrefixIndex private constructor(
         // selected the range — hence exactScratch/fuzzyPrefixLength here.
         scanBlockRange(
             start, end, exactScratch, fuzzyPrefixLength,
-            onEntry = { index, equalsQuery ->
+            onEntry = { index, equalsQuery, _, _, _, _ ->
                 fuzzyVisited++
                 if (fuzzyVisited > MAX_FUZZY_VISITED) {
                     fuzzyOverBudget = true
@@ -465,7 +577,7 @@ internal class TdictPrefixIndex private constructor(
                     SCAN_SKIP
                 }
             },
-            onFrequency = { index, frequency ->
+            onFrequency = { index, frequency, _ ->
                 fuzzyCount = insertRanked(
                     fuzzyIndices, fuzzyFrequencies, fuzzyClasses, fuzzyCount, fuzzyRemaining,
                     index, frequency, fuzzyCurrentClass,
@@ -622,6 +734,27 @@ internal class TdictPrefixIndex private constructor(
         return if (wordEquals(candidate, query, queryLength)) candidate else -1
     }
 
+    /**
+     * P3 (docs/TT-SUGGESTIONS.md): exact whole-word frequency of [query], or 0 when the dictionary
+     * does not contain it (schema 2 stores strictly positive frequencies, so 0 is a safe absent
+     * sentinel). One exact binary search plus one cached-block read — no word is materialized, so
+     * this byte-level form allocates nothing and shares the lookup path's worker confinement.
+     */
+    fun frequencyOf(query: ByteArray, queryLength: Int): Long {
+        if (queryLength == 0 || queryLength > TdictFormat.MAX_WORD_BYTES) return 0L
+        val entry = indexOfWord(query, queryLength)
+        return if (entry < 0) 0L else frequencyAt(entry)
+    }
+
+    /**
+     * The string form of [frequencyOf] — it encodes, so it belongs to bounded off-hot-path callers
+     * (the P3 after-word forms), never to the per-keystroke scan.
+     */
+    override fun frequencyOf(word: String): Long {
+        val bytes = word.toByteArray(Charsets.UTF_8)
+        return frequencyOf(bytes, bytes.size)
+    }
+
     override fun wordAt(index: Int): String = decodeWord(index)
 
     /** Start of word [index] inside [blockWordBytes]; decodes its block if it is not cached. */
@@ -686,16 +819,19 @@ internal class TdictPrefixIndex private constructor(
 
     /**
      * Streams the entry range [start, end) without materializing words: per in-range entry it
-     * reports [onEntry] (index, equalsQuery) — computed piecewise against the mapped bytes — and
-     * only for entries where [onEntry] answered [SCAN_TAKE] it then reports [onFrequency], still
-     * inside the same block visit. The function is `inline`, so neither callback allocates, and
-     * the word bytes are never copied: a one-letter prefix scan pays a couple of varint reads per
-     * entry instead of a full block decode.
+     * reports [onEntry] — (index, equalsQuery), computed piecewise against the mapped bytes, plus
+     * the candidate's remainder past the query as two contiguous byte ranges into the mapped
+     * buffer (P3's suffix-membership test consumes them without a copy) — and only for entries
+     * where [onEntry] answered [SCAN_TAKE] or [SCAN_TAKE_STEM] it then reports [onFrequency] with
+     * that verdict, still inside the same block visit. The function is `inline`, so neither
+     * callback allocates, and the word bytes are never copied: a one-letter prefix scan pays a
+     * couple of varint reads per entry instead of a full block decode.
      *
      * [onEntry] verdicts: [SCAN_SKIP] — not a candidate; [SCAN_TAKE] — candidate, report its
-     * frequency via [onFrequency]; [SCAN_ABORT] — stop the whole scan immediately (the fuzzy
-     * budget trip, after which the level is dropped in full and pending frequencies are never
-     * needed, so [onFrequency] may then be skipped).
+     * frequency via [onFrequency]; [SCAN_TAKE_STEM] — same, flagged as a same-stem candidate of
+     * the P3 dual-track pass; [SCAN_ABORT] — stop the whole scan immediately (the fuzzy budget
+     * trip, after which the level is dropped in full and pending frequencies are never needed, so
+     * [onFrequency] may then be skipped).
      *
      * The [insertRanked] call sequence is unchanged versus the schema-1 loop: [onFrequency] fires
      * in ascending index order within a block and blocks are visited in ascending order.
@@ -705,8 +841,8 @@ internal class TdictPrefixIndex private constructor(
         end: Int,
         query: ByteArray,
         queryLength: Int,
-        onEntry: (Int, Boolean) -> Int,
-        onFrequency: (Int, Long) -> Unit,
+        onEntry: (Int, Boolean, Int, Int, Int, Int) -> Int,
+        onFrequency: (Int, Long, Int) -> Unit,
     ) {
         var index = start
         while (index < end) {
@@ -719,6 +855,7 @@ internal class TdictPrefixIndex private constructor(
             val firstStart = cursor
             cursor += firstLength
             var takeMask = 0
+            var stemMask = 0
             var position = 0
             // Entry 0 is the block's first word; treating it as "prefix 0 + whole-word suffix"
             // keeps the loop body uniform.
@@ -726,6 +863,7 @@ internal class TdictPrefixIndex private constructor(
             var suffixStart = firstStart
             var wordLength = firstLength
             while (position < lastPosition) {
+                var suffixLength = 0
                 if (position > 0) {
                     prefixLength = unsigned(bytes.get(cursor))
                     cursor++
@@ -734,7 +872,7 @@ internal class TdictPrefixIndex private constructor(
                         prefixLength = varintValue
                         cursor = varintNext
                     }
-                    val suffixLength = unsigned(bytes.get(cursor))
+                    suffixLength = unsigned(bytes.get(cursor))
                     cursor++
                     suffixStart = cursor
                     cursor += suffixLength
@@ -747,14 +885,34 @@ internal class TdictPrefixIndex private constructor(
                             firstStart, prefixLength, suffixStart,
                             query, queryLength,
                         )
-                    when (onEntry(entryIndex, equalsQuery)) {
+                    // The remainder past the query, piecewise against the mapped bytes (P3): the
+                    // shared prefix may reach past the query's end, never the reverse — every word
+                    // in [start, end) begins with the query.
+                    val remFirstLength: Int
+                    val remSecondStart: Int
+                    if (prefixLength >= queryLength) {
+                        remFirstLength = prefixLength - queryLength
+                        remSecondStart = suffixStart
+                    } else {
+                        remFirstLength = 0
+                        remSecondStart = suffixStart + (queryLength - prefixLength)
+                    }
+                    when (
+                        onEntry(
+                            entryIndex, equalsQuery,
+                            firstStart + queryLength, remFirstLength,
+                            remSecondStart, wordLength - queryLength - remFirstLength,
+                        )
+                    ) {
                         SCAN_TAKE -> takeMask = takeMask or (1 shl position)
+                        SCAN_TAKE_STEM -> stemMask = stemMask or (1 shl position)
                         SCAN_ABORT -> return
                     }
                 }
                 position++
             }
-            if (takeMask != 0) {
+            val verdictMask = takeMask or stemMask
+            if (verdictMask != 0) {
                 // Finish walking the word section to reach the block's frequencies.
                 while (position < inBlock) {
                     decodeVarint(cursor)
@@ -767,8 +925,18 @@ internal class TdictPrefixIndex private constructor(
                     decodeVarint(cursor)
                     val frequency = varintValue.toLong() and MAX_U32
                     cursor = varintNext
-                    if (takeMask and (1 shl frequencyPosition) != 0) {
-                        onFrequency(block * TdictFormat.BLOCK_SIZE + frequencyPosition, frequency)
+                    val frequencyBit = 1 shl frequencyPosition
+                    val verdict = when {
+                        takeMask and frequencyBit != 0 -> SCAN_TAKE
+                        stemMask and frequencyBit != 0 -> SCAN_TAKE_STEM
+                        else -> SCAN_SKIP
+                    }
+                    if (verdict != SCAN_SKIP) {
+                        onFrequency(
+                            block * TdictFormat.BLOCK_SIZE + frequencyPosition,
+                            frequency,
+                            verdict,
+                        )
                     }
                     frequencyPosition++
                 }
@@ -925,6 +1093,12 @@ internal class TdictPrefixIndex private constructor(
         // taken off the UTF-8 lead bytes so a two-letter Cyrillic prefix (four bytes) is rejected.
         private const val MIN_FUZZY_PREFIX_CODE_POINTS = 3
 
+        // P3 same-stem boost: the typed prefix must be a complete word AND at least this many code
+        // points (counted off the UTF-8 lead bytes, same as MIN_FUZZY_PREFIX_CODE_POINTS). Mirrors
+        // the AutocorrectPolicy.MIN_WORD_CODE_POINTS convention of treating four letters as the
+        // "settled word" boundary.
+        private const val MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS = 4
+
         // Fixed budgets. Exceeding either drops the whole fuzzy level, never a part of it. The
         // variant budget bounds classes #1+#2+#3 combined; it sits above the E3b offline reference
         // (p95 33 variants, max 39) with headroom, so a correct implementation never trips it on the
@@ -934,10 +1108,12 @@ internal class TdictPrefixIndex private constructor(
         private const val MAX_FUZZY_VISITED = 8192
 
         // scanBlockRange entry verdicts: not a candidate / candidate, report its frequency /
-        // abort the whole scan (the fuzzy budget trip).
+        // abort the whole scan (the fuzzy budget trip). SCAN_TAKE_STEM is the P3 dual-track
+        // variant of SCAN_TAKE: candidate whose remainder is a known suffix of the injected table.
         private const val SCAN_SKIP = 0
         private const val SCAN_TAKE = 1
         private const val SCAN_ABORT = 2
+        private const val SCAN_TAKE_STEM = 3
         private val MAGIC = "TATDICT\u0000".toByteArray(Charsets.US_ASCII)
 
         fun open(
@@ -945,6 +1121,8 @@ internal class TdictPrefixIndex private constructor(
             identity: DictionaryIdentity,
             expectedEntryCount: Long,
             expectedRawSize: Long,
+            // P3: the same-stem boost table; null keeps the frozen D1 behavior byte-identical.
+            suffixTable: InflectedSuffixTable? = null,
         ): TdictPrefixIndex? = try {
             require(identity.generation > 0)
             require(identity.schemaId == TdictFormat.SCHEMA_ID)
@@ -989,6 +1167,7 @@ internal class TdictPrefixIndex private constructor(
                 entryCount,
                 blockCount,
                 blockIndexOffset,
+                suffixTable,
             )
             // Full structural pass: the block table is canonical and every block decodes to
             // exactly its entry count, strictly increasing words and positive frequencies.

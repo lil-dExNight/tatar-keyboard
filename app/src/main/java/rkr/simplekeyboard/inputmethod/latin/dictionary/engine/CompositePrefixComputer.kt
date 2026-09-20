@@ -20,6 +20,34 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 
 /**
+ * P3 after-word forms (docs/TT-SUGGESTIONS.md): the inflections of the just-committed context
+ * word that fill the strip cells the bigram successors leave free in the NEXT_WORD slot. The
+ * Tatar engine is constructed with `TatarSuffixRules`-backed forms; the Russian engine carries
+ * null and its NEXT_WORD answers are byte-identical to before.
+ */
+fun interface AfterWordForms {
+    /**
+     * The forms of [contextWord] to append after the bigram successors, disjoint from
+     * [alreadyShown], at most [maxOut], in their own (frequency-descending) order. Empty when the
+     * word has no attested inflections to offer.
+     */
+    fun formsOf(
+        contextWord: ImmutableUtf8Prefix,
+        alreadyShown: List<String>,
+        maxOut: Int,
+    ): List<String>
+}
+
+/**
+ * Builds the [AfterWordForms] of one engine against that engine's own dictionary. A factory
+ * because the dictionary index exists only inside engine startup — the rules themselves are
+ * language-level and stateless.
+ */
+fun interface AfterWordFormsFactory {
+    fun createAfterWordForms(dictionary: WordFrequencySource): AfterWordForms
+}
+
+/**
  * The single ranking of E4b: dictionary candidates and one personal word merged into the three
  * cells of the band, in the order frozen by «Контракт текста»:
  *
@@ -49,6 +77,9 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
 internal class CompositePrefixComputer(
     private val primary: ClassifiedPrefixComputer,
     private val personal: PersonalCandidateSource,
+    // P3: after-word forms of the NEXT_WORD slot (docs/TT-SUGGESTIONS.md). Null for an engine
+    // without word-form rules (the Russian one) — its NEXT_WORD answers stay the pure bigram list.
+    private val afterWordForms: AfterWordForms? = null,
 ) : PrefixComputer, KeyNeighborSink, NextWordComputer {
 
     /**
@@ -84,14 +115,35 @@ internal class CompositePrefixComputer(
 
     /**
      * NEXT_WORD read side. There is no personal-dictionary or E3 fuzzy involvement here — E5 has
-     * no personal bigrams (PROPOSALS.md, "E5c. Один вычислитель, один токен") — so this is a
-     * direct pass-through to whatever bigram source is currently attached, or an empty list before
-     * attachment / after a corrupted or missing table failed to open. Either way this is the exact
-     * "0 predictions, no effect on prefix suggestions or ordinary input" shape the contract
-     * requires for a bigram table that is absent or fails validation.
+     * no personal bigrams (PROPOSALS.md, "E5c. Один вычислитель, один токен") — so the word list
+     * is the bigram source's, plus the P3 after-word forms appended into the cells the bigram
+     * successors leave free. Bigram successors keep priority: forms never displace them, never
+     * duplicate them, and never push the list past the three strip cells.
+     *
+     * Before a bigram source is attached (or after a corrupted/missing table failed to open) this
+     * returns an empty list WITHOUT offering forms — the exact "0 predictions, no effect on prefix
+     * suggestions or ordinary input" shape the contract requires. That is not merely conservative:
+     * the first-NEXT_WORD race repair (docs/NEXTWORD-RACE.md, [SuggestionsController]
+     * onBigramAttached) re-issues the request once the attach lands, and it only fires while the
+     * active language has put no word on the band. A forms-only band painted from "not attached
+     * yet" would suppress that re-request and the bigram successors — which outrank forms — would
+     * never appear until the next keystroke.
      */
-    override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> =
-        bigramSource?.predict(normalizedContextWordUtf8) ?: emptyList()
+    override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
+        val source = bigramSource ?: return emptyList()
+        val bigrams = source.predict(normalizedContextWordUtf8)
+        val forms = afterWordForms ?: return bigrams
+        if (bigrams.size >= CELL_COUNT) return bigrams
+        // Fail closed toward the bigram-only list, the exact posture the personal source has on
+        // the prefix path: broken forms must never take the bigram successors down with them.
+        val extras = try {
+            forms.formsOf(normalizedContextWordUtf8, bigrams, CELL_COUNT - bigrams.size)
+        } catch (_: RuntimeException) {
+            return bigrams
+        }
+        if (extras.isEmpty()) return bigrams
+        return bigrams + extras
+    }
 
     override fun updateKeyNeighbors(table: KeyNeighborTable?) {
         (primary as? KeyNeighborSink)?.updateKeyNeighbors(table)
