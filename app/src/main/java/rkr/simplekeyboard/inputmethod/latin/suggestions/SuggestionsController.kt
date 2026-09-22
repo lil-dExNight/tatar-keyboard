@@ -105,8 +105,10 @@ interface EditorSurface {
     /**
      * E5d NEXT_WORD context extraction from the live cache (PROPOSALS.md, "Контракт текста"
      * amendment, 2026-08-17): the word immediately before a trailing run of one-or-more U+0020 right
-     * at the cursor, or "" if there is none. Defaults to "" so an editor surface written before E5d
-     * keeps compiling and NEXT_WORD simply never fires.
+     * at the cursor, or "" if there is none — with the ROADMAP Phase 1 (P4, docs/ROADMAP-P1.md)
+     * amendment: when the space run follows non-final punctuation (exactly ',', ';', ':'), the
+     * context is the word BEFORE the punctuation run ("сүз, " → "сүз"). Defaults to "" so an editor
+     * surface written before E5d keeps compiling and NEXT_WORD simply never fires.
      */
     fun cachedNextWordContext(): String = ""
 
@@ -322,10 +324,13 @@ class SuggestionsController internal constructor(
     // fail-closed shape a missing asset has.
     private val emojiSuggestPreparationFactory: (ExecutorService) -> EmojiSuggestPreparation? =
         { null },
-    // P4 sentence-start table (docs/TT-SUGGESTIONS.md): same trailing-default shape — no factory,
-    // no source, no sentence-start band, and every pre-P4 test constructor keeps compiling.
-    private val sentStartPreparationFactory: (ExecutorService) -> SentStartPreparation? =
-        { null },
+    // P4/P3b sentence-start tables (docs/TT-SUGGESTIONS.md, docs/ROADMAP-P1.md): same
+    // trailing-default shape as the bigram factory — (executor, subtypeId), no factory, no
+    // source, no sentence-start band, and every pre-P4 test constructor keeps compiling. The
+    // subtypeId parameter is what makes the load per-language: the production factory resolves
+    // the table through the artifact registry, never through a language string of its own.
+    private val sentStartPreparationFactory: (ExecutorService, String) -> SentStartPreparation? =
+        { _, _ -> null },
 ) {
     /** Production entry point (frozen contract). */
     constructor(
@@ -348,7 +353,14 @@ class SuggestionsController internal constructor(
             DeviceProtectedBigramPreparation.create(context, executor, subtypeId)
         },
         { executor -> AssetEmojiSuggestPreparation(context, executor) },
-        { executor -> AssetSentStartPreparation(context, executor) },
+        { executor, subtypeId ->
+            // P3b: which language ships a sentence-start table is the artifact registry's
+            // answer, not a language string checked here — a language absent from the registry
+            // simply gets no preparation and its sentence starts stay silent.
+            DictionaryArtifactSpec.sentStartAssetForSubtype(subtypeId)?.let { assetPath ->
+                AssetSentStartPreparation(context, executor, assetPath)
+            }
+        },
     )
 
     /** Test entry point: injects a synchronous poster + executor and pre-marks the dictionary. */
@@ -576,17 +588,20 @@ class SuggestionsController internal constructor(
     /** Set the moment the one-per-process load is requested; a failure is not retried. */
     private var emojiPreparationRequested: Boolean = false
 
-    // --- Sentence-start state (P4, docs/TT-SUGGESTIONS.md). The exact emoji-suggest shape: the
-    // source is immutable once loaded, the band carries no sentence-start state of its own beyond
-    // the empty-context binding, and every failure direction is silent.
-    /** The loaded table, or null while it has never finished loading. Load failure is terminal. */
-    private var sentStartSource: SentStartSource? = null
+    // --- Sentence-start state (P4, docs/TT-SUGGESTIONS.md; per-language since P3b,
+    // docs/ROADMAP-P1.md). The exact emoji-suggest shape, keyed by language: a source is
+    // immutable once loaded, the band carries no sentence-start state of its own beyond the
+    // empty-context binding, and every failure direction is silent. Loads are at most once per
+    // language per process and happen only when that language actually reaches a sentence
+    // start — a Tatar-only user never pays for the Russian table.
+    /** The loaded tables by language; a language absent here has never finished loading. */
+    private val sentStartSources = HashMap<String, SentStartSource>()
 
-    /** Lazily built loading seam; null means fail-closed, with no sentence-start band ever. */
-    private var sentStartPreparation: SentStartPreparation? = null
+    /** Lazily built loading seams by language; a null factory answer means fail-closed. */
+    private val sentStartPreparations = HashMap<String, SentStartPreparation>()
 
-    /** Set the moment the one-per-process load is requested; a failure is not retried. */
-    private var sentStartPreparationRequested: Boolean = false
+    /** The languages whose one-per-process load was requested; a failure is not retried. */
+    private val sentStartPreparationRequested = HashSet<String>()
 
     /**
      * One replacement, as far as the undo is concerned. There is no history: at most one of these
@@ -1749,10 +1764,10 @@ class SuggestionsController internal constructor(
      * is static, so there is no engine request, no token and no callback, and the whole paint
      * happens on the UI thread inside the request path, exactly where a NEXT_WORD request would
      * have been issued. Returns false (the caller then falls back to the reserved empty band) in
-     * every no-show direction, all silent by design: the active language is not Tatar (the only
-     * language that ships a table — the Russian slot behaves byte-identically to before), the
-     * position is not a sentence start, the table is missing/broken/still loading, or it has
-     * nothing to offer.
+     * every no-show direction, all silent by design: the active language ships no table (the
+     * artifact registry decides per language — since P3b both shipped languages carry one; a
+     * subtype absent from the registry never gets a band), the position is not a sentence
+     * start, the table is missing/broken/still loading, or it has nothing to offer.
      *
      * The band is bound to the EMPTY context — the one value [displayedContextWord] can hold that
      * the NEXT_WORD path never binds (it refuses an empty context outright) — and the tap path
@@ -1764,21 +1779,31 @@ class SuggestionsController internal constructor(
      * its query would be the empty context, which [requestCompanionFill] rejects itself.
      */
     private fun requestSentenceStart(): Boolean {
-        if (activeLanguage != DEFAULT_LANGUAGE) return false
+        val language = activeLanguage ?: return false
         if (!editor.isAtSentenceStart()) return false
-        if (sentStartSource == null) {
-            // Not loaded yet: start the one-time background load. Re-read the field afterwards —
-            // a preparation that answers synchronously (a direct test executor) has already
-            // published the source by the time the call returns.
-            maybePrepareSentStart()
+        var source = sentStartSources[language]
+        if (source == null) {
+            // Not loaded yet: start this language's one-time background load. Re-read the map
+            // afterwards — a preparation that answers synchronously (a direct test executor)
+            // has already published the source by the time the call returns.
+            maybePrepareSentStart(language)
+            source = sentStartSources[language]
         }
-        val source = sentStartSource ?: return false
+        if (source == null) return false
         val words = try {
             source.topWords(SuggestionStripState.CELL_COUNT)
         } catch (_: RuntimeException) {
             return false
         }
         if (words.isEmpty()) return false
+        // P3a (docs/ROADMAP-P1.md): a sentence start is where a capital belongs, so the cells
+        // are shown capitalized — the same display-boundary casing applyPrefixResult applies to
+        // prefix candidates, and the tap commits the displayed (capitalized) string verbatim.
+        // The table itself and every lookup stay lowercase; this is display-only.
+        val cells = ArrayList<String>(words.size)
+        for (word in words) {
+            cells.add(TatarWordUtils.applyCasing(word, TatarWordUtils.PrefixCasing.INITIAL_CAPS))
+        }
         displayedPrefix = null
         pendingContextWord = SENTENCE_START_CONTEXT
         displayedContextWord = SENTENCE_START_CONTEXT
@@ -1786,33 +1811,33 @@ class SuggestionsController internal constructor(
         bandHasActiveLanguageWord = true
         requestSessionId = NO_SESSION
         clearCompanionRequest()
-        showBand(words)
+        showBand(cells)
         return true
     }
 
     /**
-     * Starts the one-per-process background load of the sentence-start table, at most once. A
-     * factory or executor failure is silent and terminal: a sentence start simply shows the
-     * reserved empty band, exactly as before the feature existed.
+     * Starts [language]'s one-per-process background load of its sentence-start table, at most
+     * once. A factory or executor failure is silent and terminal: a sentence start simply shows
+     * the reserved empty band, exactly as before the feature existed.
      */
-    private fun maybePrepareSentStart() {
-        if (destroyed || sentStartPreparationRequested) return
+    private fun maybePrepareSentStart(language: String) {
+        if (destroyed || language in sentStartPreparationRequested) return
         val backgroundExecutor = backgroundExecutor() ?: return
-        val preparation = sentStartPreparation ?: run {
+        val preparation = sentStartPreparations[language] ?: run {
             val created = try {
-                sentStartPreparationFactory(backgroundExecutor)
+                sentStartPreparationFactory(backgroundExecutor, language)
             } catch (_: Throwable) {
                 null
             } ?: return
-            sentStartPreparation = created
+            sentStartPreparations[language] = created
             created
         }
-        sentStartPreparationRequested = true
+        sentStartPreparationRequested.add(language)
         try {
             preparation.prepare { source ->
                 // The callback may run on the background executor. Marshal onto the serialized UI
                 // owner before touching any controller state.
-                uiPoster.post { onSentStartReady(source) }
+                uiPoster.post { onSentStartReady(language, source) }
             }
         } catch (_: Throwable) {
             // Silent: the band behaves exactly as if the table did not exist.
@@ -1820,22 +1845,26 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * The table finished loading. A sentence start reached BEFORE the table arrived showed the
-     * reserved empty band; fill it now rather than after the next keystroke — but only if the live
+     * [language]'s table finished loading. The source is stored for its language even when the
+     * user has since switched away — the next switch back finds it ready. A sentence start
+     * reached BEFORE the table arrived showed the reserved empty band; fill it now rather than
+     * after the next keystroke — but only if that language is still the active one and the live
      * editor state is still exactly a sentence-start moment with nothing bound, the same
      * re-derivation [onEmojiSuggestReady] performs, so a load that finished after the user typed
      * on changes nothing.
      */
-    private fun onSentStartReady(source: SentStartSource?) {
+    private fun onSentStartReady(language: String, source: SentStartSource?) {
         if (destroyed) return
-        sentStartSource = source ?: return
+        val loaded = source ?: return
+        sentStartSources[language] = loaded
         if (!eligible) return
+        if (language != activeLanguage) return
         if (usableEngine() == null) return
         if (displayedPrefix != null || displayedContextWord != null) return
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
         if (editor.cachedWordBeforeCursor().isNotEmpty()) return
         if (editor.cachedNextWordContext().isNotEmpty()) return
-        // Not a sentence start (or not Tatar): requestSentenceStart's own guards say no.
+        // Not a sentence start: requestSentenceStart's own guards say no.
         requestSentenceStart()
     }
 

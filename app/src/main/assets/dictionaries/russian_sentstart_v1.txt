@@ -1,0 +1,78 @@
+# Russian sentence-start suggestions, v1 (ROADMAP Phase 1, P3b).
+#
+# Source: sentence-initial tokens of the Leipzig Corpora Collection Russian corpora
+# rus_news_2022_1M, rus_news_2019_1M and rus_wikipedia_2021_1M
+# (https://wortschatz.uni-leipzig.de/en/download/Russian).
+# License: Creative Commons Attribution 4.0 International (CC BY 4.0),
+# https://creativecommons.org/licenses/by/4.0/ -- see NOTICE.txt beside this file.
+#
+# Pipeline: the first whitespace token of every sentence, hugging punctuation
+# stripped (the dict_tokens rule), normalized exactly like the dictionary pipeline
+# (NFC, lowercase, Russian alphabet filter), kept only when present in the shipped
+# Russian dictionary -- the table can never offer a word the keyboard does not know.
+# Rows: word<TAB>sentence-initial occurrences, sorted by count descending, word
+# ascending.
+в	349125
+по	81782
+на	69779
+он	43589
+это	42802
+с	39182
+но	36697
+как	34330
+а	34177
+после	32953
+и	32519
+также	27702
+при	26825
+однако	25349
+об	25029
+я	22378
+если	22037
+для	21099
+мы	20870
+кроме	20845
+за	18958
+так	18340
+у	17783
+они	16950
+к	16748
+ранее	16432
+сейчас	16353
+она	15226
+во	13928
+все	13518
+не	12750
+его	12306
+напомним	11979
+когда	11074
+поэтому	10453
+сегодня	8560
+до	8526
+из	8392
+что	8110
+согласно	7982
+президент	7336
+тем	7141
+всего	6949
+там	6869
+таким	6739
+о	6664
+этот	6502
+глава	6449
+чтобы	6015
+тогда	5866
+среди	5804
+затем	5779
+несмотря	5770
+еще	5747
+например	5714
+здесь	5697
+теперь	5543
+ну	5384
+их	5288
+эти	5266
+вот	5133
+то	5060
+есть	4974
+именно	4843

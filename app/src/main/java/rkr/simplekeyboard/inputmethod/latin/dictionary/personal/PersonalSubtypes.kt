@@ -16,8 +16,11 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
+
 /**
- * The single source of truth for the active-subtype identifier and its per-subtype alphabet.
+ * The subtype identifier constants and the per-language alphabets the personal dictionary is
+ * keyed and filtered by.
  *
  * Ownership of the "boolean eligible -> active subtype identifier" seam moved to E4a-1 after phase
  * D2 was cancelled (see PROPOSALS.md, "Сквозное решение: всё новое ключуется активным subtype",
@@ -27,8 +30,14 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
  * store. For a subtype with no declared alphabet the feature is off entirely.
  *
  * The literal `"tt_RU"` used to live twice, in `SuggestionsController.SUBTYPE_ID` and in
- * `LatinIME.isTatarSuggestionsEligible()`, kept in sync by hand. Both now read [TATAR_RU], so the
- * eligibility signal and the storage key can never drift apart.
+ * `LatinIME.isTatarSuggestionsEligible()`, kept in sync by hand; then [alphabetFor] carried a
+ * second hand-maintained `when` mirroring the artifact registry's language list. T5 (ROADMAP
+ * Phase 1, docs/ROADMAP-P1.md) closed that mirror: this file now holds only DATA (the tag
+ * constants, the alphabet sets), and every PREDICATE — [alphabetFor] here, the suggestions
+ * eligibility in LatinIME, the settings screens — resolves through the ONE registry,
+ * `DictionaryArtifactSpec`: each entry carries its personal alphabet, and [alphabetFor] is a
+ * pure registry lookup. A source-contract test (`PersonalSubtypeRegistryContractTest`) pins the
+ * agreement so a second hand-maintained list cannot drift back in.
  *
  * That the format carried a language tag from version 1 is what made the second language free:
  * [RUSSIAN] simply declares its own alphabet and gets its own store, its own file
@@ -55,7 +64,7 @@ object PersonalSubtypes {
      * NORMALIZED (NFC lowercase) form of a word, so only lowercase letters are listed: the raw form
      * "Гүзәл" is accepted because its normalized form "гүзәл" is spelled entirely from this set.
      */
-    private val TATAR_RU_ALPHABET: Set<Int> =
+    val TATAR_RU_ALPHABET: Set<Int> =
         "аәбвгдеёжҗзийклмнңоөпрстуүфхһцчшщъыьэюя".codePoints().toArray().toSet()
 
     /**
@@ -66,18 +75,20 @@ object PersonalSubtypes {
      * user's own spelling: someone who reaches for the long press to write «ещё» means «ещё», and
      * a store that silently kept «еще» would hand that spelling back to them forever.
      */
-    private val RUSSIAN_ALPHABET: Set<Int> =
+    val RUSSIAN_ALPHABET: Set<Int> =
         "абвгдеёжзийклмнопрстуфхцчшщъыьэюя".codePoints().toArray().toSet()
 
     /**
      * The alphabet for [subtypeId], or null when the subtype declares none. A null alphabet means
      * the personal dictionary is off for that subtype: there is no fallback to another language.
+     *
+     * T5 (docs/ROADMAP-P1.md): this is a PURE LOOKUP in the artifact registry
+     * (`DictionaryArtifactSpec`) — the ONE list of shipped languages. The alphabets above are
+     * data the registry entries reference; which subtype maps to which language is decided there,
+     * never by a second enumeration here, so adding a language is a one-entry change.
      */
-    fun alphabetFor(subtypeId: String): Set<Int>? = when (subtypeId) {
-        TATAR_RU -> TATAR_RU_ALPHABET
-        RUSSIAN -> RUSSIAN_ALPHABET
-        else -> null
-    }
+    fun alphabetFor(subtypeId: String): Set<Int>? =
+        DictionaryArtifactSpec.forSubtype(subtypeId)?.personalAlphabet
 
     /** True when [subtypeId] declares an alphabet, i.e. the personal dictionary may run for it. */
     fun isSupported(subtypeId: String): Boolean = alphabetFor(subtypeId) != null

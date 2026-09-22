@@ -57,6 +57,19 @@ to 100,000 forms, lexically reordered, packed into the same versioned binary
 format with SHA-256, and zlib-compressed.
 
 --------------------------------------------------------------------------------
+russian_sentstart_v1.txt
+
+Derived from the Russian corpora rus_news_2022_1M, rus_news_2019_1M, and
+rus_wikipedia_2021_1M.
+Catalogue page: https://wortschatz.uni-leipzig.de/en/download/Russian
+
+Changes by the Tatar Keyboard project: the sentence-initial token of every
+sentence of the three corpora was counted with the same normalization as the
+dictionary above, the counts were filtered to the words the shipped Russian
+dictionary carries, and the top 64 were written as a plain word/frequency
+table (docs/ROADMAP-P1.md, phase 1 P3b).
+
+--------------------------------------------------------------------------------
 The dictionary data remains a separate CC BY 4.0 component; the application's
 Apache-2.0 license does not replace that data license.
 

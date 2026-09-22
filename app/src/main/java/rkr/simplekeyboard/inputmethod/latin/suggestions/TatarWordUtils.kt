@@ -86,14 +86,20 @@ object TatarWordUtils {
      * no such run right at the cursor.
      *
      * The separator is deliberately narrower than [isWordCharacter]'s complement: it is EXACTLY one
-     * or more U+0020 and nothing else. A newline, tab, NBSP, or any punctuation right before the
-     * cursor yields "" — not because those characters cannot end a word, but because the contract
-     * reserves NEXT_WORD for the plain "finished a word, pressed space" moment and deliberately
-     * excludes sentence starts and positions right after punctuation (the bigram table is a
-     * word-context table and stays one; sentence starts are answered separately from the P4
-     * sentence-start table — [isSentenceStartContext] — and this exclusion still doubles as the
-     * thing that keeps NEXT_WORD out of the auto-capitalization codepath). This function IS that
-     * exclusion: it is a side effect of the separator rule, not a second check layered on top of it.
+     * or more U+0020 and nothing else. A newline, tab, NBSP, or sentence-final punctuation right
+     * before the cursor yields "" — not because those characters cannot end a word, but because
+     * the contract reserves NEXT_WORD for word contexts (the bigram table is a word-context table
+     * and stays one; sentence starts are answered separately from the sentence-start table —
+     * [isSentenceStartContext] — and this exclusion still doubles as the thing that keeps
+     * NEXT_WORD out of the auto-capitalization codepath).
+     *
+     * ROADMAP Phase 1 (P4, docs/ROADMAP-P1.md) amends the punctuation rule deliberately and
+     * narrowly: when the character before the space run is a NON-final punctuation mark — exactly
+     * ',', ';' or ':' — the context is the word before the punctuation run ("сүз, " predicts the
+     * successors of сүз). Sentence-final '.', '!', '?', '…' are NOT in that set: a sentence
+     * boundary keeps resetting the context, and a run mixing the two kinds ("сүз.., ") has no
+     * word before the non-final run and yields "" — fail-closed, exactly like a comma with
+     * nothing before it (", ").
      *
      * The word itself is [extractTrailingWord] of the text before the separator run — the exact same
      * word-boundary algorithm PREFIX mode uses, so "context word" and "prefix" agree on what a word
@@ -131,10 +137,20 @@ object TatarWordUtils {
         }
         if (separatorStart == length) return "" // no trailing space run at all
         if (separatorStart == 0) return "" // the separator itself reaches the cache boundary
-        val word = extractTrailingWord(textBeforeCursor.subSequence(0, separatorStart))
+        var wordEnd = separatorStart
+        if (isNonFinalPunctuation(textBeforeCursor[wordEnd - 1])) {
+            // ROADMAP Phase 1 (P4): a run of non-final punctuation keeps the word before it as
+            // the context. The run reaching index 0 means there is no word before it at all —
+            // which is "", with or without cache provenance.
+            while (wordEnd > 0 && isNonFinalPunctuation(textBeforeCursor[wordEnd - 1])) {
+                wordEnd--
+            }
+            if (wordEnd == 0) return ""
+        }
+        val word = extractTrailingWord(textBeforeCursor.subSequence(0, wordEnd))
         if (word.isEmpty()) return ""
         // The word reaching index 0 is only suspicious when the cache may have cut it off.
-        if (!cacheReachedTextStart && separatorStart - word.length == 0) return ""
+        if (!cacheReachedTextStart && wordEnd - word.length == 0) return ""
         return word
     }
 
@@ -194,6 +210,14 @@ object TatarWordUtils {
     /** The four sentence-ending characters of the P4 contract: '.', '!', '?', '…' (U+2026). */
     private fun isSentenceEndingPunctuation(ch: Char): Boolean =
         ch == '.' || ch == '!' || ch == '?' || ch == '…'
+
+    /**
+     * The three NON-final punctuation marks that keep the word before them as the NEXT_WORD
+     * context (ROADMAP Phase 1, P4): ',', ';', ':'. Sentence-final punctuation is deliberately
+     * absent — it resets the context instead ([isSentenceStartContext]).
+     */
+    private fun isNonFinalPunctuation(ch: Char): Boolean =
+        ch == ',' || ch == ';' || ch == ':'
 
     /**
      * True when the text before the cursor ends in a word that holds at least [minLetters] letters,

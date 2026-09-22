@@ -55,6 +55,29 @@ data class DictionaryArtifactSpec(
      * language tags to match.
      */
     val bigrams: BigramArtifactSpec? = null,
+    /**
+     * The sentence-start table of this language (ROADMAP Phase 1, P3b), or null when the
+     * language ships none.
+     *
+     * Same ownership rule as [bigrams]: "which language has a sentence-start table" is a
+     * property of the language, so it lives in the ONE registry instead of being re-derived
+     * from subtype strings at call sites. The table is a plain text asset (no storage
+     * contract, no pins here — its pins live in `tests/sentstart_pack/` and the
+     * `*SentStartAssetTest` JVM contracts, the emoji-asset discipline), so a path is all
+     * the registry carries.
+     */
+    val sentStartAssetPath: String? = null,
+    /**
+     * The lowercase alphabet the personal dictionary filters this language's words by, or null
+     * when the language has no personal dictionary.
+     *
+     * T5 (docs/ROADMAP-P1.md): this field is what makes the registry the single source for
+     * "which subtype gets a personal dictionary" — `PersonalSubtypes.alphabetFor` is a pure
+     * lookup of it, and the settings screens and personal stores inherit the answer through
+     * that one call. The sets themselves stay defined in `PersonalSubtypes` (they are language
+     * data, defined once); the LIST of languages lives here, once.
+     */
+    val personalAlphabet: Set<Int>? = null,
     val schemaId: Int = TdictFormat.SCHEMA_ID,
     val formatVersion: Int = TdictFormat.FORMAT_VERSION,
     val maxCompressedSize: Long = TdictFormat.MAX_COMPRESSED_SIZE,
@@ -66,6 +89,7 @@ data class DictionaryArtifactSpec(
         require(languageTag.isNotBlank())
         require(FAMILY_PATTERN.matches(storageDirectoryName.replace('-', '_')))
         require(assetPath.isNotBlank())
+        require(sentStartAssetPath == null || sentStartAssetPath.isNotBlank())
         require(expectedCompressedSize in 1..maxCompressedSize)
         require(expectedRawSize in TdictFormat.HEADER_SIZE.toLong()..maxRawSize)
         require(expectedEntryCount > 0)
@@ -131,6 +155,8 @@ data class DictionaryArtifactSpec(
                 "3634f021c056b90ab1eb042bf6bccfa1413d31af96993120e77bdcf843152518",
             expectedEntryCount = 110_000,
             bigrams = BigramArtifactSpec.TATAR_BIGRAMS_V1,
+            sentStartAssetPath = "dictionaries/tatar_sentstart_v1.txt",
+            personalAlphabet = PersonalSubtypes.TATAR_RU_ALPHABET,
         )
 
         /**
@@ -174,6 +200,8 @@ data class DictionaryArtifactSpec(
                 "f05499a3b4c3c2811c6ee8e9084dfaf472951a289a20dde2ab8cb098cb5a15b2",
             expectedEntryCount = 100_000,
             bigrams = BigramArtifactSpec.RUSSIAN_BIGRAMS_V1,
+            sentStartAssetPath = "dictionaries/russian_sentstart_v1.txt",
+            personalAlphabet = PersonalSubtypes.RUSSIAN_ALPHABET,
         )
 
         /**
@@ -202,6 +230,16 @@ data class DictionaryArtifactSpec(
         @JvmStatic
         fun bigramsForSubtype(subtypeId: String): BigramArtifactSpec? =
             forSubtype(subtypeId)?.bigrams
+
+        /**
+         * The sentence-start table asset path of [subtypeId], or null when that subtype ships
+         * none — either because it ships no dictionary at all, or because its language has no
+         * table. A null answer means the sentence-start slot simply never fills, the exact
+         * fail-closed shape a missing table has; no caller tests language strings of its own.
+         */
+        @JvmStatic
+        fun sentStartAssetForSubtype(subtypeId: String): String? =
+            forSubtype(subtypeId)?.sentStartAssetPath
     }
 }
 

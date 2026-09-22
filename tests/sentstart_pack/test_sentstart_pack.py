@@ -36,6 +36,16 @@ SENTSTART_ASSET = (
 )
 
 
+RU_DICTIONARY_ASSET = (
+    ROOT / "app" / "src" / "main" / "assets" / "dictionaries"
+    / "russian_top100k_v1.tdict.zlib"
+)
+RU_SENTSTART_ASSET = (
+    ROOT / "app" / "src" / "main" / "assets" / "dictionaries"
+    / "russian_sentstart_v1.txt"
+)
+
+
 def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
@@ -56,24 +66,26 @@ def write_tmp(directory: Path, name: str, text: str) -> Path:
     return path
 
 
-def write_dictionary(directory: Path, words: list[str]) -> Path:
+def write_dictionary(
+    directory: Path, words: list[str], language=coverage.TATAR
+) -> Path:
     """A real schema-2 dictionary asset over [words], built with the pack APIs."""
     entries = sorted((word, 1000 - rank) for rank, word in enumerate(words))
-    raw = dictionary_pack.serialize_entries(entries, coverage.TATAR, schema=2)
+    raw = dictionary_pack.serialize_entries(entries, language, schema=2)
     path = directory / "dict.tdict.zlib"
     path.write_bytes(dictionary_pack.compress_raw(raw))
     return path
 
 
 def run_main(sentences: list[Path], dictionary: Path, output: Path,
-             top: int = 64, **overrides) -> tuple:
+             top: int = 64, language: str = "tat", **overrides) -> tuple:
     """Invoke the CLI entry point capturing its streams; returns (exit, stdout)."""
     stdout = io.StringIO()
     saved = {name: getattr(pack, name) for name in overrides}
     for name, value in overrides.items():
         setattr(pack, name, value)
     argv = ["build", "--dictionary", str(dictionary), "--output", str(output),
-            "--top", str(top)]
+            "--top", str(top), "--language", language]
     for path in sentences:
         argv.extend(["--sentences", str(path)])
     try:
@@ -379,6 +391,126 @@ class CommittedAssetTest(unittest.TestCase):
         self.assertIn("CC BY 4.0", header)
         self.assertIn("tat_mixed_2015_1M", header)
         self.assertIn("tat_web_2018_1M", header)
+
+
+class RussianLanguageTest(unittest.TestCase):
+    """The P3b --language rus path: ru normalization, ru header, ru dictionary filter."""
+
+    WORDS = ["в", "по", "он", "это", "ещё", "как"]
+    SENTENCES = (
+        "1\tВ комнате.\n2\tПо дороге.\n3\tв саду.\n4\tОн сказал.\n5\tЕщё раз.\n"
+        "6\tәти мимо.\n7\t123 цифры.\n"
+    )
+
+    def test_ru_table_normalizes_with_the_russian_alphabet(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            sentences = write_tmp(Path(directory), "ru-sentences.txt", self.SENTENCES)
+            counts = pack.read_first_tokens([sentences], coverage.RUSSIAN)
+        # В folds to в; Әти is dropped (ә is outside the Russian alphabet), 123 too.
+        self.assertEqual(
+            counts.counts, Counter({"в": 2, "по": 1, "он": 1, "ещё": 1}))
+        self.assertEqual(counts.tokens_dropped, 2)
+
+    def test_ru_cli_build_writes_the_ru_header_and_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            sentences = write_tmp(directory, "ru-sentences.txt", self.SENTENCES)
+            dictionary = write_dictionary(
+                directory, self.WORDS, coverage.RUSSIAN)
+            out = directory / "russian_sentstart_v1.txt"
+            code, stdout = run_main(
+                [sentences], dictionary, out, language="rus", MIN_RECORDS=1)
+            self.assertEqual(code, 0)
+            text = out.read_text(encoding="utf-8")
+            rows = [line for line in text.splitlines() if not line.startswith("#")]
+            self.assertEqual(rows, ["в\t2", "ещё\t1", "он\t1", "по\t1"])
+            header = "\n".join(line for line in text.splitlines()
+                               if line.startswith("#"))
+            self.assertIn("Russian sentence-start suggestions", header)
+            self.assertIn("rus_news_2022_1M", header)
+            self.assertIn("rus_news_2019_1M", header)
+            self.assertIn("rus_wikipedia_2021_1M", header)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["language"], "rus")
+            self.assertEqual(payload["record_count"], 4)
+
+    def test_the_tat_default_keeps_the_tat_header(self) -> None:
+        table = pack.build_table(
+            Counter({"бу": 2, "ул": 1}), frozenset({"бу", "ул"}),
+            top=64, max_bytes=pack.MAX_ASSET_BYTES, min_records=1,
+            max_records=pack.MAX_RECORDS)
+        header = "\n".join(line for line in table.text.splitlines()
+                           if line.startswith("#"))
+        self.assertIn("Tatar sentence-start suggestions", header)
+        self.assertIn("tat_mixed_2015_1M", header)
+
+
+# The shipped Russian asset (P3b) is pinned the same way: a data change is a
+# written decision that also updates these numbers (rebuild recipe in
+# docs/ROADMAP-P1.md).
+EXPECTED_RU_ASSET_SHA256 = "ffab114daf924d8f23f295d833a0d90df7298b16fb139b3ba1bdb87a7783f86d"
+EXPECTED_RU_RECORD_COUNT = 64
+
+
+class CommittedRussianAssetTest(unittest.TestCase):
+    """The shipped Russian asset against the shipped Russian dictionary (live tree)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.asset_bytes = RU_SENTSTART_ASSET.read_bytes()
+        cls.asset_text = cls.asset_bytes.decode("utf-8")
+        cls.lines = cls.asset_text.splitlines()
+        cls.rows = [line for line in cls.lines if not line.startswith("#")]
+        cls.records = []
+        for line in cls.rows:
+            word, freq = line.split("\t")
+            cls.records.append((word, int(freq)))
+
+    def test_asset_is_pinned(self) -> None:
+        digest = hashlib.sha256(self.asset_bytes).hexdigest()
+        self.assertEqual(digest, EXPECTED_RU_ASSET_SHA256)
+        self.assertEqual(len(self.records), EXPECTED_RU_RECORD_COUNT)
+
+    def test_shape_and_guardrails(self) -> None:
+        self.assertTrue(self.asset_text.endswith("\n"))
+        self.assertNotIn("\r", self.asset_text)
+        self.assertLessEqual(len(self.asset_bytes), pack.MAX_ASSET_BYTES)
+        self.assertGreaterEqual(len(self.records), pack.MIN_RECORDS)
+        self.assertLessEqual(len(self.records), pack.MAX_RECORDS)
+
+    def test_every_row_is_a_word_and_a_positive_count(self) -> None:
+        for line in self.rows:
+            fields = line.split("\t")
+            self.assertEqual(len(fields), 2, msg=line[:60])
+            self.assertTrue(all(fields), msg=line[:60])
+            self.assertGreater(int(fields[1]), 0, msg=line[:60])
+
+    def test_rows_are_sorted_by_count_desc_then_word_asc(self) -> None:
+        keys = [(-freq, word) for word, freq in self.records]
+        self.assertEqual(keys, sorted(keys))
+        words = [word for word, _freq in self.records]
+        self.assertEqual(len(words), len(set(words)))
+
+    def test_every_word_passes_normalize_word_with_the_russian_alphabet(self) -> None:
+        for word, _freq in self.records:
+            normalized, reason = coverage.normalize_word(
+                word, coverage.RUSSIAN_ALPHABET)
+            self.assertIsNone(reason, msg=f"{word}: {reason}")
+            self.assertEqual(normalized, word)
+
+    def test_every_word_is_in_the_shipped_russian_dictionary(self) -> None:
+        dictionary_words = pack.read_dictionary_words(
+            RU_DICTIONARY_ASSET, coverage.RUSSIAN)
+        for word, _freq in self.records:
+            self.assertIn(word, dictionary_words)
+
+    def test_header_carries_the_attribution(self) -> None:
+        header = "\n".join(line for line in self.lines if line.startswith("#"))
+        self.assertIn("Leipzig", header)
+        self.assertIn("CC BY 4.0", header)
+        self.assertIn("rus_news_2022_1M", header)
+        self.assertIn("rus_news_2019_1M", header)
+        self.assertIn("rus_wikipedia_2021_1M", header)
 
 
 if __name__ == "__main__":

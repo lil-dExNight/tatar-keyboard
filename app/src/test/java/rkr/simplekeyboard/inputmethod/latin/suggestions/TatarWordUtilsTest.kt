@@ -273,6 +273,63 @@ class TatarWordUtilsTest {
         assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз ", true))
     }
 
+    // --- extractNextWordContext after non-final punctuation (ROADMAP Phase 1, P4) ----------------
+
+    @Test
+    fun extractNextWordContextAfterNonFinalPunctuationReturnsTheWordBeforeIt() {
+        // Mid-text positions need no provenance: the punctuation is visible right where it
+        // matters. One-word fields go through the provenance overload — the index-0 guard is
+        // pinned in the boundary test below.
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз, "))
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз; "))
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз: "))
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз,  "))
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз,, "))
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("сүз, ", true))
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("сүз; ", true))
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("сүз: ", true))
+        // The extraction is language-agnostic: the Russian layout gets the same rule.
+        assertEquals("слово", TatarWordUtils.extractNextWordContext("слово, ", true))
+    }
+
+    @Test
+    fun extractNextWordContextAfterNonFinalPunctuationKeepsTheCacheBoundaryRules() {
+        // The word touching index 0 of a possibly truncated cache is not trusted — the exact
+        // guard the plain-word path has; with the provenance flag the first word of a field is
+        // whole.
+        assertEquals("", TatarWordUtils.extractNextWordContext("сүз, "))
+        assertEquals("", TatarWordUtils.extractNextWordContext("сүз, ", false))
+        assertEquals("сүз", TatarWordUtils.extractNextWordContext("сүз, ", true))
+    }
+
+    @Test
+    fun extractNextWordContextPunctuationEdgesYieldNothing() {
+        // Punctuation with nothing before it.
+        assertEquals("", TatarWordUtils.extractNextWordContext(", "))
+        assertEquals("", TatarWordUtils.extractNextWordContext(", ", true))
+        assertEquals("", TatarWordUtils.extractNextWordContext(",, "))
+        // A run mixing final and non-final punctuation has no word before the non-final run.
+        assertEquals("", TatarWordUtils.extractNextWordContext("сүз.., ", true))
+        assertEquals("", TatarWordUtils.extractNextWordContext("сүз. ,", true))
+        // No trailing space run at all — the prediction moment is the space after the comma.
+        assertEquals("", TatarWordUtils.extractNextWordContext("сүз,"))
+        assertEquals("", TatarWordUtils.extractNextWordContext("сүз,тез"))
+        // A digit is not a word: numbers after a comma get no context, like anywhere else.
+        assertEquals("", TatarWordUtils.extractNextWordContext("5, "))
+        // Sentence-final punctuation keeps resetting the context (the sentence-start domain).
+        assertEquals("", TatarWordUtils.extractNextWordContext("сүз. ", true))
+        assertEquals("", TatarWordUtils.extractNextWordContext("сүз! ", true))
+    }
+
+    @Test
+    fun nonFinalPunctuationIsNotASentenceStart() {
+        // The two domains are disjoint: a comma/semicolon/colon keeps a word context, and the
+        // sentence-start detector stays off for them.
+        for (text in listOf("сүз, ", "сүз; ", "сүз: ", ", ")) {
+            assertFalse(TatarWordUtils.isSentenceStartContext(text, true))
+        }
+    }
+
     @Test
     fun extractTrailingWordEmptyForLoneCombiningMark() {
         // A mark with no base letter in the run is an orphan, not a word.

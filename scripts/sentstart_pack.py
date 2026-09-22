@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Build the Tatar sentence-start suggestion table (TT-SUGGESTIONS, phase P4).
+"""Build a sentence-start suggestion table (TT-SUGGESTIONS P4; ROADMAP P1 P3b).
 
-The tool uses only the Python standard library. The inputs are the Leipzig
-Corpora Collection Tatar sentence files (``tat_mixed_2015_1M-sentences.txt``,
-``tat_web_2018_1M-sentences.txt``; CC BY 4.0, not committed) and the SHIPPED
-Tatar dictionary asset (``tatar_top100k_v1.tdict.zlib``). The output is
-``app/src/main/assets/dictionaries/tatar_sentstart_v1.txt``, a deterministic
-UTF-8/LF text asset (data, not code): a ``#`` comment header with the
-attribution and the provenance, then one ``word<TAB>freq`` row per record,
-sorted by frequency descending, then word ascending.
+The tool uses only the Python standard library. The inputs are Leipzig Corpora
+Collection sentence files (CC BY 4.0, not committed) and the SHIPPED dictionary
+asset of the same language. The output is a deterministic UTF-8/LF text asset
+(data, not code): a ``#`` comment header with the attribution and the
+provenance, then one ``word<TAB>freq`` row per record, sorted by frequency
+descending, then word ascending. Built tables:
+``tatar_sentstart_v1.txt`` (tat_mixed_2015_1M + tat_web_2018_1M) and, since
+ROADMAP Phase 1, ``russian_sentstart_v1.txt`` (rus_news_2022_1M,
+rus_news_2019_1M, rus_wikipedia_2021_1M) via ``--language rus``.
 
 A record is a word seen as the FIRST token of a corpus sentence. The token is
 taken with the exact normalization of the dictionary pipeline: surrounding
@@ -68,7 +69,7 @@ MAX_ASSET_BYTES = 16384
 MIN_RECORDS = 16
 MAX_RECORDS = 256
 
-HEADER_LINES = (
+HEADER_LINES_TAT = (
     "# Tatar sentence-start suggestions, v1 (TT-SUGGESTIONS, phase P4).",
     "#",
     "# Source: sentence-initial tokens of the Leipzig Corpora Collection Tatar corpora",
@@ -84,6 +85,25 @@ HEADER_LINES = (
     "# Rows: word<TAB>sentence-initial occurrences, sorted by count descending, word",
     "# ascending.",
 )
+
+HEADER_LINES_RUS = (
+    "# Russian sentence-start suggestions, v1 (ROADMAP Phase 1, P3b).",
+    "#",
+    "# Source: sentence-initial tokens of the Leipzig Corpora Collection Russian corpora",
+    "# rus_news_2022_1M, rus_news_2019_1M and rus_wikipedia_2021_1M",
+    "# (https://wortschatz.uni-leipzig.de/en/download/Russian).",
+    "# License: Creative Commons Attribution 4.0 International (CC BY 4.0),",
+    "# https://creativecommons.org/licenses/by/4.0/ -- see NOTICE.txt beside this file.",
+    "#",
+    "# Pipeline: the first whitespace token of every sentence, hugging punctuation",
+    "# stripped (the dict_tokens rule), normalized exactly like the dictionary pipeline",
+    "# (NFC, lowercase, Russian alphabet filter), kept only when present in the shipped",
+    "# Russian dictionary -- the table can never offer a word the keyboard does not know.",
+    "# Rows: word<TAB>sentence-initial occurrences, sorted by count descending, word",
+    "# ascending.",
+)
+
+HEADER_LINES = {"tat": HEADER_LINES_TAT, "rus": HEADER_LINES_RUS}
 
 
 class SentStartPackError(ValueError):
@@ -119,13 +139,16 @@ class SentStartTable:
         return hashlib.sha256(self.data).hexdigest()
 
 
-def read_first_tokens(paths: Sequence[Path]) -> FirstTokenCounts:
+def read_first_tokens(
+    paths: Sequence[Path], language: coverage.Language = coverage.TATAR
+) -> FirstTokenCounts:
     """Count normalized sentence-initial tokens over the Leipzig sentence files.
 
     Every row must be ``id<TAB>sentence``; a row without exactly that shape is
     structural corruption and fails the build. The first whitespace token of the
     sentence is stripped of hugging punctuation and normalized with
-    :func:`dictionary_coverage.normalize_word`; tokens it rejects are dropped.
+    :func:`dictionary_coverage.normalize_word` under [language]'s alphabet;
+    tokens it rejects are dropped.
     """
     counts: Counter[str] = Counter()
     rows_read = 0
@@ -154,7 +177,7 @@ def read_first_tokens(paths: Sequence[Path]) -> FirstTokenCounts:
             if not token:
                 dropped += 1
                 continue
-            normalized, _reason = coverage.normalize_word(token)
+            normalized, _reason = coverage.normalize_word(token, language.alphabet)
             if normalized is None:
                 dropped += 1
                 continue
@@ -167,16 +190,18 @@ def read_first_tokens(paths: Sequence[Path]) -> FirstTokenCounts:
     return FirstTokenCounts(counts, rows_read, accepted, dropped)
 
 
-def read_dictionary_words(path: Path) -> frozenset[str]:
-    """The shipped Tatar dictionary's word list, decoded with the pack reader APIs.
+def read_dictionary_words(
+    path: Path, language: coverage.Language = coverage.TATAR
+) -> frozenset[str]:
+    """The shipped dictionary's word list, decoded with the pack reader APIs.
 
     Decompression or validation failure is a build failure: the membership
     filter is the asset the runtime actually ships, never an approximation.
     """
     try:
         asset = path.read_bytes()
-        raw = dictionary_pack.decompress_asset(asset, coverage.TATAR)
-        parsed = dictionary_pack.validate_raw(raw, language=coverage.TATAR)
+        raw = dictionary_pack.decompress_asset(asset, language)
+        parsed = dictionary_pack.validate_raw(raw, language=language)
     except (OSError, dictionary_pack.DictionaryPackError) as error:
         raise SentStartPackError(f"{path.name}: cannot decode the dictionary: {error}") from error
     if not parsed.words:
@@ -192,6 +217,7 @@ def build_table(
     max_bytes: int,
     min_records: int,
     max_records: int,
+    language: coverage.Language = coverage.TATAR,
 ) -> SentStartTable:
     """Compose the deterministic asset: top [top] dictionary words by sentence-initial
     frequency, rows sorted by (count desc, word asc)."""
@@ -202,7 +228,7 @@ def build_table(
         raise SentStartPackError("no sentence-initial token is a shipped dictionary word")
     eligible.sort(key=lambda item: (-item[1], item[0]))
     chosen = eligible[:top]
-    lines = list(HEADER_LINES)
+    lines = list(HEADER_LINES[language.tag])
     lines.extend(f"{word}\t{count}" for word, count in chosen)
     text = "\n".join(lines) + "\n"
     data = text.encode("utf-8")
@@ -249,7 +275,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
     build.add_argument("--sentences", type=Path, nargs="+", required=True,
                        help="Leipzig sentence files (id<TAB>sentence)")
     build.add_argument("--dictionary", type=Path, required=True,
-                       help="the shipped Tatar dictionary asset (.tdict.zlib)")
+                       help="the shipped dictionary asset (.tdict.zlib)")
+    build.add_argument("--language", choices=sorted(coverage.LANGUAGES), default="tat",
+                       help="the language of the table (default tat)")
     build.add_argument("--output", type=Path, required=True)
     build.add_argument("--top", type=int, default=DEFAULT_TOP,
                        help=f"records to keep (default {DEFAULT_TOP})")
@@ -264,8 +292,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = create_argument_parser().parse_args(argv)
     try:
         if args.command == "build":
-            counts = read_first_tokens(args.sentences)
-            dictionary_words = read_dictionary_words(args.dictionary)
+            language = coverage.language_for(args.language)
+            counts = read_first_tokens(args.sentences, language)
+            dictionary_words = read_dictionary_words(args.dictionary, language)
             table = build_table(
                 counts.counts,
                 dictionary_words,
@@ -273,6 +302,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_bytes=MAX_ASSET_BYTES,
                 min_records=MIN_RECORDS,
                 max_records=MAX_RECORDS,
+                language=language,
             )
             write_atomic(args.output, table.data)
             _print_json(
@@ -281,6 +311,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "asset_sha256": table.sha256,
                     "bottom_frequency": table.bottom_frequency,
                     "dictionary_words": len(dictionary_words),
+                    "language": language.tag,
                     "record_count": table.record_count,
                     "rows_read": counts.rows_read,
                     "tokens_accepted": counts.tokens_accepted,

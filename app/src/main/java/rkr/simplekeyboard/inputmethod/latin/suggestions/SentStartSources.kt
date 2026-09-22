@@ -20,25 +20,29 @@ import android.content.Context
 import java.util.concurrent.ExecutorService
 
 /**
- * Lazily loads the one [SentStartSource] of the process off the UI thread — the exact shape of
- * the controller's `EmojiSuggestPreparation` seam, so a user who never opens a Tatar field at a
- * sentence start never reads the asset at all. [onResult] may arrive on any thread and is called
- * exactly once; a null source means "unusable" (missing/corrupt asset) and is terminal for the
- * process.
+ * Lazily loads ONE language's [SentStartSource] off the UI thread — the exact shape of the
+ * controller's `EmojiSuggestPreparation` seam, per language: a language whose fields never sit
+ * at a sentence start never has its asset read at all. [onResult] may arrive on any thread and
+ * is called exactly once; a null source means "unusable" (missing/corrupt asset) and is
+ * terminal for the process.
  */
 fun interface SentStartPreparation {
     fun prepare(onResult: (SentStartSource?) -> Unit)
 }
 
 /**
- * Production [SentStartPreparation]: reads the sentence-start table from the assets on the given
- * executor. Constructed cheaply on the UI thread (it only keeps the application context); the
- * AssetManager is touched only inside the background task, never on the cold-start path. The
- * result is returned to the caller and never written to any persistent store.
+ * Production [SentStartPreparation]: reads ONE language's sentence-start table from the assets
+ * on the given executor; which language is decided by the caller through [assetPath] (the
+ * artifact registry's answer — `DictionaryArtifactSpec.sentStartAssetForSubtype` — never a
+ * language string checked here). Constructed cheaply on the UI thread (it only keeps the
+ * application context and the path); the AssetManager is touched only inside the background
+ * task, never on the cold-start path. The result is returned to the caller and never written
+ * to any persistent store.
  */
 class AssetSentStartPreparation(
     context: Context,
     private val executor: ExecutorService,
+    private val assetPath: String,
 ) : SentStartPreparation {
     private val appContext = context.applicationContext
 
@@ -54,15 +58,11 @@ class AssetSentStartPreparation(
 
     private fun load(): SentStartSource? {
         val table = try {
-            appContext.assets.open(SENTSTART_ASSET_PATH).use { SentStartIndex.parse(it) }
+            appContext.assets.open(assetPath).use { SentStartIndex.parse(it) }
         } catch (_: Throwable) {
             SentStartIndex.EMPTY
         }
         if (table.isEmpty) return null
         return table
-    }
-
-    private companion object {
-        const val SENTSTART_ASSET_PATH = "dictionaries/tatar_sentstart_v1.txt"
     }
 }
