@@ -61,6 +61,9 @@ dist/
 # Локальные git worktree
 .wt/
 
+# Рабочий каталог оператора (скринкасты, черновики; не коммитится — ROADMAP-P1 T6)
+.temp/
+
 tat_*.tar.gz
 tat_*-words.txt
 tat_*-sentences.txt

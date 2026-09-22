@@ -64,8 +64,10 @@ public final class SubtypeLocaleUtils {
         return Arrays.asList(sSupportedLocales);
     }
 
-    // Active layouts: Tatar, Russian, QWERTY (plus the predefined generic layouts offered
-    // for English via addGenericLayouts, named in R.array.predefined_layouts).
+    // Active layouts: Tatar, Russian, QWERTY (plus the remaining predefined generic layouts
+    // — QWERTZ, ABC — offered for English via addGenericLayouts, named in
+    // R.array.predefined_layouts). Roadmap phase 1 (T4, 2026-09-22) cut the six legacy
+    // families bepo/azerty/dvorak/colemak/workman/pcqwerty from the array and their XML.
     public static final String LAYOUT_QWERTY = "qwerty";
     public static final String LAYOUT_RUSSIAN = "russian";
     public static final String LAYOUT_TATAR = "tatar";
@@ -279,7 +281,7 @@ public final class SubtypeLocaleUtils {
         }
 
         /**
-         * Add the predefined layouts (eg: QWERTY, AZERTY, etc) for the locale. This might not
+         * Add the predefined layouts (eg: QWERTZ, ABC) for the locale. This might not
          * actually add all of the subtypes to the list depending on the original request.
          */
         private void addGenericLayouts() {

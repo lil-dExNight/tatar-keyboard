@@ -22,14 +22,6 @@
     xmlns:latin="http://schemas.android.com/apk/res-auto"
 >
     <switch>
-        <case
-            latin:keyboardLayoutSet="dvorak"
-        >
-            <Key
-                latin:keySpec="z"
-                latin:keyLabelFlags="hasPopupHint"
-                latin:moreKeys="!text/morekeys_punctuation,!text/morekeys_z" />
-        </case>
         <!-- Different period symbol (।) for Bijoy subtype layout -->
         <case
             latin:keyboardLayoutSet="bengali_bijoy"
