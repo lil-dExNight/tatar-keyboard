@@ -1,3 +1,37 @@
+# HANDOFF — ROADMAP Phase 1 complete (uncommitted; release decision pending)
+
+**State as of 2026-09-22.** All eight items of `docs/ROADMAP.md` Phase 1 are done in
+the working tree on top of the 2.0.1 release (committed `4c13686c`; the entry below,
+written before the 2.0.1 commit, is stale in that detail). **The Phase-1 changeset
+itself is uncommitted**; version NOT bumped (2.0.1/33 — the release decision, expected
+2.1.0, is the operator's). Report: `docs/ROADMAP-P1.md` (engine batch P3a/P3b/P4/T5,
+hygiene T3/T4/T6, and today's final block T1 + gates + device UAT).
+
+What landed today (final block):
+
+- **T1 baseline profile regenerated**: 2 278 → 2 433 rules (+155), new hot paths of
+  TT-SUGGESTIONS/TT-NEXTWORD-FILL/phase-1 captured (39 rules naming SentStart*,
+  FallbackWords*, topFrequentWords). One environmental note: the connected-test matrix
+  runs on every attached device and the physical POCO C71 fails the MIUI profile-save
+  broadcast — generate with only the emulator attached or `ANDROID_SERIAL=<emulator>`.
+- **Full gates green**: python 484/0, JVM 1 282/0 (138 suites), lint, asset pins,
+  check-no-internet both levels, `release_check.sh --quick` 8/8 (changelog gate passes
+  on the existing 33.txt). Signed release APK **1 809 700 B** ≤ 3 145 728, SHA-256
+  `6a7880a1…7c568d9d`, cert `98ca6feb…42ad`.
+- **Device UAT 13/13 PASS** (`build/device-uat-2026-09-22/`): capitalized sentence-start
+  on tt (Бу · Ул · Ә at field start and after `. `) and ru (В · По · На), after-comma
+  predictions (татар, → теле·дәүләт·телен; майор, → полиции·и·внутренней), full
+  regression core, cold start 257/270 ms < 400, crash buffer empty, 193-char paragraph
+  byte-identical.
+- Device restored as found: Gboard re-selected as the default IME, the
+  "Word suggestions" toggle set back OFF (the user had it off before the UAT —
+  re-enable it from settings when wanted).
+
+Open: commit + version bump (2.1.0) + release are the operator's call; roadmap Phase 2+
+untouched.
+
+---
+
 # HANDOFF — release 2.0.1 prepared (uncommitted; tag/push/publish are next)
 
 **State as of 2026-09-21.** Release **2.0.1 / versionCode 33** is prepared on

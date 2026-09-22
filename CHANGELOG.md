@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+Sentence starts finally look and work like sentence starts — in both languages — and predictions no longer stop at a comma.
+
+### What changed
+
+- **Sentence-start suggestions are capitalized:** at the start of a field and after `.`/`!`/`?` the strip offers `Бу · Ул · Ә` instead of lowercase forms
+- **Sentence-start suggestions for Russian:** the strip offers the most frequent Russian sentence-initial words (`В · По · На`…) at a field start and after sentence-ending punctuation — the same Tatar feature, now for the Russian layout, with its own corpus-built table
+- **Predictions after a comma (and `;` `:`):** `татар, ` now offers the word's next-word predictions (`теле · дәүләт · телен`) instead of nothing — bigram successors, word forms and the frequency fallback apply exactly as after a space; sentence-ending punctuation keeps its own behavior
+- **Cold start kept fast:** the baseline profile is regenerated for the new prediction paths (2 278 → 2 433 rules); measured cold start stays well under the 400 ms budget
+- **Smaller APK:** 55 unused legacy layout resources removed (English keeps QWERTY / QWERTZ / ABC); the release keystore no longer lives in the repository checkout
+
+### What stayed the same
+
+- Tatar/Russian dictionaries, bigram tables, layouts, personal dictionary, emoji — unchanged
+- One permission only — VIBRATE; no INTERNET, gate verified on the built APK
+- Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
+
 ## [2.0.1] — 2026-09-21
 
 The strip after a committed word is never empty: predictions now fall back to the language's most frequent words.

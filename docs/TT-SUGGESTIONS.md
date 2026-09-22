@@ -641,6 +641,13 @@ the NEXT_WORD display rule, applied to the new slot. Sentence-initial capitaliza
 need the shift state plumbed into the controller, which no seam carries today; recorded as
 a deliberate v1 limitation, not an oversight.
 
+> Footnote 2026-09-22 (ROADMAP Phase 1, `docs/ROADMAP-P1.md`): the v1 limitations above are
+> resolved — P3a capitalizes the cells at the display boundary (no shift-state seam turned
+> out to be needed: the slot itself is the signal), P3b ships the Russian table through the
+> same pipeline and the artifact-registry seam (the "Russian slot ships no table" sentence
+> is therefore historical), and the P4-after-punctuation rule gained the non-final `, ; :`
+> context (`extractNextWordContext` reads the word BEFORE them). Details and pins there.
+
 ### Eval old → new (TtSuggestEvalTest; committed assets, pinned eval set)
 
 | metric | P3 | P4 |
