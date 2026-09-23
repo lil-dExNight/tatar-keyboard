@@ -40,6 +40,9 @@
     <string name="prefs_key_longpress_timeout_settings">"Долгое нажатие"</string>
     <string name="button_default">"По умолчанию"</string>
     <string name="prefs_keyboard_height_settings">Высота клавиатуры</string>
+    <string name="keyboard_height_compact">Компактная</string>
+    <string name="keyboard_height_default">По умолчанию</string>
+    <string name="keyboard_height_tall">Высокая</string>
     <string name="prefs_bottom_offset_portrait_settings">Сдвиг снизу</string>
     <string name="keyboard_color">Установить пользовательский цвет клавиатуры</string>
     <string name="show_special_chars">Показать специальные символы</string>

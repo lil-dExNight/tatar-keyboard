@@ -40,6 +40,9 @@
     <string name="prefs_key_longpress_timeout_settings">Озак басу вакыты</string>
     <string name="button_default">Гадәттәгечә</string>
     <string name="prefs_keyboard_height_settings">Төймәсар биеклеге</string>
+    <string name="keyboard_height_compact">Кыска</string>
+    <string name="keyboard_height_default">Гадәти</string>
+    <string name="keyboard_height_tall">Биек</string>
     <string name="prefs_bottom_offset_portrait_settings">Астан чигенеш</string>
     <string name="keyboard_color">Төймәсарга үз төсен кую</string>
     <string name="show_special_chars">Махсус символларны күрсәтү</string>

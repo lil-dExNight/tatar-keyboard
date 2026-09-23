@@ -64,7 +64,8 @@ public class SettingsValues {
     public final float mKeypressSoundVolume;
     public final int mKeyPreviewPopupDismissDelay;
 
-    // Debug settings
+    // Keyboard geometry, from preferences (the Appearance screen's height presets and the
+    // bottom-offset slider; U6 of Phase 5, docs/ROADMAP-P5.md):
     public final float mKeyboardHeightScale;
 
     public final int mBottomOffsetPortrait;

@@ -58,6 +58,12 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     public static final String PREF_CURRENT_SUBTYPE = "pref_current_subtype";
     public static final String PREF_KEYPRESS_SOUND_VOLUME = "pref_keypress_sound_volume";
     public static final String PREF_KEY_LONGPRESS_TIMEOUT = "pref_key_longpress_timeout";
+    /**
+     * Keyboard height as a float scale of the resource default (1.0f = today; U6 of Phase 5,
+     * docs/ROADMAP-P5.md). The settings row writes one of the three
+     * {@link KeyboardHeightPresets} values; floats outside them (the pre-U6 seek bar's 0.50–1.50
+     * steps, or an integer-percent managed restriction) keep applying verbatim.
+     */
     public static final String PREF_KEYBOARD_HEIGHT = "pref_keyboard_height";
     public static final String PREF_BOTTOM_OFFSET_PORTRAIT = "pref_bottom_offset_portrait";
     public static final String PREF_KEYBOARD_COLOR = "pref_keyboard_color";

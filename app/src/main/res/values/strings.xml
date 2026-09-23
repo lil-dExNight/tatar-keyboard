@@ -83,6 +83,10 @@
     <string translatable="false" name="abbreviation_unit_dp"><xliff:g id="DENSITY_INDEPENDENT_PIXELS">%d</xliff:g> dp</string>
 
     <string name="prefs_keyboard_height_settings">Keyboard height</string>
+    <!-- U6: the three named height presets of the "Keyboard height" row [CHAR LIMIT=20] -->
+    <string name="keyboard_height_compact">Compact</string>
+    <string name="keyboard_height_default">Default</string>
+    <string name="keyboard_height_tall">Tall</string>
     <string name="prefs_bottom_offset_portrait_settings">Bottom offset</string>
     <string name="keyboard_color">Set custom keyboard color</string>
     <string name="show_special_chars">Show special characters</string>

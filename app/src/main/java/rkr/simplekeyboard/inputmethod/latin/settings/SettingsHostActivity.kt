@@ -1029,12 +1029,7 @@ class SettingsHostActivity : Activity() {
                     R.string.show_number_row, R.string.show_number_row_summary),
             switchRow(Settings.PREF_SHOW_EMOJI_KEY, true,
                     R.string.show_emoji_key, R.string.show_emoji_key_summary),
-            valueRow(Settings.PREF_KEYBOARD_HEIGHT,
-                    R.string.prefs_keyboard_height_settings,
-                    resources.getInteger(R.integer.config_min_keyboar_height),
-                    resources.getInteger(R.integer.config_max_keyboar_height),
-                    resources.getInteger(R.integer.config_keyboar_height_step),
-                    keyboardHeightProxy()),
+            keyboardHeightRow(),
             valueRow(Settings.PREF_BOTTOM_OFFSET_PORTRAIT,
                     R.string.prefs_bottom_offset_portrait_settings,
                     resources.getInteger(R.integer.config_min_bottom_offset_portrait),
@@ -1345,6 +1340,68 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
+     * U6 of Phase 5 (docs/ROADMAP-P5.md): "Keyboard height" as three named presets instead of
+     * the inherited 21-step seek bar. The row reuses row_value; the tap target opens a
+     * one-tap picker that writes the preset's float into the very same
+     * [Settings.PREF_KEYBOARD_HEIGHT] the seek bar wrote, so the live-apply path (Settings
+     * rebuild → next loadKeyboard → new mHeight in the KeyboardId, hence a fresh build) is the
+     * one the slider already used. A float from the seek-bar era matches no preset: it keeps
+     * applying and is shown as a plain percent until the user picks a preset.
+     */
+    private fun keyboardHeightRow(): View {
+        val row = inflateRow(R.layout.row_value, R.string.prefs_keyboard_height_settings, 0)
+        val valueView = row.findViewById<TextView>(R.id.row_value)
+        valueView.text = keyboardHeightValueText()
+        row.setOnClickListener {
+            showKeyboardHeightDialog {
+                valueView.text = keyboardHeightValueText()
+            }
+        }
+        if (isRestricted(Settings.PREF_KEYBOARD_HEIGHT)) {
+            setRowEnabled(row, false)
+        }
+        return row
+    }
+
+    private val keyboardHeightLabelRes = listOf(
+        R.string.keyboard_height_compact,
+        R.string.keyboard_height_default,
+        R.string.keyboard_height_tall,
+    )
+
+    /** The preset's localized name, or the seek-bar era value rendered as a plain percent. */
+    private fun keyboardHeightValueText(): String {
+        val scale = Settings.readKeyboardHeight(prefs, KeyboardHeightPresets.DEFAULT_SCALE)
+        val index = KeyboardHeightPresets.indexForScale(scale)
+        return if (index >= 0) getString(keyboardHeightLabelRes[index])
+        else getString(R.string.abbreviation_unit_percent,
+                Math.round(scale * PERCENTAGE_FLOAT))
+    }
+
+    private fun showKeyboardHeightDialog(onValueChanged: () -> Unit) {
+        val labels = keyboardHeightLabelRes.map { getString(it) }.toTypedArray()
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.prefs_keyboard_height_settings)
+                // setItems on purpose: the choice applies on the tap itself and the dialog
+                // closes — a one-tap picker with no buttons. (An unnamed OK would also break
+                // the file-wide contract of EmojiRecentAndFlingSourceContractTest.)
+                .setItems(labels) { _, which ->
+                    val scale = KeyboardHeightPresets.SCALES[which]
+                    if (scale != Settings.readKeyboardHeight(prefs,
+                            KeyboardHeightPresets.DEFAULT_SCALE)) {
+                        prefs.edit().putFloat(Settings.PREF_KEYBOARD_HEIGHT, scale).apply()
+                    }
+                    onValueChanged()
+                }
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
+    /**
      * Uppercase 13sp section header above a card (iOS grouped-list header).
      * The card that follows should pass spacedFromPrevious = false to
      * [addCard] — the header carries the vertical spacing itself.
@@ -1484,28 +1541,6 @@ class SettingsHostActivity : Activity() {
 
         override fun getValueText(value: Int): String =
                 getString(R.string.abbreviation_unit_milliseconds, value)
-
-        override fun feedbackValue(value: Int) {}
-    }
-
-    private fun keyboardHeightProxy() = object : SeekBarDialogHelper.ValueProxy {
-        override fun readValue(key: String): Int =
-                Math.round(Settings.readKeyboardHeight(prefs, 1f) * PERCENTAGE_FLOAT)
-
-        override fun readDefaultValue(key: String): Int =
-                Math.round(PERCENTAGE_FLOAT)
-
-        override fun writeValue(value: Int, key: String) {
-            prefs.edit().putFloat(key, value / PERCENTAGE_FLOAT).apply()
-        }
-
-        override fun writeDefaultValue(key: String) {
-            prefs.edit().remove(key).apply()
-        }
-
-        override fun getValueText(value: Int): String =
-                if (value < 0) getString(R.string.settings_system_default)
-                else getString(R.string.abbreviation_unit_percent, value)
 
         override fun feedbackValue(value: Int) {}
     }

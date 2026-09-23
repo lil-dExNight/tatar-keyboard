@@ -60,11 +60,6 @@
     <!-- Common keyboard configuration. -->
     <dimen name="config_keyboard_vertical_correction">0.0dp</dimen>
 
-    <!-- Keyboard height -->
-    <integer name="config_max_keyboar_height">150</integer>
-    <integer name="config_min_keyboar_height">50</integer>
-    <integer name="config_keyboar_height_step">5</integer>
-
     <!-- Bottom offset -->
     <integer name="config_max_bottom_offset_portrait">100</integer>
     <integer name="config_min_bottom_offset_portrait">0</integer>
