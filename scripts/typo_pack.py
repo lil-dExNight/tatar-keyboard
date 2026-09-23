@@ -822,6 +822,64 @@ def build_geometric_typo_set(
     return _finish_typo_set(rows, variant_counts, scanned, words, max_rows, "class #2")
 
 
+def build_two_substitution_typo_set(
+    words: Sequence[str],
+    alphabet: Sequence[int],
+    *,
+    seed: int = TYPO_SEED,
+    prefix_code_points: int = PREFIX_CODE_POINTS,
+    max_rows: int | None = None,
+) -> TypoSet:
+    """Edit class #5 (ROADMAP-P4 P6): two substitutions at two DISTINCT positions.
+
+    For every word of at least ``prefix_code_points`` code points, exactly one ``(i, j, x, y)``
+    choice is picked deterministically: the position pair is the ``selection_index``-th pair of
+    the ``(i < j)`` pairs of the window in lexicographic order, and each replacement letter is the
+    ``selection_index``-th letter of the alphabet minus the position's own letter. The three picks
+    are chained off the one ``(seed, word)`` SplitMix64 stream so the JVM calibration test
+    reproduces every choice bit-for-bit -- exactly the same primitive as the other classes, used
+    three times rather than materializing the C(n,2) x 37^2 eligible space per word.
+    """
+    if prefix_code_points <= 0:
+        raise TypoPackError("prefix length must be positive")
+    rows: list[tuple[str, str]] = []
+    variant_counts: list[int] = []
+    scanned = 0
+    for word in words:
+        code_points = [ord(character) for character in word]
+        if len(code_points) < prefix_code_points:
+            continue
+        scanned += 1
+        pair_count = prefix_code_points * (prefix_code_points - 1) // 2
+        if pair_count == 0:
+            continue
+        # The chained SplitMix64 stream of this word (JVM: the identical sequence).
+        mixed = splitmix64(seed ^ fnv1a64(word.encode("utf-8")))
+        pair_index = mixed % pair_count
+        mixed = splitmix64(mixed)
+        x_index = mixed % (len(alphabet) - 1)
+        mixed = splitmix64(mixed)
+        y_index = mixed % (len(alphabet) - 1)
+        # The pair_index-th (i < j) pair in lexicographic order.
+        i = 0
+        k = pair_index
+        while k >= prefix_code_points - 1 - i:
+            k -= prefix_code_points - 1 - i
+            i += 1
+        j = i + 1 + k
+        x_choices = [cp for cp in alphabet if cp != code_points[i]]
+        y_choices = [cp for cp in alphabet if cp != code_points[j]]
+        typo_code_points = code_points[:prefix_code_points]
+        typo_code_points[i] = x_choices[x_index]
+        typo_code_points[j] = y_choices[y_index]
+        typo_prefix = "".join(chr(cp) for cp in typo_code_points)
+        rows.append((word, typo_prefix))
+        # The engine's enumeration cost driver: stage A probes one alphabet per position.
+        variant_counts.append(prefix_code_points * (len(alphabet) - 1))
+
+    return _finish_typo_set(rows, variant_counts, scanned, words, max_rows, "class #5")
+
+
 def build_transposition_typo_set(
     words: Sequence[str],
     *,
@@ -984,6 +1042,12 @@ def generate(
             words, alphabet, seed=seed, prefix_code_points=prefix_code_points
         )
         return typo_set, {cp: () for cp in alphabet}
+    if edit_class == 5:
+        alphabet = read_layout_alphabet(layout_dir)
+        typo_set = build_two_substitution_typo_set(
+            words, alphabet, seed=seed, prefix_code_points=prefix_code_points
+        )
+        return typo_set, {cp: () for cp in alphabet}
     raise TypoPackError(f"unknown edit class {edit_class}")
 
 
@@ -1023,17 +1087,18 @@ def _pairs_json(neighbor_map: dict[int, tuple[int, ...]]) -> list[dict[str, obje
 def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    build = commands.add_parser("build", help="generate the class #1/#2/#3/#4 typo set")
+    build = commands.add_parser("build", help="generate the class #1/#2/#3/#4/#5 typo set")
     build.add_argument("--dictionary", type=Path, required=True)
     build.add_argument("--layout-dir", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
     build.add_argument(
         "--edit-class",
         type=int,
-        choices=(1, 2, 3, 4),
+        choices=(1, 2, 3, 4, 5),
         default=1,
         help="1 = long-press partner (default), 2 = geometric neighbour, 3 = adjacent "
-        "transposition, 4 = full single substitution over the layout alphabet (Phase C)",
+        "transposition, 4 = full single substitution over the layout alphabet (Phase C), "
+        "5 = two substitutions at distinct positions (ROADMAP-P4 P6)",
     )
     build.add_argument(
         "--prefix-code-points",

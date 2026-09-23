@@ -160,6 +160,12 @@ internal class TdictPrefixIndex private constructor(
     // interleave with survivor scans whose tie-breaks use A/B, and a shared scratch would have to
     // prove the absence of interleavings rather than just having it.
     private val probeScratch = ByteArray(TdictFormat.MAX_WORD_BYTES)
+    // P6: the class-#5 driver's own chain scratch (a seed prefix lives across its stage-B
+    // enumeration) and per-stage-B next-letter buffer. Constructor-allocated once; the pass
+    // itself allocates nothing.
+    private val edit2ChainScratch = ByteArray(MAX_PREFIX_BYTES + VARIANT_HEADROOM)
+    private val edit2NextLetters = IntArray(64)
+    private val edit2ByteStart = IntArray(MAX_PREFIX_BYTES)
     // Phase C2: per-position search ranges for the class #4 probes — words starting with the
     // first N code points of the typed prefix, incrementally narrowed once per lookup. A variant
     // substituted at position p shares the typed prefix's first p code points, so its survivors
@@ -249,6 +255,12 @@ internal class TdictPrefixIndex private constructor(
     internal var lastAutocorrectProbeCount = 0
         private set
 
+    // Same observability for the class-#5 pass (ROADMAP-P4 P6): total probes issued by the last
+    // lookup's chained two-substitution enumeration (seed probes + chain extensions + full-variant
+    // probes + survivor scans). Worker-confined exactly like the counters above.
+    internal var lastEdit2ProbeCount = 0
+        private set
+
     // Fuzzy-pass accumulator, private to a single lookup() invocation and reset on each entry.
     private var fuzzyExactCount = 0
     private var fuzzyRemaining = 0
@@ -260,6 +272,14 @@ internal class TdictPrefixIndex private constructor(
     // variant, and each class #4 SURVIVOR — its probes count against MAX_FUZZY_PROBES instead).
     private var fuzzyVariantsUsed = 0
     private var fuzzyProbesUsed = 0
+    // Class-#5 (P6) accumulators, private to a single collectFuzzy invocation.
+    private var edit2ProbesUsed = 0
+    private var edit2ScansUsed = 0
+    // The plausibility of the variant currently feeding scanVariantBlock: the number of its edits
+    // (0..2) that are attested confusion pairs in the layout's long-press map. A plain int set by
+    // the class-#5 driver before each scan and read by the packed rank key; classes #1-#4 leave it
+    // at zero, which preserves their existing order exactly.
+    private var fuzzyCurrentPlausibility = 0
 
     // The edit class of the variant pass currently running (EDIT_CLASS_LONG_PRESS/GEOMETRIC/
     // TRANSPOSITION/SUBSTITUTION). A plain int, set before each class's generator runs and read by
@@ -304,6 +324,7 @@ internal class TdictPrefixIndex private constructor(
             lastFuzzyVariantCount = 0
             lastFuzzyVisitedCount = 0
             lastFuzzyProbeCount = 0
+            lastEdit2ProbeCount = 0
             lastFuzzyOverBudget = false
             for (offset in 0 until prefixLength) {
                 exactScratch[offset] = normalizedPrefixUtf8.byteAt(offset).toByte()
@@ -593,13 +614,17 @@ internal class TdictPrefixIndex private constructor(
         fuzzyPrefixLength = prefixLength
         fuzzyVariantsUsed = 0
         fuzzyProbesUsed = 0
+        edit2ProbesUsed = 0
+        edit2ScansUsed = 0
+        fuzzyCurrentPlausibility = 0
         // The enabled classes share one variant budget: the total number of variants SCANNED across
         // all of them must stay within MAX_FUZZY_VARIANTS (for class #4 only survivors consume it —
         // its probes count against MAX_FUZZY_PROBES instead). The edit class DOES affect ranking
-        // (class #1 before #2 before #3 before #4, then the same-length bonus, then frequency inside
-        // a class); each candidate is tagged with a rank key derived from fuzzyCurrentClass, set
-        // below before its class runs. Any single class returning -1 (its slice of a budget
-        // exceeded) drops the whole fuzzy level, never a part of it.
+        // (class #1 before #2 before #3 before #4 before #5, then the same-length bonus, then the
+        // class-#5 plausibility, then frequency inside a class); each candidate is tagged with a
+        // rank key derived from fuzzyCurrentClass, set below before its class runs. Any single
+        // class returning -1 (its slice of a budget exceeded) drops the whole fuzzy level, never
+        // a part of it.
 
         if (EDIT_CLASS_LONG_PRESS in fuzzyPolicy.editClasses) {
             fuzzyCurrentClass = EDIT_CLASS_LONG_PRESS
@@ -669,9 +694,39 @@ internal class TdictPrefixIndex private constructor(
             // NOT be added — that would double-count.
         }
 
+        // Class #5 (ROADMAP-P4 P6, docs/ROADMAP-P4.md): TWO substitutions at distinct positions,
+        // full class over the layout alphabet, enumerated by the chained probe design below. The
+        // activation gate is deliberately stricter than class #4's: class #5 fires only when the
+        // exact pass found NOTHING *and* every earlier class produced no candidate — the strip is
+        // empty either way, so a correct guess is pure gain and a wrong one displaces nothing
+        // (the G2 precision condition is structural, not measured).
+        //
+        // VERDICT (2026-09-23, TwoSubstitutionCalibrationTest): NO SHIP. The +10 pp G1 recovery
+        // gate is unreachable even at the perfect-recall ceiling (9.79 % — 113.6 edit-2
+        // competitors per empty-strip row bury the original word at median rank 28), and this
+        // chained probe-per-letter enumeration trips the fail-closed probe budget on 73 % of
+        // firing rows (measured recovery: 0). The class stays unwired — no policy enables it;
+        // the machinery and the calibration stand as the documented evidence.
+        if (EDIT_CLASS_TWO_SUBSTITUTIONS in fuzzyPolicy.editClasses &&
+            exactCount == 0 && fuzzyCount == 0 &&
+            codePointCount >= MIN_TWO_SUBST_PREFIX_CODE_POINTS
+        ) {
+            fuzzyCurrentClass = EDIT_CLASS_TWO_SUBSTITUTIONS
+            collectTwoSubstitutionVariants(table, prefixLength, codePointCount)
+            if (fuzzyOverBudget) {
+                lastFuzzyOverBudget = true
+                lastFuzzyVisitedCount = fuzzyVisited
+                lastFuzzyProbeCount = fuzzyProbesUsed
+                lastEdit2ProbeCount = edit2ProbesUsed
+                return exactCount
+            }
+            fuzzyVariantsUsed += edit2ScansUsed
+        }
+
         lastFuzzyVariantCount = fuzzyVariantsUsed
         lastFuzzyVisitedCount = fuzzyVisited
         lastFuzzyProbeCount = fuzzyProbesUsed
+        lastEdit2ProbeCount = edit2ProbesUsed
         for (slot in 0 until fuzzyCount) {
             rankedIndices[exactCount + slot] = fuzzyIndices[slot]
             rankedFrequencies[exactCount + slot] = fuzzyFrequencies[slot]
@@ -802,11 +857,613 @@ internal class TdictPrefixIndex private constructor(
         return if (wordLength < queryLength) -1 else 0
     }
 
-    /** Scans one variant's dictionary block, ranking its candidates into [fuzzyIndices]. */
-    private fun scanVariantBlock(variantBytes: ByteArray, variantLength: Int) {
+    /**
+     * The class-#5 driver (ROADMAP-P4 P6, docs/ROADMAP-P4.md): full TWO-substitution recovery,
+     * enumerated by chains instead of the dead (38n)^2 naive space.
+     *
+     * VERDICT (2026-09-23): NO SHIP — the class is correct but unreachable by any policy: the
+     * G1 recovery ceiling itself sits below the gate (see the calibration's diagnostic), and the
+     * chained enumeration below trips the probe budget on 73 % of firing rows. Kept unwired as
+     * documented evidence; do not enable without a fundamentally cheaper enumeration AND a
+     * renegotiated gate.
+     *
+     * Per position i, every substitution letter x != typed[i] gets ONE seed probe — the
+     * single-substitution prefix `typed[0..i) + x` inside the class-#4 narrowing range
+     * (probeRange[i], so a prefix no word starts with kills the whole position for free). A
+     * surviving seed is extended letter by letter (one narrowed lowerBound-startsWith probe per
+     * extension): the chain dies the moment its prefix leaves the dictionary, and dead chains
+     * are never re-probed. At every live through-j prefix, the SECOND substitution at j is
+     * enumerated two ways by range width: a bounded walk of the seed range reads its own
+     * continuation letters off the first [EDIT2_CONTINUATION_WALK_LIMIT] entries and pays at
+     * most one cheap scan per letter; a range wider than that pays 37 full-variant probes. Every
+     * emitted full variant is scanned by [scanVariantBlock] with block-first-word bounds, tagged
+     * with the class and its plausibility (how many of its two edits are attested confusion
+     * pairs in the layout's long-press map — the key that puts `сәләм` over `салым` for `сэлэм`).
+     *
+     * Every probe is one of the block-first-word bounds above (~14 direct reads + a bounded
+     * in-block walk — the C2 decode-per-step probe would be ~4x more expensive at this scale);
+     * [edit2ProbesUsed] counts them and [MAX_EDIT2_PROBES] is the fail-closed trip that drops
+     * the level whole. Nothing here touches the shared block cache, and nothing allocates:
+     * chains live in [edit2ChainScratch], variants in [variantScratch], next-letter sets in
+     * [edit2NextLetters].
+     */
+    private fun collectTwoSubstitutionVariants(
+        table: KeyNeighborTable,
+        prefixLength: Int,
+        codePointCount: Int,
+    ) {
+        edit2ProbesUsed = 0
+        edit2ScansUsed = 0
+        // Code points of the typed prefix (for the substitution enumeration and the plausibility
+        // map lookups) and the byte offset of each code-point position (for scratch building).
+        var byteOffset = 0
+        var codePointAt = 0
+        while (codePointAt < codePointCount) {
+            edit2ByteStart[codePointAt] = byteOffset
+            val lead = unsigned(exactScratch[byteOffset])
+            val width: Int
+            var codePoint: Int
+            when {
+                lead <= 0x7f -> {
+                    width = 1
+                    codePoint = lead
+                }
+                lead in 0xc2..0xdf -> {
+                    width = 2
+                    codePoint = lead and 0x1f
+                }
+                lead in 0xe0..0xef -> {
+                    width = 3
+                    codePoint = lead and 0x0f
+                }
+                else -> {
+                    width = 4
+                    codePoint = lead and 0x07
+                }
+            }
+            for (offset in 1 until width) {
+                codePoint = (codePoint shl 6) or (unsigned(exactScratch[byteOffset + offset]) and 0x3f)
+            }
+            codePointScratch[codePointAt] = codePoint
+            byteOffset += width
+            codePointAt++
+        }
+        computeProbeRanges(codePointCount)
+        val alphabet = table.nodes
+
+        for (position in 0 until codePointCount - 1) {
+            if (fuzzyOverBudget) return
+            val rangeStart = probeRangeStart[position]
+            val rangeEnd = probeRangeEnd[position]
+            if (rangeStart >= rangeEnd) continue
+            for (letter in alphabet) {
+                if (letter == codePointScratch[position]) continue
+                // Seed = typed[0..position) + letter, probed inside the narrowed range.
+                val seedLength = writeSeed(position, letter)
+                if (!countProbeAndCheckBudget()) return
+                var chainStart = edit2LowerBoundStartsWith(edit2ChainScratch, seedLength, rangeStart, rangeEnd)
+                if (chainStart < 0) continue
+                // The chain is alive through the seed (length position+1). Stage-B it, then
+                // extend letter by letter until it dies or runs out of positions. The chain's
+                // end stays the (loose) range end — every span used here is a superset-safe
+                // binary-search bound, never a correctness input.
+                var secondPosition = position + 1
+                var chainLength = seedLength
+                while (secondPosition < codePointCount) {
+                    emitSecondSubstitutions(
+                        table, position, letter, secondPosition, chainLength, chainStart, rangeEnd,
+                        prefixLength,
+                    )
+                    if (fuzzyOverBudget) return
+                    // Extend the chain with the typed letter for the next stage B.
+                    val width = appendTyped(chainLength, secondPosition)
+                    chainLength += width
+                    if (!countProbeAndCheckBudget()) return
+                    chainStart = edit2LowerBoundStartsWith(edit2ChainScratch, chainLength, chainStart, rangeEnd)
+                    if (chainStart < 0) break
+                    secondPosition++
+                }
+            }
+        }
+    }
+
+    /**
+     * The second substitution of one seed chain at one position. Walk the seed range's own
+     * entries (prefix-checked piecewise, at most [EDIT2_CONTINUATION_WALK_LIMIT] of them) and
+     * collect its continuation letters; when the range proves wide, fall back to 37 full-variant
+     * probes. Both modes feed [emitTwoSubstitutionVariant].
+     */
+    private fun emitSecondSubstitutions(
+        table: KeyNeighborTable,
+        firstPosition: Int,
+        firstLetter: Int,
+        secondPosition: Int,
+        chainLength: Int,
+        chainStart: Int,
+        chainEnd: Int,
+        prefixLength: Int,
+    ) {
+        var nextCount = 0
+        var wide = false
+        var visited = 0
+        walkEntries(chainStart, chainEnd) { firstStart, prefixLen, suffixStart, suffixLen ->
+            if (compareEntryToQueryPrefix(
+                    firstStart, prefixLen, suffixStart, suffixLen,
+                    edit2ChainScratch, chainLength,
+                ) != 0
+            ) {
+                // The seed range is over — the rest of the entries do not start with the chain.
+                return@walkEntries true
+            }
+            fuzzyVisited++
+            if (fuzzyVisited > MAX_FUZZY_VISITED) {
+                fuzzyOverBudget = true
+                return@walkEntries true
+            }
+            visited++
+            if (visited > EDIT2_CONTINUATION_WALK_LIMIT) {
+                wide = true
+                return@walkEntries true
+            }
+            // The entry's remainder past the chain prefix (the entry is verified to start with
+            // it) can SPAN the front-coded prefix/suffix boundary, so both pieces go in: the
+            // letter at the second-substitution position, or 0 when the entry IS the chain.
+            val next = if (prefixLen >= chainLength) {
+                firstCodePointOfRemainder(
+                    firstStart + chainLength, prefixLen - chainLength,
+                    suffixStart, suffixLen,
+                )
+            } else {
+                firstCodePointOfRemainder(
+                    suffixStart + (chainLength - prefixLen),
+                    suffixLen - (chainLength - prefixLen),
+                    0, 0,
+                )
+            }
+            if (next > 0 && next != codePointScratch[secondPosition]) {
+                var present = false
+                for (slot in 0 until nextCount) {
+                    if (edit2NextLetters[slot] == next) {
+                        present = true
+                        break
+                    }
+                }
+                if (!present && nextCount < edit2NextLetters.size) {
+                    edit2NextLetters[nextCount++] = next
+                }
+            }
+            false
+        }
         if (fuzzyOverBudget) return
-        val start = lowerBound(variantBytes, variantLength, 0)
-        val end = upperBound(variantBytes, variantLength, start)
+        if (wide) {
+            // Wide seed range: pay one full-variant probe per second-substitution letter and scan
+            // only the survivors (the probe IS the existence check, narrowed by the seed range).
+            for (letter in table.nodes) {
+                if (letter == codePointScratch[secondPosition]) continue
+                val variantLength = writeVariant(secondPosition, letter, chainLength, prefixLength)
+                if (!countProbeAndCheckBudget()) return
+                val landing = edit2LowerBoundStartsWith(variantScratch, variantLength, chainStart, chainEnd)
+                if (landing < 0) continue
+                val end = edit2UpperBound(variantScratch, variantLength, landing, chainEnd)
+                emitTwoSubstitutionVariant(
+                    firstPosition, firstLetter, secondPosition, letter, variantLength, landing, end,
+                )
+                if (fuzzyOverBudget) return
+            }
+        } else {
+            for (slot in 0 until nextCount) {
+                val variantLength = writeVariant(secondPosition, edit2NextLetters[slot], chainLength, prefixLength)
+                if (!countProbeAndCheckBudget(2)) return
+                val start = edit2LowerBound(variantScratch, variantLength, 0, entryCount)
+                val end = edit2UpperBound(variantScratch, variantLength, start, entryCount)
+                emitTwoSubstitutionVariant(
+                    firstPosition, firstLetter, secondPosition, edit2NextLetters[slot],
+                    variantLength, start, end,
+                )
+                if (fuzzyOverBudget) return
+            }
+        }
+    }
+
+    /**
+     * One full two-substitution variant, pre-built and pre-bounded: tag it with its plausibility
+     * (attested-confusion edit count, from the layout's long-press map) and scan its block — the
+     * shared variant budget is checked exactly like the other classes (fail-closed).
+     */
+    private fun emitTwoSubstitutionVariant(
+        firstPosition: Int,
+        firstLetter: Int,
+        secondPosition: Int,
+        secondLetter: Int,
+        variantLength: Int,
+        start: Int,
+        end: Int = -1,
+    ) {
+        if (start < 0) return
+        fuzzyCurrentPlausibility =
+            (if (isConfusionPair(codePointScratch[firstPosition], firstLetter)) 1 else 0) +
+            (if (isConfusionPair(codePointScratch[secondPosition], secondLetter)) 1 else 0)
+        edit2ScansUsed++
+        if (fuzzyVariantsUsed + edit2ScansUsed > MAX_FUZZY_VARIANTS) {
+            fuzzyOverBudget = true
+            return
+        }
+        scanVariantBlock(variantScratch, variantLength, start, end)
+    }
+
+    /** True when [b] is a long-press partner of [a] in the layout's symmetrized map. */
+    private fun isConfusionPair(a: Int, b: Int): Boolean {
+        val partners = neighborTable?.longPressPartnersOf(a) ?: return false
+        return java.util.Arrays.binarySearch(partners, b) >= 0
+    }
+
+    /** The seed prefix `typed[0..position) + letter` into [edit2ChainScratch]; returns bytes. */
+    private fun writeSeed(position: Int, letter: Int): Int {
+        val start = edit2ByteStart[position]
+        for (offset in 0 until start) edit2ChainScratch[offset] = exactScratch[offset]
+        return start + writeUtf8(letter, edit2ChainScratch, start)
+    }
+
+    /** The full variant `chain + letter + typed[secondPosition+1..n)`; returns bytes. */
+    private fun writeVariant(
+        secondPosition: Int,
+        letter: Int,
+        chainLength: Int,
+        prefixLength: Int,
+    ): Int {
+        for (offset in 0 until chainLength) variantScratch[offset] = edit2ChainScratch[offset]
+        var at = chainLength + writeUtf8(letter, variantScratch, chainLength)
+        val tailStart = edit2ByteStart[secondPosition] + typedCodePointByteWidth(secondPosition)
+        for (offset in tailStart until prefixLength) {
+            variantScratch[at++] = exactScratch[offset]
+        }
+        return at
+    }
+
+    /** Appends the typed letter at [position] to [edit2ChainScratch]; returns its byte width. */
+    private fun appendTyped(chainLength: Int, position: Int): Int {
+        val start = edit2ByteStart[position]
+        val width = typedCodePointByteWidth(position)
+        for (offset in start until start + width) {
+            edit2ChainScratch[chainLength + offset - start] = exactScratch[offset]
+        }
+        return width
+    }
+
+    /** Byte width of the typed code point at [position] (1-4, from its UTF-8 lead byte). */
+    private fun typedCodePointByteWidth(position: Int): Int =
+        when (unsigned(exactScratch[edit2ByteStart[position]])) {
+            in 0x00..0x7f -> 1
+            in 0xc2..0xdf -> 2
+            in 0xe0..0xef -> 3
+            else -> 4
+        }
+
+    /** One UTF-8 code point into [out] at [at]; returns the bytes written. */
+    private fun writeUtf8(codePoint: Int, out: ByteArray, at: Int): Int = when {
+        codePoint <= 0x7f -> {
+            out[at] = codePoint.toByte()
+            1
+        }
+        codePoint <= 0x7ff -> {
+            out[at] = (0xc0 or (codePoint shr 6)).toByte()
+            out[at + 1] = (0x80 or (codePoint and 0x3f)).toByte()
+            2
+        }
+        codePoint <= 0xffff -> {
+            out[at] = (0xe0 or (codePoint shr 12)).toByte()
+            out[at + 1] = (0x80 or ((codePoint shr 6) and 0x3f)).toByte()
+            out[at + 2] = (0x80 or (codePoint and 0x3f)).toByte()
+            3
+        }
+        else -> {
+            out[at] = (0xf0 or (codePoint shr 18)).toByte()
+            out[at + 1] = (0x80 or ((codePoint shr 12) and 0x3f)).toByte()
+            out[at + 2] = (0x80 or ((codePoint shr 6) and 0x3f)).toByte()
+            out[at + 3] = (0x80 or (codePoint and 0x3f)).toByte()
+            4
+        }
+    }
+
+    /** The first code point of a front-coded entry's remainder past the chain query, or 0 if empty. */
+    private fun firstCodePointOfRemainder(
+        remFirstStart: Int,
+        remFirstLength: Int,
+        remSecondStart: Int,
+        remSecondLength: Int,
+    ): Int {
+        val start: Int
+        val length: Int
+        if (remFirstLength > 0) {
+            start = remFirstStart
+            length = remFirstLength
+        } else if (remSecondLength > 0) {
+            start = remSecondStart
+            length = remSecondLength
+        } else {
+            return 0
+        }
+        val lead = unsigned(bytes.get(start))
+        var codePoint: Int
+        val width: Int
+        when {
+            lead <= 0x7f -> {
+                width = 1
+                codePoint = lead
+            }
+            lead in 0xc2..0xdf -> {
+                width = 2
+                codePoint = lead and 0x1f
+            }
+            lead in 0xe0..0xef -> {
+                width = 3
+                codePoint = lead and 0x0f
+            }
+            else -> {
+                width = 4
+                codePoint = lead and 0x07
+            }
+        }
+        if (width > length) return 0
+        for (offset in 1 until width) {
+            codePoint = (codePoint shl 6) or (unsigned(bytes.get(start + offset)) and 0x3f)
+        }
+        return codePoint
+    }
+
+    // --- Class-#5 block-first-word probe machinery (P6) -----------------------------------------
+    //
+    // The full two-substitution enumeration needs hundreds of probes per lookup, and the C2
+    // no-cache probe (~17 front-coded block decodes per binary search) is too expensive at that
+    // scale (the POCO pays ~29 us for it). The class-#5 probe instead searches the BLOCK INDEX by
+    // first words — ~14 direct byte reads, no decode — and then walks the single landing block
+    // (<= 8 entries) with a piecewise comparator. Results are entry-identical to the
+    // decode-based probe (the calibration pins prove it); the per-probe cost is ~4x lower.
+
+    /** The last block whose first word is <= [query], or -1 when the query precedes block 0. */
+    private fun edit2BlockLowerBound(query: ByteArray, queryLength: Int, low0: Int, high0: Int): Int {
+        var low = low0 / TdictFormat.BLOCK_SIZE
+        var high = minOf(blockCount, (high0 + TdictFormat.BLOCK_SIZE - 1) / TdictFormat.BLOCK_SIZE)
+        while (low < high) {
+            val middle = (low + high) ushr 1
+            if (compareBlockFirstWordToQuery(middle, query, queryLength) <= 0) low = middle + 1
+            else high = middle
+        }
+        return low - 1
+    }
+
+    /** The first block whose first word does NOT start with [query] (blockCount when none). */
+    private fun edit2BlockUpperBound(query: ByteArray, queryLength: Int, low0: Int, high0: Int): Int {
+        var low = low0 / TdictFormat.BLOCK_SIZE
+        var high = minOf(blockCount, (high0 + TdictFormat.BLOCK_SIZE - 1) / TdictFormat.BLOCK_SIZE)
+        while (low < high) {
+            val middle = (low + high) ushr 1
+            if (compareBlockFirstWordToQueryPrefix(middle, query, queryLength) <= 0) low = middle + 1
+            else high = middle
+        }
+        return low
+    }
+
+    /** A block's first word vs [query] in whole-word-then-length order, direct reads, no decode. */
+    private fun compareBlockFirstWordToQuery(block: Int, query: ByteArray, queryLength: Int): Int {
+        var cursor = blockOffset(block)
+        val firstLength = unsigned(bytes.get(cursor))
+        cursor++
+        val shared = minOf(firstLength, queryLength)
+        for (offset in 0 until shared) {
+            val difference = unsigned(bytes.get(cursor + offset)) - (query[offset].toInt() and 0xff)
+            if (difference != 0) return difference
+        }
+        return firstLength - queryLength
+    }
+
+    /** A block's first word vs [query] in prefix order (0 iff the first word starts with it). */
+    private fun compareBlockFirstWordToQueryPrefix(block: Int, query: ByteArray, queryLength: Int): Int {
+        var cursor = blockOffset(block)
+        val firstLength = unsigned(bytes.get(cursor))
+        cursor++
+        val shared = minOf(firstLength, queryLength)
+        for (offset in 0 until shared) {
+            val difference = unsigned(bytes.get(cursor + offset)) - (query[offset].toInt() and 0xff)
+            if (difference != 0) return difference
+        }
+        return if (firstLength < queryLength) -1 else 0
+    }
+
+    /**
+     * Walks entries [fromIndex, toIndex) sequentially, decoding each crossed block on the fly,
+     * and reports every entry's front-coded pieces to [onEntry]
+     * (firstStart/prefixLength/suffixStart/suffixLength of the mapped buffer — the prefix piece
+     * refers to the block's first word, the suffix piece to the entry's own). Returns the first
+     * index where [onEntry] answers true, or [toIndex] when nothing stopped the walk.
+     */
+    private inline fun walkEntries(
+        fromIndex: Int,
+        toIndex: Int,
+        onEntry: (Int, Int, Int, Int) -> Boolean,
+    ): Int {
+        // Decoding always starts at fromIndex's BLOCK start (front-coding is sequential inside a
+        // block); entries before fromIndex are decoded but skipped — reporting a shifted entry
+        // against a query is exactly the bug this walk exists to avoid.
+        var index = (fromIndex / TdictFormat.BLOCK_SIZE) * TdictFormat.BLOCK_SIZE
+        var currentBlock = -1
+        var cursor = 0
+        var firstStart = 0
+        var prefixLength = 0
+        var suffixStart = 0
+        var entryLength = 0
+        while (index < toIndex) {
+            val block = index / TdictFormat.BLOCK_SIZE
+            if (block != currentBlock) {
+                currentBlock = block
+                cursor = blockOffset(block)
+                val firstLength = unsigned(bytes.get(cursor))
+                cursor++
+                firstStart = cursor
+                cursor += firstLength
+                prefixLength = 0
+                suffixStart = firstStart
+                entryLength = firstLength
+            } else {
+                var packed = unsigned(bytes.get(cursor))
+                cursor++
+                if (packed >= 0x80) {
+                    decodeVarint(cursor - 1)
+                    packed = varintValue
+                    cursor = varintNext
+                }
+                prefixLength = packed
+                val suffixLength = unsigned(bytes.get(cursor))
+                cursor++
+                suffixStart = cursor
+                cursor += suffixLength
+                entryLength = prefixLength + suffixLength
+            }
+            if (index >= fromIndex &&
+                onEntry(firstStart, prefixLength, suffixStart, entryLength - prefixLength)
+            ) {
+                return index
+            }
+            index++
+        }
+        return toIndex
+    }
+
+    /**
+     * The entry-level lowerBound of [query] within [low0, high0): the first entry not smaller
+     * than [query] in whole-word-then-length order. Block search, then one linear walk.
+     */
+    private fun edit2LowerBound(query: ByteArray, queryLength: Int, low0: Int, high0: Int): Int {
+        if (low0 >= high0) return high0
+        val block = edit2BlockLowerBound(query, queryLength, low0, high0)
+        if (block < 0) return low0
+        return walkEntries(maxOf(low0, block * TdictFormat.BLOCK_SIZE), high0) {
+            firstStart, prefixLength, suffixStart, suffixLength ->
+            compareEntryToQuery(
+                firstStart, prefixLength, suffixStart, suffixLength, query, queryLength,
+            ) >= 0
+        }
+    }
+
+    /**
+     * The entry-level upperBound of [query] within [low0, high0): the first entry NOT starting
+     * with [query]. The boundary can live in the previous block's tail, so the walk starts there.
+     */
+    private fun edit2UpperBound(query: ByteArray, queryLength: Int, low0: Int, high0: Int): Int {
+        if (low0 >= high0) return high0
+        val block = edit2BlockUpperBound(query, queryLength, low0, high0)
+        // Every block up to blockCount-1 starts with the query: the boundary still sits in the
+        // LAST block's tail, so walk it instead of returning high0 blindly.
+        val fromIndex = maxOf(
+            low0,
+            if (block >= blockCount) {
+                if (blockCount == 0) return high0
+                (blockCount - 1) * TdictFormat.BLOCK_SIZE
+            } else if (block > 0) {
+                block * TdictFormat.BLOCK_SIZE - TdictFormat.BLOCK_SIZE
+            } else {
+                block * TdictFormat.BLOCK_SIZE
+            },
+        )
+        return walkEntries(fromIndex, high0) { firstStart, prefixLength, suffixStart, suffixLength ->
+            compareEntryToQueryPrefix(
+                firstStart, prefixLength, suffixStart, suffixLength, query, queryLength,
+            ) > 0
+        }
+    }
+
+    /**
+     * Piecewise 3-way compare of a front-coded entry (prefix of the block's first word + suffix)
+     * against [query], whole-word-then-length order, direct reads, no materialization.
+     */
+    private fun compareEntryToQuery(
+        firstStart: Int,
+        prefixLength: Int,
+        suffixStart: Int,
+        suffixLength: Int,
+        query: ByteArray,
+        queryLength: Int,
+    ): Int {
+        val wordLength = prefixLength + suffixLength
+        val shared = minOf(wordLength, queryLength)
+        for (offset in 0 until shared) {
+            val value: Int
+            value = if (offset < prefixLength) {
+                unsigned(bytes.get(firstStart + offset))
+            } else {
+                unsigned(bytes.get(suffixStart + offset - prefixLength))
+            }
+            val difference = value - (query[offset].toInt() and 0xff)
+            if (difference != 0) return difference
+        }
+        return wordLength - queryLength
+    }
+
+    /**
+     * Piecewise compare of a front-coded entry against [query] in PREFIX order: 0 when the entry
+     * starts with the query, the byte difference when they diverge, -1 when the entry is shorter
+     * than the query (a proper prefix of it is never a match).
+     */
+    private fun compareEntryToQueryPrefix(
+        firstStart: Int,
+        prefixLength: Int,
+        suffixStart: Int,
+        suffixLength: Int,
+        query: ByteArray,
+        queryLength: Int,
+    ): Int {
+        val wordLength = prefixLength + suffixLength
+        val shared = minOf(wordLength, queryLength)
+        for (offset in 0 until shared) {
+            val value = if (offset < prefixLength) {
+                unsigned(bytes.get(firstStart + offset))
+            } else {
+                unsigned(bytes.get(suffixStart + offset - prefixLength))
+            }
+            val difference = value - (query[offset].toInt() and 0xff)
+            if (difference != 0) return difference
+        }
+        return if (wordLength < queryLength) -1 else 0
+    }
+
+    /**
+     * The landing entry of [query] inside [low, high) when it starts with the query, else -1 —
+     * one block-first-word lowerBound plus one piecewise compare (the class-#5 seed/extension
+     * probe).
+     */
+    private fun edit2LowerBoundStartsWith(query: ByteArray, queryLength: Int, low: Int, high: Int): Int {
+        val landing = edit2LowerBound(query, queryLength, low, high)
+        if (landing >= high) return -1
+        val startsWith = walkEntries(landing, landing + 1) { firstStart, prefixLength, suffixStart, suffixLength ->
+            compareEntryToQueryPrefix(
+                firstStart, prefixLength, suffixStart, suffixLength, query, queryLength,
+            ) == 0
+        } == landing
+        return if (startsWith) landing else -1
+    }
+
+    /** Counts [count] edit-#5 probes; false when the fail-closed budget trips. */
+    private fun countProbeAndCheckBudget(count: Int = 1): Boolean {
+        if (edit2ProbesUsed + count > MAX_EDIT2_PROBES) {
+            fuzzyOverBudget = true
+            return false
+        }
+        edit2ProbesUsed += count
+        return true
+    }
+
+    /** Scans one variant's dictionary block, ranking its candidates into [fuzzyIndices]. */
+    private fun scanVariantBlock(
+        variantBytes: ByteArray,
+        variantLength: Int,
+        startOverride: Int = -1,
+        endOverride: Int = -1,
+    ) {
+        if (fuzzyOverBudget) return
+        // The class-#5 driver passes the exact pre-probed prefix range as overrides (the cheap
+        // block-first-word bounds); every other caller leaves them computed as before.
+        val start = if (startOverride >= 0) startOverride else lowerBound(variantBytes, variantLength, 0)
+        val end = if (endOverride >= 0) endOverride else upperBound(variantBytes, variantLength, start)
         // The exact-word exclusion compares against the TYPED word, not the variant that
         // selected the range — hence exactScratch/fuzzyPrefixLength here.
         scanBlockRange(
@@ -819,7 +1476,7 @@ internal class TdictPrefixIndex private constructor(
                 }
                 // Exact-word exclusion applies on both levels: never suggest the typed word itself.
                 // A word is de-duplicated by dictionary index so it can never occupy two cells. Because
-                // classes run in order (#1, then #2, then #3), the first class to reach a word keeps it,
+                // classes run in order (#1 … #5), the first class to reach a word keeps it,
                 // which is also its best (lowest) class — consistent with the class-first ranking.
                 if (equalsQuery ||
                     containsIndex(rankedIndices, fuzzyExactCount, index) ||
@@ -851,13 +1508,14 @@ internal class TdictPrefixIndex private constructor(
     /**
      * The ranking key of a fuzzy candidate: edit class first (ascending), then — only under
      * [FuzzyEditPolicy.sameLengthBonus] — a same-length candidate before its own continuations,
-     * then the frozen (frequency descending, code-point ascending) tie-break inside
-     * [insertRanked]. Packed as `class * 2 - bonus` so a single int comparison implements both
-     * keys in order; with the bonus off (or a longer candidate) the key is `class * 2`, so a
-     * bonus-less engine's order is bit-identical to the pre-Phase-B class-then-frequency one.
+     * then the class-#5 plausibility (attested-confusion edit count, descending — zero for every
+     * other class), then the frozen (frequency descending, code-point ascending) tie-break inside
+     * [insertRanked]. Packed as `class * 32 - bonus * 16 - plausibility * 2` so a single int
+     * comparison implements all of them in order; with plausibility zero this is exactly the
+     * pre-P6 class-then-bonus-then-frequency order (the packing is rescaled, never reordered).
      */
     private fun fuzzyRankKey(editClass: Int, sameLength: Boolean): Int =
-        editClass * 2 - if (sameLength) 1 else 0
+        editClass * 32 - (if (sameLength) 16 else 0) - fuzzyCurrentPlausibility * 2
 
     /** Bounded insertion sort shared by both levels; returns the new count. */
     private fun insertRanked(
@@ -971,9 +1629,8 @@ internal class TdictPrefixIndex private constructor(
     ): Boolean = when {
         // Ranking key first (ascending). Exact candidates all share EDIT_CLASS_EXACT, so this key
         // is a tie among them and their frozen order is untouched. Fuzzy candidates carry the
-        // packed key of [fuzzyRankKey]: edit class dominant (#1 long-press < #2 geometric < #3
-        // transposition), with the same-length bonus ordering inside a class when the policy
-        // enables it.
+        // packed key of [fuzzyRankKey]: edit class dominant (#1 … #5), with the same-length bonus
+        // and the class-#5 plausibility ordering inside a class when the policy enables them.
         candidateClass != rankedClass -> candidateClass < rankedClass
         candidateFrequency != rankedFrequency -> candidateFrequency > rankedFrequency
         else -> compareWords(candidateIndex, rankedIndex) < 0
@@ -1471,15 +2128,28 @@ internal class TdictPrefixIndex private constructor(
         // Edit-class ranking keys, carried as plain ints. Exact candidates sort as EDIT_CLASS_EXACT
         // (a tie on the exact level, whose order is unchanged); within the fuzzy level the ascending
         // order is #1 long-press partner < #2 geometric neighbour < #3 transposition < #4 full
-        // single substitution, applied ahead of frequency by [ranksBefore] — for fuzzy candidates
-        // through the packed rank key (see [fuzzyRankKey]), which keeps the class dominant. The
-        // exact level always outranks the fuzzy level regardless of these values, because exact and
-        // fuzzy candidates live in separate arrays and the exact ones are merged first.
+        // single substitution < #5 two substitutions, applied ahead of frequency by [ranksBefore] —
+        // for fuzzy candidates through the packed rank key (see [fuzzyRankKey]), which keeps the
+        // class dominant. The exact level always outranks the fuzzy level regardless of these
+        // values, because exact and fuzzy candidates live in separate arrays and the exact ones
+        // are merged first.
         private const val EDIT_CLASS_EXACT = 0
         internal const val EDIT_CLASS_LONG_PRESS = 1
         internal const val EDIT_CLASS_GEOMETRIC = 2
         internal const val EDIT_CLASS_TRANSPOSITION = 3
         internal const val EDIT_CLASS_SUBSTITUTION = 4
+
+        // ROADMAP-P4 P6 (docs/ROADMAP-P4.md): two substitutions at two distinct positions.
+        internal const val EDIT_CLASS_TWO_SUBSTITUTIONS = 5
+
+        // P6: the class-#5 activation floor (mirrors MIN_SUBSTITUTION_PREFIX_CODE_POINTS), the
+        // fail-closed probe budget for the chained enumeration (seed probes + chain extensions +
+        // second-substitution probes + survivor scans — a trip drops the level whole), and the
+        // continuation-walk limit: second-substitution letters of a seed range up to this many
+        // entries are read off the range itself (a bounded walk) instead of probed one by one.
+        private const val MIN_TWO_SUBST_PREFIX_CODE_POINTS = 4
+        internal const val MAX_EDIT2_PROBES = 512
+        private const val EDIT2_CONTINUATION_WALK_LIMIT = 64
 
         // Which edit classes reach an engine's fuzzy pass is no longer a global constant: since
         // TT-TYPO-NEXT Phase B (docs/TT-TYPO-NEXT.md) it is the per-engine [FuzzyEditPolicy]
