@@ -23,15 +23,10 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
-import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidBigramStorageFactory
-import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidDictionaryStorageFactory
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramPreparationResult
-import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramStorageController
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
-import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryStorageController
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PreparationResult
-import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedBigramTableCatalog
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog
 import rkr.simplekeyboard.inputmethod.latin.emoji.AssetEmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestIndex
@@ -67,248 +62,6 @@ interface StripSurface {
 
     fun hideSuggestions()
     fun setTapListener(listener: SuggestionTapListener)
-}
-
-/** Fired when the user taps a suggestion in the strip (UI thread). */
-fun interface SuggestionTapListener {
-    fun onTap(suggestion: String)
-}
-
-/** Editor seam backed by RichInputConnection's cache. All methods are called on the UI thread. */
-interface EditorSurface {
-    fun cachedWordBeforeCursor(): String
-    fun commitSuggestion(expectedPrefix: String, suggestion: String): Boolean
-    fun hasKnownCursor(): Boolean
-
-    /**
-     * True when the cursor sits inside a word, i.e. the text right after it starts with a letter
-     * (or with a combining mark, which can only continue one). Typing in the middle of a word is
-     * not supported by the frozen contract: the results are cleared instead, because replacing the
-     * trailing word would splice the suggestion into the user's text.
-     */
-    fun hasLetterAfterCursor(): Boolean
-
-    /**
-     * The SECOND insertion path of the frozen text contract (D3): replaces the trailing word
-     * [expectedPrefix] with [replacement] through the very same explicit delete-by-code-points plus
-     * `commitText` in ONE batch edit that an accepted suggestion goes through, and with the same
-     * re-checks. It differs from [commitSuggestion] in one thing only — no trailing auto-space,
-     * because the separator the user just pressed is committed right after it by the ordinary input
-     * path.
-     *
-     * Returns false without editing anything if any check fails. Defaults to false so an editor
-     * surface written before D3 keeps compiling and simply never autocorrects.
-     */
-    fun replaceTypedWord(expectedPrefix: String, replacement: String): Boolean = false
-
-    /**
-     * Undoes the last autocorrection: where [insertedForm] + [separator] stands immediately before
-     * the cursor, puts [typedForm] + [separator] back, in one batch edit.
-     *
-     * The suffix match IS the position check the contract asks for, and a stricter one than an
-     * offset: an offset can coincide again after unrelated edits, the exact text cannot. Returns
-     * false without editing anything when the text before the cursor is no longer what the
-     * replacement left there. Defaults to false, like [replaceTypedWord].
-     */
-    fun revertTypedWord(insertedForm: String, separator: String, typedForm: String): Boolean = false
-
-    /**
-     * E5d NEXT_WORD context extraction from the live cache (PROPOSALS.md, "Контракт текста"
-     * amendment, 2026-08-17): the word immediately before a trailing run of one-or-more U+0020 right
-     * at the cursor, or "" if there is none — with the ROADMAP Phase 1 (P4, docs/ROADMAP-P1.md)
-     * amendment: when the space run follows non-final punctuation (exactly ',', ';', ':'), the
-     * context is the word BEFORE the punctuation run ("сүз, " → "сүз"). Defaults to "" so an editor
-     * surface written before E5d keeps compiling and NEXT_WORD simply never fires.
-     */
-    fun cachedNextWordContext(): String = ""
-
-    /**
-     * P1 of Phase 2 (docs/ROADMAP-P2.md): the committed word immediately BEFORE the trailing
-     * completed word — the context half of a just-typed pair «A B ». Read from the live cache at
-     * the moment the trailing word has just become empty, so the tail ends with the separator
-     * that completed B; the word before that separator is B and the word before B is A. "" when
-     * there is no such word, or when the cache cannot prove it (a window cut off before the text
-     * start). Defaults to "" so an editor surface written before P1 keeps compiling and personal
-     * bigrams simply never observe a pair.
-     */
-    fun cachedWordBeforeTrailingWord(): String = ""
-
-    /**
-     * P4 sentence-start detection over the live cache (docs/TT-SUGGESTIONS.md): true when the
-     * cursor sits where a new sentence begins — the start of the field, or sentence-ending
-     * punctuation followed by space(s) — by [TatarWordUtils.isSentenceStartContext]'s exact rules,
-     * cache-start provenance included. Defaults to false so an editor surface written before P4
-     * keeps compiling and simply never shows sentence-start predictions.
-     */
-    fun isAtSentenceStart(): Boolean = false
-
-    /**
-     * The THIRD insertion path of the frozen text contract (E5d): commits a predicted next word.
-     * Unlike [commitSuggestion] and [replaceTypedWord], this one deletes NOTHING — NEXT_WORD only
-     * ever fires on an empty prefix, so there is nothing trailing to remove; it only inserts, with
-     * the same auto-space rule an accepted suggestion uses.
-     *
-     * Re-checked against the live cache: collapsed selection, no letter right after the cursor (the
-     * same two checks the other two paths make), an EMPTY trailing word (a non-empty one means the
-     * user typed something after the request was built — the tap is stale), and the live context
-     * word re-extracted by [cachedNextWordContext]'s own algorithm matching [expectedContextWord]
-     * exactly. P4 adds one case to that equality: at a sentence start the context word is EMPTY on
-     * both sides, and the production path then additionally requires the live position to still be
-     * a sentence start ([isAtSentenceStart]), so a tap after ", " commits nothing. Defaults to
-     * false, like [replaceTypedWord] and [revertTypedWord].
-     */
-    fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean = false
-}
-
-/**
- * Reads the live value of `PREF_TATAR_AUTOCORRECT`. A seam, so the controller needs no preferences
- * and JVM tests can flip the setting between two keystrokes exactly as a user can.
- */
-fun interface AutocorrectGate {
-    fun isOn(): Boolean
-}
-
-/**
- * Reads the live value of `PREF_EMOJI_SUGGESTIONS` — the exact same seam shape as
- * [AutocorrectGate], for the emoji cell of the NEXT_WORD band (mission 2 of
- * `docs/EMOJI-SUGGEST-PLAN.md`). Read on every fill, so flipping the setting takes effect on the
- * next band without restarting anything.
- */
-fun interface EmojiSuggestGate {
-    fun isOn(): Boolean
-}
-
-/**
- * Marshals a [Runnable] onto the UI thread. Production wraps an [android.os.Handler]; JVM tests
- * inject a synchronous poster so no real Handler is needed.
- */
-fun interface UiPoster {
-    fun post(runnable: Runnable)
-}
-
-/**
- * Lazily created dictionary storage: background unpacking/validation plus the catalog the engine is
- * started from.
- *
- * Nothing behind this seam exists until preparation is actually requested, so a user who never
- * turns Tatar suggestions on never pays disk space or background work for them. JVM tests inject a
- * fake, which is what makes "preparation not requested / requested exactly once" observable without
- * Android.
- */
-interface DictionaryPreparation {
-    /**
-     * Requests background preparation of the newest dictionary. There is no de-duplication behind
-     * this seam — `DictionaryStorageController.prepare` is a straight delegate and
-     * `BackgroundDictionaryPreparer` queues a fresh task per call — so the caller's "preparation
-     * requested" flag is the only guard. [onResult] may arrive on any thread.
-     */
-    fun prepare(onResult: (PreparationResult) -> Unit)
-
-    /** Catalog over the published dictionary, read by the engine factory off the UI thread. */
-    fun catalog(): PublishedDictionaryCatalog
-}
-
-/**
- * Production [DictionaryPreparation] over the device-protected dictionary store.
- *
- * Built on the first preparation request only: constructing the store resolves the
- * device-protected context and the supported-artifact list, which is exactly the work that must not
- * happen for a user who leaves suggestions off.
- */
-private class DeviceProtectedDictionaryPreparation(
-    private val storage: DictionaryStorageController,
-) : DictionaryPreparation {
-    override fun prepare(onResult: (PreparationResult) -> Unit) {
-        storage.prepare(onResult)
-    }
-
-    override fun catalog(): PublishedDictionaryCatalog = storage
-
-    companion object {
-        /**
-         * Storage for the dictionary of [subtypeId], or null when that subtype ships none (every
-         * layout but the two that do) or the store cannot be built at all — both leave the caller
-         * fail-closed with no engine and a hidden strip.
-         */
-        fun create(
-            context: Context,
-            executor: ExecutorService,
-            subtypeId: String,
-        ): DictionaryPreparation? = try {
-            val artifact = DictionaryArtifactSpec.forSubtype(subtypeId)
-            if (artifact == null) {
-                null
-            } else {
-                DeviceProtectedDictionaryPreparation(
-                    AndroidDictionaryStorageFactory.create(context, executor, artifact),
-                )
-            }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-}
-
-/**
- * E5c two-stage readiness: lazily created bigram-table storage, the exact same shape as
- * [DictionaryPreparation] for the exact same reason (a user who never turns suggestions on never
- * pays disk space or background work for the bigram table either) — kept a SEPARATE interface
- * rather than folding into [DictionaryPreparation] because the two artifacts already don't share
- * a spec, validator or store (`docs/DICTIONARY-E5B.md`), and merging their controller seams here
- * would just recreate that coupling one layer up.
- */
-interface BigramPreparation {
-    fun prepare(onResult: (BigramPreparationResult) -> Unit)
-    fun catalog(): PublishedBigramTableCatalog
-}
-
-/** Production [BigramPreparation] over the device-protected bigram-table store. */
-private class DeviceProtectedBigramPreparation(
-    private val storage: BigramStorageController,
-) : BigramPreparation {
-    override fun prepare(onResult: (BigramPreparationResult) -> Unit) = storage.prepare(onResult)
-
-    override fun catalog(): PublishedBigramTableCatalog = storage
-
-    companion object {
-        /**
-         * Storage for the next-word table of [subtypeId], or null when that subtype ships none —
-         * asked of the SAME registry [DeviceProtectedDictionaryPreparation.create] asks for the
-         * dictionary, so the two can never end up on different languages. A language present in
-         * the registry with no table, and a subtype absent from it entirely, both land here as
-         * null and leave NEXT_WORD answering an empty list: the exact fail-closed shape a missing
-         * table already had, with no effect on prefix suggestions or ordinary input.
-         */
-        fun create(
-            context: Context,
-            executor: ExecutorService,
-            subtypeId: String,
-        ): BigramPreparation? = try {
-            val artifact = DictionaryArtifactSpec.bigramsForSubtype(subtypeId)
-            if (artifact == null) {
-                null
-            } else {
-                DeviceProtectedBigramPreparation(
-                    AndroidBigramStorageFactory.create(context, executor, artifact),
-                )
-            }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-}
-
-/**
- * Notified when a dictionary preparation that an *explicit* enable asked for ended
- * [PreparationResult.Unavailable].
- *
- * Only explicit enables are reported. A preparation started by the controller becoming eligible for
- * the first time was never asked for by the user, so failing it silently is the right answer; a
- * preparation started by an observed OFF -> ON transition answers a switch the user just flipped,
- * and leaving that unanswered would look like the setting simply did nothing.
- */
-fun interface DictionaryUnavailableListener {
-    fun onDictionaryUnavailableAfterExplicitEnable()
 }
 
 /**
@@ -418,65 +171,6 @@ class SuggestionsController internal constructor(
     private var executor: ExecutorService? = null
 
     /**
-     * Everything that belongs to ONE language: its storage seams, its readiness, its engine and
-     * the bookkeeping of its preparation and release.
-     *
-     * Slots are what makes switching layouts free. Both dictionaries are separate artifacts in
-     * separate device-protected directories with separate leases, so the engine of a language the
-     * user leaves is simply idled ([EngineHandle.finishInput]) and kept warm — it is NOT torn down.
-     * A teardown blocks the UI thread for up to 240 ms ([destroyHandle]) and its release is
-     * deliberately deferred to a lifecycle boundary, so tearing down on every press of the globe
-     * key would either stall the keystroke or leave the user with no suggestions until they left
-     * the field. Warm slots cost one idle worker thread and one read-only mapping each; the
-     * mapping is file-backed, so its pages are evictable and only the ones actually touched by a
-     * lookup are resident.
-     */
-    private inner class LanguageSlot(val subtypeId: String) {
-        /** Storage seam, created on this language's first preparation request. */
-        @Volatile
-        var preparation: DictionaryPreparation? = null
-
-        /** E5c two-stage readiness: same lazy-seam shape as [preparation], for the bigram table. */
-        @Volatile
-        var bigramPreparation: BigramPreparation? = null
-
-        @Volatile
-        var dictionaryReady: Boolean = false
-
-        // Read by [engineContainsWord] from the personal store's worker thread (P1), hence
-        // `@Volatile`; the handle behind it answers cross-thread membership reads by construction.
-        @Volatile
-        var engine: EngineHandle? = null
-        var starting: Boolean = false
-
-        // Lifecycle of the "preparation requested" flag, in one place because nothing below it
-        // de-duplicates: it is set the moment preparation is requested, it is NEVER cleared after a
-        // Published result (readiness survives every later transition of the setting and the engine
-        // is restarted from the already published file), and it is cleared ONLY when the last known
-        // result was Unavailable and a fresh OFF -> ON transition of the setting has been observed.
-        var preparationRequested: Boolean = false
-        var lastPreparationUnavailable: Boolean = false
-
-        // Provenance of the outstanding request, so an Unavailable result can tell the two callers
-        // of requestPreparationIfNeeded apart. Only a request made because the user turned the
-        // setting on is reported to [dictionaryUnavailableListener].
-        var preparationRequestedByExplicitEnable: Boolean = false
-
-        // Set when the setting goes ON -> OFF. The blocking engine teardown is deferred to the next
-        // lifecycle boundary instead of running inside the settings handler, where it would hold
-        // the UI thread for up to 240 ms on the very keystroke that flipped the setting.
-        var releasePending: Boolean = false
-
-        // True once a deferred release has been attempted at a boundary and refused. The attempt is
-        // not free of consequences: the engine has already been told to stop and rejects every
-        // later lookup, so it is no longer a correct mapping and the setting coming back on may no
-        // longer cancel its release. Without this the cancellation would strand a permanently dead
-        // engine — nothing would release it and nothing would replace it — and the user would see
-        // an empty band for the rest of the process.
-        var releaseAttemptFailed: Boolean = false
-    }
-
-    /**
      * One slot per language, created on first need and kept for the controller's lifetime.
      *
      * Concurrent because the production engine factory reads it from the background executor
@@ -579,30 +273,12 @@ class SuggestionsController internal constructor(
     private var companionKind: LookupKind? = null
     private var companionQuery: String = ""
 
-    // --- E4c clean-run state. Nothing here is persisted and nothing leaves this object except one
-    // completed word handed to [completionSink]; with the default sink that is a no-op.
-    /** The trailing word as last seen. Empty between words. */
-    private var runWord: String = ""
-    /** False as soon as anything but plain growth happens; a dirty run reports nothing. */
-    private var runClean: Boolean = true
-    /** Length of the longest proper prefix of the current run that came back with NO candidates. */
-    private var runEmptyResultPrefixLength: Int = NO_EMPTY_RESULT
-
-    /** Where clean completions go (E4c). Default writes nothing at all. */
-    private var completionSink: WordCompletionSink = WordCompletionSink.NONE
-
-    // --- P1 pair-run state (docs/ROADMAP-P2.md). The pair machine shares [runWord] — the text of
-    // the run is one — and carries only its own cleanliness bit, because its rules differ from the
-    // words machine's in exactly one place: after an ACCEPTED suggestion the next typed word may
-    // still be observed for pairs (the tapped word is a legitimate CONTEXT — "typed or tapped" —
-    // and the cursor sits provably right after it), while for the words machine that word stays
-    // sacrificed. Everything else is the same machine: a fresh word inherits the bit, growth keeps
-    // it, a non-growth transition or a dirty event clears it, and a completed boundary re-arms it.
-    /** False as soon as anything but plain growth happens in the current run. */
-    private var pairRunClean: Boolean = false
-
-    /** Where clean PAIR completions and pair-prediction acceptances go (P1). Default writes nothing. */
-    private var pairCompletionSink: PairCompletionSink = PairCompletionSink.NONE
+    /**
+     * The clean-run machines of E4c (completed words) and P1 (completed pairs,
+     * docs/ROADMAP-P2.md) — state and transitions live in [CleanRunMachine]; everything here used
+     * to be six loose fields on this class.
+     */
+    private val runMachine = CleanRunMachine(editor)
 
     // --- D3 autocorrect state. Nothing here is persisted and nothing leaves this object except the
     // two editor calls that perform the replacement and its single undo.
@@ -659,37 +335,20 @@ class SuggestionsController internal constructor(
     private val sentStartPreparationRequested = HashSet<String>()
 
     /**
-     * One replacement, as far as the undo is concerned. There is no history: at most one of these
-     * exists at a time and it is dropped, never stacked.
+     * The D3 undo window: state and transitions live in [RevertWindow]. Nothing here is persisted
+     * and nothing leaves this object except the two editor calls that perform the replacement and
+     * its single undo.
      */
-    private class Replacement(
-        val typedForm: String,
-        val insertedForm: String,
-        val separator: String,
-        val sessionId: Long,
-    ) {
-        /** Deliberately mute: this object carries the user's text. */
-        override fun toString(): String = "Replacement"
-    }
-
-    /**
-     * A replacement that has been made but whose separator has not been committed yet. It survives
-     * EXACTLY ONE [onTextChanged] — the one carrying that separator, which is part of the same user
-     * action — and becomes [revertable] there. Every later event finds [revertable] and drops it.
-     */
-    private var armedReplacement: Replacement? = null
-
-    /** The one replacement a backspace may still undo. Null means the window has closed. */
-    private var revertable: Replacement? = null
+    private val revertWindow = RevertWindow()
 
     /** Set once by LatinIME. Kept out of the constructor so the frozen test entry points stay put. */
     fun setCompletionSink(sink: WordCompletionSink) {
-        completionSink = sink
+        runMachine.completionSink = sink
     }
 
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
     fun setPairCompletionSink(sink: PairCompletionSink) {
-        pairCompletionSink = sink
+        runMachine.pairCompletionSink = sink
     }
 
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
@@ -727,7 +386,7 @@ class SuggestionsController internal constructor(
 
     @JvmOverloads
     fun onStartInput(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE) {
-        markRunDirty()
+        runMachine.markRunDirty()
         // A new field is one of the six events that make an undo impossible.
         clearRevertState()
         // Lifecycle boundary: one of the only two places allowed to run the blocking engine
@@ -774,8 +433,8 @@ class SuggestionsController internal constructor(
     }
 
     fun onTextChanged() {
-        advanceRevertWindow()
-        trackCleanRun(editor.cachedWordBeforeCursor())
+        revertWindow.advance(sessionId)
+        runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
         requestCurrentPrefix()
     }
 
@@ -784,7 +443,7 @@ class SuggestionsController internal constructor(
         // breaks the run: what looks like growth afterwards may be growth of a different word. It is
         // also two of the six events that close the undo window, and for the same reason: the text
         // the replacement described is no longer the text at the cursor.
-        markRunDirty()
+        runMachine.markRunDirty()
         clearRevertState()
         sessionId++
         activeSlot()?.engine?.finishInput()
@@ -840,15 +499,14 @@ class SuggestionsController internal constructor(
     }
 
     fun onFinishInput() {
-        markRunDirty()
+        runMachine.markRunDirty()
         // The contract names this boundary explicitly: the replacement state is erased on
         // onFinishInput and never outlives the editor session.
         clearRevertState()
         // The one boundary where the personal store writes what it has accumulated: usage counters
         // and pending hashes, once, and only if something changed. The pair store (P1) flushes at
         // the same boundary and under the same rule.
-        completionSink.onInputFinished()
-        pairCompletionSink.onInputFinished()
+        runMachine.onInputFinished()
         sessionId++
         displayedPrefix = null
         displayedContextWord = null
@@ -873,7 +531,7 @@ class SuggestionsController internal constructor(
      */
     @JvmOverloads
     fun onSubtypeChanged(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE) {
-        markRunDirty()
+        runMachine.markRunDirty()
         // A subtype change is one of the six events that make an undo impossible.
         clearRevertState()
         sessionId++
@@ -1992,89 +1650,6 @@ class SuggestionsController internal constructor(
         strip.reserve()
     }
 
-    /**
-     * The clean-run machine of E4c, computed from the hooks that already exist — no new IPC, no new
-     * editor call and nothing kept about the text beyond the current word.
-     *
-     * A run is CLEAN while the trailing word grows one piece at a time (`w.startsWith(previous) &&
-     * w.length > previous.length`) and it ENDS when the trailing word becomes empty. A shortening
-     * (backspace), a replacement, a selection change, a cursor gesture, an accepted suggestion, a
-     * field or subtype change all mark it dirty, and a dirty run reports nothing.
-     */
-    private fun trackCleanRun(word: String) {
-        val previous = runWord
-        if (word == previous) return
-        if (word.isEmpty()) {
-            reportCompletionIfClean(previous)
-            reportPairCompletionIfClean(previous)
-            runWord = ""
-            runClean = true
-            // A completed boundary is a position the pair machine trusts: whatever state the run
-            // that just ended was in, the NEXT word grows from nothing under our eyes.
-            pairRunClean = true
-            runEmptyResultPrefixLength = NO_EMPTY_RESULT
-            return
-        }
-        if (previous.isEmpty()) {
-            // A fresh word begins; whether it stays clean is decided by what follows.
-            runWord = word
-            runEmptyResultPrefixLength = NO_EMPTY_RESULT
-            return
-        }
-        if (word.startsWith(previous) && word.length > previous.length) {
-            runWord = word
-            return
-        }
-        // Anything else — backspace, a swipe-delete, a replacement — is not growth.
-        runWord = word
-        runClean = false
-        pairRunClean = false
-        runEmptyResultPrefixLength = NO_EMPTY_RESULT
-    }
-
-    /**
-     * Reports the pair (context word, [word]) as cleanly completed (P1 of Phase 2,
-     * docs/ROADMAP-P2.md). The run rules are the words machine's own — [pairRunClean] mirrors
-     * [runClean] transition for transition, plus the one recovery a tap-commit earns (see [onTap])
-     * — but NOT the words machine's "unknown to the dictionary" filter: a pair whose second half
-     * is an ordinary dictionary word is the common case this feature exists for, so the empty-
-     * result evidence is not consulted here at all.
-     *
-     * The context is read from the LIVE editor cache at this exact moment — the text ends with
-     * the separator that just completed [word], so the word before it is [word] itself and the
-     * word before that is the context, typed or tapped, exactly as the contract asks. No context,
-     * no report: a word that opens a field or follows a sentence boundary has no pair to learn.
-     */
-    private fun reportPairCompletionIfClean(word: String) {
-        if (!pairRunClean || word.isEmpty()) return
-        if (pairCompletionSink === PairCompletionSink.NONE) return
-        val context = editor.cachedWordBeforeTrailingWord()
-        if (context.isEmpty()) return
-        pairCompletionSink.onCleanPairCompletion(context, word)
-    }
-
-    /**
-     * Reports [word] as cleanly completed, but only when the run also proved the word is NOT in the
-     * shipped dictionary: some PROPER prefix of it, actually requested during this same run, came
-     * back with an empty result. An empty result for p means no dictionary word other than p itself
-     * begins with p, so a longer word starting with p cannot be in the dictionary either.
-     *
-     * If no such observation was made — coalescing collapsed the requests, the engine was not ready,
-     * the band was ineligible — nothing is reported. Fail-closed towards writing LESS.
-     */
-    private fun reportCompletionIfClean(word: String) {
-        if (!runClean || word.isEmpty()) return
-        val observed = runEmptyResultPrefixLength
-        if (observed !in 1 until word.length) return
-        completionSink.onCleanCompletion(word)
-    }
-
-    private fun markRunDirty() {
-        runWord = ""
-        runClean = false
-        pairRunClean = false
-        runEmptyResultPrefixLength = NO_EMPTY_RESULT
-    }
 
     private fun applyResult(
         slot: LanguageSlot,
@@ -2106,27 +1681,15 @@ class SuggestionsController internal constructor(
 
     private fun applyPrefixResult(suggestions: List<String>) {
         if (suggestions.isEmpty()) {
-            // The observation the E4c filter is built on: nothing in the dictionary continues this
-            // prefix, so no longer word starting with it can be in the dictionary either.
-            //
-            // The SHORTEST such prefix is remembered, not the longest. The contract asks for a
-            // PROPER prefix of the completed word, and the last empty result of a run is usually the
-            // whole word itself — keeping the longest would let that one overwrite the very evidence
-            // the rule is about, and nothing would ever be learned.
-            if (runClean && pendingPrefix.isNotEmpty()) {
-                val length = pendingPrefix.length
-                if (runEmptyResultPrefixLength == NO_EMPTY_RESULT ||
-                    length < runEmptyResultPrefixLength
-                ) {
-                    runEmptyResultPrefixLength = length
-                }
-            }
+            runMachine.observeEmptyResult(pendingPrefix)
         }
         // P2 (docs/ROADMAP-P3.md): when the separator-time policy would fire on this word, the
         // band stops ranking continuations and announces the coming replacement instead —
         // exactly the AOSP visual contract. The preview owns the whole band: no companion fill
         // rides a band whose cells are a refusal and a correction.
-        val preview = computeAutocorrectPreview()
+        val preview = computeAutocorrectPreview(autocorrectGate, pendingPrefix, suppressedPreviewWord) {
+            usableEngine()?.autocorrectAdvice()
+        }
         previewKeepTypedCell = preview?.typedShown
         if (preview != null) {
             displayedPrefix = pendingPrefix
@@ -2166,60 +1729,6 @@ class SuggestionsController internal constructor(
         }
     }
 
-    /**
-     * The painted form of a coming replacement: the typed word as the user sees it and the
-     * correction as it would be inserted. Deliberately mute, like [Replacement] — this object
-     * carries the user's text.
-     */
-    private class AutocorrectPreview(
-        val typedShown: String,
-        val correctionShown: String,
-    ) {
-        override fun toString(): String = "AutocorrectPreview"
-    }
-
-    /**
-     * The preview half of the D3 decision (P2 of Phase 3, docs/ROADMAP-P3.md): would the
-     * separator-time policy fire on the word this result was computed for? Every condition of
-     * [maybeAutocorrectBeforeSeparator] is mirrored here — the gate, the length floor, the
-     * casing, the verdict's provenance and freshness, the frequency floor, the "replacement is
-     * not the word itself" guard — so what the strip announces is EXACTLY what a separator
-     * would do, never more. The two editor-side conditions (known cursor, cursor not inside a
-     * word) are not re-checked: a PREFIX result can only be applied for a trailing word at a
-     * known cursor, which [requestCurrentPrefix] established before the request went out.
-     *
-     * Costs one volatile read and a handful of comparisons — no lookup of its own: the verdict
-     * was computed by the very lookup this band is the answer to. The checks are ordered
-     * cheapest-first so the common band (a short word, a dictionary word with no verdict) never
-     * allocates: the normalization runs only once a verdict exists, i.e. when a preview is
-     * genuinely about to fire. The raw length pre-check is a conservative fast path — NFC never
-     * grows the code-point count — and the floor is still re-checked on the normalized form
-     * after provenance, mirroring the separator path exactly.
-     */
-    private fun computeAutocorrectPreview(): AutocorrectPreview? {
-        if (!autocorrectGate.isOn()) return null
-        val word = pendingPrefix
-        if (word.isEmpty()) return null
-        // A refused advice stays refused for as long as this occurrence stands.
-        if (word == suppressedPreviewWord) return null
-        val casing = TatarWordUtils.classifyCasing(word)
-        if (casing == TatarWordUtils.PrefixCasing.MIXED) return null
-        if (word.codePointCount(0, word.length) < AutocorrectPolicy.MIN_WORD_CODE_POINTS) {
-            return null
-        }
-        val advice = usableEngine()?.autocorrectAdvice() ?: return null
-        val normalized = TatarWordUtils.normalizeForLookup(word)
-        if (advice.typedWord != normalized) return null
-        if (normalized.codePointCount(0, normalized.length) <
-            AutocorrectPolicy.MIN_WORD_CODE_POINTS
-        ) {
-            return null
-        }
-        if (advice.frequency < AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY) return null
-        val correction = TatarWordUtils.applyCasing(advice.replacement, casing)
-        if (correction == word) return null
-        return AutocorrectPreview(word, correction)
-    }
 
     /**
      * E5d NEXT_WORD counterpart of [applyPrefixResult]. No E4c learning (that filter is about
@@ -2332,16 +1841,13 @@ class SuggestionsController internal constructor(
         // A correction is not the user spelling the word out: the run stops counting, exactly as it
         // does for an accepted suggestion, so the replaced word reaches neither the pending set nor
         // the personal dictionary.
-        markRunDirty()
+        runMachine.markRunDirty()
         // Whatever the band was showing described the word that no longer stands there.
         displayedPrefix = null
         displayedContextWord = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
-        armedReplacement = Replacement(
-            word, replacement, separatorString(separatorCodePoint), sessionId,
-        )
-        revertable = null
+        revertWindow.arm(word, replacement, separatorCodePoint, sessionId)
         return true
     }
 
@@ -2354,35 +1860,15 @@ class SuggestionsController internal constructor(
      * a refused undo cannot be retried and the second backspace deletes a character like any other.
      */
     fun maybeRevertAutocorrect(): Boolean {
-        val replacement = revertable ?: return false
-        revertable = null
-        armedReplacement = null
+        val replacement = revertWindow.take() ?: return false
         if (destroyed || !eligible) return false
         if (replacement.sessionId != sessionId) return false
         if (!autocorrectGate.isOn()) return false
         if (!editor.hasKnownCursor()) return false
-        markRunDirty()
+        runMachine.markRunDirty()
         return editor.revertTypedWord(
             replacement.insertedForm, replacement.separator, replacement.typedForm,
         )
-    }
-
-    /**
-     * Moves the undo window forward by one text change.
-     *
-     * A replacement is armed while its own separator is still on its way to the editor; that one
-     * change completes it. Any other text change — a typed character, an accepted suggestion, a
-     * deletion — closes the window instead, which is what makes «любое другое событие делает revert
-     * невозможным» true for the two of the six events that arrive as text.
-     */
-    private fun advanceRevertWindow() {
-        val armed = armedReplacement
-        if (armed != null) {
-            armedReplacement = null
-            revertable = if (armed.sessionId == sessionId) armed else null
-            return
-        }
-        revertable = null
     }
 
     /**
@@ -2391,13 +1877,9 @@ class SuggestionsController internal constructor(
      * occurrence the refusal was scoped to.
      */
     private fun clearRevertState() {
-        armedReplacement = null
-        revertable = null
+        revertWindow.clear()
         suppressedPreviewWord = null
     }
-
-    private fun separatorString(codePoint: Int): String =
-        if (Character.isValidCodePoint(codePoint)) String(Character.toChars(codePoint)) else ""
 
     private fun onTap(suggestion: String) {
         // P2 (docs/ROADMAP-P3.md): a tap on the keep-typed cell of a preview band refuses the
@@ -2419,7 +1901,7 @@ class SuggestionsController internal constructor(
             return
         }
         // An accepted suggestion is not the user spelling the word out: the run stops counting.
-        markRunDirty()
+        runMachine.markRunDirty()
         // A tap is one of the six events that close the undo window.
         clearRevertState()
         if (displayedSessionId != sessionId) {
@@ -2448,7 +1930,7 @@ class SuggestionsController internal constructor(
                 // after the committed word and its auto-space — is one the pair machine trusts:
                 // the NEXT word the user types out cleanly may form a pair with it ("typed or
                 // tapped" context, docs/ROADMAP-P2.md).
-                pairRunClean = true
+                runMachine.trustPairBoundary()
                 // A tap-commit never reaches onTextChanged() (no InputTransaction wraps it) and the
                 // settle backstop self-cuts on requestSessionId == sessionId, so unless the
                 // follow-up lookup is issued right here the band stays empty until the next
@@ -2477,11 +1959,11 @@ class SuggestionsController internal constructor(
                 // a fallback word changes nothing — and a sentence-start band (empty context) is
                 // never a pair at all.
                 if (context.isNotEmpty()) {
-                    pairCompletionSink.onAcceptedPrediction(context, suggestion)
+                    runMachine.noteAcceptedPrediction(context, suggestion)
                 }
                 // Same pair-machine recovery as the PREFIX branch above: the committed prediction
                 // is a trusted context for whatever the user types next.
-                pairRunClean = true
+                runMachine.trustPairBoundary()
                 // Same reasoning as the PREFIX branch above: the predictions for the word just
                 // committed are requested from here, or they never are.
                 requestCurrentPrefix()
@@ -2514,12 +1996,5 @@ class SuggestionsController internal constructor(
          * re-derives the live sentence start before editing.
          */
         private const val SENTENCE_START_CONTEXT = ""
-        /** No proper prefix of the current run has come back empty yet. */
-        private const val NO_EMPTY_RESULT = -1
-
-        // P2 (docs/ROADMAP-P3.md): the preview band's fixed layout — the typed word leads, the
-        // correction follows, emphasized; the third cell stays empty so the two read as a
-        // decision ("keep this" / "this is coming"), not as a ranking.
-        private const val PREVIEW_EMPHASIZED_CELL = 1
     }
 }

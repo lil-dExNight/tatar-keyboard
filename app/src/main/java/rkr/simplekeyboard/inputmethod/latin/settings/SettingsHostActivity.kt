@@ -21,39 +21,30 @@ import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.SharedPreferences
-import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
-import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
-import java.util.Locale
-import java.util.TreeSet
 import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardLayoutSet
 import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
 import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager
-import rkr.simplekeyboard.inputmethod.latin.common.LocaleUtils
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
 import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
-import rkr.simplekeyboard.inputmethod.latin.utils.SubtypeLocaleUtils
 
 /**
  * View-based settings screens (IOS-REDESIGN.md S1 + S2): every screen of
@@ -89,10 +80,19 @@ import rkr.simplekeyboard.inputmethod.latin.utils.SubtypeLocaleUtils
  *
  * [Screen.LANGUAGE_DETAIL] is the one parameterized screen: its locale
  * lives in [detailLocale] and rides along in the saved instance state.
+ *
+ * T2 part 3 (docs/ROADMAP-P6.md) split the file without touching a call
+ * site: the row builders live in `SettingsRows.kt`, the two languages
+ * screens in `SettingsLanguagesScreens.kt`, the key-press screen and the
+ * seek-bar proxies in `SettingsKeyPressScreen.kt` — all `internal`
+ * extension functions on this activity, because sixteen source-contract
+ * tests pin their exact call text to this file.
  */
 class SettingsHostActivity : Activity() {
 
-    private enum class Screen(val titleRes: Int) {
+    // internal, not private: the languages screens live in SettingsLanguagesScreens.kt since the
+    // T2 split (docs/ROADMAP-P6.md, part 3) and navigate by these constants from there.
+    internal enum class Screen(val titleRes: Int) {
         ROOT(R.string.english_ime_name),
         PREFERENCES(R.string.settings_screen_preferences),
         KEY_PRESS(R.string.settings_screen_key_press),
@@ -103,28 +103,29 @@ class SettingsHostActivity : Activity() {
         PERSONAL_DICTIONARY(R.string.personal_dictionary),
         DATA_SOURCES(R.string.settings_screen_data_sources)
     }
-
     companion object {
         private val TAG = SettingsHostActivity::class.java.simpleName
         private const val STATE_SCREEN = "screen"
         private const val STATE_BACK_STACK = "back_stack"
         private const val STATE_DETAIL_LOCALE = "detail_locale"
-        private const val DISABLED_ALPHA = 0.4f
-        private const val PERCENTAGE_FLOAT = 100.0f
+        // internal, not private: the row builders live in SettingsRows.kt since the T2 split
+        // (docs/ROADMAP-P6.md, part 3) and read them from there.
+        internal const val DISABLED_ALPHA = 0.4f
+        internal const val PERCENTAGE_FLOAT = 100.0f
     }
 
-    private lateinit var prefs: SharedPreferences
-    private lateinit var richImm: RichInputMethodManager
+    internal lateinit var prefs: SharedPreferences
+    internal lateinit var richImm: RichInputMethodManager
     private lateinit var scrollView: ScrollView
-    private lateinit var contentView: LinearLayout
+    internal lateinit var contentView: LinearLayout
     private lateinit var titleView: TextView
 
     private val backStack = ArrayDeque<Screen>()
-    private var currentDialog: AlertDialog? = null
+    internal var currentDialog: AlertDialog? = null
     private var currentScreen = Screen.ROOT
     /** Locale string of the language shown by [Screen.LANGUAGE_DETAIL]. */
-    private var detailLocale: String? = null
-    private var restrictionKeys: Set<String> = emptySet()
+    internal var detailLocale: String? = null
+    internal var restrictionKeys: Set<String> = emptySet()
 
     /**
      * The personal-dictionary search text. Deliberately transient: it is NOT written to
@@ -255,12 +256,12 @@ class SettingsHostActivity : Activity() {
         }
     }
 
-    private fun navigateTo(screen: Screen) {
+    internal fun navigateTo(screen: Screen) {
         backStack.addLast(currentScreen)
         showScreen(screen)
     }
 
-    private fun showScreen(screen: Screen) {
+    internal fun showScreen(screen: Screen) {
         val detail = if (screen == Screen.LANGUAGE_DETAIL) detailLocale else null
         if (screen == Screen.LANGUAGE_DETAIL && detail == null) {
             // Defensive: a detail screen without its locale (unexpected
@@ -986,42 +987,8 @@ class SettingsHostActivity : Activity() {
         return field
     }
 
-    private fun buildKeyPressScreen() {
-        val rows = ArrayList<View>()
-        if (AudioAndHapticFeedbackManager.getInstance().hasVibrator()) {
-            rows.add(switchRow(Settings.PREF_VIBRATE_ON,
-                    resources.getBoolean(R.bool.config_default_vibration_enabled),
-                    R.string.vibrate_on_keypress, R.string.vibrate_on_keypress_summary))
-        }
-        val soundDefault = resources.getBoolean(R.bool.config_default_sound_enabled)
-        var volumeRow: View? = null
-        rows.add(switchRow(Settings.PREF_SOUND_ON, soundDefault,
-                R.string.sound_on_keypress, R.string.sound_on_keypress_summary) { checked ->
-            volumeRow?.let {
-                setRowEnabled(it,
-                        checked && !isRestricted(Settings.PREF_KEYPRESS_SOUND_VOLUME))
-            }
-        })
-        val volume = valueRow(Settings.PREF_KEYPRESS_SOUND_VOLUME,
-                R.string.prefs_keypress_sound_volume_settings,
-                0, 100, 0, keypressSoundVolumeProxy())
-        volumeRow = volume
-        rows.add(volume)
-        rows.add(switchRow(Settings.PREF_POPUP_ON,
-                resources.getBoolean(R.bool.config_default_key_preview_popup),
-                R.string.popup_on_keypress, R.string.popup_on_keypress_summary))
-        rows.add(valueRow(Settings.PREF_KEY_LONGPRESS_TIMEOUT,
-                R.string.prefs_key_longpress_timeout_settings,
-                resources.getInteger(R.integer.config_min_longpress_timeout),
-                resources.getInteger(R.integer.config_max_longpress_timeout),
-                resources.getInteger(R.integer.config_longpress_timeout_step),
-                keyLongpressTimeoutProxy()))
-        addCard(rows)
-        // android:dependency="sound_on" from the legacy screen. A managed
-        // restriction on the volume key must win over the dependency.
-        setRowEnabled(volume, prefs.getBoolean(Settings.PREF_SOUND_ON, soundDefault)
-                && !isRestricted(Settings.PREF_KEYPRESS_SOUND_VOLUME))
-    }
+    // "Key press" screen — moved verbatim to SettingsKeyPressScreen.kt (T2 part 3,
+    // docs/ROADMAP-P6.md), together with the three seek-bar value proxies.
 
     private fun buildAppearanceScreen() {
         addCard(listOf(
@@ -1039,111 +1006,10 @@ class SettingsHostActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Languages screens, ported from LanguagesSettingsFragment and
-    // SingleLanguageSettingsFragment (S2.1)
+    // The languages screens moved verbatim to SettingsLanguagesScreens.kt
+    // (T2 part 3, docs/ROADMAP-P6.md). The emoji-recents dialog below stays
+    // here: EmojiRecentAndFlingSourceContractTest pins its body to this file.
     // ---------------------------------------------------------------------
-
-    /**
-     * "Keyboard languages": a card with one row per enabled language
-     * (summary lists its enabled layouts), then an actions card with
-     * "Add language" and — with more than one language — "Remove language",
-     * both opening the same multi-choice dialogs the legacy screen used.
-     */
-    private fun buildLanguagesScreen() {
-        val comparator = LocaleUtils.LocaleComparator()
-        val usedLocales = TreeSet<Locale>(comparator)
-        for (subtype in richImm.getEnabledSubtypes(false)) {
-            usedLocales.add(subtype.localeObject)
-        }
-        val unusedLocales = TreeSet<Locale>(comparator)
-        for (localeString in SubtypeLocaleUtils.getSupportedLocales()) {
-            val locale = LocaleUtils.constructLocaleFromString(localeString)
-            if (!usedLocales.contains(locale)) {
-                unusedLocales.add(locale)
-            }
-        }
-
-        val usedValues = usedLocales.map { LocaleUtils.getLocaleString(it) }
-        val unusedValues = unusedLocales.map { LocaleUtils.getLocaleString(it) }
-
-        addSectionHeader(getString(R.string.user_languages))
-        addCard(usedValues.map { localeString ->
-            val layoutNames = richImm.getEnabledSubtypesForLocale(localeString)
-                    .joinToString(", ") { it.layoutDisplayName }
-            linkRow(LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(localeString),
-                    layoutNames) {
-                detailLocale = localeString
-                navigateTo(Screen.LANGUAGE_DETAIL)
-            }
-        }, spacedFromPrevious = false)
-
-        val actions = ArrayList<View>()
-        actions.add(actionRow(R.string.add_language) {
-            showLocalePickerDialog(unusedValues, R.string.add_language, R.string.add,
-                    allowAllChecked = true) { checkedValues ->
-                // Enable the default layout for all of the checked languages.
-                for (localeString in checkedValues) {
-                    richImm.addSubtype(
-                            SubtypeLocaleUtils.getDefaultSubtype(localeString, resources))
-                }
-            }
-        })
-        if (usedValues.size > 1) {
-            actions.add(actionRow(R.string.remove_language) {
-                showLocalePickerDialog(usedValues, R.string.remove_language, R.string.remove,
-                        allowAllChecked = false) { checkedValues ->
-                    // Disable all of the layouts of the checked languages.
-                    for (localeString in checkedValues) {
-                        for (subtype in richImm.getEnabledSubtypesForLocale(localeString)) {
-                            richImm.removeSubtype(subtype)
-                        }
-                    }
-                }
-            })
-        }
-        addCard(actions)
-    }
-
-    /**
-     * Multi-choice language dialog shared by add/remove, ported from
-     * LanguagesSettingsFragment.showMultiChoiceDialog: the positive button
-     * is only enabled while at least one item is checked and — unless
-     * [allowAllChecked] — at least one is unchecked (removing every
-     * language at once must stay impossible). On accept the checked locale
-     * strings go to [onAccept] and the screen is rebuilt.
-     */
-    private fun showLocalePickerDialog(localeValues: List<String>, titleRes: Int,
-                                       positiveButtonRes: Int, allowAllChecked: Boolean,
-                                       onAccept: (List<String>) -> Unit) {
-        val names = localeValues.map {
-            LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(it) as CharSequence
-        }.toTypedArray()
-        val checkedItems = BooleanArray(localeValues.size)
-        currentDialog?.dismiss()
-        val dialog = AlertDialog.Builder(this)
-                .setTitle(titleRes)
-                .setMultiChoiceItems(names, checkedItems) { dialogInterface, _, _ ->
-                    var hasCheckedItem = false
-                    var hasUncheckedItem = false
-                    for (itemChecked in checkedItems) {
-                        if (itemChecked) hasCheckedItem = true else hasUncheckedItem = true
-                    }
-                    (dialogInterface as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE)
-                            .isEnabled = hasCheckedItem && (hasUncheckedItem || allowAllChecked)
-                }
-                .setPositiveButton(positiveButtonRes) { _, _ ->
-                    onAccept(localeValues.filterIndexed { index, _ -> checkedItems[index] })
-                    // Refresh the list of enabled languages (legacy buildContent).
-                    showScreen(Screen.LANGUAGES)
-                }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
-        DialogUtils.filterObscuredTouches(dialog)
-        dialog.show()
-        // Disable the positive button since nothing is checked by default.
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-        currentDialog = dialog
-    }
 
     /**
      * Confirmation dialog for "Clear recent emoji", built like [showLocalePickerDialog]: the
@@ -1171,173 +1037,11 @@ class SettingsHostActivity : Activity() {
         currentDialog = dialog
     }
 
-    /**
-     * Layouts of one language: a switch row per available layout. The last
-     * enabled layout's row is locked so a language can never lose all of
-     * its layouts — SingleLanguageSettingsFragment's invariant.
-     */
-    private fun buildLanguageDetailScreen(locale: String) {
-        addSectionHeader(getString(R.string.generic_language_layouts,
-                LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(locale)))
-
-        val enabledSubtypes = richImm.getEnabledSubtypes(false)
-        val subtypes = SubtypeLocaleUtils.getSubtypes(locale, resources)
-        val rows = ArrayList<View>()
-        val switches = ArrayList<Switch>()
-
-        fun updateLastLayoutLock() {
-            val checkedCount = switches.count { it.isChecked }
-            switches.forEachIndexed { index, switchView ->
-                setRowEnabled(rows[index], !(checkedCount == 1 && switchView.isChecked))
-            }
-        }
-
-        for (subtype in subtypes) {
-            val row = switchRowRaw(subtype.layoutDisplayName, null,
-                    enabledSubtypes.contains(subtype)) { checked ->
-                val applied = if (checked) {
-                    richImm.addSubtype(subtype)
-                } else {
-                    richImm.removeSubtype(subtype)
-                }
-                if (applied) {
-                    updateLastLayoutLock()
-                }
-                applied
-            }
-            rows.add(row)
-            switches.add(row.findViewById(R.id.row_switch))
-        }
-        addCard(rows, spacedFromPrevious = false)
-        updateLastLayoutLock()
-    }
-
     // ---------------------------------------------------------------------
-    // Row builders
+    // The row builders moved verbatim to SettingsRows.kt (T2 part 3,
+    // docs/ROADMAP-P6.md). The keyboard-height row below stays here:
+    // KeyboardHeightPreferenceTest pins its text to this file.
     // ---------------------------------------------------------------------
-
-    private fun inflateRow(layoutRes: Int, title: CharSequence, summary: CharSequence?): View {
-        val row = layoutInflater.inflate(layoutRes, contentView, false)
-        row.findViewById<TextView>(R.id.row_title).text = title
-        if (!summary.isNullOrEmpty()) {
-            row.findViewById<TextView>(R.id.row_summary)?.apply {
-                text = summary
-                visibility = View.VISIBLE
-            }
-        }
-        return row
-    }
-
-    private fun inflateRow(layoutRes: Int, titleRes: Int, summaryRes: Int): View =
-            inflateRow(layoutRes, getString(titleRes),
-                    if (summaryRes != 0) getString(summaryRes) else null)
-
-    /** Link row with dynamic texts (language rows on the Languages screen). */
-    private fun linkRow(title: CharSequence, summary: CharSequence?,
-                        onClick: () -> Unit): View {
-        val row = inflateRow(R.layout.row_link, title, summary)
-        row.setOnClickListener { onClick() }
-        return row
-    }
-
-    private fun linkRow(titleRes: Int, summaryRes: Int = 0, restrictionKey: String? = null,
-                        onClick: () -> Unit): View {
-        val row = inflateRow(R.layout.row_link, titleRes, summaryRes)
-        row.setOnClickListener { onClick() }
-        if (isRestricted(restrictionKey)) {
-            setRowEnabled(row, false)
-        }
-        return row
-    }
-
-    /** Non-interactive text cell: a paragraph inside a card, with no chevron and no tap target. */
-    private fun textRow(text: CharSequence): View {
-        val row = inflateRow(R.layout.row_link, text, null)
-        row.findViewById<View>(R.id.row_chevron).visibility = View.GONE
-        row.isClickable = false
-        row.isFocusable = false
-        row.foreground = null
-        return row
-    }
-
-    /**
-     * Action row (iOS "button cell"): accent-colored title, no chevron —
-     * it opens a dialog on the same screen instead of navigating.
-     */
-    private fun actionRow(titleRes: Int, onClick: () -> Unit): View {
-        val row = inflateRow(R.layout.row_link, titleRes, 0)
-        row.findViewById<TextView>(R.id.row_title).setTextColor(getColor(R.color.app_accent))
-        row.findViewById<View>(R.id.row_chevron).visibility = View.GONE
-        row.setOnClickListener { onClick() }
-        return row
-    }
-
-    private fun switchRow(key: String, defaultValue: Boolean, titleRes: Int, summaryRes: Int,
-                          onCheckedChanged: ((Boolean) -> Unit)? = null): View {
-        val row = switchRowRaw(getString(titleRes),
-                if (summaryRes != 0) getString(summaryRes) else null,
-                prefs.getBoolean(key, defaultValue)) { checked ->
-            prefs.edit().putBoolean(key, checked).apply()
-            onCheckedChanged?.invoke(checked)
-            true
-        }
-        if (isRestricted(key)) {
-            setRowEnabled(row, false)
-        }
-        return row
-    }
-
-    /**
-     * Backing-store-agnostic switch row: [onToggle] applies the change and
-     * returns whether it took effect — on false the switch is silently
-     * reverted (the subtype rows need this when an add/remove fails).
-     */
-    private fun switchRowRaw(title: CharSequence, summary: CharSequence?,
-                             initialChecked: Boolean, onToggle: (Boolean) -> Boolean): View {
-        val row = inflateRow(R.layout.row_switch, title, summary)
-        val switchView = row.findViewById<Switch>(R.id.row_switch)
-        switchView.isChecked = initialChecked
-        switchView.setOnCheckedChangeListener(object : CompoundButton.OnCheckedChangeListener {
-            override fun onCheckedChanged(button: CompoundButton, checked: Boolean) {
-                if (!onToggle(checked)) {
-                    button.setOnCheckedChangeListener(null)
-                    button.isChecked = !checked
-                    button.setOnCheckedChangeListener(this)
-                }
-            }
-        })
-        // The whole row is one tap target and one TalkBack node that
-        // presents itself as the switch it toggles.
-        row.setOnClickListener { switchView.toggle() }
-        row.accessibilityDelegate = object : View.AccessibilityDelegate() {
-            override fun onInitializeAccessibilityNodeInfo(host: View,
-                                                           info: AccessibilityNodeInfo) {
-                super.onInitializeAccessibilityNodeInfo(host, info)
-                info.className = Switch::class.java.name
-                info.isCheckable = true
-                info.isChecked = switchView.isChecked
-            }
-        }
-        return row
-    }
-
-    private fun valueRow(key: String, titleRes: Int, minValue: Int, maxValue: Int, stepValue: Int,
-                         proxy: SeekBarDialogHelper.ValueProxy): View {
-        val row = inflateRow(R.layout.row_value, titleRes, 0)
-        val valueView = row.findViewById<TextView>(R.id.row_value)
-        valueView.text = proxy.getValueText(proxy.readValue(key))
-        row.setOnClickListener {
-            currentDialog?.dismiss()
-            currentDialog = SeekBarDialogHelper.show(this, getString(titleRes), key,
-                    minValue, maxValue, stepValue, proxy) {
-                valueView.text = proxy.getValueText(proxy.readValue(key))
-            }
-        }
-        if (isRestricted(key)) {
-            setRowEnabled(row, false)
-        }
-        return row
-    }
 
     /**
      * U6 of Phase 5 (docs/ROADMAP-P5.md): "Keyboard height" as three named presets instead of
@@ -1401,77 +1105,6 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
-    /**
-     * Uppercase 13sp section header above a card (iOS grouped-list header).
-     * The card that follows should pass spacedFromPrevious = false to
-     * [addCard] — the header carries the vertical spacing itself.
-     */
-    private fun addSectionHeader(text: CharSequence) {
-        // The 4-arg constructor applies AppText.SectionHeader as defStyleRes.
-        val header = TextView(this, null, 0, R.style.AppText_SectionHeader)
-        header.text = text
-        header.setPaddingRelative(dp(16), 0, dp(16), 0)
-        val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT)
-        params.topMargin = dp(20)
-        params.bottomMargin = dp(6)
-        header.layoutParams = params
-        contentView.addView(header)
-    }
-
-    /**
-     * Appends a card group to the content column: per-position rounded
-     * backgrounds (wave D drawables) and a 1px inset hairline between rows,
-     * none after the last. [spacedFromPrevious] is turned off when a
-     * section header directly above already provides the gap.
-     */
-    private fun addCard(rows: List<View>, spacedFromPrevious: Boolean = true) {
-        rows.forEachIndexed { index, row ->
-            row.background = getDrawable(when {
-                rows.size == 1 -> R.drawable.app_card_bg
-                index == 0 -> R.drawable.app_card_top
-                index == rows.size - 1 -> R.drawable.app_card_bottom
-                else -> R.drawable.app_card_middle
-            })
-            if (index == 0) {
-                if (spacedFromPrevious) {
-                    (row.layoutParams as LinearLayout.LayoutParams).topMargin = dp(20)
-                }
-            } else {
-                contentView.addView(View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT, 1)
-                    background = getDrawable(R.drawable.app_row_divider)
-                })
-            }
-            contentView.addView(row)
-        }
-    }
-
-    private fun setRowEnabled(row: View, enabled: Boolean) {
-        row.isEnabled = enabled
-        // Dim the row contents, not the row itself: the row carries the card
-        // background segment, and fading it would punch a hole in the card.
-        if (row is ViewGroup) {
-            val childAlpha = if (enabled) 1f else DISABLED_ALPHA
-            for (i in 0 until row.childCount) {
-                row.getChildAt(i).alpha = childAlpha
-            }
-        } else {
-            row.alpha = if (enabled) 1f else DISABLED_ALPHA
-        }
-        row.findViewById<Switch>(R.id.row_switch)?.isEnabled = enabled
-    }
-
-    private fun isRestricted(key: String?): Boolean {
-        return key != null && restrictionKeys.contains(key)
-    }
-
-    private fun dp(value: Int): Int {
-        return Math.round(value * resources.displayMetrics.density)
-    }
-
     // ---------------------------------------------------------------------
     // Row actions
     // ---------------------------------------------------------------------
@@ -1492,77 +1125,5 @@ class SettingsHostActivity : Activity() {
             Log.e(TAG, "Browser not found")
             Toast.makeText(this, R.string.no_app_for_link, Toast.LENGTH_LONG).show()
         }
-    }
-
-    // ---------------------------------------------------------------------
-    // Seek-bar value proxies, ported 1:1 from KeyPressSettingsFragment and
-    // AppearanceSettingsFragment
-    // ---------------------------------------------------------------------
-
-    private fun keypressSoundVolumeProxy() = object : SeekBarDialogHelper.ValueProxy {
-        override fun readValue(key: String): Int =
-                (Settings.readKeypressSoundVolume(prefs) * PERCENTAGE_FLOAT).toInt()
-
-        override fun readDefaultValue(key: String): Int =
-                (Settings.readDefaultKeypressSoundVolume() * PERCENTAGE_FLOAT).toInt()
-
-        override fun writeValue(value: Int, key: String) {
-            prefs.edit().putFloat(key, value / PERCENTAGE_FLOAT).apply()
-        }
-
-        override fun writeDefaultValue(key: String) {
-            prefs.edit().remove(key).apply()
-        }
-
-        override fun getValueText(value: Int): String =
-                if (value < 0) getString(R.string.settings_system_default)
-                else value.toString()
-
-        override fun feedbackValue(value: Int) {
-            AudioAndHapticFeedbackManager.getInstance().playSoundEffect(
-                    AudioManager.FX_KEYPRESS_STANDARD, value / PERCENTAGE_FLOAT)
-        }
-    }
-
-    private fun keyLongpressTimeoutProxy() = object : SeekBarDialogHelper.ValueProxy {
-        override fun readValue(key: String): Int =
-                Settings.readKeyLongpressTimeout(prefs, resources)
-
-        override fun readDefaultValue(key: String): Int =
-                Settings.readDefaultKeyLongpressTimeout(resources)
-
-        override fun writeValue(value: Int, key: String) {
-            prefs.edit().putInt(key, value).apply()
-        }
-
-        override fun writeDefaultValue(key: String) {
-            prefs.edit().remove(key).apply()
-        }
-
-        override fun getValueText(value: Int): String =
-                getString(R.string.abbreviation_unit_milliseconds, value)
-
-        override fun feedbackValue(value: Int) {}
-    }
-
-    private fun bottomOffsetProxy() = object : SeekBarDialogHelper.ValueProxy {
-        override fun readValue(key: String): Int =
-                Settings.readBottomOffsetPortrait(prefs)
-
-        override fun readDefaultValue(key: String): Int = Settings.DEFAULT_BOTTOM_OFFSET
-
-        override fun writeValue(value: Int, key: String) {
-            prefs.edit().putInt(key, value).apply()
-        }
-
-        override fun writeDefaultValue(key: String) {
-            prefs.edit().remove(key).apply()
-        }
-
-        override fun getValueText(value: Int): String =
-                if (value < 0) getString(R.string.settings_system_default)
-                else getString(R.string.abbreviation_unit_dp, value)
-
-        override fun feedbackValue(value: Int) {}
     }
 }

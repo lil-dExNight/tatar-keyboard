@@ -41,12 +41,9 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.util.PrintWriterPrinter;
 import android.util.Printer;
-import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.ViewGroup.LayoutParams;
 import android.view.Window;
-import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 
@@ -114,8 +111,6 @@ import rkr.simplekeyboard.inputmethod.latin.utils.ApplicationUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.LeakGuardHandlerWrapper;
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils;
-import rkr.simplekeyboard.inputmethod.latin.utils.ResourceUtils;
-import rkr.simplekeyboard.inputmethod.latin.utils.ViewLayoutUtils;
 
 /**
  * Input method implementation for Qwerty'ish keyboard.
@@ -126,7 +121,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     private static final boolean TRACE = false;
 
     private static final int EXTENDED_TOUCHABLE_REGION_HEIGHT = 100;
-    private static final int PERIOD_FOR_AUDIO_AND_HAPTIC_FEEDBACK_IN_KEY_REPEAT = 2;
     private static final int PENDING_IMS_CALLBACK_DURATION_MILLIS = 800;
     static final long DELAY_DEALLOCATE_MEMORY_MILLIS = TimeUnit.SECONDS.toMillis(10);
 
@@ -135,7 +129,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     final InputLogic mInputLogic = new InputLogic(this /* LatinIME */);
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
-    private View mInputView;
+    // Package-visible for the extracted soft-input window helpers (LatinImeSoftInputWindow).
+    View mInputView;
     private final Rect mVisibleInputBounds = new Rect();
 
     private RichInputMethodManager mRichImm;
@@ -144,7 +139,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     private AlertDialog mOptionsDialog;
 
     // Optional opt-in Tatar suggestions controller. Null until set up in onCreate().
-    private SuggestionsController mSuggestionsController;
+    // Package-visible for the extracted service helpers (LatinImeAutocorrect & co.).
+    SuggestionsController mSuggestionsController;
 
     // Owns the emoji panel's single-per-process snapshot. Null until set up in onCreate().
     private EmojiPanelController mEmojiPanelController;
@@ -152,12 +148,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     /**
      * The emoji-search query while the search is open, and null otherwise. It holds every key press
      * made during the search; not one of them reaches {@link InputLogic} or the editor.
+     *
+     * <p>Package-visible because the extracted routing code ({@link LatinImeEmojiSearch}) reads it,
+     * while the pinned lifecycle bodies of this class keep reading it in place.</p>
      */
-    private EmojiSearchQuery mEmojiSearchQuery;
+    EmojiSearchQuery mEmojiSearchQuery;
 
     /**
      * The auto-caps state reported to the keyboard while the emoji search is open: no
-     * {@code TextUtils.CAP_MODE_*} bit at all. See {@link #maybeRouteToEmojiSearch}.
+     * {@code TextUtils.CAP_MODE_*} bit at all. See
+     * {@link LatinImeEmojiSearch#maybeRouteToEmojiSearch}.
      */
     private static final int NO_AUTO_CAPS = 0;
 
@@ -738,7 +738,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 // The letters come back with shift unlatched: a query is not a sentence.
                 mKeyboardSwitcher.requestUpdatingShiftState(NO_AUTO_CAPS,
                         getCurrentRecapitalizeState());
-                updateEmojiSearchView();
+                LatinImeEmojiSearch.updateEmojiSearchView(LatinIME.this);
             }
 
             @Override
@@ -1454,23 +1454,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         super.setInputView(view);
         mInputView = view;
         if (view instanceof InputView) {
-            ((InputView) view).setInsetsChangedListener(this::onInputGeometryChanged);
+            ((InputView) view).setInsetsChangedListener(
+                    () -> LatinImeSoftInputWindow.onInputGeometryChanged(this));
         }
-        updateSoftInputWindowLayoutParameters();
+        LatinImeSoftInputWindow.updateSoftInputWindowLayoutParameters(this);
         view.requestApplyInsets();
-    }
-
-    private void onInputGeometryChanged() {
-        if (mInputView == null) {
-            return;
-        }
-        mInputView.requestLayout();
-        mInputView.requestApplyInsets();
-        final Window window = getWindow().getWindow();
-        if (window != null) {
-            window.getDecorView().requestLayout();
-            window.getDecorView().requestApplyInsets();
-        }
     }
 
     @Override
@@ -1647,7 +1635,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     public void onWindowShown() {
         super.onWindowShown();
         if (isInputViewShown())
-            setNavigationBarColor();
+            LatinImeSoftInputWindow.setNavigationBarColor(this);
     }
 
     @Override
@@ -1814,30 +1802,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void updateFullscreenMode() {
         super.updateFullscreenMode();
-        updateSoftInputWindowLayoutParameters();
-    }
-
-    private void updateSoftInputWindowLayoutParameters() {
-        // Override layout parameters to expand {@link SoftInputWindow} to the entire screen.
-        // See {@link InputMethodService#setinputView(View)} and
-        // {@link SoftInputWindow#updateWidthHeight(WindowManager.LayoutParams)}.
-        final Window window = getWindow().getWindow();
-        ViewLayoutUtils.updateLayoutHeightOf(window, LayoutParams.MATCH_PARENT);
-        // This method may be called before {@link #setInputView(View)}.
-        if (mInputView != null) {
-            // In non-fullscreen mode, {@link InputView} and its parent inputArea should expand to
-            // the entire screen and be placed at the bottom of {@link SoftInputWindow}.
-            // In fullscreen mode, these shouldn't expand to the entire screen and should be
-            // coexistent with {@link #mExtractedArea} above.
-            // See {@link InputMethodService#setInputView(View) and
-            // com.android.internal.R.layout.input_method.xml.
-            final int layoutHeight = isFullscreenMode()
-                    ? LayoutParams.WRAP_CONTENT : LayoutParams.MATCH_PARENT;
-            final View inputArea = window.findViewById(android.R.id.inputArea);
-            ViewLayoutUtils.updateLayoutHeightOf(inputArea, layoutHeight);
-            ViewLayoutUtils.updateLayoutGravityOf(inputArea, Gravity.BOTTOM);
-            ViewLayoutUtils.updateLayoutHeightOf(mInputView, layoutHeight);
-        }
+        LatinImeSoftInputWindow.updateSoftInputWindowLayoutParameters(this);
     }
 
     int getCurrentAutoCapsState() {
@@ -1892,14 +1857,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             final int end = mInputLogic.mConnection.getExpectedSelectionEnd() + steps;
             final int start = mInputLogic.mConnection.hasSelection() ? mInputLogic.mConnection.getExpectedSelectionStart() : end;
             mInputLogic.mConnection.setSelection(start, end);
-            hapticTickFeedback();
+            LatinImeKeyFeedback.hapticTickFeedback();
         } else {
             final boolean moved = steps != 0;
             for (; steps < 0; steps++)
                 mInputLogic.sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_LEFT);
             for (; steps > 0; steps--)
                 mInputLogic.sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_RIGHT);
-            hapticTickFeedback();
+            LatinImeKeyFeedback.hapticTickFeedback();
             if (!moved) {
                 return;
             }
@@ -1917,12 +1882,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             final int end = mInputLogic.mConnection.getExpectedSelectionEnd();
             final int start = mInputLogic.mConnection.getExpectedSelectionStart() + steps;
             mInputLogic.mConnection.setSelection(start, end);
-            hapticTickFeedback();
+            LatinImeKeyFeedback.hapticTickFeedback();
         } else {
             final boolean deleted = steps != 0;
             for (; steps < 0; steps++)
                 mInputLogic.sendDownUpKeyEvent(KeyEvent.KEYCODE_DEL);
-            hapticTickFeedback();
+            LatinImeKeyFeedback.hapticTickFeedback();
             if (!deleted) {
                 return;
             }
@@ -2018,71 +1983,18 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // This method is public for testability of LatinIME, but also in the future it should
     // completely replace #onCodeInput.
     public void onEvent(final Event event) {
-        if (maybeRouteToEmojiSearch(event)) {
+        if (LatinImeEmojiSearch.maybeRouteToEmojiSearch(this, event)) {
             return;
         }
-        if (maybeRevertTatarAutocorrection(event)) {
+        if (LatinImeAutocorrect.maybeRevertTatarAutocorrection(this, event)) {
             return;
         }
-        maybeAutocorrectTatarWord(event);
+        LatinImeAutocorrect.maybeAutocorrectTatarWord(this, event);
         final InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event);
         updateStateAfterInputTransaction(completeInputTransaction);
         maybeOfferTatarSuggestions(event);
         mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
-    }
-
-    /**
-     * Corrects the word a separator is about to finish (D3), BEFORE that separator reaches the input
-     * logic.
-     *
-     * <p>Before, not after, on purpose: at this instant the editor is in exactly the state an
-     * accepted suggestion needs — a trailing word with a collapsed cursor right behind it — so the
-     * correction is the same single delete + commit, and the separator then travels the ordinary
-     * path with the auto-space rule, the double-space gesture and the shift update all untouched.
-     *
-     * <p>The two conditions are a conjunction: the code point must be a word separator of the live
-     * layout AND one of the separators D3 fires on at all
-     * ({@link TatarWordUtils#isAutocorrectSeparator}, i.e. «пробел или пунктуация»). Everything else
-     * — including Enter and Tab, which are word separators too — is left alone. The controller
-     * decides whether anything is actually replaced; this method only recognizes the moment.
-     */
-    private void maybeAutocorrectTatarWord(final Event event) {
-        if (mSuggestionsController == null) {
-            return;
-        }
-        final int codePoint = event.mCodePoint;
-        if (codePoint == Event.NOT_A_CODE_POINT
-                || !TatarWordUtils.isAutocorrectSeparator(codePoint)
-                || !mSettings.getCurrent().isWordSeparator(codePoint)) {
-            return;
-        }
-        mSuggestionsController.maybeAutocorrectBeforeSeparator(codePoint);
-    }
-
-    /**
-     * A backspace pressed immediately after an autocorrection restores what the user typed instead
-     * of deleting a character (D3). Returns true when it did, in which case the key press is fully
-     * handled and the ordinary backspace path never runs.
-     *
-     * <p>What follows a successful revert is exactly what a backspace does apart from the deletion:
-     * the shift state is recomputed (the restored word can change auto-caps), the band is re-derived
-     * from the new text, and the keyboard's own state machine still sees the key press.
-     * {@link #maybeOfferTatarSuggestions} is deliberately skipped — a delete carries
-     * {@link Event#NOT_A_CODE_POINT}, which is never a word separator, so the call would be a no-op.
-     */
-    private boolean maybeRevertTatarAutocorrection(final Event event) {
-        if (mSuggestionsController == null || event.mKeyCode != Constants.CODE_DELETE) {
-            return false;
-        }
-        if (!mSuggestionsController.maybeRevertAutocorrect()) {
-            return false;
-        }
-        mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
-                getCurrentRecapitalizeState());
-        mSuggestionsController.onTextChanged();
-        mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
-        return true;
     }
 
     /**
@@ -2204,55 +2116,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Routes one key press into the emoji-search query instead of into the editor, and returns true
-     * when it did. This is the single seam that makes the keyboard type "into itself": while the
-     * search is open the query grows here and {@link InputLogic} is never called, so no character
-     * the user types while searching can reach the application's text field and no marked region is
-     * ever started there. A backspace on an already-empty query means "leave the search".
-     *
-     * <p>The keyboard's own state machine still sees the event, so shift and the symbols/letters
-     * switch behave exactly as they do while typing. Auto-caps is deliberately reported as OFF
-     * ({@code 0}, no {@code TextUtils.CAP_MODE_*} bit): it is derived from the editor's text, which
-     * the search never changes, so leaving it on would re-arm shift after every letter and turn the
-     * whole query into capitals.
-     */
-    private boolean maybeRouteToEmojiSearch(final Event event) {
-        final EmojiSearchQuery query = mEmojiSearchQuery;
-        if (query == null || !mKeyboardSwitcher.isEmojiSearchShown()) {
-            return false;
-        }
-        final boolean changed;
-        if (event.mKeyCode == Constants.CODE_DELETE) {
-            if (!query.backspace()) {
-                onEmojiSearchClosed();
-                mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(),
-                        getCurrentRecapitalizeState());
-                return true;
-            }
-            changed = true;
-        } else if (event.mCodePoint != Event.NOT_A_CODE_POINT) {
-            changed = query.appendCodePoint(event.mCodePoint);
-        } else {
-            // Delete is handled above; every other key that carries no code point (the language
-            // key, the emoji key) is left to the ordinary path so the search never swallows it.
-            return false;
-        }
-        if (changed) {
-            updateEmojiSearchView();
-        }
-        mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
-        return true;
-    }
-
-    /** Hands the current query text to the search bands, which re-run the match and redraw. */
-    private void updateEmojiSearchView() {
-        final EmojiSearchQuery query = mEmojiSearchQuery;
-        if (query != null) {
-            mKeyboardSwitcher.setEmojiSearchQuery(query.text());
-        }
-    }
-
-    /**
      * Abandons an open emoji search without touching the surfaces; used by the lifecycle events
      * that tear the input view down or move to another editor, where the keyboard switcher already
      * resets its own state.
@@ -2308,36 +2171,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
     }
 
-    private void hapticAndAudioFeedback(final int code, final int repeatCount) {
-        final MainKeyboardView keyboardView = mKeyboardSwitcher.getMainKeyboardView();
-        if (keyboardView != null && keyboardView.isInDraggingFinger()) {
-            // No need to feedback while finger is dragging.
-            return;
-        }
-        if (repeatCount > 0) {
-            if (code == Constants.CODE_DELETE && !mInputLogic.mConnection.canDeleteCharacters()) {
-                // No need to feedback when repeat delete key will have no effect.
-                return;
-            }
-            // TODO: Use event time that the last feedback has been generated instead of relying on
-            // a repeat count to thin out feedback.
-            if (repeatCount % PERIOD_FOR_AUDIO_AND_HAPTIC_FEEDBACK_IN_KEY_REPEAT == 0) {
-                return;
-            }
-        }
-        final AudioAndHapticFeedbackManager feedbackManager = AudioAndHapticFeedbackManager.getInstance();
-        if (repeatCount == 0) {
-            // TODO: Reconsider how to perform haptic feedback when repeating key.
-            feedbackManager.performHapticFeedback(keyboardView);
-        }
-        feedbackManager.performAudioFeedback(code);
-    }
-
-    private void hapticTickFeedback() {
-        final AudioAndHapticFeedbackManager feedbackManager = AudioAndHapticFeedbackManager.getInstance();
-        feedbackManager.performTickFeedback();
-    }
-
     // Callback of the {@link KeyboardActionListener}. This is called when a key is depressed;
     // release matching call is {@link #onReleaseKey(int,boolean)} below.
     @Override
@@ -2345,7 +2178,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             final boolean isSinglePointer) {
         mKeyboardSwitcher.onPressKey(primaryCode, isSinglePointer, getCurrentAutoCapsState(),
                 getCurrentRecapitalizeState());
-        hapticAndAudioFeedback(primaryCode, repeatCount);
+        LatinImeKeyFeedback.hapticAndAudioFeedback(this, primaryCode, repeatCount);
     }
 
     // Callback of the {@link KeyboardActionListener}. This is called when a key is released;
@@ -2417,24 +2250,5 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             return false;
         }
         return shouldSwitchToOtherInputMethods(token);
-    }
-
-    private void setNavigationBarColor() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            final Window window = getWindow().getWindow();
-            if (window == null) {
-                return;
-            }
-            final SharedPreferences prefs = PreferenceManagerCompat.getDeviceSharedPreferences(this);
-            final int keyboardColor = Settings.readKeyboardColor(prefs, this);
-            window.setNavigationBarColor(keyboardColor);
-            window.setNavigationBarContrastEnforced(false);
-            final int flag = WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-            if (ResourceUtils.isBrightColor(keyboardColor)) {
-                window.getInsetsController().setSystemBarsAppearance(flag, flag);
-            } else {
-                window.getInsetsController().setSystemBarsAppearance(0, flag);
-            }
-        }
     }
 }

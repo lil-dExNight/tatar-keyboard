@@ -54,7 +54,10 @@ import rkr.simplekeyboard.inputmethod.R
  *
  * All geometry, hit testing and scrolling live in the pure [EmojiPanelState]; the auto-repeat of
  * delete lives in the pure [DeleteRepeatState]. This view owns only the Android surface: paints
- * built once, no allocations in [onDraw] or [onTouchEvent], and only the visible rows drawn.
+ * built once, no allocations in [onDraw] or [onTouchEvent], and only the visible rows drawn. The
+ * painters (tab row, search pill, floating keys, clock, skin-tone popup) live in
+ * `EmojiPanelDrawing.kt` and the three small gesture helpers in `EmojiPanelGestures.kt` —
+ * internal extensions on this view, moved verbatim in the T2 split (docs/ROADMAP-P6.md, part 3).
  *
  * Insertion goes solely through the listener, which routes to `LatinIME.onTextInput(String)`;
  * delete routes through `LatinIME.onCodeInput(CODE_DELETE)`. This view never commits or deletes
@@ -80,7 +83,10 @@ class EmojiPanelView @JvmOverloads constructor(
         fun onEmojiPanelSearch()
     }
 
-    private companion object {
+    // internal, not private: the extracted painters (EmojiPanelDrawing.kt) and gesture helpers
+    // (EmojiPanelGestures.kt) read three of these constants through the companion from their own
+    // files (T2 part 3, docs/ROADMAP-P6.md). The rest stay private.
+    internal companion object {
         // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
         // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
         // 40dp, вкладки 44dp, строка поиска 50dp, заголовок секции 30dp), а системный
@@ -125,7 +131,7 @@ class EmojiPanelView @JvmOverloads constructor(
 
         // How long the section jump animates, in ms. Long enough to read as movement rather than a
         // teleport, short enough not to feel like waiting.
-        private const val SECTION_JUMP_MS = 220
+        internal const val SECTION_JUMP_MS = 220
 
         // The skin-tone popup: a rounded card of variant cells over the anchor.
         private const val POPUP_RADIUS_DP = 10f
@@ -149,10 +155,10 @@ class EmojiPanelView @JvmOverloads constructor(
         private const val CLOCK_ICON_RADIUS_DP = 9f
         private const val CLOCK_ICON_STROKE_DP = 1.8f
 
-        private const val BACK_LABEL = "АБВ"
+        internal const val BACK_LABEL = "АБВ"
 
         // U+232B ERASE TO THE LEFT: a system glyph, so the panel ships no font of its own.
-        private const val DELETE_LABEL = "⌫"
+        internal const val DELETE_LABEL = "⌫"
 
         // Padding around the "АБВ" label that sets how wide the floating back key is.
         private const val BACK_PADDING_DP = 16f
@@ -172,46 +178,48 @@ class EmojiPanelView @JvmOverloads constructor(
         private const val POPUP_ID_BASE = 3_000_000
     }
 
-    private val state = EmojiPanelState()
+    internal val state = EmojiPanelState()
     private val deleteRepeat = DeleteRepeatState()
 
     /** The single, reusable fling scroller for the whole View lifetime. */
-    private val scroller = OverScroller(context)
+    internal val scroller = OverScroller(context)
 
     /** Obtained at most once per gesture on ACTION_DOWN, recycled on ACTION_UP/ACTION_CANCEL. */
     private var velocityTracker: VelocityTracker? = null
 
     private val backgroundPaint = Paint()
-    private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val activeTabPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val searchPillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val functionalKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val floatingHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    // The paints the extracted painters read (EmojiPanelDrawing.kt) are internal — the mechanical
+    // minimum of the T2 split, since an extension function cannot see a private member.
+    internal val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    internal val activeTabPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    internal val searchPillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    internal val functionalKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    internal val floatingHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
     }
-    private val popupPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val popupHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    internal val popupPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    internal val popupHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
     }
-    private val popupSelectedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val searchIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    internal val popupSelectedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    internal val searchIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
     }
-    private val clockIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    internal val clockIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
     }
 
     /** The one reusable rect every rounded pill is drawn through. */
-    private val keyRect = RectF()
-    private val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    internal val keyRect = RectF()
+    internal val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
     }
-    private val tabPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    internal val tabPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
     }
-    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    internal val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         textSize = TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
@@ -228,7 +236,7 @@ class EmojiPanelView @JvmOverloads constructor(
         )
         isFakeBoldText = true
     }
-    private val searchTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    internal val searchTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.LEFT
         textSize = TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
@@ -236,16 +244,16 @@ class EmojiPanelView @JvmOverloads constructor(
             resources.displayMetrics,
         )
     }
-    private val emojiFontMetrics = Paint.FontMetrics()
-    private val tabFontMetrics = Paint.FontMetrics()
-    private val labelFontMetrics = Paint.FontMetrics()
+    internal val emojiFontMetrics = Paint.FontMetrics()
+    internal val tabFontMetrics = Paint.FontMetrics()
+    internal val labelFontMetrics = Paint.FontMetrics()
     private val headerFontMetrics = Paint.FontMetrics()
-    private val searchFontMetrics = Paint.FontMetrics()
+    internal val searchFontMetrics = Paint.FontMetrics()
 
     private val minCellPx = dp(MIN_CELL_DP)
     private val maxCellPx = dp(MAX_CELL_DP)
-    private val tabBarPx = dp(TAB_BAR_DP)
-    private val searchBarPx = dp(SEARCH_BAR_DP)
+    internal val tabBarPx = dp(TAB_BAR_DP)
+    internal val searchBarPx = dp(SEARCH_BAR_DP)
     private val sectionHeaderPx = dp(SECTION_HEADER_DP)
     // Scratch for the navigation-bar overlap measured in onLayout: reused, so nothing is
     // allocated on a layout pass.
@@ -260,19 +268,19 @@ class EmojiPanelView @JvmOverloads constructor(
      */
     private var keyboardBottomOffsetPx = 0
 
-    private val floatingKeyPx = dp(FLOATING_KEY_DP)
+    internal val floatingKeyPx = dp(FLOATING_KEY_DP)
     private val floatingInsetPx = dp(FLOATING_INSET_DP)
-    private val searchPillInsetPx = dp(SEARCH_PILL_INSET_DP).toFloat()
-    private val tabPillInsetPx = dp(TAB_PILL_INSET_DP).toFloat()
+    internal val searchPillInsetPx = dp(SEARCH_PILL_INSET_DP).toFloat()
+    internal val tabPillInsetPx = dp(TAB_PILL_INSET_DP).toFloat()
     private val headerTextInsetPx = dp(HEADER_TEXT_INSET_DP).toFloat()
-    private val searchIconInsetPx = dp(SEARCH_ICON_INSET_DP).toFloat()
-    private val searchTextInsetPx = dp(SEARCH_TEXT_INSET_DP).toFloat()
-    private val searchIconRadiusPx = dp(SEARCH_ICON_RADIUS_DP).toFloat()
-    private val searchIconHandlePx = dp(SEARCH_ICON_HANDLE_DP).toFloat()
-    private val clockIconRadiusPx = dp(CLOCK_ICON_RADIUS_DP).toFloat()
+    internal val searchIconInsetPx = dp(SEARCH_ICON_INSET_DP).toFloat()
+    internal val searchTextInsetPx = dp(SEARCH_TEXT_INSET_DP).toFloat()
+    internal val searchIconRadiusPx = dp(SEARCH_ICON_RADIUS_DP).toFloat()
+    internal val searchIconHandlePx = dp(SEARCH_ICON_HANDLE_DP).toFloat()
+    internal val clockIconRadiusPx = dp(CLOCK_ICON_RADIUS_DP).toFloat()
 
     /** Set when category 0 is the recents, so the tab row draws a clock instead of an emoji. */
-    private var hasRecentTab = false
+    internal var hasRecentTab = false
 
     /**
      * Width of the floating "АБВ" key: its own label plus padding, measured once here rather than
@@ -280,12 +288,12 @@ class EmojiPanelView @JvmOverloads constructor(
      */
     private val backWidthPx = (labelPaint.measureText(BACK_LABEL) + 2 * dp(BACK_PADDING_DP)).toInt()
 
-    private val popupRadiusPx = dp(POPUP_RADIUS_DP).toFloat()
+    internal val popupRadiusPx = dp(POPUP_RADIUS_DP).toFloat()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
-    private val longPressTimeoutMs = ViewConfiguration.getLongPressTimeout().toLong()
+    internal val longPressTimeoutMs = ViewConfiguration.getLongPressTimeout().toLong()
 
     /** Bound once the controller has read the packed asset; empty until then. */
-    private var skinTones: EmojiSkinTones = EmojiSkinTones.EMPTY
+    internal var skinTones: EmojiSkinTones = EmojiSkinTones.EMPTY
 
     /** The neutral sequence the open popup belongs to, so a pick composes from the right base. */
     private var popupBase: String = ""
@@ -303,7 +311,7 @@ class EmojiPanelView @JvmOverloads constructor(
      * Composing them in [onDraw] would allocate six strings a frame, which the panel's contract
      * forbids.
      */
-    private val popupVariants = Array(EmojiSkinTones.VARIANT_COUNT) { "" }
+    internal val popupVariants = Array(EmojiSkinTones.VARIANT_COUNT) { "" }
     private val minFlingVelocity = ViewConfiguration.get(context).scaledMinimumFlingVelocity
     private val maxFlingVelocity = ViewConfiguration.get(context).scaledMaximumFlingVelocity
     private val repeatStartTimeoutMs =
@@ -312,7 +320,7 @@ class EmojiPanelView @JvmOverloads constructor(
         resources.getInteger(R.integer.config_key_repeat_interval).toLong()
 
     private var panelHeightPx = 0
-    private var tabLabels: Array<String> = emptyArray()
+    internal var tabLabels: Array<String> = emptyArray()
 
     // The category name of each tab, kept alongside [tabLabels] so the header row and the
     // accessibility delegate can read a localized title without recomputing any geometry.
@@ -322,7 +330,7 @@ class EmojiPanelView @JvmOverloads constructor(
     // touches resources.
     private var sectionTitles: Array<String> = emptyArray()
 
-    private val searchHint: String = context.getString(R.string.emoji_search_hint)
+    internal val searchHint: String = context.getString(R.string.emoji_search_hint)
 
     // True while a fling is animating, so a single "scroll finished" accessibility refresh fires on
     // the frame the scroller settles rather than on every frame.
@@ -338,7 +346,7 @@ class EmojiPanelView @JvmOverloads constructor(
      * timeout. The pending tap is dropped, so the same press can never both insert the neutral
      * emoji and open the popup.
      */
-    private val longPressRunnable = Runnable {
+    internal val longPressRunnable = Runnable {
         val cell = state.downTarget()
         if (!EmojiPanelState.isCell(cell) || state.isScrolling() || state.isSwiping()) {
             return@Runnable
@@ -583,113 +591,6 @@ class EmojiPanelView @JvmOverloads constructor(
         drawSkinTonePopup(canvas)
     }
 
-    /** The skin-tone popup, drawn over everything: a rounded card of the neutral cell plus five tones. */
-    private fun drawSkinTonePopup(canvas: Canvas) {
-        if (!state.isPopupOpen()) return
-        val left = state.popupLeft().toFloat()
-        val top = state.popupTop().toFloat()
-        val right = state.popupRight().toFloat()
-        val bottom = state.popupBottom().toFloat()
-        if (right <= left || bottom <= top) return
-        keyRect.set(left, top, right, bottom)
-        canvas.drawRoundRect(keyRect, popupRadiusPx, popupRadiusPx, popupHaloPaint)
-        canvas.drawRoundRect(keyRect, popupRadiusPx, popupRadiusPx, popupPaint)
-
-        val emojiCenterOffset = -(emojiFontMetrics.ascent + emojiFontMetrics.descent) / 2f
-        val baseline = (top + bottom) / 2f + emojiCenterOffset
-        val selected = state.popupVariant()
-        var variant = 0
-        val variants = state.popupVariantCount()
-        while (variant < variants) {
-            val variantLeft = state.popupVariantLeft(variant).toFloat()
-            val variantRight = state.popupVariantRight(variant).toFloat()
-            if (variant == selected) {
-                val inset = (variantRight - variantLeft) * 0.06f
-                keyRect.set(variantLeft + inset, top + inset, variantRight - inset, bottom - inset)
-                canvas.drawRoundRect(keyRect, popupRadiusPx, popupRadiusPx, popupSelectedPaint)
-            }
-            canvas.drawText(
-                popupVariants[variant],
-                (variantLeft + variantRight) / 2f,
-                baseline,
-                emojiPaint,
-            )
-            variant++
-        }
-    }
-
-    /** The top row of category tabs; the active one sits under a round pill, as in the reference. */
-    private fun drawTabRow(canvas: Canvas, pressed: Int) {
-        val tabs = state.tabCount()
-        if (tabs <= 0 || tabBarPx <= 0) return
-        val active = state.activeCategory()
-        val baseline = tabBarPx / 2f - (tabFontMetrics.ascent + tabFontMetrics.descent) / 2f
-        var tab = 0
-        while (tab < tabs) {
-            val left = state.tabLeft(tab).toFloat()
-            val right = state.tabRight(tab).toFloat()
-            val pill = minOf(right - left, tabBarPx.toFloat()) - 2 * tabPillInsetPx
-            if (pill > 0f) {
-                val centerX = (left + right) / 2f
-                val centerY = tabBarPx / 2f
-                keyRect.set(
-                    centerX - pill / 2f,
-                    centerY - pill / 2f,
-                    centerX + pill / 2f,
-                    centerY + pill / 2f,
-                )
-                if (tab == active) {
-                    canvas.drawRoundRect(keyRect, pill / 2f, pill / 2f, activeTabPaint)
-                }
-                if (EmojiPanelState.isTab(pressed) && EmojiPanelState.tabIndexOf(pressed) == tab) {
-                    canvas.drawRoundRect(keyRect, pill / 2f, pill / 2f, pressedPaint)
-                }
-            }
-            if (tab == 0 && hasRecentTab) {
-                drawClockIcon(canvas, (left + right) / 2f, tabBarPx / 2f)
-            } else {
-                canvas.drawText(tabLabels[tab], (left + right) / 2f, baseline, tabPaint)
-            }
-            tab++
-        }
-    }
-
-    /** The recents tab's clock: a ring and two hands, so the tab reads as "recent", not as an emoji. */
-    private fun drawClockIcon(canvas: Canvas, centerX: Float, centerY: Float) {
-        canvas.drawCircle(centerX, centerY, clockIconRadiusPx, clockIconPaint)
-        canvas.drawLine(centerX, centerY, centerX, centerY - clockIconRadiusPx * 0.55f, clockIconPaint)
-        canvas.drawLine(centerX, centerY, centerX + clockIconRadiusPx * 0.45f, centerY, clockIconPaint)
-    }
-
-    /** The search pill: a wide rounded band with a drawn magnifier and the localized hint. */
-    private fun drawSearchBar(canvas: Canvas, pressed: Int) {
-        if (searchBarPx <= 0) return
-        val top = state.searchBarTop().toFloat() + searchPillInsetPx
-        val bottom = (state.searchBarTop() + searchBarPx).toFloat() - searchPillInsetPx
-        val left = state.searchLeft().toFloat()
-        val right = state.searchRight().toFloat()
-        if (right <= left || bottom <= top) return
-        val radius = (bottom - top) / 2f
-        keyRect.set(left, top, right, bottom)
-        canvas.drawRoundRect(keyRect, radius, radius, searchPillPaint)
-        if (EmojiPanelState.isSearch(pressed)) {
-            canvas.drawRoundRect(keyRect, radius, radius, pressedPaint)
-        }
-        val centerY = (top + bottom) / 2f
-        val iconX = left + searchIconInsetPx
-        canvas.drawCircle(iconX, centerY - searchIconRadiusPx / 4f, searchIconRadiusPx, searchIconPaint)
-        val diagonal = searchIconRadiusPx * 0.7071f
-        canvas.drawLine(
-            iconX + diagonal,
-            centerY - searchIconRadiusPx / 4f + diagonal,
-            iconX + diagonal + searchIconHandlePx * 0.7071f,
-            centerY - searchIconRadiusPx / 4f + diagonal + searchIconHandlePx * 0.7071f,
-            searchIconPaint,
-        )
-        val baseline = centerY - (searchFontMetrics.ascent + searchFontMetrics.descent) / 2f
-        canvas.drawText(searchHint, left + searchTextInsetPx, baseline, searchTextPaint)
-    }
-
     /** The scrolling content: only the sections and rows inside the viewport are drawn. */
     private fun drawContent(canvas: Canvas, w: Float, pressed: Int) {
         val sections = state.sectionCount()
@@ -756,30 +657,10 @@ class EmojiPanelView @JvmOverloads constructor(
         canvas.restore()
     }
 
-    /** "АБВ" and delete, floating over the content in the bottom corners as in the reference. */
-    private fun drawFloatingKeys(canvas: Canvas, pressed: Int) {
-        if (floatingKeyPx <= 0) return
-        val top = state.floatingTop().toFloat()
-        val bottom = state.floatingBottom().toFloat()
-        val radius = (bottom - top) / 2f
-        val labelBaseline = (top + bottom) / 2f - (labelFontMetrics.ascent + labelFontMetrics.descent) / 2f
-
-        keyRect.set(state.backLeft().toFloat(), top, state.backRight().toFloat(), bottom)
-        canvas.drawRoundRect(keyRect, radius, radius, floatingHaloPaint)
-        canvas.drawRoundRect(keyRect, radius, radius, functionalKeyPaint)
-        if (EmojiPanelState.isBack(pressed)) {
-            canvas.drawRoundRect(keyRect, radius, radius, pressedPaint)
-        }
-        canvas.drawText(BACK_LABEL, keyRect.centerX(), labelBaseline, labelPaint)
-
-        keyRect.set(state.deleteLeft().toFloat(), top, state.deleteRight().toFloat(), bottom)
-        canvas.drawRoundRect(keyRect, radius, radius, floatingHaloPaint)
-        canvas.drawRoundRect(keyRect, radius, radius, functionalKeyPaint)
-        if (EmojiPanelState.isDelete(pressed)) {
-            canvas.drawRoundRect(keyRect, radius, radius, pressedPaint)
-        }
-        canvas.drawText(DELETE_LABEL, keyRect.centerX(), labelBaseline, labelPaint)
-    }
+    // The tab row, the search pill, the floating keys, the clock and the skin-tone popup are
+    // painted by EmojiPanelDrawing.kt (T2 part 3, docs/ROADMAP-P6.md): internal extensions on
+    // this view, so the call sites above kept their exact text. drawContent stays here: the
+    // "only the visible rows" tokens the source contracts pin live in its loop.
 
     @Suppress("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -925,38 +806,8 @@ class EmojiPanelView @JvmOverloads constructor(
         }
     }
 
-    /** Arms the skin-tone long press, but only over a cell whose emoji actually has tones. */
-    private fun maybeArmLongPress(target: Int) {
-        cancelSkinTonePopupTimer()
-        if (skinTones.isEmpty || !EmojiPanelState.isCell(target) || state.isPopupOpen()) {
-            return
-        }
-        if (!skinTones.hasTones(state.entryAt(target))) {
-            return
-        }
-        postDelayed(longPressRunnable, longPressTimeoutMs)
-    }
-
-    private fun cancelSkinTonePopupTimer() {
-        removeCallbacks(longPressRunnable)
-    }
-
-    /**
-     * Animates a sideways flick into a jump to the neighbouring section. The same single [scroller]
-     * that carries a fling carries this, so there is still no second animator and no allocation.
-     */
-    private fun maybeJumpSection(direction: Int) {
-        if (direction == 0) return
-        val sections = state.sectionCount()
-        if (sections <= 0) return
-        val target = (state.activeCategory() + direction).coerceIn(0, sections - 1)
-        val from = state.scrollY()
-        val to = state.sectionTop(target).coerceIn(0, state.maxScrollY())
-        if (to == from) return
-        scroller.forceFinished(true)
-        scroller.startScroll(0, from, 0, to - from, SECTION_JUMP_MS)
-        postInvalidateOnAnimation()
-    }
+    // The long-press arming/cancel and the section jump moved verbatim to EmojiPanelGestures.kt
+    // (T2 part 3, docs/ROADMAP-P6.md): internal extensions on this view.
 
     /** Obtains the per-gesture [VelocityTracker] at most once; DOWN calls this, UP/CANCEL recycle. */
     private fun obtainVelocityTracker() {
