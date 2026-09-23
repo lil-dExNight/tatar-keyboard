@@ -93,6 +93,19 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      */
     public static final String PREF_EMOJI_SUGGESTIONS = "pref_emoji_suggestions";
     /**
+     * Incognito mode (U8 of Phase 2, docs/ROADMAP-P2.md): while ON, nothing new is learned —
+     * no write reaches the personal words store, the personal bigrams store or their pending
+     * counters; what is already saved keeps appearing. Deliberately ONE toggle for both stores,
+     * exactly like {@link #PREF_PERSONAL_DICTIONARY} governs both: two pause switches give four
+     * states, only three of which mean anything. Turning it off resumes learning; nothing from
+     * the paused period is made up, because nothing was observed into any counter while it was
+     * on.
+     *
+     * <p>Deliberately NOT an enterprise restriction: it is a moment of the user's own privacy,
+     * not a policy an administrator sets.</p>
+     */
+    public static final String PREF_INCOGNITO_MODE = "pref_incognito_mode";
+    /**
      * One-shot marker: the offer to turn Tatar suggestions on has been made and is never made
      * again. Deliberately NOT part of {@link SettingsValues} — that object is rebuilt in full on
      * every change of every setting, and this value is read once per process and written once per
@@ -327,6 +340,15 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      */
     public static boolean readPersonalDictionaryEnabled(final SharedPreferences prefs) {
         return prefs.getBoolean(PREF_PERSONAL_DICTIONARY, false);
+    }
+
+    /**
+     * Incognito mode is a pause, not an opt-in: default OFF, and it governs WRITES only. Reading
+     * what is already saved never consults it — that is the documented U8 choice, pinned by
+     * IncognitoModeTest: learned words and pairs keep surfacing while the pause is on.
+     */
+    public static boolean readIncognitoModeEnabled(final SharedPreferences prefs) {
+        return prefs.getBoolean(PREF_INCOGNITO_MODE, false);
     }
 
     /**

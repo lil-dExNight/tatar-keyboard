@@ -155,6 +155,12 @@ internal class PersonalDictionaryStore(
      *   this project targets — a keystroke could still bring the erased word back onto the band. If
      *   the write then fails, the previous snapshot is restored, because at that point the word IS
      *   still saved and pretending otherwise would be the same lie in the other direction.
+     *
+     * The word is ALSO purged from the quarantine copy, if one exists: a copy that still holds a
+     * word the user deleted would resurrect it on the next restore, and "forgotten" must not have
+     * a back door. A copy that cannot be rewritten without the word is deleted outright — losing
+     * the salvage of other words is the smaller lie than keeping a deleted one. (U7 of Phase 2,
+     * docs/ROADMAP-P2.md — the P1 pairs store pinned this rule first; the words store had the hole.)
      */
     fun forget(word: String, outcome: PersonalMutationOutcome? = null) = onWorker {
         // B3. This was the one mutation whose body ran outside a `try`, and the exception did not
@@ -192,7 +198,9 @@ internal class PersonalDictionaryStore(
         val candidate = entries.remove(normalized)
         if (candidate === entries) {
             // The word was not in this dictionary at all: nothing to remove, and from where the
-            // user stands it is gone, which is what they asked for.
+            // user stands it is gone, which is what they asked for. The quarantine purge still
+            // runs — a word can sit in the copy without ever having been restored.
+            purgeFromQuarantine(normalized)
             return true
         }
         val previousSnapshot = snapshot
@@ -218,8 +226,53 @@ internal class PersonalDictionaryStore(
             entries = candidate
         } else {
             snapshot = previousSnapshot
+            return false
         }
-        return removed
+        purgeFromQuarantine(normalized)
+        return true
+    }
+
+    /**
+     * The quarantine half of [forget]: drops the word from the copy too, so a later restore cannot
+     * resurrect what the user deleted. A copy that becomes empty is removed; a copy that cannot be
+     * rewritten is removed as well — fail-closed toward NOT resurrecting, at the price of losing
+     * the salvage of the other words. The exact mirror of the pairs store's purge (P1 pinned the
+     * rule there first).
+     */
+    private fun purgeFromQuarantine(normalizedWord: String) {
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return
+        val copy = File(directory, quarantineFileName())
+        if (!copy.isFile) return
+        val salvage = try {
+            PersonalQuarantineSalvage.read(copy, subtypeId)
+        } catch (_: Exception) {
+            null
+        } ?: return
+        val kept = (0 until salvage.wordCount).filter { index ->
+            salvage.normalizedForms[index] != normalizedWord
+        }
+        if (kept.size == salvage.wordCount) return // the word was not in the copy: nothing to purge
+        val rewritten = try {
+            var candidate = PersonalEntries.empty(maxEntries)
+            for (index in kept) {
+                candidate = candidate.upsert(salvage.rawForms[index], salvage.normalizedForms[index])
+            }
+            if (candidate.isEmpty) {
+                deleteFile(directory, copy)
+                true
+            } else {
+                writeBytesDurably(directory, copy, candidate.serialize(subtypeId))
+                true
+            }
+        } catch (_: Exception) {
+            false
+        }
+        if (!rewritten) {
+            // The copy could not be rewritten without the deleted word. Deleting it outright loses
+            // the salvage of the other words — and keeping it would resurrect a word the user was
+            // told is gone. Erased means erased.
+            deleted { deleteFile(directory, copy) }
+        }
     }
 
     /**

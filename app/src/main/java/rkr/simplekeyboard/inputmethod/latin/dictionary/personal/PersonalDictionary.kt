@@ -49,6 +49,14 @@ class PersonalDictionary private constructor(
     fun normalizedFormAt(index: Int): String = normalizedForms[index]
 
     /**
+     * The usage counter at [index] — how often the word earned its place (learned observations
+     * plus accepted suggestions). The "Personal dictionary" screen shows it beside the word (U7
+     * of Phase 2, docs/ROADMAP-P2.md); the lookup path orders by it and never needs to read it
+     * one at a time.
+     */
+    fun usageCountAt(index: Int): Int = usageCounts[index]
+
+    /**
      * Returns the raw forms whose NORMALIZED form starts with [normalizedPrefix], EXCLUDING any
      * record whose normalized form is exactly equal to the prefix. Equality is on the normalized
      * form, never on raw bytes ("Контракт текста" edit 3): a personal "Гүзәл" is excluded when the

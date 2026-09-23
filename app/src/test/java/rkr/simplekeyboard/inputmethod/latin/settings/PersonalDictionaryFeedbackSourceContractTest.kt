@@ -77,7 +77,9 @@ class PersonalDictionaryFeedbackSourceContractTest {
         assertTrue("adding takes the outcome", add.contains("controller.addWord(subtypeId, field.text.toString()) { saved ->"))
         assertTrue("removing takes the outcome",
             remove.contains("controller.removeWord(row.subtypeId, row.normalizedForm) { removed ->"))
-        assertTrue("erasing takes the outcome", erase.contains("controller.eraseAll(subtypeIds) { erased ->"))
+        // U7 (2026-09-23): the global erase answers twice — once per store — so its lambda names
+        // the words half; the pairs half arrives in the nested call.
+        assertTrue("erasing takes the outcome", erase.contains("controller.eraseAll(subtypeIds) { wordsErased ->"))
 
         // And each one routes it into the single place that decides what the user sees.
         for (handler in listOf(add, remove, erase)) {
@@ -150,9 +152,10 @@ class PersonalDictionaryFeedbackSourceContractTest {
     fun everyOutcomeIsMarshalledOntoTheUiThread() {
         // The store answers on its own worker; a Toast and a repaint may not happen there.
         assertTrue(screenController.contains("private val uiPoster: (Runnable) -> Unit"))
-        // Six entry points, eight exits: eraseAll and quarantines each answer on both of their
-        // branches (nothing to do, and the counted fan-out). Every one of them ends on the UI thread.
-        assertEquals("no answer may be left on the store's worker", 8,
+        // Seven entry points, nine exits: eraseAll and quarantines each answer on both of their
+        // branches (nothing to do, and the counted fan-out). Every one of them ends on the UI
+        // thread. (9th exit 2026-09-23: U7's per-language clearWords, docs/ROADMAP-P2.md.)
+        assertEquals("no answer may be left on the store's worker", 9,
             Regex("uiPoster \\{").findAll(screenController).count())
     }
 

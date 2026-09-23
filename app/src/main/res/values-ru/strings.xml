@@ -74,6 +74,8 @@
     <string name="emoji_suggestions_summary">Показывать подходящий эмодзи над клавиатурой после завершённого слова — для татарского и русского. Нажатие только добавляет эмодзи: набранное слово остаётся.</string>
     <string name="personal_dictionary">Личный словарь</string>
     <string name="personal_dictionary_summary">Запоминать набранные вами слова и предлагать их позже. Сохраняются только на этом устройстве. Выключение не удаляет накопленное — стереть можно на экране «Личный словарь».</string>
+    <string name="incognito_mode">Режим инкогнито</string>
+    <string name="incognito_mode_summary">Приостановить запоминание новых слов и пар слов. Уже сохранённое продолжает появляться. Выключение возобновляет запоминание.</string>
     <string name="personal_dictionary_screen">Сохранённые слова</string>
     <string name="personal_dictionary_search_hint">Поиск по сохранённым словам</string>
     <string name="personal_dictionary_add">Добавить слово\u2026</string>
@@ -83,8 +85,33 @@
     <string name="personal_dictionary_add_rejected_ru">Это слово нельзя сохранить: нужно от 3 до 24 русских букв, без цифр и знаков препинания.</string>
     <string name="personal_dictionary_delete">Удалить</string>
     <string name="personal_dictionary_forget_title">Забыть «%1$s»?</string>
-    <string name="personal_dictionary_erase_all">Стереть все сохранённые слова</string>
-    <string name="personal_dictionary_erase_confirm">Удалить все слова, сохранённые на этом устройстве, на всех языках? Это действие необратимо.</string>
+    <plurals name="personal_dictionary_words_count">
+        <item quantity="one">%1$d слово</item>
+        <item quantity="few">%1$d слова</item>
+        <item quantity="many">%1$d слов</item>
+        <item quantity="other">%1$d слова</item>
+    </plurals>
+    <plurals name="personal_dictionary_pairs_count">
+        <item quantity="one">%1$d пара слов</item>
+        <item quantity="few">%1$d пары слов</item>
+        <item quantity="many">%1$d пар слов</item>
+        <item quantity="other">%1$d пары слов</item>
+    </plurals>
+    <plurals name="personal_dictionary_usage_count">
+        <item quantity="one">%1$d использование</item>
+        <item quantity="few">%1$d использования</item>
+        <item quantity="many">%1$d использований</item>
+        <item quantity="other">%1$d использования</item>
+    </plurals>
+    <string name="personal_dictionary_learning_paused">Запоминание приостановлено, пока включён режим инкогнито. Уже сохранённое продолжает появляться.</string>
+    <string name="personal_dictionary_clear_words">Очистить все слова</string>
+    <string name="personal_dictionary_clear_words_confirm">Удалить все сохранённые слова (%1$s)? Это действие необратимо.</string>
+    <string name="personal_dictionary_clear_pairs">Очистить все пары слов</string>
+    <string name="personal_dictionary_clear_pairs_confirm">Удалить все изученные пары слов (%1$s)? Это действие необратимо.</string>
+    <string name="personal_dictionary_pair_forget_title">Забыть «%1$s → %2$s»?</string>
+    <string name="personal_dictionary_pair_delete_failed">Не удалось удалить пару. Она осталась в словаре.</string>
+    <string name="personal_dictionary_erase_all">Стереть всё сохранённое</string>
+    <string name="personal_dictionary_erase_confirm">Удалить все слова и пары слов, сохранённые на этом устройстве, на всех языках? Это действие необратимо.</string>
     <string name="personal_dictionary_erase_action">Стереть</string>
     <string name="personal_dictionary_empty">Пока ничего не сохранено. Набранные слова будут появляться здесь, когда личный словарь включён.</string>
     <string name="personal_dictionary_no_matches">Ничего не найдено.</string>
@@ -93,6 +120,7 @@
     <string name="personal_dictionary_delete_failed">Не удалось удалить слово. Оно осталось в словаре.</string>
     <string name="personal_dictionary_erase_failed">Не удалось стереть всё. Часть сохранённых слов осталась на устройстве.</string>
     <string name="personal_dictionary_unreadable">Сохранённые слова не удалось прочитать, поэтому список пуст. Их копия сохранена \u2014 откройте «Сохранённые слова», чтобы вернуть то, что ещё читается.</string>
+    <string name="personal_bigrams_unreadable">Изученные пары слов не удалось прочитать, поэтому предсказания по ним прекратятся. Их копия сохранена на этом устройстве.</string>
     <string name="personal_dictionary_quarantine_title">Слова, которые не удалось прочитать</string>
     <plurals name="personal_dictionary_quarantine_partial">
         <item quantity="one">Можно вернуть %1$d слово. Остальная часть копии повреждена, её не восстановить.</item>
@@ -112,6 +140,25 @@
     <string name="personal_dictionary_quarantine_discard_confirm">Удалить копию слов, которые не удалось прочитать? Это действие необратимо.</string>
     <string name="personal_dictionary_quarantine_restore_failed">Не удалось вернуть слова. Они остались только в копии.</string>
     <string name="personal_dictionary_quarantine_discard_failed">Не удалось удалить копию. Она осталась на этом устройстве.</string>
+    <string name="personal_bigrams_quarantine_title">Пары слов, которые не удалось прочитать</string>
+    <plurals name="personal_bigrams_quarantine_partial">
+        <item quantity="one">Можно вернуть %1$d пару. Остальная часть копии повреждена, её не восстановить.</item>
+        <item quantity="few">Можно вернуть %1$d пары. Остальная часть копии повреждена, её не восстановить.</item>
+        <item quantity="many">Можно вернуть %1$d пар. Остальная часть копии повреждена, её не восстановить.</item>
+        <item quantity="other">Можно вернуть %1$d пары. Остальная часть копии повреждена, её не восстановить.</item>
+    </plurals>
+    <plurals name="personal_bigrams_quarantine_whole">
+        <item quantity="one">Можно вернуть %1$d пару.</item>
+        <item quantity="few">Можно вернуть %1$d пары.</item>
+        <item quantity="many">Можно вернуть %1$d пар.</item>
+        <item quantity="other">Можно вернуть %1$d пары.</item>
+    </plurals>
+    <string name="personal_bigrams_quarantine_none">Ни одной пары вернуть не удаётся. Копия по-прежнему хранится на этом устройстве.</string>
+    <string name="personal_bigrams_quarantine_restore">Вернуть пары</string>
+    <string name="personal_bigrams_quarantine_discard">Удалить копию</string>
+    <string name="personal_bigrams_quarantine_discard_confirm">Удалить копию пар слов, которые не удалось прочитать? Это действие необратимо.</string>
+    <string name="personal_bigrams_quarantine_restore_failed">Не удалось вернуть пары. Они остались только в копии.</string>
+    <string name="personal_bigrams_quarantine_discard_failed">Не удалось удалить копию. Она осталась на этом устройстве.</string>
     <string name="clear_recent_emoji">Очистить недавние эмодзи</string>
     <string name="clear_recent_emoji_confirm">Удалить все недавно использованные эмодзи, сохранённые на этом устройстве? Это действие нельзя отменить.</string>
     <string name="clear_recent_emoji_action">Очистить</string>

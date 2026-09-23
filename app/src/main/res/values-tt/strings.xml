@@ -74,6 +74,8 @@
     <string name="emoji_suggestions_summary">Сүз тәмамлангач, клавиатура өстендә туры килүче эмодзи күрсәтә — татарча һәм русча сүзләр өчен. Эмодзигә басу аны гына өсти: язылган сүз үз урынында кала.</string>
     <string name="personal_dictionary">Шәхси сүзлек</string>
     <string name="personal_dictionary_summary">Сез язган сүзләрне исендә калдырып, соңыннан тәкъдим итә. Алар бары тик шушы җиһазда саклана. Сүндерү тупланганны бетерми — аларны «Шәхси сүзлек» экранында бетерергә мөмкин.</string>
+    <string name="incognito_mode">Инкогнито режимы</string>
+    <string name="incognito_mode_summary">Яңа сүзләрне һәм сүз парларын өйрәнүне вакытлыча туктата. Сакланганы һаман күрсәтелә. Сүндергәч, өйрәнү дәвам итә.</string>
     <string name="personal_dictionary_screen">Сакланган сүзләр</string>
     <string name="personal_dictionary_search_hint">Сакланган сүзләр буенча эзләү</string>
     <string name="personal_dictionary_add">Сүз өстәү\u2026</string>
@@ -83,8 +85,24 @@
     <string name="personal_dictionary_add_rejected_ru">Бу сүзне сакларга ярамый: 3 тән 24 кә кадәр рус хәрефе кирәк, саннар һәм тыныш билгеләре булмаска тиеш.</string>
     <string name="personal_dictionary_delete">Бетерү</string>
     <string name="personal_dictionary_forget_title">«%1$s» сүзен онытыргамы?</string>
-    <string name="personal_dictionary_erase_all">Барлык сакланган сүзләрне бетерү</string>
-    <string name="personal_dictionary_erase_confirm">Бу җиһазда сакланган барлык телләрдәге бөтен сүзләрне бетерергәме? Моны кире кайтарып булмый.</string>
+    <plurals name="personal_dictionary_words_count">
+        <item quantity="other">%1$d сүз</item>
+    </plurals>
+    <plurals name="personal_dictionary_pairs_count">
+        <item quantity="other">%1$d сүз пары</item>
+    </plurals>
+    <plurals name="personal_dictionary_usage_count">
+        <item quantity="other">%1$d куллану</item>
+    </plurals>
+    <string name="personal_dictionary_learning_paused">Инкогнито режимы кабызылганда өйрәнү туктап тора. Сакланганы һаман күрсәтелә.</string>
+    <string name="personal_dictionary_clear_words">Барлык сүзләрне чистарту</string>
+    <string name="personal_dictionary_clear_words_confirm">Барлык сакланган сүзләрне (%1$s) бетерергәме? Моны кире кайтарып булмый.</string>
+    <string name="personal_dictionary_clear_pairs">Барлык сүз парларын чистарту</string>
+    <string name="personal_dictionary_clear_pairs_confirm">Өйрәнелгән барлык сүз парларын (%1$s) бетерергәме? Моны кире кайтарып булмый.</string>
+    <string name="personal_dictionary_pair_forget_title">«%1$s → %2$s» парын онытыргамы?</string>
+    <string name="personal_dictionary_pair_delete_failed">Парны бетерергә булмады. Ул сүзлектә калды.</string>
+    <string name="personal_dictionary_erase_all">Барлык сакланганны бетерү</string>
+    <string name="personal_dictionary_erase_confirm">Бу җиһазда сакланган барлык телләрдәге бөтен сүзләрне һәм сүз парларын бетерергәме? Моны кире кайтарып булмый.</string>
     <string name="personal_dictionary_erase_action">Бетерү</string>
     <string name="personal_dictionary_empty">Әлегә бернәрсә дә сакланмаган. Шәхси сүзлек кабызылгач, сез язган сүзләр монда күренә башлар.</string>
     <string name="personal_dictionary_no_matches">Бернәрсә дә табылмады.</string>
@@ -93,6 +111,7 @@
     <string name="personal_dictionary_delete_failed">Сүзне бетерергә булмады. Ул сүзлектә калды.</string>
     <string name="personal_dictionary_erase_failed">Барысын да бетерергә булмады. Сакланган сүзләрнең бер өлеше җиһазда калды.</string>
     <string name="personal_dictionary_unreadable">Сакланган сүзләрне укырга булмады, шуңа күрә исемлек буш. Аларның күчермәсе сакланды \u2014 укыла торганнарын кире кайтару өчен «Сакланган сүзләр» экранын ачыгыз.</string>
+    <string name="personal_bigrams_unreadable">Өйрәнелгән сүз парларын укырга булмады, шуңа күрә алар буенча күзәтүләр туктый. Күчермәсе шушы җиһазда сакланды.</string>
     <string name="personal_dictionary_quarantine_title">Укып булмаган сүзләр</string>
     <plurals name="personal_dictionary_quarantine_partial">
         <item quantity="other">%1$d сүзне кире кайтарып була. Күчермәнең калган өлеше зыян күргән, аны торгызып булмый.</item>
@@ -106,6 +125,19 @@
     <string name="personal_dictionary_quarantine_discard_confirm">Укып булмаган сүзләрнең күчермәсен бетерергәме? Моны кире кайтарып булмый.</string>
     <string name="personal_dictionary_quarantine_restore_failed">Сүзләрне кире кайтарып булмады. Алар бары тик күчермәдә калды.</string>
     <string name="personal_dictionary_quarantine_discard_failed">Күчермәне бетереп булмады. Ул шушы җиһазда калды.</string>
+    <string name="personal_bigrams_quarantine_title">Укып булмаган сүз парлары</string>
+    <plurals name="personal_bigrams_quarantine_partial">
+        <item quantity="other">%1$d парны кире кайтарып була. Күчермәнең калган өлеше зыян күргән, аны торгызып булмый.</item>
+    </plurals>
+    <plurals name="personal_bigrams_quarantine_whole">
+        <item quantity="other">%1$d парны кире кайтарып була.</item>
+    </plurals>
+    <string name="personal_bigrams_quarantine_none">Бер парны да кире кайтарып булмый. Күчермә һаман шушы җиһазда саклана.</string>
+    <string name="personal_bigrams_quarantine_restore">Сүз парларын кире кайтару</string>
+    <string name="personal_bigrams_quarantine_discard">Күчермәне бетерү</string>
+    <string name="personal_bigrams_quarantine_discard_confirm">Укып булмаган сүз парларының күчермәсен бетерергәме? Моны кире кайтарып булмый.</string>
+    <string name="personal_bigrams_quarantine_restore_failed">Сүз парларын кире кайтарып булмады. Алар бары тик күчермәдә калды.</string>
+    <string name="personal_bigrams_quarantine_discard_failed">Күчермәне бетереп булмады. Ул шушы җиһазда калды.</string>
     <string name="clear_recent_emoji">Соңгы эмодзиләрне чистарту</string>
     <string name="clear_recent_emoji_confirm">Бу җиһазда сакланган барлык соңгы эмодзиләрне бетерергәме? Бу гамәлне кире кайтарып булмый.</string>
     <string name="clear_recent_emoji_action">Чистарту</string>

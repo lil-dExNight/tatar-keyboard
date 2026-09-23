@@ -71,11 +71,15 @@ import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.inputlogic.InputLogic;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramDictionaries;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaries;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalForget;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearning;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearningGates;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchIndex;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchQuery;
@@ -537,6 +541,17 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
+            public String cachedWordBeforeTrailingWord() {
+                // P1 (docs/ROADMAP-P2.md): the same cache and the same cache-start provenance as
+                // cachedNextWordContext above — read live at the completion moment, so the context
+                // a pair is learned against is what the editor actually holds, never a remembered
+                // string that could have gone stale.
+                return TatarWordUtils.INSTANCE.extractWordBeforeTrailingWord(
+                        mInputLogic.mConnection.getCachedTextBeforeCursor(),
+                        mInputLogic.mConnection.cacheReachedTextStart());
+            }
+
+            @Override
             public boolean isAtSentenceStart() {
                 // P4 (docs/TT-SUGGESTIONS.md): the same cache and the same cache-start provenance
                 // as cachedNextWordContext above — the detector, not a re-derivation, decides.
@@ -585,6 +600,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             final PersonalCandidateSource personalCandidates =
                     PersonalDictionaries.sourceFor(this, subtypeId,
                             () -> Settings.readPersonalDictionaryEnabled(mDevicePrefs));
+            // P1 (docs/ROADMAP-P2.md): the personal side of the NEXT_WORD merge — the learned
+            // pairs of THIS subtype, under the same live gate and the same per-language binding as
+            // the words above. The pairs of one language can never surface in the other.
+            final PersonalBigramSource personalBigrams =
+                    PersonalBigramDictionaries.sourceFor(this, subtypeId,
+                            () -> Settings.readPersonalDictionaryEnabled(mDevicePrefs));
             // P3 (docs/TT-SUGGESTIONS.md): the Tatar word-form rules ride the same per-language
             // seam as the personal source — the artifact registry, not a call-site string,
             // decides, and the rule follows the family's language tag across repacks. The Russian
@@ -609,7 +630,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             final FallbackWordsFactory fallbackWordsFactory = dictionaryArtifact != null
                     ? GlobalTopFrequencyFallbackFactory.INSTANCE : null;
             return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules,
-                    fuzzyEditPolicy, fallbackWordsFactory);
+                    fuzzyEditPolicy, fallbackWordsFactory, personalBigrams);
         };
 
         mSuggestionsController = new SuggestionsController(
@@ -624,6 +645,21 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // built once for the service's whole lifetime.
         mSuggestionsController.setCompletionSink(PersonalLearning.sinkFor(
                 this, this::activeDictionarySubtype, this::mayLearnPersonalWords));
+        // P1 (docs/ROADMAP-P2.md): clean PAIR completions become writes through this sink, under
+        // the very same five factors as the word sink beside it — the subtype is likewise resolved
+        // at the moment of the event, so a pair completed on the Russian layout reaches the Russian
+        // store and nothing else.
+        mSuggestionsController.setPairCompletionSink(PersonalBigramLearning.sinkFor(
+                this, this::activeDictionarySubtype, this::mayLearnPersonalWords));
+        // P1: the dictionary half of the context gate the bigram store consults at graduation, on
+        // its own worker. The personal half (the user's own saved words) is composed inside
+        // PersonalBigramDictionaries itself; what is added here is the shipped dictionary's
+        // answer, which only the live engine can give. A dead controller answers false — the pair
+        // simply does not graduate.
+        PersonalBigramDictionaries.setContextMembershipProbe((subtypeId, normalizedContext) -> {
+            final SuggestionsController controller = mSuggestionsController;
+            return controller != null && controller.engineContainsWord(subtypeId, normalizedContext);
+        });
         // D3: read live off the already-rebuilt SettingsValues, which carries the subordination to
         // the suggestions switch, so flipping either setting takes effect on the next separator
         // without restarting the engine or touching its lease.
@@ -643,11 +679,23 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 controller.onPersonalDictionaryErased();
             }
         }));
+        // P1: erasing pairs on the settings screen unbinds the band through the same path — a
+        // deleted pair that is still painted could otherwise be committed with a tap.
+        PersonalBigramDictionaries.setErasureListener(() -> mHandler.post(() -> {
+            final SuggestionsController controller = mSuggestionsController;
+            if (controller != null) {
+                controller.onPersonalDictionaryErased();
+            }
+        }));
         // B2. The saved words could not be read, so the store set the file aside and the list the
         // user sees is empty through no act of theirs. Same hop for the same reason: the notice comes
         // from the store's worker.
         PersonalDictionaries.setQuarantineListener(
                 () -> mHandler.post(this::showPersonalDictionaryUnreadableDialog));
+        // P1: the same notice for the pairs file, with its own message — the user is told which
+        // list is empty, never left to guess.
+        PersonalBigramDictionaries.setQuarantineListener(
+                () -> mHandler.post(this::showPersonalBigramsUnreadableDialog));
     }
 
     /**
@@ -1125,6 +1173,36 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
+     * The personal-bigram sibling of {@link #showPersonalDictionaryUnreadableDialog()} (P1,
+     * docs/ROADMAP-P2.md): the pairs file could not be read, the store set it aside, and the user
+     * is told which list is empty. Same rules: the body names no word, no file and no cause, and
+     * the notice is spent only when the window token exists to show it over.
+     */
+    private void showPersonalBigramsUnreadableDialog() {
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView == null) {
+            return;
+        }
+        final IBinder windowToken = mainKeyboardView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        if (!PersonalBigramDictionaries.consumeQuarantineNotice()) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setMessage(R.string.personal_bigrams_unreadable)
+                .setPositiveButton(android.R.string.ok, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /**
      * Attaches a dialog to the IME window exactly the way the subtype picker does. Without the
      * window token and the attached-dialog type the window manager refuses a dialog owned by an
      * input method; without FLAG_ALT_FOCUSABLE_IM the keyboard and the dialog fight over input.
@@ -1223,8 +1301,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * The E4c learning predicate — one predicate, five factors, shared by every write path
-     * (noteCompletion, the eventual learn, the accepted-suggestion counter and the pending flush).
+     * The E4c learning predicate — one predicate, six factors, shared by every write path
+     * (noteCompletion, the eventual learn, the accepted-suggestion counter and the pending flush)
+     * of BOTH sinks: the words sink and the P1 pairs sink consult this very instance.
      *
      * <p>Two of them deserve a note. {@code isUserUnlocked()} is not about an extra record: before
      * the first unlock the snapshot is empty by construction, and writing is whole-file, so the
@@ -1234,19 +1313,24 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * field is NOT part of shouldSuppressSuggestions, so suggestions there behave exactly as before,
      * and only learning is blocked. TYPE_TEXT_VARIATION_PERSON_NAME is deliberately NOT excluded —
      * names are precisely what this feature is for.</p>
+     *
+     * <p>U8 (docs/ROADMAP-P2.md) adds the incognito factor: while the pause is on, nothing new is
+     * learned — no completion, no acceptance counter, no flush, and no pending hash, because the
+     * pending counters are written only from the completion event this predicate gates. The READ
+     * side never consults it: the learned words and pairs already saved keep surfacing. The
+     * conjunction itself is the pure {@link PersonalLearningGates#mayLearn} — the inputs are
+     * computed here, the decision is arithmetic, and the arithmetic is covered by JVM tests.</p>
      */
     private boolean mayLearnPersonalWords() {
-        if (!isSuggestionsEligible()) {
-            return false;
-        }
-        if (!Settings.readPersonalDictionaryEnabled(mDevicePrefs)) {
-            return false;
-        }
         final UserManager userManager = getSystemService(UserManager.class);
-        if (userManager == null || !userManager.isUserUnlocked()) {
-            return false;
-        }
-        return !mSettings.getCurrent().mInputAttributes.mIsPostalAddressField;
+        // A missing UserManager means locked, not open.
+        final boolean unlocked = userManager != null && userManager.isUserUnlocked();
+        return PersonalLearningGates.mayLearn(
+                isSuggestionsEligible(),
+                Settings.readPersonalDictionaryEnabled(mDevicePrefs),
+                unlocked,
+                mSettings.getCurrent().mInputAttributes.mIsPostalAddressField,
+                Settings.readIncognitoModeEnabled(mDevicePrefs));
     }
 
     // The key-neighbor table for the fuzzy suggestion pass is derived from the live keyboard and
@@ -1290,6 +1374,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // process-wide). Leaving it registered would keep a destroyed IME reachable.
         PersonalDictionaries.setErasureListener(null);
         PersonalDictionaries.setQuarantineListener(null);
+        PersonalBigramDictionaries.setErasureListener(null);
+        PersonalBigramDictionaries.setQuarantineListener(null);
+        PersonalBigramDictionaries.setContextMembershipProbe(null);
         if (mSuggestionsController != null) {
             mSuggestionsController.onDestroy();
         }
@@ -1539,6 +1626,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // The same boundary, for the same reason: a notice raised while no window was up would
             // otherwise be dropped, and the user would be left with an empty list and no explanation.
             mHandler.post(this::showPersonalDictionaryUnreadableDialog);
+        }
+        if (PersonalBigramDictionaries.hasPendingQuarantineNotice()) {
+            // P1: the pairs file has its own pending notice and its own message.
+            mHandler.post(this::showPersonalBigramsUnreadableDialog);
         }
 
         if (TRACE) Debug.startMethodTracing("/data/trace/latinime");

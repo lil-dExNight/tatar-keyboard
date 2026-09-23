@@ -146,6 +146,14 @@ class SettingsHostActivity : Activity() {
     private var personalQuarantines: Map<String, PersonalQuarantineReport>? = null
 
     /**
+     * The pairs half of [personalQuarantines] (U7 of Phase 2, docs/ROADMAP-P2.md): the same
+     * not-asked/asking/answered lifecycle, the same invalidation rule — every finished pair
+     * mutation puts it back to null. The two maps are separate because the two stores quarantine
+     * independently; a language can hold a copy of its words, of its pairs, of both or of neither.
+     */
+    private var personalPairQuarantines: Map<String, PersonalQuarantineReport>? = null
+
+    /**
      * Registered on the device-protected prefs exactly like
      * SubScreenFragment.onCreate, minus its backup request: E2b-3 disables
      * backup entirely, so the only job left here is to clear the keyboard
@@ -365,12 +373,16 @@ class SettingsHostActivity : Activity() {
         rows.add(switchRow(Settings.PREF_DELETE_SWIPE, false,
                 R.string.delete_swipe, R.string.delete_swipe_summary))
         var personalDictionaryRow: View? = null
+        var incognitoRow: View? = null
         var autocorrectRow: View? = null
         var emojiSuggestRow: View? = null
         rows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, false,
                 R.string.tatar_suggestions, R.string.tatar_suggestions_summary) { checked ->
             personalDictionaryRow?.let {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY))
+            }
+            incognitoRow?.let {
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_INCOGNITO_MODE))
             }
             autocorrectRow?.let {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_TATAR_AUTOCORRECT))
@@ -385,6 +397,15 @@ class SettingsHostActivity : Activity() {
                 R.string.personal_dictionary, R.string.personal_dictionary_summary)
         personalDictionaryRow = personalRow
         rows.add(personalRow)
+        // U8 (docs/ROADMAP-P2.md): incognito pauses the very learning that only exists while
+        // suggestions run, so the row follows the same switch. It pauses BOTH stores at once —
+        // two pause switches would give four states, only three of which mean anything. The
+        // key is never declared in app_restrictions.xml, so isRestricted below never fires; the
+        // check keeps the row's shape identical to its siblings if that ever changes.
+        val incognitoSwitch = switchRow(Settings.PREF_INCOGNITO_MODE, false,
+                R.string.incognito_mode, R.string.incognito_mode_summary)
+        incognitoRow = incognitoSwitch
+        rows.add(incognitoSwitch)
         // Autocorrection (D3) is subordinate to suggestions for a different reason than the personal
         // dictionary: it draws its candidate from the very same lookup that feeds the band, so with
         // suggestions off there is nothing to correct from. Its own switch stays separate because a
@@ -409,6 +430,9 @@ class SettingsHostActivity : Activity() {
         setRowEnabled(personalRow,
                 Settings.readTatarSuggestionsEnabled(prefs)
                         && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY))
+        setRowEnabled(incognitoSwitch,
+                Settings.readTatarSuggestionsEnabled(prefs)
+                        && !isRestricted(Settings.PREF_INCOGNITO_MODE))
         setRowEnabled(autocorrectSwitch,
                 Settings.readTatarSuggestionsEnabled(prefs)
                         && !isRestricted(Settings.PREF_TATAR_AUTOCORRECT))
@@ -429,8 +453,10 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * The "Personal dictionary" screen (E4b): the words of EVERY language, grouped by language, with
-     * a search field, an "Add word…" row, a "Delete" action on each shown row and "Erase all".
+     * The "Personal dictionary" screen (E4b, extended by U7 of Phase 2 — docs/ROADMAP-P2.md): the
+     * words AND the learned word pairs of EVERY language, grouped by language, with a search field,
+     * an "Add word…" row, a usage count on every row, a "Delete" action on each shown row, a
+     * per-language "Clear all" for each store and a global "Erase all" that covers both stores.
      *
      * Fully usable with the setting off — erasing what was already saved must always be possible.
      * Only ADDING follows the setting, because the acceptance says that with the personal dictionary
@@ -440,12 +466,26 @@ class SettingsHostActivity : Activity() {
      * screen, the back stack and the detail locale, and a Bundle travels through Binder into
      * `system_server` — putting a fragment of a personal word there for the convenience of a rotation
      * is not a trade worth making. Documented in docs/DICTIONARY-E4.md as expected behaviour.
+     *
+     * The stores are never read directly: every read is the published snapshot of the process-wide
+     * owner (priming and file work happen on the shared personal-store worker, never on this
+     * thread), and a store that cannot be read — the device still locked, a file set aside — simply
+     * publishes an empty snapshot, so the screen shows the empty state and the quarantine card says
+     * why. Fail-closed, no crash.
      */
     private fun buildPersonalDictionaryScreen() {
         val controller = PersonalDictionaryScreenController(this)
+        val pairController = PersonalBigramScreenController(this)
         val subtypeIds = personalSubtypeIds()
         val content = PersonalDictionaryScreenModel.build(
-                controller.sections(subtypeIds), personalSearchQuery)
+                controller.sections(subtypeIds), pairController.sections(subtypeIds),
+                personalSearchQuery)
+
+        // U8: the pause is visible exactly where the learned content is managed — a small note,
+        // not a dialog: the state is not an emergency, it is something the user asked for.
+        if (Settings.readIncognitoModeEnabled(prefs)) {
+            addCard(listOf(textRow(getString(R.string.personal_dictionary_learning_paused))))
+        }
 
         addCard(listOf(
                 textInputRow(R.string.personal_dictionary_search_hint, personalSearchQuery) { text ->
@@ -463,6 +503,7 @@ class SettingsHostActivity : Activity() {
                 && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY))
 
         addPersonalQuarantineCards(controller, subtypeIds)
+        addPersonalPairQuarantineCards(pairController, subtypeIds)
 
         if (content.totalCount == 0) {
             // Three states, not two. "Nothing saved yet" while the personal dictionary is ALREADY on
@@ -482,15 +523,39 @@ class SettingsHostActivity : Activity() {
         for (section in content.sections) {
             addSectionHeader(
                     LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(section.subtypeId))
-            addCard(section.rows.map { row ->
-                inflateRow(R.layout.row_link, row.rawForm,
-                        getString(R.string.personal_dictionary_delete)).also { view ->
-                    view.findViewById<View>(R.id.row_chevron).visibility = View.GONE
-                    view.setOnClickListener {
+            // Two cards per language, one per store, each opened by its true saved count and
+            // closed by its own "clear all": a count the list does not visibly reach (the cap)
+            // and an erasure the list does not cover would both be lies the user cannot detect.
+            if (section.wordRows.isNotEmpty()) {
+                val rows = ArrayList<View>()
+                rows.add(textRow(resources.getQuantityString(
+                        R.plurals.personal_dictionary_words_count,
+                        section.wordCount, section.wordCount)))
+                rows.addAll(section.wordRows.map { row ->
+                    usageRow(row.rawForm, row.usageCount) {
                         showForgetPersonalWordDialog(controller, row)
                     }
-                }
-            })
+                })
+                rows.add(actionRow(R.string.personal_dictionary_clear_words) {
+                    showClearPersonalWordsDialog(controller, section.subtypeId)
+                })
+                addCard(rows, spacedFromPrevious = false)
+            }
+            if (section.pairRows.isNotEmpty()) {
+                val rows = ArrayList<View>()
+                rows.add(textRow(resources.getQuantityString(
+                        R.plurals.personal_dictionary_pairs_count,
+                        section.pairCount, section.pairCount)))
+                rows.addAll(section.pairRows.map { row ->
+                    usageRow(row.contextForm + " → " + row.successorRawForm, row.usageCount) {
+                        showForgetPersonalPairDialog(pairController, row)
+                    }
+                })
+                rows.add(actionRow(R.string.personal_dictionary_clear_pairs) {
+                    showClearPersonalPairsDialog(pairController, section.subtypeId)
+                })
+                addCard(rows, spacedFromPrevious = false)
+            }
         }
 
         if (content.isTruncated) {
@@ -505,10 +570,24 @@ class SettingsHostActivity : Activity() {
 
         if (content.totalCount > 0 || personalSearchQuery.isNotEmpty()) {
             addCard(listOf(actionRow(R.string.personal_dictionary_erase_all) {
-                showErasePersonalDictionaryDialog(controller, subtypeIds)
+                showErasePersonalDictionaryDialog(controller, pairController, subtypeIds)
             }))
         }
     }
+
+    /**
+     * One saved-content row of the personal screen: the word or the pair as the title, the usage
+     * count and the delete affordance as the summary. The summary carries both on purpose — the
+     * count is information (U7), the word "Delete" is what tells the user the row is tappable.
+     */
+    private fun usageRow(title: String, usageCount: Int, onClick: () -> Unit): View =
+        inflateRow(R.layout.row_link, title,
+                resources.getQuantityString(R.plurals.personal_dictionary_usage_count,
+                        usageCount, usageCount) +
+                        " · " + getString(R.string.personal_dictionary_delete)).also { view ->
+            view.findViewById<View>(R.id.row_chevron).visibility = View.GONE
+            view.setOnClickListener { onClick() }
+        }
 
     /**
      * The card that finishes what 1.8.2 started: a personal dictionary that could not be read is
@@ -601,6 +680,82 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
+    /**
+     * The pairs half of [addPersonalQuarantineCards] (U7 of Phase 2, docs/ROADMAP-P2.md): one card
+     * per language whose learned PAIRS file could not be read and was set aside. Same rules: the
+     * count and the damage are printed in the same breath, restoring and discarding are two
+     * separate actions the user starts, and a copy that yielded nothing keeps its card because the
+     * bytes are still on the device. The read runs on the store's worker; the screen repaints when
+     * the answer arrives.
+     */
+    private fun addPersonalPairQuarantineCards(
+            controller: PersonalBigramScreenController, subtypeIds: List<String>) {
+        val reports = personalPairQuarantines
+        if (reports == null) {
+            controller.quarantines(subtypeIds) { found ->
+                if (isFinishing || isDestroyed) return@quarantines
+                personalPairQuarantines = found
+                if (currentScreen == Screen.PERSONAL_DICTIONARY) {
+                    showScreen(Screen.PERSONAL_DICTIONARY)
+                }
+            }
+            return
+        }
+        // In the order the languages are listed, not the order the worker happened to answer in.
+        for (subtypeId in subtypeIds) {
+            val report = reports[subtypeId] ?: continue
+            val summary = when {
+                report.wordCount == 0 -> getString(R.string.personal_bigrams_quarantine_none)
+                report.readToEnd -> resources.getQuantityString(
+                        R.plurals.personal_bigrams_quarantine_whole,
+                        report.wordCount, report.wordCount)
+                else -> resources.getQuantityString(
+                        R.plurals.personal_bigrams_quarantine_partial,
+                        report.wordCount, report.wordCount)
+            }
+            addSectionHeader(LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(subtypeId))
+            val rows = ArrayList<View>()
+            rows.add(inflateRow(R.layout.row_link,
+                    getString(R.string.personal_bigrams_quarantine_title), summary).also {
+                it.findViewById<View>(R.id.row_chevron).visibility = View.GONE
+            })
+            if (report.wordCount > 0) {
+                rows.add(actionRow(R.string.personal_bigrams_quarantine_restore) {
+                    controller.restoreQuarantine(subtypeId) { restored ->
+                        personalPairQuarantines = null
+                        afterPersonalMutation(restored,
+                                R.string.personal_bigrams_quarantine_restore_failed)
+                    }
+                })
+            }
+            rows.add(actionRow(R.string.personal_bigrams_quarantine_discard) {
+                showDiscardPersonalPairQuarantineDialog(controller, subtypeId)
+            })
+            addCard(rows)
+        }
+    }
+
+    private fun showDiscardPersonalPairQuarantineDialog(
+            controller: PersonalBigramScreenController, subtypeId: String) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.personal_bigrams_quarantine_discard)
+                .setMessage(R.string.personal_bigrams_quarantine_discard_confirm)
+                .setPositiveButton(R.string.personal_dictionary_delete) { _, _ ->
+                    controller.discardQuarantine(subtypeId) { discarded ->
+                        personalPairQuarantines = null
+                        afterPersonalMutation(discarded,
+                                R.string.personal_bigrams_quarantine_discard_failed)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
     /** Subtypes whose words the screen shows: every enabled one, in the order the system lists them. */
     private fun personalSubtypeIds(): List<String> =
             richImm.getEnabledSubtypes(true).map { it.locale }.distinct()
@@ -675,19 +830,104 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
+    /**
+     * The pair half of [showForgetPersonalWordDialog] (U7 of Phase 2, docs/ROADMAP-P2.md): the
+     * title shows the pair the way the row does — "A → B" — so the confirmation names exactly
+     * what is about to be gone. The deletion goes through the store's `forget`, which purges the
+     * quarantine copy with it: a forgotten pair is never resurrected by a later restore.
+     */
+    private fun showForgetPersonalPairDialog(
+            controller: PersonalBigramScreenController, row: PersonalPairRow) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(getString(R.string.personal_dictionary_pair_forget_title,
+                        row.contextForm, row.successorRawForm))
+                .setPositiveButton(R.string.personal_dictionary_delete) { _, _ ->
+                    controller.removePair(row.subtypeId, row.contextForm,
+                            row.successorNormalizedForm) { removed ->
+                        afterPersonalMutation(removed,
+                                R.string.personal_dictionary_pair_delete_failed)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
+    /**
+     * Per-language "Clear all words" (U7): confirmed, then routed through the store's `clearAll`,
+     * which also takes the pending counters, the salt and the quarantine copy of that language —
+     * so the card above is re-read rather than repainted from an answer that is now out of date.
+     */
+    private fun showClearPersonalWordsDialog(
+            controller: PersonalDictionaryScreenController, subtypeId: String) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.personal_dictionary_clear_words)
+                .setMessage(getString(R.string.personal_dictionary_clear_words_confirm,
+                        LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(subtypeId)))
+                .setPositiveButton(R.string.personal_dictionary_erase_action) { _, _ ->
+                    controller.clearWords(subtypeId) { cleared ->
+                        personalQuarantines = null
+                        afterPersonalMutation(cleared,
+                                R.string.personal_dictionary_erase_failed)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
+    /** The pairs half of [showClearPersonalWordsDialog]. */
+    private fun showClearPersonalPairsDialog(
+            controller: PersonalBigramScreenController, subtypeId: String) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.personal_dictionary_clear_pairs)
+                .setMessage(getString(R.string.personal_dictionary_clear_pairs_confirm,
+                        LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(subtypeId)))
+                .setPositiveButton(R.string.personal_dictionary_erase_action) { _, _ ->
+                    controller.clearPairs(subtypeId) { cleared ->
+                        personalPairQuarantines = null
+                        afterPersonalMutation(cleared,
+                                R.string.personal_dictionary_erase_failed)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
     private fun showErasePersonalDictionaryDialog(
-            controller: PersonalDictionaryScreenController, subtypeIds: List<String>) {
+            controller: PersonalDictionaryScreenController,
+            pairController: PersonalBigramScreenController, subtypeIds: List<String>) {
         currentDialog?.dismiss()
         currentDialog = AlertDialog.Builder(this)
                 .setTitle(R.string.personal_dictionary_erase_all)
                 .setMessage(R.string.personal_dictionary_erase_confirm)
                 .setPositiveButton(R.string.personal_dictionary_erase_action) { _, _ ->
-                    controller.eraseAll(subtypeIds) { erased ->
-                        // "Erase all words" takes the copies with it, so the card must be re-read
-                        // rather than repainted from an answer that is now out of date.
-                        personalQuarantines = null
-                        afterPersonalMutation(erased,
-                                R.string.personal_dictionary_erase_failed)
+                    // U7: "erase all" covers BOTH stores — a global erasure that left the learned
+                    // pairs behind would read as "everything is gone" while the predictions kept
+                    // coming. The two halves answer independently and the screen reports success
+                    // only when every file of every language is really gone.
+                    controller.eraseAll(subtypeIds) { wordsErased ->
+                        pairController.eraseAll(subtypeIds) { pairsErased ->
+                            // Erasing takes the copies with it, so both cards are re-read rather
+                            // than repainted from an answer that is now out of date.
+                            personalQuarantines = null
+                            personalPairQuarantines = null
+                            afterPersonalMutation(wordsErased && pairsErased,
+                                    R.string.personal_dictionary_erase_failed)
+                        }
                     }
                 }
                 .setNegativeButton(android.R.string.cancel, null)

@@ -24,12 +24,13 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 
 /**
- * The E4c learning predicate: ONE predicate with five factors, shared by every write path.
+ * The E4c learning predicate: ONE predicate with six factors, shared by every write path — U8 of
+ * Phase 2 (docs/ROADMAP-P2.md) added the incognito pause as the sixth.
  *
  * The factors themselves are Android state (a subtype, preferences, `UserManager`, an `EditorInfo`),
  * so what runs as a real test here is the SHAPE — a sink that writes nothing whenever the predicate
  * says no, whichever factor said it — and the rest is source-contract over the one place the
- * predicate is computed.
+ * predicate is computed. The conjunction's arithmetic is exercised for real in `IncognitoModeTest`.
  */
 class PersonalLearningGatesTest {
 
@@ -94,10 +95,18 @@ class PersonalLearningGatesTest {
             predicate.contains("userManager.isUserUnlocked()"))
         assertTrue("and the postal-address exclusion",
             predicate.contains("mIsPostalAddressField"))
+        // U8: the incognito pause is the sixth factor (the conjunction itself is the pure
+        // PersonalLearningGates, whose arithmetic IncognitoModeTest exercises). The UserManager
+        // null-check inverted its shape when the conjunction was extracted (2026-09-23): the
+        // pinned text now matches the extracted form — a missing UserManager still means locked.
         assertTrue("a missing UserManager means locked, not open",
-            predicate.contains("userManager == null || !userManager.isUserUnlocked()"))
+            predicate.contains("userManager != null && userManager.isUserUnlocked()"))
+        assertTrue("the incognito pause",
+            predicate.contains("Settings.readIncognitoModeEnabled(mDevicePrefs)"))
+        assertTrue("and the conjunction is delegated to the pure gates object",
+            predicate.contains("PersonalLearningGates.mayLearn("))
 
-        // One predicate, not five checks spread around: nothing else in the IME may decide this.
+        // One predicate, not six checks spread around: nothing else in the IME may decide this.
         assertEquals(1, Regex("private boolean mayLearnPersonalWords\\(\\)").findAll(ime).count())
         assertEquals("the sink is wired exactly once", 1,
             Regex("PersonalLearning\\.sinkFor\\(").findAll(ime).count())

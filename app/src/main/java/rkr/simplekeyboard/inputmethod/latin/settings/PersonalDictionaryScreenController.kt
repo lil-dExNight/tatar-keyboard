@@ -138,6 +138,17 @@ internal class PersonalDictionaryScreenController(
     }
 
     /**
+     * Erases the personal dictionary of ONE language — the section-level "Clear all words" (U7 of
+     * Phase 2, docs/ROADMAP-P2.md). [onCleared] arrives on the UI thread with whether the files
+     * are really gone; the band is unbound immediately, exactly like a single removal.
+     */
+    fun clearWords(subtypeId: String, onCleared: (Boolean) -> Unit) {
+        PersonalDictionaries.storeFor(context, subtypeId)
+            .clearAll { cleared -> uiPoster { onCleared(cleared) } }
+        PersonalDictionaries.notifyErased()
+    }
+
+    /**
      * Erases the personal dictionaries of ALL languages, not only the one in view. [onErased] gets
      * `true` only when EVERY language's files went away: a partial erasure that reported success
      * would be the worst of the three, because the screen shows an empty list while the words come

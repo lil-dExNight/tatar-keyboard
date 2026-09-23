@@ -138,6 +138,10 @@
     <string name="personal_dictionary">Personal dictionary</string>
     <!-- Description for the personal dictionary option. Says plainly that words are saved on the device and that turning the option off keeps what was already saved. -->
     <string name="personal_dictionary_summary">Remember words you type and suggest them later. Saved on this device only. Turning this off keeps what is already saved — erase it on the Personal dictionary screen.</string>
+    <!-- Option to pause learning of personal words and word pairs. ON means nothing new is learned; what is already saved keeps appearing. -->
+    <string name="incognito_mode">Incognito mode</string>
+    <!-- Description for the incognito option. Says both halves of the contract: learning pauses completely, saved content stays visible. -->
+    <string name="incognito_mode_summary">Pause learning new words and word pairs. What is already saved keeps appearing. Turning this off resumes learning.</string>
     <!-- Entry row leading to the screen with the words the keyboard has saved -->
     <string name="personal_dictionary_screen">Saved words</string>
     <!-- Hint of the search field on the personal dictionary screen -->
@@ -156,10 +160,39 @@
     <string name="personal_dictionary_delete">Delete</string>
     <!-- Title of the dialog confirming removal of one word. %1$s is the word itself. -->
     <string name="personal_dictionary_forget_title">Forget \u201c%1$s\u201d?</string>
-    <!-- Row and dialog title for erasing every saved word of every language -->
-    <string name="personal_dictionary_erase_all">Erase all saved words</string>
-    <!-- Body of the erase-everything dialog -->
-    <string name="personal_dictionary_erase_confirm">Remove every word saved on this device, in all languages? This cannot be undone.</string>
+    <!-- Count of saved words at the head of one language's words card -->
+    <plurals name="personal_dictionary_words_count">
+        <item quantity="one">%1$d word</item>
+        <item quantity="other">%1$d words</item>
+    </plurals>
+    <!-- Count of learned word pairs at the head of one language's pairs card -->
+    <plurals name="personal_dictionary_pairs_count">
+        <item quantity="one">%1$d word pair</item>
+        <item quantity="other">%1$d word pairs</item>
+    </plurals>
+    <!-- How often a saved word or pair earned its place, beside its row. Every form carries the number so the translations agree on the arguments. -->
+    <plurals name="personal_dictionary_usage_count">
+        <item quantity="one">%1$d use</item>
+        <item quantity="other">%1$d uses</item>
+    </plurals>
+    <!-- Small note atop the personal dictionary screen while incognito mode is on. Says the pause out loud where the learned content is managed. -->
+    <string name="personal_dictionary_learning_paused">Learning is paused while incognito mode is on. What is already saved still appears.</string>
+    <!-- Action inside one language's words card: erase every saved word of that language -->
+    <string name="personal_dictionary_clear_words">Clear all words</string>
+    <!-- Body of the per-language clear-words confirmation. %1$s is the language name. -->
+    <string name="personal_dictionary_clear_words_confirm">Remove every saved word in %1$s? This cannot be undone.</string>
+    <!-- Action inside one language's pairs card: erase every learned word pair of that language -->
+    <string name="personal_dictionary_clear_pairs">Clear all word pairs</string>
+    <!-- Body of the per-language clear-pairs confirmation. %1$s is the language name. -->
+    <string name="personal_dictionary_clear_pairs_confirm">Remove every learned word pair in %1$s? This cannot be undone.</string>
+    <!-- Title of the dialog confirming removal of one pair. %1$s is the context word, %2$s the word that followed it — the pair reads "A → B", exactly like its row on the screen. -->
+    <string name="personal_dictionary_pair_forget_title">Forget \u201c%1$s → %2$s\u201d?</string>
+    <!-- Shown when a pair the user asked to remove is still saved -->
+    <string name="personal_dictionary_pair_delete_failed">Could not remove the pair. It is still saved.</string>
+    <!-- Row and dialog title for erasing every saved word and word pair of every language -->
+    <string name="personal_dictionary_erase_all">Erase everything saved</string>
+    <!-- Body of the erase-everything dialog. Names both stores: the learned pairs go with the words. -->
+    <string name="personal_dictionary_erase_confirm">Remove every word and word pair saved on this device, in all languages? This cannot be undone.</string>
     <!-- Affirmative button of the erase-everything dialog. Names the action rather than saying OK: it is destructive and irreversible. -->
     <string name="personal_dictionary_erase_action">Erase</string>
     <!-- Shown when nothing has been saved yet -->
@@ -176,6 +209,8 @@
     <string name="personal_dictionary_erase_failed">Could not erase everything. Some saved words are still on this device.</string>
     <!-- Shown once when the saved words could not be read, so the list appears empty -->
     <string name="personal_dictionary_unreadable">Saved words could not be read, so the list is empty. A copy was kept \u2014 open Saved words to bring back what can still be read.</string>
+    <!-- Shown once when the learned word pairs could not be read, so next-word predictions from them stop -->
+    <string name="personal_bigrams_unreadable">Learned word pairs could not be read, so predictions from them stop. A copy was kept on this device.</string>
     <!-- Title of the card offering the kept copy of words that could not be read. Says what happened, not why. -->
     <string name="personal_dictionary_quarantine_title">Words that could not be read</string>
     <!-- Beside the title when part of the copy is damaged. The count is what was READ, and the damage must be said in the same breath: a partial recovery presented as a whole one is the outcome this feature must never produce. -->
@@ -200,6 +235,30 @@
     <string name="personal_dictionary_quarantine_restore_failed">Could not bring the words back. They are still only in the copy.</string>
     <!-- Shown when the copy could not be removed -->
     <string name="personal_dictionary_quarantine_discard_failed">Could not delete the copy. It is still on this device.</string>
+    <!-- Title of the card offering the kept copy of word pairs that could not be read. Says what happened, not why. -->
+    <string name="personal_bigrams_quarantine_title">Word pairs that could not be read</string>
+    <!-- Beside the title when part of the pairs copy is damaged. The count and the damage are said in the same breath, exactly like the words card. -->
+    <plurals name="personal_bigrams_quarantine_partial">
+        <item quantity="one">%1$d pair can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
+        <item quantity="other">%1$d pairs can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
+    </plurals>
+    <!-- Beside the title when the whole pairs copy could be read -->
+    <plurals name="personal_bigrams_quarantine_whole">
+        <item quantity="one">%1$d pair can be brought back.</item>
+        <item quantity="other">%1$d pairs can be brought back.</item>
+    </plurals>
+    <!-- Beside the title when nothing at all could be read out of the pairs copy. It is still offered, because the copy is still on the device and the user is entitled to remove it. -->
+    <string name="personal_bigrams_quarantine_none">None of these pairs can be brought back. The copy is still on this device.</string>
+    <!-- Action that puts the readable pairs back into the learned list -->
+    <string name="personal_bigrams_quarantine_restore">Bring the pairs back</string>
+    <!-- Action that removes the kept pairs copy -->
+    <string name="personal_bigrams_quarantine_discard">Delete the copy</string>
+    <!-- Body of the confirmation dialog for deleting the kept pairs copy -->
+    <string name="personal_bigrams_quarantine_discard_confirm">Remove the copy of the word pairs that could not be read? This cannot be undone.</string>
+    <!-- Shown when bringing the pairs back did not happen. Says where the pairs are now. -->
+    <string name="personal_bigrams_quarantine_restore_failed">Could not bring the pairs back. They are still only in the copy.</string>
+    <!-- Shown when the pairs copy could not be removed -->
+    <string name="personal_bigrams_quarantine_discard_failed">Could not delete the copy. It is still on this device.</string>
     <!-- Title of the settings item and its confirmation dialog that erases recently used emoji -->
     <string name="clear_recent_emoji">Clear recent emoji</string>
     <!-- Body of the confirmation dialog that erases recently used emoji -->

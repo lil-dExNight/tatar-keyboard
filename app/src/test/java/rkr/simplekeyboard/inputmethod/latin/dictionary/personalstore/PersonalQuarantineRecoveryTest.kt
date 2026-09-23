@@ -250,6 +250,99 @@ class PersonalQuarantineRecoveryTest {
         assertTrue(quarantineFile(directory).isFile)
     }
 
+    // ---- U7: a forgotten word is never resurrected by a restore -----------------------------------
+
+    /**
+     * The P1 pairs store pinned the no-resurrection rule first (`aForgottenPairIsNotResurrectedByARestore`);
+     * the words store had the hole: `forget` removed the word from the dictionary but left it in the
+     * quarantine copy, and the next restore brought it back from the dead. U7 of Phase 2
+     * (docs/ROADMAP-P2.md) closes it with the same purge the pairs store runs.
+     */
+    @Test
+    fun aForgottenWordIsNotResurrectedByARestore() {
+        val directory = quarantinedDirectoryCorruptingChecksum()
+        val store = store(directory)
+
+        val restored = mutableListOf<Boolean>()
+        store.restoreQuarantine { restored.add(it) }
+        assertEquals(listOf(true), restored)
+        assertEquals(3, store.snapshot.size)
+
+        // The user deletes one word; the copy is purged with it.
+        var forgotten: Boolean? = null
+        store.forget("бабай") { forgotten = it }
+        assertEquals(true, forgotten)
+        // A SECOND restore must not bring the forgotten word back — erased means erased, in the
+        // copy as much as in the list.
+        store.restoreQuarantine()
+        assertTrue(store.snapshot.indexOfNormalized("бабай") < 0)
+        assertEquals("the other two came back", 2, store.snapshot.size)
+        assertEquals("and the copy itself no longer carries the word",
+            listOf("абыйлар", "гүзәл"), salvageWords(quarantineFile(directory)))
+    }
+
+    /**
+     * The word need not be in the dictionary for the purge to run: a word that sits ONLY in the
+     * copy (the corruption emptied the list, and it was never restored) is still the user's to
+     * forget, and the copy must not keep what the user was told is gone.
+     */
+    @Test
+    fun forgettingAWordThatIsOnlyInTheCopyPurgesTheCopyToo() {
+        val directory = quarantinedDirectoryCorruptingChecksum()
+        val store = store(directory)
+        store.prime()
+        assertTrue("the corruption emptied the list", store.snapshot.isEmpty)
+
+        var outcome: Boolean? = null
+        store.forget("бабай") { outcome = it }
+
+        assertEquals("from where the user stands the word is gone", true, outcome)
+        assertEquals(listOf("абыйлар", "гүзәл"), salvageWords(quarantineFile(directory)))
+    }
+
+    /** A copy whose every word was forgotten is a copy no longer: the file itself goes away. */
+    @Test
+    fun purgingTheLastWordOfTheCopyDeletesTheCopy() {
+        val directory = quarantinedDirectoryCorruptingChecksum()
+        val store = store(directory)
+        store.restoreQuarantine()
+
+        store.forget("абыйлар")
+        store.forget("бабай")
+        store.forget("гүзәл")
+
+        assertFalse("a copy with nothing left in it goes away", quarantineFile(directory).exists())
+        assertNull("and nothing remains to inspect", inspect(store))
+    }
+
+    /**
+     * Fail-closed toward NOT resurrecting: a copy that cannot be rewritten without the deleted
+     * word is deleted outright. Losing the salvage of the other words is the smaller lie than
+     * keeping a word the user was told is gone.
+     */
+    @Test
+    fun aCopyThatCannotBePurgedIsDeletedOutrightRatherThanLeftToResurrectTheWord() {
+        val directory = quarantinedDirectoryCorruptingChecksum()
+        val ops = object : PassthroughOps() {
+            override fun atomicReplace(source: File, destination: File) {
+                if (destination.name.endsWith(QUARANTINE_SUFFIX)) throw IOException("replace failed")
+                super.atomicReplace(source, destination)
+            }
+        }
+        // The fault is injected through a store over the same directory: the purge's rewrite of
+        // the copy fails there, while the dictionary's own writes still succeed.
+        val store = store(directory, ops = ops)
+        store.restoreQuarantine()
+        assertEquals(3, store.snapshot.size)
+
+        var outcome: Boolean? = null
+        store.forget("бабай") { outcome = it }
+
+        assertEquals("the word is gone from the list", true, outcome)
+        assertTrue(store.snapshot.indexOfNormalized("бабай") < 0)
+        assertFalse(quarantineFile(directory).exists())
+    }
+
     // ---- B5: the notice reaches the user, whatever happens to the process ------------------------
 
     /**
@@ -519,6 +612,33 @@ class PersonalQuarantineRecoveryTest {
         assertTrue("the harness must really produce a copy", quarantineFile(directory).isFile)
         return directory
     }
+
+    /**
+     * Three words written, then quarantined by a CHECKSUM flip rather than a cut: the validator
+     * refuses the file while every record of it still parses, so the copy salvages whole. The
+     * no-resurrection tests need exactly that — a restore has to have all three words to bring back.
+     */
+    private fun quarantinedDirectoryCorruptingChecksum(): File {
+        val directory = newPersonalDir()
+        store(directory).apply {
+            addManually("абыйлар")
+            addManually("бабай")
+            addManually("гүзәл")
+        }
+        val destination = destinationFile(directory)
+        val bytes = destination.readBytes()
+        bytes[TpersFormat.CHECKSUM_OFFSET] =
+            (bytes[TpersFormat.CHECKSUM_OFFSET].toInt() xor 0xFF).toByte()
+        destination.writeBytes(bytes)
+        store(directory).prime()
+        assertTrue("the harness must really produce a copy", quarantineFile(directory).isFile)
+        return directory
+    }
+
+    /** The words still readable inside a copy, in their on-disk order — the purge is real only if they are gone from here too. */
+    private fun salvageWords(copy: File): List<String> =
+        PersonalQuarantineSalvage.read(copy, subtype)?.normalizedForms
+            ?: error("the harness expects a readable copy")
 
     /** Cuts the tail off the dictionary file: the shape a power cut mid-write leaves behind. */
     private fun truncateTheDictionary(directory: File, dropTailBytes: Int = 0, truncateTo: Int = -1) {
