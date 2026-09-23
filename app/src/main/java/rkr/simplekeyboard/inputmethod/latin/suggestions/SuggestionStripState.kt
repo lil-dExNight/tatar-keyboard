@@ -22,11 +22,17 @@ internal class SuggestionStripState {
     private var downCell = NO_CELL
     private var activePointerId = INVALID_POINTER_ID
     private var pointerInsideDownCell = false
+    // P2 of Phase 3 (docs/ROADMAP-P3.md): the autocorrect preview's emphasized cell — the
+    // correction the next separator would insert. [NO_CELL] on every ordinary band.
+    private var emphasizedCell = NO_CELL
 
     fun setSuggestions(first: String?, second: String?, third: String?): Boolean {
         var changed = setSuggestion(0, first)
         changed = setSuggestion(1, second) || changed
         changed = setSuggestion(2, third) || changed
+        // A fresh publication describes the whole band, emphasis included: it is re-applied
+        // right after this, by the same owner call that publishes the words.
+        changed = clearEmphasis() || changed
         return cancelGesture() || changed
     }
 
@@ -36,6 +42,30 @@ internal class SuggestionStripState {
         if (cell in 0 until CELL_COUNT) suggestions[cell] else null
 
     fun isCellPopulated(cell: Int): Boolean = suggestionAt(cell) != null
+
+    /** The emphasized cell, or [NO_CELL] when the band holds no correction to announce. */
+    fun emphasizedCell(): Int = emphasizedCell
+
+    fun isEmphasized(cell: Int): Boolean = cell == emphasizedCell && cell != NO_CELL
+
+    /**
+     * Marks [cell] emphasized (the preview's correction cell); [NO_CELL] clears. An empty or
+     * out-of-range cell is refused outright — emphasis on nothing would underline a blank.
+     * Returns true on a visual change.
+     */
+    fun setEmphasis(cell: Int): Boolean {
+        if (cell == NO_CELL) return clearEmphasis()
+        if (cell !in 0 until CELL_COUNT || !isCellPopulated(cell)) return false
+        if (emphasizedCell == cell) return false
+        emphasizedCell = cell
+        return true
+    }
+
+    private fun clearEmphasis(): Boolean {
+        if (emphasizedCell == NO_CELL) return false
+        emphasizedCell = NO_CELL
+        return true
+    }
 
     /** True while at least one cell holds a word, i.e. the strip is not an empty band. */
     fun hasAnySuggestion(): Boolean {

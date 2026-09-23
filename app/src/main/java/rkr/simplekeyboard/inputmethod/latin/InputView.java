@@ -289,6 +289,17 @@ public final class InputView extends FrameLayout {
         }
     }
 
+    /**
+     * Forwards the autocorrect preview's emphasis marker to the strip if it exists; never
+     * creates it — the same discipline as [setSuggestionStripSpokenLabels], and the marker is
+     * always republished with the next band anyway.
+     */
+    public void setSuggestionStripEmphasis(final int cell) {
+        if (mSuggestionStripView != null) {
+            mSuggestionStripView.setEmphasis(cell);
+        }
+    }
+
     /** Clears stale contents and removes all layout and touch impact without creating the strip. */
     public void clearAndHideSuggestionStrip() {
         if (mSuggestionStripView == null) {

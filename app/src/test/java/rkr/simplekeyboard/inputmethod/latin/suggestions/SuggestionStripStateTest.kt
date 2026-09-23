@@ -216,4 +216,71 @@ class SuggestionStripStateTest {
         assertEquals(40, SuggestionStripState.STRIP_HEIGHT_DP)
         assertEquals(3, SuggestionStripState.CELL_COUNT)
     }
+
+    @Test
+    fun emphasisOnlySticksToPopulatedCellsAndReportsChange() {
+        val state = SuggestionStripState()
+        state.setSuggestions("китәп", "китап", null)
+
+        assertEquals(SuggestionStripState.NO_CELL, state.emphasizedCell())
+        assertFalse(state.isEmphasized(1))
+
+        // A populated cell accepts the marker; setting it twice reports no new change.
+        assertTrue(state.setEmphasis(1))
+        assertTrue(state.isEmphasized(1))
+        assertEquals(1, state.emphasizedCell())
+        assertFalse(state.setEmphasis(1))
+
+        // An empty cell refuses: the marker stays where it was. So does an out-of-range index.
+        assertFalse(state.setEmphasis(2))
+        assertEquals(1, state.emphasizedCell())
+        assertFalse(state.setEmphasis(7))
+        assertEquals(1, state.emphasizedCell())
+        // NO_CELL is the explicit clear.
+        assertTrue(state.setEmphasis(SuggestionStripState.NO_CELL))
+        assertEquals(SuggestionStripState.NO_CELL, state.emphasizedCell())
+        assertFalse(state.isEmphasized(1))
+    }
+
+    @Test
+    fun everyPublicationResetsTheEmphasisMarker() {
+        val state = SuggestionStripState()
+        state.setSuggestions("китәп", "китап", null)
+        assertTrue(state.setEmphasis(1))
+
+        // A fresh publication describes the whole band, marker included — even one whose words
+        // happen to be identical, so the reset itself counts as the visual change.
+        assertTrue(state.setSuggestions("китәп", "китап", null))
+        assertEquals(SuggestionStripState.NO_CELL, state.emphasizedCell())
+
+        // And once nothing is marked, an identical republish is again a no-op.
+        assertFalse(state.setSuggestions("китәп", "китап", null))
+
+        assertTrue(state.setEmphasis(0))
+        assertTrue(state.clear())
+        assertEquals(SuggestionStripState.NO_CELL, state.emphasizedCell())
+    }
+
+    @Test
+    fun emphasisChangesAllocateZeroBytesAfterWarmup() {
+        val bean = ManagementFactory.getThreadMXBean() as ThreadMXBean
+        if (!bean.isThreadAllocatedMemorySupported) return
+        bean.isThreadAllocatedMemoryEnabled = true
+        val state = SuggestionStripState()
+        state.setSuggestions("китәп", "китап", null)
+        repeat(100_000) {
+            state.setEmphasis(1)
+            state.setEmphasis(SuggestionStripState.NO_CELL)
+        }
+
+        val threadId = Thread.currentThread().id
+        val before = bean.getThreadAllocatedBytes(threadId)
+        repeat(100_000) {
+            state.setEmphasis(1)
+            state.setEmphasis(SuggestionStripState.NO_CELL)
+        }
+        val allocated = bean.getThreadAllocatedBytes(threadId) - before
+
+        assertEquals(0L, allocated)
+    }
 }

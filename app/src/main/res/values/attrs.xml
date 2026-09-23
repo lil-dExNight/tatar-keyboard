@@ -41,6 +41,9 @@
         <!-- Emoji panel: fill of the two functional keys ("АБВ" and delete) on the bottom bar,
              matching the functional keys of the letter keyboard. -->
         <attr name="emojiPanelFunctionalKeyColor" format="color" />
+        <!-- Autocorrect preview (docs/ROADMAP-P3.md): text and underline colour of the
+             emphasized correction cell — the theme accent. -->
+        <attr name="suggestionEmphasisColor" format="color" />
     </declare-styleable>
 
     <!-- DEV-4: theme colours for the emoji panel grid. All attrs are already declared above
@@ -147,6 +150,7 @@
         <attr name="keyTextColor" />
         <attr name="keyPressedBackgroundColor" />
         <attr name="functionalTextColor" />
+        <attr name="suggestionEmphasisColor" />
     </declare-styleable>
 
     <declare-styleable name="Keyboard">

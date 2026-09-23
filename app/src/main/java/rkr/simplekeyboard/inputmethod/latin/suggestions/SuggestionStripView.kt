@@ -21,6 +21,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.TextPaint
 import android.text.TextUtils
@@ -70,6 +71,12 @@ class SuggestionStripView @JvmOverloads constructor(
             resources.displayMetrics,
         )
     }
+    /**
+     * The autocorrect preview's correction cell (P2 of Phase 3, docs/ROADMAP-P3.md): the same
+     * text, bold and in the theme's emphasis colour, with an underline drawn in [onDraw]. Created
+     * once from [textPaint]; the colour lands in [init], next to the other theme reads.
+     */
+    private val emphasisTextPaint = TextPaint(textPaint)
     private val decorationPaint = Paint()
     private val fontMetrics = Paint.FontMetrics()
     private val displaySuggestions = arrayOfNulls<String>(SuggestionStripState.CELL_COUNT)
@@ -87,8 +94,16 @@ class SuggestionStripView @JvmOverloads constructor(
     private val accessibilityManager = context
         .getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
     private var textBaseline = 0f
+    /** The preview underline's vertical position; recomputed with the baseline. */
+    private var underlineY = 0f
+    private val underlineThicknessPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        UNDERLINE_THICKNESS_DP,
+        resources.displayMetrics,
+    )
     private var pressedColor = DEFAULT_PRESSED_COLOR
     private var separatorColor = DEFAULT_SEPARATOR_COLOR
+    private var emphasisColor = DEFAULT_EMPHASIS_COLOR
     private var listener: OnSuggestionClickListener? = null
     private var longPressListener: OnSuggestionLongPressListener? = null
     private var touchSequenceAccepted = false
@@ -119,7 +134,15 @@ class SuggestionStripView @JvmOverloads constructor(
             ),
             SEPARATOR_ALPHA,
         )
+        // The preview's correction cell: theme accent when the theme says one, the plain text
+        // colour otherwise — even then bold + the underline still mark the cell.
+        emphasisColor = stripAttributes.getColor(
+            R.styleable.SuggestionStripView_suggestionEmphasisColor,
+            textPaint.color,
+        )
         stripAttributes.recycle()
+        emphasisTextPaint.color = emphasisColor
+        emphasisTextPaint.typeface = Typeface.create(textPaint.typeface, Typeface.BOLD)
 
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         ViewCompat.setAccessibilityDelegate(this, accessibilityHelper)
@@ -211,6 +234,19 @@ class SuggestionStripView @JvmOverloads constructor(
         spokenLabels[2] = null
     }
 
+    /**
+     * Marks one cell — the autocorrect preview's correction — emphasized (P2 of Phase 3,
+     * docs/ROADMAP-P3.md), or [SuggestionStripState.NO_CELL] to return to the plain band. Called
+     * by the owner of the band immediately after [setSuggestions], exactly like the spoken
+     * labels; the next publication resets it.
+     */
+    fun setEmphasis(cell: Int) {
+        if (!state.setEmphasis(cell)) return
+        // The bold face is wider: re-ellipsize against the paint the cell will actually draw with.
+        rebuildDisplaySuggestions()
+        invalidate()
+    }
+
     /** Drops every reference and transient state that must not survive view replacement. */
     fun release() {
         clearSpokenLabels()
@@ -235,6 +271,8 @@ class SuggestionStripView @JvmOverloads constructor(
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         textPaint.getFontMetrics(fontMetrics)
         textBaseline = height / 2f - (fontMetrics.ascent + fontMetrics.descent) / 2f
+        // Just under the text's own descent line; the strip's 40dp leaves room below it.
+        underlineY = textBaseline + fontMetrics.descent + underlineThicknessPx * 2f
         rebuildDisplaySuggestions()
         accessibilityHelper.invalidateRoot()
     }
@@ -254,6 +292,9 @@ class SuggestionStripView @JvmOverloads constructor(
         }
 
         decorationPaint.color = separatorColor
+        // Explicit hairline: the same paint draws the preview underline with a real width, and
+        // stroke width survives across frames.
+        decorationPaint.strokeWidth = 0f
         var separator = 1
         while (separator < SuggestionStripState.CELL_COUNT) {
             val x = state.cellLeft(separator, width).toFloat()
@@ -266,7 +307,24 @@ class SuggestionStripView @JvmOverloads constructor(
             val suggestion = displaySuggestions[cell]
             if (suggestion != null) {
                 val center = (state.cellLeft(cell, width) + state.cellRight(cell, width)) / 2f
-                canvas.drawText(suggestion, center, textBaseline, textPaint)
+                if (state.isEmphasized(cell)) {
+                    // The preview's correction cell: bold accent text plus an underline under
+                    // exactly the drawn (ellipsized) text — allocation-free, like the rest of
+                    // this method.
+                    canvas.drawText(suggestion, center, textBaseline, emphasisTextPaint)
+                    val halfText = emphasisTextPaint.measureText(suggestion) / 2f
+                    decorationPaint.color = emphasisColor
+                    decorationPaint.strokeWidth = underlineThicknessPx
+                    canvas.drawLine(
+                        center - halfText,
+                        underlineY,
+                        center + halfText,
+                        underlineY,
+                        decorationPaint,
+                    )
+                } else {
+                    canvas.drawText(suggestion, center, textBaseline, textPaint)
+                }
             }
             cell++
         }
@@ -379,12 +437,13 @@ class SuggestionStripView @JvmOverloads constructor(
             displaySuggestions[cell] = if (suggestion == null) {
                 null
             } else {
+                val paint = if (state.isEmphasized(cell)) emphasisTextPaint else textPaint
                 val availableWidth = (
                     state.cellRight(cell, width) - state.cellLeft(cell, width)
                 ).toFloat() - horizontalTextPaddingPx * 2f
                 TextUtils.ellipsize(
                     suggestion,
-                    textPaint,
+                    paint,
                     availableWidth.coerceAtLeast(0f),
                     TextUtils.TruncateAt.END,
                 ).toString()
@@ -493,6 +552,8 @@ class SuggestionStripView @JvmOverloads constructor(
         private const val SEPARATOR_ALPHA = 0x30
         private const val DEFAULT_PRESSED_COLOR = 0x22000000
         private const val DEFAULT_SEPARATOR_COLOR = 0x30000000
+        private const val DEFAULT_EMPHASIS_COLOR = Color.BLACK
+        private const val UNDERLINE_THICKNESS_DP = 1.5f
 
         private fun withAlpha(color: Int, alpha: Int): Int =
             color and 0x00ffffff or (alpha shl 24)

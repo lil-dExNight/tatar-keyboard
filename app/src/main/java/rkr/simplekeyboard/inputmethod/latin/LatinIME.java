@@ -429,6 +429,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
+            public void setEmphasizedCell(final int cell) {
+                final InputView inputView = getInputViewForSuggestions();
+                if (inputView != null) {
+                    inputView.setSuggestionStripEmphasis(cell);
+                }
+            }
+
+            @Override
             public void reserve() {
                 final InputView inputView = getInputViewForSuggestions();
                 if (inputView != null) {

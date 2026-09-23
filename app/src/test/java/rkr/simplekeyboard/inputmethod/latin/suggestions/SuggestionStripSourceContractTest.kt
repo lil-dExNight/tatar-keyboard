@@ -143,6 +143,66 @@ class SuggestionStripSourceContractTest {
         assertTrue(setSuggestionsBody.contains("R.string.spoken_suggestions_available"))
     }
 
+    // --- P2 of Phase 3 (docs/ROADMAP-P3.md): the autocorrect preview's emphasis ------------------
+
+    @Test
+    fun theEmphasizedCellDrawsBoldAccentedAndUnderlinedWithNoAllocation() {
+        val main = sourceRoot()
+        val viewSource = File(
+            main,
+            "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView.kt",
+        ).readText()
+        val drawBody = viewSource.substringAfter("override fun onDraw")
+            .substringBefore("@Suppress(\"ClickableViewAccessibility\")")
+
+        // The correction cell: its own paint (bold, theme accent) and an underline measured
+        // against exactly the drawn (ellipsized) text.
+        assertTrue(drawBody.contains("state.isEmphasized(cell)"))
+        assertTrue(drawBody.contains("emphasisTextPaint"))
+        assertTrue(drawBody.contains("emphasisTextPaint.measureText(suggestion)"))
+        assertTrue(drawBody.contains("canvas.drawLine("))
+
+        // The paint is bold by construction, not per frame; the colour is a theme attr with the
+        // plain text colour as the fail-closed default.
+        assertTrue(viewSource.contains("Typeface.create(textPaint.typeface, Typeface.BOLD)"))
+        assertTrue(
+            viewSource.contains("R.styleable.SuggestionStripView_suggestionEmphasisColor"),
+        )
+        val attrs = File(main, "res/values/attrs.xml").readText()
+        val styleable = attrs
+            .substringAfter("<declare-styleable name=\"SuggestionStripView\">")
+            .substringBefore("</declare-styleable>")
+        assertTrue(styleable.contains("suggestionEmphasisColor"))
+        val theme = File(main, "res/values/themes-tatar.xml").readText()
+        assertTrue(theme.contains("name=\"suggestionEmphasisColor\">@color/app_accent"))
+    }
+
+    @Test
+    fun theEmphasisMarkerTravelsFromTheControllerThroughTheProductionWiring() {
+        val main = sourceRoot()
+        val controller = File(
+            main,
+            "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt",
+        ).readText()
+        // The seam is a default no-op, so a surface written before P2 simply never emphasizes.
+        assertTrue(controller.contains("fun setEmphasizedCell(cell: Int) {}"))
+        // The single band writer publishes the marker with the words, never apart from them.
+        val showBandBody = controller.substringAfter("private fun showBand(")
+            .substringBefore("    /**")
+        assertTrue(showBandBody.contains("strip.setEmphasizedCell(emphasizedCell)"))
+        val latinIme = File(
+            main,
+            "java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
+        ).readText()
+        assertTrue(latinIme.contains("public void setEmphasizedCell(final int cell)"))
+        assertTrue(latinIme.contains("inputView.setSuggestionStripEmphasis(cell)"))
+        val inputView = File(
+            main,
+            "java/rkr/simplekeyboard/inputmethod/latin/InputView.java",
+        ).readText()
+        assertTrue(inputView.contains("mSuggestionStripView.setEmphasis(cell)"))
+    }
+
     @Test
     fun internalCursorGesturesNotifyTheControllerDirectly() {
         val latinIme = File(

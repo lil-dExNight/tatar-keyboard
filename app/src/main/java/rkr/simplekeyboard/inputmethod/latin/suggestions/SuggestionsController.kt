@@ -53,6 +53,15 @@ interface StripSurface {
      */
     fun setSpokenCellLabels(first: String?, second: String?, third: String?) {}
 
+    /**
+     * The autocorrect preview's emphasis marker (P2 of Phase 3, docs/ROADMAP-P3.md): the cell
+     * holding the correction the next separator would insert, or
+     * [SuggestionStripState.NO_CELL] on every ordinary band. Called immediately after
+     * [showSuggestions] by the same owner call, so the marker can never describe a band it did
+     * not arrive with; a surface written before P2 keeps compiling and simply never emphasizes.
+     */
+    fun setEmphasizedCell(cell: Int) {}
+
     /** Make the strip VISIBLE with no words (empty band), keeping its reserved 40dp height. */
     fun reserve()
 
@@ -599,6 +608,24 @@ class SuggestionsController internal constructor(
     // two editor calls that perform the replacement and its single undo.
     /** The autocorrect setting, read live. OFF until LatinIME wires the real one. */
     private var autocorrectGate: AutocorrectGate = AutocorrectGate { false }
+
+    // --- P2 of Phase 3 (docs/ROADMAP-P3.md): the autocorrect preview. Nothing here is persisted
+    // either; both fields describe the current trailing word only and die with it.
+    /**
+     * The displayed text of the keep-typed cell while the band IS a preview, null on every
+     * other band. Consulted only under the tap path's own freshness guards (bound prefix, live
+     * session), so a value left behind by an unbound band is never acted on; every
+     * [applyPrefixResult] rewrites it, null or fresh.
+     */
+    private var previewKeepTypedCell: String? = null
+
+    /**
+     * The word whose coming correction the user refused by tapping the keep-typed cell, in its
+     * raw as-typed form. Word-scoped: cleared the moment the trailing word is anything else
+     * (including empty), consumed by the first separator it refuses, and dropped at every
+     * boundary [clearRevertState] covers.
+     */
+    private var suppressedPreviewWord: String? = null
 
     // --- Emoji-suggest state (mission 2 of docs/EMOJI-SUGGEST-PLAN.md). Nothing here is persisted;
     // the source is immutable once loaded and the band carries no emoji state of its own — the
@@ -1560,7 +1587,10 @@ class SuggestionsController internal constructor(
     }
 
     /** The single call into the strip that paints words, and the only writer of [bandBaseCells]. */
-    private fun showBand(cells: List<String>) {
+    private fun showBand(
+        cells: List<String>,
+        emphasizedCell: Int = SuggestionStripState.NO_CELL,
+    ) {
         bandBaseCells = cells
         strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2))
         strip.setSpokenCellLabels(
@@ -1568,6 +1598,9 @@ class SuggestionsController internal constructor(
             spokenLabelFor(cells.getOrNull(1)),
             spokenLabelFor(cells.getOrNull(2)),
         )
+        // P2: the emphasis travels with the words it marks, in the same publication — a marker
+        // set apart from them could describe a band that is already gone.
+        strip.setEmphasizedCell(emphasizedCell)
     }
 
     /**
@@ -1724,6 +1757,9 @@ class SuggestionsController internal constructor(
             return
         }
         val word = editor.cachedWordBeforeCursor()
+        // P2: the keep-typed refusal is word-scoped — it lives exactly as long as the trailing
+        // word it was made for. A different word, including none at all, is a new occurrence.
+        if (word != suppressedPreviewWord) suppressedPreviewWord = null
         if (word.isEmpty()) {
             requestNextWordContext(activeEngine)
             return
@@ -2085,6 +2121,23 @@ class SuggestionsController internal constructor(
                     runEmptyResultPrefixLength = length
                 }
             }
+        }
+        // P2 (docs/ROADMAP-P3.md): when the separator-time policy would fire on this word, the
+        // band stops ranking continuations and announces the coming replacement instead —
+        // exactly the AOSP visual contract. The preview owns the whole band: no companion fill
+        // rides a band whose cells are a refusal and a correction.
+        val preview = computeAutocorrectPreview()
+        previewKeepTypedCell = preview?.typedShown
+        if (preview != null) {
+            displayedPrefix = pendingPrefix
+            displayedSessionId = sessionId
+            showBand(
+                listOf(preview.typedShown, preview.correctionShown),
+                PREVIEW_EMPHASIZED_CELL,
+            )
+            return
+        }
+        if (suggestions.isEmpty()) {
             displayedPrefix = null
             bandBaseCells = emptyList()
             strip.reserve()
@@ -2111,6 +2164,61 @@ class SuggestionsController internal constructor(
         if (cells.size < SuggestionStripState.CELL_COUNT) {
             requestCompanionFill(LookupKind.PREFIX, pendingPrefix)
         }
+    }
+
+    /**
+     * The painted form of a coming replacement: the typed word as the user sees it and the
+     * correction as it would be inserted. Deliberately mute, like [Replacement] — this object
+     * carries the user's text.
+     */
+    private class AutocorrectPreview(
+        val typedShown: String,
+        val correctionShown: String,
+    ) {
+        override fun toString(): String = "AutocorrectPreview"
+    }
+
+    /**
+     * The preview half of the D3 decision (P2 of Phase 3, docs/ROADMAP-P3.md): would the
+     * separator-time policy fire on the word this result was computed for? Every condition of
+     * [maybeAutocorrectBeforeSeparator] is mirrored here — the gate, the length floor, the
+     * casing, the verdict's provenance and freshness, the frequency floor, the "replacement is
+     * not the word itself" guard — so what the strip announces is EXACTLY what a separator
+     * would do, never more. The two editor-side conditions (known cursor, cursor not inside a
+     * word) are not re-checked: a PREFIX result can only be applied for a trailing word at a
+     * known cursor, which [requestCurrentPrefix] established before the request went out.
+     *
+     * Costs one volatile read and a handful of comparisons — no lookup of its own: the verdict
+     * was computed by the very lookup this band is the answer to. The checks are ordered
+     * cheapest-first so the common band (a short word, a dictionary word with no verdict) never
+     * allocates: the normalization runs only once a verdict exists, i.e. when a preview is
+     * genuinely about to fire. The raw length pre-check is a conservative fast path — NFC never
+     * grows the code-point count — and the floor is still re-checked on the normalized form
+     * after provenance, mirroring the separator path exactly.
+     */
+    private fun computeAutocorrectPreview(): AutocorrectPreview? {
+        if (!autocorrectGate.isOn()) return null
+        val word = pendingPrefix
+        if (word.isEmpty()) return null
+        // A refused advice stays refused for as long as this occurrence stands.
+        if (word == suppressedPreviewWord) return null
+        val casing = TatarWordUtils.classifyCasing(word)
+        if (casing == TatarWordUtils.PrefixCasing.MIXED) return null
+        if (word.codePointCount(0, word.length) < AutocorrectPolicy.MIN_WORD_CODE_POINTS) {
+            return null
+        }
+        val advice = usableEngine()?.autocorrectAdvice() ?: return null
+        val normalized = TatarWordUtils.normalizeForLookup(word)
+        if (advice.typedWord != normalized) return null
+        if (normalized.codePointCount(0, normalized.length) <
+            AutocorrectPolicy.MIN_WORD_CODE_POINTS
+        ) {
+            return null
+        }
+        if (advice.frequency < AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY) return null
+        val correction = TatarWordUtils.applyCasing(advice.replacement, casing)
+        if (correction == word) return null
+        return AutocorrectPreview(word, correction)
     }
 
     /**
@@ -2175,6 +2283,8 @@ class SuggestionsController internal constructor(
      *
      * Every condition is checked here, and every one of them fails towards NOT editing text:
      *  - the feature is on (and subordinate to suggestions: [eligible] already carries that);
+     *  - the user has not refused THIS occurrence's correction through the P2 preview's
+     *    keep-typed cell (docs/ROADMAP-P3.md) — a refusal is one-shot and consumed here;
      *  - an engine is usable and the cursor is known;
      *  - the cursor is not inside a word, and the word is not in mixed case (which the frozen
      *    contract gives 0 results for, so it has no defined replacement form either);
@@ -2196,6 +2306,13 @@ class SuggestionsController internal constructor(
         if (editor.hasLetterAfterCursor()) return false
         val word = editor.cachedWordBeforeCursor()
         if (word.isEmpty()) return false
+        // P2 (docs/ROADMAP-P3.md): the user refused THIS occurrence's correction by tapping the
+        // preview's keep-typed cell. One-shot: the very separator it armed itself against
+        // consumes the refusal, so the same word typed later is a new occurrence.
+        if (word == suppressedPreviewWord) {
+            suppressedPreviewWord = null
+            return false
+        }
         val casing = TatarWordUtils.classifyCasing(word)
         if (casing == TatarWordUtils.PrefixCasing.MIXED) return false
         val normalized = TatarWordUtils.normalizeForLookup(word)
@@ -2268,16 +2385,39 @@ class SuggestionsController internal constructor(
         revertable = null
     }
 
-    /** Drops the undo window outright: a field, subtype, selection or setting boundary. */
+    /**
+     * Drops the undo window outright: a field, subtype, selection or setting boundary. The P2
+     * keep-typed refusal dies at the same boundaries — each of them also ends the word
+     * occurrence the refusal was scoped to.
+     */
     private fun clearRevertState() {
         armedReplacement = null
         revertable = null
+        suppressedPreviewWord = null
     }
 
     private fun separatorString(codePoint: Int): String =
         if (Character.isValidCodePoint(codePoint)) String(Character.toChars(codePoint)) else ""
 
     private fun onTap(suggestion: String) {
+        // P2 (docs/ROADMAP-P3.md): a tap on the keep-typed cell of a preview band refuses the
+        // coming correction for THIS occurrence of the word. It is deliberately NOT an accepted
+        // suggestion: nothing is committed (the run is not dirtied — the user typed every letter
+        // themselves), the undo window is untouched (a preview can only exist several keystrokes
+        // after it provably closed), and the band falls back to the ordinary suggestions of the
+        // same word, re-derived so the refusal is visible at once.
+        val keepTyped = previewKeepTypedCell
+        if (keepTyped != null && displayedSessionId == sessionId && suggestion == keepTyped) {
+            val prefix = displayedPrefix ?: return
+            suppressedPreviewWord = prefix
+            previewKeepTypedCell = null
+            displayedPrefix = null
+            bandBaseCells = emptyList()
+            clearCompanionRequest()
+            strip.reserve()
+            requestCurrentPrefix()
+            return
+        }
         // An accepted suggestion is not the user spelling the word out: the run stops counting.
         markRunDirty()
         // A tap is one of the six events that close the undo window.
@@ -2376,5 +2516,10 @@ class SuggestionsController internal constructor(
         private const val SENTENCE_START_CONTEXT = ""
         /** No proper prefix of the current run has come back empty yet. */
         private const val NO_EMPTY_RESULT = -1
+
+        // P2 (docs/ROADMAP-P3.md): the preview band's fixed layout — the typed word leads, the
+        // correction follows, emphasized; the third cell stays empty so the two read as a
+        // decision ("keep this" / "this is coming"), not as a ranking.
+        private const val PREVIEW_EMPHASIZED_CELL = 1
     }
 }
