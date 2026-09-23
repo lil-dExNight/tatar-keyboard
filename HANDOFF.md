@@ -1,3 +1,44 @@
+# HANDOFF — ROADMAP Phase 3 (autocorrect): P2 shipped + gates green; device UAT blocked (phone absent)
+
+**State as of 2026-09-23.** Phase 3 items are resolved in the working tree on top of the
+committed Phase 2 (`fb22da97`; the Phase-2 entry below is stale in that detail). **The
+Phase-3 changeset is uncommitted**; version NOT bumped (2.0.1/33; the release decision,
+expected 2.3.0, is the operator's). Report: `docs/ROADMAP-P3.md`.
+
+- **P2 (autocorrect visual contract, AOSP) SHIPPED**: while the policy would fire, the
+  strip shows the typed word in the left cell ("keep what I typed") and the correction in
+  the center cell **emphasized** (bold + theme accent + underline), third cell empty;
+  keep-typed suppresses the occurrence (clean run NOT dirtied), separator applies exactly
+  the emphasized cell, backspace reverts, deleting the separator brings the preview back;
+  toggle OFF → no preview ever. +24 JVM tests (1 400 → 1 424).
+- **P7 (autocorrect widening) REJECTED by its own written gates**: G1 false corrections —
+  3 bad + 1 hazardous of 5 eval-OOV cases (ертты→артты, сүзлегеннән→күзлегеннән,
+  җәрәхәтләде→җәрәхәтләре, әгъва→әгъза); G2 recovery lift +0.57 pp vs the required +5 pp.
+  The class set stays {1}/411 everywhere (pinned); the {1,4} machinery stays in the tree
+  unwired and fully tested (+13 JVM tests to 1 437).
+- **Final block 2026-09-23**: all gates green (python 484/0, JVM 1 437/0, lint, asset
+  pins, no-INTERNET both levels, `release_check.sh --quick` 8/8). Signed release APK
+  **1 834 276 B** ≤ 3 145 728, SHA-256 `38f836fd…2ad6525f`, cert `98ca6feb…42ad`.
+- **Device UAT BLOCKED — the POCO C71 was physically disconnected all session** (adb
+  empty, no Xiaomi in `lsusb`, 5-min poll fruitless). Emulator fallback on the debug
+  build of the same tree verified the ENTIRE preview state machine with screenshots
+  (`build/device-uat-2026-09-23/p3/`, F1–F8 PASS): emphasized preview, keep-typed,
+  replacement on space, backspace revert, preview returning after separator deletion,
+  toggle-OFF no-preview, plus sentstart caps and сцләм regression. Device rows (preview
+  on the POCO, personal-bigrams regression + forget cleanup, regression core, cold start,
+  crash buffer) stay open until the phone returns.
+
+**Device state note:** the phone keeps whatever it was left with last session (our IME
+default; Word suggestions / Personal dictionary / Incognito ON; learned test pair
+сәләм → дөнья in the tt store). Autocorrect was never enabled there (default OFF) —
+no toggle restore is owed. When the phone returns: run the blocked device rows, forget
+the test pair via the dictionary screen, and restore the IME/toggles per the operator's
+preference.
+
+Open: the blocked device rows, the commit/release decision (2.3.0), roadmap Phase 4+.
+
+---
+
 # HANDOFF — ROADMAP Phase 2 (personalization): code+gates+PRIVACY done; device UAT partial (phone dropped mid-cycle)
 
 **State as of 2026-09-23.** All three items of `docs/ROADMAP.md` Phase 2 are
