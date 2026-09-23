@@ -1,3 +1,36 @@
+# HANDOFF — ROADMAP Phase 6 (foundations): T2 splits done; profile regenerated; gates green; UAT via emulator
+
+**State as of 2026-09-24.** Phase 6 is complete in the working tree on top of the
+committed Phase 5 (`784d8991`; the P5 entry below is stale in that detail). **The
+Phase-6 changeset is uncommitted**; version NOT bumped (2.0.1/33; the release decision,
+expected 2.6.0, is the operator's). Report: `docs/ROADMAP-P6.md`.
+
+- **T2 (god-object splits)**: SuggestionsController 2 525 → 2 000 (6 units),
+  LatinIME 2 440 → 2 254 (4 units), SettingsHostActivity 1 568 → 1 129 +
+  EmojiPanelView 1 317 → 1 168 (5 units) — all pure moves, `./gradlew test` green with
+  the identical count (1 456) after every extraction; the size-target exception is
+  documented per file.
+- **Baseline profile regenerated** on `tt_suggest_a14` (ANDROID_SERIAL pin — the MIUI
+  broadcast issue keeps the physical phone out of the matrix): **2 433 → 2 561 rules**
+  (+128); the extracted classes are present and hot (none existed before).
+- **Gates green**: python 484/0, JVM 1 456/0, lint, asset pins, no-INTERNET both
+  levels, `release_check.sh --quick` 8/8. Signed release APK **1 834 276 B** ≤ 3 145 728,
+  SHA-256 `f6ec74bc…6bab73ca`, cert `98ca6feb…42ad`.
+- **UAT**: the POCO C71 was connected but **in active use by its owner** mid-drive
+  (landscape rotation, Gboard's panel, `default_input_method` flipping to Gboard twice
+  within minutes) — device rows BLOCKED, evidence contaminated. Emulator fallback on the
+  debug build of the same tree: **12/12 PASS** (`build/device-uat-2026-09-24/p6/`) —
+  sentstart caps, сцлэм→сәләм, tap chain, same-stem, bigrams, after-comma, fallback,
+  emoji tail, ru slot, emoji panel, rotation, the autocorrect preview apply/revert on the
+  refactored classes, crash buffer empty. Cold start informational on the emulator
+  (377 ms debug); the POCO < 400 ms check stays pending (253/264 ms measured in the P5
+  batch on hardware this morning).
+
+Open: the device-leg UAT rows when the phone is free, the operator's commit/release
+decision (2.6.0), roadmap Phase 7.
+
+---
+
 # HANDOFF — ROADMAP Phase 5 device validation batch: gates green, U6 on device, U1–U5 verdicts in
 
 **State as of 2026-09-24.** The phase-5 device-validation batch is done in the working
