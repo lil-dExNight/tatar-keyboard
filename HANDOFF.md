@@ -1,3 +1,43 @@
+# HANDOFF — ROADMAP Phase 4 (prediction depth): T7/P5a shipped, P5b/P6 rejected; gates green; device UAT blocked
+
+**State as of 2026-09-23.** Phase 4 items are resolved in the working tree on top of
+Phase 3 (still uncommitted; the P3 entry below describes that tree). Version NOT bumped
+(2.0.1/33; the release decision, expected 2.4.0, is the operator's). Report:
+`docs/ROADMAP-P4.md`.
+
+- **T7 decided**: the Tatar bigram table repacked at **K=3** (−19 209 B; the rank-4
+  successor's latent +1.5643 pp is recorded for a future 4-cell-strip item, which is a
+  sub-phase of its own).
+- **P5a SHIPPED (surgical EXPAND-1)**: 3 102 corpus-attested extra heads (≥ 10 conv
+  tokens, rank ≥ 10 132) → table heads 10 204 → **13 154**, pairs 40 735 → 38 874,
+  compressed 81 476 → **79 574 B**; eval head coverage 75.36 → **84.17 %** (+8.81 pp),
+  unconditional next-word hit 9.55 → **10.84 %** (+1.29 pp) — the written gate cleared
+  with margin; C2/C5 alternatives and C1/C4 failures recorded; a rule-bug incident
+  (alphabetical vs frequency ranking) found by the report's own arithmetic and fixed.
+  Known-drift re-pinned 3/0 → 155/0; the eval pins re-calibrated.
+- **P5b (trigrams) REJECTED offline**: projection caps at +1.63 pp at 30 000 contexts
+  (~240 KB) vs the +2.0 pp gate — context coverage is the structural bottleneck.
+- **P6 (two-edit recovery) REJECTED**: even perfect recall tops at 9.79 % recovery@3
+  < +10 pp (median rank of the intended word 28 among ~114 competitors); the chained
+  enumeration trips the 512-probe fail-closed budget on 73 % of firing rows. Class #5
+  stays unwired; the evidence and the three bugs the calibration itself found are
+  recorded.
+- **Final block gates**: python 484/0, JVM **1 443/0** (149 suites), lint, asset pins
+  (release_check asset_pins **16/16 with the new table**), no-INTERNET both levels,
+  `release_check.sh --quick` 8/8. Signed release APK **1 834 276 B** ≤ 3 145 728,
+  SHA-256 `8e9a437d…dc0224d71`, cert `98ca6feb…42ad`.
+- **Device UAT BLOCKED** (phone absent all session; P3's state). Emulator fallback
+  9 scenario rows PASS (`build/device-uat-2026-09-23/p4/`): new head автобуска →
+  утырып·кереп(+🚌), old head татар unchanged, сәләм fallback unchanged, сакчы is
+  ITSELF a new head now (булып·виталий·андрей — by design), after-comma, сцләм→сәләм,
+  emoji tail, ru майор/тюлень, crash buffer empty. Cold start informational on the
+  emulator (410/528 ms debug) — the POCO's budget check stays pending.
+
+Open: the blocked device rows (on-device inflation of the new table, P6 G3 device p95,
+cold start on hardware), the commit/release decision (2.4.0), roadmap Phase 5+.
+
+---
+
 # HANDOFF — ROADMAP Phase 3 (autocorrect): P2 shipped + gates green; device UAT blocked (phone absent)
 
 **State as of 2026-09-23.** Phase 3 items are resolved in the working tree on top of the
