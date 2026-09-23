@@ -39,16 +39,20 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
  * the typed prefix rank before its own continuations within its edit class (frequency order is
  * preserved otherwise); it is what puts the correction itself — "сәләм" — above "сәләмәтлек".
  *
- * The class set never reorders the exact level and never reaches autocorrect: the D3 pass pins
- * class #1 by its own contract regardless of this policy.
+ * [autocorrectClasses] is the D3 side of the policy (ROADMAP-P3 P7, docs/ROADMAP-P3.md): the
+ * edit classes the autocorrect verdict may draw from. It defaults to class #1 alone — the frozen
+ * D3 contract — so any policy constructed without it keeps the exact pre-P7 autocorrect behavior,
+ * and the DISPLAY classes never change it implicitly.
  */
 class FuzzyEditPolicy(
     val editClasses: IntArray,
     val sameLengthBonus: Boolean,
+    val autocorrectClasses: IntArray = intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
 ) {
     init {
         require(editClasses.isNotEmpty()) { "a fuzzy policy needs at least one edit class" }
-        for (editClass in editClasses) {
+        require(autocorrectClasses.isNotEmpty()) { "a fuzzy policy needs an autocorrect class" }
+        for (editClass in editClasses + autocorrectClasses) {
             require(
                 editClass == TdictPrefixIndex.EDIT_CLASS_LONG_PRESS ||
                     editClass == TdictPrefixIndex.EDIT_CLASS_GEOMETRIC ||

@@ -244,6 +244,11 @@ internal class TdictPrefixIndex private constructor(
     internal var lastFuzzyProbeCount = 0
         private set
 
+    // Same observability for the D3 autocorrect pass (ROADMAP-P3 P7): class-#4 probes issued by
+    // the last lookup's advice computation. Worker-confined exactly like the counters above.
+    internal var lastAutocorrectProbeCount = 0
+        private set
+
     // Fuzzy-pass accumulator, private to a single lookup() invocation and reset on each entry.
     private var fuzzyExactCount = 0
     private var fuzzyRemaining = 0
@@ -262,10 +267,11 @@ internal class TdictPrefixIndex private constructor(
     private var fuzzyCurrentClass = EDIT_CLASS_LONG_PRESS
 
     // D3 accumulator, private to a single computeAutocorrectAdvice() invocation. The pass counts
-    // WHOLE-WORD matches: how many class #1 variants of the typed word are themselves dictionary
+    // WHOLE-WORD matches: how many class #1/#4 variants of the typed word are themselves dictionary
     // entries, and which one. Anything but exactly one means no replacement.
     private var autocorrectMatchCount = 0
     private var autocorrectMatchIndex = NO_ENTRY
+    private var autocorrectProbesUsed = 0
 
     // Allocated once, so neither a lambda nor any object is created per lookup or per variant.
     private val fuzzyConsumer =
@@ -287,6 +293,7 @@ internal class TdictPrefixIndex private constructor(
         val prefixLength = normalizedPrefixUtf8.byteCount
         lastExactCount = 0
         lastAutocorrectAdvice = null
+        lastAutocorrectProbeCount = 0
         if (prefixLength == 0 ||
             prefixLength > MAX_PREFIX_BYTES ||
             !isValidUtf8Scalar(normalizedPrefixUtf8)
@@ -348,12 +355,16 @@ internal class TdictPrefixIndex private constructor(
      *
      * Two properties are worth naming. The match is WHOLE-WORD, not prefix-block: the contract
      * replaces a word by a word one edit away from it, and a prefix scan would offer continuations
-     * instead. And the class is pinned to #1 directly rather than through the engine's
-     * [FuzzyEditPolicy]: D3 excludes classes #2/#3 by its own contract, so a policy that enables
-     * them for the band (the Tatar one) must not make autocorrect follow.
+     * instead. And the class set is the policy's OWN [FuzzyEditPolicy.autocorrectClasses], never
+     * the display set: a display policy enabling classes #2/#4 (the Tatar one) must not make
+     * autocorrect follow implicitly — the D3 widening is decided by its own written gates
+     * (ROADMAP-P3 P7, docs/ROADMAP-P3.md). With the default policy this pass is byte-identical to
+     * the frozen D3 class-#1 behavior.
      *
-     * The pass costs one binary search per variant and scans no block at all; it runs only for words
-     * long enough to qualify, so short prefixes — the bulk of the keystrokes — pay nothing.
+     * The class-#1 side costs one binary search per variant and scans no block at all. The class-#4
+     * side is probe-first exactly like the display pass (the TT-TYPO-NEXT C2 engineering reused):
+     * per-position narrowed no-cache probes, whole-word equality, never a range scan. The whole
+     * pass runs only for words long enough to qualify, so short prefixes pay nothing.
      */
     private fun computeAutocorrectAdvice(
         normalizedPrefixUtf8: ImmutableUtf8Prefix,
@@ -361,23 +372,42 @@ internal class TdictPrefixIndex private constructor(
     ) {
         val table = neighborTable ?: return
         if (table.isEmpty) return
-        if (countCodePointsByLeadBytes(exactScratch, prefixLength) <
-            AutocorrectPolicy.MIN_WORD_CODE_POINTS
-        ) {
+        val codePointCount = countCodePointsByLeadBytes(exactScratch, prefixLength)
+        if (codePointCount < AutocorrectPolicy.MIN_WORD_CODE_POINTS) {
             return
         }
         val typedEntry = lowerBound(exactScratch, prefixLength, 0)
         if (typedEntry < entryCount && wordEquals(typedEntry, exactScratch, prefixLength)) return
         autocorrectMatchCount = 0
         autocorrectMatchIndex = NO_ENTRY
-        val emitted = FuzzyPrefixVariants.generateLongPressVariants(
-            exactScratch, prefixLength, table, autocorrectCodePointScratch,
-            autocorrectVariantScratch, MAX_FUZZY_VARIANTS, autocorrectConsumer,
-        )
-        // Fail closed on a budget overrun or malformed input, exactly like the display level: a
-        // partially generated variant set could hide the second candidate that makes a typo
-        // ambiguous, and acting on it would replace text on incomplete evidence.
-        if (emitted < 0) return
+        autocorrectProbesUsed = 0
+
+        if (EDIT_CLASS_LONG_PRESS in fuzzyPolicy.autocorrectClasses) {
+            val emitted = FuzzyPrefixVariants.generateLongPressVariants(
+                exactScratch, prefixLength, table, autocorrectCodePointScratch,
+                autocorrectVariantScratch, MAX_FUZZY_VARIANTS, autocorrectConsumer,
+            )
+            // Fail closed on a budget overrun or malformed input, exactly like the display level: a
+            // partially generated variant set could hide the second candidate that makes a typo
+            // ambiguous, and acting on it would replace text on incomplete evidence.
+            if (emitted < 0) return
+        }
+
+        // ROADMAP-P3 P7: the widened side — full single substitution, probe-first. Early-out once
+        // the word is already ambiguous: further probes can only add candidates, never remove one,
+        // and the verdict below is already NO.
+        if (EDIT_CLASS_SUBSTITUTION in fuzzyPolicy.autocorrectClasses &&
+            autocorrectMatchCount < 2
+        ) {
+            computeProbeRanges(codePointCount)
+            val emitted = FuzzyPrefixVariants.generateFullSubstitutionVariants(
+                exactScratch, prefixLength, table.nodes, autocorrectCodePointScratch,
+                autocorrectVariantScratch, MAX_FUZZY_PROBES, autocorrectProbeConsumer,
+            )
+            if (emitted < 0) return
+        }
+        lastAutocorrectProbeCount = autocorrectProbesUsed
+
         if (autocorrectMatchCount != 1) return
         val candidate = autocorrectMatchIndex
         val frequency = frequencyAt(candidate)
@@ -400,6 +430,36 @@ internal class TdictPrefixIndex private constructor(
         if (entry == autocorrectMatchIndex) return
         autocorrectMatchCount++
         autocorrectMatchIndex = entry
+    }
+
+    /** The probe-first whole-word consumer of the class-#4 autocorrect variants (ROADMAP-P3 P7). */
+    private val autocorrectProbeConsumer =
+        FuzzyPrefixVariants.PositionedVariantConsumer { position, bytes, length ->
+            probeAutocorrectWholeWord(position, bytes, length)
+        }
+
+    /**
+     * One narrowed no-cache probe per class-#4 variant, then whole-word equality — never a range
+     * scan. Counts a match exactly like [matchWholeWord] does (dedup by entry index across
+     * classes; stops caring past two).
+     */
+    private fun probeAutocorrectWholeWord(position: Int, variantBytes: ByteArray, variantLength: Int) {
+        if (autocorrectMatchCount > 1) return
+        val rangeStart = probeRangeStart[position]
+        val rangeEnd = probeRangeEnd[position]
+        if (rangeStart >= rangeEnd) return
+        autocorrectProbesUsed++
+        val probe = probeLowerBound(variantBytes, variantLength, rangeStart, rangeEnd)
+        if (probe >= rangeEnd) return
+        val wordLength = decodeWordInto(probe, probeScratch)
+        if (wordLength != variantLength) return
+        for (offset in 0 until variantLength) {
+            if (unsigned(probeScratch[offset]) != (variantBytes[offset].toInt() and 0xff)) return
+        }
+        // A class-#1/class-#4 duplicate must not count twice, or one candidate would read as two.
+        if (probe == autocorrectMatchIndex) return
+        autocorrectMatchCount++
+        autocorrectMatchIndex = probe
     }
 
     /**

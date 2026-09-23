@@ -210,4 +210,95 @@ class TdictPrefixIndexAutocorrectTest {
             override fun containsNormalized(normalizedWord: String): Boolean =
                 words.contains(normalizedWord)
         }
+
+    // --- ROADMAP-P3 P7: the autocorrect-class policy machinery (measured, gate-rejected) --------
+
+    /** The P7 candidate arm: display {1, 4} + autocorrect {1, 4}. */
+    private val widenedPolicy = FuzzyEditPolicy(
+        intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+        true,
+        intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+    )
+
+    private fun policyIndex(
+        entries: List<Pair<String, Long>>,
+        policy: FuzzyEditPolicy,
+    ): TdictPrefixIndex {
+        val index = EngineTestFixtures.index(entries, fuzzyEditPolicy = policy)
+        index.updateKeyNeighbors(table)
+        return index
+    }
+
+    @Test
+    fun theDefaultAutocorrectClassesAreClass1OnlyEverywhere() {
+        // The P7 verdict keeps every shipped autocorrect class set at {1} — including the Tatar
+        // policy (its display classes are irrelevant to autocorrect).
+        assertEquals(
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
+            FuzzyEditPolicy.DEFAULT.autocorrectClasses.toList(),
+        )
+        assertEquals(
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
+            FuzzyEditPolicy.TATAR.autocorrectClasses.toList(),
+        )
+    }
+
+    @Test
+    fun class4CorrectsAClass4OnlyCaseUnderTheWidenedPolicy() {
+        // "барди" is absent and NOT reachable by class #1 (р/д are no long-press pair and the
+        // other letters' partners lead nowhere), but one substitution (д→р at position 2) lands
+        // exactly on "барти" — nothing else in its substitution space is a dictionary word. The
+        // default policy never fires here.
+        val entries = listOf("барти" to 5_000L)
+        val widened = policyIndex(entries, widenedPolicy)
+        val current = policyIndex(entries, FuzzyEditPolicy.TATAR)
+
+        assertNull(advise(current, "барди"))
+        val advice = advise(widened, "барди")
+        assertNotNull(advice)
+        assertEquals("барди", advice!!.typedWord)
+        assertEquals("барти", advice.replacement)
+        assertEquals(5_000L, advice.frequency)
+    }
+
+    @Test
+    fun twoClass4CandidatesAreStillRefusedUnderTheWidenedPolicy() {
+        // "балти": position 2 л→р gives "барти", position 2 л→д gives "бадти" — two candidates,
+        // the single-candidate rule refuses regardless of frequency.
+        val index = policyIndex(
+            listOf("бадти" to 90_000L, "барти" to 90_000L),
+            widenedPolicy,
+        )
+
+        assertNull(advise(index, "балти"))
+    }
+
+    @Test
+    fun aCrossClassDuplicateCountsOnceUnderTheWidenedPolicy() {
+        // "бәлти" reaches "балти" by class #1 (ә→а at position 1) AND by class #4 (the same
+        // substitution) — the entry must count once, or the single candidate would read as two
+        // and the ambiguity rule would refuse it.
+        val index = policyIndex(listOf("балти" to 5_000L), widenedPolicy)
+
+        assertEquals("балти", advise(index, "бәлти")?.replacement)
+    }
+
+    @Test
+    fun aDictionaryWordIsNeverAdvisedUnderTheWidenedPolicyEither() {
+        // The G1 construction invariant, pinned on the widened pass: presence early-out wins over
+        // the whole substitution space.
+        val index = policyIndex(listOf("алта" to 5_000L), widenedPolicy)
+
+        assertNull(advise(index, "алта"))
+    }
+
+    @Test
+    fun theWidenedProbeCountersAreObservable() {
+        // "әлтә" on this fixture: position 0 probes the whole dictionary (the fixture alphabet is
+        // 32 letters, so 31 probes), later positions are skipped by the empty-range narrowing
+        // (no "ә*"/"әл*"/"әлт*" words) — 31 probes exactly.
+        val index = policyIndex(listOf("алта" to 5_000L), widenedPolicy)
+        advise(index, "әлтә")
+        assertEquals(31, index.lastAutocorrectProbeCount)
+    }
 }
