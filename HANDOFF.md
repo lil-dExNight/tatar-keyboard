@@ -1,3 +1,37 @@
+# HANDOFF — ROADMAP Phase 5 device validation batch: gates green, U6 on device, U1–U5 verdicts in
+
+**State as of 2026-09-24.** The phase-5 device-validation batch is done in the working
+tree on top of Phase 4 (still uncommitted). Version NOT bumped (2.0.1/33; the release
+decision, expected 2.5.0, is the operator's). Report: `docs/ROADMAP-P5.md`.
+
+- **Gates green**: python 484/0, JVM **1 456/0** (150 suites), lint, asset pins,
+  no-INTERNET both levels, `release_check.sh --quick` 8/8. Signed release APK
+  **1 834 276 B** ≤ 3 145 728, SHA-256 `3aa1746c…a8090e59`, cert `98ca6feb…42ad`
+  (unsigned 1 853 820 B — matches the U6 measurement).
+- **U6 (height presets) on device**: the Appearance row opens the Compact/Default/Tall
+  picker; measured content top y≈1053/980/908 with the emoji panel aligned at each;
+  restored to Default.
+- **U1 TalkBack**: coexistence proven (tutorial + permission dialog navigated, focus
+  frames, typing works, the strip paints under TalkBack, no crashes); the AUDIBLE
+  content needs human ears — machinery is in-tree and pinned. TalkBack disabled after.
+- **U2 Direct Boot**: statically clean (IME directBootAware; dictionaries/bigrams in
+  device-encrypted storage available pre-unlock; personal stores credential-encrypted,
+  gated by isUserUnlocked). Live reboot with PIN stays operator-pending (never rebooted
+  the user's phone).
+- **U3 Telegram BLOCKED** (not installed); **U4 partial** (HyperOS ignores
+  navigation_mode/force_fsg_nav_bar from adb — keyboard correct in the producible
+  configuration; gesture toggle via the Settings UI is operator-pending); **U5 BLOCKED**
+  (no tablet exists).
+- **Phase-2 leftovers closed**: incognito deep-check on device (read-side while ON,
+  paused note, no learning under pause, resume learns) + the leftover test pairs erased
+  via the dictionary screen.
+- Regression core + cold start 253/264 ms < 400 + empty crash buffer — all on hardware.
+
+Open: the operator's commit/release decision (2.5.0), roadmap Phase 6+; the U1 spoken
+content, U2 live reboot, U3 Telegram and U4 real gesture mode stay human/operator items.
+
+---
+
 # HANDOFF — ROADMAP Phase 4 (prediction depth): T7/P5a shipped, P5b/P6 rejected; gates green; device UAT blocked
 
 **State as of 2026-09-23.** Phase 4 items are resolved in the working tree on top of
