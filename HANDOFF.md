@@ -1,3 +1,42 @@
+# HANDOFF — ROADMAP Phase 2 (personalization): code+gates+PRIVACY done; device UAT partial (phone dropped mid-cycle)
+
+**State as of 2026-09-23.** All three items of `docs/ROADMAP.md` Phase 2 are
+implemented in the working tree on top of the committed Phase 1 (`93966d2b`; the
+Phase-1 entry below, written pre-commit, is stale in that detail). **The Phase-2
+changeset is uncommitted**; version NOT bumped (2.0.1/33; the release decision,
+expected 2.2.0, is the operator's). Report: `docs/ROADMAP-P2.md` (P1 personal bigrams,
+U7 dictionary screen, U8 incognito, plus today's final block).
+
+What landed today (final block):
+
+- **PRIVACY.md 1.4 → 1.5** — new "Personal word pairs" and "Incognito mode" sections in
+  both languages (stores, file names, pending-hash counters, salts, quarantine copies,
+  erase paths, the pause semantics); the personal-dictionary erase bullet now covers
+  both stores.
+- **Full gates green**: python 484/0, JVM **1 400/0** (146 suites), lint, asset pins,
+  check-no-internet both levels, `release_check.sh --quick` 8/8. Signed release APK
+  **1 834 276 B** ≤ 3 145 728, SHA-256 `6dfdbab2…c3f8973c`, cert `98ca6feb…42ad`.
+- **Device UAT — learning and deletion proven on hardware**: «сәләм дөнья» typed
+  cleanly twice → after `сәләм ` the strip shows **дөнья · сәләмә · һәм** (сәләм is not
+  a bigram head and дөнья is no fallback word — the cell can only be personal);
+  the dictionary screen lists the pair with its count; per-row delete removes it from
+  the screen AND from the strip. Evidence `build/device-uat-2026-09-23/`.
+- **BLOCKED**: the phone physically disconnected mid-cycle (USB, ~4 min of polling did
+  not bring it back). Not done on device: incognito deep sequence (C2–C5 — JVM-pinned),
+  regression core, cold start, crash buffer. All are listed in `docs/ROADMAP-P2.md`
+  with the exact state.
+
+**Device state left behind (restore when the phone is back):** default IME is OURS (the
+user had Gboard — `ime set com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME`);
+the toggles "Word suggestions", "Personal dictionary", "Incognito mode" are all ON
+(the user's state was all OFF — flip back or leave per preference); the pair
+сәләм → дөнья remains learned in the tt personal-bigram store (delete from the
+Saved words screen if unwanted).
+
+Open: the BLOCKED device items, the commit/release decision (2.2.0), roadmap Phase 3+.
+
+---
+
 # HANDOFF — ROADMAP Phase 1 complete (uncommitted; release decision pending)
 
 **State as of 2026-09-22.** All eight items of `docs/ROADMAP.md` Phase 1 are done in

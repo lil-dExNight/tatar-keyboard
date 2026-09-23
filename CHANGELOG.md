@@ -2,19 +2,22 @@
 
 ## [Unreleased]
 
-Sentence starts finally look and work like sentence starts — in both languages — and predictions no longer stop at a comma.
+Sentence starts finally look and work like sentence starts — in both languages — predictions no longer stop at a comma, and the keyboard now learns your word pairs on-device (with a proper management screen and an incognito pause).
 
 ### What changed
 
 - **Sentence-start suggestions are capitalized:** at the start of a field and after `.`/`!`/`?` the strip offers `Бу · Ул · Ә` instead of lowercase forms
 - **Sentence-start suggestions for Russian:** the strip offers the most frequent Russian sentence-initial words (`В · По · На`…) at a field start and after sentence-ending punctuation — the same Tatar feature, now for the Russian layout, with its own corpus-built table
 - **Predictions after a comma (and `;` `:`):** `татар, ` now offers the word's next-word predictions (`теле · дәүләт · телен`) instead of nothing — bigram successors, word forms and the frequency fallback apply exactly as after a space; sentence-ending punctuation keeps its own behavior
+- **The keyboard learns your word pairs:** type a pair cleanly twice («сәләм дөнья») and the second word becomes a prediction after the first (`сәләм ` → `дөнья`). Learned pairs rank after the built-in prediction tables and never displace them, and until a pair earns its place it exists nowhere in plaintext (salted-hash pending counters). Everything stays on-device in the same credential-protected, never-backed-up store as the saved words. Part of the personal dictionary (off by default)
+- **Manage saved words and pairs in one place:** the Saved words screen now lists every learned word AND every learned pair per language with usage counts — delete one, clear all words or all pairs of a language, or erase everything saved (both stores). An unreadable saved file gets a quarantine card with restore/delete, and a deleted word or pair can never be resurrected by a restore
+- **Incognito mode:** one switch pauses all personal learning (words and pairs, pending counters included); what is already saved keeps appearing in suggestions, and turning it back off resumes learning exactly where it stopped
 - **Cold start kept fast:** the baseline profile is regenerated for the new prediction paths (2 278 → 2 433 rules); measured cold start stays well under the 400 ms budget
 - **Smaller APK:** 55 unused legacy layout resources removed (English keeps QWERTY / QWERTZ / ABC); the release keystore no longer lives in the repository checkout
 
 ### What stayed the same
 
-- Tatar/Russian dictionaries, bigram tables, layouts, personal dictionary, emoji — unchanged
+- Tatar/Russian dictionaries, bigram tables, layouts, emoji — unchanged; already-saved personal words and pairs are preserved and keep working
 - One permission only — VIBRATE; no INTERNET, gate verified on the built APK
 - Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
 
