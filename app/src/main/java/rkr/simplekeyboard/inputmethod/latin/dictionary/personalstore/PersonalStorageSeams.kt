@@ -103,3 +103,18 @@ internal class PersonalQuarantineReport internal constructor(
 internal fun interface PersonalQuarantineReportSink {
     fun onInspected(report: PersonalQuarantineReport?)
 }
+
+/**
+ * P1 of Phase 2 (docs/ROADMAP-P2.md): whether a normalized word is one the keyboard knows for
+ * [subtypeId] — a word of the shipped dictionary of that language, or a word of its personal
+ * dictionary. The personal-bigram store consults this on its worker at GRADUATION time (the moment
+ * a pending pair has survived the learn threshold), never per keystroke: a pair whose context the
+ * keyboard does not know is dropped rather than written, so a context that is a typo, a number or
+ * another language's word can never seed a prediction.
+ *
+ * Carries the word and returns a boolean and nothing else — the word and the verdict stay inside
+ * the subsystem, exactly as the privacy policy of this package requires.
+ */
+fun interface PersonalBigramContextMembership {
+    fun isKnownContext(subtypeId: String, normalizedContext: String): Boolean
+}

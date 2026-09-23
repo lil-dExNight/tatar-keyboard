@@ -68,4 +68,32 @@ internal object AndroidPersonalDictionaryStorage {
             quarantineNotice = quarantineNotice,
         )
     }
+
+    /**
+     * The personal-bigram sibling of [create] (P1 of Phase 2, docs/ROADMAP-P2.md): the SAME
+     * directory, the same durable ops, the same unlock gate — only the store, its format and its
+     * files differ, plus the [contextMembership] gate the words store does not have.
+     */
+    fun createBigrams(
+        context: Context,
+        subtypeId: String,
+        executor: Executor,
+        contextMembership: PersonalBigramContextMembership,
+        quarantineNotice: PersonalQuarantineNotice? = null,
+    ): PersonalBigramStore {
+        val appContext = context.applicationContext
+        val userManager = appContext.getSystemService(UserManager::class.java)
+        return PersonalBigramStore(
+            subtypeId = subtypeId,
+            directoryProvider = { File(appContext.noBackupFilesDir, PERSONAL_DIRECTORY_NAME) },
+            fileOps = AndroidDurableFileOps,
+            outputOpener = { temp -> FileOutputStream(temp) },
+            spaceProbe = { directory -> directory.usableSpace },
+            clock = { System.currentTimeMillis() },
+            executor = executor,
+            contextMembership = contextMembership,
+            unlockGate = { userManager?.isUserUnlocked ?: false },
+            quarantineNotice = quarantineNotice,
+        )
+    }
 }

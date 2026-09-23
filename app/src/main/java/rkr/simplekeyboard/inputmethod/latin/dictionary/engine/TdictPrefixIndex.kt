@@ -970,6 +970,93 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
+     * P1 of Phase 2 (docs/ROADMAP-P2.md): exact whole-word membership of [normalizedWord],
+     * answered WITHOUT the block cache and without ANY shared scratch — every byte comes straight
+     * from the read-only mapping into local state. That is what makes this the one read that is
+     * safe to call from a thread that is not the lookup worker (the personal-bigram store's
+     * worker, at pair-graduation time): the mapping is read-only, and plain [ByteBuffer.get] reads
+     * need no happens-before of their own beyond the one the caller's `@Volatile` handoff already
+     * provides.
+     *
+     * The cost is a cold binary search — about log2([entryCount]) front-coded decodes, each
+     * walking at most one block — bounded and paid only at graduation, never per keystroke. The
+     * comparator is the same unsigned-byte order [lowerBound] relies on, so the answer agrees
+     * with the lookup path on every word.
+     */
+    fun containsWordCold(normalizedWord: String): Boolean {
+        val query = normalizedWord.toByteArray(Charsets.UTF_8)
+        if (query.isEmpty() || query.size > TdictFormat.MAX_WORD_BYTES) return false
+        val scratch = ByteArray(TdictFormat.MAX_WORD_BYTES)
+        var low = 0
+        var high = entryCount
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            val length = decodeWordCold(mid, scratch)
+            var order = 0
+            val shared = minOf(length, query.size)
+            for (offset in 0 until shared) {
+                val difference = (scratch[offset].toInt() and 0xff) - (query[offset].toInt() and 0xff)
+                if (difference != 0) {
+                    order = difference
+                    break
+                }
+            }
+            if (order == 0) order = length - query.size
+            when {
+                order < 0 -> low = mid + 1
+                order > 0 -> high = mid
+                else -> return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * The cold-read twin of [decodeWordInto]: same front-coded walk, but the varint decode is
+     * LOCAL — it never touches [varintValue]/[varintNext] — so concurrent lookup workers are not
+     * raced. Used only by [containsWordCold].
+     */
+    private fun decodeWordCold(index: Int, scratch: ByteArray): Int {
+        val block = index / TdictFormat.BLOCK_SIZE
+        val position = index % TdictFormat.BLOCK_SIZE
+        var cursor = blockOffset(block)
+        val firstLength = unsigned(bytes.get(cursor))
+        cursor++
+        val firstStart = cursor
+        if (position == 0) {
+            for (offset in 0 until firstLength) scratch[offset] = bytes.get(firstStart + offset)
+            return firstLength
+        }
+        cursor += firstLength
+        var prefixLength = 0
+        var suffixLength = 0
+        for (entry in 1..position) {
+            var value = 0
+            var shift = 0
+            while (true) {
+                val byte = unsigned(bytes.get(cursor))
+                cursor++
+                value = value or ((byte and 0x7f) shl shift)
+                if (byte and 0x80 == 0) break
+                shift += 7
+            }
+            prefixLength = value
+            suffixLength = unsigned(bytes.get(cursor))
+            cursor++
+            if (entry == position) {
+                for (offset in 0 until prefixLength) {
+                    scratch[offset] = bytes.get(firstStart + offset)
+                }
+                for (offset in 0 until suffixLength) {
+                    scratch[prefixLength + offset] = bytes.get(cursor + offset)
+                }
+            }
+            cursor += suffixLength
+        }
+        return prefixLength + suffixLength
+    }
+
+    /**
      * TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the [count] most frequent words of the
      * dictionary, in the frozen ranking order (frequency descending, then code-point ascending —
      * UTF-8 byte order is code-point order, so the same comparator as the lookup path applies).

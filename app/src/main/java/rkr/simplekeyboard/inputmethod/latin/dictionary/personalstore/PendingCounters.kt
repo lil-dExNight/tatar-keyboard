@@ -179,7 +179,25 @@ internal class PendingCounters private constructor(
             val digest = MessageDigest.getInstance("SHA-256")
             digest.update(salt)
             digest.update(normalizedWord.toByteArray(StandardCharsets.UTF_8))
-            val hash = digest.digest()
+            return truncated(digest.digest())
+        }
+
+        /**
+         * The key of the personal-bigram pair ([normalizedContext], [normalizedSuccessor]) under
+         * [salt] (P1 of Phase 2, docs/ROADMAP-P2.md). Both halves are NORMALIZED, and a zero byte
+         * separates them inside the digest so that («аб», «вг») and («абв», «г») — the same
+         * concatenation — are different keys, exactly as they are different pairs on disk.
+         */
+        fun keyOfPair(salt: ByteArray, normalizedContext: String, normalizedSuccessor: String): Long {
+            val digest = MessageDigest.getInstance("SHA-256")
+            digest.update(salt)
+            digest.update(normalizedContext.toByteArray(StandardCharsets.UTF_8))
+            digest.update(0)
+            digest.update(normalizedSuccessor.toByteArray(StandardCharsets.UTF_8))
+            return truncated(digest.digest())
+        }
+
+        private fun truncated(hash: ByteArray): Long {
             var key = 0L
             for (index in 0 until 8) {
                 key = (key shl 8) or (hash[index].toLong() and 0xff)

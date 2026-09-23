@@ -155,6 +155,49 @@ object TatarWordUtils {
     }
 
     /**
+     * P1 of Phase 2 (docs/ROADMAP-P2.md): the committed word immediately BEFORE the trailing
+     * completed word — for «A B » at the cursor (the separator that ended B just committed), the
+     * word A. This is the context half a personal bigram is learned against: typed or tapped, it
+     * is read from the live text at the completion moment, never from remembered state, so it can
+     * never go stale against what the editor actually holds.
+     *
+     * The scan is deliberately wider than [extractNextWordContext]'s: the separator runs it skips
+     * are ANY non-word characters (a space, a comma, "., "), because pair completion fires on
+     * every word boundary, not only on the U+0020-run the NEXT_WORD lookup reserves. The two
+     * skipped runs are: the separator that ended B, then B itself, then the separator between A
+     * and B; the word that follows is A. Both A and B are read with [extractTrailingWord]'s exact
+     * word-boundary rules, so "word" means the same thing here as everywhere else.
+     *
+     * Fail-closed at the cache edges exactly like [extractNextWordContext]: if any run reaches
+     * index 0 before its word is found there IS no pair ("B" alone, separators alone); if the
+     * word A itself reaches index 0 the answer is A only when the cache provably reached the
+     * start of the text — a possibly truncated context word is no context at all.
+     */
+    @JvmStatic
+    fun extractWordBeforeTrailingWord(
+        textBeforeCursor: CharSequence?,
+        cacheReachedTextStart: Boolean,
+    ): String {
+        if (textBeforeCursor == null) return ""
+        var end = textBeforeCursor.length
+        // The separator that completed the trailing word (one or more non-word characters).
+        while (end > 0 && !isWordCharacter(textBeforeCursor[end - 1])) end--
+        if (end == 0) return ""
+        // The trailing completed word itself (B).
+        val wordB = extractTrailingWord(textBeforeCursor.subSequence(0, end))
+        if (wordB.isEmpty()) return ""
+        end -= wordB.length
+        // The separator between the two words.
+        while (end > 0 && !isWordCharacter(textBeforeCursor[end - 1])) end--
+        if (end == 0) return ""
+        val wordA = extractTrailingWord(textBeforeCursor.subSequence(0, end))
+        if (wordA.isEmpty()) return ""
+        // A reaching index 0 is whole only when the cache provably reached the text start.
+        if (!cacheReachedTextStart && end - wordA.length == 0) return ""
+        return wordA
+    }
+
+    /**
      * The P4 sentence-start detection (docs/TT-SUGGESTIONS.md): true when the cursor sits where a
      * new sentence begins, i.e. the text before it either IS the start of the field or ends in a
      * run of sentence-ending punctuation ('.', '!', '?', '…') followed by one or more U+0020.

@@ -21,6 +21,7 @@ import android.os.Handler
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidBigramStorageFactory
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidDictionaryStorageFactory
@@ -111,6 +112,17 @@ interface EditorSurface {
      * surface written before E5d keeps compiling and NEXT_WORD simply never fires.
      */
     fun cachedNextWordContext(): String = ""
+
+    /**
+     * P1 of Phase 2 (docs/ROADMAP-P2.md): the committed word immediately BEFORE the trailing
+     * completed word — the context half of a just-typed pair «A B ». Read from the live cache at
+     * the moment the trailing word has just become empty, so the tail ends with the separator
+     * that completed B; the word before that separator is B and the word before B is A. "" when
+     * there is no such word, or when the cache cannot prove it (a window cut off before the text
+     * start). Defaults to "" so an editor surface written before P1 keeps compiling and personal
+     * bigrams simply never observe a pair.
+     */
+    fun cachedWordBeforeTrailingWord(): String = ""
 
     /**
      * P4 sentence-start detection over the live cache (docs/TT-SUGGESTIONS.md): true when the
@@ -422,6 +434,9 @@ class SuggestionsController internal constructor(
         @Volatile
         var dictionaryReady: Boolean = false
 
+        // Read by [engineContainsWord] from the personal store's worker thread (P1), hence
+        // `@Volatile`; the handle behind it answers cross-thread membership reads by construction.
+        @Volatile
         var engine: EngineHandle? = null
         var starting: Boolean = false
 
@@ -567,6 +582,19 @@ class SuggestionsController internal constructor(
     /** Where clean completions go (E4c). Default writes nothing at all. */
     private var completionSink: WordCompletionSink = WordCompletionSink.NONE
 
+    // --- P1 pair-run state (docs/ROADMAP-P2.md). The pair machine shares [runWord] — the text of
+    // the run is one — and carries only its own cleanliness bit, because its rules differ from the
+    // words machine's in exactly one place: after an ACCEPTED suggestion the next typed word may
+    // still be observed for pairs (the tapped word is a legitimate CONTEXT — "typed or tapped" —
+    // and the cursor sits provably right after it), while for the words machine that word stays
+    // sacrificed. Everything else is the same machine: a fresh word inherits the bit, growth keeps
+    // it, a non-growth transition or a dirty event clears it, and a completed boundary re-arms it.
+    /** False as soon as anything but plain growth happens in the current run. */
+    private var pairRunClean: Boolean = false
+
+    /** Where clean PAIR completions and pair-prediction acceptances go (P1). Default writes nothing. */
+    private var pairCompletionSink: PairCompletionSink = PairCompletionSink.NONE
+
     // --- D3 autocorrect state. Nothing here is persisted and nothing leaves this object except the
     // two editor calls that perform the replacement and its single undo.
     /** The autocorrect setting, read live. OFF until LatinIME wires the real one. */
@@ -630,6 +658,11 @@ class SuggestionsController internal constructor(
     /** Set once by LatinIME. Kept out of the constructor so the frozen test entry points stay put. */
     fun setCompletionSink(sink: WordCompletionSink) {
         completionSink = sink
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setPairCompletionSink(sink: PairCompletionSink) {
+        pairCompletionSink = sink
     }
 
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
@@ -785,8 +818,10 @@ class SuggestionsController internal constructor(
         // onFinishInput and never outlives the editor session.
         clearRevertState()
         // The one boundary where the personal store writes what it has accumulated: usage counters
-        // and pending hashes, once, and only if something changed.
+        // and pending hashes, once, and only if something changed. The pair store (P1) flushes at
+        // the same boundary and under the same rule.
         completionSink.onInputFinished()
+        pairCompletionSink.onInputFinished()
         sessionId++
         displayedPrefix = null
         displayedContextWord = null
@@ -1011,6 +1046,18 @@ class SuggestionsController internal constructor(
      */
     fun engineCatalog(subtypeId: String): PublishedDictionaryCatalog? =
         slots[subtypeId]?.preparation?.catalog()
+
+    /**
+     * P1 of Phase 2 (docs/ROADMAP-P2.md): the dictionary half of the personal-bigram context
+     * gate — exact whole-word membership of [normalizedWord] in the dictionary of [subtypeId]'s
+     * CURRENT engine, or false when that language has no live engine. Safe to call from the
+     * personal store's worker thread: [slots] is concurrent, [LanguageSlot.engine] is `@Volatile`,
+     * and the handle's answer is a cache-free read of the read-only mapping. A cold or missing
+     * engine answers false — the pair simply does not graduate, the same fail-closed posture the
+     * E4c empty-result filter has when the engine never answered.
+     */
+    fun engineContainsWord(subtypeId: String, normalizedWord: String): Boolean =
+        slots[subtypeId]?.engine?.containsWord(normalizedWord) == true
 
     /**
      * Test seam: drives the exact dictionary-ready path the production prepare callback drives
@@ -1923,8 +1970,12 @@ class SuggestionsController internal constructor(
         if (word == previous) return
         if (word.isEmpty()) {
             reportCompletionIfClean(previous)
+            reportPairCompletionIfClean(previous)
             runWord = ""
             runClean = true
+            // A completed boundary is a position the pair machine trusts: whatever state the run
+            // that just ended was in, the NEXT word grows from nothing under our eyes.
+            pairRunClean = true
             runEmptyResultPrefixLength = NO_EMPTY_RESULT
             return
         }
@@ -1941,7 +1992,29 @@ class SuggestionsController internal constructor(
         // Anything else — backspace, a swipe-delete, a replacement — is not growth.
         runWord = word
         runClean = false
+        pairRunClean = false
         runEmptyResultPrefixLength = NO_EMPTY_RESULT
+    }
+
+    /**
+     * Reports the pair (context word, [word]) as cleanly completed (P1 of Phase 2,
+     * docs/ROADMAP-P2.md). The run rules are the words machine's own — [pairRunClean] mirrors
+     * [runClean] transition for transition, plus the one recovery a tap-commit earns (see [onTap])
+     * — but NOT the words machine's "unknown to the dictionary" filter: a pair whose second half
+     * is an ordinary dictionary word is the common case this feature exists for, so the empty-
+     * result evidence is not consulted here at all.
+     *
+     * The context is read from the LIVE editor cache at this exact moment — the text ends with
+     * the separator that just completed [word], so the word before it is [word] itself and the
+     * word before that is the context, typed or tapped, exactly as the contract asks. No context,
+     * no report: a word that opens a field or follows a sentence boundary has no pair to learn.
+     */
+    private fun reportPairCompletionIfClean(word: String) {
+        if (!pairRunClean || word.isEmpty()) return
+        if (pairCompletionSink === PairCompletionSink.NONE) return
+        val context = editor.cachedWordBeforeTrailingWord()
+        if (context.isEmpty()) return
+        pairCompletionSink.onCleanPairCompletion(context, word)
     }
 
     /**
@@ -1963,6 +2036,7 @@ class SuggestionsController internal constructor(
     private fun markRunDirty() {
         runWord = ""
         runClean = false
+        pairRunClean = false
         runEmptyResultPrefixLength = NO_EMPTY_RESULT
     }
 
@@ -2229,6 +2303,12 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
+                // P1: the tapped word itself never counts (markRunDirty above already saw to
+                // that), but the boundary it just established — the cursor sits provably right
+                // after the committed word and its auto-space — is one the pair machine trusts:
+                // the NEXT word the user types out cleanly may form a pair with it ("typed or
+                // tapped" context, docs/ROADMAP-P2.md).
+                pairRunClean = true
                 // A tap-commit never reaches onTextChanged() (no InputTransaction wraps it) and the
                 // settle backstop self-cuts on requestSessionId == sessionId, so unless the
                 // follow-up lookup is issued right here the band stays empty until the next
@@ -2251,6 +2331,17 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
+                // P1: an accepted NEXT_WORD cell backed by a learned pair bumps that pair's usage
+                // counter (the other half of the pinned usage-then-frequency ranking). The sink
+                // decides whether the cell IS a learned pair — a static successor, a word form or
+                // a fallback word changes nothing — and a sentence-start band (empty context) is
+                // never a pair at all.
+                if (context.isNotEmpty()) {
+                    pairCompletionSink.onAcceptedPrediction(context, suggestion)
+                }
+                // Same pair-machine recovery as the PREFIX branch above: the committed prediction
+                // is a trusted context for whatever the user types next.
+                pairRunClean = true
                 // Same reasoning as the PREFIX branch above: the predictions for the word just
                 // committed are requested from here, or they never are.
                 requestCurrentPrefix()

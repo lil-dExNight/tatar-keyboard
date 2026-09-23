@@ -20,8 +20,8 @@ import android.content.Context
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 
 /**
- * The five factors that decide whether ANYTHING may be learned. One predicate, deliberately, rather
- * than five checks spread over the read and the write paths — that is how the two drift apart.
+ * The six factors that decide whether ANYTHING may be learned. One predicate, deliberately, rather
+ * than six checks spread over the read and the write paths — that is how the two drift apart.
  *
  * Every factor is supplied by `LatinIME`, which is the only place that sees all of them:
  *  1. Tatar suggestions are eligible for this field and subtype (which already implies the field
@@ -30,7 +30,12 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSi
  *  3. the device has been unlocked at least once since boot;
  *  4. the field is not a postal address;
  *  5. — folded into (1): a field with no editor info at all is never eligible, so the
- *     `editorInfo == null` case is closed by the same factor rather than by a separate check.
+ *     `editorInfo == null` case is closed by the same factor rather than by a separate check;
+ *  6. incognito mode is OFF (U8, docs/ROADMAP-P2.md): the pause gates WRITES only — this sink
+ *     included, pending counters included — while the read side keeps surfacing what is saved.
+ *
+ * The conjunction itself is [PersonalLearningGates.mayLearn], pure and JVM-tested; this interface
+ * is the shape `LatinIME` hands the sinks.
  */
 fun interface PersonalLearningPredicate {
     fun mayLearn(): Boolean

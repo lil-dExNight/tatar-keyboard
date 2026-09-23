@@ -1,5 +1,6 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramTableLease
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
@@ -130,6 +131,25 @@ class MappedDictionaryEngine private constructor(
         engine.finishInput()
     }
 
+    /**
+     * P1 of Phase 2 (docs/ROADMAP-P2.md): exact whole-word membership of [normalizedWord] in this
+     * engine's dictionary, for the personal-bigram context gate. Safe to call from ANY thread —
+     * the answer comes from a cache-free read of the read-only mapping that never touches the
+     * lookup path's scratch (see [TdictPrefixIndex.containsWordCold]) — and deliberately answered
+     * without checking engine liveness: a released mapping stays valid until the garbage collector
+     * reclaims it (closing the channel does not unmap on the HotSpot VM), so the worst answer a
+     * racing [destroy] can produce is membership in the PREVIOUS dictionary generation — a
+     * fail-open-in-the-small answer a learn threshold and a personal dictionary both survive.
+     */
+    fun containsWord(normalizedWord: String): Boolean {
+        val index = resources.index ?: return false
+        return try {
+            index.containsWordCold(normalizedWord)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     fun updateKeyNeighbors(table: KeyNeighborTable?) = engine.updateKeyNeighbors(table)
 
     fun isCurrent(token: LookupToken): Boolean = engine.isCurrent(token)
@@ -155,8 +175,17 @@ class MappedDictionaryEngine private constructor(
         private var lease: DictionaryFileLease?,
         private val catalog: PublishedDictionaryCatalog,
         var mappedBuffer: ByteBuffer?,
-        var index: TdictPrefixIndex?,
+        index: TdictPrefixIndex?,
     ) {
+        /**
+         * Read by [MappedDictionaryEngine.containsWord] from ANY thread (the personal-bigram
+         * store's worker), hence `@Volatile`; a stale read after [release] is benign there — the
+         * released mapping stays valid until GC, so the answer is membership in the previous
+         * dictionary generation at worst.
+         */
+        @Volatile
+        var index: TdictPrefixIndex? = index
+
         private val lock = Any()
         private var released = false
         private var bigramLease: BigramTableLease? = null
@@ -249,6 +278,9 @@ class MappedDictionaryEngine private constructor(
          * the TT-NEXTWORD-FILL wiring (docs/TT-NEXTWORD-FILL.md): built per engine from that
          * engine's own dictionary, so both shipped languages fill their still-empty NEXT_WORD cells
          * with their own top-frequency words; null keeps the pre-fill behavior byte-identical.
+         * [personalBigrams] is the P1 wiring (docs/ROADMAP-P2.md): the user's learned pairs of the
+         * NEXT_WORD slot, ranked after the static successors and before the forms;
+         * [PersonalBigramSource.EMPTY] keeps the pre-P1 behavior byte-identical.
          */
         fun start(
             catalog: PublishedDictionaryCatalog,
@@ -261,6 +293,7 @@ class MappedDictionaryEngine private constructor(
             afterWordFormsFactory: AfterWordFormsFactory? = null,
             fuzzyEditPolicy: FuzzyEditPolicy? = null,
             fallbackWordsFactory: FallbackWordsFactory? = null,
+            personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
         ): MappedDictionaryEngine? {
             val lease = try {
                 catalog.acquireLatestForActivation()
@@ -270,6 +303,7 @@ class MappedDictionaryEngine private constructor(
             return startOwnedLease(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
                 suffixTable, afterWordFormsFactory, fuzzyEditPolicy, fallbackWordsFactory,
+                personalBigrams,
             )
         }
 
@@ -284,6 +318,7 @@ class MappedDictionaryEngine private constructor(
             afterWordFormsFactory: AfterWordFormsFactory?,
             fuzzyEditPolicy: FuzzyEditPolicy?,
             fallbackWordsFactory: FallbackWordsFactory?,
+            personalBigrams: PersonalBigramSource,
         ): MappedDictionaryEngine? {
             val dictionary = lease.dictionary
             val identity = DictionaryIdentity(
@@ -321,6 +356,9 @@ class MappedDictionaryEngine private constructor(
                     // linear scan of the freshly opened dictionary on this background startup
                     // thread, at most once per engine, before the engine's lookup worker exists.
                     fallbackWordsFactory?.createFallbackWords(index),
+                    // P1: the learned pairs ride the same per-language seam as the personal source
+                    // above — resolved by the caller from the subtype, never from a constant.
+                    personalBigrams,
                 )
                 val engine = LatestOnlyPrefixEngine(
                     identity,

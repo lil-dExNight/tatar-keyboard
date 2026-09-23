@@ -160,6 +160,13 @@ object PersonalDictionaries {
             Thread(runnable, "personal-dictionary").apply { isDaemon = true }
         }.also { sharedExecutor = it }
 
+    /**
+     * The one worker every personal store in this process is serialized on — words and bigrams
+     * alike (P1 of Phase 2, docs/ROADMAP-P2.md). Sharing it is what lets the two stores sweep the
+     * same `personal/` directory without ever racing each other's in-flight temp files.
+     */
+    internal fun sharedStoreExecutor(): ExecutorService = synchronized(lock) { executorLocked() }
+
     /** Test hook: drops every cached store so an isolated test starts from nothing. */
     internal fun resetForTest() {
         synchronized(lock) {

@@ -24,6 +24,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupToken
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.MappedDictionaryEngine
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ResultHandoff
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedBigramTableCatalog
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog
@@ -93,6 +94,16 @@ interface EngineHandle {
      */
     fun autocorrectAdvice(): AutocorrectAdvice? = null
 
+    /**
+     * P1 of Phase 2 (docs/ROADMAP-P2.md): exact whole-word membership of [normalizedWord] in this
+     * engine's dictionary — the dictionary half of the personal-bigram context gate. Safe to call
+     * from any thread (the production answer is a cache-free read of the read-only mapping, never
+     * the lookup path's scratch). Default false so a fake handle written before P1 keeps compiling
+     * and simply proves no context — a dictionary half that says nothing makes the personal half
+     * of the gate decide alone, the fail-closed direction.
+     */
+    fun containsWord(normalizedWord: String): Boolean = false
+
     /** Bounded teardown; returns true if the engine fully released within [timeoutMs]. */
     fun destroy(timeoutMs: Long): Boolean
 }
@@ -126,6 +137,8 @@ class MappedEngineHandle private constructor(
 
     override fun autocorrectAdvice(): AutocorrectAdvice? = engine.autocorrectAdvice
 
+    override fun containsWord(normalizedWord: String): Boolean = engine.containsWord(normalizedWord)
+
     override fun destroy(timeoutMs: Long): Boolean =
         engine.destroy(timeoutMs, TimeUnit.MILLISECONDS)
 
@@ -155,6 +168,10 @@ class MappedEngineHandle private constructor(
          * [fallbackWordsFactory] is the TT-NEXTWORD-FILL wiring (docs/TT-NEXTWORD-FILL.md): both
          * shipped languages get the factory — it builds the top-frequency pool from the engine's
          * own dictionary at startup, so each language's NEXT_WORD fallback is its own.
+         *
+         * [personalBigrams] is the P1 wiring (docs/ROADMAP-P2.md): the user's learned pairs of the
+         * NEXT_WORD slot, resolved per subtype and gated live on the personal-dictionary setting;
+         * [PersonalBigramSource.EMPTY] keeps the pre-P1 behavior byte-identical.
          */
         @JvmStatic
         @JvmOverloads
@@ -165,6 +182,7 @@ class MappedEngineHandle private constructor(
             suffixRules: TatarSuffixRules? = null,
             fuzzyEditPolicy: FuzzyEditPolicy? = null,
             fallbackWordsFactory: FallbackWordsFactory? = null,
+            personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
         ): MappedEngineHandle? {
             val handoff = ResultHandoff { result ->
                 callback.onResult(result.token, result.suggestions, result.kind)
@@ -176,6 +194,7 @@ class MappedEngineHandle private constructor(
                 afterWordFormsFactory = suffixRules,
                 fuzzyEditPolicy = fuzzyEditPolicy,
                 fallbackWordsFactory = fallbackWordsFactory,
+                personalBigrams = personalBigrams,
             ) ?: return null
             return MappedEngineHandle(engine)
         }

@@ -16,6 +16,7 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidate
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 
@@ -83,6 +84,10 @@ internal class CompositePrefixComputer(
     // TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the global top-frequency fill of the NEXT_WORD
     // cells still empty after bigrams and forms. Null keeps the pre-fill behavior byte-identical.
     private val fallbackWords: FallbackWords? = null,
+    // P1 of Phase 2 (docs/ROADMAP-P2.md): the user's own learned pairs of the NEXT_WORD slot.
+    // A seam of its own — NOT the prefix path's PersonalCandidateSource, which predict still never
+    // touches; EMPTY keeps the pre-P1 behavior byte-identical.
+    private val personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
 ) : PrefixComputer, KeyNeighborSink, NextWordComputer {
 
     /**
@@ -117,26 +122,35 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * NEXT_WORD read side. There is no personal-dictionary or E3 fuzzy involvement here — E5 has
-     * no personal bigrams (PROPOSALS.md, "E5c. Один вычислитель, один токен") — so the word list
-     * is the bigram source's, plus the P3 after-word forms appended into the cells the bigram
-     * successors leave free, plus the TT-NEXTWORD-FILL global top-frequency words in the cells
-     * still empty after that (docs/TT-NEXTWORD-FILL.md). The priority chain is bigram successors
-     * > word forms > fallback: a later source never displaces, never duplicates, and never pushes
-     * the list past the three strip cells.
+     * NEXT_WORD read side. The PREFIX-path personal source ([personal]) is never consulted here —
+     * E5's "one computer, one token" rule — but since P1 of Phase 2 (docs/ROADMAP-P2.md) the
+     * user's own learned pairs join through their OWN seam ([personalBigrams]). The pinned chain
+     * is: static bigram successors > personal pairs > word forms > fallback. A later source never
+     * displaces, never duplicates, and never pushes the list past the three strip cells:
+     *
+     *  - the static successors come first and are never displaced, however the personal pair
+     *    ranks;
+     *  - personal pairs fill the cells the successors leave free, at most
+     *    [MAX_PERSONAL_BIGRAM_CELLS] of them (the leave-room pin: with all three cells free the
+     *    personal half takes two and the forms/fallback half keeps its chance), in their own order
+     *    (usage desc, then frequency desc), a pair whose normalized form a static successor already
+     *    shows is skipped — the duplicate is shown once and the STATIC spelling wins;
+     *  - word forms and the fallback then fill what is still free, already excluding everything
+     *    shown, exactly as before.
      *
      * Before a bigram source is attached (or after a corrupted/missing table failed to open) this
-     * returns an empty list WITHOUT offering forms OR the fallback — the exact "0 predictions, no
-     * effect on prefix suggestions or ordinary input" shape the contract requires. That is not
-     * merely conservative: the first-NEXT_WORD race repair (docs/NEXTWORD-RACE.md,
-     * [SuggestionsController] onBigramAttached) re-issues the request once the attach lands, and
-     * it only fires while the active language has put no word on the band. A forms-or-fallback
-     * band painted from "not attached yet" would suppress that re-request and the bigram
-     * successors — which outrank both — would never appear until the next keystroke.
+     * returns an empty list WITHOUT offering personal pairs, forms OR the fallback — the exact
+     * "0 predictions, no effect on prefix suggestions or ordinary input" shape the contract
+     * requires, and the NEXTWORD-RACE rule personal pairs live by too: the re-request on attach
+     * fires only while the active language has put no word on the band, and a personal-only band
+     * painted from "not attached yet" would suppress it.
      */
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
         val source = bigramSource ?: return emptyList()
         var result = source.predict(normalizedContextWordUtf8)
+        if (result.size < CELL_COUNT) {
+            result = withPersonalPairs(result, normalizedContextWordUtf8)
+        }
         if (result.size < CELL_COUNT) {
             val forms = afterWordForms
             if (forms != null) {
@@ -165,6 +179,39 @@ internal class CompositePrefixComputer(
             }
         }
         return result
+    }
+
+    /**
+     * The P1 step of the NEXT_WORD chain: the personal pairs of the context word in the cells the
+     * static successors left free. Returns [result] ITSELF — unchanged, not even copied — when the
+     * feature is off, the source throws, or no pair qualifies, the same byte-for-byte posture the
+     * prefix merge has for an empty personal source.
+     */
+    private fun withPersonalPairs(
+        result: List<String>,
+        normalizedContextWordUtf8: ImmutableUtf8Prefix,
+    ): List<String> {
+        if (personalBigrams.isEmpty()) return result
+        val room = minOf(MAX_PERSONAL_BIGRAM_CELLS, CELL_COUNT - result.size)
+        if (room <= 0) return result
+        val matches = try {
+            personalBigrams.successorsFor(normalizedContextWordUtf8.decodeUtf8())
+        } catch (_: RuntimeException) {
+            // Fail closed toward the static list: a broken personal source must never take the
+            // bigram successors down with it.
+            return result
+        }
+        if (matches.isEmpty()) return result
+        val extras = ArrayList<String>(room)
+        for (match in matches) {
+            if (extras.size >= room) break
+            // Shown once, and the static spelling wins: the duplicate rule is defined on the
+            // normalized form, exactly like the prefix merge of E4b.
+            if (result.contains(match.normalizedForm)) continue
+            if (extras.contains(match.normalizedForm) || extras.contains(match.rawForm)) continue
+            extras.add(match.rawForm)
+        }
+        return if (extras.isEmpty()) result else result + extras
     }
 
     override fun updateKeyNeighbors(table: KeyNeighborTable?) {
@@ -288,5 +335,14 @@ internal class CompositePrefixComputer(
          * three. Pinned against both by `CompositePrefixComputerTest`.
          */
         internal const val CELL_COUNT = 3
+
+        /**
+         * The most cells personal pairs may take in one NEXT_WORD band (P1 of Phase 2,
+         * docs/ROADMAP-P2.md — the "leave room" pin): two. With all three cells free the personal
+         * half still leaves one for the word forms and the fallback, so a user who learns a couple
+         * of pairs never loses the engine's other predictions to them. Pinned by
+         * `CompositePrefixComputerTest`.
+         */
+        internal const val MAX_PERSONAL_BIGRAM_CELLS = 2
     }
 }

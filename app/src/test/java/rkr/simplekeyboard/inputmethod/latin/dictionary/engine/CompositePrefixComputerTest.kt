@@ -20,6 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidate
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState
@@ -211,8 +212,10 @@ class CompositePrefixComputerTest {
 
     @Test
     fun predictNeverTouchesThePrimaryOrPersonalSources() {
-        // E5 has no personal bigrams and no fuzzy pass for NEXT_WORD (PROPOSALS.md, "E5c. Один
-        // вычислитель, один токен") — predict must be a pure pass-through to the bigram source.
+        // The PREFIX-path sources stay out of NEXT_WORD even after P1 (docs/ROADMAP-P2.md):
+        // personal bigrams arrive through their OWN seam ([PersonalBigramSource], EMPTY here), so
+        // predict() still never reaches the primary or the prefix personal source — the property
+        // this test pins by call count.
         var primaryCalls = 0
         val primary = object : ClassifiedPrefixComputer {
             override val lastExactCount: Int = 0
@@ -303,11 +306,11 @@ class CompositePrefixComputerTest {
 
     @Test
     fun predictionsIgnorePersonalDictionaryEntirely() {
-        // E5d, "Контракт текста" amendment, пункт 3: "Личных биграмм в E5 нет ... таблица биграмм
-        // не знает о личном словаре". The call-count proof above (E5c) shows predict() never even
-        // reaches the personal source; this is the same property demonstrated by RESULT instead —
-        // a personal candidate that would plausibly interfere (the same word the bigram source
-        // returns, or a word for the same head) never appears in or reorders the prediction list.
+        // The PREFIX-path personal source is still never consulted by predict() — P1 of Phase 2
+        // (docs/ROADMAP-P2.md) brings personal bigrams through their OWN seam, and this computer
+        // was built without it (EMPTY). The call-count proof above (E5c) shows predict() never
+        // reaches the prefix personal source; this is the same property demonstrated by RESULT —
+        // a personal word that would plausibly interfere never appears in or reorders the list.
         val personalWithAMatchingWord = object : PersonalCandidateSource {
             override fun candidatesFor(normalizedPrefix: String): List<PersonalCandidate> =
                 listOf(PersonalCandidate("йорт", "йорт"))
@@ -322,6 +325,162 @@ class CompositePrefixComputerTest {
         // Exactly the bigram source's own list, in its own order — the personal word never joins,
         // precedes, or reorders it.
         assertEquals(listOf("бакча", "капка"), result)
+    }
+
+    // --- P1: personal bigrams of the NEXT_WORD slot (docs/ROADMAP-P2.md) -------------------------
+
+    private fun fakeBigrams(vararg pairs: Pair<String, String>): PersonalBigramSource =
+        object : PersonalBigramSource {
+            override fun successorsFor(normalizedContextWord: String): List<PersonalCandidate> =
+                pairs.map { PersonalCandidate(it.first, it.second) }
+
+            override fun isEmpty(): Boolean = false
+        }
+
+    @Test
+    fun personalPairsFillTheCellsTheStaticSuccessorsLeaveFree() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams("бакча" to "бакча", "капка" to "капка"),
+        )
+        computer.attachBigramSource(NextWordComputer { listOf("йорт") })
+
+        assertEquals(listOf("йорт", "бакча", "капка"), computer.predict(prefix("өй")))
+    }
+
+    @Test
+    fun staticSuccessorsAreNeverDisplacedByPersonalPairs() {
+        val bigrams = listOf("йорт", "бакча", "капка")
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams("да" to "да"),
+        )
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        // Three successors take all three cells: the personal source is never even consulted
+        // beyond the emptiness check, and the list is the bigram list itself.
+        assertSame(bigrams, computer.predict(prefix("өй")))
+    }
+
+    @Test
+    fun atMostTwoCellsArePersonalEvenWithAllCellsFree() {
+        // The leave-room pin: with no static successor at all the personal half takes TWO cells
+        // and the forms/fallback half keeps its chance at the third.
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")),
+            personalBigrams = fakeBigrams(
+                "бакча" to "бакча", "капка" to "капка", "йорт" to "йорт",
+            ),
+        )
+        computer.attachBigramSource(NextWordComputer { emptyList() })
+
+        assertEquals(2, CompositePrefixComputer.MAX_PERSONAL_BIGRAM_CELLS)
+        assertEquals(listOf("бакча", "капка", "сүзләр"), computer.predict(prefix("өй")))
+    }
+
+    @Test
+    fun aPairDuplicatingAStaticSuccessorIsShownOnceAndTheStaticSpellingWins() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams("Бакча" to "бакча", "капка" to "капка"),
+        )
+        computer.attachBigramSource(NextWordComputer { listOf("бакча", "йорт") })
+
+        val result = computer.predict(prefix("өй"))
+        assertEquals(listOf("бакча", "йорт", "капка"), result)
+        assertEquals("the duplicate is shown once, spelled as the table spells it",
+            1, result.count { it.equals("бакча", ignoreCase = true) })
+    }
+
+    @Test
+    fun thePairCasingIsShownForAPersonalOnlyCell() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams("Гүзәл" to "гүзәл"),
+        )
+        computer.attachBigramSource(NextWordComputer { listOf("минем") })
+
+        assertEquals(listOf("минем", "Гүзәл"), computer.predict(prefix("исем")))
+    }
+
+    @Test
+    fun personalPairsAreNotOfferedBeforeABigramSourceIsAttached() {
+        // The NEXTWORD-RACE rule holds for personal pairs exactly as for forms and the fallback:
+        // a personal-only band painted from "not attached yet" would suppress the re-request the
+        // attach repair fires, and the static successors — which outrank pairs — would never
+        // appear until the next keystroke.
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
+            fakeBigrams("бакча" to "бакча"),
+        )
+
+        assertTrue(computer.predict(prefix("өй")).isEmpty())
+    }
+
+    @Test
+    fun aBrokenPersonalBigramSourceLeavesTheStaticAnswerUntouched() {
+        val bigrams = listOf("йорт")
+        val broken = object : PersonalBigramSource {
+            override fun successorsFor(normalizedContextWord: String): List<PersonalCandidate> =
+                throw IllegalStateException("broken")
+
+            override fun isEmpty(): Boolean = false
+        }
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, personalBigrams = broken,
+        )
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        assertSame(bigrams, computer.predict(prefix("өй")))
+    }
+
+    @Test
+    fun formsAndFallbackAlreadyExcludeThePersonalPairsShown() {
+        var formsSaw: List<String>? = null
+        var fallbackSaw: List<String>? = null
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            AfterWordForms { _, alreadyShown, _ ->
+                formsSaw = alreadyShown
+                emptyList() // no forms: the fallback must be reached with the pairs excluded too
+            },
+            FallbackWords { _, alreadyShown, _ ->
+                fallbackSaw = alreadyShown
+                listOf("һәм")
+            },
+            fakeBigrams("бакча" to "бакча", "капка" to "капка"),
+        )
+        computer.attachBigramSource(NextWordComputer { emptyList() })
+
+        computer.predict(prefix("өй"))
+        assertEquals("forms are asked to exclude everything already shown, pairs included",
+            listOf("бакча", "капка"), formsSaw)
+        assertEquals(listOf("бакча", "капка"), fallbackSaw)
+    }
+
+    @Test
+    fun withThePersonalBigramSourceEmptyTheAnswerIsByteForByteThePreP1One() {
+        val bigrams = listOf("йорт", "бакча")
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+        )
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        assertSame(bigrams, computer.predict(prefix("өй")))
+    }
+
+    @Test
+    fun anEmptyPersonalBigramMatchSetChangesNothing() {
+        val bigrams = listOf("йорт")
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams(),
+        )
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        assertSame(bigrams, computer.predict(prefix("өй")))
     }
 
     // --- TT-NEXTWORD-FILL: the global top-frequency fallback of the NEXT_WORD slot -------------
