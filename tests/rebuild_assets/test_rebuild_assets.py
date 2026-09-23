@@ -350,7 +350,8 @@ class PackArgvTest(unittest.TestCase):
             Path("/root"), Path("/corpora"), Path("/work"), rebuild_assets.BIGRAMS[0])
         text = " ".join(argv)
         self.assertIn("--heads 10132", text)
-        self.assertIn("--successes-per-head 4", text)
+        # K: 4 -> 3 (2026-09-23, ROADMAP-P4 T7, docs/ROADMAP-P4.md).
+        self.assertIn("--successes-per-head 3", text)
         self.assertIn("--extra-heads /root/scripts/bigram_extra_heads_tat.txt", text)
         self.assertIn("--language tat", text)
         self.assertIn("/corpora/tat_mixed_2015_1M-sentences.txt", text)

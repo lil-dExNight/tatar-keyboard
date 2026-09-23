@@ -161,7 +161,13 @@ BIGRAMS = (
         asset="app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
         dictionary="tat",
         heads=10_132,
-        successes_per_head=4,
+        # K: 4 -> 3 (2026-09-23, ROADMAP-P4 T7, docs/ROADMAP-P4.md): измеренная доля
+        # ранга-4 в покрытых eval-парах — 2,08 % (латентно +1,56 п.п. hit-rate), но
+        # 4-ячейковая полоса — отдельный контрактный сабфаз; K=3 даёт -19 209 Б
+        # (81 476 -> 62 267 при том же наборе голов, метрики тождественны).
+        successes_per_head=3,
+        # С 2026-09-23 (ROADMAP-P4 P5a, опция (b)) список расширен правилом EXPAND-1
+        # (+3 102 разговорно-устоявшихся слова ниже отсечки; правило — в шапке файла).
         extra_heads="scripts/bigram_extra_heads_tat.txt",
         # С 2026-08-31 (разговорный корпус, часть B, docs/CORPUS-CONVERSATIONAL-TT.md)
         # обучение — два Leipzig + разговорный вход: дедуплицированные Tatoeba +

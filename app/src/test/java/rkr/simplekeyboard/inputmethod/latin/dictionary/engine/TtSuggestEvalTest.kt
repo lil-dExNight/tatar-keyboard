@@ -184,9 +184,9 @@ class TtSuggestEvalTest {
         assertEquals(PIN_COVERED, covered)
         assertEquals(PIN_TOP3_HITS, hits)
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
-        assertEquals("75.3623", format(coveredPct))
-        assertEquals("9.5468", format(hitPct))
-        assertEquals("12.6679", format(hitCoveredPct))
+        assertEquals("84.1730", format(coveredPct))
+        assertEquals("10.8351", format(hitPct))
+        assertEquals("12.8724", format(hitCoveredPct))
     }
 
     /**
@@ -282,12 +282,15 @@ class TtSuggestEvalTest {
 
     companion object {
         // Pins measured on 2026-09-19 against the committed assets and the committed eval
-        // set; re-pin consciously when either changes (see class KDoc).
+        // set; re-pin consciously when either changes (see class KDoc). Next-word counters
+        // recalibrated 2026-09-23 (ROADMAP-P4 P5a + T7): the table gained 2 950 heads
+        // (10 204 -> 13 154) and dropped its 4th stored successor — covered 3 276 -> 3 659,
+        // hits 415 -> 471, hit 9.5468 % -> 10.8351 %, covered-conditional 12.6679 % -> 12.8724 %.
         private const val PIN_EVAL_LINES = 1_000
         private const val PIN_UNIQUE_WORDS = 2_670
         private const val PIN_PAIRS = 4_347
-        private const val PIN_COVERED = 3_276
-        private const val PIN_TOP3_HITS = 415
+        private const val PIN_COVERED = 3_659
+        private const val PIN_TOP3_HITS = 471
         private const val PIN_CP1_WORDS = 2_670
         private const val PIN_CP2_WORDS = 2_668
         private const val PIN_CP3_WORDS = 2_626
@@ -308,8 +311,9 @@ class TtSuggestEvalTest {
         private const val PIN_SENTSTART_TOP3_HITS = 123
         // TT-NEXTWORD-FILL (2026-09-20): unique eval words whose committed-word strip is empty
         // WITHOUT the fallback (the pre-fill production shape). With the fallback the count is
-        // pinned at 0 by the assertion in the test.
-        private const val PIN_NEXTWORD_EMPTY_BEFORE = 889
+        // pinned at 0 by the assertion in the test. Recalibrated 2026-09-23 (ROADMAP-P4 P5a):
+        // the new heads give 205 of the 889 formerly-empty words successors -> 684.
+        private const val PIN_NEXTWORD_EMPTY_BEFORE = 684
 
         private lateinit var evalLines: List<String>
         private lateinit var uniqueWords: List<String>

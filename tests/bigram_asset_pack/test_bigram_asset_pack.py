@@ -556,11 +556,16 @@ class ShippedExtraHeadListTest(unittest.TestCase):
             self.DICTIONARY, pack.coverage.language_for("tat")
         )
         words = pack.read_extra_heads(self.LISTING, vocabulary)
-        # 75 = 13 первого отбора (IMPERATIVE-HEADS, ранги [10 000, 15 000)) + 62 слова
-        # расширенного правила части B (CORPUS-CONVERSATIONAL-TT, ранги [15 000, 40 000),
-        # пары — в смешанном Leipzig+разговорном обучении).
-        self.assertEqual(75, len(words))
+        # 3 177 = 75 (13 первого отбора IMPERATIVE-HEADS, ранги [10 000, 15 000) + 62 слова
+        # расширенного правила части B CORPUS-CONVERSATIONAL-TT, ранги [15 000, 40 000)) +
+        # 3 102 слова правила EXPAND-1 (2026-09-23, ROADMAP-P4 P5a: частотный ранг >= 10 132,
+        # >= 10 вхождений в разговорном обучении tt_conv_train90 — правило воспроизводится
+        # scripts/bigram_extra_heads_conv.py).
+        self.assertEqual(3_177, len(words))
         for expected in ("кил", "кит", "шалтырат", "сөйлә", "утыр", "җибәр", "эшлә", "укы"):
+            self.assertIn(expected, words)
+        # Образцы правила EXPAND-1 (первые строки его секции файла).
+        for expected in ("абага", "абау", "абзар"):
             self.assertIn(expected, words)
 
     def test_no_named_word_is_reachable_by_the_cutoff_the_asset_was_packed_with(self) -> None:

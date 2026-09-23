@@ -56,10 +56,13 @@ class TatBigrValidatorTest {
         // set is identical (generated forms enter far below the H = 10 132 cutoff) and the same
         // three -гәнчә converbs are dropped pairless; ten pairs whose successor was outside the
         // old dictionary now count (бервакытта → бернәрсәдә, …), so the pair total moves
-        // 40 734 -> 40 735.
-        assertEquals(10_204, validated.headCount)
-        assertEquals(134_938, validated.rawSize)
-        assertEquals(40_735, validated.pairCount)
+        // 40 734 -> 40 735. Repacked 2026-09-23 (ROADMAP-P4 batch A, docs/ROADMAP-P4.md): T7
+        // drops the 4th stored successor per head and P5a adds 2 950 EXPAND-1 heads (with 152
+        // pairless conversational candidates dropped alongside the same three converbs —
+        // known_asset_drift.json 3/0 -> 155/0).
+        assertEquals(13_154, validated.headCount)
+        assertEquals(135_889, validated.rawSize)
+        assertEquals(38_874, validated.pairCount)
     }
 
     /**

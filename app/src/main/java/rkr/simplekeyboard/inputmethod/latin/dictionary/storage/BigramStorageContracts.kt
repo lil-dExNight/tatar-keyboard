@@ -133,6 +133,16 @@ data class BigramArtifactSpec(
          * below the H = 10 132 cutoff), the same three `-гәнчә` converbs stay pairless
          * (`scripts/known_asset_drift.json` keeps 3/0), and ten pairs whose successor was outside
          * the old dictionary now count — 40 734 → 40 735 pairs.
+         *
+         * Repacked 2026-09-23 (ROADMAP-P4 batch A, `docs/ROADMAP-P4.md`): T7 — successes per
+         * head 4 → 3 (the rank-4 share measured at 2.08 % of covered eval pairs is latent for a
+         * future 4-cell strip, not worth the bytes today), and P5a option (b) — the extra-heads
+         * list expanded by the EXPAND-1 rule (+3 102 conversationally established words below the
+         * frequency cutoff, `scripts/bigram_extra_heads_tat.txt` + `scripts/bigram_extra_heads_conv.py`).
+         * Heads 10 204 → 13 154, pairs 40 735 → 38 874, compressed 81 476 → 79 574 B; eval
+         * next-word coverage 75.3623 % → 84.1730 %, top-3 9.5468 % → 10.8351 %. 152 of the 3 177
+         * address candidates stay pairless (their mates are out-of-dictionary) — the known-drift
+         * record moves to 155/0 with the same three converbs inside.
          */
         @JvmField
         val TATAR_BIGRAMS_V1 = BigramArtifactSpec(
@@ -142,15 +152,15 @@ data class BigramArtifactSpec(
             subtypeId = PersonalSubtypes.TATAR_RU,
             storageDirectoryName = "bigrams",
             assetPath = "bigrams/tatar_bigrams_v1.tatbigr.zlib",
-            expectedCompressedSize = 81_476,
+            expectedCompressedSize = 79_574,
             expectedCompressedSha256 =
-                "ce8169ae1f25d5e2a83946890961b0e72e00d39b4b2a99434c5b4ae8b6e3c042",
-            expectedRawSize = 134_938,
+                "283661b4b9db87b2ba8b2d606bed5e2ebc8463a0954615a36502763b6fedb3f9",
+            expectedRawSize = 135_889,
             expectedRawSha256 =
-                "a9157aea26f03dd148185edef5a77846994343b10d4103bd882e7e6337038a0e",
+                "87af8ba35da0df92f6113fa1452fa7060ba335d8fe0a48aadaf93e0208825fd8",
             expectedDictionaryRawSha256 =
                 "3634f021c056b90ab1eb042bf6bccfa1413d31af96993120e77bdcf843152518",
-            expectedHeadCount = 10_204,
+            expectedHeadCount = 13_154,
         )
 
         /**
