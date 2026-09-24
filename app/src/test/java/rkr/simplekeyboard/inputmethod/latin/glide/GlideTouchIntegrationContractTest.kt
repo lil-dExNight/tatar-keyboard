@@ -34,8 +34,9 @@ class GlideTouchIntegrationContractTest {
         assertTrue("armed branch must precede the space swipe branch", armed < spaceSwipe)
         assertTrue("tracking branch must precede the space swipe branch", tracking < spaceSwipe)
         assertTrue("armed branch must precede the delete swipe branch", armed < deleteSwipe)
-        // An armed MOVE feeds the path and returns.
-        assertTrue(move.contains("mGlidePath.addPoint(x, y, eventTime);"))
+        // An armed MOVE feeds the path and returns. (The cast was made explicit in the 2026-09-24
+        // audit wave, finding 12: the same call, the same narrowing — now written out.)
+        assertTrue(move.contains("mGlidePath.addPoint(x, y, (float) eventTime);"))
         // A cursor swipe that already started can no longer become a glide.
         assertTrue(move.contains("mGlideDecider.isTracking() && !mCursorMoved"))
     }

@@ -186,9 +186,21 @@ internal object AtomicRecentEmojiFileOps : RecentEmojiFileOps {
 
     private const val TEMP_SUFFIX = ".tmp"
 
+    /**
+     * Fail-closed read cap (2026-09-24 audit, finding 11): the medium this class writes holds at
+     * most [RecentEmojiList.MAX_CHARS] UTF-16 `char`, which is under 2 KiB in UTF-8. A file past
+     * this bound is not a medium to decode but a corrupt one to refuse — the check runs on the
+     * length, BEFORE a single byte is read, so a bloated file never reaches memory at all.
+     */
+    private const val MAX_MEDIUM_BYTES = 4096L
+
     override fun read(file: File): String? =
         try {
-            if (file.isFile) file.readText(Charsets.UTF_8) else null
+            if (file.isFile && file.length() <= MAX_MEDIUM_BYTES) {
+                file.readText(Charsets.UTF_8)
+            } else {
+                null
+            }
         } catch (_: Throwable) {
             null
         }

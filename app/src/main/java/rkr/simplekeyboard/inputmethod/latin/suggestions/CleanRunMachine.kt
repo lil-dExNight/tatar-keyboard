@@ -181,6 +181,16 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
     }
 
     /**
+     * An accepted PREFIX cell (2026-09-24 audit, finding 2): the word sink decides whether the
+     * tapped word is a saved personal word and bumps its usage counter in memory only — a
+     * dictionary word or an unknown one changes nothing, and the file is never rewritten here
+     * (the flush boundary is [onInputFinished]).
+     */
+    fun noteAcceptedSuggestion(suggestion: String) {
+        completionSink.onAcceptedSuggestion(suggestion)
+    }
+
+    /**
      * The one boundary where the personal stores write what they have accumulated: usage counters
      * and pending hashes, once, and only if something changed. The pair store (P1) flushes at the
      * same boundary and under the same rule.

@@ -587,7 +587,11 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         mGlideDecider.onDown(x, y, eventTime, glideEligible);
         mGlidePath.clear();
         if (glideEligible) {
-            mGlidePath.addPoint(x, y, eventTime);
+            // The path buffer stores float timestamps (GlidePath.ts): gesture DELTAS are what the
+            // decoder reads, and those are milliseconds apart, so the float's 24-bit mantissa is
+            // exact where it matters. The cast is explicit — the implicit long->float narrowing
+            // here is what error-prone's LongFloatConversion flags (2026-09-24 audit, F12).
+            mGlidePath.addPoint(x, y, (float) eventTime);
         }
     }
 
@@ -710,11 +714,11 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         // the decider commits to a glide); a cursor swipe that already started (mCursorMoved)
         // can no longer become a glide.
         if (mGlideDecider.isArmed()) {
-            mGlidePath.addPoint(x, y, eventTime);
+            mGlidePath.addPoint(x, y, (float) eventTime); // explicit narrowing — see onDownEvent
             return;
         }
         if (mGlideDecider.isTracking() && !mCursorMoved) {
-            mGlidePath.addPoint(x, y, eventTime);
+            mGlidePath.addPoint(x, y, (float) eventTime);
             if (mGlideDecider.onMove(x, y, eventTime) == GlideGestureDecider.State.ARMED) {
                 armGlide();
                 return;

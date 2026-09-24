@@ -100,8 +100,10 @@ class DataSourcesScreenSourceContractTest {
      */
     @Test
     fun the_opensubtitles_link_is_present_in_the_product() {
+        // The scheme follows the resource: the 2026-09-24 wave moved the link to https, and the
+        // pin holds the product to exactly what it ships.
         assertTrue("opensubtitles.org must be a real URL resource",
-            appNames.contains("http://www.opensubtitles.org/"))
+            appNames.contains("https://www.opensubtitles.org/"))
         assertTrue("NOTICE.txt next to the dictionaries must carry the same link",
             dictionaryNotice.contains("http://www.opensubtitles.org/"))
         assertTrue("NOTICE.txt must say plainly that there is no licence grant, not soften it",

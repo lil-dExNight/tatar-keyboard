@@ -45,11 +45,14 @@ import kotlin.Unit;
  * the strip, commits the word with SPACE (which triggers the bigram next-word
  * prediction), commits the emoji-suggest cell the strip grew for "сәлам" (👋, tail
  * slot — EmojiSuggestIndex load + onEmojiSuggestReady + emoji commit path), commits a
- * predicted word, and opens the emoji panel (long-press comma) and commits an emoji.
+ * predicted word, glides "сәлам" as ONE continuous polyline over the five letter keys
+ * (PointerTracker -> GlideGestureDecider -> GlidePath -> GlideDecoder on the engine
+ * worker -> the strip's glide band; 2026-09-24 audit, finding 3), commits the glide
+ * candidate, and opens the emoji panel (long-press comma) and commits an emoji.
  * This covers process start, onCreateInputView, layout XML parsing/inflation, first
  * frame render, the suggestion engine hot path (tdict unpack + mmap + binary search in
  * TdictPrefixIndex/MappedDictionaryEngine, bigram lookup in TatBigrPrefixIndex), the
- * emoji-suggest path (mission M4) and the emoji panel.
+ * emoji-suggest path (mission M4), the emoji panel, and the glide decode path (P7).
  *
  * Emoji suggestions are ON by default (mission M4b, PREF_EMOJI_SUGGESTIONS), so no
  * extra toggle is needed: the first eligible lookup starts the one-per-process table
@@ -190,6 +193,24 @@ public class ImeBaselineProfileGenerator {
         tapKeyFraction(device, KeyGeom.PREDICTION_MIDDLE);
         SystemClock.sleep(800);
 
+        // Glide (P7): one continuous polyline over the letter keys of "сәлам" — the
+        // finger never lifts, which is what arms GlideGestureDecider; the decode runs on
+        // the engine worker and the strip grows the glide band. Glide typing is on by
+        // default (PREF_GLIDE_TYPING), so no toggle is needed beyond the suggestions one
+        // above (the band the glide candidates ride is subordinate to it).
+        device.swipe(new android.graphics.Point[]{
+                point(device, KeyGeom.KEY_S),
+                point(device, KeyGeom.KEY_AE),
+                point(device, KeyGeom.KEY_L),
+                point(device, KeyGeom.KEY_A),
+                point(device, KeyGeom.KEY_M),
+        }, /* segmentSteps = */ 25);
+        // The decode is a worker round trip, like the first prefix lookup: give the band
+        // time to paint the glide candidate before committing it.
+        SystemClock.sleep(2_000);
+        tapKeyFraction(device, KeyGeom.SUGGESTION_LEFT);
+        SystemClock.sleep(800);
+
         // Emoji panel: long-press the comma key, commit the first emoji of the
         // grid, then leave the panel.
         device.swipe(
@@ -275,6 +296,10 @@ public class ImeBaselineProfileGenerator {
     private void tapKeyFraction(UiDevice device, float[] fraction) {
         device.click(KeyGeom.x(device, fraction), KeyGeom.y(device, fraction));
         SystemClock.sleep(120);
+    }
+
+    private android.graphics.Point point(UiDevice device, float[] fraction) {
+        return new android.graphics.Point(KeyGeom.x(device, fraction), KeyGeom.y(device, fraction));
     }
 
     private void enableAndSelectIme(UiDevice device) {

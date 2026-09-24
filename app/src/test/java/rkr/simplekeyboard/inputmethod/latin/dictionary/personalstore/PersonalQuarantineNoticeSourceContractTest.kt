@@ -101,6 +101,15 @@ class PersonalQuarantineNoticeSourceContractTest {
     }
 
     @Test
+    fun thePendingFileIsReadOncePerOpen() {
+        // 2026-09-24 audit, finding 14: the pending file used to be read twice per load — once
+        // before the dictionary and once after. readPending REPLACES state, so the second read
+        // was pure duplicate I/O; one read, on every path through load, is the contract.
+        val load = bodyOf(store, "private fun load() {", "\n    /**")
+        assertEquals(1, Regex(Regex.escape("readPending(directory)")).findAll(load).count())
+    }
+
+    @Test
     fun theQuarantineSlotIsOnePerLanguageAndCannotBeMistakenForAnythingElse() {
         assertTrue("named from the ordinary name, so there is exactly one per language",
             store.contains("TpersFormat.personalFileName(subtypeId) + QUARANTINE_SUFFIX"))
@@ -149,13 +158,19 @@ class PersonalQuarantineNoticeSourceContractTest {
     fun theNoticeWaitsWhenNobodyIsListeningYet() {
         assertTrue("the store is built with the notice wired in",
             owner.contains("AndroidPersonalDictionaryStorage.create(context, subtypeId, executorLocked()) {"))
-        assertTrue(owner.contains("notifyQuarantined()"))
+        assertTrue(owner.contains("notifyQuarantined(subtypeId)"))
+        // 2026-09-24 audit, finding 13: one pending notice PER LANGUAGE, taken one at a time —
+        // a single shared flag spent every open store's durable mark on the one dialog that was
+        // shown, and the other language's loss went unmentioned.
         assertTrue("the notice is remembered, not merely broadcast",
-            owner.contains("quarantinePending = true"))
-        assertTrue("taken exactly once", owner.contains("if (!quarantinePending) return false"))
+            owner.contains("pendingQuarantineNotices.add(subtypeId)"))
+        assertTrue("taken one language at a time, fail-closed when empty",
+            owner.contains("pendingQuarantineNotices.firstOrNull() ?: return false"))
+        assertTrue("and only THAT language's store clears its durable mark",
+            owner.contains("synchronized(lock) { stores[subtypeId] }?.noticeDelivered()"))
         val reset = bodyOf(owner, "internal fun resetForTest() {", "\n}")
         assertTrue("an isolated test starts from nothing", reset.contains("quarantineListener = null"))
-        assertTrue(reset.contains("quarantinePending = false"))
+        assertTrue(reset.contains("pendingQuarantineNotices.clear()"))
         assertTrue("the factory takes the seam and defaults it, so no other caller changes",
             factory.contains("quarantineNotice: PersonalQuarantineNotice? = null"))
     }

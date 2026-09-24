@@ -47,7 +47,8 @@ fun interface ActiveSubtypeSupplier {
 }
 
 /**
- * Turns clean-completion events into store mutations, under [PersonalLearningPredicate].
+ * Turns clean-completion and accepted-suggestion events into store mutations, under
+ * [PersonalLearningPredicate].
  *
  * This is the ONE place where typing can cause a write, and it is deliberately not in `LatinIME` and
  * not in `SuggestionsController`: the class that sees every keystroke announces an event, and the
@@ -85,6 +86,16 @@ object PersonalLearning {
             if (!predicate.mayLearn()) return
             val subtypeId = activeSubtype.get() ?: return
             PersonalDictionaries.storeFor(context, subtypeId).noteCompletion(word)
+        }
+
+        override fun onAcceptedSuggestion(word: String) {
+            // The acceptance bump is a write like any other (2026-09-24 audit, finding 2): the
+            // same predicate, the same per-event subtype resolution, the same store package. The
+            // store itself decides whether the word is a saved one and never rewrites the file
+            // here — it bumps the counter in memory and lets the session-end flush persist it.
+            if (!predicate.mayLearn()) return
+            val subtypeId = activeSubtype.get() ?: return
+            PersonalDictionaries.storeFor(context, subtypeId).noteAcceptedSuggestion(word)
         }
 
         override fun onInputFinished() {

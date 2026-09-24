@@ -640,9 +640,21 @@ public final class InputLogic {
             return false;
         }
         mConnection.beginBatchEdit();
-        mConnection.deleteTextBeforeCursor(inserted.length());
-        mConnection.commitText(typedForm + separator, 1);
+        // The same guard the two commit paths above carry (25c1ae28): beginBatchEdit() is what
+        // refreshes the connection from the framework, so this is the earliest the question can
+        // be asked. An editor that went away between the replacement and this backspace gets no
+        // edit and a false answer — the cache-only mutation would otherwise be reported as a
+        // success and the caller would treat fiction as the text before the cursor. The batch is
+        // still closed on this path, exactly once, like on the other one.
+        final boolean connected = mConnection.isConnected();
+        if (connected) {
+            mConnection.deleteTextBeforeCursor(inserted.length());
+            mConnection.commitText(typedForm + separator, 1);
+        }
         mConnection.endBatchEdit();
+        if (!connected) {
+            return false;
+        }
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         return true;

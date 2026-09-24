@@ -153,15 +153,17 @@ public final class InputAttributes {
     // Pretty print
     @Override
     public String toString() {
+        // The target app's package name is deliberately NOT printed (2026-09-24 audit, finding
+        // 10): this string is for debugging, and which app the user typed in is not the
+        // keyboard's business to log.
         return String.format(
-                "%s: inputType=0x%08x%s%s%s%s%s%s targetApp=%s\n", getClass().getSimpleName(),
+                "%s: inputType=0x%08x%s%s%s%s%s%s\n", getClass().getSimpleName(),
                 mInputType,
                 (mInputTypeNoAutoCorrect ? " noAutoCorrect" : ""),
                 (mIsPasswordField ? " password" : ""),
                 (mShouldShowSuggestions ? " shouldShowSuggestions" : ""),
                 (mNoPersonalizedLearning ? " noPersonalizedLearning" : ""),
                 (mApplicationSpecifiedCompletionOn ? " appSpecified" : ""),
-                (mShouldInsertSpacesAutomatically ? " insertSpaces" : ""),
-                mTargetApplicationPackageName);
+                (mShouldInsertSpacesAutomatically ? " insertSpaces" : ""));
     }
 }

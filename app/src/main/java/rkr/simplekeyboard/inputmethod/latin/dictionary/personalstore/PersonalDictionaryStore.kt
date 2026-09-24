@@ -561,7 +561,6 @@ internal class PersonalDictionaryStore(
         }
         entries = PersonalEntries.fromValidated(validated, maxEntries)
         snapshot = entries.toSnapshot(subtypeId)
-        readPending(directory)
     }
 
     /**

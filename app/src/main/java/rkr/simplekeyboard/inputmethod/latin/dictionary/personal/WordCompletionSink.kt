@@ -31,6 +31,14 @@ fun interface WordCompletionSink {
     fun onCleanCompletion(word: String)
 
     /**
+     * The user accepted a suggestion cell showing [word] (2026-09-24 audit, finding 2). Whether
+     * [word] is a saved personal word — and therefore whether any usage counter moves — is decided
+     * on the other side, like everything else behind this seam. Default no-op, so a sink written
+     * before the event existed keeps compiling and simply never counts acceptances.
+     */
+    fun onAcceptedSuggestion(word: String) {}
+
+    /**
      * The editor session ended. This is the ONE boundary where the other side may put what it has
      * accumulated on disk — never per keystroke and never per completed word.
      */

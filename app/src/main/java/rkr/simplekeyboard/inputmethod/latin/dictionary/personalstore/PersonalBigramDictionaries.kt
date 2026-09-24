@@ -54,8 +54,8 @@ object PersonalBigramDictionaries {
     @Volatile
     private var quarantineListener: Runnable? = null
 
-    @Volatile
-    private var quarantinePending = false
+    /** Guarded by [lock]; one entry per language that lost something (2026-09-24 audit, F13). */
+    private val pendingQuarantineNotices = LinkedHashSet<String>()
 
     /**
      * The dictionary-membership half of the context gate, installed by the IME (which is the only
@@ -75,7 +75,7 @@ object PersonalBigramDictionaries {
                     PersonalDictionaries.sharedStoreExecutor(),
                     contextMembership(context),
                 ) {
-                    notifyQuarantined()
+                    notifyQuarantined(subtypeId)
                 }
             }
         }
@@ -126,19 +126,23 @@ object PersonalBigramDictionaries {
 
     /** Whether a notice is still waiting to be shown; see [quarantineListener]. */
     @JvmStatic
-    fun hasPendingQuarantineNotice(): Boolean = quarantinePending
+    fun hasPendingQuarantineNotice(): Boolean =
+        synchronized(lock) { pendingQuarantineNotices.isNotEmpty() }
 
     /**
-     * Takes the waiting notice, if there is one; see [PersonalDictionaries.consumeQuarantineNotice]
-     * for the contract this mirrors, including spending the durable mark on every store that is
-     * open so a loss is never spent on nobody.
+     * Takes ONE waiting notice — the earliest-raised language's — if there is one; see
+     * [PersonalDictionaries.consumeQuarantineNotice] for the contract this mirrors, including
+     * spending the durable mark of THAT language's store only, so a second language that lost
+     * something keeps its own notice (2026-09-24 audit, finding 13).
      */
     @JvmStatic
     fun consumeQuarantineNotice(): Boolean {
-        if (!quarantinePending) return false
-        quarantinePending = false
-        val live = synchronized(lock) { stores.values.toList() }
-        for (store in live) store.noticeDelivered()
+        val subtypeId = synchronized(lock) {
+            val next = pendingQuarantineNotices.firstOrNull() ?: return false
+            pendingQuarantineNotices.remove(next)
+            next
+        }
+        synchronized(lock) { stores[subtypeId] }?.noticeDelivered()
         return true
     }
 
@@ -170,8 +174,8 @@ object PersonalBigramDictionaries {
     }
 
     /** Called on the store's worker when it set an unreadable file aside. */
-    private fun notifyQuarantined() {
-        quarantinePending = true
+    private fun notifyQuarantined(subtypeId: String) {
+        synchronized(lock) { pendingQuarantineNotices.add(subtypeId) }
         quarantineListener?.run()
     }
 
@@ -179,10 +183,10 @@ object PersonalBigramDictionaries {
     internal fun resetForTest() {
         synchronized(lock) {
             stores.clear()
+            pendingQuarantineNotices.clear()
         }
         erasureListener = null
         quarantineListener = null
-        quarantinePending = false
         contextMembershipProbe = null
     }
 }

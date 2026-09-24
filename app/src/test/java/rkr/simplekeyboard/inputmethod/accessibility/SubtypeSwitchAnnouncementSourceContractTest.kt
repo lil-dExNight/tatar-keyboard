@@ -125,4 +125,19 @@ class SubtypeSwitchAnnouncementSourceContractTest {
         assertTrue(announce.contains("if (!accessibilityManager.isEnabled) return"))
         assertTrue(announce.contains("keyboardView.announceForAccessibility(languageName)"))
     }
+
+    @Test
+    fun theNewLayoutGeometryReachesTheEngineBeforeTheSubtypeChangeIsAnnounced() {
+        // 2026-09-24 audit, finding 6: onSubtypeChanged may immediately re-derive the band for a
+        // warm engine, and that lookup must already see the NEW layout's neighbor table — not the
+        // one of the layout the user just left.
+        val handler = latinIme
+            .substringAfter("public void onCurrentSubtypeChanged(final boolean userInitiated)")
+            .substringBefore("private void announceCurrentLanguageForAccessibility()")
+        assertTrue(
+            "updateKeyNeighbors() must run before the controller hears about the switch",
+            handler.indexOf("updateKeyNeighbors()") in
+                0 until handler.indexOf("mSuggestionsController.onSubtypeChanged("),
+        )
+    }
 }

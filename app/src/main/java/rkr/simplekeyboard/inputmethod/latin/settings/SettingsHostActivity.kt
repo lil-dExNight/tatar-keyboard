@@ -322,11 +322,11 @@ class SettingsHostActivity : Activity() {
      * the assets carries the same names in full; this screen is the half a person can actually
      * reach without unpacking an APK.
      *
-     * The two section headers are not decoration. Only the Leipzig data is inside the app today;
-     * the conversational frequencies from Tatoeba and OpenSubtitles are measured, queued for
-     * word-by-word acceptance (`docs/DICTIONARY-*-CONV-REVIEW.tsv`) and not packed into any
-     * asset. Listing all three under one heading would claim something untrue about the shipped
-     * files, and the release that merges them has a checklist line to move the rows up.
+     * One section header, one card, three rows: since 1.9.0/1.9.1 the conversational frequencies
+     * from Tatoeba and OpenSubtitles are accepted and packed into the shipped dictionaries and
+     * bigram tables (`docs/DICT-ACCEPT.md`, `docs/DICT-WIDEN.md`), so all three collections sit
+     * under the single "In this version" header — a second section would claim a split the assets
+     * no longer have.
      */
     private fun buildDataSourcesScreen() {
         addCard(listOf(textRow(getString(R.string.data_sources_intro))))
@@ -380,6 +380,8 @@ class SettingsHostActivity : Activity() {
         var glideRow: View? = null
         rows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, false,
                 R.string.tatar_suggestions, R.string.tatar_suggestions_summary) { checked ->
+            // Deferred (docs/AUDIT-2026-09-24.md, L4): rows disabled while this switch is off
+            // swallow taps silently; they should answer with a short toast instead.
             personalDictionaryRow?.let {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY))
             }

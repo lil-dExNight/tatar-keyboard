@@ -60,8 +60,17 @@ class CommitPathConnectionContractTest {
         bodyOf("public boolean commitPredictedWord(", "/** Allocation-free suffix test")
     }
 
+    /**
+     * The undo of path two (D3) — missed by 25c1ae28 and covered here since the audit of
+     * 2026-09-24: it deletes and commits through the same cache, so it answers to the same
+     * contract.
+     */
+    private val revertTatarAutocorrection by lazy {
+        bodyOf("public boolean revertTatarAutocorrection(", "/**\n     * Commits a predicted next word")
+    }
+
     @Test
-    fun bothCommitPathsRefuseWhenThereIsNoEditorToCommitInto() {
+    fun allThreeInsertionPathsRefuseWhenThereIsNoEditorToCommitInto() {
         for ((name, body) in paths()) {
             assertTrue("$name does not ask whether there is an editor at all",
                 body.contains("final boolean connected = mConnection.isConnected();"))
@@ -82,10 +91,11 @@ class CommitPathConnectionContractTest {
             assertTrue("$name: and the commit sits INSIDE the guarded block",
                 check < guarded && guarded < commit)
         }
-        // Deleting is a cache mutation too, and on the replace path it comes first.
-        val body = replaceTrailingWord
-        assertTrue("the delete must be guarded as well",
-            body.indexOf("if (connected) {") < body.indexOf("mConnection.deleteTextBeforeCursor("))
+        // Deleting is a cache mutation too, and on the two paths that delete it comes first.
+        for ((name, body) in pathsWithDelete()) {
+            assertTrue("$name: the delete must be guarded as well",
+                body.indexOf("if (connected) {") < body.indexOf("mConnection.deleteTextBeforeCursor("))
+        }
     }
 
     /**
@@ -121,5 +131,12 @@ class CommitPathConnectionContractTest {
     private fun paths() = listOf(
         "replaceTrailingWord" to replaceTrailingWord,
         "commitPredictedWord" to commitPredictedWord,
+        "revertTatarAutocorrection" to revertTatarAutocorrection,
+    )
+
+    /** The paths whose edit deletes first — both must guard the delete as well as the commit. */
+    private fun pathsWithDelete() = listOf(
+        "replaceTrailingWord" to replaceTrailingWord,
+        "revertTatarAutocorrection" to revertTatarAutocorrection,
     )
 }

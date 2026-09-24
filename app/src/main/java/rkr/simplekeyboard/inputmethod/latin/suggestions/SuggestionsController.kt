@@ -1999,6 +1999,12 @@ class SuggestionsController internal constructor(
         bandBaseCells = emptyList()
         clearCompanionRequest()
         revertWindow.arm(word, replacement, separatorCodePoint, sessionId)
+        // ...but the boundary it establishes IS trusted for pairs (2026-09-24 audit, finding 7),
+        // exactly like the tap path: the cursor sits provably right after a real word and the
+        // separator the user pressed, so the NEXT cleanly typed word may form a pair with the
+        // corrected one. Without this re-arm the early return of the run machine's
+        // no-change branch would keep the pair machine dirty past the boundary.
+        runMachine.trustPairBoundary()
         return true
     }
 
@@ -2061,10 +2067,12 @@ class SuggestionsController internal constructor(
             // candidates were invalidated): a tap must be a no-op and must never commit.
             return
         }
-        // Exactly one of these is ever non-null (PROPOSALS.md, "Контракт текста" amendment,
-        // "Сосуществование") — the owner of state reads the kind off what is actually bound, not off
-        // the tapped string's content, which is the same rule E5c's engine-level guarantee exists
-        // for, one layer up.
+        // Exactly one of the three bindings is ever non-null (PROPOSALS.md, "Контракт текста"
+        // amendment, "Сосуществование") — the owner of state reads the kind off what is actually
+        // bound, not off the tapped string's content, which is the same rule E5c's engine-level
+        // guarantee exists for, one layer up. The branches below are deliberately EXCLUSIVE
+        // (2026-09-24 audit, finding 8): if the invariant ever broke, a tap must still commit at
+        // most once — never one edit per binding.
         val prefix = displayedPrefix
         if (prefix != null) {
             // Commit against the DISPLAYED prefix, not the mutable pendingPrefix. The editor's own
@@ -2078,6 +2086,11 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
+                // The accepted cell counts as a use: if it shows a saved personal word, the sink
+                // bumps its usage counter (in memory; the file moves at the session boundary). A
+                // dictionary or unknown word changes nothing — the sink decides (2026-09-24 audit,
+                // finding 2; the pairs mirror is noteAcceptedPrediction in the NEXT_WORD branch).
+                runMachine.noteAcceptedSuggestion(suggestion)
                 // P1: the tapped word itself never counts (markRunDirty above already saw to
                 // that), but the boundary it just established — the cursor sits provably right
                 // after the committed word and its auto-space — is one the pair machine trusts:
@@ -2098,6 +2111,7 @@ class SuggestionsController internal constructor(
             return
         }
         val context = displayedContextWord
+        val glideContext = displayedGlideContext
         if (context != null) {
             // Same second line of defense as the PREFIX path, through the E5d commit path instead:
             // the editor re-derives the live context word and refuses a stale tap itself.
@@ -2122,9 +2136,7 @@ class SuggestionsController internal constructor(
                 // committed are requested from here, or they never are.
                 requestCurrentPrefix()
             }
-        }
-        val glideContext = displayedGlideContext
-        if (glideContext != null) {
+        } else if (glideContext != null) {
             // P7-3: a glide cell commits through the E5d predicted-word path, whose own live
             // re-checks (collapsed cursor, empty trailing word, the context still equal) are the
             // second line of defense — the same second line as the NEXT_WORD branch above.

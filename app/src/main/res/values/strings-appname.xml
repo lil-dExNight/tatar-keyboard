@@ -20,8 +20,8 @@
 
 <resources>
     <string name="english_ime_name" translatable="false">Tatar Keyboard</string>
-    <string name="privacy_policy_url" translatable="false">https://github.com/dExNight/tatar-keyboard/blob/main/PRIVACY.md</string>
-    <string name="license_url" translatable="false">https://github.com/dExNight/tatar-keyboard/blob/main/LICENSE</string>
+    <string name="privacy_policy_url" translatable="false">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.md</string>
+    <string name="license_url" translatable="false">https://github.com/lil-dExNight/tatar-keyboard/blob/main/LICENSE</string>
     <!-- Data-source names and links, shown on the Data sources screen. Names of collections are
          not translated; the link next to each is the attribution their terms ask for. The
          OpenSubtitles link in particular is the one thing that collection asks of anyone who
@@ -31,5 +31,5 @@
     <string name="data_sources_tatoeba_title" translatable="false">Tatoeba</string>
     <string name="data_sources_tatoeba_url" translatable="false">https://tatoeba.org/</string>
     <string name="data_sources_opensubtitles_title" translatable="false">OpenSubtitles</string>
-    <string name="data_sources_opensubtitles_url" translatable="false">http://www.opensubtitles.org/</string>
+    <string name="data_sources_opensubtitles_url" translatable="false">https://www.opensubtitles.org/</string>
 </resources>

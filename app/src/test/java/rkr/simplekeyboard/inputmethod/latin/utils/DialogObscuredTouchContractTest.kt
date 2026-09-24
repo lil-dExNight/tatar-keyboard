@@ -77,6 +77,14 @@ class DialogObscuredTouchContractTest {
             dialogs, filters,
         )
         assertEquals(1, read(SEEK_BAR_HELPER).occurrencesOf("DialogUtils.filterObscuredTouches("))
+        // 2026-09-24 audit, finding 9: the languages screen builds its own dialog (the add-language
+        // picker) — it is covered by the same rule, counted the same way.
+        val languages = read(SETTINGS_LANGUAGES_SCREENS)
+        assertEquals(
+            "every AlertDialog in SettingsLanguagesScreens must install the obscured-touch filter",
+            languages.occurrencesOf("AlertDialog.Builder("),
+            languages.occurrencesOf("DialogUtils.filterObscuredTouches("),
+        )
     }
 
     // --- helpers ---------------------------------------------------------------------------------
@@ -126,6 +134,8 @@ class DialogObscuredTouchContractTest {
         const val RICH_IMM = "src/main/java/rkr/simplekeyboard/inputmethod/latin/RichInputMethodManager.java"
         const val SETTINGS_ACTIVITY =
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt"
+        const val SETTINGS_LANGUAGES_SCREENS =
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsLanguagesScreens.kt"
         const val SEEK_BAR_HELPER =
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SeekBarDialogHelper.kt"
     }

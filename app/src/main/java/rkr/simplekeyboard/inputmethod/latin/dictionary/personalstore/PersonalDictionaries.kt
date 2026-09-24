@@ -60,24 +60,27 @@ object PersonalDictionaries {
      * Notified when an unreadable personal file has been set aside on a store's first open, so the
      * user can be told why the list is empty.
      *
-     * The flag beside it exists because the event does not respect the keyboard's lifecycle: the
+     * The set beside it exists because the event does not respect the keyboard's lifecycle: the
      * store opens from the engine's background executor, and from the settings screen, both of which
      * can happen with no input window up and no listener installed. Dropping the notice then would
      * put the subsystem straight back to losing data silently, so it waits instead, and the IME picks
      * it up at the next input start.
+     *
+     * The set is per LANGUAGE (2026-09-24 audit, finding 13): every language that lost something is
+     * owed its own notice, so each pending entry is one subtype, taken and spent one at a time.
      */
     @Volatile
     private var quarantineListener: Runnable? = null
 
-    @Volatile
-    private var quarantinePending = false
+    /** Guarded by [lock]; see the field above for why it is a set of subtypes, not a flag. */
+    private val pendingQuarantineNotices = LinkedHashSet<String>()
 
     /** The store for [subtypeId], created on first use. Safe to call from any thread. */
     internal fun storeFor(context: Context, subtypeId: String): PersonalDictionaryStore =
         synchronized(lock) {
             stores.getOrPut(subtypeId) {
                 AndroidPersonalDictionaryStorage.create(context, subtypeId, executorLocked()) {
-                    notifyQuarantined()
+                    notifyQuarantined(subtypeId)
                 }
             }
         }
@@ -127,31 +130,37 @@ object PersonalDictionaries {
 
     /** Whether a notice is still waiting to be shown; see [quarantineListener]. */
     @JvmStatic
-    fun hasPendingQuarantineNotice(): Boolean = quarantinePending
+    fun hasPendingQuarantineNotice(): Boolean =
+        synchronized(lock) { pendingQuarantineNotices.isNotEmpty() }
 
     /**
-     * Takes the waiting notice, if there is one. The caller clears it only when it is really about to
-     * be shown, so a notice raised while the window was down is not spent on nobody.
+     * Takes ONE waiting notice — the earliest-raised language's — if there is one. The caller clears
+     * it only when it is really about to be shown, so a notice raised while the window was down is
+     * not spent on nobody. A second pending language keeps waiting and is taken at the next input
+     * start: one notice per language that lost something, which is the number of things that
+     * actually happened.
      *
-     * B5. Spending it also clears the DURABLE half of the mark, on every store that is open — the
-     * in-memory flag alone died with the process, and the loss went unmentioned for ever after. Each
-     * store queues its own deletion on the shared worker, so no file is touched on the caller's
-     * thread. A language whose store has not been opened in this process keeps its own mark and
-     * raises its own notice when it opens: one notice per language that lost something, which is the
-     * number of things that actually happened.
+     * B5. Spending a notice also clears the DURABLE half of the mark — of THAT language's store and
+     * no other (2026-09-24 audit, finding 13: spending used to clear every open store's mark for one
+     * dialog, and the other language's loss went unmentioned for ever after). The store queues its
+     * own deletion on the shared worker, so no file is touched on the caller's thread. A language
+     * whose store has not been opened in this process keeps its own mark and raises its own notice
+     * when it opens.
      */
     @JvmStatic
     fun consumeQuarantineNotice(): Boolean {
-        if (!quarantinePending) return false
-        quarantinePending = false
-        val live = synchronized(lock) { stores.values.toList() }
-        for (store in live) store.noticeDelivered()
+        val subtypeId = synchronized(lock) {
+            val next = pendingQuarantineNotices.firstOrNull() ?: return false
+            pendingQuarantineNotices.remove(next)
+            next
+        }
+        synchronized(lock) { stores[subtypeId] }?.noticeDelivered()
         return true
     }
 
     /** Called on the store's worker when it set an unreadable file aside. */
-    private fun notifyQuarantined() {
-        quarantinePending = true
+    private fun notifyQuarantined(subtypeId: String) {
+        synchronized(lock) { pendingQuarantineNotices.add(subtypeId) }
         quarantineListener?.run()
     }
 
@@ -176,6 +185,6 @@ object PersonalDictionaries {
         }
         erasureListener = null
         quarantineListener = null
-        quarantinePending = false
+        synchronized(lock) { pendingQuarantineNotices.clear() }
     }
 }

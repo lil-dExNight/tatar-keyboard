@@ -111,7 +111,7 @@
     <string name="personal_dictionary_erase_action">Бетерү</string>
     <string name="personal_dictionary_empty">Әлегә бернәрсә дә сакланмаган. Шәхси сүзлек кабызылгач, сез язган сүзләр монда күренә башлар.</string>
     <string name="personal_dictionary_no_matches">Бернәрсә дә табылмады.</string>
-    <string name="personal_dictionary_shown_of_total">%2$d сүзнең %1$d се күрсәтелә. Исемлекне кыскарту өчен эзләүдән файдаланыгыз.</string>
+    <string name="personal_dictionary_shown_of_total">%2$d сүзнең %1$d-се күрсәтелә. Исемлекне кыскарту өчен эзләүдән файдаланыгыз.</string>
     <string name="personal_dictionary_save_failed">Сүзне сакларга булмады. Кабат карап карагыз.</string>
     <string name="personal_dictionary_delete_failed">Сүзне бетерергә булмады. Ул сүзлектә калды.</string>
     <string name="personal_dictionary_erase_failed">Барысын да бетерергә булмады. Сакланган сүзләрнең бер өлеше җиһазда калды.</string>

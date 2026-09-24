@@ -1530,9 +1530,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         mInputLogic.onSubtypeChanged();
         loadKeyboard();
         if (mSuggestionsController != null) {
+            // The geometry goes first (2026-09-24 audit, finding 6): onSubtypeChanged may
+            // re-derive the band immediately for a warm engine, and that lookup must already see
+            // the NEW layout's neighbor table — not the one of the layout the user just left.
+            updateKeyNeighbors();
             mSuggestionsController.onSubtypeChanged(
                     isSuggestionsEligible(), activeDictionarySubtype());
-            updateKeyNeighbors();
         }
         if (userInitiated) {
             announceCurrentLanguageForAccessibility();
@@ -1586,7 +1589,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             Log.e(TAG, "Null EditorInfo in onStartInputView()");
             return;
         }
-        Log.i(TAG, "Starting input. Cursor position = "
+        // Gated like the trace below: this line prints cursor metadata on every field focus, and
+        // a keyboard's log must carry no user-text adjacency (2026-09-24 audit, finding 5).
+        if (TRACE) Log.i(TAG, "Starting input. Cursor position = "
                 + editorInfo.initialSelStart + "," + editorInfo.initialSelEnd +
                 " Restarting = " + restarting);
 
@@ -1728,7 +1733,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             return;
         }
 
-        Log.i(TAG, "Update Selection. Cursor position = " + newSelStart + "," + newSelEnd);
+        // Same gate as above: cursor positions are metadata a keyboard must not log by default
+        // (2026-09-24 audit, finding 5).
+        if (TRACE) Log.i(TAG, "Update Selection. Cursor position = " + newSelStart + "," + newSelEnd);
 
         final boolean externalMove =
                 newSelStart != mInputLogic.mConnection.getExpectedSelectionStart()

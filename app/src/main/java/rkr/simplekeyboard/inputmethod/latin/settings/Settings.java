@@ -198,13 +198,15 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
         } else {
             final SharedPreferences.Editor prefsEditor = prefs.edit();
             for (final String key : restrictionKeys) {
+                // The log line names the KEY only, never the value: a restriction value can carry
+                // user configuration, and a keyboard's log must not (2026-09-24 audit, finding 5).
                 switch (key) {
                     case PREF_ENABLED_SUBTYPES:
-                        Log.i(TAG, "Loading restriction: " + key + "=" + appRestrictions.getString(key));
+                        Log.i(TAG, "Loading restriction: " + key);
                         prefsEditor.putString(key, appRestrictions.getString(key));
                         break;
                     case SCREEN_THEME:
-                        Log.i(TAG, "Loading restriction: " + key + "=" + appRestrictions.getString(key));
+                        Log.i(TAG, "Loading restriction: " + key);
                         prefsEditor.putString(KeyboardTheme.KEYBOARD_THEME_KEY, appRestrictions.getString(key));
                         break;
                     case PREF_AUTO_CAP:
@@ -218,21 +220,21 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
                     case PREF_VIBRATE_ON:
                     case PREF_SOUND_ON:
                     case PREF_POPUP_ON:
-                        Log.i(TAG, "Loading restriction: " + key + "=" + appRestrictions.getBoolean(key));
+                        Log.i(TAG, "Loading restriction: " + key);
                         prefsEditor.putBoolean(key, appRestrictions.getBoolean(key));
                         break;
                     case PREF_KEYPRESS_SOUND_VOLUME:
                     case PREF_KEYBOARD_HEIGHT:
-                        Log.i(TAG, "Loading restriction: " + key + "=" + appRestrictions.getInt(key));
+                        Log.i(TAG, "Loading restriction: " + key);
                         prefsEditor.putFloat(key, appRestrictions.getInt(key) / 100f);
                         break;
                     case PREF_KEY_LONGPRESS_TIMEOUT:
                     case PREF_BOTTOM_OFFSET_PORTRAIT:
-                        Log.i(TAG, "Loading restriction: " + key + "=" + appRestrictions.getInt(key));
+                        Log.i(TAG, "Loading restriction: " + key);
                         prefsEditor.putInt(key, appRestrictions.getInt(key));
                         break;
                     case PREF_KEYBOARD_COLOR:
-                        Log.i(TAG, "Loading restriction: " + key + "=" + appRestrictions.getString(key));
+                        Log.i(TAG, "Loading restriction: " + key);
                         String color = appRestrictions.getString(key);
                         // getString даёт null, если ограничение задано значением другого типа
                         // (или отсутствует): без этой проверки загрузка политик падала с NPE.
@@ -254,7 +256,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
                         // words ON and lock the user out of turning it off.
                         final boolean personalPolicy = appRestrictions.getBoolean(key);
                         if (PersonalDictionaryRestriction.writesPreference(personalPolicy)) {
-                            Log.i(TAG, "Loading restriction: " + key + "=" + personalPolicy);
+                            Log.i(TAG, "Loading restriction: " + key);
                             prefsEditor.putBoolean(key,
                                     PersonalDictionaryRestriction.valueToWrite());
                         } else {

@@ -79,6 +79,7 @@ class PersonalLearningRunTest {
         val editor = FakeEditor()
         val engine = FakeEngine()
         val completions = mutableListOf<String>()
+        val accepted = mutableListOf<String>()
         var flushes = 0
         var callback: ResultCallback? = null
         val controller = SuggestionsController(
@@ -91,6 +92,10 @@ class PersonalLearningRunTest {
             controller.setCompletionSink(object : WordCompletionSink {
                 override fun onCleanCompletion(word: String) {
                     completions.add(word)
+                }
+
+                override fun onAcceptedSuggestion(word: String) {
+                    accepted.add(word)
                 }
 
                 override fun onInputFinished() {
@@ -203,6 +208,35 @@ class PersonalLearningRunTest {
         h.endWord()
         assertTrue("a word the user picked is not a word the user spelled out",
             h.completions.isEmpty())
+    }
+
+    @Test
+    fun anAcceptedPrefixSuggestionCountsAsAUseOnTheWordSink() {
+        // 2026-09-24 audit, finding 2: the usage bump the store always had is now reachable — a
+        // tap on a PREFIX cell reports the accepted word to the word sink. Whether that word is a
+        // saved personal one (and therefore whether a counter actually moves) is the sink's
+        // decision; the store bumps in memory only and the file moves at the session boundary.
+        val h = Harness()
+        h.witnessABoundary()
+        h.type("гүз")
+        h.type("гүзә", listOf("гүзәлия"))
+
+        h.strip.listener!!.onTap("гүзәлия")
+
+        assertEquals(listOf("гүзәлия"), h.accepted)
+    }
+
+    @Test
+    fun aCleanlyTypedWordIsNotAnAcceptance() {
+        // The counter moves on taps, not on typing: a spelled-out completion must not arrive as
+        // an accepted suggestion.
+        val h = Harness()
+        h.witnessABoundary()
+        h.type("гүз")
+        h.type("гүзәлия")
+        h.endWord()
+        assertEquals(listOf("гүзәлия"), h.completions)
+        assertTrue(h.accepted.isEmpty())
     }
 
     @Test

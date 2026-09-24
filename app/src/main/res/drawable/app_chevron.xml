@@ -15,12 +15,13 @@
 -->
 
 <!-- Disclosure chevron ">" for list rows. Own two-line path, not an SF Symbol.
-     7x12dp, grey stroke, no fill. -->
+     7x12dp, grey stroke, no fill. Mirrored in RTL, like its _back sibling. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="7dp"
     android:height="12dp"
     android:viewportWidth="7"
-    android:viewportHeight="12">
+    android:viewportHeight="12"
+    android:autoMirrored="true">
     <path
         android:pathData="M1,1 L6,6 L1,11"
         android:strokeColor="#C7C7CC"

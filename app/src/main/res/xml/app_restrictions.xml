@@ -37,12 +37,12 @@
         android:defaultValue="false" />
     <restriction
         android:key="pref_enable_ime_switch"
-        android:title="@string/space_swipe"
+        android:title="@string/pref_enable_ime_switch"
         android:restrictionType="bool"
         android:defaultValue="false" />
     <restriction
         android:key="pref_space_swipe"
-        android:title="@string/pref_enable_ime_switch"
+        android:title="@string/space_swipe"
         android:restrictionType="bool"
         android:defaultValue="true" />
     <restriction
@@ -72,7 +72,7 @@
         android:defaultValue="false" />
     <restriction
         android:key="pref_keypress_sound_volume"
-        android:title="@string/pref_enable_ime_switch"
+        android:title="@string/prefs_keypress_sound_volume_settings"
         android:restrictionType="integer"
         android:defaultValue="50" />
     <restriction

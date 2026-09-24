@@ -53,14 +53,20 @@ class PersonalLearningGatesTest {
     }
 
     @Test
-    fun aClosedPredicateWritesNothingOnEitherEventPath() {
-        // The sink is the only bridge from typing to the store, and both of its methods consult the
-        // predicate — the completion AND the end-of-session flush.
+    fun aClosedPredicateWritesNothingOnAnyEventPath() {
+        // The sink is the only bridge from typing to the store, and all three of its methods
+        // consult the predicate — the completion, the acceptance bump (2026-09-24 audit, finding
+        // 2) AND the end-of-session flush.
         var completions = 0
+        var acceptances = 0
         var flushes = 0
         val guarded = object : WordCompletionSink {
             override fun onCleanCompletion(word: String) {
                 if (!predicateSaysNo()) completions++
+            }
+
+            override fun onAcceptedSuggestion(word: String) {
+                if (!predicateSaysNo()) acceptances++
             }
 
             override fun onInputFinished() {
@@ -68,18 +74,20 @@ class PersonalLearningGatesTest {
             }
         }
         guarded.onCleanCompletion("гүзәлия")
+        guarded.onAcceptedSuggestion("китап")
         guarded.onInputFinished()
         assertEquals(0, completions)
+        assertEquals(0, acceptances)
         assertEquals(0, flushes)
     }
 
     private fun predicateSaysNo(): Boolean = true
 
     @Test
-    fun bothSinkMethodsAreGatedInProductionToo() {
+    fun allThreeSinkMethodsAreGatedInProductionToo() {
         val body = learning.substringAfter("fun sinkFor(")
-        assertEquals("the predicate is consulted on both paths, not just on the completion",
-            2, Regex("if \\(!predicate\\.mayLearn\\(\\)\\) return").findAll(body).count())
+        assertEquals("the predicate is consulted on all three paths, not just on the completion",
+            3, Regex("if \\(!predicate\\.mayLearn\\(\\)\\) return").findAll(body).count())
     }
 
     @Test

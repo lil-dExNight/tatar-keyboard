@@ -73,16 +73,20 @@ internal fun SettingsHostActivity.buildLanguagesScreen() {
     }, spacedFromPrevious = false)
 
     val actions = ArrayList<View>()
-    actions.add(actionRow(R.string.add_language) {
-        showLocalePickerDialog(unusedValues, R.string.add_language, R.string.add,
-                allowAllChecked = true) { checkedValues ->
-            // Enable the default layout for all of the checked languages.
-            for (localeString in checkedValues) {
-                richImm.addSubtype(
-                        SubtypeLocaleUtils.getDefaultSubtype(localeString, resources))
+    // The row hides when there is nothing to add (2026-09-24 audit, finding 15b): the picker
+    // would otherwise open on an empty list — a dialog with no items and a dead OK.
+    if (unusedValues.isNotEmpty()) {
+        actions.add(actionRow(R.string.add_language) {
+            showLocalePickerDialog(unusedValues, R.string.add_language, R.string.add,
+                    allowAllChecked = true) { checkedValues ->
+                // Enable the default layout for all of the checked languages.
+                for (localeString in checkedValues) {
+                    richImm.addSubtype(
+                            SubtypeLocaleUtils.getDefaultSubtype(localeString, resources))
+                }
             }
-        }
-    })
+        })
+    }
     if (usedValues.size > 1) {
         actions.add(actionRow(R.string.remove_language) {
             showLocalePickerDialog(usedValues, R.string.remove_language, R.string.remove,
@@ -96,7 +100,9 @@ internal fun SettingsHostActivity.buildLanguagesScreen() {
             }
         })
     }
-    addCard(actions)
+    if (actions.isNotEmpty()) {
+        addCard(actions)
+    }
 }
 
 /**

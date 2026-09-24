@@ -22,6 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
@@ -77,6 +78,9 @@ class AutocorrectControllerTest {
 
         override fun cachedWordBeforeCursor(): String =
             TatarWordUtils.extractTrailingWord(before)
+
+        override fun cachedWordBeforeTrailingWord(): String =
+            TatarWordUtils.extractWordBeforeTrailingWord(before, cacheReachedTextStart = true)
 
         override fun hasKnownCursor(): Boolean = knownCursor
 
@@ -182,11 +186,21 @@ class AutocorrectControllerTest {
         override fun onInputFinished() = Unit
     }
 
+    /** Records what the P1 pair machine would have been told, so pair context is checkable. */
+    private class RecordingPairSink : PairCompletionSink {
+        val pairs = mutableListOf<Pair<String, String>>()
+
+        override fun onCleanPairCompletion(contextWord: String, completedWord: String) {
+            pairs.add(contextWord to completedWord)
+        }
+    }
+
     private class Harness(autocorrectOn: Boolean = true, wireAutocorrect: Boolean = true) {
         val strip = FakeStrip()
         val editor = FakeEditor()
         val engine = FakeEngine()
         val sink = RecordingSink()
+        val pairSink = RecordingPairSink()
         var autocorrectEnabled = autocorrectOn
 
         /** False reproduces a build that never calls the D3 entry points at all. */
@@ -203,6 +217,7 @@ class AutocorrectControllerTest {
 
         init {
             controller.setCompletionSink(sink)
+            controller.setPairCompletionSink(pairSink)
             controller.setAutocorrectGate { autocorrectEnabled }
         }
 
@@ -367,6 +382,29 @@ class AutocorrectControllerTest {
         h.typeWord("китәп")
         h.separator(' ')
 
+        assertTrue(h.sink.completions.isEmpty())
+    }
+
+    @Test
+    fun aCorrectedWordStillBecomesPairContextForTheNextCleanWord() {
+        // 2026-09-24 audit, finding 7: the replacement re-arms the pair boundary exactly like an
+        // accepted suggestion does — without it the run machine's no-change early return would
+        // keep the pair machine dirty past the separator, and the corrected word could never be a
+        // pair's context half.
+        val h = Harness()
+        h.start()
+        h.typeWord("баш")
+        h.separator(' ')
+        h.advise("китәп", "китап")
+        h.typeWord("китәп")
+        h.separator(' ')
+        assertEquals("баш китап ", h.editor.before)
+
+        h.typeWord("дөнья")
+        h.separator(' ')
+
+        assertEquals(listOf("китап" to "дөнья"), h.pairSink.pairs)
+        // The words machine's half is untouched: the correction still teaches nothing.
         assertTrue(h.sink.completions.isEmpty())
     }
 
