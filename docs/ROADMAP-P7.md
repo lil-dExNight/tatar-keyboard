@@ -663,3 +663,78 @@ personal glide candidates).
 > geometry swap (the decoder is rebuilt against the new geometry and the old index
 > becomes garbage). Recorded as an accepted decision for now; a shared or
 > demand-paged index stays available as a future optimization.
+
+## P7-5 — lift-commit UX + след свайпа и подсветка клавиши (2026-09-24)
+
+### Lift-commit (поправка UX к P7-3)
+
+Раньше подъём пальца только рисовал полосу кандидатов, а коммитом был тап. Теперь:
+
+- Подъём после armed-глайда **коммитит top-1 сразу** (авто-пробел, регистр по шифту) через
+  `commitPredictedWord` — тот же путь, что у тапа по предиктивной подсказке, включая
+  `trustPairBoundary()` и `markRunDirty()`.
+- Полоса показывает **оставшиеся** кандидаты (2..4) как тапабельные альтернативы; тап по
+  альтернативе **заменяет** коммиченное слово на месте (`InputLogic.replaceGlideLiftedWord` —
+  suffix-матч слова+пробела у курсора, отказ при выделении/букве после курсора).
+- Один backspace сразу после lift-commit **удаляет всё слово целиком**
+  (`LatinImeGlide.maybeUndoGlideCommit` → `deleteGlideLiftedWord`); после замены альтернативой
+  undo переезжает на неё. Любое промежуточное изменение текста закрывает окно undo.
+- Ноль кандидатов → ничего не коммитится (reserve-без-коммита, как раньше).
+- Обучение = семантика тапнутой подсказки, а не clean run.
+
+### След и подсветка (trail)
+
+- `keyboard/internal/GlideTrail.kt` — кольцевой буфер (ёмкость 48, перезапись старейшей
+  точки — в отличие от GlidePath, который fail-closed обрезает), окно видимости 150 мс,
+  альфа линейно от 0 на хвосте до 0x66 у пальца; возраст считается от НОВЕЙШЕЙ точки
+  (перерисовка случается только на новых точках), чистый Kotlin без android-импортов,
+  ноль аллокаций (пин `GlideTrailTest.feedAndDrawReadPathsAllocateNothing` — 0 Б/жест).
+- Seam `DrawingProxy.onGlideTrailPoint/onGlideTrailEnd`; вызовы стоят ровно в двух
+  armed-ветках `PointerTracker.onMoveEventInternal` — при выключенном глайд-тумблере
+  ветки мертвы by construction, путь касания побайтово прежний.
+- `MainKeyboardView` рисует полилинию ПОСЛЕ клавиш (поверх offscreen-блита на software-пути,
+  поэтому след не запекается в буфер), предвыделенным Paint; цвет — новый attr
+  `glideTrailColor` (@color/app_accent в `MainKeyboardView.Tatar`; тема одна), толщина —
+  `config_glide_trail_stroke_width` (9dp). `onGlideTrailEnd` при пустом следе — no-op
+  (нет лишнего invalidate на каждом отпускании клавиши).
+- Клавиша под пальцем подсвечена через существующий pressed-state (`onKeyPressed(key,
+  withPreview=false)` — без preview-попапа, без хаптики, без listener-колбэков); смена
+  hover-клавиши отпускает предыдущую. Конец жеста/отмена/мультитач-перехват/закрытие
+  клавиатуры (`cancelAllPointerTrackers` доходит без CANCEL-события) — все зовут
+  `endGlideFeedback()`, идемпотентно.
+- Осознанное упрощение: после подъёма след гаснет мгновенно (без анимированного fade-out —
+  он требовал бы цикла инвалидейшенов; внимание пользователя уже на слове и полосе).
+
+### Гейты (финальное дерево, 2026-09-24)
+
+- JVM: **1566/1566** (`./gradlew test --rerun-tasks`), включая `GlideTrailTest` (7) и
+  `GlideTrailContractTest` (5); 13 e2e-пинов lift-commit в `GlideEndToEndTest`.
+- Python-конвейер: весь цикл зелёный; `rebuild_assets.py --check --allow-known-drift` — ok.
+- `lintRelease` — зелёный; release APK 1 846 564 Б (бюджет 3 145 728);
+  `check-no-internet` — оба уровня OK.
+
+### Device UAT (POCO C71, release-подписанный APK, 2026-09-24)
+
+Свидетельства: `build/device-uat-2026-09-24/p7-lift-trail/`.
+
+- `d01-pointer-instrument.txt` — `GlidePointerDeviceTest` 4/4 OK, включая новый
+  `testArmedGlideFeedsTheTrailAndHoversKeys` (след наполняется при armed-глайде,
+  `onGlideTrailEnd` приходит, клавиши ә/л/м загораются под пальцем).
+- `d02-ui-liftcommit.txt` — `GlideUiDeviceTest` (обновлён под lift-commit) 1/1 OK на живом
+  debug-IME: hold-then-swipe сәләм-жест → подъём коммитит top-1 «сәлләм » сразу → тап по
+  левой ячейке (первая альтернатива) заменяет на «сәләм ».
+- `u03-trail.png` — след виден в середине жеста (550 мс в 1500-мс свайпе ц→х),
+  синий, с затуханием к хвосту; `u02-before.png` — до жеста следа нет.
+- `u04-after.png` — подъём коммитит «цех » сразу, полоса показывает альтернативы
+  йоз · йөз; след и подсветка погашены.
+- `u05-after-replace.xml` + `u06-after-replace.png` — тап по средней ячейке заменяет
+  слово на месте: поле читается «йөз ».
+- `u07-after-undo.xml` — один backspace (тап по ⌫ клавиатуры) после замены удаляет всё
+  слово (поле пустое — text-атрибут показывает hint, сверено с пустым baseline u01).
+- `u08-field-readbacks.txt` — негативный контроль: «цех » → буква → bs стирает только
+  букву («цех »), второй bs — только пробел («цех»): окно undo закрыто вводом.
+- `u09-logcat-crash.txt` — crash-буфер пуст; FATAL/ANR нет.
+
+Состояние устройства восстановлено: дефолтный IME оператора (Gboard), штатный
+`tatar-keyboard-3.0.1.apk` из `dist/`, «Word suggestions» возвращён в OFF (было OFF),
+debug/test-пакеты удалены.

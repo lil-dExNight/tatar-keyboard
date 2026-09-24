@@ -8,7 +8,7 @@ namespace `rkr.simplekeyboard.inputmethod`. Ветка работы — `main`.
 
 | Действие | Команда |
 |---|---|
-| JVM-тесты (1548 шт.) | `./gradlew test` (для честного прогона — `--rerun-tasks`) |
+| JVM-тесты (1566 шт.) | `./gradlew test` (для честного прогона — `--rerun-tasks`) |
 | Python-тесты конвейера (507 шт.) | `for f in tests/*/test_*.py; do python3 "$f" \|\| exit 1; done` — pytest НЕ используется, это чистый unittest |
 | Instrumentation на устройстве (E3b/Phase B) | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest` → `adb install -r` обоих APK → `adb shell am instrument -w -e class rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3bComputeInstrumentationTest org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner` (пакет тестового APK — с суффиксом `.test`; legacy-раннеру нужен `<uses-library android:name="android.test.runner">` в `app/src/androidTest/AndroidManifest.xml`, уже есть). Меряет обе fuzzy-политики (DEFAULT/TATAR, Phase C = {1,4} probe-first) на 22 обзорных префиксах и опечаточных пробах (включая 10-cp «сцләмәтлек» — 380 проб) + дампит живую геометрическую карту соседей (32 пары) для сверки с офлайн-моделью `typo_pack.py`. Прогнан на POCO C71 2026-09-20 (логи — `build/tt-typo-next-phaseB/`, Phase B и Phase C) |
 | Эмуляторный смоук (DEV-3) | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk путь] [--no-boot] [--outdir build/emulator-smoke/]` — поднять AVD → установить APK → выбрать IME → сценарий (набор tt/ru/en, подсказки, эмодзи-панель, crash-буфер; TT-SUGGESTIONS P5: two word-form probes — type татар/сакчы + space on the tt layout, tap the middle suggestion cell, read the try-it field; TT-TYPO-NEXT Phase A: a second cell-2 tap after the сакчы probe proves predictions follow an accepted suggestion without a keystroke) → строки `RESULT\|PASS/FAIL/SKIP`, свидетельства (скриншоты, дампы) в outdir. Координаты клавиш откалиброваны под 1080×2280; пиксельная дельта полосы подсказок требует ImageMagick на хосте (без него — SKIP) |
@@ -103,7 +103,7 @@ schema 2 по умолчанию (`--schema 1` оставлен для спра�
 - `latin/LatinIME.java` — InputMethodService, точка входа IME.
 - `keyboard/` (Java) — View, PointerTracker, KeyDetector; `latin/suggestions/`,
   `latin/dictionary/**`, `latin/emoji/` (Kotlin) — подсказки, словари, эмодзи.
-- `app/src/test` — 1548 JVM-тестов (JUnit 4, Robolectric нет — осознанно).
+- `app/src/test` — 1566 JVM-тестов (JUnit 4, Robolectric нет — осознанно).
 - `scripts/` — python-конвейер ассетов (stdlib only, fail-closed);
   `research/corpus/` — измерительные скрипты и манифесты корпусов (данные OPUS
   не коммитятся — лицензии).
