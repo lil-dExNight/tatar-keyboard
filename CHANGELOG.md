@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **Glide typing tolerates a resting finger:** the gesture detection's decision window and speed check now start at the first real movement, not at touch-down — resting on the first letter for a moment before swiping used to make the glide never fire ("зажимаю букву и начинаю вести её в сторону второй — не работает"). A long-press that actually opens its panel during the rest still wins and closes the gesture. (Field report, 2026-09-24; see docs/ROADMAP-P7.md.)
+
 ## [3.0.1] — 2026-09-24
 
 Post-release audit of 3.0.0 (`docs/AUDIT-2026-09-24.md`): one release-blocker link fix, two real correctness fixes in the autocorrect and learning paths, the startup profile extended to glide typing, and an accuracy sweep of the docs and strings. No feature changes.

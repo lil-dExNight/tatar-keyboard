@@ -287,6 +287,34 @@ touch side reads per gesture. The settings UI row lands with P7-3.
   rule working, and the "passes over space mid-path" pin covers ARMED glides.
 - 512-point path cap: a glide longer than ~4-8 s of travel keeps its leading
   prefix (fail-closed, documented in P7-1).
+- **2026-09-24 (fix, after the 3.0.1 release cut):** the reference detector
+  measures the detection window and the velocity from touch-DOWN, so a user
+  who rests a finger on the first key ~300-500 ms before moving is rejected
+  forever — field report: "зажимаю букву и начинаю вести её в сторону второй
+  — не работает". Fixed by anchoring both clocks at the first sample that
+  leaves a small slop (a quarter of the key width, just above the platform's
+  8 dp touch slop; `GlideGestureDecider.DEFAULT_SLOP_KEY_WIDTH_FRACTION`):
+  while no sample exceeds the slop the machine stays TRACKING regardless of
+  elapsed time (a still finger is a long-press candidate, not a rejected
+  glide). The distance threshold is unchanged (one key width from down); an
+  immediately-swiped gesture anchors on its first move sample and behaves
+  exactly as before. A long-press that actually FIRES while the machine is
+  still TRACKING cancels the decider (`PointerTracker.onLongPressed` — a finger
+  moving after the panel opened is a panel selection, never a glide; the panel
+  branch already ate those MOVEs, this makes the boundary fail-closed).
+  Pins: `GlideGestureDeciderTest` 12 → 17 (hold-then-swipe arms even past the
+  old window; the window runs from the first move; the velocity is measured
+  from the anchor; the slop boundary is strict; an immediate swipe is
+  unchanged; a still finger never starts the clock) and the integration
+  contract gained the fired-long-press cancel pin. Device evidence on the POCO
+  C71: `GlidePointerDeviceTest` (real PointerTracker, real MotionEvents, real
+  700 ms hold) 3/3 — hold-then-swipe delivers, immediate swipe delivers, a
+  fired long-press never does; and `GlideUiDeviceTest` (the full live UI: the
+  debug IME over the SetupActivity try-it field, system-level injection with a
+  real hold) — the strip showed сәлләм · сәләм · сайлыйм and the cell tap
+  committed "сәләм " (screenshot + run log in build/glide-uat-2026-09-24/).
+  Gates: JVM 1 543 → 1 548, python 507, lintRelease, rebuild --check, release
+  APK 1 860 960 B, check-no-internet — all green.
 
 ### Gates (P7-2)
 
