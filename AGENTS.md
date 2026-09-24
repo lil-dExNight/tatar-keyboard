@@ -8,8 +8,8 @@ namespace `rkr.simplekeyboard.inputmethod`. Ветка работы — `main`.
 
 | Действие | Команда |
 |---|---|
-| JVM-тесты (1456 шт.) | `./gradlew test` (для честного прогона — `--rerun-tasks`) |
-| Python-тесты конвейера (484 шт.) | `for f in tests/*/test_*.py; do python3 "$f" \|\| exit 1; done` — pytest НЕ используется, это чистый unittest |
+| JVM-тесты (1534 шт.) | `./gradlew test` (для честного прогона — `--rerun-tasks`) |
+| Python-тесты конвейера (505 шт.) | `for f in tests/*/test_*.py; do python3 "$f" \|\| exit 1; done` — pytest НЕ используется, это чистый unittest |
 | Instrumentation на устройстве (E3b/Phase B) | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest` → `adb install -r` обоих APK → `adb shell am instrument -w -e class rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3bComputeInstrumentationTest org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner` (пакет тестового APK — с суффиксом `.test`; legacy-раннеру нужен `<uses-library android:name="android.test.runner">` в `app/src/androidTest/AndroidManifest.xml`, уже есть). Меряет обе fuzzy-политики (DEFAULT/TATAR, Phase C = {1,4} probe-first) на 22 обзорных префиксах и опечаточных пробах (включая 10-cp «сцләмәтлек» — 380 проб) + дампит живую геометрическую карту соседей (32 пары) для сверки с офлайн-моделью `typo_pack.py`. Прогнан на POCO C71 2026-09-20 (логи — `build/tt-typo-next-phaseB/`, Phase B и Phase C) |
 | Эмуляторный смоук (DEV-3) | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk путь] [--no-boot] [--outdir build/emulator-smoke/]` — поднять AVD → установить APK → выбрать IME → сценарий (набор tt/ru/en, подсказки, эмодзи-панель, crash-буфер; TT-SUGGESTIONS P5: two word-form probes — type татар/сакчы + space on the tt layout, tap the middle suggestion cell, read the try-it field; TT-TYPO-NEXT Phase A: a second cell-2 tap after the сакчы probe proves predictions follow an accepted suggestion without a keystroke) → строки `RESULT\|PASS/FAIL/SKIP`, свидетельства (скриншоты, дампы) в outdir. Координаты клавиш откалиброваны под 1080×2280; пиксельная дельта полосы подсказок требует ImageMagick на хосте (без него — SKIP) |
 | Линт | `./gradlew lintRelease` (baseline `app/lint-baseline.xml` — 0 errors, 32 осознанных warning после P1 фазы 2 (31 после P1 фазы 1, 5x IconLauncherShape сняты: иконки конвертированы в lossless WebP, детектор WebP не анализирует; +1 экземпляр UsableSpace в `createBigrams` — та же осознанная ставка на `usableSpace` + резерв 64 КБ, что и в words-фабрике), классификация в `app/lint.xml`; `abortOnError=true`) |
@@ -103,7 +103,7 @@ schema 2 по умолчанию (`--schema 1` оставлен для спра�
 - `latin/LatinIME.java` — InputMethodService, точка входа IME.
 - `keyboard/` (Java) — View, PointerTracker, KeyDetector; `latin/suggestions/`,
   `latin/dictionary/**`, `latin/emoji/` (Kotlin) — подсказки, словари, эмодзи.
-- `app/src/test` — 1456 JVM-тестов (JUnit 4, Robolectric нет — осознанно).
+- `app/src/test` — 1534 JVM-тестов (JUnit 4, Robolectric нет — осознанно).
 - `scripts/` — python-конвейер ассетов (stdlib only, fail-closed);
   `research/corpus/` — измерительные скрипты и манифесты корпусов (данные OPUS
   не коммитятся — лицензии).

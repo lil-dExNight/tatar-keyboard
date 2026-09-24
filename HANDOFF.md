@@ -1,3 +1,52 @@
+# HANDOFF — ROADMAP Phase 7 (glide typing): shipped machinery + gates green; device decode gate PASSES after the perf iteration (p95 3.39 ms); interactive device UAT blocked by owner use
+
+> **2026-09-24 reconciliation (post-fix iteration landed):** this entry's "10× over
+> budget" line is the PRE-fix record — the dated perf iteration in
+> `docs/ROADMAP-P7.md` (fused per-variant loop, manual abs, pointwise-L1 shape channel;
+> NO constant moved; held-out recovery re-validated 77.57 → 77.70 % top-3) brought the
+> same instrumentation harness to **p50 1.621 ms / p95 3.388 ms / max 4.744 ms — the
+> ≤ 5 ms gate PASSES** (re-measured on the POCO C71 with the raw logcat saved to
+> `build/device-uat-2026-09-24/p7/u17-instrument-logcat.txt`). The current tree's APK:
+> unsigned 1 863 324 B, signed 1 842 468 B, SHA-256 `048f04b9…00da14` (the `9c7420a3…`
+> below was the pre-fix build). The emulator evidence path in the entry is now true
+> (the 36 files were copied from `/tmp` into `build/device-uat-2026-09-24/p7/`).
+
+**State as of 2026-09-24.** The GLIDE mission (plan `docs/GLIDE-PLAN.md`, report
+`docs/ROADMAP-P7.md`) is implemented through P7-4 in the working tree on top of the
+committed Phase 6 (`511e6fe0`; the P6 entry below is stale in that detail). **The
+changeset is uncommitted**; version NOT bumped (2.0.1/33; the release decision is the
+operator's).
+
+- **P7-1 (decoder)**: SHARK²-style two-channel classifier over a CSR key-pair index of
+  the shipped dictionary; held-out synthetic top-3 77.57 %, host p95 1.19 ms; the
+  four documented deviations (frequency compressor γ=0.25, smooth-wander noise, tuned
+  sigmas, exact-N resampler) stand.
+- **P7-2 (touch)**: `GlideGestureDecider` (arm = >1 key width at >0.10 dp/ms within
+  500 ms, sticky, fail-closed) + the minimal PointerTracker surgery; pref-gated.
+- **P7-3 (integration)**: `LookupKind.GLIDE` through the engine worker, the third strip
+  binding, the settings row (default ON, subordinate to suggestions), the real-assets e2e
+  pins (сәләм top-3 → commit → сәләмә·һәм·белән; работа on the ru layout).
+- **P7-4 today**: all gates green (python 505/0, JVM 1 534/0, lint, asset pins,
+  no-INTERNET, `release_check.sh --quick` 8/8); signed release APK **1 842 468 B** ≤
+  3 145 728, SHA-256 `9c7420a3…7458517cb`, cert `98ca6feb…42ad`. **Device decode
+  measured: p95 50.027 ms on the POCO C71 (debug build) — FAILS the written ≤ 5 ms
+  gate, stable and GC-free** (host 1.19 ms; this budget phone runs the same work ~40×
+  slower, consistent with E3b's ratios). The emulator carried the interactive UAT
+  (9/9 PASS, `build/device-uat-2026-09-24/p7/`): the settings row (default ON), the
+  сәләм gesture to the strip's top-3, tap→commit→chain, ru работа cell 1, tap-typing
+  regression, space-swipe intact, toggle OFF → legacy sliding behavior, and the
+  documented no-trail MVP UX (nothing paints until lift).
+- **Device state**: the owner used the phone through the drive (IME flipped to Gboard
+  twice, landscape rotation) — the interactive device rows are BLOCKED, and the device
+  IME is left as the owner's current choice (Gboard). Device cold start measured clean
+  anyway (252/269 ms < 400, `p03-coldstart-device.txt`), crash buffer empty.
+
+Open: the release decision incl. the perf-gate number (recorded, not waived), the
+interactive device UAT when the phone is free, the parked follow-ups (trail rendering,
+live per-MOVE scoring, personal glide candidates).
+
+---
+
 # HANDOFF — ROADMAP Phase 6 (foundations): T2 splits done; profile regenerated; gates green; UAT via emulator
 
 **State as of 2026-09-24.** Phase 6 is complete in the working tree on top of the
