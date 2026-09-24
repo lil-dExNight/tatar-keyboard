@@ -1,3 +1,91 @@
+# HANDOFF — release 3.0.1 prepared (uncommitted; tag/push/publish are next)
+
+**State as of 2026-09-24.** Release **3.0.1 / versionCode 35** is prepared on
+top of HEAD `b8de3916` (= tag `v3.0.0`) plus the two uncommitted audit-fix
+waves (F1 code + DOCS/DATA/STRINGS — `docs/AUDIT-2026-09-24.md`,
+`docs/AUDIT-2026-09-24-FIXES.md`). The release engineering itself (version
+bump, changelogs, this entry, the audit and the checklist retarget) is
+**uncommitted** and awaits the operator's review, commit, tag and publish.
+**3.0.1 supersedes 3.0.0**: the `v3.0.0` tag has no GitHub Release and gets
+none — it stays as history (like 1.9.13/1.9.14 inside 1.9.15); everything
+3.0.0 carries is inside 3.0.1.
+
+Release changes in the working tree (on top of the fix waves):
+
+- `app/build.gradle`: versionCode 34 → 35, versionName "3.0.0" → "3.0.1".
+- `CHANGELOG.md`: new `## [3.0.1] — 2026-09-24` section above 3.0.0 (the
+  audit-fix summary: links fixed, autocorrect-undo reliability, learning
+  counters, glide in the startup profile, docs/strings accuracy).
+- Store changelogs `metadata/{en-US,ru-RU,tt}/changelogs/35.txt` — 349 / 494 /
+  499 B (all ≤ the 500-byte Fastlane limit).
+- `docs/APK-AUDIT-3.0.1.md` — new audit (per-entry CRC32 comparison vs the
+  3.0.0 APK); `docs/PUBLISH-CHECKLIST.md` retargeted to 3.0.1/35;
+  `docs/README.md` index line updated.
+
+Gates (all 2026-09-24, all green):
+
+| Gate | Result |
+|---|---|
+| python suites (`for f in tests/*/test_*.py`) | **507 tests, 16 files, 0 failing files** (1 pre-existing skip) |
+| `./gradlew test --rerun-tasks` | **1 543 tests, 163 suites, 0 failures/errors/skipped** |
+| `./gradlew lintRelease --rerun-tasks` | green (21 tasks executed) |
+| `rebuild_assets.py --check --allow-known-drift` | `"ok": true` (tt 155/0, ru 2/0 as pinned) |
+| `scripts/release_pack.sh` | unsigned 1 860 968 B → signed zopfli **1 842 468 B** ≤ 3 145 728 (headroom 41.4 %), SHA-256 **`4ce547973bc60cd743abfcbf126841e481ee9999ee5cf7da773de952a8f430de`**, v2-only, cert `98ca6feb…42ad` |
+| `check-no-internet.sh dist/tatar-keyboard-3.0.1.apk` | both levels OK |
+| `release_check.sh --full dist/tatar-keyboard-3.0.1.apk` | **OVERALL PASS — 13/13** (incl. version 3.0.1/35, changelog 35.txt, delta vs 3.0.0 +0 B / +0.0 %) |
+
+Artifact: **`dist/tatar-keyboard-3.0.1.apk`** (local, git-ignored) — publish
+exactly these bytes; do not rebuild before publishing. GitHub Release notes
+text is prepared at `/tmp/relnotes-3.0.1.md` (same structure as the 2.0.x/3.0.0
+notes). All four pinned binary assets are byte-identical to 3.0.0 — updating
+re-inflates nothing.
+
+Next operator actions: review the diff → commit → tag `v3.0.1` → push →
+GitHub Release with the APK from `dist/` (published manually via the web UI —
+`gh` on this machine is pull-only, as with 2.0.0/2.0.1) → store upload
+(35.txt notes are in place for en-US/ru-RU/tt).
+
+---
+
+# HANDOFF — 3.0.0 audit done (docs/AUDIT-2026-09-24.md); two fix waves land the findings (uncommitted)
+
+**State as of 2026-09-24.** The consolidated audit of release 3.0.0 (five
+angles, HEAD `b8de3916`) is written to `docs/AUDIT-2026-09-24.md` — verdicts
+per area, the full findings table, and the residual-risk list. The findings
+land in **two parallel fix waves**, both uncommitted on top of 3.0.0:
+
+- **F1 (app code):** the two correctness MAJORs (revert path without
+  `isConnected`; dead word-usage updates), five MINORs (neighbor-geometry
+  staleness, pair boundary after autocorrect, onTap else-guard, quarantine
+  flags, double pending read), the three error-prone LongFloatConversion
+  casts, the baseline-profile regeneration (glide classes), M1 (swapped
+  restriction titles), L5 (empty add-language dialog), L8 (chevron
+  `autoMirrored`). F1 runs the full gate set on the merged tree.
+- **DOCS/DATA/STRINGS (landed):** the release blocker **H1** — in-app
+  privacy/license URLs pointed at the old repo `dExNight`, now
+  `lil-dExNight`, and the OpenSubtitles link is `https`; both NOTICE files
+  re-synced to the shipped assets (tt table 13 154 heads / K=3 / schema 3 +
+  the eval-set wording; the wordform admission sources and the
+  110 000 = 100 000 + 948 + 9 052 arithmetic); PRIVACY.md → **1.6** (current
+  asset sizes, the words store's pending-hash stage + salt, the 2 000-word
+  cap, clipboard read only on the paste key, button names synced to the UI);
+  `emoji_search_v1.txt` (1 389 rows) and `emoji_skin_v1.txt` (131 rows) pinned
+  by SHA-256 + count in the python suites (**505 → 507 tests**); strings: tt
+  `%1$d-се` orthography, ru `generic_language_layouts` plural; the review
+  queue backfilled (+3 rows, the edited tt row updated; pre-queue legacy rows
+  intentionally not backfilled — decision recorded in the audit); the stale
+  `buildDataSourcesScreen` KDoc rewritten; the error-prone triage entry
+  (+4 findings) and the ROADMAP-P7 memory footnote (~5.8 MB worst case,
+  accepted) appended.
+
+Python gates green 2026-09-24: 16 files, 507 tests, 0 failing (1 pre-existing
+emoji_pack skip). Residual risks (accepted/documented) are listed in the audit
+doc: L3 contrast (iOS palette), PointerTracker statics, the TalkBack audible
+check (operator), SettingsActivity exported, ~5.8 MB glide memory, and the
+parked ideas (FLAG_SECURE on dialogs, sentstart in release gates).
+
+---
+
 # HANDOFF — release 3.0.0 prepared (uncommitted; tag/push/publish are next)
 
 **State as of 2026-09-24.** Release **3.0.0 / versionCode 34** is prepared on

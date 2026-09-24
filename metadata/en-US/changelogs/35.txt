@@ -1,0 +1,4 @@
+• Audit fixes: the privacy/license links now open the right repository (and https)
+• Autocorrect undo made reliable; tapping a saved word now counts toward its usage stats
+• Startup profile covers glide typing; per-language data-loss notices; MDM titles fixed
+• Docs and strings accuracy sweep; dictionaries and tables unchanged; no network

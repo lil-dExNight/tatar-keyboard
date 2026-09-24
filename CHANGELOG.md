@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.0.1] — 2026-09-24
+
+Post-release audit of 3.0.0 (`docs/AUDIT-2026-09-24.md`): one release-blocker link fix, two real correctness fixes in the autocorrect and learning paths, the startup profile extended to glide typing, and an accuracy sweep of the docs and strings. No feature changes.
+
+### What changed
+
+- **Privacy and license links point to the right place:** both in-app links went to the old repository owner and broke — they now open the current repo (`lil-dExNight`), and the OpenSubtitles link is https
+- **Autocorrect undo is reliable:** the backspace-undo of an autocorrection ran its text edits without checking the editor connection — the missing guard is in, matching every other text-mutation path
+- **Tapping your saved word now counts:** accepting a personal-dictionary word from the strip updates its usage counters (the event existed but never reached the store) — learning adapts to what you actually pick
+- **Glide typing is in the startup profile:** the baseline profile now covers the glide path (3 071 → 3 240 rules), so a Play install compiles it ahead of time
+- **Fixes around the edges:** fresh key geometry reaches the engine before a language switch is announced; a word fixed by autocorrect can be the context half of a learned pair again; quarantine notices are per-language (one unreadable store no longer spends another's notice); the managed-configuration (MDM) restriction titles are the right way round; the tt `%1$d-се` orthography and the ru plural on the layouts row are corrected
+- **Docs accuracy:** the NOTICE files name the real table shape (13 154 heads, K = 3) and the word-form admission sources; `PRIVACY.md` describes the pending-hash stage, the 2 000-word cap and the clipboard; the emoji search/skin tables gained their missing pins in the test suites
+
+### What stayed the same
+
+- Dictionaries, prediction tables, layouts, emoji — byte-identical; updating from 3.0.0 re-inflates nothing
+- One permission only — VIBRATE; no INTERNET, gate verified on the built APK
+- Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
+
 ## [3.0.0] — 2026-09-24
 
 Sentence starts finally look and work like sentence starts — in both languages — predictions no longer stop at a comma, and the keyboard now learns your word pairs on-device (with a proper management screen and an incognito pause).

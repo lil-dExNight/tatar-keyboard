@@ -1,4 +1,30 @@
-# PUBLISH-CHECKLIST — публикация v3.0.0
+# PUBLISH-CHECKLIST — публикация v3.0.1
+
+> **Retargeted 2026-09-24 to candidate v3.0.1 / versionCode 35** — the
+> post-release audit fix wave on top of 3.0.0 (`docs/AUDIT-2026-09-24.md`,
+> `docs/AUDIT-2026-09-24-FIXES.md`): the H1 release blocker (privacy/license
+> links pointed at the old repo owner → now `lil-dExNight` + https), two
+> correctness MAJORs (autocorrect-undo `isConnected` guard; personal-word
+> usage counters now live), the baseline profile covering glide typing,
+> corrected MDM restriction titles, NOTICE/PRIVACY accuracy and small
+> correctness/UX fixes. **3.0.1 supersedes 3.0.0**: the `v3.0.0` tag has no
+> GitHub Release and gets none — it stays as history, like 1.9.13/1.9.14;
+> everything 3.0.0 carries is inside 3.0.1. Current artifact —
+> `dist/tatar-keyboard-3.0.1.apk` (1 842 468 B, SHA-256
+> `4ce547973bc60cd743abfcbf126841e481ee9999ee5cf7da773de952a8f430de`),
+> audit — `docs/APK-AUDIT-3.0.1.md`. The notes about 3.0.0 and earlier below
+> stay as history; their checkmarks and numbers do not carry over.
+>
+> Candidate differences the procedure must account for: store changelog —
+> `metadata/en-US/changelogs/35.txt` (+ ru-RU and tt copies, all ≤ 500 B).
+> **All four pinned binary assets are byte-identical to 3.0.0**
+> (CRC32-verified; 16/16 pin values matched in release_check) — changed are
+> only the two text NOTICE assets, the regenerated baseline profile, the
+> strings (arsc + one restrictions XML) and the code. On update from 3.0.0
+> the device **re-inflates NOTHING**. Gates: `release_check.sh --full`
+> **13/13 PASS** on the candidate. Publishing, push and tags are the
+> operator's actions (gh CLI here is pull-only — the Release object is
+> published manually via the web UI).
 
 > **Retargeted 2026-09-24 to candidate v3.0.0 / versionCode 34** — seven
 > roadmap phases ship together (`docs/ROADMAP-P1.md` … `docs/ROADMAP-P7.md`):
