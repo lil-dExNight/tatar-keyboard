@@ -627,3 +627,11 @@ device), with a DENSE (~60 px) polyline — the corners-only first attempt under
 What remains: the release decision, the interactive device UAT when the phone is free,
 and the follow-ups the plan already parks (trail rendering, live per-MOVE scoring,
 personal glide candidates).
+
+> **2026-09-24 (3.0.0 audit — worst-case memory, accepted):** in the worst case both
+> warm engines each hold a lazily built glide word index at once — ~3.0-3.2 MB for
+> Tatar (measured 3 158 405 B on the 110 000-entry dictionary, P7-1) plus ~2.8 MB
+> for Russian, ≈ 5.8 MB total. An index is released on engine destroy and on a
+> geometry swap (the decoder is rebuilt against the new geometry and the old index
+> becomes garbage). Recorded as an accepted decision for now; a shared or
+> demand-paged index stays available as a future optimization.

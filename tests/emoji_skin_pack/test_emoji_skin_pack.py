@@ -27,6 +27,13 @@ PACK_SCRIPT = ROOT / "scripts" / "emoji_skin_pack.py"
 PANEL_ASSET = ROOT / "app" / "src" / "main" / "assets" / "emoji" / "emoji_set_v1.txt"
 SKIN_ASSET = ROOT / "app" / "src" / "main" / "assets" / "emoji" / "emoji_skin_v1.txt"
 
+# Pins for the committed asset, in the emoji_pack pattern: a rebuild that
+# changes the shipped table must update these together with the asset.
+COMMITTED_LINE_COUNT = 131
+COMMITTED_ASSET_SHA256 = (
+    "818336362439a73abbd17663f9eceab13a8beea603395ef700a1c87e34e28ea2"
+)
+
 
 def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -355,6 +362,10 @@ class CommittedAssetTest(unittest.TestCase):
         self.assertLessEqual(len(self.lines), pack.MAX_LINES)
         self.assertGreaterEqual(len(self.lines), pack.MIN_BASES)
         self.assertLessEqual(len(self.lines), pack.MAX_BASES)
+
+    def test_committed_asset_sha256_and_line_count_pins(self) -> None:
+        self.assertEqual(len(self.lines), COMMITTED_LINE_COUNT)
+        self.assertEqual(sha256_of(SKIN_ASSET), COMMITTED_ASSET_SHA256)
 
     def test_every_line_is_sequence_prefix_suffix(self) -> None:
         panel = set(self.panel_sequences)

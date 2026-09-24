@@ -27,22 +27,25 @@ Catalogue page: https://wortschatz.uni-leipzig.de/en/download/tat
 
 Since 2026-08-31 (corpus-conversational part B, docs/CORPUS-CONVERSATIONAL-TT.md)
 the training input additionally contains a deduplicated conversational part
-(Tatoeba + OpenSubtitles, Tatar lines; unthinned -- it is only a few percent of
-the written mass), from the same two sources and under the same terms as the
-Russian section below spells out.
+(Tatoeba + OpenSubtitles, Tatar lines, minus the 10 % reserved for the eval
+set -- it is only a few percent of the written mass), from the same two
+sources and under the same terms as the Russian section below spells out.
 
 Changes by the Tatar Keyboard project: adjacent word pairs were counted within
 sentence boundaries from the source corpora, restricted to word forms
 already present in the shipped tatar_top100k_v1 dictionary (a separate, already
 CC BY 4.0-licensed component derived from the same collection), ranked per head
 word, capped to the top 10,132 head words by unigram frequency plus a named
-list of 75 frequent imperative forms (rank 10,000..40,000, paradigm-checked),
-top 4 successors per head, packed into a versioned binary format (schema 2,
-distinct from the dictionary's schema 1) with SHA-256, and zlib-compressed.
+list of 3,177 further words (75 frequent imperative forms, rank
+10,000..40,000, paradigm-checked, and 3,102 conversationally established words
+below the frequency cutoff) -- 13,154 heads in total -- top 3 successors per
+head, packed into a versioned binary format (schema 3, distinct from the
+dictionary's schema 2) with SHA-256, and zlib-compressed.
 The conversational lines were deduplicated before counting, and no sentence
 from either collection is stored in the app -- the table holds word pairs and
-their ranks only. Full transformation record: docs/DICTIONARY-E5B.md and
-docs/CORPUS-CONVERSATIONAL-TT.md.
+their ranks only. Full transformation record: docs/DICTIONARY-E5B.md,
+docs/CORPUS-CONVERSATIONAL-TT.md and docs/ROADMAP-P4.md (the head-list
+expansion and the move from 4 to 3 successors per head).
 
 --------------------------------------------------------------------------------
 russian_bigrams_v1.tatbigr.zlib
@@ -73,8 +76,9 @@ thinned (every 60th unique line) conversational part built from:
 Changes by the Tatar Keyboard project: the same transformation as above, with
 the 33-letter Russian alphabet in place of the Tatar one and the shipped
 russian_top100k_v1 dictionary as the vocabulary both halves of every pair must
-belong to; same top 10,000 head words, same top 4 successors per head, same
-binary format, same SHA-256 and zlib settings. The conversational lines were
+belong to; this table keeps its own shape -- the top 10,000 head words by
+unigram frequency and the top 4 successors per head -- with the same binary
+format, the same SHA-256 and zlib settings. The conversational lines were
 deduplicated before counting, and no sentence from either collection is stored
 in the app -- the table holds word pairs and their ranks only. Full
 transformation records: docs/RUSSIAN-BIGRAMS.md and

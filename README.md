@@ -1,6 +1,6 @@
 # Tatar Keyboard
 
-![CI](https://github.com/dExNight/tatar-keyboard/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/lil-dExNight/tatar-keyboard/actions/workflows/ci.yml/badge.svg)
 
 A native Android IME with a Tatar Cyrillic layout: the standard ЙЦУКЕН plus a dedicated, always-visible fifth row for **ә ө ү җ ң һ**. Fully offline — the app has no INTERNET permission at all (verified by CI on every commit). Lightweight, fast on budget devices, open source under Apache-2.0.
 
@@ -28,7 +28,7 @@ A native Android IME with a Tatar Cyrillic layout: the standard ЙЦУКЕН plu
 
 ### Установка
 
-1. Скачайте APK из [GitHub Releases](https://github.com/dExNight/tatar-keyboard/releases) репозитория [dExNight/tatar-keyboard](https://github.com/dExNight/tatar-keyboard).
+1. Скачайте APK из [GitHub Releases](https://github.com/lil-dExNight/tatar-keyboard/releases) репозитория [dExNight/tatar-keyboard](https://github.com/lil-dExNight/tatar-keyboard).
 2. Разрешите установку из неизвестных источников (система спросит сама).
 3. Откройте приложение — онбординг из двух шагов проведёт через включение и выбор клавиатуры.
 

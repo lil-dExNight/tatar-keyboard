@@ -27,6 +27,13 @@ PACK_SCRIPT = ROOT / "scripts" / "emoji_search_pack.py"
 PANEL_ASSET = ROOT / "app" / "src" / "main" / "assets" / "emoji" / "emoji_set_v1.txt"
 SEARCH_ASSET = ROOT / "app" / "src" / "main" / "assets" / "emoji" / "emoji_search_v1.txt"
 
+# Pins for the committed asset, in the emoji_pack pattern: a rebuild that
+# changes the shipped index must update these together with the asset.
+COMMITTED_LINE_COUNT = 1389
+COMMITTED_ASSET_SHA256 = (
+    "b16b4a76cdeafdae5aa16a05a47f38a9cc3f91cc616eb4a7ff1f7cba849af1bf"
+)
+
 
 def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -553,6 +560,10 @@ class CommittedAssetTest(unittest.TestCase):
         self.assertLessEqual(len(SEARCH_ASSET.read_bytes()), pack.MAX_ASSET_BYTES)
         self.assertLessEqual(len(self.search_lines), pack.MAX_LINES)
         self.assertGreater(len(self.search_lines), 1000)
+
+    def test_committed_asset_sha256_and_line_count_pins(self) -> None:
+        self.assertEqual(len(self.search_lines), COMMITTED_LINE_COUNT)
+        self.assertEqual(sha256_of(SEARCH_ASSET), COMMITTED_ASSET_SHA256)
 
     def test_every_line_is_three_tab_separated_fields(self) -> None:
         for line in self.search_lines:
