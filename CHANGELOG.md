@@ -10,8 +10,8 @@
 
 ### Added
 
-- **Lifting your finger commits the glide's best word:** a finished swipe types its top candidate into the field at once (with the automatic space and the current shift state), and the remaining candidates stay in the strip as tappable alternatives — tapping one swaps the committed word in place. One backspace right after the lift deletes the whole committed word, and a swipe that decodes to nothing commits nothing.
-- **Glide trail and key feedback:** while gliding, a fading trail follows the finger across the keys and the key under the fingertip lights up — graphics only, no popups and no haptics. Both follow the glide typing switch; with glide typing off the touch path is unchanged.
+- **Lifting your finger commits the glide's best word:** a finished swipe types its top candidate into the field at once (with the current shift state), and the remaining candidates stay in the strip as tappable alternatives — tapping one swaps the committed word in place. One backspace right after the lift deletes the whole committed word, and a swipe that decodes to nothing commits nothing. A glide inserts NO space of its own: it types the bare word, and only a glide right after another word prepends exactly one space — gliding word after word produces "сәләм дөнья" with nothing hanging at the end; undoing the second word of a chain removes it together with that space.
+- **Glide trail and key feedback:** while gliding, a fading trail follows the finger across the keys and the key under the fingertip lights up — graphics only, no popups and no haptics. The tail reaches ~300 ms behind the finger, and at the lift the trail fades out over a quarter of a second instead of vanishing. Both follow the glide typing switch; with glide typing off the touch path is unchanged.
 
 ## [3.0.1] — 2026-09-24
 
