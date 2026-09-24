@@ -49,6 +49,9 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
     private val recordedGlides = ArrayList<GlidePath>()
     private var longPressTimerArms = 0
     private var longPressCancels = 0
+    private var trailPoints = 0
+    private var trailEnds = 0
+    private val hoveredKeys = ArrayList<Key>()
 
     private val recorder = object : KeyboardActionListener.Adapter() {
         override fun onGlideInput(path: GlidePath) {
@@ -76,10 +79,18 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
     }
 
     private val drawingProxy = object : DrawingProxy {
-        override fun onKeyPressed(key: Key?, withPreview: Boolean) {}
+        override fun onKeyPressed(key: Key?, withPreview: Boolean) {
+            if (!withPreview && key != null) hoveredKeys.add(key)
+        }
         override fun onKeyReleased(key: Key?, withAnimation: Boolean) {}
         override fun showMoreKeysKeyboard(key: Key?, tracker: PointerTracker?): MoreKeysPanel? = null
         override fun startWhileTypingAnimation(fadeInOrOut: Int) {}
+        override fun onGlideTrailPoint(x: Float, y: Float, eventTime: Long) {
+            trailPoints++
+        }
+        override fun onGlideTrailEnd() {
+            trailEnds++
+        }
     }
 
     override fun setUp() {
@@ -102,6 +113,9 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
         recordedGlides.clear()
         longPressTimerArms = 0
         longPressCancels = 0
+        trailPoints = 0
+        trailEnds = 0
+        hoveredKeys.clear()
     }
 
     override fun tearDown() {
@@ -127,6 +141,21 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
     fun testImmediateSwipeStillDeliversAGlide() {
         driveGesture(holdMs = 0L, fast = true)
         assertEquals(1, recordedGlides.size)
+    }
+
+    /** P7-5: an armed glide feeds the fading trail and lights the keys it crosses. */
+    fun testArmedGlideFeedsTheTrailAndHoversKeys() {
+        driveGesture(holdMs = 0L, fast = true)
+        assertEquals(1, recordedGlides.size)
+        assertTrue("the trail must be fed while armed", trailPoints > 10)
+        assertTrue("the trail must end with the gesture", trailEnds > 0)
+        assertTrue("the crossed keys must light up", hoveredKeys.size >= 3)
+        // The straight lines between letter centers may clip a neighbor; the glide's own
+        // letters must all be lit, in first-touch order (duplicates collapsed).
+        val lit = hoveredKeys.map { Character.toLowerCase(it.code).toChar() }.distinct()
+        for (char in listOf('ә', 'л', 'м')) {
+            assertTrue("key $char must light up under the glide", lit.contains(char))
+        }
     }
 
     /** A finger that just rests: the long-press fires, and afterwards no glide can arm. */

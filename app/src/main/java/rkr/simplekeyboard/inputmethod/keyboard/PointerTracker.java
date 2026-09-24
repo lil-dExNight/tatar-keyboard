@@ -140,6 +140,9 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             new GlideGestureDecider(Float.MAX_VALUE, 0f,
                     GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS, Float.MAX_VALUE);
     private final GlidePath mGlidePath = new GlidePath(GlidePath.MAX_POINTS);
+    // P7-5: the key lit up under the gliding finger (graphics only — no preview, no haptics,
+    // no listener callbacks). Null whenever no glide is armed.
+    private Key mGlideHoveredKey;
 
     // TODO: Add PointerTrackerFactory singleton and move some class static methods into it.
     public static void init(final TypedArray mainKeyboardViewAttr, final TimerProxy timerProxy,
@@ -171,6 +174,13 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     public static void cancelAllPointerTrackers() {
         sPointerTrackerQueue.cancelAllPointerTrackers();
+        // P7-5: this path (the keyboard closing mid-gesture) reaches the trackers without a
+        // CANCEL event, so onCancelEventInternal never runs — drop the trail and the hovered
+        // key's graphics here, or a stale trail survives into the next keyboard show.
+        final int trackersSize = sTrackers.size();
+        for (int i = 0; i < trackersSize; ++i) {
+            sTrackers.get(i).endGlideFeedback();
+        }
     }
 
     public static void setKeyboardActionListener(final KeyboardActionListener listener) {
@@ -526,6 +536,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     private void cancelArmedGlide() {
         mGlideDecider.cancelGlide();
         mGlidePath.clear();
+        endGlideFeedback();
         setReleasedKeyGraphics(mCurrentKey, true /* withAnimation */);
         cancelTrackingForAction();
     }
@@ -612,6 +623,40 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     private void armGlide() {
         sTimerProxy.cancelKeyTimersOf(this);
         setReleasedKeyGraphics(mCurrentKey, true /* withAnimation */);
+    }
+
+    /**
+     * P7-5 live feedback of an armed glide: the point joins the fading trail, and the key
+     * under the finger lights up. The hover is graphics-only by construction — it goes through
+     * {@link DrawingProxy#onKeyPressed} with {@code withPreview == false} and never touches
+     * the listener, so there is no preview popup, no haptic and no key commit. The trail
+     * carries raw view-local coordinates (the detector's hysteresis correction is for hit
+     * testing, not for where the finger was seen).
+     */
+    private void updateGlideFeedback(final int x, final int y, final long eventTime) {
+        sDrawingProxy.onGlideTrailPoint(x, y, eventTime);
+        final Key key = mKeyDetector.detectHitKey(x, y);
+        if (key != mGlideHoveredKey) {
+            if (mGlideHoveredKey != null) {
+                sDrawingProxy.onKeyReleased(mGlideHoveredKey, false /* withAnimation */);
+            }
+            if (key != null) {
+                sDrawingProxy.onKeyPressed(key, false /* withPreview */);
+            }
+            mGlideHoveredKey = key;
+        }
+    }
+
+    /**
+     * P7-5: releases the hovered key's graphics and ends the trail. Idempotent — every glide
+     * terminal (up, cancel, multi-touch steal) calls it, including touches that never armed.
+     */
+    private void endGlideFeedback() {
+        if (mGlideHoveredKey != null) {
+            sDrawingProxy.onKeyReleased(mGlideHoveredKey, false /* withAnimation */);
+            mGlideHoveredKey = null;
+        }
+        sDrawingProxy.onGlideTrailEnd();
     }
 
     private void startKeySelectionByDraggingFinger(final Key key) {
@@ -719,12 +764,14 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         // can no longer become a glide.
         if (mGlideDecider.isArmed()) {
             mGlidePath.addPoint(x, y, (float) eventTime); // explicit narrowing — see onDownEvent
+            updateGlideFeedback(x, y, eventTime);
             return;
         }
         if (mGlideDecider.isTracking() && !mCursorMoved) {
             mGlidePath.addPoint(x, y, (float) eventTime);
             if (mGlideDecider.onMove(x, y, eventTime) == GlideGestureDecider.State.ARMED) {
                 armGlide();
+                updateGlideFeedback(x, y, eventTime);
                 return;
             }
         }
@@ -814,6 +861,9 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         mCurrentRepeatingKeyCode = Constants.NOT_A_CODE;
         // Release the last pressed key.
         setReleasedKeyGraphics(currentKey, true /* withAnimation */);
+        // P7-5: the trail and the hovered-key graphics end with the touch, whatever the glide
+        // outcome below (delivery, cancel, phantom up — the trail never survives its gesture).
+        endGlideFeedback();
 
         // P7-2: an armed glide delivers its path and never commits a key. A cancelled glide
         // (multi-touch, phantom up, cancelTrackingForAction) delivers nothing — fail-closed.
@@ -952,6 +1002,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         // P7-2: a cancelled touch never delivers a glide.
         mGlideDecider.onUpOrCancel();
         mGlidePath.clear();
+        endGlideFeedback();
     }
 
     private boolean isMajorEnoughMoveToBeOnNewKey(final int x, final int y, final Key newKey) {

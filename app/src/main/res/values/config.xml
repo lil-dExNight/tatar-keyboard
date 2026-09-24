@@ -30,6 +30,9 @@
          HeliBoard raised this one to the platform touch slop. See docs/TOUCH-SLOP-TUNING.md. -->
     <dimen name="config_key_hysteresis_distance">8.0dp</dimen>
 
+    <!-- Stroke width of the fading glide trail (P7-5): a third of a key's visual weight. -->
+    <dimen name="config_glide_trail_stroke_width">9dp</dimen>
+
     <!-- Preferable keyboard height in absolute scale: 1.285in -->
     <!-- This config_default_keyboard_height value should match with keyboard-heights.xml -->
     <dimen name="config_default_keyboard_height">205.6dp</dimen>

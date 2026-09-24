@@ -53,4 +53,19 @@ public interface DrawingProxy {
     void startWhileTypingAnimation(int fadeInOrOut);
     int FADE_IN = 0;
     int FADE_OUT = 1;
+
+    /**
+     * Called for every point of an armed glide (P7-5): the view appends it to the fading
+     * trail it draws under the fingertip. Coordinates are view-local.
+     * @param x the x-coordinate of the finger.
+     * @param y the y-coordinate of the finger.
+     * @param eventTime the event timestamp in milliseconds.
+     */
+    void onGlideTrailPoint(float x, float y, long eventTime);
+
+    /**
+     * Called when the glide ends or is cancelled (P7-5): the trail is cleared. Also called on
+     * touches that never armed a glide — the view treats an empty trail as a no-op.
+     */
+    void onGlideTrailEnd();
 }

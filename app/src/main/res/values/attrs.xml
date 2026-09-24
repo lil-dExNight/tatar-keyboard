@@ -141,6 +141,8 @@
         <attr name="backgroundDimAlpha" format="integer" />
         <!-- More keys keyboard will shown at touched point. -->
         <attr name="showMoreKeysKeyboardAtTouchedPoint" format="boolean" />
+        <!-- Color of the fading glide trail drawn under the fingertip (P7-5). -->
+        <attr name="glideTrailColor" format="color" />
     </declare-styleable>
 
     <declare-styleable name="MoreKeysKeyboardView">

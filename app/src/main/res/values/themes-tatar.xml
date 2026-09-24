@@ -65,6 +65,7 @@
         <item name="keyPreviewWidth">@dimen/config_key_preview_width_lxx</item>
         <item name="keyPreviewOffset">@dimen/config_key_preview_offset_lxx</item>
         <item name="languageOnSpacebarTextColor">@color/ios_key_text_inactive_color</item>
+        <item name="glideTrailColor">@color/app_accent</item>
     </style>
     <style
         name="MoreKeysKeyboard.Tatar"

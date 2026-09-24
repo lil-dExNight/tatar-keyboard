@@ -43,6 +43,7 @@ import rkr.simplekeyboard.inputmethod.R;
 import rkr.simplekeyboard.inputmethod.accessibility.KeyboardAccessibilityDelegate;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.DrawingPreviewPlacerView;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.DrawingProxy;
+import rkr.simplekeyboard.inputmethod.keyboard.internal.GlideTrail;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.KeyDrawParams;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.KeyPreviewChoreographer;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.KeyPreviewDrawParams;
@@ -104,6 +105,11 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     // TODO: Consider extending to support multiple more keys panels
     private MoreKeysPanel mMoreKeysPanel;
 
+    // The glide trail (P7-5): the fading polyline drawn under the fingertip of an armed glide.
+    // Fed through {@link DrawingProxy#onGlideTrailPoint}; preallocated, zero-allocation draw.
+    private final GlideTrail mGlideTrail = new GlideTrail();
+    private final Paint mGlideTrailPaint = new Paint();
+
     private final KeyDetector mKeyDetector;
     private final NonDistinctMultitouchHelper mNonDistinctMultitouchHelper;
 
@@ -147,6 +153,15 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
                 R.styleable.MainKeyboardView_backgroundDimAlpha, 0);
         mBackgroundDimAlphaPaint.setColor(Color.BLACK);
         mBackgroundDimAlphaPaint.setAlpha(backgroundDimAlpha);
+        final int glideTrailColor = mainKeyboardViewAttr.getColor(
+                R.styleable.MainKeyboardView_glideTrailColor, Color.TRANSPARENT);
+        mGlideTrailPaint.setColor(glideTrailColor);
+        mGlideTrailPaint.setStyle(Paint.Style.STROKE);
+        mGlideTrailPaint.setStrokeWidth(getResources().getDimension(
+                R.dimen.config_glide_trail_stroke_width));
+        mGlideTrailPaint.setStrokeCap(Paint.Cap.ROUND);
+        mGlideTrailPaint.setStrokeJoin(Paint.Join.ROUND);
+        mGlideTrailPaint.setAntiAlias(true);
         mLanguageOnSpacebarTextRatio = mainKeyboardViewAttr.getFraction(
                 R.styleable.MainKeyboardView_languageOnSpacebarTextRatio, 1, 1, 1.0f);
         mLanguageOnSpacebarTextColor = mainKeyboardViewAttr.getColor(
@@ -381,6 +396,26 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         mTimerHandler.postDismissKeyPreview(key, mKeyPreviewDrawParams.getLingerTimeout());
     }
 
+    // Implements {@link DrawingProxy#onGlideTrailPoint(float,float,long)}.
+    @Override
+    public void onGlideTrailPoint(final float x, final float y, final long eventTime) {
+        // Explicit narrowing: gesture deltas are milliseconds apart, so the float's 24-bit
+        // mantissa is exact where the trail's fade math reads it (same argument as GlidePath).
+        mGlideTrail.addPoint(x, y, (float) eventTime);
+        invalidate();
+    }
+
+    // Implements {@link DrawingProxy#onGlideTrailEnd()}.
+    @Override
+    public void onGlideTrailEnd() {
+        // A no-op for touches that never armed a glide: no per-keystroke invalidate.
+        if (mGlideTrail.isEmpty()) {
+            return;
+        }
+        mGlideTrail.clear();
+        invalidate();
+    }
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -566,6 +601,32 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         mLanguageOnSpacebarFormatType = languageOnSpacebarFormatType;
         mLanguageOnSpacebarText = null;
         invalidateKey(mSpaceKey);
+    }
+
+    /**
+     * The trail rides on top of the keys (and on top of the software offscreen blit), so it
+     * is never baked into {@link KeyboardView}'s buffer and needs no invalidation logic of its
+     * own beyond the feed's {@link #invalidate()} calls.
+     */
+    @Override
+    protected void onDraw(final Canvas canvas) {
+        super.onDraw(canvas);
+        drawGlideTrail(canvas);
+    }
+
+    private void drawGlideTrail(final Canvas canvas) {
+        final int first = mGlideTrail.firstVisible();
+        final int size = mGlideTrail.getSize();
+        if (size - first < 2) {
+            return;
+        }
+        final Paint paint = mGlideTrailPaint;
+        // Per-segment drawLine with a preallocated paint: no allocation on the draw path.
+        for (int i = first; i < size - 1; i++) {
+            paint.setAlpha(mGlideTrail.alphaAt(i + 1));
+            canvas.drawLine(mGlideTrail.xAt(i), mGlideTrail.yAt(i),
+                    mGlideTrail.xAt(i + 1), mGlideTrail.yAt(i + 1), paint);
+        }
     }
 
     @Override
