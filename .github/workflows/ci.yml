@@ -35,6 +35,10 @@ jobs:
         run: ./gradlew test --console=plain
 
       # Build-time python packers: plain unittest, no pytest (Phase 4a).
+      # Pinned to 3.12 so 3.13+ APIs fail here, not on contributors' machines.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Run python packer tests
         run: for f in tests/*/test_*.py; do python3 "$f" || exit 1; done
 

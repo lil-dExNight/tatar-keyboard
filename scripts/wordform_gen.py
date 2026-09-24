@@ -414,7 +414,8 @@ def load_exceptions(path: Path) -> Exceptions:
     pronouns: dict[str, tuple[str, ...]] = {}
     overrides: dict[tuple[str, str], str] = {}
     try:
-        text = path.read_text(encoding="utf-8", newline="")
+        # Python 3.10-compatible: read bytes and decode — read_text(newline=...) needs 3.13.
+        text = path.read_bytes().decode("utf-8")
     except OSError as error:
         raise ExceptionsError(f"cannot read exceptions table {path}: {error}") from error
     if "\r" in text:
