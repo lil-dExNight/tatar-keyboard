@@ -1,11 +1,17 @@
-# HANDOFF — release 3.0.1 prepared (uncommitted; tag/push/publish are next)
+# HANDOFF — release 3.0.1 committed and pushed (tag v3.0.1); GitHub Release is the operator's manual step
 
-**State as of 2026-09-24.** Release **3.0.1 / versionCode 35** is prepared on
-top of HEAD `b8de3916` (= tag `v3.0.0`) plus the two uncommitted audit-fix
-waves (F1 code + DOCS/DATA/STRINGS — `docs/AUDIT-2026-09-24.md`,
-`docs/AUDIT-2026-09-24-FIXES.md`). The release engineering itself (version
-bump, changelogs, this entry, the audit and the checklist retarget) is
-**uncommitted** and awaits the operator's review, commit, tag and publish.
+**State as of 2026-09-24.** Release **3.0.1 / versionCode 35** — commits
+`2c264b29` (audit fix wave: code), `3c2e59ef` (audit fix wave: docs/strings/NOTICE),
+`8a6aff3e` (release marker) are on `origin/main`, tag `v3.0.1` pushed. The GitHub
+Release is published manually by the operator (gh CLI here is pull-only):
+notes in `/tmp/relnotes-3.0.1.md`, artifact strictly `dist/tatar-keyboard-3.0.1.apk`
+(1 842 468 B, SHA-256 `4ce54797…a8f430de`). 3.0.1 supersedes 3.0.0 (tag `v3.0.0`
+exists with no Release, like 1.9.13/1.9.14 did).
+
+*2026-09-24 footnote: the regenerated baseline profile landed as a follow-up
+commit `9a1ffbed` (it was missed by the release marker commit). The published
+APK was built from a tree WITH it, so rebuilding exactly from tag `v3.0.1`
+produces an APK with the pre-glide profile — everything else matches.*
 **3.0.1 supersedes 3.0.0**: the `v3.0.0` tag has no GitHub Release and gets
 none — it stays as history (like 1.9.13/1.9.14 inside 1.9.15); everything
 3.0.0 carries is inside 3.0.1.
