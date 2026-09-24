@@ -1234,7 +1234,7 @@ class SuggestionsControllerTest {
     @Test
     fun reEnablingAfterARefusedReleaseRetriesItInsteadOfKeepingADeadEngine() {
         val h = ReleaseHarness()
-        h.controller.onStartInput(eligible = true)
+        h.controller.onStartInput(eligible = true, glideEligible = false)
         val dead = h.latestEngine()
         // The lease misses both deadlines of destroyHandle: the handle is in teardown for good and
         // rejects every later lookup, which is what request() returning null models here.
@@ -1275,7 +1275,7 @@ class SuggestionsControllerTest {
     @Test
     fun refusedReleaseIsRetriedAtEveryLifecycleBoundary() {
         val h = ReleaseHarness()
-        h.controller.onStartInput(eligible = true)
+        h.controller.onStartInput(eligible = true, glideEligible = false)
         val dead = h.latestEngine()
         dead.destroyResult = false
 

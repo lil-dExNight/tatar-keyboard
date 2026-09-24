@@ -773,6 +773,62 @@ public final class InputLogic {
     }
 
     /**
+     * The glide lift-commit's commit path (P7-6, docs/ROADMAP-P7.md — the 2026-09-24 field
+     * report): identical re-checks to {@link #commitPredictedWord} EXCEPT the P4 sentence-start
+     * requirement for an empty context. A prediction tap is a stale-band guard — the band may
+     * describe text the user has already left — while a glide gesture ends at the cursor the
+     * user is looking at a decode-millisecond ago, so the context-EQUALITY re-check below is the
+     * whole staleness story. Without this split a glide after "сүз ? " (the space-before-
+     * punctuation habit: the position is context-free and NOT a sentence start) committed
+     * nothing — the gesture looked dead.
+     *
+     * @param expectedContextWord the context word captured when the gesture was delivered.
+     * @param suggestion the decoded word to insert.
+     * @return {@code true} if the word was committed, {@code false} otherwise (no edit).
+     */
+    public boolean commitGlideWord(final String expectedContextWord, final String suggestion) {
+        if (expectedContextWord == null || TextUtils.isEmpty(suggestion)) {
+            return false;
+        }
+        if (mConnection.hasSelection()) {
+            return false;
+        }
+        if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
+            return false;
+        }
+        if (!TatarWordUtils.extractTrailingWord(mConnection.getCachedTextBeforeCursor()).isEmpty()) {
+            // The user typed something after the gesture was delivered: the commit is stale.
+            return false;
+        }
+        final String liveContext =
+                TatarWordUtils.extractNextWordContext(mConnection.getCachedTextBeforeCursor(),
+                        mConnection.cacheReachedTextStart());
+        if (!expectedContextWord.equals(liveContext)) {
+            // The text moved between the lift and the decode's completion. Do not edit.
+            return false;
+        }
+        // The space rides along inside the SAME commitText, exactly like the other paths.
+        final String textToCommit =
+                TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor())
+                        ? suggestion + AUTO_SPACE : suggestion;
+        mConnection.beginBatchEdit();
+        // See commitPredictedWord for why the connection check waits for the batch: a refresh is
+        // the earliest honest answer, and a dead connection turns the whole edit into fiction.
+        final boolean connected = mConnection.isConnected();
+        if (connected) {
+            mConnection.commitText(textToCommit, 1);
+        }
+        mConnection.endBatchEdit();
+        if (!connected) {
+            return false;
+        }
+        // Same reasoning as commitPredictedWord: no double-space arming, no stale revert.
+        mJustDoubleSpaced = false;
+        mLastSpaceDownTime = 0;
+        return true;
+    }
+
+    /**
      * The glide lift-commit's alternative replacement (the UX amendment, docs/ROADMAP-P7.md):
      * where {@code committedWord} + its auto-space (or the bare word, when the text after needed
      * no separator) stands right before the cursor, replaces it with the tapped alternative, in

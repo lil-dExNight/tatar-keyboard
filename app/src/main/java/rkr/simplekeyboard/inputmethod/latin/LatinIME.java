@@ -608,6 +608,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 }
                 return committed;
             }
+
+            @Override
+            public boolean commitGlideWord(final String expectedContextWord,
+                    final String suggestion) {
+                final boolean committed =
+                        mInputLogic.commitGlideWord(expectedContextWord, suggestion);
+                if (committed) {
+                    // The same out-of-transaction shift refresh as commitPredictedWord above.
+                    mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
+                            getCurrentRecapitalizeState());
+                }
+                return committed;
+            }
         };
 
         // Runs on the controller's background executor. The catalog is the one the controller
@@ -703,9 +716,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // subordination to the suggestions switch, carried by SettingsValues.
         mSuggestionsController.setEmojiSuggestGate(
                 () -> mSettings.getCurrent().mEmojiSuggestEnabled);
-        // P7-3 (docs/GLIDE-PLAN.md): the glide gate — same seam, same subordination — and the
-        // shift-state gate for the glide commit's casing rule (shifted element of the alphabet
-        // keyboard = the word is committed capitalized, exactly as typed letters would be).
+        // P7-3 (docs/GLIDE-PLAN.md): the glide gate — same live-read seam (since P7-6 INDEPENDENT
+        // of the suggestions master, docs/ROADMAP-P7.md) — and the shift-state gate for the glide
+        // commit's casing rule (shifted element of the alphabet keyboard = the word is committed
+        // capitalized, exactly as typed letters would be).
         mSuggestionsController.setGlideGate(
                 () -> mSettings.getCurrent().mGlideTypingEnabled);
         mSuggestionsController.setGlideShiftStateGate(() -> {
@@ -1349,6 +1363,21 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
+     * The glide's field-level gate (P7-6, docs/ROADMAP-P7.md): the same field checks as
+     * {@link #isSuggestionsEligible} — a dictionary-bearing subtype, no password-type field, no
+     * NO_PERSONALIZED_LEARNING flag, a known cursor — but answering the glide toggle only. Glide
+     * is independent of the suggestions master (the 2026-09-24 field report: Gboard parity).
+     */
+    private boolean isGlideEligible() {
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        return settingsValues.mGlideTypingEnabled
+                && activeDictionarySubtype() != null
+                && settingsValues.mInputAttributes.mShouldShowSuggestions
+                && !settingsValues.mInputAttributes.mNoPersonalizedLearning
+                && mInputLogic.mConnection.hasCursorPosition();
+    }
+
+    /**
      * The E4c learning predicate — one predicate, six factors, shared by every write path
      * (noteCompletion, the eventual learn, the accepted-suggestion counter and the pending flush)
      * of BOTH sinks: the words sink and the P1 pairs sink consult this very instance.
@@ -1420,12 +1449,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
         mSuggestionsController.updateKeyNeighbors(table);
 
-        // P7-3: the glide geometry rides the same moment and the same eligibility rule (glide is
-        // subordinate to suggestions), memoized by KeyboardId the same way. A null geometry —
-        // non-alphabet layout or an ineligible field — disables glide decoding, fail-closed.
+        // P7-3/P7-6: the glide geometry rides the same moment, but its gate is the glide's OWN
+        // field rule (independent of the suggestions master since P7-6 — the 2026-09-24 field
+        // report: with the master off the geometry went null and every gesture decoded to
+        // nothing). A null geometry — non-alphabet layout or a glide-ineligible field — disables
+        // glide decoding, fail-closed.
         GlideKeyGeometry geometry = null;
         if (keyboard != null && keyboard.mId.isAlphabetKeyboard() && subtypeId != null
-                && isSuggestionsEligible()) {
+                && isGlideEligible()) {
             if (keyboard.mId.equals(mGlideGeometryKeyboardId) && mGlideGeometry != null) {
                 geometry = mGlideGeometry;
             } else {
@@ -1559,7 +1590,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // the NEW layout's neighbor table — not the one of the layout the user just left.
             updateKeyNeighbors();
             mSuggestionsController.onSubtypeChanged(
-                    isSuggestionsEligible(), activeDictionarySubtype());
+                    isSuggestionsEligible(), activeDictionarySubtype(), isGlideEligible());
         }
         if (userInitiated) {
             announceCurrentLanguageForAccessibility();
@@ -1669,7 +1700,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
         if (mSuggestionsController != null) {
             mSuggestionsController.onStartInput(
-                    isSuggestionsEligible(), activeDictionarySubtype());
+                    isSuggestionsEligible(), activeDictionarySubtype(), isGlideEligible());
             updateKeyNeighbors();
         }
         if (mEmojiPanelController != null) {
@@ -2126,8 +2157,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * A glide gesture completed on the letter keys (P7-2/P7-3, docs/GLIDE-PLAN.md). The path is
      * handed to the suggestions controller, which runs the decode on the engine worker and binds
      * the result as the glide band; the PointerTracker's buffer is snapshotted inside the
-     * engine's request before this call returns. With the pref off — or suggestions off — the
-     * controller's own gates answer nothing, so this is a no-op there.
+     * engine's request before this call returns. With the glide pref off the controller's own
+     * gates answer nothing, so this is a no-op there (P7-6: suggestions-off no longer closes it —
+     * the lift-commit still lands and only the band stays out).
      */
     @Override
     public void onGlideInput(

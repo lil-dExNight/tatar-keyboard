@@ -96,6 +96,16 @@ class GlideEndToEndTest {
             return true
         }
 
+        override fun commitGlideWord(expectedContextWord: String, suggestion: String): Boolean {
+            // The P7-6 glide path, modeled: the same re-checks MINUS the sentence-start
+            // requirement — a gesture at a context-free position still commits.
+            if (TatarWordUtils.extractTrailingWord(text).isNotEmpty()) return false
+            if (TatarWordUtils.extractNextWordContext(text, true) != expectedContextWord) return false
+            predictedCommits.add(expectedContextWord to suggestion)
+            text += if (TatarWordUtils.needsAutoSpace(textAfterCursor)) "$suggestion " else suggestion
+            return true
+        }
+
         override fun replaceGlideLiftedWord(committedWord: String, alternative: String): Boolean {
             val withSpace = "$committedWord "
             if (!text.endsWith(withSpace) && !text.endsWith(committedWord)) return false
@@ -208,8 +218,13 @@ class GlideEndToEndTest {
             controller.setGlideGate(GlideGate { true })
         }
 
-        fun start(subtypeId: String = PersonalSubtypes.TATAR_RU) {
-            controller.onStartInput(eligible = true, subtypeId = subtypeId)
+        fun start(
+            subtypeId: String = PersonalSubtypes.TATAR_RU,
+            eligible: Boolean = true,
+            glideEligible: Boolean = eligible,
+        ) {
+            controller.onStartInput(
+                eligible = eligible, subtypeId = subtypeId, glideEligible = glideEligible)
             // The dictionary-ready notification fires on the ACTIVE slot — after onStartInput,
             // exactly like production's prepare callback.
             controller.signalDictionaryReadyForTest()
@@ -286,6 +301,71 @@ class GlideEndToEndTest {
         assertEquals("сәләм ", h.editor.text)
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("", h.editor.text)
+    }
+
+    // --- P7-6: glide independent of the suggestions master (the 2026-09-24 field reports) ------
+
+    @Test
+    fun theLiftCommitsWithSuggestionsOffAndTheStripShowsNothing() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        // The commit is typing, not a suggestion: the word lands with its auto-space…
+        assertEquals("сәлләм ", h.editor.text)
+        // …and the strip — the suggestions surface — shows NOTHING: no alternatives band…
+        assertTrue("no band may paint with the master off, was ${h.strip.shown}",
+            h.strip.shown.isEmpty())
+        // …and the undo still works: it is part of the gesture, not of the strip.
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
+    }
+
+    @Test
+    fun suggestionsOffStillHidesTheStripInNormalTyping() {
+        // The regression pin of the unhook: the master off keeps the band out of the typing path.
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        h.editor.text = "с"
+        h.controller.onTextChanged()
+        assertTrue(h.strip.shown.isEmpty())
+        assertTrue("the strip is hidden, never reserved", h.strip.hideCount > 0 && h.strip.reserveCount == 0)
+    }
+
+    @Test
+    fun theLiftCommitsAtAFieldStart() {
+        // The explicit field-start pin (every other test starts from an empty field too).
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals(listOf("" to "сәлләм"), h.editor.predictedCommits)
+        assertEquals("сәлләм ", h.editor.text)
+    }
+
+    @Test
+    fun theLiftCommitsRightAfterAttachedSentenceFinalPunctuation() {
+        // "сүз? " — a genuine sentence start; worked before P7-6 as well.
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.editor.text = "китеп? "
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("китеп? сәлләм ", h.editor.text)
+    }
+
+    @Test
+    fun theLiftCommitsAfterSentenceFinalPunctuationTypedWithTheSpaceHabit() {
+        // The P7-6 field report: "сүз ? " (a space BEFORE the mark) is context-free and NOT a
+        // sentence start (the punctuation run must directly follow a letter), so the prediction
+        // tap's stale-band guard refused the lift-commit here and the gesture looked dead.
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.editor.text = "Синен хэллэр ничек ? "
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("Синен хэллэр ничек ? сәлләм ", h.editor.text)
     }
 
     @Test

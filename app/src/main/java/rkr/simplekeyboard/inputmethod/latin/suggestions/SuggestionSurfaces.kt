@@ -115,6 +115,17 @@ interface EditorSurface {
     fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean = false
 
     /**
+     * The glide lift-commit's own commit path (P7-6, docs/ROADMAP-P7.md — the 2026-09-24 field
+     * report): [commitPredictedWord]'s live re-checks MINUS the P4 sentence-start requirement for
+     * an empty context. A gesture ends at the cursor the user is looking at — there is no "stale
+     * band painted a minute ago" window the sentence-start sub-check exists for — so an
+     * empty-context position that is not a sentence start ("сүз ? " typed with the space habit)
+     * is a valid commit target for a glide while it never is one for a tap on a prediction.
+     * Defaults to false, like [commitPredictedWord].
+     */
+    fun commitGlideWord(expectedContextWord: String, suggestion: String): Boolean = false
+
+    /**
      * The glide lift-commit's replacement path (the UX amendment, docs/ROADMAP-P7.md): the word a
      * glide just committed is replaced by the tapped alternative. The suffix match
      * ("[committedWord] + its auto-space" — or the bare word when no space was needed — must stand

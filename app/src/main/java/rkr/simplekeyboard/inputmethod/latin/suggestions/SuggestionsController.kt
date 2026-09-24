@@ -189,6 +189,14 @@ class SuggestionsController internal constructor(
     private var activeLanguage: String? = DEFAULT_LANGUAGE
 
     private var eligible: Boolean = false
+
+    /**
+     * P7-6 (docs/ROADMAP-P7.md): the glide's own field-level gate — the same field checks as
+     * [eligible] (a real cursor, no password-type field, no NO_PERSONALIZED_LEARNING flag, a
+     * shipped dictionary) but WITHOUT the suggestions master. A gesture may commit its word in a
+     * suggestions-off field; the strip (the suggestions surface) then shows nothing.
+     */
+    private var glideEligible: Boolean = false
     private var destroyed: Boolean = false
 
     // The key-neighbor table for the fuzzy pass, built by LatinIME from the live layout. Remembered
@@ -439,7 +447,8 @@ class SuggestionsController internal constructor(
     }
 
     @JvmOverloads
-    fun onStartInput(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE) {
+    fun onStartInput(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE,
+                     glideEligible: Boolean = eligible) {
         runMachine.markRunDirty()
         // A new field is one of the six events that make an undo impossible.
         clearRevertState()
@@ -455,7 +464,9 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         setActiveLanguage(subtypeId)
         this.eligible = eligible && activeLanguage != null
-        if (!this.eligible) {
+        // P7-6: glide answers its own toggle and its own field gate — not the suggestions master.
+        this.glideEligible = glideEligible && activeLanguage != null
+        if (!this.eligible && !this.glideEligible) {
             strip.hideSuggestions()
             activeSlot()?.engine?.finishInput()
             return
@@ -464,12 +475,18 @@ class SuggestionsController internal constructor(
         // or the engine is unavailable the frozen state table requires GONE/0dp. A successful
         // publishEngine() transitions a cold session to the reserved state.
         val engineWasReady = usableEngine() != null
-        if (!engineWasReady) {
+        if (!this.eligible) {
+            // P7-6: suggestions off — the band stays hidden (it is the suggestions surface), but
+            // the engine still warms below: the glide decode reads it.
             strip.hideSuggestions()
         } else {
-            strip.reserve()
+            if (!engineWasReady) {
+                strip.hideSuggestions()
+            } else {
+                strip.reserve()
+            }
+            strip.setTapListener(SuggestionTapListener { suggestion -> onTap(suggestion) })
         }
-        strip.setTapListener(SuggestionTapListener { suggestion -> onTap(suggestion) })
         // Becoming eligible is the second of the two events that may request preparation; the flag
         // keeps every later start from queueing another one.
         requestPreparationIfNeeded()
@@ -481,8 +498,8 @@ class SuggestionsController internal constructor(
         // E5d: no longer gated on a non-empty prefix — requestCurrentPrefix() falls through to
         // NEXT_WORD on an empty one, and re-requesting on this boundary is what lets switching
         // fields show a prediction without an extra keystroke, the same reason this call exists
-        // for PREFIX at all.
-        if (engineWasReady && editor.hasKnownCursor()) {
+        // for PREFIX at all. (Itself gated on [eligible]: the band is the suggestions surface.)
+        if (this.eligible && engineWasReady && editor.hasKnownCursor()) {
             requestCurrentPrefix()
         }
     }
@@ -578,6 +595,7 @@ class SuggestionsController internal constructor(
         // Close eligibility before hiding/finishing. A readiness notification queued behind this
         // lifecycle boundary must not start or publish an engine for the finished editor session.
         eligible = false
+        glideEligible = false
         strip.hideSuggestions()
         activeSlot()?.engine?.finishInput()
         // The other lifecycle boundary at which a deferred release may run.
@@ -593,7 +611,8 @@ class SuggestionsController internal constructor(
      * dictionary used: it means "still the Tatar subtype, eligibility recomputed".
      */
     @JvmOverloads
-    fun onSubtypeChanged(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE) {
+    fun onSubtypeChanged(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE,
+                         glideEligible: Boolean = eligible) {
         runMachine.markRunDirty()
         // A subtype change is one of the six events that make an undo impossible.
         clearRevertState()
@@ -609,6 +628,8 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         setActiveLanguage(subtypeId)
         this.eligible = eligible && activeLanguage != null
+        // P7-6: the glide gate follows the new subtype exactly like the suggestions gate does.
+        this.glideEligible = glideEligible && activeLanguage != null
         if (this.eligible) {
             val engineWasReady = usableEngine() != null
             if (engineWasReady) {
@@ -637,6 +658,11 @@ class SuggestionsController internal constructor(
             }
         } else {
             strip.hideSuggestions()
+            if (this.glideEligible) {
+                // P7-6: the band stays out, but the NEW language's engine still warms for glide.
+                requestPreparationIfNeeded()
+                maybeStartEngine()
+            }
         }
     }
 
@@ -692,6 +718,10 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         requestSessionId = NO_SESSION
         strip.hideSuggestions()
+        // P7-6: glide is independent of the master — with the glide gate still open the engine
+        // stays warm for the decode and only the band dies with the setting. (The engine staying
+        // warm is the same treatment an ineligible field already gets in publishEngine.)
+        if (glideEligible) return
         // The setting is global, so EVERY language stops, not just the active one: a warm engine of
         // a language the user is not typing in right now still holds a lease and a mapping, and the
         // user turned the whole feature off.
@@ -1045,7 +1075,9 @@ class SuggestionsController internal constructor(
     }
 
     private fun maybeStartEngine() {
-        if (!eligible) return
+        // P7-6: a suggestions-off but glide-eligible session still starts the engine — the glide
+        // decode reads it; the band never does.
+        if (!eligible && !glideEligible) return
         val slot = activeSlot() ?: return
         if (slot.engine != null || slot.starting || !slot.dictionaryReady) return
         // A lease that has not been released yet still belongs to this controller: never map a
@@ -1593,18 +1625,19 @@ class SuggestionsController internal constructor(
      * Requests the decode on the engine worker; nothing is shown during the gesture itself
      * (MVP: decode once at ACTION_UP). Every early exit is silent and leaves the band exactly as
      * it is, fail-closed in every direction:
-     *  - the feature off (the glide toggle or the suggestions master it is subordinate to —
-     *    [eligible] carries that), a destroyed controller, no usable engine;
+     *  - the feature off (the glide toggle — since P7-6 glide is INDEPENDENT of the suggestions
+     *    master; [glideEligible] carries the field-level gate), a destroyed controller, no usable
+     *    engine;
      *  - the editor in a state the commit path could not honor: an unknown cursor, a letter right
      *    after the cursor, or a half-typed trailing word (the decoder decodes WHOLE words;
      *    completing a typed prefix by glide is not the MVP).
      *
      * The glide band is bound to the NEXT_WORD context of the moment (the word before the cursor,
-     * "" at a field start) — exactly what the tap path's [EditorSurface.commitPredictedWord]
+     * "" at a field start) — exactly what the lift-commit's [EditorSurface.commitGlideWord]
      * re-derives live before editing. One binding at a time: the other two are dropped here.
      */
     fun onGlideInput(path: GlidePath) {
-        if (destroyed || !eligible) return
+        if (destroyed || !glideEligible) return
         if (!glideGate.isOn()) return
         val activeEngine = usableEngine() ?: return
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
@@ -1629,10 +1662,13 @@ class SuggestionsController internal constructor(
      * The glide counterpart of [applyPrefixResult]/[applyNextWordResult] — and, since the UX
      * amendment (2026-09-24, docs/ROADMAP-P7.md), the lift-commit: the plan's DONE-WHEN always
      * said "tapping or lifting commits"; P7-3 shipped tap-only, this closes the Gboard-parity
-     * behavior. With candidates present the top-1 is committed IMMEDIATELY through the E5d
-     * predicted-word path (auto-space inside, its live re-checks the second line of defense),
-     * and the strip then shows the REMAINING candidates as tappable alternatives bound to the
-     * committed word; a tap on one replaces the committed word in the editor ([onTap]).
+     * behavior. With candidates present the top-1 is committed IMMEDIATELY through the glide's
+     * own commit path ([EditorSurface.commitGlideWord] — P7-6: the predicted-word path's live
+     * re-checks minus the sentence-start requirement for an empty context), and the strip then
+     * shows the REMAINING candidates as tappable alternatives bound to the committed word; a tap
+     * on one replaces the committed word in the editor ([onTap]). With the suggestions master
+     * off ([eligible] false, P7-6) the commit still lands — typing, not a suggestion — and the
+     * strip shows NOTHING: no alternatives, no follow-up chain.
      *
      * Casing is the display-time rule of the prefix path, sourced from the shift gate (a gesture
      * types no letters to read the casing off): the committed AND the shown forms carry it. With
@@ -1650,7 +1686,7 @@ class SuggestionsController internal constructor(
         if (suggestions.isEmpty()) {
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
-            strip.reserve()
+            if (eligible) strip.reserve()
             return
         }
         val casing = if (glideShiftGate.isShifted()) {
@@ -1659,12 +1695,14 @@ class SuggestionsController internal constructor(
             TatarWordUtils.PrefixCasing.LOWER
         }
         val committed = TatarWordUtils.applyCasing(suggestions[0], casing)
-        // The lift-commit: the predicted-word path re-derives the live context and refuses a
-        // stale gesture itself; a refusal commits nothing and shows nothing special.
-        if (!editor.commitPredictedWord(pendingGlideContext, committed)) {
+        // The lift-commit: the glide's own commit path re-derives the live context and refuses a
+        // stale gesture itself (P7-6: without the prediction tap's sentence-start requirement for
+        // an empty context — a gesture at a context-free position like "сүз ? " still types its
+        // word); a refusal commits nothing and shows nothing special.
+        if (!editor.commitGlideWord(pendingGlideContext, committed)) {
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
-            strip.reserve()
+            if (eligible) strip.reserve()
             return
         }
         // Not the user spelling the word out: the run stops counting; the boundary the committed
@@ -1674,6 +1712,14 @@ class SuggestionsController internal constructor(
         // One backspace right after the lift deletes the whole committed word (the gesture-undo):
         // the undo word tracks the editor's content — it moves to an alternative if one replaces.
         glideCommittedWord = committed
+        if (!eligible) {
+            // P7-6: suggestions off — the lift-commit stands on its own (typing, not a
+            // suggestion), and the strip, the suggestions surface, shows NOTHING: no alternatives
+            // band, no NEXT_WORD chain request.
+            displayedGlideAlternativesFor = null
+            bandBaseCells = emptyList()
+            return
+        }
         val alternatives = ArrayList<String>(SuggestionStripState.CELL_COUNT)
         for (index in 1 until suggestions.size) {
             alternatives.add(TatarWordUtils.applyCasing(suggestions[index], casing))
@@ -1846,7 +1892,9 @@ class SuggestionsController internal constructor(
         bandBaseCells = emptyList()
         clearCompanionRequest()
         requestSessionId = NO_SESSION
-        strip.reserve()
+        // P7-6: the band is the suggestions surface — with the master off a rejected glide
+        // request must not summon an empty 40dp band either.
+        if (eligible) strip.reserve() else strip.hideSuggestions()
     }
 
 
@@ -1856,7 +1904,9 @@ class SuggestionsController internal constructor(
         suggestions: List<String>,
         kind: LookupKind,
     ) {
-        if (!eligible) return
+        // P7-6: a GLIDE result answers the glide gate, not the suggestions master — with the
+        // master off the lift-commit must still land (the band stays out of it either way).
+        if (!eligible && !(kind == LookupKind.GLIDE && glideEligible)) return
         // A result computed by the engine of a language the user has left may never repaint the
         // band ON ITS OWN. The session check below already covers it (every language change bumps
         // the session), and the engine's own token carries the dictionary identity, but the owner of
@@ -2230,7 +2280,9 @@ class SuggestionsController internal constructor(
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
-        if (destroyed || !eligible) return false
+        // P7-6: the undo is part of the gesture's typing UX, so it answers the glide gate — it
+        // works with the suggestions master off, where no band ever painted.
+        if (destroyed || !glideEligible) return false
         if (!editor.hasKnownCursor()) return false
         return editor.deleteGlideLiftedWord(word)
     }

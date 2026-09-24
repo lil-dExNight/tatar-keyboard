@@ -328,10 +328,12 @@ class SuggestionsControllerLanguageSwitchTest {
 
     @Test
     fun turningTheSettingOffReleasesEveryLanguageAtTheNextBoundary() {
+        // The whole feature off = the master AND the glide toggle (P7-6): the release machinery
+        // is pinned for that combination.
         val h = Harness()
         h.editor.word = "сүз"
-        h.controller.onStartInput(eligible = true, subtypeId = tatar)
-        h.controller.onSubtypeChanged(eligible = true, subtypeId = russian)
+        h.controller.onStartInput(eligible = true, subtypeId = tatar, glideEligible = false)
+        h.controller.onSubtypeChanged(eligible = true, subtypeId = russian, glideEligible = false)
 
         h.controller.onSuggestionsSettingDisabled()
         // Deferred: the keystroke that flipped the setting must not pay for two teardowns.
@@ -342,6 +344,21 @@ class SuggestionsControllerLanguageSwitchTest {
 
         assertEquals(1, h.engines.getValue(tatar).destroyCount)
         assertEquals(1, h.engines.getValue(russian).destroyCount)
+    }
+
+    @Test
+    fun turningTheMasterOffKeepsTheEngineWarmForGlide() {
+        // P7-6: glide is independent — with the glide gate open, the master OFF transition must
+        // not schedule the engine teardown; the band dies alone.
+        val h = Harness()
+        h.editor.word = "сүз"
+        h.controller.onStartInput(eligible = true, subtypeId = tatar)
+
+        h.controller.onSuggestionsSettingDisabled()
+        h.controller.onFinishInput()
+
+        assertEquals("the engine survives a master-off while glide is on",
+            0, h.engines.getValue(tatar).destroyCount)
     }
 
     @Test

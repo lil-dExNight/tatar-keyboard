@@ -387,10 +387,14 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
                 && readTatarSuggestionsEnabled(prefs);
     }
 
-    /** Glide typing reads exactly like emoji suggestions: own toggle AND the master switch. */
+    /**
+     * Glide typing is INDEPENDENT of the suggestions master (P7-6, docs/ROADMAP-P7.md — the
+     * 2026-09-24 field report: with the master off the gesture died on the gate, which is not
+     * what Gboard users expect). Its own toggle only. With suggestions off the lift still
+     * commits the word — that is typing, not a suggestion — and the strip shows nothing.
+     */
     public static boolean readGlideTypingEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_GLIDE_TYPING, true)
-                && readTatarSuggestionsEnabled(prefs);
+        return prefs.getBoolean(PREF_GLIDE_TYPING, true);
     }
 
     /**
