@@ -8,9 +8,10 @@ import org.junit.Test
 import java.lang.management.ManagementFactory
 
 /**
- * Unit tests for [GlideTrail] (P7-5): ring semantics (overwrite-oldest, order preservation),
- * the age-windowed visibility, the fingertip-to-tail alpha ramp, and the zero-allocation
- * discipline of the feed and draw-read paths.
+ * Unit tests for [GlideTrail] (P7-5; grown in P7-7): ring semantics (overwrite-oldest, order
+ * preservation), the age-windowed visibility, the fingertip-to-tail alpha ramp, the post-lift
+ * fade-out math, and the zero-allocation discipline of the feed and draw-read paths (fade
+ * frames included).
  */
 class GlideTrailTest {
 
@@ -59,25 +60,25 @@ class GlideTrailTest {
     @Test
     fun onlyTheTailWindowIsVisible() {
         val trail = GlideTrail()
-        // 30 points, 10 ms apart; the newest is at t = 290.
-        for (i in 0 until 30) {
+        // 60 points, 10 ms apart; the newest is at t = 590.
+        for (i in 0 until 60) {
             trail.addPoint(i.toFloat(), 0f, i * 10f)
         }
-        // The window is 150 ms: points with age > 150 (t < 140, i.e. indices 0..13) are hidden.
-        assertEquals(14, trail.firstVisible())
+        // The window is 300 ms (P7-7): points with age > 300 (t < 290, i.e. indices 0..28) hide.
+        assertEquals(29, trail.firstVisible())
         // A newer point shifts the window.
-        trail.addPoint(30f, 0f, 300f)
-        assertEquals(15, trail.firstVisible())
+        trail.addPoint(60f, 0f, 600f)
+        assertEquals(30, trail.firstVisible())
     }
 
     @Test
     fun alphaRampsFromTheTailEdgeToTheFingertip() {
         val trail = GlideTrail()
-        // 11 points, 15 ms apart; the newest is at t = 150, the window is exactly full.
-        for (i in 0 until 11) {
+        // 21 points, 15 ms apart; the newest is at t = 300, the window is exactly full.
+        for (i in 0 until 21) {
             trail.addPoint(i.toFloat(), 0f, i * 15f)
         }
-        assertEquals("the fingertip is fully lit", GlideTrail.MAX_ALPHA, trail.alphaAt(10))
+        assertEquals("the fingertip is fully lit", GlideTrail.MAX_ALPHA, trail.alphaAt(20))
         assertEquals("the tail edge is transparent", 0, trail.alphaAt(0))
         // Strictly increasing toward the fingertip inside the window.
         var previous = -1
@@ -86,8 +87,8 @@ class GlideTrailTest {
             assertTrue("alpha must increase toward the fingertip (i=$i)", alpha > previous)
             previous = alpha
         }
-        // The midpoint of a full 150 ms window sits at half opacity.
-        assertEquals(GlideTrail.MAX_ALPHA / 2, trail.alphaAt(5))
+        // The midpoint of a full 300 ms window sits at half opacity.
+        assertEquals(GlideTrail.MAX_ALPHA / 2, trail.alphaAt(10))
     }
 
     @Test
@@ -97,6 +98,48 @@ class GlideTrailTest {
         assertEquals(0, trail.firstVisible())
         assertEquals("one point draws no segment", 1, trail.size - trail.firstVisible())
         assertEquals(GlideTrail.MAX_ALPHA, trail.alphaAt(0))
+    }
+
+    // --- P7-7: the post-lift fade-out ----------------------------------------------------------
+
+    @Test
+    fun theFadeDecaysToZeroOverFadeOutMs() {
+        val trail = GlideTrail()
+        for (i in 0 until 10) {
+            trail.addPoint(i.toFloat(), 0f, i * 16f)
+        }
+        assertEquals("a running gesture is not fading", 1f, trail.fadeFactor(10_000f), 0f)
+        trail.startFadeOut(1_000f)
+        assertTrue(trail.fadingOut)
+        assertEquals(1f, trail.fadeFactor(1_000f), 0f)
+        assertEquals(0.5f, trail.fadeFactor(1_000f + GlideTrail.FADE_OUT_MS / 2), 0.001f)
+        assertEquals(0f, trail.fadeFactor(1_000f + GlideTrail.FADE_OUT_MS), 0f)
+        assertTrue(trail.isFadeDone(1_000f + GlideTrail.FADE_OUT_MS))
+        assertTrue("the ring is frozen for the fade", trail.size == 10)
+    }
+
+    @Test
+    fun anEmptyTrailFadesNothing() {
+        val trail = GlideTrail()
+        trail.startFadeOut(1_000f)
+        assertTrue("an empty ring never starts a fade", !trail.fadingOut)
+        assertEquals(1f, trail.fadeFactor(1_100f), 0f)
+        assertTrue(!trail.isFadeDone(10_000f))
+    }
+
+    @Test
+    fun aNewGestureDropsAFadingRingWithoutABridge() {
+        val trail = GlideTrail()
+        for (i in 0 until 10) {
+            trail.addPoint(i.toFloat(), 0f, i * 16f)
+        }
+        trail.startFadeOut(1_000f)
+        // The next gesture's first point: the stale ring must not bridge into the new trail.
+        trail.addPoint(500f, 500f, 2_000f)
+        assertTrue(!trail.fadingOut)
+        assertEquals(1, trail.size)
+        assertEquals(500f, trail.xAt(0), 0f)
+        assertEquals(1f, trail.fadeFactor(2_000f), 0f)
     }
 
     @Test
@@ -130,5 +173,40 @@ class GlideTrailTest {
         perGestureBytes(200) // warmup: JIT
         val bytes = perGestureBytes(2_000)
         assertEquals("bytes/gesture on the feed + draw-read path", 0L, bytes)
+    }
+
+    @Test
+    fun fadeFramesAllocateNothing() {
+        val bean = ManagementFactory.getThreadMXBean() as? ThreadMXBean
+        assumeTrue(bean != null && bean.isThreadAllocatedMemorySupported)
+        val threadBean = bean!!
+        threadBean.isThreadAllocatedMemoryEnabled = true
+        val threadId = Thread.currentThread().id
+
+        val trail = GlideTrail()
+        for (i in 0 until GlideTrail.DEFAULT_CAPACITY) {
+            trail.addPoint(i.toFloat(), (i * 2).toFloat(), i * 4f)
+        }
+        trail.startFadeOut(500f)
+        fun perFrameBytes(iterations: Int): Long {
+            val before = threadBean.getThreadAllocatedBytes(threadId)
+            for (frame in 0 until iterations) {
+                // The view's fade frame, read-side: done check, fade factor, window scan, alpha.
+                val now = 500f + frame * 4f
+                if (trail.isFadeDone(now)) break
+                val factor = trail.fadeFactor(now)
+                val first = trail.firstVisible()
+                var acc = 0
+                for (i in first until trail.size - 1) {
+                    acc += (trail.alphaAt(i + 1) * factor).toInt()
+                }
+                assertTrue(acc >= 0)
+            }
+            val after = threadBean.getThreadAllocatedBytes(threadId)
+            return (after - before) / iterations
+        }
+        perFrameBytes(200) // warmup: JIT
+        val bytes = perFrameBytes(5_000)
+        assertEquals("bytes/fade-frame", 0L, bytes)
     }
 }

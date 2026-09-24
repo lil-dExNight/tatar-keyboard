@@ -104,10 +104,17 @@ class GlideTrailContractTest {
         val draw = viewSource.substringAfter("private void drawGlideTrail(final Canvas canvas)")
         assertTrue("only the visible tail window is walked", draw.contains("mGlideTrail.firstVisible()"))
         assertTrue("a single point draws nothing", draw.contains("size - first < 2"))
-        assertTrue("the per-segment alpha comes from the trail's fade math",
-            draw.contains("paint.setAlpha(mGlideTrail.alphaAt(i + 1));"))
+        assertTrue("the per-segment alpha comes from the trail's fade math times the post-lift fade",
+            draw.contains("paint.setAlpha((int)(mGlideTrail.alphaAt(i + 1) * fadeFactor));"))
         assertTrue("the draw is a plain polyline on the preallocated paint",
             draw.contains("canvas.drawLine("))
+        // P7-7: the fade-out after the lift — bounded self-scheduling from the draw pass.
+        assertTrue("the fade reschedules one frame at a time",
+            draw.contains("postInvalidateDelayed(FADE_FRAME_MS)"))
+        assertTrue("a spent fade clears the ring and stops the schedule",
+            draw.contains("mGlideTrail.isFadeDone(nowMs)"))
+        assertTrue("the wall clock enters only for the fade",
+            draw.contains("(float) SystemClock.uptimeMillis()"))
 
         // The feed and the drain.
         val point = viewSource.substringAfter("public void onGlideTrailPoint(")
@@ -116,7 +123,13 @@ class GlideTrailContractTest {
         val endView = viewSource.substringAfter("public void onGlideTrailEnd()")
         assertTrue("an empty trail is a no-op (no per-keystroke invalidate)",
             endView.contains("if (mGlideTrail.isEmpty())"))
-        assertTrue(endView.contains("mGlideTrail.clear();"))
+        assertTrue("the lift starts the fade instead of erasing the trail",
+            endView.contains("mGlideTrail.startFadeOut(SystemClock.uptimeMillis());"))
+        // A closing keyboard ends every fade.
+        val detach = viewSource.substringAfter("protected void onDetachedFromWindow()")
+            .substringBefore("mDrawingPreviewPlacerView.removeAllViews();")
+        assertTrue("detach clears the trail (no stale trail at the next show)",
+            detach.contains("mGlideTrail.clear();"))
 
         // Preallocated paint configured from the theme attr.
         assertTrue(viewSource.contains("private final GlideTrail mGlideTrail = new GlideTrail();"))

@@ -782,35 +782,49 @@ public final class InputLogic {
      * punctuation habit: the position is context-free and NOT a sentence start) committed
      * nothing — the gesture looked dead.
      *
+     * <p>P7-7 (the 2026-09-25 contract change): a glide commits NO auto-space — the gesture is
+     * typing, not a suggestion acceptance. The one separator rule is chaining: when the cursor
+     * stands right after a word character, the commit prepends ONE space (gliding word after
+     * word produces "сәләм дөнья"); after whitespace, punctuation or at a field start nothing is
+     * prepended. {@code chainedAfter} is the only trailing word tolerated — the word the previous
+     * glide of the chain committed (still inside its undo window); any other trailing word is a
+     * half-typed prefix and refuses the commit, exactly as before P7-7.
+     *
      * @param expectedContextWord the context word captured when the gesture was delivered.
      * @param suggestion the decoded word to insert.
-     * @return {@code true} if the word was committed, {@code false} otherwise (no edit).
+     * @param chainedAfter the previous glide's committed word, or null.
+     * @return {@code GLIDE_COMMIT_*} — refused (no edit), bare, or committed with the chain
+     *         space prepended; the undo needs the distinction.
      */
-    public boolean commitGlideWord(final String expectedContextWord, final String suggestion) {
+    public int commitGlideWord(final String expectedContextWord, final String suggestion,
+            final String chainedAfter) {
         if (expectedContextWord == null || TextUtils.isEmpty(suggestion)) {
-            return false;
+            return 0; // GLIDE_COMMIT_REFUSED
         }
         if (mConnection.hasSelection()) {
-            return false;
+            return 0;
         }
         if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
-            return false;
+            return 0;
         }
-        if (!TatarWordUtils.extractTrailingWord(mConnection.getCachedTextBeforeCursor()).isEmpty()) {
-            // The user typed something after the gesture was delivered: the commit is stale.
-            return false;
+        final String trailingWord =
+                TatarWordUtils.extractTrailingWord(mConnection.getCachedTextBeforeCursor());
+        if (!trailingWord.isEmpty() && !trailingWord.equals(chainedAfter)) {
+            // The user typed something after the gesture was delivered (or the trailing word is
+            // simply not the chain's previous commit): the commit is stale. Do not edit.
+            return 0;
         }
         final String liveContext =
                 TatarWordUtils.extractNextWordContext(mConnection.getCachedTextBeforeCursor(),
                         mConnection.cacheReachedTextStart());
         if (!expectedContextWord.equals(liveContext)) {
             // The text moved between the lift and the decode's completion. Do not edit.
-            return false;
+            return 0;
         }
-        // The space rides along inside the SAME commitText, exactly like the other paths.
-        final String textToCommit =
-                TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor())
-                        ? suggestion + AUTO_SPACE : suggestion;
+        // P7-7: the only space a glide ever inserts is the chain separator, and it rides along
+        // inside the SAME commitText, exactly like the other paths' auto-space did.
+        final boolean prepend = !trailingWord.isEmpty();
+        final String textToCommit = prepend ? AUTO_SPACE + suggestion : suggestion;
         mConnection.beginBatchEdit();
         // See commitPredictedWord for why the connection check waits for the batch: a refresh is
         // the earliest honest answer, and a dead connection turns the whole edit into fiction.
@@ -820,26 +834,30 @@ public final class InputLogic {
         }
         mConnection.endBatchEdit();
         if (!connected) {
-            return false;
+            return 0;
         }
         // Same reasoning as commitPredictedWord: no double-space arming, no stale revert.
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
-        return true;
+        return prepend ? 2 : 1; // GLIDE_COMMIT_PREPENDED : GLIDE_COMMIT_BARE
     }
 
     /**
      * The glide lift-commit's alternative replacement (the UX amendment, docs/ROADMAP-P7.md):
-     * where {@code committedWord} + its auto-space (or the bare word, when the text after needed
-     * no separator) stands right before the cursor, replaces it with the tapped alternative, in
-     * one batch edit, never with composing text. The suffix match IS the position check, the same
-     * one {@link #revertTatarAutocorrection} makes; a stale tap edits nothing.
+     * replaces the word a glide just committed with the tapped alternative, IN PLACE — P7-7:
+     * no space is added or removed; {@code prependedSpace} says whether the committed text
+     * carried the chain space (the replacement keeps it). The position check: the trailing word
+     * right before the cursor must BE {@code committedWord} (the same word-boundary algorithm
+     * every path agrees on), plus the exact suffix when the chain space is expected. A stale tap
+     * edits nothing.
      *
      * @param committedWord the word the glide lift committed.
      * @param alternative the alternative shown in the strip and tapped.
+     * @param prependedSpace whether the commit prepended the chain space.
      * @return {@code true} if the replacement happened, {@code false} otherwise (no edit).
      */
-    public boolean replaceGlideLiftedWord(final String committedWord, final String alternative) {
+    public boolean replaceGlideLiftedWord(final String committedWord, final String alternative,
+            final boolean prependedSpace) {
         if (TextUtils.isEmpty(committedWord) || TextUtils.isEmpty(alternative)) {
             return false;
         }
@@ -850,23 +868,21 @@ public final class InputLogic {
             // Same fail-closed rule as the other edit paths: never splice into the user's word.
             return false;
         }
-        final String withSpace = committedWord + AUTO_SPACE;
-        final boolean hadSpace = endsWith(mConnection.getCachedTextBeforeCursor(), withSpace);
-        if (!hadSpace
-                && !endsWith(mConnection.getCachedTextBeforeCursor(), committedWord)) {
+        final CharSequence beforeCursor = mConnection.getCachedTextBeforeCursor();
+        if (!TatarWordUtils.extractTrailingWord(beforeCursor).equals(committedWord)) {
             return false;
         }
-        // The space rides along inside the SAME commitText, exactly like the other paths.
-        final String textToCommit =
-                TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor())
-                        ? alternative + AUTO_SPACE : alternative;
+        final String suffix = (prependedSpace ? AUTO_SPACE : "") + committedWord;
+        if (!endsWith(beforeCursor, suffix)) {
+            return false;
+        }
+        final String textToCommit = (prependedSpace ? AUTO_SPACE : "") + alternative;
         mConnection.beginBatchEdit();
         // beginBatchEdit() refreshes the connection from the framework — the earliest the question
-        // can be asked; see the other two edit paths for the full reasoning.
+        // can be asked; see the other edit paths for the full reasoning.
         final boolean connected = mConnection.isConnected();
         if (connected) {
-            mConnection.deleteTextBeforeCursor(
-                    hadSpace ? withSpace.length() : committedWord.length());
+            mConnection.deleteTextBeforeCursor(suffix.length());
             mConnection.commitText(textToCommit, 1);
         }
         mConnection.endBatchEdit();
@@ -880,13 +896,16 @@ public final class InputLogic {
 
     /**
      * The glide lift-commit's whole-word undo (the Gboard gesture-undo): one backspace right after
-     * the lift deletes {@code committedWord} + its auto-space (or the bare word) from before the
-     * cursor and commits nothing back. Same suffix-match position check as the replacement above.
+     * the lift deletes the committed word from before the cursor — INCLUDING the chain space when
+     * {@code prependedSpace} says the commit prepended one, so undoing the second glide of a chain
+     * returns to exactly the first word's state ("сәләм дөнья" → "сәләм") — and commits nothing
+     * back. Same position check as the replacement above.
      *
      * @param committedWord the word the glide lift committed (or its current replacement).
+     * @param prependedSpace whether the commit prepended the chain space.
      * @return {@code true} if the word was deleted, {@code false} otherwise (no edit).
      */
-    public boolean deleteGlideLiftedWord(final String committedWord) {
+    public boolean deleteGlideLiftedWord(final String committedWord, final boolean prependedSpace) {
         if (TextUtils.isEmpty(committedWord)) {
             return false;
         }
@@ -896,17 +915,18 @@ public final class InputLogic {
         if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
             return false;
         }
-        final String withSpace = committedWord + AUTO_SPACE;
-        final boolean hadSpace = endsWith(mConnection.getCachedTextBeforeCursor(), withSpace);
-        if (!hadSpace
-                && !endsWith(mConnection.getCachedTextBeforeCursor(), committedWord)) {
+        final CharSequence beforeCursor = mConnection.getCachedTextBeforeCursor();
+        if (!TatarWordUtils.extractTrailingWord(beforeCursor).equals(committedWord)) {
+            return false;
+        }
+        final String suffix = (prependedSpace ? AUTO_SPACE : "") + committedWord;
+        if (!endsWith(beforeCursor, suffix)) {
             return false;
         }
         mConnection.beginBatchEdit();
         final boolean connected = mConnection.isConnected();
         if (connected) {
-            mConnection.deleteTextBeforeCursor(
-                    hadSpace ? withSpace.length() : committedWord.length());
+            mConnection.deleteTextBeforeCursor(suffix.length());
         }
         mConnection.endBatchEdit();
         if (!connected) {

@@ -30,9 +30,11 @@ import rkr.simplekeyboard.inputmethod.R
  * the run — press с, REST ~0.8 s, drag through ә→л→ә→м, lift.
  *
  * The P7-5 lift-commit contract: the lift itself commits the decode's top cell («сәлләм» — the
- * documented degenerate-path collision, see ROADMAP-P7 P7-3) with the auto-space, the strip
- * keeps the remaining candidates as tappable alternatives, and tapping the cell that holds
- * сәләм (the first alternative — the left cell) replaces the committed word in place.
+ * documented degenerate-path collision, see ROADMAP-P7 P7-3), the strip keeps the remaining
+ * candidates as tappable alternatives, and tapping the cell that holds сәләм (the first
+ * alternative — the left cell) replaces the committed word in place. P7-7 (2026-09-25): the
+ * commits carry NO auto-space, and a second glide right after the first prepends exactly ONE
+ * chain space (the д hereby path below: д→о→н→ь→я).
  *
  * The events go through `Instrumentation.sendPointerSync` — real system-level injection into
  * the live IME window, with real wall-clock holds. The strip-visible screenshot is taken by the
@@ -127,6 +129,68 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
             60f to 1110f, // ә
             297f to 1396f, // м
         )
+        drivePath(instrumentation, path, holdMs)
+        // The decode lands on the strip; the marker log gives the host the screencap window.
+        Thread.sleep(1500)
+        Log.i(TAG, "STRIP-VISIBLE")
+        Thread.sleep(3000)
+
+        val lifted = field.text.toString()
+        Log.i(TAG, "field right after the lift: '$lifted'")
+        assertTrue(
+            "the lift itself commits the top candidate — P7-7: with NO auto-space, was '$lifted'",
+            lifted == "сәлләм",
+        )
+
+        // Tap the LEFT strip cell: the alternatives hold candidates 2..4, and сәләм is the
+        // first of them (the committed top cell сәлләм is no longer in the strip).
+        tap(instrumentation, 120f, 980f)
+        Thread.sleep(1500)
+        val after = field.text.toString()
+        Log.i(TAG, "field after the alternative tap: '$after'")
+        assertTrue(
+            "the alternative tap must replace the committed word in place (no space drift), was '$after'",
+            after == "сәләм",
+        )
+
+        // P7-7 chaining: a second glide right after prepends exactly ONE space.
+        val second = listOf(
+            540f to 1301f, // д
+            414f to 1301f, // о
+            360f to 1206f, // н
+            487f to 1396f, // ь
+            98f to 1396f, // я
+        )
+        drivePath(instrumentation, second, holdMs = 0L)
+        Thread.sleep(1500)
+        val chained = field.text.toString()
+        Log.i(TAG, "field after the chained glide: '$chained'")
+        // The synthetic straight-segment path decodes to донья/дөнья depending on the ranking —
+        // the CONTRACT under test is the spacing: the first word, exactly one chain space, one
+        // decoded word, nothing trailing.
+        assertTrue(
+            "the chained glide prepends exactly one space and no trailing one, was '$chained'",
+            chained.matches(Regex("сәләм \\S+")),
+        )
+
+        // And the undo of the chain step returns to exactly the first word's state.
+        pressDelete(instrumentation)
+        Thread.sleep(800)
+        val undone = field.text.toString()
+        Log.i(TAG, "field after the chain undo: '$undone'")
+        assertTrue("undo must delete the word WITH the chain space, was '$undone'",
+            undone == "сәләм")
+    }
+
+    /**
+     * One gesture: down on the first point, an optional rest, the drag through the rest, lift.
+     * Screen coordinates of the live 720x1640 layout (calibrated from the device screencap).
+     */
+    private fun drivePath(
+        instrumentation: Instrumentation,
+        path: List<Pair<Float, Float>>,
+        holdMs: Long,
+    ) {
         val downTime = SystemClock.uptimeMillis()
         inject(instrumentation, MotionEvent.ACTION_DOWN, path[0], downTime)
         if (holdMs > 0) Thread.sleep(holdMs)
@@ -141,28 +205,11 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
             }
         }
         inject(instrumentation, MotionEvent.ACTION_UP, path.last(), SystemClock.uptimeMillis())
-        // The decode lands on the strip; the marker log gives the host the screencap window.
-        Thread.sleep(1500)
-        Log.i(TAG, "STRIP-VISIBLE")
-        Thread.sleep(3000)
+    }
 
-        val lifted = field.text.toString()
-        Log.i(TAG, "field right after the lift: '$lifted'")
-        assertTrue(
-            "the lift itself commits the top candidate with auto-space, was '$lifted'",
-            lifted.startsWith("сәлләм"),
-        )
-
-        // Tap the LEFT strip cell: the alternatives hold candidates 2..4, and сәләм is the
-        // first of them (the committed top cell сәлләм is no longer in the strip).
-        tap(instrumentation, 120f, 980f)
-        Thread.sleep(1500)
-        val after = field.text.toString()
-        Log.i(TAG, "field after the alternative tap: '$after'")
-        assertTrue(
-            "the alternative tap must replace the committed word in place, was '$after'",
-            after.startsWith("сәләм"),
-        )
+    /** One tap on the keyboard's own delete key (bottom-right of the letters block). */
+    private fun pressDelete(instrumentation: Instrumentation) {
+        tap(instrumentation, 663f, 1396f)
     }
 
     private fun tap(instrumentation: Instrumentation, x: Float, y: Float) {

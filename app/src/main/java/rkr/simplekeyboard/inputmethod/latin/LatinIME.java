@@ -540,9 +540,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
             @Override
             public boolean replaceGlideLiftedWord(final String committedWord,
-                    final String alternative) {
+                    final String alternative, final boolean prependedSpace) {
                 final boolean replaced =
-                        mInputLogic.replaceGlideLiftedWord(committedWord, alternative);
+                        mInputLogic.replaceGlideLiftedWord(committedWord, alternative,
+                                prependedSpace);
                 if (replaced) {
                     // Same reason as the other insertion paths: the replacement happens outside an
                     // InputTransaction, so the auto-caps state is refreshed with the very same call.
@@ -553,8 +554,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
-            public boolean deleteGlideLiftedWord(final String committedWord) {
-                final boolean deleted = mInputLogic.deleteGlideLiftedWord(committedWord);
+            public boolean deleteGlideLiftedWord(final String committedWord,
+                    final boolean prependedSpace) {
+                final boolean deleted =
+                        mInputLogic.deleteGlideLiftedWord(committedWord, prependedSpace);
                 if (deleted) {
                     mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
                             getCurrentRecapitalizeState());
@@ -610,16 +613,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
-            public boolean commitGlideWord(final String expectedContextWord,
-                    final String suggestion) {
-                final boolean committed =
-                        mInputLogic.commitGlideWord(expectedContextWord, suggestion);
-                if (committed) {
+            public int commitGlideWord(final String expectedContextWord,
+                    final String suggestion, final String chainedAfter) {
+                final int result =
+                        mInputLogic.commitGlideWord(expectedContextWord, suggestion, chainedAfter);
+                if (result != GLIDE_COMMIT_REFUSED) {
                     // The same out-of-transaction shift refresh as commitPredictedWord above.
                     mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
                             getCurrentRecapitalizeState());
                 }
-                return committed;
+                return result;
             }
         };
 

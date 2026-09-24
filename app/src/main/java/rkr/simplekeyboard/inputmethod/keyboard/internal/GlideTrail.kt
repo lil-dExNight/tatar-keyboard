@@ -32,6 +32,13 @@ package rkr.simplekeyboard.inputmethod.keyboard.internal
  * JVM tests need no clock injection. A finger that stops moving freezes its tail (no new
  * points, no invalidates) — the same behavior as the reference keyboards.
  *
+ * P7-7 (2026-09-25): the tail grew (300 ms / 96 points — it reads as a trail, not a stub), and
+ * the lift no longer erases it instantly: [startFadeOut] freezes the ring and the draw alpha
+ * then decays to zero over [FADE_OUT_MS] of wall time (the view passes SystemClock in — the one
+ * wall-clock read of the class, confined to the fade). A new gesture's first point clears the
+ * fading ring ([addPoint] resets the fade); [isFadeDone] tells the view when to stop
+ * re-invalidating.
+ *
  * Zero-allocation after construction: parallel primitive arrays, index arithmetic only.
  */
 class GlideTrail(val capacity: Int = DEFAULT_CAPACITY) {
@@ -45,8 +52,22 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY) {
     var size = 0
         private set
 
-    /** Appends one sample, overwriting the oldest when the ring is full. */
+    /** P7-7: the lift started the post-gesture fade; the ring is frozen meanwhile. */
+    var fadingOut = false
+        private set
+
+    /** Wall-clock millisecond the fade started at (view: SystemClock.uptimeMillis as float). */
+    private var fadeStartMs = 0f
+
+    /**
+     * Appends one sample, overwriting the oldest when the ring is full. A point that arrives
+     * while a fade is running belongs to the NEXT gesture: the stale ring is dropped first, so
+     * the new trail never draws a bridge from the old gesture's last point.
+     */
     fun addPoint(x: Float, y: Float, t: Float) {
+        if (fadingOut) {
+            clear()
+        }
         if (size < capacity) {
             val index = (start + size) % capacity
             xs[index] = x
@@ -64,9 +85,32 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY) {
     fun clear() {
         size = 0
         start = 0
+        fadingOut = false
     }
 
     fun isEmpty(): Boolean = size == 0
+
+    /**
+     * The lift: the ring freezes and starts fading. An empty ring fades nothing (the view's
+     * no-op contract for non-glide touches is preserved).
+     */
+    fun startFadeOut(nowMs: Float) {
+        if (size == 0) return
+        fadingOut = true
+        fadeStartMs = nowMs
+    }
+
+    /** The global fade multiplier: 1 while the gesture runs, decaying to 0 over [FADE_OUT_MS]. */
+    fun fadeFactor(nowMs: Float): Float {
+        if (!fadingOut) return 1f
+        val elapsed = nowMs - fadeStartMs
+        if (elapsed <= 0f) return 1f
+        if (elapsed >= FADE_OUT_MS) return 0f
+        return 1f - elapsed / FADE_OUT_MS
+    }
+
+    /** True when the fade ran its course — the view clears the ring and stops re-invalidating. */
+    fun isFadeDone(nowMs: Float): Boolean = fadingOut && nowMs - fadeStartMs >= FADE_OUT_MS
 
     /**
      * The oldest-first index of the first point inside the visible tail window (age at most
@@ -103,11 +147,14 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY) {
     private fun ringIndex(i: Int): Int = (start + i) % capacity
 
     companion object {
-        /** ~3 frames of a 60 fps gesture at the usual 5–10 ms sampling cadence, with margin. */
-        const val DEFAULT_CAPACITY = 48
+        /** ~300 ms of a 60 fps gesture at the usual 5–10 ms sampling cadence, with margin. */
+        const val DEFAULT_CAPACITY = 96
 
-        /** How far behind the fingertip the visible tail reaches. */
-        const val TAIL_MS = 150f
+        /** How far behind the fingertip the visible tail reaches (P7-7: doubled to 300 ms). */
+        const val TAIL_MS = 300f
+
+        /** P7-7: the post-lift fade-out duration. */
+        const val FADE_OUT_MS = 250f
 
         /** Peak opacity at the fingertip; the base color comes from the theme. */
         const val MAX_ALPHA = 0x66

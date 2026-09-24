@@ -275,6 +275,10 @@ class SuggestionsController internal constructor(
     /** The word a backspace right now would delete whole (the lift-committed or its replacement). */
     private var glideCommittedWord: String? = null
 
+    /** P7-7: whether [glideCommittedWord]'s commit prepended the chain space — the undo deletes
+     * the space along with the word exactly when the commit added it. */
+    private var glideCommitPrependedSpace: Boolean = false
+
     /** The glide pref, read live; OFF until LatinIME wires the real one. Same seam shape as the
      * autocorrect gate. */
     private var glideGate: GlideGate = GlideGate { false }
@@ -510,6 +514,7 @@ class SuggestionsController internal constructor(
         // typed character above all) closes it — and dissolves a pending alternatives band with
         // the rest of the band state (re-derived below).
         glideCommittedWord = null
+        glideCommitPrependedSpace = false
         runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
         requestCurrentPrefix()
     }
@@ -1630,7 +1635,8 @@ class SuggestionsController internal constructor(
      *    engine;
      *  - the editor in a state the commit path could not honor: an unknown cursor, a letter right
      *    after the cursor, or a half-typed trailing word (the decoder decodes WHOLE words;
-     *    completing a typed prefix by glide is not the MVP).
+     *    completing a typed prefix by glide is not the MVP). P7-7: the ONE tolerated trailing word
+     *    is the chain's previous glide commit — it gets the chain space and the gesture proceeds.
      *
      * The glide band is bound to the NEXT_WORD context of the moment (the word before the cursor,
      * "" at a field start) — exactly what the lift-commit's [EditorSurface.commitGlideWord]
@@ -1641,7 +1647,11 @@ class SuggestionsController internal constructor(
         if (!glideGate.isOn()) return
         val activeEngine = usableEngine() ?: return
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
-        if (editor.cachedWordBeforeCursor().isNotEmpty()) return
+        // P7-7: the one tolerated trailing word is the chain's previous glide commit (still in
+        // its undo window) — a second glide then extends it ("сәләм" → "сәләм дөнья"). Any other
+        // trailing word is a half-typed prefix, and completing that by glide is not the MVP.
+        val trailingWord = editor.cachedWordBeforeCursor()
+        if (trailingWord.isNotEmpty() && trailingWord != glideCommittedWord) return
         val context = editor.cachedNextWordContext()
         // A glide gesture ends any word's preview moment: no stale keep-typed cell may ride the
         // glide band (the tap path's refusal check would swallow the tap).
@@ -1673,8 +1683,9 @@ class SuggestionsController internal constructor(
      * Casing is the display-time rule of the prefix path, sourced from the shift gate (a gesture
      * types no letters to read the casing off): the committed AND the shown forms carry it. With
      * zero candidates nothing is committed and nothing special shows (fail-closed). With exactly
-     * one, there are no alternatives and the strip falls through to the ordinary NEXT_WORD chain
-     * for the committed word.
+     * one, there are no alternatives and the strip falls through to a fresh derivation for the
+     * committed word — P7-7: with no auto-space the committed word IS the trailing word, so the
+     * strip behaves exactly as if the word had been typed (the prefix path: forms etc.).
      *
      * Learning (pinned): a lift-committed word behaves exactly like a tapped suggestion — the run
      * is marked dirty (it is not a clean run for the word itself) and the boundary it establishes
@@ -1698,8 +1709,11 @@ class SuggestionsController internal constructor(
         // The lift-commit: the glide's own commit path re-derives the live context and refuses a
         // stale gesture itself (P7-6: without the prediction tap's sentence-start requirement for
         // an empty context — a gesture at a context-free position like "сүз ? " still types its
-        // word); a refusal commits nothing and shows nothing special.
-        if (!editor.commitGlideWord(pendingGlideContext, committed)) {
+        // word; P7-7: no auto-space, the chain separator is the only space a glide inserts, and
+        // the chain's previous word is the one tolerated trailing word); a refusal commits
+        // nothing and shows nothing special.
+        val commitResult = editor.commitGlideWord(pendingGlideContext, committed, glideCommittedWord)
+        if (commitResult == EditorSurface.GLIDE_COMMIT_REFUSED) {
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             if (eligible) strip.reserve()
@@ -1710,8 +1724,10 @@ class SuggestionsController internal constructor(
         runMachine.markRunDirty()
         runMachine.trustPairBoundary()
         // One backspace right after the lift deletes the whole committed word (the gesture-undo):
-        // the undo word tracks the editor's content — it moves to an alternative if one replaces.
+        // the undo word tracks the editor's content — it moves to an alternative if one replaces —
+        // and the chain space dies with the word exactly when the commit added it (P7-7).
         glideCommittedWord = committed
+        glideCommitPrependedSpace = commitResult == EditorSurface.GLIDE_COMMIT_PREPENDED
         if (!eligible) {
             // P7-6: suggestions off — the lift-commit stands on its own (typing, not a
             // suggestion), and the strip, the suggestions surface, shows NOTHING: no alternatives
@@ -1726,8 +1742,9 @@ class SuggestionsController internal constructor(
             if (alternatives.size >= SuggestionStripState.CELL_COUNT) break
         }
         if (alternatives.isEmpty()) {
-            // Nothing to offer as an alternative: the strip falls through to the NEXT_WORD chain
-            // for the committed word (the same re-request a tap-commit issues).
+            // Nothing to offer as an alternative: the strip falls through to a fresh derivation
+            // for the committed word — with P7-7's no-space commit that word is the trailing
+            // word, so this is exactly the band a typed word would have (the prefix path).
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
@@ -2142,6 +2159,7 @@ class SuggestionsController internal constructor(
         suppressedPreviewWord = null
         // The lift-commit's whole-word undo dies at the same boundaries as the autocorrect undo.
         glideCommittedWord = null
+        glideCommitPrependedSpace = false
     }
 
     private fun onTap(suggestion: String) {
@@ -2245,12 +2263,15 @@ class SuggestionsController internal constructor(
         } else if (glideAlternativesFor != null) {
             // P7-3.5 (the lift-commit UX amendment, docs/ROADMAP-P7.md): a tap on a glide
             // ALTERNATIVE replaces the just-committed glide word in the editor — the editor's own
-            // suffix re-check ("word + its auto-space" must still stand right before the cursor)
-            // is the second line of defense. The replacement is still not a clean run (the
-            // markRunDirty above already saw to that), the pair machine's trusted boundary moves
-            // to the alternative, and the strip refreshes to the NEXT_WORD chain for it.
-            if (editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion)) {
-                // The undo window tracks the text: a backspace now deletes the ALTERNATIVE whole.
+            // position re-check (the trailing word must still BE the committed word right before
+            // the cursor) is the second line of defense; P7-7: the replacement keeps the chain
+            // space exactly as committed, never adds or removes one. The replacement is still not
+            // a clean run (the markRunDirty above already saw to that), the pair machine's trusted
+            // boundary moves to the alternative, and the strip refreshes for it.
+            if (editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion,
+                    glideCommitPrependedSpace)) {
+                // The undo window tracks the text: a backspace now deletes the ALTERNATIVE whole
+                // (with the same chain-space treatment).
                 glideCommittedWord = suggestion
                 displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
@@ -2263,19 +2284,23 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * One backspace right after a glide lift-commit deletes the whole committed word (and its
-     * auto-space) instead of one character — the Gboard gesture-undo. Returns true when it did.
+     * One backspace right after a glide lift-commit deletes the whole committed word instead of
+     * one character — the Gboard gesture-undo. P7-7: the deletion covers the chain space exactly
+     * when the commit prepended it, so undoing the second glide of a chain returns to exactly the
+     * first word's state. Returns true when it did.
      *
      * The window holds exactly one word and dies the moment the text changes for any other reason
      * (a typed character, a selection move, a boundary), exactly like the autocorrect undo window
      * it mirrors: the state is dropped BEFORE the editor is asked, so a refused undo cannot be
      * retried and the second backspace deletes a character like any other. The editor's own
-     * suffix re-check (the committed word + its auto-space must still stand right before the
+     * position re-check (the trailing word must still be the committed word right before the
      * cursor) is the second line of defense.
      */
     fun maybeUndoGlideCommit(): Boolean {
         val word = glideCommittedWord ?: return false
+        val prependedSpace = glideCommitPrependedSpace
         glideCommittedWord = null
+        glideCommitPrependedSpace = false
         // The band of alternatives (if any) described the word that no longer stands there.
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
@@ -2284,7 +2309,7 @@ class SuggestionsController internal constructor(
         // works with the suggestions master off, where no band ever painted.
         if (destroyed || !glideEligible) return false
         if (!editor.hasKnownCursor()) return false
-        return editor.deleteGlideLiftedWord(word)
+        return editor.deleteGlideLiftedWord(word, prependedSpace)
     }
 
     companion object {

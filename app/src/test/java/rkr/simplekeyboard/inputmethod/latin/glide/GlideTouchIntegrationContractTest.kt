@@ -217,25 +217,33 @@ class GlideTouchIntegrationContractTest {
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt",
         )
         // The commit goes through the glide's OWN commit path (P7-6: the predicted-word re-checks
-        // minus the sentence-start requirement for an empty context — the "сүз ? " field report).
+        // minus the sentence-start requirement for an empty context — the "сүз ? " field report);
+        // P7-7: the chain's previous commit is the one tolerated trailing word.
         val apply = controller.substringAfter("private fun applyGlideResult")
-        assertTrue(apply.contains("editor.commitGlideWord(pendingGlideContext, committed)"))
+        assertTrue(apply.contains("editor.commitGlideWord(pendingGlideContext, committed, glideCommittedWord)"))
         assertTrue(apply.contains("glideCommittedWord = committed"))
         assertTrue(apply.contains("displayedGlideAlternativesFor = committed"))
-        // The alternatives tap replaces in-editor.
-        assertTrue(controller.contains("editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion)"))
-        // The undo.
+        // P7-7: the prepended-chain-space fact is what the undo needs.
+        assertTrue(apply.contains("glideCommitPrependedSpace = commitResult == EditorSurface.GLIDE_COMMIT_PREPENDED"))
+        // The chain gate: a trailing word blocks the gesture unless it IS the previous commit.
+        val onGlide = controller.substringAfter("fun onGlideInput(path: GlidePath)")
+        assertTrue(onGlide.contains("if (trailingWord.isNotEmpty() && trailingWord != glideCommittedWord) return"))
+        // The alternatives tap replaces in-editor, keeping the chain space exactly as committed.
+        assertTrue(controller.contains("editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion,"))
+        // The undo carries the chain-space flag.
         assertTrue(controller.contains("fun maybeUndoGlideCommit()"))
-        assertTrue(controller.contains("editor.deleteGlideLiftedWord(word)"))
+        assertTrue(controller.contains("editor.deleteGlideLiftedWord(word, prependedSpace)"))
 
         val surfaces = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionSurfaces.kt",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionSurfaces.kt",
         )
-        // The seams default to false: an editor surface that predates them never edits.
-        assertTrue(surfaces.contains("fun replaceGlideLiftedWord(committedWord: String, alternative: String): Boolean = false"))
-        assertTrue(surfaces.contains("fun deleteGlideLiftedWord(committedWord: String): Boolean = false"))
-        assertTrue(surfaces.contains("fun commitGlideWord(expectedContextWord: String, suggestion: String): Boolean = false"))
+        // The seams default to refuse: an editor surface that predates them never edits.
+        assertTrue(surfaces.contains("fun replaceGlideLiftedWord(committedWord: String, alternative: String, prependedSpace: Boolean): Boolean = false"))
+        assertTrue(surfaces.contains("fun deleteGlideLiftedWord(committedWord: String, prependedSpace: Boolean): Boolean = false"))
+        assertTrue(surfaces.contains("fun commitGlideWord(expectedContextWord: String, suggestion: String, chainedAfter: String?): Int ="))
+        assertTrue(surfaces.contains("const val GLIDE_COMMIT_REFUSED = 0"))
+        assertTrue(surfaces.contains("const val GLIDE_COMMIT_PREPENDED = 2"))
 
         val latinIme = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
@@ -254,26 +262,36 @@ class GlideTouchIntegrationContractTest {
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java",
         )
-        // The position checks are the suffix match, and both paths refuse a mid-word cursor.
+        // P7-7: the trailing word at the cursor must BE the committed word, and the deletion is
+        // sized by the chain-space flag; both paths refuse a mid-word cursor.
         for (method in listOf("replaceGlideLiftedWord", "deleteGlideLiftedWord")) {
             val body = inputLogic.substringAfter("public boolean $method(")
-            assertTrue("$method matches the committed word + its space", body.contains("committedWord + AUTO_SPACE"))
+            assertTrue("$method checks the trailing word IS the committed word",
+                body.contains("extractTrailingWord(beforeCursor).equals(committedWord)"))
+            assertTrue("$method sizes by the chain-space flag",
+                body.contains("(prependedSpace ? AUTO_SPACE : \"\") + committedWord"))
             assertTrue("$method refuses a mid-word cursor", body.contains("startsWithWordCharacter(mConnection.getCachedTextAfterCursor())"))
         }
-        // P7-6: the glide commit keeps every live re-check of the prediction commit EXCEPT the
-        // sentence-start requirement — that asymmetry is the field fix and must not drift back.
-        val glideCommit = inputLogic.substringAfter("public boolean commitGlideWord(")
+        // P7-6/P7-7: the glide commit keeps every live re-check of the prediction commit EXCEPT
+        // the sentence-start requirement, and inserts NO auto-space (the chain space prepends) —
+        // both asymmetries are the field-driven contract and must not drift back.
+        val glideCommit = inputLogic.substringAfter("public int commitGlideWord(")
             .substringBefore("public boolean")
         assertTrue("the glide commit re-derives the live context",
             glideCommit.contains("extractNextWordContext"))
-        assertTrue("the glide commit refuses a half-typed word",
-            glideCommit.contains("extractTrailingWord"))
+        assertTrue("the glide commit refuses a half-typed word outside the chain",
+            glideCommit.contains("!trailingWord.equals(chainedAfter)"))
+        assertTrue("the chain space prepends", glideCommit.contains("AUTO_SPACE + suggestion"))
+        assertFalse("the P7-5 auto-space is gone from the glide commit",
+            glideCommit.contains("suggestion + AUTO_SPACE"))
         assertFalse("the glide commit must NOT require a sentence start for an empty context",
             glideCommit.contains("isSentenceStartContext"))
         val predictedCommit = inputLogic.substringAfter("public boolean commitPredictedWord(")
             .substringBefore("/** Allocation-free suffix test")
         assertTrue("the prediction commit keeps its P4 sentence-start guard",
             predictedCommit.contains("isSentenceStartContext"))
+        assertTrue("the prediction path keeps its auto-space (typed suggestions unchanged)",
+            predictedCommit.contains("suggestion + AUTO_SPACE"))
     }
 
     /** The body of one method, from its declaration to the next one (good enough for pins). */

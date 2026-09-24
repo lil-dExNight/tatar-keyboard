@@ -28,6 +28,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Paint.Align;
 import android.graphics.Typeface;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -412,7 +413,9 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         if (mGlideTrail.isEmpty()) {
             return;
         }
-        mGlideTrail.clear();
+        // P7-7: the lift fades the trail out over GlideTrail.FADE_OUT_MS instead of erasing it
+        // instantly; the fade drives its own bounded re-invalidation from the draw pass.
+        mGlideTrail.startFadeOut(SystemClock.uptimeMillis());
         invalidate();
     }
 
@@ -425,6 +428,10 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        // A closing keyboard ends every fade: no stale trail at the next show, no scheduled
+        // repaints of a detached view (a pending postInvalidateDelayed on a detached view is a
+        // no-op, so there is nothing to cancel — the ring itself is what must not survive).
+        mGlideTrail.clear();
         mDrawingPreviewPlacerView.removeAllViews();
     }
 
@@ -615,19 +622,36 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     }
 
     private void drawGlideTrail(final Canvas canvas) {
+        // The wall clock enters here and only here: the fade-out is a wall-time animation, while
+        // the tail's own fade math stays sample-relative (see GlideTrail's class doc).
+        final float nowMs = (float) SystemClock.uptimeMillis();
+        if (mGlideTrail.isFadeDone(nowMs)) {
+            // The fade ran out: drop the ring and let this frame paint without it.
+            mGlideTrail.clear();
+            return;
+        }
         final int first = mGlideTrail.firstVisible();
         final int size = mGlideTrail.getSize();
         if (size - first < 2) {
             return;
         }
         final Paint paint = mGlideTrailPaint;
+        final float fadeFactor = mGlideTrail.fadeFactor(nowMs);
         // Per-segment drawLine with a preallocated paint: no allocation on the draw path.
         for (int i = first; i < size - 1; i++) {
-            paint.setAlpha(mGlideTrail.alphaAt(i + 1));
+            paint.setAlpha((int)(mGlideTrail.alphaAt(i + 1) * fadeFactor));
             canvas.drawLine(mGlideTrail.xAt(i), mGlideTrail.yAt(i),
                     mGlideTrail.xAt(i + 1), mGlideTrail.yAt(i + 1), paint);
         }
+        if (mGlideTrail.getFadingOut()) {
+            // Bounded: the schedule stops the frame after GlideTrail.FADE_OUT_MS (isFadeDone
+            // above), on a new gesture (addPoint resets the fade), and on window detach.
+            postInvalidateDelayed(FADE_FRAME_MS);
+        }
     }
+
+    /** The fade's frame cadence — one animation frame. */
+    private static final long FADE_FRAME_MS = 16L;
 
     @Override
     protected void onDrawKeyTopVisuals(final Key key, final Canvas canvas, final Paint paint,

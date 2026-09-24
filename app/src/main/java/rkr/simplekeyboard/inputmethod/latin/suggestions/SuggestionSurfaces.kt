@@ -121,28 +121,54 @@ interface EditorSurface {
      * band painted a minute ago" window the sentence-start sub-check exists for — so an
      * empty-context position that is not a sentence start ("сүз ? " typed with the space habit)
      * is a valid commit target for a glide while it never is one for a tap on a prediction.
-     * Defaults to false, like [commitPredictedWord].
+     *
+     * P7-7 (the 2026-09-25 contract change): a glide commits NO auto-space — the gesture is
+     * typing, not a suggestion acceptance. Chaining is the one separator rule: when the cursor
+     * stands right after a word character the commit prepends ONE space (gliding word after word
+     * produces "сәләм дөнья"); after whitespace/punctuation/at a field start nothing is
+     * prepended. [chainedAfter] is the only trailing word the commit tolerates — the word the
+     * PREVIOUS glide of the chain committed (still in its undo window); any other trailing word
+     * is a half-typed prefix and refuses the commit, exactly as before.
+     *
+     * Returns [GLIDE_COMMIT_REFUSED] (no edit), [GLIDE_COMMIT_BARE] or
+     * [GLIDE_COMMIT_PREPENDED] — the undo needs to know whether the inserted text carried the
+     * chain space. Defaults to [GLIDE_COMMIT_REFUSED], like [commitPredictedWord].
      */
-    fun commitGlideWord(expectedContextWord: String, suggestion: String): Boolean = false
+    fun commitGlideWord(expectedContextWord: String, suggestion: String, chainedAfter: String?): Int =
+        GLIDE_COMMIT_REFUSED
 
     /**
      * The glide lift-commit's replacement path (the UX amendment, docs/ROADMAP-P7.md): the word a
-     * glide just committed is replaced by the tapped alternative. The suffix match
-     * ("[committedWord] + its auto-space" — or the bare word when no space was needed — must stand
-     * right before the cursor) IS the position check, the same one [revertTypedWord] makes; a
-     * stale tap edits nothing. Returns false without editing anything when any check fails.
-     * Defaults to false so an editor surface written before the lift-commit keeps compiling and
-     * simply never replaces.
+     * glide just committed is replaced by the tapped alternative, IN PLACE — P7-7: no space is
+     * added or removed; [prependedSpace] says whether the committed text carried the chain space
+     * (the replacement carries it too). The suffix match (the trailing word must BE
+     * [committedWord] right before the cursor) IS the position check, the same one
+     * [revertTypedWord] makes; a stale tap edits nothing. Returns false without editing anything
+     * when any check fails. Defaults to false so an editor surface written before the lift-commit
+     * keeps compiling and simply never replaces.
      */
-    fun replaceGlideLiftedWord(committedWord: String, alternative: String): Boolean = false
+    fun replaceGlideLiftedWord(committedWord: String, alternative: String, prependedSpace: Boolean): Boolean = false
 
     /**
      * The glide lift-commit's whole-word undo (the Gboard gesture-undo): one backspace right after
-     * the lift deletes "[committedWord] + its auto-space" (or the bare word) from before the
-     * cursor and commits NOTHING back. Same suffix-match position check; false without an edit on
-     * any failure. Defaults to false, like [replaceGlideLiftedWord].
+     * the lift deletes the committed word from before the cursor — INCLUDING the chain space when
+     * [prependedSpace] says the commit prepended one (undoing the second glide of a chain returns
+     * to exactly the first word's state) — and commits NOTHING back. Same position check as the
+     * replacement; false without an edit on any failure. Defaults to false, like
+     * [replaceGlideLiftedWord].
      */
-    fun deleteGlideLiftedWord(committedWord: String): Boolean = false
+    fun deleteGlideLiftedWord(committedWord: String, prependedSpace: Boolean): Boolean = false
+
+    companion object {
+        /** [commitGlideWord] refused: nothing was edited. */
+        const val GLIDE_COMMIT_REFUSED = 0
+
+        /** [commitGlideWord] committed the bare word (no chain space needed). */
+        const val GLIDE_COMMIT_BARE = 1
+
+        /** [commitGlideWord] committed " " + word (the cursor stood right after a word). */
+        const val GLIDE_COMMIT_PREPENDED = 2
+    }
 }
 
 /**
