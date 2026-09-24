@@ -44,6 +44,15 @@ fun interface WordFrequencySource {
 }
 
 /**
+ * Sink of [TdictPrefixIndex.forEachWordCold] (P7-1, docs/GLIDE-PLAN.md): one visit per entry, in
+ * dictionary order, with the word and its raw frequency. A fun interface with a primitive Long
+ * (not a Kotlin lambda type) so the full-dictionary walk does not box a Long per word.
+ */
+fun interface ColdWordVisitor {
+    fun visit(word: String, frequency: Long)
+}
+
+/**
  * A [PrefixComputer] that also reports how many of the results it just returned were EXACT
  * dictionary candidates; the rest are fuzzy (E3).
  *
@@ -1726,6 +1735,70 @@ internal class TdictPrefixIndex private constructor(
             }
         }
         return false
+    }
+
+    /**
+     * P7-1 (docs/GLIDE-PLAN.md): cold enumeration of every entry with its frequency, for the
+     * glide decoder's one-time word-index build. The walk is a single sequential pass over the
+     * read-only mapping with LOCAL varint state — like [containsWordCold] it never touches the
+     * worker-confined block cache or the shared [varintValue]/[varintNext], so it is safe to
+     * call from the thread that builds the glide index (the engine worker at first glide), and
+     * it never enters the per-keystroke lookup path or its budgets. One String per word is
+     * materialized — build-time cost, paid once per dictionary.
+     */
+    internal fun forEachWordCold(visitor: ColdWordVisitor) {
+        val wordBytes = ByteArray(TdictFormat.BLOCK_SIZE * TdictFormat.MAX_WORD_BYTES)
+        val wordStarts = IntArray(TdictFormat.BLOCK_SIZE + 1)
+        for (block in 0 until blockCount) {
+            var cursor = blockOffset(block)
+            val inBlock = minOf(TdictFormat.BLOCK_SIZE, entryCount - block * TdictFormat.BLOCK_SIZE)
+            val firstLength = unsigned(bytes.get(cursor))
+            cursor++
+            val firstStart = cursor
+            cursor += firstLength
+            wordStarts[0] = 0
+            for (offset in 0 until firstLength) wordBytes[offset] = bytes.get(firstStart + offset)
+            wordStarts[1] = firstLength
+            var writeAt = firstLength
+            for (entry in 1 until inBlock) {
+                var prefixLength = 0
+                var shift = 0
+                while (true) {
+                    val byte = unsigned(bytes.get(cursor))
+                    cursor++
+                    prefixLength = prefixLength or ((byte and 0x7f) shl shift)
+                    if (byte and 0x80 == 0) break
+                    shift += 7
+                }
+                val suffixLength = unsigned(bytes.get(cursor))
+                cursor++
+                for (offset in 0 until prefixLength) {
+                    wordBytes[writeAt + offset] = bytes.get(firstStart + offset)
+                }
+                for (offset in 0 until suffixLength) {
+                    wordBytes[writeAt + prefixLength + offset] = bytes.get(cursor + offset)
+                }
+                cursor += suffixLength
+                writeAt += prefixLength + suffixLength
+                wordStarts[entry + 1] = writeAt
+            }
+            for (entry in 0 until inBlock) {
+                var frequency = 0
+                var shift = 0
+                while (true) {
+                    val byte = unsigned(bytes.get(cursor))
+                    cursor++
+                    frequency = frequency or ((byte and 0x7f) shl shift)
+                    if (byte and 0x80 == 0) break
+                    shift += 7
+                }
+                val start = wordStarts[entry]
+                visitor.visit(
+                    String(wordBytes, start, wordStarts[entry + 1] - start, Charsets.UTF_8),
+                    frequency.toLong() and MAX_U32,
+                )
+            }
+        }
     }
 
     /**

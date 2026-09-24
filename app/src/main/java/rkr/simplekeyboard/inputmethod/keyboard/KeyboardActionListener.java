@@ -81,6 +81,14 @@ public interface KeyboardActionListener {
     void onUpWithDeletePointerActive();
     void onUpWithSpacePointerActive();
 
+    /**
+     * Called when a glide gesture completes (P7-2, docs/GLIDE-PLAN.md). [path] is the owning
+     * PointerTracker's live buffer, valid only during this call — a receiver that forwards the
+     * gesture to the engine worker must snapshot it (see {@code GlidePath#copyInto}). The default
+     * is a no-op: P7-3 wires the real receiver in LatinIME; nothing commits until then.
+     */
+    default void onGlideInput(final rkr.simplekeyboard.inputmethod.latin.glide.GlidePath path) {}
+
     KeyboardActionListener EMPTY_LISTENER = new Adapter();
 
     class Adapter implements KeyboardActionListener {

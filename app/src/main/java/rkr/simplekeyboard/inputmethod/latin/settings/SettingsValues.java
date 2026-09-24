@@ -50,6 +50,8 @@ public class SettingsValues {
     public final boolean mShowEmojiKey;
     public final boolean mSpaceSwipeEnabled;
     public final boolean mDeleteSwipeEnabled;
+    /** Already includes the subordination to {@link #mTatarSuggestionsEnabled} (P7-2). */
+    public final boolean mGlideTypingEnabled;
     public final boolean mTatarSuggestionsEnabled;
     public final boolean mPersonalDictionaryEnabled;
     /** Already includes the subordination to {@link #mTatarSuggestionsEnabled} (D3). */
@@ -100,6 +102,7 @@ public class SettingsValues {
         mShowEmojiKey = Settings.readShowEmojiKey(prefs);
         mSpaceSwipeEnabled = Settings.readSpaceSwipeEnabled(prefs);
         mDeleteSwipeEnabled = Settings.readDeleteSwipeEnabled(prefs);
+        mGlideTypingEnabled = Settings.readGlideTypingEnabled(prefs);
         mTatarSuggestionsEnabled = Settings.readTatarSuggestionsEnabled(prefs);
         mPersonalDictionaryEnabled = Settings.readPersonalDictionaryEnabled(prefs);
         mTatarAutocorrectEnabled = Settings.readTatarAutocorrectEnabled(prefs);

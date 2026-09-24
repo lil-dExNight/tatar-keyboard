@@ -72,6 +72,12 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     public static final String PREF_SHOW_EMOJI_KEY = "pref_show_emoji_key";
     public static final String PREF_SPACE_SWIPE = "pref_space_swipe";
     public static final String PREF_DELETE_SWIPE = "pref_delete_swipe";
+    /**
+     * Glide (swipe) typing, default ON, subordinate to the suggestions master switch — the glide
+     * candidates ARE suggestions (docs/GLIDE-PLAN.md). The settings UI row lands with P7-3; the
+     * read path exists from P7-2 so the touch side already honors the toggle.
+     */
+    public static final String PREF_GLIDE_TYPING = "pref_glide_typing";
     public static final String PREF_TATAR_SUGGESTIONS = "pref_tatar_suggestions";
     /**
      * The personal dictionary: one toggle for both reading and writing, default OFF (E4b). A
@@ -376,6 +382,12 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      */
     public static boolean readEmojiSuggestionsEnabled(final SharedPreferences prefs) {
         return prefs.getBoolean(PREF_EMOJI_SUGGESTIONS, true)
+                && readTatarSuggestionsEnabled(prefs);
+    }
+
+    /** Glide typing reads exactly like emoji suggestions: own toggle AND the master switch. */
+    public static boolean readGlideTypingEnabled(final SharedPreferences prefs) {
+        return prefs.getBoolean(PREF_GLIDE_TYPING, true)
                 && readTatarSuggestionsEnabled(prefs);
     }
 

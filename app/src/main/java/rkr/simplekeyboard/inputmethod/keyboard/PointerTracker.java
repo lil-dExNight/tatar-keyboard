@@ -32,6 +32,8 @@ import rkr.simplekeyboard.inputmethod.keyboard.internal.PointerTrackerQueue;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.TimerProxy;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.common.CoordinateUtils;
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureDecider;
+import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath;
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 
 public final class PointerTracker implements PointerTrackerQueue.Element {
@@ -125,6 +127,18 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     // Such a pointer may not leave that key until it has travelled the sliding-modifier slop from
     // its touch-down point; see {@link #isMajorEnoughMoveToBeOnNewKey}.
     private boolean mIsDownOnModifierKey;
+
+    // P7-2 glide (docs/GLIDE-PLAN.md): the per-pointer decision machine (rebuilt when the
+    // keyboard changes, since its distance threshold is the keyboard's key width) and the path
+    // buffer the gesture records into. The buffer is allocated once per tracker; recording
+    // happens only between an eligible letter-key down and its up/cancel. Nothing here runs when
+    // the glide preference is off: the decider sits in REJECTED and every branch below falls
+    // through to the legacy code, byte-identical.
+    // The placeholder never arms (an unreachable distance threshold); the real decider is built
+    // by setKeyDetectorInner once the keyboard — and with it the key width — is known.
+    private GlideGestureDecider mGlideDecider =
+            new GlideGestureDecider(Float.MAX_VALUE, 0f, GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS);
+    private final GlidePath mGlidePath = new GlidePath(GlidePath.MAX_POINTS);
 
     // TODO: Add PointerTrackerFactory singleton and move some class static methods into it.
     public static void init(final TypedArray mainKeyboardViewAttr, final TimerProxy timerProxy,
@@ -278,6 +292,13 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         }
         mKeyDetector = keyDetector;
         mKeyboard = keyboard;
+        // The glide decider's distance threshold is the keyboard's key width; the velocity
+        // threshold is the reference detector's 0.10 dp/ms, converted to pixels here.
+        mGlideDecider = new GlideGestureDecider(
+                keyboard.mMostCommonKeyWidth,
+                GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS
+                        * Resources.getSystem().getDisplayMetrics().density,
+                GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS);
         // Mark that keyboard layout has been changed.
         mKeyboardLayoutHasBeenChanged = true;
         // Keep {@link #mCurrentKey} that comes from previous keyboard. The key preview of
@@ -420,6 +441,17 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
                 final int x = (int)me.getX(index);
                 final int y = (int)me.getY(index);
                 final PointerTracker tracker = getPointerTracker(id);
+                // P7-2: a tracked/armed glide consumes the historical batch too — the stock
+                // flow drops it, which would starve the path of half its samples at typical
+                // glide speeds. Never feed history to a more-keys panel.
+                if (tracker.isGlideGestureActive() && !tracker.isShowingMoreKeysPanel()) {
+                    final int historySize = me.getHistorySize();
+                    for (int h = 0; h < historySize; h++) {
+                        tracker.onMoveEvent(
+                                (int)me.getHistoricalX(index, h), (int)me.getHistoricalY(index, h),
+                                me.getHistoricalEventTime(h));
+                    }
+                }
                 tracker.onMoveEvent(x, y, eventTime);
             }
             return;
@@ -468,8 +500,30 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             // tracked should be released.
             sPointerTrackerQueue.releaseAllPointers(eventTime);
         }
+        // P7-2 multi-touch rule: a second finger down cancels any armed glide (fail-closed —
+        // it will never be committed). A still-undecided (TRACKING) gesture is left alone:
+        // two-finger chording is today's behavior and must keep working.
+        cancelArmedGlideTrackersExcept(mPointerId);
         sPointerTrackerQueue.add(this);
-        onDownEventInternal(x, y);
+        onDownEventInternal(x, y, eventTime);
+    }
+
+    /** P7-2: cancels the armed glide of every tracker but [pointerId] (fail-closed). */
+    private static void cancelArmedGlideTrackersExcept(final int pointerId) {
+        final int trackersSize = sTrackers.size();
+        for (int i = 0; i < trackersSize; ++i) {
+            final PointerTracker tracker = sTrackers.get(i);
+            if (tracker.mPointerId != pointerId && tracker.mGlideDecider.isArmed()) {
+                tracker.cancelArmedGlide();
+            }
+        }
+    }
+
+    private void cancelArmedGlide() {
+        mGlideDecider.cancelGlide();
+        mGlidePath.clear();
+        setReleasedKeyGraphics(mCurrentKey, true /* withAnimation */);
+        cancelTrackingForAction();
     }
 
     /* package */ boolean isShowingMoreKeysPanel() {
@@ -483,7 +537,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         }
     }
 
-    private void onDownEventInternal(final int x, final int y) {
+    private void onDownEventInternal(final int x, final int y, final long eventTime) {
         Key key = onDownKey(x, y);
         // Key selection by dragging finger is allowed when 1) key selection by dragging finger is
         // enabled by configuration, 2) this pointer starts dragging from modifier key, or 3) this
@@ -522,6 +576,34 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             //mStartY = y;
             mStartTime = System.currentTimeMillis();
         }
+        // P7-2: start the glide decision for this touch. Eligible means the preference is on
+        // and the down key is a letter key (space/delete/shift/enter and the digit row never
+        // start a glide — their swipe/long-press behaviors keep priority). The down point opens
+        // the path. With the preference off the decider sits in REJECTED and every glide branch
+        // in this class is dead — the touch path is byte-identical to the pre-glide code.
+        final boolean glideEligible = key != null
+                && Settings.getInstance().getCurrent().mGlideTypingEnabled
+                && Character.isLetter(key.getCode());
+        mGlideDecider.onDown(x, y, eventTime, glideEligible);
+        mGlidePath.clear();
+        if (glideEligible) {
+            mGlidePath.addPoint(x, y, eventTime);
+        }
+    }
+
+    /** The glide decider is live for this pointer (undecided or armed) — P7-2. */
+    /* package */ boolean isGlideGestureActive() {
+        return mGlideDecider.isTracking() || mGlideDecider.isArmed();
+    }
+
+    /**
+     * The glide takes over the pointer (P7-2): pending long-press/repeat timers are cancelled
+     * and the preview of the key the legacy drag logic last entered is dismissed. From here on,
+     * MOVE events feed the path only.
+     */
+    private void armGlide() {
+        sTimerProxy.cancelKeyTimersOf(this);
+        setReleasedKeyGraphics(mCurrentKey, true /* withAnimation */);
     }
 
     private void startKeySelectionByDraggingFinger(final Key key) {
@@ -620,6 +702,25 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     private void onMoveEventInternal(final int x, final int y, final long eventTime) {
         final Key oldKey = mCurrentKey;
 
+        // P7-2 glide branches, ahead of every legacy MOVE branch on purpose: an armed glide
+        // feeds the path only (the space/delete swipe branches must not hijack it mid-path),
+        // and an undecided gesture feeds the decider first — a gesture that arms on this very
+        // point is a glide, not a cursor swipe. While undecided the legacy behavior below
+        // proceeds unchanged (today's sliding key input keeps its previews and haptics until
+        // the decider commits to a glide); a cursor swipe that already started (mCursorMoved)
+        // can no longer become a glide.
+        if (mGlideDecider.isArmed()) {
+            mGlidePath.addPoint(x, y, eventTime);
+            return;
+        }
+        if (mGlideDecider.isTracking() && !mCursorMoved) {
+            mGlidePath.addPoint(x, y, eventTime);
+            if (mGlideDecider.onMove(x, y, eventTime) == GlideGestureDecider.State.ARMED) {
+                armGlide();
+                return;
+            }
+        }
+
         if (oldKey != null && oldKey.getCode() == Constants.CODE_SPACE && Settings.getInstance().getCurrent().mSpaceSwipeEnabled) {
             //Pointer slider
             int steps = (x - mStartX) / sPointerStep;
@@ -684,12 +785,18 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         if (DEBUG_EVENT) {
             printTouchEvent("onPhntEvent:", mLastX, mLastY, eventTime);
         }
+        // P7-2: a phantom up cancels a glide instead of delivering it (fail-closed).
+        mGlideDecider.cancelGlide();
         onUpEventInternal(mLastX, mLastY);
         cancelTrackingForAction();
     }
 
     private void onUpEventInternal(final int x, final int y) {
         sTimerProxy.cancelKeyTimersOf(this);
+        // P7-2: snapshot the glide state before the legacy reset below (the decider itself is
+        // reset here so no path state survives into the next touch).
+        final boolean armedGlide = mGlideDecider.isArmed();
+        mGlideDecider.onUpOrCancel();
         final boolean isInDraggingFinger = mIsInDraggingFinger;
         final boolean isInSlidingKeyInput = mIsInSlidingKeyInput;
         resetKeySelectionByDraggingFinger();
@@ -699,6 +806,16 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         mCurrentRepeatingKeyCode = Constants.NOT_A_CODE;
         // Release the last pressed key.
         setReleasedKeyGraphics(currentKey, true /* withAnimation */);
+
+        // P7-2: an armed glide delivers its path and never commits a key. A cancelled glide
+        // (multi-touch, phantom up, cancelTrackingForAction) delivers nothing — fail-closed.
+        if (armedGlide) {
+            if (!mIsTrackingForActionDisabled) {
+                sListener.onGlideInput(mGlidePath);
+            }
+            mGlidePath.clear();
+            return;
+        }
 
         if (mCursorMoved && currentKey.getCode() == Constants.CODE_DELETE) {
             sListener.onUpWithDeletePointerActive();
@@ -753,6 +870,10 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     public void onLongPressed() {
         sTimerProxy.cancelLongPressTimersOf(this);
+        // P7-2: a long-press timer that was already in flight when the glide armed is dead.
+        if (mGlideDecider.isArmed()) {
+            return;
+        }
         if (isShowingMoreKeysPanel()) {
             return;
         }
@@ -815,6 +936,9 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         setReleasedKeyGraphics(mCurrentKey, true /* withAnimation */);
         resetKeySelectionByDraggingFinger();
         dismissMoreKeysPanel();
+        // P7-2: a cancelled touch never delivers a glide.
+        mGlideDecider.onUpOrCancel();
+        mGlidePath.clear();
     }
 
     private boolean isMajorEnoughMoveToBeOnNewKey(final int x, final int y, final Key newKey) {
@@ -905,6 +1029,10 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     }
 
     public void onKeyRepeat(final int code, final int repeatCount) {
+        // P7-2: a key-repeat timer that was already in flight when the glide armed is dead.
+        if (mGlideDecider.isArmed()) {
+            return;
+        }
         final Key key = getKey();
         if (key == null || key.getCode() != code) {
             mCurrentRepeatingKeyCode = Constants.NOT_A_CODE;
