@@ -1,3 +1,58 @@
+# HANDOFF — release 3.0.0 prepared (uncommitted; tag/push/publish are next)
+
+**State as of 2026-09-24.** Release **3.0.0 / versionCode 34** is prepared on
+top of the committed roadmap phases 1–7 (HEAD `1b07f1c5`, clean tree). The
+release engineering itself (version bump, changelogs, this entry, the audit
+and the checklist retarget) is **uncommitted** and awaits the operator's
+review, commit, tag and publish.
+
+What the release ships: glide (swipe) typing tt+ru; capitalized
+sentence-start predictions incl. Russian (new `russian_sentstart_v1.txt`
+table); after-comma predictions; personal bigrams + saved-words/pairs
+management screen + incognito mode; autocorrect preview; expanded Tatar
+bigram table (10 204 → 13 154 heads, K = 3); keyboard height presets;
+god-object restructure + baseline profile 2 433 rules. Reports:
+`docs/ROADMAP-P1.md` … `docs/ROADMAP-P7.md`.
+
+Release changes in the working tree:
+
+- `app/build.gradle`: versionCode 33 → 34, versionName "2.0.1" → "3.0.0".
+- `CHANGELOG.md`: the Unreleased section became `## [3.0.0] — 2026-09-24`
+  (content verbatim from the phases; one imprecision flagged in the audit's
+  Open section — the "stayed the same" bullet lists bigram tables as
+  unchanged while the tt table did change).
+- Store changelogs `metadata/{en-US,ru-RU,tt}/changelogs/34.txt` — 475 / 462 /
+  428 B (all ≤ the 500-byte Fastlane limit), headline = glide typing.
+- `docs/APK-AUDIT-3.0.0.md` — new audit (per-entry CRC32 comparison vs the
+  2.0.1 APK); `docs/PUBLISH-CHECKLIST.md` retargeted to 3.0.0/34;
+  `docs/README.md` index line updated.
+
+Gates (all 2026-09-24, all green):
+
+| Gate | Result |
+|---|---|
+| python suites (`for f in tests/*/test_*.py`) | **505 tests, 16 files, 0 failing files** (1 pre-existing skip) |
+| `./gradlew test --rerun-tasks` | **1 534 tests, 162 suites, 0 failures/errors/skipped** |
+| `./gradlew lintRelease --rerun-tasks` | green (21 tasks executed) |
+| `rebuild_assets.py --check --allow-known-drift` | `"ok": true` (tt 155/0, ru 2/0 as pinned) |
+| `scripts/release_pack.sh` | unsigned 1 863 324 B → signed zopfli **1 842 468 B** ≤ 3 145 728 (headroom 41.4 %), SHA-256 **`e4217cfa2395aa4d421ef9ae7a7c0f3e5c20e896914bb159420b45af43b499cd`**, v2-only, cert `98ca6feb…42ad` |
+| `check-no-internet.sh dist/tatar-keyboard-3.0.0.apk` | both levels OK |
+| `release_check.sh --full dist/tatar-keyboard-3.0.0.apk` | **OVERALL PASS — 13/13** (incl. version 3.0.0/34, changelog 34.txt, delta vs 2.0.1 **−7 087 B / −0.4 %** — the 55 removed legacy layouts outweigh the new code) |
+
+Artifact: **`dist/tatar-keyboard-3.0.0.apk`** (local, git-ignored) — publish
+exactly these bytes; do not rebuild before publishing. GitHub Release notes
+text is prepared at `/tmp/relnotes-3.0.0.md` (same structure as the 2.0.x
+notes).
+
+Next operator actions: review the diff → commit → tag `v3.0.0` → push →
+GitHub Release with the APK from `dist/` (published manually via the web UI —
+`gh` on this machine is pull-only, as with 2.0.0/2.0.1) → store upload
+(34.txt notes are in place for en-US/ru-RU/tt). On update from 2.0.1 the
+device re-inflates only the tt bigram table once; details in
+`docs/APK-AUDIT-3.0.0.md`.
+
+---
+
 # HANDOFF — ROADMAP Phase 7 (glide typing): shipped machinery + gates green; device decode gate PASSES after the perf iteration (p95 3.39 ms); interactive device UAT blocked by owner use
 
 > **2026-09-24 reconciliation (post-fix iteration landed):** this entry's "10× over

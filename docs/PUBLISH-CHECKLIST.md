@@ -1,4 +1,36 @@
-# PUBLISH-CHECKLIST — публикация v2.0.1
+# PUBLISH-CHECKLIST — публикация v3.0.0
+
+> **Retargeted 2026-09-24 to candidate v3.0.0 / versionCode 34** — seven
+> roadmap phases ship together (`docs/ROADMAP-P1.md` … `docs/ROADMAP-P7.md`):
+> glide (swipe) typing tt+ru (on by default), capitalized sentence-start
+> predictions (now also Russian — new table `russian_sentstart_v1.txt`),
+> after-comma predictions, personal bigrams + saved-words/pairs management
+> screen + incognito mode, autocorrect preview, expanded Tatar bigram table
+> (heads 10 204 → 13 154, K = 3), keyboard height presets, god-object
+> restructure + regenerated baseline profile. Current artifact —
+> `dist/tatar-keyboard-3.0.0.apk` (1 842 468 B, SHA-256
+> `e4217cfa2395aa4d421ef9ae7a7c0f3e5c20e896914bb159420b45af43b499cd`), audit —
+> `docs/APK-AUDIT-3.0.0.md`. The notes about 2.0.1 and earlier below stay as
+> history; their checkmarks and numbers do not carry over.
+>
+> Candidate differences the procedure must account for: store changelog —
+> `metadata/en-US/changelogs/34.txt` (+ ru-RU and tt copies, all ≤ 500 B).
+> **The Tatar bigram table CHANGED** (81 476 → 79 574 B compressed, pins
+> re-pinned, 16/16 pin values matched in release_check),
+> **`assets/dictionaries/russian_sentstart_v1.txt` is NEW** (1 745 B, 64
+> records; text asset read from the APK, never inflated — not in the pin
+> gate, pinned by the python/JVM contract suites), and
+> `assets/dictionaries/NOTICE.txt` changed (its Leipzig attribution). Both
+> dictionaries, the Russian bigram table and all five emoji assets are
+> byte-identical (CRC32-verified against the 2.0.1 APK). **55 unused legacy
+> layout resources were REMOVED** — the APK is smaller than 2.0.1 despite the
+> features (−7 087 B). On update from 2.0.1 the device re-inflates exactly
+> the tt bigram table once (new raw SHA-256 in the device file name);
+> everything else, including the personal dictionary/pairs and the keyboard
+> height preference, is untouched. Gates: `release_check.sh --full`
+> **13/13 PASS** on the candidate. Publishing, push and tags are the
+> operator's actions (gh CLI here is pull-only — the Release object is
+> published manually via the web UI).
 
 > **Retargeted 2026-09-21 to candidate v2.0.1 / versionCode 33** — one
 > user-facing change over 2.0.0: TT-NEXTWORD-FILL (`docs/TT-NEXTWORD-FILL.md`)

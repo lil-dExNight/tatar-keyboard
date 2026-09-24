@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [3.0.0] — 2026-09-24
 
 Sentence starts finally look and work like sentence starts — in both languages — predictions no longer stop at a comma, and the keyboard now learns your word pairs on-device (with a proper management screen and an incognito pause).
 
@@ -22,7 +22,7 @@ Sentence starts finally look and work like sentence starts — in both languages
 
 ### What stayed the same
 
-- Tatar/Russian dictionaries, bigram tables, layouts, emoji — unchanged; already-saved personal words and pairs are preserved and keep working
+- Tatar/Russian dictionaries, layouts, emoji — unchanged; the Tatar prediction table is the one asset that changed (described above); already-saved personal words and pairs are preserved and keep working
 - One permission only — VIBRATE; no INTERNET, gate verified on the built APK
 - Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
 
