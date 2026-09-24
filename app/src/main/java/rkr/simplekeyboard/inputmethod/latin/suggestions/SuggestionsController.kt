@@ -249,13 +249,23 @@ class SuggestionsController internal constructor(
     private var displayedContextWord: String? = null
 
     // --- P7-3 GLIDE state (docs/GLIDE-PLAN.md), the exact same shape as the other two bindings.
-    // At most one of displayedPrefix/displayedContextWord/displayedGlideContext is ever non-null —
-    // enforced the same way: every request path clears the other two. A glide band binds the
-    // NEXT_WORD context the gesture was made against (the word before the cursor; "" at a field
-    // start): the tap commits through the E5d predicted-word path, whose own re-checks (empty
-    // trailing word, live context still equal) are the second line of defense.
+    // At most one of displayedPrefix/displayedContextWord/displayedGlideAlternativesFor is ever
+    // non-null — enforced the same way: every request path clears the other two. A glide's decode
+    // is requested against the NEXT_WORD context of the gesture moment (the word before the
+    // cursor; "" at a field start): the lift-commit goes through the E5d predicted-word path,
+    // whose own re-checks (empty trailing word, live context still equal) are the second line of
+    // defense.
+    //
+    // The UX amendment (2026-09-24, the "tapping or lifting commits" line of docs/GLIDE-PLAN.md's
+    // DONE-WHEN): finger lift commits the top-1 candidate immediately; the strip then shows the
+    // remaining candidates as tappable ALTERNATIVES bound to the committed word
+    // ([displayedGlideAlternativesFor]), and one backspace right after a lift-commit deletes the
+    // whole committed word ([glideCommittedWord] — the gesture-undo).
     private var pendingGlideContext: String = ""
-    private var displayedGlideContext: String? = null
+    /** The word the currently shown glide alternatives belong to (null when no such band). */
+    private var displayedGlideAlternativesFor: String? = null
+    /** The word a backspace right now would delete whole (the lift-committed or its replacement). */
+    private var glideCommittedWord: String? = null
 
     /** The glide pref, read live; OFF until LatinIME wires the real one. Same seam shape as the
      * autocorrect gate. */
@@ -439,7 +449,7 @@ class SuggestionsController internal constructor(
         sessionId++
         displayedPrefix = null
         displayedContextWord = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         bandHasActiveLanguageWord = false
         bandBaseCells = emptyList()
         clearCompanionRequest()
@@ -479,6 +489,10 @@ class SuggestionsController internal constructor(
 
     fun onTextChanged() {
         revertWindow.advance(sessionId)
+        // The lift-commit's whole-word undo lives exactly one text change: any other edit (a
+        // typed character above all) closes it — and dissolves a pending alternatives band with
+        // the rest of the band state (re-derived below).
+        glideCommittedWord = null
         runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
         requestCurrentPrefix()
     }
@@ -496,7 +510,7 @@ class SuggestionsController internal constructor(
         // live editor state, so drop the displayed binding immediately.
         displayedPrefix = null
         displayedContextWord = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         // Keep the reserved band only after an engine has actually published. Eligibility while
@@ -540,6 +554,8 @@ class SuggestionsController internal constructor(
         if (usableEngine() == null) return
         if (!editor.hasKnownCursor()) return
         if (displayedPrefix != null || displayedContextWord != null) return
+        // A bound glide-alternatives band is a bound band: the backstop must not re-derive over it.
+        if (displayedGlideAlternativesFor != null) return
         if (requestSessionId == sessionId) return
         requestCurrentPrefix()
     }
@@ -556,7 +572,7 @@ class SuggestionsController internal constructor(
         sessionId++
         displayedPrefix = null
         displayedContextWord = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         // Close eligibility before hiding/finishing. A readiness notification queued behind this
@@ -588,7 +604,7 @@ class SuggestionsController internal constructor(
         activeSlot()?.engine?.finishInput()
         displayedPrefix = null
         displayedContextWord = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         setActiveLanguage(subtypeId)
@@ -645,7 +661,7 @@ class SuggestionsController internal constructor(
         activeSlot()?.engine?.finishInput()
         displayedPrefix = null
         displayedContextWord = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         displayedSessionId = NO_SESSION
@@ -671,7 +687,7 @@ class SuggestionsController internal constructor(
         eligible = false
         displayedPrefix = null
         displayedContextWord = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         requestSessionId = NO_SESSION
@@ -760,7 +776,7 @@ class SuggestionsController internal constructor(
         clearRevertState()
         displayedPrefix = null
         displayedContextWord = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         for (slot in slots.values) {
@@ -1070,7 +1086,7 @@ class SuggestionsController internal constructor(
             if (slot !== activeSlot()) return
             displayedPrefix = null
             displayedContextWord = null
-            displayedGlideContext = null
+            displayedGlideAlternativesFor = null
             if (eligible) {
                 strip.hideSuggestions()
             }
@@ -1393,7 +1409,7 @@ class SuggestionsController internal constructor(
             if (cells.size >= wordCap) break
         }
         cells.add(emoji)
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         displayedContextWord = contextWord
         displayedSessionId = sessionId
         showBand(cells)
@@ -1455,7 +1471,7 @@ class SuggestionsController internal constructor(
             // band until publishEngine() establishes that the dictionary is actually available.
             displayedPrefix = null
             displayedContextWord = null
-            displayedGlideContext = null
+            displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
             strip.hideSuggestions()
@@ -1507,8 +1523,8 @@ class SuggestionsController internal constructor(
             displayedContextWord = null
             unbindPaintedBand()
         }
-        if (displayedGlideContext != null) {
-            displayedGlideContext = null
+        if (displayedGlideAlternativesFor != null) {
+            displayedGlideAlternativesFor = null
             unbindPaintedBand()
         }
         // A fresh lookup of the active language supersedes whatever the companion was asked
@@ -1553,8 +1569,8 @@ class SuggestionsController internal constructor(
             displayedPrefix = null
             unbindPaintedBand()
         }
-        if (displayedGlideContext != null) {
-            displayedGlideContext = null
+        if (displayedGlideAlternativesFor != null) {
+            displayedGlideAlternativesFor = null
             unbindPaintedBand()
         }
         clearCompanionRequest()
@@ -1610,35 +1626,72 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * The glide counterpart of [applyPrefixResult]/[applyNextWordResult]. Candidates are shown
-     * lowercase, capitalized instead when the keyboard is shifted — the same display-time casing
-     * the prefix path applies, sourced from the shift gate because a gesture types no letters to
-     * read the casing off. The strip hands the very same string back on tap, so the displayed and
-     * the committed form match. No companion fill rides a glide band (the companion languages are
-     * a prefix/next-word feature; documented MVP decision), and the personal dictionary is never
-     * consulted (the decoder reads the main dictionary only).
+     * The glide counterpart of [applyPrefixResult]/[applyNextWordResult] — and, since the UX
+     * amendment (2026-09-24, docs/ROADMAP-P7.md), the lift-commit: the plan's DONE-WHEN always
+     * said "tapping or lifting commits"; P7-3 shipped tap-only, this closes the Gboard-parity
+     * behavior. With candidates present the top-1 is committed IMMEDIATELY through the E5d
+     * predicted-word path (auto-space inside, its live re-checks the second line of defense),
+     * and the strip then shows the REMAINING candidates as tappable alternatives bound to the
+     * committed word; a tap on one replaces the committed word in the editor ([onTap]).
+     *
+     * Casing is the display-time rule of the prefix path, sourced from the shift gate (a gesture
+     * types no letters to read the casing off): the committed AND the shown forms carry it. With
+     * zero candidates nothing is committed and nothing special shows (fail-closed). With exactly
+     * one, there are no alternatives and the strip falls through to the ordinary NEXT_WORD chain
+     * for the committed word.
+     *
+     * Learning (pinned): a lift-committed word behaves exactly like a tapped suggestion — the run
+     * is marked dirty (it is not a clean run for the word itself) and the boundary it establishes
+     * is trusted for the pair machine; it is NOT a noteAcceptedPrediction (nothing was predicted
+     * from a learned pair). A later alternative replacement keeps the same semantics.
      */
     private fun applyGlideResult(suggestions: List<String>) {
         previewKeepTypedCell = null
         if (suggestions.isEmpty()) {
-            displayedGlideContext = null
+            displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             strip.reserve()
             return
         }
-        displayedGlideContext = pendingGlideContext
-        displayedSessionId = sessionId
         val casing = if (glideShiftGate.isShifted()) {
             TatarWordUtils.PrefixCasing.INITIAL_CAPS
         } else {
             TatarWordUtils.PrefixCasing.LOWER
         }
-        val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
-        for (candidate in suggestions) {
-            cells.add(TatarWordUtils.applyCasing(candidate, casing))
-            if (cells.size >= SuggestionStripState.CELL_COUNT) break
+        val committed = TatarWordUtils.applyCasing(suggestions[0], casing)
+        // The lift-commit: the predicted-word path re-derives the live context and refuses a
+        // stale gesture itself; a refusal commits nothing and shows nothing special.
+        if (!editor.commitPredictedWord(pendingGlideContext, committed)) {
+            displayedGlideAlternativesFor = null
+            bandBaseCells = emptyList()
+            strip.reserve()
+            return
         }
-        showBand(cells)
+        // Not the user spelling the word out: the run stops counting; the boundary the committed
+        // word just established is trusted for the pair machine (the tap path's exact semantics).
+        runMachine.markRunDirty()
+        runMachine.trustPairBoundary()
+        // One backspace right after the lift deletes the whole committed word (the gesture-undo):
+        // the undo word tracks the editor's content — it moves to an alternative if one replaces.
+        glideCommittedWord = committed
+        val alternatives = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+        for (index in 1 until suggestions.size) {
+            alternatives.add(TatarWordUtils.applyCasing(suggestions[index], casing))
+            if (alternatives.size >= SuggestionStripState.CELL_COUNT) break
+        }
+        if (alternatives.isEmpty()) {
+            // Nothing to offer as an alternative: the strip falls through to the NEXT_WORD chain
+            // for the committed word (the same re-request a tap-commit issues).
+            displayedGlideAlternativesFor = null
+            bandBaseCells = emptyList()
+            clearCompanionRequest()
+            strip.reserve()
+            requestCurrentPrefix()
+            return
+        }
+        displayedGlideAlternativesFor = committed
+        displayedSessionId = sessionId
+        showBand(alternatives)
     }
 
     // --- Sentence start (P4, docs/TT-SUGGESTIONS.md) ---------------------------------------------
@@ -1689,7 +1742,7 @@ class SuggestionsController internal constructor(
             cells.add(TatarWordUtils.applyCasing(word, TatarWordUtils.PrefixCasing.INITIAL_CAPS))
         }
         displayedPrefix = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         pendingContextWord = SENTENCE_START_CONTEXT
         displayedContextWord = SENTENCE_START_CONTEXT
         displayedSessionId = sessionId
@@ -1746,6 +1799,7 @@ class SuggestionsController internal constructor(
         if (language != activeLanguage) return
         if (usableEngine() == null) return
         if (displayedPrefix != null || displayedContextWord != null) return
+        if (displayedGlideAlternativesFor != null) return
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
         if (editor.cachedWordBeforeCursor().isNotEmpty()) return
         if (editor.cachedNextWordContext().isNotEmpty()) return
@@ -1788,7 +1842,7 @@ class SuggestionsController internal constructor(
     private fun clearToReservedBand() {
         displayedPrefix = null
         displayedContextWord = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         requestSessionId = NO_SESSION
@@ -1838,7 +1892,7 @@ class SuggestionsController internal constructor(
         }
         previewKeepTypedCell = preview?.typedShown
         if (preview != null) {
-            displayedGlideContext = null
+            displayedGlideAlternativesFor = null
             displayedPrefix = pendingPrefix
             displayedSessionId = sessionId
             showBand(
@@ -1858,7 +1912,7 @@ class SuggestionsController internal constructor(
         }
         // The result passed the session and engine currency guards, so pendingPrefix is exactly the
         // prefix these candidates were computed for. Bind the displayed candidates to it atomically.
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         displayedPrefix = pendingPrefix
         displayedSessionId = sessionId
         // Ranking runs on the normalized lowercase forms, so the typed capitalization is re-applied
@@ -1901,7 +1955,7 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 strip.reserve()
             } else {
-                displayedGlideContext = null
+                displayedGlideAlternativesFor = null
                 displayedContextWord = pendingContextWord
                 displayedSessionId = sessionId
                 showBand(listOf(emoji))
@@ -1909,7 +1963,7 @@ class SuggestionsController internal constructor(
             requestCompanionFill(LookupKind.NEXT_WORD, pendingContextWord)
             return
         }
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         displayedContextWord = pendingContextWord
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = true
@@ -1995,7 +2049,7 @@ class SuggestionsController internal constructor(
         // Whatever the band was showing described the word that no longer stands there.
         displayedPrefix = null
         displayedContextWord = null
-        displayedGlideContext = null
+        displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         revertWindow.arm(word, replacement, separatorCodePoint, sessionId)
@@ -2036,6 +2090,8 @@ class SuggestionsController internal constructor(
     private fun clearRevertState() {
         revertWindow.clear()
         suppressedPreviewWord = null
+        // The lift-commit's whole-word undo dies at the same boundaries as the autocorrect undo.
+        glideCommittedWord = null
     }
 
     private fun onTap(suggestion: String) {
@@ -2051,7 +2107,7 @@ class SuggestionsController internal constructor(
             suppressedPreviewWord = prefix
             previewKeepTypedCell = null
             displayedPrefix = null
-            displayedGlideContext = null
+            displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
             strip.reserve()
@@ -2082,7 +2138,7 @@ class SuggestionsController internal constructor(
                 // The field is still eligible after a commit; clear the words but keep the reserved
                 // band so accepting a suggestion does not resize the keyboard.
                 displayedPrefix = null
-                displayedGlideContext = null
+                displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
@@ -2111,13 +2167,13 @@ class SuggestionsController internal constructor(
             return
         }
         val context = displayedContextWord
-        val glideContext = displayedGlideContext
+        val glideAlternativesFor = displayedGlideAlternativesFor
         if (context != null) {
             // Same second line of defense as the PREFIX path, through the E5d commit path instead:
             // the editor re-derives the live context word and refuses a stale tap itself.
             if (editor.commitPredictedWord(context, suggestion)) {
                 displayedContextWord = null
-                displayedGlideContext = null
+                displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
@@ -2136,26 +2192,47 @@ class SuggestionsController internal constructor(
                 // committed are requested from here, or they never are.
                 requestCurrentPrefix()
             }
-        } else if (glideContext != null) {
-            // P7-3: a glide cell commits through the E5d predicted-word path, whose own live
-            // re-checks (collapsed cursor, empty trailing word, the context still equal) are the
-            // second line of defense — the same second line as the NEXT_WORD branch above.
-            if (editor.commitPredictedWord(glideContext, suggestion)) {
-                displayedGlideContext = null
+        } else if (glideAlternativesFor != null) {
+            // P7-3.5 (the lift-commit UX amendment, docs/ROADMAP-P7.md): a tap on a glide
+            // ALTERNATIVE replaces the just-committed glide word in the editor — the editor's own
+            // suffix re-check ("word + its auto-space" must still stand right before the cursor)
+            // is the second line of defense. The replacement is still not a clean run (the
+            // markRunDirty above already saw to that), the pair machine's trusted boundary moves
+            // to the alternative, and the strip refreshes to the NEXT_WORD chain for it.
+            if (editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion)) {
+                // The undo window tracks the text: a backspace now deletes the ALTERNATIVE whole.
+                glideCommittedWord = suggestion
+                displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
-                // Learning semantics (pinned, docs/ROADMAP-P7.md): a glide-committed word behaves
-                // exactly like a tapped suggestion — the word itself is not a clean run
-                // (markRunDirty above already saw to that), and the boundary it just established
-                // is trusted for the pair machine. It is NOT a noteAcceptedPrediction: the band
-                // was not a pair prediction, so no usage counter moves.
                 runMachine.trustPairBoundary()
-                // Same as the other two branches: the NEXT_WORD predictions for the committed word
-                // are requested from here, or they never are.
                 requestCurrentPrefix()
             }
         }
+    }
+
+    /**
+     * One backspace right after a glide lift-commit deletes the whole committed word (and its
+     * auto-space) instead of one character — the Gboard gesture-undo. Returns true when it did.
+     *
+     * The window holds exactly one word and dies the moment the text changes for any other reason
+     * (a typed character, a selection move, a boundary), exactly like the autocorrect undo window
+     * it mirrors: the state is dropped BEFORE the editor is asked, so a refused undo cannot be
+     * retried and the second backspace deletes a character like any other. The editor's own
+     * suffix re-check (the committed word + its auto-space must still stand right before the
+     * cursor) is the second line of defense.
+     */
+    fun maybeUndoGlideCommit(): Boolean {
+        val word = glideCommittedWord ?: return false
+        glideCommittedWord = null
+        // The band of alternatives (if any) described the word that no longer stands there.
+        displayedGlideAlternativesFor = null
+        bandBaseCells = emptyList()
+        clearCompanionRequest()
+        if (destroyed || !eligible) return false
+        if (!editor.hasKnownCursor()) return false
+        return editor.deleteGlideLiftedWord(word)
     }
 
     companion object {

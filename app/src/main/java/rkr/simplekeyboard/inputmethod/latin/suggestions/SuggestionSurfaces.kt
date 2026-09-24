@@ -113,6 +113,25 @@ interface EditorSurface {
      * false, like [replaceTypedWord] and [revertTypedWord].
      */
     fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean = false
+
+    /**
+     * The glide lift-commit's replacement path (the UX amendment, docs/ROADMAP-P7.md): the word a
+     * glide just committed is replaced by the tapped alternative. The suffix match
+     * ("[committedWord] + its auto-space" — or the bare word when no space was needed — must stand
+     * right before the cursor) IS the position check, the same one [revertTypedWord] makes; a
+     * stale tap edits nothing. Returns false without editing anything when any check fails.
+     * Defaults to false so an editor surface written before the lift-commit keeps compiling and
+     * simply never replaces.
+     */
+    fun replaceGlideLiftedWord(committedWord: String, alternative: String): Boolean = false
+
+    /**
+     * The glide lift-commit's whole-word undo (the Gboard gesture-undo): one backspace right after
+     * the lift deletes "[committedWord] + its auto-space" (or the bare word) from before the
+     * cursor and commits NOTHING back. Same suffix-match position check; false without an edit on
+     * any failure. Defaults to false, like [replaceGlideLiftedWord].
+     */
+    fun deleteGlideLiftedWord(committedWord: String): Boolean = false
 }
 
 /**

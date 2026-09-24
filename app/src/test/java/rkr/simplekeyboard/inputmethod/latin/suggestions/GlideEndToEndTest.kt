@@ -66,31 +66,48 @@ class GlideEndToEndTest {
     }
 
     private class FakeEditor : EditorSurface {
-        var word: String = ""
-        var nextWordContext: String = ""
+        /** The field's text; the cursor is always at its end. */
+        var text: String = ""
         var textAfterCursor: String = ""
         val predictedCommits = mutableListOf<Pair<String, String>>()
 
-        override fun cachedWordBeforeCursor(): String = word
+        override fun cachedWordBeforeCursor(): String = TatarWordUtils.extractTrailingWord(text)
         override fun hasKnownCursor(): Boolean = true
         override fun hasLetterAfterCursor(): Boolean =
             TatarWordUtils.startsWithWordCharacter(textAfterCursor)
 
-        override fun cachedNextWordContext(): String = nextWordContext
+        override fun cachedNextWordContext(): String =
+            TatarWordUtils.extractNextWordContext(text, true)
 
         override fun commitSuggestion(expectedPrefix: String, suggestion: String): Boolean = false
 
         override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
-            predictedCommits.add(expectedContextWord to suggestion)
-            // The production cache model (see SuggestionsControllerTest): with the auto-space
-            // appended the trailing word empties and the committed word becomes the context.
-            if (TatarWordUtils.needsAutoSpace(textAfterCursor)) {
-                word = ""
-                nextWordContext = suggestion
-            } else {
-                word = suggestion
-                nextWordContext = ""
+            // The production re-checks, modeled: an empty trailing word, the live context must
+            // match, and an empty context binds only at a sentence start.
+            if (TatarWordUtils.extractTrailingWord(text).isNotEmpty()) return false
+            if (TatarWordUtils.extractNextWordContext(text, true) != expectedContextWord) return false
+            if (expectedContextWord.isEmpty() &&
+                !TatarWordUtils.isSentenceStartContext(text, true)
+            ) {
+                return false
             }
+            predictedCommits.add(expectedContextWord to suggestion)
+            text += if (TatarWordUtils.needsAutoSpace(textAfterCursor)) "$suggestion " else suggestion
+            return true
+        }
+
+        override fun replaceGlideLiftedWord(committedWord: String, alternative: String): Boolean {
+            val withSpace = "$committedWord "
+            if (!text.endsWith(withSpace) && !text.endsWith(committedWord)) return false
+            text = text.dropLast(if (text.endsWith(withSpace)) withSpace.length else committedWord.length)
+            text += if (TatarWordUtils.needsAutoSpace(textAfterCursor)) "$alternative " else alternative
+            return true
+        }
+
+        override fun deleteGlideLiftedWord(committedWord: String): Boolean {
+            val withSpace = "$committedWord "
+            if (!text.endsWith(withSpace) && !text.endsWith(committedWord)) return false
+            text = text.dropLast(if (text.endsWith(withSpace)) withSpace.length else committedWord.length)
             return true
         }
     }
@@ -202,63 +219,99 @@ class GlideEndToEndTest {
     // --- The pins ------------------------------------------------------------------------------
 
     @Test
-    fun aGlideOverTheTatarLayoutShowsTheWordInTop3() {
+    fun theLiftCommitsTheTop1AndShowsTheAlternatives() {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        // The UX amendment (docs/ROADMAP-P7.md): the lift itself commits the top-1, with
+        // auto-space, through the predicted-word path — no tap. сәлләм/сәләм are the documented
+        // degenerate-path pair, so the top-1 is сәлләм by the frequency prior.
+        assertEquals("сәлләм ", h.editor.text)
+        assertEquals(listOf("" to "сәлләм"), h.editor.predictedCommits)
+        // The strip then shows the remaining candidates as tappable alternatives — сәләм is one.
         val last = h.strip.shown.last()
         val cells = listOfNotNull(last.first, last.second, last.third)
-        // The plan's e2e pin is top-3: сәләм/сәлләм share the degenerate ideal path (the doubled
-        // letter's plain variant is a zero-length jog), so the frequency prior orders them — the
-        // user picks the intended cell, which is exactly what the tap path commits.
-        assertTrue("сәләм must be in the top-3, was $cells", cells.contains("сәләм"))
+        assertTrue("сәләм must ride the alternatives, was $cells", cells.contains("сәләм"))
+        assertFalse("the committed word is not re-offered", cells.contains("сәлләм"))
     }
 
     @Test
-    fun aTapCommitsTheGlidedWordAndTheNextWordChainFollows() {
+    fun tappingAnAlternativeReplacesTheCommittedWordAndTheChainFollows() {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         h.strip.listener!!.onTap("сәләм")
 
-        // The commit went through the E5d predicted-word path with the field-start context.
-        assertEquals(listOf("" to "сәләм"), h.editor.predictedCommits)
-        // The strip immediately shows the NEXT_WORD predictions for the committed word — the
-        // pinned chain of TtNextWordFillE2ETest (form first, then the global top words).
+        // The alternative replaced the lift-committed word in the editor.
+        assertEquals("сәләм ", h.editor.text)
+        // The strip refreshed to the NEXT_WORD chain for the committed word — the pinned chain
+        // of TtNextWordFillE2ETest (form first, then the global top words).
         val last = h.strip.shown.last()
         assertEquals(Triple("сәләмә", "һәм", "белән"), last)
     }
 
     @Test
-    fun aGlideWithShiftOnCapitalizesTheCommittedWord() {
+    fun oneBackspaceRightAfterALiftDeletesTheWholeWord() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәлләм ", h.editor.text)
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
+    }
+
+    @Test
+    fun aBackspaceAfterTypingDeletesOnlyTheLetter() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        // The user types on: the undo window closes on the next text change.
+        h.editor.text += "б"
+        h.controller.onTextChanged()
+        assertFalse(h.controller.maybeUndoGlideCommit())
+        assertEquals("сәлләм б", h.editor.text)
+    }
+
+    @Test
+    fun anAlternativeReplacementMovesTheUndoToTheAlternative() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        h.strip.listener!!.onTap("сәләм")
+        assertEquals("сәләм ", h.editor.text)
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
+    }
+
+    @Test
+    fun aGlideWithShiftOnLiftCommitsTheCapitalizedTop1() {
         val h = Harness()
         h.controller.setGlideShiftStateGate(ShiftStateGate { true })
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        // The shown cells are capitalized; the user taps whichever cell holds the intended word.
-        val last = h.strip.shown.last()
-        val cells = listOfNotNull(last.first, last.second, last.third)
-        assertTrue("the capitalized Сәләм must be shown, was $cells", cells.contains("Сәләм"))
-        h.strip.listener!!.onTap("Сәләм")
-        assertEquals(listOf("" to "Сәләм"), h.editor.predictedCommits)
+        assertEquals("Сәлләм ", h.editor.text)
     }
 
     @Test
-    fun aGlideOnTheRussianLayoutDecodesAgainstTheRussianDictionary() {
+    fun aGlideOnTheRussianLayoutLiftCommitsAgainstTheRussianDictionary() {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.russianGeometry())
         h.start(PersonalSubtypes.RUSSIAN)
         h.controller.onGlideInput(GlideTestFixtures.idealPath("работа", GlideTestFixtures.russianGeometry())!!)
-        val last = h.strip.shown.last()
-        val cells = listOfNotNull(last.first, last.second, last.third)
-        assertTrue("работа must be in the top-3, was $cells", cells.contains("работа"))
+        // The top-1 of the Russian decode is committed on lift; the alternatives show the rest.
+        assertTrue(h.editor.text.isNotEmpty())
+        assertTrue(h.editor.text.endsWith(" "))
+        assertTrue(h.strip.shown.isNotEmpty())
     }
 
     @Test
-    fun theGlideToggleOffKeepsTheBandSilent() {
+    fun theGlideToggleOffCommitsAndShowsNothing() {
         val h = Harness()
         h.controller.setGlideGate(GlideGate { false })
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
@@ -266,6 +319,8 @@ class GlideEndToEndTest {
         val shownBefore = h.strip.shown.size
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertEquals(shownBefore, h.strip.shown.size)
+        assertTrue(h.editor.predictedCommits.isEmpty())
+        assertEquals("", h.editor.text)
     }
 
     @Test
@@ -273,34 +328,70 @@ class GlideEndToEndTest {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
-        h.editor.word = "та"
+        h.editor.text = "та"
         val shownBefore = h.strip.shown.size
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertEquals(shownBefore, h.strip.shown.size)
         assertTrue(h.editor.predictedCommits.isEmpty())
+        assertEquals("та", h.editor.text)
     }
 
     @Test
-    fun aGlideWithoutGeometryAnswersNothing() {
+    fun aGlideWithoutGeometryCommitsNothing() {
         val h = Harness()
         // No updateGlideGeometry at all: fail-closed, exactly like a missing layout.
         h.start()
         val shownBefore = h.strip.shown.size
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertEquals(shownBefore, h.strip.shown.size)
+        assertEquals("", h.editor.text)
+        assertTrue(h.editor.predictedCommits.isEmpty())
     }
 
     @Test
-    fun aJunkGestureBandCommitsNothing() {
+    fun aSessionBumpBetweenTheGestureAndATapKeepsTheTapInert() {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
-        // A path between keys that decodes to nothing meaningful must never leave a committable
-        // band behind: whatever it shows, a session bump turns any tap into a no-op.
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәлләм ", h.editor.text)
+        // The alternatives band was painted for the pre-bump session: a tap must not edit.
         h.controller.onSelectionChanged()
         h.strip.listener!!.onTap("сәләм")
+        assertEquals("сәлләм ", h.editor.text)
+    }
+
+    @Test
+    fun aLiftThatDecodesToNothingCommitsNothing() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        // A gesture far below the keyboard (every key is above it): no candidate's location
+        // channel survives — the decode is empty, nothing is committed (fail-closed).
+        val path = GlidePath()
+        var x = 5_000f
+        for (i in 0 until 40) {
+            path.addPoint(x, 60_000f, i * 8f)
+            x += 2_000f
+        }
+        h.controller.onGlideInput(path)
+        assertEquals("", h.editor.text)
         assertTrue(h.editor.predictedCommits.isEmpty())
+    }
+
+    @Test
+    fun typingAfterALiftCommitDissolvesTheAlternatives() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        val lastGlide = h.strip.shown.last()
+        // A typed letter: the alternatives dissolve and the prefix band takes over.
+        h.editor.text += "б"
+        h.controller.onTextChanged()
+        val last = h.strip.shown.last()
+        assertTrue("the strip moved on to the typed prefix's band", last != lastGlide)
+        assertEquals("сәлләм б", h.editor.text)
     }
 
     // --- Real assets -----------------------------------------------------------------------------

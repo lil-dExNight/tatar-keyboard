@@ -772,6 +772,96 @@ public final class InputLogic {
         return true;
     }
 
+    /**
+     * The glide lift-commit's alternative replacement (the UX amendment, docs/ROADMAP-P7.md):
+     * where {@code committedWord} + its auto-space (or the bare word, when the text after needed
+     * no separator) stands right before the cursor, replaces it with the tapped alternative, in
+     * one batch edit, never with composing text. The suffix match IS the position check, the same
+     * one {@link #revertTatarAutocorrection} makes; a stale tap edits nothing.
+     *
+     * @param committedWord the word the glide lift committed.
+     * @param alternative the alternative shown in the strip and tapped.
+     * @return {@code true} if the replacement happened, {@code false} otherwise (no edit).
+     */
+    public boolean replaceGlideLiftedWord(final String committedWord, final String alternative) {
+        if (TextUtils.isEmpty(committedWord) || TextUtils.isEmpty(alternative)) {
+            return false;
+        }
+        if (mConnection.hasSelection()) {
+            return false;
+        }
+        if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
+            // Same fail-closed rule as the other edit paths: never splice into the user's word.
+            return false;
+        }
+        final String withSpace = committedWord + AUTO_SPACE;
+        final boolean hadSpace = endsWith(mConnection.getCachedTextBeforeCursor(), withSpace);
+        if (!hadSpace
+                && !endsWith(mConnection.getCachedTextBeforeCursor(), committedWord)) {
+            return false;
+        }
+        // The space rides along inside the SAME commitText, exactly like the other paths.
+        final String textToCommit =
+                TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor())
+                        ? alternative + AUTO_SPACE : alternative;
+        mConnection.beginBatchEdit();
+        // beginBatchEdit() refreshes the connection from the framework — the earliest the question
+        // can be asked; see the other two edit paths for the full reasoning.
+        final boolean connected = mConnection.isConnected();
+        if (connected) {
+            mConnection.deleteTextBeforeCursor(
+                    hadSpace ? withSpace.length() : committedWord.length());
+            mConnection.commitText(textToCommit, 1);
+        }
+        mConnection.endBatchEdit();
+        if (!connected) {
+            return false;
+        }
+        mJustDoubleSpaced = false;
+        mLastSpaceDownTime = 0;
+        return true;
+    }
+
+    /**
+     * The glide lift-commit's whole-word undo (the Gboard gesture-undo): one backspace right after
+     * the lift deletes {@code committedWord} + its auto-space (or the bare word) from before the
+     * cursor and commits nothing back. Same suffix-match position check as the replacement above.
+     *
+     * @param committedWord the word the glide lift committed (or its current replacement).
+     * @return {@code true} if the word was deleted, {@code false} otherwise (no edit).
+     */
+    public boolean deleteGlideLiftedWord(final String committedWord) {
+        if (TextUtils.isEmpty(committedWord)) {
+            return false;
+        }
+        if (mConnection.hasSelection()) {
+            return false;
+        }
+        if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
+            return false;
+        }
+        final String withSpace = committedWord + AUTO_SPACE;
+        final boolean hadSpace = endsWith(mConnection.getCachedTextBeforeCursor(), withSpace);
+        if (!hadSpace
+                && !endsWith(mConnection.getCachedTextBeforeCursor(), committedWord)) {
+            return false;
+        }
+        mConnection.beginBatchEdit();
+        final boolean connected = mConnection.isConnected();
+        if (connected) {
+            mConnection.deleteTextBeforeCursor(
+                    hadSpace ? withSpace.length() : committedWord.length());
+        }
+        mConnection.endBatchEdit();
+        if (!connected) {
+            return false;
+        }
+        mJustDoubleSpaced = false;
+        mLastSpaceDownTime = 0;
+        return true;
+    }
+
+
     private boolean layoutUsesAutoCaps(final String layoutSetName) {
         switch (layoutSetName) {
             case SubtypeLocaleUtils.LAYOUT_ARABIC:

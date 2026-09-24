@@ -27,8 +27,12 @@ import rkr.simplekeyboard.inputmethod.R
 /**
  * The 2026-09-24 field fix on the live UI (docs/ROADMAP-P7.md): the user's exact flow through
  * the REAL keyboard on screen — the debug IME is enabled and made default by the host before
- * the run — press с, REST ~0.8 s, drag through ә→л→ә→м, lift; the strip must show сәләм in its
- * top cells, and tapping the cell that holds it commits "сәләм " into the try-it field.
+ * the run — press с, REST ~0.8 s, drag through ә→л→ә→м, lift.
+ *
+ * The P7-5 lift-commit contract: the lift itself commits the decode's top cell («сәлләм» — the
+ * documented degenerate-path collision, see ROADMAP-P7 P7-3) with the auto-space, the strip
+ * keeps the remaining candidates as tappable alternatives, and tapping the cell that holds
+ * сәләм (the first alternative — the left cell) replaces the committed word in place.
  *
  * The events go through `Instrumentation.sendPointerSync` — real system-level injection into
  * the live IME window, with real wall-clock holds. The strip-visible screenshot is taken by the
@@ -60,7 +64,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
             .commit()
     }
 
-    fun testHoldThenSwipeShowsSalamAndTappingItCommits() {
+    fun testHoldThenSwipeLiftCommitsAndAlternativeReplaces() {
         driveUiGesture(800L)
     }
 
@@ -142,18 +146,21 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         Log.i(TAG, "STRIP-VISIBLE")
         Thread.sleep(3000)
 
-        val before = field.text.toString()
-        Log.i(TAG, "field before the strip tap: '$before'")
-        assertTrue("nothing is committed by the gesture itself", before.isEmpty())
+        val lifted = field.text.toString()
+        Log.i(TAG, "field right after the lift: '$lifted'")
+        assertTrue(
+            "the lift itself commits the top candidate with auto-space, was '$lifted'",
+            lifted.startsWith("сәлләм"),
+        )
 
-        // Tap the middle strip cell (сәләм rides there — the decode's top cell is сәлләм,
-        // see the degenerate-path note in docs/ROADMAP-P7.md P7-3).
-        tap(instrumentation, 360f, 980f)
+        // Tap the LEFT strip cell: the alternatives hold candidates 2..4, and сәләм is the
+        // first of them (the committed top cell сәлләм is no longer in the strip).
+        tap(instrumentation, 120f, 980f)
         Thread.sleep(1500)
         val after = field.text.toString()
-        Log.i(TAG, "field after the strip tap: '$after'")
+        Log.i(TAG, "field after the alternative tap: '$after'")
         assertTrue(
-            "the tap must commit the shown word with auto-space, was '$after'",
+            "the alternative tap must replace the committed word in place, was '$after'",
             after.startsWith("сәләм"),
         )
     }

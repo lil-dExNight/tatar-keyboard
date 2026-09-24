@@ -539,6 +539,30 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
+            public boolean replaceGlideLiftedWord(final String committedWord,
+                    final String alternative) {
+                final boolean replaced =
+                        mInputLogic.replaceGlideLiftedWord(committedWord, alternative);
+                if (replaced) {
+                    // Same reason as the other insertion paths: the replacement happens outside an
+                    // InputTransaction, so the auto-caps state is refreshed with the very same call.
+                    mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
+                            getCurrentRecapitalizeState());
+                }
+                return replaced;
+            }
+
+            @Override
+            public boolean deleteGlideLiftedWord(final String committedWord) {
+                final boolean deleted = mInputLogic.deleteGlideLiftedWord(committedWord);
+                if (deleted) {
+                    mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
+                            getCurrentRecapitalizeState());
+                }
+                return deleted;
+            }
+
+            @Override
             public String cachedNextWordContext() {
                 // docs/NEXTWORD-RACE.md + audit 2026-09-02 C6: whether the cache starts at the
                 // start of the text is PROVENANCE, carried by the connection from the moment of
@@ -2031,6 +2055,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             return;
         }
         if (LatinImeAutocorrect.maybeRevertTatarAutocorrection(this, event)) {
+            return;
+        }
+        if (LatinImeGlide.maybeUndoGlideCommit(this, event)) {
             return;
         }
         LatinImeAutocorrect.maybeAutocorrectTatarWord(this, event);
