@@ -1,4 +1,26 @@
-# PUBLISH-CHECKLIST — публикация v3.0.1
+# PUBLISH-CHECKLIST — публикация v3.0.2
+
+> **Retargeted 2026-09-25 to candidate v3.0.2 / versionCode 36** — the
+> post-3.0.1 glide polish (`docs/ROADMAP-P7.md` §P7-5/P7-6/P7-7):
+> resting-finger-tolerant detection, lift-commit (no strip tap), in-place
+> alternatives, one-backspace undo, NO auto-space after a glide (smart
+> one-space chaining), suggestions-off independence, the «word ? » commit
+> fix, and the fading trail + key highlight. Current artifact —
+> `dist/tatar-keyboard-3.0.2.apk` (1 846 564 B, SHA-256
+> `a50bb51f8a1afb4a63cbb56f6d83edf7bd54e633a1c96f17c7201a0aa4e6027d`),
+> audit — `docs/APK-AUDIT-3.0.2.md`. The notes about 3.0.1 and earlier below
+> stay as history; their checkmarks and numbers do not carry over.
+>
+> Candidate differences the procedure must account for: store changelog —
+> `metadata/en-US/changelogs/36.txt` (+ ru-RU and tt copies, all ≤ 500 B).
+> **All 13 shipped data assets are byte-identical to 3.0.1** (CRC32-verified;
+> 16/16 pin values matched in release_check) — changed are only the code, the
+> regenerated `baseline.prof`, and `resources.arsc` (+152 B of trail
+> attrs/config; no new strings). On update from 3.0.1 the device
+> **re-inflates NOTHING**. Gates: `release_check.sh --full` **13/13 PASS** on
+> the candidate. Publishing, push and tags are the operator's actions (gh CLI
+> here is pull-only — the Release object is published manually via the web
+> UI).
 
 > **Retargeted 2026-09-24 to candidate v3.0.1 / versionCode 35** — the
 > post-release audit fix wave on top of 3.0.0 (`docs/AUDIT-2026-09-24.md`,

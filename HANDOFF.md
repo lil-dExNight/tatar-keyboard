@@ -1,3 +1,52 @@
+# HANDOFF — release 3.0.2 prepared (uncommitted; tag/push/publish are next)
+
+**State as of 2026-09-25.** Release **3.0.2 / versionCode 36** is prepared on
+top of the committed post-3.0.1 glide polish (HEAD `815a0491`, clean tree).
+The release engineering itself (version bump, changelogs, this entry, the
+audit and the checklist retarget) is **uncommitted** and awaits the operator's
+review, commit, tag and publish.
+
+What the release ships (`docs/ROADMAP-P7.md` §P7-5/P7-6/P7-7): glide
+detection tolerates a resting finger; lift commits the best word (no strip
+tap); alternatives swap it in place; one-backspace undo; NO auto-space after
+a glide (smart one-space chaining); glide independent of the suggestions
+toggle; the «word ? » commit fix; the longer fading trail + key highlight.
+
+Release changes in the working tree:
+
+- `app/build.gradle`: versionCode 35 → 36, versionName "3.0.1" → "3.0.2".
+- `CHANGELOG.md`: the Unreleased section (### Fixed / ### Added) became
+  `## [3.0.2] — 2026-09-25`, content verbatim.
+- Store changelogs `metadata/{en-US,ru-RU,tt}/changelogs/36.txt` — 334 / 456 /
+  486 B (all ≤ the 500-byte Fastlane limit).
+- `docs/APK-AUDIT-3.0.2.md` — new audit (per-entry CRC32 comparison vs the
+  3.0.1 APK); `docs/PUBLISH-CHECKLIST.md` retargeted to 3.0.2/36;
+  `docs/README.md` index line updated.
+
+Gates (all 2026-09-25, all green):
+
+| Gate | Result |
+|---|---|
+| python suites (`for f in tests/*/test_*.py`) | **507 tests, 16 files, 0 failing files** (1 pre-existing skip) |
+| `./gradlew test --rerun-tasks` | **1 580 tests, 165 suites, 0 failures/errors/skipped** |
+| `./gradlew lintRelease --rerun-tasks` | green (21 tasks executed) |
+| `rebuild_assets.py --check --allow-known-drift` | `"ok": true` (tt 155/0, ru 2/0 as pinned) |
+| `scripts/release_pack.sh` | unsigned 1 863 612 B → signed zopfli **1 846 564 B** ≤ 3 145 728 (headroom 41.3 %), SHA-256 **`a50bb51f8a1afb4a63cbb56f6d83edf7bd54e633a1c96f17c7201a0aa4e6027d`**, v2-only, cert `98ca6feb…42ad` |
+| `check-no-internet.sh dist/tatar-keyboard-3.0.2.apk` | both levels OK |
+| `release_check.sh --full dist/tatar-keyboard-3.0.2.apk` | **OVERALL PASS — 13/13** (incl. version 3.0.2/36, changelog 36.txt, delta vs 3.0.1 +4 096 B / +0.2 %) |
+
+Artifact: **`dist/tatar-keyboard-3.0.2.apk`** (local, git-ignored) — publish
+exactly these bytes; do not rebuild before publishing. GitHub Release notes
+text is prepared at `/tmp/relnotes-3.0.2.md`. All 13 shipped data assets are
+byte-identical to 3.0.1 — updating re-inflates nothing.
+
+Next operator actions: review the diff → commit → tag `v3.0.2` → push →
+GitHub Release with the APK from `dist/` (published manually via the web UI —
+`gh` on this machine is pull-only, as before) → store upload (36.txt notes
+are in place for en-US/ru-RU/tt).
+
+---
+
 # HANDOFF — release 3.0.1 committed and pushed (tag v3.0.1); GitHub Release is the operator's manual step
 
 **State as of 2026-09-24.** Release **3.0.1 / versionCode 35** — commits

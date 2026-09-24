@@ -1,0 +1,4 @@
+• Glide polish: resting a finger on the first key no longer kills the swipe; works with suggestions off
+• Lifting your finger commits the best word at once — no strip tap; alternatives swap it in place
+• Chained glides join with exactly one space; one backspace undoes a glide
+• Fading trail and key highlight while gliding
