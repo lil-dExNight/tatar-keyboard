@@ -2,14 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Glide typing works with suggestions off:** the gesture answered the suggestions master switch instead of its own toggle, and — the subtler half — the glide geometry push rode the suggestions eligibility, so with the master off the decode was disabled outright. Glide typing is now fully independent (Gboard parity): the lift still commits the word (that's typing, not a suggestion) and the strip stays out of it. The settings row no longer grays out with the master switch.
+- **Glide after "word ? " (a space before the punctuation):** the lift-commit reused the prediction tap's stale-band guard, which refuses empty-context positions away from a sentence start — and the space-before-the-mark habit produces exactly such a position, so the gesture looked dead mid-sentence. The glide now commits through its own path with the same live re-checks minus that requirement.
+- **Glide typing tolerates a resting finger:** the gesture detection's decision window and speed check now start at the first real movement, not at touch-down — resting on the first letter for a moment before swiping used to make the glide never fire ("зажимаю букву и начинаю вести её в сторону второй — не работает"). A long-press that actually opens its panel during the rest still wins and closes the gesture. (Field report, 2026-09-24; see docs/ROADMAP-P7.md.)
+
 ### Added
 
 - **Lifting your finger commits the glide's best word:** a finished swipe types its top candidate into the field at once (with the automatic space and the current shift state), and the remaining candidates stay in the strip as tappable alternatives — tapping one swaps the committed word in place. One backspace right after the lift deletes the whole committed word, and a swipe that decodes to nothing commits nothing.
 - **Glide trail and key feedback:** while gliding, a fading trail follows the finger across the keys and the key under the fingertip lights up — graphics only, no popups and no haptics. Both follow the glide typing switch; with glide typing off the touch path is unchanged.
-
-### Fixed
-
-- **Glide typing tolerates a resting finger:** the gesture detection's decision window and speed check now start at the first real movement, not at touch-down — resting on the first letter for a moment before swiping used to make the glide never fire ("зажимаю букву и начинаю вести её в сторону второй — не работает"). A long-press that actually opens its panel during the rest still wins and closes the gesture. (Field report, 2026-09-24; see docs/ROADMAP-P7.md.)
 
 ## [3.0.1] — 2026-09-24
 
