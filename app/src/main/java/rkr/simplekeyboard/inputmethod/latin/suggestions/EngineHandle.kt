@@ -28,6 +28,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSo
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedBigramTableCatalog
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
+import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import java.util.concurrent.TimeUnit
 
 /**
@@ -63,6 +65,22 @@ interface EngineHandle {
      * before E5c keeps compiling and simply never predicts a next word.
      */
     fun requestNextWord(editorSessionId: Long, subtypeId: String, contextWordUtf8: ByteArray): Any? = null
+
+    /**
+     * P7-3 (docs/GLIDE-PLAN.md): the GLIDE sibling of [request] — the recorded gesture path is
+     * snapshotted inside the engine before this call returns, so the caller's buffer stays the
+     * PointerTracker's live one. Returns an opaque token, or null if the request was rejected.
+     * Default null so a fake handle written before P7-3 keeps compiling and simply never decodes
+     * a glide.
+     */
+    fun requestGlide(editorSessionId: Long, subtypeId: String, path: GlidePath): Any? = null
+
+    /**
+     * P7-3: pushes the live layout's key geometry for the glide decode side. Default no-op so
+     * fakes keep compiling; the real handle forwards it to the engine. Null disables glide
+     * decoding (fail-closed).
+     */
+    fun updateGlideGeometry(geometry: GlideKeyGeometry?) {}
 
     /**
      * E5c two-stage readiness: wires a bigram source into an ALREADY-published handle. Call off
@@ -124,6 +142,12 @@ class MappedEngineHandle private constructor(
 
     override fun requestNextWord(editorSessionId: Long, subtypeId: String, contextWordUtf8: ByteArray): Any? =
         engine.requestNextWord(editorSessionId, subtypeId, contextWordUtf8)
+
+    override fun requestGlide(editorSessionId: Long, subtypeId: String, path: GlidePath): Any? =
+        engine.requestGlide(editorSessionId, subtypeId, path)
+
+    override fun updateGlideGeometry(geometry: GlideKeyGeometry?) =
+        engine.updateGlideGeometry(geometry)
 
     override fun attachBigramSource(catalog: PublishedBigramTableCatalog): Boolean =
         engine.attachBigramSource(catalog)

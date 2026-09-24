@@ -2,6 +2,8 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
+import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramTableLease
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedBigramTableCatalog
@@ -52,6 +54,13 @@ class MappedDictionaryEngine private constructor(
         subtypeId: String,
         normalizedContextWordUtf8: ByteArray,
     ): LookupToken? = engine.requestNextWord(editorSessionId, subtypeId, normalizedContextWordUtf8)
+
+    /** P7-3 (docs/GLIDE-PLAN.md): the GLIDE sibling of [request] — same engine, same discipline. */
+    fun requestGlide(
+        editorSessionId: Long,
+        subtypeId: String,
+        path: GlidePath,
+    ): LookupToken? = engine.requestGlide(editorSessionId, subtypeId, path)
 
     /**
      * E5c two-stage readiness (PROPOSALS.md, "E5c. Готовность вычислителя двухступенчатая"):
@@ -151,6 +160,9 @@ class MappedDictionaryEngine private constructor(
     }
 
     fun updateKeyNeighbors(table: KeyNeighborTable?) = engine.updateKeyNeighbors(table)
+
+    /** P7-3: pushes the live layout geometry into the glide decode side (null disables it). */
+    fun updateGlideGeometry(geometry: GlideKeyGeometry?) = engine.updateGlideGeometry(geometry)
 
     fun isCurrent(token: LookupToken): Boolean = engine.isCurrent(token)
 
@@ -350,6 +362,10 @@ class MappedDictionaryEngine private constructor(
                 // The after-word forms are created against THIS engine's index: a schema-3 bigram
                 // table links itself to one dictionary by raw SHA-256, and the forms must rank by
                 // the frequencies of that same dictionary.
+                // P7-3 (docs/GLIDE-PLAN.md): the glide decode side — the decoder's word inventory
+                // is THIS engine's dictionary (the main dictionary only; the personal one is a
+                // documented MVP exclusion). The geometry arrives later, pushed from the live
+                // layout through updateGlideGeometry; until then decodeGlide answers empty.
                 val computer = CompositePrefixComputer(
                     index, personalCandidates, afterWordFormsFactory?.createAfterWordForms(index),
                     // TT-NEXTWORD-FILL: the factory computes the top-frequency pool HERE — one
@@ -359,6 +375,7 @@ class MappedDictionaryEngine private constructor(
                     // P1: the learned pairs ride the same per-language seam as the personal source
                     // above — resolved by the caller from the subtype, never from a constant.
                     personalBigrams,
+                    GlideDecoderHost(TdictGlideInventory(index)),
                 )
                 val engine = LatestOnlyPrefixEngine(
                     identity,

@@ -95,6 +95,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.GlobalTopFrequencyFallbackFactory;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.GlideKeyGeometryBuilder;
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.MappedEngineHandle;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferEnvironment;
@@ -677,6 +679,20 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // subordination to the suggestions switch, carried by SettingsValues.
         mSuggestionsController.setEmojiSuggestGate(
                 () -> mSettings.getCurrent().mEmojiSuggestEnabled);
+        // P7-3 (docs/GLIDE-PLAN.md): the glide gate — same seam, same subordination — and the
+        // shift-state gate for the glide commit's casing rule (shifted element of the alphabet
+        // keyboard = the word is committed capitalized, exactly as typed letters would be).
+        mSuggestionsController.setGlideGate(
+                () -> mSettings.getCurrent().mGlideTypingEnabled);
+        mSuggestionsController.setGlideShiftStateGate(() -> {
+            final Keyboard current = mKeyboardSwitcher.getKeyboard();
+            if (current == null || current.mId == null) {
+                return false;
+            }
+            final int elementId = current.mId.mElementId;
+            return elementId == KeyboardId.ELEMENT_ALPHABET_MANUAL_SHIFTED
+                    || elementId == KeyboardId.ELEMENT_ALPHABET_AUTOMATIC_SHIFTED;
+        });
         mSuggestionsController.onCreate();
         // Erasing words on the settings screen must unbind whatever the band is showing right now:
         // the screen and the IME live in the same process, so the store notifies us directly. The
@@ -1347,6 +1363,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     private KeyboardId mNeighborTableKeyboardId;
     private KeyNeighborTable mNeighborTable;
 
+    // P7-2/P7-3 (docs/GLIDE-PLAN.md): the glide geometry of the current layout, memoized by
+    // KeyboardId exactly like the neighbor table above.
+    private KeyboardId mGlideGeometryKeyboardId;
+    private GlideKeyGeometry mGlideGeometry;
+
     /**
      * Rebuilds (or reuses) the key-neighbor table from the current keyboard and hands it to the
      * suggestion controller. A null table — non-alphabet layout, ineligible field, or no built
@@ -1374,6 +1395,22 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
         }
         mSuggestionsController.updateKeyNeighbors(table);
+
+        // P7-3: the glide geometry rides the same moment and the same eligibility rule (glide is
+        // subordinate to suggestions), memoized by KeyboardId the same way. A null geometry —
+        // non-alphabet layout or an ineligible field — disables glide decoding, fail-closed.
+        GlideKeyGeometry geometry = null;
+        if (keyboard != null && keyboard.mId.isAlphabetKeyboard() && subtypeId != null
+                && isSuggestionsEligible()) {
+            if (keyboard.mId.equals(mGlideGeometryKeyboardId) && mGlideGeometry != null) {
+                geometry = mGlideGeometry;
+            } else {
+                geometry = GlideKeyGeometryBuilder.fromKeyboard(keyboard);
+                mGlideGeometryKeyboardId = keyboard.mId;
+                mGlideGeometry = geometry;
+            }
+        }
+        mSuggestionsController.updateGlideGeometry(geometry);
     }
 
     @Override
@@ -2049,6 +2086,22 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // User finished sliding input.
         mKeyboardSwitcher.onFinishSlidingInput(getCurrentAutoCapsState(),
                 getCurrentRecapitalizeState());
+    }
+
+    /**
+     * A glide gesture completed on the letter keys (P7-2/P7-3, docs/GLIDE-PLAN.md). The path is
+     * handed to the suggestions controller, which runs the decode on the engine worker and binds
+     * the result as the glide band; the PointerTracker's buffer is snapshotted inside the
+     * engine's request before this call returns. With the pref off — or suggestions off — the
+     * controller's own gates answer nothing, so this is a no-op there.
+     */
+    @Override
+    public void onGlideInput(
+            final rkr.simplekeyboard.inputmethod.latin.glide.GlidePath path) {
+        final SuggestionsController controller = mSuggestionsController;
+        if (controller != null) {
+            controller.onGlideInput(path);
+        }
     }
 
     /**

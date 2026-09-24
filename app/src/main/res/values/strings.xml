@@ -138,6 +138,10 @@
     <string name="emoji_suggestions">Emoji suggestions</string>
     <!-- Description for the emoji suggestions option. Says plainly that tapping the emoji only adds it and never changes the typed word. -->
     <string name="emoji_suggestions_summary">Show a matching emoji above the keyboard when you finish a word, in Tatar and in Russian. Tapping it only adds the emoji — the typed word stays.</string>
+    <!-- Option to type words by sliding a finger over the letters instead of tapping each -->
+    <string name="glide_typing">Glide typing</string>
+    <!-- Description for the glide typing option. Says plainly which languages it works for and that nothing changes when it is off. -->
+    <string name="glide_typing_summary">Type a word by sliding your finger over its letters without lifting it, in Tatar and in Russian. Everything is recognized on this device.</string>
     <!-- Option to remember words the user types and suggest them later -->
     <string name="personal_dictionary">Personal dictionary</string>
     <!-- Description for the personal dictionary option. Says plainly that words are saved on the device and that turning the option off keeps what was already saved. -->

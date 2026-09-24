@@ -377,6 +377,7 @@ class SettingsHostActivity : Activity() {
         var incognitoRow: View? = null
         var autocorrectRow: View? = null
         var emojiSuggestRow: View? = null
+        var glideRow: View? = null
         rows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, false,
                 R.string.tatar_suggestions, R.string.tatar_suggestions_summary) { checked ->
             personalDictionaryRow?.let {
@@ -390,6 +391,9 @@ class SettingsHostActivity : Activity() {
             }
             emojiSuggestRow?.let {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS))
+            }
+            glideRow?.let {
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_GLIDE_TYPING))
             }
         })
         // The personal dictionary rides on the suggestion band: without suggestions there is
@@ -423,6 +427,14 @@ class SettingsHostActivity : Activity() {
                 R.string.emoji_suggestions, R.string.emoji_suggestions_summary)
         emojiSuggestRow = emojiSuggestSwitch
         rows.add(emojiSuggestSwitch)
+        // Glide typing (P7-3, docs/GLIDE-PLAN.md) is subordinate to the suggestions switch
+        // because its candidates live in the very same band; separate because how a word is
+        // entered (taps or one slide) is the user's habit, not a property of the words. The
+        // default matches Settings.readGlideTypingEnabled (on); a user-set value always wins.
+        val glideSwitch = switchRow(Settings.PREF_GLIDE_TYPING, true,
+                R.string.glide_typing, R.string.glide_typing_summary)
+        glideRow = glideSwitch
+        rows.add(glideSwitch)
         addCard(rows)
         // android:dependency="pref_show_language_switch_key" from the legacy screen.
         setRowEnabled(imeRow,
@@ -440,6 +452,9 @@ class SettingsHostActivity : Activity() {
         setRowEnabled(emojiSuggestSwitch,
                 Settings.readTatarSuggestionsEnabled(prefs)
                         && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS))
+        setRowEnabled(glideSwitch,
+                Settings.readTatarSuggestionsEnabled(prefs)
+                        && !isRestricted(Settings.PREF_GLIDE_TYPING))
         // Reachable whatever the toggles say: erasing what was already saved must always be
         // possible, so the entry never depends on the switch above it.
         addCard(listOf(linkRow(R.string.personal_dictionary_screen) {

@@ -32,6 +32,8 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.AssetEmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestIndex
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestSource
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
+import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -246,6 +248,27 @@ class SuggestionsController internal constructor(
     private var pendingContextWord: String = ""
     private var displayedContextWord: String? = null
 
+    // --- P7-3 GLIDE state (docs/GLIDE-PLAN.md), the exact same shape as the other two bindings.
+    // At most one of displayedPrefix/displayedContextWord/displayedGlideContext is ever non-null —
+    // enforced the same way: every request path clears the other two. A glide band binds the
+    // NEXT_WORD context the gesture was made against (the word before the cursor; "" at a field
+    // start): the tap commits through the E5d predicted-word path, whose own re-checks (empty
+    // trailing word, live context still equal) are the second line of defense.
+    private var pendingGlideContext: String = ""
+    private var displayedGlideContext: String? = null
+
+    /** The glide pref, read live; OFF until LatinIME wires the real one. Same seam shape as the
+     * autocorrect gate. */
+    private var glideGate: GlideGate = GlideGate { false }
+
+    /** The keyboard's shift state for the glide commit's casing rule; OFF until wired. */
+    private var glideShiftGate: ShiftStateGate = ShiftStateGate { false }
+
+    // The current layout's key geometry for the glide decode side, built by LatinIME from the
+    // live keyboard. Remembered so an engine started later is handed it, and re-pushed on every
+    // publish — the [keyNeighbors] pattern verbatim. Null disables glide (fail-closed).
+    private var glideGeometry: GlideKeyGeometry? = null
+
     // Audit 2026-09-02, B4: whether the band the ACTIVE language painted for [pendingContextWord]
     // holds at least one WORD cell of that language. This is NOT "the band is occupied": an
     // emoji-only band and a band the companion language filled both leave it false, and both still
@@ -361,6 +384,16 @@ class SuggestionsController internal constructor(
         emojiSuggestGate = gate
     }
 
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setGlideGate(gate: GlideGate) {
+        glideGate = gate
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setGlideShiftStateGate(gate: ShiftStateGate) {
+        glideShiftGate = gate
+    }
+
     /**
      * Registers the tap listener and deliberately nothing else: the background executor, the
      * storage controller and the dictionary are created on first actual need, so a keyboard start
@@ -384,6 +417,17 @@ class SuggestionsController internal constructor(
         activeSlot()?.engine?.updateKeyNeighbors(table)
     }
 
+    /**
+     * Publishes the live layout's key geometry for the glide decode side (P7-3). Same shape as
+     * [updateKeyNeighbors]: LatinIME rebuilds it whenever the keyboard or subtype changes; stored
+     * so an engine started later still receives it, and forwarded to the running engine at once.
+     * A null geometry disables glide decoding without touching anything else. UI thread only.
+     */
+    fun updateGlideGeometry(geometry: GlideKeyGeometry?) {
+        glideGeometry = geometry
+        activeSlot()?.engine?.updateGlideGeometry(geometry)
+    }
+
     @JvmOverloads
     fun onStartInput(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE) {
         runMachine.markRunDirty()
@@ -395,6 +439,7 @@ class SuggestionsController internal constructor(
         sessionId++
         displayedPrefix = null
         displayedContextWord = null
+        displayedGlideContext = null
         bandHasActiveLanguageWord = false
         bandBaseCells = emptyList()
         clearCompanionRequest()
@@ -451,6 +496,7 @@ class SuggestionsController internal constructor(
         // live editor state, so drop the displayed binding immediately.
         displayedPrefix = null
         displayedContextWord = null
+        displayedGlideContext = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         // Keep the reserved band only after an engine has actually published. Eligibility while
@@ -510,6 +556,7 @@ class SuggestionsController internal constructor(
         sessionId++
         displayedPrefix = null
         displayedContextWord = null
+        displayedGlideContext = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         // Close eligibility before hiding/finishing. A readiness notification queued behind this
@@ -541,6 +588,7 @@ class SuggestionsController internal constructor(
         activeSlot()?.engine?.finishInput()
         displayedPrefix = null
         displayedContextWord = null
+        displayedGlideContext = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         setActiveLanguage(subtypeId)
@@ -597,6 +645,7 @@ class SuggestionsController internal constructor(
         activeSlot()?.engine?.finishInput()
         displayedPrefix = null
         displayedContextWord = null
+        displayedGlideContext = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         displayedSessionId = NO_SESSION
@@ -622,6 +671,7 @@ class SuggestionsController internal constructor(
         eligible = false
         displayedPrefix = null
         displayedContextWord = null
+        displayedGlideContext = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         requestSessionId = NO_SESSION
@@ -710,6 +760,7 @@ class SuggestionsController internal constructor(
         clearRevertState()
         displayedPrefix = null
         displayedContextWord = null
+        displayedGlideContext = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         for (slot in slots.values) {
@@ -1019,6 +1070,7 @@ class SuggestionsController internal constructor(
             if (slot !== activeSlot()) return
             displayedPrefix = null
             displayedContextWord = null
+            displayedGlideContext = null
             if (eligible) {
                 strip.hideSuggestions()
             }
@@ -1041,6 +1093,8 @@ class SuggestionsController internal constructor(
         // Hand the freshly started engine the current key-neighbor table so its fuzzy pass is armed
         // without waiting for the next layout change. Null is a valid value (fuzzy pass disabled).
         handle.updateKeyNeighbors(keyNeighbors)
+        // P7-3: same push for the glide geometry (null disables glide decoding, fail-closed).
+        handle.updateGlideGeometry(glideGeometry)
         if (!eligible) {
             handle.finishInput()
             strip.hideSuggestions()
@@ -1171,6 +1225,9 @@ class SuggestionsController internal constructor(
         val token = when (kind) {
             LookupKind.PREFIX -> engine.request(sessionId, slot.subtypeId, bytes)
             LookupKind.NEXT_WORD -> engine.requestNextWord(sessionId, slot.subtypeId, bytes)
+            // A companion language is never asked for a glide: the gesture belongs to the active
+            // layout, and the fill rule is a prefix/next-word feature (P7-3 MVP).
+            LookupKind.GLIDE -> null
         }
         if (token == null) return
         companionSlot = slot
@@ -1209,6 +1266,8 @@ class SuggestionsController internal constructor(
         val live = when (kind) {
             LookupKind.PREFIX -> pendingPrefix
             LookupKind.NEXT_WORD -> pendingContextWord
+            // A companion never holds a glide request (see requestCompanionFill).
+            LookupKind.GLIDE -> pendingGlideContext
         }
         if (live != query) return
         clearCompanionRequest()
@@ -1239,6 +1298,8 @@ class SuggestionsController internal constructor(
         when (kind) {
             LookupKind.PREFIX -> displayedPrefix = query
             LookupKind.NEXT_WORD -> displayedContextWord = query
+            // A companion never holds a glide request (see requestCompanionFill); unreachable.
+            LookupKind.GLIDE -> return
         }
         displayedSessionId = sessionId
         showBand(cells)
@@ -1332,6 +1393,7 @@ class SuggestionsController internal constructor(
             if (cells.size >= wordCap) break
         }
         cells.add(emoji)
+        displayedGlideContext = null
         displayedContextWord = contextWord
         displayedSessionId = sessionId
         showBand(cells)
@@ -1393,6 +1455,7 @@ class SuggestionsController internal constructor(
             // band until publishEngine() establishes that the dictionary is actually available.
             displayedPrefix = null
             displayedContextWord = null
+            displayedGlideContext = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
             strip.hideSuggestions()
@@ -1438,9 +1501,14 @@ class SuggestionsController internal constructor(
             unbindPaintedBand()
         }
         // A non-empty prefix is unconditionally PREFIX mode: drop whatever NEXT_WORD state might
-        // still be bound from a moment ago, so the two kinds never coexist in the band.
+        // still be bound from a moment ago, so the two kinds never coexist in the band. The P7-3
+        // glide binding is dropped the same way.
         if (displayedContextWord != null) {
             displayedContextWord = null
+            unbindPaintedBand()
+        }
+        if (displayedGlideContext != null) {
+            displayedGlideContext = null
             unbindPaintedBand()
         }
         // A fresh lookup of the active language supersedes whatever the companion was asked
@@ -1480,9 +1548,13 @@ class SuggestionsController internal constructor(
         }
         // A NEXT_WORD request is unconditionally not PREFIX mode: drop whatever prefix candidates
         // might still be bound (there should not be any, since this path only runs on an empty
-        // prefix, but the invariant is enforced here rather than assumed).
+        // prefix, but the invariant is enforced here rather than assumed). The glide binding too.
         if (displayedPrefix != null) {
             displayedPrefix = null
+            unbindPaintedBand()
+        }
+        if (displayedGlideContext != null) {
+            displayedGlideContext = null
             unbindPaintedBand()
         }
         clearCompanionRequest()
@@ -1496,6 +1568,77 @@ class SuggestionsController internal constructor(
         if (token == null) {
             clearToReservedBand()
         }
+    }
+
+    // --- Glide (P7-3, docs/GLIDE-PLAN.md) ---------------------------------------------------------
+
+    /**
+     * A glide gesture completed on the letter keys (PointerTracker via LatinIME, UI thread).
+     * Requests the decode on the engine worker; nothing is shown during the gesture itself
+     * (MVP: decode once at ACTION_UP). Every early exit is silent and leaves the band exactly as
+     * it is, fail-closed in every direction:
+     *  - the feature off (the glide toggle or the suggestions master it is subordinate to —
+     *    [eligible] carries that), a destroyed controller, no usable engine;
+     *  - the editor in a state the commit path could not honor: an unknown cursor, a letter right
+     *    after the cursor, or a half-typed trailing word (the decoder decodes WHOLE words;
+     *    completing a typed prefix by glide is not the MVP).
+     *
+     * The glide band is bound to the NEXT_WORD context of the moment (the word before the cursor,
+     * "" at a field start) — exactly what the tap path's [EditorSurface.commitPredictedWord]
+     * re-derives live before editing. One binding at a time: the other two are dropped here.
+     */
+    fun onGlideInput(path: GlidePath) {
+        if (destroyed || !eligible) return
+        if (!glideGate.isOn()) return
+        val activeEngine = usableEngine() ?: return
+        if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
+        if (editor.cachedWordBeforeCursor().isNotEmpty()) return
+        val context = editor.cachedNextWordContext()
+        // A glide gesture ends any word's preview moment: no stale keep-typed cell may ride the
+        // glide band (the tap path's refusal check would swallow the tap).
+        previewKeepTypedCell = null
+        displayedPrefix = null
+        displayedContextWord = null
+        unbindPaintedBand()
+        clearCompanionRequest()
+        pendingGlideContext = context
+        requestSessionId = sessionId
+        val token = activeEngine.requestGlide(sessionId, activeLanguage ?: return, path)
+        if (token == null) {
+            clearToReservedBand()
+        }
+    }
+
+    /**
+     * The glide counterpart of [applyPrefixResult]/[applyNextWordResult]. Candidates are shown
+     * lowercase, capitalized instead when the keyboard is shifted — the same display-time casing
+     * the prefix path applies, sourced from the shift gate because a gesture types no letters to
+     * read the casing off. The strip hands the very same string back on tap, so the displayed and
+     * the committed form match. No companion fill rides a glide band (the companion languages are
+     * a prefix/next-word feature; documented MVP decision), and the personal dictionary is never
+     * consulted (the decoder reads the main dictionary only).
+     */
+    private fun applyGlideResult(suggestions: List<String>) {
+        previewKeepTypedCell = null
+        if (suggestions.isEmpty()) {
+            displayedGlideContext = null
+            bandBaseCells = emptyList()
+            strip.reserve()
+            return
+        }
+        displayedGlideContext = pendingGlideContext
+        displayedSessionId = sessionId
+        val casing = if (glideShiftGate.isShifted()) {
+            TatarWordUtils.PrefixCasing.INITIAL_CAPS
+        } else {
+            TatarWordUtils.PrefixCasing.LOWER
+        }
+        val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+        for (candidate in suggestions) {
+            cells.add(TatarWordUtils.applyCasing(candidate, casing))
+            if (cells.size >= SuggestionStripState.CELL_COUNT) break
+        }
+        showBand(cells)
     }
 
     // --- Sentence start (P4, docs/TT-SUGGESTIONS.md) ---------------------------------------------
@@ -1546,6 +1689,7 @@ class SuggestionsController internal constructor(
             cells.add(TatarWordUtils.applyCasing(word, TatarWordUtils.PrefixCasing.INITIAL_CAPS))
         }
         displayedPrefix = null
+        displayedGlideContext = null
         pendingContextWord = SENTENCE_START_CONTEXT
         displayedContextWord = SENTENCE_START_CONTEXT
         displayedSessionId = sessionId
@@ -1644,6 +1788,7 @@ class SuggestionsController internal constructor(
     private fun clearToReservedBand() {
         displayedPrefix = null
         displayedContextWord = null
+        displayedGlideContext = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         requestSessionId = NO_SESSION
@@ -1676,6 +1821,7 @@ class SuggestionsController internal constructor(
         when (kind) {
             LookupKind.PREFIX -> applyPrefixResult(suggestions)
             LookupKind.NEXT_WORD -> applyNextWordResult(suggestions)
+            LookupKind.GLIDE -> applyGlideResult(suggestions)
         }
     }
 
@@ -1692,6 +1838,7 @@ class SuggestionsController internal constructor(
         }
         previewKeepTypedCell = preview?.typedShown
         if (preview != null) {
+            displayedGlideContext = null
             displayedPrefix = pendingPrefix
             displayedSessionId = sessionId
             showBand(
@@ -1711,6 +1858,7 @@ class SuggestionsController internal constructor(
         }
         // The result passed the session and engine currency guards, so pendingPrefix is exactly the
         // prefix these candidates were computed for. Bind the displayed candidates to it atomically.
+        displayedGlideContext = null
         displayedPrefix = pendingPrefix
         displayedSessionId = sessionId
         // Ranking runs on the normalized lowercase forms, so the typed capitalization is re-applied
@@ -1753,6 +1901,7 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 strip.reserve()
             } else {
+                displayedGlideContext = null
                 displayedContextWord = pendingContextWord
                 displayedSessionId = sessionId
                 showBand(listOf(emoji))
@@ -1760,6 +1909,7 @@ class SuggestionsController internal constructor(
             requestCompanionFill(LookupKind.NEXT_WORD, pendingContextWord)
             return
         }
+        displayedGlideContext = null
         displayedContextWord = pendingContextWord
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = true
@@ -1845,6 +1995,7 @@ class SuggestionsController internal constructor(
         // Whatever the band was showing described the word that no longer stands there.
         displayedPrefix = null
         displayedContextWord = null
+        displayedGlideContext = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         revertWindow.arm(word, replacement, separatorCodePoint, sessionId)
@@ -1894,6 +2045,7 @@ class SuggestionsController internal constructor(
             suppressedPreviewWord = prefix
             previewKeepTypedCell = null
             displayedPrefix = null
+            displayedGlideContext = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
             strip.reserve()
@@ -1922,6 +2074,7 @@ class SuggestionsController internal constructor(
                 // The field is still eligible after a commit; clear the words but keep the reserved
                 // band so accepting a suggestion does not resize the keyboard.
                 displayedPrefix = null
+                displayedGlideContext = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
@@ -1950,6 +2103,7 @@ class SuggestionsController internal constructor(
             // the editor re-derives the live context word and refuses a stale tap itself.
             if (editor.commitPredictedWord(context, suggestion)) {
                 displayedContextWord = null
+                displayedGlideContext = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
@@ -1966,6 +2120,27 @@ class SuggestionsController internal constructor(
                 runMachine.trustPairBoundary()
                 // Same reasoning as the PREFIX branch above: the predictions for the word just
                 // committed are requested from here, or they never are.
+                requestCurrentPrefix()
+            }
+        }
+        val glideContext = displayedGlideContext
+        if (glideContext != null) {
+            // P7-3: a glide cell commits through the E5d predicted-word path, whose own live
+            // re-checks (collapsed cursor, empty trailing word, the context still equal) are the
+            // second line of defense — the same second line as the NEXT_WORD branch above.
+            if (editor.commitPredictedWord(glideContext, suggestion)) {
+                displayedGlideContext = null
+                bandBaseCells = emptyList()
+                clearCompanionRequest()
+                strip.reserve()
+                // Learning semantics (pinned, docs/ROADMAP-P7.md): a glide-committed word behaves
+                // exactly like a tapped suggestion — the word itself is not a clean run
+                // (markRunDirty above already saw to that), and the boundary it just established
+                // is trusted for the pair machine. It is NOT a noteAcceptedPrediction: the band
+                // was not a pair prediction, so no usage counter moves.
+                runMachine.trustPairBoundary()
+                // Same as the other two branches: the NEXT_WORD predictions for the committed word
+                // are requested from here, or they never are.
                 requestCurrentPrefix()
             }
         }

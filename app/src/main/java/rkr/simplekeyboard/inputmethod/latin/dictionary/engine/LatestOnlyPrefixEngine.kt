@@ -4,6 +4,10 @@ import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideComputer
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideGeometrySink
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
+import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 
 interface EngineExecutor : Executor {
     fun shutdown()
@@ -34,7 +38,7 @@ class ImmutableUtf8Prefix private constructor(private val value: ByteArray) {
  * versa. NOT introduced to make tokens of different requests unequal (`requestSerial` already
  * does that on every `request`/`requestNextWord` call).
  */
-enum class LookupKind { PREFIX, NEXT_WORD }
+enum class LookupKind { PREFIX, NEXT_WORD, GLIDE }
 
 data class LookupToken(
     val engineInstanceId: Long,
@@ -73,7 +77,8 @@ class LatestOnlyPrefixEngine internal constructor(
 ) {
     private enum class State { ACTIVE, DESTROYING, DESTROYED }
 
-    private data class Request(val token: LookupToken)
+    /** [glidePath] is the decode payload of a [LookupKind.GLIDE] request; null otherwise. */
+    private data class Request(val token: LookupToken, val glidePath: GlidePath? = null)
 
     private val lock = Any()
     private val destroyLock = Any()
@@ -129,17 +134,48 @@ class LatestOnlyPrefixEngine internal constructor(
         LookupKind.NEXT_WORD, TatBigrPrefixIndex.MAX_WORD_BYTES,
     )
 
+    /**
+     * P7-3 (docs/GLIDE-PLAN.md): the GLIDE sibling of [request] — same token, serial and
+     * staleness discipline, a different payload: the recorded path, snapshotted HERE because the
+     * caller's [GlidePath] is the PointerTracker's live buffer. The token's [normalizedQuery]
+     * carries an empty sentinel — identity lives in the serial, and the worker reads the payload
+     * off the request, never the token. A degenerate path (fewer than two points — the decider
+     * never arms on those, so this is a defensive guard) is rejected WITHOUT invalidating the
+     * generation: unlike an empty prefix ("the user cleared the word"), a junk gesture says
+     * nothing about the text.
+     *
+     * The glide decode never touches the per-keystroke lookup budgets: it is a separate call the
+     * computer answers through its own seam ([GlideComputer]).
+     */
+    fun requestGlide(
+        editorSessionId: Long,
+        subtypeId: String,
+        path: GlidePath,
+    ): LookupToken? {
+        if (path.size < 2) return null
+        val snapshot = GlidePath(path.size)
+        path.copyInto(snapshot)
+        return requestInternal(
+            editorSessionId, subtypeId, ByteArray(0),
+            LookupKind.GLIDE, 0, snapshot,
+        )
+    }
+
     private fun requestInternal(
         editorSessionId: Long,
         subtypeId: String,
         normalizedBytes: ByteArray,
         kind: LookupKind,
         maxBytes: Int,
+        glidePath: GlidePath? = null,
     ): LookupToken? {
         // Reject before constructing the immutable token or making the single owned copy.
-        if (normalizedBytes.isEmpty() ||
-            normalizedBytes.size > maxBytes ||
-            !isValidUtf8Scalar(normalizedBytes)
+        // GLIDE carries its payload in the request and validates nothing here (its guard lives
+        // in requestGlide); the empty sentinel query is never read by the worker.
+        if (kind != LookupKind.GLIDE &&
+            (normalizedBytes.isEmpty() ||
+                normalizedBytes.size > maxBytes ||
+                !isValidUtf8Scalar(normalizedBytes))
         ) {
             synchronized(lock) {
                 if (state == State.ACTIVE) invalidateGenerationLocked()
@@ -160,7 +196,7 @@ class LatestOnlyPrefixEngine internal constructor(
                 dictionaryIdentity,
                 kind,
             )
-            val request = Request(token)
+            val request = Request(token, glidePath)
             currentToken = token
             if (activeWorkerId != 0L) {
                 pendingRequest = request
@@ -196,6 +232,17 @@ class LatestOnlyPrefixEngine internal constructor(
     fun updateKeyNeighbors(table: KeyNeighborTable?) {
         synchronized(lock) {
             (computer as? KeyNeighborSink)?.updateKeyNeighbors(table)
+        }
+    }
+
+    /**
+     * P7-3: pushes the current layout's key geometry into the computer, if it decodes glides.
+     * Same handoff shape as [updateKeyNeighbors]: a `@Volatile` reference is swapped; the
+     * decoder's scratch is touched solely by the serialized worker inside [GlideComputer].
+     */
+    fun updateGlideGeometry(geometry: GlideKeyGeometry?) {
+        synchronized(lock) {
+            (computer as? GlideGeometrySink)?.updateGlideGeometry(geometry)
         }
     }
 
@@ -255,6 +302,9 @@ class LatestOnlyPrefixEngine internal constructor(
                         LookupKind.PREFIX -> lookup?.lookup(request.token.normalizedQuery) ?: emptyList()
                         LookupKind.NEXT_WORD ->
                             (lookup as? NextWordComputer)?.predict(request.token.normalizedQuery)
+                                ?: emptyList()
+                        LookupKind.GLIDE ->
+                            (lookup as? GlideComputer)?.decodeGlide(request.glidePath ?: GlidePath(0))
                                 ?: emptyList()
                     }
                 } catch (_: Throwable) {

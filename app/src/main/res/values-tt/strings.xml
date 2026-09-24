@@ -75,6 +75,8 @@
     <string name="tatar_autocorrect_summary">Буш урын яки тыныш билгесе язгач, хаталы сүзне төзәтә. Язганыгызны кире кайтару өчен шундук бетерү төймәсенә басыгыз.</string>
     <string name="emoji_suggestions">Эмодзи тәкъдимнәре</string>
     <string name="emoji_suggestions_summary">Сүз тәмамлангач, клавиатура өстендә туры килүче эмодзи күрсәтә — татарча һәм русча сүзләр өчен. Эмодзигә басу аны гына өсти: язылган сүз үз урынында кала.</string>
+    <string name="glide_typing">Суйрып язу</string>
+    <string name="glide_typing_summary">Сүзне бармагыгызны клавишадан күтәрмәстән, хәрефләр буйлап суйрып языгыз — татарча да, русча да. Тану барысы да шушы җиһазда эшләнә.</string>
     <string name="personal_dictionary">Шәхси сүзлек</string>
     <string name="personal_dictionary_summary">Сез язган сүзләрне исендә калдырып, соңыннан тәкъдим итә. Алар бары тик шушы җиһазда саклана. Сүндерү тупланганны бетерми — аларны «Шәхси сүзлек» экранында бетерергә мөмкин.</string>
     <string name="incognito_mode">Инкогнито режимы</string>

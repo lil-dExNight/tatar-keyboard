@@ -19,6 +19,10 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidate
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideComputer
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideGeometrySink
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
+import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 
 /**
  * P3 after-word forms (docs/TT-SUGGESTIONS.md): the inflections of the just-committed context
@@ -88,7 +92,11 @@ internal class CompositePrefixComputer(
     // A seam of its own — NOT the prefix path's PersonalCandidateSource, which predict still never
     // touches; EMPTY keeps the pre-P1 behavior byte-identical.
     private val personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
-) : PrefixComputer, KeyNeighborSink, NextWordComputer {
+    // P7-3 (docs/GLIDE-PLAN.md): the glide decode side. Null keeps the engine answering empty
+    // (fail-closed). Glide candidates come from the MAIN dictionary only — the personal
+    // dictionary is deliberately never consulted on this path (documented MVP decision).
+    private val glideHost: GlideDecoderHost? = null,
+) : PrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer, GlideGeometrySink {
 
     /**
      * The D3 verdict as it leaves the engine: the primary's, minus every word the user has saved
@@ -217,6 +225,13 @@ internal class CompositePrefixComputer(
     override fun updateKeyNeighbors(table: KeyNeighborTable?) {
         (primary as? KeyNeighborSink)?.updateKeyNeighbors(table)
     }
+
+    override fun updateGlideGeometry(geometry: GlideKeyGeometry?) {
+        glideHost?.updateGlideGeometry(geometry)
+    }
+
+    override fun decodeGlide(path: GlidePath): List<String> =
+        glideHost?.decodeGlide(path) ?: emptyList()
 
     override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
         val dictionary = primary.lookup(normalizedPrefixUtf8)

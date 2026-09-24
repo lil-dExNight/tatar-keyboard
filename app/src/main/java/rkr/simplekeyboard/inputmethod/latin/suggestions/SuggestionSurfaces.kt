@@ -124,6 +124,24 @@ fun interface AutocorrectGate {
 }
 
 /**
+ * Reads the live value of `PREF_GLIDE_TYPING` (P7-3, docs/GLIDE-PLAN.md) — the exact same seam
+ * shape as [AutocorrectGate]. Read at every gesture, so flipping the setting takes effect on the
+ * next glide without restarting anything.
+ */
+fun interface GlideGate {
+    fun isOn(): Boolean
+}
+
+/**
+ * Reads the keyboard's current shift state for the glide commit's casing rule (P7-3): shifted
+ * (manual or automatic) means the committed word is capitalized, exactly as the letters of a
+ * typed word would have been. A seam, so JVM tests can flip shift between two gestures.
+ */
+fun interface ShiftStateGate {
+    fun isShifted(): Boolean
+}
+
+/**
  * Reads the live value of `PREF_EMOJI_SUGGESTIONS` — the exact same seam shape as
  * [AutocorrectGate], for the emoji cell of the NEXT_WORD band (mission 2 of
  * docs/EMOJI-SUGGEST-PLAN.md). Read on every fill, so flipping the setting takes effect on the
