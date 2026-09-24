@@ -17,6 +17,7 @@ class GlideGestureDeciderTest {
         distanceThresholdPx = 100f,
         velocityThresholdPxPerMs = 0.275f,
         maxDetectTimeMs = 500L,
+        slopPx = 25f,
     )
 
     @Test
@@ -42,15 +43,64 @@ class GlideGestureDeciderTest {
     }
 
     @Test
-    fun aSlowLongPressIsRejectedAfterTheWindow() {
+    fun aStillFingerNeverStartsTheClock() {
         val d = decider()
         d.onDown(1000f, 1000f, 0L, eligible = true)
+        // Resting tremor stays within the slop — for minutes if need be: no window runs.
         assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1005f, 1000f, 200L))
-        // Past the 500 ms window without reaching the thresholds: never a glide.
-        assertEquals(GlideGestureDecider.State.REJECTED, d.onMove(1010f, 1000f, 600L))
-        // And a late fast move cannot revive it.
-        assertEquals(GlideGestureDecider.State.REJECTED, d.onMove(1300f, 1000f, 650L))
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1010f, 1000f, 600L))
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1000f, 995f, 60_000L))
         assertFalse(d.isArmed)
+    }
+
+    @Test
+    fun holdThenFastSwipeArmsEvenPastTheOldWindow() {
+        // The field report verbatim: a finger rests on the first key ~0.5-1 s, then swipes.
+        val d = decider()
+        d.onDown(1000f, 1000f, 0L, eligible = true)
+        d.onMove(1005f, 1002f, 400L) // resting, within the slop
+        d.onMove(1010f, 1000f, 700L) // still resting at 700 ms — past the old 500 ms window
+        assertEquals(GlideGestureDecider.State.ARMED, d.onMove(1150f, 1000f, 750L))
+    }
+
+    @Test
+    fun theWindowRunsFromTheFirstMoveBeyondTheSlop() {
+        val d = decider()
+        d.onDown(1000f, 1000f, 0L, eligible = true)
+        // The anchor lands at t=600 (the first sample past the 25 px slop).
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1030f, 1000f, 600L))
+        // 500 ms after the anchor the gesture is still undecided...
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1035f, 1000f, 1100L))
+        // ...and one sample past it the touch is rejected: a slow drift is never a glide.
+        assertEquals(GlideGestureDecider.State.REJECTED, d.onMove(1035f, 1000f, 1101L))
+    }
+
+    @Test
+    fun theVelocityIsMeasuredFromTheAnchor() {
+        val d = decider()
+        d.onDown(1000f, 1000f, 0L, eligible = true)
+        d.onMove(1030f, 1000f, 300L) // 30 px > slop: anchored at t=300
+        // 110 px by t=700: 110/400 = 0.275 px/ms from the anchor — NOT strictly above the
+        // threshold: past the distance threshold but too slow. (The old from-down semantics
+        // would have REJECTED the touch at t=500 already — the window runs from the anchor.)
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1110f, 1000f, 700L))
+        // A fast continuation arms: 150 px from down over 50 ms from the anchor.
+        val e = decider()
+        e.onDown(1000f, 1000f, 0L, eligible = true)
+        e.onMove(1030f, 1000f, 300L)
+        assertEquals(GlideGestureDecider.State.ARMED, e.onMove(1150f, 1000f, 350L))
+    }
+
+    @Test
+    fun theSlopBoundaryIsStrict() {
+        val d = decider()
+        d.onDown(1000f, 1000f, 0L, eligible = true)
+        // Exactly the slop: no anchor, no clock (the boundary is a strict >).
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1025f, 1000f, 900L))
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1025f, 1000f, 2000L))
+        // One pixel past it: anchored, the window starts there.
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1026f, 1000f, 2100L))
+        assertEquals(GlideGestureDecider.State.REJECTED, d.onMove(1030f, 1000f, 2700L))
     }
 
     @Test
@@ -66,9 +116,11 @@ class GlideGestureDeciderTest {
     fun distanceAloneIsNotEnough_velocityIsRequired() {
         val d = decider()
         d.onDown(1000f, 1000f, 0L, eligible = true)
-        // 110 px in 420 ms = 0.262 px/ms < 0.275 — past the distance threshold but too slow.
-        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1110f, 1000f, 420L))
-        // Still tracking: the window has not closed yet (420 < 500).
+        // Anchored at t=100 (30 px > 25 px slop), then 110 px by t=500: 110/400 = 0.275 px/ms —
+        // NOT strictly above the threshold: past the distance threshold but too slow.
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1030f, 1000f, 100L))
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1110f, 1000f, 500L))
+        // Still tracking: the window has not closed yet (400 < 500 ms from the anchor).
         assertFalse(d.isArmed)
     }
 
@@ -134,8 +186,20 @@ class GlideGestureDeciderTest {
     }
 
     @Test
+    fun anImmediateSwipeArmsExactlyAsBeforeTheAnchor() {
+        // The P7-2 behavior on an immediately-swiped gesture is unchanged: the first move sample
+        // crosses the slop at once and the arm lands on the same sample it always did.
+        val d = decider()
+        d.onDown(1000f, 1000f, 0L, eligible = true)
+        assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1050f, 1000f, 20L))
+        assertEquals(GlideGestureDecider.State.ARMED, d.onMove(1150f, 1000f, 80L))
+    }
+
+    @Test
     fun theReferenceConstantsArePinned() {
         assertEquals(500L, GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS)
         assertEquals(0.10f, GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS, 0.0f)
+        // The first-move anchor slop: a quarter of a key width (≈ 8.9 dp on the reference phone).
+        assertEquals(0.25f, GlideGestureDecider.DEFAULT_SLOP_KEY_WIDTH_FRACTION, 0.0f)
     }
 }

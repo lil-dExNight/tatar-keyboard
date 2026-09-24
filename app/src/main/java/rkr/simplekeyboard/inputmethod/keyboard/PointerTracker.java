@@ -137,7 +137,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     // The placeholder never arms (an unreachable distance threshold); the real decider is built
     // by setKeyDetectorInner once the keyboard — and with it the key width — is known.
     private GlideGestureDecider mGlideDecider =
-            new GlideGestureDecider(Float.MAX_VALUE, 0f, GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS);
+            new GlideGestureDecider(Float.MAX_VALUE, 0f,
+                    GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS, Float.MAX_VALUE);
     private final GlidePath mGlidePath = new GlidePath(GlidePath.MAX_POINTS);
 
     // TODO: Add PointerTrackerFactory singleton and move some class static methods into it.
@@ -293,12 +294,15 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         mKeyDetector = keyDetector;
         mKeyboard = keyboard;
         // The glide decider's distance threshold is the keyboard's key width; the velocity
-        // threshold is the reference detector's 0.10 dp/ms, converted to pixels here.
+        // threshold is the reference detector's 0.10 dp/ms, converted to pixels here. The
+        // first-move anchor slop is a quarter of the key width (P7-2's field fix: a resting
+        // finger must not start the detection clock — docs/ROADMAP-P7.md).
         mGlideDecider = new GlideGestureDecider(
                 keyboard.mMostCommonKeyWidth,
                 GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS
                         * Resources.getSystem().getDisplayMetrics().density,
-                GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS);
+                GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS,
+                keyboard.mMostCommonKeyWidth * GlideGestureDecider.DEFAULT_SLOP_KEY_WIDTH_FRACTION);
         // Mark that keyboard layout has been changed.
         mKeyboardLayoutHasBeenChanged = true;
         // Keep {@link #mCurrentKey} that comes from previous keyboard. The key preview of
@@ -878,6 +882,11 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         if (mGlideDecider.isArmed()) {
             return;
         }
+        // P7-2 field fix (docs/ROADMAP-P7.md): the long-press actually FIRES for a still-undecided
+        // tracker — the more-keys panel owns the finger from here, and a finger moving after the
+        // panel is up is a panel selection, never a glide. Without this cancel the finger could
+        // leave the panel bounds and arm a glide on the main keyboard underneath.
+        mGlideDecider.cancelGlide();
         if (isShowingMoreKeysPanel()) {
             return;
         }

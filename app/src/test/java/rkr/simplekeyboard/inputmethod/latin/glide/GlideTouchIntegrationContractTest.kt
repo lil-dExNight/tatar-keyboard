@@ -93,6 +93,13 @@ class GlideTouchIntegrationContractTest {
         // The in-flight timer callbacks carry the armed guard.
         assertTrue(methodBody("onLongPressed").contains("if (mGlideDecider.isArmed())"))
         assertTrue(methodBody("onKeyRepeat").contains("if (mGlideDecider.isArmed())"))
+        // The field fix: a long-press that FIRES for an undecided tracker cancels the decider —
+        // a finger moving after the panel opened is a panel selection, never a glide.
+        val longPress = methodBody("onLongPressed")
+        val armedGuard = longPress.indexOf("if (mGlideDecider.isArmed())")
+        val cancel = longPress.indexOf("mGlideDecider.cancelGlide();")
+        assertTrue("the fired long-press cancels the decider", cancel >= 0)
+        assertTrue("the cancel sits behind the armed guard", cancel > armedGuard)
     }
 
     @Test
