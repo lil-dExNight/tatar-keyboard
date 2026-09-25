@@ -192,18 +192,28 @@ class NoiseModelTest(unittest.TestCase):
 
     def test_doubled_letter_can_draw_the_loop(self) -> None:
         # The loop machinery: a doubled letter with draw_loop=True contributes the 4 corners
-        # (3 extra vertices), and at least one fixture word's pinned stream draws it.
+        # (3 extra vertices). P7-8: the loop is the CALLER's decision, and generate_set emits
+        # both variants of a doubled word — the no-jog row first, then the jog row.
         plain = pack._ideal_vertices("абба", FIXTURE_BY_LETTER, False)[0]
         looped = pack._ideal_vertices("абба", FIXTURE_BY_LETTER, True)[0]
         self.assertEqual(len(plain), 4)
         self.assertEqual(len(looped), 7)
         self.assertEqual(looped[0], plain[0])
-        drawn = []
-        for word in ("ббага", "ббдга", "ввбга", "еебга", "абба", "агга", "адда"):
-            stream = pack.splitmix64(pack.GLIDE_SEED ^ pack.fnv1a64(word.encode("utf-8")))
-            if stream % pack.LOOP_MODULUS == 0:
-                drawn.append(word)
-        self.assertTrue(drawn, "no fixture word's stream draws the doubled-letter loop")
+        # generate_gesture honors the caller's flag for a doubled word and ignores it otherwise.
+        no_jog = pack.generate_gesture("абба", FIXTURE_BY_LETTER, FIXTURE_RADIUS, draw_loop=False)
+        jog = pack.generate_gesture("абба", FIXTURE_BY_LETTER, FIXTURE_RADIUS, draw_loop=True)
+        self.assertNotEqual(no_jog, jog)
+        plain_word = pack.generate_gesture("абва", FIXTURE_BY_LETTER, FIXTURE_RADIUS, draw_loop=True)
+        plain_word_default = pack.generate_gesture("абва", FIXTURE_BY_LETTER, FIXTURE_RADIUS)
+        self.assertEqual(plain_word, plain_word_default)
+        # The set carries both rows of a doubled word, no-jog first.
+        rendered, _ = pack.generate_set(["абваг", "абба"], FIXTURE_RECTS)
+        rows = rendered.splitlines()
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(rows[0].startswith("абваг\t"))
+        self.assertTrue(rows[1].startswith("абба\t"))
+        self.assertTrue(rows[2].startswith("абба\t"))
+        self.assertNotEqual(rows[1], rows[2])
 
     def test_render_format_is_pinned(self) -> None:
         points = [(1, 2, 0), (30, 40, 8)]
@@ -239,12 +249,13 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         selected = pack.select_words(words, EVAL_WORDS, letters)
         _, data = pack.generate_set(selected, rects)
         # Recorded in docs/ROADMAP-P7.md and asserted identically by the Kotlin calibration
-        # test (GlideRecoveryCalibrationTest) -- the cross-language mirror pin.
+        # test (GlideRecoveryCalibrationTest) -- the cross-language mirror pin. P7-8: the set
+        # carries both variants of every doubled word (the row count outgrew the word count).
         self.assertEqual(len(selected), 4498)
-        self.assertEqual(len(data), 9181165)
+        self.assertEqual(len(data), 10113092)
         self.assertEqual(
             sha256_bytes(data),
-            "ea7a58fa090906fd4f4af66da9ba9e928d1d8e405882adc9b9ebb390c4e59549",
+            "d5a729e68453d6d6c6373f2c44e58a5f61c26dc90f9629ab388c1595a9d27fe0",
         )
 
 

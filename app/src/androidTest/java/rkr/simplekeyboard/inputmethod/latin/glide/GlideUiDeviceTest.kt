@@ -29,12 +29,13 @@ import rkr.simplekeyboard.inputmethod.R
  * the REAL keyboard on screen — the debug IME is enabled and made default by the host before
  * the run — press с, REST ~0.8 s, drag through ә→л→ә→м, lift.
  *
- * The P7-5 lift-commit contract: the lift itself commits the decode's top cell («сәлләм» — the
- * documented degenerate-path collision, see ROADMAP-P7 P7-3), the strip keeps the remaining
- * candidates as tappable alternatives, and tapping the cell that holds сәләм (the first
- * alternative — the left cell) replaces the committed word in place. P7-7 (2026-09-25): the
- * commits carry NO auto-space, and a second glide right after the first prepends exactly ONE
- * chain space (the д hereby path below: д→о→н→ь→я).
+ * The P7-5 lift-commit contract: the lift itself commits the decode's top cell; the strip keeps
+ * the remaining candidates as tappable alternatives, and tapping the cell that holds the doubled
+ * twin replaces the committed word in place. P7-7 (2026-09-25): the commits carry NO auto-space,
+ * and a second glide right after the first prepends exactly ONE chain space (the д hereby path
+ * below: д→о→н→ь→я). P7-8: the doubled letter needs loop evidence, so the no-loop сәләм path
+ * commits the PLAIN word (сәләм) and сәлләм rides the alternatives (before P7-8 it was the other
+ * way round — the doubled word won on frequency, the field report of 2026-09-25).
  *
  * The events go through `Instrumentation.sendPointerSync` — real system-level injection into
  * the live IME window, with real wall-clock holds. The strip-visible screenshot is taken by the
@@ -70,7 +71,34 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         driveUiGesture(800L)
     }
 
-    private fun driveUiGesture(holdMs: Long) {
+    /**
+     * P7-8: the same с-ә-л-ә-м gesture but with a deliberate small loop at л — the doubled word
+     * «сәлләм» must win (the loop IS the evidence). Screen-loop of ±16 px x / ±24 px y around
+     * the л key, matching the ideal path's quarter-key detour.
+     */
+    fun testALoopAtTheDoubledLetterDeliversTheDoubledWord() {
+        val field = prepareField()
+        val path = listOf(
+            234f to 1396f, // с
+            60f to 1110f, // ә
+            491f to 1301f, // л
+            507f to 1325f, // the loop: bottom-right
+            507f to 1277f, // top-right
+            475f to 1277f, // top-left
+            475f to 1325f, // bottom-left
+            60f to 1110f, // ә
+            297f to 1396f, // м
+        )
+        drivePath(instrumentation, path, holdMs = 0L)
+        Thread.sleep(1500)
+        val lifted = field.text.toString()
+        Log.i(TAG, "field after the looped lift: '$lifted'")
+        assertTrue("the looped path must commit the doubled word, was '$lifted'",
+            lifted == "сәлләм")
+    }
+
+    /** The shared warm-up: the activity, the focused field, the live engine. */
+    private fun prepareField(): EditText {
         val instrumentation = getInstrumentation()
         val context = instrumentation.targetContext
         val activity = instrumentation.startActivitySync(
@@ -119,6 +147,11 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         // dictionary was already prepared here, but the start is still slow on this class of
         // device). Wait it out; the gesture must see a live engine.
         Thread.sleep(9000)
+        return field
+    }
+
+    private fun driveUiGesture(holdMs: Long) {
+        val field = prepareField()
 
         // The gesture: down on с, rest 800 ms, then ә → л → ә → м, lift. Screen coordinates of
         // the live 720x1640 layout (calibrated from the device screencap, 2026-09-24).
@@ -138,19 +171,19 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         val lifted = field.text.toString()
         Log.i(TAG, "field right after the lift: '$lifted'")
         assertTrue(
-            "the lift itself commits the top candidate — P7-7: with NO auto-space, was '$lifted'",
-            lifted == "сәлләм",
+            "P7-8: the no-loop path commits the PLAIN word with NO auto-space, was '$lifted'",
+            lifted == "сәләм",
         )
 
-        // Tap the LEFT strip cell: the alternatives hold candidates 2..4, and сәләм is the
-        // first of them (the committed top cell сәлләм is no longer in the strip).
+        // Tap the LEFT strip cell: the alternatives hold candidates 2..4, and the doubled twin
+        // сәлләм is the first of them (the committed plain word is no longer in the strip).
         tap(instrumentation, 120f, 980f)
         Thread.sleep(1500)
         val after = field.text.toString()
         Log.i(TAG, "field after the alternative tap: '$after'")
         assertTrue(
             "the alternative tap must replace the committed word in place (no space drift), was '$after'",
-            after == "сәләм",
+            after == "сәлләм",
         )
 
         // P7-7 chaining: a second glide right after prepends exactly ONE space.
@@ -170,7 +203,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         // decoded word, nothing trailing.
         assertTrue(
             "the chained glide prepends exactly one space and no trailing one, was '$chained'",
-            chained.matches(Regex("сәләм \\S+")),
+            chained.matches(Regex("сәлләм \\S+")),
         )
 
         // And the undo of the chain step returns to exactly the first word's state.
@@ -179,7 +212,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         val undone = field.text.toString()
         Log.i(TAG, "field after the chain undo: '$undone'")
         assertTrue("undo must delete the word WITH the chain space, was '$undone'",
-            undone == "сәләм")
+            undone == "сәлләм")
     }
 
     /**

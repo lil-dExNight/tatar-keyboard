@@ -245,19 +245,19 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        // The UX amendment (docs/ROADMAP-P7.md): the lift itself commits the top-1, through the
-        // glide's own commit path — no tap; P7-7: with NO auto-space. сәлләм/сәләм are the
-        // documented degenerate-path pair, so the top-1 is сәлләм by the frequency prior.
-        assertEquals("сәлләм", h.editor.text)
-        assertEquals(listOf("" to "сәлләм"), h.editor.predictedCommits)
+        // The lift commits the top-1 through the glide's own commit path — no tap; P7-7: NO
+        // auto-space; P7-8: the doubled twin needs loop evidence, so the no-loop path's top-1 is
+        // the PLAIN word now (was сәлләм by the frequency prior before P7-8).
+        assertEquals("сәләм", h.editor.text)
+        assertEquals(listOf("" to "сәләм"), h.editor.predictedCommits)
         // P7-7: the editor's trailing word after a glide commit IS the committed word — the
         // strip's later derivations treat it exactly as a typed word (the prefix path).
-        assertEquals("сәлләм", h.editor.cachedWordBeforeCursor())
-        // The strip then shows the remaining candidates as tappable alternatives — сәләм is one.
+        assertEquals("сәләм", h.editor.cachedWordBeforeCursor())
+        // The strip then shows the remaining candidates as tappable alternatives.
         val last = h.strip.shown.last()
         val cells = listOfNotNull(last.first, last.second, last.third)
-        assertTrue("сәләм must ride the alternatives, was $cells", cells.contains("сәләм"))
-        assertFalse("the committed word is not re-offered", cells.contains("сәлләм"))
+        assertTrue("сәлләм must ride the alternatives, was $cells", cells.contains("сәлләм"))
+        assertFalse("the committed word is not re-offered", cells.contains("сәләм"))
     }
 
     @Test
@@ -266,16 +266,17 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        h.strip.listener!!.onTap("сәләм")
+        h.strip.listener!!.onTap("сәлләм")
 
         // The alternative replaced the lift-committed word in the editor — in place, P7-7: no
-        // space added or removed.
-        assertEquals("сәләм", h.editor.text)
+        // space added or removed. (P7-8: the strip order flipped — the plain word is the
+        // lift-commit, the doubled twin rides the alternatives.)
+        assertEquals("сәлләм", h.editor.text)
         // The strip then behaves as if the word had been typed (P7-7): the trailing word is
-        // "сәләм", so the band is the prefix path for it (forms), not the NEXT_WORD chain that
+        // "сәлләм", so the band is the prefix path for it (forms), not the NEXT_WORD chain that
         // followed the auto-spaced commit before P7-7 (was Triple("сәләмә","һәм","белән")).
         val last = h.strip.shown.last()
-        assertEquals(Triple("сәләмәтлек", "сәләмәт", "сәләмә"), last)
+        assertEquals(Triple("сәлләмнең", "сәлләмгә", null), last)
     }
 
     @Test
@@ -284,7 +285,7 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("сәлләм", h.editor.text)
+        assertEquals("сәләм", h.editor.text)
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("", h.editor.text)
     }
@@ -299,7 +300,7 @@ class GlideEndToEndTest {
         h.editor.text += "б"
         h.controller.onTextChanged()
         assertFalse(h.controller.maybeUndoGlideCommit())
-        assertEquals("сәлләмб", h.editor.text)
+        assertEquals("сәләмб", h.editor.text)
     }
 
     @Test
@@ -308,8 +309,8 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        h.strip.listener!!.onTap("сәләм")
-        assertEquals("сәләм", h.editor.text)
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәлләм", h.editor.text)
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("", h.editor.text)
     }
@@ -323,7 +324,7 @@ class GlideEndToEndTest {
         h.start(eligible = false, glideEligible = true)
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         // The commit is typing, not a suggestion: the word lands (P7-7: with NO auto-space)…
-        assertEquals("сәлләм", h.editor.text)
+        assertEquals("сәләм", h.editor.text)
         // …and the strip — the suggestions surface — shows NOTHING: no alternatives band…
         assertTrue("no band may paint with the master off, was ${h.strip.shown}",
             h.strip.shown.isEmpty())
@@ -351,8 +352,8 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals(listOf("" to "сәлләм"), h.editor.predictedCommits)
-        assertEquals("сәлләм", h.editor.text)
+        assertEquals(listOf("" to "сәләм"), h.editor.predictedCommits)
+        assertEquals("сәләм", h.editor.text)
     }
 
     @Test
@@ -363,7 +364,7 @@ class GlideEndToEndTest {
         h.start()
         h.editor.text = "китеп? "
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("китеп? сәлләм", h.editor.text)
+        assertEquals("китеп? сәләм", h.editor.text)
     }
 
     @Test
@@ -376,7 +377,7 @@ class GlideEndToEndTest {
         h.start()
         h.editor.text = "Синен хэллэр ничек ? "
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("Синен хэллэр ничек ? сәлләм", h.editor.text)
+        assertEquals("Синен хэллэр ничек ? сәләм", h.editor.text)
     }
 
     @Test
@@ -386,7 +387,7 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("Сәлләм", h.editor.text)
+        assertEquals("Сәләм", h.editor.text)
     }
 
     @Test
@@ -446,11 +447,11 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("сәлләм", h.editor.text)
+        assertEquals("сәләм", h.editor.text)
         // The alternatives band was painted for the pre-bump session: a tap must not edit.
         h.controller.onSelectionChanged()
-        h.strip.listener!!.onTap("сәләм")
-        assertEquals("сәлләм", h.editor.text)
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәләм", h.editor.text)
     }
 
     @Test
@@ -482,8 +483,8 @@ class GlideEndToEndTest {
         // "сәлләмб" has no band of its own — so the pin is the tap's inertness, not a repaint.)
         h.editor.text += "б"
         h.controller.onTextChanged()
-        h.strip.listener!!.onTap("сәләм")
-        assertEquals("сәлләмб", h.editor.text)
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәләмб", h.editor.text)
     }
 
     // --- P7-7: no auto-space, the chain space is the only separator (2026-09-25) ---------------
@@ -494,12 +495,12 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("сәлләм", h.editor.text)
+        assertEquals("сәләм", h.editor.text)
         // The chain: the trailing word is the previous glide commit, so the second gesture is
         // allowed and prepends ONE space — and nothing trails.
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("сәлләм сәлләм", h.editor.text)
-        assertEquals(listOf("" to "сәлләм", "" to "сәлләм"), h.editor.predictedCommits)
+        assertEquals("сәләм сәләм", h.editor.text)
+        assertEquals(listOf("" to "сәләм", "" to "сәләм"), h.editor.predictedCommits)
     }
 
     @Test
@@ -509,10 +510,10 @@ class GlideEndToEndTest {
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("сәлләм сәлләм", h.editor.text)
+        assertEquals("сәләм сәләм", h.editor.text)
         // The undo takes the prepended chain space along with the word.
         assertTrue(h.controller.maybeUndoGlideCommit())
-        assertEquals("сәлләм", h.editor.text)
+        assertEquals("сәләм", h.editor.text)
     }
 
     @Test
@@ -523,7 +524,7 @@ class GlideEndToEndTest {
         h.start()
         h.editor.text = "сүз "
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("сүз сәлләм", h.editor.text)
+        assertEquals("сүз сәләм", h.editor.text)
         // The undo takes ONLY the word: the user's own space is not the commit's.
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("сүз ", h.editor.text)
@@ -535,13 +536,13 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        h.strip.listener!!.onTap("сәләм") // fix the first word in place
-        assertEquals("сәләм", h.editor.text)
+        h.strip.listener!!.onTap("сәлләм") // fix the first word in place
+        assertEquals("сәлләм", h.editor.text)
         // The chain continues after the replacement: the undo word is the alternative.
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("сәләм сәлләм", h.editor.text)
+        assertEquals("сәлләм сәләм", h.editor.text)
         assertTrue(h.controller.maybeUndoGlideCommit())
-        assertEquals("сәләм", h.editor.text)
+        assertEquals("сәлләм", h.editor.text)
     }
 
     // --- Real assets -----------------------------------------------------------------------------

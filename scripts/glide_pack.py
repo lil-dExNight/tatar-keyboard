@@ -41,9 +41,12 @@ device tuning re-derives the constants from live geometry.
 Noise model (per word, draws consumed in this exact order from the SplitMix64 stream seeded
 by ``splitmix64(GLIDE_SEED ^ fnv1a64(word.utf8))``):
 
-1. doubled-letter loop: when the word has a doubled letter, one draw decides (probability
-   1/LOOP_MODULUS) whether the ideal path draws the quarter-key loop detour on it (users
-   mostly do not draw the loop; the decoder scores both variants regardless);
+1. doubled-letter loop (P7-8): the loop is no longer a draw — the SET carries both variants
+   of a doubled word (``generate_set`` emits the no-jog row first, then the jog row, the two
+   drawn from the same word stream so the pair differs exactly in the detour), because the
+   decoder's P7-8 rule scores a doubled word only against its looped ideal path and the
+   calibration must measure both classes. ``generate_gesture`` takes ``draw_loop`` from the
+   caller;
 2. sampling step: ``STEP_MIN + draw % STEP_VAR`` grid units -- the raw-path sampling density
    varies per word like a real digitizer's event rate does with finger speed;
 3. timestamp step: ``TSTEP_MIN + draw % TSTEP_VAR`` milliseconds per sample (carried for the
@@ -59,6 +62,11 @@ by ``splitmix64(GLIDE_SEED ^ fnv1a64(word.utf8))``):
    initial x/y offsets are two draws in [-JITTER, +JITTER]; every subsequent point first draws
    an x increment then a y increment, each uniform in [-WANDER, +WANDER], applied and clamped
    to [-JITTER, +JITTER]. All integer, added after the (already integer) interpolation.
+
+Historical note (2026-09-25): the pre-P7-8 model decided the loop by ``stream %
+LOOP_MODULUS == 0`` with LOOP_MODULUS = 8 -- nominally 12.5 %, but 75.1 % of the selection's
+doubled words drew it (the low bits of the seeded SplitMix64 stream are not uniform enough
+for that modulus; measured, not chased -- the two-row model makes the quirk moot).
 
 The generator is fail-closed exactly like typo_pack: wrong dictionary pins, missing layout or
 eval inputs, an unmappable-alphabet or an empty/over-large set all exit nonzero with no
@@ -112,6 +120,8 @@ _TOP_PADDING_PERCENT_X1000 = 2335  # config_keyboard_top_padding = 2.335%p
 _LETTER_ROWS = 4  # the extra Tatar row plus the three qwerty rows
 _GRID_WIDTH = typo_pack._GEOMETRY_REFERENCE_WIDTH  # 100 000
 # Noise model (see the module docstring). STEP/JITTER are in grid units; TSTEP in ms.
+# LOOP_MODULUS is historical (pre-P7-8 the loop was a 1/LOOP_MODULUS draw; the set now carries
+# both variants of a doubled word) — the constant stays pinned for the golden vectors.
 LOOP_MODULUS = 8
 CUT_MODULUS = 10
 STEP_DIVISOR = 6  # step range = [narrowestKeyWidth/6, narrowestKeyWidth/3): ~12-25 device px
@@ -280,17 +290,19 @@ def generate_gesture(
     radius: int,
     *,
     seed: int = GLIDE_SEED,
-    loop_modulus: int = LOOP_MODULUS,
+    draw_loop: bool = False,
     cut_modulus: int = CUT_MODULUS,
     jitter_percent: int = JITTER_PERCENT,
 ) -> list[tuple[int, int, int]]:
-    """One synthetic gesture for ``word`` as (x, y, t) integer samples; see the noise model."""
+    """One synthetic gesture for ``word`` as (x, y, t) integer samples; see the noise model.
+
+    P7-8: the loop is the CALLER's decision, not a draw — the calibration set carries both
+    variants of a doubled word (the loop-decision draw of the pre-P7-8 model is gone, and the
+    stream starts feeding the step draw immediately).
+    """
     has_double = any(word[i] == word[i - 1] for i in range(1, len(word)))
     stream = splitmix64(seed ^ fnv1a64(word.encode("utf-8")))
-    draw_loop = False
-    if has_double:
-        draw_loop = stream % loop_modulus == 0
-        stream = splitmix64(stream)
+    draw_loop = draw_loop and has_double
     # The sampling step references the narrowest letter-key width (the bottom row's 8.711%p
     # keys set it on the Tatar layout).
     standard_width = min(rect.right - rect.left for rect in by_letter.values())
@@ -383,10 +395,18 @@ def generate_set(
 ) -> tuple[str, bytes]:
     by_letter = {rect.code_point: rect for rect in rects}
     radius = key_radius(rects)
-    rendered = "".join(
-        render_gesture(word, generate_gesture(word, by_letter, radius, seed=seed))
-        for word in words
-    )
+    rows: list[str] = []
+    for word in words:
+        # P7-8: a doubled word contributes BOTH variants — the no-jog row first, then the jog
+        # row — drawn from the same word stream, so the pair differs exactly in the detour.
+        rows.append(render_gesture(word, generate_gesture(word, by_letter, radius, seed=seed)))
+        if any(word[i] == word[i - 1] for i in range(1, len(word))):
+            rows.append(
+                render_gesture(
+                    word, generate_gesture(word, by_letter, radius, seed=seed, draw_loop=True),
+                )
+            )
+    rendered = "".join(rows)
     return rendered, rendered.encode("utf-8")
 
 

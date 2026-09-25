@@ -103,10 +103,14 @@ class GlideRecoveryCalibrationTest {
         val centerY: Int get() = (top + bottom) / 2
     }
 
-    private class GeneratedPath(val xs: IntArray, val ys: IntArray, val ts: IntArray)
+    private class GeneratedPath(val xs: IntArray, val ys: IntArray, val ts: IntArray, val drewLoop: Boolean) {
+        /** The word of the set row this path was generated for (P7-8: rows outnumber words). */
+        var rowWord: String = ""
+    }
 
     private fun generateGesture(
         word: String,
+        drawLoop: Boolean = false,
         jitterPercent: Int = JITTER_PERCENT,
         cutModulus: Long = CUT_MODULUS,
         wanderDivisor: Int = WANDER_DIVISOR,
@@ -124,11 +128,9 @@ class GlideRecoveryCalibrationTest {
             if (codePoints[i] == codePoints[i - 1]) hasDouble = true
         }
         var stream = splitmix64(GLIDE_SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
-        var drawLoop = false
-        if (hasDouble) {
-            drawLoop = java.lang.Long.remainderUnsigned(stream, LOOP_MODULUS) == 0L
-            stream = splitmix64(stream)
-        }
+        // P7-8: the loop is the CALLER's decision (the set carries both variants of a doubled
+        // word); the pre-P7-8 decision draw is gone, the stream feeds the step draw at once.
+        val loop = drawLoop && hasDouble
         val stepMin = minWidth / STEP_DIVISOR
         val step = stepMin + java.lang.Long.remainderUnsigned(stream, stepMin.toLong()).toInt()
         stream = splitmix64(stream)
@@ -143,7 +145,7 @@ class GlideRecoveryCalibrationTest {
         var previous = -1
         for (codePoint in codePoints) {
             val rect = byLetter.getValue(Character.toLowerCase(codePoint))
-            if (drawLoop && codePoint == previous) {
+            if (loop && codePoint == previous) {
                 val dx = (rect.right - rect.left) / 4
                 val dy = (rect.bottom - rect.top) / 4
                 vertexX[vertexCount] = rect.centerX + dx
@@ -242,7 +244,7 @@ class GlideRecoveryCalibrationTest {
             ys[index] = pointY[index] + offsetY
             ts[index] = index * tstep
         }
-        return GeneratedPath(xs, ys, ts)
+        return GeneratedPath(xs, ys, ts, loop)
     }
 
     private fun renderSet(
@@ -254,17 +256,31 @@ class GlideRecoveryCalibrationTest {
         val rendered = StringBuilder()
         val paths = ArrayList<GeneratedPath>(words.size)
         for (word in words) {
-            val path = generateGesture(word, jitterPercent, cutModulus, wanderDivisor)
-            paths.add(path)
-            rendered.append(word).append('\t')
-            for (i in path.xs.indices) {
-                if (i > 0) rendered.append(';')
-                rendered.append(path.xs[i]).append(',').append(path.ys[i]).append(',')
-                    .append(path.ts[i])
+            // P7-8: a doubled word contributes BOTH variants — the no-jog row first, then the
+            // jog row — drawn from the same word stream (mirror of glide_pack.generate_set).
+            appendRow(word, generateGesture(word, false, jitterPercent, cutModulus, wanderDivisor), rendered, paths)
+            if (hasDoubledLetter(word)) {
+                appendRow(word, generateGesture(word, true, jitterPercent, cutModulus, wanderDivisor), rendered, paths)
             }
-            rendered.append('\n')
         }
         return rendered to paths
+    }
+
+    private fun appendRow(
+        word: String,
+        path: GeneratedPath,
+        rendered: StringBuilder,
+        paths: ArrayList<GeneratedPath>,
+    ) {
+        path.rowWord = word
+        paths.add(path)
+        rendered.append(word).append('\t')
+        for (i in path.xs.indices) {
+            if (i > 0) rendered.append(';')
+            rendered.append(path.xs[i]).append(',').append(path.ys[i]).append(',')
+                .append(path.ts[i])
+        }
+        rendered.append('\n')
     }
 
     private fun decodePath(path: GeneratedPath, decoder: GlideDecoder, reusable: GlidePath): Int {
@@ -330,15 +346,26 @@ class GlideRecoveryCalibrationTest {
         val heldTop = IntArray(2)
         var trainCount = 0
         var heldCount = 0
+        // P7-8 per-class split (the doubled-letter evidence rule): plain words, doubled words
+        // whose gesture drew the loop, and doubled words whose gesture did not — the no-jog
+        // class split again by whether the undoubled twin exists in the dictionary (the twin
+        // competition is the field report's class; a twinless doubled word is the only shape
+        // candidate on its path and keeps winning, which is correct).
+        val classNames = arrayOf("plain", "doubled_jog", "doubled_nojog_twinless", "doubled_nojog_twin")
+        val classHeldCount = IntArray(4)
+        val classHeldTop = Array(4) { IntArray(2) }
         val timings = ArrayList<Long>()
         val candidates = ArrayList<Int>()
         val scored = ArrayList<Int>()
 
         // Train pass first: it doubles as the warmup (the lazy index build happens here).
-        for ((position, word) in words.withIndex()) {
+        // P7-8: the iteration unit is the SET ROW (a doubled word contributes two) — the row
+        // carries its word with it.
+        for ((position, path) in paths.withIndex()) {
+            val word = path.rowWord
             val heldOut = isHeldOut(word)
             val started = System.nanoTime()
-            val count = decodePath(paths[position], decoder, reusablePath)
+            val count = decodePath(path, decoder, reusablePath)
             val elapsed = System.nanoTime() - started
             val top1 = count > 0 && decodeResult.words[0] == word
             var top3 = false
@@ -349,6 +376,15 @@ class GlideRecoveryCalibrationTest {
                 heldCount++
                 if (top1) heldTop[0]++
                 if (top3) heldTop[1]++
+                val clazz = when {
+                    !hasDoubledLetter(word) -> 0
+                    path.drewLoop -> 1
+                    twinInDictionary(word) -> 3
+                    else -> 2
+                }
+                classHeldCount[clazz]++
+                if (top1) classHeldTop[clazz][0]++
+                if (top3) classHeldTop[clazz][1]++
                 timings.add(elapsed)
                 candidates.add(decoder.lastCandidateCount)
                 scored.add(decoder.lastScoredCount)
@@ -380,14 +416,50 @@ class GlideRecoveryCalibrationTest {
                 "G2(p95<=2ms)=${if (p95 <= G2_P95_MS) "PASS" else "FAIL"} " +
                 "candidates_p95=$candidateP95 candidates_max=$candidateMax scored_p95=$scoredP95",
         )
+        // The per-class printout (P7-8): the evidence rule's whole story in three lines.
+        val classTop1 = DoubleArray(4)
+        val classTop3 = DoubleArray(4)
+        for (clazz in 0 until 4) {
+            if (classHeldCount[clazz] == 0) continue
+            classTop1[clazz] = classHeldTop[clazz][0].toDouble() / classHeldCount[clazz] * 100.0
+            classTop3[clazz] = classHeldTop[clazz][1].toDouble() / classHeldCount[clazz] * 100.0
+            println(
+                "Glide P7-8 class ${classNames[clazz]}: n=${classHeldCount[clazz]} " +
+                    "top1=${fmt(classTop1[clazz])}% " +
+                    "top3=${fmt(classTop3[clazz])}%",
+            )
+        }
 
         assertTrue("held-out top-3 ${fmt(heldTop3)}% below the 60% gate", heldTop3 >= G1_TOP3_MIN)
         assertTrue("held-out top-1 ${fmt(heldTop1)}% below the 35% gate", heldTop1 >= G1_TOP1_MIN)
         assertTrue("decode p95 ${fmt(p95)}ms over the 2ms host gate", p95 <= G2_P95_MS)
+
+        // P7-8 written tolerances (docs/ROADMAP-P7.md), measured old -> new on the classes:
+        // plain 69.2308 -> 69.6154 top-1 (an IMPROVEMENT — the doubled candidates stopped
+        // stealing plain wins; the pre-written tolerance was a 1.0 pp regression), doubled+no-jog
+        // with the twin in the dictionary 79.2453* -> 7.1429 top-1 (*the pre-fix no-jog doubled
+        // class), doubled+jog 77.2926 top-1 — the jog keeps decoding.
+        assertTrue(
+            "plain top-1 regressed past the 1.0 pp tolerance (pre-fix 69.2308)",
+            classTop1[0] >= 69.2308 - 1.0,
+        )
+        assertTrue(
+            "plain top-3 regressed past the 1.0 pp tolerance (pre-fix 76.8750)",
+            classTop3[0] >= 76.8750 - 1.0,
+        )
+        assertTrue(
+            "a doubled word must not win its no-jog row when the twin exists (ceiling 10%)",
+            classTop1[3] <= 10.0,
+        )
+        assertTrue(
+            "doubled words must still decode when the path jogs (floor 70%)",
+            classTop1[1] >= 70.0,
+        )
     }
 
     /**
-     * The tuning surface: top-3 on the TRAIN split (every second word) over a sigma grid around
+     * The tuning surface: top-3 on the TRAIN split (every second row — P7-8: the iteration unit
+     * is the set ROW, a doubled word contributes two) over a sigma grid around
      * the shipped constants — the ported PR #1870 values (22.08 / 0.5109) included — plus a
      * frequency-exponent row at the shipped sigmas. The constants were chosen train-side; the
      * held-out numbers of [gatesG1AndG2OnTheRealDictionary] are the reported ones. Diagnostic
@@ -397,7 +469,7 @@ class GlideRecoveryCalibrationTest {
     fun tuningSurfaceOnTheTrainSplit() {
         val words = selectWords()
         val (_, paths) = renderSet(words)
-        val train = trainWordIndices(words)
+        val train = trainWordIndices(paths)
         val reusablePath = GlidePath(1024)
         val inventory = TdictGlideInventory(realIndex!!)
         val wordIndex = GlideWordIndex.build(inventory, geometry)
@@ -412,7 +484,7 @@ class GlideRecoveryCalibrationTest {
                 val found = decodePath(paths[position], decoder, reusablePath)
                 var hit = false
                 for (slot in 0 until minOf(3, found)) {
-                    if (decodeResult.words[slot] == words[position]) hit = true
+                    if (decodeResult.words[slot] == paths[position].rowWord) hit = true
                 }
                 if (hit) top3++
             }
@@ -451,11 +523,11 @@ class GlideRecoveryCalibrationTest {
         println(gammaRow.toString())
     }
 
-    /** Every second TRAIN word's index (the tuning grid must not pay full-set decodes). */
-    private fun trainWordIndices(all: List<String>): List<Int> {
-        val result = ArrayList<Int>(all.size / 4)
-        for ((index, word) in all.withIndex()) {
-            if (!isHeldOut(word) && index % 2 == 0) result.add(index)
+    /** Every second TRAIN row's index (the tuning grid must not pay full-set decodes). */
+    private fun trainWordIndices(paths: List<GeneratedPath>): List<Int> {
+        val result = ArrayList<Int>(paths.size / 4)
+        for ((index, path) in paths.withIndex()) {
+            if (!isHeldOut(path.rowWord) && index % 2 == 0) result.add(index)
         }
         return result
     }
@@ -521,6 +593,35 @@ class GlideRecoveryCalibrationTest {
             splitmix64(SPLIT_SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8))), 2L,
         ) == 1L
 
+    /** P7-8 class split: the word carries a doubled letter (adjacent equal code points). */
+    private fun hasDoubledLetter(word: String): Boolean {
+        var previous = -1
+        var offset = 0
+        while (offset < word.length) {
+            val codePoint = word.codePointAt(offset)
+            if (codePoint == previous) return true
+            previous = codePoint
+            offset += Character.charCount(codePoint)
+        }
+        return false
+    }
+
+    /** P7-8: the undoubled twin of [word] (every doubled run collapsed once) is a dictionary
+     * word — the twin competition, the field report's class. */
+    private fun twinInDictionary(word: String): Boolean {
+        val twin = StringBuilder(word.length)
+        var offset = 0
+        while (offset < word.length) {
+            val codePoint = word.codePointAt(offset)
+            twin.appendCodePoint(codePoint)
+            offset += Character.charCount(codePoint)
+            if (offset < word.length && word.codePointAt(offset) == codePoint) {
+                offset += Character.charCount(codePoint)
+            }
+        }
+        return twin.toString() in vocabularySet
+    }
+
     private fun percentileNanos(sorted: List<Long>, fraction: Double): Double {
         val rank = maxOf(1, ceil(sorted.size * fraction).toInt())
         return sorted[rank - 1] / 1_000_000.0
@@ -548,10 +649,11 @@ class GlideRecoveryCalibrationTest {
         private const val WANDER_DIVISOR = 6
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts).
+        // P7-8: the set carries both variants of every doubled word (rows outnumber words).
         private const val SET_SIZE = 4498
-        private const val SET_BYTES = 9181165
+        private const val SET_BYTES = 10113092
         private const val SET_SHA256 =
-            "ea7a58fa090906fd4f4af66da9ba9e928d1d8e405882adc9b9ebb390c4e59549"
+            "d5a729e68453d6d6c6373f2c44e58a5f61c26dc90f9629ab388c1595a9d27fe0"
 
         // The written gates of docs/GLIDE-PLAN.md (P7-1), fixed before any code.
         private const val G1_TOP3_MIN = 60.0
@@ -562,6 +664,7 @@ class GlideRecoveryCalibrationTest {
         private var realIndex: TdictPrefixIndex? = null
         private var sharedDecoder: GlideDecoder? = null
         private lateinit var vocabulary: List<String>
+        internal var vocabularySet: Set<String> = emptySet()
         private lateinit var evalLines: List<String>
 
         private fun sharedDecoder(): GlideDecoder {
@@ -600,6 +703,7 @@ class GlideRecoveryCalibrationTest {
                 )
                 check(realIndex != null)
                 vocabulary = DictionaryTestFixtures.words(raw)
+                vocabularySet = vocabulary.toSet()
                 check(vocabulary.size == spec.expectedEntryCount.toInt())
             } finally {
                 rawFile.delete()

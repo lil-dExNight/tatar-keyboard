@@ -35,11 +35,15 @@ import kotlin.math.sqrt
  *     dictionary rejection at ~93.9 % sensitivity).
  *  2. Length pruning: a survivor stays only when its plain OR looped ideal-path length lies
  *     within [GlideConstants.lengthThreshold] x key radius of the gesture's length.
- *  3. Scoring, per survivor and per ideal-path variant (plain, and looped when the word has a
- *     doubled letter — the "pool/poll" trick): shape distance (bbox-normalized pointwise L1
+ *  3. Scoring, per survivor against its ONE ideal path (the looped variant when the word has a
+ *     doubled letter, the plain one otherwise — P7-8, the 2026-09-25 field report: the old
+ *     best-of-both-variants let the doubled word's PLAIN variant match the undoubled twin's
+ *     path exactly, so frequency decided between the twins and сәлләм beat сәләм on every
+ *     no-loop path; a doubled letter now requires loop evidence in the user path): shape
+ *     distance (bbox-normalized pointwise L1
  *     over the resampled paths, Gaussian with [GlideConstants.shapeStd]) x location distance
  *     (absolute pointwise L1/2, Gaussian with [GlideConstants.locationStdFactor] x key radius)
- *     x a frequency weight. The best variant's confidence competes for the top-N; cheap
+ *     x a frequency weight. The confidence competes for the top-N; cheap
  *     fail-fast checks (frequency alone, then shape alone) skip the expensive channels when a
  *     candidate cannot reach the current k-th worst score.
  *
@@ -275,125 +279,18 @@ class GlideDecoder(
             return topCount
         }
         var best = Float.POSITIVE_INFINITY
-        val variants = if (index.loopLengthAt(entry) >= 0f) 2 else 1
-        for (variant in 0 until variants) {
-            val points = GlideIdealPaths.write(
-                index, entry, geometry, variant == 1, idealX, idealY, idealStats, idealSegLens,
-                idealInvSegLens,
-            )
-            if (points < 0) continue
-            val totalLength =
-                if (variant == 1) index.loopLengthAt(entry) else index.plainLengthAt(entry)
-            // The normalize factors of the RAW polyline's bbox (P7-4: the fused loop below
-            // needs them before it starts; the user's path is normalized by its raw bbox the
-            // same way — see decode()).
-            val idealWidth = idealStats[1] - idealStats[0]
-            val idealHeight = idealStats[3] - idealStats[2]
-            val longestSide = maxOf(maxOf(idealWidth, idealHeight), 0.00001f)
-            val invSide = 1f / longestSide
-            val centroidX = (idealWidth / 2f + idealStats[0]) * invSide
-            val centroidY = (idealHeight / 2f + idealStats[2]) * invSide
-            // Early-bail limit for the shape channel: the partial sums below are monotone
-            // nondecreasing, so once the running distance passes the distance at which the
-            // Gaussian can no longer beat the k-th worst (even with a perfect location), the
-            // loop's rest cannot change the verdict. Float compare against a Double-derived
-            // limit is exact enough — the bail fires strictly past the true threshold.
-            var shapeLimit = Float.POSITIVE_INFINITY
-            if (topCount == TOP_N) {
-                val needed = 1.0 / (topScores[TOP_N - 1].toDouble() * locationFactor * frequencyWeight)
-                if (needed >= shapeFactor) continue
-                shapeLimit = (constants.shapeStd *
-                    Math.sqrt(-2.0 * Math.log(needed / shapeFactor))).toFloat()
-            }
-            // The fused scoring pass (P7-4): ONE loop per variant replacing the resample,
-            // normalize, shape and location passes — the ideal path's arc-equidistant points are
-            // produced on the fly by the same segment walk the resampler runs (identical
-            // arithmetic, segment lengths cached by the writer), and both channels accumulate
-            // against them. The shape bail ends the loop early; location's own bail is subsumed
-            // (a shape-bailed candidate never pays for location samples either).
-            var shapeDistance = 0f
-            var locationSum = 0f
-            var k = 0
-            if (totalLength <= 0f) {
-                // A degenerate ideal path (every letter on one key): every sample is that point.
-                val inx = idealX[0] * invSide - centroidX
-                val iny = idealY[0] * invSide - centroidY
-                while (k < samples && shapeDistance <= shapeLimit) {
-                    val dx = inx - userNX[k]
-                    val dy = iny - userNY[k]
-                    shapeDistance += (if (dx < 0f) -dx else dx) + (if (dy < 0f) -dy else dy)
-                    val lx = idealX[0] - userX[k]
-                    val ly = idealY[0] - userY[k]
-                    locationSum += (if (lx < 0f) -lx else lx) + (if (ly < 0f) -ly else ly)
-                    k++
-                }
-            } else {
-                val step = totalLength / (samples - 1)
-                var segment = 0
-                var segmentBase = 0f
-                var segmentLength = idealSegLens[0]
-                while (k < samples && shapeDistance <= shapeLimit) {
-                    val ix: Float
-                    val iy: Float
-                    if (k == 0) {
-                        ix = idealX[0]
-                        iy = idealY[0]
-                    } else {
-                        val target = step * k
-                        while (segmentBase + segmentLength < target) {
-                            segmentBase += segmentLength
-                            segment++
-                            if (segment >= points - 1) break
-                            segmentLength = idealSegLens[segment]
-                        }
-                        if (segment >= points - 1) {
-                            // Float accumulation overshoot: the remaining points sit at the end.
-                            ix = idealX[points - 1]
-                            iy = idealY[points - 1]
-                        } else {
-                            // Interpolate with a multiply (the reciprocal is precomputed);
-                            // x*(1/y) can differ from x/y by 1 ulp — ranking-irrelevant.
-                            val t = (target - segmentBase) * idealInvSegLens[segment]
-                            ix = idealX[segment] + (idealX[segment + 1] - idealX[segment]) * t
-                            iy = idealY[segment] + (idealY[segment + 1] - idealY[segment]) * t
-                        }
-                    }
-                    val inx = ix * invSide - centroidX
-                    val iny = iy * invSide - centroidY
-                    // No library calls per point: manual abs (a call per abs measurably hurts
-                    // on the interpreter-ish Go-class ART) and the shape channel sums pointwise
-                    // L1 instead of L2 (sigma re-validated, not re-tuned — docs/ROADMAP-P7.md).
-                    val dx = inx - userNX[k]
-                    val dy = iny - userNY[k]
-                    shapeDistance += (if (dx < 0f) -dx else dx) + (if (dy < 0f) -dy else dy)
-                    val lx = ix - userX[k]
-                    val ly = iy - userY[k]
-                    locationSum += (if (lx < 0f) -lx else lx) + (if (ly < 0f) -ly else ly)
-                    k++
-                }
-            }
-            if (shapeDistance > shapeLimit) continue
-            val shapeProbability = gaussian(shapeDistance, shapeFactor, shapeInvTwoSigmaSq)
-            if (shapeProbability <= 0f) continue // underflow: impossibly far shapes
-            // Fail-fast #2: shape already known; even a perfect location cannot qualify.
-            if (topCount == TOP_N &&
-                shapeProbability * locationFactor * frequencyWeight <= 1f / topScores[TOP_N - 1]
-            ) {
-                continue
-            }
-            if (topCount == TOP_N) {
-                // The location limit of the pre-fusion code (bail inside the location loop) is
-                // already earned: the fused loop accumulated the full location sum alongside.
-                val needed = 1.0 /
-                    (topScores[TOP_N - 1].toDouble() * shapeProbability * frequencyWeight)
-                if (needed >= locationFactor) continue
-            }
-            val locationDistance = locationSum / (2f * samples)
-            val locationProbability = gaussian(locationDistance, locationFactor, locationInvTwoSigmaSq)
-            if (locationProbability <= 0f) continue
-            val confidence = 1f / (shapeProbability * locationProbability * frequencyWeight)
-            if (confidence < best) best = confidence
-        }
+        // P7-8 (the 2026-09-25 field report "сәләм typed, сәлләм committed"): a doubled letter
+        // must show EVIDENCE in the user path — the candidate scores against its LOOPED ideal
+        // path only. Its plain variant degenerates to the undoubled twin's path (the doubled
+        // letter contributes a zero-length visit the resampler skips), so the old best-of-both
+        // let FREQUENCY decide between the twins — and сәлләм's prior beat сәләм on every
+        // no-loop path. A path with a jog/dwell at the doubled key matches the looped variant;
+        // a path without one no longer does.
+        val loopedOnly = index.loopLengthAt(entry) >= 0f
+        best = scoreVariant(
+            index, entry, topCount, loopedOnly, shapeFactor, locationFactor,
+            shapeInvTwoSigmaSq, locationInvTwoSigmaSq, frequencyWeight, samples,
+        )
         lastScoredCount++
         if (best == Float.POSITIVE_INFINITY) return topCount
         if (topCount == TOP_N && best >= topScores[TOP_N - 1]) return topCount
@@ -415,6 +312,140 @@ class GlideDecoder(
         topScores[slot] = best
         topEntries[slot] = entry
         return newCount
+    }
+
+    /**
+     * Scores one candidate against its ONE ideal path ([loopedOnly] selects the doubled-letter
+     * loop detour; P7-8: there is no best-of-variants anymore) and returns its confidence
+     * (POSITIVE_INFINITY when any fail-fast rejects it). The fused walk, the bails and the
+     * arithmetic are the P7-4 ones, unchanged.
+     */
+    private fun scoreVariant(
+        index: GlideWordIndex,
+        entry: Int,
+        topCount: Int,
+        loopedOnly: Boolean,
+        shapeFactor: Float,
+        locationFactor: Float,
+        shapeInvTwoSigmaSq: Float,
+        locationInvTwoSigmaSq: Float,
+        frequencyWeight: Float,
+        samples: Int,
+    ): Float {
+        val points = GlideIdealPaths.write(
+            index, entry, geometry, loopedOnly, idealX, idealY, idealStats, idealSegLens,
+            idealInvSegLens,
+        )
+        if (points < 0) return Float.POSITIVE_INFINITY
+        val totalLength =
+            if (loopedOnly) index.loopLengthAt(entry) else index.plainLengthAt(entry)
+        // The normalize factors of the RAW polyline's bbox (P7-4: the fused loop below
+        // needs them before it starts; the user's path is normalized by its raw bbox the
+        // same way — see decode()).
+        val idealWidth = idealStats[1] - idealStats[0]
+        val idealHeight = idealStats[3] - idealStats[2]
+        val longestSide = maxOf(maxOf(idealWidth, idealHeight), 0.00001f)
+        val invSide = 1f / longestSide
+        val centroidX = (idealWidth / 2f + idealStats[0]) * invSide
+        val centroidY = (idealHeight / 2f + idealStats[2]) * invSide
+        // Early-bail limit for the shape channel: the partial sums below are monotone
+        // nondecreasing, so once the running distance passes the distance at which the
+        // Gaussian can no longer beat the k-th worst (even with a perfect location), the
+        // loop's rest cannot change the verdict. Float compare against a Double-derived
+        // limit is exact enough — the bail fires strictly past the true threshold.
+        var shapeLimit = Float.POSITIVE_INFINITY
+        if (topCount == TOP_N) {
+            val needed = 1.0 / (topScores[TOP_N - 1].toDouble() * locationFactor * frequencyWeight)
+            if (needed >= shapeFactor) return Float.POSITIVE_INFINITY
+            shapeLimit = (constants.shapeStd *
+                Math.sqrt(-2.0 * Math.log(needed / shapeFactor))).toFloat()
+        }
+        // The fused scoring pass (P7-4): ONE walk producing the ideal path's arc-equidistant
+        // points on the fly (the same segment walk the resampler runs, segment lengths cached
+        // by the writer), with both channels accumulating against them. The shape bail ends
+        // the walk early; location's own bail is subsumed (a shape-bailed candidate never
+        // pays for location samples either).
+        var shapeDistance = 0f
+        var locationSum = 0f
+        var k = 0
+        if (totalLength <= 0f) {
+            // A degenerate ideal path (every letter on one key): every sample is that point.
+            val inx = idealX[0] * invSide - centroidX
+            val iny = idealY[0] * invSide - centroidY
+            while (k < samples && shapeDistance <= shapeLimit) {
+                val dx = inx - userNX[k]
+                val dy = iny - userNY[k]
+                shapeDistance += (if (dx < 0f) -dx else dx) + (if (dy < 0f) -dy else dy)
+                val lx = idealX[0] - userX[k]
+                val ly = idealY[0] - userY[k]
+                locationSum += (if (lx < 0f) -lx else lx) + (if (ly < 0f) -ly else ly)
+                k++
+            }
+        } else {
+            val step = totalLength / (samples - 1)
+            var segment = 0
+            var segmentBase = 0f
+            var segmentLength = idealSegLens[0]
+            while (k < samples && shapeDistance <= shapeLimit) {
+                val ix: Float
+                val iy: Float
+                if (k == 0) {
+                    ix = idealX[0]
+                    iy = idealY[0]
+                } else {
+                    val target = step * k
+                    while (segmentBase + segmentLength < target) {
+                        segmentBase += segmentLength
+                        segment++
+                        if (segment >= points - 1) break
+                        segmentLength = idealSegLens[segment]
+                    }
+                    if (segment >= points - 1) {
+                        // Float accumulation overshoot: the remaining points sit at the end.
+                        ix = idealX[points - 1]
+                        iy = idealY[points - 1]
+                    } else {
+                        // Interpolate with a multiply (the reciprocal is precomputed);
+                        // x*(1/y) can differ from x/y by 1 ulp — ranking-irrelevant.
+                        val t = (target - segmentBase) * idealInvSegLens[segment]
+                        ix = idealX[segment] + (idealX[segment + 1] - idealX[segment]) * t
+                        iy = idealY[segment] + (idealY[segment + 1] - idealY[segment]) * t
+                    }
+                }
+                val inx = ix * invSide - centroidX
+                val iny = iy * invSide - centroidY
+                // No library calls per point: manual abs (a call per abs measurably hurts
+                // on the interpreter-ish Go-class ART) and the shape channel sums pointwise
+                // L1 instead of L2 (sigma re-validated, not re-tuned — docs/ROADMAP-P7.md).
+                val dx = inx - userNX[k]
+                val dy = iny - userNY[k]
+                shapeDistance += (if (dx < 0f) -dx else dx) + (if (dy < 0f) -dy else dy)
+                val lx = ix - userX[k]
+                val ly = iy - userY[k]
+                locationSum += (if (lx < 0f) -lx else lx) + (if (ly < 0f) -ly else ly)
+                k++
+            }
+        }
+        if (shapeDistance > shapeLimit) return Float.POSITIVE_INFINITY
+        val shapeProbability = gaussian(shapeDistance, shapeFactor, shapeInvTwoSigmaSq)
+        if (shapeProbability <= 0f) return Float.POSITIVE_INFINITY // underflow: far shapes
+        // Fail-fast #2: shape already known; even a perfect location cannot qualify.
+        if (topCount == TOP_N &&
+            shapeProbability * locationFactor * frequencyWeight <= 1f / topScores[TOP_N - 1]
+        ) {
+            return Float.POSITIVE_INFINITY
+        }
+        if (topCount == TOP_N) {
+            // The location limit of the pre-fusion code (bail inside the location loop) is
+            // already earned: the fused walk accumulated the full location sum alongside.
+            val needed = 1.0 /
+                (topScores[TOP_N - 1].toDouble() * shapeProbability * frequencyWeight)
+            if (needed >= locationFactor) return Float.POSITIVE_INFINITY
+        }
+        val locationDistance = locationSum / (2f * samples)
+        val locationProbability = gaussian(locationDistance, locationFactor, locationInvTwoSigmaSq)
+        if (locationProbability <= 0f) return Float.POSITIVE_INFINITY
+        return 1f / (shapeProbability * locationProbability * frequencyWeight)
     }
 
     /** The one-sided Gaussian probability of [distance]; Float wrapper over Math.exp. */

@@ -91,6 +91,24 @@ class GlideDecoderTest {
     }
 
     @Test
+    fun aDoubledWordNeedsLoopEvidenceInThePath() {
+        // P7-8 (the 2026-09-25 field report: gliding сәләм committed сәлләм — the doubled
+        // word won on frequency alone). With both twins in the inventory and сәлләм the
+        // frequency favorite by 200x, a NO-LOOP path over с-ә-л-ә-м must decode to сәләм,
+        // and the same letters with a jog at л must decode to сәлләм.
+        val decoder = decoderOf(
+            listOf(
+                "сәләм" to 36L,
+                "сәлләм" to 7466L,
+            ),
+        )
+        val noLoop = decodeWords(decoder, idealPath("сәләм"))
+        assertEquals("the no-loop path decodes to the plain word", "сәләм", noLoop[0])
+        val withJog = decodeWords(decoder, idealPath("сәлләм", withLoop = true))
+        assertEquals("the jog path decodes to the doubled word", "сәлләм", withJog[0])
+    }
+
+    @Test
     fun emptyDegenerateAndPrunedInputsYieldNoCandidates() {
         val decoder = decoderOf(listOf("сәләм" to 36L, "салым" to 7466L))
         // Empty path.
