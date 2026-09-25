@@ -2,7 +2,6 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 
 import android.content.Context
 import android.content.res.AssetManager
-import androidx.annotation.Keep
 import java.io.File
 import java.util.concurrent.Executor
 
@@ -17,7 +16,6 @@ import java.util.concurrent.Executor
  * the choice of language is made once, in [DictionaryArtifactSpec.forSubtype], and this factory
  * only wires up whatever that choice produced.
  */
-@Keep
 object AndroidBigramStorageFactory {
     @JvmStatic
     fun create(

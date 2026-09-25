@@ -1,6 +1,5 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 
-import androidx.annotation.Keep
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -21,7 +20,6 @@ import java.io.IOException
  * subdirectory), a live lease on one can never observe or block a lease on the other. The two
  * catalogs simply never share a lock.
  */
-@Keep
 class AtomicBigramStore(
     // Reused as-is per PROPOSALS.md ("Переиспользуются швы DeviceProtectedDirectoryProvider..."):
     // the single method keeps its schema-1-flavoured name, but nothing in its contract ties it to

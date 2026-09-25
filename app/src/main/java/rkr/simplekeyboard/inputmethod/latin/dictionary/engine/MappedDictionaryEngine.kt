@@ -63,6 +63,13 @@ class MappedDictionaryEngine private constructor(
     ): LookupToken? = engine.requestGlide(editorSessionId, subtypeId, path)
 
     /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of the glide word index —
+     * forwarded to the engine, which posts the drop onto its serialized worker (the decoder is
+     * worker-confined). Safe from any thread, no-op once the engine is gone.
+     */
+    fun releaseGlideIndex() = engine.releaseGlideIndex()
+
+    /**
      * E5c two-stage readiness (PROPOSALS.md, "E5c. Готовность вычислителя двухступенчатая"):
      * acquires, maps and opens the bigram table, then wires it into the ALREADY-published
      * composite computer. Call off the UI thread — this performs the same class of I/O

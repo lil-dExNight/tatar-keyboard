@@ -63,7 +63,10 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
      * A run is CLEAN while the trailing word grows one piece at a time (`w.startsWith(previous) &&
      * w.length > previous.length`) and it ENDS when the trailing word becomes empty. A shortening
      * (backspace), a replacement, a selection change, a cursor gesture, an accepted suggestion, a
-     * field or subtype change all mark it dirty, and a dirty run reports nothing.
+     * field or subtype change all mark it dirty, and a dirty run reports nothing. So does a fresh
+     * word whose FIRST observation already carries more than one keystroke's worth of text (see
+     * [MAX_FIRST_OBSERVATION_UNITS]): that shape is a paste or a replacement, and the personal
+     * stores learn from typing, not from clipboard contents.
      */
     fun trackCleanRun(word: String) {
         val previous = runWord
@@ -82,6 +85,15 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
         if (previous.isEmpty()) {
             // A fresh word begins; whether it stays clean is decided by what follows.
             runWord = word
+            if (word.length > MAX_FIRST_OBSERVATION_UNITS) {
+                // 2026-09-25 audit, privacy: one observation may carry at most one keystroke's
+                // worth of NEW text — 1–2 UTF-16 units (a surrogate pair is one key). A fresh
+                // word appearing with 3+ units in a single event is a paste or a replacement,
+                // not typing, and the run is born dirty on BOTH machines: a pasted word must
+                // never reach the personal stores as something the user "typed".
+                runClean = false
+                pairRunClean = false
+            }
             runEmptyResultPrefixLength = NO_EMPTY_RESULT
             return
         }
@@ -203,5 +215,11 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
     private companion object {
         /** No proper prefix of the current run has come back empty yet. */
         const val NO_EMPTY_RESULT = -1
+        /**
+         * The most text a fresh word's FIRST observation may carry and still be typing: two UTF-16
+         * units, i.e. one keystroke even when the key produces a surrogate pair. More in a single
+         * event is a paste or a replacement (2026-09-25 audit, the paste rule).
+         */
+        const val MAX_FIRST_OBSERVATION_UNITS = 2
     }
 }

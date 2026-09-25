@@ -105,8 +105,33 @@ class PersonalLearningRunTest {
             controller.onStartInput(eligible = true)
         }
 
-        /** Types one more character of [word] and answers the lookup with [result]. */
+        /**
+         * Feeds [word] the way the editor cache actually moves under typing: ONE appended code
+         * point per text event, so a [word] that grows the current one arrives as its
+         * intermediate prefixes. Anything that is not plain growth (a backspace, a replacement)
+         * is delivered as the single event it is — and a multi-character jump from an empty word
+         * is a paste, which the 2026-09-25 paste rule (CleanRunMachine) must read as dirty; use
+         * [paste] to say that out loud. The lookup of the last observation is answered with
+         * [result].
+         */
         fun type(word: String, result: List<String> = emptyList()) {
+            val current = editor.word
+            if (word.length > current.length && word.startsWith(current)) {
+                var end = current.length
+                while (end < word.length) {
+                    end += Character.charCount(word.codePointAt(end))
+                    editor.word = word.substring(0, end)
+                    controller.onTextChanged()
+                }
+            } else {
+                editor.word = word
+                controller.onTextChanged()
+            }
+            callback?.onResult(engine.requested.size.toLong(), result, LookupKind.PREFIX)
+        }
+
+        /** A paste or wholesale replacement: the whole [word] appears in ONE text event. */
+        fun paste(word: String, result: List<String> = emptyList()) {
             editor.word = word
             controller.onTextChanged()
             callback?.onResult(engine.requested.size.toLong(), result, LookupKind.PREFIX)
@@ -280,6 +305,35 @@ class PersonalLearningRunTest {
         h.witnessABoundary()
         h.type("гүз")
         h.type("гүз") // same word again — e.g. a redundant onTextChanged
+        h.type("гүзәлия")
+        h.endWord()
+        assertEquals(listOf("гүзәлия"), h.completions)
+    }
+
+    @Test
+    fun aPastedStartMakesTheWholeRunDirty() {
+        // 2026-09-25 audit, the paste rule: a fresh word whose FIRST observation already carries
+        // 3+ UTF-16 units is a paste or a replacement, not typing — the run is born dirty, and
+        // growing it by hand afterwards does not wash it clean (the empty result for a proper
+        // prefix IS observed on the way, so without the rule this word would be reported).
+        val h = Harness()
+        h.witnessABoundary()
+        h.paste("гүзәл")
+        h.type("гүзәли")
+        h.type("гүзәлия")
+        h.endWord()
+        assertTrue("a pasted word is not learned as typed", h.completions.isEmpty())
+    }
+
+    @Test
+    fun aTwoUnitFirstObservationIsStillOneKeystroke() {
+        // The budget's edge (2026-09-25 audit): two UTF-16 units in the first observation are one
+        // keystroke's worth — a surrogate pair, or two events coalesced by the cache — so the run
+        // stays clean.
+        val h = Harness()
+        h.witnessABoundary()
+        h.paste("гү")
+        h.type("гүзә")
         h.type("гүзәлия")
         h.endWord()
         assertEquals(listOf("гүзәлия"), h.completions)

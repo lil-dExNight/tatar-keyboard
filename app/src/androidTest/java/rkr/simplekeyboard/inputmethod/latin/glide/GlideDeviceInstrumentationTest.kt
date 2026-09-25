@@ -96,6 +96,41 @@ class GlideDeviceInstrumentationTest : InstrumentationTestCase() {
         )
     }
 
+    /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): the price of the idle index release. A decoder rebuilt
+     * from scratch (its [GlideWordIndex] included) answers its first decode this much later than
+     * a warm one. The rebuild runs on the engine worker, so the UI thread never pays it — this
+     * test only puts a device number on the worker-side cost.
+     */
+    fun testIndexRebuildCostAfterRelease() {
+        val context = instrumentation.targetContext
+        val geometry = liveTatarGeometry(context)
+        val index = openIndex(inflateTatarDictionary(context))
+        val inventory = TdictGlideInventory(index)
+        val path = requireNotNull(pathThrough(geometry, "сәләм"))
+        val out = GlideResult()
+
+        // Cold: a fresh decoder builds the whole word index inside the first decode — exactly
+        // what the first glide after an idle release pays.
+        val cold = System.nanoTime()
+        val decoder = GlideDecoder(geometry, inventory)
+        val count = decoder.decode(path, out)
+        val coldMs = (System.nanoTime() - cold) / 1_000_000.0
+
+        // Warm contrast: the same decode with the index in place.
+        var warmTotalNs = 0L
+        repeat(100) {
+            val started = System.nanoTime()
+            decoder.decode(path, out)
+            warmTotalNs += System.nanoTime() - started
+        }
+        val warmAvgMs = warmTotalNs / 100.0 / 1_000_000.0
+        Log.i(
+            TAG,
+            "O2 glide index rebuild: coldFirstDecode=${fmt(coldMs)} ms warmAvg=${fmt(warmAvgMs)} ms count=$count",
+        )
+    }
+
     /** A realistic gesture through the word's key centers: the ideal polyline sampled ~8 px. */
     private fun pathThrough(geometry: GlideKeyGeometry, word: String): GlidePath? {
         val centers = ArrayList<Pair<Float, Float>>(word.length)

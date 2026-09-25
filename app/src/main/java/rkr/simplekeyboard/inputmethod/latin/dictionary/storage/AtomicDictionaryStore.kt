@@ -1,6 +1,5 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 
-import androidx.annotation.Keep
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -8,7 +7,6 @@ import java.io.IOException
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
-@Keep
 class AtomicDictionaryStore(
     private val directoryProvider: DeviceProtectedDirectoryProvider,
     private val assetInputProvider: AssetInputProvider,
@@ -347,7 +345,6 @@ class AtomicDictionaryStore(
     }
 }
 
-@Keep
 class BackgroundDictionaryPreparer(
     private val executor: Executor,
     private val store: AtomicDictionaryStore,

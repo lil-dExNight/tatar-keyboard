@@ -152,9 +152,35 @@ class MappedDictionaryEngineGlideTest {
         engine.destroy(1, TimeUnit.SECONDS)
     }
 
+    /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release drops the lazily built glide
+     * word index through the engine's serialized worker; the next glide simply rebuilds it and
+     * answers identically. The mission's pin: after a deallocate, a glide still works.
+     */
     @Test
-    fun aDegeneratePathIsRejectedWithoutInvalidatingAPendingPrefix() {
+    fun anIdleReleaseDropsTheIndexAndTheNextGlideRebuildsIt() {
         val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val engine = startEngine(executor, published)
+        engine.updateGlideGeometry(geometry)
+
+        engine.requestGlide(1, "tt", glidePath("сәләм"))
+        executor.runAll()
+        assertEquals("сәләм", published.single().suggestions.first())
+
+        engine.releaseGlideIndex()
+        executor.runAll()
+
+        engine.requestGlide(2, "tt", glidePath("сәләм"))
+        executor.runAll()
+        assertEquals(2, published.size)
+        assertEquals(LookupKind.GLIDE, published.last().kind)
+        assertEquals("сәләм", published.last().suggestions.first())
+        engine.destroy(1, TimeUnit.SECONDS)
+    }
+
+    @Test
+    fun aDegeneratePathIsRejectedWithoutInvalidatingAPendingPrefix() {        val executor = ManualEngineExecutor()
         val published = mutableListOf<LookupResult>()
         val engine = startEngine(executor, published)
         engine.updateGlideGeometry(geometry)

@@ -16,7 +16,6 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
-import androidx.annotation.Keep
 
 /**
  * An immutable in-memory snapshot of one subtype's personal dictionary, with a read-only prefix
@@ -29,7 +28,6 @@ import androidx.annotation.Keep
  * them at the first interpolation. This class writes nothing to disk — E4a-1 is a read-only path;
  * atomic writing and LRU eviction are E4a-2.
  */
-@Keep
 class PersonalDictionary private constructor(
     private val rawForms: Array<String>,
     private val normalizedForms: Array<String>,

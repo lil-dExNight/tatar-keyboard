@@ -85,6 +85,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSetSnapshot;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSurface;
 import rkr.simplekeyboard.inputmethod.latin.emoji.RecentEmojiGate;
 import rkr.simplekeyboard.inputmethod.latin.emoji.RecentEmojiGateState;
+import rkr.simplekeyboard.inputmethod.latin.emoji.SharedEmojiSearchIndex;
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsValues;
@@ -111,6 +112,7 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionsOfferControll
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.ApplicationUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils;
+import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.LeakGuardHandlerWrapper;
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils;
 
@@ -1340,6 +1342,27 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
+     * 2026-09-25 audit, privacy: whether [editorInfo] describes a password-type field — the very
+     * check {@link InputAttributes#mIsPasswordField} makes, but computed straight from the
+     * EditorInfo so it can run inside onStartInputViewInternal BEFORE loadSettings(): at that
+     * point the current {@link SettingsValues} still describe the previous field.
+     */
+    private static boolean isPasswordField(final EditorInfo editorInfo) {
+        final int inputType = editorInfo.inputType;
+        return InputTypeUtils.isPasswordInputType(inputType)
+                || InputTypeUtils.isVisiblePasswordInputType(inputType);
+    }
+
+    /**
+     * The same check for the field currently bound. A null EditorInfo (no input bound) answers
+     * false: the reload it gates would find no connection and return early anyway.
+     */
+    private boolean isCurrentFieldPasswordField() {
+        final EditorInfo editorInfo = getCurrentInputEditorInfo();
+        return editorInfo != null && isPasswordField(editorInfo);
+    }
+
+    /**
      * Computes whether opt-in word suggestions may run for the current field and subtype.
      */
     private boolean isSuggestionsEligible() {
@@ -1679,9 +1702,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // it can adjust its combiners if needed.
             mInputLogic.startInput();
 
-            // Some applications call onStartInputView without updating EditorInfo. In these cases
-            // selection will be incorrect.
-            mInputLogic.mConnection.reloadTextCache(editorInfo, restarting);
+            if (isPasswordField(editorInfo)) {
+                // 2026-09-25 audit, privacy: a password field's surrounding text is never read
+                // into the cache — the reload would copy the password itself into IME-process
+                // memory. Clearing instead of reloading also evicts the PREVIOUS field's text
+                // (a field switch does not pass through onFinishInputView). What the user types
+                // from here still reaches the cache through the local mutations of each commit,
+                // so auto-caps keeps working — getCursorCapsMode reads only that local state.
+                mInputLogic.clearCaches();
+            } else {
+                // Some applications call onStartInputView without updating EditorInfo. In these
+                // cases selection will be incorrect.
+                mInputLogic.mConnection.reloadTextCache(editorInfo, restarting);
+            }
         }
 
         if (isDifferentTextField ||
@@ -1747,6 +1780,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // never opened.
         abandonEmojiSearch();
         mKeyboardSwitcher.hideEmojiPanel();
+        // 2026-09-25 audit, privacy: the surrounding-text cache holds a window of the text of
+        // the field the user just left; onFinishInputView already clears it, but a hide without
+        // finishInputView (lock screen, home gesture over an unchanged field) used to keep that
+        // text in memory until the next field. A hidden keyboard has no use for the cache — the
+        // next show re-reads or re-derives it.
+        mInputLogic.clearCaches();
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView != null) {
             mainKeyboardView.closing();
@@ -1756,6 +1795,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     void onFinishInputInternal() {
         super.onFinishInput();
 
+        // Same 2026-09-25 privacy fix as onWindowHidden: finishing input detaches the editor,
+        // so its text must not linger in the cache past this boundary (finishInputView is not
+        // guaranteed to accompany it — e.g. the window may stay up while the target changes).
+        mInputLogic.clearCaches();
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView != null) {
             mainKeyboardView.closing();
@@ -1778,6 +1821,18 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     protected void deallocateMemory() {
         mKeyboardSwitcher.deallocateMemory();
+        // O2 (docs/OPTIMIZE-2026-09-25.md): the glide word indexes and the emoji indexes ride the
+        // same idle release. Each engine posts the drop onto its serialized worker (the decoder
+        // is worker-confined), so this UI-thread call only enqueues; the emoji indexes reload
+        // lazily on their next use. All of it is pure derivation and rebuilds on demand.
+        if (mSuggestionsController != null) {
+            mSuggestionsController.releaseGlideIndexes();
+            mSuggestionsController.releaseEmojiSuggest();
+        }
+        if (mEmojiPanelController != null) {
+            mEmojiPanelController.releaseSearchIndex();
+        }
+        SharedEmojiSearchIndex.releaseProcessWide();
     }
 
     @Override
@@ -1804,7 +1859,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             mSuggestionsController.onSelectionChanged();
         }
         if (isInputViewShown()) {
-            mInputLogic.reloadTextCache();
+            // 2026-09-25 audit, privacy: a password field's text is never re-read (see
+            // onStartInputViewInternal) — the shift update below derives from the local cache,
+            // which the user's own typing keeps current, so it runs either way.
+            if (!isCurrentFieldPasswordField()) {
+                mInputLogic.reloadTextCache();
+            }
 
             mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
                     getCurrentRecapitalizeState());
@@ -2007,7 +2067,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onUpWithSpacePointerActive() {
-        mInputLogic.reloadTextCache();
+        // 2026-09-25 audit, privacy: a password field's text is never re-read (see
+        // onStartInputViewInternal); the cursor slide only moves within it.
+        if (!isCurrentFieldPasswordField()) {
+            mInputLogic.reloadTextCache();
+        }
         // Only reached after an actual cursor slide, and the reload lands asynchronously, so the
         // strip must not keep offering candidates bound to the pre-slide cache.
         onSuggestionsAffectingCursorMove();

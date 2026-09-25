@@ -1,6 +1,5 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 
-import androidx.annotation.Keep
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import java.io.Closeable
 import java.util.Locale
@@ -242,13 +241,11 @@ sealed class BigramPreparationResult {
     data class Unavailable(val reason: StorageFailure) : BigramPreparationResult()
 }
 
-@Keep
 interface PublishedBigramTableCatalog {
     fun acquireLatestForActivation(): BigramTableLease?
     fun cleanupReleasedVersions()
 }
 
-@Keep
 class BigramTableLease internal constructor(
     val table: PublishedBigramTable,
     private val release: () -> Unit,
@@ -271,7 +268,6 @@ class BigramTableLease internal constructor(
  * a spec, validator, or store type (`docs/DICTIONARY-E5B.md`), and this is the last layer of that
  * same shape.
  */
-@Keep
 class BigramStorageController internal constructor(
     private val preparer: BackgroundBigramPreparer,
     private val catalog: PublishedBigramTableCatalog,
@@ -284,7 +280,6 @@ class BigramStorageController internal constructor(
     override fun cleanupReleasedVersions() = catalog.cleanupReleasedVersions()
 }
 
-@Keep
 class BackgroundBigramPreparer(
     private val executor: java.util.concurrent.Executor,
     private val store: AtomicBigramStore,

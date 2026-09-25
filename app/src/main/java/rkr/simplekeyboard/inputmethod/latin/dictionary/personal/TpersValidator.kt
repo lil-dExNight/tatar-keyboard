@@ -16,7 +16,6 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
-import androidx.annotation.Keep
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
 import java.io.File
 import java.nio.ByteBuffer
@@ -32,7 +31,6 @@ import java.util.Locale
  * interpolates the offending word, the file path or any other user text (privacy contract of the
  * personal package). Not a Kotlin `data class`, so no synthesised `toString` can leak a field.
  */
-@Keep
 class PersonalDictionaryValidationException internal constructor(message: String) :
     Exception(message)
 
@@ -40,7 +38,6 @@ class PersonalDictionaryValidationException internal constructor(message: String
  * A validated `.tpers` file, ready to become an immutable snapshot. Not a `data class`: it carries
  * the user's words and an auto-generated `toString` would print them on the first interpolation.
  */
-@Keep
 class ValidatedPersonalDictionary internal constructor(
     /** Words in their ORIGINAL on-disk form, in normalized-ascending order. */
     val rawForms: List<String>,
@@ -63,7 +60,6 @@ class ValidatedPersonalDictionary internal constructor(
  * frozen contract. Any violation throws [PersonalDictionaryValidationException]; the reader turns
  * that into an empty personal dictionary. Nothing here logs, and no message carries user text.
  */
-@Keep
 class TpersValidator {
     /**
      * Validates [file] against the [requestedSubtypeId] and returns the parsed, ordered entries.

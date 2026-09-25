@@ -31,6 +31,10 @@ import java.io.File
  * Dialogs cannot be instantiated without Android, so this pins the WIRING by source: the one
  * helper exists and does the right call, and every AlertDialog creation site in the app passes
  * through it — a new dialog that forgets it fails here.
+ *
+ * A sibling rule lives here too (audit 2026-09-25): the activity-wide FLAG_SECURE does not extend
+ * to dialog windows, so the settings dialogs that render personal content set it on their own
+ * window through [DialogUtils.securePersonalContent].
  */
 class DialogObscuredTouchContractTest {
 
@@ -85,6 +89,37 @@ class DialogObscuredTouchContractTest {
             languages.occurrencesOf("AlertDialog.Builder("),
             languages.occurrencesOf("DialogUtils.filterObscuredTouches("),
         )
+    }
+
+    @Test
+    fun personalContentDialogsAreSecureFromCapture() {
+        // 2026-09-25 audit: FLAG_SECURE on the activity window does NOT cover dialog windows —
+        // each dialog is a window of its own. The three dialogs that render personal content
+        // (the word the forget-word dialog names, the pair the forget-pair dialog names, the
+        // field the add-word dialog takes) secure their own window through the helper; the
+        // generic confirmations (clear-all, erase, discard) show no personal content and stay
+        // shareable.
+        val helper = javaBody(read(UTILS), "public static void securePersonalContent")
+        assertTrue(
+            "the helper sets FLAG_SECURE on the dialog window",
+            helper.contains("window.setFlags(WindowManager.LayoutParams.FLAG_SECURE"),
+        )
+        assertTrue(
+            "the helper must not need show() to have happened — it composes with the show-listener"
+                + " filter on the same dialog",
+            helper.contains("dialog.getWindow()"),
+        )
+        val activity = read(SETTINGS_ACTIVITY)
+        for (signature in listOf(
+            "private fun showAddPersonalWordDialog(",
+            "private fun showForgetPersonalWordDialog(",
+            "private fun showForgetPersonalPairDialog(",
+        )) {
+            assertTrue(
+                "$signature must secure its dialog's window",
+                javaBody(activity, signature).contains("DialogUtils.securePersonalContent(dialog)"),
+            )
+        }
     }
 
     // --- helpers ---------------------------------------------------------------------------------

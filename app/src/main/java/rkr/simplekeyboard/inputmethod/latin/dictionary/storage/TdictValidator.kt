@@ -1,6 +1,5 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 
-import androidx.annotation.Keep
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -33,7 +32,6 @@ data class InflatedAsset(
     val rawSize: Long,
 )
 
-@Keep
 class TdictValidator {
     fun inflateAsset(
         source: java.io.InputStream,

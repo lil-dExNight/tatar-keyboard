@@ -16,7 +16,6 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
-import androidx.annotation.Keep
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
 import java.io.File
 import java.nio.ByteBuffer
@@ -32,7 +31,6 @@ import java.util.Locale
  * on-disk (pair-key ascending) order. Not a `data class`: it carries the user's words and an
  * auto-generated `toString` would print them on the first interpolation.
  */
-@Keep
 class ValidatedPersonalBigrams internal constructor(
     /** Context words in the NORMALIZED form (the only form the format stores for them). */
     val contexts: List<String>,
@@ -61,7 +59,6 @@ class ValidatedPersonalBigrams internal constructor(
  * contract of the type. The reader turns a violation into an empty personal-bigram store. Nothing
  * here logs, and no message carries user text.
  */
-@Keep
 class TpersbValidator {
     /**
      * Validates [file] against the [requestedSubtypeId] and returns the parsed, ordered pairs.

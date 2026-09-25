@@ -1,6 +1,5 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 
-import androidx.annotation.Keep
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -37,7 +36,6 @@ data class ValidatedBigramTable(
  * [BigramArtifactSpec.expectedDictionaryRawSha256] pins, and the index-range checks against the
  * real dictionary's entry count happen in `TatBigrPrefixIndex.open`, which has the dictionary.
  */
-@Keep
 class TatBigrValidator {
     fun inflateAsset(
         source: java.io.InputStream,

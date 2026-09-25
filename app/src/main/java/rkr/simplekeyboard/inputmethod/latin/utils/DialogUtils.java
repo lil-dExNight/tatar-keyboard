@@ -21,6 +21,7 @@ import android.app.Dialog;
 import android.content.Context;
 import android.view.ContextThemeWrapper;
 import android.view.Window;
+import android.view.WindowManager;
 
 import rkr.simplekeyboard.inputmethod.R;
 
@@ -54,5 +55,25 @@ public final class DialogUtils {
                 window.getDecorView().setFilterTouchesWhenObscured(true);
             }
         });
+    }
+
+    /**
+     * Audit 2026-09-25: marks the dialog's own window secure (no screenshots, no screen
+     * recording, no recents thumbnail) — the dialog pendant of the activity-wide
+     * {@code FLAG_SECURE} the settings host sets in onCreate. That flag does NOT extend to
+     * dialog windows: each dialog is a window of its own, so the ones rendering personal
+     * content (the saved word or pair they name, or the field that takes a new one) must set
+     * it themselves.
+     *
+     * <p>Unlike {@link #filterObscuredTouches} this needs no show listener: the dialog's window
+     * exists from construction, and window flags applied before {@code show()} are honored when
+     * the window is added — so the two helpers compose on the same dialog.</p>
+     */
+    public static void securePersonalContent(final Dialog dialog) {
+        final Window window = dialog.getWindow();
+        if (window != null) {
+            window.setFlags(WindowManager.LayoutParams.FLAG_SECURE,
+                    WindowManager.LayoutParams.FLAG_SECURE);
+        }
     }
 }

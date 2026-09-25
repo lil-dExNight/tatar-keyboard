@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideComputer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGeometrySink
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideIndexReleaser
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 
@@ -243,6 +244,24 @@ class LatestOnlyPrefixEngine internal constructor(
     fun updateGlideGeometry(geometry: GlideKeyGeometry?) {
         synchronized(lock) {
             (computer as? GlideGeometrySink)?.updateGlideGeometry(geometry)
+        }
+    }
+
+    /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of the glide word index. The
+     * decoder state is worker-confined, so the drop is POSTED to the serialized executor and
+     * runs between submissions, never mid-decode; the caller's thread (the UI thread, from
+     * LatinIME's MSG_DEALLOCATE_MEMORY) only enqueues. A gone engine skips quietly — its
+     * teardown frees the index anyway.
+     */
+    fun releaseGlideIndex() {
+        val target = synchronized(lock) {
+            if (state != State.ACTIVE) null else computer as? GlideIndexReleaser
+        } ?: return
+        try {
+            executor.execute { target.releaseGlideIndex() }
+        } catch (_: Throwable) {
+            // The executor went away with the engine: the drop is best-effort by design.
         }
     }
 

@@ -5,13 +5,11 @@ import android.content.res.AssetManager
 import android.system.Os
 import android.system.OsConstants
 import android.system.ErrnoException
-import androidx.annotation.Keep
 import java.io.File
 import java.io.FileDescriptor
 import java.io.IOException
 import java.util.concurrent.Executor
 
-@Keep
 object AndroidDictionaryStorageFactory {
     /**
      * Storage for ONE artifact. [artifact] names both the asset to inflate and the directory to

@@ -120,8 +120,33 @@ class PersonalBigramRunTest {
             controller.onStartInput(eligible = true)
         }
 
-        /** Types one more piece of the growing word and answers the lookup with [result]. */
+        /**
+         * Feeds [word] the way the editor cache actually moves under typing: ONE appended code
+         * point per text event, so a [word] that grows the current one arrives as its
+         * intermediate prefixes. Anything that is not plain growth (a backspace, a replacement)
+         * is delivered as the single event it is — and a multi-character jump from an empty word
+         * is a paste, which the 2026-09-25 paste rule (CleanRunMachine) must read as dirty; use
+         * [paste] to say that out loud. The lookup of the last observation is answered with
+         * [result].
+         */
         fun type(word: String, result: List<String> = emptyList()) {
+            val current = editor.word
+            if (word.length > current.length && word.startsWith(current)) {
+                var end = current.length
+                while (end < word.length) {
+                    end += Character.charCount(word.codePointAt(end))
+                    editor.word = word.substring(0, end)
+                    controller.onTextChanged()
+                }
+            } else {
+                editor.word = word
+                controller.onTextChanged()
+            }
+            engine.callback?.onResult(engine.requested.size.toLong(), result, LookupKind.PREFIX)
+        }
+
+        /** A paste or wholesale replacement: the whole [word] appears in ONE text event. */
+        fun paste(word: String, result: List<String> = emptyList()) {
             editor.word = word
             controller.onTextChanged()
             engine.callback?.onResult(engine.requested.size.toLong(), result, LookupKind.PREFIX)
@@ -300,5 +325,46 @@ class PersonalBigramRunTest {
         h.controller.onTextChanged()
         h.strip.listener!!.onTap("Иң")
         assertTrue(h.acceptances.isEmpty())
+    }
+
+    @Test
+    fun aTypedPhraseTeachesItsPairEveryTime() {
+        // The paste rule's positive pin (2026-09-25 audit): «сәләм дөнья» typed BY HAND, twice,
+        // keeps teaching the pair — per-keystroke observations are one UTF-16 unit each, so the
+        // ≤ 2-unit first-observation budget never fires on real typing.
+        val h = Harness()
+        h.witnessABoundary()
+        repeat(2) { round ->
+            h.type("сәләм")
+            h.endWord(if (round == 0) "" else "дөнья")
+            h.type("дөнья")
+            h.endWord("сәләм")
+        }
+        assertEquals(listOf("сәләм" to "дөнья", "дөнья" to "сәләм", "сәләм" to "дөнья"), h.pairs)
+    }
+
+    @Test
+    fun aPastedWordTeachesNoPairNoMatterHowOftenItIsPasted() {
+        // The paste rule itself (2026-09-25 audit): «дөнья» appearing WHOLE in one text event is
+        // the clipboard's shape, not typing's — the pair machine must not learn from it, neither
+        // the first nor the second time, even though the boundary it ends still re-arms the run.
+        val h = Harness()
+        h.witnessABoundary()
+        repeat(2) {
+            h.paste("дөнья")
+            h.endWord("сәләм")
+        }
+        assertTrue("a pasted word is not a typed one", h.pairs.isEmpty())
+    }
+
+    @Test
+    fun aTwoUnitFirstObservationIsStillOneKeystroke() {
+        // The budget's edge: a fresh word appearing with TWO UTF-16 units in one event is one
+        // keystroke (a surrogate pair — or two events coalesced by the cache), not a paste.
+        val h = Harness()
+        h.witnessABoundary()
+        h.paste("🙂") // a lone emoji: one key, two UTF-16 units
+        h.endWord("сәләм")
+        assertEquals(listOf("сәләм" to "🙂"), h.pairs)
     }
 }

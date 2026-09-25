@@ -16,7 +16,6 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
-import androidx.annotation.Keep
 
 /**
  * An immutable in-memory snapshot of one subtype's personal bigrams (P1 of Phase 2,
@@ -33,7 +32,6 @@ import androidx.annotation.Keep
  * them at the first interpolation. This class writes nothing to disk; the atomic writer and the
  * LRU eviction live in the store package.
  */
-@Keep
 class PersonalBigramDictionary private constructor(
     private val contexts: Array<String>,
     private val successorRawForms: Array<String>,

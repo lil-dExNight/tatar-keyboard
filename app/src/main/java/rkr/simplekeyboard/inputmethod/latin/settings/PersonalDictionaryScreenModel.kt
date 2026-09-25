@@ -83,9 +83,10 @@ internal class PersonalScreenContent(
  * The performance limiter is a CAP ON ROWS, not a choice of one language, and that is not cosmetic:
  * `SettingsHostActivity` builds its content imperatively into a `ScrollView` + `LinearLayout`
  * without view reuse, and rebuilds the whole screen in `onStart` — that is, on every return to the
- * foreground and after every dialog. `RecyclerView` is not available (the single androidx dependency
- * is `customview`, and adding `recyclerview` costs on the order of a hundred kilobytes against a
- * phase budget of 25 600 B), so the list simply must not grow without bound. At a cap of 200 it does
+ * foreground and after every dialog. `RecyclerView` is not available (since O2 of
+ * 2026-09-25 the app carries no androidx dependency at all, and adding `recyclerview` costs
+ * on the order of a hundred kilobytes against a phase budget of 25 600 B), so the list simply
+ * must not grow without bound. At a cap of 200 it does
  * not matter at all whether those rows come from one language or two, from words or from pairs.
  *
  * Showing only the active subtype was rejected for a reason that is not convenience: "erase all"

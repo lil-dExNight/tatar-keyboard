@@ -1,6 +1,5 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 
-import androidx.annotation.Keep
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import java.io.Closeable
 import java.io.File
@@ -323,7 +322,6 @@ sealed class PreparationResult {
  * The returned lease must remain open for the complete mapping/executor lifetime. There is no
  * live hot-swap operation: close an old lease only after that version has no readers.
  */
-@Keep
 interface PublishedDictionaryCatalog {
     /**
      * Returns the newest validated dictionary that is safe to activate.
@@ -344,7 +342,6 @@ interface PublishedDictionaryCatalog {
  * IME service recreation. Their stores still coordinate through process-wide state keyed by the
  * device-protected directory.
  */
-@Keep
 class DictionaryStorageController internal constructor(
     private val preparer: BackgroundDictionaryPreparer,
     private val catalog: PublishedDictionaryCatalog,
@@ -357,7 +354,6 @@ class DictionaryStorageController internal constructor(
     override fun cleanupReleasedVersions() = catalog.cleanupReleasedVersions()
 }
 
-@Keep
 class DictionaryFileLease internal constructor(
     val dictionary: PublishedDictionary,
     private val release: () -> Unit,

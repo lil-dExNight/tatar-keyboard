@@ -122,6 +122,13 @@ interface EngineHandle {
      */
     fun containsWord(normalizedWord: String): Boolean = false
 
+    /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of the glide word index
+     * (~6 MB of pure derivation, rebuilt on the next decode). The real handle posts the drop
+     * onto the engine's serialized worker; default no-op so a fake handle keeps compiling.
+     */
+    fun releaseGlideIndex() {}
+
     /** Bounded teardown; returns true if the engine fully released within [timeoutMs]. */
     fun destroy(timeoutMs: Long): Boolean
 }
@@ -162,6 +169,8 @@ class MappedEngineHandle private constructor(
     override fun autocorrectAdvice(): AutocorrectAdvice? = engine.autocorrectAdvice
 
     override fun containsWord(normalizedWord: String): Boolean = engine.containsWord(normalizedWord)
+
+    override fun releaseGlideIndex() = engine.releaseGlideIndex()
 
     override fun destroy(timeoutMs: Long): Boolean =
         engine.destroy(timeoutMs, TimeUnit.MILLISECONDS)
