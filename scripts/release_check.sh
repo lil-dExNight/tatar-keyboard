@@ -149,6 +149,7 @@ if [ "$QUICK" -eq 1 ]; then
     report SKIP gates.lint_release "--quick"
     report SKIP gates.python_tests "--quick"
     report SKIP gates.no_internet "--quick"
+    report SKIP gates.asset_rebuild_check "--quick"
 else
     # JVM-тесты; счётчик — из XML-отчётов JUnit (каталог app/build/test-results/*/).
     # --rerun-tasks: честный прогон, а не up-to-date (AGENTS.md).
@@ -206,6 +207,17 @@ else
     else
         report FAIL gates.no_internet "гейт упал, лог $LOG_DIR/no-internet.log"
         cat "$LOG_DIR/no-internet.log" >&2 || true
+    fi
+
+    # Аудит 2026-09-25: согласованность ассетов с пинами и голов таблиц со словарями —
+    # тем же входом, что CI и предрелизная сверка (AGENTS.md), а не только косвенно через
+    # извлечённые из APK пины ниже.
+    if run_logged "$LOG_DIR/asset-rebuild-check.log" \
+            python3 scripts/rebuild_assets.py --check --allow-known-drift; then
+        report PASS gates.asset_rebuild_check "пины и связки согласованы, лог $LOG_DIR/asset-rebuild-check.log"
+    else
+        report FAIL gates.asset_rebuild_check "расхождение, лог $LOG_DIR/asset-rebuild-check.log"
+        tail -20 "$LOG_DIR/asset-rebuild-check.log" >&2 || true
     fi
 fi
 
@@ -358,6 +370,67 @@ else
     cat "$EMOJI_LOG" >&2
 fi
 
+# --- 3c. словари и биграммы: APK против дерева ---------------------------------------------------
+# Аудит 2026-09-25: множественная сверка (C2 аудита 2026-09-02) покрывала только assets/emoji/ —
+# посторонний файл под assets/dictionaries/ или assets/bigrams/ в APK проходил мимо гейта, хотя
+# движок читает ассеты изображённым каталогом. Те же правила, что для эмодзи: МНОЖЕСТВО файлов в
+# обе стороны (включая NOTICE.txt и sentstart-таблицы) плюс побайтное содержимое. Пины четырёх
+# zlib-ассетов выше (artifact.asset_pins) при этом остаются отдельной проверкой: она сверяет ещё
+# и развёрнутое содержимое с константами в коде.
+
+TREE_ASSETS_LOG="$LOG_DIR/tree-assets.log"
+if python3 - "$APK" >"$TREE_ASSETS_LOG" 2>&1 <<'PYEOF'
+import hashlib
+import sys
+import zipfile
+from pathlib import Path
+
+apk_path = sys.argv[1]
+SUBTREES = ["dictionaries", "bigrams"]
+
+problems = []
+tree = {}
+for subtree in SUBTREES:
+    root = Path("app/src/main/assets") / subtree
+    for p in root.rglob("*"):
+        if p.is_file():
+            tree[(subtree, p.relative_to(root).as_posix())] = p
+with zipfile.ZipFile(apk_path) as apk:
+    in_apk = set()
+    for subtree in SUBTREES:
+        prefix = f"assets/{subtree}/"
+        for name in apk.namelist():
+            if name.startswith(prefix) and not name.endswith("/"):
+                in_apk.add((subtree, name[len(prefix):]))
+    for key in sorted(set(tree) - in_apk):
+        problems.append(f"{key[0]}/{key[1]}: есть в дереве, нет в APK")
+    for key in sorted(in_apk - set(tree)):
+        problems.append(f"{key[0]}/{key[1]}: есть в APK, нет в дереве")
+    for key in sorted(set(tree) & in_apk):
+        want = tree[key].read_bytes()
+        got = apk.read(f"assets/{key[0]}/{key[1]}")
+        if got != want:
+            problems.append(
+                f"{key[0]}/{key[1]}: расходится с деревом "
+                f"(дерево {hashlib.sha256(want).hexdigest()[:16]}…, "
+                f"APK {hashlib.sha256(got).hexdigest()[:16]}…)")
+        else:
+            print(f"OK {key[0]}/{key[1]} ({len(want)} Б, побайтно дерево)")
+
+for p in problems:
+    print(f"MISMATCH {p}")
+if problems:
+    sys.exit(1)
+print(f"TOTAL {len(tree)} ассетов dictionaries/bigrams совпали с деревом (множество и содержимое)")
+PYEOF
+then
+    report PASS artifact.tree_assets "$(tail -1 "$TREE_ASSETS_LOG")"
+    grep '^OK ' "$TREE_ASSETS_LOG" | sed 's/^/       /'
+else
+    report FAIL artifact.tree_assets "ассеты расходятся с деревом, лог $TREE_ASSETS_LOG"
+    cat "$TREE_ASSETS_LOG" >&2
+fi
+
 # --- 4. разрешения: ровно VIBRATE --------------------------------------------------------------
 
 if PERMS=$("$AAPT2" dump permissions "$APK" 2>&1); then
@@ -373,16 +446,25 @@ else
     report FAIL artifact.permissions "aapt2 dump permissions упал: $PERMS"
 fi
 
-# --- 5. подпись: сертификат релизного ключа ----------------------------------------------------
+# --- 5. подпись: сертификат релизного ключа, ровно один сигнер -----------------------------------
 
 if SIG=$("$APKSIGNER" verify --print-certs "$APK" 2>&1); then
-    cert=$(grep -F 'SHA-256 digest:' <<<"$SIG" | head -1 | grep -oE '[0-9a-f]{64}' || true)
-    if [ -z "$cert" ]; then
+    # Аудит 2026-09-25: сигнеров должно быть РОВНО один. Каждый сигнер печатает строку
+    # «… certificate SHA-256 digest: <hash>» (мульти-подпись — «V2 Signer #1/#2: …», проверено
+    # на собранном вручную двухключевом APK); head -1 принимал бы APK с лишним чужим ключом
+    # молча. Один ключ, подписавший по двум схемам, даёт один ДАЙДЖЕСТ дважды — это один
+    # сигнер, поэтому считаем различные дайджесты, а не строки.
+    mapfile -t CERTS < <(grep -oE 'certificate SHA-256 digest: [0-9a-f]{64}' <<<"$SIG" \
+        | grep -oE '[0-9a-f]{64}' | sort -u || true)
+    if [ "${#CERTS[@]}" -eq 0 ]; then
         report FAIL artifact.signature "apksigner не вернул SHA-256 сертификата: $SIG"
-    elif [ "$cert" = "$RELEASE_CERT_SHA256" ]; then
-        report PASS artifact.signature "сертификат ${cert:0:12}… (релизный ключ)"
+    elif [ "${#CERTS[@]}" -gt 1 ]; then
+        report FAIL artifact.signature "различных сертификатов: ${#CERTS[@]} (>1) — мульти-подпись недопустима"
+        printf '       signer %s\n' "${CERTS[@]}" >&2
+    elif [ "${CERTS[0]}" = "$RELEASE_CERT_SHA256" ]; then
+        report PASS artifact.signature "сертификат ${CERTS[0]:0:12}… (релизный ключ, единственный сигнер)"
     else
-        report FAIL artifact.signature "сертификат $cert ≠ релизному ${RELEASE_CERT_SHA256:0:12}… (не тот ключ — debug?)"
+        report FAIL artifact.signature "сертификат ${CERTS[0]} ≠ релизному ${RELEASE_CERT_SHA256:0:12}… (не тот ключ — debug?)"
     fi
 else
     report FAIL artifact.signature "APK не подписан или подпись не верифицируется: $(tail -1 <<<"$SIG")"

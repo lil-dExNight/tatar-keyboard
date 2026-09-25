@@ -6,22 +6,35 @@ on:
 permissions:
   contents: read
 
+# NOTE (T5, stage D of docs/ROADMAP-P8-PLAN.md, 2026-09-25): every action below is pinned to a
+# FULL-LENGTH COMMIT SHA, with the tag it corresponded to in the trailing comment. A floating
+# major tag (the previous state) follows whatever upstream moves it to, so a compromised action
+# repository would reach this pipeline silently. The SHAs were resolved from the GitHub API on
+# 2026-09-25 (annotated tags dereferenced to their commits):
+#   actions/checkout            v4 -> 11d5960a326750d5838078e36cf38b85af677262
+#   actions/setup-java          v4 -> cf277c60eb25467037889841efdb72551f06f6c3
+#   gradle/actions/setup-gradle v4 -> ed408507eac070d1f99cc633dbcf757c94c7933a
+#   actions/setup-python        v5 -> a26af69be951a213d495a4c3e4e4022e16d87065
+#   actions/upload-artifact     v4 -> ea165f8d65b6e75b540449e92b4886f43607fa02
+# Updating an action is now a deliberate step: resolve the new tag's commit and change the pin
+# together with its comment.
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Fast-fail: level 1 (source manifest) runs before any toolchain setup;
       # without an APK the script skips level 2 and still exits non-zero on INTERNET.
       - name: Check no INTERNET permission (source manifest)
         run: bash scripts/check-no-internet.sh
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
       # gradle-wrapper.jar is intentionally not tracked (upstream gitignores gradle/);
       # restore it from the official distribution, pinned by sha256.
@@ -36,7 +49,7 @@ jobs:
 
       # Build-time python packers: plain unittest, no pytest (Phase 4a).
       # Pinned to 3.12 so 3.13+ APIs fail here, not on contributors' machines.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
       - name: Run python packer tests
@@ -69,7 +82,11 @@ jobs:
       - name: Check no INTERNET permission (release APK)
         run: bash scripts/check-no-internet.sh app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - uses: actions/upload-artifact@v4
+      # 2026-09-25 audit: never upload artifacts from pull_request runs — a fork PR
+      # builds code the author chose, and the artifact would be a maintainer-hosted
+      # trojan candidate. Push runs (trusted tree) keep uploading the debug APK.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
@@ -81,12 +98,12 @@ jobs:
   reproducible:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Restore gradle-wrapper.jar
         run: |
           curl -fsSL -o gradle/wrapper/gradle-wrapper.jar \
@@ -102,3 +119,21 @@ jobs:
         run: |
           sha256sum /tmp/repro-1.apk app/build/outputs/apk/release/app-release-unsigned.apk
           cmp /tmp/repro-1.apk app/build/outputs/apk/release/app-release-unsigned.apk
+
+      # T8 (stage D, docs/ROADMAP-P8-PLAN.md): the PACK pipeline used to sit outside this gate —
+      # determinism of the arsc-deflate + zopfli steps was only ever proven by the release
+      # ritual's double run on the maintainer's machine. --no-sign stops before apksigner (CI has
+      # no keystore), so the same two steps are now compared here on every push. The runner's
+      # build-tools version is whatever the image ships, hence the explicit override of the
+      # release pin.
+      - name: Pack twice without signing
+        env:
+          TT_BUILD_TOOLS_VERSION: ''
+        run: |
+          set -e
+          latest=$(ls -1 "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)
+          echo "runner build-tools: $latest"
+          TT_BUILD_TOOLS_VERSION="$latest" bash scripts/release_pack.sh --no-sign /tmp/pack-1.apk
+          TT_BUILD_TOOLS_VERSION="$latest" bash scripts/release_pack.sh --no-sign /tmp/pack-2.apk
+          sha256sum /tmp/pack-1.apk /tmp/pack-2.apk
+          cmp /tmp/pack-1.apk /tmp/pack-2.apk
