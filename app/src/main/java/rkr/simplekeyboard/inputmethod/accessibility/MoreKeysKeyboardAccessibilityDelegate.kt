@@ -17,9 +17,10 @@
 package rkr.simplekeyboard.inputmethod.accessibility
 
 import android.graphics.Rect
+import android.os.Build
 import android.view.accessibility.AccessibilityEvent
-import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
-import androidx.customview.widget.ExploreByTouchHelper
+import android.view.accessibility.AccessibilityNodeInfo
+import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper
 import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.keyboard.Key
 import rkr.simplekeyboard.inputmethod.keyboard.KeyDetector
@@ -84,7 +85,7 @@ class MoreKeysKeyboardAccessibilityDelegate(
 
     override fun onPopulateNodeForVirtualView(
         virtualViewId: Int,
-        node: AccessibilityNodeInfoCompat,
+        node: AccessibilityNodeInfo,
     ) {
         val keys = sortedKeys()
         val key = keys.getOrNull(virtualViewId)
@@ -105,11 +106,12 @@ class MoreKeysKeyboardAccessibilityDelegate(
             key.y + panelView.paddingTop + key.height,
         )
         node.setBoundsInParent(tempBounds)
-        node.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
+        node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
         node.isClickable = true
         // Same rationale as MainKeyboardView's delegate: every key of an IME
         // is a text entry key so TalkBack enables lift-to-type on the panel.
-        node.isTextEntryKey = true
+        // The API 29 gate mirrors the androidx compat (a no-op below 29) — see the sibling.
+        if (Build.VERSION.SDK_INT >= 29) node.isTextEntryKey = true
     }
 
     override fun onPerformActionForVirtualView(
@@ -117,7 +119,7 @@ class MoreKeysKeyboardAccessibilityDelegate(
         action: Int,
         arguments: android.os.Bundle?,
     ): Boolean {
-        if (action != AccessibilityNodeInfoCompat.ACTION_CLICK) return false
+        if (action != AccessibilityNodeInfo.ACTION_CLICK) return false
         // A stale click after the panel already left the screen must not
         // reach onKeyInput: the action listener is only valid while showing.
         if (!panelView.isShowingInParent) return false

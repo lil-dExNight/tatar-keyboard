@@ -33,9 +33,8 @@ import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.widget.OverScroller
-import androidx.core.view.ViewCompat
-import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
-import androidx.customview.widget.ExploreByTouchHelper
+import android.view.accessibility.AccessibilityNodeInfo
+import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper
 import kotlin.math.abs
 import rkr.simplekeyboard.inputmethod.R
 
@@ -410,7 +409,7 @@ class EmojiPanelView @JvmOverloads constructor(
         applyMetrics()
         state.setColumns(currentColumns())
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
-        ViewCompat.setAccessibilityDelegate(this, accessibilityHelper)
+        setAccessibilityDelegate(accessibilityHelper)
     }
 
     private fun applyMetrics() {
@@ -758,6 +757,10 @@ class EmojiPanelView @JvmOverloads constructor(
             cancelSkinTonePopupTimer()
             popupOpenedThisGesture = false
             state.closePopup()
+            // A hidden panel must not carry a live fling: while GONE nothing draws, so the
+            // scroller would resume mid-flight on the next show. Same pair release() uses.
+            scroller.forceFinished(true)
+            flingActive = false
             state.cancelGesture()
         }
     }
@@ -1017,18 +1020,18 @@ class EmojiPanelView @JvmOverloads constructor(
             virtualViewIds.add(DELETE_ID)
         }
 
-        override fun onPopulateNodeForHost(node: AccessibilityNodeInfoCompat) {
+        override fun onPopulateNodeForHost(node: AccessibilityNodeInfo) {
             node.className = View::class.java.name
             if (state.maxScrollY() > 0) {
                 node.isScrollable = true
-                node.addAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD)
-                node.addAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_BACKWARD)
+                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
             }
         }
 
         override fun onPopulateNodeForVirtualView(
             virtualViewId: Int,
-            node: AccessibilityNodeInfoCompat,
+            node: AccessibilityNodeInfo,
         ) {
             node.className = android.widget.Button::class.java.name
             when {
@@ -1090,7 +1093,7 @@ class EmojiPanelView @JvmOverloads constructor(
                 }
             }
             node.setBoundsInParent(tempBounds)
-            node.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
+            node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
             node.isClickable = true
             node.isEnabled = true
         }
@@ -1100,7 +1103,7 @@ class EmojiPanelView @JvmOverloads constructor(
             action: Int,
             arguments: Bundle?,
         ): Boolean {
-            if (action != AccessibilityNodeInfoCompat.ACTION_CLICK) {
+            if (action != AccessibilityNodeInfo.ACTION_CLICK) {
                 return false
             }
             if (!activateForAccessibility(virtualIdToTarget(virtualViewId))) {
@@ -1158,9 +1161,9 @@ class EmojiPanelView @JvmOverloads constructor(
      */
     override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
         when (action) {
-            AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD ->
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD ->
                 if (scrollOneViewport(forward = true)) return true
-            AccessibilityNodeInfoCompat.ACTION_SCROLL_BACKWARD ->
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD ->
                 if (scrollOneViewport(forward = false)) return true
         }
         return super.performAccessibilityAction(action, arguments)

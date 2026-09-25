@@ -1,6 +1,7 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -59,5 +60,29 @@ class GlidePathTest {
         assertEquals(0f, path.firstX, 0f)
         assertEquals(0f, path.lastY, 0f)
         assertTrue(path.size == 0)
+    }
+
+    /**
+     * 2026-09-25 audit, F14: a NaN/Infinity sample would poison every distance the decoder
+     * measures from the path, so it is refused at the gate — fail-closed, like the capacity cap.
+     */
+    @Test
+    fun nonFinitePointsAreRefusedFailClosed() {
+        val path = GlidePath()
+        assertTrue(path.addPoint(1f, 2f, 0f))
+        assertFalse(path.addPoint(Float.NaN, 2f, 1f))
+        assertFalse(path.addPoint(1f, Float.POSITIVE_INFINITY, 1f))
+        assertFalse(path.addPoint(1f, 2f, Float.NaN))
+        assertFalse(path.addPoint(1f, Float.NEGATIVE_INFINITY, 1f))
+
+        assertEquals("the poisoned samples never entered the buffer", 1, path.size)
+        assertTrue(path.length().isFinite())
+        assertEquals(1f, path.firstX, 0f)
+        assertEquals(1f, path.lastX, 0f)
+
+        // And a valid point after the junk still lands.
+        assertTrue(path.addPoint(4f, 6f, 10f))
+        assertEquals(2, path.size)
+        assertEquals(5f, path.length(), 0.0001f)
     }
 }

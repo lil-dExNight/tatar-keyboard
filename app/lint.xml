@@ -10,7 +10,12 @@
          The regenerated baseline holds 36 WARNINGS, each classified below
          (2026-08-31, P1: 5x IconLauncherShape dropped — icons converted PNG ->
          lossless WebP and lint's icon-shape detector does not analyse WebP;
-         baseline now holds 31 warnings):
+         baseline now holds 31 warnings; 2026-09-25 SAFE wave: the two
+         UnusedResources entries left together with the dead resources they
+         described, and the AndroidGradlePluginVersion pin left after its
+         message drifted (lint flagged it as unmatched) — the baseline holds 29;
+         2026-09-25 O2: the GradleDependency entry left with the dependency
+         itself — the baseline holds 28):
 
          Conscious design / false positive (leave):
          - ApplySharedPref (Settings.java): commit() is deliberately synchronous for the
@@ -32,10 +37,20 @@
          Cosmetic / not actionable (leave):
          - RedundantLabel x3, Overdraw x2, UseRequiresApi, UsableSpace,
            TextFields, Autofill x2,
-           LabelFor x2, ClickableViewAccessibility x2 (legacy views),
-           UnusedResources x2 (icon_launcher_text glyph data, AppText.Button style).
+           LabelFor x2, ClickableViewAccessibility x2 (legacy views).
+           (The UnusedResources x2 — icon_launcher_text glyph data and the
+           AppText.Button style — were deleted with the resources themselves in
+           the 2026-09-25 SAFE wave.)
+
+         Live but conscious, reported outside the baseline:
+         - VectorPath (ic_launcher_foreground.xml, O2): the traced brand icon's
+           compound path is 3 217 chars; the icon renders once per launcher
+           layout, so the redraw cost the detector warns about never recurs.
 
          Version pins (conscious):
-         - AndroidGradlePluginVersion, GradleDependency: Gradle/AGP/dependency versions
-           are pinned deliberately (reproducible build, CI wrapper sha256). -->
+         - (GradleDependency left with the dependency itself in O2: there is no
+           androidx.customview to pin anymore.) The AndroidGradlePluginVersion
+           pin self-invalidated on 2026-09-25 when the
+           "newer Gradle" message drifted (9.7.1 -> 9.8.0); it is reported live
+           now and re-pinned only on a deliberate wrapper bump. -->
 </lint>

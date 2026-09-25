@@ -18,6 +18,8 @@
 
 package rkr.simplekeyboard.inputmethod.keyboard;
 
+import java.util.List;
+
 /**
  * This class handles key detection.
  */
@@ -123,7 +125,13 @@ public class KeyDetector {
         final int touchX = getTouchX(x);
         final int touchY = getTouchY(y);
 
-        for (final Key key: mKeyboard.getNearestKeys(touchX, touchY)) {
+        // Index loop, not for-each: this runs once per gesture sample, and the enhanced for
+        // would allocate an Iterator per call. The list is an unmodifiable ArrayList view
+        // (ProximityInfo), so indexed access is O(1).
+        final List<Key> nearestKeys = mKeyboard.getNearestKeys(touchX, touchY);
+        final int nearestCount = nearestKeys.size();
+        for (int i = 0; i < nearestCount; i++) {
+            final Key key = nearestKeys.get(i);
             if (key.isOnKey(touchX, touchY)) {
                 return key;
             }

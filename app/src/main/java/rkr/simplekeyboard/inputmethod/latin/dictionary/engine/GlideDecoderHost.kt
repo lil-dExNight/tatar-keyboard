@@ -50,6 +50,18 @@ internal class GlideDecoderHost(
         this.geometry = geometry
     }
 
+    /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): drops the lazily built decoder — its [GlideWordIndex] is
+     * the ~6 MB structure the idle memory release (LatinIME `MSG_DEALLOCATE_MEMORY`) targets.
+     * The index is a pure derivation of the inventory and the live geometry, so the next
+     * [decodeGlide] simply rebuilds it. Worker-confined like every other touch of [decoder]:
+     * the caller routes this through the engine's serialized executor, never the UI thread.
+     */
+    fun releaseIndex() {
+        decoder = null
+        decoderGeometry = null
+    }
+
     override fun decodeGlide(path: GlidePath): List<String> {
         val current = geometry ?: return emptyList()
         if (current.isEmpty) return emptyList()

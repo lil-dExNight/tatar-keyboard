@@ -42,9 +42,4 @@
         <item name="android:textColor">@color/app_text_primary</item>
     </style>
 
-    <!-- Button label: 17sp medium. -->
-    <style name="AppText.Button" parent="">
-        <item name="android:textSize">17sp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
-    </style>
 </resources>

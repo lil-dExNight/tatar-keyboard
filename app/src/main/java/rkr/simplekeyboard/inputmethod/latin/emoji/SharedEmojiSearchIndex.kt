@@ -27,7 +27,10 @@ import java.io.InputStream
  * Both consumers are lazy and load off the UI thread, each on its own executor, so two first
  * calls may race: [get] is synchronized, parses at most once, and caches a failure
  * ([EmojiSearchIndex.EMPTY]) too — both consumers already treat an unusable asset as terminal
- * for the process, so a retry would only re-read an asset that cannot get better.
+ * for the process, so a retry would only re-read an asset that cannot get better. (O2: the idle
+ * memory release — [releaseProcessWide] — softens that terminality to one retry per idle cycle;
+ * it only ever re-reads an asset that could not be read, a bounded silent cost on an
+ * already-dead feature.)
  *
  * Threading note: [EmojiSearchIndex.search] reuses rank buckets and stays single-threaded — the
  * panel is the only searcher and drives it from the UI thread, exactly as before; the suggest
@@ -51,6 +54,18 @@ class SharedEmojiSearchIndex internal constructor(
         }
     }
 
+    /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): drops the parsed copy on the idle memory release; the
+     * next [get] reparses lazily on the caller's background thread, exactly like the first load.
+     * The same synchronized discipline as [get] makes a release racing a load resolve to one
+     * valid state either way.
+     */
+    fun release() {
+        synchronized(this) {
+            cached = null
+        }
+    }
+
     private fun load(): EmojiSearchIndex {
         val stream = try {
             openAsset()
@@ -63,6 +78,7 @@ class SharedEmojiSearchIndex internal constructor(
     companion object {
         const val ASSET_PATH = "emoji/emoji_search_v1.txt"
 
+        @Volatile
         private var processWide: SharedEmojiSearchIndex? = null
 
         /**
@@ -84,6 +100,18 @@ class SharedEmojiSearchIndex internal constructor(
                     }.also { processWide = it }
                 }
             }
+        }
+
+        /**
+         * O2 (docs/OPTIMIZE-2026-09-25.md): the process-wide idle release — drops the parsed
+         * index so a long-hidden keyboard does not hold it. No-op when nothing was ever loaded;
+         * the next consumer's [get] reparses lazily. Callers that kept their own reference (the
+         * filtered panel copy, the suggest source) are released by their own owners on the same
+         * deallocate pass. `@JvmStatic` because the caller is LatinIME (Java).
+         */
+        @JvmStatic
+        fun releaseProcessWide() {
+            processWide?.release()
         }
     }
 }

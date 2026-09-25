@@ -18,13 +18,14 @@ package rkr.simplekeyboard.inputmethod.accessibility
 
 import android.content.Context
 import android.graphics.Rect
+import android.os.Build
 import android.os.SystemClock
 import android.util.SparseArray
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
-import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
-import androidx.customview.widget.ExploreByTouchHelper
+import android.view.accessibility.AccessibilityNodeInfo
+import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper
 import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.keyboard.Key
 import rkr.simplekeyboard.inputmethod.keyboard.KeyDetector
@@ -123,7 +124,7 @@ class KeyboardAccessibilityDelegate(
 
     override fun onPopulateNodeForVirtualView(
         virtualViewId: Int,
-        node: AccessibilityNodeInfoCompat,
+        node: AccessibilityNodeInfo,
     ) {
         val keys = sortedKeys()
         val key = keys.getOrNull(virtualViewId)
@@ -144,14 +145,16 @@ class KeyboardAccessibilityDelegate(
             key.y + keyboardView.paddingTop + key.height,
         )
         node.setBoundsInParent(tempBounds)
-        node.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
+        node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
         node.isClickable = true
         // Set on every key, not just letters: the framework contract for this flag is "a
         // text entry key that is part of a keyboard or keypad", i.e. any key of an IME.
         // TalkBack uses it to enable lift-to-type across the whole keyboard (including
         // delete/shift); restricting it to letters would break lift-to-type on delete.
         // Matches Gboard/LatinIME. Do not "fix" to letters-only.
-        node.isTextEntryKey = true
+        // The gate is the androidx compat's own semantics: AccessibilityNodeInfoCompat
+        // setTextEntryKey is a no-op below API 29, so gating keeps the port byte-identical.
+        if (Build.VERSION.SDK_INT >= 29) node.isTextEntryKey = true
     }
 
     override fun onPerformActionForVirtualView(
@@ -159,7 +162,7 @@ class KeyboardAccessibilityDelegate(
         action: Int,
         arguments: android.os.Bundle?,
     ): Boolean {
-        if (action != AccessibilityNodeInfoCompat.ACTION_CLICK) return false
+        if (action != AccessibilityNodeInfo.ACTION_CLICK) return false
         val key = sortedKeys().getOrNull(virtualViewId)?.takeUnless { it.isSpacer } ?: return false
         // Visible center of the key in view coordinates (mHitbox is private in the fork;
         // the visible center is always inside the hitbox).

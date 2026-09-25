@@ -40,8 +40,13 @@ class GlidePath(val capacity: Int = MAX_POINTS) {
     var size = 0
         private set
 
-    /** Appends one sample; false (and the point dropped) when the buffer is full. */
+    /**
+     * Appends one sample; false (and the point dropped) when the buffer is full or the sample is
+     * not finite — 2026-09-25 audit, F14: a NaN/Infinity coordinate would poison every distance
+     * the decoder measures from this path, so it is refused at the gate (fail-closed).
+     */
     fun addPoint(x: Float, y: Float, t: Float): Boolean {
+        if (!x.isFinite() || !y.isFinite() || !t.isFinite()) return false
         if (size >= capacity) return false
         xs[size] = x
         ys[size] = y

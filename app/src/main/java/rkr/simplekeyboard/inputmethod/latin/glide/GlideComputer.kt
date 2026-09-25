@@ -33,3 +33,15 @@ fun interface GlideComputer {
 fun interface GlideGeometrySink {
     fun updateGlideGeometry(geometry: GlideKeyGeometry?)
 }
+
+/**
+ * The idle memory-release seam (O2, docs/OPTIMIZE-2026-09-25.md): drops the lazily built glide
+ * word index so a long-hidden keyboard does not hold ~6 MB of pure derivation. The index
+ * rebuilds from the dictionary on the next decode. Runs on the engine's serialized worker —
+ * the decoder behind it is worker-confined, so the engine posts this through its executor,
+ * never onto the calling (UI) thread.
+ */
+fun interface GlideIndexReleaser {
+    fun releaseGlideIndex()
+}
+

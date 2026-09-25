@@ -54,18 +54,19 @@ class EmojiPanelAccessibilitySourceContractTest {
     // --- ExploreByTouchHelper on the panel -----------------------------------------------------
 
     @Test
-    fun panelUsesExploreByTouchHelperFromTheAlreadyPresentCustomviewDependency() {
-        assertTrue(panel.contains("import androidx.customview.widget.ExploreByTouchHelper"))
+    fun panelUsesTheForkedExploreByTouchHelper() {
+        assertTrue(panel.contains("import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper"))
         assertTrue(panel.contains("ExploreByTouchHelper(this@EmojiPanelView)"))
-        assertTrue(panel.contains("ViewCompat.setAccessibilityDelegate(this, accessibilityHelper)"))
+        assertTrue(panel.contains("setAccessibilityDelegate(accessibilityHelper)"))
         assertTrue(panel.contains("importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES"))
         // Hover events are routed to the helper, like the suggestion strip does.
         assertTrue(panel.contains("accessibilityHelper.dispatchHoverEvent(event)"))
-        // No new dependency is introduced by the delegate.
+        // O2 (2026-09-25): the helper is the AOSP fork in our compat package — the
+        // androidx.customview dependency itself is GONE (the last use it had).
         val gradle = listOf(File("build.gradle"), File("app/build.gradle"))
             .firstOrNull(File::isFile)?.readText()
             ?: error("cannot locate app/build.gradle")
-        assertTrue(gradle.contains("androidx.customview:customview"))
+        assertFalse(gradle.contains("androidx.customview:customview"))
     }
 
     @Test
@@ -134,8 +135,8 @@ class EmojiPanelAccessibilitySourceContractTest {
         val hostBody = panel.substringAfter("override fun onPopulateNodeForHost(")
             .substringBefore("override fun onPopulateNodeForVirtualView(")
         assertTrue(hostBody.contains("node.isScrollable = true"))
-        assertTrue(hostBody.contains("AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD"))
-        assertTrue(hostBody.contains("AccessibilityNodeInfoCompat.ACTION_SCROLL_BACKWARD"))
+        assertTrue(hostBody.contains("AccessibilityNodeInfo.ACTION_SCROLL_FORWARD"))
+        assertTrue(hostBody.contains("AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD"))
         val performBody = panel.substringAfter("override fun performAccessibilityAction(action: Int")
         assertTrue(performBody.contains("ACTION_SCROLL_FORWARD"))
         assertTrue(performBody.contains("ACTION_SCROLL_BACKWARD"))
@@ -154,7 +155,7 @@ class EmojiPanelAccessibilitySourceContractTest {
         // The click handler routes through activateForAccessibility, not a private commit/delete.
         val perform = panel.substringAfter("override fun onPerformActionForVirtualView(")
             .substringBefore("private fun targetToVirtualId(")
-        assertTrue(perform.contains("AccessibilityNodeInfoCompat.ACTION_CLICK"))
+        assertTrue(perform.contains("AccessibilityNodeInfo.ACTION_CLICK"))
         assertTrue(perform.contains("activateForAccessibility(virtualIdToTarget(virtualViewId))"))
         assertTrue(perform.contains("sendEventForVirtualView(virtualViewId"))
         // No commit/delete/log of its own anywhere in the panel (mirrors EmojiPanelSourceContract).

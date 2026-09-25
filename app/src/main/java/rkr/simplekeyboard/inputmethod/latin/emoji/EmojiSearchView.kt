@@ -30,9 +30,8 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
-import androidx.core.view.ViewCompat
-import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
-import androidx.customview.widget.ExploreByTouchHelper
+import android.view.accessibility.AccessibilityNodeInfo
+import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper
 import kotlin.math.abs
 import rkr.simplekeyboard.inputmethod.R
 
@@ -214,7 +213,7 @@ class EmojiSearchView @JvmOverloads constructor(
         queryPaint.getFontMetrics(queryFontMetrics)
         messagePaint.getFontMetrics(messageFontMetrics)
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
-        ViewCompat.setAccessibilityDelegate(this, accessibilityHelper)
+        setAccessibilityDelegate(accessibilityHelper)
     }
 
     fun setListener(listener: Listener?) {
@@ -529,7 +528,7 @@ class EmojiSearchView @JvmOverloads constructor(
 
         override fun onPopulateNodeForVirtualView(
             virtualViewId: Int,
-            node: AccessibilityNodeInfoCompat,
+            node: AccessibilityNodeInfo,
         ) {
             node.className = android.widget.Button::class.java.name
             when {
@@ -562,7 +561,7 @@ class EmojiSearchView @JvmOverloads constructor(
                 }
             }
             node.setBoundsInParent(tempBounds)
-            node.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
+            node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
             node.isClickable = true
             node.isEnabled = true
         }
@@ -572,7 +571,7 @@ class EmojiSearchView @JvmOverloads constructor(
             action: Int,
             arguments: Bundle?,
         ): Boolean {
-            if (action != AccessibilityNodeInfoCompat.ACTION_CLICK) return false
+            if (action != AccessibilityNodeInfo.ACTION_CLICK) return false
             when {
                 virtualViewId == CLOSE_ID -> listener?.onEmojiSearchClosed()
                 virtualViewId in 0 until resultCount ->

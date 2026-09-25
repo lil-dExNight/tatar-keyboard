@@ -81,6 +81,4 @@
     <!-- config_key_bonus_height_5row is calculated to be the extra height necessary to keep the 5
          and 4 row keyboards' keys the same height. -->
     <fraction name="config_key_bonus_height_5row">9.194%p</fraction>
-    <fraction name="config_key_letter_ratio_5row">55%</fraction>
-    <fraction name="config_key_shifted_letter_hint_ratio_5row">41%</fraction>
 </resources>

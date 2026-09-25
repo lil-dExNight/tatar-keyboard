@@ -182,6 +182,8 @@ class EmojiPanelController internal constructor(
      * The search index, loaded at most once per process and only when the user first opens the
      * search — never on the cold-start path and never on the UI thread. `null` means "not loaded
      * yet"; [EmojiSearchIndex.EMPTY] means "loaded and unusable", which is not retried.
+     * (O2: the idle memory release drops a LIVE index via [releaseSearchIndex]; the EMPTY
+     * verdict is deliberately kept — a release must not resurrect a load that proved unusable.)
      */
     private var searchIndex: EmojiSearchIndex? = null
 
@@ -294,6 +296,21 @@ class EmojiPanelController internal constructor(
 
     /** The loaded index, or null while it has never been asked for; used by tests. */
     fun searchIndexOrNull(): EmojiSearchIndex? = searchIndex
+
+    /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release (LatinIME MSG_DEALLOCATE_MEMORY)
+     * drops the filtered search index; the next search request re-derives it through the same
+     * lazy background path that served the first one (the shared parse may itself have been
+     * released on the same pass — it reloads too). The terminal EMPTY verdict survives: a
+     * release must not resurrect a load that proved unusable. UI thread, like every method here;
+     * a load already in flight is left to land — it re-caches, which is only a wasted release,
+     * never a wrong one.
+     */
+    fun releaseSearchIndex() {
+        val loaded = searchIndex ?: return
+        if (loaded.isEmpty) return
+        searchIndex = null
+    }
 
     /** Drops the single deferred show without letting it fire later. */
     private fun cancelPendingShow() {

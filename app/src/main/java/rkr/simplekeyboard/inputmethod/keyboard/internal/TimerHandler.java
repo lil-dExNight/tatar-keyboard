@@ -192,5 +192,10 @@ public final class TimerHandler extends LeakGuardHandlerWrapper<DrawingProxy>
     public void cancelAllMessages() {
         cancelAllKeyTimers();
         removeMessages(MSG_DISMISS_KEY_PREVIEW);
+        // These two ids are never handled — they exist only as hasMessages() markers — so a
+        // message left behind here would keep isTypingState()/isInDoubleTapShiftKeyTimeout()
+        // stale-true after the view's cancelAllOngoingEvents() until it expired on its own.
+        removeMessages(MSG_TYPING_STATE_EXPIRED);
+        removeMessages(MSG_DOUBLE_TAP_SHIFT_KEY);
     }
 }

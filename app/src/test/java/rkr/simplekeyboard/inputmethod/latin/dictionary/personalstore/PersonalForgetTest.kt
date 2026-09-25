@@ -114,7 +114,7 @@ class PersonalForgetTest {
         val node = strip.substringAfter("val actionable = isVirtualCellActionable(virtualViewId)")
             .substringBefore("override fun onPerformActionForVirtualView")
         assertTrue("every actionable cell gets it",
-            node.contains("node.addAction(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK)"))
+            node.contains("node.addAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)"))
         // Checked on CODE only: the reason this action is on every cell is explained in a comment
         // right there, and prose mentioning "personal" must not fail its own rule.
         val code = node.lineSequence()

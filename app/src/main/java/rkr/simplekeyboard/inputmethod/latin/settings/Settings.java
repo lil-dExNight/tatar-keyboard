@@ -492,7 +492,12 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     public static int readKeyboardColor(final SharedPreferences prefs, final Context context) {
-        return prefs.getInt(PREF_KEYBOARD_COLOR, readKeyboardDefaultColor(context));
+        // contains() first: the default walks the theme table and the resource arrays, and that
+        // work is wasted whenever the preference holds a value (the common case once set).
+        if (prefs.contains(PREF_KEYBOARD_COLOR)) {
+            return prefs.getInt(PREF_KEYBOARD_COLOR, 0);
+        }
+        return readKeyboardDefaultColor(context);
     }
 
     public static void removeKeyboardColor(final SharedPreferences prefs) {

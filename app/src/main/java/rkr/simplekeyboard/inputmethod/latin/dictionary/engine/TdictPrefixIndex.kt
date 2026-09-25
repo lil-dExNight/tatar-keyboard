@@ -338,7 +338,11 @@ internal class TdictPrefixIndex private constructor(
             for (offset in 0 until prefixLength) {
                 exactScratch[offset] = normalizedPrefixUtf8.byteAt(offset).toByte()
             }
-            var resultCount = collectExact(prefixLength)
+            // One binary search serves both the exact pass and the autocorrect pass: the fuzzy
+            // level between them only ever READS exactScratch, so the bound computed here is
+            // still the answer computeAutocorrectAdvice would otherwise re-derive.
+            val exactLowerBound = lowerBound(exactScratch, prefixLength, 0)
+            var resultCount = collectExact(prefixLength, exactLowerBound)
             // Recorded before the fuzzy pass appends to the same ranked arrays: everything after
             // this many slots is fuzzy, which is exactly what the E4b merge needs to know.
             lastExactCount = resultCount
@@ -356,7 +360,7 @@ internal class TdictPrefixIndex private constructor(
             }
             // Deliberately outside the `resultCount < MAX_RESULTS` guard above: the D3 verdict is
             // about the typed word itself and must not depend on how full the band happens to be.
-            computeAutocorrectAdvice(normalizedPrefixUtf8, prefixLength)
+            computeAutocorrectAdvice(normalizedPrefixUtf8, prefixLength, exactLowerBound)
             if (resultCount == 0) return emptyList()
             ArrayList<String>(resultCount).also { result ->
                 for (slot in 0 until resultCount) {
@@ -399,6 +403,7 @@ internal class TdictPrefixIndex private constructor(
     private fun computeAutocorrectAdvice(
         normalizedPrefixUtf8: ImmutableUtf8Prefix,
         prefixLength: Int,
+        typedEntry: Int,
     ) {
         val table = neighborTable ?: return
         if (table.isEmpty) return
@@ -406,7 +411,8 @@ internal class TdictPrefixIndex private constructor(
         if (codePointCount < AutocorrectPolicy.MIN_WORD_CODE_POINTS) {
             return
         }
-        val typedEntry = lowerBound(exactScratch, prefixLength, 0)
+        // The typed word's lower bound arrives from lookup(): collectExact has already run the
+        // one binary search over this exact exactScratch content (the fuzzy pass never writes it).
         if (typedEntry < entryCount && wordEquals(typedEntry, exactScratch, prefixLength)) return
         autocorrectMatchCount = 0
         autocorrectMatchIndex = NO_ENTRY
@@ -509,8 +515,9 @@ internal class TdictPrefixIndex private constructor(
      * treats a typed word as "settled enough to act on". It also keeps the eval proxies honest:
      * the completion metric types 1–3 code-point prefixes, which the gate exempts entirely.
      */
-    private fun collectExact(prefixLength: Int): Int {
-        val start = lowerBound(exactScratch, prefixLength, 0)
+    private fun collectExact(prefixLength: Int, start: Int): Int {
+        // [start] is the prefix's lower bound, computed once in lookup() and shared with the
+        // autocorrect pass.
         val end = upperBound(exactScratch, prefixLength, start)
         if (start >= end) return 0
         val table = suffixTable

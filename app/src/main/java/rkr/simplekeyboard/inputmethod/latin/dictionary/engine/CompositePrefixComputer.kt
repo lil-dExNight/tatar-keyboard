@@ -21,6 +21,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideComputer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGeometrySink
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideIndexReleaser
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 
@@ -96,7 +97,8 @@ internal class CompositePrefixComputer(
     // (fail-closed). Glide candidates come from the MAIN dictionary only — the personal
     // dictionary is deliberately never consulted on this path (documented MVP decision).
     private val glideHost: GlideDecoderHost? = null,
-) : PrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer, GlideGeometrySink {
+) : PrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer, GlideGeometrySink,
+    GlideIndexReleaser {
 
     /**
      * The D3 verdict as it leaves the engine: the primary's, minus every word the user has saved
@@ -232,6 +234,15 @@ internal class CompositePrefixComputer(
 
     override fun decodeGlide(path: GlidePath): List<String> =
         glideHost?.decodeGlide(path) ?: emptyList()
+
+    /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle-release seam of the glide side — forwarded to
+     * the host, which drops the lazily built word index; the next decode rebuilds it. Runs on
+     * the engine worker (the engine posts it there), like [decodeGlide] itself.
+     */
+    override fun releaseGlideIndex() {
+        glideHost?.releaseIndex()
+    }
 
     override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
         val dictionary = primary.lookup(normalizedPrefixUtf8)
