@@ -93,7 +93,9 @@ public final class RichInputConnection {
      * window), so the window's start edge, the very thing the flag describes, is untouched by
      * them. Clearing it on a mutation would be wrong in both directions: it would un-prove the
      * empty field the user is typing their first word into (commitText), and it would re-"prove"
-     * nothing.
+     * nothing. The ONE exception is the F3 truncation ({@link #appendToTextBeforeCursor},
+     * 2026-09-25 audit): it cuts the window's HEAD to keep the cache bounded, which destroys the
+     * start edge — and the flag clears at exactly that moment.
      */
     private boolean mCacheReachedTextStart = false;
 
@@ -132,6 +134,14 @@ public final class RichInputConnection {
     }
 
     public void updateSelection(final int newSelStart, final int newSelEnd) {
+        if (newSelStart > newSelEnd) {
+            // 2026-09-25 audit, F7: a host may report an inverted selection (start > end). Kept
+            // as-is it makes performRecapitalization substring a negative range. Normalize at
+            // this choke point — every selection report funnels through here.
+            mExpectedSelStart = newSelEnd;
+            mExpectedSelEnd = newSelStart;
+            return;
+        }
         mExpectedSelStart = newSelStart;
         mExpectedSelEnd = newSelEnd;
     }
@@ -140,15 +150,36 @@ public final class RichInputConnection {
     private void setTextAroundCursor(final SurroundingText textAroundCursor) {
         if (null == textAroundCursor) {
             Log.e(TAG, "Unable get text around cursor.");
-            onBeforeCursorCacheReloaded("");
-            mTextAfterCursor = "";
-            mTextSelection = "";
+            applyTextAroundCursor("", 0, 0);
             return;
         }
-        final CharSequence text = textAroundCursor.getText();
-        onBeforeCursorCacheReloaded(text.subSequence(0, textAroundCursor.getSelectionStart()).toString());
-        mTextSelection = text.subSequence(textAroundCursor.getSelectionStart(), textAroundCursor.getSelectionEnd()).toString();
-        mTextAfterCursor = text.subSequence(textAroundCursor.getSelectionEnd(), text.length()).toString();
+        if (!applyTextAroundCursor(textAroundCursor.getText(),
+                textAroundCursor.getSelectionStart(), textAroundCursor.getSelectionEnd())) {
+            Log.e(TAG, "Text around cursor carries an out-of-range selection.");
+        }
+    }
+
+    /**
+     * 2026-09-25 audit, F4: the index arithmetic of {@link #setTextAroundCursor}, split out and
+     * fail-closed. A host that reports a selection outside its own text (negative, inverted, or
+     * past the end) used to crash the IME with a StringIndexOutOfBoundsException from the
+     * subSequence calls; such a report now gets the same empty-cache treatment as a null
+     * SurroundingText and the method answers false (the caller logs — this method stays
+     * Android-free so the JVM tests can drive it). Package-private for those tests.
+     */
+    /* package */ boolean applyTextAroundCursor(final CharSequence text, final int selectionStart,
+            final int selectionEnd) {
+        if (null == text || selectionStart < 0 || selectionEnd < selectionStart
+                || selectionEnd > text.length()) {
+            onBeforeCursorCacheReloaded("");
+            mTextSelection = "";
+            mTextAfterCursor = "";
+            return false;
+        }
+        onBeforeCursorCacheReloaded(text.subSequence(0, selectionStart).toString());
+        mTextSelection = text.subSequence(selectionStart, selectionEnd).toString();
+        mTextAfterCursor = text.subSequence(selectionEnd, text.length()).toString();
+        return true;
     }
 
     /**
@@ -191,6 +222,17 @@ public final class RichInputConnection {
     }
 
     /**
+     * 2026-09-25 audit, F10: a reload costs IPC, and {@code onUpdateSelection} asks for one on
+     * every cursor move. At most one reload is ever in flight; a request that arrives while one
+     * runs folds into {@link #mReloadRequestedWhileInFlight} and produces exactly one follow-up
+     * ({@link #finishReloadTextCache}) — bursts coalesce without ever leaving the cache stale.
+     * Both flags are UI-thread confined ({@link #reloadTextCache} itself and the completion
+     * posted back to the IME handler run there).
+     */
+    private boolean mReloadInFlight = false;
+    private boolean mReloadRequestedWhileInFlight = false;
+
+    /**
      * Reload the cached text from the InputConnection.
      */
     public void reloadTextCache() {
@@ -198,77 +240,139 @@ public final class RichInputConnection {
         if (!isConnected()) {
             return;
         }
+        if (mReloadInFlight) {
+            mReloadRequestedWhileInFlight = true;
+            return;
+        }
+        mReloadInFlight = true;
         // To check if selection changed before text was retrieved
         final int expectedSelStart = mExpectedSelStart;
         final int expectedSelEnd = mExpectedSelEnd;
 
         mBackgroundThread.execute(() -> {
-            if (!isConnected()) {
-                return;
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                final SurroundingText textAroundCursor =
-                        mIC.getSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE, Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+            boolean applyPosted = false;
+            try {
+                if (!isConnected()) {
+                    return;
+                }
+                // F10: the staleness check BEFORE the IPC — a reload the selection has already
+                // moved past never touches the editor. (S+ pays a binder round trip for
+                // getSurroundingText, and the pre-fix order paid it before checking anything.)
                 if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
-                    Log.w(TAG, "Selection range modified before thread completion.");
+                    Log.w(TAG, "Selection range modified before the reload reached the editor.");
                     return;
                 }
-                setTextAroundCursor(textAroundCursor);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    final SurroundingText textAroundCursor =
+                            mIC.getSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE, Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+                    // F8: the result is APPLIED on the UI thread, where every mutation of the
+                    // expected selection happens — the re-check there serializes with those
+                    // mutations, so a stale read can no longer win the race and overwrite fresh
+                    // state (the pre-fix code checked and wrote on this background thread).
+                    mLatinIME.mHandler.post(() -> {
+                        if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
+                            Log.w(TAG, "Selection range modified before thread completion.");
+                        } else {
+                            setTextAroundCursor(textAroundCursor);
 
-                // All callbacks that need text before cursor are here
-                mLatinIME.mHandler.postUpdateShiftState();
-                mLatinIME.mHandler.postRefreshSuggestionBand();
-            } else {
-                final CharSequence textBeforeCursor = mIC.getTextBeforeCursor(Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
-                if (expectedSelStart != mExpectedSelStart) {
-                    Log.w(TAG, "Selection start modified before thread completion.");
-                    return;
-                }
-                if (null == textBeforeCursor) {
-                    Log.e(TAG, "Unable get text before cursor.");
-                    onBeforeCursorCacheReloaded("");
-                    return;
+                            // All callbacks that need text before cursor are here
+                            mLatinIME.mHandler.postUpdateShiftState();
+                            mLatinIME.mHandler.postRefreshSuggestionBand();
+                        }
+                        finishReloadTextCache();
+                    });
+                    applyPosted = true;
                 } else {
-                    onBeforeCursorCacheReloaded(textBeforeCursor.toString());
-                }
-
-                // All callbacks that need text before cursor are here
-                mLatinIME.mHandler.postUpdateShiftState();
-
-                final CharSequence textAfterCursor = mIC.getTextAfterCursor(Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
-                if (expectedSelEnd != mExpectedSelEnd) {
-                    Log.w(TAG, "Selection end modified before thread completion.");
-                    return;
-                }
-                if (null == textAfterCursor) {
-                    Log.e(TAG, "Unable get text after cursor.");
-                    mTextAfterCursor = "";
-                } else {
-                    mTextAfterCursor = textAfterCursor.toString();
-                }
-                if (hasSelection()) {
-                    final CharSequence textSelection = mIC.getSelectedText(0);
-                    if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
-                        Log.w(TAG, "Selection range modified before thread completion.");
+                    final CharSequence textBeforeCursor = mIC.getTextBeforeCursor(Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+                    if (expectedSelStart != mExpectedSelStart) {
+                        Log.w(TAG, "Selection start modified before thread completion.");
                         return;
                     }
-                    if (null == textSelection) {
-                        Log.e(TAG, "Unable get text selection.");
-                        mTextSelection = "";
-                    } else {
-                        mTextSelection = textSelection.toString();
+                    if (null == textBeforeCursor) {
+                        Log.e(TAG, "Unable get text before cursor.");
+                        mLatinIME.mHandler.post(() -> {
+                            if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
+                                Log.w(TAG, "Selection range modified before thread completion.");
+                            } else {
+                                onBeforeCursorCacheReloaded("");
+                            }
+                            finishReloadTextCache();
+                        });
+                        applyPosted = true;
+                        return;
                     }
-                } else {
-                    mTextSelection = "";
+                    final String beforeCursor = textBeforeCursor.toString();
+
+                    final CharSequence textAfterCursor = mIC.getTextAfterCursor(Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+                    if (expectedSelEnd != mExpectedSelEnd) {
+                        Log.w(TAG, "Selection end modified before thread completion.");
+                        return;
+                    }
+                    if (null == textAfterCursor) {
+                        Log.e(TAG, "Unable get text after cursor.");
+                    }
+                    final String afterCursor =
+                            null == textAfterCursor ? "" : textAfterCursor.toString();
+
+                    final String selection;
+                    if (hasSelection()) {
+                        final CharSequence textSelection = mIC.getSelectedText(0);
+                        if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
+                            Log.w(TAG, "Selection range modified before thread completion.");
+                            return;
+                        }
+                        if (null == textSelection) {
+                            Log.e(TAG, "Unable get text selection.");
+                        }
+                        selection = null == textSelection ? "" : textSelection.toString();
+                    } else {
+                        selection = "";
+                    }
+
+                    // F8: ONE atomic apply on the UI thread. The pre-fix code wrote the
+                    // before-cache first and the rest after two more IPCs, so a staleness
+                    // detection mid-way left a half-applied cache behind — the lost update the
+                    // audit describes. The suggestion band is re-derived only at the end because
+                    // it is decided by the text on BOTH sides of the cursor (a letter right
+                    // after it means no candidates at all); every dropped apply above leaves the
+                    // cache untouched on purpose and deliberately asks for no re-derivation.
+                    mLatinIME.mHandler.post(() -> {
+                        if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
+                            Log.w(TAG, "Selection range modified before thread completion.");
+                        } else {
+                            onBeforeCursorCacheReloaded(beforeCursor);
+                            mTextAfterCursor = afterCursor;
+                            mTextSelection = selection;
+
+                            // All callbacks that need text before cursor are here
+                            mLatinIME.mHandler.postUpdateShiftState();
+                            mLatinIME.mHandler.postRefreshSuggestionBand();
+                        }
+                        finishReloadTextCache();
+                    });
+                    applyPosted = true;
                 }
-                // Posted here and not next to postUpdateShiftState above: the suggestion band is
-                // decided by the text on BOTH sides of the cursor (a letter right after it means no
-                // candidates at all), so it may only be re-derived once this whole block has made
-                // the cache current. Every early return above leaves the cache stale on purpose and
-                // deliberately does not ask for a re-derivation.
-                mLatinIME.mHandler.postRefreshSuggestionBand();
+            } finally {
+                if (!applyPosted) {
+                    // The reload ends without applying (stale, disconnected, or a dying editor's
+                    // RuntimeException): the in-flight flag must still clear, and a request that
+                    // arrived meanwhile must still produce its one follow-up.
+                    mLatinIME.mHandler.post(this::finishReloadTextCache);
+                }
             }
         });
+    }
+
+    /**
+     * UI-thread completion of every background reload, applied or not (F8/F10): clears the
+     * in-flight flag and runs the single follow-up reload that coalesced requests folded into.
+     */
+    private void finishReloadTextCache() {
+        mReloadInFlight = false;
+        if (mReloadRequestedWhileInFlight) {
+            mReloadRequestedWhileInFlight = false;
+            reloadTextCache();
+        }
     }
 
     public void clearCaches() {
@@ -290,7 +394,7 @@ public final class RichInputConnection {
      */
     public void commitText(final CharSequence text, final int newCursorPosition) {
         RichInputMethodManager.getInstance().resetSubtypeCycleOrder();
-        mTextBeforeCursor += text;
+        appendToTextBeforeCursor(text);
         // TODO: the following is exceedingly error-prone. Right now when the cursor is in the
         // middle of the composing word mComposingText only holds the part of the composing text
         // that is before the cursor, so this actually works, but it's terribly confusing. Fix this.
@@ -301,6 +405,26 @@ public final class RichInputConnection {
         if (isConnected()) {
             mIC.commitText(text, newCursorPosition);
         }
+    }
+
+    /**
+     * 2026-09-25 audit, F3: every append to the before-cursor cache funnels here so the window
+     * stays bounded — without this the cache grew with every committed char and every
+     * sendKeyEvent append forever (a megabyte-long paste stayed resident in full). The cache
+     * keeps the TAIL of {@link Constants#EDITOR_CONTENTS_CACHE_SIZE} chars, the size a full
+     * reload asks for; cutting the head destroys the text-start edge, so the C6 provenance flag
+     * clears at exactly that moment. Package-private for the JVM tests; touches only plain
+     * fields, never the editor.
+     */
+    /* package */ void appendToTextBeforeCursor(final CharSequence text) {
+        final String combined = mTextBeforeCursor + text;
+        if (combined.length() <= Constants.EDITOR_CONTENTS_CACHE_SIZE) {
+            mTextBeforeCursor = combined;
+            return;
+        }
+        mTextBeforeCursor =
+                combined.substring(combined.length() - Constants.EDITOR_CONTENTS_CACHE_SIZE);
+        mCacheReachedTextStart = false;
     }
 
     public CharSequence getSelectedText() {
@@ -415,6 +539,14 @@ public final class RichInputConnection {
             Log.e(TAG, "replaceText called with range longer than current text");
             return;
         }
+
+        // 2026-09-25 audit, F6: refresh and check the connection BEFORE mutating the cache —
+        // with a dead editor this used to NPE on a stale mIC after the cache had already been
+        // changed, reporting an edit no editor received.
+        mIC = mLatinIME.getCurrentInputConnection();
+        if (!isConnected()) {
+            return;
+        }
         mTextAfterCursor = text + textAfterCursor.substring(numCharsSelected);
 
         RichInputMethodManager.getInstance().resetSubtypeCycleOrder();
@@ -455,11 +587,23 @@ public final class RichInputConnection {
         }
 
         beginBatchEdit();
-        final int selectionLength = mExpectedSelEnd - mExpectedSelStart;
-        mTextSelection = "";
-        setSelection(mExpectedSelStart, mExpectedSelStart);
-        mIC.deleteSurroundingText(0, selectionLength);
-        endBatchEdit();
+        // 2026-09-25 audit, F5: the batch closes in finally even when the editor dies mid-edit
+        // — a skipped endBatchEdit would stick the nest level forever. Nothing is caught: the
+        // exception propagates exactly as before.
+        try {
+            // F6: beginBatchEdit() is what refreshes the connection from the framework; a dead
+            // editor gets no edit at all rather than a cache-only mutation (the same doctrine
+            // the commit paths follow).
+            if (!isConnected()) {
+                return;
+            }
+            final int selectionLength = mExpectedSelEnd - mExpectedSelStart;
+            mTextSelection = "";
+            setSelection(mExpectedSelStart, mExpectedSelStart);
+            mIC.deleteSurroundingText(0, selectionLength);
+        } finally {
+            endBatchEdit();
+        }
     }
 
     public void performEditorAction(final int actionId) {
@@ -467,6 +611,26 @@ public final class RichInputConnection {
         if (isConnected()) {
             mIC.performEditorAction(actionId);
         }
+    }
+
+    /**
+     * 2026-09-25 audit, F1: below this length the clipboard text is committed through the normal
+     * text-input path; at or above it the commit would parcel the whole string into the editor
+     * process, and a large enough clip (~0.5 MB and up) kills the IME with a
+     * TransactionTooLargeException. Large pastes fall through to the editor's own context-menu
+     * paste instead — the editor pulls the clipboard itself and no parcel copy crosses the
+     * binder. 64 Ki chars is an order of magnitude under the binder's ~1 MB transaction cap.
+     */
+    private static final int MAX_DIRECT_PASTE_CHARS = 64 * 1024;
+
+    /**
+     * The F1 threshold decision, package-private and Android-free so the JVM tests can pin the
+     * boundary: only a non-empty clip strictly below {@link #MAX_DIRECT_PASTE_CHARS} is committed
+     * by the IME itself.
+     */
+    /* package */ static boolean shouldCommitPasteDirectly(final CharSequence pasteData) {
+        return pasteData != null && pasteData.length() > 0
+                && pasteData.length() < MAX_DIRECT_PASTE_CHARS;
     }
 
     public void pasteClipboard() {
@@ -477,7 +641,7 @@ public final class RichInputConnection {
                 final String mimeType = clipData.getDescription().getMimeType(0);
                 if (MIMETYPE_TEXT_PLAIN.equals(mimeType) || MIMETYPE_TEXT_HTML.equals(mimeType)) {
                     final CharSequence pasteData = clipData.getItemAt(0).getText();
-                    if (pasteData != null && pasteData.length() > 0) {
+                    if (shouldCommitPasteDirectly(pasteData)) {
                         mLatinIME.onTextInput(pasteData.toString());
                         return;
                     }
@@ -485,6 +649,12 @@ public final class RichInputConnection {
             }
         }
 
+        // 2026-09-25 audit, F6: refresh the connection before talking to the editor — the field
+        // can hold a stale (or null) connection from an earlier batch.
+        mIC = mLatinIME.getCurrentInputConnection();
+        if (!isConnected()) {
+            return;
+        }
         mIC.performContextMenuAction(android.R.id.paste);
     }
 
@@ -499,7 +669,7 @@ public final class RichInputConnection {
             // mistakenly catch them to do some stuff.
             switch (keyEvent.getKeyCode()) {
             case KeyEvent.KEYCODE_ENTER:
-                mTextBeforeCursor += "\n";
+                appendToTextBeforeCursor("\n");
                 if (hasCursorPosition()) {
                     mExpectedSelStart += 1;
                     mExpectedSelEnd = mExpectedSelStart;
@@ -507,7 +677,7 @@ public final class RichInputConnection {
                 break;
             case KeyEvent.KEYCODE_UNKNOWN:
                 if (null != keyEvent.getCharacters()) {
-                    mTextBeforeCursor += keyEvent.getCharacters();
+                    appendToTextBeforeCursor(keyEvent.getCharacters());
                     if (hasCursorPosition()) {
                         mExpectedSelStart += keyEvent.getCharacters().length();
                         mExpectedSelEnd = mExpectedSelStart;
@@ -518,7 +688,7 @@ public final class RichInputConnection {
                 break;
             default:
                 final String text = StringUtils.newSingleCodePointString(keyEvent.getUnicodeChar());
-                mTextBeforeCursor += text;
+                appendToTextBeforeCursor(text);
                 if (hasCursorPosition()) {
                     mExpectedSelStart += text.length();
                     mExpectedSelEnd = mExpectedSelStart;
@@ -552,7 +722,8 @@ public final class RichInputConnection {
         final int textStart = mExpectedSelStart - mTextBeforeCursor.length();
         final String textRange = mTextBeforeCursor + mTextSelection + mTextAfterCursor;
         if (textRange.length() >= end - textStart && start - textStart >= 0 && textStart >= 0) {
-            // Parameters might be partially updated by background thread, skip in such case
+            // The cached window may not cover the requested range (a reload has not caught up
+            // yet) — skip the re-slice in that case; the next reload replaces the whole window.
             mTextBeforeCursor = textRange.substring(0, start - textStart);
             mTextSelection = textRange.substring(start - textStart, end - textStart);
             mTextAfterCursor = textRange.substring(end - textStart);
@@ -596,11 +767,19 @@ public final class RichInputConnection {
             CharSequence charsBeforeCursor = rightSidePointer && hasSelection() ?
                     getSelectedText() :
                     mTextBeforeCursor;
-            if (charsBeforeCursor == null || charsBeforeCursor == "") {
+            // 2026-09-25 audit, F11: this was a `== ""` reference comparison. Not `.isEmpty()`:
+            // CharSequence.isEmpty() is a default method that exists only from API 35 (checked
+            // against the API-34 android.jar) and this app ships minSdk 24 with no core
+            // desugaring — length() == 0 is the equivalent that runs everywhere.
+            if (charsBeforeCursor == null || charsBeforeCursor.length() == 0) {
                 return chars;
             }
             for (int i = charsBeforeCursor.length() - 1; i >= 0 && chars < 0; i--, steps--) {
-                if (i > 1 && charsBeforeCursor.charAt(i - 1) == '\u200d') {
+                // F11: the boundary is i >= 1 — charAt(i - 1) is valid there. The old i > 1
+                // skipped the ZWJ check at index 1, so a cached window that starts mid-cluster
+                // (a ZWJ at index 0) was split: the step stopped short and left the dangling
+                // joiner behind the cursor.
+                if (i >= 1 && charsBeforeCursor.charAt(i - 1) == '\u200d') {
                     continue;
                 }
                 if (charsBeforeCursor.charAt(i) == '\u200d') {
@@ -616,7 +795,7 @@ public final class RichInputConnection {
             CharSequence charsAfterCursor = !rightSidePointer && hasSelection() ?
                     getSelectedText() :
                     mTextAfterCursor;
-            if (charsAfterCursor == null || charsAfterCursor == "") {
+            if (charsAfterCursor == null || charsAfterCursor.length() == 0) {
                 return chars;
             }
             for (int i = 0; i < charsAfterCursor.length() && chars > 0; i++, steps++) {

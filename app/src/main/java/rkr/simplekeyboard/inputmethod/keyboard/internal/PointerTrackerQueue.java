@@ -53,6 +53,15 @@ public final class PointerTrackerQueue {
             }
             final ArrayList<Element> expandableArray = mExpandableArrayOfActivePointers;
             final int arraySize = mArraySize;
+            // 2026-09-25 audit, F13: a tracker whose up event was lost (e.g. the keyboard closed
+            // mid-touch) must not enter the queue twice — the invariant is one entry per element.
+            // Deliberately quiet: the duplicate tripwires live in remove()/releaseAllPointers*,
+            // and this path runs in JVM tests where android.util.Log does not exist.
+            for (int index = 0; index < arraySize; index++) {
+                if (expandableArray.get(index) == pointer) {
+                    return;
+                }
+            }
             if (arraySize < expandableArray.size()) {
                 expandableArray.set(arraySize, pointer);
             } else {
@@ -226,6 +235,31 @@ public final class PointerTrackerQueue {
                 final Element element = expandableArray.get(index);
                 element.cancelTrackingForAction();
             }
+            // F13: cancelled trackers leave the queue. Until now they stayed — a cancel with no
+            // following up event kept them forever, inflating the active-pointer count and
+            // delivering phantom ups to dead touches.
+            mArraySize = 0;
+        }
+    }
+
+    /**
+     * 2026-09-25 audit, F13: the ACTION_CANCEL shape of {@link #cancelAllPointerTrackers()}.
+     * Every tracker is disabled FIRST (a phantom up delivered to a still-enabled tracker would
+     * commit its key), then phantom-upped so its pressed graphics and any in-flight glide are
+     * released, and finally evicted — one synchronized pass with the same per-element effect
+     * order the separate cancelAll + releaseAll calls produced.
+     */
+    public void cancelAllPointerTrackers(final long eventTime) {
+        synchronized (mExpandableArrayOfActivePointers) {
+            final ArrayList<Element> expandableArray = mExpandableArrayOfActivePointers;
+            final int arraySize = mArraySize;
+            for (int index = 0; index < arraySize; index++) {
+                expandableArray.get(index).cancelTrackingForAction();
+            }
+            for (int index = 0; index < arraySize; index++) {
+                expandableArray.get(index).onPhantomUpEvent(eventTime);
+            }
+            mArraySize = 0;
         }
     }
 

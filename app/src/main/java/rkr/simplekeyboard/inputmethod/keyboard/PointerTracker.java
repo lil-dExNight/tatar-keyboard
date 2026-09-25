@@ -130,16 +130,19 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     // P7-2 glide (docs/GLIDE-PLAN.md): the per-pointer decision machine (rebuilt when the
     // keyboard changes, since its distance threshold is the keyboard's key width) and the path
-    // buffer the gesture records into. The buffer is allocated once per tracker; recording
-    // happens only between an eligible letter-key down and its up/cancel. Nothing here runs when
-    // the glide preference is off: the decider sits in REJECTED and every branch below falls
-    // through to the legacy code, byte-identical.
+    // buffer the gesture records into. The buffer (three 512-entry float arrays, ~6 KB) is
+    // allocated LAZILY on the first glide-eligible touch down: a tracker that only ever taps
+    // never pays for it, and the decider's invariant (TRACKING/ARMED only after an eligible
+    // down) guarantees the buffer exists wherever a recorded point or a delivery can happen.
+    // Recording happens only between an eligible letter-key down and its up/cancel. Nothing
+    // here runs when the glide preference is off: the decider sits in REJECTED and every branch
+    // below falls through to the legacy code, byte-identical.
     // The placeholder never arms (an unreachable distance threshold); the real decider is built
     // by setKeyDetectorInner once the keyboard — and with it the key width — is known.
     private GlideGestureDecider mGlideDecider =
             new GlideGestureDecider(Float.MAX_VALUE, 0f,
                     GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS, Float.MAX_VALUE);
-    private final GlidePath mGlidePath = new GlidePath(GlidePath.MAX_POINTS);
+    private GlidePath mGlidePath;
     // P7-5: the key lit up under the gliding finger (graphics only — no preview, no haptics,
     // no listener callbacks). Null whenever no glide is armed.
     private Key mGlideHoveredKey;
@@ -174,9 +177,13 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     public static void cancelAllPointerTrackers() {
         sPointerTrackerQueue.cancelAllPointerTrackers();
-        // P7-5: this path (the keyboard closing mid-gesture) reaches the trackers without a
-        // CANCEL event, so onCancelEventInternal never runs — drop the trail and the hovered
-        // key's graphics here, or a stale trail survives into the next keyboard show.
+        endGlideFeedbackForAllTrackers();
+    }
+
+    // P7-5: the close-mid-gesture paths reach the trackers without per-tracker CANCEL events, so
+    // the trail and the hovered key's graphics are dropped here, or a stale trail survives into
+    // the next keyboard show.
+    private static void endGlideFeedbackForAllTrackers() {
         final int trackersSize = sTrackers.size();
         for (int i = 0; i < trackersSize; ++i) {
             sTrackers.get(i).endGlideFeedback();
@@ -564,6 +571,11 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
                 || mKeyDetector.alwaysAllowsKeySelectionByDraggingFinger();
         mKeyboardLayoutHasBeenChanged = false;
         mIsTrackingForActionDisabled = false;
+        // 2026-09-25 audit, F2: mCursorMoved describes THIS gesture's space/delete swipe. It used
+        // to reset only on a plain up, so a cancelled swipe leaked the state into the next touch
+        // — whose up then dereferenced a null current key and fired the swipe callbacks for a
+        // gesture that never swiped.
+        mCursorMoved = false;
         resetKeySelectionByDraggingFinger();
         if (key != null) {
             // This onPress call may have changed keyboard layout. Those cases are detected at
@@ -600,13 +612,22 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
                 && Settings.getInstance().getCurrent().mGlideTypingEnabled
                 && Character.isLetter(key.getCode());
         mGlideDecider.onDown(x, y, eventTime, glideEligible);
-        mGlidePath.clear();
         if (glideEligible) {
+            // Lazy buffer (see the field): allocated on the first eligible down, then reused —
+            // every glide terminal leaves it empty, and this clear covers the one hole in that
+            // rule (a TRACKING gesture that ended before arming keeps its early points).
+            GlidePath path = mGlidePath;
+            if (path == null) {
+                path = new GlidePath(GlidePath.MAX_POINTS);
+                mGlidePath = path;
+            } else {
+                path.clear();
+            }
             // The path buffer stores float timestamps (GlidePath.ts): gesture DELTAS are what the
             // decoder reads, and those are milliseconds apart, so the float's 24-bit mantissa is
             // exact where it matters. The cast is explicit — the implicit long->float narrowing
             // here is what error-prone's LongFloatConversion flags (2026-09-24 audit, F12).
-            mGlidePath.addPoint(x, y, (float) eventTime);
+            path.addPoint(x, y, (float) eventTime);
         }
     }
 
@@ -875,10 +896,12 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             return;
         }
 
-        if (mCursorMoved && currentKey.getCode() == Constants.CODE_DELETE) {
+        // F2: currentKey may be null here (a touch that ended off-key, or whose key was already
+        // consumed) — the swipe callbacks are keyed on the gesture state, not on the key.
+        if (mCursorMoved && currentKey != null && currentKey.getCode() == Constants.CODE_DELETE) {
             sListener.onUpWithDeletePointerActive();
         }
-        if (mCursorMoved && currentKey.getCode() == Constants.CODE_SPACE) {
+        if (mCursorMoved && currentKey != null && currentKey.getCode() == Constants.CODE_SPACE) {
             sListener.onUpWithSpacePointerActive();
         }
 
@@ -989,8 +1012,12 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             printTouchEvent("onCancelEvt:", x, y, eventTime);
         }
 
-        cancelAllPointerTrackers();
-        sPointerTrackerQueue.releaseAllPointers(eventTime);
+        // 2026-09-25 audit, F13: the queue's cancel-all now EVICTS the trackers as it cancels
+        // them, so the phantom-up wave that releases the other pointers' pressed keys (and
+        // cancels their glides — everyone is disabled first, it delivers nothing) rides inside
+        // the same queue call. A releaseAllPointers after it would iterate an empty queue.
+        sPointerTrackerQueue.cancelAllPointerTrackers(eventTime);
+        endGlideFeedbackForAllTrackers();
         onCancelEventInternal();
     }
 
@@ -999,9 +1026,15 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         setReleasedKeyGraphics(mCurrentKey, true /* withAnimation */);
         resetKeySelectionByDraggingFinger();
         dismissMoreKeysPanel();
+        // F2: a cancel ends the gesture, swipe state included — the same reset the down path does.
+        mCursorMoved = false;
         // P7-2: a cancelled touch never delivers a glide.
         mGlideDecider.onUpOrCancel();
-        mGlidePath.clear();
+        // The buffer may never have been allocated (a cancel with the glide preference off, or
+        // after only ineligible downs) — the lazy field demands the guard.
+        if (mGlidePath != null) {
+            mGlidePath.clear();
+        }
         endGlideFeedback();
     }
 

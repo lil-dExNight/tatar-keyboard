@@ -27,6 +27,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Paint.Align;
 import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -113,6 +114,9 @@ public class KeyboardView extends View {
     private final HashSet<Key> mInvalidatedKeys = new HashSet<>();
     /** The working rectangle for clipping */
     private final Rect mClipRect = new Rect();
+    /** M4: cached icon tint for ACTION keys, see {@link #actionIconFilter(int)}. */
+    private PorterDuffColorFilter mActionIconFilter;
+    private int mActionIconFilterColor;
     /** The keyboard bitmap buffer for faster updates */
     private Bitmap mOffscreenBuffer;
     /** The canvas for the above mutable keyboard bitmap */
@@ -216,16 +220,25 @@ public class KeyboardView extends View {
     @Override
     protected void onDraw(final Canvas canvas) {
         super.onDraw(canvas);
-        if (canvas.isHardwareAccelerated()) {
-            onDrawKeyboard(canvas);
+        // A zero-sized view gets no offscreen buffer (maybeAllocateOffscreenBuffer refuses), so
+        // without this early return the drawBitmap below would dereference the null
+        // mOffscreenBuffer (2026-09-25 audit). At 0×0 there is nothing to draw anyway.
+        if (getWidth() == 0 || getHeight() == 0) {
             return;
         }
-
+        // O2 (docs/OPTIMIZE-2026-09-25.md): the offscreen buffer now serves the
+        // hardware-accelerated path too. The HW branch used to re-record every key of the
+        // board into the frame's display list on each invalidation (the old TODO asked whether
+        // that was required — the answer is yes: a partial draw straight onto the frame canvas
+        // would drop every non-invalidated key from the display list). With the buffer model an
+        // invalidation redraws only the invalidated keys into the persistent bitmap, and the
+        // frame itself is one drawBitmap. The buffer's own canvas reports
+        // !isHardwareAccelerated(), so onDrawKeyboard's software-path logic — including its
+        // per-key CLEAR steps, which the persistent bitmap genuinely needs — applies verbatim.
         final boolean bufferNeedsUpdates = mInvalidateAllKeys || !mInvalidatedKeys.isEmpty();
         if (bufferNeedsUpdates || mOffscreenBuffer == null) {
             if (maybeAllocateOffscreenBuffer()) {
                 mInvalidateAllKeys = true;
-                // TODO: Stop using the offscreen canvas even when in software rendering
                 mOffscreenCanvas.setBitmap(mOffscreenBuffer);
             }
             onDrawKeyboard(mOffscreenCanvas);
@@ -274,10 +287,11 @@ public class KeyboardView extends View {
         }
         // Calculate clip region and set.
         final boolean drawAllKeys = mInvalidateAllKeys || mInvalidatedKeys.isEmpty();
-        final boolean isHardwareAccelerated = canvas.isHardwareAccelerated();
-        // TODO: Confirm if it's really required to draw all keys when hardware acceleration is on.
-        if (drawAllKeys || isHardwareAccelerated) {
-            if (!isHardwareAccelerated && background != null) {
+        // The canvas here is always the offscreen bitmap's (see onDraw): the old
+        // "draw all keys when hardware acceleration is on" branch is dead — a bitmap
+        // canvas never reports hardware acceleration — and its TODO is resolved by it.
+        if (drawAllKeys) {
+            if (background != null) {
                 // Need to draw keyboard background on {@link #mOffscreenBuffer}.
                 canvas.drawColor(Color.BLACK, PorterDuff.Mode.CLEAR);
                 background.draw(canvas);
@@ -400,7 +414,7 @@ public class KeyboardView extends View {
                 }
             }
 
-            paint.setColor(key.selectTextColor(params));
+            paint.setColor(selectLabelColor(key, params));
             // Set a drop shadow for the text if the shadow radius is positive value.
             if (mKeyTextShadowRadius > 0.0f) {
                 paint.setShadowLayer(mKeyTextShadowRadius, 0.0f, 0.0f, params.mTextShadowColor);
@@ -467,8 +481,39 @@ public class KeyboardView extends View {
                 iconY = (keyHeight - iconHeight) / 2; // Align vertically center.
             }
             final int iconX = (keyWidth - iconWidth) / 2; // Align horizontally center.
+            // M4 (docs/APPLE-UX-2026-09-25.md): an ACTION key is accent-filled, so its icon —
+            // baked with the functional text colour — is tinted to the action colour for this
+            // draw only. The icons are shared instances, so the filter is cleared right after;
+            // the filter itself is cached, keeping the draw loop allocation-free.
+            final boolean tintAction = key.isActionKey() && params.mActionKeyTextColor != 0;
+            if (tintAction) {
+                icon.setColorFilter(actionIconFilter(params.mActionKeyTextColor));
+            }
             drawIcon(canvas, icon, iconX, iconY, iconWidth, iconHeight);
+            if (tintAction) {
+                icon.setColorFilter(null);
+            }
         }
+    }
+
+    /**
+     * The colour of a key's label. Overridable so the more-keys panel can invert the SELECTED
+     * alternative's glyph (M3, docs/APPLE-UX-2026-09-25.md); everything else follows the key.
+     */
+    protected int selectLabelColor(final Key key, final KeyDrawParams params) {
+        return key.selectTextColor(params);
+    }
+
+    /**
+     * M4: cached tint for ACTION key icons. One filter per colour value; the colour only ever
+     * changes with the theme, so this allocates once per palette and never inside a frame.
+     */
+    private PorterDuffColorFilter actionIconFilter(final int color) {
+        if (mActionIconFilter == null || mActionIconFilterColor != color) {
+            mActionIconFilter = new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN);
+            mActionIconFilterColor = color;
+        }
+        return mActionIconFilter;
     }
 
     protected static void drawIcon(final Canvas canvas, final Drawable icon,

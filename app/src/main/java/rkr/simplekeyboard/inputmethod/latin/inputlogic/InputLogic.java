@@ -366,9 +366,15 @@ public final class InputLogic {
                 && mConnection.getCodePointBeforeCursor() == Constants.CODE_SPACE
                 && Character.isLetterOrDigit(mConnection.getCodePointBeforeCursor(1))) {
             mConnection.beginBatchEdit();
-            mConnection.deleteTextBeforeCursor(1);
-            mConnection.commitText(". ", 1);
-            mConnection.endBatchEdit();
+            // 2026-09-25 audit, F5: the batch closes in finally — a RuntimeException from a
+            // dying editor mid-edit must not stick the batch nest level forever. Nothing is
+            // caught: the exception propagates exactly as before.
+            try {
+                mConnection.deleteTextBeforeCursor(1);
+                mConnection.commitText(". ", 1);
+            } finally {
+                mConnection.endBatchEdit();
+            }
             mJustDoubleSpaced = true;
             mLastSpaceDownTime = 0;
             return true;
@@ -405,9 +411,12 @@ public final class InputLogic {
                     && mConnection.getCodePointBeforeCursor(1) == Constants.CODE_PERIOD) {
                 // Revert the double-space-to-period: restore the two spaces.
                 mConnection.beginBatchEdit();
-                mConnection.deleteTextBeforeCursor(2);
-                mConnection.commitText("  ", 1);
-                mConnection.endBatchEdit();
+                try {
+                    mConnection.deleteTextBeforeCursor(2);
+                    mConnection.commitText("  ", 1);
+                } finally {
+                    mConnection.endBatchEdit();
+                }
                 mJustDoubleSpaced = false;
                 return;
             }
@@ -450,6 +459,12 @@ public final class InputLogic {
         final int selectionStart = mConnection.getExpectedSelectionStart();
         final int selectionEnd = mConnection.getExpectedSelectionEnd();
         final int numCharsSelected = selectionEnd - selectionStart;
+        // 2026-09-25 audit, F7: an inverted selection (start > end, accepted before
+        // RichInputConnection.updateSelection learned to normalize it) would substring a
+        // negative range below. Bail out — defense in depth behind the normalization.
+        if (numCharsSelected < 0) {
+            return;
+        }
         if (numCharsSelected > Constants.MAX_CHARACTERS_FOR_RECAPITALIZATION) {
             // We bail out if we have too many characters for performance reasons. We don't want
             // to suck possibly multiple-megabyte data.
@@ -465,11 +480,14 @@ public final class InputLogic {
             mRecapitalizeStatus.trim();
         }
         mConnection.beginBatchEdit();
-        mConnection.setSelection(selectionStart, selectionStart);
-        mRecapitalizeStatus.rotate();
-        mConnection.replaceText(selectionStart, selectionEnd, mRecapitalizeStatus.getRecapitalizedString());
-        mConnection.setSelection(mRecapitalizeStatus.getNewCursorStart(), mRecapitalizeStatus.getNewCursorEnd());
-        mConnection.endBatchEdit();
+        try {
+            mConnection.setSelection(selectionStart, selectionStart);
+            mRecapitalizeStatus.rotate();
+            mConnection.replaceText(selectionStart, selectionEnd, mRecapitalizeStatus.getRecapitalizedString());
+            mConnection.setSelection(mRecapitalizeStatus.getNewCursorStart(), mRecapitalizeStatus.getNewCursorEnd());
+        } finally {
+            mConnection.endBatchEdit();
+        }
     }
 
     /**
@@ -587,11 +605,14 @@ public final class InputLogic {
         // an undo matches) is taken from fiction. Nothing is touched instead, and false is the
         // truth. The batch is still closed on this path, exactly once, like on the other one.
         final boolean connected = mConnection.isConnected();
-        if (connected) {
-            mConnection.deleteTextBeforeCursor(expectedPrefix.length());
-            mConnection.commitText(textToCommit, 1);
+        try {
+            if (connected) {
+                mConnection.deleteTextBeforeCursor(expectedPrefix.length());
+                mConnection.commitText(textToCommit, 1);
+            }
+        } finally {
+            mConnection.endBatchEdit();
         }
-        mConnection.endBatchEdit();
         if (!connected) {
             return false;
         }
@@ -647,11 +668,14 @@ public final class InputLogic {
         // success and the caller would treat fiction as the text before the cursor. The batch is
         // still closed on this path, exactly once, like on the other one.
         final boolean connected = mConnection.isConnected();
-        if (connected) {
-            mConnection.deleteTextBeforeCursor(inserted.length());
-            mConnection.commitText(typedForm + separator, 1);
+        try {
+            if (connected) {
+                mConnection.deleteTextBeforeCursor(inserted.length());
+                mConnection.commitText(typedForm + separator, 1);
+            }
+        } finally {
+            mConnection.endBatchEdit();
         }
-        mConnection.endBatchEdit();
         if (!connected) {
             return false;
         }
@@ -739,10 +763,13 @@ public final class InputLogic {
         // an undo matches) is taken from fiction. Nothing is touched instead, and false is the
         // truth. The batch is still closed on this path, exactly once, like on the other one.
         final boolean connected = mConnection.isConnected();
-        if (connected) {
-            mConnection.commitText(textToCommit, 1);
+        try {
+            if (connected) {
+                mConnection.commitText(textToCommit, 1);
+            }
+        } finally {
+            mConnection.endBatchEdit();
         }
-        mConnection.endBatchEdit();
         if (!connected) {
             return false;
         }
@@ -829,10 +856,13 @@ public final class InputLogic {
         // See commitPredictedWord for why the connection check waits for the batch: a refresh is
         // the earliest honest answer, and a dead connection turns the whole edit into fiction.
         final boolean connected = mConnection.isConnected();
-        if (connected) {
-            mConnection.commitText(textToCommit, 1);
+        try {
+            if (connected) {
+                mConnection.commitText(textToCommit, 1);
+            }
+        } finally {
+            mConnection.endBatchEdit();
         }
-        mConnection.endBatchEdit();
         if (!connected) {
             return 0;
         }
@@ -881,11 +911,14 @@ public final class InputLogic {
         // beginBatchEdit() refreshes the connection from the framework — the earliest the question
         // can be asked; see the other edit paths for the full reasoning.
         final boolean connected = mConnection.isConnected();
-        if (connected) {
-            mConnection.deleteTextBeforeCursor(suffix.length());
-            mConnection.commitText(textToCommit, 1);
+        try {
+            if (connected) {
+                mConnection.deleteTextBeforeCursor(suffix.length());
+                mConnection.commitText(textToCommit, 1);
+            }
+        } finally {
+            mConnection.endBatchEdit();
         }
-        mConnection.endBatchEdit();
         if (!connected) {
             return false;
         }
@@ -925,10 +958,13 @@ public final class InputLogic {
         }
         mConnection.beginBatchEdit();
         final boolean connected = mConnection.isConnected();
-        if (connected) {
-            mConnection.deleteTextBeforeCursor(suffix.length());
+        try {
+            if (connected) {
+                mConnection.deleteTextBeforeCursor(suffix.length());
+            }
+        } finally {
+            mConnection.endBatchEdit();
         }
-        mConnection.endBatchEdit();
         if (!connected) {
             return false;
         }

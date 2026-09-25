@@ -78,6 +78,12 @@ internal class SuggestionStripState {
     }
 
     fun cellAt(x: Float, y: Float, width: Int, height: Int): Int {
+        // 2026-09-25 audit, F17: a NaN coordinate passes every comparison below (all false) and
+        // used to fall through to the LAST cell — a MotionEvent carrying NaN would click a cell
+        // the finger never touched. Non-finite input is no cell at all.
+        if (!x.isFinite() || !y.isFinite()) {
+            return NO_CELL
+        }
         if (x < 0f || x >= width.toFloat() || y < 0f || y >= height.toFloat()
             || width <= 0 || height <= 0
         ) {
@@ -158,6 +164,12 @@ internal class SuggestionStripState {
         const val CELL_COUNT = 3
         const val NO_CELL = -1
         const val INVALID_POINTER_ID = -1
-        const val STRIP_HEIGHT_DP = 40
+        /**
+         * W5 of docs/APPLE-UX-2026-09-25.md: 44dp — the iOS tap-target height, which the strip
+         * is (its cells are tappable). Was 40dp; the change raises the IME by 4dp and is
+         * mirrored by the ViewStub heights of input_view.xml (both layout folders) and by the
+         * coordinate calibration of scripts/emulator-smoke.sh.
+         */
+        const val STRIP_HEIGHT_DP = 44
     }
 }
