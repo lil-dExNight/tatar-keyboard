@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Glide trail is white-gray instead of blue:** the trail that follows the finger during a swipe used the app's accent blue; it now draws in a near-white light gray (`#F2F2F7`, iOS systemGray6 — the Gboard look) in both the light and the dark theme. The key highlight under the fingertip during a glide was already the neutral gray pressed-key fill, so nothing else follows the recolor. (2026-09-25)
+- **The app's own screens default to Tatar:** Setup and Settings used to follow the system language with English as the fallback, so a phone in English (or any language other than Russian/Tatar) showed the app in English. Now: system Tatar → Tatar, system Russian → Russian, anything else → **Tatar** — the product is a Tatar keyboard, and that is the deliberate default (English strings stay shipped as the resource fallback). No new dependency: the screens wrap their context to the Tatar configuration at creation. (2026-09-25)
+
 ## [3.0.2] — 2026-09-25
 
 ### Fixed
