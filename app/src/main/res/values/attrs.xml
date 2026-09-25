@@ -325,6 +325,10 @@
         <attr name="keyTextInactivatedColor" format="color" />
         <!-- Color to use for the label in a key that has followFunctionalTextColor keyLabelFlags. -->
         <attr name="functionalTextColor" format="color" />
+        <!-- M4 (docs/APPLE-UX-2026-09-25.md): label and icon colour of an ACTION key (Go,
+             Search, Send, Done, Next, Previous, a custom action label). iOS paints such a key
+             in the accent colour, so its glyph flips to white. -->
+        <attr name="actionKeyTextColor" format="color" />
         <!-- Key hint letter (= one character hint label) color -->
         <attr name="keyHintLetterColor" format="color" />
         <!-- Key hint label color -->

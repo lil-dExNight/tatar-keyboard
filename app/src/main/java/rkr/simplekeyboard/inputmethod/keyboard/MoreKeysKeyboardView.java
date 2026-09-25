@@ -25,10 +25,10 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityManager;
 
-import androidx.core.view.ViewCompat;
 
 import rkr.simplekeyboard.inputmethod.R;
 import rkr.simplekeyboard.inputmethod.accessibility.MoreKeysKeyboardAccessibilityDelegate;
+import rkr.simplekeyboard.inputmethod.keyboard.internal.KeyDrawParams;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.common.CoordinateUtils;
 
@@ -48,6 +48,13 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
 
     private int mActivePointerId;
 
+    /**
+     * M3 (docs/APPLE-UX-2026-09-25.md): the glyph colour of the SELECTED alternative. The
+     * selection fill is the accent colour, so the label must invert; read once from resources,
+     * like every other colour of this view.
+     */
+    private final int mSelectedLabelColor;
+
     private final AccessibilityManager mAccessibilityManager;
     private final MoreKeysKeyboardAccessibilityDelegate mAccessibilityDelegate;
 
@@ -58,6 +65,7 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
     public MoreKeysKeyboardView(final Context context, final AttributeSet attrs,
             final int defStyle) {
         super(context, attrs, defStyle);
+        mSelectedLabelColor = context.getColor(R.color.ios_popup_key_selected_text);
         final TypedArray moreKeysKeyboardViewAttr = context.obtainStyledAttributes(attrs,
                 R.styleable.MoreKeysKeyboardView, defStyle, R.style.MoreKeysKeyboardView);
         moreKeysKeyboardViewAttr.recycle();
@@ -71,7 +79,7 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
                 (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
         mAccessibilityDelegate = new MoreKeysKeyboardAccessibilityDelegate(this, mKeyDetector,
                 getVerticalCorrection());
-        ViewCompat.setAccessibilityDelegate(this, mAccessibilityDelegate);
+        setAccessibilityDelegate(mAccessibilityDelegate);
     }
 
     @Override
@@ -188,6 +196,16 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
         } else if (code != Constants.CODE_UNSPECIFIED) {
             mListener.onCodeInput(code, Constants.NOT_A_COORDINATE, Constants.NOT_A_COORDINATE, false /* isKeyRepeat */);
         }
+    }
+
+    @Override
+    protected int selectLabelColor(final Key key, final KeyDrawParams params) {
+        // M3: the alternative under the finger is filled with the accent colour, so its glyph
+        // flips to white; every other cell keeps the ordinary key label colour.
+        if (key.isPressed()) {
+            return mSelectedLabelColor;
+        }
+        return super.selectLabelColor(key, params);
     }
 
     private Key detectKey(int x, int y) {

@@ -28,6 +28,7 @@ import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
 
+import rkr.simplekeyboard.inputmethod.R;
 import rkr.simplekeyboard.inputmethod.keyboard.Key;
 import rkr.simplekeyboard.inputmethod.latin.common.CoordinateUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.ViewLayoutUtils;
@@ -71,7 +72,14 @@ public final class KeyPreviewChoreographer {
         }
         final Context context = placerView.getContext();
         keyPreviewView = new KeyPreviewView(context, null /* attrs */);
-        keyPreviewView.setBackgroundResource(mParams.mPreviewBackgroundResId);
+        // S1 (docs/APPLE-UX-2026-09-25.md): the Tatar theme's rectangular preview background is
+        // replaced by the path-drawn droplet. Once per pooled view (a handful of views for the
+        // lifetime of the keyboard), never per frame.
+        if (mParams.mPreviewBackgroundResId == R.drawable.ios_key_preview_background) {
+            keyPreviewView.setBackground(new KeyPreviewBalloonDrawable(context));
+        } else {
+            keyPreviewView.setBackgroundResource(mParams.mPreviewBackgroundResId);
+        }
         placerView.addView(keyPreviewView, ViewLayoutUtils.newLayoutParam(placerView, 0, 0));
         return keyPreviewView;
     }

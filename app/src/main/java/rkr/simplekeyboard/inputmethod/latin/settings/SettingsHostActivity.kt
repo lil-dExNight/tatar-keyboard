@@ -29,6 +29,7 @@ import android.util.Log
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageButton
@@ -106,6 +107,12 @@ class SettingsHostActivity : Activity() {
         DATA_SOURCES(R.string.settings_screen_data_sources)
     }
     companion object {
+        private const val TRANSITION_NONE = 0
+        private const val TRANSITION_FORWARD = 1
+        private const val TRANSITION_BACKWARD = -1
+        /** M5: iOS pushes a screen in over a short distance; 24dp reads as motion, not travel. */
+        private const val SCREEN_TRANSITION_OFFSET_DP = 24f
+        private const val SCREEN_TRANSITION_MS = 200L
         private val TAG = SettingsHostActivity::class.java.simpleName
         private const val STATE_SCREEN = "screen"
         private const val STATE_BACK_STACK = "back_stack"
@@ -123,6 +130,13 @@ class SettingsHostActivity : Activity() {
     private lateinit var titleView: TextView
 
     private val backStack = ArrayDeque<Screen>()
+    /**
+     * M5: the direction of the navigation that triggered the next [showScreen] — set by
+     * [navigateTo] and [onBackPressed], consumed (and reset) by [playScreenTransition]. A
+     * rebuild with no navigation behind it (create, restore, a refresh after an edit) leaves it
+     * at [TRANSITION_NONE] and animates nothing.
+     */
+    private var pendingTransition = TRANSITION_NONE
     internal var currentDialog: AlertDialog? = null
     private var currentScreen = Screen.ROOT
     /** Locale string of the language shown by [Screen.LANGUAGE_DETAIL]. */
@@ -258,6 +272,7 @@ class SettingsHostActivity : Activity() {
     override fun onBackPressed() {
         val previous = backStack.removeLastOrNull()
         if (previous != null) {
+            pendingTransition = TRANSITION_BACKWARD
             showScreen(previous)
         } else {
             super.onBackPressed()
@@ -266,6 +281,7 @@ class SettingsHostActivity : Activity() {
 
     internal fun navigateTo(screen: Screen) {
         backStack.addLast(currentScreen)
+        pendingTransition = TRANSITION_FORWARD
         showScreen(screen)
     }
 
@@ -298,6 +314,45 @@ class SettingsHostActivity : Activity() {
             Screen.DATA_SOURCES -> buildDataSourcesScreen()
         }
         scrollView.scrollTo(0, 0)
+        playScreenTransition()
+    }
+
+    /**
+     * M5 of `docs/APPLE-UX-2026-09-25.md`: iOS slides a pushed settings screen in from the right
+     * and a popped one back from the left. [showScreen] rebuilds the content column in place, so
+     * the motion is a short slide + fade on the rebuilt column — no fragments, no new views.
+     *
+     * Respects the system animation scale: with animations switched off
+     * (`Settings.Global.ANIMATOR_DURATION_SCALE` = 0, the accessibility/battery setting and what
+     * developer options set) the screen simply appears, as before this item. A restore or a
+     * programmatic [showScreen] without a navigation direction also stays still — only a real
+     * push or pop animates.
+     */
+    private fun playScreenTransition() {
+        val direction = pendingTransition
+        pendingTransition = TRANSITION_NONE
+        if (direction == TRANSITION_NONE) return
+        val scale = android.provider.Settings.Global.getFloat(
+            contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        )
+        if (scale <= 0f) {
+            // Leave the column exactly where a finished animation would have left it.
+            contentView.translationX = 0f
+            contentView.alpha = 1f
+            return
+        }
+        val offset = SCREEN_TRANSITION_OFFSET_DP * resources.displayMetrics.density * direction
+        contentView.animate().cancel()
+        contentView.translationX = offset
+        contentView.alpha = 0f
+        contentView.animate()
+            .translationX(0f)
+            .alpha(1f)
+            .setDuration(SCREEN_TRANSITION_MS)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
     }
 
     // ---------------------------------------------------------------------
@@ -453,19 +508,29 @@ class SettingsHostActivity : Activity() {
         // android:dependency="pref_show_language_switch_key" from the legacy screen.
         setRowEnabled(imeRow,
                 prefs.getBoolean(Settings.PREF_SHOW_LANGUAGE_SWITCH_KEY, true)
-                        && !isRestricted(Settings.PREF_ENABLE_IME_SWITCH))
+                        && !isRestricted(Settings.PREF_ENABLE_IME_SWITCH),
+                disabledReason(isRestricted(Settings.PREF_ENABLE_IME_SWITCH),
+                        R.string.row_needs_language_switch))
         setRowEnabled(personalRow,
                 Settings.readTatarSuggestionsEnabled(prefs)
-                        && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY))
+                        && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY),
+                disabledReason(isRestricted(Settings.PREF_PERSONAL_DICTIONARY),
+                        R.string.row_needs_suggestions))
         setRowEnabled(incognitoSwitch,
                 Settings.readTatarSuggestionsEnabled(prefs)
-                        && !isRestricted(Settings.PREF_INCOGNITO_MODE))
+                        && !isRestricted(Settings.PREF_INCOGNITO_MODE),
+                disabledReason(isRestricted(Settings.PREF_INCOGNITO_MODE),
+                        R.string.row_needs_suggestions))
         setRowEnabled(autocorrectSwitch,
                 Settings.readTatarSuggestionsEnabled(prefs)
-                        && !isRestricted(Settings.PREF_TATAR_AUTOCORRECT))
+                        && !isRestricted(Settings.PREF_TATAR_AUTOCORRECT),
+                disabledReason(isRestricted(Settings.PREF_TATAR_AUTOCORRECT),
+                        R.string.row_needs_suggestions))
         setRowEnabled(emojiSuggestSwitch,
                 Settings.readTatarSuggestionsEnabled(prefs)
-                        && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS))
+                        && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
+                disabledReason(isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
+                        R.string.row_needs_suggestions))
         setRowEnabled(glideSwitch,
                 !isRestricted(Settings.PREF_GLIDE_TYPING))
         // Reachable whatever the toggles say: erasing what was already saved must always be
@@ -836,6 +901,10 @@ class SettingsHostActivity : Activity() {
                 .create()
                 .also { dialog ->
                     DialogUtils.filterObscuredTouches(dialog)
+                    // The field takes a personal word by hand: the dialog's own window needs
+                    // FLAG_SECURE — the activity-wide one does not cover dialog windows
+                    // (2026-09-25 audit).
+                    DialogUtils.securePersonalContent(dialog)
                     dialog.show()
                 }
     }
@@ -855,6 +924,9 @@ class SettingsHostActivity : Activity() {
                 .create()
                 .also { dialog ->
                     DialogUtils.filterObscuredTouches(dialog)
+                    // The title names the saved word itself: the dialog window is secured
+                    // (2026-09-25 audit).
+                    DialogUtils.securePersonalContent(dialog)
                     dialog.show()
                 }
     }
@@ -882,6 +954,9 @@ class SettingsHostActivity : Activity() {
                 .create()
                 .also { dialog ->
                     DialogUtils.filterObscuredTouches(dialog)
+                    // The title names the saved pair itself: the dialog window is secured
+                    // (2026-09-25 audit).
+                    DialogUtils.securePersonalContent(dialog)
                     dialog.show()
                 }
     }

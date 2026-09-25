@@ -27,7 +27,9 @@
         <item name="moreKeysKeyboardStyle">@style/MoreKeysKeyboard.Tatar</item>
         <item name="moreKeysKeyboardViewStyle">@style/MoreKeysKeyboardView.Tatar</item>
         <item name="functionalTextColor">@color/ios_key_functional_text_color</item>
-        <item name="popupPanelBackgroundColor">@color/ios_keyboard_background_secondary</item>
+        <!-- M3 (docs/APPLE-UX-2026-09-25.md): iOS draws the more-keys panel on the KEY
+             surface (white in light, key grey in dark), not on a second keyboard grey. -->
+        <item name="popupPanelBackgroundColor">@color/ios_key_normal</item>
         <item name="keyPressedBackgroundColor">@color/ios_key_normal_pressed</item>
         <item name="keyNormalBackgroundColor">@color/ios_key_normal</item>
         <item name="emojiPanelBackgroundColor">@color/ios_keyboard_background</item>
@@ -50,6 +52,7 @@
         <item name="keyTypeface">normal</item>
         <item name="keyTextColor">@color/ios_key_text_color</item>
         <item name="keyTextInactivatedColor">@color/ios_key_text_inactive_color</item>
+        <item name="actionKeyTextColor">@color/ios_key_action_text_color</item>
         <item name="keyHintLetterColor">@color/ios_key_hint_color</item>
         <item name="keyHintLabelColor">@color/ios_key_text_inactive_color</item>
         <item name="keyShiftedLetterHintInactivatedColor">@color/ios_key_text_inactive_color</item>

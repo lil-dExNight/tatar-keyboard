@@ -36,7 +36,7 @@
             android:inflatedId="@+id/suggestion_strip_view"
             android:layout="@layout/suggestion_strip"
             android:layout_width="match_parent"
-            android:layout_height="40dp" />
+            android:layout_height="44dp" />
         <ViewStub
             android:id="@+id/emoji_search_stub"
             android:inflatedId="@+id/emoji_search_view"

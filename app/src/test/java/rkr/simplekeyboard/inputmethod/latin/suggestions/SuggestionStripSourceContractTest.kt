@@ -33,7 +33,8 @@ class SuggestionStripSourceContractTest {
         for (layout in listOf(normalLayout, v28Layout)) {
             assertTrue(layout.contains("<ViewStub"))
             assertTrue(layout.contains("@layout/suggestion_strip"))
-            assertTrue(layout.contains("android:layout_height=\"40dp\""))
+            // W5 of stage B (docs/ROADMAP-P8-PLAN.md): the strip is 44dp, the iOS tap target.
+            assertTrue(layout.contains("android:layout_height=\"44dp\""))
             assertEquals(1, "<rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView".toRegex()
                 .findAll(layout).count())
         }
@@ -102,7 +103,7 @@ class SuggestionStripSourceContractTest {
         assertTrue(releaseBody.contains("visibility = GONE"))
         assertTrue(releaseBody.contains("accessibilityHelper.invalidateRoot()"))
         assertTrue(detachBody.contains("release()"))
-        assertTrue(actionableBody.contains("ViewCompat.isAttachedToWindow"))
+        assertTrue(actionableBody.contains("isAttachedToWindow"))
         assertTrue(actionableBody.contains("isShown"))
         assertTrue(actionableBody.contains("state.isCellPopulated(virtualViewId)"))
         assertTrue(inputViewSource.contains("mSuggestionStripView.release()"))
@@ -190,6 +191,13 @@ class SuggestionStripSourceContractTest {
         val showBandBody = controller.substringAfter("private fun showBand(")
             .substringBefore("    /**")
         assertTrue(showBandBody.contains("strip.setEmphasizedCell(emphasizedCell)"))
+        // 2026-09-25 audit: the emphasis (which runs the publication's one display rebuild in the
+        // view) goes BEFORE the spoken labels — the label lookup reads the emoji index and can
+        // fail, and sitting between words and emphasis it stranded the band half-published.
+        val emphasisAt = showBandBody.indexOf("strip.setEmphasizedCell(")
+        val labelsAt = showBandBody.indexOf("strip.setSpokenCellLabels(")
+        assertTrue("showBand must send the emphasis before the spoken labels",
+            emphasisAt >= 0 && labelsAt >= 0 && emphasisAt < labelsAt)
         val latinIme = File(
             main,
             "java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",

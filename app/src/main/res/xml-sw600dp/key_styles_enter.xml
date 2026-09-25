@@ -23,13 +23,15 @@
 >
     <key-style
         latin:styleName="navigateMoreKeysStyle" />
-    <!-- Enter key style -->
+    <!-- Enter key style. M4 (docs/APPLE-UX-2026-09-25.md): a plain Return is grey like every
+         other functional key; the imeAction variants below re-declare backgroundType="action"
+         and are painted in the accent colour. -->
     <key-style
         latin:styleName="defaultEnterKeyStyle"
         latin:keySpec="!icon/enter_key|!code/key_enter"
         latin:keyLabelFlags="preserveCase|autoXScale|followKeyLabelRatio|followFunctionalTextColor"
         latin:keyActionFlags="noKeyPreview"
-        latin:backgroundType="action"
+        latin:backgroundType="functional"
         latin:parentStyle="navigateMoreKeysStyle" />
     <include latin:keyboardLayout="@xml/key_styles_actions" />
     <switch>

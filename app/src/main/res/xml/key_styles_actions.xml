@@ -24,37 +24,43 @@
     <key-style
         latin:styleName="goActionKeyStyle"
         latin:keySpec="!icon/go_key|!code/key_enter"
+        latin:backgroundType="action"
         latin:parentStyle="defaultEnterKeyStyle" />
 
     <key-style
         latin:styleName="nextActionKeyStyle"
         latin:keySpec="!icon/next_key|!code/key_enter"
+        latin:backgroundType="action"
         latin:parentStyle="defaultEnterKeyStyle" />
 
     <key-style
         latin:styleName="previousActionKeyStyle"
         latin:keySpec="!icon/previous_key|!code/key_enter"
+        latin:backgroundType="action"
         latin:parentStyle="defaultEnterKeyStyle" />
 
     <key-style
         latin:styleName="doneActionKeyStyle"
         latin:keySpec="!icon/done_key|!code/key_enter"
+        latin:backgroundType="action"
         latin:parentStyle="defaultEnterKeyStyle" />
 
     <key-style
         latin:styleName="sendActionKeyStyle"
         latin:keySpec="!icon/send_key|!code/key_enter"
+        latin:backgroundType="action"
         latin:parentStyle="defaultEnterKeyStyle" />
 
     <key-style
         latin:styleName="searchActionKeyStyle"
         latin:keySpec="!icon/search_key|!code/key_enter"
+        latin:backgroundType="action"
         latin:parentStyle="defaultEnterKeyStyle" />
 
     <key-style
         latin:styleName="customLabelActionKeyStyle"
         latin:keySpec="dummy_label|!code/key_enter"
         latin:keyLabelFlags="fromCustomActionLabel"
-        latin:backgroundType="functional"
+        latin:backgroundType="action"
         latin:parentStyle="defaultEnterKeyStyle" />
 </merge>

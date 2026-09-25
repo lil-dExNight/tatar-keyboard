@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  S2 of docs/APPLE-UX-2026-09-25.md: an iOS alert sheet — the card surface with the 13dp
+  corner radius iOS uses for alerts (the grouped-list cards of this app use 10dp; alerts are
+  rounder). Insets keep the platform dialog's margins from the screen edges.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="16dp"
+    android:insetRight="16dp"
+    android:insetTop="16dp"
+    android:insetBottom="16dp">
+    <shape android:shape="rectangle">
+        <solid android:color="@color/app_card_bg" />
+        <corners android:radius="13dp" />
+    </shape>
+</inset>

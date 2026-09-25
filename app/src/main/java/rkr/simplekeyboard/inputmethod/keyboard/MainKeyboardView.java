@@ -36,7 +36,6 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 
-import androidx.core.view.ViewCompat;
 
 import java.util.WeakHashMap;
 
@@ -200,7 +199,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
                 R.dimen.config_language_on_spacebar_horizontal_margin);
 
         mAccessibilityDelegate = new KeyboardAccessibilityDelegate(this, mKeyDetector);
-        ViewCompat.setAccessibilityDelegate(this, mAccessibilityDelegate);
+        setAccessibilityDelegate(mAccessibilityDelegate);
     }
 
     @Override
@@ -344,9 +343,21 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     // Implements {@link DrawingProxy#onKeyPressed(Key,boolean)}.
     @Override
     public void onKeyPressed(final Key key, final boolean withPreview) {
-        key.onPressed();
-        invalidateKey(key);
-        if (withPreview && !key.noKeyPreview()) {
+        final boolean showPreview = withPreview && !key.noKeyPreview();
+        // M2 (docs/APPLE-UX-2026-09-25.md): on iOS a LETTER key answers a tap with the balloon
+        // ONLY — it does not darken. Functional keys (shift, delete, 123, enter, spacebar) DO
+        // change fill on iOS and keep the pressed state here. The fill also stays whenever the
+        // balloon cannot appear — the popup switched off in settings, or a key that has no
+        // preview at all — because feedback-less keys would be worse than non-iOS ones. The
+        // glide highlight is unaffected: it arrives with withPreview == false, so it still
+        // presses the key (P7-5, PointerTracker.updateGlideFeedback).
+        final boolean balloonCarriesTheFeedback =
+                showPreview && key.isNormalBackground() && mKeyPreviewDrawParams.isPopupEnabled();
+        if (!balloonCarriesTheFeedback) {
+            key.onPressed();
+            invalidateKey(key);
+        }
+        if (showPreview) {
             showKeyPreview(key);
         }
     }
@@ -650,8 +661,13 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         }
     }
 
-    /** The fade's frame cadence — one animation frame. */
-    private static final long FADE_FRAME_MS = 16L;
+    /**
+     * The fade's frame cadence. 33 ms (≈30 fps) instead of one animation frame: the fade itself
+     * is wall-clock anchored (GlideTrail.fadeFactor), so the cadence changes only how often the
+     * strip is redrawn during the 250 ms fade-out, never the fade's duration or shape — and the
+     * coarser grid halves the redraw count of a purely cosmetic animation.
+     */
+    private static final long FADE_FRAME_MS = 33L;
 
     @Override
     protected void onDrawKeyTopVisuals(final Key key, final Canvas canvas, final Paint paint,

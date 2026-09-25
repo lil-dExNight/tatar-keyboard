@@ -470,9 +470,12 @@ PYEOF
 }
 
 # Middle suggestion cell (cell 2 of 3 — equal thirds, SuggestionStripState).
-# y measured on the tt 5-row layout (1080×2280, 40dp strip = 110 px): the strip
-# spans ~1308–1418 px directly above the keyboard → centre ≈ 1363 px ≈ 0.598.
-STRIP_CELL2="0.5000,0.5980"
+# y measured on the tt 5-row layout (1080×2280, density 2.75). W5 of stage B
+# (docs/ROADMAP-P8-PLAN.md) raised the strip 40dp → 44dp = 110 px → 121 px. The
+# strip's BOTTOM stays glued to the keyboard's top edge (1418 px) and it grows
+# upward, so the keyboard's own key coordinates above are unchanged: the strip now
+# spans ~1297–1418 px → centre ≈ 1357.5 px ≈ 0.5954 (was ≈ 0.5980 at 40dp).
+STRIP_CELL2="0.5000,0.5954"
 
 second_word_after() {                    # second_word_after "<text>" "<word>" → token after last <word>
     python3 - "$1" "$2" <<'PYEOF'

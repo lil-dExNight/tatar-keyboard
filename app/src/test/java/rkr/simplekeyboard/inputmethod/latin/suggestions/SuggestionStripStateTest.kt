@@ -213,8 +213,38 @@ class SuggestionStripStateTest {
 
     @Test
     fun stripHeightContractIsExactlyFortyDp() {
-        assertEquals(40, SuggestionStripState.STRIP_HEIGHT_DP)
+        assertEquals(44, SuggestionStripState.STRIP_HEIGHT_DP)
         assertEquals(3, SuggestionStripState.CELL_COUNT)
+    }
+
+    /**
+     * 2026-09-25 audit, F17: a NaN coordinate passes every bounds comparison (all false) and
+     * used to fall through to the LAST cell — a MotionEvent carrying NaN would click a cell the
+     * finger never touched. Non-finite input is no cell at all.
+     */
+    @Test
+    fun nonFiniteCoordinatesHitNoCell() {
+        val state = SuggestionStripState()
+        state.setSuggestions("бер", "ике", "өч")
+
+        assertEquals(SuggestionStripState.NO_CELL, state.cellAt(Float.NaN, 20f, width, height))
+        assertEquals(SuggestionStripState.NO_CELL, state.cellAt(150f, Float.NaN, width, height))
+        assertEquals(
+            SuggestionStripState.NO_CELL,
+            state.cellAt(Float.NEGATIVE_INFINITY, 20f, width, height),
+        )
+        assertEquals(
+            SuggestionStripState.NO_CELL,
+            state.cellAt(Float.POSITIVE_INFINITY, 20f, width, height),
+        )
+
+        // A NaN down starts no gesture, and a NaN up clicks nothing even mid-gesture.
+        assertFalse(state.onDown(activePointer, Float.NaN, 20f, width, height))
+        assertTrue(state.onDown(activePointer, 150f, 20f, width, height))
+        assertEquals(
+            SuggestionStripState.NO_CELL,
+            state.onUp(activePointer, Float.NaN, 20f, width, height),
+        )
     }
 
     @Test
