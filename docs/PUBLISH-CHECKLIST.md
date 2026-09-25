@@ -1,6 +1,11 @@
-# PUBLISH-CHECKLIST — публикация v3.1.0
+# PUBLISH-CHECKLIST — публикация v3.1.1
 
-> **Retargeted 2026-09-25 to candidate v3.1.0 / versionCode 37** — the
+> **Retargeted 2026-09-25 (evening) to candidate v3.1.1 / versionCode 38** — 3.1.0 was
+> never published: its artifact could not be installed on Android 11+ because
+> `resources.arsc` was compressed (see `docs/APK-AUDIT-3.1.1.md`). The content below is
+> the same wave.
+>
+> **Original 3.1.0 note, kept as history: candidate v3.1.0 / versionCode 37** — the
 > accumulated wave released as one: the optimization wave
 > (`docs/OPTIMIZE-2026-09-25.md`, O1 + O2 — APK −8.5 %, androidx removed,
 > frame −17 %, cold start 275 → 257 ms), the security/robustness audit fixes
@@ -24,7 +29,7 @@
 > `META-INF/androidx.*.version` markers are gone: 194 → 182 archive entries.
 > On update from 3.0.2 the device **re-inflates NOTHING** of the dictionaries.
 > Gates: `release_pack.sh` run twice byte-identical; `release_check.sh --full`
-> **16/16 PASS** on the candidate. Publishing, push and tags are the operator's
+> **17/17 PASS** on the candidate (the set gained `artifact.arsc_stored`). Publishing, push and tags are the operator's
 > actions (gh CLI here is pull-only — the Release object is published manually
 > via the web
 > UI).

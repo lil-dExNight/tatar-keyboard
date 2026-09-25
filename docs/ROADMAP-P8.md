@@ -152,3 +152,38 @@ which is why stage C's toast has a pin but no screenshot.
 5. The standing debt recorded in the `HANDOFF.md` snapshot: 60 open error-prone findings, the
    inherited AOSP TODO/HACK markers, two files above the 1 500-line ceiling, two live lint
    warnings, and the pinned asset drift.
+
+## Post-release device check (2026-09-25, evening): the 3.1.0 artifact was uninstallable
+
+The operator connected the POCO C71 and asked for the release to be verified on it. The very
+first step failed:
+
+```
+adb: failed to install dist/tatar-keyboard-3.1.0.apk: Failure [-124: ... Targeting R+ (version
+30 and above) requires the resources.arsc of installed APKs to be stored uncompressed and
+aligned on a 4-byte boundary]
+```
+
+Cause: **O2-1 of the optimization wave** (`resources.arsc` STORED → DEFLATED, −73 728 B in the
+archive). For `targetSdk` 30+ the platform mmaps that table and refuses a package where it is
+compressed. The item had been verified as archive bytes only — the packed artifact was never
+installed — and `zipalign -c 4`, the packer's own check, prints `OK - compressed` and exits 0 in
+exactly this case, so every gate stayed green.
+
+Fixed forward as **3.1.1 / versionCode 38** (the 3.1.0 tag stays; no 3.1.0 artifact was ever
+published, the GitHub Release object was never created):
+
+- the deflate step removed from `scripts/release_pack.sh`, replaced by a comment stating why it
+  must not return, and the alignment step now asserts STORED explicitly;
+- new gate **`artifact.arsc_stored`** in `scripts/release_check.sh` — STORED plus a 4-byte-aligned
+  data offset. Verified against both artifacts: FAIL on 3.1.0, PASS on 3.1.1;
+- `docs/OPTIMIZE-2026-09-25.md` carries a dated footnote recording the revert and its cost.
+
+3.1.1: **1 763 914 B** (+69 632 B vs the broken 3.1.0, headroom 43.9 %), two packs byte-identical,
+`release_check --full` **OVERALL PASS 17/17**, installed on the POCO C71 — the SHA-256 of the
+installed `base.apk` matches the built artifact.
+
+**Lesson for the gate set**: a size optimization that touches the archive layout must be proven by
+an INSTALL on a device, not by byte counting. Archive-level wins are exactly where the platform's
+loader constraints live.
+

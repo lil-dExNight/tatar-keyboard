@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.1.1] — 2026-09-25
+
+### Fixed
+
+- **The 3.1.0 build could not be installed at all on Android 11 and newer.** The optimization wave compressed `resources.arsc` inside the APK (−73.7 KB in the archive), and the platform refuses such a package outright: *"Targeting R+ (version 30 and above) requires the resources.arsc of installed APKs to be stored uncompressed and aligned on a 4-byte boundary"*. Caught on a POCO C71 (Android 15) while verifying the release; the step is removed, the APK grew back by 69 632 B, and a gate now fails the release check if `resources.arsc` is ever compressed or misaligned again. `zipalign -c` did not catch this — for a compressed table it prints "OK - compressed" and exits zero, which is exactly how the defect passed every gate. No 3.1.0 artifact was ever published.
+
 ## [3.1.0] — 2026-09-25
 
 ### Changed

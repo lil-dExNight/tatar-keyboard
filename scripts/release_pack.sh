@@ -13,7 +13,6 @@
 #
 # Пайплайн одной командой:
 #   1. ./gradlew clean assembleRelease -PskipReleaseSigning  → unsigned APK
-#   2. python3 (stdlib)                                      → resources.arsc: STORED→DEFLATED
 #   3. zipalign -f -z 4                                      → zopfli-рекомпрессия + выравнивание
 #   4. zipalign -c                                           → выравнивание сохранено
 #   5. apksigner sign (ключи из keystore.properties, v2-only — как у AGP-сборки)
@@ -130,7 +129,7 @@ fi
 
 # --- 1. unsigned release ---------------------------------------------------------------------
 
-echo "== 1/6 clean assembleRelease -PskipReleaseSigning =="
+echo "== 1/5 clean assembleRelease -PskipReleaseSigning =="
 mkdir -p "$LOG_DIR"
 ./gradlew clean assembleRelease -PskipReleaseSigning --console=plain \
     >"$LOG_DIR/assemble.log" 2>&1 || {
@@ -147,69 +146,48 @@ if [ ! -f "$UNSIGNED" ]; then
     exit 1
 fi
 
-# --- 1.5. resources.arsc: STORED -> DEFLATED (O2) ---------------------------------------------
-# Контент записей сохраняется побайтно (zipfile читает/пишет декомпрессированное содержимое;
-# zipalign -z после этого шага заново сжимает zopfli и выравнивает). Fail-closed: в выходе
-# arsc обязан оказаться DEFLATED, а число и имена записей — совпасть с входом.
-echo "== 2/6 resources.arsc deflate =="
-DEFLATED="$LOG_DIR/app-release-arsc-deflated.apk"
-python3 - "$UNSIGNED" "$DEFLATED" <<'PYEOF'
-import sys
-import zipfile
-
-src, dst = sys.argv[1], sys.argv[2]
-zin = zipfile.ZipFile(src)
-infos = zin.infolist()
-names = [i.filename for i in infos]
-# Аудит 2026-09-25: дубликаты имён — не «last wins», а стоп. Чтение ниже идёт по ZipInfo
-# (запись за записью), поэтому битый вход с двумя одинаковыми именами перепаковался бы молча
-# и не так, как читает его Android; такой APK здесь не родится.
-if len(set(names)) != len(names):
-    dups = sorted({n for n in names if names.count(n) > 1})
-    raise SystemExit(f'duplicate zip entries in {src}: {dups}')
-with zipfile.ZipFile(dst, 'w') as zout:
-    for info in infos:
-        # read(ZipInfo), не read(имя): чтение по имени при дубликатах отдаёт ПОСЛЕДНЮЮ
-        # запись с этим именем, подменяя байты копируемой (last-wins).
-        data = zin.read(info)
-        method = (zipfile.ZIP_DEFLATED if info.filename == 'resources.arsc'
-                  else info.compress_type)
-        out = zipfile.ZipInfo(info.filename, date_time=info.date_time)
-        out.compress_type = method
-        out.external_attr = info.external_attr
-        out.internal_attr = info.internal_attr
-        out.create_system = info.create_system
-        zout.writestr(out, data, compresslevel=9 if method == zipfile.ZIP_DEFLATED else None)
-zcheck = zipfile.ZipFile(dst)
-after = zcheck.infolist()
-if [i.filename for i in after] != names:
-    raise SystemExit('entry list changed')
-# Полная посодержательная сверка, а не только arsc: каждая запись выхода обязана побайтно
-# равняться СВОЕЙ записи входа (пары сопоставляются позиционно, чтение — по ZipInfo).
-for before, written in zip(infos, after):
-    if zcheck.read(written) != zin.read(before):
-        raise SystemExit(f'entry content changed: {before.filename}')
-arsc = zcheck.getinfo('resources.arsc')
-if arsc.compress_type != zipfile.ZIP_DEFLATED:
-    raise SystemExit('resources.arsc is not DEFLATED in the output')
-print(f'arsc: {arsc.file_size} -> {arsc.compress_size} B; {len(infos)} entries verified')
-PYEOF
+# --- 1.5. resources.arsc ОСТАЁТСЯ STORED -------------------------------------------------------
+# ЗДЕСЬ БЫЛ шаг O2-1 (docs/OPTIMIZE-2026-09-25.md): resources.arsc перепаковывался STORED ->
+# DEFLATED и давал −73,7 КБ в архиве. Шаг УДАЛЁН 2026-09-25 после проверки релиза на POCO C71
+# (Android 15): такой APK НЕ УСТАНАВЛИВАЕТСЯ вообще —
+#   Failure [-124: ... Targeting R+ (version 30 and above) requires the resources.arsc of
+#   installed APKs to be stored uncompressed and aligned on a 4-byte boundary]
+# Требование платформы (targetSdk 30+) — arsc читается mmap'ом, поэтому он обязан лежать
+# несжатым и выровненным. `zipalign -c 4` этого не ловит: он печатает «OK - compressed» и
+# выходит с нулём, поэтому дефект прошёл все гейты и был бы опубликован. Гейт добавлен в
+# release_check.sh (artifact.arsc_stored) — не возвращать этот шаг.
 
 # --- 2. zipalign -z (zopfli) -----------------------------------------------------------------
 
-echo "== 3/6 zipalign -z (zopfli) =="
+echo "== 2/5 zipalign -z (zopfli) =="
 ALIGNED="$LOG_DIR/app-release-zopfli-aligned.apk"
-"$ZIPALIGN" -f -z 4 "$DEFLATED" "$ALIGNED"
+"$ZIPALIGN" -f -z 4 "$UNSIGNED" "$ALIGNED"
 
 # --- 3. проверка выравнивания -----------------------------------------------------------------
 
-echo "== 4/6 zipalign -c =="
+echo "== 3/5 zipalign -c + resources.arsc STORED =="
 if "$ZIPALIGN" -c 4 "$ALIGNED" >"$LOG_DIR/zipalign-check.log" 2>&1; then
     echo "  выравнивание OK"
 else
     echo "ERROR: выравнивание сломано, лог $LOG_DIR/zipalign-check.log" >&2
     exit 1
 fi
+# `zipalign -c` печатает «OK - compressed» для сжатого resources.arsc и выходит с нулём, то есть
+# сам по себе НЕ ловит APK, который Android 11+ откажется устанавливать (см. блок 1.5).
+# Поэтому условие проверяется здесь явно и fail-closed.
+python3 - "$ALIGNED" <<'PYEOF'
+import sys
+import zipfile
+
+apk = sys.argv[1]
+info = zipfile.ZipFile(apk).getinfo('resources.arsc')
+if info.compress_type != zipfile.ZIP_STORED:
+    raise SystemExit(
+        'resources.arsc is COMPRESSED — Android 11+ (targetSdk 30+) refuses to install such an '
+        'APK: "requires the resources.arsc of installed APKs to be stored uncompressed and '
+        'aligned on a 4-byte boundary"')
+print(f'resources.arsc: STORED, {info.file_size} B')
+PYEOF
 
 # --- 4. подпись (v2-only — как у AGP-сборки линейки с 2026-08-18) ------------------------------
 
@@ -226,7 +204,7 @@ if [ "$NO_SIGN" = 1 ]; then
     exit 0
 fi
 
-echo "== 5/6 apksigner sign =="
+echo "== 4/5 apksigner sign =="
 # Пароли — через env:-форму, а не pass: в argv: командная строка процесса видна
 # любому пользователю хоста через ps (C1 аудита 2026-09-02), окружение — нет.
 KS_STORE_PASS="$KS_STORE_PASS" KS_KEY_PASS="$KS_KEY_PASS" \
@@ -238,7 +216,7 @@ KS_STORE_PASS="$KS_STORE_PASS" KS_KEY_PASS="$KS_KEY_PASS" \
 
 # --- 5. верификация ----------------------------------------------------------------------------
 
-echo "== 6/6 apksigner verify =="
+echo "== 5/5 apksigner verify =="
 if ! "$APKSIGNER" verify --print-certs "$OUT" | tee "$LOG_DIR/verify.log"; then
     echo "ERROR: подпись не верифицируется" >&2
     exit 1

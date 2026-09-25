@@ -1,3 +1,29 @@
+# HANDOFF — 3.1.0 was uninstallable, fixed as 3.1.1 (2026-09-25, fifth entry of the day)
+
+**Found by the device check the operator asked for.** `dist/tatar-keyboard-3.1.0.apk` could not be
+installed on the POCO C71 (Android 15) at all: the optimization wave's O2-1 item had repacked
+`resources.arsc` as DEFLATED, and `targetSdk` 30+ requires that table stored uncompressed and
+4-byte aligned. `zipalign -c 4` reports `OK - compressed` and exits 0 for this case, so the defect
+passed every gate, the whole release ritual and the 16/16 `release_check --full`.
+
+Fixed forward as **3.1.1 / versionCode 38**:
+
+- the deflate step is gone from `scripts/release_pack.sh`; the alignment step now asserts STORED;
+- new gate `artifact.arsc_stored` in `scripts/release_check.sh` (STORED + 4-byte-aligned offset),
+  verified FAIL on the broken 3.1.0 artifact and PASS on 3.1.1;
+- `CHANGELOG.md` has a `[3.1.1]` section, store changelogs `38.txt` ×3, dated footnotes in
+  `docs/OPTIMIZE-2026-09-25.md` and `docs/ROADMAP-P8.md`.
+
+Artifact: **1 763 914 B** (+69 632 B, headroom 43.9 %), two packs byte-identical,
+`release_check --full` **OVERALL PASS 17/17**, installed on the phone with a matching SHA-256.
+
+The `v3.1.0` tag stays as history (no artifact was ever published — the GitHub Release object was
+never created because this machine's `gh` has only pull rights on the repository). The interactive
+device checks of the UX wave are still pending: the phone was on its lock screen and I do not
+bypass a keyguard.
+
+---
+
 # HANDOFF — phase 8 executed: 3.1.0 packed, Apple-UX stages A+B, engineering backlog, supply-chain round (2026-09-25, fourth entry of the day)
 
 **State as of 2026-09-25, after the phase-8 execution.** The plan

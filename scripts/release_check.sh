@@ -431,6 +431,40 @@ else
     cat "$TREE_ASSETS_LOG" >&2
 fi
 
+# --- 3.9. resources.arsc обязан быть STORED (иначе APK не установится на Android 11+) ---------
+# Найдено 2026-09-25 при проверке 3.1.0 на POCO C71 (Android 15): упакованный APK не ставился —
+#   Failure [-124: ... Targeting R+ (version 30 and above) requires the resources.arsc of
+#   installed APKs to be stored uncompressed and aligned on a 4-byte boundary]
+# Виноват был шаг O2-1 упаковщика (arsc STORED -> DEFLATED, −73,7 КБ). Ни один гейт этого не
+# видел: `zipalign -c 4` для сжатого arsc печатает «OK - compressed» и выходит с нулём. Теперь
+# условие проверяется прямо на артефакте: только STORED и только со смещением, кратным 4.
+ARSC_LOG="$LOG_DIR/arsc-stored.log"
+if python3 - "$APK" >"$ARSC_LOG" 2>&1 <<'PYEOF'
+import sys
+import zipfile
+
+apk = sys.argv[1]
+with zipfile.ZipFile(apk) as zf:
+    info = zf.getinfo('resources.arsc')
+    if info.compress_type != zipfile.ZIP_STORED:
+        raise SystemExit('resources.arsc COMPRESSED (method %d) — Android 11+ откажется ставить APK'
+                         % info.compress_type)
+    with open(apk, 'rb') as fh:
+        fh.seek(info.header_offset)
+        local = fh.read(30)
+        name_len = int.from_bytes(local[26:28], 'little')
+        extra_len = int.from_bytes(local[28:30], 'little')
+        data_offset = info.header_offset + 30 + name_len + extra_len
+    if data_offset % 4 != 0:
+        raise SystemExit('resources.arsc не выровнен: смещение данных %d не кратно 4' % data_offset)
+print('resources.arsc: STORED, %d Б, смещение %d (кратно 4)' % (info.file_size, data_offset))
+PYEOF
+then
+    report PASS artifact.arsc_stored "$(tail -1 "$ARSC_LOG")"
+else
+    report FAIL artifact.arsc_stored "$(tail -2 "$ARSC_LOG")"
+fi
+
 # --- 4. разрешения: ровно VIBRATE --------------------------------------------------------------
 
 if PERMS=$("$AAPT2" dump permissions "$APK" 2>&1); then

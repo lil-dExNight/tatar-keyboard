@@ -1,0 +1,6 @@
+• Closer to iOS: three shift states, droplet balloon, blue action Return, white alternatives panel, taller strip
+• Letter keys answer with the balloon only
+• Settings screens animate; dialogs restyled
+• 8.5% smaller, faster drawing, quicker start
+• Less memory while swipe typing
+• Text cache cleared on lock; password fields never re-read
