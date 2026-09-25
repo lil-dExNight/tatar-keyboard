@@ -151,7 +151,22 @@ class GlideTrailContractTest {
             "src/main/res/values/themes-tatar.xml",
             "app/src/main/res/values/themes-tatar.xml",
         )
-        assertTrue(tatar.contains("<item name=\"glideTrailColor\">@color/app_accent</item>"))
+        assertTrue(tatar.contains("<item name=\"glideTrailColor\">@color/ios_glide_trail</item>"))
+        // The 2026-09-25 recolor: Gboard-style near-white (iOS systemGray6) instead of the
+        // accent blue. The literal is pinned so a "harmless" palette edit cannot silently
+        // recolor the trail; the color lives only in values/colors.xml — one near-white
+        // serves both themes (dark keys/background keep it clearly visible).
+        val colors = read(
+            "src/main/res/values/colors.xml",
+            "app/src/main/res/values/colors.xml",
+        )
+        assertTrue(colors.contains("<color name=\"ios_glide_trail\">#F2F2F7</color>"))
+        val nightColors = read(
+            "src/main/res/values-night/colors.xml",
+            "app/src/main/res/values-night/colors.xml",
+        )
+        assertTrue("the trail color is deliberately shared between themes",
+            !nightColors.contains("ios_glide_trail"))
         val config = read(
             "src/main/res/values/config.xml",
             "app/src/main/res/values/config.xml",

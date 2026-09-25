@@ -40,6 +40,11 @@
     <color name="ios_key_functional_text_color">#3C3C43</color>
     <color name="ios_key_text_inactive_color">#70000000</color>
     <color name="ios_key_hint_color">#90000000</color>
+    <!-- Glide trail (P7-5 recolor, 2026-09-25): near-white iOS systemGray6, Gboard-style.
+         Drawn at ≤40 % alpha (GlideTrail.MAX_ALPHA), so over the white keys it is a soft
+         sheen and over the #D4D6DD background a lighter ribbon; in the dark theme the same
+         near-white reads clearly against #2C2C2C — one value serves both themes. -->
+    <color name="ios_glide_trail">#F2F2F7</color>
 
     <!-- Color resources for iOS-style app screens (light). App-screen palette,
          kept separate from the keyboard ios_* colors above. -->
