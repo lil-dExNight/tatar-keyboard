@@ -16,6 +16,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TdictPrefixIndex
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.GlobalTopFrequencyFallbackFactory
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SnapshotPersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.BigramTableIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
@@ -132,8 +133,11 @@ class GlideEndToEndTest {
     private inner class RealBackedEngine(
         private val index: TdictPrefixIndex,
         private val composite: CompositePrefixComputer,
+        personal: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
     ) : EngineHandle {
-        private val host = GlideDecoderHost(TdictGlideInventory(index))
+        private val host = GlideDecoderHost(
+            TdictGlideInventory(index), personal, index::containsWordCold,
+        )
         private var callback: ResultCallback? = null
         private var latest: Any? = null
         val pushedGeometries = mutableListOf<GlideKeyGeometry?>()
@@ -199,6 +203,8 @@ class GlideEndToEndTest {
         val strip = FakeStrip()
         val editor = FakeEditor()
         val engines = LinkedHashMap<String, RealBackedEngine>()
+        /** Set BEFORE [start]: the personal source the Tatar engine's glide host is built with. */
+        var tatarPersonal: PersonalCandidateSource = PersonalCandidateSource.EMPTY
         val controller = SuggestionsController(
             strip,
             editor,
@@ -208,7 +214,7 @@ class GlideEndToEndTest {
                     when (subtypeId) {
                         PersonalSubtypes.RUSSIAN ->
                             RealBackedEngine(russianIndex, russianComputer).attach(callback)
-                        else -> RealBackedEngine(tatarIndex, tatarComputer).attach(callback)
+                        else -> RealBackedEngine(tatarIndex, tatarComputer, tatarPersonal).attach(callback)
                     }
                 }
             },
@@ -485,6 +491,35 @@ class GlideEndToEndTest {
         h.controller.onTextChanged()
         h.strip.listener!!.onTap("сәлләм")
         assertEquals("сәләмб", h.editor.text)
+    }
+
+    // --- Personal-dictionary glide candidates (docs/GLIDE-PERSONAL.md) -------------------------
+
+    @Test
+    fun aLearnedWordLiftCommitsAndTheStripShowsTheAlternatives() {
+        // "сәлинә" is NOT in the shipped Tatar dictionary (checked against the asset on
+        // 2026-09-26) — only the personal side can produce it. The membership guard keeps the
+        // pin honest: if a dictionary rebuild ever adds the word, pick another one.
+        assertFalse(tatarIndex.containsWordCold("сәлинә"))
+        val snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 7)
+        val h = Harness()
+        h.tatarPersonal = SnapshotPersonalCandidateSource { snapshot }
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәлинә", GlideTestFixtures.tatarGeometry())!!)
+
+        // The lift commits the learned word top-1 (P7-7: no auto-space)…
+        assertEquals("сәлинә", h.editor.text)
+        assertEquals(listOf("" to "сәлинә"), h.editor.predictedCommits)
+        // …and the strip shows the decode's remaining candidates as tappable alternatives,
+        // exactly like a dictionary word's band; the committed word is not re-offered.
+        val last = h.strip.shown.last()
+        val cells = listOfNotNull(last.first, last.second, last.third)
+        assertTrue("the decode tail must ride the strip, was $cells", cells.isNotEmpty())
+        assertFalse("the committed word is not re-offered", cells.contains("сәлинә"))
+        // The undo window treats it like any glide commit.
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
     }
 
     // --- P7-7: no auto-space, the chain space is the only separator (2026-09-25) ---------------

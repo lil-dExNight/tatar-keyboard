@@ -32,7 +32,13 @@ package rkr.simplekeyboard.inputmethod.latin.glide
 interface GlideWordInventory {
     val entryCount: Int
 
-    /** The word of dictionary entry [index] (materializes a String; result-path use only). */
+    /**
+     * The word of dictionary entry [index] (materializes a String; result-path use only). A
+     * composite inventory may answer with the user's SAVED casing here — for a personal entry
+     * always, and for a dictionary entry the user's saved spelling when it overrides one
+     * (docs/GLIDE-PERSONAL.md); the display-time casing pass treats the answer like any
+     * dictionary word.
+     */
     fun wordAt(index: Int): String
 
     /** Visits every entry exactly once, in dictionary order, with its word and frequency. */

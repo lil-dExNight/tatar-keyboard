@@ -155,6 +155,10 @@ The ordered work plan for everything below is `docs/ROADMAP-P8-PLAN.md`
 6. **Glide follow-ups parked by `docs/GLIDE-PLAN.md`**: live per-MOVE scoring,
    personal-dictionary glide candidates, glide-triggered learning. (Trail
    rendering, the fourth item of that list, shipped as P7-5.)
+
+   > **2026-09-26:** personal-dictionary glide candidates shipped
+   > (`docs/GLIDE-PERSONAL.md`); the parked remainder is live per-MOVE scoring
+   > and glide-triggered learning.
 7. **Emoji index sharding** — the residue of O2-4, which only added idle
    release: splitting `emoji_suggest_v1.txt` by first letter is an asset-pipeline
    change (packer + new `tests/emoji_*` pins) and a mission of its own.

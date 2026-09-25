@@ -1,5 +1,8 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersonalDictionary
+
 /**
  * Shared fixture for the glide tests: the device-true Tatar letter-key geometry in the
  * 100 000-unit reference grid, mirroring `scripts/glide_pack.py` bit-for-bit.
@@ -135,6 +138,24 @@ internal object GlideTestFixtures {
             t += 8f
         }
         return path
+    }
+
+    /**
+     * A personal-dictionary snapshot straight from (raw form, usage count) pairs — the glide
+     * personal tests' counterpart of [ListGlideInventory]. The snapshot arrays are
+     * normalized-ascending, exactly as the store publishes them.
+     */
+    fun personalDictionary(vararg entries: Pair<String, Int>): PersonalDictionary {
+        val sorted = entries.sortedBy { it.first.lowercase() }
+        return PersonalDictionary.of(
+            ValidatedPersonalDictionary(
+                rawForms = sorted.map { it.first },
+                normalizedForms = sorted.map { it.first.lowercase() },
+                usageCounts = IntArray(sorted.size) { sorted[it].second },
+                lastUseSerials = LongArray(sorted.size) { (it + 1).toLong() },
+                subtypeTag = "tt_RU",
+            ),
+        )
     }
 }
 

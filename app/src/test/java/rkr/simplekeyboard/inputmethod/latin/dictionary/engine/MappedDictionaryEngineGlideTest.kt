@@ -6,6 +6,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidate
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryTestFixtures
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionary
@@ -43,9 +46,27 @@ class MappedDictionaryEngineGlideTest {
     private fun glidePath(word: String): GlidePath =
         requireNotNull(GlideTestFixtures.idealPath(word, geometry))
 
+    /**
+     * A personal source with a caller-swappable snapshot (docs/GLIDE-PERSONAL.md): each swap
+     * publishes a NEW immutable instance, exactly like the store's `@Volatile` republish on a
+     * learning event, so the tests drive the host's snapshot-identity rebuild for real.
+     */
+    private class FakePersonalSource : PersonalCandidateSource {
+        @Volatile
+        var snapshot: PersonalDictionary = PersonalDictionary.EMPTY
+
+        override fun candidatesFor(normalizedPrefix: String): List<PersonalCandidate> =
+            snapshot.lookupCandidates(normalizedPrefix)
+
+        override fun isEmpty(): Boolean = snapshot.isEmpty
+
+        override fun glideSnapshot(): PersonalDictionary = snapshot
+    }
+
     private fun startEngine(
         executor: ManualEngineExecutor,
         published: MutableList<LookupResult>,
+        personal: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
     ): MappedDictionaryEngine {
         val artifact = DictionaryTestFixtures.artifact(generation = 1, entries = entries)
         val file = File.createTempFile("glide-engine-", ".tdict").also { it.writeBytes(artifact.raw) }
@@ -65,6 +86,7 @@ class MappedDictionaryEngineGlideTest {
                 ResultHandoff { published += it },
                 executorFactory = { executor },
                 mapper = DictionaryMapper { f, _ -> ByteBuffer.wrap(f.readBytes()) },
+                personalCandidates = personal,
             ),
         )
     }
@@ -195,6 +217,98 @@ class MappedDictionaryEngineGlideTest {
         assertEquals(1, published.size)
         assertEquals(LookupKind.PREFIX, published.single().kind)
         assertTrue(engine.isCurrent(prefixToken))
+        engine.destroy(1, TimeUnit.SECONDS)
+    }
+
+    // --- Personal-dictionary glide candidates (docs/GLIDE-PERSONAL.md) -------------------------
+
+    @Test
+    fun aLearnedWordDecodesThroughTheWorker() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val personal = FakePersonalSource()
+        personal.snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 3)
+        // "сәлинә" is not in the fixture dictionary — only the personal side can produce it.
+        val engine = startEngine(executor, published, personal)
+        engine.updateGlideGeometry(geometry)
+
+        val token = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәлинә")))
+        executor.runAll()
+
+        assertEquals(LookupKind.GLIDE, token.kind)
+        assertEquals(LookupKind.GLIDE, published.single().kind)
+        assertEquals("сәлинә", published.single().suggestions.first())
+        engine.destroy(1, TimeUnit.SECONDS)
+    }
+
+    @Test
+    fun aSnapshotSwapIsSeenByTheNextGlide() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val personal = FakePersonalSource()
+        val engine = startEngine(executor, published, personal)
+        engine.updateGlideGeometry(geometry)
+
+        // Empty snapshot: the personal-only word is undecodable.
+        engine.requestGlide(1, "tt", glidePath("сәлинә"))
+        executor.runAll()
+        assertTrue(published.single().suggestions.isEmpty())
+
+        // A learning event republishes the snapshot; the next decode rebuilds over it.
+        personal.snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 3)
+        engine.requestGlide(2, "tt", glidePath("сәлинә"))
+        executor.runAll()
+
+        assertEquals(2, published.size)
+        assertEquals("сәлинә", published.last().suggestions.first())
+        engine.destroy(1, TimeUnit.SECONDS)
+    }
+
+    @Test
+    fun anEmptiedSnapshotRemovesTheWord() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val personal = FakePersonalSource()
+        personal.snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 3)
+        val engine = startEngine(executor, published, personal)
+        engine.updateGlideGeometry(geometry)
+
+        engine.requestGlide(1, "tt", glidePath("сәлинә"))
+        executor.runAll()
+        assertEquals("сәлинә", published.single().suggestions.first())
+
+        // The word was forgotten (or the feature switched off): the same gesture decodes empty.
+        personal.snapshot = PersonalDictionary.EMPTY
+        engine.requestGlide(2, "tt", glidePath("сәлинә"))
+        executor.runAll()
+
+        assertEquals(2, published.size)
+        assertTrue(published.last().suggestions.isEmpty())
+        engine.destroy(1, TimeUnit.SECONDS)
+    }
+
+    @Test
+    fun anIdleReleaseRebuildsWithTheCurrentSnapshot() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val personal = FakePersonalSource()
+        personal.snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 3)
+        val engine = startEngine(executor, published, personal)
+        engine.updateGlideGeometry(geometry)
+
+        engine.requestGlide(1, "tt", glidePath("сәлинә"))
+        executor.runAll()
+        assertEquals("сәлинә", published.single().suggestions.first())
+
+        // O2's idle memory release drops the decoder; the rebuild must read the CURRENT
+        // snapshot (here unchanged), not a stale one — the word survives.
+        engine.releaseGlideIndex()
+        executor.runAll()
+
+        engine.requestGlide(2, "tt", glidePath("сәлинә"))
+        executor.runAll()
+        assertEquals(2, published.size)
+        assertEquals("сәлинә", published.last().suggestions.first())
         engine.destroy(1, TimeUnit.SECONDS)
     }
 

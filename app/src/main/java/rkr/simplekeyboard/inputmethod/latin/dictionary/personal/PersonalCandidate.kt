@@ -59,6 +59,18 @@ fun interface PersonalCandidateSource {
      */
     fun containsNormalized(normalizedWord: String): Boolean = false
 
+    /**
+     * The immutable snapshot the GLIDE decode side indexes (docs/GLIDE-PERSONAL.md): the whole
+     * personal dictionary, read once per decoder rebuild on the engine worker. A glide decode
+     * never walks prefix matches — it needs the entries themselves, and only when the snapshot's
+     * identity changes, so the per-gesture cost of an unchanged personal dictionary is one
+     * reference read.
+     *
+     * Defaults to [PersonalDictionary.EMPTY] so a source written before the glide integration
+     * keeps compiling and adds no glide candidates.
+     */
+    fun glideSnapshot(): PersonalDictionary = PersonalDictionary.EMPTY
+
     companion object {
         /** The source used whenever the personal dictionary is off or unavailable. */
         @JvmField
@@ -86,4 +98,6 @@ class SnapshotPersonalCandidateSource(
 
     override fun containsNormalized(normalizedWord: String): Boolean =
         snapshot().indexOfNormalized(normalizedWord) >= 0
+
+    override fun glideSnapshot(): PersonalDictionary = snapshot()
 }

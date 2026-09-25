@@ -370,9 +370,11 @@ class MappedDictionaryEngine private constructor(
                 // table links itself to one dictionary by raw SHA-256, and the forms must rank by
                 // the frequencies of that same dictionary.
                 // P7-3 (docs/GLIDE-PLAN.md): the glide decode side — the decoder's word inventory
-                // is THIS engine's dictionary (the main dictionary only; the personal one is a
-                // documented MVP exclusion). The geometry arrives later, pushed from the live
-                // layout through updateGlideGeometry; until then decodeGlide answers empty.
+                // is THIS engine's dictionary, extended with the personal one by the host
+                // (docs/GLIDE-PERSONAL.md): the same [personalCandidates] seam the prefix merge
+                // already reads, with the dictionary's cold exact-membership read as the
+                // duplicate check. The geometry arrives later, pushed from the live layout
+                // through updateGlideGeometry; until then decodeGlide answers empty.
                 val computer = CompositePrefixComputer(
                     index, personalCandidates, afterWordFormsFactory?.createAfterWordForms(index),
                     // TT-NEXTWORD-FILL: the factory computes the top-frequency pool HERE — one
@@ -382,7 +384,7 @@ class MappedDictionaryEngine private constructor(
                     // P1: the learned pairs ride the same per-language seam as the personal source
                     // above — resolved by the caller from the subtype, never from a constant.
                     personalBigrams,
-                    GlideDecoderHost(TdictGlideInventory(index)),
+                    GlideDecoderHost(TdictGlideInventory(index), personalCandidates, index::containsWordCold),
                 )
                 val engine = LatestOnlyPrefixEngine(
                     identity,

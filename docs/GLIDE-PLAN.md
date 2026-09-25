@@ -34,6 +34,11 @@ AnySoftKeyboard PR #1870 parameter study), SHARK² literature, patent landscape
   follow-up can add it); dictionary candidates only (personal dictionary
   mixing is a follow-up); tt + ru layouts (the machinery is language-agnostic,
   the geometry table is per-layout).
+
+> **2026-09-26:** personal-dictionary mixing is no longer a follow-up —
+> `CompositeGlideInventory` appends the personal snapshot to the glide
+> inventory with usage-scaled frequencies capped at the dictionary maximum
+> (`docs/GLIDE-PERSONAL.md`). The rest of the MVP scope line stands.
 - **Touch side** (hardest part): record the finger path in a preallocated
   ring buffer; glide detection by distance/time from down-point; when armed,
   suppress key previews/haptics/long-press timers/space-and-delete swipe

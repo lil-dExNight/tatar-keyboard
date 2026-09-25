@@ -396,6 +396,12 @@ not a pair prediction, so no usage counter moves). The personal dictionary is
 never consulted for glide candidates (main dictionary only, documented MVP
 decision); no companion fill rides a glide band.
 
+> **2026-09-26:** the MVP exclusion is lifted — the personal dictionary IS a
+> glide candidate source now (`docs/GLIDE-PERSONAL.md`), appended after the
+> dictionary entries with frequencies capped at the dictionary maximum. The
+> learning half of the sentence stands: a glide commit still moves no usage
+> counter.
+
 ### The settings row
 
 `pref_glide_typing` gets its switchRow in the preferences screen, default ON

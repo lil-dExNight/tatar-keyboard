@@ -110,6 +110,13 @@
   (9/9 PASS: строка настроек ON по умолчанию, жест сәләм → top-3 → коммит → цепочка,
   ru работа в ячейке 1, тач-набор нетронут, space-свайп жив, при OFF — legacy
   поведение, задокументированное отсутствие трейла до отрыва пальца).
+- `GLIDE-PERSONAL.md` — mission report (canonical English), 2026-09-26:
+  personal-dictionary glide candidates — `CompositeGlideInventory` appends the
+  personal snapshot after the dictionary entries (usage-scaled frequencies
+  capped at the dictionary maximum, duplicate words serve the saved casing via
+  `wordAt`), the host rebuilds the decoder on snapshot-identity change, the
+  personal-dictionary setting gates it by construction; +21 JVM tests, all
+  host gates green, the C5 device leg is the operator's.
 - `APPLE-UX-2026-09-25.md` — аудит текущего состояния UX/UI против iOS-референсов
   и план сближения (канонический английский): что уже совпадает, 11 расхождений
   с file:line, дешёвые правки W1–W6, средние M1–M5, структурные S1–S2, список
