@@ -154,15 +154,15 @@ public class Key implements Comparable<Key> {
 
     private static final class OptionalAttributes {
         /** Text to output when pressed. This can be multiple characters, like ".com" */
-        public final String mOutputText;
-        public final int mAltCode;
+        private final String mOutputText;
+        private final int mAltCode;
 
         private OptionalAttributes(final String outputText, final int altCode) {
             mOutputText = outputText;
             mAltCode = altCode;
         }
 
-        public static OptionalAttributes newInstance(final String outputText, final int altCode) {
+        private static OptionalAttributes newInstance(final String outputText, final int altCode) {
             if (outputText == null && altCode == CODE_UNSPECIFIED) {
                 return null;
             }
@@ -881,7 +881,7 @@ public class Key implements Comparable<Key> {
             return pressed ? mPressedState : mReleasedState;
         }
 
-        public static final KeyBackgroundState[] STATES = {
+        private static final KeyBackgroundState[] STATES = {
             // 0: BACKGROUND_TYPE_EMPTY
             new KeyBackgroundState(android.R.attr.state_empty),
             // 1: BACKGROUND_TYPE_NORMAL

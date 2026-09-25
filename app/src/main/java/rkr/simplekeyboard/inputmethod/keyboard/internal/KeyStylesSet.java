@@ -27,6 +27,7 @@ import org.xmlpull.v1.XmlPullParserException;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Map;
 
 import rkr.simplekeyboard.inputmethod.R;
 import rkr.simplekeyboard.inputmethod.latin.utils.XmlParseUtils;
@@ -74,13 +75,13 @@ public final class KeyStylesSet {
     }
 
     private static final class DeclaredKeyStyle extends KeyStyle {
-        private final HashMap<String, KeyStyle> mStyles;
+        private final Map<String, KeyStyle> mStyles;
         private final String mParentStyleName;
         private final SparseArray<Object> mStyleAttributes = new SparseArray<>();
 
-        public DeclaredKeyStyle(final String parentStyleName,
+        private DeclaredKeyStyle(final String parentStyleName,
                 final KeyboardTextsSet textsSet,
-                final HashMap<String, KeyStyle> styles) {
+                final Map<String, KeyStyle> styles) {
             super(textsSet);
             mParentStyleName = parentStyleName;
             mStyles = styles;
@@ -135,7 +136,7 @@ public final class KeyStylesSet {
             return flags | styleFlags | parentFlags;
         }
 
-        public void readKeyAttributes(final TypedArray keyAttr) {
+        private void readKeyAttributes(final TypedArray keyAttr) {
             // TODO: Currently not all Key attributes can be declared as style.
             readString(keyAttr, R.styleable.Keyboard_Key_altCode);
             readString(keyAttr, R.styleable.Keyboard_Key_keySpec);

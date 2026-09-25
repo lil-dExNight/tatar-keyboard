@@ -18,6 +18,7 @@
 package rkr.simplekeyboard.inputmethod.latin.common;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Utility methods for working with collections.
@@ -34,7 +35,7 @@ public final class CollectionUtils {
      * @param end Last index exclusive to be converted.
      * @throws IllegalArgumentException if start or end are out of range or start &gt; end.
      */
-    public static <E> ArrayList<E> arrayAsList(final E[] array, final int start,
+    public static <E> List<E> arrayAsList(final E[] array, final int start,
             final int end) {
         if (start < 0 || start > end || end > array.length) {
             throw new IllegalArgumentException("Invalid start: " + start + " end: " + end

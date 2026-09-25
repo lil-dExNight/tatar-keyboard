@@ -282,6 +282,8 @@ public abstract class ExploreByTouchHelper extends View.AccessibilityDelegate {
     }
 
     /**
+     * Returns the identifier of the virtual view that has accessibility focus.
+     *
      * @return the identifier of the virtual view that has accessibility focus
      *         or {@link #INVALID_ID} if no virtual view has accessibility
      *         focus
@@ -291,6 +293,8 @@ public abstract class ExploreByTouchHelper extends View.AccessibilityDelegate {
     }
 
     /**
+     * Returns the identifier of the virtual view that has keyboard focus.
+     *
      * @return the identifier of the virtual view that has keyboard focus
      *         or {@link #INVALID_ID} if no virtual view has keyboard focus
      */
@@ -574,20 +578,6 @@ public abstract class ExploreByTouchHelper extends View.AccessibilityDelegate {
                 parent.requestSendAccessibilityEvent(mHost, event);
             }
         }
-    }
-
-    /**
-     * Returns the virtual view ID for the currently accessibility focused
-     * item.
-     *
-     * @return the identifier of the virtual view that has accessibility focus
-     *         or {@link #INVALID_ID} if no virtual view has accessibility
-     *         focus
-     * @deprecated Use {@link #getAccessibilityFocusedVirtualViewId()}.
-     */
-    @Deprecated
-    public int getFocusedVirtualView() {
-        return getAccessibilityFocusedVirtualViewId();
     }
 
     /**

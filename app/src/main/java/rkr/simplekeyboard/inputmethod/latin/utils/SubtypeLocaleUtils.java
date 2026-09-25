@@ -168,7 +168,7 @@ public final class SubtypeLocaleUtils {
          * @param layoutSet the keyboard layout set name for the subtype.
          * @param resources the resources to use.
          */
-        public SubtypeBuilder(final String locale, final String layoutSet,
+        private SubtypeBuilder(final String locale, final String layoutSet,
                               final Resources resources) {
             mLocale = locale;
             mExpectedLayoutSet = layoutSet;
@@ -182,7 +182,7 @@ public final class SubtypeLocaleUtils {
          * @param all true to get all of the subtypes for the locale or false for just the default.
          * @param resources the resources to use.
          */
-        public SubtypeBuilder(final String locale, final boolean all, final Resources resources) {
+        private SubtypeBuilder(final String locale, final boolean all, final Resources resources) {
             mLocale = locale;
             mExpectedLayoutSet = null;
             mAllowMultiple = all;
@@ -193,7 +193,7 @@ public final class SubtypeLocaleUtils {
          * Get the requested subtypes.
          * @return the list of subtypes that were built.
          */
-        public List<Subtype> getSubtypes() {
+        private List<Subtype> getSubtypes() {
             if (mSubtypes != null) {
                 // in case this gets called again for some reason, the subtypes should only be built
                 // once
@@ -263,21 +263,6 @@ public final class SubtypeLocaleUtils {
 
             mSubtypes.add(
                     new Subtype(mLocale, keyboardLayoutSet, layoutNameStr, false, mResources));
-        }
-
-        /**
-         * Add a single layout for the locale. This might not actually add the subtype to the list
-         * depending on the original request.
-         * @param keyboardLayoutSet the keyboard layout set name.
-         * @param layoutRes the resource ID to use for the display name of the keyboard layout. This
-         *                 generally shouldn't include the name of the language.
-         */
-        private void addLayout(final String keyboardLayoutSet, final int layoutRes) {
-            if (shouldSkipLayout(keyboardLayoutSet)) {
-                return;
-            }
-            mSubtypes.add(
-                    new Subtype(mLocale, keyboardLayoutSet, layoutRes, true, mResources));
         }
 
         /**

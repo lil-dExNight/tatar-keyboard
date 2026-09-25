@@ -240,29 +240,27 @@ public final class KeyboardTextsTable {
         /* 166: 0 */ "morekeys_cyrillic_yu",
     };
 
-    private static final String EMPTY = "";
-
     /* Default texts */
     private static final String[] TEXTS_DEFAULT = {
         /* morekeys_a ~ */
-        EMPTY, EMPTY, EMPTY, EMPTY,
+        "", "", "", "",
         /* ~ morekeys_u */
         // Label for "switch to alphabetic" key.
         /* keylabel_to_alpha */ "ABC",
         /* morekeys_i ~ */
-        EMPTY, EMPTY, EMPTY,
+        "", "", "",
         /* ~ morekeys_c */
         /* double_quotes */ "!text/double_lqm_rqm",
-        /* morekeys_s */ EMPTY,
+        /* morekeys_s */ "",
         /* single_quotes */ "!text/single_lqm_rqm",
         /* keyspec_currency */ "$",
         /* morekeys_y ~ */
-        EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY,
+        "", "", "", "", "", "",
         /* ~ morekeys_g */
         /* single_angle_quotes */ "!text/single_laqm_raqm",
         /* double_angle_quotes */ "!text/double_laqm_raqm",
         /* morekeys_r ~ */
-        EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY,
+        "", "", "", "", "", "", "", "", "", "", "", "",
         /* ~ morekeys_cyrillic_soft_sign */
         /* keyspec_symbols_1 */ "1",
         /* keyspec_symbols_2 */ "2",
@@ -277,10 +275,10 @@ public final class KeyboardTextsTable {
         // Label for "switch to symbols" key.
         /* keylabel_to_symbol */ "?123",
         /* additional_morekeys_symbols_1 ~ */
-        EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY,
+        "", "", "", "", "", "", "", "", "", "",
         /* ~ additional_morekeys_symbols_0 */
         /* morekeys_tablet_period */ "!text/morekeys_tablet_punctuation",
-        /* morekeys_nordic_row2_11 */ EMPTY,
+        /* morekeys_nordic_row2_11 */ "",
         /* morekeys_punctuation */ "!autoColumnOrder!8,\\,,?,!,#,!text/keyspec_right_parenthesis,!text/keyspec_left_parenthesis,/,;,',@,:,-,\",+,\\%,&",
         /* keyspec_tablet_comma */ ",",
         // Period key
@@ -288,7 +286,7 @@ public final class KeyboardTextsTable {
         /* morekeys_period */ "!text/morekeys_punctuation",
         /* keyspec_tablet_period */ ".",
         /* keyspec_swiss_row1_11 ~ */
-        EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY,
+        "", "", "", "", "", "",
         /* ~ morekeys_swiss_row2_11 */
         // U+2020: "†" DAGGER
         // U+2021: "‡" DOUBLE DAGGER
@@ -318,12 +316,12 @@ public final class KeyboardTextsTable {
         /* keyspec_right_single_angle_quote */ "\u203A",
         // Comma key
         /* keyspec_comma */ ",",
-        /* morekeys_tablet_comma */ EMPTY,
-        /* keyhintlabel_period */ EMPTY,
+        /* morekeys_tablet_comma */ "",
+        /* keyhintlabel_period */ "",
         // U+00BF: "¿" INVERTED QUESTION MARK
         /* morekeys_question */ "\u00BF",
         /* morekeys_h ~ */
-        EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY,
+        "", "", "", "", "", "", "", "", "", "", "",
         /* ~ keyspec_south_slavic_row3_8 */
         /* morekeys_tablet_punctuation */ "!autoColumnOrder!7,\\,,',#,!text/keyspec_right_parenthesis,!text/keyspec_left_parenthesis,/,;,@,:,-,\",+,\\%,&",
         // U+00F1: "ñ" LATIN SMALL LETTER N WITH TILDE
@@ -337,25 +335,25 @@ public final class KeyboardTextsTable {
         /* morekeys_left_parenthesis */ "!fixedColumnOrder!3,!text/keyspecs_left_parenthesis_more_keys",
         /* morekeys_right_parenthesis */ "!fixedColumnOrder!3,!text/keyspecs_right_parenthesis_more_keys",
         /* morekeys_arabic_diacritics ~ */
-        EMPTY, EMPTY, EMPTY,
+        "", "", "",
         /* ~ keyhintlabel_tablet_period */
         /* keyspec_symbols_question */ "?",
         /* keyspec_symbols_semicolon */ ";",
         /* keyspec_symbols_percent */ "%",
-        /* morekeys_symbols_semicolon */ EMPTY,
+        /* morekeys_symbols_semicolon */ "",
         // U+2030: "‰" PER MILLE SIGN
         /* morekeys_symbols_percent */ "\u2030",
         /* label_pause_key */ "!string/label_pause_key",
         /* label_wait_key */ "!string/label_wait_key",
         /* morekeys_v ~ */
-        EMPTY, EMPTY, EMPTY, EMPTY,
+        "", "", "", "",
         /* ~ morekeys_x */
         /* keyspec_q */ "q",
         /* keyspec_w */ "w",
         /* keyspec_y */ "y",
         /* keyspec_x */ "x",
         /* morekeys_east_slavic_row2_11 ~ */
-        EMPTY, EMPTY, EMPTY,
+        "", "", "",
         /* ~ morekeys_cyrillic_a */
         // U+00A2: "¢" CENT SIGN
         // U+00A3: "£" POUND SIGN
@@ -387,11 +385,11 @@ public final class KeyboardTextsTable {
         /* morekeys_symbols_4 */ "\u2074",
         // U+215D: "⅝" VULGAR FRACTION FIVE EIGHTHS
         /* morekeys_symbols_5 */ "\u215D",
-        /* morekeys_symbols_6 */ EMPTY,
+        /* morekeys_symbols_6 */ "",
         // U+215E: "⅞" VULGAR FRACTION SEVEN EIGHTHS
         /* morekeys_symbols_7 */ "\u215E",
-        /* morekeys_symbols_8 */ EMPTY,
-        /* morekeys_symbols_9 */ EMPTY,
+        /* morekeys_symbols_8 */ "",
+        /* morekeys_symbols_9 */ "",
         // U+207F: "ⁿ" SUPERSCRIPT LATIN SMALL LETTER N
         // U+2205: "∅" EMPTY SET
         /* morekeys_symbols_0 */ "\u207F,\u2205",
@@ -449,8 +447,8 @@ public final class KeyboardTextsTable {
         /* morekeys_single_quote */ "!fixedColumnOrder!5,!text/single_quotes,!text/single_angle_quotes",
         /* morekeys_double_quote */ "!fixedColumnOrder!5,!text/double_quotes,!text/double_angle_quotes",
         /* morekeys_tablet_double_quote */ "!fixedColumnOrder!6,!text/double_quotes,!text/single_quotes,!text/double_angle_quotes,!text/single_angle_quotes",
-        /* morekeys_cyrillic_ya */ EMPTY,
-        /* morekeys_cyrillic_yu */ EMPTY,
+        /* morekeys_cyrillic_ya */ "",
+        /* morekeys_cyrillic_yu */ "",
     };
 
 

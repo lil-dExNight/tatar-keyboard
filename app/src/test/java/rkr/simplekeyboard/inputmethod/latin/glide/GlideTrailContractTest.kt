@@ -124,7 +124,7 @@ class GlideTrailContractTest {
         assertTrue("an empty trail is a no-op (no per-keystroke invalidate)",
             endView.contains("if (mGlideTrail.isEmpty())"))
         assertTrue("the lift starts the fade instead of erasing the trail",
-            endView.contains("mGlideTrail.startFadeOut(SystemClock.uptimeMillis());"))
+            endView.contains("mGlideTrail.startFadeOut((float) SystemClock.uptimeMillis());"))
         // A closing keyboard ends every fade.
         val detach = viewSource.substringAfter("protected void onDetachedFromWindow()")
             .substringBefore("mDrawingPreviewPlacerView.removeAllViews();")

@@ -55,10 +55,10 @@ public final class SubtypePreferenceUtils {
         if (TextUtils.isEmpty(prefSubtypes)) {
             return new ArrayList<>();
         }
-        final String[] prefSubtypeArray = prefSubtypes.split(PREF_SUBTYPE_SEPARATOR);
+        final String[] prefSubtypeArray = prefSubtypes.split(PREF_SUBTYPE_SEPARATOR, 0);
         final ArrayList<Subtype> subtypesList = new ArrayList<>(prefSubtypeArray.length);
         for (final String prefSubtype : prefSubtypeArray) {
-            final String[] elements = prefSubtype.split(LOCALE_AND_LAYOUT_SEPARATOR);
+            final String[] elements = prefSubtype.split(LOCALE_AND_LAYOUT_SEPARATOR, 0);
             if (elements.length != PREF_ELEMENTS_LENGTH) {
                 Log.w(TAG, "Unknown subtype specified: " + prefSubtype + " in "
                         + prefSubtypes);

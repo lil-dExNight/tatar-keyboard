@@ -204,11 +204,11 @@ public final class KeyPreviewChoreographer {
     private static class KeyPreviewAnimators extends AnimatorListenerAdapter {
         private final Animator mDismissAnimator;
 
-        public KeyPreviewAnimators(final Animator dismissAnimator) {
+        private KeyPreviewAnimators(final Animator dismissAnimator) {
             mDismissAnimator = dismissAnimator;
         }
 
-        public void startDismiss() {
+        private void startDismiss() {
             mDismissAnimator.start();
         }
     }

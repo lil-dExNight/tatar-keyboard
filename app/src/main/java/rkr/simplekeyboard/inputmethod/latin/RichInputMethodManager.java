@@ -121,6 +121,8 @@ public class RichInputMethodManager {
      */
     public interface SubtypeChangedListener {
         /**
+         * Called when the current subtype changes.
+         *
          * @param userInitiated true when the change is an explicit language switch by the user
          *     (globe key or the subtype picker) and may be announced to TalkBack; false for
          *     programmatic changes (hint-locale switch at field start, subtype removal in
@@ -152,12 +154,12 @@ public class RichInputMethodManager {
          * Create the manager for the virtual subtypes.
          * @param context the context for this application.
          */
-        public SubtypeList(final Context context) {
+        private SubtypeList(final Context context) {
             mPrefs = PreferenceManagerCompat.getDeviceSharedPreferences(context);
             reload(context);
         }
 
-        public void reload(final Context context) {
+        private void reload(final Context context) {
             final String prefSubtypes = Settings.readPrefSubtypes(mPrefs);
             final List<Subtype> subtypes = SubtypePreferenceUtils.createSubtypesFromPref(
                     prefSubtypes, context.getResources());
@@ -201,7 +203,7 @@ public class RichInputMethodManager {
          * Add a listener to be called when the virtual subtype changes.
          * @param listener the listener to call when the subtype changes.
          */
-        public void setSubtypeChangeHandler(final SubtypeChangedListener listener) {
+        private void setSubtypeChangeHandler(final SubtypeChangedListener listener) {
             mSubtypeChangedListener = listener;
         }
 
@@ -209,7 +211,7 @@ public class RichInputMethodManager {
          * Call the subtype changed handler to indicate that the virtual subtype has changed.
          * @param userInitiated see {@link SubtypeChangedListener#onCurrentSubtypeChanged}.
          */
-        public void notifySubtypeChanged(final boolean userInitiated) {
+        private void notifySubtypeChanged(final boolean userInitiated) {
             if (mSubtypeChangedListener != null) {
                 mSubtypeChangedListener.onCurrentSubtypeChanged(userInitiated);
             }
@@ -220,7 +222,7 @@ public class RichInputMethodManager {
          * @param locale filter by Locale.
          * @return the enabled subtypes.
          */
-        public synchronized Set<Subtype> getAllForLocale(final String locale) {
+        private synchronized Set<Subtype> getAllForLocale(final String locale) {
             final Set<Subtype> subtypes = new HashSet<>();
             for (final Subtype subtype: mSubtypes) {
                 if (subtype.getLocale().equals(locale))
@@ -235,7 +237,7 @@ public class RichInputMethodManager {
          *                      name as opposed to having no particular order.
          * @return the enabled subtypes.
          */
-        public synchronized Set<Subtype> getAll(final boolean sortForDisplay) {
+        private synchronized Set<Subtype> getAll(final boolean sortForDisplay) {
             final Set<Subtype> subtypes;
             if (sortForDisplay) {
                 subtypes = new TreeSet<>(new Comparator<Subtype>() {
@@ -265,7 +267,7 @@ public class RichInputMethodManager {
          * Get the number of enabled subtypes.
          * @return the number of enabled subtypes.
          */
-        public synchronized int size() {
+        private synchronized int size() {
             return mSubtypes.size();
         }
 
@@ -291,7 +293,7 @@ public class RichInputMethodManager {
          * @param subtype the subtype to add.
          * @return whether the subtype was added to the list (or already existed in the list).
          */
-        public synchronized boolean addSubtype(final Subtype subtype) {
+        private synchronized boolean addSubtype(final Subtype subtype) {
             if (mSubtypes.contains(subtype)) {
                 // don't allow duplicates, but since it's already in the list this can be considered
                 // successful
@@ -309,7 +311,7 @@ public class RichInputMethodManager {
          * @param subtype the subtype to remove.
          * @return whether the subtype was removed (or wasn't even in the list).
          */
-        public synchronized boolean removeSubtype(final Subtype subtype) {
+        private synchronized boolean removeSubtype(final Subtype subtype) {
             if (mSubtypes.size() == 1) {
                 // there needs to be at least one subtype
                 return false;
@@ -351,7 +353,7 @@ public class RichInputMethodManager {
          * called whenever the user is done cycling through subtypes (eg: when a subtype is actually
          * used or the keyboard is closed).
          */
-        public synchronized void resetSubtypeCycleOrder() {
+        private synchronized void resetSubtypeCycleOrder() {
             if (mCurrentSubtypeIndex == 0) {
                 return;
             }
@@ -367,7 +369,7 @@ public class RichInputMethodManager {
          * @param subtype the subtype to set as current.
          * @return whether the current subtype was set to the requested subtype.
          */
-        public synchronized boolean setCurrentSubtype(final Subtype subtype) {
+        private synchronized boolean setCurrentSubtype(final Subtype subtype) {
             for (int i = 0; i < mSubtypes.size(); i++) {
                 if (mSubtypes.get(i).equals(subtype)) {
                     setCurrentSubtype(i, true);
@@ -384,7 +386,7 @@ public class RichInputMethodManager {
          * @param locale the locale to use.
          * @return whether the current subtype was set to the requested locale.
          */
-        public synchronized boolean setCurrentSubtype(final Locale locale) {
+        private synchronized boolean setCurrentSubtype(final Locale locale) {
             final ArrayList<Locale> enabledLocales = new ArrayList<>(mSubtypes.size());
             for (final Subtype subtype : mSubtypes) {
                 enabledLocales.add(subtype.getLocaleObject());
@@ -446,7 +448,7 @@ public class RichInputMethodManager {
          *                           the first in the list.
          * @return whether the subtype changed listener was called.
          */
-        public synchronized boolean switchToNextSubtype(final boolean notifyChangeOnCycle) {
+        private synchronized boolean switchToNextSubtype(final boolean notifyChangeOnCycle) {
             final int nextIndex = mCurrentSubtypeIndex + 1;
             if (nextIndex >= mSubtypes.size()) {
                 mCurrentSubtypeIndex = 0;
@@ -468,7 +470,7 @@ public class RichInputMethodManager {
          * Get the subtype that is currently in use (or will be once the keyboard is opened).
          * @return the current subtype.
          */
-        public synchronized Subtype getCurrentSubtype() {
+        private synchronized Subtype getCurrentSubtype() {
             return mSubtypes.get(mCurrentSubtypeIndex);
         }
     }
@@ -762,11 +764,11 @@ public class RichInputMethodManager {
      * Info for a virtual or system subtype.
      */
     private static class SubtypeInfo {
-        public InputMethodSubtype systemSubtype;
-        public Subtype virtualSubtype;
-        public CharSequence subtypeName;
-        public CharSequence imeName;
-        public String imiId;
+        private InputMethodSubtype systemSubtype;
+        private Subtype virtualSubtype;
+        private CharSequence subtypeName;
+        private CharSequence imeName;
+        private String imiId;
     }
 
     /**

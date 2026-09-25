@@ -78,11 +78,11 @@ public final class KeyboardRow {
     // TODO: Add keyActionFlags.
     private static class RowAttributes {
         /** Default padded width of a key in this row. */
-        public final float mDefaultKeyPaddedWidth;
+        private final float mDefaultKeyPaddedWidth;
         /** Default keyLabelFlags in this row. */
-        public final int mDefaultKeyLabelFlags;
+        private final int mDefaultKeyLabelFlags;
         /** Default backgroundType for this row */
-        public final int mDefaultBackgroundType;
+        private final int mDefaultBackgroundType;
 
         /**
          * Parse and create key attributes. This constructor is used to parse Row tag.
@@ -91,7 +91,7 @@ public final class KeyboardRow {
          * @param defaultKeyPaddedWidth a default padded key width.
          * @param keyboardWidth the keyboard width that is required to calculate keyWidth attribute.
          */
-        public RowAttributes(final TypedArray keyAttr, final float defaultKeyPaddedWidth,
+        private RowAttributes(final TypedArray keyAttr, final float defaultKeyPaddedWidth,
                 final float keyboardWidth) {
             mDefaultKeyPaddedWidth = ResourceUtils.getFraction(keyAttr,
                     R.styleable.Keyboard_Key_keyWidth, keyboardWidth, defaultKeyPaddedWidth);
@@ -108,7 +108,7 @@ public final class KeyboardRow {
          * @param defaultRowAttr default Row attributes.
          * @param keyboardWidth the keyboard width that is required to calculate keyWidth attribute.
          */
-        public RowAttributes(final TypedArray keyAttr, final RowAttributes defaultRowAttr,
+        private RowAttributes(final TypedArray keyAttr, final RowAttributes defaultRowAttr,
                 final float keyboardWidth) {
             mDefaultKeyPaddedWidth = ResourceUtils.getFraction(keyAttr,
                     R.styleable.Keyboard_Key_keyWidth, keyboardWidth,

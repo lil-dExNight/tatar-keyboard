@@ -747,6 +747,8 @@ public final class RichInputConnection {
     }
 
     /**
+     * Whether there is a selection currently active.
+     *
      * @return whether there is a selection currently active.
      */
     public boolean hasSelection() {

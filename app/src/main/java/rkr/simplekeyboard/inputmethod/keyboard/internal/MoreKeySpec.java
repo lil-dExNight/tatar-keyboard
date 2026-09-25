@@ -23,6 +23,7 @@ import android.util.SparseIntArray;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 
 import rkr.simplekeyboard.inputmethod.keyboard.Key;
@@ -228,7 +229,7 @@ public final class MoreKeySpec {
         if (array == null) {
             return EMPTY_STRING_ARRAY;
         }
-        ArrayList<String> out = null;
+        List<String> out = null;
         for (int i = 0; i < array.length; i++) {
             final String entry = array[i];
             if (TextUtils.isEmpty(entry)) {
@@ -251,7 +252,7 @@ public final class MoreKeySpec {
         final String[] additionalMoreKeys = filterOutEmptyString(additionalMoreKeySpecs);
         final int moreKeysCount = moreKeys.length;
         final int additionalCount = additionalMoreKeys.length;
-        ArrayList<String> out = null;
+        List<String> out = null;
         int additionalIndex = 0;
         for (int moreKeyIndex = 0; moreKeyIndex < moreKeysCount; moreKeyIndex++) {
             final String moreKeySpec = moreKeys[moreKeyIndex];

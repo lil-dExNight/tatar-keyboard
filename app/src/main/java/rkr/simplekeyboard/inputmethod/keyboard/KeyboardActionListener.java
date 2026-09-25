@@ -62,7 +62,7 @@ public interface KeyboardActionListener {
     /**
      * Sends a string of characters to the listener.
      *
-     * @param text the string of characters to be registered.
+     * @param rawText the string of characters to be registered.
      */
     void onTextInput(final String rawText);
 

@@ -27,6 +27,7 @@ import android.view.View;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.List;
 
 /**
  * Implements absolute and relative focus movement strategies. Adapted from
@@ -57,7 +58,7 @@ class FocusStrategy {
         }
     }
 
-    private static <T> T getNextFocusable(T focused, ArrayList<T> focusables, boolean wrap) {
+    private static <T> T getNextFocusable(T focused, List<T> focusables, boolean wrap) {
         final int count = focusables.size();
 
         // The position of the next focusable item, which is the first item if
@@ -72,7 +73,7 @@ class FocusStrategy {
         }
     }
 
-    private static <T> T getPreviousFocusable(T focused, ArrayList<T> focusables, boolean wrap) {
+    private static <T> T getPreviousFocusable(T focused, List<T> focusables, boolean wrap) {
         final int count = focusables.size();
 
         // The position of the previous focusable item, which is the last item

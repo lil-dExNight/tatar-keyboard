@@ -426,7 +426,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         }
         // P7-7: the lift fades the trail out over GlideTrail.FADE_OUT_MS instead of erasing it
         // instantly; the fade drives its own bounded re-invalidation from the draw pass.
-        mGlideTrail.startFadeOut(SystemClock.uptimeMillis());
+        mGlideTrail.startFadeOut((float) SystemClock.uptimeMillis());
         invalidate();
     }
 
@@ -447,7 +447,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     }
 
     // Implements {@link DrawingProxy@showMoreKeysKeyboard(Key,PointerTracker)}.
-    //@Override
+    @Override
     public MoreKeysPanel showMoreKeysKeyboard(final Key key,
             final PointerTracker tracker) {
         final MoreKeySpec[] moreKeys = key.getMoreKeys();

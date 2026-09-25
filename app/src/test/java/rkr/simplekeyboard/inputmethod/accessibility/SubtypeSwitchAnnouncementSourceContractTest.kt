@@ -67,8 +67,8 @@ class SubtypeSwitchAnnouncementSourceContractTest {
     @Test
     fun globeKeyPathNotifiesAsUserInitiated() {
         val cycle = richImm
-            .substringAfter("public synchronized boolean switchToNextSubtype(")
-            .substringBefore("public synchronized Subtype getCurrentSubtype()")
+            .substringAfter("private synchronized boolean switchToNextSubtype(")
+            .substringBefore("private synchronized Subtype getCurrentSubtype()")
         assertTrue(cycle.contains("notifySubtypeChanged(true)"))
         // The wrap-around fallback after a failed switch to another IME is still the globe key.
         val outerSwitch = richImm
@@ -83,7 +83,7 @@ class SubtypeSwitchAnnouncementSourceContractTest {
         // persist==false the temporary hint-locale switch at field start.
         val body = richImm
             .substringAfter("private void setCurrentSubtype(final int index, final boolean persist)")
-            .substringBefore("public synchronized boolean switchToNextSubtype(")
+            .substringBefore("private synchronized boolean switchToNextSubtype(")
         assertTrue(body.contains("notifySubtypeChanged(persist)"))
         // LatinIME's only programmatic switch is the hint-locale one (non-persisted).
         assertTrue(latinIme.contains("mRichImm.setCurrentSubtype(primaryHintLocale)"))
@@ -92,8 +92,8 @@ class SubtypeSwitchAnnouncementSourceContractTest {
     @Test
     fun settingsSideSubtypeRemovalIsSilent() {
         val body = richImm
-            .substringAfter("public synchronized boolean removeSubtype")
-            .substringBefore("public synchronized void resetSubtypeCycleOrder")
+            .substringAfter("private synchronized boolean removeSubtype")
+            .substringBefore("private synchronized void resetSubtypeCycleOrder")
         assertTrue(body.contains("notifySubtypeChanged(false)"))
     }
 

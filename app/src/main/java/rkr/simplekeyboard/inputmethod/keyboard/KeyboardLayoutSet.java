@@ -89,7 +89,7 @@ public final class KeyboardLayoutSet {
     private static final class ElementParams {
         int mKeyboardXmlId;
         boolean mAllowRedundantMoreKeys;
-        public ElementParams() {}
+        private ElementParams() {}
     }
 
     public static final class Params {
