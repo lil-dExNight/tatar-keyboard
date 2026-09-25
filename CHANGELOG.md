@@ -1,11 +1,38 @@
 # Changelog
 
-## Unreleased
+## [3.1.0] — 2026-09-25
 
 ### Changed
 
+- **The keyboard looks closer to the iOS original** (`docs/APPLE-UX-2026-09-25.md`, batch 1 and the operator-authorized batch 2):
+  - **Shift now has three states, not two:** off is a hollow arrow on a grey key, one-shot shift is a filled arrow on an inverted (white / dark-grey) key, and caps lock keeps the filled arrow with the bar. Before this, shift and caps looked identical.
+  - **Letter keys answer a tap with the balloon only** — they no longer darken under the finger, exactly as on iOS. Functional keys (shift, delete, 123, return, spacebar) still change fill, and if you switch the balloon off in settings the keys keep their old pressed look, so no key is ever left without feedback. The swipe-typing key highlight is unchanged.
+  - **The balloon is a droplet:** a rounded body with a short neck flowing into the key, instead of the tall rectangle that used to cover two key rows.
+  - **Actionable Return keys are accent blue with a white glyph** (Go, Search, Send, Done, Next, Previous, a custom action label); a plain Return is a grey functional key.
+  - **The long-press alternatives panel is white (dark: key grey) with an accent-blue selected cell and a white glyph**, instead of grey on grey.
+  - **Suggestion strip:** 44dp tall (the iOS tap target), 18dp text, vertically inset hairlines, and a rounded inset highlight on the pressed cell.
+  - Key shadow slightly deeper in light mode, functional-key grey re-matched to the reference, and **the language label on the spacebar no longer fades while you type**.
+  - **Settings screens slide and fade when you open and leave them** (200 ms), and stand still if you have system animations turned off.
+  - Dialogs are iOS-shaped: a rounded card, a centered title and accent buttons that no longer SHOUT IN CAPS.
+- **Vibration follows your system setting:** on Android 7–9 the keyboard asked the system to vibrate even when you had haptics turned off system-wide. It no longer overrides your setting — the behaviour now matches Android 10+ and the keyboard's own toggle still works as before.
+- **The app is 8.5 % smaller and draws faster:** a zero-quality-loss optimization wave (`docs/OPTIMIZE-2026-09-25.md`) took the signed APK from 1 846 564 B to 1 690 074 B (−156 490 B) — the resource table is now deflated, the launcher icon is a vector instead of ten WebP layers, and the last third-party runtime library (`androidx.customview`, whose accessibility helper is now a small in-tree fork) is gone, so the app genuinely ships with zero runtime dependencies. Measured on a POCO C71: keyboard frame time 8.2 → 6.8 ms (−17 %), cold start 275 → 257 ms, about 6.5 MB less memory held while idle. Nothing about the behaviour changed. (2026-09-25)
+- **Less memory while swipe typing:** only one language's swipe index stays in memory now. Both warm languages could hold one at the same time (about 5.8 MB worst case); a gesture now drops the other language's index first, halving the worst case. The language you switch back to rebuilds its index on your next gesture, as it already did after an idle pause.
+- **Emoji suggestions load in half the memory:** the table used to be built twice during loading (once whole, once filtered to the emoji your device can draw). It is now filtered while it is read, so the peak is one table instead of two.
 - **Glide trail is white-gray instead of blue:** the trail that follows the finger during a swipe used the app's accent blue; it now draws in a near-white light gray (`#F2F2F7`, iOS systemGray6 — the Gboard look) in both the light and the dark theme. The key highlight under the fingertip during a glide was already the neutral gray pressed-key fill, so nothing else follows the recolor. (2026-09-25)
 - **The app's own screens default to Tatar:** Setup and Settings used to follow the system language with English as the fallback, so a phone in English (or any language other than Russian/Tatar) showed the app in English. Now: system Tatar → Tatar, system Russian → Russian, anything else → **Tatar** — the product is a Tatar keyboard, and that is the deliberate default (English strings stay shipped as the resource fallback). No new dependency: the screens wrap their context to the Tatar configuration at creation. (2026-09-25)
+
+### Fixed
+
+- **A dimmed settings row now tells you why it is dimmed.** Tapping a row that depends on a switch that is off used to do nothing at all; it now says which switch to turn on (or that your device administrator locked it).
+- **Privacy: the text cache no longer outlives the field.** The keyboard keeps a small cache of the text around the cursor to offer predictions. It used to survive locking the screen or hiding the keyboard, and it was re-read even in password fields. Now the cache is cleared when the input session ends and when the keyboard window hides, and password fields are never re-read — they get a clear instead of a reload. Auto-capitalization is unaffected. (2026-09-25)
+- **Pasting text no longer teaches the personal dictionary.** A word or a word pair could be learned from pasted text, because a paste looks like a very fast typing burst. A word's first observation may now carry at most one keystroke worth of text; anything larger marks the observation as untrusted, so pasting the same word twice learns nothing while typing it twice still does. (2026-09-25)
+- **Dialogs with your saved words are protected from screenshots.** The add-word, forget-word and forget-pair dialogs now carry the secure-window flag on their own windows; the activity-wide flag did not extend to them. (2026-09-25)
+- **Crashes and freezes found by the robustness audit** (`docs/SECURITY-AUDIT-2026-09-25.md`, 17 items): a very large paste into a text field, a stuck cursor-moved flag that could silence predictions for the rest of the session, host apps reporting impossible cursor positions or text lengths, an inverted text selection, a race between the background cache reload and typing, unbounded growth of the cache and of the emoji-suggestion table, non-finite glide points, duplicate touch trackers, and a 0×0 keyboard view during layout. None of these needed a user-visible feature change; they were all fail-closed hardening. (2026-09-25)
+
+### Added
+
+- **Release tooling gained real teeth:** the packer now verifies every zip entry byte-for-byte after writing and refuses duplicate entry names, the release checker fails on anything but exactly one signer and compares the shipped dictionaries and bigram tables against the tree file by file, the Gradle distribution is pinned by SHA-256, and the asset-pin check is part of the non-quick gate set. Developer-facing only — nothing of this ships inside the APK. (2026-09-25)
+- **Supply-chain hardening** (`docs/ROADMAP-P8-PLAN.md`, stage D): every CI action is pinned to a commit SHA instead of a floating major tag, the packer uses a pinned build-tools version instead of "whatever is newest", `gradle/verification-metadata.xml` now records a SHA-256 for every build dependency, CI packs the APK twice and compares the bytes, and `gradlew` is byte-identical to the official 9.6.0 script again (which restores the `-Dfile.encoding=UTF-8` default the local copy had lost). Developer-facing only.
 
 ## [3.0.2] — 2026-09-25
 

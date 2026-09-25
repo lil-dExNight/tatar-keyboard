@@ -1,25 +1,32 @@
-# PUBLISH-CHECKLIST — публикация v3.0.2
+# PUBLISH-CHECKLIST — публикация v3.1.0
 
-> **Retargeted 2026-09-25 to candidate v3.0.2 / versionCode 36** — the
-> post-3.0.1 glide polish (`docs/ROADMAP-P7.md` §P7-5/P7-6/P7-7):
-> resting-finger-tolerant detection, lift-commit (no strip tap), in-place
-> alternatives, one-backspace undo, NO auto-space after a glide (smart
-> one-space chaining), suggestions-off independence, the «word ? » commit
-> fix, and the fading trail + key highlight. Current artifact —
-> `dist/tatar-keyboard-3.0.2.apk` (1 846 564 B, SHA-256
-> `a50bb51f8a1afb4a63cbb56f6d83edf7bd54e633a1c96f17c7201a0aa4e6027d`),
-> audit — `docs/APK-AUDIT-3.0.2.md`. The notes about 3.0.1 and earlier below
+> **Retargeted 2026-09-25 to candidate v3.1.0 / versionCode 37** — the
+> accumulated wave released as one: the optimization wave
+> (`docs/OPTIMIZE-2026-09-25.md`, O1 + O2 — APK −8.5 %, androidx removed,
+> frame −17 %, cold start 275 → 257 ms), the security/robustness audit fixes
+> (`docs/SECURITY-AUDIT-2026-09-25.md` and `-FIXES.md` — text-cache privacy,
+> the paste-learning rule, FLAG_SECURE dialogs, F1–F17), the pipeline
+> hardening, and the four post-3.0.2 commits (glide doubled-letter fix,
+> white-gray trail, Tatar-default app screens). Current artifact —
+> `dist/tatar-keyboard-3.1.0.apk` (1 690 074 B, SHA-256
+> `0b8d5a81c1afbba90798fac6aa3f49b978ada89204e653cfe71cd5c797b56354`),
+> audit — `docs/APK-AUDIT-3.1.0.md`. The notes about 3.0.2 and earlier below
 > stay as history; their checkmarks and numbers do not carry over.
 >
 > Candidate differences the procedure must account for: store changelog —
-> `metadata/en-US/changelogs/36.txt` (+ ru-RU and tt copies, all ≤ 500 B).
-> **All 13 shipped data assets are byte-identical to 3.0.1** (CRC32-verified;
-> 16/16 pin values matched in release_check) — changed are only the code, the
-> regenerated `baseline.prof`, and `resources.arsc` (+152 B of trail
-> attrs/config; no new strings). On update from 3.0.1 the device
-> **re-inflates NOTHING**. Gates: `release_check.sh --full` **13/13 PASS** on
-> the candidate. Publishing, push and tags are the operator's actions (gh CLI
-> here is pull-only — the Release object is published manually via the web
+> `metadata/en-US/changelogs/37.txt` (464 B) + `ru-RU` (451 B) and `tt`
+> (387 B), all ≤ 500 B. **All 13 shipped data assets are byte-identical to
+> 3.0.2** (CRC32-verified; 16/16 pin values, 5 emoji files and 8
+> dictionary/bigram files matched in release_check) — changed are the code
+> (both dex files smaller), the regenerated dexopt profiles, the manifest, and
+> `resources.arsc`, which is now **deflated** in the archive instead of stored.
+> Ten launcher WebP layers were replaced by two vector XMLs and the four
+> `META-INF/androidx.*.version` markers are gone: 194 → 182 archive entries.
+> On update from 3.0.2 the device **re-inflates NOTHING** of the dictionaries.
+> Gates: `release_pack.sh` run twice byte-identical; `release_check.sh --full`
+> **16/16 PASS** on the candidate. Publishing, push and tags are the operator's
+> actions (gh CLI here is pull-only — the Release object is published manually
+> via the web
 > UI).
 
 > **Retargeted 2026-09-24 to candidate v3.0.1 / versionCode 35** — the

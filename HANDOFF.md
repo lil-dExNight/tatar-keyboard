@@ -1,3 +1,272 @@
+# HANDOFF — phase 8 executed: 3.1.0 packed, Apple-UX stages A+B, engineering backlog, supply-chain round (2026-09-25, fourth entry of the day)
+
+**State as of 2026-09-25, after the phase-8 execution.** The plan
+`docs/ROADMAP-P8-PLAN.md` was worked through end to end; the report is
+`docs/ROADMAP-P8.md`. Everything is **uncommitted** — commits, the tag, the push
+and the publication are the operator's (AGENTS.md). The snapshot entry below
+describes the tree as it was BEFORE this work; its open-backlog list is
+superseded by § "What stays open" of the phase-8 report.
+
+What is in the tree now:
+
+- **Release 3.1.0 / versionCode 37** prepared and verified:
+  `dist/tatar-keyboard-3.1.0.apk`, **1 694 282 B**, SHA-256
+  `f847e53e8635fa99354ba531fddb2032cd20dca1e4f861bc910fbda98f85b98e`, two packs
+  byte-identical, `release_check.sh --full` **OVERALL PASS 16/16**, −152 282 B
+  (−8.2 %) vs 3.0.2. It contains the previously accumulated wave (O1/O2
+  optimization + both audit fix waves + the four post-3.0.2 commits) AND
+  everything from stages A–D below.
+- **Stage A** (Apple-UX batch 1): key shadow 0.30, functional grey `#ABB1BA`,
+  opaque spacebar label, haptics respecting the system switch, strip decoration
+  (inset hairlines, rounded pressed cell, 18dp text), three iOS shift states.
+- **Stage B** (all seven items, operator-authorized): settings screen
+  transition, accent action Return (new `actionKeyTextColor` attribute through
+  `KeyVisualAttributes`/`KeyDrawParams`), iOS-coloured alternatives panel (new
+  `selectLabelColor` hook), 44dp strip with the smoke test recalibrated,
+  balloon-only letter feedback (**deviation from the plan, reasoned in the
+  report**), the droplet `KeyPreviewBalloonDrawable` replacing a balloon that
+  really was a 122dp rectangle, iOS dialog styling (**partial by design**: the
+  framework's stacked button bar is out of reach for a theme).
+- **Stage C**: dimmed settings rows explain themselves (F15a closed); exactly one
+  glide word index stays resident (the accepted ~5.8 MB worst case halved);
+  emoji-suggestion loading no longer holds two copies of the table — and letter
+  sharding was **rejected with measured numbers** (557 KB resident, opt-in
+  feature, already idle-released). C4 dropped by the operator; C5 decided —
+  per-MOVE scoring and glide-triggered learning rejected with evidence, personal
+  glide candidates accepted and gated but not started.
+- **Stage D**: CI actions pinned to commit SHAs, packer build-tools version
+  pinned, `gradle/verification-metadata.xml` added (with the detached-resolution
+  `aapt2` entry recorded by hand), `release_pack.sh --no-sign` + the pack now
+  under the CI reproducibility gate, and `gradlew` restored byte-identical to the
+  official 9.6.0 script — which brought back the lost
+  `-Dfile.encoding=UTF-8`.
+- **Stage F**: the phase report, a dated footnote on `docs/ROADMAP-P3.md`'s
+  stale "P7 is NOT started" header, and `docs/README.md` index lines for the
+  plan, the report, `APPLE-UX-2026-09-25.md` and `APK-AUDIT-3.1.0.md`.
+
+Gates on the final tree: python **507/0**; JVM **1 670 tests, 180 suites, 0
+failures** (+37 pins); `lintRelease` 0 errors; asset pins `ok: true`; dependency
+verification on and green; `check-no-internet` both levels; pack reproducible
+signed and unsigned.
+
+Verification honesty: the visuals were checked on the `tt_suggest_a14` emulator
+with the debug variant (screenshots in `/tmp/p8-shots/`), NOT on the operator's
+phone — switching the default IME on a daily driver is not a verification step.
+The emulator's GPU failed after ~10 screenshots (`Failed to find ColorBuffer`),
+so stage C's toast is covered by its pin but not by a screenshot. Device UAT of
+the wave remains open.
+
+---
+
+# HANDOFF — state snapshot and open backlog (2026-09-25, third entry of the day)
+
+This entry records WHERE THE PROJECT STANDS and WHAT IS STILL OPEN. It adds no
+code and no gate runs of its own: every number below is cited from the document
+that produced it, and anything not re-verified is marked as such.
+
+## Tree and release state (verified by git and the filesystem)
+
+- `main` = `dd390316` ("docs: аудит и план Apple-стиля"), and `origin/main` is at
+  the same commit — everything committed is pushed. The `old` remote
+  (`dExNight/tatar-keyboard`) sits far behind at `63486067` and is not used.
+- Last tag: **`v3.0.2`**, released (`dist/tatar-keyboard-3.0.2.apk`, 1 846 564 B).
+- **Five commits sit past `v3.0.2` and are NOT released**: `c1a04696` +
+  `bd786a13` (glide doubled-letter fix, P7-8), `77c2f597` (white-gray trail),
+  `c9b89539` (app screens default to Tatar), `dd390316` (docs). They are the
+  `## Unreleased` section of `CHANGELOG.md`.
+- **98 files are uncommitted** (72 modified, 10 deleted WebP launcher layers
+  replaced by the vector icon, 16 untracked): the optimization
+  wave (`docs/OPTIMIZE-2026-09-25.md`, O1 SAFE + O2 measured) and the security
+  audit's two fix waves (`docs/SECURITY-AUDIT-2026-09-25{,-FIXES}.md`, waves A
+  and B), including 13 new JVM test files, the `compat/ExploreByTouchHelper` +
+  `FocusStrategy` fork and the two vector launcher drawables. Nothing of this
+  wave is committed, pushed, tagged or released.
+- The previous session's last instruction — commit + push + release, then
+  research what quality work remains — was cancelled after 842 ms, so none of
+  it ran. That is exactly the gap this entry describes.
+
+## Gate status
+
+The last recorded full green run is the one in this file's next entry (python
+507 / JVM 1 633 on the combined wave tree) and the O2 run in
+`docs/OPTIMIZE-2026-09-25.md` (JVM 1 588, packed APK **1 690 074 B**, 46.3 %
+headroom). The two JVM counts belong to different trees; **the current tree's
+count has not been measured in this entry** — `./gradlew test --rerun-tasks` is
+the first thing to run before any commit.
+
+## Open backlog
+
+The ordered work plan for everything below is `docs/ROADMAP-P8-PLAN.md`
+(stages R/A/B/C/D/E/F plus the operator decision register).
+
+### Blocked on the operator (not engineering work)
+
+1. Commit + push + release of the five unreleased commits and the 98
+   uncommitted files (one release, presumably 3.1.0 — the wave adds behaviour
+   changes, not only fixes).
+2. Interactive device UAT on the POCO C71 — recorded as blocked by the owner's
+   active use in P5, P6, P7 and P4 (device legs); emulator runs carried the
+   proof each time.
+3. Live Direct Boot reboot test (P5 U2), Telegram interop (P5 U3, app not
+   installed), tablet leg (P5 U5, no hardware), TalkBack audible content
+   (P5 U1, not observable from adb), full gesture-navigation mode (P5 U4,
+   HyperOS ignores the adb toggle).
+
+### Planned, specified, not implemented
+
+4. **Apple-UX first batch** (`docs/APPLE-UX-2026-09-25.md` §4): W1 shadow alpha
+   0.25 → 0.30, W2 functional key `#B3B7C0` → `#ABB1BA`, W3 spacebar label
+   alpha 128 → 255, W6 drop `FLAG_IGNORE_GLOBAL_SETTING`, W4 strip polish
+   (inset separators, rounded pressed cell, 17 → 18dp text), M1 three shift
+   states. None of the six is in the tree.
+5. **Apple-UX items needing an operator decision**: W5 (strip 40 → 44dp,
+   forces smoke-test recalibration), M2 (balloon-only key feedback — conflicts
+   with the P7-5 glide key highlight on the same code path), M3 (more-keys
+   panel colours), M4 (accent Enter), M5 (screen transition animation), S1
+   (droplet balloon — its own mission), S2 (iOS alert dialogs, low value).
+   M2/M3/M4 reactivate the wave-K items cancelled by the operator on
+   2026-07-20.
+6. **Glide follow-ups parked by `docs/GLIDE-PLAN.md`**: live per-MOVE scoring,
+   personal-dictionary glide candidates, glide-triggered learning. (Trail
+   rendering, the fourth item of that list, shipped as P7-5.)
+7. **Emoji index sharding** — the residue of O2-4, which only added idle
+   release: splitting `emoji_suggest_v1.txt` by first letter is an asset-pipeline
+   change (packer + new `tests/emoji_*` pins) and a mission of its own.
+8. **Shared or demand-paged glide word index** — the accepted ~5.8 MB worst case
+   when both engines hold an index (3.0.0 audit, ROADMAP-P7 footnote).
+9. **Four-cell suggestion strip** — T7 measured +1.5643 pp of latent value at
+   stored rank 4; the strip-contract change was judged out of the P4 budget and
+   the table was repacked at K=3 instead. Reopening means the 4-cell variant
+   plus every strip pin.
+10. **F15(a)** (`docs/AUDIT-2026-09-24-FIXES.md`): disabled dependent settings
+    rows swallow taps with no toast; the wiring point is marked `TODO(F2)` and
+    waits on a new string.
+
+### Measured and rejected — closed, do not reopen without new numbers
+
+- **P5b trigrams** — offline projection caps at +1.63 pp vs the +2.0 pp gate.
+- **P6 two-edit typo recovery** — ceiling 9.79 % recovery@3 < +10 pp gate; the
+  pruned enumeration trips the fail-closed budget on 73.1 % of firing rows.
+  Class #5 machinery stays in the tree, unwired.
+- **P7 autocorrect widening** — rejected with gate numbers in ROADMAP-P3 §P7.
+  (The header line of `docs/ROADMAP-P3.md` still says "NOT started" — stale by
+  its own body; worth a dated footnote.)
+
+### Standing technical debt (documented, deliberate)
+
+- **60 error-prone findings left open** (`docs/ERRORPRONE-TRIAGE.md`):
+  EffectivelyPrivate ×35 and ReferenceEquality ×13 dominate; all reviewed, all
+  AOSP-fork legacy.
+- **Inherited AOSP TODO/HACK markers** across the Java legacy (PointerTracker
+  multi-touch hack, KeySpecParser supplementary-code-point workarounds,
+  LatinIME/KeyboardState/MainKeyboardView TODOs). No debt markers in the new
+  Kotlin or in `scripts/`.
+- **Two files above the 1 500-line ceiling with a recorded exception**:
+  `LatinIME.java` 2 440, `SuggestionsController.kt` 2 396.
+- **Lint**: baseline 28 entries, 0 errors; live warnings are `VectorPath` (the
+  traced launcher icon) and `AndroidGradlePluginVersion` (pin self-invalidated
+  by an upstream message drift).
+- **Known asset drift** pinned in `scripts/known_asset_drift.json`: tt 155/0,
+  ru 2/0 — generator-rule residue, not corpus loss.
+- **Supply-chain hardening parked for a later round** (audit T5–T8, T10):
+  floating CI action tags, newest-build-tools resolution, no
+  `gradle/verification-metadata.xml`, the pack pipeline outside the CI
+  reproducibility gate, the 3-line `gradlew` delta.
+- **Instrumentation tests are device-only**: six androidTest files run through
+  the legacy `android.test.InstrumentationTestRunner` by the documented manual
+  `adb`/`am instrument` command; they are not part of `./gradlew test`.
+
+Phases 1–4 and 5–7 of `docs/ROADMAP.md` are all reported closed in
+`docs/ROADMAP-P1…P7.md` (each item either shipped with numbers or rejected with
+numbers). The roadmap itself carries no status markers, so read the phase
+reports, not the plan, for state.
+
+---
+
+# HANDOFF — audit 2026-09-25 fix waves landed (pipeline+UI+privacy wave A; robustness wave B in parallel)
+
+**State as of 2026-09-25, second entry of the day.** The consolidated
+security/robustness audit of the current tree (`docs/SECURITY-AUDIT-2026-09-25.md`,
+canonical English, five angles) is closed by TWO parallel fix waves working
+disjoint file sets. Everything below is **uncommitted**; commits are the
+operator's. The 3.0.2 release prep from the earlier entry stays as-is
+underneath these waves.
+
+**Wave A (this entry) — pipeline + UI + privacy:**
+
+- `scripts/release_pack.sh` (N1/T9): the arsc-deflate zip step reads entries
+  by `ZipInfo` (duplicate names used to resolve last-wins), fails loudly on
+  duplicate entry names, verifies EVERY entry's content byte-for-byte after
+  writing (182 entries on this tree), and removes a pre-existing/symlinked
+  output path before signing.
+- `scripts/release_check.sh` (T1/T2): `artifact.signature` now counts DISTINCT
+  `certificate SHA-256 digest` lines and fails on anything but exactly one
+  signer (verified against a hand-built two-signer APK); new
+  `artifact.tree_assets` extends the emoji-style two-way set+content check to
+  `assets/dictionaries/` and `assets/bigrams/` (8 files); the non-quick gate
+  set gains `gates.asset_rebuild_check`
+  (`rebuild_assets.py --check --allow-known-drift`).
+- `gradle/wrapper/gradle-wrapper.properties` (T3): `distributionSha256Sum`
+  pinned for 9.6.0-bin, verified against gradle.org/release-checksums AND a
+  fresh download's sha256sum (`bbaeb2fe…529a01`).
+- `.github/workflows/ci.yml` (T4/T5): no artifact upload on `pull_request`
+  runs; the floating major action tags are commented as a documented
+  exception.
+- `LatinIME.java` (P1/P2): `mInputLogic.clearCaches()` in
+  `onFinishInputInternal()` and `onWindowHidden()` (the cache used to survive
+  lock/hide until the next field); all three `reloadTextCache` call sites
+  gated on the password-field check — password fields take
+  clear-instead-of-reload at field start and are never re-read afterwards;
+  auto-caps is unaffected (it reads only the local cache).
+- `CleanRunMachine.kt` (P4): the paste rule — a fresh word's first observation
+  may carry ≤ 2 UTF-16 units (one keystroke); 3+ units in one event marks both
+  run machines dirty at birth, so a paste can no longer enroll a word or a
+  pair as "typed". Pins: typing «сәләм дөнья» twice still learns the pair
+  every time; pasting «дөнья» twice learns nothing (+2 tests in
+  PersonalLearningRunTest, +3 in PersonalBigramRunTest; both harnesses now
+  type per code point, as the editor cache actually moves).
+- `DialogUtils.securePersonalContent` + three call sites in
+  `SettingsHostActivity.kt` (U1): the add-word, forget-word and forget-pair
+  dialogs carry FLAG_SECURE on their own windows (the activity-wide flag does
+  not extend to dialog windows). Pinned in `DialogObscuredTouchContractTest`.
+- `KeyboardView.java` (N2): `onDraw` returns early on a 0×0 view instead of
+  dereferencing the null offscreen buffer.
+- `SuggestionsController.showBand` (N3): the emphasis (which runs the
+  publication's one display rebuild in the view) is published before the
+  spoken labels, so a failing label lookup can no longer strand a
+  half-published band; ordering pinned in `SuggestionStripSourceContractTest`.
+- New pins: `EditorTextCachePrivacySourceContractTest` (3 tests) — cache
+  cleared on all three session boundaries, all reload sites gated, caps mode
+  reads only the local cache.
+
+**Wave B (parallel agent) — robustness F1–F17** in InputLogic /
+RichInputConnection / PointerTracker / GlidePath / SuggestionStripState /
+EmojiSuggestIndex: paste crash, sticky mCursorMoved, cache growth cap,
+SurroundingText validation, batch-pairing, dead-editor NPEs, inverted
+selection, cache race, reload coalescing, getUnicodeSteps, tracker-queue
+dedup, NaN glide points, EmojiSuggestIndex cap, cellAt NaN. See the audit
+doc's robustness table.
+
+Gates (2026-09-25, all green, run on the combined tree of both waves):
+
+| Gate | Result |
+|---|---|
+| python suites | **507 tests, 16 files, 0 failing** |
+| `./gradlew test --rerun-tasks` | **1 633 tests, 174 suites, 0 failures/errors/skipped** |
+| `./gradlew lintRelease` | green |
+| `rebuild_assets.py --check --allow-known-drift` | `"ok": true` |
+| `release_pack.sh` × 2 | identical SHA-256 **`dd39c156dce6d1a48b90bdb86c7b3f113e71a350169337584daecf5c32c642bd`** both runs; packed APK **1 690 074 B** ≤ 3 145 728 (headroom 46.3 %) |
+| `check-no-internet.sh` (packed APK) | both levels OK |
+| `release_check.sh --quick` (packed APK) | **OVERALL PASS** — incl. new `artifact.tree_assets` (8 files) and single-signer `artifact.signature` |
+
+The packed APK went to /tmp (not `dist/`) — this wave is not a release ritual;
+3.0.2 publishing stays with the earlier entry. Negative checks exercised by
+hand: duplicate-name zip fails the pack step; a planted extra file under
+`assets/dictionaries/` fails `artifact.tree_assets`; the two-signer APK fails
+`artifact.signature` — all three fail loudly with the intended messages.
+
+---
+
 # HANDOFF — release 3.0.2 prepared (uncommitted; tag/push/publish are next)
 
 **State as of 2026-09-25.** Release **3.0.2 / versionCode 36** is prepared on

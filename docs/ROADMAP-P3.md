@@ -5,6 +5,12 @@ green on the host; device UAT remains separate work. P7 (autocorrect widening, g
 started — by the phase's own order it comes after the contract below is visible and undoable on
 device. No commits — the operator commits.
 
+> **Footnote 2026-09-25** (stage F of `docs/ROADMAP-P8-PLAN.md`): the "P7 is NOT started"
+> sentence above is stale from the moment this report's own § P7 was written the same day — P7
+> was measured and **rejected with gate numbers** (G1: three bad and one dangerous case out of
+> five; G2: lift +0.57 pp against a +5 pp gate), and the autocorrect classes stay {1}/411. The
+> sentence is kept as history, per the project's no-rewrite rule; read § P7 for the verdict.
+
 Baseline before the item: JVM 1 400 tests, python 484 tests, release 2.2.0.
 
 ## P2 — autocorrect visual contract (done 2026-09-23)

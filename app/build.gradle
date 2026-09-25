@@ -23,10 +23,9 @@ android {
         applicationId "org.tatarkeyboard.ime"
         minSdkVersion 24
         targetSdkVersion 37
-        versionCode 36
-        versionName "3.0.2"
-        // Phase 3b: the app ships three locales only — Tatar, Russian, English. Also strips
-        // the dozens of translations pulled in by androidx.customview.
+        versionCode 37
+        versionName "3.1.0"
+        // Phase 3b: the app ships three locales only — Tatar, Russian, English.
         resConfigs "tt", "ru", "en"
         // E3b instrumental harness (androidTest only). The legacy platform runner needs no external
         // dependency, so it resolves offline; androidTest never contributes to the release APK.
@@ -107,7 +106,11 @@ dependencies {
     annotationProcessor errorProneCore
     testAnnotationProcessor errorProneCore
     androidTestAnnotationProcessor errorProneCore
-    implementation 'androidx.customview:customview:1.1.0'
+    // O2 (2026-09-25, docs/OPTIMIZE-2026-09-25.md): androidx.customview is gone — its one real
+    // use (ExploreByTouchHelper) is forked into rkr.simplekeyboard.inputmethod.compat, the
+    // ViewCompat/AccessibilityNodeInfoCompat calls are the framework equivalents (minSdk 24),
+    // and the @Keep markers were documentation-only (proguard-rules.pro keeps nothing because
+    // nothing needs keeping). The app ships zero runtime dependencies.
     // Phase 4b: wiring only — pulls the generated baseline-prof.txt into the build.
     // Dev-only: contributes no code or dependency to the APK.
     baselineProfile project(':baselineprofile')
