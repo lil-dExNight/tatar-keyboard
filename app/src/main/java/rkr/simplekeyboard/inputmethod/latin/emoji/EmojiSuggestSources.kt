@@ -70,21 +70,24 @@ class AssetEmojiSuggestPreparation(
     }
 
     private fun load(): EmojiSuggestSource? {
-        val table = try {
-            appContext.assets.open(SUGGEST_ASSET_PATH).use { EmojiSuggestIndex.parse(it) }
+        // C2 (docs/ROADMAP-P8-PLAN.md): the glyph probe runs DURING the parse, so the load holds
+        // one table instead of two (the unfiltered one used to stay alive until the filtered copy
+        // was finished). Same verdicts, same probe, same number of probe calls — one per distinct
+        // emoji sequence, memoized inside parse.
+        val probe = PaintGlyphProbe(Paint())
+        val filtered = try {
+            appContext.assets.open(SUGGEST_ASSET_PATH).use { stream ->
+                EmojiSuggestIndex.parse(stream) { sequence ->
+                    try {
+                        probe.hasGlyph(sequence)
+                    } catch (_: Throwable) {
+                        false
+                    }
+                }
+            }
         } catch (_: Throwable) {
             EmojiSuggestIndex.EMPTY
         }
-        if (table.isEmpty) return null
-        val probe = PaintGlyphProbe(Paint())
-        val drawable = table.distinctEmoji().filterTo(HashSet()) { sequence ->
-            try {
-                probe.hasGlyph(sequence)
-            } catch (_: Throwable) {
-                false
-            }
-        }
-        val filtered = table.filterTo(drawable)
         if (filtered.isEmpty) return null
         // Names ride along on the same background pass; an unreadable search asset only costs the
         // spoken labels (TalkBack then reads the glyph itself), never the feature. The index is

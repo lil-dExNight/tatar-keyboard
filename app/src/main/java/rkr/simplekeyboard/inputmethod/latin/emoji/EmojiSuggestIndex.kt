@@ -86,6 +86,13 @@ class EmojiSuggestIndex private constructor(
         /** Upper bound on the length of a single asset line; anything longer is junk. */
         private const val MAX_LINE_CHARS = 512
 
+        /**
+         * Hard cap on the parsed record count (2026-09-25 audit, F16, mirrors SentStartIndex):
+         * the packer ships under 4k entries, so tens of thousands mean junk — parsing stops at
+         * the cap instead of letting a corrupt asset grow the map without bound.
+         */
+        private const val MAX_RECORDS = 4096
+
         val EMPTY = EmojiSuggestIndex(emptyMap())
 
         /**
@@ -97,8 +104,8 @@ class EmojiSuggestIndex private constructor(
 
         /**
          * Fail-closed parser. A malformed line is dropped, a duplicate (language, word) key keeps
-         * its first mapping, and a fully unreadable input yields [EMPTY]; no exception ever
-         * escapes.
+         * its first mapping, input past [MAX_RECORDS] records is truncated, and a fully
+         * unreadable input yields [EMPTY]; no exception ever escapes.
          */
         @JvmStatic
         fun parse(text: String): EmojiSuggestIndex =
@@ -109,6 +116,27 @@ class EmojiSuggestIndex private constructor(
             }
 
         /** Reads [input] as UTF-8 and parses it; an unreadable stream yields [EMPTY]. */
+        /**
+         * C2 of `docs/ROADMAP-P8-PLAN.md`: parses AND filters in one pass. The load path used to
+         * build the whole table, ask the glyph probe about every distinct emoji, then build a
+         * SECOND filtered table — so its peak held two copies of ~0.5 MB for a table whose steady
+         * state is one. With [emojiFilter] the rejected records are never inserted, and the peak
+         * equals the steady state. The predicate is called once per DISTINCT emoji sequence
+         * (memoized here), exactly as often as the old `distinctEmoji()` pass called it.
+         */
+        @JvmStatic
+        fun parse(input: InputStream, emojiFilter: (String) -> Boolean): EmojiSuggestIndex {
+            val text = try {
+                input.reader(Charsets.UTF_8).readText()
+            } catch (e: Exception) {
+                return EMPTY
+            }
+            val verdicts = HashMap<String, Boolean>()
+            return parseOrThrowFiltered(text) { emoji ->
+                verdicts.getOrPut(emoji) { emojiFilter(emoji) }
+            }
+        }
+
         @JvmStatic
         fun parse(input: InputStream): EmojiSuggestIndex {
             val text = try {
@@ -119,8 +147,15 @@ class EmojiSuggestIndex private constructor(
             return parse(text)
         }
 
-        private fun parseOrThrow(text: String): EmojiSuggestIndex {
+        private fun parseOrThrow(text: String): EmojiSuggestIndex =
+                parseOrThrowFiltered(text) { true }
+
+        private fun parseOrThrowFiltered(
+            text: String,
+            keepEmoji: (String) -> Boolean,
+        ): EmojiSuggestIndex {
             val byLanguage = LinkedHashMap<String, LinkedHashMap<String, String>>()
+            var records = 0
             for (rawLine in text.split('\n')) {
                 val line = if (rawLine.endsWith('\r')) rawLine.dropLast(1) else rawLine
                 if (line.isEmpty() || line.length > MAX_LINE_CHARS) continue
@@ -129,10 +164,13 @@ class EmojiSuggestIndex private constructor(
                 val secondTab = line.indexOf('\t', firstTab + 1)
                 if (secondTab <= firstTab + 1 || secondTab >= line.length - 1) continue
                 if (line.indexOf('\t', secondTab + 1) >= 0) continue
+                val emoji = line.substring(secondTab + 1)
+                if (!keepEmoji(emoji)) continue
                 val words = byLanguage.getOrPut(line.substring(0, firstTab)) { LinkedHashMap() }
                 val word = line.substring(firstTab + 1, secondTab)
                 if (words.containsKey(word)) continue
-                words[word] = line.substring(secondTab + 1)
+                words[word] = emoji
+                if (++records >= MAX_RECORDS) break
             }
             if (byLanguage.isEmpty()) return EMPTY
             return EmojiSuggestIndex(byLanguage)

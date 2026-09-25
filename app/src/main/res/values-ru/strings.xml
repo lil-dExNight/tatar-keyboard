@@ -66,6 +66,9 @@
     <string name="delete_swipe_summary">Проведите по клавише удаления, чтобы стереть больше текста</string>
     <string name="tatar_suggestions">Подсказки слов</string>
     <string name="tatar_suggestions_summary">Показывать подсказки слов над клавиатурой при вводе — татарских и русских</string>
+    <string name="row_needs_suggestions">Сначала включите «Подсказки слов»</string>
+    <string name="row_needs_language_switch">Сначала включите клавишу-глобус</string>
+    <string name="row_locked_by_admin">Заблокировано администратором устройства</string>
     <string name="tatar_suggestions_offer_title">Включить подсказки слов?</string>
     <string name="tatar_suggestions_offer_message">Подсказки татарских и русских слов могут появляться над клавиатурой при вводе. Списки слов хранятся на вашем устройстве, интернет не используется.</string>
     <string name="tatar_suggestions_offer_enable">Включить</string>

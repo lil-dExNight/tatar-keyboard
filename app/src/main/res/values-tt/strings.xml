@@ -66,6 +66,9 @@
     <string name="delete_swipe_summary">Күбрәк текст бетерү өчен бармагыгызны бетерү төймәсе буйлап шудырыгыз</string>
     <string name="tatar_suggestions">Сүз тәкъдимнәре</string>
     <string name="tatar_suggestions_summary">Язган вакытта төймәсар өстендә тәкъдим ителгән һәм фаразланган сүзләрне күрсәтү — татарча һәм русча</string>
+    <string name="row_needs_suggestions">Башта «Сүз киңәшләре»н кабызыгыз</string>
+    <string name="row_needs_language_switch">Башта глобус төймәсен кабызыгыз</string>
+    <string name="row_locked_by_admin">Җайланма администраторы тарафыннан бикләнгән</string>
     <string name="tatar_suggestions_offer_title">Сүз тәкъдимнәрен кабызыргамы?</string>
     <string name="tatar_suggestions_offer_message">Язган вакытта төймәсар өстендә тәкъдим ителгән һәм фаразланган татарча һәм русча сүзләр күренә ала. Сүзлекләр сезнең җиһазыгызда саклана, интернет кулланылмый.</string>
     <string name="tatar_suggestions_offer_enable">Кабызу</string>

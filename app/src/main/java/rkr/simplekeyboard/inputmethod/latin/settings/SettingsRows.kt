@@ -22,6 +22,7 @@ import android.widget.CompoundButton
 import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
+import android.widget.Toast
 import rkr.simplekeyboard.inputmethod.R
 
 /**
@@ -61,14 +62,14 @@ internal fun SettingsHostActivity.inflateRow(layoutRes: Int, titleRes: Int, summ
 internal fun SettingsHostActivity.linkRow(title: CharSequence, summary: CharSequence?,
                       onClick: () -> Unit): View {
     val row = inflateRow(R.layout.row_link, title, summary)
-    row.setOnClickListener { onClick() }
+    rowClick(row) { onClick() }
     return row
 }
 
 internal fun SettingsHostActivity.linkRow(titleRes: Int, summaryRes: Int = 0, restrictionKey: String? = null,
                       onClick: () -> Unit): View {
     val row = inflateRow(R.layout.row_link, titleRes, summaryRes)
-    row.setOnClickListener { onClick() }
+    rowClick(row) { onClick() }
     if (isRestricted(restrictionKey)) {
         setRowEnabled(row, false)
     }
@@ -93,7 +94,7 @@ internal fun SettingsHostActivity.actionRow(titleRes: Int, onClick: () -> Unit):
     val row = inflateRow(R.layout.row_link, titleRes, 0)
     row.findViewById<TextView>(R.id.row_title).setTextColor(getColor(R.color.app_accent))
     row.findViewById<View>(R.id.row_chevron).visibility = View.GONE
-    row.setOnClickListener { onClick() }
+    rowClick(row) { onClick() }
     return row
 }
 
@@ -133,7 +134,7 @@ internal fun SettingsHostActivity.switchRowRaw(title: CharSequence, summary: Cha
     })
     // The whole row is one tap target and one TalkBack node that
     // presents itself as the switch it toggles.
-    row.setOnClickListener { switchView.toggle() }
+    rowClick(row) { switchView.toggle() }
     row.accessibilityDelegate = object : View.AccessibilityDelegate() {
         override fun onInitializeAccessibilityNodeInfo(host: View,
                                                        info: AccessibilityNodeInfo) {
@@ -141,6 +142,11 @@ internal fun SettingsHostActivity.switchRowRaw(title: CharSequence, summary: Cha
             info.className = Switch::class.java.name
             info.isCheckable = true
             info.isChecked = switchView.isChecked
+            // F15a: a soft-disabled row is still tappable (it explains itself), but TalkBack
+            // must call it what it is.
+            if (rowIsSoftDisabled(host)) {
+                info.isEnabled = false
+            }
         }
     }
     return row
@@ -151,7 +157,7 @@ internal fun SettingsHostActivity.valueRow(key: String, titleRes: Int, minValue:
     val row = inflateRow(R.layout.row_value, titleRes, 0)
     val valueView = row.findViewById<TextView>(R.id.row_value)
     valueView.text = proxy.getValueText(proxy.readValue(key))
-    row.setOnClickListener {
+    rowClick(row) {
         currentDialog?.dismiss()
         currentDialog = SeekBarDialogHelper.show(this, getString(titleRes), key,
                 minValue, maxValue, stepValue, proxy) {
@@ -212,8 +218,21 @@ internal fun SettingsHostActivity.addCard(rows: List<View>, spacedFromPrevious: 
     }
 }
 
-internal fun SettingsHostActivity.setRowEnabled(row: View, enabled: Boolean) {
-    row.isEnabled = enabled
+/**
+ * F15(a) of `docs/AUDIT-2026-09-24-FIXES.md`, closed in stage C of `docs/ROADMAP-P8-PLAN.md`:
+ * a row that depends on a switch that is off used to swallow the tap in silence — the user got
+ * no hint why nothing happened. A soft-disabled row now keeps its tap target and answers with a
+ * short explanation; the SWITCH inside it stays disabled, so the tap can never toggle anything.
+ *
+ * [reasonRes] is the explanation. Zero keeps the old hard-disabled behaviour (used where the
+ * reason is not a switch the user can flip, e.g. the last remaining language).
+ */
+internal fun SettingsHostActivity.setRowEnabled(row: View, enabled: Boolean, reasonRes: Int = 0) {
+    val softDisabled = !enabled && reasonRes != 0
+    row.setTag(R.id.tag_row_disabled_reason, if (softDisabled) reasonRes else null)
+    // A soft-disabled row must stay enabled to receive the tap that shows the explanation; its
+    // accessibility node still reports "disabled" (see rowClick).
+    row.isEnabled = enabled || softDisabled
     // Dim the row contents, not the row itself: the row carries the card
     // background segment, and fading it would punch a hole in the card.
     if (row is ViewGroup) {
@@ -226,6 +245,32 @@ internal fun SettingsHostActivity.setRowEnabled(row: View, enabled: Boolean) {
     }
     row.findViewById<Switch>(R.id.row_switch)?.isEnabled = enabled
 }
+
+/**
+ * Installs a row's tap action through the soft-disabled gate (F15a): while the row carries a
+ * disabled reason, the tap shows that reason instead of running [action].
+ */
+internal fun SettingsHostActivity.rowClick(row: View, action: () -> Unit) {
+    row.setOnClickListener {
+        val reason = row.getTag(R.id.tag_row_disabled_reason) as? Int
+        if (reason != null) {
+            Toast.makeText(this, reason, Toast.LENGTH_SHORT).show()
+        } else {
+            action()
+        }
+    }
+}
+
+/**
+ * F15a: picks the explanation for a dimmed row. An MDM restriction is not something the user can
+ * flip, so it gets its own wording; otherwise the reason is the switch the row depends on.
+ */
+internal fun disabledReason(restricted: Boolean, dependencyReasonRes: Int): Int =
+        if (restricted) R.string.row_locked_by_admin else dependencyReasonRes
+
+/** True while the row is soft-disabled — the a11y delegates report it as a disabled node. */
+internal fun rowIsSoftDisabled(row: View): Boolean =
+        row.getTag(R.id.tag_row_disabled_reason) != null
 
 internal fun SettingsHostActivity.isRestricted(key: String?): Boolean {
     return key != null && restrictionKeys.contains(key)

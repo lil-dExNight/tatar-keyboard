@@ -44,9 +44,10 @@ interface StripSurface {
 
     /**
      * Optional spoken labels for cells whose own text does not read well aloud — an emoji cell
-     * (mission 2 of `docs/EMOJI-SUGGEST-PLAN.md`). Called immediately after [showSuggestions]
-     * with one entry per cell; a null entry means "speak the cell's text". Defaults to a no-op so
-     * a surface written before emoji suggestions keeps compiling and simply speaks the glyph.
+     * (mission 2 of `docs/EMOJI-SUGGEST-PLAN.md`). Called in the same publication as
+     * [showSuggestions], after the words and their emphasis; a null entry means "speak the
+     * cell's text". Defaults to a no-op so a surface written before emoji suggestions keeps
+     * compiling and simply speaks the glyph.
      */
     fun setSpokenCellLabels(first: String?, second: String?, third: String?) {}
 
@@ -54,7 +55,9 @@ interface StripSurface {
      * The autocorrect preview's emphasis marker (P2 of Phase 3, docs/ROADMAP-P3.md): the cell
      * holding the correction the next separator would insert, or
      * [SuggestionStripState.NO_CELL] on every ordinary band. Called immediately after
-     * [showSuggestions] by the same owner call, so the marker can never describe a band it did
+     * [showSuggestions] by the same owner call — and before the spoken labels (2026-09-25
+     * audit: the emphasis carries the publication's display rebuild, so it must be in place
+     * before a label lookup that can fail) — so the marker can never describe a band it did
      * not arrive with; a surface written before P2 keeps compiling and simply never emphasizes.
      */
     fun setEmphasizedCell(cell: Int) {}
@@ -847,6 +850,20 @@ class SuggestionsController internal constructor(
         slots[subtypeId]?.engine?.containsWord(normalizedWord) == true
 
     /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of every live engine's glide
+     * word index — LatinIME's MSG_DEALLOCATE_MEMORY (10 s after the keyboard closes) reaches
+     * here. Each handle posts the drop onto its own serialized worker (the decoder is
+     * worker-confined), so this UI-thread call only enqueues; a glide right after the keyboard
+     * reopens rebuilds the index on the worker and simply answers a little later — the strip
+     * never blocks.
+     */
+    fun releaseGlideIndexes() {
+        for (slot in slots.values) {
+            slot.engine?.releaseGlideIndex()
+        }
+    }
+
+    /**
      * Test seam: drives the exact dictionary-ready path the production prepare callback drives
      * (post [onDictionaryReady] onto the injected [uiPoster]). Lets a test start not-ready and fire
      * readiness deterministically without a real storage controller.
@@ -1365,14 +1382,20 @@ class SuggestionsController internal constructor(
     ) {
         bandBaseCells = cells
         strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2))
+        // P2: the emphasis travels with the words it marks, in the same publication — a marker
+        // set apart from them could describe a band that is already gone. It runs BEFORE the
+        // spoken labels (2026-09-25 audit): setEmphasis is what runs the publication's one
+        // display rebuild in the view, and the label lookup reads the emoji index, which can
+        // fail — with the labels between words and emphasis, such a failure stranded the band
+        // with new words, the emphasis cleared and the rebuild pending. A label failure now
+        // leaves a whole consistent band and merely missing labels: setSuggestions clears them
+        // on every publication, and the next one re-sends them.
+        strip.setEmphasizedCell(emphasizedCell)
         strip.setSpokenCellLabels(
             spokenLabelFor(cells[0]),
             spokenLabelFor(cells.getOrNull(1)),
             spokenLabelFor(cells.getOrNull(2)),
         )
-        // P2: the emphasis travels with the words it marks, in the same publication — a marker
-        // set apart from them could describe a band that is already gone.
-        strip.setEmphasizedCell(emphasizedCell)
     }
 
     /**
@@ -1500,6 +1523,21 @@ class SuggestionsController internal constructor(
         maybeAppendEmojiTail(context)
     }
 
+    /**
+     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of the emoji-suggest table
+     * (LatinIME MSG_DEALLOCATE_MEMORY). A table that actually loaded gets ONE lazy reload — the
+     * next eligible miss re-runs [maybePrepareEmojiSuggest]; a terminal load failure stays
+     * terminal (the one-shot flag is reset only when a source existed, so a release never
+     * resurrects a broken asset). UI thread, like every method here. A band showing an emoji
+     * cell right now is untouched: deallocate fires only after the keyboard has been closed for
+     * ten seconds, when no band is on screen.
+     */
+    fun releaseEmojiSuggest() {
+        if (emojiSource == null) return
+        emojiSource = null
+        emojiPreparationRequested = false
+    }
+
     private fun requestCurrentPrefix() {
         if (!eligible) return
         val activeEngine = usableEngine()
@@ -1545,6 +1583,13 @@ class SuggestionsController internal constructor(
             clearToReservedBand()
             return
         }
+        // Duplicate suppression: the band is already bound to THIS word's results, computed by a
+        // request issued in THIS session — a re-request would be answered identically. A prefix
+        // revisited after a different one (backspace) does not match: the newer request moved
+        // pendingPrefix/displayedPrefix on, so the revisit re-requests as before. A PREFIX-mode
+        // companion fill possibly in flight for this very word survives the skip: its answer
+        // appends to the band exactly as it would have after a duplicate active round trip.
+        if (word == displayedPrefix && displayedSessionId == sessionId) return
         // Prefix changed relative to what is on screen: invalidate the displayed candidates NOW so
         // a tap arriving before the new result can never commit the old candidate against the new
         // prefix. [unbindPaintedBand] takes the words off the strip in the same breath — see its
@@ -1595,6 +1640,16 @@ class SuggestionsController internal constructor(
             clearToReservedBand()
             return
         }
+        // Duplicate suppression, the exact mirror of the PREFIX path's, with one extra gate:
+        // bandHasActiveLanguageWord. An emoji-only band (the active language answered empty but
+        // the context maps to an emoji) also carries displayedContextWord, and the
+        // onCompanionBigramAttached re-request for it passes through here — skipping THAT one
+        // would strand the tail cells the companion attach is meant to fill (audit B4). With an
+        // active-language word on the band the attach handler never re-requests, so the skip is
+        // safe exactly under this conjunct.
+        if (context == displayedContextWord && displayedSessionId == sessionId
+            && bandHasActiveLanguageWord
+        ) return
         if (context != displayedContextWord) {
             displayedContextWord = null
             unbindPaintedBand()
@@ -1662,9 +1717,28 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         pendingGlideContext = context
         requestSessionId = sessionId
+        // C3 of docs/ROADMAP-P8-PLAN.md: only ONE glide word index may be resident. Warm slots are
+        // kept alive on purpose (LanguageSlot's doc), so before this language builds its index the
+        // other languages drop theirs — the worst case goes from "every warm engine holds an
+        // index" to exactly one. Each drop is POSTED to its own engine's worker
+        // (LatestOnlyPrefixEngine.releaseGlideIndex), so nothing here touches foreign state, and a
+        // language the user returns to rebuilds lazily on its next gesture, exactly as it already
+        // does after the idle release.
+        releaseGlideIndexesExcept(activeLanguage)
         val token = activeEngine.requestGlide(sessionId, activeLanguage ?: return, path)
         if (token == null) {
             clearToReservedBand()
+        }
+    }
+
+    /**
+     * C3: drops every glide word index but [keepSubtypeId]'s. A null id drops all of them (the
+     * caller has no active language, so no index is worth keeping).
+     */
+    private fun releaseGlideIndexesExcept(keepSubtypeId: String?) {
+        for ((subtypeId, slot) in slots) {
+            if (subtypeId == keepSubtypeId) continue
+            slot.engine?.releaseGlideIndex()
         }
     }
 

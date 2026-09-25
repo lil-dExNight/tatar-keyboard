@@ -121,6 +121,11 @@
     <!-- Description for the word suggestions option -->
     <string name="tatar_suggestions_summary">Show suggested and predicted words above the keyboard as you type, in Tatar and in Russian</string>
     <!-- Title of the one-time dialog offering to turn word suggestions on -->
+    <!-- F15a: shown when the user taps a row that is dimmed because the switch it depends on
+         is off. Names the switch, so the next tap goes to the right place. -->
+    <string name="row_needs_suggestions">Turn on "Word suggestions" first</string>
+    <string name="row_needs_language_switch">Turn on the globe key first</string>
+    <string name="row_locked_by_admin">Locked by your device administrator</string>
     <string name="tatar_suggestions_offer_title">Turn on word suggestions?</string>
     <!-- Body of the one-time dialog offering to turn word suggestions on -->
     <string name="tatar_suggestions_offer_message">Suggested and predicted words can appear above the keyboard as you type, in Tatar and in Russian. The word lists stay on your device and no internet connection is used.</string>

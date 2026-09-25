@@ -77,6 +77,23 @@ class EmojiSuggestIndexTest {
         assertEquals("❤️", index.lookup("ru", "сердце"))
     }
 
+    /**
+     * 2026-09-25 audit, F16 (mirrors SentStartIndex): the record count is capped fail-closed —
+     * the packer ships under 4k entries, so a corrupt asset reporting tens of thousands stops at
+     * MAX_RECORDS instead of growing the map without bound. The literal 4096 pins the constant.
+     */
+    @Test
+    fun theRecordCountIsCappedFailClosed() {
+        val lines = Array(5000) { "ru\tword$it\t✈️" }
+        val index = indexOf(*lines)
+
+        assertEquals(4096, index.entryCount)
+        assertEquals("the cap keeps the FIRST records, file order like the duplicate rule",
+            "✈️", index.lookup("ru", "word0"))
+        assertTrue(index.lookup("ru", "word4095") != null)
+        assertNull(index.lookup("ru", "word4096"))
+    }
+
     @Test
     fun theSameWordInTwoLanguagesIsTwoEntries() {
         val index = indexOf(

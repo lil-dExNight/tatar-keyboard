@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- F15a (docs/ROADMAP-P8-PLAN.md stage C): key of the View tag that carries a settings
+         row's "why is this disabled" string while the row is soft-disabled. -->
+    <item name="tag_row_disabled_reason" type="id" />
+</resources>
