@@ -35,6 +35,8 @@ public final class KeyboardIconsSet {
 
     private static final String NAME_UNDEFINED = "undefined";
     public static final String NAME_SHIFT_KEY = "shift_key";
+    /** M1 (docs/APPLE-UX-2026-09-25.md): one-shot shift — filled arrow, no caps bar. */
+    public static final String NAME_SHIFT_KEY_ON = "shift_key_on";
     public static final String NAME_SHIFT_KEY_SHIFTED = "shift_key_shifted";
     public static final String NAME_DELETE_KEY = "delete_key";
     public static final String NAME_SETTINGS_KEY = "settings_key";
@@ -75,6 +77,7 @@ public final class KeyboardIconsSet {
         NAME_PREVIOUS_KEY,                R.drawable.sym_keyboard_previous,
         NAME_TAB_KEY,                     R.drawable.sym_keyboard_tab,
         NAME_SPACE_KEY_FOR_NUMBER_LAYOUT, R.drawable.sym_keyboard_space,
+        NAME_SHIFT_KEY_ON,                R.drawable.sym_keyboard_shift_on,
         NAME_SHIFT_KEY_SHIFTED,           R.drawable.sym_keyboard_shift_locked,
         NAME_LANGUAGE_SWITCH_KEY,         R.drawable.sym_keyboard_language_switch,
         NAME_EMOJI_KEY,                   R.drawable.sym_keyboard_emoji,

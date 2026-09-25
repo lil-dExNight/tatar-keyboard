@@ -38,7 +38,7 @@
     <!-- Long pressing shift will invoke caps-lock if > 0, never invoke caps-lock if == 0 -->
     <integer name="config_longpress_shift_lock_timeout">1200</integer>
 
-    <integer name="config_language_on_spacebar_final_alpha">128</integer>
+    <integer name="config_language_on_spacebar_final_alpha">255</integer>
     <dimen name="config_language_on_spacebar_horizontal_margin">1dp</dimen>
 
     <integer name="config_keyboard_grid_width">32</integer>

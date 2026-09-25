@@ -125,9 +125,13 @@ public final class AudioAndHapticFeedbackManager {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 mVibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK));
             } else if (viewToPerformHapticFeedbackOn != null) {
+                // W6 (docs/APPLE-UX-2026-09-25.md): no global-setting override here — the
+                // system-wide haptics switch wins exactly as it does on the API 29+ branch
+                // above, where the Vibrator itself honours it. Pinned by
+                // AppleUxBatchOneContractTest, which asserts the override constant is absent
+                // from this whole file.
                 viewToPerformHapticFeedbackOn.performHapticFeedback(
-                        HapticFeedbackConstants.KEYBOARD_TAP,
-                        HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                        HapticFeedbackConstants.KEYBOARD_TAP);
             }
         });
     }

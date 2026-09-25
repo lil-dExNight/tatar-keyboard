@@ -48,10 +48,13 @@
         <case
             latin:keyboardLayoutSetElement="alphabetManualShifted|alphabetAutomaticShifted"
         >
+            <!-- M1 (docs/APPLE-UX-2026-09-25.md): one-shot shift = filled arrow without
+                 the caps bar, on an INVERTED (letter-coloured) key. Caps lock keeps the
+                 barred icon below; shift-off keeps the outline in <default>. -->
             <key-style
                 latin:styleName="shiftKeyStyle"
-                latin:keySpec="!icon/shift_key_shifted|!code/key_shift"
-                latin:backgroundType="stickyOff"
+                latin:keySpec="!icon/shift_key_on|!code/key_shift"
+                latin:backgroundType="stickyOn"
                 latin:parentStyle="baseForShiftKeyStyle" />
         </case>
         <case

@@ -21,6 +21,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Bundle
 import android.text.TextPaint
@@ -32,9 +33,8 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
-import androidx.core.view.ViewCompat
-import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
-import androidx.customview.widget.ExploreByTouchHelper
+import android.view.accessibility.AccessibilityNodeInfo
+import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper
 import rkr.simplekeyboard.inputmethod.R
 
 /** One allocation-free hot-path Canvas view containing exactly three suggestion cells. */
@@ -78,8 +78,31 @@ class SuggestionStripView @JvmOverloads constructor(
      */
     private val emphasisTextPaint = TextPaint(textPaint)
     private val decorationPaint = Paint()
+    /**
+     * W4 (docs/APPLE-UX-2026-09-25.md): the pressed-cell highlight is an inset rounded rect, so
+     * [onDraw] needs a rectangle. Allocated once here — the draw loop must stay allocation-free.
+     */
+    private val pressedCellRect = RectF()
+    private val pressedCellInsetPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        PRESSED_CELL_INSET_DP,
+        resources.displayMetrics,
+    )
+    private val pressedCellRadiusPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        PRESSED_CELL_RADIUS_DP,
+        resources.displayMetrics,
+    )
     private val fontMetrics = Paint.FontMetrics()
     private val displaySuggestions = arrayOfNulls<String>(SuggestionStripState.CELL_COUNT)
+    /**
+     * Set by [setSuggestions], consumed by [setEmphasis]: the two halves of one publication
+     * (the controller always publishes the emphasis marker with the words) share a single
+     * [rebuildDisplaySuggestions] — the marker decides which paint the cells ellipsize against,
+     * so rebuilding on the words alone would redo all three cells a microsecond later whenever
+     * a preview band lands. Read only on the UI thread, like everything else here.
+     */
+    private var displayRebuildPending = false
     private val stripHeightPx = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP,
         SuggestionStripState.STRIP_HEIGHT_DP.toFloat(),
@@ -145,7 +168,7 @@ class SuggestionStripView @JvmOverloads constructor(
         emphasisTextPaint.typeface = Typeface.create(textPaint.typeface, Typeface.BOLD)
 
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
-        ViewCompat.setAccessibilityDelegate(this, accessibilityHelper)
+        setAccessibilityDelegate(accessibilityHelper)
     }
 
     fun setOnSuggestionClickListener(listener: OnSuggestionClickListener?) {
@@ -182,7 +205,9 @@ class SuggestionStripView @JvmOverloads constructor(
         clearSpokenLabels()
         val hadSuggestions = state.hasAnySuggestion()
         if (!state.setSuggestions(first, second, third)) return
-        rebuildDisplaySuggestions()
+        // No rebuild here: the paired setEmphasis() of the same publication runs it once, with
+        // the final emphasis state already in place (see displayRebuildPending).
+        displayRebuildPending = true
         accessibilityHelper.invalidateRoot()
         invalidate()
         // Announce ONLY the empty band -> words transition, and only while touch exploration is
@@ -216,7 +241,8 @@ class SuggestionStripView @JvmOverloads constructor(
 
     /**
      * Sets the spoken labels of the three cells; see the field comment. Called by the owner of the
-     * band immediately after [setSuggestions]; never creates content of its own.
+     * band in the same publication as [setSuggestions], after the words and their emphasis; never
+     * creates content of its own.
      */
     fun setSpokenLabels(first: String?, second: String?, third: String?) {
         if (spokenLabels[0] == first && spokenLabels[1] == second && spokenLabels[2] == third) {
@@ -237,12 +263,16 @@ class SuggestionStripView @JvmOverloads constructor(
     /**
      * Marks one cell — the autocorrect preview's correction — emphasized (P2 of Phase 3,
      * docs/ROADMAP-P3.md), or [SuggestionStripState.NO_CELL] to return to the plain band. Called
-     * by the owner of the band immediately after [setSuggestions], exactly like the spoken
-     * labels; the next publication resets it.
+     * by the owner of the band immediately after [setSuggestions], before the spoken labels
+     * (2026-09-25 audit: the rebuild below must be in place before a label lookup that can
+     * fail); the next publication resets it.
      */
     fun setEmphasis(cell: Int) {
-        if (!state.setEmphasis(cell)) return
-        // The bold face is wider: re-ellipsize against the paint the cell will actually draw with.
+        val emphasisChanged = state.setEmphasis(cell)
+        if (!emphasisChanged && !displayRebuildPending) return
+        // The bold face is wider: re-ellipsize against the paint the cell will actually draw
+        // with. This is the one rebuild of the publication — the words arrived in the paired
+        // setSuggestions() just before.
         rebuildDisplaySuggestions()
         invalidate()
     }
@@ -250,6 +280,9 @@ class SuggestionStripView @JvmOverloads constructor(
     /** Drops every reference and transient state that must not survive view replacement. */
     fun release() {
         clearSpokenLabels()
+        // A posted long-press must not fire into a released view (the state it reads is cleared
+        // below, and the listener is gone).
+        removeCallbacks(longPressRunnable)
         val changed = state.clear()
         touchSequenceAccepted = false
         listener = null
@@ -282,11 +315,19 @@ class SuggestionStripView @JvmOverloads constructor(
         val pressedCell = state.pressedCell()
         if (pressedCell != SuggestionStripState.NO_CELL) {
             decorationPaint.color = pressedColor
-            canvas.drawRect(
-                state.cellLeft(pressedCell, width).toFloat(),
-                0f,
-                state.cellRight(pressedCell, width).toFloat(),
-                height.toFloat(),
+            // W4 (docs/APPLE-UX-2026-09-25.md): iOS highlights a pressed strip cell with an
+            // INSET ROUNDED rect, not a full-bleed square one. The RectF is a field, so the
+            // draw loop still allocates nothing.
+            pressedCellRect.set(
+                state.cellLeft(pressedCell, width) + pressedCellInsetPx,
+                pressedCellInsetPx,
+                state.cellRight(pressedCell, width) - pressedCellInsetPx,
+                height - pressedCellInsetPx,
+            )
+            canvas.drawRoundRect(
+                pressedCellRect,
+                pressedCellRadiusPx,
+                pressedCellRadiusPx,
                 decorationPaint,
             )
         }
@@ -295,10 +336,13 @@ class SuggestionStripView @JvmOverloads constructor(
         // Explicit hairline: the same paint draws the preview underline with a real width, and
         // stroke width survives across frames.
         decorationPaint.strokeWidth = 0f
+        // W4: the iOS hairlines are vertically inset — they do not touch the strip's edges.
+        val separatorTop = height * SEPARATOR_INSET_FRACTION
+        val separatorBottom = height - separatorTop
         var separator = 1
         while (separator < SuggestionStripState.CELL_COUNT) {
             val x = state.cellLeft(separator, width).toFloat()
-            canvas.drawLine(x, 0f, x, height.toFloat(), decorationPaint)
+            canvas.drawLine(x, separatorTop, x, separatorBottom, decorationPaint)
             separator++
         }
 
@@ -427,6 +471,7 @@ class SuggestionStripView @JvmOverloads constructor(
     }
 
     private fun rebuildDisplaySuggestions() {
+        displayRebuildPending = false
         if (width <= 0) {
             clearDisplaySuggestions()
             return
@@ -453,6 +498,7 @@ class SuggestionStripView @JvmOverloads constructor(
     }
 
     private fun clearDisplaySuggestions() {
+        displayRebuildPending = false
         var cell = 0
         while (cell < SuggestionStripState.CELL_COUNT) {
             displaySuggestions[cell] = null
@@ -478,7 +524,7 @@ class SuggestionStripView @JvmOverloads constructor(
 
         override fun onPopulateNodeForVirtualView(
             virtualViewId: Int,
-            node: AccessibilityNodeInfoCompat,
+            node: AccessibilityNodeInfo,
         ) {
             val suggestion = state.suggestionAt(virtualViewId)
             if (suggestion == null) {
@@ -499,13 +545,13 @@ class SuggestionStripView @JvmOverloads constructor(
             node.setBoundsInParent(tempBounds)
             val actionable = isVirtualCellActionable(virtualViewId)
             if (actionable) {
-                node.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
+                node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
                 // Exposed on EVERY filled cell, not only on personal words. An action present only
                 // on personal ones would make the contents of a private list observable to any
                 // enabled accessibility service and to automated tree dumps — one could see which
                 // of the three words came from it. For a dictionary word the action is a no-op,
                 // which is what the contract requires of a long press there anyway.
-                node.addAction(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK)
+                node.addAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
                 node.isLongClickable = true
             }
             node.isClickable = actionable
@@ -518,19 +564,19 @@ class SuggestionStripView @JvmOverloads constructor(
             arguments: Bundle?,
         ): Boolean {
             if (!isVirtualCellActionable(virtualViewId)) return false
-            if (action == AccessibilityNodeInfoCompat.ACTION_LONG_CLICK) {
+            if (action == AccessibilityNodeInfo.ACTION_LONG_CLICK) {
                 val suggestion = state.suggestionAt(virtualViewId) ?: return false
                 longPressListener?.onSuggestionLongPress(virtualViewId, suggestion)
                 return true
             }
-            if (action != AccessibilityNodeInfoCompat.ACTION_CLICK) return false
+            if (action != AccessibilityNodeInfo.ACTION_CLICK) return false
             if (!activateCell(virtualViewId)) return false
             sendEventForVirtualView(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
             return true
         }
 
         private fun isVirtualCellActionable(virtualViewId: Int): Boolean =
-            ViewCompat.isAttachedToWindow(this@SuggestionStripView)
+            isAttachedToWindow
                 && isShown
                 && isEnabled
                 && state.isCellPopulated(virtualViewId)
@@ -542,13 +588,18 @@ class SuggestionStripView @JvmOverloads constructor(
         const val VIRTUAL_ID_RIGHT = 2
         // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
         // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
-        // 40dp, вкладки 44dp, строка поиска 50dp, заголовок секции 30dp), а системный
+        // 44dp с W5 стадии B, вкладки 44dp, строка поиска 50dp, заголовок секции 30dp), а системный
         // масштаб шрифта растит только текст. При font_scale 2.0 полоса подсказок
         // вырождалась в «Мини… · Минем · Мини…» — две ячейки из трёх неразличимы ровно для
         // тех, кому крупный шрифт и нужен (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-3).
         // Клавиши раскладки всегда считались в dp; здесь то же правило.
-        private const val TEXT_SIZE_DP = 17f
+        private const val TEXT_SIZE_DP = 18f
         private const val HORIZONTAL_TEXT_PADDING_DP = 8f
+        // W4 (docs/APPLE-UX-2026-09-25.md): the pressed cell is inset and rounded, and the
+        // separators are inset vertically — iOS hairlines never touch the strip's edges.
+        private const val PRESSED_CELL_INSET_DP = 3f
+        private const val PRESSED_CELL_RADIUS_DP = 5f
+        private const val SEPARATOR_INSET_FRACTION = 0.22f
         private const val SEPARATOR_ALPHA = 0x30
         private const val DEFAULT_PRESSED_COLOR = 0x22000000
         private const val DEFAULT_SEPARATOR_COLOR = 0x30000000

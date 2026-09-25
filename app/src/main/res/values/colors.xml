@@ -27,17 +27,24 @@
     <color name="ios_keyboard_background_secondary">#C7CAD2</color>
     <color name="ios_key_normal">#FFFFFF</color>
     <color name="ios_key_normal_pressed">#C8CDD4</color>
-    <color name="ios_key_functional">#B3B7C0</color>
+    <color name="ios_key_functional">#ABB1BA</color>
     <color name="ios_key_functional_pressed">#FFFFFF</color>
     <color name="ios_key_checked">#A2A6B0</color>
+    <!-- M1: the shift key inverted to the letter-key surface while shift or caps is on. -->
+    <color name="ios_key_sticky_on">#FFFFFF</color>
     <color name="ios_key_spacebar">#FFFFFF</color>
     <color name="ios_key_spacebar_pressed">#C8CDD4</color>
-    <color name="ios_key_shadow">#40000000</color>
+    <color name="ios_key_shadow">#4D000000</color>
     <!-- Slide-to-select highlight on the more-keys panel: must clearly differ
          from ios_keyboard_background_secondary (the panel fill). -->
-    <color name="ios_popup_key_pressed">#A2A6B0</color>
+    <!-- M3: the slide-to-select highlight is the accent colour, as on iOS. -->
+    <color name="ios_popup_key_pressed">@color/app_accent</color>
+    <!-- M3: and the glyph on that highlight is white in both palettes. -->
+    <color name="ios_popup_key_selected_text">#FFFFFF</color>
     <color name="ios_key_text_color">#000000</color>
     <color name="ios_key_functional_text_color">#3C3C43</color>
+    <!-- M4: an ACTION key is accent-filled, so its label and icon are white. -->
+    <color name="ios_key_action_text_color">#FFFFFF</color>
     <color name="ios_key_text_inactive_color">#70000000</color>
     <color name="ios_key_hint_color">#90000000</color>
     <!-- Glide trail (P7-5 recolor, 2026-09-25): near-white iOS systemGray6, Gboard-style.

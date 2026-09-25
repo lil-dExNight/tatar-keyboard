@@ -28,14 +28,20 @@
     <color name="ios_key_functional">#474747</color>
     <color name="ios_key_functional_pressed">#8E8E8E</color>
     <color name="ios_key_checked">#9A9A9A</color>
+    <!-- M1: dark mode inverts to the letter-key grey, not to white. -->
+    <color name="ios_key_sticky_on">#6B6B6B</color>
     <color name="ios_key_spacebar">#6B6B6B</color>
     <color name="ios_key_spacebar_pressed">#7D7D7D</color>
     <color name="ios_key_shadow">#B3000000</color>
     <!-- Slide-to-select highlight on the more-keys panel: must clearly differ
          from ios_keyboard_background_secondary (the panel fill). -->
-    <color name="ios_popup_key_pressed">#7D7D7D</color>
+    <!-- M3: the accent of the dark palette highlights the selected alternative. -->
+    <color name="ios_popup_key_pressed">@color/app_accent</color>
+    <color name="ios_popup_key_selected_text">#FFFFFF</color>
     <color name="ios_key_text_color">#FFFFFF</color>
     <color name="ios_key_functional_text_color">#FFFFFF</color>
+    <!-- M4: white reads on the accent fill in the dark palette too. -->
+    <color name="ios_key_action_text_color">#FFFFFF</color>
     <color name="ios_key_text_inactive_color">#80FFFFFF</color>
     <color name="ios_key_hint_color">#B2FFFFFF</color>
 
