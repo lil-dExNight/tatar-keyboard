@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.2.0] — 2026-09-26
+
+### Added
+
+- **Swipe typing now knows the words you taught the keyboard:** learned words (names, slang, rare forms) appear as glide candidates, ranked by shape first and your usage count second — a clear dictionary word always wins. Your own casing is kept, words already in the built-in dictionary are not duplicated, and the glide follows the same personal-dictionary switch as the suggestion strip. As with everything else in this app, nothing is logged or sent anywhere.
+
+### Changed
+
+- **Static-analysis cleanup:** 52 of the 67 error-prone warnings in the legacy Java sources are closed (visibility narrowed, explicit casts, dead code removed); the remaining 15 are reviewed and deliberately kept (`docs/ERRORPRONE-TRIAGE.md`). Internal only — no behavior change.
+
 ## [3.1.1] — 2026-09-25
 
 ### Fixed

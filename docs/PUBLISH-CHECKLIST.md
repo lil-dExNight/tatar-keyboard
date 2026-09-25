@@ -1,4 +1,26 @@
-# PUBLISH-CHECKLIST — публикация v3.1.1
+# PUBLISH-CHECKLIST — публикация v3.2.0
+
+> **Retargeted 2026-09-26 to candidate v3.2.0 / versionCode 39** — two missions
+> ship together: personal-dictionary glide candidates (`docs/GLIDE-PERSONAL.md` —
+> learned words appear as swipe-typing candidates, ranked by shape first and usage
+> count second, gated by the same personal-dictionary switch; +21 JVM tests) and
+> the error-prone sweep (`docs/ERRORPRONE-TRIAGE.md`, 67 → 15 warnings, no
+> behavior change), plus the macOS fix in `gradle/verification-metadata.xml`.
+> **Code-only release:** all shipped data assets are byte-identical to 3.1.1
+> (pins untouched, `rebuild_assets.py --check` → `"ok": true`); on update the
+> device re-inflates NOTHING. Store changelog — `metadata/en-US/changelogs/39.txt`
+> (356 B) + `ru-RU` (469 B) and `tt` (380 B) copies, all ≤ 500 B. Gates on the
+> pre-bump tree: JVM 1 691 tests / 0 failures, python 502 OK, lint green,
+> no-INTERNET at both levels, unsigned APK 1 766 196 B; post-bump the fast set
+> (`assembleRelease -PskipReleaseSigning` → `release_pack.sh --no-sign` →
+> `release_check.sh --quick`) is re-run.
+> **This candidate is UNSIGNED:** the release keystore is absent on the build
+> machine, so the signature gate of `release_check.sh` is expected to FAIL/SKIP
+> as blocked-by-missing-keystore while everything else passes. Signing with the
+> release keystore, the GitHub Release (no `gh` on this machine — the Release
+> object is published manually via the web UI) and the store upload remain the
+> operator's steps. The notes about 3.1.1 and earlier below stay as history;
+> their checkmarks and numbers do not carry over.
 
 > **Retargeted 2026-09-25 (evening) to candidate v3.1.1 / versionCode 38** — 3.1.0 was
 > never published: its artifact could not be installed on Android 11+ because

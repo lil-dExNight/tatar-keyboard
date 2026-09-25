@@ -1,0 +1,4 @@
+• Swipe typing now knows the words you taught the keyboard: learned words appear as glide candidates
+• Ranked by shape first, your usage count second — a clear dictionary word always wins; your casing is kept
+• Follows the same personal-dictionary switch; nothing is logged or sent anywhere
+• Internal static-analysis cleanup, no behavior change

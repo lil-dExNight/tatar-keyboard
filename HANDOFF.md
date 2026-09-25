@@ -1,3 +1,42 @@
+# HANDOFF — release 3.2.0: personal glide candidates + error-prone sweep (2026-09-26)
+
+Two missions landed and ship together as **3.2.0 / versionCode 39**, plus one build-infra fix.
+Commits, the tag and the push were executed on the operator's explicit command.
+
+- **Personal-dictionary glide candidates** (`docs/GLIDE-PERSONAL.md`): one new
+  `CompositeGlideInventory` appends the personal snapshot's entries to the glide
+  inventory — zero decoder changes; the ranking invariants (shape first, usage
+  second, never outranking a clear dictionary word, casing kept, no duplicates)
+  are pinned by +21 JVM tests. The dated footnotes in `docs/GLIDE-PLAN.md` and
+  `docs/ROADMAP-P7.md` close the old "personal words are invisible to glide"
+  scope lines. Gating is inherited from the existing personal-dictionary switch;
+  a glide commit still moves no usage counter.
+- **error-prone sweep 67 → 15** (`docs/ERRORPRONE-TRIAGE.md`, addendum
+  2026-09-25/26): 52 findings closed (visibility narrowing, explicit casts, dead
+  code removed, javadoc); the remaining 15 are `ReferenceEquality` ×14 +
+  `ClassInitializationDeadlock` ×1, both verified intentional. No behavior change.
+- **Build-infra:** `gradle/verification-metadata.xml` gained the osx aapt2 jar and
+  the kotlinx/junit BOM module entries (checksums re-verified), so macOS hosts
+  resolve fail-closed again.
+
+Gates on the committed pre-bump tree (the version bump touches no code): JVM
+**1 691 tests, 0 failures**; python pipeline **502 OK**; `lintRelease` green
+(0 errors / 28 baselined warnings); `check-no-internet.sh` green at both levels;
+asset pins untouched (`rebuild_assets.py --check --allow-known-drift` →
+`"ok": true`); unsigned `assembleRelease` APK **1 766 196 B** (budget
+3 145 728 B). Post-bump the fast set is re-run: `assembleRelease -PskipReleaseSigning`,
+`release_pack.sh --no-sign`, `release_check.sh --quick`.
+
+**Release state: UNSIGNED.** `keystore.properties` / `tatar-keyboard-release.jks`
+are absent on this machine — signing is impossible here, the artifact is packed
+with `release_pack.sh --no-sign` into `dist/`, and the signature gate of
+`release_check.sh` is expected to fail/skip as blocked-by-missing-keystore while
+everything else passes. `gh` is absent too. **Operator-only steps:** sign the APK
+with the release keystore, create the GitHub Release via the web UI, and run the
+store upload.
+
+---
+
 # HANDOFF — 3.1.0 was uninstallable, fixed as 3.1.1 (2026-09-25, fifth entry of the day)
 
 **Found by the device check the operator asked for.** `dist/tatar-keyboard-3.1.0.apk` could not be
