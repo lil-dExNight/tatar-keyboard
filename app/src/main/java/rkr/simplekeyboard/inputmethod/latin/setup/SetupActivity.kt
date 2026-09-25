@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.setup
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -31,6 +32,7 @@ import android.widget.TextView
 import android.widget.Toast
 import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity
+import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
 
 /**
  * Two-step onboarding screen (SETUP-01), following the AOSP LatinIME
@@ -53,6 +55,12 @@ class SetupActivity : Activity() {
 
     companion object {
         private val TAG = SetupActivity::class.java.simpleName
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        // Tatar is the app's UI default (see AppLocale): Russian and Tatar systems
+        // resolve on their own, everything else is wrapped into Tatar here.
+        super.attachBaseContext(AppLocale.wrap(newBase))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

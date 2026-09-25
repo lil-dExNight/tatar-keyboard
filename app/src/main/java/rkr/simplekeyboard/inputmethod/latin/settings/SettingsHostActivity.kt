@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.settings
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
@@ -43,6 +44,7 @@ import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
+import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
 import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
 
@@ -170,6 +172,12 @@ class SettingsHostActivity : Activity() {
                 KeyboardLayoutSet.onKeyboardThemeChanged()
             }
         }
+
+    override fun attachBaseContext(newBase: Context) {
+        // Tatar is the app's UI default (see AppLocale): Russian and Tatar systems
+        // resolve on their own, everything else is wrapped into Tatar here.
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
