@@ -1,3 +1,45 @@
+# HANDOFF — 3.2.0 SIGNED, gates 17/17, CI green again (2026-09-27)
+
+The 3.2.0 release left the UNSIGNED state: the release keystore was on this
+machine all along at `~/.tatar-keyboard/tatar-keyboard-release.jks`
+(`keystore.properties` points there; the previous session looked for the .jks
+in the repo root and declared signing impossible).
+
+- **CI repair (build-infra only).** The `build` job had been red since the
+  verification-metadata landing: on a cold cache the Linux runner resolves four
+  artifacts through their POMs that the generator machine resolved through
+  Gradle module metadata (or vice versa), so the generated file missed them.
+  Commit `7c303ff3` records the four checksums by hand from the resolved
+  artifacts of the local Gradle cache (guava-parent 33.3.1-jre and 33.4.0-jre
+  poms, junit-bom 5.11.0-M2 `.module`, kotlinx-coroutines-bom 1.8.0 `.pom`),
+  each cross-checked against an already-pinned sibling where one existed.
+  Verified with a clean `GRADLE_USER_HOME`: `clean test lintRelease
+  assembleDebug assembleRelease` — BUILD SUCCESSFUL, and a lenient-mode pass
+  logged zero further verification gaps. CI on `7c303ff3`: both jobs green.
+  The change touches no app input; the packed `--no-sign` output is still
+  1 766 196 B, exactly the pre-signing measurement recorded below.
+- **Release 3.2.0 / versionCode 39 is SIGNED.** `release_pack.sh
+  dist/tatar-keyboard-3.2.0.apk`: unsigned 1 785 266 B → zopfli+signed
+  **1 768 010 B** (headroom 43.8 %), SHA-256
+  `fa61a5f8da6f4741d8df69ff0f3c33a7c1647ae60e0b3b855db23c3344885f83`, v2-only,
+  single signer `98ca6feb…42ad` (the pinned release certificate),
+  `resources.arsc` STORED at a 4-aligned offset.
+- **`release_check.sh --full`: OVERALL PASS 17/17** — JVM 1 691 tests /
+  0 failures (182 files), python 507/16, lint baseline clean, no-internet both
+  levels, asset rebuild check ok, pin gate 16/16, emoji assets 5/5, tree assets
+  8/8, delta vs 3.1.1 +4 096 B (+0.2 %). Release notes prepared at
+  `dist/release-notes-3.2.0.md`.
+
+**Remaining operator steps (publication):** create the GitHub Release for tag
+`v3.2.0` via the web UI — this machine's `gh` account (`not-obfuscation`) has
+pull-only rights on `lil-dExNight/tatar-keyboard`, so the Release object cannot
+be created from here; attach exactly `dist/tatar-keyboard-3.2.0.apk`
+(SHA-256 above) with `dist/release-notes-3.2.0.md` as the notes. Then the store
+upload (changelogs `39.txt` in place for en-US/ru-RU/tt) and the IzzyOnDroid
+inclusion request per `docs/PUBLISH-CHECKLIST.md` §7.
+
+---
+
 # HANDOFF — release 3.2.0: personal glide candidates + error-prone sweep (2026-09-26)
 
 Two missions landed and ship together as **3.2.0 / versionCode 39**, plus one build-infra fix.

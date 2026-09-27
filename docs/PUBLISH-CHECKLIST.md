@@ -21,6 +21,19 @@
 > object is published manually via the web UI) and the store upload remain the
 > operator's steps. The notes about 3.1.1 and earlier below stay as history;
 > their checkmarks and numbers do not carry over.
+>
+> **2026-09-27: signed and fully gate-verified.** The keystore was on the
+> machine all along (`~/.tatar-keyboard/tatar-keyboard-release.jks`); the
+> previous session looked in the repo root. Signed artifact:
+> `dist/tatar-keyboard-3.2.0.apk`, **1 768 010 B**, SHA-256
+> `fa61a5f8da6f4741d8df69ff0f3c33a7c1647ae60e0b3b855db23c3344885f83`, v2-only,
+> cert `98ca6feb…42ad`, `resources.arsc` STORED — `release_check.sh --full`
+> **17/17 PASS** including `artifact.signature`. CI on the release commit was
+> red for an unrelated build-infra reason: the generated
+> `verification-metadata.xml` missed four POM-side artifacts on a cold cache
+> (fixed in `7c303ff3`; CI green there, both jobs). The GitHub Release itself
+> remains the operator's web-UI step — this machine's `gh` is pull-only on the
+> repo; attach exactly the `dist/` file, notes in `dist/release-notes-3.2.0.md`.
 
 > **Retargeted 2026-09-25 (evening) to candidate v3.1.1 / versionCode 38** — 3.1.0 was
 > never published: its artifact could not be installed on Android 11+ because
