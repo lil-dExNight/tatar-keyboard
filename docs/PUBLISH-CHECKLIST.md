@@ -1,4 +1,21 @@
-# PUBLISH-CHECKLIST — публикация v3.2.0
+# PUBLISH-CHECKLIST — публикация v3.3.0
+
+> **Retargeted 2026-09-28 to candidate v3.3.0 / versionCode 40** — the
+> 2026-09-27/28 wave (`docs/GLIDE-LIVE-STRIP4.md`): the four-cell suggestion
+> strip with the Tatar bigram table repacked at K = 4 (the T7 latent value
+> realized: eval next-word hits 471 → 547 of 4 347), live per-MOVE glide
+> previews (throttled partial decodes; only the lift commits), and
+> glide-triggered learning (a glide commit counts as a use of a saved personal
+> word). Device legs closed on the POCO C71 (instrumentation 13/13, interactive
+> UAT with screenshots and the counter readout, evidence
+> `build/device-uat-2026-09-28/`). Store changelog — `metadata/en-US/changelogs/40.txt`
+> (298 B) + `ru-RU` (473 B) and `tt` (462 B), all ≤ 500 B. **Data-asset delta:
+> the Tatar bigram table CHANGED** (79 574 → 104 028 B compressed, same 13 154
+> heads, pairs 38 874 → 51 484) — on update the device re-inflates exactly that
+> table once (new raw SHA-256 in the device file name, the standard path); the
+> dictionaries, the Russian table and all emoji assets are byte-identical.
+> The notes about 3.2.0 and earlier below stay as history; their checkmarks and
+> numbers do not carry over.
 
 > **Retargeted 2026-09-26 to candidate v3.2.0 / versionCode 39** — two missions
 > ship together: personal-dictionary glide candidates (`docs/GLIDE-PERSONAL.md` —

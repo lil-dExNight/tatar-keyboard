@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.3.0] — 2026-09-28
+
+### Added
+
+- **The suggestion strip shows four cells now** (was three): the fourth cell carries the fourth stored next-word successor — the Tatar bigram table is repacked at K = 4 for it — plus the next word form or top-frequency word where the table runs out.
+- **Swipe typing previews its candidates live, while the finger is still moving** (throttled decodes of the partial path; only lifting the finger commits — the preview itself never edits text).
+- **Swipe-typed words teach the personal dictionary the same way tapped suggestions do:** a glide commit counts as a use for a saved word, so the words you taught keep rising by usage.
+
 ## [3.2.0] — 2026-09-26
 
 ### Added
