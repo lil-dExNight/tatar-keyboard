@@ -22,14 +22,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersonalBigrams
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersonalDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersonalEmoji
 
 /**
  * The "Personal dictionary" screen, one test per guarantee the contract names: all languages, words
- * AND learned pairs (U7 of Phase 2, docs/ROADMAP-P2.md), a usage count on every row, a cap of 200
- * materialized rows shared across both stores, "showing N of M", `FLAG_SECURE` on the whole
- * Activity and the three privacy flags on BOTH text fields.
+ * AND learned pairs (U7 of Phase 2, docs/ROADMAP-P2.md) AND learned emoji, a usage count on every
+ * row, a cap of 200 materialized rows shared across all three stores, "showing N of M",
+ * `FLAG_SECURE` on the whole Activity and the three privacy flags on BOTH text fields.
  *
  * The list logic is exercised for real (it is pure Kotlin); the Activity parts are source-contract,
  * in the established style, because `SettingsHostActivity` cannot run off-device.
@@ -76,11 +78,30 @@ class PersonalDictionaryScreenSourceContractTest {
         )
     }
 
+    /** Entries ("сәләм", "☀"), … in the (word, emoji-bytes) order the snapshot holds. */
+    private fun emojiOf(subtype: String, vararg entries: Pair<String, String>): PersonalEmojiDictionary {
+        // The emoji half orders as unsigned UTF-8 bytes; the ISO-8859-1 reinterpretation compares
+        // exactly that way.
+        val sorted = entries.sortedWith(compareBy({ it.first },
+            { String(it.second.toByteArray(Charsets.UTF_8), Charsets.ISO_8859_1) }))
+        return PersonalEmojiDictionary.of(
+            ValidatedPersonalEmoji(
+                words = sorted.map { it.first },
+                emojiClusters = sorted.map { it.second },
+                usageCounts = IntArray(sorted.size) { it + 1 },
+                frequencyCounts = IntArray(sorted.size) { 2 },
+                lastUseSerials = LongArray(sorted.size) { (it + 1).toLong() },
+                subtypeTag = subtype,
+            ),
+        )
+    }
+
     private fun build(
         words: List<Pair<String, PersonalDictionary>>,
         pairs: List<Pair<String, PersonalBigramDictionary>> = words.map { it.first to PersonalBigramDictionary.EMPTY },
         query: String = "",
-    ) = PersonalDictionaryScreenModel.build(words, pairs, query)
+        emoji: List<Pair<String, PersonalEmojiDictionary>> = words.map { it.first to PersonalEmojiDictionary.EMPTY },
+    ) = PersonalDictionaryScreenModel.build(words, pairs, query, emoji)
 
     // --- The list model ---------------------------------------------------------------------
 
@@ -118,6 +139,75 @@ class PersonalDictionaryScreenSourceContractTest {
         assertEquals(1, content.sections.size)
         assertEquals(0, content.sections[0].wordRows.size)
         assertEquals(1, content.sections[0].pairRows.size)
+    }
+
+    @Test
+    fun emojiSitInTheSameSectionAsTheWordsAndPairsOfTheirLanguage() {
+        val content = build(
+            listOf("tt_RU" to dictionaryOf("гүзәлия")),
+            listOf("tt_RU" to bigramsOf("tt_RU", "сәләм" to "дөнья")),
+            emoji = listOf("tt_RU" to emojiOf("tt_RU", "сәләм" to "☀")),
+        )
+        assertEquals(1, content.sections.size)
+        val section = content.sections[0]
+        assertEquals(1, section.wordRows.size)
+        assertEquals(1, section.pairRows.size)
+        assertEquals(1, section.emojiRows.size)
+        assertEquals("сәләм", section.emojiRows[0].word)
+        assertEquals("☀", section.emojiRows[0].emoji)
+        assertEquals("the emoji count is the saved total, not the shown rows",
+            1, section.emojiCount)
+        assertEquals("the emoji row carries both counters",
+            listOf(1 to 2), section.emojiRows.map { it.usageCount to it.frequencyCount })
+    }
+
+    @Test
+    fun aLanguageWithOnlyEmojiStillGetsItsSection() {
+        val content = build(
+            listOf("tt_RU" to PersonalDictionary.EMPTY),
+            emoji = listOf("tt_RU" to emojiOf("tt_RU", "сәләм" to "☀")),
+        )
+        assertEquals(1, content.sections.size)
+        assertEquals(0, content.sections[0].wordRows.size)
+        assertEquals(1, content.sections[0].emojiRows.size)
+    }
+
+    @Test
+    fun theSearchCoversEmojiByTheWordHalf() {
+        val emoji = listOf("tt_RU" to emojiOf("tt_RU", "сәләм" to "☀", "бәйрәм" to "☾"))
+        assertEquals("a hit on the word",
+            1, build(listOf("tt_RU" to PersonalDictionary.EMPTY), emoji = emoji,
+                query = "сәләм").shownCount)
+        assertEquals("a miss",
+            0, build(listOf("tt_RU" to PersonalDictionary.EMPTY), emoji = emoji,
+                query = "юк").shownCount)
+    }
+
+    @Test
+    fun theCapIsSharedAcrossAllThreeStores() {
+        val words = dictionaryOf(*Array(50) { "аа%03d".format(it) })
+        val pairs = bigramsOf("tt_RU", *Array(50) { "сәләм%03d".format(it) to "дөнья" })
+        val emoji = emojiOf("tt_RU", *Array(150) { "бб%03d".format(it) to "☀" })
+        val content = build(
+            listOf("tt_RU" to words),
+            listOf("tt_RU" to pairs),
+            emoji = listOf("tt_RU" to emoji),
+        )
+        assertEquals(250, content.totalCount)
+        assertEquals(PersonalDictionaryScreenModel.MAX_MATERIALIZED_ROWS, content.shownCount)
+        assertTrue(content.isTruncated)
+        assertEquals("the cap is shared, so the emoji rows take what words and pairs leave",
+            100, content.sections[0].emojiRows.size)
+        assertEquals("the saved emoji total is printed regardless of the cap",
+            150, content.sections[0].emojiCount)
+    }
+
+    @Test
+    fun anEmojiRowToStringNamesNeitherTheWordNorTheEmoji() {
+        val rendered = PersonalEmojiRow("tt_RU", "сәләм", "☀", 3, 5).toString()
+        assertFalse(rendered.contains("сәләм"))
+        assertFalse(rendered.contains("☀"))
+        assertEquals("PersonalEmojiRow", rendered)
     }
 
     @Test
@@ -262,11 +352,15 @@ class PersonalDictionaryScreenSourceContractTest {
             screen.contains("R.plurals.personal_dictionary_words_count"))
         assertTrue("the pairs card starts from the saved-pairs count",
             screen.contains("R.plurals.personal_dictionary_pairs_count"))
+        assertTrue("the emoji card starts from the saved-emoji count",
+            screen.contains("R.plurals.personal_emoji_count"))
         assertTrue("and the count printed is the total, not the materialized rows",
-            screen.contains("section.wordCount") && screen.contains("section.pairCount"))
+            screen.contains("section.wordCount") && screen.contains("section.pairCount")
+                && screen.contains("section.emojiCount"))
         assertTrue("each store of the language gets its own clear action",
             screen.contains("R.string.personal_dictionary_clear_words") &&
-                screen.contains("R.string.personal_dictionary_clear_pairs"))
+                screen.contains("R.string.personal_dictionary_clear_pairs") &&
+                screen.contains("R.string.personal_emoji_clear"))
     }
 
     @Test
@@ -278,5 +372,7 @@ class PersonalDictionaryScreenSourceContractTest {
             row.contains("R.string.personal_dictionary_delete"))
         // The pair row reads "A → B", the same shape its forget dialog repeats.
         assertTrue(host.contains("row.contextForm + \" → \" + row.successorRawForm"))
+        // The emoji row reads "word → emoji", the same shape its forget dialog repeats.
+        assertTrue(host.contains("row.word + \" → \" + row.emoji"))
     }
 }

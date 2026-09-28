@@ -21,6 +21,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PreparationResult
@@ -173,6 +174,24 @@ class SuggestionsControllerEmojiSuggestTest {
         }
 
         override fun spokenNameOf(emoji: String): String? = names[emoji]
+    }
+
+    /** Records every personal-emoji event (feature C). */
+    private class RecordingPersonalEmojiSink : PersonalEmojiSink {
+        val observations = mutableListOf<Pair<String, String>>()
+        val uses = mutableListOf<Pair<String, String>>()
+        var flushes = 0
+        override fun noteObservation(contextWord: String, emojiSequence: String) {
+            observations.add(contextWord to emojiSequence)
+        }
+
+        override fun noteUse(contextWord: String, emojiSequence: String) {
+            uses.add(contextWord to emojiSequence)
+        }
+
+        override fun onInputFinished() {
+            flushes++
+        }
     }
 
     /** Immediate by default; [deferred] mode captures the callback for the test to fire by hand. */
@@ -567,6 +586,183 @@ class SuggestionsControllerEmojiSuggestTest {
         // ...and its band gets the emoji tail exactly like a band built after typed input.
         h.deliver(tatar, listOf("бирегә"))
         assertEquals(listOf("бирегә", "❤️"), h.strip.lastCells())
+    }
+
+    // --- Recents (B2): an accepted emoji cell is recorded like a panel or search pick -----------
+
+    @Test
+    fun tappingTheEmojiTailCellReportsTheSequenceToTheSink() {
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        val recorded = mutableListOf<String>()
+        h.controller.setEmojiInsertionSink { recorded.add(it) }
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+
+        requireNotNull(h.strip.tap).onTap("❤️")
+
+        // Exactly the emoji sequence, exactly once; the commit itself is untouched.
+        assertEquals(listOf("❤️"), recorded)
+        assertEquals(listOf("йөрәк" to "❤️"), h.editor.predictedCommits)
+    }
+
+    @Test
+    fun tappingAWordCellReportsNothingToTheSink() {
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        val recorded = mutableListOf<String>()
+        h.controller.setEmojiInsertionSink { recorded.add(it) }
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+
+        requireNotNull(h.strip.tap).onTap("минем")
+
+        assertTrue(recorded.isEmpty())
+        assertEquals(listOf("йөрәк" to "минем"), h.editor.predictedCommits)
+    }
+
+    @Test
+    fun anEmojiTapWithoutASinkStillCommits() {
+        // No sink wired (the fail-closed default): the tap commits exactly as before the seam.
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, emptyList())
+
+        requireNotNull(h.strip.tap).onTap("❤️")
+
+        assertEquals(listOf("йөрәк" to "❤️"), h.editor.predictedCommits)
+    }
+
+    // --- Feature C: the learned word→emoji co-usage source and sink -------------------------------
+
+    @Test
+    fun theLearnedEmojiOverridesTheStaticOneInTheTailCell() {
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        // The learned source answers the NORMALIZED word, exactly like the static table's lookup.
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word -> if (word == "йөрәк") "🌙" else null },
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+
+        // One cell, and it holds the learned emoji: the static ❤️ is displaced by it, nothing else.
+        assertEquals(listOf("минем", "🌙"), h.strip.lastCells())
+    }
+
+    @Test
+    fun theLearnedEmojiOpensTheBandWhenNoWordAnswers() {
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word -> if (word == "кит") "🌙" else null },
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("кит") // no static mapping; the learned one still answers
+        h.deliver(tatar, emptyList())
+
+        assertEquals(listOf("🌙"), h.strip.lastCells())
+    }
+
+    @Test
+    fun theStaticEmojiShowsWhenTheLearnedSourceHasNothing() {
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        h.controller.setPersonalEmojiSource(PersonalEmojiSource { null })
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+
+        assertEquals(listOf("минем", "❤️"), h.strip.lastCells())
+    }
+
+    @Test
+    fun theLearnedEmojiStaysHiddenWhileThePersonalGateIsOff() {
+        // The personal-dictionary gate lives INSIDE the source (the snapshot supplier); a source
+        // gated off answers null, and the band falls back to the static table — exactly the
+        // production shape of SnapshotPersonalEmojiSource with the setting off. The flip is live.
+        var gateOn = false
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word -> if (gateOn && word == "йөрәк") "🌙" else null },
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+        assertEquals(listOf("минем", "❤️"), h.strip.lastCells())
+
+        gateOn = true
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+        assertEquals(listOf("минем", "🌙"), h.strip.lastCells())
+    }
+
+    @Test
+    fun tappingTheLearnedTailCellReportsObservationAndUse() {
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word -> if (word == "йөрәк") "🌙" else null },
+        )
+        val sink = RecordingPersonalEmojiSink()
+        h.controller.setPersonalEmojiSink(sink)
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+
+        requireNotNull(h.strip.tap).onTap("🌙")
+
+        // The tapped cell IS what the learned source offered for this context: both halves fire,
+        // with the band's own context word — and the commit itself is untouched.
+        assertEquals(listOf("йөрәк" to "🌙"), sink.observations)
+        assertEquals(listOf("йөрәк" to "🌙"), sink.uses)
+        assertEquals(listOf("йөрәк" to "🌙"), h.editor.predictedCommits)
+    }
+
+    @Test
+    fun tappingAStaticTailCellReportsAnObservationOnly() {
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        h.controller.setPersonalEmojiSource(PersonalEmojiSource { null }) // learned knows nothing
+        val sink = RecordingPersonalEmojiSink()
+        h.controller.setPersonalEmojiSink(sink)
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+
+        requireNotNull(h.strip.tap).onTap("❤️")
+
+        // A co-usage observation (the user really did pick ❤️ after йөрәк), but no use bump:
+        // the cell is not what the learned source offered.
+        assertEquals(listOf("йөрәк" to "❤️"), sink.observations)
+        assertTrue(sink.uses.isEmpty())
+        assertEquals(listOf("йөрәк" to "❤️"), h.editor.predictedCommits)
+    }
+
+    @Test
+    fun anEmojiTapWithoutAPersonalSinkStillCommits() {
+        // The source is wired but the sink is not (the fail-closed default): no crash, and the
+        // commit lands exactly as before the seam.
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word -> if (word == "йөрәк") "🌙" else null },
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, emptyList())
+
+        requireNotNull(h.strip.tap).onTap("🌙")
+
+        assertEquals(listOf("йөрәк" to "🌙"), h.editor.predictedCommits)
+    }
+
+    @Test
+    fun theSessionEndFlushesThePersonalEmojiSink() {
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        val sink = RecordingPersonalEmojiSink()
+        h.controller.setPersonalEmojiSink(sink)
+        h.start(tatar)
+
+        h.controller.onFinishInput()
+
+        assertEquals(1, sink.flushes)
     }
 
     // --- Accessibility --------------------------------------------------------------------------

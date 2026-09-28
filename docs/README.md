@@ -122,6 +122,14 @@
   unbound strip preview), glide-triggered learning (lift-commit counts as a
   use), and the four-cell suggestion strip with the Tatar K = 4 repack
   (next-word eval hits 471 → 547, the T7 latent value realized).
+- `EMOJI-LEARN.md` — mission report (canonical English), 2026-09-28: personal
+  learned word→emoji co-usage — the `.tpersem` store (TATPERSE schema 1, 500
+  entries LRU, pending-hash threshold 2 with its own salt), teaching only from
+  the keyboard's own emoji insertions (clipboard never teaches), the learned
+  emoji leading the strip's tail cell (tap-only, never auto-inserted), the
+  third card of the personal-dictionary screen with forget/clear/erase-all and
+  quarantine, PRIVACY.md 1.7; host gates green (JVM 1 821/0), device legs
+  pending.
 - `BACKLOG-2026-09-28.md` — живой бэклог после волны 3.3.0: свежие находки
   (сломанный генератор baseline-профилей, харнесс GlideUiDeviceTest, дрейф
   комментариев), технический долг по ценности, дизайн-набросок фичи «эмодзи,

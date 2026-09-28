@@ -70,10 +70,14 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifac
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramDictionaries;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaries;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmojiDictionaries;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmojiEventSink;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmojiLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalForget;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearningGates;
@@ -83,6 +87,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchQuery;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSkinTones;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSetSnapshot;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSurface;
+import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiTextUtils;
 import rkr.simplekeyboard.inputmethod.latin.emoji.RecentEmojiGate;
 import rkr.simplekeyboard.inputmethod.latin.emoji.RecentEmojiGateState;
 import rkr.simplekeyboard.inputmethod.latin.emoji.SharedEmojiSearchIndex;
@@ -103,6 +108,7 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferEnvironment;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferFlagStore;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferPresenter;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.PersonalEmojiSink;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.ResultCallback;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.StripSurface;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView;
@@ -148,6 +154,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     // Owns the emoji panel's single-per-process snapshot. Null until set up in onCreate().
     private EmojiPanelController mEmojiPanelController;
+
+    // The ONE shared personal word→emoji learning sink (feature C): built once in
+    // setUpSuggestionsController(), shared by the two event sources — a panel/search pick
+    // (onEmojiInserted) and the strip's emoji tail cell (the controller's PersonalEmojiSink seam).
+    private PersonalEmojiEventSink mPersonalEmojiLearningSink;
 
     /**
      * The emoji-search query while the search is open, and null otherwise. It holds every key press
@@ -721,6 +732,62 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // subordination to the suggestions switch, carried by SettingsValues.
         mSuggestionsController.setEmojiSuggestGate(
                 () -> mSettings.getCurrent().mEmojiSuggestEnabled);
+        // B2: a tap on the strip's emoji tail cell records the sequence in the recent-emoji list
+        // through the exact funnel a panel or search pick uses. Wired to a recents-only method
+        // rather than to onEmojiInserted itself: that method additionally reports the pick to the
+        // personal co-usage sink with a context EXTRACTED from the editor text, while the strip
+        // tap reaches the same sink through the controller's PersonalEmojiSink seam with the
+        // band's bound context word — routing one tap through both would count it twice whenever
+        // the commit appended no auto-space and the cache therefore still ended with the emoji.
+        // The method reference still carries the null guard every panel-controller access needs
+        // (setUpEmojiPanelController() has not run yet at this point).
+        mSuggestionsController.setEmojiInsertionSink(this::onStripEmojiInserted);
+        // Feature C (personal word→emoji co-usage): the ONE shared learning sink, built once for
+        // the service's lifetime under the very same six-factor predicate and per-event subtype
+        // resolution as the word and pair sinks beside it. The controller is handed an adapter
+        // onto it (the controller knows only its own seam), and onEmojiInserted() calls the same
+        // sink directly for panel and search picks.
+        final PersonalEmojiEventSink personalEmojiLearning = PersonalEmojiLearning.sinkFor(
+                this, this::activeDictionarySubtype, this::mayLearnPersonalWords);
+        mPersonalEmojiLearningSink = personalEmojiLearning;
+        mSuggestionsController.setPersonalEmojiSink(new PersonalEmojiSink() {
+            @Override
+            public void noteObservation(final String contextWord, final String emojiSequence) {
+                personalEmojiLearning.noteObservation(contextWord, emojiSequence);
+            }
+
+            @Override
+            public void noteUse(final String contextWord, final String emojiSequence) {
+                personalEmojiLearning.noteUse(contextWord, emojiSequence);
+            }
+
+            @Override
+            public void onInputFinished() {
+                personalEmojiLearning.onInputFinished();
+            }
+        });
+        // Feature C, the read side: the learned emoji outranks the static table for the strip's
+        // tail cell. The subtype is resolved per QUERY — the resolver outlives any layout switch —
+        // and the gate is read live off the setting on every lookup, exactly like the bigram
+        // source wired into the engines above. Reads are never gated by incognito.
+        mSuggestionsController.setPersonalEmojiSource(new PersonalEmojiSource() {
+            @Override
+            public String emojiFor(final String normalizedWord) {
+                final String subtypeId = activeDictionarySubtype();
+                if (subtypeId == null) {
+                    return null;
+                }
+                return PersonalEmojiDictionaries.sourceFor(LatinIME.this, subtypeId,
+                        () -> Settings.readPersonalDictionaryEnabled(mDevicePrefs))
+                        .emojiFor(normalizedWord);
+            }
+
+            @Override
+            public boolean isEmpty() {
+                // A per-query resolver has no fixed emptiness: every lookup answers live.
+                return false;
+            }
+        });
         // P7-3 (docs/GLIDE-PLAN.md): the glide gate — same live-read seam (since P7-6 INDEPENDENT
         // of the suggestions master, docs/ROADMAP-P7.md) — and the shift-state gate for the glide
         // commit's casing rule (shifted element of the alphabet keyboard = the word is committed
@@ -754,6 +821,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 controller.onPersonalDictionaryErased();
             }
         }));
+        // Feature C: erasing personal emoji on the settings screen unbinds the band through the
+        // very same path — a learned emoji that is still painted could otherwise be committed.
+        PersonalEmojiDictionaries.setErasureListener(() -> mHandler.post(() -> {
+            final SuggestionsController controller = mSuggestionsController;
+            if (controller != null) {
+                controller.onPersonalDictionaryErased();
+            }
+        }));
         // B2. The saved words could not be read, so the store set the file aside and the list the
         // user sees is empty through no act of theirs. Same hop for the same reason: the notice comes
         // from the store's worker.
@@ -763,6 +838,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // list is empty, never left to guess.
         PersonalBigramDictionaries.setQuarantineListener(
                 () -> mHandler.post(this::showPersonalBigramsUnreadableDialog));
+        // Feature C: the same notice for the learned-emoji file, with its own message.
+        PersonalEmojiDictionaries.setQuarantineListener(
+                () -> mHandler.post(this::showPersonalEmojiUnreadableDialog));
     }
 
     /**
@@ -1270,6 +1348,36 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
+     * The learned-emoji sibling of {@link #showPersonalDictionaryUnreadableDialog()} (Feature C):
+     * the emoji file could not be read, the store set it aside, and the user is told which list
+     * is empty. Same rules: the body names no word, no file and no cause, and the notice is spent
+     * only when the window token exists to show it over.
+     */
+    private void showPersonalEmojiUnreadableDialog() {
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView == null) {
+            return;
+        }
+        final IBinder windowToken = mainKeyboardView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        if (!PersonalEmojiDictionaries.consumeQuarantineNotice()) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setMessage(R.string.personal_emoji_unreadable)
+                .setPositiveButton(android.R.string.ok, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /**
      * Attaches a dialog to the IME window exactly the way the subtype picker does. Without the
      * window token and the attached-dialog type the window manager refuses a dialog owned by an
      * input method; without FLAG_ALT_FOCUSABLE_IM the keyboard and the dialog fight over input.
@@ -1503,6 +1611,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         PersonalBigramDictionaries.setErasureListener(null);
         PersonalBigramDictionaries.setQuarantineListener(null);
         PersonalBigramDictionaries.setContextMembershipProbe(null);
+        PersonalEmojiDictionaries.setErasureListener(null);
+        PersonalEmojiDictionaries.setQuarantineListener(null);
         if (mSuggestionsController != null) {
             mSuggestionsController.onDestroy();
         }
@@ -1759,6 +1869,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (PersonalBigramDictionaries.hasPendingQuarantineNotice()) {
             // P1: the pairs file has its own pending notice and its own message.
             mHandler.post(this::showPersonalBigramsUnreadableDialog);
+        }
+        if (PersonalEmojiDictionaries.hasPendingQuarantineNotice()) {
+            // Feature C: the learned-emoji file has its own pending notice and its own message.
+            mHandler.post(this::showPersonalEmojiUnreadableDialog);
         }
 
         if (TRACE) Debug.startMethodTracing("/data/trace/latinime");
@@ -2284,11 +2398,41 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * An emoji was inserted from the panel (a grid tap, including a tap inside the Recent tab). The
-     * text was already committed through {@link #onTextInput(String)}; this records the use of the
-     * sequence in the recent-emoji list. Recording is gated and serialized inside the controller.
+     * An emoji was inserted from the panel (a grid tap, including a tap inside the Recent tab) or
+     * from the emoji search. The text was already committed; this records the use of the sequence
+     * in the recent-emoji list. Recording is gated and serialized inside the controller. The
+     * strip's emoji tail cell arrives at {@link #onStripEmojiInserted} instead — see it for why.
      */
     public void onEmojiInserted(final String sequence) {
+        if (mEmojiPanelController != null) {
+            mEmojiPanelController.onEmojiInserted(sequence);
+        }
+        // Feature C: a panel or search pick also teaches the personal (word, emoji) co-usage. The
+        // word is read from the live editor cache — the committed emoji is its tail by now, so the
+        // word before it is the co-usage context ("сәләм ☀️" → сәләм; "☀️" alone or a pick with
+        // no word before it teaches nothing). The strip's tail cell deliberately does NOT come
+        // through here: it reaches the same sink through the controller's PersonalEmojiSink seam
+        // (see setEmojiInsertionSink in setUpSuggestionsController), with the band's own context
+        // word — routing it through both would count one tap twice. The sink's own predicate
+        // decides whether anything may be learned at all (incognito included), so no gate here.
+        final PersonalEmojiEventSink sink = mPersonalEmojiLearningSink;
+        if (sink != null) {
+            final String word = EmojiTextUtils.extractContextBeforeEmoji(
+                    mInputLogic.mConnection.getCachedTextBeforeCursor());
+            if (word != null) {
+                sink.noteObservation(word, sequence);
+            }
+        }
+    }
+
+    /**
+     * The strip's emoji tail cell was tapped and committed (B2): records the sequence in the
+     * recent-emoji list exactly like a panel or search pick — and does NOTHING else. The personal
+     * co-usage half of that same tap arrives through the controller's own PersonalEmojiSink seam,
+     * which knows the band's bound context word; counting it here as well (the committed text can
+     * still end with the emoji when no auto-space was appended) would count one pick twice.
+     */
+    private void onStripEmojiInserted(final String sequence) {
         if (mEmojiPanelController != null) {
             mEmojiPanelController.onEmojiInserted(sequence);
         }

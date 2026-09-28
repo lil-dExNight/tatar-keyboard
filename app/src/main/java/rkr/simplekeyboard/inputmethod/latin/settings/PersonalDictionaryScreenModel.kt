@@ -17,6 +17,7 @@ package rkr.simplekeyboard.inputmethod.latin.settings
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalWordFilter
 
 /**
@@ -50,9 +51,27 @@ internal class PersonalPairRow(
 }
 
 /**
- * Everything shown for one language: the word rows and the pair rows that survived the search and
- * the cap, plus the TRUE saved totals ([wordCount], [pairCount]) — the counts a section prints
- * must not shrink just because a query hid the rows or the cap stopped materializing them.
+ * One emoji row of the same screen: the normalized word (the store keeps no raw casing, so that is
+ * what the row shows) and the emoji cluster as the user picked it, with the keys to delete the
+ * entry by and the two counters — accepted suggestions ([usageCount]) and clean co-observations
+ * ([frequencyCount]).
+ */
+internal class PersonalEmojiRow(
+    val subtypeId: String,
+    val word: String,
+    val emoji: String,
+    val usageCount: Int,
+    val frequencyCount: Int,
+) {
+    /** Says nothing on purpose: this type carries the user's word. */
+    override fun toString(): String = "PersonalEmojiRow"
+}
+
+/**
+ * Everything shown for one language: the word rows, the pair rows and the emoji rows that survived
+ * the search and the cap, plus the TRUE saved totals ([wordCount], [pairCount], [emojiCount]) — the
+ * counts a section prints must not shrink just because a query hid the rows or the cap stopped
+ * materializing them.
  */
 internal class PersonalLanguageSection(
     val subtypeId: String,
@@ -60,6 +79,8 @@ internal class PersonalLanguageSection(
     val pairRows: List<PersonalPairRow>,
     val wordCount: Int,
     val pairCount: Int,
+    val emojiRows: List<PersonalEmojiRow> = emptyList(),
+    val emojiCount: Int = 0,
 )
 
 /**
@@ -87,36 +108,40 @@ internal class PersonalScreenContent(
  * 2026-09-25 the app carries no androidx dependency at all, and adding `recyclerview` costs
  * on the order of a hundred kilobytes against a phase budget of 25 600 B), so the list simply
  * must not grow without bound. At a cap of 200 it does
- * not matter at all whether those rows come from one language or two, from words or from pairs.
+ * not matter at all whether those rows come from one language or two, from words, pairs or emoji.
  *
  * Showing only the active subtype was rejected for a reason that is not convenience: "erase all"
  * deletes the files of EVERY language, so a screen that shows one language would silently erase what
- * is not on it. The same holds for the two stores: the pairs of a language sit in the same section
- * as its words, because a screen that showed one store and erased both would tell the same lie.
+ * is not on it. The same holds for the three stores: the pairs and the emoji of a language sit in
+ * the same section as its words, because a screen that showed one store and erased all three would
+ * tell the same lie.
  */
 internal object PersonalDictionaryScreenModel {
 
-    /** The maximum number of rows materialized at once, across all languages and both stores. */
+    /** The maximum number of rows materialized at once, across all languages and all three stores. */
     const val MAX_MATERIALIZED_ROWS = 200
 
     /**
-     * Builds the content for [dictionaries] and [bigrams] (both in the order the languages should
-     * appear) narrowed by [query].
+     * Builds the content for [dictionaries], [bigrams] and [emoji] (all in the order the languages
+     * should appear) narrowed by [query].
      *
      * Matching is on the NORMALIZED form of both sides, so a search for "гүзәл" finds a saved
      * "Гүзәл"; the row still shows the saved spelling. A pair matches when EITHER its context or
      * its successor does — a search that quietly covered only the words would read as "you have
-     * no such pair saved", which is a lie the user cannot detect. Filtering happens HERE, before a
-     * single View exists — that is what the contract means by "the search narrows the list before
-     * the views are built".
+     * no such pair saved", which is a lie the user cannot detect. An emoji entry matches on its
+     * word half — the emoji half is a cluster, not searchable text. Filtering happens HERE, before
+     * a single View exists — that is what the contract means by "the search narrows the list
+     * before the views are built".
      */
     fun build(
         dictionaries: List<Pair<String, PersonalDictionary>>,
         bigrams: List<Pair<String, PersonalBigramDictionary>>,
         query: String,
+        emoji: List<Pair<String, PersonalEmojiDictionary>> = emptyList(),
     ): PersonalScreenContent {
         val normalizedQuery = PersonalWordFilter.normalize(query)
         val bigramsBySubtype = bigrams.toMap()
+        val emojiBySubtype = emoji.toMap()
         var total = 0
         var remaining = MAX_MATERIALIZED_ROWS
         val sections = ArrayList<PersonalLanguageSection>(dictionaries.size)
@@ -161,14 +186,34 @@ internal object PersonalDictionaryScreenModel {
                     ),
                 )
             }
-            if (wordRows.isNotEmpty() || pairRows.isNotEmpty()) {
+            val emojiRows = ArrayList<PersonalEmojiRow>()
+            val learned = emojiBySubtype[subtypeId] ?: PersonalEmojiDictionary.EMPTY
+            // Ordered by the entry key ascending: word groups stay together, emoji sorted inside
+            // each — the readable order for a list of "word → emoji" rows.
+            for (index in 0 until learned.size) {
+                val word = learned.wordAt(index)
+                if (normalizedQuery.isNotEmpty() && !word.contains(normalizedQuery)) continue
+                total++
+                if (remaining <= 0) continue
+                remaining--
+                emojiRows.add(
+                    PersonalEmojiRow(
+                        subtypeId, word, learned.emojiAt(index),
+                        learned.usageCountAt(index), learned.frequencyCountAt(index),
+                    ),
+                )
+            }
+            if (wordRows.isNotEmpty() || pairRows.isNotEmpty() || emojiRows.isNotEmpty()) {
                 sections.add(
-                    PersonalLanguageSection(subtypeId, wordRows, pairRows, dictionary.size, pairs.size),
+                    PersonalLanguageSection(
+                        subtypeId, wordRows, pairRows, dictionary.size, pairs.size,
+                        emojiRows, learned.size,
+                    ),
                 )
             }
         }
 
-        val shown = sections.sumOf { it.wordRows.size + it.pairRows.size }
+        val shown = sections.sumOf { it.wordRows.size + it.pairRows.size + it.emojiRows.size }
         return PersonalScreenContent(sections, shown, total)
     }
 }

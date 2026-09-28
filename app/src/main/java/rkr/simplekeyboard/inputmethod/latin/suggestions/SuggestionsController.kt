@@ -22,6 +22,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramPreparationResult
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
@@ -62,11 +63,40 @@ interface StripSurface {
      */
     fun setEmphasizedCell(cell: Int) {}
 
-    /** Make the strip VISIBLE with no words (empty band), keeping its reserved 40dp height. */
+    /** Make the strip VISIBLE with no words (empty band), keeping its reserved 44dp height. */
     fun reserve()
 
     fun hideSuggestions()
     fun setTapListener(listener: SuggestionTapListener)
+}
+
+/**
+ * Receives the sequence of an emoji cell accepted from the strip's NEXT_WORD band, so the
+ * recent-emoji list learns it exactly as it learns a panel or search pick (B2). Word cells never
+ * reach it, and a tap the editor refused is not an insertion. Fired on the UI thread.
+ */
+fun interface EmojiInsertionSink {
+    fun onEmojiInserted(sequence: String)
+}
+
+/**
+ * Receives the (context word, emoji) events of the strip's emoji tail cell so the personal
+ * co-usage store can learn them (feature C). [noteObservation] fires on every committed emoji cell
+ * of a NEXT_WORD band; [noteUse] fires ADDITIONALLY when the tapped cell is exactly what the
+ * learned source itself offered for that word (the acceptance half of the pinned ranking);
+ * [onInputFinished] is the session-end flush boundary shared with the word and pair sinks. All
+ * calls are on the UI thread; what actually persists — and whether anything may — is the store
+ * side's decision, under the learning predicate the sink is built with. The
+ * one-abstract-plus-defaults shape mirrors
+ * [rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink]: a listener that
+ * only cares about observations stays a lambda.
+ */
+fun interface PersonalEmojiSink {
+    fun noteObservation(contextWord: String, emojiSequence: String)
+
+    fun noteUse(contextWord: String, emojiSequence: String) {}
+
+    fun onInputFinished() {}
 }
 
 /**
@@ -377,6 +407,23 @@ class SuggestionsController internal constructor(
     /** Set the moment the one-per-process load is requested; a failure is not retried. */
     private var emojiPreparationRequested: Boolean = false
 
+    /** Records an accepted emoji cell in the recents (B2); null — no recording — until wired. */
+    private var emojiInsertionSink: EmojiInsertionSink? = null
+
+    /**
+     * Learns the (context word, emoji) co-usage of an accepted emoji tail cell and flushes it at
+     * the session boundary (feature C); null — no learning — until wired.
+     */
+    private var personalEmojiSink: PersonalEmojiSink? = null
+
+    /**
+     * The learned word→emoji source consulted BEFORE the static table for the tail cell (feature
+     * C); null — static only — until wired. Read live on every band fill and on the tap that
+     * decides [PersonalEmojiSink.noteUse]: the personal-dictionary gate lives inside the source,
+     * and the incognito pause never gates a READ (writes only), exactly like the words and pairs.
+     */
+    private var personalEmojiSource: PersonalEmojiSource? = null
+
     // --- Sentence-start state (P4, docs/TT-SUGGESTIONS.md; per-language since P3b,
     // docs/ROADMAP-P1.md). The exact emoji-suggest shape, keyed by language: a source is
     // immutable once loaded, the band carries no sentence-start state of its own beyond the
@@ -407,6 +454,21 @@ class SuggestionsController internal constructor(
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
     fun setPairCompletionSink(sink: PairCompletionSink) {
         runMachine.pairCompletionSink = sink
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setEmojiInsertionSink(sink: EmojiInsertionSink) {
+        emojiInsertionSink = sink
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setPersonalEmojiSink(sink: PersonalEmojiSink) {
+        personalEmojiSink = sink
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setPersonalEmojiSource(source: PersonalEmojiSource) {
+        personalEmojiSource = source
     }
 
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
@@ -604,6 +666,9 @@ class SuggestionsController internal constructor(
         // and pending hashes, once, and only if something changed. The pair store (P1) flushes at
         // the same boundary and under the same rule.
         runMachine.onInputFinished()
+        // The personal-emoji store (feature C) flushes at the same boundary and under the same
+        // rule; the sink itself decides whether anything may be written at all.
+        personalEmojiSink?.onInputFinished()
         sessionId++
         displayedPrefix = null
         displayedContextWord = null
@@ -1445,6 +1510,11 @@ class SuggestionsController internal constructor(
      * and a word without a mapping all look exactly alike from the strip — the band shows what it
      * would have shown anyway. The FIRST eligible miss is what starts the one-per-process
      * background load, so a user who never turns the toggle on never reads the asset at all.
+     *
+     * Feature C: the user's own learned co-usage outranks the static table for this one cell —
+     * the personal source answers first, the static table only when it has nothing. The learned
+     * read is live and is NOT gated by incognito (the pause closes writes only, exactly like the
+     * words and pairs read paths); its gate is the personal-dictionary setting inside the source.
      */
     private fun emojiCandidate(contextWord: String): String? {
         if (!emojiSuggestGate.isOn()) return null
@@ -1455,10 +1525,12 @@ class SuggestionsController internal constructor(
             // published the source by the time the call returns.
             maybePrepareEmojiSuggest()
         }
+        val normalized = TatarWordUtils.normalizeForLookup(contextWord)
+        personalEmojiSource?.emojiFor(normalized)?.let { return it }
         val source = emojiSource ?: return null
         return source.emojiFor(
             EmojiSuggestIndex.assetLanguageOf(language),
-            TatarWordUtils.normalizeForLookup(contextWord),
+            normalized,
         )
     }
 
@@ -2046,7 +2118,7 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         requestSessionId = NO_SESSION
         // P7-6: the band is the suggestions surface — with the master off a rejected glide
-        // request must not summon an empty 40dp band either.
+        // request must not summon an empty 44dp band either.
         if (eligible) strip.reserve() else strip.hideSuggestions()
     }
 
@@ -2418,6 +2490,29 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
+                // B2: an accepted emoji tail cell is an emoji insertion like a panel or search
+                // pick — report it so the recent-emoji list learns it. Word cells never reach the
+                // sink: only the letter-free tail cell of a NEXT_WORD band reads as an emoji cell,
+                // and a refused commit above never gets here at all.
+                if (isEmojiCell(suggestion)) {
+                    emojiInsertionSink?.onEmojiInserted(suggestion)
+                    // Feature C: the same pick teaches the personal (word, emoji) co-usage —
+                    // always as an observation, and additionally as a USE when the tapped cell is
+                    // exactly what the learned source itself offered for this context (the
+                    // acceptance half of the pinned ranking). The learned lookup runs here, at tap
+                    // time, rather than being remembered from the fill: stateless, so no stale
+                    // remembered answer can ever bump the wrong entry. A sentence-start band
+                    // carries no word to learn against, and it never shows an emoji cell anyway.
+                    val personalSink = personalEmojiSink
+                    if (personalSink != null && context.isNotEmpty()) {
+                        personalSink.noteObservation(context, suggestion)
+                        val offered =
+                            personalEmojiSource?.emojiFor(TatarWordUtils.normalizeForLookup(context))
+                        if (offered == suggestion) {
+                            personalSink.noteUse(context, suggestion)
+                        }
+                    }
+                }
                 // P1: an accepted NEXT_WORD cell backed by a learned pair bumps that pair's usage
                 // counter (the other half of the pinned usage-then-frequency ranking). The sink
                 // decides whether the cell IS a learned pair — a static successor, a word form or

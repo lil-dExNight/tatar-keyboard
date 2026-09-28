@@ -24,8 +24,8 @@ import org.junit.Test
 /**
  * U7 of Phase 2 (docs/ROADMAP-P2.md): the pairs half of the "Personal dictionary" screen —
  * the learned word pairs listed per language ("A → B", usage count), per-pair delete, per-language
- * "Clear all", the global erase covering both stores, and the quarantine card for an unreadable
- * pairs file.
+ * "Clear all", the global erase covering all three stores, and the quarantine card for an
+ * unreadable pairs file.
  *
  * The store half of every mutation named here is exercised for real in `PersonalBigramStoreWriteTest`
  * and `PersonalQuarantineRecoveryTest`. What is left is the controller wiring and the Activity,
@@ -100,15 +100,18 @@ class PersonalBigramScreenSourceContractTest {
         val clearPairs = bodyOf(host, "private fun showClearPersonalPairsDialog(", "\n    /**")
         assertTrue("the destructive action asks first",
             clearPairs.contains("R.string.personal_dictionary_clear_pairs_confirm"))
-        // And the global erase now covers BOTH stores — an "erase everything" that left the pairs
-        // behind would read as a lie the predictions keep contradicting.
+        // And the global erase now covers ALL THREE stores — an "erase everything" that left the
+        // pairs or the learned emoji behind would read as a lie the suggestions keep contradicting.
         val erase = bodyOf(host, "private fun showErasePersonalDictionaryDialog(", "\n    /**")
         assertTrue("the words half", erase.contains("controller.eraseAll(subtypeIds)"))
         assertTrue("and the pairs half", erase.contains("pairController.eraseAll(subtypeIds)"))
+        assertTrue("and the emoji third", erase.contains("emojiController.eraseAll(subtypeIds)"))
         assertTrue("reported as one honest answer",
-            erase.contains("afterPersonalMutation(wordsErased && pairsErased,"))
-        assertTrue("with both quarantine cards re-read",
-            erase.contains("personalQuarantines = null") && erase.contains("personalPairQuarantines = null"))
+            erase.contains("afterPersonalMutation(wordsErased && pairsErased && emojiErased,"))
+        assertTrue("with all three quarantine cards re-read",
+            erase.contains("personalQuarantines = null")
+                && erase.contains("personalPairQuarantines = null")
+                && erase.contains("personalEmojiQuarantines = null"))
     }
 
     @Test

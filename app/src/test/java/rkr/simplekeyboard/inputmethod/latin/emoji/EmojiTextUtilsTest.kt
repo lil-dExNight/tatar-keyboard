@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 
 import java.text.Normalizer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class EmojiTextUtilsTest {
@@ -204,5 +205,86 @@ class EmojiTextUtilsTest {
         builder.appendCodePoint(0xE007F)
         assertEquals(44, builder.length)
         assertEquals(0, length(builder.toString()))
+    }
+
+    // --- extractContextBeforeEmoji (feature C): the word a picked emoji was co-used with. ---
+    // ☀️ = U+2600 U+FE0F; 😊 = U+1F60A (a surrogate pair).
+
+    private fun context(text: String): String? = EmojiTextUtils.extractContextBeforeEmoji(text)
+
+    @Test
+    fun aWordThenSpaceThenEmojiYieldsTheWord() {
+        assertEquals("сәләм", context("сәләм " + seq(0x2600, 0xFE0F)))
+    }
+
+    @Test
+    fun anEmojiHuggingItsWordYieldsTheWord() {
+        assertEquals("сәләм", context("сәләм" + seq(0x2600, 0xFE0F)))
+    }
+
+    @Test
+    fun anEmojiAloneYieldsNull() {
+        assertNull(context(seq(0x2600, 0xFE0F)))
+    }
+
+    @Test
+    fun aMultiEmojiRunIsOneBoundary() {
+        // Consecutive clusters are peeled as one: the pick still belongs to the same word.
+        assertEquals("сәләм", context("сәләм " + seq(0x2600, 0xFE0F) + seq(0x1F60A)))
+    }
+
+    @Test
+    fun aMultiEmojiRunHuggingItsWordIsOneBoundary() {
+        assertEquals("сәләм", context("сәләм" + seq(0x2600, 0xFE0F) + seq(0x1F60A)))
+    }
+
+    @Test
+    fun emptyTextYieldsNull() {
+        assertNull(context(""))
+    }
+
+    @Test
+    fun noTrailingEmojiYieldsNull() {
+        assertNull(context("сәләм "))
+        assertNull(context("сәләм"))
+    }
+
+    @Test
+    fun emojiAfterNothingButSpaceYieldsNull() {
+        assertNull(context(" " + seq(0x2600, 0xFE0F)))
+    }
+
+    @Test
+    fun nonFinalPunctuationBetweenWordAndEmojiKeepsTheWord() {
+        // «сәләм, ☀️»: the comma run is transparent to the NEXT_WORD context rule.
+        assertEquals("сәләм", context("сәләм, " + seq(0x2600, 0xFE0F)))
+    }
+
+    @Test
+    fun sentenceFinalPunctuationBetweenWordAndEmojiYieldsNull() {
+        // «сәләм. ☀️»: a sentence boundary resets the context, exactly like the NEXT_WORD rule.
+        assertNull(context("сәләм. " + seq(0x2600, 0xFE0F)))
+    }
+
+    @Test
+    fun anEarlierSpaceSeparatedEmojiBreaksTheChain() {
+        // «сәләм ☀️ 😊»: the peel stops at the space, and what stands before the space run is an
+        // emoji, not a word — fail-closed, nothing is learned.
+        assertNull(context("сәләм " + seq(0x2600, 0xFE0F) + " " + seq(0x1F60A)))
+    }
+
+    @Test
+    fun theWordIsReturnedRawAndCasingIsKept() {
+        // Normalization is the store's business; the extractor hands the word over exactly as it
+        // stands in the editor.
+        assertEquals("Йөрәк", context("Йөрәк " + seq(0x2600, 0xFE0F)))
+    }
+
+    @Test
+    fun aCompositeClusterIsOneBoundary() {
+        // 👨‍👩‍👦 (ZWJ sequence) peels as one cluster, exposing the word before it.
+        val family = seq(0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F466)
+        assertEquals("сәләм", context("сәләм " + family))
+        assertNull(context(family))
     }
 }

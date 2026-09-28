@@ -16,6 +16,8 @@
 
 package rkr.simplekeyboard.inputmethod.latin.emoji
 
+import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
+
 /**
  * Pure, Android-free text helper that measures the trailing emoji grapheme cluster so a single
  * backspace can delete it whole.
@@ -25,10 +27,12 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
  * from pasted content. Leaving a lone variation selector, half of a flag, or a base stripped of its
  * skin-tone modifier behind is exactly the "emoji fragment" defect this function exists to prevent.
  *
- * The single public entry point runs on the keystroke path, including 50 ms backspace auto-repeat,
+ * The cluster measurement runs on the keystroke path, including 50 ms backspace auto-repeat,
  * so it allocates nothing: it walks the [CharSequence] by index with [Character.codePointBefore],
  * never taking a substring, a regex, or a collection. It reads only the text it is handed, never
- * logs it, and keeps no copy of it.
+ * logs it, and keeps no copy of it. The second public entry point, [extractContextBeforeEmoji],
+ * runs once per emoji PICK — a user-paced event off the keystroke path — and borrows the same
+ * measurement.
  */
 object EmojiTextUtils {
 
@@ -70,12 +74,19 @@ object EmojiTextUtils {
      * sequence closed by U+E007F. Anything longer than [MAX_CLUSTER_CHARS] returns `0`.
      */
     @JvmStatic
-    fun trailingEmojiClusterLength(text: CharSequence): Int {
-        val length = text.length
-        if (length == 0) return 0
+    fun trailingEmojiClusterLength(text: CharSequence): Int =
+        trailingEmojiClusterLengthEndingAt(text, text.length)
+
+    /**
+     * The [trailingEmojiClusterLength] measurement of the prefix `text[0, end)` — the identical
+     * walk, bounded so a caller peeling a RUN of trailing clusters never re-reads the tail it
+     * already stripped.
+     */
+    private fun trailingEmojiClusterLengthEndingAt(text: CharSequence, end: Int): Int {
+        if (end == 0) return 0
         // Recognise the emoji element that ends the text. A negative result means the tail is
         // ordinary text, so we hand deletion straight back to the code-point path.
-        var start = emojiElementStart(text, length)
+        var start = emojiElementStart(text, end)
         if (start < 0) return 0
         // Walk back over any ZWJ-joined elements sitting in front of it (couples, families, roles).
         while (start >= 1 && text[start - 1].code == ZWJ) {
@@ -83,11 +94,49 @@ object EmojiTextUtils {
             // An orphan ZWJ with no emoji element before it is left in place with its joiner.
             if (previous < 0) break
             start = previous
-            if (length - start > MAX_CLUSTER_CHARS) return 0
+            if (end - start > MAX_CLUSTER_CHARS) return 0
         }
-        val clusterLength = length - start
+        val clusterLength = end - start
         if (clusterLength > MAX_CLUSTER_CHARS) return 0
         return clusterLength
+    }
+
+    /**
+     * The word an emoji pick was co-used with, read from the text before the cursor (feature C —
+     * personal word→emoji learning), or null when there is none. The trailing emoji RUN is peeled
+     * first: a pick made right after another emoji still belongs to the same word, so consecutive
+     * clusters count as one boundary by design ("сәләм ☀️😊" → сәләм), and a text holding nothing
+     * but emoji yields null.
+     *
+     * The word itself is read by the two rules the suggestion engine uses, chosen by what the
+     * remainder ends with: whitespace means the NEXT_WORD context rule
+     * ([TatarWordUtils.extractNextWordContext] — a run of U+0020, a non-final punctuation run
+     * transparent, anything else silent), anything else means the emoji hugs its word and the plain
+     * trailing-word rule applies ([TatarWordUtils.extractTrailingWord], "сәләм☀️" → сәләм).
+     *
+     * Unlike the lookup path there is no cache provenance to consult — the helper sees only the
+     * text it is handed — so a word at the very start of the text is taken as whole (the same
+     * stance [TatarWordUtils.extractTrailingWord] has always taken). A word the editor cache
+     * truncated could at worst enter the pending counters, and two IDENTICAL truncated observations
+     * of one (word, emoji) pair cannot recur from a window that slides with every keystroke, so
+     * such a fragment can never graduate into the store.
+     */
+    @JvmStatic
+    fun extractContextBeforeEmoji(text: CharSequence): String? {
+        var end = text.length
+        while (true) {
+            val cluster = trailingEmojiClusterLengthEndingAt(text, end)
+            if (cluster == 0) break
+            end -= cluster
+        }
+        if (end == text.length || end == 0) return null
+        val remainder = text.subSequence(0, end)
+        val word = if (remainder[remainder.length - 1].isWhitespace()) {
+            TatarWordUtils.extractNextWordContext(remainder, cacheReachedTextStart = true)
+        } else {
+            TatarWordUtils.extractTrailingWord(remainder)
+        }
+        return word.ifEmpty { null }
     }
 
     /**

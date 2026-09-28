@@ -16,6 +16,10 @@
 # TT-TYPO-NEXT Phase A: the сәләм probe is extended by a second cell-1 tap that
 # proves the strip shows predictions for the just-committed word right after
 # the first tap, without waiting for a keystroke.
+# Feature C (2026-09-28): the learned-emoji-tt probe — two (word, emoji) co-usages
+# inserted through the emoji SEARCH teach the personal store, then the strip's
+# tail cell must offer the learned ☀️ over the static 🌅 for иртә. Details at
+# the probe below.
 #
 # Флаги:
 #   --avd <имя>      AVD (по умолчанию tt_suggest_a14)
@@ -721,6 +725,180 @@ else
     result FAIL emoji-panel "поле до/после: '$before_emoji' → '$after_emoji'"
 fi
 SHOT smoke-final.png
+
+# ── learned-emoji-tt (feature C, 2026-09-28): a learned word→emoji pair leads the strip tail ──
+# Two clean observations of one (word, emoji) co-usage graduate the personal pair
+# (PersonalEmojiStore.LEARN_THRESHOLD = 2), and the learned emoji then outranks the static
+# table for the strip's tail cell (SuggestionsController consults the personal source first).
+# Probe: type «хәйерле иртә» + space on the tt layout — the static table maps иртә → 🌅
+# (emoji_suggest_v1.txt) — then insert ☀️ through the emoji SEARCH (panel → search pill →
+# query «кояш» → the ☀️ result cell), twice; on the third «хәйерле иртә» + space the tail
+# cell must commit ☀️, not 🌅.
+#
+# Mechanics (calibrated 2026-09-28 on tt_suggest_a14, 1080×2280):
+#   - the panel's search pill is centred at (0.5, 0.6522); with a query the search bands are
+#     100dp tall where the strip was, the result row centred at y≈0.5908; «кояш» ranks ☀️
+#     fifth (keyword bucket in asset order: 😎 🌻 🌅 🌇 ☀️ …), cell centre x≈0.6157;
+#   - after a pick the search stays open; navigating BACK out of the panel/search can wedge
+#     the IME window on this AVD (drawn but touch-dead: WMS has it GONE while IMMS reports
+#     mIsInputViewShown=true — observed during calibration), and a BACK at the wrong moment
+#     closes SetupActivity itself, so each round REOPENS the activity instead of going back;
+#   - the first query letter doubles as the search-open check: routed into the search it
+#     never reaches the try-it field, while a missed pill tap lands on the panel grid (an
+#     emoji appears in the field) or on the letter keyboard (a composing letter does);
+#   - the probe's gates are seeded the same run-as way as the suggestions pref, but only at
+#     this point of the script: personal dictionary ON (default off) + emoji suggestions ON
+#     (default on — seeded explicitly so a reused AVD with it toggled off still runs), so
+#     every earlier probe runs with byte-identical prefs to before.
+if [ "$SUGGESTIONS" != on ]; then
+    result SKIP learned-emoji-tt "suggestions not enabled (non-debuggable package)"
+else
+    # force-stop first: a live process could re-flush its in-memory counters over the files
+    # the rm below deletes. Then the learned store goes (a reused AVD may carry one), the
+    # point-edit seeds the two gates, and the IME is re-selected (force-stop of the selected
+    # IME resets default_input_method — the same trap as at the top of the script).
+    SHELL am force-stop "$PKG" || true
+    sleep 1
+    # (run-as execs its command directly, without a shell — the glob needs an explicit sh -c.)
+    A shell "run-as $PKG sh -c 'rm -f /data/data/$PKG/no_backup/personal/personal-emoji-* /data/data/$PKG/no_backup/personal/salt-emoji.bin'" \
+        2>/dev/null || true
+    # Cross-run idempotence (the AVD disk persists across smoke runs): the probe's ☀️ picks
+    # land in the recent-emoji list, and a ☀️ top-recent would change what the emoji-panel
+    # probe's first-grid-cell tap commits on the NEXT run (its baseline expects 😀). The
+    # recents file is backed up here and put back in the epilogue below.
+    if A shell "run-as $PKG cat /data/data/$PKG/no_backup/recent_emoji_v1" \
+        > "$OUTDIR/recents-before-emoji-learn.bin" 2>/dev/null; then
+        RECENTS_SAVED=1
+    else
+        RECENTS_SAVED=0
+    fi
+    A shell "run-as $PKG cat $PREFS_PATH" 2>/dev/null | tr -d '\r' \
+        > "$OUTDIR/prefs-before-emoji-learn.xml" || true
+    python3 - "$OUTDIR/prefs-before-emoji-learn.xml" > "$OUTDIR/prefs-emoji-learn.xml" <<'PYEOF'
+import re
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+xml = source.read_text(encoding="utf-8") if source.is_file() else ""
+KEYS = ("pref_personal_dictionary", "pref_emoji_suggestions")
+
+for key in KEYS:
+    entry = f'<boolean name="{key}" value="true" />'
+    pattern = re.compile(rf'<boolean name="{key}" value="[^"]*" ?/>')
+    if pattern.search(xml):
+        xml = pattern.sub(entry, xml)
+    elif "</map>" in xml:
+        xml = xml.replace("</map>", f"    {entry}\n</map>", 1)
+    else:
+        xml = ""  # not parseable — write the minimal stub below
+        break
+if not xml:
+    xml = ("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n"
+           + "".join(f'    <boolean name="{key}" value="true" />\n' for key in KEYS)
+           + "</map>\n")
+sys.stdout.write(xml)
+PYEOF
+    A shell "run-as $PKG sh -c 'cat > $PREFS_PATH'" < "$OUTDIR/prefs-emoji-learn.xml" || true
+    SHELL ime enable "$IME_ID" >/dev/null 2>&1 || true
+    SHELL ime set "$IME_ID" >/dev/null 2>&1 || true
+    sleep 1
+
+    # Reopen SetupActivity, tap the try-it field, wait for the keyboard. The per-round
+    # restart is the probe's answer to the panel→BACK wedge described above.
+    refocus_tryit() {
+        SHELL am start --activity-clear-task -n "$PKG/$SETUP_ACTIVITY" >/dev/null 2>&1
+        sleep 3
+        local b x1 y1 x2 y2
+        b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+        if [ -n "$b" ]; then
+            read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
+            SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
+        else
+            TAPF 0.5 0.81
+        fi
+        local i
+        for i in $(seq 1 15); do
+            keyboard_shown && break
+            sleep 1
+        done
+        keyboard_shown || return 1
+        # The keyboard reports shown before its first frame takes touches (the first tap of
+        # a round was eaten without this settle — 2026-09-28 calibration).
+        sleep 2
+        return 0
+    }
+
+    # The ☀️ cluster (U+2600 U+FE0F) at the field's tail, literal or XML-escaped, spaces allowed.
+    SUN_TAIL_RE='(☀️|&#9728;(&#65039;)?) *$'
+    detail=""
+    for round in 1 2; do
+        refocus_tryit || { detail="keyboard did not come up before round $round"; break; }
+        type_word "$(tt_word_coords "хәйерле")"
+        TAPF ${SPACE%,*} ${SPACE#*,}
+        type_word "$(tt_word_coords "иртә")"
+        TAPF ${SPACE%,*} ${SPACE#*,}
+        sleep 1.5
+        f=$(field_text)
+        echo "$f" | grep -qE '^хәйерле иртә $' \
+            || { detail="round $round: phrase did not commit; field: '$f'"; break; }
+        LONGPRESSF ${COMMA%,*} ${COMMA#*,}
+        sleep 2
+        TAPF 0.5 0.6522          # the panel's search pill
+        sleep 3                  # first open per process loads the search index on a worker
+        before_k=$(field_text)
+        TAPF 0.3182 0.7206       # к — the search-open check (must not reach the field)
+        sleep 0.8
+        after_k=$(field_text)
+        [ "$after_k" = "$before_k" ] \
+            || { detail="round $round: the search did not open (the probe letter reached the field): '$after_k'"; break; }
+        type_word "$(tt_word_coords "ояш")"
+        sleep 1.5
+        SHOT "smoke-learned-emoji-search-$round.png"
+        TAPF 0.6157 0.5908       # the ☀️ result cell (5th for «кояш», asset order)
+        sleep 1.5
+        f=$(field_text)
+        echo "$f" | grep -qE "$SUN_TAIL_RE" \
+            || { detail="round $round: the search pick committed no ☀️; field: '$f'"; break; }
+    done
+    if [ -z "$detail" ]; then
+        refocus_tryit || detail="keyboard did not come up for the verification round"
+    fi
+    if [ -z "$detail" ]; then
+        type_word "$(tt_word_coords "хәйерле")"
+        TAPF ${SPACE%,*} ${SPACE#*,}
+        type_word "$(tt_word_coords "иртә")"
+        TAPF ${SPACE%,*} ${SPACE#*,}
+        sleep 2                  # the NEXT_WORD band (and the learned tail) is asynchronous
+        SHOT smoke-learned-emoji-band.png
+        TAPF ${STRIP_CELL3%,*} ${STRIP_CELL3#*,}
+        sleep 1
+        f=$(field_text)
+        if echo "$f" | grep -qE "$SUN_TAIL_RE"; then
+            result PASS learned-emoji-tt "learned ☀️ overrode the static 🌅 in the strip tail; field: '$f'"
+        else
+            detail="the tail cell committed no ☀️ (the static answer would be 🌅); field: '$f'"
+        fi
+    fi
+    [ -n "$detail" ] && result FAIL learned-emoji-tt "$detail"
+    # Epilogue: hand the AVD disk back as the probe found it — prefs without the two gates,
+    # recents without the probe's ☀️, no learned store — so the NEXT smoke run starts from
+    # the same state this one did. force-stop first: a live process would re-flush its
+    # in-memory state over the restored files.
+    SHELL am force-stop "$PKG" || true
+    sleep 1
+    A shell "run-as $PKG sh -c 'cat > $PREFS_PATH'" \
+        < "$OUTDIR/prefs-before-emoji-learn.xml" 2>/dev/null || true
+    if [ "$RECENTS_SAVED" = 1 ]; then
+        A shell "run-as $PKG sh -c 'cat > /data/data/$PKG/no_backup/recent_emoji_v1'" \
+            < "$OUTDIR/recents-before-emoji-learn.bin" 2>/dev/null || true
+    else
+        A shell "run-as $PKG rm -f /data/data/$PKG/no_backup/recent_emoji_v1" 2>/dev/null || true
+    fi
+    # (run-as execs its command directly, without a shell — the glob needs an explicit sh -c.)
+    A shell "run-as $PKG sh -c 'rm -f /data/data/$PKG/no_backup/personal/personal-emoji-* /data/data/$PKG/no_backup/personal/salt-emoji.bin'" \
+        2>/dev/null || true
+fi
 
 # ── crash-буфер ──
 A logcat -b crash -d > "$OUTDIR/logcat-crash.txt" 2>&1 || true

@@ -171,6 +171,14 @@ class SettingsHostActivity : Activity() {
     private var personalPairQuarantines: Map<String, PersonalQuarantineReport>? = null
 
     /**
+     * The emoji third of [personalQuarantines]: the same not-asked/asking/answered lifecycle, the
+     * same invalidation rule — every finished emoji mutation puts it back to null. The three maps
+     * are separate because the three stores quarantine independently; a language can hold a copy of
+     * its words, of its pairs, of its learned emoji, of any combination or of none.
+     */
+    private var personalEmojiQuarantines: Map<String, PersonalQuarantineReport>? = null
+
+    /**
      * Registered on the device-protected prefs exactly like
      * SubScreenFragment.onCreate, minus its backup request: E2b-3 disables
      * backup entirely, so the only job left here is to clear the keyboard
@@ -549,9 +557,10 @@ class SettingsHostActivity : Activity() {
 
     /**
      * The "Personal dictionary" screen (E4b, extended by U7 of Phase 2 — docs/ROADMAP-P2.md): the
-     * words AND the learned word pairs of EVERY language, grouped by language, with a search field,
+     * words, the learned word pairs AND the learned emoji of EVERY language, grouped by language,
+     * with a search field,
      * an "Add word…" row, a usage count on every row, a "Delete" action on each shown row, a
-     * per-language "Clear all" for each store and a global "Erase all" that covers both stores.
+     * per-language "Clear all" for each store and a global "Erase all" that covers all three stores.
      *
      * Fully usable with the setting off — erasing what was already saved must always be possible.
      * Only ADDING follows the setting, because the acceptance says that with the personal dictionary
@@ -571,10 +580,11 @@ class SettingsHostActivity : Activity() {
     private fun buildPersonalDictionaryScreen() {
         val controller = PersonalDictionaryScreenController(this)
         val pairController = PersonalBigramScreenController(this)
+        val emojiController = PersonalEmojiScreenController(this)
         val subtypeIds = personalSubtypeIds()
         val content = PersonalDictionaryScreenModel.build(
                 controller.sections(subtypeIds), pairController.sections(subtypeIds),
-                personalSearchQuery)
+                personalSearchQuery, emojiController.sections(subtypeIds))
 
         // U8: the pause is visible exactly where the learned content is managed — a small note,
         // not a dialog: the state is not an emergency, it is something the user asked for.
@@ -599,6 +609,7 @@ class SettingsHostActivity : Activity() {
 
         addPersonalQuarantineCards(controller, subtypeIds)
         addPersonalPairQuarantineCards(pairController, subtypeIds)
+        addPersonalEmojiQuarantineCards(emojiController, subtypeIds)
 
         if (content.totalCount == 0) {
             // Three states, not two. "Nothing saved yet" while the personal dictionary is ALREADY on
@@ -651,6 +662,21 @@ class SettingsHostActivity : Activity() {
                 })
                 addCard(rows, spacedFromPrevious = false)
             }
+            if (section.emojiRows.isNotEmpty()) {
+                val rows = ArrayList<View>()
+                rows.add(textRow(resources.getQuantityString(
+                        R.plurals.personal_emoji_count,
+                        section.emojiCount, section.emojiCount)))
+                rows.addAll(section.emojiRows.map { row ->
+                    usageRow(row.word + " → " + row.emoji, row.usageCount) {
+                        showForgetPersonalEmojiDialog(emojiController, row)
+                    }
+                })
+                rows.add(actionRow(R.string.personal_emoji_clear) {
+                    showClearPersonalEmojiDialog(emojiController, section.subtypeId)
+                })
+                addCard(rows, spacedFromPrevious = false)
+            }
         }
 
         if (content.isTruncated) {
@@ -665,7 +691,8 @@ class SettingsHostActivity : Activity() {
 
         if (content.totalCount > 0 || personalSearchQuery.isNotEmpty()) {
             addCard(listOf(actionRow(R.string.personal_dictionary_erase_all) {
-                showErasePersonalDictionaryDialog(controller, pairController, subtypeIds)
+                showErasePersonalDictionaryDialog(controller, pairController, emojiController,
+                        subtypeIds)
             }))
         }
     }
@@ -851,6 +878,81 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
+    /**
+     * The emoji third of [addPersonalQuarantineCards]: one card per language whose learned-emoji
+     * file could not be read and was set aside. Same rules: the count and the damage are printed in
+     * the same breath, restoring and discarding are two separate actions the user starts, and a
+     * copy that yielded nothing keeps its card because the bytes are still on the device. The read
+     * runs on the store's worker; the screen repaints when the answer arrives.
+     */
+    private fun addPersonalEmojiQuarantineCards(
+            controller: PersonalEmojiScreenController, subtypeIds: List<String>) {
+        val reports = personalEmojiQuarantines
+        if (reports == null) {
+            controller.quarantines(subtypeIds) { found ->
+                if (isFinishing || isDestroyed) return@quarantines
+                personalEmojiQuarantines = found
+                if (currentScreen == Screen.PERSONAL_DICTIONARY) {
+                    showScreen(Screen.PERSONAL_DICTIONARY)
+                }
+            }
+            return
+        }
+        // In the order the languages are listed, not the order the worker happened to answer in.
+        for (subtypeId in subtypeIds) {
+            val report = reports[subtypeId] ?: continue
+            val summary = when {
+                report.wordCount == 0 -> getString(R.string.personal_emoji_quarantine_none)
+                report.readToEnd -> resources.getQuantityString(
+                        R.plurals.personal_emoji_quarantine_whole,
+                        report.wordCount, report.wordCount)
+                else -> resources.getQuantityString(
+                        R.plurals.personal_emoji_quarantine_partial,
+                        report.wordCount, report.wordCount)
+            }
+            addSectionHeader(LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(subtypeId))
+            val rows = ArrayList<View>()
+            rows.add(inflateRow(R.layout.row_link,
+                    getString(R.string.personal_emoji_quarantine_title), summary).also {
+                it.findViewById<View>(R.id.row_chevron).visibility = View.GONE
+            })
+            if (report.wordCount > 0) {
+                rows.add(actionRow(R.string.personal_emoji_quarantine_restore) {
+                    controller.restoreQuarantine(subtypeId) { restored ->
+                        personalEmojiQuarantines = null
+                        afterPersonalMutation(restored,
+                                R.string.personal_emoji_quarantine_restore_failed)
+                    }
+                })
+            }
+            rows.add(actionRow(R.string.personal_emoji_quarantine_discard) {
+                showDiscardPersonalEmojiQuarantineDialog(controller, subtypeId)
+            })
+            addCard(rows)
+        }
+    }
+
+    private fun showDiscardPersonalEmojiQuarantineDialog(
+            controller: PersonalEmojiScreenController, subtypeId: String) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.personal_emoji_quarantine_discard)
+                .setMessage(R.string.personal_emoji_quarantine_discard_confirm)
+                .setPositiveButton(R.string.personal_dictionary_delete) { _, _ ->
+                    controller.discardQuarantine(subtypeId) { discarded ->
+                        personalEmojiQuarantines = null
+                        afterPersonalMutation(discarded,
+                                R.string.personal_emoji_quarantine_discard_failed)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
     /** Subtypes whose words the screen shows: every enabled one, in the order the system lists them. */
     private fun personalSubtypeIds(): List<String> =
             richImm.getEnabledSubtypes(true).map { it.locale }.distinct()
@@ -963,6 +1065,35 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
+     * The emoji third of [showForgetPersonalWordDialog]: the title shows the entry the way the row
+     * does — "word → emoji" — so the confirmation names exactly what is about to be gone. The
+     * deletion goes through the store's `forget`, which purges the quarantine copy with it: a
+     * forgotten entry is never resurrected by a later restore.
+     */
+    private fun showForgetPersonalEmojiDialog(
+            controller: PersonalEmojiScreenController, row: PersonalEmojiRow) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(getString(R.string.personal_emoji_forget_title,
+                        row.word, row.emoji))
+                .setPositiveButton(R.string.personal_dictionary_delete) { _, _ ->
+                    controller.removeEntry(row.subtypeId, row.word, row.emoji) { removed ->
+                        afterPersonalMutation(removed,
+                                R.string.personal_emoji_delete_failed)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    // The title names the saved word and emoji: the dialog window is secured
+                    // (2026-09-25 audit).
+                    DialogUtils.securePersonalContent(dialog)
+                    dialog.show()
+                }
+    }
+
+    /**
      * Per-language "Clear all words" (U7): confirmed, then routed through the store's `clearAll`,
      * which also takes the pending counters, the salt and the quarantine copy of that language —
      * so the card above is re-read rather than repainted from an answer that is now out of date.
@@ -1012,26 +1143,54 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
+    /** The emoji third of [showClearPersonalWordsDialog]. */
+    private fun showClearPersonalEmojiDialog(
+            controller: PersonalEmojiScreenController, subtypeId: String) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.personal_emoji_clear)
+                .setMessage(getString(R.string.personal_emoji_clear_confirm,
+                        LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(subtypeId)))
+                .setPositiveButton(R.string.personal_dictionary_erase_action) { _, _ ->
+                    controller.clearEmoji(subtypeId) { cleared ->
+                        personalEmojiQuarantines = null
+                        afterPersonalMutation(cleared,
+                                R.string.personal_dictionary_erase_failed)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
     private fun showErasePersonalDictionaryDialog(
             controller: PersonalDictionaryScreenController,
-            pairController: PersonalBigramScreenController, subtypeIds: List<String>) {
+            pairController: PersonalBigramScreenController,
+            emojiController: PersonalEmojiScreenController, subtypeIds: List<String>) {
         currentDialog?.dismiss()
         currentDialog = AlertDialog.Builder(this)
                 .setTitle(R.string.personal_dictionary_erase_all)
                 .setMessage(R.string.personal_dictionary_erase_confirm)
                 .setPositiveButton(R.string.personal_dictionary_erase_action) { _, _ ->
-                    // U7: "erase all" covers BOTH stores — a global erasure that left the learned
-                    // pairs behind would read as "everything is gone" while the predictions kept
-                    // coming. The two halves answer independently and the screen reports success
-                    // only when every file of every language is really gone.
+                    // U7: "erase all" covers ALL THREE stores — a global erasure that left the
+                    // learned pairs or the learned emoji behind would read as "everything is gone"
+                    // while the suggestions kept coming. The three halves answer independently and
+                    // the screen reports success only when every file of every language is really
+                    // gone.
                     controller.eraseAll(subtypeIds) { wordsErased ->
                         pairController.eraseAll(subtypeIds) { pairsErased ->
-                            // Erasing takes the copies with it, so both cards are re-read rather
-                            // than repainted from an answer that is now out of date.
-                            personalQuarantines = null
-                            personalPairQuarantines = null
-                            afterPersonalMutation(wordsErased && pairsErased,
-                                    R.string.personal_dictionary_erase_failed)
+                            emojiController.eraseAll(subtypeIds) { emojiErased ->
+                                // Erasing takes the copies with it, so all three cards are re-read
+                                // rather than repainted from an answer that is now out of date.
+                                personalQuarantines = null
+                                personalPairQuarantines = null
+                                personalEmojiQuarantines = null
+                                afterPersonalMutation(wordsErased && pairsErased && emojiErased,
+                                        R.string.personal_dictionary_erase_failed)
+                            }
                         }
                     }
                 }

@@ -137,7 +137,8 @@ class IncognitoModeTest {
         // nothing else: incognito is a pause on WRITES, never a hide on reads.
         val readGates = Regex("\\(\\) -> (Settings\\.\\w+\\(mDevicePrefs\\))")
             .findAll(ime).map { it.groupValues[1] }.toList()
-        assertEquals("both personal sources are gated, words and pairs", 2, readGates.size)
+        assertEquals("all three personal sources are gated: words, pairs and emoji",
+            3, readGates.size)
         for (gate in readGates) {
             assertEquals("the read gate is the personal-dictionary setting",
                 "Settings.readPersonalDictionaryEnabled(mDevicePrefs)", gate)

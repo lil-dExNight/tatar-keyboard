@@ -119,7 +119,7 @@
     <string name="personal_dictionary_pair_forget_title">Забыть «%1$s → %2$s»?</string>
     <string name="personal_dictionary_pair_delete_failed">Не удалось удалить пару. Она осталась в словаре.</string>
     <string name="personal_dictionary_erase_all">Стереть всё сохранённое</string>
-    <string name="personal_dictionary_erase_confirm">Удалить все слова и пары слов, сохранённые на этом устройстве, на всех языках? Это действие необратимо.</string>
+    <string name="personal_dictionary_erase_confirm">Удалить все слова, пары слов и изученные эмодзи, сохранённые на этом устройстве, на всех языках? Это действие необратимо.</string>
     <string name="personal_dictionary_erase_action">Стереть</string>
     <string name="personal_dictionary_empty">Пока ничего не сохранено. Набранные слова будут появляться здесь, когда личный словарь включён.</string>
     <string name="personal_dictionary_no_matches">Ничего не найдено.</string>
@@ -129,6 +129,7 @@
     <string name="personal_dictionary_erase_failed">Не удалось стереть всё. Часть сохранённых слов осталась на устройстве.</string>
     <string name="personal_dictionary_unreadable">Сохранённые слова не удалось прочитать, поэтому список пуст. Их копия сохранена \u2014 откройте «Сохранённые слова», чтобы вернуть то, что ещё читается.</string>
     <string name="personal_bigrams_unreadable">Изученные пары слов не удалось прочитать, поэтому предсказания по ним прекратятся. Их копия сохранена на этом устройстве.</string>
+    <string name="personal_emoji_unreadable">Изученные эмодзи не удалось прочитать, поэтому подсказки по ним прекратятся. Их копия сохранена на этом устройстве.</string>
     <string name="personal_dictionary_quarantine_title">Слова, которые не удалось прочитать</string>
     <plurals name="personal_dictionary_quarantine_partial">
         <item quantity="one">Можно вернуть %1$d слово. Остальная часть копии повреждена, её не восстановить.</item>
@@ -167,6 +168,35 @@
     <string name="personal_bigrams_quarantine_discard_confirm">Удалить копию пар слов, которые не удалось прочитать? Это действие необратимо.</string>
     <string name="personal_bigrams_quarantine_restore_failed">Не удалось вернуть пары. Они остались только в копии.</string>
     <string name="personal_bigrams_quarantine_discard_failed">Не удалось удалить копию. Она осталась на этом устройстве.</string>
+    <plurals name="personal_emoji_count">
+        <item quantity="one">%1$d изученный эмодзи</item>
+        <item quantity="few">%1$d изученных эмодзи</item>
+        <item quantity="many">%1$d изученных эмодзи</item>
+        <item quantity="other">%1$d изученных эмодзи</item>
+    </plurals>
+    <string name="personal_emoji_clear">Очистить все изученные эмодзи</string>
+    <string name="personal_emoji_clear_confirm">Удалить все изученные эмодзи (%1$s)? Это действие необратимо.</string>
+    <string name="personal_emoji_forget_title">Забыть «%1$s → %2$s»?</string>
+    <string name="personal_emoji_delete_failed">Не удалось удалить эмодзи. Он остался в словаре.</string>
+    <string name="personal_emoji_quarantine_title">Изученные эмодзи, которые не удалось прочитать</string>
+    <plurals name="personal_emoji_quarantine_partial">
+        <item quantity="one">Можно вернуть %1$d эмодзи. Остальная часть копии повреждена, её не восстановить.</item>
+        <item quantity="few">Можно вернуть %1$d эмодзи. Остальная часть копии повреждена, её не восстановить.</item>
+        <item quantity="many">Можно вернуть %1$d эмодзи. Остальная часть копии повреждена, её не восстановить.</item>
+        <item quantity="other">Можно вернуть %1$d эмодзи. Остальная часть копии повреждена, её не восстановить.</item>
+    </plurals>
+    <plurals name="personal_emoji_quarantine_whole">
+        <item quantity="one">Можно вернуть %1$d эмодзи.</item>
+        <item quantity="few">Можно вернуть %1$d эмодзи.</item>
+        <item quantity="many">Можно вернуть %1$d эмодзи.</item>
+        <item quantity="other">Можно вернуть %1$d эмодзи.</item>
+    </plurals>
+    <string name="personal_emoji_quarantine_none">Ни одного эмодзи вернуть не удаётся. Копия по-прежнему хранится на этом устройстве.</string>
+    <string name="personal_emoji_quarantine_restore">Вернуть эмодзи</string>
+    <string name="personal_emoji_quarantine_discard">Удалить копию</string>
+    <string name="personal_emoji_quarantine_discard_confirm">Удалить копию изученных эмодзи, которые не удалось прочитать? Это действие необратимо.</string>
+    <string name="personal_emoji_quarantine_restore_failed">Не удалось вернуть эмодзи. Они остались только в копии.</string>
+    <string name="personal_emoji_quarantine_discard_failed">Не удалось удалить копию. Она осталась на этом устройстве.</string>
     <string name="clear_recent_emoji">Очистить недавние эмодзи</string>
     <string name="clear_recent_emoji_confirm">Удалить все недавно использованные эмодзи, сохранённые на этом устройстве? Это действие нельзя отменить.</string>
     <string name="clear_recent_emoji_action">Очистить</string>

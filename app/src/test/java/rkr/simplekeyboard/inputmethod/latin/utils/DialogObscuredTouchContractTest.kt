@@ -55,9 +55,10 @@ class DialogObscuredTouchContractTest {
             javaBody(ime, "private void attachDialogToInputWindow")
                 .contains("DialogUtils.filterObscuredTouches(dialog)"),
         )
-        // Every dialog LatinIME shows is attached through it: 9 call sites plus the definition.
-        // (9th site 2026-09-23: the P1 personal-bigrams unreadable dialog, docs/ROADMAP-P2.md.)
-        assertEquals(10, ime.occurrencesOf("attachDialogToInputWindow("))
+        // Every dialog LatinIME shows is attached through it: 10 call sites plus the definition.
+        // (9th site 2026-09-23: the P1 personal-bigrams unreadable dialog, docs/ROADMAP-P2.md;
+        // 10th site 2026-09-28: the Feature C personal-emoji unreadable dialog, docs/EMOJI-LEARN.md.)
+        assertEquals(11, ime.occurrencesOf("attachDialogToInputWindow("))
     }
 
     @Test
