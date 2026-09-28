@@ -309,7 +309,7 @@ class SuggestionStripView @JvmOverloads constructor(
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         textPaint.getFontMetrics(fontMetrics)
         textBaseline = height / 2f - (fontMetrics.ascent + fontMetrics.descent) / 2f
-        // Just under the text's own descent line; the strip's 40dp leaves room below it.
+        // Just under the text's own descent line; the strip's 44dp leaves room below it.
         underlineY = textBaseline + fontMetrics.descent + underlineThicknessPx * 2f
         rebuildDisplaySuggestions()
         accessibilityHelper.invalidateRoot()

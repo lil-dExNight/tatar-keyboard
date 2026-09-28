@@ -33,6 +33,12 @@ package rkr.simplekeyboard.inputmethod.keyboard.internal;
 import java.util.HashMap;
 import java.util.Locale;
 
+/**
+ * Key-label texts per locale, maintained BY HAND — the generator that once produced this table
+ * is lost. Adding a locale or a layout requires synchronized edits here (a new TEXTS_ array and
+ * an sLocaleToTextsTableMap entry) and in SubtypeLocaleUtils (the sSupportedLocales list and the
+ * LAYOUT_ layout-set names).
+ */
 public final class KeyboardTextsTable {
     // Name to index map.
     private static final HashMap<String, Integer> sNameToIndexesMap = new HashMap<>();
