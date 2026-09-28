@@ -29,6 +29,19 @@ EmojiReload 1, GlideUi 2/2 per-method); interactive UAT — the four-cell band a
 successor row shown and tapped, the live glide preview caught mid-gesture, and a personal word's
 counter moved 1 → 2 on a glide commit (`build/device-uat-2026-09-28/`).
 
+**Released as 3.3.0 / versionCode 40 (2026-09-28, operator-commanded).** Commits `45bcd92f`
+(feat), `52f2664e` (docs), `33386c05` (release marker); tag `v3.3.0` pushed; CI green on the
+release commit (build + reproducible, main and tag runs). Artifact:
+`dist/tatar-keyboard-3.3.0.apk` — **1 792 586 B** (headroom 43.0 %), SHA-256
+`54364b1b864314ddfae05be491685d734eb5c05f457384beeb27d44ad80a0393`, v2-only, single signer
+`98ca6feb…42ad`; `release_check.sh --full` **17/17 PASS**; audit — `docs/APK-AUDIT-3.3.0.md`.
+**Operator-only remainder:** the GitHub Release object (this machine's `gh` is pull-only on the
+repo — confirmed by a 404 on the API create probe; publish via the web UI with
+`dist/release-notes-3.3.0.md` and exactly the dist/ file above), then the store upload
+(changelogs `40.txt` ×3 locales in place) and the IzzyOnDroid note. Follow-up recorded: the
+baseline-profile generator needs resource-id selectors (its text probe can't find the
+Tatar-default settings UI) and an emulator pin — the wave ships the 2026-09-25 profile.
+
 ---
 
 # HANDOFF — 3.2.0 SIGNED, gates 17/17, CI green again (2026-09-27)
