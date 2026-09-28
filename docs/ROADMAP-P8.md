@@ -104,6 +104,11 @@ which is why stage C's toast has a pin but no screenshot.
   emojiFilter)` now filters during the parse, with the glyph verdicts memoized per emoji, so the
   peak equals the steady state. Pin: `EmojiSuggestIndexFilteringTest` (5 tests, including "the
   probe is asked once per distinct emoji").
+  > **2026-09-28 footnote (backlog B3):** `EmojiSuggestIndex.MAX_RECORDS` was raised 4 096 → 8 192
+  > to match the packer guardrail `MAX_LINES = 8192` — the shipped table was down to <4% headroom.
+  > The 557 KB resident measurement stands (the table is unchanged at 3 976 records); the
+  > re-measurement ritual now lives in the `MAX_RECORDS` KDoc: re-measure per this C2 method and
+  > re-review the cap when the shipped table crosses 4 096 entries.
 - **C4 — dropped** by the operator (no four-cell strip; the Tatar table stays at K=3).
 - **C5 — decided under the budget-device criterion.** *Live per-MOVE scoring: rejected, no code* —
   one decode per gesture already measures p95 **50.03 ms** on the POCO C71 against the plan's

@@ -88,10 +88,16 @@ class EmojiSuggestIndex private constructor(
 
         /**
          * Hard cap on the parsed record count (2026-09-25 audit, F16, mirrors SentStartIndex):
-         * the packer ships under 4k entries, so tens of thousands mean junk — parsing stops at
-         * the cap instead of letting a corrupt asset grow the map without bound.
+         * it exists to stop a corrupt asset from growing the map without bound — parsing stops at
+         * the cap instead. 8192 aligns with the packer's own guardrail `MAX_LINES = 8192` in
+         * `scripts/emoji_suggest_pack.py`, so a table the packer would ship can never be truncated
+         * here. Resident cost is ~140 B/record (557 KB @ 3 976 records, docs/ROADMAP-P8.md C2), so
+         * the worst case is ~1.1 MB for an opt-in, idle-released feature. Raised 4096 -> 8192 on
+         * 2026-09-28 (backlog B3): the shipped table had crossed into <4% headroom. Re-measurement
+         * ritual: when the shipped table crosses 4 096 entries, re-measure resident memory per the
+         * ROADMAP-P8 C2 method and re-review this cap.
          */
-        private const val MAX_RECORDS = 4096
+        private const val MAX_RECORDS = 8192
 
         val EMPTY = EmojiSuggestIndex(emptyMap())
 

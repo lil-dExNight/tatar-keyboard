@@ -190,6 +190,13 @@ first.
 Pin: `EmojiSuggestIndexTest.theRecordCountIsCappedFailClosed` (5 000-line input → exactly 4 096
 entries, word0 kept, word4096 absent); the shipped-asset tests pass unchanged.
 
+> **2026-09-28 footnote (backlog B3):** `MAX_RECORDS` went 4 096 → 8 192, aligning with the
+> packer's own guardrail `MAX_LINES = 8192` in `scripts/emoji_suggest_pack.py`. The fail-closed
+> truncation semantics are unchanged (parsing stops at the cap keeping the FIRST records); the
+> shipped table is still 3 976 entries and still pinned exactly in
+> `EmojiSuggestIndexTest.theShippedAssetParsesAndAnswersItsControls`. The cap test now feeds
+> 9 000 lines and asserts exactly 8 192 entries (word8191 kept, word8192 absent).
+
 ## F17 — `SuggestionStripState.cellAt` NaN guard (fixed)
 
 A NaN coordinate passes every bounds comparison (all false) and fell through to the LAST cell —
