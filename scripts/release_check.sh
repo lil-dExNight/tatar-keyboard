@@ -97,9 +97,20 @@ if [ ! -d "$SDK_ROOT/build-tools" ]; then
     exit 1
 fi
 
+# B8 (2026-09-28): единый пин версии build-tools.
+source "$SCRIPT_DIR/build-tools-pin.sh"
+
 resolve_tool() { # <имя>
     local found
-    found=$(find "$SDK_ROOT/build-tools" -maxdepth 2 -name "$1" -type f | sort -V | tail -1)
+    # B8: read-only consumer (aapt2 dump / apksigner verify) — предпочитаем запиннованный
+    # каталог $TT_BUILD_TOOLS_PIN, а при его отсутствии откатываемся на старшую установленную
+    # версию: вывод dump/verify стабилен между версиями build-tools, байты APK здесь не
+    # производятся (в отличие от release_pack.sh, где откат запрещён).
+    if [ -d "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" ]; then
+        found=$(find "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" -maxdepth 2 -name "$1" -type f | sort -V | tail -1)
+    else
+        found=$(find "$SDK_ROOT/build-tools" -maxdepth 2 -name "$1" -type f | sort -V | tail -1)
+    fi
     if [ -z "$found" ]; then
         echo "ERROR: $1 не найден под $SDK_ROOT/build-tools" >&2
         exit 1
@@ -429,6 +440,113 @@ then
 else
     report FAIL artifact.tree_assets "ассеты расходятся с деревом, лог $TREE_ASSETS_LOG"
     cat "$TREE_ASSETS_LOG" >&2
+fi
+
+# --- 3d. критические ресурсы: keep.xml реально покрывает живые имена в APK ---------------------
+# B5 (2026-09-28): shrinkResources держится на app/src/main/res/raw/keep.xml, а ресурсы семейств
+# keyboard_layout_set_*/kbd_*/rows_*/rowkeys_*/row_* и строк locale_name_*/label_* грузятся
+# РЕФЛЕКСИВНО (KeyboardLayoutSet собирает "keyboard_layout_set_" + subtype.getKeyboardLayoutSet()
+# и зовёт getIdentifier; KeyboardTextsSet резолвит label_pause_key/label_wait_key;
+# LocaleResourceUtils — locale_name_*). Если keep.xml молча перестанет совпадать с реальными
+# именами (переименование файла, потерянный глоб), прореживание выбросит ресурс и заметит это
+# только запуск на устройстве. Гейт: из ДЕРЕВА перечисляем конкретные имена, покрываемые
+# семействами keep.xml, и требуем каждое в `aapt2 dump resources` кандидата. Обратного направления
+# (dump -> дерево) нет намеренно: дамп включает framework-записи android:*.
+# Отсутствие самого keep.xml — тоже FAIL (охрана охранника).
+
+CRIT_RES_LOG="$LOG_DIR/critical-resources.log"
+if python3 - "$APK" "$AAPT2" >"$CRIT_RES_LOG" 2>&1 <<'PYEOF'
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+apk_path, aapt2 = sys.argv[1], sys.argv[2]
+RES = Path("app/src/main/res")
+
+KEEP = RES / "raw" / "keep.xml"
+if not KEEP.is_file():
+    raise SystemExit(f"ERROR: нет {KEEP} — shrinkResources остался без keep-списка, "
+                     "рефлексивно груженые ресурсы ничто не защищает")
+
+m = re.search(r'tools:keep="([^"]+)"', KEEP.read_text(encoding="utf-8"))
+if not m:
+    raise SystemExit(f"ERROR: tools:keep не разобран в {KEEP}")
+keep_pats = [p.strip() for p in m.group(1).split(",") if p.strip()]
+
+# xml-семейства — из самого keep.xml (префиксы @xml/<prefix>*); состав семейств фиксирован:
+# тихая правка keep.xml (потерянное семейство) обязана сломать гейт, а не перечислить меньше.
+EXPECTED_XML_FAMILIES = ["keyboard_layout_set_", "kbd_", "rows_", "rowkeys_", "row_"]
+xml_families = [p[len("@xml/"):-1] for p in keep_pats
+                if p.startswith("@xml/") and p.endswith("*")]
+if sorted(xml_families) != sorted(EXPECTED_XML_FAMILIES):
+    raise SystemExit(f"ERROR: xml-семейства в {KEEP}: {sorted(xml_families)}, "
+                     f"ожидались {EXPECTED_XML_FAMILIES}")
+
+expected = {}  # "тип/имя" -> откуда в дереве
+
+def want(kind, name, origin):
+    expected.setdefault(f"{kind}/{name}", origin)
+
+# Конкретные xml-ресурсы: файлы во ВСЕХ res/xml*/ конфигурациях, чьи имена подпадают под
+# семейства keep.xml (имя ресурса = имя файла без расширения).
+for d in sorted(RES.glob("xml*")):
+    if not d.is_dir():
+        continue
+    for f in sorted(d.glob("*.xml")):
+        if any(f.stem.startswith(pref) for pref in xml_families):
+            want("xml", f.stem, str(f))
+
+# Строки, резолвимые KeyboardTextsSet по хардкод-имени: обязаны быть ОПРЕДЕЛЕНЫ в
+# strings-action-keys.xml (иначе проверять в APK нечего — это уже ошибка дерева).
+ACTION_STRINGS = RES / "values" / "strings-action-keys.xml"
+if not ACTION_STRINGS.is_file():
+    raise SystemExit(f"ERROR: нет {ACTION_STRINGS}")
+action_text = ACTION_STRINGS.read_text(encoding="utf-8")
+for name in ("label_pause_key", "label_wait_key"):
+    if not re.search(rf'<string\b[^>]*\bname="{name}"', action_text):
+        raise SystemExit(f"ERROR: строка {name} не определена в {ACTION_STRINGS}")
+    want("string", name, str(ACTION_STRINGS))
+
+# Каждая строка locale_name_* под res/values*/ (LocaleResourceUtils резолвит их по имени
+# локали). Плейсхолдер «locale_name_<locale>» живёт в XML-комментарии donottranslate.xml,
+# поэтому матчим только реальные элементы <string ... name="...">.
+locale_count = 0
+for d in sorted(RES.glob("values*")):
+    if not d.is_dir():
+        continue
+    for f in sorted(d.glob("*.xml")):
+        for name in re.findall(r'<string\b[^>]*\bname="(locale_name_[^"]+)"',
+                               f.read_text(encoding="utf-8")):
+            want("string", name, str(f))
+            locale_count += 1
+if locale_count == 0:
+    raise SystemExit("ERROR: ни одной строки locale_name_* под app/src/main/res/values*/ — "
+                     "дерево обеднело или гейт смотрит не туда")
+
+dump = subprocess.run([aapt2, "dump", "resources", apk_path],
+                      capture_output=True, text=True, check=True).stdout
+present = set(re.findall(r"^    resource 0x[0-9a-fA-F]+ (\S+/\S+)$", dump, re.MULTILINE))
+
+problems = []
+for key in sorted(expected):
+    if key in present:
+        print(f"OK {key} ({expected[key]})")
+    else:
+        problems.append(f"{key}: ожидался в APK ({expected[key]}), в aapt2 dump его нет")
+
+for p in problems:
+    print(f"MISSING {p}")
+if problems:
+    sys.exit(1)
+print(f"TOTAL {len(expected)} критических ресурсов ({len(xml_families)} xml-семейств + "
+      f"label_pause_key/label_wait_key + locale_name_*) присутствуют в APK")
+PYEOF
+then
+    report PASS artifact.critical_resources "$(tail -1 "$CRIT_RES_LOG")"
+else
+    report FAIL artifact.critical_resources "критические ресурсы отсутствуют в APK, лог $CRIT_RES_LOG"
+    cat "$CRIT_RES_LOG" >&2
 fi
 
 # --- 3.9. resources.arsc обязан быть STORED (иначе APK не установится на Android 11+) ---------

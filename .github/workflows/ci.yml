@@ -126,6 +126,10 @@ jobs:
       # no keystore), so the same two steps are now compared here on every push. The runner's
       # build-tools version is whatever the image ships, hence the explicit override of the
       # release pin.
+      # B8 (2026-09-28): the pinned version lives in scripts/build-tools-pin.sh
+      # (TT_BUILD_TOOLS_PIN); the runner image does not carry that pinned build-tools, which is
+      # exactly why this job discovers the runner's latest and overrides TT_BUILD_TOOLS_VERSION.
+      # Local releases go through release_pack.sh with the pin from that file.
       - name: Pack twice without signing
         env:
           TT_BUILD_TOOLS_VERSION: ''

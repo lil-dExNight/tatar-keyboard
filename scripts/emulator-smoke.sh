@@ -115,7 +115,15 @@ log() { echo "smoke: $*" >&2; }
 # Пакет НЕ хардкодим: debug-сборка несёт applicationIdSuffix ".debug"
 # (app/build.gradle). Пакет читается из самого APK через aapt2 (тот же приём,
 # что scripts/check-no-internet.sh), а id IME ищется уже по нему.
-AAPT2=$(find "$SDK_ROOT/build-tools" -name aapt2 2>/dev/null | sort -V | tail -1)
+# B8 (2026-09-28): read-only consumer (aapt2 dump) — предпочитаем запиннованный каталог
+# $TT_BUILD_TOOLS_PIN (scripts/build-tools-pin.sh), а при его отсутствии откатываемся на
+# старшую установленную версию: вывод dump стабилен между версиями build-tools.
+source "$ROOT/scripts/build-tools-pin.sh"
+if [ -d "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" ]; then
+    AAPT2=$(find "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" -name aapt2 2>/dev/null | sort -V | tail -1)
+else
+    AAPT2=$(find "$SDK_ROOT/build-tools" -name aapt2 2>/dev/null | sort -V | tail -1)
+fi
 PKG=$("$AAPT2" dump packagename "$APK" 2>/dev/null || true)
 [ -n "$PKG" ] || { echo "не удалось прочитать пакет из $APK" >&2; exit 2; }
 

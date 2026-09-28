@@ -28,6 +28,8 @@
 # Usage: check-no-internet.sh [path/to.apk]  (default: debug APK)
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
 APK="${1:-app/build/outputs/apk/debug/app-debug.apk}"
 MANIFEST="app/src/main/AndroidManifest.xml"
 
@@ -148,7 +150,15 @@ if [ -f "$APK" ]; then
         echo "ERROR: Android SDK build-tools not found (set ANDROID_HOME or ANDROID_SDK_ROOT)" >&2
         exit 1
     fi
-    AAPT2=$(find "$SDK_ROOT/build-tools" -name aapt2 | sort -V | tail -1)
+    # B8 (2026-09-28): read-only consumer (aapt2 dump) — предпочитаем запиннованный каталог
+    # $TT_BUILD_TOOLS_PIN (scripts/build-tools-pin.sh), а при его отсутствии откатываемся на
+    # старшую установленную версию: вывод dump стабилен между версиями build-tools.
+    source "$SCRIPT_DIR/build-tools-pin.sh"
+    if [ -d "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" ]; then
+        AAPT2=$(find "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" -name aapt2 | sort -V | tail -1)
+    else
+        AAPT2=$(find "$SDK_ROOT/build-tools" -name aapt2 | sort -V | tail -1)
+    fi
     if [ -z "$AAPT2" ]; then
         echo "ERROR: aapt2 not found under $SDK_ROOT/build-tools" >&2
         exit 1

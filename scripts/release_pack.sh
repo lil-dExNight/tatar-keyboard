@@ -89,7 +89,10 @@ resolve_tool() { # <имя>
 
 # Пин версии build-tools: 37.0.0 — та, на которой собран и проверен релиз 3.1.0
 # (docs/APK-AUDIT-3.1.0.md). Обновление версии — осознанный шаг с пересчётом SHA-256 артефакта.
-BUILD_TOOLS_VERSION="${TT_BUILD_TOOLS_VERSION:-37.0.0}"
+# B8 (2026-09-28): само значение живёт в scripts/build-tools-pin.sh (единый источник для всех
+# потребителей build-tools); здесь остаются только env-override и fail-closed поведение выше.
+source "$SCRIPT_DIR/build-tools-pin.sh"
+BUILD_TOOLS_VERSION="${TT_BUILD_TOOLS_VERSION:-$TT_BUILD_TOOLS_PIN}"
 
 ZIPALIGN=$(resolve_tool zipalign)
 APKSIGNER=$(resolve_tool apksigner)
