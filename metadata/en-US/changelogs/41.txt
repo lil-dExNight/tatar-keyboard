@@ -1,0 +1,3 @@
+• The keyboard learns which emoji you put after a word — twice, and it leads the strip's tail cell after that word; manage or forget on the personal dictionary screen
+• An emoji picked from the suggestion strip now lands in recent emoji; no more thread leak when switching keyboards via the picker
+• Launch profiles regenerated; internal tooling fixes

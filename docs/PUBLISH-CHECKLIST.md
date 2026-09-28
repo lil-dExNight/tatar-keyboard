@@ -1,4 +1,30 @@
-# PUBLISH-CHECKLIST — публикация v3.3.0
+# PUBLISH-CHECKLIST — публикация v3.4.0
+
+> **Retargeted 2026-09-28 to candidate v3.4.0 / versionCode 41** — the
+> 2026-09-28 backlog wave (`docs/BACKLOG-2026-09-28.md`, all items closed)
+> plus the learned word→emoji co-usage feature (`docs/EMOJI-LEARN.md`): the
+> keyboard learns which emoji you place after a word (2 observations,
+> salted-pending then on-device store, 500-entry cap, incognito pauses,
+> managed on the personal dictionary screen) and the learned emoji leads the
+> strip's tail cell; fixes — baseline-profile generator (resource-id
+> selectors, emulator pin; profiles regenerated 3 282 → 3 430 rules),
+> GlideUiDeviceTest class-run wedge + fail-fast geometry guard, IME-picker
+> thread leak, strip emoji-cell recents; emoji-suggest index cap 4 096 →
+> 8 192; tooling — fail-closed p95 asserts, `artifact.critical_resources`
+> gate, single build-tools pin. Store changelog —
+> `metadata/en-US/changelogs/41.txt` (360 B) + `ru-RU` (412 B) and `tt`
+> (384 B), all ≤ 500 B. **Data-asset delta: NONE** — all 13 shipped data
+> assets are byte-identical to 3.3.0 (CRC32-verified per entry,
+> `docs/APK-AUDIT-3.4.0.md`); on update the device re-inflates NOTHING.
+> Signed artifact `dist/tatar-keyboard-3.4.0.apk` (1 804 874 B, SHA-256
+> `366a9105a7b9cd9bae0256a49188cd7a7e314202577441c4b9c63f766b569859`, v2-only,
+> cert `98ca6feb…42ad`); the pack run twice is byte-identical;
+> `release_check.sh --full` **17/17 PASS** (see the audit for the RESULT
+> block). Publishing
+> (GitHub Release via the web UI — this machine's `gh` is pull-only — notes
+> in `dist/release-notes-3.4.0.md`), the store upload and the IzzyOnDroid
+> note remain the operator's steps. The notes about 3.3.0 and earlier below
+> stay as history; their checkmarks and numbers do not carry over.
 
 > **Retargeted 2026-09-28 to candidate v3.3.0 / versionCode 40** — the
 > 2026-09-27/28 wave (`docs/GLIDE-LIVE-STRIP4.md`): the four-cell suggestion

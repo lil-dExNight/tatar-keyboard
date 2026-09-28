@@ -75,6 +75,23 @@ remainders: commit this wave; the GitHub Release and store-upload steps from the
 3.3.0 entry remain operator items, and this wave's release decision (version bump,
 CHANGELOG) is likewise the operator's.
 
+**Closing note, 2026-09-28 (operator-commanded release): released as 3.4.0 /
+versionCode 41.** The wave landed as the ten commits through `88c1c6d7`, and the
+release marker is `chore: release 3.4.0` — a commit cannot embed its own hash, so
+the marker's hash lives in the release report and will be recorded by the next
+HANDOFF touch (same as 3.3.0). Artifact: `dist/tatar-keyboard-3.4.0.apk` —
+**1 804 874 B** (headroom 42.6 %), SHA-256
+`366a9105a7b9cd9bae0256a49188cd7a7e314202577441c4b9c63f766b569859`, v2-only,
+single signer `98ca6feb…42ad`; the pack run twice is byte-identical;
+`release_check.sh --full` **17/17 PASS** including the new
+`artifact.critical_resources` gate; `check-no-internet.sh` green at both levels;
+audit — `docs/APK-AUDIT-3.4.0.md` (184 entries in both archives, 18 changed, all
+13 data assets byte-identical — the device re-inflates NOTHING on update).
+**Operator-only remainders:** the GitHub Release via the web UI (this machine's
+`gh` is pull-only — attach exactly the dist/ file, notes
+`dist/release-notes-3.4.0.md`), the store upload (changelogs `41.txt` in place
+for en-US/ru-RU/tt — 360/412/384 B), and the IzzyOnDroid note.
+
 ---
 
 # HANDOFF — 2026-09-27/28 wave: live glide scoring + glide learning + four-cell strip (RELEASED as 3.3.0)

@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.4.0] — 2026-09-28
+
+### Added
+
+- **The keyboard learns which emoji you put after a word.** Place the same emoji after the same word twice — from the emoji panel, from emoji search, or from the strip's own emoji cell — and it starts leading the strip's tail cell after that word, ahead of the static suggestion. Until a pair earns its place it exists nowhere in plaintext (salted-hash pending counters, exactly like the learned word pairs); the store is capped at 500 entries, lives only on this device, and incognito mode pauses the learning. The clipboard never teaches. Learned pairs are managed on the personal dictionary screen next to your saved words and word pairs, and nothing is ever auto-inserted — the learned emoji is only a suggestion.
+
+### Fixed
+
+- **An emoji picked from the suggestion strip now lands in your recent emoji:** the strip's emoji cell updated the suggestion but never told the recents store, so a strip-picked emoji never rose in the panel's recent row.
+- **Switching the input method from the keyboard's picker no longer leaks a thread:** the switcher spun up a fresh executor on every call; it now reuses a single one created at startup.
+
+### Changed
+
+- **The baseline and startup profiles are regenerated** (3 282 → 3 430 rules) and their generator is repaired: it finds settings rows by resource-id instead of text (the text search broke when the app's own screens defaulted to Tatar) and refuses to run on a physical device unless explicitly allowed. On a Play install the refreshed profile is what gets compiled ahead of time.
+- **More headroom for emoji suggestions:** the in-memory index cap rose from 4 096 to 8 192 records, matching the packer's limit; the shipped table itself is unchanged.
+- **Developer-facing only:** the on-device latency measurements now assert their p95 budget fail-closed, the glide UI device test no longer wedges on whole-class runs (and fails fast on a display it is not calibrated for), the release check gained a fail-closed gate for the resources that must survive shrinking, and the build-tools version pin has a single source of truth.
+
 ## [3.3.0] — 2026-09-28
 
 ### Added
