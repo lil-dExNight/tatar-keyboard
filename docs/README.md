@@ -117,6 +117,11 @@
   `wordAt`), the host rebuilds the decoder on snapshot-identity change, the
   personal-dictionary setting gates it by construction; +21 JVM tests, all
   host gates green, the C5 device leg is the operator's.
+- `GLIDE-LIVE-STRIP4.md` — mission report (canonical English), 2026-09-27/28:
+  the three parked items shipped — live per-MOVE glide scoring (throttled
+  unbound strip preview), glide-triggered learning (lift-commit counts as a
+  use), and the four-cell suggestion strip with the Tatar K = 4 repack
+  (next-word eval hits 471 → 547, the T7 latent value realized).
 - `APPLE-UX-2026-09-25.md` — аудит текущего состояния UX/UI против iOS-референсов
   и план сближения (канонический английский): что уже совпадает, 11 расхождений
   с file:line, дешёвые правки W1–W6, средние M1–M5, структурные S1–S2, список
@@ -142,7 +147,13 @@
 - `CLEANUP.md` — журнал очистки документации; свидетельства в `cleanup/`.
 - `RESTRUCTURE.md` — журнал кампании аудита/реструктуризации/оптимизации (2026-08-30).
 - `RESTRUCTURE-PLAN.md` — утверждённый план той же кампании.
-- `APK-AUDIT-3.1.1.md` — аудит артефакта текущего релиза (3.1.1): 3.1.0 не устанавливался на
+- `APK-AUDIT-3.3.0.md` — аудит артефакта текущего релиза (3.3.0): волна
+  GLIDE-LIVE-STRIP4 (4 ячейки + K=4, live-превью глайда, обучение от глайда);
+  184 записи в обоих архивах, изменены ровно 6 (манифест, оба dex, tt-таблица,
+  baseline.prof, vci); словари/ru-таблица/эмодзи побайтно прежние.
+  `APK-AUDIT-3.2.0.md` не существует — релиз 3.2.0 был код-онли, дельта покрыта
+  `release_check.sh --full` (см. запись HANDOFF от 2026-09-27).
+- `APK-AUDIT-3.1.1.md` — аудит релиза 3.1.1: 3.1.0 не устанавливался на
   Android 11+ из-за сжатого resources.arsc (шаг O2-1 упаковщика), шаг удалён, добавлен гейт
   artifact.arsc_stored; содержимое волны — в аудите 3.1.0.
 - `APK-AUDIT-3.1.0.md` — аудит артефакта предыдущего кандидата (3.1.0: волна

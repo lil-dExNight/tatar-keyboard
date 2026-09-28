@@ -662,6 +662,11 @@ What remains: the release decision, the interactive device UAT when the phone is
 and the follow-ups the plan already parks (trail rendering, live per-MOVE scoring,
 personal glide candidates).
 
+> **2026-09-27:** the parked follow-ups are all shipped — trail rendering (P7-5),
+> personal glide candidates (`docs/GLIDE-PERSONAL.md`), live per-MOVE scoring and
+> glide-triggered learning (`docs/GLIDE-LIVE-STRIP4.md`). The device UAT line above
+> stays open.
+
 > **2026-09-24 (3.0.0 audit — worst-case memory, accepted):** in the worst case both
 > warm engines each hold a lazily built glide word index at once — ~3.0-3.2 MB for
 > Tatar (measured 3 158 405 B on the 110 000-entry dictionary, P7-1) plus ~2.8 MB

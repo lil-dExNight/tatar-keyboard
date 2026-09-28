@@ -95,3 +95,8 @@ HANDOFF. Release decision: operator.
   candidates, glide-triggered learning (follow-ups after the MVP proves
   itself).
 - ML/neural decoders (violates zero-dependency constraint).
+
+> **2026-09-27:** all four parked follow-ups are now shipped — trail rendering
+> landed as P7-5, personal-dictionary glide candidates as docs/GLIDE-PERSONAL.md,
+> and the remaining two (live per-MOVE scoring, glide-triggered learning) in the
+> 2026-09-27 wave (docs/GLIDE-LIVE-STRIP4.md). Nothing on this list stays open.

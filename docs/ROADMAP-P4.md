@@ -83,6 +83,13 @@ heads unchanged at 10 204.** The roadmap's "~48.7 KB" estimate was wrong; the re
 19 209 B. The 4-cell UI keeps its roadmap place with the latent +1.5643 pp recorded here;
 re-adding K=4 storage when that item lands is one rebuild with known pins.
 
+> **2026-09-27: the 4-cell strip LANDED (the T7 reopen, docs/GLIDE-LIVE-STRIP4.md).** The table
+> is repacked at K = 4 (the same rebuild path the paragraph above predicted), the strip is four
+> cells, and the realized eval numbers are: next-word hits 471 → 547 on the same 4 347-pair set
+> (10.8351 % → 12.5834 % unconditional, 12.8724 % → 14.9494 % of covered) — +1.75 pp, i.e. the
+> recorded latent value is real, slightly above the 2026-09-23 projection because the head set
+> grew in between (P5a).
+
 ### P5b — trigram offline evaluation: REJECTED (2026-09-23)
 
 Trigram counts built from the same three train inputs (6 305 723 distinct (w1, w2) contexts);

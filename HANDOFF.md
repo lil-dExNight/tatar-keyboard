@@ -1,3 +1,36 @@
+# HANDOFF — 2026-09-27/28 wave: live glide scoring + glide learning + four-cell strip (RELEASED as 3.3.0)
+
+**State as of 2026-09-28, device legs CLOSED.** The three parked roadmap items are implemented,
+tested, documented and verified on the POCO C71. The mission report is
+`docs/GLIDE-LIVE-STRIP4.md`.
+
+- **Live per-MOVE glide scoring** — throttled partial decodes (120 ms / 5 points) paint an
+  UNBOUND strip preview mid-gesture; only the lift commits. Lift-vs-preview discrimination is a
+  boolean set before the request (synchronous test engines deliver inside it). +5 e2e +2
+  contract tests.
+- **Glide-triggered learning** — a lift commit (and an alternative replacement) announces the
+  word to the personal sink, so saved words' usage counters move like a strip tap; the undo does
+  not roll counters back (pinned). +5 e2e tests.
+- **Four-cell strip** — CELL_COUNT 3 → 4 end to end (state, view, seams, merges, engine
+  MAX_RESULTS), and the Tatar bigram table repacked at **K = 4** (13 154 heads, pairs
+  38 874 → 51 484, compressed 79 574 → 104 028 B; dictionary and the Russian side byte-identical
+  via `--only tatar`). Eval: next-word hits **471 → 547** of 4 347 pairs (+1.75 pp
+  unconditional — the T7 latent +1.56 pp realized). Every strip pin in the repo migrated (34
+  test files); the emulator smoke's tt probes re-derived (татар taps дәүләт; сакчы — dropped as
+  a probe: it became a bigram head back on 2026-09-23 — replaced by сәләм → сәләмә; the
+  follow-up commits һәм). Also fixed on the way: the smoke's field-empty gate now accepts all
+  three locales' setup hints (it only knew the English one).
+
+Gates on this tree: JVM **1 703 tests / 182 suites / 0 failures** (`--rerun-tasks`); python
+**507/16** green; emulator smoke on a wiped `tt_suggest_a14` **21 PASS / 0 FAIL / 1 SKIP**
+(en-by-design); `rebuild_assets.py --check --allow-known-drift` → ok. **Device (POCO C71):**
+instrumentation all green (GlidePointer 5, GlideDevice 3 — decode p95 3.083 ms, E3b 2,
+EmojiReload 1, GlideUi 2/2 per-method); interactive UAT — the four-cell band and the K=4
+successor row shown and tapped, the live glide preview caught mid-gesture, and a personal word's
+counter moved 1 → 2 on a glide commit (`build/device-uat-2026-09-28/`).
+
+---
+
 # HANDOFF — 3.2.0 SIGNED, gates 17/17, CI green again (2026-09-27)
 
 The 3.2.0 release left the UNSIGNED state: the release keystore was on this
@@ -240,6 +273,9 @@ The ordered work plan for everything below is `docs/ROADMAP-P8-PLAN.md`
    > **2026-09-26:** personal-dictionary glide candidates shipped
    > (`docs/GLIDE-PERSONAL.md`); the parked remainder is live per-MOVE scoring
    > and glide-triggered learning.
+   >
+   > **2026-09-27:** the remainder shipped too (docs/GLIDE-LIVE-STRIP4.md) —
+   > the parking list is empty.
 7. **Emoji index sharding** — the residue of O2-4, which only added idle
    release: splitting `emoji_suggest_v1.txt` by first letter is an asset-pipeline
    change (packer + new `tests/emoji_*` pins) and a mission of its own.
@@ -249,6 +285,9 @@ The ordered work plan for everything below is `docs/ROADMAP-P8-PLAN.md`
    stored rank 4; the strip-contract change was judged out of the P4 budget and
    the table was repacked at K=3 instead. Reopening means the 4-cell variant
    plus every strip pin.
+
+   > **2026-09-27:** shipped — see `docs/GLIDE-LIVE-STRIP4.md` (K=4 repack, the
+   > strip contract change, every strip pin migrated, eval hits 471 → 547).
 10. **F15(a)** (`docs/AUDIT-2026-09-24-FIXES.md`): disabled dependent settings
     rows swallow taps with no toast; the wiring point is marked `TODO(F2)` and
     waits on a new string.
