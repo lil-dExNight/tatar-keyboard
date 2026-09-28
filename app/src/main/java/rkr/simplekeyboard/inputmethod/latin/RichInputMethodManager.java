@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import rkr.simplekeyboard.inputmethod.R;
@@ -73,6 +74,8 @@ public class RichInputMethodManager {
 
     private SubtypeList mSubtypeList;
 
+    private ExecutorService mSwitchExecutor;
+
     public static RichInputMethodManager getInstance() {
         sInstance.checkInitialized();
         return sInstance;
@@ -97,6 +100,9 @@ public class RichInputMethodManager {
             return;
         }
         mImmService = (InputMethodManager)context.getSystemService(Context.INPUT_METHOD_SERVICE);
+
+        // Process-lifetime singleton without a destroy hook, so this is never shut down.
+        mSwitchExecutor = Executors.newSingleThreadExecutor();
 
         LocaleResourceUtils.init(context);
 
@@ -784,7 +790,7 @@ public class RichInputMethodManager {
             return;
         }
         final InputMethodManager imm = mImmService;
-        Executors.newSingleThreadExecutor().execute(new Runnable() {
+        mSwitchExecutor.execute(new Runnable() {
             @Override
             public void run() {
                 imm.setInputMethodAndSubtype(token, imiId, subtype);
