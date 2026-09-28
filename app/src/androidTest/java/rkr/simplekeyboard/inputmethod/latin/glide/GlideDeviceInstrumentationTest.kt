@@ -94,6 +94,9 @@ class GlideDeviceInstrumentationTest : InstrumentationTestCase() {
                 "samples=${timings.size} consumed=$consumed gate=p95<=5.0ms " +
                 "verdict=${if (p95 <= 5.0) "PASS" else "FAIL"}",
         )
+        // Budget per docs/ROADMAP-P7.md; the pre-fix record was ~50 ms, so this cannot pass
+        // silently on a regression.
+        assertTrue("glide decode p95 must stay within the 5 ms device budget, was $p95 ms", p95 <= 5.0)
     }
 
     /**

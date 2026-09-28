@@ -141,6 +141,17 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
             "PhaseC device compute $label p50=${fmt(p50)} ms p95=${fmt(p95)} ms max=${fmt(max)} ms " +
                 "samples=${timings.size} consumed=$consumed totalProbes=$probes maxProbes=$maxProbes",
         )
+        // Only the typo-probe labels ("typo-default", "typo-tatar") have a written device budget:
+        // p95 <= 3.5 ms per docs/TT-TYPO-NEXT.md (measured 3.306). Asserted at 5.0 as a
+        // conservative flake-safe bound; the recorded breach was 31.6 ms. The review-prefix
+        // labels have no written budget and stay log-only.
+        if (label.startsWith("typo-")) {
+            assertTrue(
+                "typo-probe p95 regressed beyond the conservative 5 ms bound " +
+                    "(written gate 3.5 ms), was $p95 ms",
+                p95 <= 5.0,
+            )
+        }
     }
 
     private fun fmt(value: Double): String = String.format(java.util.Locale.ROOT, "%.3f", value)
