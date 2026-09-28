@@ -3,4 +3,8 @@
     <!-- F15a (docs/ROADMAP-P8-PLAN.md stage C): key of the View tag that carries a settings
          row's "why is this disabled" string while the row is soft-disabled. -->
     <item name="tag_row_disabled_reason" type="id" />
+    <!-- Stable ids for the baseline-profile generator's UI probes (A1): the settings UI is
+         built in code and localized, so the CUJ selects these two rows by resource id. -->
+    <item name="row_link_preferences" type="id" />
+    <item name="row_switch_tatar_suggestions" type="id" />
 </resources>

@@ -32,6 +32,13 @@ baselineProfile {
     useConnectedDevices = true
 }
 
+// DEVICE PIN (A1): useConnectedDevices picks one attached device nondeterministically,
+// so run generation with ONLY the emulator attached or pin it explicitly:
+//     ANDROID_SERIAL=<emulator-serial> ./gradlew :app:generateReleaseBaselineProfile
+// As a second line of defense the generator fails fast on any device that does not look
+// like an emulator (ro.kernel.qemu=1 or a generic/sdk/emulator fingerprint); the only
+// override is the instrumentation argument `-e ttAllowPhysicalDevice true`.
+
 dependencies {
     implementation 'androidx.benchmark:benchmark-macro-junit4:1.4.1'
     implementation 'androidx.test.uiautomator:uiautomator:2.3.0'

@@ -15,11 +15,14 @@
 package org.tatarkeyboard.baselineprofile;
 
 import android.content.Intent;
+import android.os.Build;
+import android.os.Bundle;
 import android.os.SystemClock;
 
 import androidx.benchmark.macro.MacrobenchmarkScope;
 import androidx.benchmark.macro.junit4.BaselineProfileRule;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
@@ -30,7 +33,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.io.IOException;
-import java.util.regex.Pattern;
+import java.util.Locale;
 
 import kotlin.Unit;
 
@@ -67,7 +70,9 @@ import kotlin.Unit;
  * survives the force-stop that killProcess() performs, so later iterations start with
  * suggestions already on.
  *
- * Run: ./gradlew :app:generateReleaseBaselineProfile  (connected API 34 emulator).
+ * Run: ./gradlew :app:generateReleaseBaselineProfile  (connected API 34 emulator; with
+ * several devices attached, pin ANDROID_SERIAL=<emulator-serial> — the generator refuses
+ * a non-emulator device unless -e ttAllowPhysicalDevice true is passed).
  */
 @RunWith(AndroidJUnit4.class)
 public class ImeBaselineProfileGenerator {
@@ -83,12 +88,11 @@ public class ImeBaselineProfileGenerator {
             "rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity";
     private static final String SETTINGS_ACTIVITY =
             "rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity";
-    // Row labels in all three shipped locales (the AVD locale is not fixed):
-    // settings_screen_preferences and tatar_suggestions.
-    private static final Pattern PREFERENCES_ROW_LABEL =
-            Pattern.compile("^(Preferences|Настройки|Көйләүләр)$");
-    private static final Pattern SUGGESTIONS_ROW_LABEL =
-            Pattern.compile("^(Word suggestions|Подсказки слов|Сүз тәкъдимнәре)$");
+    // A1: generation is calibrated to one emulator (see KeyGeom) and
+    // useConnectedDevices picks an arbitrary attached device — refuse anything
+    // that does not look like an emulator unless this instrumentation argument
+    // (passed as `-e ttAllowPhysicalDevice true`) explicitly allows it.
+    private static final String ARG_ALLOW_PHYSICAL_DEVICE = "ttAllowPhysicalDevice";
 
     @Rule
     public BaselineProfileRule baselineProfileRule = new BaselineProfileRule();
@@ -99,6 +103,7 @@ public class ImeBaselineProfileGenerator {
 
     @Test
     public void generate() {
+        requireEmulatorDevice();
         baselineProfileRule.collect(
                 PACKAGE_NAME,
                 /* maxIterations = */ 15,
@@ -109,6 +114,44 @@ public class ImeBaselineProfileGenerator {
                     runCuj(scope);
                     return Unit.INSTANCE;
                 });
+    }
+
+    /**
+     * Fails fast when the connected device is not an emulator: the CUJ is calibrated to the
+     * tt_suggest_a14 AVD (KeyGeom) and a physical device both measures the wrong hardware and
+     * toggles a real user's IME settings. Override only deliberately with
+     * `-e ttAllowPhysicalDevice true`.
+     */
+    private void requireEmulatorDevice() {
+        Bundle args = InstrumentationRegistry.getArguments();
+        if ("true".equals(args.getString(ARG_ALLOW_PHYSICAL_DEVICE))) {
+            return;
+        }
+        if (isEmulator()) {
+            return;
+        }
+        throw new IllegalStateException(
+                "Refusing to generate a Baseline Profile on a physical device. Attach only"
+                        + " the emulator or pin ANDROID_SERIAL=<emulator-serial> so generation"
+                        + " targets it; to override, pass -e " + ARG_ALLOW_PHYSICAL_DEVICE
+                        + " true to the instrumentation.");
+    }
+
+    private boolean isEmulator() {
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        try {
+            String qemu = device.executeShellCommand("getprop ro.kernel.qemu");
+            if (qemu != null && qemu.trim().equals("1")) {
+                return true;
+            }
+        } catch (IOException e) {
+            // Fall through to the fingerprint heuristic.
+        }
+        String fingerprint = Build.FINGERPRINT == null
+                ? "" : Build.FINGERPRINT.toLowerCase(Locale.ROOT);
+        return fingerprint.contains("generic")
+                || fingerprint.contains("sdk")
+                || fingerprint.contains("emulator");
     }
 
     private void runCuj(MacrobenchmarkScope scope) {
@@ -125,14 +168,14 @@ public class ImeBaselineProfileGenerator {
         startSetupActivity(scope, device);
 
         UiObject2 field = device.wait(
-                Until.findObject(By.clazz("android.widget.EditText")), 10_000);
+                Until.findObject(By.res(PACKAGE_NAME, "setup_test_field")), 10_000);
         if (field == null) {
             // One retry: re-assert the selection and relaunch (the done-block
             // EditText only exists while this IME is the current one).
             enableAndSelectIme(device);
             startSetupActivity(scope, device);
             field = device.wait(
-                    Until.findObject(By.clazz("android.widget.EditText")), 10_000);
+                    Until.findObject(By.res(PACKAGE_NAME, "setup_test_field")), 10_000);
         }
         if (field == null) {
             throw new IllegalStateException("Try-it EditText not found in SetupActivity");
@@ -230,12 +273,12 @@ public class ImeBaselineProfileGenerator {
 
     /**
      * Turns on PREF_TATAR_SUGGESTIONS through the settings UI (SettingsActivity →
-     * Preferences → "Word suggestions"), once per generation run. The whole row is
-     * the tap target and reports itself to accessibility as the Switch it toggles
-     * (SettingsHostActivity.switchRowRaw), so the checked state is read from the
-     * checkable ancestor of the label and the row is only clicked when it is OFF —
-     * never blind-toggled, because the pref survives force-stop and a reused
-     * emulator may already have it on.
+     * Preferences → "Word suggestions"), once per generation run. Rows are located by
+     * the resource ids assigned in SettingsHostActivity (row_link_preferences,
+     * row_switch_tatar_suggestions) — the UI is localized, so text probes broke whenever
+     * the device locale changed (A1). The checked state is read from the row's Switch
+     * descendant and the row root is only clicked when it is OFF — never blind-toggled,
+     * because the pref survives force-stop and a reused emulator may already have it on.
      */
     private void ensureSuggestionsEnabled(MacrobenchmarkScope scope, UiDevice device) {
         if (mSuggestionsEnsured) {
@@ -246,38 +289,42 @@ public class ImeBaselineProfileGenerator {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         scope.startActivityAndWait(intent);
 
+        // SettingsActivity forwards to SettingsHostActivity and finishes, so wait on
+        // the root view id, not on the activity.
+        UiObject2 settingsRoot = device.wait(
+                Until.findObject(By.res(PACKAGE_NAME, "settings_root")), 10_000);
+        if (settingsRoot == null) {
+            throw new IllegalStateException("Settings root screen not found");
+        }
         UiObject2 prefsRow = device.wait(
-                Until.findObject(By.text(PREFERENCES_ROW_LABEL)), 10_000);
+                Until.findObject(By.res(PACKAGE_NAME, "row_link_preferences")), 10_000);
         if (prefsRow == null) {
             throw new IllegalStateException("Settings root: Preferences row not found");
         }
         prefsRow.click();
 
-        UiObject2 label = device.wait(
-                Until.findObject(By.text(SUGGESTIONS_ROW_LABEL)), 5_000);
+        UiObject2 row = device.wait(
+                Until.findObject(By.res(PACKAGE_NAME, "row_switch_tatar_suggestions")), 5_000);
         // The row is visible without scrolling on 1080x2280; the scroll loop is
         // only a fallback for smaller screens.
-        for (int i = 0; label == null && i < 5; i++) {
+        for (int i = 0; row == null && i < 5; i++) {
             device.swipe(device.getDisplayWidth() / 2,
                     Math.round(device.getDisplayHeight() * 0.7f),
                     device.getDisplayWidth() / 2,
                     Math.round(device.getDisplayHeight() * 0.4f),
                     /* steps = */ 20);
-            label = device.wait(
-                    Until.findObject(By.text(SUGGESTIONS_ROW_LABEL)), 2_000);
+            row = device.wait(
+                    Until.findObject(By.res(PACKAGE_NAME, "row_switch_tatar_suggestions")),
+                    2_000);
         }
-        if (label == null) {
+        if (row == null) {
             throw new IllegalStateException("Suggestions row not found in Preferences");
         }
-        UiObject2 row = label;
-        for (int i = 0; row != null && !row.isCheckable() && i < 4; i++) {
-            row = row.getParent();
+        UiObject2 switchView = row.findObject(By.res(PACKAGE_NAME, "row_switch"));
+        if (switchView == null) {
+            throw new IllegalStateException("Switch not found inside the suggestions row");
         }
-        if (row == null || !row.isCheckable()) {
-            throw new IllegalStateException(
-                    "Checkable row above the suggestions label not found");
-        }
-        if (!row.isChecked()) {
+        if (!switchView.isChecked()) {
             row.click();
             SystemClock.sleep(500);
         }

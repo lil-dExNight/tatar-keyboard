@@ -366,7 +366,8 @@ class SettingsHostActivity : Activity() {
             linkRow(R.string.keyboard_languages, R.string.keyboard_languages_summary,
                     Settings.PREF_ENABLED_SUBTYPES) { navigateTo(Screen.LANGUAGES) }))
         addCard(listOf(
-            linkRow(R.string.settings_screen_preferences) { navigateTo(Screen.PREFERENCES) },
+            linkRow(R.string.settings_screen_preferences) { navigateTo(Screen.PREFERENCES) }
+                    .apply { id = R.id.row_link_preferences },
             linkRow(R.string.settings_screen_key_press) { navigateTo(Screen.KEY_PRESS) },
             linkRow(R.string.settings_screen_appearance) { navigateTo(Screen.APPEARANCE) }))
         addCard(listOf(
@@ -462,7 +463,7 @@ class SettingsHostActivity : Activity() {
                 // disables the row.
                 setRowEnabled(it, !isRestricted(Settings.PREF_GLIDE_TYPING))
             }
-        })
+        }.apply { id = R.id.row_switch_tatar_suggestions })
         // The personal dictionary rides on the suggestion band: without suggestions there is
         // nowhere for a remembered word to appear, so the row follows the switch above it.
         val personalRow = switchRow(Settings.PREF_PERSONAL_DICTIONARY, false,
