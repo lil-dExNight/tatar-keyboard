@@ -165,6 +165,13 @@ synthetic set and stays available for real-world shape ties.
 - Device p95: host 1.19 ms at ~1 200 scored candidates; the POCO C71 budget is
   ≤ 5 ms (P7-4 instrumentation decides; the monotone early bails are the
   lever if it overshoots).
+
+  > **2026-09-28:** decided — the instrumentation first failed honestly (p95
+  > 50.063 ms), the 2026-09-24 perf iteration brought the same harness to p95
+  > 3.388 ms, and the 3.3.0 wave re-measured on an unloaded POCO C71: **p95
+  > 3.083 ms — PASS** vs the ≤ 5 ms gate (evidence: `build/tt-typo-next-phaseB/`,
+  > `docs/GLIDE-LIVE-STRIP4.md`). The gate question is closed.
+
 - Words with more-key-only letters (ё/ъ) are never glide candidates (822 of
   110 000 skipped) — acceptable for the MVP; the Russian layout decision (ё is
   a long-press there too) is documented for P7-3.

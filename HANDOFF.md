@@ -1,3 +1,82 @@
+# HANDOFF — backlog 2026-09-28 wave: all items closed + learned-emoji feature (uncommitted)
+
+**State as of 2026-09-28.** Every item of `docs/BACKLOG-2026-09-28.md` is resolved —
+the section A findings of the 3.3.0 wave and the section B tech-debt list are closed
+or consciously decided, and section C, the learned word→emoji feature, is implemented,
+tested and device-verified. The feature report is `docs/EMOJI-LEARN.md`.
+**The whole wave is UNCOMMITTED; commits and any release are the operator's.**
+
+- **A1 — baseline-profile generator fixed.** Settings rows are located by resource-id
+  (`ids.xml`: `row_link_preferences` / `row_switch_tatar_suggestions`) instead of text,
+  and the generator refuses a non-emulator unless `-e ttAllowPhysicalDevice true` is
+  passed — the refusal was proven on the physical device (IllegalStateException naming
+  the remedy when unpinned). Profile regenerated on `tt_suggest_a14`: **3 282 → 3 430
+  rules**, both files promoted to `app/src/main/`.
+- **A2/A3 — `GlideUiDeviceTest` harness.** tearDown now finishes the activity, so the
+  class no longer wedges on a whole-class run (green 2/2 on the POCO C71); a fail-fast
+  720×1640 geometry guard sits in setUp.
+- **A4 — comment drift swept.** 44dp (was «reserved 40dp») corrected across
+  SuggestionsController / SuggestionStripView / EmojiPanelView / EmojiSearchView plus a
+  dead value in `suggestion_strip.xml`; the AGENTS.md known-drift figure corrected to
+  155/0; `docs/ROADMAP-P7.md` got the footnote closing its gate line (p95 3.083 ms PASS).
+- **A5 — HyperOS force-stop gotcha** recorded in AGENTS.md (instrumentation row).
+- **B1** — `switchToTargetIme`'s executor lifted to a field created in `initInternal`
+  (no more per-call threads), pinned by `RichInputMethodManagerExecutorSourceContractTest`.
+  **B2** — a tap on the strip's emoji cell now writes recents via a recents-only
+  `onStripEmojiInserted` path; learning reaches the sink through its own seam, so the
+  double-count is excluded and pinned. **B3** — `EmojiSuggestIndex` cap 4 096 → 8 192
+  (= the packer's MAX_LINES), the re-measurement ritual documented in the MAX_RECORDS
+  KDoc; the shipped table itself is unchanged (3 976). **B4** — the device latency legs
+  now ASSERT p95 ≤ 5 ms (GlideDevice + the E3b typo marks; the written gates stay
+  5.0/3.5 ms) and the run ritual is in AGENTS.md — green on the POCO 2026-09-28.
+  **B5** — `release_check.sh` gained the fail-closed `artifact.critical_resources` gate
+  (59 resources; the negative case was exercised). **B6** — `KeyboardTextsTable` javadoc
+  states the table is maintained by hand and names the sync points. **B7 — decision
+  confirmed: keep** the dead class-#5 calibration evidence in `TdictPrefixIndex`
+  (NO SHIP verdicts in code). **B8** — `scripts/build-tools-pin.sh` is the single source
+  of the build-tools pin; read-only consumers prefer the pin with a fallback to newest;
+  CI carries the comment. **B9 — decision: deliberately deferred** — checksums in VCS
+  catch drift after the fact (the cold-CI run on 2026-09-27 already caught a real
+  break), and PGP signatures would add the secret management this project avoids; do
+  not reopen without new requirements.
+- **C — learned word→emoji co-usage SHIPPED.** Third personal store `.tpersem`
+  (threshold 2 observations, 500-entry LRU, fail-closed validator, salted pending
+  hashes), learning from exactly the keyboard's three own insertions (panel / search /
+  strip tap — the clipboard never teaches), the learned emoji overriding the static
+  entry only as the tail-cell leader, the same gate chain as the pairs, and a third
+  list on the «Шәхси сүзлек» screen plus the quarantine popup. Device leg via the new
+  smoke probe `learned-emoji-tt`: type хәйерле иртә, insert ☀️ twice via search — on
+  the third round the strip tail cell is ☀️, overriding the static 🌅.
+
+Gates on the final tree (2026-09-28): JVM **1 826 tests / 190 suites / 0 failures**
+(`--rerun-tasks`); python **507/16 files** (1 pre-existing skip); `lintRelease`
+**0 errors** (29 baselined); `rebuild_assets.py --check` ok (tt 155/0, ru 2/0); two
+unsigned packs byte-identical at **1 800 038 B**; signed pack **1 804 874 B**, SHA-256
+`9ad5dab806f4db5c8284c831ec06fc5122b660f94e5e652b05717b770bc7c19d`, single signer
+`98ca6feb…42ad` — `release_check.sh --quick` **OVERALL PASS 12/12** artifact gates
+including the new `artifact.critical_resources` (59 resources); `check-no-internet.sh`
+green at both levels on the signed packed APK; `assembleDebugAndroidTest` green.
+
+**Device (POCO C71, 2026-09-28):** `GlideUiDeviceTest` whole class OK (2/2, no wedge),
+`GlideDeviceInstrumentationTest` OK (3/3, p95 3.125 ms assert green),
+`E3bComputeInstrumentationTest` OK (2/2, typo-tatar p95 3.228 ms assert green);
+evidence `build/device-uat-2026-09-28/`. **Emulator (`tt_suggest_a14`):** smoke
+**22 PASS / 0 FAIL / 1 SKIP** including the new `learned-emoji-tt` probe; evidence
+`build/emulator-smoke-emoji-learn/`.
+
+**New finding (recorded in the backlog as A6):** on the AVD, closing the emoji
+panel/search with BACK can wedge the IME window — drawn but touch-dead (WMS
+`mViewVisibility=GONE` while IMMS reports it shown). Observed on the emulator during
+probe calibration, NOT caused by this feature and not in our code path; the smoke
+probe sidesteps it by reopening SetupActivity per round.
+
+**Everything above is UNCOMMITTED — commits are the operator's.** Operator-only
+remainders: commit this wave; the GitHub Release and store-upload steps from the
+3.3.0 entry remain operator items, and this wave's release decision (version bump,
+CHANGELOG) is likewise the operator's.
+
+---
+
 # HANDOFF — 2026-09-27/28 wave: live glide scoring + glide learning + four-cell strip (RELEASED as 3.3.0)
 
 **State as of 2026-09-28, device legs CLOSED.** The three parked roadmap items are implemented,
