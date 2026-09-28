@@ -294,6 +294,54 @@ class GlideTouchIntegrationContractTest {
             predictedCommit.contains("suggestion + AUTO_SPACE"))
     }
 
+    @Test
+    fun theArmedBranchEmitsThrottledProgressForTheLivePreview() {
+        // Live per-MOVE scoring (2026-09-27): the armed MOVE branch feeds the path, the feedback
+        // and then the throttled progress emission — and returns before any legacy branch.
+        val move = methodBody("onMoveEventInternal")
+        val armed = move.indexOf("mGlideDecider.isArmed()")
+        val progress = move.indexOf("maybeEmitGlideProgress(eventTime);")
+        assertTrue("the armed branch is missing", armed >= 0)
+        assertTrue("the armed branch never emits progress", progress > armed)
+        assertTrue("the emission must stay ahead of the branch's return",
+            progress < move.indexOf("return;", armed))
+        // The throttle is a fresh-points gate AND a time gate, then the listener on the live
+        // buffer (the receiver snapshots).
+        val emit = methodBody("maybeEmitGlideProgress")
+        assertTrue(emit.contains("GLIDE_PROGRESS_MIN_NEW_POINTS"))
+        assertTrue(emit.contains("GLIDE_PROGRESS_MIN_INTERVAL_MS"))
+        assertTrue(emit.contains("sListener.onGlideProgress(mGlidePath);"))
+        // The throttle counters reset on every eligible down.
+        assertTrue(methodBody("onDownEventInternal").contains("mLastGlideProgressPointCount"))
+    }
+
+    @Test
+    fun theProgressListenerHasADefaultNoOpAndLatinIMEForwardsToTheController() {
+        val listener = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardActionListener.java",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardActionListener.java",
+        )
+        assertTrue(listener.contains("default void onGlideProgress("))
+        val latinIme = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
+        )
+        assertTrue(latinIme.contains("public void onGlideProgress("))
+        assertTrue(latinIme.contains("controller.onGlideProgress(path);"))
+        // The controller's preview entry point exists and never commits: only the lift calls
+        // applyGlideResult.
+        val controller = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt",
+        )
+        assertTrue(controller.contains("fun onGlideProgress(path: GlidePath)"))
+        assertTrue(controller.contains("private fun applyGlideProgressResult"))
+        val preview = controller.substringAfter("private fun applyGlideProgressResult")
+        val previewBody = preview.substringBefore("\n    }")
+        assertFalse("the preview must not commit", previewBody.contains("editor.commit"))
+        assertFalse("the preview must not replace", previewBody.contains("editor.replace"))
+    }
+
     /** The body of one method, from its declaration to the next one (good enough for pins). */
     private fun methodBody(name: String): String {
         // The " void " prefix skips javadoc {@link} references to the same method.

@@ -59,10 +59,12 @@ class TatBigrValidatorTest {
         // 40 734 -> 40 735. Repacked 2026-09-23 (ROADMAP-P4 batch A, docs/ROADMAP-P4.md): T7
         // drops the 4th stored successor per head and P5a adds 2 950 EXPAND-1 heads (with 152
         // pairless conversational candidates dropped alongside the same three converbs —
-        // known_asset_drift.json 3/0 -> 155/0).
+        // known_asset_drift.json 3/0 -> 155/0). Repacked 2026-09-27 at K = 4 (the four-cell
+        // strip, T7 reopened): the head set is untouched, the 4th stored successor per head adds
+        // 12 610 pairs (38 874 -> 51 484).
         assertEquals(13_154, validated.headCount)
-        assertEquals(135_889, validated.rawSize)
-        assertEquals(38_874, validated.pairCount)
+        assertEquals(170_471, validated.rawSize)
+        assertEquals(51_484, validated.pairCount)
     }
 
     /**

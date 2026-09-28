@@ -89,9 +89,12 @@ class TtTypoPhaseBPrecisionTest {
         // for the candidate (7.9337 % vs the 2 % gate) — and the class-#1-only baseline measures
         // 3.6268 %, above the same gate: the 2 % bar does not hold even for the pre-Phase-B
         // shipped behavior. Recorded, not tuned.
+        // Re-pinned 2026-09-27 (the four-cell strip: a fuzzy candidate now reaches the strip when
+        // the exact pass leaves any of the FOUR cells free, so both counts rise). Verdicts
+        // unchanged: ABOVE (candidate 9.2699 %, baseline 4.1875 % vs the 2 % gate).
         private const val PIN_PREFIXES = 8_382
-        private const val PIN_BASELINE_POLLUTED = 304
-        private const val PIN_CANDIDATE_POLLUTED = 665
+        private const val PIN_BASELINE_POLLUTED = 351
+        private const val PIN_CANDIDATE_POLLUTED = 777
 
         private lateinit var prefixes: List<String>
         private var defaultIndex: TdictPrefixIndex? = null

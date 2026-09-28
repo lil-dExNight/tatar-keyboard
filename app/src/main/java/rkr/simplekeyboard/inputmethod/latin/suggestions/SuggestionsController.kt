@@ -40,7 +40,7 @@ import java.util.concurrent.Executors
 
 /** Suggestion-strip UI seam. All methods are called on the UI thread. */
 interface StripSurface {
-    fun showSuggestions(first: String, second: String?, third: String?)
+    fun showSuggestions(first: String, second: String?, third: String?, fourth: String?)
 
     /**
      * Optional spoken labels for cells whose own text does not read well aloud — an emoji cell
@@ -49,7 +49,7 @@ interface StripSurface {
      * cell's text". Defaults to a no-op so a surface written before emoji suggestions keeps
      * compiling and simply speaks the glyph.
      */
-    fun setSpokenCellLabels(first: String?, second: String?, third: String?) {}
+    fun setSpokenCellLabels(first: String?, second: String?, third: String?, fourth: String?) {}
 
     /**
      * The autocorrect preview's emphasis marker (P2 of Phase 3, docs/ROADMAP-P3.md): the cell
@@ -277,6 +277,16 @@ class SuggestionsController internal constructor(
     private var displayedGlideAlternativesFor: String? = null
     /** The word a backspace right now would delete whole (the lift-committed or its replacement). */
     private var glideCommittedWord: String? = null
+
+    /**
+     * Live per-MOVE scoring (2026-09-27): whether the latest GLIDE request this controller made
+     * is the LIFT's. The lift sets it BEFORE issuing the request and the progress path clears it
+     * the same way — result delivery may be synchronous in tests, so the flag must be in place
+     * before the engine is asked. A GLIDE result commits only under `true`; under `false` it
+     * paints the unbound mid-gesture preview. Stragglers older than the latest request never get
+     * here at all: the engine's latest-only `isCurrent` check drops them upstream.
+     */
+    private var glideLiftInFlight: Boolean = false
 
     /** P7-7: whether [glideCommittedWord]'s commit prepended the chain space — the undo deletes
      * the space along with the word exactly when the commit added it. */
@@ -1281,9 +1291,10 @@ class SuggestionsController internal constructor(
      * Asks the companion language for [query], but only after the active language has already
      * answered and left a cell empty.
      *
-     * Deliberately lazy. The active language fills all three cells for about nine keystrokes in ten
-     * (docs/LANG-PRIORITY.md, "Цена"), so asking both engines on every press would pay twice for
-     * nothing nine times out of ten; and because this runs only AFTER the active result was applied,
+     * Deliberately lazy. The active language filled the whole band for about nine keystrokes in
+     * ten (docs/LANG-PRIORITY.md, "Цена" — measured on the three-cell band; the fourth cell lowers
+     * the fill rate, not the argument), so asking both engines on every press would pay twice for
+     * nothing most of the time; and because this runs only AFTER the active result was applied,
      * the first cell reaches the screen at exactly the moment it does today.
      */
     private fun requestCompanionFill(kind: LookupKind, query: String) {
@@ -1381,7 +1392,7 @@ class SuggestionsController internal constructor(
         emphasizedCell: Int = SuggestionStripState.NO_CELL,
     ) {
         bandBaseCells = cells
-        strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2))
+        strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2), cells.getOrNull(3))
         // P2: the emphasis travels with the words it marks, in the same publication — a marker
         // set apart from them could describe a band that is already gone. It runs BEFORE the
         // spoken labels (2026-09-25 audit): setEmphasis is what runs the publication's one
@@ -1395,6 +1406,7 @@ class SuggestionsController internal constructor(
             spokenLabelFor(cells[0]),
             spokenLabelFor(cells.getOrNull(1)),
             spokenLabelFor(cells.getOrNull(2)),
+            spokenLabelFor(cells.getOrNull(3)),
         )
     }
 
@@ -1725,10 +1737,50 @@ class SuggestionsController internal constructor(
         // language the user returns to rebuilds lazily on its next gesture, exactly as it already
         // does after the idle release.
         releaseGlideIndexesExcept(activeLanguage)
-        val token = activeEngine.requestGlide(sessionId, activeLanguage ?: return, path)
+        val language = activeLanguage ?: return
+        // Live per-MOVE scoring: the flag goes up BEFORE the request — a synchronously-answering
+        // engine (the tests') delivers inside the call, and the dispatch must already know this
+        // request is the lift's. The flag also supersedes every outstanding preview of this
+        // gesture: a late progress result is failed by the engine's latest-only check upstream.
+        glideLiftInFlight = true
+        val token = activeEngine.requestGlide(sessionId, language, path)
         if (token == null) {
+            glideLiftInFlight = false
             clearToReservedBand()
         }
+    }
+
+    /**
+     * Live per-MOVE scoring (2026-09-27): a throttled PARTIAL path, delivered by PointerTracker
+     * while an armed glide moves. Decodes it on the engine worker and paints the top candidates
+     * as the strip PREVIEW ([applyGlideProgressResult]) — the paint carries no tap binding, so
+     * nothing mid-gesture is committable from the strip; only the lift commits.
+     *
+     * The gates are [onGlideInput]'s plus [eligible]: the preview paints the suggestions surface,
+     * so with the suggestions master off it stays dark while the lift-commit stands on its own
+     * (P7-6). A preview never touches the one-resident-index rule (C3) — the lift's release runs
+     * there; a gesture that never lifts leaves the freshly built index to the idle release, as
+     * before. A cancelled gesture leaves the last preview painted but unbound; any keystroke
+     * repaints, and no tap can land on it.
+     */
+    fun onGlideProgress(path: GlidePath) {
+        if (destroyed || !eligible || !glideEligible) return
+        if (!glideGate.isOn()) return
+        val activeEngine = usableEngine() ?: return
+        if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
+        // The same trailing-word tolerance as the lift: the chain's previous glide commit.
+        val trailingWord = editor.cachedWordBeforeCursor()
+        if (trailingWord.isNotEmpty() && trailingWord != glideCommittedWord) return
+        // The preview applies through applyResult, which demands the request's own session —
+        // exactly what the lift does; the session itself is NOT bumped (the gesture is part of
+        // this session's text).
+        requestSessionId = sessionId
+        val language = activeLanguage ?: return
+        // The flag drops BEFORE the request (a synchronous engine answers inside the call): a
+        // result arriving now is a preview, never a commit. Placed after the gates, so a gated
+        // progress cannot clobber a lift already in flight.
+        glideLiftInFlight = false
+        activeEngine.requestGlide(sessionId, language, path)
     }
 
     /**
@@ -1762,9 +1814,14 @@ class SuggestionsController internal constructor(
      * strip behaves exactly as if the word had been typed (the prefix path: forms etc.).
      *
      * Learning (pinned): a lift-committed word behaves exactly like a tapped suggestion — the run
-     * is marked dirty (it is not a clean run for the word itself) and the boundary it establishes
-     * is trusted for the pair machine; it is NOT a noteAcceptedPrediction (nothing was predicted
-     * from a learned pair). A later alternative replacement keeps the same semantics.
+     * is marked dirty (it is not a clean run for the word itself), the boundary it establishes is
+     * trusted for the pair machine, and the committed word is announced as an accepted suggestion:
+     * if it is a saved personal word, its usage counter moves (the sink decides; the file itself
+     * moves at the session boundary). It is NOT a noteAcceptedPrediction (nothing was predicted
+     * from a learned pair). A later alternative replacement counts the ALTERNATIVE the same way;
+     * the lift's own bump is not rolled back, and neither is it by the one-backspace undo — the
+     * same accepted imprecision the tap path already lives with (a bump survives a later
+     * backspace), which keeps the undo paths free of counter arithmetic.
      */
     private fun applyGlideResult(suggestions: List<String>) {
         previewKeepTypedCell = null
@@ -1797,6 +1854,11 @@ class SuggestionsController internal constructor(
         // word just established is trusted for the pair machine (the tap path's exact semantics).
         runMachine.markRunDirty()
         runMachine.trustPairBoundary()
+        // The lift-commit IS the acceptance: if the committed word is a saved personal word its
+        // usage counter moves (in memory; the file moves at the session boundary) — a dictionary
+        // or unknown word changes nothing, the sink decides. Gated by the learning predicate on
+        // the sink's side, so this also runs with the suggestions master off (P7-6).
+        runMachine.noteAcceptedSuggestion(committed)
         // One backspace right after the lift deletes the whole committed word (the gesture-undo):
         // the undo word tracks the editor's content — it moves to an alternative if one replaces —
         // and the chain space dies with the word exactly when the commit added it (P7-7).
@@ -2016,8 +2078,45 @@ class SuggestionsController internal constructor(
         when (kind) {
             LookupKind.PREFIX -> applyPrefixResult(suggestions)
             LookupKind.NEXT_WORD -> applyNextWordResult(suggestions)
-            LookupKind.GLIDE -> applyGlideResult(suggestions)
+            // Live per-MOVE scoring: only the LIFT's result commits; any other current GLIDE
+            // result is the preview. (Anything older than the latest request never reaches here:
+            // the engine's isCurrent check above already failed it.)
+            LookupKind.GLIDE -> if (glideLiftInFlight) {
+                glideLiftInFlight = false
+                applyGlideResult(suggestions)
+            } else {
+                applyGlideProgressResult(suggestions)
+            }
         }
+    }
+
+    /**
+     * Paints the mid-gesture glide preview (live per-MOVE scoring, 2026-09-27): the decode's top
+     * cells, re-cased by the same shift rule as the lift — and NOTHING else: every tap binding is
+     * cleared, so the preview is never committable from the strip (the gliding finger is down
+     * anyway, and a stray tap after the lift finds the alternatives' own binding instead). An
+     * empty decode leaves the band alone — mid-gesture, one throttle window of the previous
+     * content reads better than a flicker to empty.
+     */
+    private fun applyGlideProgressResult(suggestions: List<String>) {
+        if (suggestions.isEmpty()) return
+        val casing = if (glideShiftGate.isShifted()) {
+            TatarWordUtils.PrefixCasing.INITIAL_CAPS
+        } else {
+            TatarWordUtils.PrefixCasing.LOWER
+        }
+        // The paint replaces, so any band bound before the gesture (a typed prefix's) must lose
+        // its binding NOW: "what is painted is tappable" would otherwise let a tap commit the
+        // OLD binding under the NEW words.
+        displayedPrefix = null
+        displayedContextWord = null
+        displayedGlideAlternativesFor = null
+        val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+        for (candidate in suggestions) {
+            cells.add(TatarWordUtils.applyCasing(candidate, casing))
+            if (cells.size >= SuggestionStripState.CELL_COUNT) break
+        }
+        showBand(cells)
     }
 
     private fun applyPrefixResult(suggestions: List<String>) {
@@ -2340,8 +2439,10 @@ class SuggestionsController internal constructor(
             // position re-check (the trailing word must still BE the committed word right before
             // the cursor) is the second line of defense; P7-7: the replacement keeps the chain
             // space exactly as committed, never adds or removes one. The replacement is still not
-            // a clean run (the markRunDirty above already saw to that), the pair machine's trusted
-            // boundary moves to the alternative, and the strip refreshes for it.
+            // a clean run (the markRunDirty above already saw to that), the ALTERNATIVE counts as
+            // the accepted suggestion (the same usage-counter bump the lift-commit gave the word
+            // it replaces), the pair machine's trusted boundary moves to the alternative, and the
+            // strip refreshes for it.
             if (editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion,
                     glideCommitPrependedSpace)) {
                 // The undo window tracks the text: a backspace now deletes the ALTERNATIVE whole
@@ -2351,6 +2452,7 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
+                runMachine.noteAcceptedSuggestion(suggestion)
                 runMachine.trustPairBoundary()
                 requestCurrentPrefix()
             }

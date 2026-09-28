@@ -40,7 +40,7 @@ internal class AutocorrectPreview(
 }
 
 // P2 (docs/ROADMAP-P3.md): the preview band's fixed layout — the typed word leads, the
-// correction follows, emphasized; the third cell stays empty so the two read as a
+// correction follows, emphasized; the remaining cells stay empty so the two read as a
 // decision ("keep this" / "this is coming"), not as a ranking.
 internal const val PREVIEW_EMPHASIZED_CELL = 1
 

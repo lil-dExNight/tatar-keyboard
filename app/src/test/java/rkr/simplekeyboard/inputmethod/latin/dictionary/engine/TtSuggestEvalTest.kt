@@ -52,6 +52,13 @@ import java.nio.ByteBuffer
  *  - sentence-start top-3 hit rate (P4): the fraction of eval sentences whose first word
  *    is among the top-3 sentence-start suggestions.
  *
+ * 2026-09-27 (the four-cell strip): the membership metrics now measure the FOUR cells the
+ * strip actually shows; the "top3" label series is kept — it names the metric series the
+ * docs tables quote. Re-pinned counts: prefix cp1/2/3 64/301/741 -> 85/364/836, same-stem
+ * 1 078 -> 1 193 (control 988 -> 1 083), sentence-start 123 -> 126 (the fourth table word
+ * бүген joins). The next-word counters did not move: the shipped Tatar table stores at most
+ * three successors per head, so its "top-3" answer was already the whole answer.
+ *
  * Usage is strictly read-only; the zero-allocation and p95 lookup contracts keep their
  * own dedicated tests ([RealDictionaryPrefixIndexTest], [RealBigramPrefixIndexTest]).
  *
@@ -185,8 +192,10 @@ class TtSuggestEvalTest {
         assertEquals(PIN_TOP3_HITS, hits)
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
         assertEquals("84.1730", format(coveredPct))
-        assertEquals("10.8351", format(hitPct))
-        assertEquals("12.8724", format(hitCoveredPct))
+        // K = 4 (2026-09-27, the four-cell strip): the stored rank-4 successors land on the band
+        // now — hits 471 -> 547, the measured T7 latent value realized.
+        assertEquals("12.5834", format(hitPct))
+        assertEquals("14.9494", format(hitCoveredPct))
     }
 
     /**
@@ -290,7 +299,7 @@ class TtSuggestEvalTest {
         private const val PIN_UNIQUE_WORDS = 2_670
         private const val PIN_PAIRS = 4_347
         private const val PIN_COVERED = 3_659
-        private const val PIN_TOP3_HITS = 471
+        private const val PIN_TOP3_HITS = 547
         private const val PIN_CP1_WORDS = 2_670
         private const val PIN_CP2_WORDS = 2_668
         private const val PIN_CP3_WORDS = 2_626
@@ -298,17 +307,21 @@ class TtSuggestEvalTest {
         // at >= 4 code-point prefixes, and this metric types 1-3 code-point prefixes — so the
         // counters are exactly the P2 baseline again. The measured excursion without the gate was
         // cp1 64 -> 29, cp2 301 -> 235, cp3 741 -> 685; the gate exempts those prefixes entirely.
-        private const val PIN_CP1_HITS = 64
-        private const val PIN_CP2_HITS = 301
-        private const val PIN_CP3_HITS = 741
+        // Re-pinned 2026-09-27 (the four-cell strip: membership is the four cells now):
+        // cp1 64 -> 85, cp2 301 -> 364, cp3 741 -> 836.
+        private const val PIN_CP1_HITS = 85
+        private const val PIN_CP2_HITS = 364
+        private const val PIN_CP3_HITS = 836
         // P3 same-stem metric, measured 2026-09-20 on the committed assets, boost gated at >= 4
         // code points: 988 (boost off) -> 1 078; the ungated variant measured 1 201.
+        // Re-pinned 2026-09-27 (four-cell strip): 1 083 (boost off) -> 1 193.
         private const val PIN_SAMESTEM_WORDS = 1_716
-        private const val PIN_SAMESTEM_HITS = 1_078
-        private const val PIN_SAMESTEM_HITS_BOOST_OFF = 988
+        private const val PIN_SAMESTEM_HITS = 1_193
+        private const val PIN_SAMESTEM_HITS_BOOST_OFF = 1_083
         // P4 sentence-start metric, measured 2026-09-20 on the committed table against the pinned
         // eval set: 123 of 1 000 first words are in the top-3 (бу, ул, ә).
-        private const val PIN_SENTSTART_TOP3_HITS = 123
+        // Re-pinned 2026-09-27 (four-cell strip): 126 — the fourth table word (бүген) joins.
+        private const val PIN_SENTSTART_TOP3_HITS = 126
         // TT-NEXTWORD-FILL (2026-09-20): unique eval words whose committed-word strip is empty
         // WITHOUT the fallback (the pre-fill production shape). With the fallback the count is
         // pinned at 0 by the assertion in the test. Recalibrated 2026-09-23 (ROADMAP-P4 P5a):

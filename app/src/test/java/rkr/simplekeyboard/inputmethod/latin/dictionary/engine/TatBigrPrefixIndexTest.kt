@@ -50,12 +50,12 @@ class TatBigrPrefixIndexTest {
     }
 
     @Test
-    fun moreThanThreeStoredSuccessesAreCappedToThree() {
+    fun moreThanFourStoredSuccessesAreCappedToFour() {
         val index = EngineTestFixtures.bigramIndex(
             listOf("аб" to listOf("а", "б", "в", "г", "д", "е")),
         )
 
-        assertEquals(listOf("а", "б", "в"), predict(index, "аб"))
+        assertEquals(listOf("а", "б", "в", "г"), predict(index, "аб"))
     }
 
     @Test
@@ -217,13 +217,15 @@ class TatBigrPrefixIndexTest {
         )
         assertTrue(index != null)
         // "мин" (I/me) is an extremely common Tatar word and, if present as a head at all, must
-        // return at most three successes without throwing.
+        // return at most MAX_RESULTS successes without throwing.
         val results = index!!.predict(ImmutableUtf8Prefix.copyOf("мин".toByteArray(Charsets.UTF_8)))
-        assertTrue(results.size <= 3)
+        assertTrue(results.size <= TatBigrPrefixIndex.MAX_RESULTS)
         // The imperative "кил" is an extra-list head (docs/archive/bigrams/IMPERATIVE-HEADS.md);
-        // its triple is pinned by the schema-3 equivalence check — the reader must serve it.
+        // its successor row is pinned by the schema-3 equivalence check — the reader must serve
+        // it. K = 4 (2026-09-27, the four-cell strip): the 4th stored successor (монда) rides
+        // along now.
         assertEquals(
-            listOf("дә", "әле", "һәм"),
+            listOf("дә", "әле", "һәм", "монда"),
             index.predict(ImmutableUtf8Prefix.copyOf("кил".toByteArray(Charsets.UTF_8))),
         )
     }

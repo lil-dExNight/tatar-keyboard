@@ -145,7 +145,7 @@ class TdictPrefixIndexAutocorrectTest {
 
     @Test
     fun theBandIsUnchangedByTheVerdict() {
-        // The D3 pass reads the same index and must not disturb the frozen band: same three cells,
+        // The D3 pass reads the same index and must not disturb the frozen band: same cells,
         // same order, exact before fuzzy.
         val index = index(
             listOf(

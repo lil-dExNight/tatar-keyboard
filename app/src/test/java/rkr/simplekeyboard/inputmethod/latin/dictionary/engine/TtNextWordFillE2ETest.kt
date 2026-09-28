@@ -38,9 +38,10 @@ import java.security.MessageDigest
  *
  * The operator's scenario (2.0.0): after accepting `сәләм` the strip offered only `сәләмә`; after
  * accepting `сәләмә` it went empty. Now: `сәләм` is no bigram head and has exactly one attested
- * form, so the strip is `[сәләмә, һәм, белән]` — the fallback fills the two cells the bigrams and
- * forms leave free; after `сәләмә` (no successors, no forms) it is `[һәм, белән, да]` — the
- * global top words. A bigram head (сәлам) still shows only its successors. The top-8 list is
+ * form, so the strip is `[сәләмә, һәм, белән, да]` — the fallback fills the three cells the
+ * bigrams and forms leave free; after `сәләмә` (no successors, no forms) it is
+ * `[һәм, белән, да, бу]` — the global top words. A bigram head (сәлам) keeps its stored
+ * successors in front; the cell they leave free goes to the after-word forms. The top-8 list is
  * derived from the real asset through the new [TdictPrefixIndex.topFrequentWords] API and pinned
  * as literals.
  */
@@ -59,47 +60,49 @@ class TtNextWordFillE2ETest {
     fun committingSyalamOffersItsFormThenTheTopWords() {
         // сәләм: no bigram successors (not a head), one attested form (сәләмә) — then the fill.
         assertEquals(
-            listOf("сәләмә", "һәм", "белән"),
+            listOf("сәләмә", "һәм", "белән", "да"),
             tatarPredict("сәләм"),
         )
     }
 
     @Test
-    fun committingSyalamaFillsAllThreeCellsFromTheTopWords() {
+    fun committingSyalamaFillsAllFourCellsFromTheTopWords() {
         // сәләмә: no successors and no attested forms — the whole strip is the fill.
         assertEquals(
-            listOf("һәм", "белән", "да"),
+            listOf("һәм", "белән", "да", "бу"),
             tatarPredict("сәләмә"),
         )
     }
 
     @Test
-    fun aBigramHeadStillShowsOnlyItsSuccessors() {
-        // сәлам is a head with 4 stored successors; the engine's top-3 fill the strip — no form,
-        // no fallback cell. The successor белән is ALSO a top-8 word: the dedup rule is exercised
-        // here structurally (it must not appear twice, and the fallback never runs at all).
+    fun aBigramHeadsFourSuccessorsFillTheWholeStrip() {
+        // сәлам is a head with 4 stored successors (K = 4 since 2026-09-27 — before the repack
+        // the fourth cell went to the attested form сәламе): they fill the strip, and neither the
+        // forms nor the fallback ever run. The successor белән is ALSO a top-8 word: the dedup
+        // rule is exercised here structurally (it must not appear twice).
         val result = tatarPredict("сәлам")
-        assertEquals(listOf("биреп", "белән", "бирү"), result)
+        assertEquals(listOf("биреп", "белән", "бирү", "хатлары"), result)
         assertEquals(result.distinct(), result)
         assertFalse(result.contains("да"))
     }
 
     @Test
     fun theCommittedWordIsNeverReOffered() {
-        // һәм IS the global top word: committing it must not put it back on the strip. It is also
-        // a bigram head — its successors fill two cells and the fallback takes the third, minus
-        // the committed word itself.
+        // һәм IS the global top word: committing it must not put it back on the strip. It is
+        // also a bigram head — its four stored successors (K = 4 since 2026-09-27; before it the
+        // fourth cell was the fallback белән) fill the whole strip, minus the committed word
+        // itself.
         val result = tatarPredict("һәм")
         assertFalse(result.contains("һәм"))
-        assertEquals(3, result.size)
+        assertEquals(listOf("башка", "аның", "фән", "ул"), result)
     }
 
     @Test
     fun aNonHeadRussianWordFillsWithRussianTopWords() {
-        // тюлень: in the Russian dictionary, not a bigram head → all three cells are the Russian
+        // тюлень: in the Russian dictionary, not a bigram head → all four cells are the Russian
         // global top words (the ru engine ships no word-form rules — the pure fill).
         assertEquals(
-            listOf("я", "не", "в"),
+            listOf("я", "не", "в", "и"),
             russianPredict("тюлень"),
         )
     }

@@ -133,7 +133,7 @@ class SuggestionStripSourceContractTest {
         val setSuggestionsBody = viewSource.substringAfter("fun setSuggestions(")
             .substringBefore("fun clearSuggestions()")
 
-        // The triple changes on every keystroke: announcing each one would bury the key echo.
+        // The band's cells change on every keystroke: announcing each one would bury the key echo.
         assertTrue(setSuggestionsBody.contains("val hadSuggestions = state.hasAnySuggestion()"))
         assertTrue(
             setSuggestionsBody.contains(

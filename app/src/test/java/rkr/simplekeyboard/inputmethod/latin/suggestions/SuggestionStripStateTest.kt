@@ -30,7 +30,7 @@ class SuggestionStripStateTest {
     private val activePointer = 7
 
     @Test
-    fun emptyResultsKeepAllThreeCellsInert() {
+    fun emptyResultsKeepAllFourCellsInert() {
         val state = SuggestionStripState()
 
         assertFalse(state.onDown(activePointer, 0f, 20f, width, height))
@@ -42,17 +42,21 @@ class SuggestionStripStateTest {
 
     @Test
     fun populatedCellsUseStableLeftCenterRightIdsAndEmptyCellsStayInert() {
+        // Four cells at width 302: boundaries 75.5 / 151 / 226.5.
         val state = SuggestionStripState()
-        state.setSuggestions("бер", null, "өч")
+        state.setSuggestions("бер", null, "өч", "дүрт")
 
         assertEquals("бер", state.suggestionAt(0))
         assertNull(state.suggestionAt(1))
         assertEquals("өч", state.suggestionAt(2))
-        assertTrue(state.onDown(activePointer, 0f, 20f, 302, height))
-        assertEquals(0, state.onUp(activePointer, 99f, 20f, 302, height))
-        assertFalse(state.onDown(activePointer, 151f, 20f, 302, height))
-        assertTrue(state.onDown(activePointer, 301f, 20f, 302, height))
-        assertEquals(2, state.onUp(activePointer, 301f, 20f, 302, height))
+        assertEquals("дүрт", state.suggestionAt(3))
+        assertTrue(state.onDown(activePointer, 10f, 20f, 302, height))
+        assertEquals(0, state.onUp(activePointer, 70f, 20f, 302, height))
+        assertFalse(state.onDown(activePointer, 100f, 20f, 302, height))
+        assertTrue(state.onDown(activePointer, 200f, 20f, 302, height))
+        assertEquals(2, state.onUp(activePointer, 200f, 20f, 302, height))
+        assertTrue(state.onDown(activePointer, 250f, 20f, 302, height))
+        assertEquals(3, state.onUp(activePointer, 301f, 20f, 302, height))
     }
 
     @Test
@@ -60,9 +64,10 @@ class SuggestionStripStateTest {
         val state = SuggestionStripState()
         for (width in 3..503) {
             assertEquals(0, state.cellLeft(0, width))
-            assertEquals(width, state.cellRight(2, width))
+            assertEquals(width, state.cellRight(SuggestionStripState.CELL_COUNT - 1, width))
             assertEquals(state.cellRight(0, width), state.cellLeft(1, width))
             assertEquals(state.cellRight(1, width), state.cellLeft(2, width))
+            assertEquals(state.cellRight(2, width), state.cellLeft(3, width))
             for (x in 0 until width) {
                 val cell = state.cellAt(x.toFloat(), 20f, width, height)
                 assertTrue(cell in 0 until SuggestionStripState.CELL_COUNT)
@@ -80,7 +85,7 @@ class SuggestionStripStateTest {
     @Test
     fun dragOutsideOriginalCellCancelsTapButReentryRestoresIt() {
         val state = SuggestionStripState()
-        state.setSuggestions("бер", "ике", "өч")
+        state.setSuggestions("бер", "ике", "өч", null)
 
         assertTrue(state.onDown(activePointer, 50f, 20f, width, height))
         assertTrue(state.onMove(activePointer, 150f, 20f, width, height))
@@ -92,15 +97,15 @@ class SuggestionStripStateTest {
 
         assertTrue(state.onDown(activePointer, 50f, 20f, width, height))
         assertTrue(state.onMove(activePointer, 150f, 20f, width, height))
-        assertTrue(state.onMove(activePointer, 80f, 20f, width, height))
+        assertTrue(state.onMove(activePointer, 70f, 20f, width, height))
         assertEquals(0, state.pressedCell())
-        assertEquals(0, state.onUp(activePointer, 80f, 20f, width, height))
+        assertEquals(0, state.onUp(activePointer, 70f, 20f, width, height))
     }
 
     @Test
     fun verticalExitCancelsReleaseAndVerticalReentryRestoresOriginalCell() {
         val state = SuggestionStripState()
-        state.setSuggestions("бер", "ике", "өч")
+        state.setSuggestions("бер", "ике", "өч", null)
 
         assertTrue(state.onDown(activePointer, 50f, 20f, width, height))
         assertTrue(state.onMove(activePointer, 50f, -1f, width, height))
@@ -122,28 +127,28 @@ class SuggestionStripStateTest {
     fun pointerUpOnlyCancelsWhenItBelongsToTheActivePointer() {
         val state = SuggestionStripState()
         val otherPointer = 19
-        state.setSuggestions("бер", "ике", "өч")
+        state.setSuggestions("бер", "ике", "өч", null)
 
-        assertTrue(state.onDown(activePointer, 150f, 20f, width, height))
+        assertTrue(state.onDown(activePointer, 120f, 20f, width, height))
         assertFalse(state.onPointerUp(otherPointer))
         assertEquals(activePointer, state.activePointerId())
         assertEquals(1, state.pressedCell())
-        assertEquals(1, state.onUp(activePointer, 150f, 20f, width, height))
+        assertEquals(1, state.onUp(activePointer, 120f, 20f, width, height))
 
-        assertTrue(state.onDown(activePointer, 150f, 20f, width, height))
+        assertTrue(state.onDown(activePointer, 120f, 20f, width, height))
         assertTrue(state.onPointerUp(activePointer))
         assertEquals(SuggestionStripState.INVALID_POINTER_ID, state.activePointerId())
         assertEquals(SuggestionStripState.NO_CELL, state.pressedCell())
         assertEquals(
             SuggestionStripState.NO_CELL,
-            state.onUp(otherPointer, 150f, 20f, width, height),
+            state.onUp(otherPointer, 120f, 20f, width, height),
         )
     }
 
     @Test
     fun clearImmediatelyDropsContentsAndCancelsGesture() {
         val state = SuggestionStripState()
-        state.setSuggestions("бер", "ике", "өч")
+        state.setSuggestions("бер", "ике", "өч", null)
         assertTrue(state.onDown(activePointer, 150f, 20f, width, height))
 
         assertTrue(state.clear())
@@ -159,12 +164,12 @@ class SuggestionStripStateTest {
     @Test
     fun identicalPublicationDoesNotReportVisualChange() {
         val state = SuggestionStripState()
-        assertTrue(state.setSuggestions("бер", "ике", null))
-        assertFalse(state.setSuggestions("бер", "ике", null))
+        assertTrue(state.setSuggestions("бер", "ике", null, null))
+        assertFalse(state.setSuggestions("бер", "ике", null, null))
         assertTrue(state.onDown(activePointer, 50f, 20f, width, height))
-        assertTrue(state.setSuggestions("бер", "ике", null))
+        assertTrue(state.setSuggestions("бер", "ике", null, null))
         assertEquals(SuggestionStripState.NO_CELL, state.pressedCell())
-        assertTrue(state.setSuggestions("бер", "ике", "өч"))
+        assertTrue(state.setSuggestions("бер", "ике", "өч", null))
     }
 
     @Test
@@ -173,7 +178,7 @@ class SuggestionStripStateTest {
         if (!bean.isThreadAllocatedMemorySupported) return
         bean.isThreadAllocatedMemoryEnabled = true
         val state = SuggestionStripState()
-        state.setSuggestions("бер", "ике", "өч")
+        state.setSuggestions("бер", "ике", "өч", null)
         repeat(100_000) {
             state.onDown(activePointer, 150f, 20f, 360, height)
             state.onMove(activePointer, 151f, 20f, 360, height)
@@ -197,14 +202,14 @@ class SuggestionStripStateTest {
         val state = SuggestionStripState()
         assertFalse(state.hasAnySuggestion())
 
-        state.setSuggestions("бер", null, null)
+        state.setSuggestions("бер", null, null, null)
         assertTrue(state.hasAnySuggestion())
 
         // Empty strings are normalized to absent cells, so they keep the band empty.
-        state.setSuggestions("", "", "")
+        state.setSuggestions("", "", "", "")
         assertFalse(state.hasAnySuggestion())
 
-        state.setSuggestions(null, null, "өч")
+        state.setSuggestions(null, null, "өч", null)
         assertTrue(state.hasAnySuggestion())
 
         state.clear()
@@ -212,9 +217,10 @@ class SuggestionStripStateTest {
     }
 
     @Test
-    fun stripHeightContractIsExactlyFortyDp() {
+    fun stripContractIs44DpAndFourCells() {
         assertEquals(44, SuggestionStripState.STRIP_HEIGHT_DP)
-        assertEquals(3, SuggestionStripState.CELL_COUNT)
+        // T7 reopened (2026-09-27): four cells, fed by the K = 4 Tatar bigram table.
+        assertEquals(4, SuggestionStripState.CELL_COUNT)
     }
 
     /**
@@ -225,7 +231,7 @@ class SuggestionStripStateTest {
     @Test
     fun nonFiniteCoordinatesHitNoCell() {
         val state = SuggestionStripState()
-        state.setSuggestions("бер", "ике", "өч")
+        state.setSuggestions("бер", "ике", "өч", null)
 
         assertEquals(SuggestionStripState.NO_CELL, state.cellAt(Float.NaN, 20f, width, height))
         assertEquals(SuggestionStripState.NO_CELL, state.cellAt(150f, Float.NaN, width, height))
@@ -250,7 +256,7 @@ class SuggestionStripStateTest {
     @Test
     fun emphasisOnlySticksToPopulatedCellsAndReportsChange() {
         val state = SuggestionStripState()
-        state.setSuggestions("китәп", "китап", null)
+        state.setSuggestions("китәп", "китап", null, null)
 
         assertEquals(SuggestionStripState.NO_CELL, state.emphasizedCell())
         assertFalse(state.isEmphasized(1))
@@ -275,16 +281,16 @@ class SuggestionStripStateTest {
     @Test
     fun everyPublicationResetsTheEmphasisMarker() {
         val state = SuggestionStripState()
-        state.setSuggestions("китәп", "китап", null)
+        state.setSuggestions("китәп", "китап", null, null)
         assertTrue(state.setEmphasis(1))
 
         // A fresh publication describes the whole band, marker included — even one whose words
         // happen to be identical, so the reset itself counts as the visual change.
-        assertTrue(state.setSuggestions("китәп", "китап", null))
+        assertTrue(state.setSuggestions("китәп", "китап", null, null))
         assertEquals(SuggestionStripState.NO_CELL, state.emphasizedCell())
 
         // And once nothing is marked, an identical republish is again a no-op.
-        assertFalse(state.setSuggestions("китәп", "китап", null))
+        assertFalse(state.setSuggestions("китәп", "китап", null, null))
 
         assertTrue(state.setEmphasis(0))
         assertTrue(state.clear())
@@ -297,7 +303,7 @@ class SuggestionStripStateTest {
         if (!bean.isThreadAllocatedMemorySupported) return
         bean.isThreadAllocatedMemoryEnabled = true
         val state = SuggestionStripState()
-        state.setSuggestions("китәп", "китап", null)
+        state.setSuggestions("китәп", "китап", null, null)
         repeat(100_000) {
             state.setEmphasis(1)
             state.setEmphasis(SuggestionStripState.NO_CELL)

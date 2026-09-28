@@ -37,15 +37,15 @@ class SuggestionsControllerTest {
     // --- Fakes ---------------------------------------------------------------------------------
 
     private class FakeStrip : StripSurface {
-        val shown = mutableListOf<Triple<String, String?, String?>>()
+        val shown = mutableListOf<List<String?>>()
         val visibilityEvents = mutableListOf<String>()
         var hideCount = 0
         var reserveCount = 0
         var visible = false
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            shown.add(Triple(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            shown.add(listOf(first, second, third, fourth))
             visible = true
             visibilityEvents.add("show")
         }
@@ -342,7 +342,7 @@ class SuggestionsControllerTest {
     // --- Result application --------------------------------------------------------------------
 
     @Test
-    fun currentResultIsShownTopThree() {
+    fun currentResultIsShownUpToTheFourthCell() {
         val h = Harness()
         h.controller.onStartInput(eligible = true)
         h.editor.word = "сүз"
@@ -356,7 +356,8 @@ class SuggestionsControllerTest {
         )
 
         assertEquals(1, h.strip.shown.size)
-        assertEquals(Triple("сүзләр", "сүзлек", "сүзсез"), h.strip.shown.single())
+        // The strip has four cells now: the whole four-candidate answer is shown.
+        assertEquals(listOf("сүзләр", "сүзлек", "сүзсез", "сүзчән"), h.strip.shown.single())
     }
 
     @Test
@@ -494,7 +495,7 @@ class SuggestionsControllerTest {
         assertEquals(listOf("сүз" to "сүзләр"), h.editor.commits)
         // The moment the answer arrives the strip shows the accepted word's successors.
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("дип", "дигән"), LookupKind.NEXT_WORD)
-        assertEquals(Triple("дип", "дигән", null), h.strip.shown.last())
+        assertEquals(listOf("дип", "дигән", null, null), h.strip.shown.last())
         assertTrue(h.strip.visible)
     }
 
@@ -507,7 +508,7 @@ class SuggestionsControllerTest {
         h.editor.nextWordContext = "сүз"
         h.controller.onTextChanged()
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("өйгә", "китте"), LookupKind.NEXT_WORD)
-        assertEquals(Triple("өйгә", "китте", null), h.strip.shown.last())
+        assertEquals(listOf("өйгә", "китте", null, null), h.strip.shown.last())
 
         h.editor.predictedCommitResult = true
         h.strip.listener!!.onTap("өйгә")
@@ -523,7 +524,7 @@ class SuggestionsControllerTest {
         assertTrue("the NEXT_WORD tap must not touch the PREFIX path", h.engine.requestedPrefixes.isEmpty())
 
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("керде"), LookupKind.NEXT_WORD)
-        assertEquals(Triple("керде", null, null), h.strip.shown.last())
+        assertEquals(listOf("керде", null, null, null), h.strip.shown.last())
     }
 
     @Test
@@ -1099,7 +1100,7 @@ class SuggestionsControllerTest {
         h.controller.onTextChanged()
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзләр", "сүзлек", "сүзсез"), LookupKind.PREFIX)
 
-        assertEquals(Triple("сүзләр", "сүзлек", "сүзсез"), h.strip.shown.single())
+        assertEquals(listOf("сүзләр", "сүзлек", "сүзсез", null), h.strip.shown.single())
 
         h.strip.listener!!.onTap("сүзләр")
         assertEquals(listOf("сүз" to "сүзләр"), h.editor.commits)
@@ -1119,7 +1120,7 @@ class SuggestionsControllerTest {
         )
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзләр", "сүзлек", "сүзсез"), LookupKind.PREFIX)
 
-        assertEquals(Triple("Сүзләр", "Сүзлек", "Сүзсез"), h.strip.shown.single())
+        assertEquals(listOf("Сүзләр", "Сүзлек", "Сүзсез", null), h.strip.shown.single())
 
         // The inserted form is exactly the displayed one; the guard prefix stays the raw word.
         h.strip.listener!!.onTap("Сүзләр")
@@ -1135,7 +1136,7 @@ class SuggestionsControllerTest {
         h.controller.onTextChanged()
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзләр", "сүзлек"), LookupKind.PREFIX)
 
-        assertEquals(Triple("СҮЗЛӘР", "СҮЗЛЕК", null), h.strip.shown.single())
+        assertEquals(listOf("СҮЗЛӘР", "СҮЗЛЕК", null, null), h.strip.shown.single())
 
         h.strip.listener!!.onTap("СҮЗЛӘР")
         assertEquals(listOf("СҮЗ" to "СҮЗЛӘР"), h.editor.commits)
@@ -1307,7 +1308,7 @@ class SuggestionsControllerTest {
         assertTrue("an empty prefix must never also build a PREFIX request", h.engine.requestedPrefixes.isEmpty())
 
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("өйгә"), LookupKind.NEXT_WORD)
-        assertEquals(Triple("өйгә", null, null), h.strip.shown.single())
+        assertEquals(listOf("өйгә", null, null, null), h.strip.shown.single())
 
         h.strip.listener!!.onTap("өйгә")
         assertEquals(listOf("сүз" to "өйгә"), h.editor.predictedCommits)
@@ -1381,7 +1382,7 @@ class SuggestionsControllerTest {
         h.editor.word = "кит"
         h.controller.onTextChanged()
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("китап"), LookupKind.PREFIX)
-        assertEquals(Triple("китап", null, null), h.strip.shown.last())
+        assertEquals(listOf("китап", null, null, null), h.strip.shown.last())
 
         // A tap now commits through the PREFIX path, never the NEXT_WORD one — proving the earlier
         // prediction binding is gone, not merely shadowed.
@@ -1430,7 +1431,7 @@ class SuggestionsControllerTest {
         // handed to onResult must survive to the strip byte-for-byte instead.
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("яр", "әби", "зур"), LookupKind.NEXT_WORD)
 
-        assertEquals(Triple("яр", "әби", "зур"), h.strip.shown.single())
+        assertEquals(listOf("яр", "әби", "зур", null), h.strip.shown.single())
     }
 
     @Test
@@ -1445,7 +1446,7 @@ class SuggestionsControllerTest {
 
         // Shown exactly as the table stores it (lowercase) — not "Өйгә": the capitalized context
         // casing is never carried into the prediction, unlike the PREFIX casing rules above.
-        assertEquals(Triple("өйгә", null, null), h.strip.shown.single())
+        assertEquals(listOf("өйгә", null, null, null), h.strip.shown.single())
     }
 
     @Test
@@ -1564,9 +1565,9 @@ class SuggestionsControllerTest {
         h.editor.nextWordContext = "татар"
         h.controller.onTextChanged()
 
-        // The bigram successor keeps the lead; the strip cells it leaves free carry the forms of
-        // татар, frequency-ranked (12 085 > 9 093 > the unshown татарның 2 752).
-        assertEquals(Triple("белән", "татарлар", "татарча"), h.strip.shown.last())
+        // The bigram successor keeps the lead; the three strip cells it leaves free carry the
+        // forms of татар, frequency-ranked (12 085 > 9 093 > 2 752).
+        assertEquals(listOf("белән", "татарлар", "татарча", "татарның"), h.strip.shown.last())
 
         // A form cell commits exactly like a predicted word: the NEXT_WORD insertion path.
         h.strip.listener!!.onTap("татарча")
@@ -1575,15 +1576,15 @@ class SuggestionsControllerTest {
     }
 
     @Test
-    fun bigramSuccessorsTakingAllThreeCellsLeaveNoRoomForForms() {
+    fun bigramSuccessorsTakingAllFourCellsLeaveNoRoomForForms() {
         val h = Harness()
-        h.factoryResult = realTatarNextWordEngine(h, listOf("белән", "дип", "туры"))
+        h.factoryResult = realTatarNextWordEngine(h, listOf("белән", "дип", "туры", "кайда"))
         h.controller.onStartInput(eligible = true)
 
         h.editor.word = ""
         h.editor.nextWordContext = "татар"
         h.controller.onTextChanged()
 
-        assertEquals(Triple("белән", "дип", "туры"), h.strip.shown.last())
+        assertEquals(listOf("белән", "дип", "туры", "кайда"), h.strip.shown.last())
     }
 }

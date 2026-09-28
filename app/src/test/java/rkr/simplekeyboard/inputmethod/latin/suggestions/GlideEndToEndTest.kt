@@ -17,6 +17,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.GlobalTopFrequency
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SnapshotPersonalCandidateSource
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.BigramTableIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
@@ -44,13 +45,13 @@ class GlideEndToEndTest {
     // --- Fakes ---------------------------------------------------------------------------------
 
     private class FakeStrip : StripSurface {
-        val shown = mutableListOf<Triple<String, String?, String?>>()
+        val shown = mutableListOf<List<String?>>()
         var reserveCount = 0
         var hideCount = 0
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            shown.add(Triple(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            shown.add(listOf(first, second, third, fourth))
         }
 
         override fun reserve() {
@@ -260,8 +261,7 @@ class GlideEndToEndTest {
         // strip's later derivations treat it exactly as a typed word (the prefix path).
         assertEquals("сәләм", h.editor.cachedWordBeforeCursor())
         // The strip then shows the remaining candidates as tappable alternatives.
-        val last = h.strip.shown.last()
-        val cells = listOfNotNull(last.first, last.second, last.third)
+        val cells = h.strip.shown.last().filterNotNull()
         assertTrue("сәлләм must ride the alternatives, was $cells", cells.contains("сәлләм"))
         assertFalse("the committed word is not re-offered", cells.contains("сәләм"))
     }
@@ -280,9 +280,9 @@ class GlideEndToEndTest {
         assertEquals("сәлләм", h.editor.text)
         // The strip then behaves as if the word had been typed (P7-7): the trailing word is
         // "сәлләм", so the band is the prefix path for it (forms), not the NEXT_WORD chain that
-        // followed the auto-spaced commit before P7-7 (was Triple("сәләмә","һәм","белән")).
-        val last = h.strip.shown.last()
-        assertEquals(Triple("сәлләмнең", "сәлләмгә", null), last)
+        // followed the auto-spaced commit before P7-7 (was [сәләмә, һәм, белән] before the
+        // four-cell strip).
+        assertEquals(listOf("сәлләмнең", "сәлләмгә", null, null), h.strip.shown.last())
     }
 
     @Test
@@ -513,13 +513,164 @@ class GlideEndToEndTest {
         assertEquals(listOf("" to "сәлинә"), h.editor.predictedCommits)
         // …and the strip shows the decode's remaining candidates as tappable alternatives,
         // exactly like a dictionary word's band; the committed word is not re-offered.
-        val last = h.strip.shown.last()
-        val cells = listOfNotNull(last.first, last.second, last.third)
+        val cells = h.strip.shown.last().filterNotNull()
         assertTrue("the decode tail must ride the strip, was $cells", cells.isNotEmpty())
         assertFalse("the committed word is not re-offered", cells.contains("сәлинә"))
         // The undo window treats it like any glide commit.
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("", h.editor.text)
+    }
+
+    // --- Glide-triggered learning (2026-09-27): the commit counts as an acceptance -------------
+
+    /** Records the word sink's acceptance events; membership is the store side's business. */
+    private class RecordingWordSink : WordCompletionSink {
+        val accepted = mutableListOf<String>()
+        override fun onCleanCompletion(word: String) = Unit
+        override fun onAcceptedSuggestion(word: String) {
+            accepted.add(word)
+        }
+    }
+
+    @Test
+    fun theLiftCommitAnnouncesAnAcceptedSuggestionToTheWordSink() {
+        val h = Harness()
+        val sink = RecordingWordSink()
+        h.controller.setCompletionSink(sink)
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәләм", h.editor.text)
+        // The lift-commit IS the acceptance — the sink hears the committed word exactly as if it
+        // had been tapped in the strip.
+        assertEquals(listOf("сәләм"), sink.accepted)
+    }
+
+    @Test
+    fun anAlternativeReplacementAnnouncesTheAlternative() {
+        val h = Harness()
+        val sink = RecordingWordSink()
+        h.controller.setCompletionSink(sink)
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәлләм", h.editor.text)
+        // The lift counted the top-1; the explicit replacement counts the alternative.
+        assertEquals(listOf("сәләм", "сәлләм"), sink.accepted)
+    }
+
+    @Test
+    fun aRefusedGlideCommitAnnouncesNothing() {
+        val h = Harness()
+        val sink = RecordingWordSink()
+        h.controller.setCompletionSink(sink)
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        // A non-glide trailing word makes the commit path refuse: nothing committed, nothing
+        // announced.
+        h.editor.text = "та"
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("та", h.editor.text)
+        assertTrue(sink.accepted.isEmpty())
+    }
+
+    @Test
+    fun theUndoDoesNotRollBackTheAcceptance() {
+        val h = Harness()
+        val sink = RecordingWordSink()
+        h.controller.setCompletionSink(sink)
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
+        // Pinned imprecision: the undo deletes the word from the editor, not its use record —
+        // the tap path lives with the same rule (a bump survives a later backspace).
+        assertEquals(listOf("сәләм"), sink.accepted)
+    }
+
+    @Test
+    fun theLiftCommitAnnouncesWithTheSuggestionsMasterOff() {
+        val h = Harness()
+        val sink = RecordingWordSink()
+        h.controller.setCompletionSink(sink)
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәләм", h.editor.text)
+        // P7-6: the commit is typing, not a suggestion — and the learning event fires anyway;
+        // the predicate on the sink's side (LatinIME) is the only gate.
+        assertEquals(listOf("сәләм"), sink.accepted)
+    }
+
+    // --- Live per-MOVE scoring (2026-09-27): the mid-gesture preview ----------------------------
+
+    @Test
+    fun aMidGestureProgressPaintsAnUntappablePreview() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideProgress(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        // The preview paints the decode's top cells — WITHOUT committing anything…
+        assertEquals("", h.editor.text)
+        assertEquals("сәләм", h.strip.shown.last()[0])
+        // …and WITHOUT a binding: a tap on the previewed word is inert (the finger is down
+        // anyway; this pins the "no binding" half of the contract).
+        h.strip.listener!!.onTap("сәләм")
+        assertEquals("", h.editor.text)
+        assertTrue(h.editor.predictedCommits.isEmpty())
+    }
+
+    @Test
+    fun progressThenLiftCommitsTheTop1() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideProgress(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        // The lift commits through its own path even with previews delivered before it.
+        assertEquals("сәләм", h.editor.text)
+        // …and the alternatives are bound again: a tap now replaces in place.
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәлләм", h.editor.text)
+    }
+
+    @Test
+    fun progressWithTheSuggestionsMasterOffPaintsNothing() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        val shownBefore = h.strip.shown.size
+        h.controller.onGlideProgress(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals(shownBefore, h.strip.shown.size)
+        assertEquals("", h.editor.text)
+    }
+
+    @Test
+    fun progressWithAHalfTypedWordInFrontDoesNothing() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.editor.text = "та"
+        val shownBefore = h.strip.shown.size
+        h.controller.onGlideProgress(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals(shownBefore, h.strip.shown.size)
+        assertEquals("та", h.editor.text)
+    }
+
+    @Test
+    fun aPreviewMovesNoLearningCounters() {
+        val h = Harness()
+        val sink = RecordingWordSink()
+        h.controller.setCompletionSink(sink)
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideProgress(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        // The preview decodes but is not an acceptance: the sink hears nothing until the lift.
+        assertTrue(sink.accepted.isEmpty())
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals(listOf("сәләм"), sink.accepted)
     }
 
     // --- P7-7: no auto-space, the chain space is the only separator (2026-09-25) ---------------

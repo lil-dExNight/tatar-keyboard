@@ -49,7 +49,7 @@ class AutocorrectControllerTest {
         val events = mutableListOf<String>()
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
             events.add("show:$first")
         }
 

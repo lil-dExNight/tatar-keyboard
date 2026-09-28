@@ -416,19 +416,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final StripSurface stripSurface = new StripSurface() {
             @Override
             public void showSuggestions(final String first, final String second,
-                    final String third) {
+                    final String third, final String fourth) {
                 final InputView inputView = getInputViewForSuggestions();
                 if (inputView != null) {
-                    inputView.showSuggestionStrip(first, second, third);
+                    inputView.showSuggestionStrip(first, second, third, fourth);
                 }
             }
 
             @Override
             public void setSpokenCellLabels(final String first, final String second,
-                    final String third) {
+                    final String third, final String fourth) {
                 final InputView inputView = getInputViewForSuggestions();
                 if (inputView != null) {
-                    inputView.setSuggestionStripSpokenLabels(first, second, third);
+                    inputView.setSuggestionStripSpokenLabels(first, second, third, fourth);
                 }
             }
 
@@ -2234,6 +2234,22 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final SuggestionsController controller = mSuggestionsController;
         if (controller != null) {
             controller.onGlideInput(path);
+        }
+    }
+
+    /**
+     * Live per-MOVE scoring (2026-09-27): the armed glide's throttled partial path, handed to
+     * the suggestions controller, which decodes it on the engine worker and paints the strip
+     * WITHOUT binding it — nothing mid-gesture is tappable and nothing here commits; only the
+     * lift ({@link #onGlideInput}) does. Same buffer rule as the lift: the engine request
+     * snapshots before this call returns.
+     */
+    @Override
+    public void onGlideProgress(
+            final rkr.simplekeyboard.inputmethod.latin.glide.GlidePath path) {
+        final SuggestionsController controller = mSuggestionsController;
+        if (controller != null) {
+            controller.onGlideProgress(path);
         }
     }
 

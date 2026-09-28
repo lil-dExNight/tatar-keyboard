@@ -47,6 +47,10 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
     private var savedGlide = false
 
     private val recordedGlides = ArrayList<GlidePath>()
+    /** Point counts at each mid-gesture preview callback (live per-MOVE scoring), in order. */
+    private val recordedProgressSizes = ArrayList<Int>()
+    private val recordedProgressTimes = ArrayList<Long>()
+    private var glideDeliveredAt = 0L
     private var longPressTimerArms = 0
     private var longPressCancels = 0
     private var trailPoints = 0
@@ -58,6 +62,13 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
             val copy = GlidePath(path.size)
             path.copyInto(copy)
             recordedGlides.add(copy)
+            glideDeliveredAt = SystemClock.uptimeMillis()
+        }
+
+        override fun onGlideProgress(path: GlidePath) {
+            // Only the size and the clock: the live buffer is the tracker's own.
+            recordedProgressSizes.add(path.size)
+            recordedProgressTimes.add(SystemClock.uptimeMillis())
         }
     }
 
@@ -111,6 +122,9 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
         )
         PointerTracker.setKeyboardActionListener(recorder)
         recordedGlides.clear()
+        recordedProgressSizes.clear()
+        recordedProgressTimes.clear()
+        glideDeliveredAt = 0L
         longPressTimerArms = 0
         longPressCancels = 0
         trailPoints = 0
@@ -164,6 +178,32 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
         assertTrue("the long-press timer must have armed at down", longPressTimerArms > 0)
         assertTrue("the long-press cancels its own timers", longPressCancels > 0)
         assertEquals("a fired long-press never delivers a glide", 0, recordedGlides.size)
+    }
+
+    /**
+     * Live per-MOVE scoring (2026-09-27): an armed glide emits the partial path to
+     * [KeyboardActionListener.onGlideProgress] THROTTLED — a handful of callbacks per gesture,
+     * strictly ordered by size, all before the lift's delivery, and none for a gesture that never
+     * arms (the long-press path above).
+     */
+    fun testArmedGlideEmitsThrottledProgress() {
+        driveGesture(holdMs = 0L, fast = true)
+        assertEquals(1, recordedGlides.size)
+        val delivered = recordedGlides[0].size
+        val count = recordedProgressSizes.size
+        // ~40 MOVEs at ~16 ms cadence: the 120 ms / 5-point throttle yields a few emissions,
+        // not one-per-point and not zero.
+        assertTrue("expected a few throttled emissions, was $count", count in 2..12)
+        assertTrue("not one emission per point (the throttle works)", count < delivered / 2)
+        var previous = 0
+        for (size in recordedProgressSizes) {
+            assertTrue("progress paths grow monotonically", size > previous)
+            assertTrue("a preview never exceeds the delivered path", size <= delivered)
+            previous = size
+        }
+        for (time in recordedProgressTimes) {
+            assertTrue("every preview precedes the lift", time < glideDeliveredAt)
+        }
     }
 
     /**

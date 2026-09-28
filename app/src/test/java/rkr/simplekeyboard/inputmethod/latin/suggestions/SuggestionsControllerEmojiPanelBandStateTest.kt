@@ -41,14 +41,14 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 class SuggestionsControllerEmojiPanelBandStateTest {
 
     private class FakeStrip : StripSurface {
-        val shown = mutableListOf<Triple<String, String?, String?>>()
+        val shown = mutableListOf<List<String?>>()
         var hideCount = 0
         var reserveCount = 0
         var visible = false
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            shown.add(Triple(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            shown.add(listOf(first, second, third, fourth))
             visible = true
         }
 

@@ -47,8 +47,8 @@ class TapReproTest {
         var visible = false
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            visibleWords = listOfNotNull(first, second, third)
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            visibleWords = listOfNotNull(first, second, third, fourth)
             visible = true
         }
 

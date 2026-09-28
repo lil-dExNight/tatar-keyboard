@@ -7,11 +7,13 @@
 # набор «мин» (tt) / «при» (ru) / «hi» (en) с проверкой подсказок →
 # переключение сабтипов глобусом tt→ru→en→tt → эмодзи-панель (долгий тап
 # запятой) с коммитом эмодзи → пустой crash-буфер.
-# TT-SUGGESTIONS P5: back on the tt layout, two word-form probes (татар, сакчы)
-# type a word + space and tap the middle suggestion cell, reading the field to
+# TT-SUGGESTIONS P5: back on the tt layout, two word-form probes (татар, сәләм)
+# type a word + space and tap a given suggestion cell, reading the field to
 # prove what the strip committed (tap-and-read; the IME window is invisible to
-# uiautomator). Details at the probes below.
-# TT-TYPO-NEXT Phase A: the сакчы probe is extended by a second cell-2 tap that
+# uiautomator). Details at the probes below. (2026-09-27: the strip is FOUR
+# cells now; сакчы replaced by сәләм — the 2026-09-23 EXPAND-1 extra heads made
+# сакчы a bigram head, so it no longer exercises the free-cell forms stage.)
+# TT-TYPO-NEXT Phase A: the сәләм probe is extended by a second cell-1 tap that
 # proves the strip shows predictions for the just-committed word right after
 # the first tap, without waiting for a keystroke.
 #
@@ -389,8 +391,10 @@ fi
 field0=$(field_text)
 if [ "$field0" = "__NOFIELD__" ]; then
     result FAIL field-empty "try-it поле не найдено в дампе"
-elif [ -z "$field0" ] || [[ "$field0" == "Try it:"* ]]; then
-    # uiautomator отдаёт hint как text — пустое поле выглядит как подсказка
+elif [ -z "$field0" ] || [[ "$field0" == "Try it:"* || "$field0" == "Сынап карагыз:"* || "$field0" == "Попробуйте:"* ]]; then
+    # uiautomator отдаёт hint как text — пустое поле выглядит как подсказка; префиксы
+    # соответствуют setup_test_field_hint во всех трёх локалях (с 3.1.0 UI по умолчанию
+    # татарский, поэтому английского префикса одного недостаточно).
     result PASS field-empty "try-it поле пустое после чистого старта"
 else
     result FAIL field-empty "в поле уже есть текст: '$field0'"
@@ -469,13 +473,16 @@ except KeyError as exc:
 PYEOF
 }
 
-# Middle suggestion cell (cell 2 of 3 — equal thirds, SuggestionStripState).
-# y measured on the tt 5-row layout (1080×2280, density 2.75). W5 of stage B
-# (docs/ROADMAP-P8-PLAN.md) raised the strip 40dp → 44dp = 110 px → 121 px. The
-# strip's BOTTOM stays glued to the keyboard's top edge (1418 px) and it grows
-# upward, so the keyboard's own key coordinates above are unchanged: the strip now
-# spans ~1297–1418 px → centre ≈ 1357.5 px ≈ 0.5954 (was ≈ 0.5980 at 40dp).
-STRIP_CELL2="0.5000,0.5954"
+# Suggestion strip cells (FOUR since 2026-09-27 — the four-cell strip, T7 reopened; equal
+# quarters, SuggestionStripState). Cell centers x = (i + 0.5) / 4. The y is measured on the tt
+# 5-row layout (1080×2280, density 2.75). W5 of stage B (docs/ROADMAP-P8-PLAN.md) raised the
+# strip 40dp → 44dp = 110 px → 121 px. The strip's BOTTOM stays glued to the keyboard's top edge
+# (1418 px) and it grows upward, so the keyboard's own key coordinates above are unchanged: the
+# strip spans ~1297–1418 px → centre ≈ 1357.5 px ≈ 0.5954 (was ≈ 0.5980 at 40dp).
+STRIP_CELL0="0.1250,0.5954"
+STRIP_CELL1="0.3750,0.5954"
+STRIP_CELL2="0.6250,0.5954"
+STRIP_CELL3="0.8750,0.5954"
 
 second_word_after() {                    # second_word_after "<text>" "<word>" → token after last <word>
     python3 - "$1" "$2" <<'PYEOF'
@@ -490,11 +497,12 @@ except ValueError:
 PYEOF
 }
 
-# type_tt_and_tap_cell2 <word> <tag>: type <word> + space on the tt layout,
-# screenshot the strip, tap the middle suggestion cell (only when suggestions
-# are on), read the field again. Stdout: field-after-space <TAB> field-after-tap.
+# type_tt_and_tap_cell2 <word> <tag> [cell]: type <word> + space on the tt layout,
+# screenshot the strip, tap the given suggestion cell (only when suggestions
+# are on; default the third cell), read the field again. Stdout: field-after-space <TAB>
+# field-after-tap.
 type_tt_and_tap_cell2() {
-    local word="$1" tag="$2" coords mid after
+    local word="$1" tag="$2" cell="${3:-$STRIP_CELL2}" coords mid after
     coords=$(tt_word_coords "$word")
     type_word "$coords"
     TAPF ${SPACE%,*} ${SPACE#*,}
@@ -502,7 +510,7 @@ type_tt_and_tap_cell2() {
     mid=$(field_text)
     SHOT "smoke-wordform-${tag}.png"
     if [ "$SUGGESTIONS" = on ]; then
-        TAPF ${STRIP_CELL2%,*} ${STRIP_CELL2#*,}
+        TAPF ${cell%,*} ${cell#*,}
         sleep 1
         after=$(field_text)
     else
@@ -610,18 +618,21 @@ SHOT smoke-tt-back.png
 
 # ── word forms after a committed tt word + space (TT-SUGGESTIONS P3/P5) ──
 # Tap-and-read, not pixel diff: uiautomator does not see the IME window, so the
-# strip content is proven by tapping the middle cell and reading the try-it
-# field. Two probes against the shipped assets:
-#  1. татар — the pinned schema-3 table carries three successors for it (теле,
-#     дәүләт, телен; re-measured on the shipped assets 2026-09-20), so no strip
-#     cell is free and cell 2 MUST commit дәүләт: bigram successors keep
-#     priority and forms never displace them (CompositePrefixComputer). A form
-#     here, or any other word, is a contract breach.
-#  2. сакчы — a dictionary word the table does NOT carry as a head, so all
-#     three cells are free and cell 2 MUST commit an inflected form of сакчы
-#     (top forms by frequency on the shipped dictionary: сакчысы, сакчылар,
-#     сакчысын). This is the on-device proof of the P3 after-word forms.
-wf=$(type_tt_and_tap_cell2 "татар" tatar)
+# strip content is proven by tapping a cell and reading the try-it field.
+# Two probes against the shipped assets (K = 4 table + the four-cell strip,
+# 2026-09-27 — re-derived by reading the packed table):
+#  1. татар — a head whose four stored successors (теле, дәүләт, телен, телендә)
+#     fill the WHOLE strip, so cell 2 (index 1) MUST commit дәүләт: bigram
+#     successors keep priority and neither forms nor the fallback ever run
+#     (CompositePrefixComputer). A form here, or any other word, is a contract
+#     breach.
+#  2. сәләм — NOT a head, so its one attested after-word form (сәләмә) leads and
+#     the global top words fill the rest (һәм, белән, да): cell 1 (index 0) MUST
+#     commit сәләмә. This is the on-device proof of the P3 after-word forms
+#     beating the fill. (The pre-2026-09-27 probe used сакчы "not a head" — stale
+#     since the 2026-09-23 EXPAND-1 extra heads made it one; its band there is
+#     four corpus successors.)
+wf=$(type_tt_and_tap_cell2 "татар" tatar "$STRIP_CELL1")
 wf_mid="${wf%$'\t'*}"
 wf_after="${wf#*$'\t'}"
 w2=$(second_word_after "$wf_after" "татар")
@@ -632,61 +643,56 @@ elif ! echo "$wf_mid" | grep -qE 'татар $'; then
 elif [ "$SUGGESTIONS" != on ]; then
     result SKIP wordform-tt-татар "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "$wf_mid" ]; then
-    result FAIL wordform-tt-татар "middle cell tap committed nothing; field: '$wf_after'"
+    result FAIL wordform-tt-татар "cell-2 tap committed nothing; field: '$wf_after'"
 elif [ "$w2" = "дәүләт" ]; then
-    result PASS wordform-tt-татар "cell 2 = дәүләт: successors fill all 3 cells, forms keep free-cell priority (pinned)"
-elif echo "$w2" | grep -qE '^татар.'; then
-    result PASS wordform-tt-татар "cell 2 = $w2: a form of татар took a free cell"
+    result PASS wordform-tt-татар "cell 2 = дәүләт: the four stored successors fill the strip (pinned)"
 else
-    result FAIL wordform-tt-татар "cell 2 committed '$w2' (expected дәүләт or a татар form); field: '$wf_after'"
+    result FAIL wordform-tt-татар "cell 2 committed '$w2' (expected дәүләт from the pinned successor row); field: '$wf_after'"
 fi
 
-wf=$(type_tt_and_tap_cell2 "сакчы" sakcy)
+wf=$(type_tt_and_tap_cell2 "сәләм" syalam "$STRIP_CELL0")
 wf_mid="${wf%$'\t'*}"
 wf_after="${wf#*$'\t'}"
-w2=$(second_word_after "$wf_after" "сакчы")
+w2=$(second_word_after "$wf_after" "сәләм")
 if [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "__NOFIELD__" ]; then
-    result FAIL wordform-tt-сакчы "try-it field not in the dump"
-elif ! echo "$wf_mid" | grep -qE 'сакчы $'; then
-    result FAIL wordform-tt-сакчы "сакчы did not commit; field: '$wf_mid'"
+    result FAIL wordform-tt-сәләм "try-it field not in the dump"
+elif ! echo "$wf_mid" | grep -qE 'сәләм $'; then
+    result FAIL wordform-tt-сәләм "сәләм did not commit; field: '$wf_mid'"
 elif [ "$SUGGESTIONS" != on ]; then
-    result SKIP wordform-tt-сакчы "suggestions not enabled (non-debuggable package)"
+    result SKIP wordform-tt-сәләм "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "$wf_mid" ]; then
-    result FAIL wordform-tt-сакчы "middle cell tap committed nothing; field: '$wf_after'"
-elif echo "$w2" | grep -qE '^сакчы.'; then
-    result PASS wordform-tt-сакчы "cell 2 = $w2: inflected form offered in a free cell and committed"
+    result FAIL wordform-tt-сәләм "cell-1 tap committed nothing; field: '$wf_after'"
+elif [ "$w2" = "сәләмә" ]; then
+    result PASS wordform-tt-сәләм "cell 1 = сәләмә: the after-word form leads the fill (pinned)"
 else
-    result FAIL wordform-tt-сакчы "cell 2 committed '$w2' (expected a сакчы form); field: '$wf_after'"
+    result FAIL wordform-tt-сәләм "cell 1 committed '$w2' (expected сәләмә); field: '$wf_after'"
 fi
 
 # ── TT-TYPO-NEXT Phase A: predictions right after the accepted suggestion ──
-# The сакчы probe's cell-2 tap committed an inflected form (сакчылар on the
-# shipped assets) with a trailing space. Before the fix the strip stayed empty
-# until the next keystroke — SuggestionsController.onTap never re-issued a
-# lookup; now the tap itself issues the NEXT_WORD request for the committed
-# word (сакчылар is not a bigram head, so the follow-up band is its after-word
-# forms — сакчылары, сакчыларына, сакчыларын on the shipped assets — and every
-# one of them starts with сакчы). Tap-and-read, like the probes above: a second
-# cell-2 tap must commit one more сакчы* word; an empty follow-up band commits
-# nothing.
+# The сәләм probe's cell-1 tap committed сәләмә with a trailing space, and the
+# tap itself re-issued the NEXT_WORD lookup (before the fix the strip stayed
+# empty until the next keystroke). сәләмә is no bigram head and has no forms, so
+# the follow-up band is the pure top-word fill [һәм, белән, да, бу]: a second tap
+# on cell 1 (index 0) MUST commit һәм — predictions for the accepted word with no
+# keystroke.
 if [ "$SUGGESTIONS" != on ]; then
-    result SKIP tap-followup-tt-сакчы "suggestions not enabled (non-debuggable package)"
+    result SKIP tap-followup-tt-сәләм "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "__NOFIELD__" ] || [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "$wf_mid" ]; then
-    result SKIP tap-followup-tt-сакчы "the сакчы probe above already failed; nothing to follow up on"
+    result SKIP tap-followup-tt-сәләм "the сәләм probe above already failed; nothing to follow up on"
 else
     sleep 2                          # the follow-up NEXT_WORD answer is asynchronous
-    TAPF ${STRIP_CELL2%,*} ${STRIP_CELL2#*,}
+    TAPF ${STRIP_CELL0%,*} ${STRIP_CELL0#*,}
     sleep 1
     wf_again=$(field_text)
     w3=$(second_word_after "$wf_again" "$w2")
     if [ "$wf_again" = "__NOFIELD__" ]; then
-        result FAIL tap-followup-tt-сакчы "try-it field not in the dump"
+        result FAIL tap-followup-tt-сәләм "try-it field not in the dump"
     elif [ "$wf_again" = "$wf_after" ]; then
-        result FAIL tap-followup-tt-сакчы "strip stayed empty after the accepted suggestion; field: '$wf_again'"
-    elif echo "$w3" | grep -qE '^сакчы.'; then
-        result PASS tap-followup-tt-сакчы "cell 2 of the follow-up band = $w3: predictions for the accepted word without a keystroke"
+        result FAIL tap-followup-tt-сәләм "strip stayed empty after the accepted suggestion; field: '$wf_again'"
+    elif [ "$w3" = "һәм" ]; then
+        result PASS tap-followup-tt-сәләм "cell 1 of the follow-up band = һәм: predictions for the accepted word without a keystroke"
     else
-        result FAIL tap-followup-tt-сакчы "follow-up cell 2 committed '$w3' (expected a form of $w2); field: '$wf_again'"
+        result FAIL tap-followup-tt-сәләм "follow-up cell 1 committed '$w3' (expected һәм from the fill); field: '$wf_again'"
     fi
 fi
 

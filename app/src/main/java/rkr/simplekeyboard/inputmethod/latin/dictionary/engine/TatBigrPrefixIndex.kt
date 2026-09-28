@@ -12,7 +12,7 @@ data class BigramTableIdentity(
 )
 
 /**
- * Predicts up to three successor words for an exact, already-normalized context word — the E5c
+ * Predicts up to four successor words for an exact, already-normalized context word — the E5c
  * read side of the TATBIGR table (`docs/DICTIONARY-E5B.md`; schema 3 since SIZE-2,
  * `docs/SIZE-SCHEMA3.md`).
  *
@@ -56,7 +56,7 @@ internal interface BigramDictionary {
  * dictionary), binary search the head-block index for the last block whose first dictionary index
  * is ≤ the query's, stream-decode the block's delta-varint head indices (≤ [HEAD_BLOCK_SIZE] - 1
  * varints) to find the head, then skip/decode u8-counted varint success ids inside the same block
- * and resolve them through the dictionary — at most `min(3, count)` strings, in the packing order
+ * and resolve them through the dictionary — at most `min(MAX_RESULTS, count)` strings, in the packing order
  * the generator already fixed (count descending, tie code-point ascending). No re-ranking happens
  * here.
  */
@@ -180,7 +180,7 @@ internal class TatBigrPrefixIndex private constructor(
         private const val U32_BYTES = 4
         private const val BLOCK_RECORD_BYTES = 12
         private const val HEAD_BLOCK_SIZE = 64
-        internal const val MAX_RESULTS = 3
+        internal const val MAX_RESULTS = 4
         internal const val MAX_WORD_BYTES = 128
         private const val MAX_U32 = 0xffff_ffffL
         private const val HEX_DIGITS = "0123456789abcdef"

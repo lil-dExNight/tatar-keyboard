@@ -412,7 +412,7 @@ class TwoSubstitutionCalibrationTest {
 
         // 3 code points: class #5 is gated at >= 4 — the strip is the class-#1 (э→ә) picture
         // exactly as before.
-        assertEquals(listOf("сәламәтлек", "сәләтле", "сәламәт"), strip("сэл"))
+        assertEquals(listOf("сәламәтлек", "сәләтле", "сәламәт", "сәламәтлеге"), strip("сэл"))
         // 4 code points: class #5's activation condition does NOT hold here — class #4 fills
         // the strip (л→б gives сэбэ*, с→ф gives фэлэ*), so class #5 never probes. The strip is
         // the class-#4 picture, pinned to PROVE the firing gate keeps class #5 out of a

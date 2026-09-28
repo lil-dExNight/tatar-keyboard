@@ -64,15 +64,17 @@ class TdictPrefixIndexSameStemBoostTest {
     fun withoutATableTheFrozenOrderIsByteIdentical() {
         val index = EngineTestFixtures.index(fixture)
         // The exact D1 expectation: frequency desc, code-point asc on ties, typed word excluded.
-        assertEquals(listOf("балайт", "балак", "балалы"), lookup(index, "бала"))
+        // Four cells now: балалар joins the D1 three; балам (4) falls off.
+        assertEquals(listOf("балайт", "балак", "балалы", "балалар"), lookup(index, "бала"))
     }
 
     @Test
     fun withATableSameStemContinuationsRankBeforeUnrelatedOnes() {
         val index = EngineTestFixtures.index(fixture, TatarSuffixRules)
-        // Stem track (балалы 12, балалар 10, балам 4 — frequency desc) fills all three cells; the
-        // unrelated балайт (100) and балак (90) fall off the band despite outranking them all.
-        assertEquals(listOf("балалы", "балалар", "балам"), lookup(index, "бала"))
+        // Stem track (балалы 12, балалар 10, балам 4 — frequency desc) fills the first three
+        // cells; the fourth goes to the strongest unrelated word (балайт, 100), and балак (90)
+        // falls off the band although both outrank the whole stem track.
+        assertEquals(listOf("балалы", "балалар", "балам", "балайт"), lookup(index, "бала"))
     }
 
     @Test
@@ -104,10 +106,11 @@ class TdictPrefixIndexSameStemBoostTest {
     @Test
     fun aCompleteWordBelowFourCodePointsIsNotBoosted() {
         // "бал" IS a complete dictionary word, but at three code points it is a common mid-typing
-        // state: the threshold keeps the frozen order byte-identical.
+        // state: the threshold keeps the frozen order byte-identical. (Four cells now: балалы
+        // joins the D1 three in the shared frozen order.)
         val withTable = EngineTestFixtures.index(fixture, TatarSuffixRules)
         val withoutTable = EngineTestFixtures.index(fixture)
-        assertEquals(listOf("балайт", "балак", "бала"), lookup(withoutTable, "бал"))
+        assertEquals(listOf("балайт", "балак", "бала", "балалы"), lookup(withoutTable, "бал"))
         assertEquals(lookup(withoutTable, "бал"), lookup(withTable, "бал"))
     }
 
@@ -124,7 +127,8 @@ class TdictPrefixIndexSameStemBoostTest {
         val index = requireNotNull(tatarWithRules)
         // Mission acceptance (docs/TT-SUGGESTIONS-PLAN.md P3 "Done when"): татарлар/татарча-type
         // continuations above татарстан*. татар is five code points — above the threshold.
-        assertEquals(listOf("татарлар", "татарча", "татарлары"), lookup(index, "татар"))
+        // (Four cells now: the stem track's татарның joins; no татарстан* word reaches the band.)
+        assertEquals(listOf("татарлар", "татарча", "татарлары", "татарның"), lookup(index, "татар"))
     }
 
     @Test
@@ -132,23 +136,25 @@ class TdictPrefixIndexSameStemBoostTest {
         val withRules = requireNotNull(tatarWithRules)
         val withoutRules = requireNotNull(tatarWithoutRules)
         // су (2 cp) and өй (2 cp) are complete words below the threshold: no boost, although both
-        // have table-suffix continuations — measured identical to the frozen pass.
-        assertEquals(listOf("сум", "сугыш", "сумга"), lookup(withoutRules, "су"))
+        // have table-suffix continuations — measured identical to the frozen pass. (Four cells
+        // now: the fourth exact candidate joins each recorded list.)
+        assertEquals(listOf("сум", "сугыш", "сумга", "суд"), lookup(withoutRules, "су"))
         assertEquals(lookup(withoutRules, "су"), lookup(withRules, "су"))
-        assertEquals(listOf("өйрәнү", "өйдә", "өйрәнергә"), lookup(withoutRules, "өй"))
+        assertEquals(listOf("өйрәнү", "өйдә", "өйрәнергә", "өйрәнә"), lookup(withoutRules, "өй"))
         assertEquals(lookup(withoutRules, "өй"), lookup(withRules, "өй"))
         // кит (3 cp): same, one code point below the gate.
         assertEquals(lookup(withoutRules, "кит"), lookup(withRules, "кит"))
-        assertEquals(listOf("китте", "киткән", "китап"), lookup(withoutRules, "кит"))
+        assertEquals(listOf("китте", "киткән", "китап", "китә"), lookup(withoutRules, "кит"))
     }
 
     @Test
     fun tatarPrefixThatIsNotACompleteWordKeepsTheRecordedOrder() {
         val withRules = requireNotNull(tatarWithRules)
         val withoutRules = requireNotNull(tatarWithoutRules)
-        // "тата" is not a dictionary word — the boost must be inert, byte for byte.
+        // "тата" is not a dictionary word — the boost must be inert, byte for byte. (Four cells
+        // now: татарстанның joins the recorded three.)
         assertEquals(
-            listOf("татар", "татарстан", "татарстанда"),
+            listOf("татар", "татарстан", "татарстанда", "татарстанның"),
             lookup(withoutRules, "тата"),
         )
         assertEquals(lookup(withoutRules, "тата"), lookup(withRules, "тата"))
