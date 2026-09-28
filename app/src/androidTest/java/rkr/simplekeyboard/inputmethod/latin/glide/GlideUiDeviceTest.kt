@@ -45,8 +45,16 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
 
     private var savedSuggestions = false
     private var savedGlide = false
+    private var startedActivity: android.app.Activity? = null
 
     override fun setUp() {
+        // Every tap coordinate below is calibrated for the POCO C71's 720x1640 px display;
+        // on any other geometry the probes miss and the run wedges, so fail fast here.
+        val metrics = instrumentation.targetContext.resources.displayMetrics
+        if (metrics.widthPixels != 720 || metrics.heightPixels != 1640) {
+            fail("the tap coordinates are calibrated for a 720x1640 px display (POCO C71); " +
+                "the actual display is ${metrics.widthPixels}x${metrics.heightPixels} px")
+        }
         val context = instrumentation.targetContext
         val prefs = rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
             .getDeviceSharedPreferences(context)
@@ -59,6 +67,9 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
     }
 
     override fun tearDown() {
+        // Finish the activity so the next method's startActivitySync gets a newly created
+        // instance; a merely brought-forward task never fires its ActivityMonitor and hangs.
+        startedActivity?.finish()
         val prefs = rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
             .getDeviceSharedPreferences(instrumentation.targetContext)
         prefs.edit()
@@ -106,6 +117,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
                 .setClassName(context, "rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity")
                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
         )
+        startedActivity = activity // tearDown finishes it, so the next start creates a fresh one
         val field = activity.findViewById<EditText>(R.id.setup_test_field)
         assertNotNull("the try-it field must exist", field)
         // Focus the field with ONE tap (a second tap could land on the keyboard the first tap
