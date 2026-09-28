@@ -122,6 +122,11 @@
   unbound strip preview), glide-triggered learning (lift-commit counts as a
   use), and the four-cell suggestion strip with the Tatar K = 4 repack
   (next-word eval hits 471 → 547, the T7 latent value realized).
+- `BACKLOG-2026-09-28.md` — живой бэклог после волны 3.3.0: свежие находки
+  (сломанный генератор baseline-профилей, харнесс GlideUiDeviceTest, дрейф
+  комментариев), технический долг по ценности, дизайн-набросок фичи «эмодзи,
+  выученные по сочетаниям пользователя» (слово → эмодзи), отложенные
+  UAT-ноги.
 - `APPLE-UX-2026-09-25.md` — аудит текущего состояния UX/UI против iOS-референсов
   и план сближения (канонический английский): что уже совпадает, 11 расхождений
   с file:line, дешёвые правки W1–W6, средние M1–M5, структурные S1–S2, список

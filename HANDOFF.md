@@ -41,6 +41,8 @@ repo — confirmed by a 404 on the API create probe; publish via the web UI with
 (changelogs `40.txt` ×3 locales in place) and the IzzyOnDroid note. Follow-up recorded: the
 baseline-profile generator needs resource-id selectors (its text probe can't find the
 Tatar-default settings UI) and an emulator pin — the wave ships the 2026-09-25 profile.
+**The living backlog after this wave — `docs/BACKLOG-2026-09-28.md`** (fresh findings, the
+priced tech-debt list, and the emoji co-usage learning feature sketch).
 
 ---
 
