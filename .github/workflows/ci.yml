@@ -20,6 +20,10 @@ permissions:
 # together with its comment.
 
 jobs:
+  # Dependency verification (L3, 2026-09-28): gradle/verification-metadata.xml enforces PGP
+  # signatures with SHA-256 fallback for unsigned artifacts; the public keys ship in the
+  # committed gradle/verification-keyring.gpg / verification-keyring.keys, so CI never
+  # contacts a keyserver. This cold-cache job is the fail-closed proof on every push.
   build:
     runs-on: ubuntu-latest
     steps:
