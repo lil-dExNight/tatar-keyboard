@@ -1,6 +1,0 @@
-run=1 word=мин FILLED dark=0.0121004
-run=2 word=кит FILLED dark=0.0227096
-run=3 word=йөрәк FILLED dark=0.0301316
-run=4 word=мин FILLED dark=0.0121004
-run=5 word=кит FILLED dark=0.0227096
-SUMMARY filled=5 empty=0 harness_fail=0

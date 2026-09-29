@@ -18,7 +18,6 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 PACK_SCRIPT = ROOT / "scripts" / "emoji_pack.py"
 ASSET = ROOT / "app" / "src" / "main" / "assets" / "emoji" / "emoji_set_v1.txt"
 NOTICE = ASSET.parent / "NOTICE.txt"
-DOCS = ROOT / "docs" / "archive" / "emoji" / "DICTIONARY-E2.md"
 
 # The Unicode input is deliberately not committed; the orchestrator provides it.
 INPUT = Path(os.environ.get("EMOJI_TEST_TXT", "/tmp/emoji-test-15.1.txt"))
@@ -387,19 +386,12 @@ class CommittedAssetTest(unittest.TestCase):
         self.assertEqual(emoji_set.entry_count, COMMITTED_ENTRY_COUNT)
         self.assertEqual(emoji_set.byte_size, COMMITTED_ASSET_BYTES)
 
-    def test_provenance_notice_and_docs(self) -> None:
-        asset_sha = sha256_of(ASSET)
+    def test_provenance_notice(self) -> None:
         notice = NOTICE.read_text(encoding="utf-8")
-        docs = DOCS.read_text(encoding="utf-8")
-        # NOTICE carries the Unicode attribution taken from the input header.
+        # NOTICE carries the Unicode attribution and version taken from the input header.
         self.assertIn("Unicode", notice)
+        self.assertIn("15.1", notice)
         self.assertIn("https://www.unicode.org/terms_of_use.html", notice)
-        # docs carry the four mandatory numbers plus the asset digest.
-        self.assertIn("15.1", docs)
-        self.assertIn(EXPECTED_INPUT_SHA256, docs)
-        self.assertIn(str(COMMITTED_ENTRY_COUNT), docs)
-        self.assertIn(str(COMMITTED_ASSET_BYTES), docs)
-        self.assertIn(asset_sha, docs)
 
 
 if __name__ == "__main__":

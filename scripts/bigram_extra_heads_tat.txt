@@ -1,31 +1,22 @@
-# Адресный список голов татарской таблицы биграмм.
+# Extra heads for the Tatar bigram table.
 #
-# Слово отсюда становится головой независимо от униграммного ранга. Это НЕ словарь: слова
-# уже лежат в поставляемом tatar_top100k_v1.tdict.zlib, состав словаря этим файлом не
-# меняется. Список решает единственный вопрос — у каких слов таблица хранит преемников.
+# A word listed here becomes a head of the bigram table regardless of its unigram rank. This is
+# not a dictionary: every word is already in tatar_top100k_v1.tdict.zlib. The list only decides
+# which words get stored successors.
 #
-# Зачем: головы отбираются по униграммной частоте с отсечкой H, а частые татарские
-# повелительные формы (чистая основа глагола) стоят за ней и потому молчали.
-# Разбор механизма — docs/archive/bigrams/BIGRAM-ADJACENCY.md, «Почему повелительные
-# формы молчат»; первый отбор и цена — docs/archive/bigrams/IMPERATIVE-HEADS.md.
+# Why: heads are chosen by unigram frequency with a cutoff H, and frequent Tatar imperatives (the
+# bare verb stem) rank below it, so they had no next-word predictions.
 #
-# Список собран правилом, а не рукой. До 2026-08-31 правило IMPERATIVE-HEADS покрывало
-# ранги [10 000, 15 000) и давало 13 слов. Миссия «разговорный корпус, часть B»
-# (docs/CORPUS-CONVERSATIONAL-TT.md) расширила правило — тот же порог парадигмы, новый
-# диапазон и новый корпус условия 4:
-#   1. униграммный ранг в поставляемом словаре в [10 000, 40 000) — граница покрывает
-#      шалтырат (ранг 34 170), самое дальнее из названных досье слов;
-#   2. не менее 4 из 6 клеток парадигмы подтверждены тем же словарём;
-#   3. слово само не является отрицательной формой другого глагола (Y+ма/мә при Y в словаре);
-#   4. в смешанном обучении (Leipzig tat_mixed_2015_1M + tat_web_2018_1M + разговорный
-#      вход Tatoeba+OpenSubtitles) есть хотя бы одна пара.
-# Правило даёт 76 слов. Одно из них — `суз`, ранг 10 116 — лежит внутри отсечки H = 10 132,
-# с которой упакована таблица, и головой становится без всякого списка; поэтому здесь его
-# нет. Тест ShippedExtraHeadListTest следит, чтобы в списке не заводилось таких строк.
-# Дописывать слова руками нельзя: список воспроизводится правилом целиком
-# (docs/corpus-conversational/evidence/apply_rule_tt.py).
+# The list is produced by a rule, not by hand:
+#   1. unigram rank in the shipped dictionary is in [10 000, 40 000);
+#   2. at least 4 of the 6 paradigm cells are present in the same dictionary;
+#   3. the word is not the negative form of another verb (Y + ма/мә with Y in the dictionary);
+#   4. the mixed training corpus (Leipzig tat_mixed_2015_1M + tat_web_2018_1M + the
+#      Tatoeba/OpenSubtitles conversational input) has at least one pair for it.
+# Words already inside the cutoff (H = 10 132) are left out; ShippedExtraHeadListTest checks that.
+# Do not add words by hand.
 #
-# слово   ранг    частота  клеток  пар в обучении
+# word    rank    freq     cells   training pairs
 кил       #  10 339   392   6/6    58
 кит       #  10 572   380   6/6    42
 тукта     #  11 027   360   6/6    19

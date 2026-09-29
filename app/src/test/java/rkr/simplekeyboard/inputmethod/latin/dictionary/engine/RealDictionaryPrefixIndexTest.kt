@@ -159,7 +159,7 @@ class RealDictionaryPrefixIndexTest {
     }
 
     private fun reviewRows(): List<Pair<String, List<String>>> {
-        val review = locate("docs/archive/dictionary/DICTIONARY-D1A-QUERY-REVIEW.tsv", "../docs/archive/dictionary/DICTIONARY-D1A-QUERY-REVIEW.tsv")
+        val review = locate("data/dictionary/tt-query-review.tsv", "../data/dictionary/tt-query-review.tsv")
         return review.readLines(Charsets.UTF_8).drop(1).filter { it.isNotBlank() }.map { line ->
             val fields = line.split('\t')
             require(fields.size >= 2)

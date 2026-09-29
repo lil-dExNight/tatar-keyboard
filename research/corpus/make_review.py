@@ -1,4 +1,4 @@
-"""Generate a word-acceptance queue for the operator: docs/archive/dictionary/DICTIONARY-*-CONV-REVIEW.tsv.
+"""Generate a word-acceptance queue for the operator: data/dictionary/*-conv-review.tsv.
 
 `approved` is written EMPTY for every row, always. This script has no code path that can
 write anything else into that column -- setting it is the operator's act, personally and by

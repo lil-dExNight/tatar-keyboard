@@ -223,8 +223,13 @@ data/dictionary/d1a-query-review.tsv          ← DICTIONARY-D1A-QUERY-REVIEW.ts
 data/dictionary/conv-review-{ru,tt}.tsv       ← DICTIONARY-{RU,TT}-CONV-REVIEW.tsv
 data/dictionary/dict-accept/…                 ← dict-accept/{accepted,conv-freq}-{ru,tt}.tsv
 build/review-batches/                         ← new default output of review_batches.py (generated, not tracked)
-scripts/apply_rule_tt.py                      ← docs/corpus-conversational/evidence/apply_rule_tt.py
 ```
+
+Executed with two deviations: the files are named `data/dictionary/{tt,ru}-query-review.tsv` and
+`{tt,ru}-conv-review.tsv`; `apply_rule_tt.py` was not kept, because it depends on two more one-off
+evidence scripts and on corpora outside git. The rule it implemented is now written out in the
+header of `scripts/bigram_extra_heads_tat.txt`, and the script is recoverable from git. The python
+tests that read archived provenance documents now check `NOTICE.txt` instead.
 
 Update paths in the 4 JVM tests (replace the double `File(...) ?: File("../...")` lookup with one
 helper), in `scripts/dict_accept.py`, `scripts/review_batches.py`, `scripts/rebuild_assets.py`,

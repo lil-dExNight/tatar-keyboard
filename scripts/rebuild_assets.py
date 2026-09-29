@@ -20,7 +20,7 @@
   1. пересборку словарей через существующий entry point
      `scripts/dict_accept.py pack --write` (состав = ассет 1.8.4 + принятое приёмкой
      + допущенные словоформы у татарского, частоты = Leipzig + разговорные из
-     `docs/archive/dictionary/dict-accept/conv-freq-*`; отсечка — `DictionaryAsset.top`;
+     `data/dictionary/dict-accept/conv-freq-*`; отсечка — `DictionaryAsset.top`;
      SHA-256 основы сверяется самим dict_accept, поверх пересобранного не соберётся);
   2. перепаковку таблиц биграмм через `scripts/bigram_asset_pack.py pack` с
      параметрами последних поставленных упаковок: татарская H = 10 132, K = 4,
@@ -288,7 +288,7 @@ def build_admitted_wordforms(
     report = {
         **stats,
         "frequency_sources": list(WORDFORM_FREQUENCY_SOURCES)
-        + ["docs/archive/dictionary/dict-accept/conv-freq-tt.tsv"],
+        + ["data/dictionary/dict-accept/conv-freq-tt.tsv"],
         "output": str(out),
         "output_bytes": len(data),
         "output_sha256": hashlib.sha256(data).hexdigest(),

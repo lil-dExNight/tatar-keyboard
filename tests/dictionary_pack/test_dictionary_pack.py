@@ -31,12 +31,10 @@ ASSET = (
     / "dictionaries"
     / "tatar_top100k_v1.tdict.zlib"
 )
-PROVENANCE = ROOT / "docs" / "archive" / "dictionary" / "DICTIONARY-D1A.md"
-REVIEW = ROOT / "docs" / "archive" / "dictionary" / "DICTIONARY-D1A-QUERY-REVIEW.tsv"
+REVIEW = ROOT / "data" / "dictionary" / "tt-query-review.tsv"
 NOTICE = ASSET.parent / "NOTICE.txt"
 RUSSIAN_ASSET = ASSET.parent / "russian_top100k_v1.tdict.zlib"
-RUSSIAN_PROVENANCE = ROOT / "docs" / "archive" / "dictionary" / "RUSSIAN-DICTIONARY.md"
-RUSSIAN_REVIEW = ROOT / "docs" / "archive" / "dictionary" / "DICTIONARY-RU-QUERY-REVIEW.tsv"
+RUSSIAN_REVIEW = ROOT / "data" / "dictionary" / "ru-query-review.tsv"
 # Обе таблицы пересозданы 2026-08-24 миссией tt-dict-accept: словари пересобраны, и
 # тройка кандидатов на двадцати двух русских и двух татарских префиксах изменилась.
 # Даты разные у разных языков и разные у разных пересборок — поэтому они здесь, а не
@@ -512,7 +510,6 @@ class DictionaryPackTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn(hashlib.sha256(asset).hexdigest(), contract)
         self.assertIn(hashlib.sha256(parsed.raw).hexdigest(), contract)
-        self.assertIn("CC BY 4.0", PROVENANCE.read_text(encoding="utf-8"))
         notice = NOTICE.read_text(encoding="utf-8")
         self.assertIn("CC BY 4.0", notice)
         rows = pack._audit_rows(
@@ -574,7 +571,6 @@ class DictionaryPackTest(unittest.TestCase):
         )
         asset_sha = hashlib.sha256(asset).hexdigest()
         raw_sha = hashlib.sha256(parsed.raw).hexdigest()
-        provenance = RUSSIAN_PROVENANCE.read_text(encoding="utf-8")
         notice = NOTICE.read_text(encoding="utf-8")
         # Живые пины schema 2 (SIZE-1) — в Kotlin-контракте; архивный
         # RUSSIAN-DICTIONARY.md описывает schema-1 сборку и не переписывается.
@@ -585,7 +581,7 @@ class DictionaryPackTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn(asset_sha, contract)
         self.assertIn(raw_sha, contract)
-        self.assertIn("CC BY 4.0", provenance)
+        self.assertIn("CC BY 4.0", notice)
         self.assertIn("russian_top100k_v1.tdict.zlib", notice)
         self.assertIn("rus_news_2022_1M", notice)
         rows = pack._audit_rows(

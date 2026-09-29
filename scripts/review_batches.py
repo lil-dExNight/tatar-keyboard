@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cut the dictionary acceptance queues into portions a human can actually read.
 
-The queues (docs/archive/dictionary/DICTIONARY-*-CONV-REVIEW.tsv) are 35 444 and 3 734 rows long. Nobody reads
+The queues (data/dictionary/*-conv-review.tsv) are 35 444 and 3 734 rows long. Nobody reads
 that in one sitting, and nobody ever will. This script does two things and nothing else:
 
     slice    -- split a queue into numbered TSV portions of a fixed size, in the queue's own
@@ -35,10 +35,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # --- what the queue looks like -------------------------------------------------------------
 
 QUEUES = {
-    "ru": ("docs/archive/dictionary/DICTIONARY-RU-CONV-REVIEW.tsv", "rus", "русская"),
-    "tt": ("docs/archive/dictionary/DICTIONARY-TT-CONV-REVIEW.tsv", "tat", "татарская"),
+    "ru": ("data/dictionary/ru-conv-review.tsv", "rus", "русская"),
+    "tt": ("data/dictionary/tt-conv-review.tsv", "tat", "татарская"),
 }
-DEFAULT_OUT = "docs/archive/dictionary/review-batches"
+DEFAULT_OUT = "build/review-batches"
 DEFAULT_SIZE = 200
 
 # --- mechanical rejection ------------------------------------------------------------------

@@ -84,15 +84,12 @@ rus_*.tar.gz
 rus_*-words.txt
 rus_*-sentences.txt
 
-# Сырые отчёты прогонов (числа переносятся в markdown вручную, сам JSON не коммитится)
-docs/*.generated.json
-# Уточнение 2026-08-30: три JSON в docs/lang-priority/*.generated.json закоммичены
-# осознанно — это пины-свидетельства миссии lang-priority, на них ссылается отчёт.
-# Паттерн выше покрывает только верхний уровень docs/ и остаётся в силе.
-# Уточнение 2026-08-30 (фаза 2): верхнеуровневые JSON переехали в архив вместе с
-# отчётами — покрываем и новое место (трекнутые пины lang-priority оно не затрагивает:
-# .gitignore на уже отслеживаемые файлы не действует).
-docs/archive/bigrams/*.generated.json
+# docs/ holds Markdown only. Run evidence (screenshots, JSON reports, logs) goes to build/.
+docs/**/*
+!docs/**/
+!docs/**/*.md
+# Samples that scripts/dict_accept.py writes next to its inputs.
+data/dictionary/dict-accept/sample-*.txt
 .smgr/
 
 # Разговорные корпуса миссии tt-corpus (OPUS) и её тестовые артефакты.

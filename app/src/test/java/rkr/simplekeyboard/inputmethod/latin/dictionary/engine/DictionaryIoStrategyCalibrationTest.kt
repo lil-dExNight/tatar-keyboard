@@ -211,8 +211,8 @@ class DictionaryIoStrategyCalibrationTest {
 
     private fun reviewPrefixes(): List<String> {
         val review = locate(
-            "docs/archive/dictionary/DICTIONARY-D1A-QUERY-REVIEW.tsv",
-            "../docs/archive/dictionary/DICTIONARY-D1A-QUERY-REVIEW.tsv",
+            "data/dictionary/tt-query-review.tsv",
+            "../data/dictionary/tt-query-review.tsv",
         )
         val rows = review.readLines(Charsets.UTF_8).drop(1).filter { it.isNotBlank() }
         require(rows.size == 22)
