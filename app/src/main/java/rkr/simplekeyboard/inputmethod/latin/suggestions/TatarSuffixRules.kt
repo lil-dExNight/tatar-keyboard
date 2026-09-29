@@ -48,8 +48,10 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.isValidUtf8Scalar
  *
  * The membership test runs on the lookup hot path (the P3 same-stem boost in `TdictPrefixIndex`),
  * so it is strictly allocation-free: a binary search over the sorted table comparing against the
- * one- or two-piece byte ranges a front-coded schema-2 word is stored as, straight off the mapped
- * buffer. The generator runs once per committed word on the engine worker (the P3 after-word
+ * one- or two-piece byte ranges a front-coded schema-2 word is stored as. The lookup path hands a
+ * heap view of the index's block scratch — a verbatim bulk-fetched copy of the mapped block (O7
+ * follow-up, 2026-09-29) — so the reads run at array speed while the mapping stays the source of
+ * truth. The generator runs once per committed word on the engine worker (the P3 after-word
  * forms), where bounded allocation is acceptable — see [generateForms].
  *
  * No regex anywhere: harmony and assimilation are decided by explicit letter sets.
@@ -197,10 +199,11 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
      * and [secondStart, secondStart+secondLength) of [bytes] equals a suffix form of the table.
      *
      * A schema-2 word is a shared prefix of its block's first word plus a suffix of its own, so the
-     * bytes after a typed prefix come in at most two pieces; the caller passes them straight off the
-     * mapped buffer and nothing is copied or allocated. Binary search, so a candidate costs ~8
-     * piecewise comparisons. Empty pieces are allowed; an empty remainder (the typed word itself) is
-     * never a suffix and never reaches here (the exact scan excludes it first).
+     * bytes after a typed prefix come in at most two pieces; the lookup path passes them as ranges
+     * of its fetched block scratch (a verbatim copy of the mapped block) and nothing is copied or
+     * allocated. Binary search, so a candidate costs ~8 piecewise comparisons. Empty pieces are
+     * allowed; an empty remainder (the typed word itself) is never a suffix and never reaches here
+     * (the exact scan excludes it first).
      */
     override fun isInflectedContinuation(
         bytes: ByteBuffer,

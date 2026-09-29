@@ -186,7 +186,10 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
     // Offline-model neighbour table on the device-true grid (TT-TYPO-NEXT Phase B): the same
     // formula and constants as the JVM E3bTestFixtures — KeyboardRow subtracts the horizontal gap
     // from every key's width and advances by the padded width, so no two same-row keys touch.
-    private fun rowGeometry(row: Int): List<Double> = when (row) {
+    // Internal since 2026-09-29 (O7, docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the I/O-strategy
+    // probe (DictionaryIoStrategyInstrumentationTest) measures the identical device workload, so
+    // the grid, the prefix sets and the policies live here once rather than as a second copy.
+    internal fun rowGeometry(row: Int): List<Double> = when (row) {
         0 -> List(6) { 16.667 }
         1 -> List(11) { 9.091 }
         2 -> List(11) { 9.091 }
@@ -194,7 +197,7 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
         else -> error("row $row")
     }
 
-    private fun geoKey(base: Char, row: Int, col: Int, vararg partners: Char): KeyNeighborTable.RawKey {
+    internal fun geoKey(base: Char, row: Int, col: Int, vararg partners: Char): KeyNeighborTable.RawKey {
         val widths = rowGeometry(row)
         var x = GRID_PADDING
         for (index in 0 until col) x += widths[index] / 100.0 * GRID_BASE_WIDTH
@@ -206,7 +209,7 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
         )
     }
 
-    private fun offlineModelNeighborTable(): KeyNeighborTable =
+    internal fun offlineModelNeighborTable(): KeyNeighborTable =
         KeyNeighborTable.build(
             "tt_RU", true,
             listOf(
@@ -237,14 +240,14 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
         private const val GRID_BASE_WIDTH = GRID_WIDTH - 2 * GRID_PADDING + GRID_GAP
         private const val GRID_RIGHT_EDGE = GRID_WIDTH - GRID_PADDING
 
-        private val POLICIES = listOf(
+        internal val POLICIES = listOf(
             "default" to FuzzyEditPolicy.DEFAULT,
             "tatar" to FuzzyEditPolicy.TATAR,
         )
 
         // The 22 prefixes of docs/DICTIONARY-D1A-QUERY-REVIEW.tsv (RealDictionaryPrefixIndexTest
         // reads them from disk on the host; on device they are inlined query data, not layout).
-        private val REVIEW_PREFIXES = listOf(
+        internal val REVIEW_PREFIXES = listOf(
             "сә", "рәх", "исәнм", "хәерл", "безн", "татарч", "кеш", "бал", "мәкт", "китап", "эшл",
             "йорт", "авыл", "шәһ", "вак", "көн", "тел", "гаил", "әни", "әти", "дус", "яң",
         )
@@ -252,7 +255,7 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
         // The Phase-B/C workload: the target case at 3/4/5 code points, "сйл" (a row of the
         // regenerated class-#2 set: сәләм with ә→й), and the 10-code-point "сцләмәтлек" — the
         // long-prefix class-#4 probe path (10 x 38 = 380 probes per lookup).
-        private val TYPO_PROBES = listOf("сцл", "сцлә", "сцләм", "сйл", "сцләмәтлек")
+        internal val TYPO_PROBES = listOf("сцл", "сцлә", "сцләм", "сйл", "сцләмәтлек")
 
         private val PROBED_KEY_CODES = setOf('й'.code, 'ц'.code, 'у'.code, 'ә'.code, 'ө'.code)
     }

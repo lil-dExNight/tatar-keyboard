@@ -18,11 +18,13 @@ internal fun interface PrefixComputer {
 /**
  * P3 same-stem boost seam (docs/TT-SUGGESTIONS.md): a language-specific table of inflectional
  * suffix forms, consulted by the exact pass of [TdictPrefixIndex.lookup] when the typed prefix is
- * itself a complete dictionary word. The remainder of a candidate comes straight off the mapped
+ * itself a complete dictionary word. The remainder of a candidate comes from a caller-supplied
  * buffer in at most two contiguous pieces (a schema-2 word is a shared prefix of its block's first
  * word plus a suffix of its own), so the test takes them as two byte ranges and must never
- * allocate. The Tatar engine is constructed with `TatarSuffixRules`; the Russian engine passes
- * null and never applies Tatar rules.
+ * allocate. The lookup path hands a heap view of the block scratch — a verbatim bulk-fetched copy
+ * of the mapped block (O7 follow-up, 2026-09-29) — so the test reads at array speed while the
+ * mapping stays the source of truth. The Tatar engine is constructed with `TatarSuffixRules`;
+ * the Russian engine passes null and never applies Tatar rules.
  */
 fun interface InflectedSuffixTable {
     fun isInflectedContinuation(
@@ -185,6 +187,28 @@ internal class TdictPrefixIndex private constructor(
     private val blockWordStarts = IntArray(TdictFormat.BLOCK_SIZE + 1)
     private val blockFrequencies = LongArray(TdictFormat.BLOCK_SIZE)
     private var cachedBlock = -1
+    // O7 follow-up (2026-09-29, docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): raw-block fetch
+    // scratches. The POCO C71 witness (build/device-uat-2026-09-29/mmap-witness) showed per-byte
+    // absolute MappedByteBuffer.get is the mmap arm's deficit against the heap arm — every page
+    // is already pre-touched by open()'s structural pass, so page faults are not it — and the
+    // fix is to bulk-fetch the whole active block with ONE relative bulk get off a private
+    // duplicate view, then parse from the array (the heap-speed path). The mapping stays the
+    // source of truth and keeps its evictable file-backed residency; the scratches copy at most
+    // one block each. Two scratches, not one: decodeWordInto (the probe path and the ranking
+    // tie-break compares) runs INSIDE scanBlockRange's callbacks, so a shared scratch would have
+    // to prove the absence of interleavings rather than just having it — the same discipline the
+    // A/B/probe word scratches above already follow. Worker-confined exactly like them; the data
+    // is immutable, so the tags never need invalidation.
+    private val rangeScanBytes = ByteArray(MAX_BLOCK_RAW_BYTES)
+    private val probeBlockBytes = ByteArray(MAX_BLOCK_RAW_BYTES)
+    private var rangeScanBlockNumber = -1
+    private var probeBlockNumber = -1
+    // A position-independent duplicate of the mapped buffer, existing only so the bulk fetches
+    // can position it without ever mutating the supplied buffer's own position/limit. A heap view
+    // of the CURRENT scan block, handed to the P3 suffix test so its piecewise remainder reads
+    // run at array speed; scanBlockRange's remainder positions are relative to it.
+    private val blockFetchView: ByteBuffer = bytes.duplicate()
+    private val rangeScanView: ByteBuffer = ByteBuffer.wrap(rangeScanBytes)
     private val rankedIndices = IntArray(MAX_RESULTS)
     private val rankedFrequencies = LongArray(MAX_RESULTS)
     // P3 same-stem boost (docs/TT-SUGGESTIONS.md): the two tracks of the dual-track exact pass —
@@ -528,7 +552,7 @@ internal class TdictPrefixIndex private constructor(
                 when {
                     equalsQuery -> SCAN_SKIP
                     table.isInflectedContinuation(
-                        bytes, remFirstStart, remFirstLength, remSecondStart, remSecondLength,
+                        rangeScanView, remFirstStart, remFirstLength, remSecondStart, remSecondLength,
                     ) -> SCAN_TAKE_STEM
                     else -> SCAN_TAKE
                 }
@@ -1252,45 +1276,43 @@ internal class TdictPrefixIndex private constructor(
     private fun ensureBlock(block: Int) {
         if (block == cachedBlock) return
         val count = minOf(TdictFormat.BLOCK_SIZE, entryCount - block * TdictFormat.BLOCK_SIZE)
-        var cursor = blockOffset(block)
-        val firstLength = unsigned(bytes.get(cursor))
+        ensureRangeScanBlock(block)
+        val raw = rangeScanBytes
+        var cursor = 0
+        val firstLength = unsigned(raw[cursor])
         cursor++
         val firstStart = cursor
         cursor += firstLength
         blockWordStarts[0] = 0
         var writeAt = firstLength
-        for (offset in 0 until firstLength) blockWordBytes[offset] = bytes.get(firstStart + offset)
+        System.arraycopy(raw, firstStart, blockWordBytes, 0, firstLength)
         blockWordStarts[1] = writeAt
         for (entry in 1 until count) {
             // Inline varint fast path: a prefix length virtually always fits one byte.
-            var prefixLength = unsigned(bytes.get(cursor))
+            var prefixLength = unsigned(raw[cursor])
             cursor++
             if (prefixLength >= 0x80) {
-                decodeVarint(cursor - 1)
+                decodeVarint(raw, cursor - 1)
                 prefixLength = varintValue
                 cursor = varintNext
             }
-            val suffixLength = unsigned(bytes.get(cursor))
+            val suffixLength = unsigned(raw[cursor])
             cursor++
-            // The prefix refers to the block's FIRST word, which lies contiguously in the
-            // mapped buffer — copying from there (not from the partially overwritten cache)
-            // is what makes every entry of the block independently decodable.
-            for (offset in 0 until prefixLength) {
-                blockWordBytes[writeAt + offset] = bytes.get(firstStart + offset)
-            }
-            for (offset in 0 until suffixLength) {
-                blockWordBytes[writeAt + prefixLength + offset] = bytes.get(cursor + offset)
-            }
+            // The prefix refers to the block's FIRST word, which lies contiguously in the fetched
+            // block — copying from there (not from the partially overwritten cache) is what makes
+            // every entry of the block independently decodable.
+            System.arraycopy(raw, firstStart, blockWordBytes, writeAt, prefixLength)
+            System.arraycopy(raw, cursor, blockWordBytes, writeAt + prefixLength, suffixLength)
             cursor += suffixLength
             writeAt += prefixLength + suffixLength
             blockWordStarts[entry + 1] = writeAt
         }
         for (entry in 0 until count) {
             // Inline varint fast path; a varint holds a u32, interpreted unsigned (schema 1 parity).
-            var frequency = unsigned(bytes.get(cursor))
+            var frequency = unsigned(raw[cursor])
             cursor++
             if (frequency >= 0x80) {
-                decodeVarint(cursor - 1)
+                decodeVarint(raw, cursor - 1)
                 frequency = varintValue
                 cursor = varintNext
             }
@@ -1301,13 +1323,16 @@ internal class TdictPrefixIndex private constructor(
 
     /**
      * Streams the entry range [start, end) without materializing words: per in-range entry it
-     * reports [onEntry] — (index, equalsQuery), computed piecewise against the mapped bytes, plus
-     * the candidate's remainder past the query as two contiguous byte ranges into the mapped
-     * buffer (P3's suffix-membership test consumes them without a copy) — and only for entries
+     * reports [onEntry] — (index, equalsQuery), computed piecewise against the current block's
+     * fetched bytes, plus the candidate's remainder past the query as two contiguous byte ranges
+     * RELATIVE to that fetched block (P3's suffix-membership test consumes them through
+     * [rangeScanView] without a copy; the positions stay valid only until the scan advances to
+     * the next block, which is all a synchronous callback needs) — and only for entries
      * where [onEntry] answered [SCAN_TAKE] or [SCAN_TAKE_STEM] it then reports [onFrequency] with
      * that verdict, still inside the same block visit. The function is `inline`, so neither
-     * callback allocates, and the word bytes are never copied: a one-letter prefix scan pays a
-     * couple of varint reads per entry instead of a full block decode.
+     * callback allocates; each block is bulk-fetched once per visit ([ensureRangeScanBlock]) and
+     * parsed from the array, so a one-letter prefix scan pays a couple of array varint reads per
+     * entry instead of a full block decode.
      *
      * [onEntry] verdicts: [SCAN_SKIP] — not a candidate; [SCAN_TAKE] — candidate, report its
      * frequency via [onFrequency]; [SCAN_TAKE_STEM] — same, flagged as a same-stem candidate of
@@ -1333,8 +1358,10 @@ internal class TdictPrefixIndex private constructor(
             val block = index / TdictFormat.BLOCK_SIZE
             val inBlock = minOf(TdictFormat.BLOCK_SIZE, entryCount - block * TdictFormat.BLOCK_SIZE)
             val lastPosition = minOf(inBlock, end - block * TdictFormat.BLOCK_SIZE)
-            var cursor = blockOffset(block)
-            val firstLength = unsigned(bytes.get(cursor))
+            ensureRangeScanBlock(block)
+            val raw = rangeScanBytes
+            var cursor = 0
+            val firstLength = unsigned(raw[cursor])
             cursor++
             val firstStart = cursor
             cursor += firstLength
@@ -1350,14 +1377,14 @@ internal class TdictPrefixIndex private constructor(
             while (position < lastPosition) {
                 var suffixLength = 0
                 if (position > 0) {
-                    prefixLength = unsigned(bytes.get(cursor))
+                    prefixLength = unsigned(raw[cursor])
                     cursor++
                     if (prefixLength >= 0x80) {
-                        decodeVarint(cursor - 1)
+                        decodeVarint(raw, cursor - 1)
                         prefixLength = varintValue
                         cursor = varintNext
                     }
-                    suffixLength = unsigned(bytes.get(cursor))
+                    suffixLength = unsigned(raw[cursor])
                     cursor++
                     suffixStart = cursor
                     cursor += suffixLength
@@ -1370,7 +1397,7 @@ internal class TdictPrefixIndex private constructor(
                             firstStart, prefixLength, suffixStart,
                             query, queryLength,
                         )
-                    // The remainder past the query, piecewise against the mapped bytes (P3): the
+                    // The remainder past the query, piecewise against the fetched block (P3): the
                     // shared prefix may reach past the query's end, never the reverse — every word
                     // in [start, end) begins with the query.
                     val remFirstLength: Int
@@ -1401,14 +1428,14 @@ internal class TdictPrefixIndex private constructor(
             if (verdictMask != 0) {
                 // Finish walking the word section to reach the block's frequencies.
                 while (position < inBlock) {
-                    decodeVarint(cursor)
+                    decodeVarint(raw, cursor)
                     cursor = varintNext
-                    cursor += 1 + unsigned(bytes.get(cursor))
+                    cursor += 1 + unsigned(raw[cursor])
                     position++
                 }
                 var frequencyPosition = 0
                 while (frequencyPosition < inBlock) {
-                    decodeVarint(cursor)
+                    decodeVarint(raw, cursor)
                     val frequency = varintValue.toLong() and MAX_U32
                     cursor = varintNext
                     val frequencyBit = 1 shl frequencyPosition
@@ -1434,8 +1461,10 @@ internal class TdictPrefixIndex private constructor(
 
     /**
      * Piecewise equality of a front-coded word (prefix of the block's first word + suffix at
-     * [suffixStart]) against [query]. Caller guarantees prefix + suffix lengths equal
-     * [queryLength] (checked before the call), so [prefixLength] never exceeds it.
+     * [suffixStart]) against [query], read from the current scan block's fetched scratch — only
+     * [scanBlockRange] calls this, and only while its fetch is current. Caller guarantees prefix +
+     * suffix lengths equal [queryLength] (checked before the call), so [prefixLength] never
+     * exceeds it.
      */
     private fun wordBytesEqual(
         firstStart: Int,
@@ -1444,15 +1473,16 @@ internal class TdictPrefixIndex private constructor(
         query: ByteArray,
         queryLength: Int,
     ): Boolean {
+        val raw = rangeScanBytes
         for (offset in 0 until prefixLength) {
-            if (unsigned(bytes.get(firstStart + offset)) !=
+            if (unsigned(raw[firstStart + offset]) !=
                 (query[offset].toInt() and 0xff)
             ) {
                 return false
             }
         }
         for (offset in 0 until queryLength - prefixLength) {
-            if (unsigned(bytes.get(suffixStart + offset)) !=
+            if (unsigned(raw[suffixStart + offset]) !=
                 (query[prefixLength + offset].toInt() and 0xff)
             ) {
                 return false
@@ -1471,43 +1501,45 @@ internal class TdictPrefixIndex private constructor(
 
     /**
      * Decodes word [index] of the front-coded block structure into [scratch] and returns its
-     * byte length. Used only by [compareWords], whose two words may live in different blocks and
-     * therefore cannot share the single-block cache; the binary-search and scan paths above all
-     * go through the cache instead. A block stores its first word in full and every following
-     * word as a varint shared-prefix length against that FIRST word plus a u8-length suffix, so
-     * decoding word p walks p entries of the block (≤ [TdictFormat.BLOCK_SIZE] - 1) — and only
-     * reads varints and skips suffix bytes on the way, copying nothing until the target word.
-     * The prefix bytes are copied from the mapped buffer (where the block's first word always
-     * lies contiguously), never from [scratch]: consecutive decodes into one scratch would
-     * otherwise corrupt the prefix the next word refers to.
+     * byte length. Used by the no-cache probe path ([probeCompareWholeWordToVariant],
+     * [probeCompareWordToPrefixBlock]) and by [compareWords], whose two words may live in
+     * different blocks and therefore cannot share the single-block cache; the binary-search and
+     * scan paths above all go through the cache instead. A block stores its first word in full
+     * and every following word as a varint shared-prefix length against that FIRST word plus a
+     * u8-length suffix, so decoding word p walks p entries of the block (≤ [TdictFormat.BLOCK_SIZE]
+     * - 1) — and only reads varints and skips suffix bytes on the way, copying nothing until the
+     * target word. The block is bulk-fetched into [probeBlockBytes] once per block switch
+     * ([ensureProbeBlock]): the Phase-C2 no-cache discipline is about the DECODED-block cache,
+     * not about re-reading the mapping per byte. The prefix bytes are copied from the fetched
+     * block (where the block's first word always lies contiguously), never from [scratch]:
+     * consecutive decodes into one scratch would otherwise corrupt the prefix the next word
+     * refers to.
      */
     private fun decodeWordInto(index: Int, scratch: ByteArray): Int {
         val block = index / TdictFormat.BLOCK_SIZE
         val position = index % TdictFormat.BLOCK_SIZE
-        var cursor = blockOffset(block)
-        val firstLength = unsigned(bytes.get(cursor))
+        ensureProbeBlock(block)
+        val raw = probeBlockBytes
+        var cursor = 0
+        val firstLength = unsigned(raw[cursor])
         cursor++
         val firstStart = cursor
         if (position == 0) {
-            for (offset in 0 until firstLength) scratch[offset] = bytes.get(firstStart + offset)
+            System.arraycopy(raw, firstStart, scratch, 0, firstLength)
             return firstLength
         }
         cursor += firstLength
         var prefixLength = 0
         var suffixLength = 0
         for (entry in 1..position) {
-            decodeVarint(cursor)
+            decodeVarint(raw, cursor)
             prefixLength = varintValue
             cursor = varintNext
-            suffixLength = unsigned(bytes.get(cursor))
+            suffixLength = unsigned(raw[cursor])
             cursor++
             if (entry == position) {
-                for (offset in 0 until prefixLength) {
-                    scratch[offset] = bytes.get(firstStart + offset)
-                }
-                for (offset in 0 until suffixLength) {
-                    scratch[prefixLength + offset] = bytes.get(cursor + offset)
-                }
+                System.arraycopy(raw, firstStart, scratch, 0, prefixLength)
+                System.arraycopy(raw, cursor, scratch, prefixLength, suffixLength)
             }
             cursor += suffixLength
         }
@@ -1534,6 +1566,50 @@ internal class TdictPrefixIndex private constructor(
         varintNext = cursor
     }
 
+    /** The [decodeVarint] twin over a fetched block scratch; same result fields, array reads. */
+    private fun decodeVarint(raw: ByteArray, offset: Int) {
+        var value = 0
+        var shift = 0
+        var cursor = offset
+        while (true) {
+            val byte = unsigned(raw[cursor])
+            cursor++
+            value = value or ((byte and 0x7f) shl shift)
+            if (byte and 0x80 == 0) break
+            shift += 7
+        }
+        varintValue = value
+        varintNext = cursor
+    }
+
+    /**
+     * Bulk-fetches block [block]'s raw bytes into [scratch] with one relative bulk get off
+     * [blockFetchView]; the block's extent comes from the block index, the last block ending at
+     * the buffer limit ([open] has validated both against the file's own header numbers). A
+     * corrupt extent overflows [scratch] or the view and throws — lookup()'s catch turns that
+     * into an empty result, the same fail-closed posture as any other malformed read.
+     */
+    private fun fetchBlock(block: Int, scratch: ByteArray) {
+        val start = blockOffset(block)
+        val end = if (block + 1 < blockCount) blockOffset(block + 1) else blockFetchView.limit()
+        blockFetchView.position(start)
+        blockFetchView.get(scratch, 0, end - start)
+    }
+
+    /** Fetches block [block] into [rangeScanBytes] unless it is already there. */
+    private fun ensureRangeScanBlock(block: Int) {
+        if (block == rangeScanBlockNumber) return
+        fetchBlock(block, rangeScanBytes)
+        rangeScanBlockNumber = block
+    }
+
+    /** Fetches block [block] into [probeBlockBytes] unless it is already there. */
+    private fun ensureProbeBlock(block: Int) {
+        if (block == probeBlockNumber) return
+        fetchBlock(block, probeBlockBytes)
+        probeBlockNumber = block
+    }
+
     private fun blockOffset(block: Int): Int = bytes.getInt(blockIndexOffset + block * U32_BYTES)
 
     companion object {
@@ -1545,6 +1621,18 @@ internal class TdictPrefixIndex private constructor(
         private const val MAX_RESULTS = 4
         internal const val MAX_PREFIX_BYTES = 128
         private const val MAX_U32 = 0xffff_ffffL
+        // O7 follow-up (2026-09-29): upper bound on one front-coded block's RAW byte size under
+        // the canonical encoding the packer/validator produce — u8 length + first word, then per
+        // following entry a ≤5-byte u32 varint prefix length, a u8 suffix length and the suffix,
+        // then one ≤5-byte u32 frequency varint per entry. A file with non-canonical over-long
+        // varint encodings could exceed it; fetchBlock then throws inside lookup()'s fail-closed
+        // catch instead of reading past the scratch.
+        private const val MAX_U32_VARINT_BYTES = 5
+        private const val MAX_BLOCK_RAW_BYTES =
+            1 + TdictFormat.MAX_WORD_BYTES +
+                (TdictFormat.BLOCK_SIZE - 1) *
+                (MAX_U32_VARINT_BYTES + 1 + TdictFormat.MAX_WORD_BYTES) +
+                TdictFormat.BLOCK_SIZE * MAX_U32_VARINT_BYTES
 
         /** "No dictionary entry"; entry indices are non-negative. */
         private const val NO_ENTRY = -1
