@@ -42,14 +42,18 @@ import rkr.simplekeyboard.inputmethod.R
  * Why this shape. In the Telegram client the search field summons the system keyboard; here the
  * keyboard IS this application, so the emoji grid cannot stay on screen while the user types — the
  * grid and a letter layout do not fit together. The same trade is what Gboard makes: the grid gives
- * way to the letters and the results come back as a scrolling strip. The search pill from the panel
- * survives the switch, now holding the typed query, so the transition reads as the pill being
+ * way to the letters and the results come back as a scrolling strip. The panel's search affordance
+ * survives the switch, now holding the typed query, so the transition reads as the search being
  * focused rather than as a different screen.
  *
  * The query itself lives in the pure [EmojiSearchQuery] and never reaches the editor; matching is
  * the pure [EmojiSearchIndex]. This view owns only the Android surface: paints built once, no
  * allocations in [onDraw] or [onTouchEvent], and only the visible results drawn. Picking a result
  * goes through the listener to `LatinIME.onTextInput(String)`, exactly like a panel cell.
+ *
+ * Since 2026-09-28 (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item A) the panel opens this search from
+ * a cell inside its tab row instead of from a 50dp pill band of its own; the row below is what the
+ * cell expands into, so the transition still reads as the search being focused in place.
  */
 class EmojiSearchView @JvmOverloads constructor(
     context: Context,
@@ -88,7 +92,7 @@ class EmojiSearchView @JvmOverloads constructor(
         private const val HINT_GAP_DP = 3f
         // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
         // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
-        // 44dp, вкладки 44dp, строка поиска 50dp, заголовок секции 30dp), а системный
+        // 44dp, вкладки 44dp, строка запроса 46dp, заголовок секции 30dp), а системный
         // масштаб шрифта растит только текст. При font_scale 2.0 полоса подсказок
         // вырождалась в «Мини… · Минем · Мини…» — две ячейки из трёх неразличимы ровно для
         // тех, кому крупный шрифт и нужен (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-3).

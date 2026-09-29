@@ -84,7 +84,7 @@ class EmojiPanelAccessibilitySourceContractTest {
         assertTrue(body.contains("state.columnCount()"))
         assertTrue(body.contains("state.sectionEntryCount(section)"))
         assertTrue(body.contains("state.tabCount()"))
-        // The search pill and the two functional keys are always present.
+        // The search cell and the two functional keys are always present.
         assertTrue(body.contains("virtualViewIds.add(SEARCH_ID)"))
         assertTrue(body.contains("virtualViewIds.add(BACK_ID)"))
         assertTrue(body.contains("virtualViewIds.add(DELETE_ID)"))

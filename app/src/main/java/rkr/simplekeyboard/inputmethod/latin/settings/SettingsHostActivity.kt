@@ -1260,6 +1260,7 @@ class SettingsHostActivity : Activity() {
             switchRow(Settings.PREF_SHOW_EMOJI_KEY, true,
                     R.string.show_emoji_key, R.string.show_emoji_key_summary),
             keyboardHeightRow(),
+            emojiPanelHeightRow(),
             valueRow(Settings.PREF_BOTTOM_OFFSET_PORTRAIT,
                     R.string.prefs_bottom_offset_portrait_settings,
                     resources.getInteger(R.integer.config_min_bottom_offset_portrait),
@@ -1328,6 +1329,65 @@ class SettingsHostActivity : Activity() {
             setRowEnabled(row, false)
         }
         return row
+    }
+
+    /**
+     * "Emoji panel height" (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B): three named presets
+     * stored as one float scale of the keyboard box in [Settings.PREF_EMOJI_PANEL_HEIGHT], the
+     * exact mirror of [keyboardHeightRow] — same row layout, same one-tap picker, same restricted
+     * row behavior. The live-apply path needs no cache clear of its own: the scale is read at the
+     * panel's show path, so the next panel open after the tap already uses it.
+     */
+    private fun emojiPanelHeightRow(): View {
+        val row = inflateRow(R.layout.row_value, R.string.emoji_panel_height, 0)
+        val valueView = row.findViewById<TextView>(R.id.row_value)
+        valueView.text = emojiPanelHeightValueText()
+        row.setOnClickListener {
+            showEmojiPanelHeightDialog {
+                valueView.text = emojiPanelHeightValueText()
+            }
+        }
+        if (isRestricted(Settings.PREF_EMOJI_PANEL_HEIGHT)) {
+            setRowEnabled(row, false)
+        }
+        return row
+    }
+
+    private val emojiPanelHeightLabelRes = listOf(
+        R.string.emoji_panel_height_same,
+        R.string.emoji_panel_height_larger,
+        R.string.emoji_panel_height_max,
+    )
+
+    /** The preset's localized name, or a restriction's percent value rendered as a plain percent. */
+    private fun emojiPanelHeightValueText(): String {
+        val scale = Settings.readEmojiPanelHeight(prefs, EmojiPanelHeightPresets.SAME_SCALE)
+        val index = EmojiPanelHeightPresets.indexForScale(scale)
+        return if (index >= 0) getString(emojiPanelHeightLabelRes[index])
+        else getString(R.string.abbreviation_unit_percent,
+                Math.round(scale * PERCENTAGE_FLOAT))
+    }
+
+    private fun showEmojiPanelHeightDialog(onValueChanged: () -> Unit) {
+        val labels = emojiPanelHeightLabelRes.map { getString(it) }.toTypedArray()
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.emoji_panel_height)
+                // setItems on purpose, exactly like the keyboard-height picker: the choice applies
+                // on the tap itself and the dialog closes — no unnamed OK button.
+                .setItems(labels) { _, which ->
+                    val scale = EmojiPanelHeightPresets.SCALES[which]
+                    if (scale != Settings.readEmojiPanelHeight(prefs,
+                            EmojiPanelHeightPresets.SAME_SCALE)) {
+                        prefs.edit().putFloat(Settings.PREF_EMOJI_PANEL_HEIGHT, scale).apply()
+                    }
+                    onValueChanged()
+                }
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
     }
 
     private val keyboardHeightLabelRes = listOf(

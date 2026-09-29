@@ -43,6 +43,10 @@
     <string name="keyboard_height_compact">Кыска</string>
     <string name="keyboard_height_default">Гадәти</string>
     <string name="keyboard_height_tall">Биек</string>
+    <string name="emoji_panel_height">Эмодзи панеле биеклеге</string>
+    <string name="emoji_panel_height_same">Төймәсарныкыдай</string>
+    <string name="emoji_panel_height_larger">Зуррак</string>
+    <string name="emoji_panel_height_max">Иң зур</string>
     <string name="prefs_bottom_offset_portrait_settings">Астан чигенеш</string>
     <string name="keyboard_color">Төймәсарга үз төсен кую</string>
     <string name="show_special_chars">Махсус символларны күрсәтү</string>

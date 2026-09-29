@@ -65,6 +65,14 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      * steps, or an integer-percent managed restriction) keep applying verbatim.
      */
     public static final String PREF_KEYBOARD_HEIGHT = "pref_keyboard_height";
+    /**
+     * Emoji panel height as a float scale of the keyboard box (1.0f = the same-box invariant;
+     * docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B). The settings row writes one of the three
+     * {@link EmojiPanelHeightPresets} values; floats outside them (an integer-percent managed
+     * restriction divided by 100) keep applying verbatim, scaled and capped at the 46%p screen
+     * ceiling.
+     */
+    public static final String PREF_EMOJI_PANEL_HEIGHT = "pref_emoji_panel_height";
     public static final String PREF_BOTTOM_OFFSET_PORTRAIT = "pref_bottom_offset_portrait";
     public static final String PREF_KEYBOARD_COLOR = "pref_keyboard_color";
     public static final String PREF_SHOW_SPECIAL_CHARS = "pref_show_special_chars";
@@ -225,6 +233,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
                         break;
                     case PREF_KEYPRESS_SOUND_VOLUME:
                     case PREF_KEYBOARD_HEIGHT:
+                    case PREF_EMOJI_PANEL_HEIGHT:
                         Log.i(TAG, "Loading restriction: " + key);
                         prefsEditor.putFloat(key, appRestrictions.getInt(key) / 100f);
                         break;
@@ -466,6 +475,11 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     public static float readKeyboardHeight(final SharedPreferences prefs,
             final float defaultValue) {
         return prefs.getFloat(PREF_KEYBOARD_HEIGHT, defaultValue);
+    }
+
+    public static float readEmojiPanelHeight(final SharedPreferences prefs,
+            final float defaultValue) {
+        return prefs.getFloat(PREF_EMOJI_PANEL_HEIGHT, defaultValue);
     }
 
     public static int readBottomOffsetPortrait(final SharedPreferences prefs) {

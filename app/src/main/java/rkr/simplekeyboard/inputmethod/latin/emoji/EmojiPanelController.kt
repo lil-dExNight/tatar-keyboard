@@ -50,10 +50,10 @@ interface EmojiSurface {
     fun bindSkinTones(tones: EmojiSkinTones) {}
 
     /**
-     * The search pill was tapped and no search can be opened, now or later in this process.
+     * The search cell was tapped and no search can be opened, now or later in this process.
      *
-     * The pill is painted whether or not the index can be read, and the verdict "unusable" is
-     * cached for the life of the process — so without this the pill is a button that stays on the
+     * The cell is painted whether or not the index can be read, and the verdict "unusable" is
+     * cached for the life of the process — so without this the cell is a button that stays on the
      * screen and does nothing, forever, without a word. Defaulted so existing fakes need not
      * implement it.
      */
@@ -235,7 +235,7 @@ class EmojiPanelController internal constructor(
     }
 
     /**
-     * The search pill was tapped. The index is loaded once per process on the background executor;
+     * The search cell was tapped. The index is loaded once per process on the background executor;
      * until it arrives a single latest-only deferred show is armed, dropped by exactly the same
      * lifecycle events that drop a deferred panel show.
      */

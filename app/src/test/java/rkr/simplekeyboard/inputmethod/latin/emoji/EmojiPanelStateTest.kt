@@ -29,20 +29,21 @@ class EmojiPanelStateTest {
     private val minCellPx = 36
     private val maxCellPx = 56
     private val tabBarPx = 44
-    private val searchBarPx = 50
     private val headerPx = 30
-    private val floatingPx = 44
+    private val floatingPx = 40
     private val floatingInsetPx = 8
     private val backWidthPx = 60
 
-    /** The top of the scrolling content under the tab row and the search band. */
-    private val gridTopPx = tabBarPx + searchBarPx
+    /** The search band the grid absorbed on 2026-09-28 (docs/EMOJI-PANEL-SPACE-2026-09-28.md, A). */
+    private val collapsedSearchBandPx = 50
+
+    /** The top of the scrolling content: right under the tab row — the search cell lives IN it. */
+    private val gridTopPx = tabBarPx
 
     private fun EmojiPanelState.applyMetrics() = setCellMetrics(
         minCellPx,
         maxCellPx,
         tabBarPx,
-        searchBarPx,
         headerPx,
         floatingPx,
         floatingInsetPx,
@@ -162,15 +163,28 @@ class EmojiPanelStateTest {
         }
     }
 
-    /** The content is below both fixed bands, and the bands themselves tile the top of the panel. */
+    /** The one fixed band — the tab row with its search cell — sits above the scrolling content. */
     @Test
-    fun theTwoFixedBandsSitAboveTheScrollingContent() {
+    fun theTabRowSitsAboveTheScrollingContent() {
         val state = configuredState(snapshotOf(50))
         assertEquals(tabBarPx, state.tabBarHeight())
-        assertEquals(tabBarPx, state.searchBarTop())
-        assertEquals(searchBarPx, state.searchBarHeight())
         assertEquals(gridTopPx, state.gridTop())
         assertEquals(400 - gridTopPx, state.gridHeight())
+    }
+
+    /**
+     * The collapsed search band is gone for good, not hidden: with nothing expanded the grid starts
+     * exactly where the tab row ends and is taller by exactly the old 50px band
+     * (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item A).
+     */
+    @Test
+    fun theCollapsedSearchBandIsGridHeightByDefault() {
+        val state = configuredState(snapshotOf(50))
+        assertEquals(tabBarPx, state.gridTop())
+        // Before the collapse the grid was 400 - tabBarPx - 50: it gained exactly the band.
+        val oldGridHeight = 400 - (tabBarPx + collapsedSearchBandPx)
+        assertEquals("the grid gained exactly the collapsed search band",
+            oldGridHeight + collapsedSearchBandPx, state.gridHeight())
     }
 
     // --- Нижний инсет под панелью навигации (дефект Д-1) ----------------------------------------
@@ -245,44 +259,43 @@ class EmojiPanelStateTest {
         assertEquals(floatingBottom, state.floatingBottom())
     }
 
-    // --- Сжатие фиксированных полос при нехватке высоты (Р-2) ------------------------------------
+    // --- Сжатие фиксированной полосы при нехватке высоты (Р-2) -----------------------------------
 
-    /** While everything fits, the bands are exactly what the view asked for — nothing is scaled. */
+    /** While everything fits, the band is exactly what the view asked for — nothing is scaled. */
     @Test
     fun bandsKeepTheirAskedSizeWhileThereIsRoom() {
         val state = configuredState(snapshotOf(50))
         assertEquals(tabBarPx, state.tabBarHeight())
-        assertEquals(searchBarPx, state.searchBarHeight())
         assertEquals(gridTopPx, state.gridTop())
     }
 
     /**
-     * When the panel is too short, the bands yield instead of the content: the grid keeps at least
+     * When the panel is too short, the band yields instead of the content: the grid keeps at least
      * a header plus one minimum row, which is what "less than one row of emoji" cost the user at
-     * Keyboard height 50 % (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-2).
+     * Keyboard height 50 % (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-2). The squeeze now engages only
+     * below 44 + 102 = 146 px of usable height — before the search band collapsed it engaged below
+     * 196 px, so every real preset is already out of the squeeze.
      */
     @Test
     fun bandsShrinkSoTheGridKeepsItsFloor() {
         val floor = headerPx + 2 * minCellPx
-        val short = 180
+        val short = 140
         val state = configuredState(snapshotOf(50), height = short)
 
-        assertTrue("полосы обязаны сжаться", state.tabBarHeight() < tabBarPx)
-        assertTrue(state.searchBarHeight() < searchBarPx)
-        assertEquals(state.tabBarHeight() + state.searchBarHeight(), state.gridTop())
+        assertTrue("полоса обязана сжаться", state.tabBarHeight() < tabBarPx)
+        assertEquals(state.tabBarHeight(), state.gridTop())
         assertTrue(
             "сетке должно остаться не меньше пола ($floor): ${state.gridHeight()}",
             state.gridHeight() >= floor,
         )
     }
 
-    /** The squeeze has a floor of its own: bands never shrink away to nothing. */
+    /** The squeeze has a floor of its own: the band never shrinks away to nothing. */
     @Test
     fun bandsNeverShrinkBelowTheirFloor() {
         val state = configuredState(snapshotOf(50), height = 80)
         assertTrue(state.tabBarHeight() >= (tabBarPx * 0.6f).toInt())
-        assertTrue(state.searchBarHeight() >= (searchBarPx * 0.6f).toInt())
-        assertTrue("полосы обязаны остаться видимыми", state.tabBarHeight() > 0)
+        assertTrue("полоса обязана остаться видимой", state.tabBarHeight() > 0)
     }
 
     /**
@@ -295,7 +308,7 @@ class EmojiPanelStateTest {
         assertEquals("без инсета всё ещё помещается", tabBarPx, state.tabBarHeight())
 
         state.setBottomInset(96)
-        assertTrue("после резервирования навбара полосы обязаны сжаться",
+        assertTrue("после резервирования навбара полоса обязана сжаться",
             state.tabBarHeight() < tabBarPx)
     }
 
@@ -338,6 +351,25 @@ class EmojiPanelStateTest {
         assertEquals(0, state.sectionOfIndex(49))
         assertEquals(1, state.sectionOfIndex(50))
         assertEquals(3, state.sectionOfIndex(83))
+    }
+
+    /**
+     * The trailing air is exactly the floating key plus its two insets (40 + 2×8 = 56dp in the
+     * view, item C of docs/EMOJI-PANEL-SPACE-2026-09-28.md), so scrolled to the very bottom the
+     * last row's bottom edge ends one inset ABOVE the floating keys — fully clear of them.
+     */
+    @Test
+    fun theLastRowScrollsFullyClearOfTheFloatingKeys() {
+        val state = configuredState(multiCategorySnapshot(200, 100), height = 300)
+        assertTrue(state.maxScrollY() > 0)
+        state.setScrollY(state.maxScrollY())
+        // The content's real end (before the trailing air) mapped into view coordinates.
+        val lastRowBottomOnScreen = state.gridTop() +
+            (state.contentHeight() - (floatingPx + 2 * floatingInsetPx)) - state.scrollY()
+        assertTrue(
+            "last row bottom $lastRowBottomOnScreen must clear the floating keys at ${state.floatingTop()}",
+            lastRowBottomOnScreen <= state.floatingTop(),
+        )
     }
 
     /** The active tab is a consequence of the scroll position, not of a separate mode. */
@@ -470,8 +502,11 @@ class EmojiPanelStateTest {
         assertTrue(EmojiPanelState.isTab(tabTarget))
         assertEquals(1, EmojiPanelState.tabIndexOf(tabTarget))
 
-        // The search pill is the band under it.
-        assertTrue(EmojiPanelState.isSearch(state.targetAt(width / 2f, tabBarPx + 1f)))
+        // The search cell is the tab row's rightmost slot — there is no band under the row any
+        // more, so where the pill used to sit is now the grid's first header (not a target).
+        val searchCenter = (state.searchCellLeft() + state.searchCellRight()) / 2f
+        assertTrue(EmojiPanelState.isSearch(state.targetAt(searchCenter, 1f)))
+        assertEquals(EmojiPanelState.NO_TARGET, state.targetAt(width / 2f, tabBarPx + 1f))
 
         // The two floating keys win over the content they are drawn on top of.
         val floatingY = (height - floatingInsetPx - 1).toFloat()
@@ -485,7 +520,27 @@ class EmojiPanelStateTest {
         assertEquals(EmojiPanelState.NO_TARGET, state.targetAt(1f, (height + 1).toFloat()))
     }
 
-    /** Tabs tile the row inside the side inset with no gap and no overlap. */
+    /**
+     * The tap on the search cell resolves on both the press and the release — the round trip into
+     * the search and back — and leaves the rest of the row exactly where it was.
+     */
+    @Test
+    fun theSearchCellTapsAndTheRowSurvivesTheRoundTrip() {
+        val state = configuredState(multiCategorySnapshot(50, 20, 5))
+        val x = (state.searchCellLeft() + state.searchCellRight()) / 2f
+        assertEquals(EmojiPanelState.SEARCH_TARGET, state.onDown(1, x, 1f))
+        assertEquals(EmojiPanelState.SEARCH_TARGET, state.onUp(1, x, 1f))
+        // Back from the search (the panel returns as it was): the tabs resolve again, cell for cell.
+        for (tab in 0 until state.tabCount()) {
+            val tabCenter = (state.tabLeft(tab) + state.tabRight(tab)) / 2f
+            val target = state.targetAt(tabCenter, 1f)
+            assertTrue("tab $tab", EmojiPanelState.isTab(target))
+            assertEquals(tab, EmojiPanelState.tabIndexOf(target))
+        }
+        assertTrue(EmojiPanelState.isSearch(state.targetAt(x, 1f)))
+    }
+
+    /** The row's slots tile it without overlap: the category tabs, then the search cell. */
     @Test
     fun tabsTileTheRowWithoutOverlap() {
         val width = 591
@@ -493,15 +548,20 @@ class EmojiPanelStateTest {
         val tabs = state.tabCount()
         assertEquals(8, tabs)
         assertEquals(floatingInsetPx, state.tabLeft(0))
-        assertEquals(width - floatingInsetPx, state.tabRight(tabs - 1))
+        // The search cell picks up where the last tab ends and closes the row at the right inset.
+        assertEquals(state.tabRight(tabs - 1), state.searchCellLeft())
+        assertEquals(width - floatingInsetPx, state.searchCellRight())
         for (tab in 1 until tabs) {
             assertEquals(state.tabRight(tab - 1), state.tabLeft(tab))
             assertTrue("tab $tab is empty", state.tabRight(tab) > state.tabLeft(tab))
         }
-        // Every x in the tab row still resolves to some tab, the side insets included.
+        assertTrue("the search cell is empty", state.searchCellRight() > state.searchCellLeft())
+        // Every x in the tab row still resolves — to some tab, or to the search cell at the end.
         for (x in 0 until width) {
-            assertTrue(EmojiPanelState.isTab(state.targetAt(x.toFloat(), 1f)))
+            val target = state.targetAt(x.toFloat(), 1f)
+            assertTrue("x=$x", EmojiPanelState.isTab(target) || EmojiPanelState.isSearch(target))
         }
+        assertTrue(EmojiPanelState.isSearch(state.targetAt((width - 1).toFloat(), 1f)))
     }
 
     /** A section header is drawn inside the scroll but is not a target of its own. */
@@ -560,7 +620,7 @@ class EmojiPanelStateTest {
         assertEquals(EmojiPanelState.NO_TARGET, state.onUp(1, 50f, 200f))
     }
 
-    /** A drag started on the tab row or the search band scrolls nothing; only the content scrolls. */
+    /** A drag started on the tab row scrolls nothing; only the content scrolls. */
     @Test
     fun aDragOutsideTheContentNeverScrolls() {
         val state = configuredState(snapshotOf(200))
@@ -582,7 +642,7 @@ class EmojiPanelStateTest {
     }
 
     @Test
-    fun theFloatingKeysAndTheSearchPillHaveDistinctTargets() {
+    fun theFloatingKeysAndTheSearchCellHaveDistinctTargets() {
         val targets = intArrayOf(
             EmojiPanelState.NO_TARGET,
             EmojiPanelState.BACK_TARGET,

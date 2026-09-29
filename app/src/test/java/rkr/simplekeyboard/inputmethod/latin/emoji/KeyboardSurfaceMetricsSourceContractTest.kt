@@ -29,7 +29,8 @@ import java.io.File
  *
  *  * **Р-3** — every text a keyboard surface draws is sized in **dp**, never in **sp**. Each of
  *    them sits in a band of fixed dp height (the suggestion strip 40dp, the tab row 44dp, the
- *    search band 50dp, a section header 30dp), and the system font scale grows only the text. At
+ *    search query row 46dp, a section header 30dp), and the system font scale grows only the
+ *    text. At
  *    `font_scale 2.0` the strip degraded to `Мини… · Минем · Мини…` — two of three cells
  *    indistinguishable, for exactly the people who need a large font. The letter keys were always
  *    measured in dp; these surfaces now follow the same rule.

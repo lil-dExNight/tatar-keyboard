@@ -1219,7 +1219,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     /**
      * Says that emoji are not available in this process, so the key that was just pressed — or the
-     * search pill that was just tapped — has nothing to open.
+     * search cell that was just tapped — has nothing to open.
      *
      * Answered on EVERY press rather than once: the key stays on the keyboard and the person will
      * press it again, and a one-shot notice would put the silence straight back. Same shape and the
@@ -2387,10 +2387,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * The search pill inside the emoji panel was tapped and no search can be opened.
+     * The search cell in the emoji panel's tab row was tapped and no search can be opened.
      *
      * Same register as {@link #showEmojiUnavailableDialog()} and for the same reason: the verdict
-     * "the index is unusable" is cached for the life of the process, so without this the pill stays
+     * "the index is unusable" is cached for the life of the process, so without this the cell stays
      * painted and stays dead.
      */
     public void onEmojiSearchUnavailable() {
@@ -2439,9 +2439,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * The search pill in the emoji panel was tapped. The panel closes, the letter keyboard comes
-     * back and every key press is routed into the emoji-search query instead of into the editor
-     * until the search is left again.
+     * The search cell in the emoji panel's tab row was tapped. The panel closes, the letter
+     * keyboard comes back and every key press is routed into the emoji-search query instead of
+     * into the editor until the search is left again.
      */
     public void onEmojiSearchRequested() {
         if (mEmojiPanelController != null) {

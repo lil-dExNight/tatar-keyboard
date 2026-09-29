@@ -70,6 +70,13 @@ public class SettingsValues {
     // bottom-offset slider; U6 of Phase 5, docs/ROADMAP-P5.md):
     public final float mKeyboardHeightScale;
 
+    /**
+     * The emoji panel's own height setting (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B): a scale
+     * of the keyboard box, where 1.0f is the same-box invariant. Consumed at the panel's show path
+     * only — never in the keyboard geometry above.
+     */
+    public final float mEmojiPanelHeightScale;
+
     public final int mBottomOffsetPortrait;
 
     public SettingsValues(final SharedPreferences prefs, final Resources res,
@@ -95,6 +102,7 @@ public class SettingsValues {
         mKeypressSoundVolume = Settings.readKeypressSoundVolume(prefs);
         mKeyPreviewPopupDismissDelay = res.getInteger(R.integer.config_key_preview_linger_timeout);
         mKeyboardHeightScale = Settings.readKeyboardHeight(prefs, DEFAULT_SIZE_SCALE);
+        mEmojiPanelHeightScale = Settings.readEmojiPanelHeight(prefs, EmojiPanelHeightPresets.SAME_SCALE);
         mBottomOffsetPortrait = Settings.readBottomOffsetPortrait(prefs);
         mDisplayOrientation = res.getConfiguration().orientation;
         mShowSpecialChars = Settings.readShowSpecialChars(prefs);

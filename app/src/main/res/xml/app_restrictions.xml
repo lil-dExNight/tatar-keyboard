@@ -104,6 +104,12 @@
         android:title="@string/prefs_keyboard_height_settings"
         android:restrictionType="integer"
         android:defaultValue="100" />
+    <!-- Integer percent of the keyboard box: 100 = same as keyboard, 120 = larger, 10000 = max. -->
+    <restriction
+        android:key="pref_emoji_panel_height"
+        android:title="@string/emoji_panel_height"
+        android:restrictionType="integer"
+        android:defaultValue="100" />
     <restriction
         android:key="pref_bottom_offset_portrait"
         android:title="@string/prefs_bottom_offset_portrait_settings"

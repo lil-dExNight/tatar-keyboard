@@ -27,9 +27,12 @@ import kotlin.math.abs
  * Layout, top to bottom (the Telegram-client arrangement the operator asked for):
  *
  *  1. a fixed-height row of category tabs across the full width, the active one under a rounded
- *     pill;
- *  2. a fixed-height band holding the search pill;
- *  3. the scrolling content: every category one after another, each introduced by a header row,
+ *     pill, plus one search cell at the right end. Since 2026-09-28
+ *     (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item A) the search has no band of its own: the cell
+ *     replaces the old 50dp pill row, and the actual search surface is [EmojiSearchView] — tapping
+ *     the cell swaps the panel for the letter keyboard with the query row on top, and closing the
+ *     search brings this row back. The freed band height belongs to the grid;
+ *  2. the scrolling content: every category one after another, each introduced by a header row,
  *     so a scroll runs continuously through the whole set and it is visible where one section
  *     ends and the next begins. There is no per-category scroll any more — the active tab is a
  *     consequence of where the content is scrolled to, not a separate mode.
@@ -54,7 +57,6 @@ internal class EmojiPanelState {
     private var maxCellPx = 0
 
     private var tabBarPx = 0
-    private var searchBarPx = 0
     private var headerPx = 0
     private var floatingPx = 0
     private var floatingInsetPx = 0
@@ -116,7 +118,6 @@ internal class EmojiPanelState {
         minCellPx: Int,
         maxCellPx: Int,
         tabBarPx: Int,
-        searchBarPx: Int,
         headerPx: Int,
         floatingPx: Int,
         floatingInsetPx: Int,
@@ -125,7 +126,6 @@ internal class EmojiPanelState {
         this.minCellPx = minCellPx
         this.maxCellPx = maxCellPx
         this.tabBarPx = tabBarPx.coerceAtLeast(0)
-        this.searchBarPx = searchBarPx.coerceAtLeast(0)
         this.headerPx = headerPx.coerceAtLeast(0)
         this.floatingPx = floatingPx.coerceAtLeast(0)
         this.floatingInsetPx = floatingInsetPx.coerceAtLeast(0)
@@ -179,20 +179,22 @@ internal class EmojiPanelState {
     // --- Bands --------------------------------------------------------------------------------
 
     /**
-     * How much the two fixed bands are squeezed so the scrolling content keeps a floor.
+     * How much the one fixed band is squeezed so the scrolling content keeps a floor.
      *
-     * The tab row and the search band are constants in dp, but the panel's height is the
-     * keyboard's — and the keyboard is a user setting. At "Keyboard height 50 %" the bands ate
-     * almost everything left after the navigation-bar reservation and under one row of emoji
-     * remained visible, with the floating "АБВ" key sitting on the section header
-     * (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-2).
+     * The tab row is a constant in dp, but the panel's height derives from the keyboard's — and
+     * the keyboard is a user setting. At "Keyboard height 50 %" the bands ate almost everything
+     * left after the navigation-bar reservation and under one row of emoji remained visible, with
+     * the floating "АБВ" key sitting on the section header (docs/DEVICE-RESEARCH-GEOMETRY.md,
+     * Р-2). Back then the bands were the tab row AND a 50dp search row; the search row collapsed
+     * into a tab-row cell on 2026-09-28 (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item A), which is
+     * exactly the squeeze this logic used to have to do, made permanent.
      *
-     * So the bands yield first: they shrink only as far as the content floor demands, never below
-     * [MIN_BAND_SCALE] of their asked size, and never at all while everything fits. At full height
+     * So the band yields first: it shrinks only as far as the content floor demands, never below
+     * [MIN_BAND_SCALE] of its asked size, and never at all while everything fits. At full height
      * the factor is exactly 1 and every measurement is what it always was.
      */
     private fun bandScale(): Float {
-        val bands = tabBarPx + searchBarPx
+        val bands = tabBarPx
         if (bands <= 0) {
             return 1f
         }
@@ -209,21 +211,23 @@ internal class EmojiPanelState {
 
     fun tabBarHeight(): Int = scaled(tabBarPx)
 
-    fun searchBarTop(): Int = scaled(tabBarPx)
-
-    fun searchBarHeight(): Int = scaled(searchBarPx)
-
     fun headerHeight(): Int = headerPx
 
-    /** Top of the scrolling content area: below the tab row and the search band. */
-    fun gridTop(): Int = tabBarHeight() + searchBarHeight()
+    /**
+     * Top of the scrolling content area: right below the tab row. The search cell lives IN the
+     * row, so there is no second band; the grid is exactly the old search band taller.
+     */
+    fun gridTop(): Int = tabBarHeight()
 
     /**
      * The bottom of the area the panel may actually use: its own height minus the strip the
      * navigation bar covers.
      *
-     * The panel's box is the keyboard's box — same height, same position, and both of them reach
-     * the bottom of the IME window. Whether that bottom is also the bottom of the SCREEN is a
+     * Under the default "same as keyboard" emoji-panel-height setting the panel's box is the
+     * keyboard's box — same height, same position, and both of them reach the bottom of the IME
+     * window (the "larger"/"max" settings of 2026-09-28 scale that box up, and only under
+     * "same" does the invariant hold — docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B). Whether
+     * that bottom is also the bottom of the SCREEN is a
      * platform decision: through Android 14 the framework laid the input view out above the
      * navigation bar, and from Android 15 it does not, so the window's last [bottomInsetPx] pixels
      * sit under the bar. The letter keyboard survives that unaided because its rows never fill its
@@ -405,28 +409,32 @@ internal class EmojiPanelState {
     fun tabCount(): Int = snapshot.categoryCount
 
     /**
-     * Tabs share the width inside the same side inset the search pill uses, so the first and the
-     * last glyph keep their air instead of touching the panel edge.
+     * The tab row holds the category tabs plus one search cell at the right end; every slot shares
+     * the width inside the same side inset the search pill once used, so the first and the last
+     * glyph keep their air instead of touching the panel edge.
      */
+    private fun rowSlotCount(): Int = tabCount() + 1
+
+    private fun rowSlotLeft(slot: Int): Int = floatingInsetPx + tabSpan() * slot / rowSlotCount()
+
+    private fun rowSlotRight(slot: Int): Int = floatingInsetPx + tabSpan() * (slot + 1) / rowSlotCount()
+
     fun tabLeft(tab: Int): Int {
-        val tabs = tabCount()
-        if (tabs <= 0) return 0
-        val span = tabSpan()
-        return floatingInsetPx + span * tab / tabs
+        if (tabCount() <= 0) return 0
+        return rowSlotLeft(tab)
     }
 
     fun tabRight(tab: Int): Int {
-        val tabs = tabCount()
-        if (tabs <= 0) return 0
-        val span = tabSpan()
-        return floatingInsetPx + span * (tab + 1) / tabs
+        if (tabCount() <= 0) return 0
+        return rowSlotRight(tab)
     }
 
+    /** The search cell is the slot right after the last category tab — the row's rightmost cell. */
+    fun searchCellLeft(): Int = rowSlotLeft(tabCount())
+
+    fun searchCellRight(): Int = rowSlotRight(tabCount())
+
     private fun tabSpan(): Int = (panelWidth - 2 * floatingInsetPx).coerceAtLeast(0)
-
-    fun searchLeft(): Int = floatingInsetPx
-
-    fun searchRight(): Int = (panelWidth - floatingInsetPx).coerceAtLeast(floatingInsetPx)
 
     fun floatingTop(): Int = (usableHeight() - floatingInsetPx - floatingPx).coerceAtLeast(0)
 
@@ -511,7 +519,7 @@ internal class EmojiPanelState {
 
     /**
      * Virtual-node count the accessibility delegate exposes: every visible cell, every tab, the
-     * search pill and the two functional keys — or, while the skin-tone popup is up, exactly its
+     * search cell and the two functional keys — or, while the skin-tone popup is up, exactly its
      * variants, because the popup owns the whole surface and a touch outside it dismisses rather
      * than reaching the grid. Kept here so it is verifiable without a device.
      */
@@ -554,14 +562,12 @@ internal class EmojiPanelState {
         }
         if (tabBarHeight() > 0 && y < tabBarHeight()) {
             val tabs = tabCount()
-            if (tabs <= 0) return NO_TARGET
-            // The side insets belong to the outermost tabs rather than being dead space.
-            var tab = 0
-            while (tab < tabs - 1 && x >= tabRight(tab)) tab++
-            return TAB_TARGET_BASE - tab
-        }
-        if (searchBarHeight() > 0 && y < gridTop()) {
-            return if (x >= searchLeft() && x < searchRight()) SEARCH_TARGET else NO_TARGET
+            // The row's rightmost slot is the search cell; the side insets belong to the outermost
+            // slots rather than being dead space.
+            var slot = 0
+            val slots = tabs + 1
+            while (slot < slots - 1 && x >= rowSlotRight(slot)) slot++
+            return if (slot >= tabs) SEARCH_TARGET else TAB_TARGET_BASE - slot
         }
         val height = cellHeight()
         if (height <= 0 || columns <= 0) return NO_TARGET
@@ -742,7 +748,9 @@ internal class EmojiPanelState {
             y += headerPx + rows * height
             index += count
         }
-        // Trailing air so the last row can be scrolled clear of the floating keys.
+        // Trailing air so the last row can be scrolled fully clear of the floating keys: exactly
+        // the key height plus its two insets, so at max scroll the last row's bottom ends one
+        // inset above the keys (pinned by EmojiPanelStateTest).
         sectionTop[sections] = y + floatingPx + 2 * floatingInsetPx
         sectionStart[sections] = index
         clampScroll()
@@ -758,8 +766,8 @@ internal class EmojiPanelState {
         const val PORTRAIT_COLUMNS = 8
         const val LANDSCAPE_COLUMNS = 12
         /**
-         * The floor the tab row and the search band may be squeezed to (Р-2). Below this they stop
-         * reading as tappable bands, so the panel would rather keep them and show less content.
+         * The floor the tab row may be squeezed to (Р-2). Below this it stops reading as a
+         * tappable band, so the panel would rather keep it and show less content.
          */
         private const val MIN_BAND_SCALE = 0.6f
 

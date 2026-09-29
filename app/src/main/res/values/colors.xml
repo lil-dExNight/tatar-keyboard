@@ -24,7 +24,6 @@
 
     <!-- Color resources for iOS-style Tatar theme (light). -->
     <color name="ios_keyboard_background">#D4D6DD</color>
-    <color name="ios_keyboard_background_secondary">#C7CAD2</color>
     <color name="ios_key_normal">#FFFFFF</color>
     <color name="ios_key_normal_pressed">#C8CDD4</color>
     <color name="ios_key_functional">#ABB1BA</color>
@@ -36,7 +35,7 @@
     <color name="ios_key_spacebar_pressed">#C8CDD4</color>
     <color name="ios_key_shadow">#4D000000</color>
     <!-- Slide-to-select highlight on the more-keys panel: must clearly differ
-         from ios_keyboard_background_secondary (the panel fill). -->
+         from ios_keyboard_background (the panel fill). -->
     <!-- M3: the slide-to-select highlight is the accent colour, as on iOS. -->
     <color name="ios_popup_key_pressed">@color/app_accent</color>
     <!-- M3: and the glyph on that highlight is white in both palettes. -->

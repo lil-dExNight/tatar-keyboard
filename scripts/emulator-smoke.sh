@@ -40,7 +40,8 @@
 #     до и после набора слова (ImageMagick compare; нет ImageMagick — SKIP);
 #   - эмодзи-панель — тап по первой ячейке сетки обязан закоммитить эмодзи
 #     в поле (в XML-дампе эмодзи приезжает как &#...;);
-#   - клавиатура поднята — dumpsys input_method mIsInputViewShown=true.
+#   - keyboard up — dumpsys input_method mInputShown=true (mIsInputViewShown is
+#     sticky-by-design after the first hide — see keyboard_shown below).
 #
 # Подсказки — opt-in (по умолчанию выключены, Settings.readTatarSuggestionsEnabled).
 # На debuggable-пакете преф пишется через run-as ДО старта приложения; процесс
@@ -219,7 +220,15 @@ LONGPRESSF() {                               # долгий тап по доля
     SHELL input swipe "$x" "$y" "$x" "$y" 900
 }
 keyboard_shown() {
-    SHELL dumpsys input_method 2>/dev/null | grep -q "mIsInputViewShown=true"
+    # 2026-09-29 (L1 wedge verdict, build/device-uat-2026-09-28/wedge/wedge-report.md):
+    # keyed off mInputShown, NOT mIsInputViewShown — the latter is sticky by platform
+    # design: InputMethodService.updateInputViewShown only re-evaluates it while the
+    # decor is visible, so after the first BACK-hide it freezes at true forever and the
+    # check stops proving anything (Gboard shows the same frozen value). mInputShown is
+    # the IMMS-side field that actually flips on hide/show (verified in the wedge
+    # round dumps: true with the panel up, false after BACK, true after the field
+    # re-tap). Behavior for probes that never saw a hide is identical.
+    SHELL dumpsys input_method 2>/dev/null | grep -q "mInputShown=true"
 }
 field_text() {                               # текст try-it поля SetupActivity
     local dump
@@ -327,6 +336,17 @@ else
     result SKIP suggestions-enabled "пакет не debuggable, opt-in поток не автоматизирован"
 fi
 
+# First grid cell of the emoji panel (x=0.059 = first column centre, 8 columns across the
+# full width). The y is mode-dependent because the panel top moves with the suggestion
+# strip: strip visible (debuggable + suggestions on) → panel top 1297, first section
+# header 1418–1500, row 0 centre 1568 px ≈ 0.6877; strip hidden (release) → panel top
+# 1418, row 0 centre 1689 px ≈ 0.7408. Row 0 is always a valid emoji cell no matter the
+# recents state: with recents it IS the recents row, without it is the first Smileys row
+# (a recents section only shifts rows from the second header down). The wave's single
+# 0.744 aimed between the two modes' rows and, with a recents row present, landed exactly
+# on the second section header — measured on the 2026-09-29 smoke-emoji-panel.png.
+if [ "$SUGGESTIONS" = on ]; then GRID_CELL0_Y=0.6877; else GRID_CELL0_Y=0.7408; fi
+
 # Живой процесс держит старые префы в памяти — убиваем. force-stop выбранного
 # IME сбрасывает default_input_method, поэтому выбор восстанавливаем ПОСЛЕ.
 SHELL am force-stop "$PKG" || true
@@ -395,7 +415,7 @@ for _ in $(seq 1 30); do
 done
 SHELL dumpsys input_method > "$OUTDIR/dumpsys-input_method.txt" 2>&1
 if [ "$shown" = 1 ]; then
-    result PASS keyboard-up "mIsInputViewShown=true"
+    result PASS keyboard-up "mInputShown=true"
 else
     result FAIL keyboard-up "клавиатура не поднялась за 30 с"
 fi
@@ -713,8 +733,11 @@ before_emoji=$(field_text)
 LONGPRESSF ${COMMA%,*} ${COMMA#*,}
 sleep 2
 SHOT smoke-emoji-panel.png
-# Первая ячейка сетки эмодзи (калибровка 1080×2280): x=0.059, y=0.777.
-TAPF 0.059 0.777
+# Тап по первой ячейке сетки — y из GRID_CELL0_Y (задан выше, режимный: полоса подсказок
+# сдвигает верх панели). С 2026-09-28 (docs/EMOJI-PANEL-SPACE-2026-09-28.md, A)
+# 50dp-полосы поиска в панели нет — поиск живёт ячейкой в полосе вкладок — поэтому сетка
+# начинается сразу под вкладками: gridTop = верх панели + 121.
+TAPF 0.059 "$GRID_CELL0_Y"
 sleep 1
 after_emoji=$(field_text)
 SHELL input keyevent KEYCODE_BACK   # закрыть панель
@@ -726,23 +749,120 @@ else
 fi
 SHOT smoke-final.png
 
+# Reopen SetupActivity, tap the try-it field, wait for the keyboard, settle 2 s.
+# Shared by panel-back-reopen and the learned-emoji-tt rounds: the per-round activity
+# restart is the answer to BACK hiding the WHOLE IME window by platform design (a BACK
+# aimed past the panel lands on SetupActivity and closes it — 2026-09-28 L1 verdict,
+# build/device-uat-2026-09-28/wedge/wedge-report.md).
+refocus_tryit() {
+    SHELL am start --activity-clear-task -n "$PKG/$SETUP_ACTIVITY" >/dev/null 2>&1
+    sleep 3
+    local b x1 y1 x2 y2
+    b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+    if [ -n "$b" ]; then
+        read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
+        SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
+    else
+        TAPF 0.5 0.81
+    fi
+    local i
+    for i in $(seq 1 15); do
+        keyboard_shown && break
+        sleep 1
+    done
+    keyboard_shown || return 1
+    # The keyboard reports shown before its first frame takes touches (the first tap of
+    # a round was eaten without this settle — 2026-09-28 calibration).
+    sleep 2
+    return 0
+}
+
+# ── panel-back-reopen (2026-09-29; step list of the L1 wedge verdict,
+# build/device-uat-2026-09-28/wedge/wedge-report.md) ──
+# BACK out of the open panel hides the WHOLE IME window by design (framework
+# InputMethodService.handleBack → requestHideSelf; Gboard is byte-identical), so the
+# probe must re-tap the field after BACK before typing — a "BACK → immediate key taps"
+# variant is red by construction (no keyboard on screen). Steps: refocus the try-it
+# field → long-press comma → prove the panel opened (the first-grid-cell tap commits an
+# emoji, same mechanics as the emoji-panel probe) → BACK → re-tap the field (fresh
+# bounds, the window resize may have moved it) → tap м → PASS iff the field ends with м
+# → DEL cleanup.
+pbr_detail=""
+pbr_field=""
+pbr_shown=""
+if ! refocus_tryit; then
+    pbr_detail="keyboard did not come up on the pre-panel refocus"
+fi
+if [ -z "$pbr_detail" ]; then
+    LONGPRESSF ${COMMA%,*} ${COMMA#*,}
+    sleep 2
+    SHOT smoke-panel-back-reopen-panel.png
+    TAPF 0.059 "$GRID_CELL0_Y"   # first grid cell — same calibration as the emoji-panel probe
+    sleep 1
+    pbr_panel=$(field_text)
+    if [ "$pbr_panel" = "__NOFIELD__" ]; then
+        pbr_detail="try-it field not in the dump after the grid-cell tap"
+    elif ! echo "$pbr_panel" | grep -qE '&#[0-9]+;|😀'; then
+        pbr_detail="panel did not open: the first-grid-cell tap committed no emoji; field: '$pbr_panel'"
+    fi
+fi
+if [ -z "$pbr_detail" ]; then
+    SHELL input keyevent KEYCODE_BACK
+    sleep 1
+    # Evidence only: mInputShown=false here is the platform-normal hidden state.
+    pbr_shown=$(SHELL dumpsys input_method 2>/dev/null | grep -oP 'mInputShown=\K\w+' | head -1 || true)
+    b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+    if [ -n "$b" ]; then
+        read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
+        SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
+    else
+        TAPF 0.5 0.81
+    fi
+    sleep 2
+    TAPF 0.4231 0.8474      # м on the tt layout (same key as TT_MIN)
+    sleep 0.6
+    pbr_field=$(field_text)
+    SHELL input keyevent KEYCODE_DEL    # probe cleanup: the м (the next probe's activity
+    sleep 0.4                           # restart clears the emoji the panel check committed)
+fi
+if [ -n "$pbr_detail" ]; then
+    result FAIL panel-back-reopen "$pbr_detail"
+elif [ "$pbr_field" = "__NOFIELD__" ]; then
+    result FAIL panel-back-reopen "try-it field not in the dump after the м tap"
+elif echo "$pbr_field" | grep -qE 'м$'; then
+    result PASS panel-back-reopen "BACK hid the window (mInputShown=$pbr_shown), field re-tap revived it; field: '$pbr_field'"
+else
+    result FAIL panel-back-reopen "post-BACK field re-tap did not revive the keyboard; field: '$pbr_field' (expected a м tail)"
+fi
+
 # ── learned-emoji-tt (feature C, 2026-09-28): a learned word→emoji pair leads the strip tail ──
 # Two clean observations of one (word, emoji) co-usage graduate the personal pair
 # (PersonalEmojiStore.LEARN_THRESHOLD = 2), and the learned emoji then outranks the static
 # table for the strip's tail cell (SuggestionsController consults the personal source first).
 # Probe: type «хәйерле иртә» + space on the tt layout — the static table maps иртә → 🌅
-# (emoji_suggest_v1.txt) — then insert ☀️ through the emoji SEARCH (panel → search pill →
-# query «кояш» → the ☀️ result cell), twice; on the third «хәйерле иртә» + space the tail
+# (emoji_suggest_v1.txt) — then insert ☀️ through the emoji SEARCH (panel → the tab row's search
+# cell → query «кояш» → the ☀️ result cell), twice; on the third «хәйерле иртә» + space the tail
 # cell must commit ☀️, not 🌅.
 #
-# Mechanics (calibrated 2026-09-28 on tt_suggest_a14, 1080×2280):
-#   - the panel's search pill is centred at (0.5, 0.6522); with a query the search bands are
-#     100dp tall where the strip was, the result row centred at y≈0.5908; «кояш» ranks ☀️
-#     fifth (keyword bucket in asset order: 😎 🌻 🌅 🌇 ☀️ …), cell centre x≈0.6157;
-#   - after a pick the search stays open; navigating BACK out of the panel/search can wedge
-#     the IME window on this AVD (drawn but touch-dead: WMS has it GONE while IMMS reports
-#     mIsInputViewShown=true — observed during calibration), and a BACK at the wrong moment
-#     closes SetupActivity itself, so each round REOPENS the activity instead of going back;
+# Mechanics (calibrated 2026-09-28 on tt_suggest_a14, 1080×2280; re-anchored the same day for
+# the collapsed search band — docs/EMOJI-PANEL-SPACE-2026-09-28.md, item A):
+#   - the panel's search entry point is now the 🔍 cell at the RIGHT END of the tab row (the 50dp
+#     pill band under the tabs is gone — the grid keeps that height). The row's slots share the
+#     width inside the 8dp side insets: with 10 categories (recents + 9 base — the emoji-panel
+#     probe above already committed 😀) the cell spans x∈[954.4, 1058] px, and with 9 (no recents)
+#     [942.9, 1058]; x=0.9407 (1016 px) hits it in both. The row centre y=0.5954 — the panel top
+#     is the strip's top (1297 px), the row is 44dp=121 px;
+#   - with a query the search bands are 100dp tall where the strip was, the result row centred
+#     at y≈0.5908; «кояш» ranks ☀️ fifth (keyword bucket in asset order: 😎 🌻 🌅 🌇 ☀️ …),
+#     cell centre x≈0.6157;
+#   - after a pick the search stays open; BACK out of the panel/search hides the WHOLE IME
+#     window — platform design, not a wedge (2026-09-28 L1 verdict: the framework's
+#     InputMethodService.handleBack calls requestHideSelf, Gboard behaves identically, and
+#     the "drawn but touch-dead" observation was this hidden window plus the sticky-by-design
+#     mIsInputViewShown flag; full analysis in
+#     build/device-uat-2026-09-28/wedge/wedge-report.md). A BACK at the wrong moment then
+#     lands on SetupActivity and closes it, so each round REOPENS the activity instead of
+#     going back;
 #   - the first query letter doubles as the search-open check: routed into the search it
 #     never reaches the try-it field, while a missed pill tap lands on the panel grid (an
 #     emoji appears in the field) or on the letter keyboard (a composing letter does);
@@ -804,31 +924,6 @@ PYEOF
     SHELL ime set "$IME_ID" >/dev/null 2>&1 || true
     sleep 1
 
-    # Reopen SetupActivity, tap the try-it field, wait for the keyboard. The per-round
-    # restart is the probe's answer to the panel→BACK wedge described above.
-    refocus_tryit() {
-        SHELL am start --activity-clear-task -n "$PKG/$SETUP_ACTIVITY" >/dev/null 2>&1
-        sleep 3
-        local b x1 y1 x2 y2
-        b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
-        if [ -n "$b" ]; then
-            read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
-            SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
-        else
-            TAPF 0.5 0.81
-        fi
-        local i
-        for i in $(seq 1 15); do
-            keyboard_shown && break
-            sleep 1
-        done
-        keyboard_shown || return 1
-        # The keyboard reports shown before its first frame takes touches (the first tap of
-        # a round was eaten without this settle — 2026-09-28 calibration).
-        sleep 2
-        return 0
-    }
-
     # The ☀️ cluster (U+2600 U+FE0F) at the field's tail, literal or XML-escaped, spaces allowed.
     SUN_TAIL_RE='(☀️|&#9728;(&#65039;)?) *$'
     detail=""
@@ -844,7 +939,7 @@ PYEOF
             || { detail="round $round: phrase did not commit; field: '$f'"; break; }
         LONGPRESSF ${COMMA%,*} ${COMMA#*,}
         sleep 2
-        TAPF 0.5 0.6522          # the panel's search pill
+        TAPF 0.9407 0.5954       # the tab row's rightmost cell — the 🔍 search cell
         sleep 3                  # first open per process loads the search index on a worker
         before_k=$(field_text)
         TAPF 0.3182 0.7206       # к — the search-open check (must not reach the field)

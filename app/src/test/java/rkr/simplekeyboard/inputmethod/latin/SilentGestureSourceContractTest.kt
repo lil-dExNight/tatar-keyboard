@@ -27,8 +27,8 @@ import org.junit.Test
  *
  * Three of the four found live in an `Activity` or in `LatinIME`, which need a device, so they are
  * pinned by source in the style this project already uses for both classes
- * (`PersonalDictionaryFeedbackSourceContractTest`). The fourth, the emoji search pill, is a real
- * behavioural test — see `EmojiSearchUnavailableTest`.
+ * (`PersonalDictionaryFeedbackSourceContractTest`). The fourth, the emoji search affordance, is a
+ * real behavioural test — see `EmojiSearchUnavailableTest`.
  *
  * Each gesture below was reproduced by hand on the SIGNED 1.8.3 build on the AVD before it was
  * fixed; the pictures are in docs/final-polish/.

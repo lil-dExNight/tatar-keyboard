@@ -24,11 +24,11 @@ import org.junit.Test
 /**
  * Mission tt-final, the sweep of section 2: a gesture that does nothing must say so.
  *
- * The search pill is a button drawn inside the emoji panel. It is drawn whether or not the search
- * index can be read, and the index is read at most once per process — [EmojiSearchIndex.EMPTY]
- * means "loaded and unusable", and that verdict is never retried. So every path that ends without
- * a search open ends with a pill that stays on the screen and does nothing FOR THE REST OF THE
- * PROCESS, with no message of any kind. This pins the three of them.
+ * The search cell is a button drawn inside the emoji panel's tab row. It is drawn whether or not
+ * the search index can be read, and the index is read at most once per process —
+ * [EmojiSearchIndex.EMPTY] means "loaded and unusable", and that verdict is never retried. So every
+ * path that ends without a search open ends with a cell that stays on the screen and does nothing
+ * FOR THE REST OF THE PROCESS, with no message of any kind. This pins the three of them.
  */
 class EmojiSearchUnavailableTest {
 

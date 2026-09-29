@@ -29,6 +29,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelView;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchIndex;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchView;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSetSnapshot;
+import rkr.simplekeyboard.inputmethod.latin.settings.EmojiPanelHeightPresets;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView;
 
 public final class InputView extends FrameLayout {
@@ -42,7 +43,10 @@ public final class InputView extends FrameLayout {
      * Set while the emoji panel hid a visible suggestion strip, so {@link #hideEmojiPanel()} puts
      * back exactly what was there. The strip has nothing to show while the panel is open and its
      * reserved band was simply empty; the height it frees is handed to the panel instead, so the
-     * total keyboard height — and the content top inset — does not change when the panel opens.
+     * total keyboard height — and the content top inset — does not change when the panel opens
+     * under the default "same as keyboard" panel-height setting (the "larger"/"max" settings of
+     * docs/EMOJI-PANEL-SPACE-2026-09-28.md grow the panel past it on purpose, window resize
+     * included).
      */
     private boolean mStripHiddenByEmojiPanel;
 
@@ -181,9 +185,21 @@ public final class InputView extends FrameLayout {
      * identical whether the keyboard or the panel is visible. The caller hides the
      * {@link rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView}; the two are never visible
      * at once.
+     *
+     * The strip-height bonus lands first (a visible strip's height is handed to the panel), then
+     * the emoji-panel-height setting applies to the final value
+     * (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B): {@code panelHeightScale} 1.0 is exactly the
+     * same-box invariant above; above it the box is scaled and capped at {@code panelMaxHeightPx}
+     * (the 46%p-of-screen ceiling of {@code config_max_keyboard_height}). The window resize on a
+     * keyboard↔panel swap under a non-default setting is accepted — Gboard behaves the same — and
+     * {@link #getVisibleInputBounds} already unions the panel's bounds, so the taller box stays
+     * touchable. In landscape (and fullscreen-extract) the ceiling is 46%p of the SHORT screen
+     * dimension, so even "max" leaves the extract field above the window rather than overlapped by
+     * an unbounded panel.
      */
     public EmojiPanelView showEmojiPanel(final int keyboardHeightPx,
-            final EmojiSetSnapshot snapshot) {
+            final EmojiSetSnapshot snapshot, final float panelHeightScale,
+            final int panelMaxHeightPx) {
         final EmojiPanelView panel = getOrCreateEmojiPanelView();
         if (panel == null) {
             return null;
@@ -199,6 +215,8 @@ public final class InputView extends FrameLayout {
                 panelHeightPx += stripHeight;
             }
         }
+        panelHeightPx = EmojiPanelHeightPresets.applyTo(
+                panelHeightPx, panelMaxHeightPx, panelHeightScale);
         panel.setPanelHeightPx(panelHeightPx);
         panel.setSnapshot(snapshot);
         if (panel.getVisibility() != VISIBLE) {

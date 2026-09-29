@@ -61,6 +61,19 @@ public final class ResourceUtils {
         return (int)Math.max(Math.min(keyboardHeight, maxKeyboardHeight), minKeyboardHeight);
     }
 
+    /**
+     * The ceiling the keyboard's own default height is clamped to: the 46%p-of-screen
+     * {@code config_max_keyboard_height} fraction, in px. The emoji-panel "larger"/"max" height
+     * presets cap the panel's box at the same value (docs/EMOJI-PANEL-SPACE-2026-09-28.md,
+     * item B). In landscape this is 46%p of the SHORT screen dimension — the deliberate clamp that
+     * keeps a "max" panel (and the fullscreen-extract field above it) on screen.
+     */
+    public static int getMaxKeyboardHeight(final Resources res) {
+        final DisplayMetrics dm = res.getDisplayMetrics();
+        return (int) res.getFraction(
+                R.fraction.config_max_keyboard_height, dm.heightPixels, dm.heightPixels);
+    }
+
     public static int getKeyboardBottomOffset(final Resources res,
             final SettingsValues settingsValues) {
         return res.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT

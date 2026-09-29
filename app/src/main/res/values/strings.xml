@@ -87,6 +87,11 @@
     <string name="keyboard_height_compact">Compact</string>
     <string name="keyboard_height_default">Default</string>
     <string name="keyboard_height_tall">Tall</string>
+    <!-- The "Emoji panel height" row and its three presets (docs/EMOJI-PANEL-SPACE-2026-09-28.md) -->
+    <string name="emoji_panel_height">Emoji panel height</string>
+    <string name="emoji_panel_height_same">Same as keyboard</string>
+    <string name="emoji_panel_height_larger">Larger</string>
+    <string name="emoji_panel_height_max">Max</string>
     <string name="prefs_bottom_offset_portrait_settings">Bottom offset</string>
     <string name="keyboard_color">Set custom keyboard color</string>
     <string name="show_special_chars">Show special characters</string>
@@ -330,7 +335,7 @@
     <string name="license">License</string>
     <!-- Shown when a long press lands on a word the keyboard did not learn from you. The word itself is never named: the message can appear over any app. -->
     <string name="personal_dictionary_not_saved">This word comes from the built-in dictionary. Only words the keyboard saved from your own typing can be forgotten.</string>
-    <!-- Shown when the emoji key or the search pill has nothing to open. Names no file and no cause. -->
+    <!-- Shown when the emoji key or the panel's search cell has nothing to open. Names no file and no cause. -->
     <string name="emoji_unavailable">Emoji are not available right now. Restarting the keyboard may help.</string>
     <!-- Shown when a link row is tapped and no app on the device can open links. -->
     <string name="no_app_for_link">No app on this device can open links.</string>

@@ -87,7 +87,7 @@
     <string name="spoken_emoji_category_symbols">Symbols</string>
     <string name="spoken_emoji_category_flags">Flags</string>
 
-    <!-- Visible hint inside the emoji panel's search pill; also its TalkBack description. -->
+    <!-- The search view's visible hint; also the TalkBack description of the panel's search cell. -->
     <string name="emoji_search_hint">Search emoji</string>
     <string name="emoji_search_no_results">Nothing found</string>
     <string name="emoji_search_close">Close search</string>

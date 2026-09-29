@@ -18,9 +18,12 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 import android.graphics.Canvas
 
 /**
- * The five painters of [EmojiPanelView] (T2 part 3, docs/ROADMAP-P6.md): the tab row, the search
- * pill, the floating "АБВ"/delete keys, the skin-tone popup and the recents clock — every one a
+ * The painters of [EmojiPanelView] (T2 part 3, docs/ROADMAP-P6.md): the tab row (category tabs
+ * plus the search cell at its right end), the floating "АБВ"/delete keys, the skin-tone popup and
+ * the recents clock — every one a
  * pure read of [EmojiPanelState] geometry onto the canvas, moved verbatim out of the view.
+ * (The search pill painter was retired on 2026-09-28 — docs/EMOJI-PANEL-SPACE-2026-09-28.md,
+ * item A — when the pill's 50dp band collapsed into the tab row's search cell.)
  *
  * They are `internal` extension functions on the view, so `onDraw` kept its exact call text — the
  * source contracts slice `EmojiPanelView.kt` between `override fun onDraw` and the touch handler
@@ -67,10 +70,10 @@ internal fun EmojiPanelView.drawSkinTonePopup(canvas: Canvas) {
     }
 }
 
-/** The top row of category tabs; the active one sits under a round pill, as in the reference. */
+/** The top row of category tabs plus the search cell at its right end; the active tab sits under a round pill, as in the reference. */
 internal fun EmojiPanelView.drawTabRow(canvas: Canvas, pressed: Int) {
+    if (tabBarPx <= 0) return
     val tabs = state.tabCount()
-    if (tabs <= 0 || tabBarPx <= 0) return
     val active = state.activeCategory()
     val baseline = tabBarPx / 2f - (tabFontMetrics.ascent + tabFontMetrics.descent) / 2f
     var tab = 0
@@ -101,6 +104,27 @@ internal fun EmojiPanelView.drawTabRow(canvas: Canvas, pressed: Int) {
         }
         tab++
     }
+    // The search cell: the magnifier that used to sit in its own 50dp band under this row. It is
+    // drawn even with zero tabs (the row is then its alone), exactly as the hit-test resolves it.
+    val searchLeft = state.searchCellLeft().toFloat()
+    val searchRight = state.searchCellRight().toFloat()
+    if (searchRight > searchLeft) {
+        if (EmojiPanelState.isSearch(pressed)) {
+            val pill = minOf(searchRight - searchLeft, tabBarPx.toFloat()) - 2 * tabPillInsetPx
+            if (pill > 0f) {
+                val centerX = (searchLeft + searchRight) / 2f
+                val centerY = tabBarPx / 2f
+                keyRect.set(
+                    centerX - pill / 2f,
+                    centerY - pill / 2f,
+                    centerX + pill / 2f,
+                    centerY + pill / 2f,
+                )
+                canvas.drawRoundRect(keyRect, pill / 2f, pill / 2f, pressedPaint)
+            }
+        }
+        drawSearchIcon(canvas, (searchLeft + searchRight) / 2f, tabBarPx / 2f)
+    }
 }
 
 /** The recents tab's clock: a ring and two hands, so the tab reads as "recent", not as an emoji. */
@@ -110,33 +134,17 @@ internal fun EmojiPanelView.drawClockIcon(canvas: Canvas, centerX: Float, center
     canvas.drawLine(centerX, centerY, centerX + clockIconRadiusPx * 0.45f, centerY, clockIconPaint)
 }
 
-/** The search pill: a wide rounded band with a drawn magnifier and the localized hint. */
-internal fun EmojiPanelView.drawSearchBar(canvas: Canvas, pressed: Int) {
-    if (searchBarPx <= 0) return
-    val top = state.searchBarTop().toFloat() + searchPillInsetPx
-    val bottom = (state.searchBarTop() + searchBarPx).toFloat() - searchPillInsetPx
-    val left = state.searchLeft().toFloat()
-    val right = state.searchRight().toFloat()
-    if (right <= left || bottom <= top) return
-    val radius = (bottom - top) / 2f
-    keyRect.set(left, top, right, bottom)
-    canvas.drawRoundRect(keyRect, radius, radius, searchPillPaint)
-    if (EmojiPanelState.isSearch(pressed)) {
-        canvas.drawRoundRect(keyRect, radius, radius, pressedPaint)
-    }
-    val centerY = (top + bottom) / 2f
-    val iconX = left + searchIconInsetPx
-    canvas.drawCircle(iconX, centerY - searchIconRadiusPx / 4f, searchIconRadiusPx, searchIconPaint)
+/** The search cell's magnifier, drawn from primitives rather than shipped as a font or a bitmap. */
+internal fun EmojiPanelView.drawSearchIcon(canvas: Canvas, centerX: Float, centerY: Float) {
+    canvas.drawCircle(centerX, centerY - searchIconRadiusPx / 4f, searchIconRadiusPx, searchIconPaint)
     val diagonal = searchIconRadiusPx * 0.7071f
     canvas.drawLine(
-        iconX + diagonal,
+        centerX + diagonal,
         centerY - searchIconRadiusPx / 4f + diagonal,
-        iconX + diagonal + searchIconHandlePx * 0.7071f,
+        centerX + diagonal + searchIconHandlePx * 0.7071f,
         centerY - searchIconRadiusPx / 4f + diagonal + searchIconHandlePx * 0.7071f,
         searchIconPaint,
     )
-    val baseline = centerY - (searchFontMetrics.ascent + searchFontMetrics.descent) / 2f
-    canvas.drawText(searchHint, left + searchTextInsetPx, baseline, searchTextPaint)
 }
 
 /** "АБВ" and delete, floating over the content in the bottom corners as in the reference. */

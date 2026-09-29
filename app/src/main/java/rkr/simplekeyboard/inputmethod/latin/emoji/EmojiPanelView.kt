@@ -46,15 +46,19 @@ import rkr.simplekeyboard.inputmethod.R
  * built, so no "tofu" box ever reaches a cell.
  *
  * The arrangement is the one the operator asked for, copied from the Telegram client: a row of
- * category tabs across the top with the active one under a round pill, a search pill under it, and
- * then one continuous scroll through every section, each introduced by its own header. The two
+ * category tabs across the top with the active one under a round pill and a search cell at its
+ * right end, and then one continuous scroll through every section, each introduced by its own
+ * header. The search has no band of its own since 2026-09-28
+ * (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item A): the cell's tap hands over to [EmojiSearchView],
+ * which takes the strip's place over the letter keyboard, and closing that search brings this row
+ * back — so the grid keeps the 50dp the pill row used to cost. The two
  * functional keys — "АБВ" (back to the letters) and delete — float over the content in the bottom
  * corners instead of sitting in a bar of their own. No space, no Enter.
  *
  * All geometry, hit testing and scrolling live in the pure [EmojiPanelState]; the auto-repeat of
  * delete lives in the pure [DeleteRepeatState]. This view owns only the Android surface: paints
  * built once, no allocations in [onDraw] or [onTouchEvent], and only the visible rows drawn. The
- * painters (tab row, search pill, floating keys, clock, skin-tone popup) live in
+ * painters (tab row with its search cell, floating keys, clock, skin-tone popup) live in
  * `EmojiPanelDrawing.kt` and the three small gesture helpers in `EmojiPanelGestures.kt` —
  * internal extensions on this view, moved verbatim in the T2 split (docs/ROADMAP-P6.md, part 3).
  *
@@ -67,7 +71,7 @@ class EmojiPanelView @JvmOverloads constructor(
     attrs: AttributeSet? = null,
 ) : View(context, attrs, R.attr.mainKeyboardViewStyle) {
 
-    /** Callbacks for the functional keys, the search pill and for picking an emoji; all on the UI thread. */
+    /** Callbacks for the functional keys, the search cell and for picking an emoji; all on the UI thread. */
     interface Listener {
         /** The "АБВ" key: hide the panel and return to the letter keyboard. */
         fun onEmojiPanelBackToKeyboard()
@@ -78,7 +82,7 @@ class EmojiPanelView @JvmOverloads constructor(
         /** A grid cell was tapped: insert [sequence] through the ordinary text-input path. */
         fun onEmojiPanelPick(sequence: String)
 
-        /** The search pill was tapped: enter the emoji-search mode. */
+        /** The search cell in the tab row was tapped: enter the emoji-search mode. */
         fun onEmojiPanelSearch()
     }
 
@@ -88,14 +92,13 @@ class EmojiPanelView @JvmOverloads constructor(
     internal companion object {
         // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
         // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
-        // 44dp, вкладки 44dp, строка поиска 50dp, заголовок секции 30dp), а системный
+        // 44dp, вкладки 44dp, заголовок секции 30dp), а системный
         // масштаб шрифта растит только текст. При font_scale 2.0 полоса подсказок
         // вырождалась в «Мини… · Минем · Мини…» — две ячейки из трёх неразличимы ровно для
         // тех, кому крупный шрифт и нужен (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-3).
         // Клавиши раскладки всегда считались в dp; здесь то же правило.
         private const val LABEL_TEXT_SIZE_DP = 16f
         private const val HEADER_TEXT_SIZE_DP = 14f
-        private const val SEARCH_TEXT_SIZE_DP = 15f
 
         // Glyph size as a fraction of the cell. The old panel squeezed the cell to fit whole rows
         // and drew at 0.62 of the squeezed height, which is what made the emoji look small next to
@@ -106,17 +109,17 @@ class EmojiPanelView @JvmOverloads constructor(
         private const val PRESSED_ALPHA = 90
         private const val ACTIVE_TAB_ALPHA = 0x40
         private const val HEADER_ALPHA = 0xE6
-        private const val SEARCH_PILL_ALPHA = 0x80
         private const val SEARCH_HINT_ALPHA = 0xB0
 
         private const val MIN_CELL_DP = EmojiPanelState.MIN_CELL_DP.toFloat()
         private const val MAX_CELL_DP = EmojiPanelState.MAX_CELL_DP.toFloat()
 
-        // The three fixed bands and the floating keys, in dp.
+        // The fixed band and the floating keys, in dp. The floating key is 40dp since 2026-09-28
+        // (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item C); the trailing scroll air is the key plus
+        // its two insets (40 + 2×8 = 56dp), so the last row still scrolls fully clear of the keys.
         private const val TAB_BAR_DP = 44f
-        private const val SEARCH_BAR_DP = 50f
         private const val SECTION_HEADER_DP = 30f
-        private const val FLOATING_KEY_DP = 44f
+        private const val FLOATING_KEY_DP = 40f
         private const val FLOATING_INSET_DP = 8f
 
         // A halo of the sheet colour around each floating key, so the key never blurs into the
@@ -138,11 +141,8 @@ class EmojiPanelView @JvmOverloads constructor(
         private const val POPUP_SELECTED_ALPHA = 0x55
 
         // Insets of the pills inside their bands.
-        private const val SEARCH_PILL_INSET_DP = 5f
         private const val TAB_PILL_INSET_DP = 4f
         private const val HEADER_TEXT_INSET_DP = 12f
-        private const val SEARCH_ICON_INSET_DP = 18f
-        private const val SEARCH_TEXT_INSET_DP = 40f
 
         // The magnifier is drawn from primitives rather than shipped as a font or a bitmap.
         private const val SEARCH_ICON_RADIUS_DP = 6f
@@ -191,7 +191,6 @@ class EmojiPanelView @JvmOverloads constructor(
     // minimum of the T2 split, since an extension function cannot see a private member.
     internal val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     internal val activeTabPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    internal val searchPillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     internal val functionalKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     internal val floatingHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -235,24 +234,14 @@ class EmojiPanelView @JvmOverloads constructor(
         )
         isFakeBoldText = true
     }
-    internal val searchTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.LEFT
-        textSize = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            SEARCH_TEXT_SIZE_DP,
-            resources.displayMetrics,
-        )
-    }
     internal val emojiFontMetrics = Paint.FontMetrics()
     internal val tabFontMetrics = Paint.FontMetrics()
     internal val labelFontMetrics = Paint.FontMetrics()
     private val headerFontMetrics = Paint.FontMetrics()
-    internal val searchFontMetrics = Paint.FontMetrics()
 
     private val minCellPx = dp(MIN_CELL_DP)
     private val maxCellPx = dp(MAX_CELL_DP)
     internal val tabBarPx = dp(TAB_BAR_DP)
-    internal val searchBarPx = dp(SEARCH_BAR_DP)
     private val sectionHeaderPx = dp(SECTION_HEADER_DP)
     // Scratch for the navigation-bar overlap measured in onLayout: reused, so nothing is
     // allocated on a layout pass.
@@ -269,11 +258,8 @@ class EmojiPanelView @JvmOverloads constructor(
 
     internal val floatingKeyPx = dp(FLOATING_KEY_DP)
     private val floatingInsetPx = dp(FLOATING_INSET_DP)
-    internal val searchPillInsetPx = dp(SEARCH_PILL_INSET_DP).toFloat()
     internal val tabPillInsetPx = dp(TAB_PILL_INSET_DP).toFloat()
     private val headerTextInsetPx = dp(HEADER_TEXT_INSET_DP).toFloat()
-    internal val searchIconInsetPx = dp(SEARCH_ICON_INSET_DP).toFloat()
-    internal val searchTextInsetPx = dp(SEARCH_TEXT_INSET_DP).toFloat()
     internal val searchIconRadiusPx = dp(SEARCH_ICON_RADIUS_DP).toFloat()
     internal val searchIconHandlePx = dp(SEARCH_ICON_HANDLE_DP).toFloat()
     internal val clockIconRadiusPx = dp(CLOCK_ICON_RADIUS_DP).toFloat()
@@ -391,9 +377,7 @@ class EmojiPanelView @JvmOverloads constructor(
         functionalKeyPaint.color = functionalColor
         themeColors.recycle()
         activeTabPaint.color = withAlpha(functionalColor, ACTIVE_TAB_ALPHA + 0x7F)
-        searchPillPaint.color = withAlpha(functionalColor, SEARCH_PILL_ALPHA + 0x60)
         headerPaint.color = withAlpha(labelPaint.color, HEADER_ALPHA)
-        searchTextPaint.color = withAlpha(labelPaint.color, SEARCH_HINT_ALPHA)
         searchIconPaint.color = withAlpha(labelPaint.color, SEARCH_HINT_ALPHA)
         searchIconPaint.strokeWidth = dp(SEARCH_ICON_STROKE_DP).toFloat()
         clockIconPaint.color = labelPaint.color
@@ -417,7 +401,6 @@ class EmojiPanelView @JvmOverloads constructor(
             minCellPx,
             maxCellPx,
             tabBarPx,
-            searchBarPx,
             sectionHeaderPx,
             floatingKeyPx,
             floatingInsetPx,
@@ -554,7 +537,6 @@ class EmojiPanelView @JvmOverloads constructor(
         tabPaint.getFontMetrics(tabFontMetrics)
         labelPaint.getFontMetrics(labelFontMetrics)
         headerPaint.getFontMetrics(headerFontMetrics)
-        searchTextPaint.getFontMetrics(searchFontMetrics)
         invalidateAccessibilityRootIfExploring()
     }
 
@@ -584,7 +566,6 @@ class EmojiPanelView @JvmOverloads constructor(
 
         val pressed = state.pressedTarget()
         drawTabRow(canvas, pressed)
-        drawSearchBar(canvas, pressed)
         drawContent(canvas, w, pressed)
         drawFloatingKeys(canvas, pressed)
         drawSkinTonePopup(canvas)
@@ -656,7 +637,7 @@ class EmojiPanelView @JvmOverloads constructor(
         canvas.restore()
     }
 
-    // The tab row, the search pill, the floating keys, the clock and the skin-tone popup are
+    // The tab row (with its search cell), the floating keys, the clock and the skin-tone popup are
     // painted by EmojiPanelDrawing.kt (T2 part 3, docs/ROADMAP-P6.md): internal extensions on
     // this view, so the call sites above kept their exact text. drawContent stays here: the
     // "only the visible rows" tokens the source contracts pin live in its loop.
@@ -956,12 +937,12 @@ class EmojiPanelView @JvmOverloads constructor(
 
     /**
      * The panel's [ExploreByTouchHelper], modelled on `SuggestionStripView`'s delegate. Its virtual
-     * views are ONLY the visible cells, the category tabs, the search pill and the two functional
+     * views are ONLY the visible cells, the category tabs, the search cell and the two functional
      * keys — the exact set [EmojiPanelState.virtualNodeCount] counts — enumerated from the same
      * hit-tests and geometry the touch path uses, with no second geometry of its own. A cell's
      * contentDescription is the emoji sequence itself: the panel deliberately ships no emoji-name
      * database for speech, so how a screen reader voices the sequence is left to the system. Tabs,
-     * the search pill and the functional keys get localized descriptions. A node click runs the
+     * the search cell and the functional keys get localized descriptions. A node click runs the
      * same action as a finger tap through [activateForAccessibility], and the root node exposes
      * ACTION_SCROLL_FORWARD/BACKWARD.
      */
@@ -1008,7 +989,7 @@ class EmojiPanelView @JvmOverloads constructor(
                     section++
                 }
             }
-            // Category tabs, then the search pill and the two functional keys.
+            // Category tabs, then the search cell and the two functional keys.
             var tab = 0
             val tabs = state.tabCount()
             while (tab < tabs) {
@@ -1069,10 +1050,10 @@ class EmojiPanelView @JvmOverloads constructor(
                 virtualViewId == SEARCH_ID -> {
                     node.contentDescription = searchHint
                     tempBounds.set(
-                        state.searchLeft(),
-                        state.searchBarTop(),
-                        state.searchRight(),
-                        state.searchBarTop() + state.searchBarHeight(),
+                        state.searchCellLeft(),
+                        0,
+                        state.searchCellRight(),
+                        state.tabBarHeight(),
                     )
                 }
                 virtualViewId >= TAB_ID_BASE -> {

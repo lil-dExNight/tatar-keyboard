@@ -41,6 +41,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchIndex;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchView;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSkinTones;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSetSnapshot;
+import rkr.simplekeyboard.inputmethod.latin.settings.EmojiPanelHeightPresets;
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsValues;
 import rkr.simplekeyboard.inputmethod.latin.utils.CapsModeUtils;
@@ -403,16 +404,23 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
 
     /**
      * Replaces the keyboard surface with the emoji panel. Called from the emoji key's functional
-     * event; it never edits the editor. The panel is sized to the current keyboard height so the
-     * content top inset is unchanged, and MainKeyboardView goes {@code GONE} so the two surfaces
-     * are never visible at once.
+     * event; it never edits the editor. Under the default "same" panel-height setting the panel is
+     * sized to the current keyboard height so the content top inset is unchanged; a "larger"/"max"
+     * setting scales that box up to the 46%p-of-screen ceiling inside
+     * {@link InputView#showEmojiPanel} (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B).
+     * MainKeyboardView goes {@code GONE} so the two surfaces are never visible at once.
      */
     public void showEmojiPanel(final EmojiSetSnapshot snapshot) {
         if (mKeyboardView == null || mCurrentInputView == null) {
             return;
         }
+        final SettingsValues settingsValues = Settings.getInstance().getCurrent();
+        final float panelHeightScale = settingsValues != null
+                ? settingsValues.mEmojiPanelHeightScale : EmojiPanelHeightPresets.SAME_SCALE;
+        final int panelMaxHeightPx = ResourceUtils.getMaxKeyboardHeight(
+                mThemeContext.getResources());
         final EmojiPanelView panel = mCurrentInputView.showEmojiPanel(
-                mKeyboardView.getHeight(), snapshot);
+                mKeyboardView.getHeight(), snapshot, panelHeightScale, panelMaxHeightPx);
         if (panel == null) {
             return;
         }
@@ -527,7 +535,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         }
     }
 
-    // Implements {@link EmojiPanelView.Listener}. The search pill opens the emoji-search mode,
+    // Implements {@link EmojiPanelView.Listener}. The search cell opens the emoji-search mode,
     // where the letter keyboard comes back and the query is typed into the keyboard itself.
     @Override
     public void onEmojiPanelSearch() {
