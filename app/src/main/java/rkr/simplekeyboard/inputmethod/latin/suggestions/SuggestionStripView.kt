@@ -96,6 +96,12 @@ class SuggestionStripView @JvmOverloads constructor(
     private val fontMetrics = Paint.FontMetrics()
     private val displaySuggestions = arrayOfNulls<String>(SuggestionStripState.CELL_COUNT)
     /**
+     * Width of the emphasized cell's ellipsized text, measured in [rebuildDisplaySuggestions]
+     * against the same paint the cell draws with, so [onDraw] never measures text per frame
+     * (O4, docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md). Zero when no cell is emphasized.
+     */
+    private var emphasisTextWidthPx = 0f
+    /**
      * Set by [setSuggestions], consumed by [setEmphasis]: the two halves of one publication
      * (the controller always publishes the emphasis marker with the words) share a single
      * [rebuildDisplaySuggestions] — the marker decides which paint the cells ellipsize against,
@@ -359,9 +365,9 @@ class SuggestionStripView @JvmOverloads constructor(
                 if (state.isEmphasized(cell)) {
                     // The preview's correction cell: bold accent text plus an underline under
                     // exactly the drawn (ellipsized) text — allocation-free, like the rest of
-                    // this method.
+                    // this method. The underline width was measured at content-set time.
                     canvas.drawText(suggestion, center, textBaseline, emphasisTextPaint)
-                    val halfText = emphasisTextPaint.measureText(suggestion) / 2f
+                    val halfText = emphasisTextWidthPx / 2f
                     decorationPaint.color = emphasisColor
                     decorationPaint.strokeWidth = underlineThicknessPx
                     canvas.drawLine(
@@ -477,6 +483,7 @@ class SuggestionStripView @JvmOverloads constructor(
 
     private fun rebuildDisplaySuggestions() {
         displayRebuildPending = false
+        emphasisTextWidthPx = 0f
         if (width <= 0) {
             clearDisplaySuggestions()
             return
@@ -491,12 +498,18 @@ class SuggestionStripView @JvmOverloads constructor(
                 val availableWidth = (
                     state.cellRight(cell, width) - state.cellLeft(cell, width)
                 ).toFloat() - horizontalTextPaddingPx * 2f
-                TextUtils.ellipsize(
+                val display = TextUtils.ellipsize(
                     suggestion,
                     paint,
                     availableWidth.coerceAtLeast(0f),
                     TextUtils.TruncateAt.END,
                 ).toString()
+                if (state.isEmphasized(cell)) {
+                    // The underline spans exactly the drawn text; measure it here, at
+                    // content-set time, so the draw loop never measures.
+                    emphasisTextWidthPx = emphasisTextPaint.measureText(display)
+                }
+                display
             }
             cell++
         }
@@ -504,6 +517,7 @@ class SuggestionStripView @JvmOverloads constructor(
 
     private fun clearDisplaySuggestions() {
         displayRebuildPending = false
+        emphasisTextWidthPx = 0f
         var cell = 0
         while (cell < SuggestionStripState.CELL_COUNT) {
             displaySuggestions[cell] = null

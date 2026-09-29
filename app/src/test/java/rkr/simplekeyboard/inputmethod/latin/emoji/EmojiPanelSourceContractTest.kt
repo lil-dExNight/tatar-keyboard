@@ -122,6 +122,30 @@ class EmojiPanelSourceContractTest {
         assertTrue(drawBody.contains("while (row <= lastRow)"))
     }
 
+    // --- O4 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): measurement and invalidation ------------
+
+    @Test
+    fun drawPathsNeverMeasureTextAndTheBackKeyWidthIsMeasuredOnceAtConstruction() {
+        // onDrawBody spans onDraw AND drawContent (it ends at the touch handler), so this covers
+        // the whole content loop; the painters file is checked whole.
+        assertFalse(onDrawBody().contains("measureText"))
+        val drawing = java("rkr/simplekeyboard/inputmethod/latin/emoji/EmojiPanelDrawing.kt")
+        assertFalse(drawing.contains("measureText"))
+        // The panel's one text measurement is the "АБВ" key width, taken once at construction.
+        assertTrue(panel.contains("private val backWidthPx = (labelPaint.measureText(BACK_LABEL)"))
+    }
+
+    @Test
+    fun flingFramesAreChoreographerScheduledNotSelfInvalidating() {
+        // Full-view invalidation is correct for a scrolling surface (every pixel moves; the
+        // viewport-bounded content loop above is what keeps it cheap). What must hold: fling
+        // frames come from postInvalidateOnAnimation, never from an unbounded self-post.
+        val scrollBody = panel.substringAfter("override fun computeScroll()")
+            .substringBefore("override fun onDraw")
+        assertTrue(scrollBody.contains("postInvalidateOnAnimation()"))
+        assertFalse(scrollBody.contains("postDelayed("))
+    }
+
     // --- Exactly two functional keys, no space, no Enter ---------------------------------------
 
     @Test

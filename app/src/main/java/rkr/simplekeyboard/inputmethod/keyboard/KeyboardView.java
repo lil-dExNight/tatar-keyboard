@@ -34,8 +34,8 @@ import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.View;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 
 import rkr.simplekeyboard.inputmethod.R;
@@ -110,8 +110,10 @@ public class KeyboardView extends View {
     // Drawing
     /** True if all keys should be drawn */
     private boolean mInvalidateAllKeys;
-    /** The keys that should be drawn */
-    private final HashSet<Key> mInvalidatedKeys = new HashSet<>();
+    /** The keys that should be drawn. A list, not a set: it is walked on every key-press
+     * frame and a collection iterator would allocate there; the contains check in
+     * {@link #invalidateKey} keeps duplicates out (the list holds a handful of keys). */
+    private final ArrayList<Key> mInvalidatedKeys = new ArrayList<>();
     /** The working rectangle for clipping */
     private final Rect mClipRect = new Rect();
     /** M4: cached icon tint for ACTION keys, see {@link #actionIconFilter(int)}. */
@@ -302,7 +304,10 @@ public class KeyboardView extends View {
                 onDrawKey(sortedKeys.get(i), canvas, paint);
             }
         } else {
-            for (final Key key : mInvalidatedKeys) {
+            // Indexed loop, like the all-keys branch above: a collection iterator would
+            // allocate on every key-press frame.
+            for (int i = 0; i < mInvalidatedKeys.size(); i++) {
+                final Key key = mInvalidatedKeys.get(i);
                 if (!keyboard.hasKey(key)) {
                     continue;
                 }
@@ -561,7 +566,9 @@ public class KeyboardView extends View {
         if (mInvalidateAllKeys || key == null) {
             return;
         }
-        mInvalidatedKeys.add(key);
+        if (!mInvalidatedKeys.contains(key)) {
+            mInvalidatedKeys.add(key);
+        }
         final int x = key.getX() + getPaddingLeft();
         final int y = key.getY() + getPaddingTop();
         invalidate(x, y, x + key.getWidth(), y + key.getHeight());

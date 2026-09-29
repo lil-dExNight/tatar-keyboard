@@ -144,6 +144,23 @@ class SuggestionStripSourceContractTest {
         assertTrue(setSuggestionsBody.contains("R.string.spoken_suggestions_available"))
     }
 
+    @Test
+    fun pressHighlightsInvalidateOnlyOnPressStateChange() {
+        val viewSource = File(
+            sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView.kt",
+        ).readText()
+        // O4 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): a finger sliding inside one cell
+        // redraws nothing — a frame is requested only when the pressed cell actually changes.
+        // invalidate() is view-scoped and the view IS the 44dp band, so this guard is the
+        // finest granularity that pays (under hardware acceleration a per-cell dirty rect
+        // would re-record the same display list anyway).
+        val touchBody = viewSource.substringAfter("override fun onTouchEvent")
+            .substringBefore("override fun dispatchHoverEvent")
+        assertTrue(touchBody.contains("if (oldPressed != state.pressedCell()) {"))
+        assertTrue(touchBody.contains("if (oldPressed != state.pressedCell()) invalidate()"))
+    }
+
     // --- P2 of Phase 3 (docs/ROADMAP-P3.md): the autocorrect preview's emphasis ------------------
 
     @Test
@@ -156,12 +173,15 @@ class SuggestionStripSourceContractTest {
         val drawBody = viewSource.substringAfter("override fun onDraw")
             .substringBefore("@Suppress(\"ClickableViewAccessibility\")")
 
-        // The correction cell: its own paint (bold, theme accent) and an underline measured
-        // against exactly the drawn (ellipsized) text.
+        // The correction cell: its own paint (bold, theme accent) and an underline spanning
+        // exactly the drawn (ellipsized) text.
         assertTrue(drawBody.contains("state.isEmphasized(cell)"))
         assertTrue(drawBody.contains("emphasisTextPaint"))
-        assertTrue(drawBody.contains("emphasisTextPaint.measureText(suggestion)"))
         assertTrue(drawBody.contains("canvas.drawLine("))
+        // O4 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the underline width is the cached
+        // content-set measurement, never a per-frame measureText.
+        assertTrue(drawBody.contains("val halfText = emphasisTextWidthPx / 2f"))
+        assertFalse(drawBody.contains("measureText("))
 
         // The paint is bold by construction, not per frame; the colour is a theme attr with the
         // plain text colour as the fail-closed default.
@@ -176,6 +196,30 @@ class SuggestionStripSourceContractTest {
         assertTrue(styleable.contains("suggestionEmphasisColor"))
         val theme = File(main, "res/values/themes-tatar.xml").readText()
         assertTrue(theme.contains("name=\"suggestionEmphasisColor\">@color/app_accent"))
+    }
+
+    @Test
+    fun theEmphasisUnderlineWidthIsMeasuredAtContentSetTime() {
+        val viewSource = File(
+            sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView.kt",
+        ).readText()
+        // O4 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the one text measurement of the band
+        // lives in the publication path, next to the ellipsize it must agree with.
+        assertTrue(viewSource.contains("private var emphasisTextWidthPx = 0f"))
+        val rebuildBody = viewSource.substringAfter("private fun rebuildDisplaySuggestions()")
+            .substringBefore("private fun clearDisplaySuggestions()")
+        assertTrue(
+            "measurement happens where the drawn string is built",
+            rebuildBody.contains("emphasisTextWidthPx = emphasisTextPaint.measureText(display)"),
+        )
+        assertTrue(
+            "a stale width can never survive a rebuild",
+            rebuildBody.contains("emphasisTextWidthPx = 0f"),
+        )
+        val clearBody = viewSource.substringAfter("private fun clearDisplaySuggestions()")
+            .substringBefore("private inner class")
+        assertTrue(clearBody.contains("emphasisTextWidthPx = 0f"))
     }
 
     @Test
