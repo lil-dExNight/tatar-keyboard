@@ -41,7 +41,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     private static final boolean DEBUG_EVENT = false;
     private static final boolean DEBUG_MOVE_EVENT = false;
     private static final boolean DEBUG_LISTENER = false;
-    private static boolean DEBUG_MODE = DEBUG_EVENT;
+    private static final boolean DEBUG_MODE = DEBUG_EVENT;
 
     static final class PointerTrackerParams {
         public final boolean mKeySelectionByDraggingFinger;
@@ -247,7 +247,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         final boolean ignoreModifierKey = mIsInDraggingFinger && key.isModifier();
         if (DEBUG_LISTENER) {
             Log.d(TAG, String.format("[%d] onPress    : %s%s%s", mPointerId,
-                    (key == null ? "none" : Constants.printableCode(key.getCode())),
+                    (key == null ? "none" : key.getX() + "," + key.getY()),
                     ignoreModifierKey ? " ignoreModifier" : "",
                     repeatCount > 0 ? " repeatCount=" + repeatCount : ""));
         }
@@ -269,10 +269,10 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         final boolean altersCode = key.altCodeWhileTyping() && sTimerProxy.isTypingState();
         final int code = altersCode ? key.getAltCode() : primaryCode;
         if (DEBUG_LISTENER) {
-            final String output = code == Constants.CODE_OUTPUT_TEXT
-                    ? key.getOutputText() : Constants.printableCode(code);
+            final boolean multiCharKey = code == Constants.CODE_OUTPUT_TEXT;
             Log.d(TAG, String.format("[%d] onCodeInput: %4d %4d %s%s%s", mPointerId, x, y,
-                    output, ignoreModifierKey ? " ignoreModifier" : "",
+                    multiCharKey ? "outputKey" : "codeKey",
+                    ignoreModifierKey ? " ignoreModifier" : "",
                     altersCode ? " altersCode" : ""));
         }
         if (ignoreModifierKey) {
@@ -295,7 +295,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         final boolean ignoreModifierKey = mIsInDraggingFinger && key.isModifier();
         if (DEBUG_LISTENER) {
             Log.d(TAG, String.format("[%d] onRelease  : %s%s%s", mPointerId,
-                    Constants.printableCode(primaryCode),
+                    key.getX() + "," + key.getY(),
                     withSliding ? " sliding" : "", ignoreModifierKey ? " ignoreModifier" : ""));
         }
         if (ignoreModifierKey) {
@@ -1182,9 +1182,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     private void printTouchEvent(final String title, final int x, final int y,
             final long eventTime) {
-        final Key key = mKeyDetector.detectHitKey(x, y);
-        final String code = (key == null ? "none" : Constants.printableCode(key.getCode()));
-        Log.d(TAG, String.format("[%d]%s%s %4d %4d %5d %s", mPointerId,
-                (mIsTrackingForActionDisabled ? "-" : " "), title, x, y, eventTime, code));
+        Log.d(TAG, String.format("[%d]%s%s %4d %4d %5d", mPointerId,
+                (mIsTrackingForActionDisabled ? "-" : " "), title, x, y, eventTime));
     }
 }

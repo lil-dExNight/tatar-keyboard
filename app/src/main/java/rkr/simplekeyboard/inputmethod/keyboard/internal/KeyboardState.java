@@ -259,7 +259,7 @@ public final class KeyboardState {
     public void onPressKey(final int code, final boolean isSinglePointer, final int autoCapsFlags,
             final int recapitalizeMode) {
         if (DEBUG_EVENT) {
-            Log.d(TAG, "onPressKey: code=" + Constants.printableCode(code)
+            Log.d(TAG, "onPressKey: functional=" + (code < 0)
                     + " single=" + isSinglePointer
                     + " " + stateToString(autoCapsFlags, recapitalizeMode));
         }
@@ -300,7 +300,7 @@ public final class KeyboardState {
     public void onReleaseKey(final int code, final boolean withSliding, final int autoCapsFlags,
             final int recapitalizeMode) {
         if (DEBUG_EVENT) {
-            Log.d(TAG, "onReleaseKey: code=" + Constants.printableCode(code)
+            Log.d(TAG, "onReleaseKey: functional=" + (code < 0)
                     + " sliding=" + withSliding
                     + " " + stateToString(autoCapsFlags, recapitalizeMode));
         }
@@ -517,7 +517,7 @@ public final class KeyboardState {
     public void onEvent(final Event event, final int autoCapsFlags, final int recapitalizeMode) {
         final int code = event.isFunctionalKeyEvent() ? event.mKeyCode : event.mCodePoint;
         if (DEBUG_EVENT) {
-            Log.d(TAG, "onEvent: code=" + Constants.printableCode(code)
+            Log.d(TAG, "onEvent: functional=" + event.isFunctionalKeyEvent()
                     + " " + stateToString(autoCapsFlags, recapitalizeMode));
         }
 
