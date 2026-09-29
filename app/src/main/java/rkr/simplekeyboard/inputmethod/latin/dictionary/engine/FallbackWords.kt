@@ -83,9 +83,9 @@ internal class GlobalTopFrequencyFallback(
 /**
  * The production [FallbackWordsFactory], language-agnostic by construction: it builds the pool
  * from the engine's OWN dictionary, so wiring it for every shipped language keeps each engine's
- * fallback in its own language. The pool is 8: four cells to fill plus slack for the excluded
+ * fallback in its own language. The pool is 8: three cells to fill plus slack for the excluded
  * committed word and the already-shown candidates (at most two of those when a cell is free —
- * 8 − 4 ≥ 2 always; four cells since 2026-09-27, the T7 reopen).
+ * 8 − 3 ≥ 3 always).
  */
 object GlobalTopFrequencyFallbackFactory : FallbackWordsFactory {
     private const val TOP_WORD_POOL = 8

@@ -261,12 +261,12 @@ public final class InputView extends FrameLayout {
 
     /** Shows the fixed-height strip, including the valid visible zero-results state. */
     public SuggestionStripView showSuggestionStrip(final String first, final String second,
-            final String third, final String fourth) {
+            final String third) {
         final SuggestionStripView strip = getOrCreateSuggestionStripView();
         if (strip == null) {
             return null;
         }
-        strip.setSuggestions(first, second, third, fourth);
+        strip.setSuggestions(first, second, third);
         if (isEmojiPanelShowing()) {
             // The panel owns the surface: keep the strip down and remember that it wanted to be
             // up, so hideEmojiPanel() restores it. Without this a new input session started while
@@ -310,9 +310,9 @@ public final class InputView extends FrameLayout {
      * creation is always followed by its own labels.
      */
     public void setSuggestionStripSpokenLabels(final String first, final String second,
-            final String third, final String fourth) {
+            final String third) {
         if (mSuggestionStripView != null) {
-            mSuggestionStripView.setSpokenLabels(first, second, third, fourth);
+            mSuggestionStripView.setSpokenLabels(first, second, third);
         }
     }
 

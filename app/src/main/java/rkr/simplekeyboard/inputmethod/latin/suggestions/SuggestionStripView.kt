@@ -37,7 +37,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper
 import rkr.simplekeyboard.inputmethod.R
 
-/** One allocation-free hot-path Canvas view containing exactly four suggestion cells. */
+/** One allocation-free hot-path Canvas view containing exactly three suggestion cells. */
 class SuggestionStripView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -105,7 +105,7 @@ class SuggestionStripView @JvmOverloads constructor(
      * Set by [setSuggestions], consumed by [setEmphasis]: the two halves of one publication
      * (the controller always publishes the emphasis marker with the words) share a single
      * [rebuildDisplaySuggestions] — the marker decides which paint the cells ellipsize against,
-     * so rebuilding on the words alone would redo all four cells a microsecond later whenever
+     * so rebuilding on the words alone would redo all three cells a microsecond later whenever
      * a preview band lands. Read only on the UI thread, like everything else here.
      */
     private var displayRebuildPending = false
@@ -207,17 +207,17 @@ class SuggestionStripView @JvmOverloads constructor(
         if (resetFired) longPressFired = false
     }
 
-    fun setSuggestions(first: String?, second: String?, third: String?, fourth: String?) {
+    fun setSuggestions(first: String?, second: String?, third: String?) {
         clearSpokenLabels()
         val hadSuggestions = state.hasAnySuggestion()
-        if (!state.setSuggestions(first, second, third, fourth)) return
+        if (!state.setSuggestions(first, second, third)) return
         // No rebuild here: the paired setEmphasis() of the same publication runs it once, with
         // the final emphasis state already in place (see displayRebuildPending).
         displayRebuildPending = true
         accessibilityHelper.invalidateRoot()
         invalidate()
         // Announce ONLY the empty band -> words transition, and only while touch exploration is
-        // actually on. The quadruple changes on every keystroke; announcing each one would bury the
+        // actually on. The triple changes on every keystroke; announcing each one would bury the
         // key echo TalkBack users type by, exactly like the shift-mode announcements deliberately
         // stay silent on the frequent auto-caps transitions (KeyboardAccessibilityDelegate). The
         // words themselves stay reachable at any time through the virtual cell nodes.
@@ -226,7 +226,6 @@ class SuggestionStripView @JvmOverloads constructor(
             state.suggestionAt(0),
             state.suggestionAt(1),
             state.suggestionAt(2),
-            state.suggestionAt(3),
         )
         if (available.isNotEmpty()) {
             announceForAccessibility(
@@ -247,20 +246,17 @@ class SuggestionStripView @JvmOverloads constructor(
     }
 
     /**
-     * Sets the spoken labels of the four cells; see the field comment. Called by the owner of the
+     * Sets the spoken labels of the three cells; see the field comment. Called by the owner of the
      * band in the same publication as [setSuggestions], after the words and their emphasis; never
      * creates content of its own.
      */
-    fun setSpokenLabels(first: String?, second: String?, third: String?, fourth: String?) {
-        if (spokenLabels[0] == first && spokenLabels[1] == second && spokenLabels[2] == third &&
-            spokenLabels[3] == fourth
-        ) {
+    fun setSpokenLabels(first: String?, second: String?, third: String?) {
+        if (spokenLabels[0] == first && spokenLabels[1] == second && spokenLabels[2] == third) {
             return
         }
         spokenLabels[0] = first
         spokenLabels[1] = second
         spokenLabels[2] = third
-        spokenLabels[3] = fourth
         accessibilityHelper.invalidateRoot()
     }
 
@@ -268,7 +264,6 @@ class SuggestionStripView @JvmOverloads constructor(
         spokenLabels[0] = null
         spokenLabels[1] = null
         spokenLabels[2] = null
-        spokenLabels[3] = null
     }
 
     /**
@@ -568,7 +563,7 @@ class SuggestionStripView @JvmOverloads constructor(
                 // Exposed on EVERY filled cell, not only on personal words. An action present only
                 // on personal ones would make the contents of a private list observable to any
                 // enabled accessibility service and to automated tree dumps — one could see which
-                // of the four words came from it. For a dictionary word the action is a no-op,
+                // of the three words came from it. For a dictionary word the action is a no-op,
                 // which is what the contract requires of a long press there anyway.
                 node.addAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
                 node.isLongClickable = true

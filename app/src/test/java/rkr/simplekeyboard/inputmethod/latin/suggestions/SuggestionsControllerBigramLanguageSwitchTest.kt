@@ -56,7 +56,7 @@ class SuggestionsControllerBigramLanguageSwitchTest {
     private class FakeStrip : StripSurface {
         var reserveCount = 0
         var hideCount = 0
-        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) = Unit
+        override fun showSuggestions(first: String, second: String?, third: String?) = Unit
         override fun reserve() { reserveCount++ }
         override fun hideSuggestions() { hideCount++ }
         override fun setTapListener(listener: SuggestionTapListener) = Unit

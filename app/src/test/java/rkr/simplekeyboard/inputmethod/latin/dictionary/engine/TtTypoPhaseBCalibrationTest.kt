@@ -245,19 +245,16 @@ class TtTypoPhaseBCalibrationTest {
 
         // 2 code points: the fuzzy pass never fires (MIN_FUZZY_PREFIX_CODE_POINTS = 3); the strip
         // is the exact "сц*" block (сценарий & co., frequency order).
-        assertEquals(listOf("сценарий", "сценарие", "сценарийлар", "сценариен"), strip("сц"))
+        assertEquals(listOf("сценарий", "сценарие", "сценарийлар"), strip("сц"))
         // 3 code points: exact "сцл*" is empty; the class-#2 variant "сәл" fills the strip by
         // frequency (no same-length candidate exists at 3 cp, and the huge "сәл*" block leads).
-        // Four cells now: the block's fourth leader (сәламәтлеге) joins.
-        assertEquals(listOf("сәламәтлек", "сәләтле", "сәламәт", "сәламәтлеге"), strip("сцл"))
+        assertEquals(listOf("сәламәтлек", "сәләтле", "сәламәт"), strip("сцл"))
         // 4 code points: the variant "сәлә" covers the "сәлә*" block, whose frequency leaders are
         // the "сәләт*" words — the correction itself (freq 36) does not reach the strip yet.
-        // (Four cells now: сәләте, the block's next leader, takes the fourth cell.)
-        assertEquals(listOf("сәләтле", "сәләт", "сәләтен", "сәләте"), strip("сцлә"))
+        assertEquals(listOf("сәләтле", "сәләт", "сәләтен"), strip("сцлә"))
         // 5 code points: the variant "сәләм" selects exactly the "сәләм*" block, and the
-        // same-length bonus puts the correction itself (36) above "сәләмәтлек" (65). The fourth
-        // cell is the block's next leader (сәләмә).
-        assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмәт", "сәләмә"), strip("сцләм"))
+        // same-length bonus puts the correction itself (36) above "сәләмәтлек" (65).
+        assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмәт"), strip("сцләм"))
     }
 
     /**
@@ -272,7 +269,7 @@ class TtTypoPhaseBCalibrationTest {
         val index = requireNotNull(defaultIndex)
         fun strip(prefix: String): List<String> =
             index.lookup(ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8)))
-        assertEquals(listOf("сценарий", "сценарие", "сценарийлар", "сценариен"), strip("сц"))
+        assertEquals(listOf("сценарий", "сценарие", "сценарийлар"), strip("сц"))
         assertEquals(emptyList<String>(), strip("сцл"))
         assertEquals(emptyList<String>(), strip("сцлә"))
         assertEquals(emptyList<String>(), strip("сцләм"))
@@ -362,15 +359,14 @@ class TtTypoPhaseBCalibrationTest {
         // Exact pins of the G1 measurement (2026-09-20, committed 110k asset, device-true
         // geometry); re-pin consciously when an input changes. The verdict was BELOW on both
         // windows (ratios of RATES 0.9090x / 1.0019x vs the 1.5x gate), so the TATAR policy stays
-        // unwired.
-        // Re-pinned 2026-09-27 (the four-cell strip: recovery membership is the four cells now).
-        // The verdicts are unchanged: BELOW on both windows (0.9160x / 1.0022x).
-        private const val PIN_BASE_W3 = 8_108
-        private const val PIN_BASE_W5 = 45_263
-        private const val PIN_CAND_W3 = 8_472
-        private const val PIN_CAND_W5 = 46_460
-        private const val PIN_NOBONUS_W3 = 8_467
-        private const val PIN_NOBONUS_W5 = 46_470
+        // unwired. Re-pinned 2026-09-29 (three cells again — the four-cell wave reverted);
+        // the four-cell excursion measured 8 108 / 45 263 / 8 472 / 46 460 / 8 467 / 46 470.
+        private const val PIN_BASE_W3 = 6_436
+        private const val PIN_BASE_W5 = 39_344
+        private const val PIN_CAND_W3 = 6_674
+        private const val PIN_CAND_W5 = 40_370
+        private const val PIN_NOBONUS_W3 = 6_673
+        private const val PIN_NOBONUS_W5 = 40_379
 
         private val neighborTable = E3bTestFixtures.tatarNeighborTable()
         private lateinit var vocabulary: List<String>

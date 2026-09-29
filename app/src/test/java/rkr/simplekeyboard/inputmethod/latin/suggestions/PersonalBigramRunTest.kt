@@ -38,7 +38,7 @@ class PersonalBigramRunTest {
 
     private class FakeStrip : StripSurface {
         var listener: SuggestionTapListener? = null
-        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) = Unit
+        override fun showSuggestions(first: String, second: String?, third: String?) = Unit
         override fun reserve() = Unit
         override fun hideSuggestions() = Unit
         override fun setTapListener(listener: SuggestionTapListener) {

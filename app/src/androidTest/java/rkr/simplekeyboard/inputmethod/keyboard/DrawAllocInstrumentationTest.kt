@@ -51,7 +51,7 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView
  *     interleave, so a nonzero delta IS a draw-path allocation. The windows: a control (the
  *     press/invalidate choreography without draws), a blit window (the per-frame shell), a
  *     same-state redraw window, the full board cycle (press+release per key + full redraw), and
- *     strip redraws of a live four-cell band. Negative-test ritual (plan O3 verification): a
+ *     strip redraws of a live three-cell band. Negative-test ritual (plan O3 verification): a
  *     deliberate `Rect()` planted in KeyboardView.onDraw must fail this test; the plant is then
  *     reverted.
  *
@@ -229,7 +229,7 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
         )
         assertEquals(
             "the suggestion strip draw loop must stay allocation-free: " +
-                "$STRIP_DRAWS_PER_WINDOW redraws of a live four-cell band allocated " +
+                "$STRIP_DRAWS_PER_WINDOW redraws of a live three-cell band allocated " +
                 "$stripThread objects on the drawing thread",
             0L, stripThread,
         )
@@ -441,12 +441,12 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
             val inputView = requireNotNull(inputViewOf(view)) {
                 "the keyboard view must sit inside the InputView"
             }
-            // Four live cells, one emphasized: the fullest band the strip ever paints. Goes
+            // Three live cells, one emphasized: the fullest band the strip ever paints. Goes
             // through the production entry point, which also inflates the strip stub on first
             // use; the paired setEmphasis runs the (one-off, unmeasured) ellipsize rebuild.
             val strip = requireNotNull(
                 inputView.showSuggestionStrip(
-                    STRIP_WORDS[0], STRIP_WORDS[1], STRIP_WORDS[2], STRIP_WORDS[3],
+                    STRIP_WORDS[0], STRIP_WORDS[1], STRIP_WORDS[2],
                 ),
             ) { "the suggestion strip must inflate" }
             strip.setEmphasis(0)
@@ -674,7 +674,7 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
             663f, 1396f, 663f, 1396f, 663f, 1396f, 663f, 1396f, 663f, 1396f,
         )
         private val PROBED_LETTERS = charArrayOf('с', 'ә', 'л', 'м')
-        private val STRIP_WORDS = arrayOf("сәләм", "сәләмнән", "сәләмле", "сәләмгә")
+        private val STRIP_WORDS = arrayOf("сәләм", "сәләмнән", "сәләмле")
 
         // Per probed key: press draw + release draw; plus the full-board redraw.
         private const val BOARD_DRAWS_PER_WINDOW = 4 * 2 + 1

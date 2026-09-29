@@ -187,7 +187,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
             lifted == "сәләм",
         )
 
-        // Tap the LEFT strip cell: the alternatives hold candidates 2..4, and the doubled twin
+        // Tap the LEFT strip cell: the alternatives hold candidates 2..3, and the doubled twin
         // сәлләм is the first of them (the committed plain word is no longer in the strip).
         tap(instrumentation, 120f, 980f)
         Thread.sleep(1500)

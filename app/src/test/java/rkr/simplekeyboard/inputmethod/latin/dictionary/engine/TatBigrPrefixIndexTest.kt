@@ -50,12 +50,12 @@ class TatBigrPrefixIndexTest {
     }
 
     @Test
-    fun moreThanFourStoredSuccessesAreCappedToFour() {
+    fun moreThanThreeStoredSuccessesAreCappedToThree() {
         val index = EngineTestFixtures.bigramIndex(
             listOf("аб" to listOf("а", "б", "в", "г", "д", "е")),
         )
 
-        assertEquals(listOf("а", "б", "в", "г"), predict(index, "аб"))
+        assertEquals(listOf("а", "б", "в"), predict(index, "аб"))
     }
 
     @Test
@@ -222,10 +222,10 @@ class TatBigrPrefixIndexTest {
         assertTrue(results.size <= TatBigrPrefixIndex.MAX_RESULTS)
         // The imperative "кил" is an extra-list head (docs/archive/bigrams/IMPERATIVE-HEADS.md);
         // its successor row is pinned by the schema-3 equivalence check — the reader must serve
-        // it. K = 4 (2026-09-27, the four-cell strip): the 4th stored successor (монда) rides
-        // along now.
+        // it. The shipped table is K = 4 (stays so after the 2026-09-29 three-cell revert): the
+        // 4th stored successor (монда) is the unread headroom, MAX_RESULTS caps the row at three.
         assertEquals(
-            listOf("дә", "әле", "һәм", "монда"),
+            listOf("дә", "әле", "һәм"),
             index.predict(ImmutableUtf8Prefix.copyOf("кил".toByteArray(Charsets.UTF_8))),
         )
     }

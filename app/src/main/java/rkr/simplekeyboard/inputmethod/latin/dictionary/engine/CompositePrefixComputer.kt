@@ -54,7 +54,7 @@ fun interface AfterWordFormsFactory {
 }
 
 /**
- * The single ranking of E4b: dictionary candidates and one personal word merged into the four
+ * The single ranking of E4b: dictionary candidates and one personal word merged into the three
  * cells of the band, in the order frozen by «Контракт текста»:
  *
  *  1. exact dictionary candidates, in their existing order (frequency desc, then code point asc);
@@ -64,8 +64,8 @@ fun interface AfterWordFormsFactory {
  *
  * Two consequences are stated in the contract and implemented literally here:
  *
- *  - the band is four cells, so a personal word at index 1 does not "push the exact candidates
- *    down" — it pushes the FOURTH exact candidate out of the band entirely;
+ *  - the band is three cells, so a personal word at index 1 does not "push the exact candidates
+ *    down" — it pushes the THIRD exact candidate out of the band entirely;
  *  - a word present both in the dictionary and in the personal list occupies exactly ONE cell, and
  *    when the saved casing differs from the normalized form the PERSONAL spelling wins («словарное
  *    гүзәл» + «личное Гүзәл» → one cell «Гүзәл»). Otherwise the dictionary candidate stands as it is.
@@ -136,12 +136,12 @@ internal class CompositePrefixComputer(
      * E5's "one computer, one token" rule — but since P1 of Phase 2 (docs/ROADMAP-P2.md) the
      * user's own learned pairs join through their OWN seam ([personalBigrams]). The pinned chain
      * is: static bigram successors > personal pairs > word forms > fallback. A later source never
-     * displaces, never duplicates, and never pushes the list past the four strip cells:
+     * displaces, never duplicates, and never pushes the list past the three strip cells:
      *
      *  - the static successors come first and are never displaced, however the personal pair
      *    ranks;
      *  - personal pairs fill the cells the successors leave free, at most
-     *    [MAX_PERSONAL_BIGRAM_CELLS] of them (the leave-room pin: with all four cells free the
+     *    [MAX_PERSONAL_BIGRAM_CELLS] of them (the leave-room pin: with all three cells free the
      *    personal half takes two and the forms/fallback half keeps its chance), in their own order
      *    (usage desc, then frequency desc), a pair whose normalized form a static successor already
      *    shows is skipped — the duplicate is shown once and the STATIC spelling wins;
@@ -356,18 +356,18 @@ internal class CompositePrefixComputer(
 
     companion object {
         /**
-         * The band is four cells (`SuggestionStripState.CELL_COUNT`) and the index returns at most
-         * four candidates (`TdictPrefixIndex.MAX_RESULTS`), so the merge can only ever hand back
-         * four. Pinned against both by `CompositePrefixComputerTest`.
+         * The band is three cells (`SuggestionStripState.CELL_COUNT`) and the index returns at most
+         * three candidates (`TdictPrefixIndex.MAX_RESULTS`), so the merge can only ever hand back
+         * three. Pinned against both by `CompositePrefixComputerTest`.
          */
-        internal const val CELL_COUNT = 4
+        internal const val CELL_COUNT = 3
 
         /**
          * The most cells personal pairs may take in one NEXT_WORD band (P1 of Phase 2,
-         * docs/ROADMAP-P2.md — the "leave room" pin): two, unchanged at four cells (T7 reopened
-         * 2026-09-27). With all four cells free the personal half still leaves two for the word
-         * forms and the fallback, so a user who learns a couple of pairs never loses the engine's
-         * other predictions to them. Pinned by `CompositePrefixComputerTest`.
+         * docs/ROADMAP-P2.md — the "leave room" pin): two. With all three cells free the personal
+         * half still leaves one for the word forms and the fallback, so a user who learns a couple
+         * of pairs never loses the engine's other predictions to them. Pinned by
+         * `CompositePrefixComputerTest`.
          */
         internal const val MAX_PERSONAL_BIGRAM_CELLS = 2
     }

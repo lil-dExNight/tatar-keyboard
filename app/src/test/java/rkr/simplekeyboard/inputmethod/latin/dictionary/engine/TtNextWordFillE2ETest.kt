@@ -38,12 +38,15 @@ import java.security.MessageDigest
  *
  * The operator's scenario (2.0.0): after accepting `сәләм` the strip offered only `сәләмә`; after
  * accepting `сәләмә` it went empty. Now: `сәләм` is no bigram head and has exactly one attested
- * form, so the strip is `[сәләмә, һәм, белән, да]` — the fallback fills the three cells the
- * bigrams and forms leave free; after `сәләмә` (no successors, no forms) it is
- * `[һәм, белән, да, бу]` — the global top words. A bigram head (сәлам) keeps its stored
- * successors in front; the cell they leave free goes to the after-word forms. The top-8 list is
+ * form, so the strip is `[сәләмә, һәм, белән]` — the fallback fills the two cells the bigrams and
+ * forms leave free; after `сәләмә` (no successors, no forms) it is `[һәм, белән, да]` — the
+ * global top words. A bigram head (сәлам) still shows only its successors. The top-8 list is
  * derived from the real asset through the new [TdictPrefixIndex.topFrequentWords] API and pinned
  * as literals.
+ *
+ * 2026-09-29: the strip is three cells again (the four-cell wave of 2026-09-27 reverted). The
+ * Tatar table STAYS packed at K = 4 — `TatBigrPrefixIndex.MAX_RESULTS` = 3 reads the first three
+ * successors of a row whose fourth stays as unread headroom (see the pins below).
  */
 class TtNextWordFillE2ETest {
 
@@ -60,49 +63,50 @@ class TtNextWordFillE2ETest {
     fun committingSyalamOffersItsFormThenTheTopWords() {
         // сәләм: no bigram successors (not a head), one attested form (сәләмә) — then the fill.
         assertEquals(
-            listOf("сәләмә", "һәм", "белән", "да"),
+            listOf("сәләмә", "һәм", "белән"),
             tatarPredict("сәләм"),
         )
     }
 
     @Test
-    fun committingSyalamaFillsAllFourCellsFromTheTopWords() {
+    fun committingSyalamaFillsAllThreeCellsFromTheTopWords() {
         // сәләмә: no successors and no attested forms — the whole strip is the fill.
         assertEquals(
-            listOf("һәм", "белән", "да", "бу"),
+            listOf("һәм", "белән", "да"),
             tatarPredict("сәләмә"),
         )
     }
 
     @Test
-    fun aBigramHeadsFourSuccessorsFillTheWholeStrip() {
-        // сәлам is a head with 4 stored successors (K = 4 since 2026-09-27 — before the repack
-        // the fourth cell went to the attested form сәламе): they fill the strip, and neither the
-        // forms nor the fallback ever run. The successor белән is ALSO a top-8 word: the dedup
-        // rule is exercised here structurally (it must not appear twice).
+    fun aBigramHeadStillShowsOnlyItsSuccessors() {
+        // сәлам is a head with 4 stored successors (the K = 4 table stays shipped); the read caps
+        // at three (TatBigrPrefixIndex.MAX_RESULTS), so the strip is the first three and the fourth
+        // (хатлары) is the unread headroom of the 2026-09-29 revert — no form, no fallback cell.
+        // The successor белән is ALSO a top-8 word: the dedup rule is exercised here structurally
+        // (it must not appear twice, and the fallback never runs at all).
         val result = tatarPredict("сәлам")
-        assertEquals(listOf("биреп", "белән", "бирү", "хатлары"), result)
+        assertEquals(listOf("биреп", "белән", "бирү"), result)
         assertEquals(result.distinct(), result)
         assertFalse(result.contains("да"))
     }
 
     @Test
     fun theCommittedWordIsNeverReOffered() {
-        // һәм IS the global top word: committing it must not put it back on the strip. It is
-        // also a bigram head — its four stored successors (K = 4 since 2026-09-27; before it the
-        // fourth cell was the fallback белән) fill the whole strip, minus the committed word
-        // itself.
+        // һәм IS the global top word: committing it must not put it back on the strip. It is also
+        // a bigram head — the K = 4 table's first three successors fill the whole strip (the
+        // fourth, ул, is the unread headroom; pre-repack the third cell was the fallback белән),
+        // minus the committed word itself.
         val result = tatarPredict("һәм")
         assertFalse(result.contains("һәм"))
-        assertEquals(listOf("башка", "аның", "фән", "ул"), result)
+        assertEquals(listOf("башка", "аның", "фән"), result)
     }
 
     @Test
     fun aNonHeadRussianWordFillsWithRussianTopWords() {
-        // тюлень: in the Russian dictionary, not a bigram head → all four cells are the Russian
+        // тюлень: in the Russian dictionary, not a bigram head → all three cells are the Russian
         // global top words (the ru engine ships no word-form rules — the pure fill).
         assertEquals(
-            listOf("я", "не", "в", "и"),
+            listOf("я", "не", "в"),
             russianPredict("тюлень"),
         )
     }

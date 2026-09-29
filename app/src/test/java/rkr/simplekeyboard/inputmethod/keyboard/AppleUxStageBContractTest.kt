@@ -192,10 +192,10 @@ class AppleUxStageBContractTest {
             else listOf(File("scripts/emulator-smoke.sh"), File("../scripts/emulator-smoke.sh"))
                 .first(File::isFile).readText()
         }
-        // W5 raised the strip 40dp → 44dp (the y moved to 0.5954); 2026-09-27 the strip went to
-        // FOUR cells, so the smoke taps quarter-centers, not the old thirds' middle.
-        assertTrue("the strip cell moved with the height", smoke.contains("STRIP_CELL2=\"0.6250,0.5954\""))
-        assertTrue("the strip's four cells are pinned", smoke.contains("STRIP_CELL0=\"0.1250,0.5954\""))
+        // W5 raised the strip 40dp → 44dp (the y moved to 0.5954); 2026-09-29 the strip is back
+        // to THREE cells (the four-cell wave reverted), so the smoke taps third-centers again.
+        assertTrue("the strip cell moved with the height", smoke.contains("STRIP_CELL2=\"0.8333,0.5954\""))
+        assertTrue("the strip's three cells are pinned", smoke.contains("STRIP_CELL0=\"0.1667,0.5954\""))
     }
 
     // ----- B5 (M2) -----

@@ -382,20 +382,17 @@ class TtTypoPhaseCCalibrationTest {
         fun strip(prefix: String): List<String> =
             index.lookup(ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8)))
 
-        // 2 code points: fuzzy never fires; the exact "сц*" block (four cells now: сценариен
-        // joins the D1-era three).
-        assertEquals(listOf("сценарий", "сценарие", "сценарийлар", "сценариен"), strip("сц"))
+        // 2 code points: fuzzy never fires; the exact "сц*" block.
+        assertEquals(listOf("сценарий", "сценарие", "сценарийлар"), strip("сц"))
         // 3 code points: exact==0, but the class-#4 gate needs >= 4 cp — the strip stays empty
         // (the Phase-B {1,2} arm showed the "сәл*" frequency leaders here; Phase C shows nothing).
         assertEquals(emptyList<String>(), strip("сцл"))
         // 4 code points: class #4 fires (exact==0); the "сәлә*" block's frequency leaders fill the
-        // strip — no same-length candidate exists at 4 cp. (Four cells now: сөләйман, the next
-        // class-#4 block's leader, takes the fourth cell.)
-        assertEquals(listOf("сәләтле", "сәләт", "сәләтен", "сөләйман"), strip("сцлә"))
+        // strip — no same-length candidate exists at 4 cp.
+        assertEquals(listOf("сәләтле", "сәләт", "сәләтен"), strip("сцлә"))
         // 5 code points: "сәләм" is the sole surviving variant; the same-length bonus puts the
-        // correction itself (freq 36) above "сәләмәтлек" (65). The fourth cell (the four-cell
-        // strip, 2026-09-27) is the block's next leader (сәләмә).
-        assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмәт", "сәләмә"), strip("сцләм"))
+        // correction itself (freq 36) above "сәләмәтлек" (65).
+        assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмәт"), strip("сцләм"))
         // 10 code points: with the Phase-C2 range narrowing only positions 0-2 probe (the "сцл*"
         // range is empty, killing positions >= 3 for free) — 3 x 38 = 114 probes instead of the
         // naive 380; the sole survivor's own word wins.
@@ -409,8 +406,7 @@ class TtTypoPhaseCCalibrationTest {
      * "спаси(бо)") has zero exact continuations in the Russian asset; under DEFAULT the strip
      * stays empty — while the SAME dictionary under the TATAR policy paints the pinned class-#4
      * strip, proving the pin discriminates. Note the same-length bonus at work: the same-length
-     * words "спаси"/"упаси" outrank the much more frequent continuation "спасибо" — the fourth
-     * cell (the four-cell strip, 2026-09-27) is where the continuation now appears.
+     * words "спаси"/"упаси" outrank the much more frequent continuation "спасибо".
      */
     @Test
     fun theRussianEngineIsUntouchedByClass4() {
@@ -422,7 +418,7 @@ class TtTypoPhaseCCalibrationTest {
         assertEquals(emptyList<String>(), defaultResult)
         assertEquals(
             "premise: the case discriminates — the TATAR policy paints the class-#4 strip",
-            listOf("спаси", "упаси", "апачи", "спасибо"),
+            listOf("спаси", "упаси", "апачи"),
             russianAsTatar.lookup(typo),
         )
     }
@@ -483,27 +479,25 @@ class TtTypoPhaseCCalibrationTest {
         // Exact pins of the Phase-C measurements (2026-09-20, committed 110k asset + eval set);
         // re-pin consciously when an input changes. The verdicts: G1-C BELOW (ratio of rates
         // 0.7205x vs the 1.5x gate), G2-C ABOVE (63.14 % vs the 25 % gate) — class #4 stays unwired.
-        // Re-pinned 2026-09-27 (the four-cell strip: recovery membership is the four cells now;
-        // the exact-empty and activation subsets are cell-count-invariant and did not move).
-        // Verdicts unchanged: G1-C BELOW (0.7441x), G1-C2 PASS (+32.2719 pp >= +10 pp),
-        // G2-C2 PASS (activation 21.1351 % <= 25 %).
-        private const val PIN_BASE_W5 = 44_349
-        private const val PIN_CAND_W5 = 34_399
+        // Re-pinned 2026-09-29 (three cells again — the four-cell wave reverted; the exact-empty
+        // and activation subsets are cell-count-invariant and never moved).
+        private const val PIN_BASE_W5 = 38_689
+        private const val PIN_CAND_W5 = 29_057
         private const val PIN_BASE_W5_SUBSET = 97_318
         private const val PIN_CAND_W5_SUBSET = 101_445
         private const val PIN_EVAL_PREFIXES_GE4 = 7_471
         private const val PIN_EXACT_EMPTY = 1_579
-        private const val PIN_CLASS4_FILLED = 998
+        private const val PIN_CLASS4_FILLED = 997
 
         // Exact pins of the G1-C2 same-set lift measurement (2026-09-20); re-pin consciously.
-        // Re-pinned 2026-09-27 (the four-cell strip; the activation subset did not move).
-        private const val PIN_C2_BASE_W5_WHOLE = 536
-        private const val PIN_C2_CAND_W5_WHOLE = 34_407
+        // Re-pinned 2026-09-29 (three cells again; the activation subset never moved).
+        private const val PIN_C2_BASE_W5_WHOLE = 470
+        private const val PIN_C2_CAND_W5_WHOLE = 29_062
         private const val PIN_C2_ACTIVE_ROWS = 101_445
-        private const val PIN_C2_BASE_W5_ACTIVE = 527
-        private const val PIN_C2_CAND_W5_ACTIVE = 34_399
-        private const val PIN_C2_BASE_W3_WHOLE = 121
-        private const val PIN_C2_CAND_W3_WHOLE = 123
+        private const val PIN_C2_BASE_W5_ACTIVE = 465
+        private const val PIN_C2_CAND_W5_ACTIVE = 29_057
+        private const val PIN_C2_BASE_W3_WHOLE = 100
+        private const val PIN_C2_CAND_W3_WHOLE = 100
 
         private val neighborTable = E3bTestFixtures.tatarNeighborTable()
         private lateinit var vocabulary: List<String>

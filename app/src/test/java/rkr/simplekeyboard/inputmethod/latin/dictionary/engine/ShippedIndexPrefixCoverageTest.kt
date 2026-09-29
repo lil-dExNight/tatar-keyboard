@@ -81,7 +81,7 @@ class ShippedIndexPrefixCoverageTest {
             val result = loaded.index.lookup(
                 ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8)),
             )
-            assertEquals("'$prefix' must fill all four cells", 4, result.size)
+            assertEquals("'$prefix' must fill all three cells", 3, result.size)
         }
     }
 

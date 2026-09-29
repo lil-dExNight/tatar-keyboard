@@ -31,8 +31,10 @@
 #
 # Key/strip/panel coordinates are the perf ritual's 720x1640 calibration
 # (tt rows y=1110/1206/1301/1396, ru rows y=1153/1258/1363, bottom row y=1490,
-# globe x=216, comma long-press x=144) plus the strip band y~1020 (four cells
-# since 2026-09-27 -> centres x=90/270/450/630) and the emoji-panel geometry
+# globe x=216, comma long-press x=144) plus the strip band y~1020 (three cells
+# again since 2026-09-29 — the four-cell wave reverted; thirds -> centres
+# x=120/360/600, and the taps at x=90/270 land in cells 0/1 exactly as they did
+# at quarters) and the emoji-panel geometry
 # verified on the 2026-09-29 screencaps of this script: tab bar (with the search
 # cell its rightmost slot, centre ~(670,1055)) at the panel top, recents row
 # centre y~1201, first grid row centre y~1355. Panel taps are session content,
@@ -437,8 +439,8 @@ if raise_keyboard_over_setup; then
         log "typing the tt half"
         type_text tt "сәләм дөнья мин сине яратам дус һәм белән татар теле дәүләт китап укытучы мәктәп иртә кич бүген әти әни бала " 0.12 \
             && EVENTS="$EVENTS tt-words"
-        # suggestion accepts: word + space, then a strip cell (four cells,
-        # centres x=90/270/450/630 in the strip band y~1020)
+        # suggestion accepts: word + space, then a strip cell (three cells again
+        # since 2026-09-29; the taps land in cells 1 and 0 exactly as at quarters)
         type_text tt "татар " 0.15 && SHELL input tap 270 1020 </dev/null >/dev/null 2>&1 && EVENTS="$EVENTS tt-cell2"
         sleep 0.8
         type_text tt "сәләм " 0.15 && SHELL input tap 90 1020 </dev/null >/dev/null 2>&1 && EVENTS="$EVENTS tt-cell1"

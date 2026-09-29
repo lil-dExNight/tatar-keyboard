@@ -10,9 +10,10 @@
 # TT-SUGGESTIONS P5: back on the tt layout, two word-form probes (татар, сәләм)
 # type a word + space and tap a given suggestion cell, reading the field to
 # prove what the strip committed (tap-and-read; the IME window is invisible to
-# uiautomator). Details at the probes below. (2026-09-27: the strip is FOUR
-# cells now; сакчы replaced by сәләм — the 2026-09-23 EXPAND-1 extra heads made
-# сакчы a bigram head, so it no longer exercises the free-cell forms stage.)
+# uiautomator). Details at the probes below. (2026-09-29: the strip is THREE
+# cells again — the 2026-09-27 four-cell wave reverted; сакчы stays replaced by
+# сәләм — the 2026-09-23 EXPAND-1 extra heads made сакчы a bigram head, so it
+# no longer exercises the free-cell forms stage.)
 # TT-TYPO-NEXT Phase A: the сәләм probe is extended by a second cell-1 tap that
 # proves the strip shows predictions for the just-committed word right after
 # the first tap, without waiting for a keystroke.
@@ -505,16 +506,16 @@ except KeyError as exc:
 PYEOF
 }
 
-# Suggestion strip cells (FOUR since 2026-09-27 — the four-cell strip, T7 reopened; equal
-# quarters, SuggestionStripState). Cell centers x = (i + 0.5) / 4. The y is measured on the tt
-# 5-row layout (1080×2280, density 2.75). W5 of stage B (docs/ROADMAP-P8-PLAN.md) raised the
+# Suggestion strip cells (THREE again since 2026-09-29 — the 2026-09-27 four-cell
+# strip reverted; equal thirds, SuggestionStripState). Cell centers x = (i + 0.5) / 3.
+# The y is measured on the tt 5-row layout (1080×2280, density 2.75). W5 of stage B
+# (docs/ROADMAP-P8-PLAN.md) raised the
 # strip 40dp → 44dp = 110 px → 121 px. The strip's BOTTOM stays glued to the keyboard's top edge
 # (1418 px) and it grows upward, so the keyboard's own key coordinates above are unchanged: the
 # strip spans ~1297–1418 px → centre ≈ 1357.5 px ≈ 0.5954 (was ≈ 0.5980 at 40dp).
-STRIP_CELL0="0.1250,0.5954"
-STRIP_CELL1="0.3750,0.5954"
-STRIP_CELL2="0.6250,0.5954"
-STRIP_CELL3="0.8750,0.5954"
+STRIP_CELL0="0.1667,0.5954"
+STRIP_CELL1="0.5000,0.5954"
+STRIP_CELL2="0.8333,0.5954"
 
 second_word_after() {                    # second_word_after "<text>" "<word>" → token after last <word>
     python3 - "$1" "$2" <<'PYEOF'
@@ -531,7 +532,7 @@ PYEOF
 
 # type_tt_and_tap_cell2 <word> <tag> [cell]: type <word> + space on the tt layout,
 # screenshot the strip, tap the given suggestion cell (only when suggestions
-# are on; default the third cell), read the field again. Stdout: field-after-space <TAB>
+# are on; default the last cell), read the field again. Stdout: field-after-space <TAB>
 # field-after-tap.
 type_tt_and_tap_cell2() {
     local word="$1" tag="$2" cell="${3:-$STRIP_CELL2}" coords mid after
@@ -651,19 +652,21 @@ SHOT smoke-tt-back.png
 # ── word forms after a committed tt word + space (TT-SUGGESTIONS P3/P5) ──
 # Tap-and-read, not pixel diff: uiautomator does not see the IME window, so the
 # strip content is proven by tapping a cell and reading the try-it field.
-# Two probes against the shipped assets (K = 4 table + the four-cell strip,
-# 2026-09-27 — re-derived by reading the packed table):
-#  1. татар — a head whose four stored successors (теле, дәүләт, телен, телендә)
-#     fill the WHOLE strip, so cell 2 (index 1) MUST commit дәүләт: bigram
-#     successors keep priority and neither forms nor the fallback ever run
+# Two probes against the shipped assets (K = 4 table — it STAYS shipped after the
+# 2026-09-29 three-cell revert; the read caps at three — re-derived by reading the
+# packed table):
+#  1. татар — a head whose four stored successors are read at three (теле,
+#     дәүләт, телен; телендә is the unread K = 4 headroom) and fill the WHOLE
+#     strip, so cell 2 (index 1) MUST commit дәүләт: bigram successors keep
+#     priority and neither forms nor the fallback ever run
 #     (CompositePrefixComputer). A form here, or any other word, is a contract
 #     breach.
 #  2. сәләм — NOT a head, so its one attested after-word form (сәләмә) leads and
-#     the global top words fill the rest (һәм, белән, да): cell 1 (index 0) MUST
+#     the global top words fill the rest (һәм, белән): cell 1 (index 0) MUST
 #     commit сәләмә. This is the on-device proof of the P3 after-word forms
 #     beating the fill. (The pre-2026-09-27 probe used сакчы "not a head" — stale
 #     since the 2026-09-23 EXPAND-1 extra heads made it one; its band there is
-#     four corpus successors.)
+#     corpus successors.)
 wf=$(type_tt_and_tap_cell2 "татар" tatar "$STRIP_CELL1")
 wf_mid="${wf%$'\t'*}"
 wf_after="${wf#*$'\t'}"
@@ -677,7 +680,7 @@ elif [ "$SUGGESTIONS" != on ]; then
 elif [ "$wf_after" = "$wf_mid" ]; then
     result FAIL wordform-tt-татар "cell-2 tap committed nothing; field: '$wf_after'"
 elif [ "$w2" = "дәүләт" ]; then
-    result PASS wordform-tt-татар "cell 2 = дәүләт: the four stored successors fill the strip (pinned)"
+    result PASS wordform-tt-татар "cell 2 = дәүләт: the successors fill the whole strip (pinned)"
 else
     result FAIL wordform-tt-татар "cell 2 committed '$w2' (expected дәүләт from the pinned successor row); field: '$wf_after'"
 fi
@@ -704,7 +707,7 @@ fi
 # The сәләм probe's cell-1 tap committed сәләмә with a trailing space, and the
 # tap itself re-issued the NEXT_WORD lookup (before the fix the strip stayed
 # empty until the next keystroke). сәләмә is no bigram head and has no forms, so
-# the follow-up band is the pure top-word fill [һәм, белән, да, бу]: a second tap
+# the follow-up band is the pure top-word fill [һәм, белән, да]: a second tap
 # on cell 1 (index 0) MUST commit һәм — predictions for the accepted word with no
 # keystroke.
 if [ "$SUGGESTIONS" != on ]; then
@@ -966,7 +969,7 @@ PYEOF
         TAPF ${SPACE%,*} ${SPACE#*,}
         sleep 2                  # the NEXT_WORD band (and the learned tail) is asynchronous
         SHOT smoke-learned-emoji-band.png
-        TAPF ${STRIP_CELL3%,*} ${STRIP_CELL3#*,}
+        TAPF ${STRIP_CELL2%,*} ${STRIP_CELL2#*,}
         sleep 1
         f=$(field_text)
         if echo "$f" | grep -qE "$SUN_TAIL_RE"; then

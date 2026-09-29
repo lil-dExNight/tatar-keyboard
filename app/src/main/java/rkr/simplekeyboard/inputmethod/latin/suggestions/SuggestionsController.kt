@@ -41,7 +41,7 @@ import java.util.concurrent.Executors
 
 /** Suggestion-strip UI seam. All methods are called on the UI thread. */
 interface StripSurface {
-    fun showSuggestions(first: String, second: String?, third: String?, fourth: String?)
+    fun showSuggestions(first: String, second: String?, third: String?)
 
     /**
      * Optional spoken labels for cells whose own text does not read well aloud — an emoji cell
@@ -50,7 +50,7 @@ interface StripSurface {
      * cell's text". Defaults to a no-op so a surface written before emoji suggestions keeps
      * compiling and simply speaks the glyph.
      */
-    fun setSpokenCellLabels(first: String?, second: String?, third: String?, fourth: String?) {}
+    fun setSpokenCellLabels(first: String?, second: String?, third: String?) {}
 
     /**
      * The autocorrect preview's emphasis marker (P2 of Phase 3, docs/ROADMAP-P3.md): the cell
@@ -1378,10 +1378,9 @@ class SuggestionsController internal constructor(
      * Asks the companion language for [query], but only after the active language has already
      * answered and left a cell empty.
      *
-     * Deliberately lazy. The active language filled the whole band for about nine keystrokes in
-     * ten (docs/LANG-PRIORITY.md, "Цена" — measured on the three-cell band; the fourth cell lowers
-     * the fill rate, not the argument), so asking both engines on every press would pay twice for
-     * nothing most of the time; and because this runs only AFTER the active result was applied,
+     * Deliberately lazy. The active language fills all three cells for about nine keystrokes in ten
+     * (docs/LANG-PRIORITY.md, "Цена"), so asking both engines on every press would pay twice for
+     * nothing nine times out of ten; and because this runs only AFTER the active result was applied,
      * the first cell reaches the screen at exactly the moment it does today.
      */
     private fun requestCompanionFill(kind: LookupKind, query: String) {
@@ -1479,7 +1478,7 @@ class SuggestionsController internal constructor(
         emphasizedCell: Int = SuggestionStripState.NO_CELL,
     ) {
         bandBaseCells = cells
-        strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2), cells.getOrNull(3))
+        strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2))
         // P2: the emphasis travels with the words it marks, in the same publication — a marker
         // set apart from them could describe a band that is already gone. It runs BEFORE the
         // spoken labels (2026-09-25 audit): setEmphasis is what runs the publication's one
@@ -1493,7 +1492,6 @@ class SuggestionsController internal constructor(
             spokenLabelFor(cells[0]),
             spokenLabelFor(cells.getOrNull(1)),
             spokenLabelFor(cells.getOrNull(2)),
-            spokenLabelFor(cells.getOrNull(3)),
         )
     }
 

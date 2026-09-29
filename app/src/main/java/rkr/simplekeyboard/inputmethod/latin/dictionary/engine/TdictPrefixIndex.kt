@@ -350,7 +350,7 @@ internal class TdictPrefixIndex private constructor(
             // this many slots is fuzzy, which is exactly what the E4b merge needs to know.
             lastExactCount = resultCount
             // The fuzzy level fills only cells left empty by D1, and only when the exact pass
-            // returned fewer than MAX_RESULTS candidates: one check, no new state. Exact candidates are
+            // returned fewer than three candidates: one check, no new state. Exact candidates are
             // never shifted or replaced.
             if (resultCount < MAX_RESULTS) {
                 val table = neighborTable
@@ -1616,9 +1616,7 @@ internal class TdictPrefixIndex private constructor(
         private const val HEADER_SIZE = 72
         private const val CHECKSUM_ALGORITHM_SHA256 = 1
         private const val U32_BYTES = 4
-        // The strip is four cells (T7 reopened 2026-09-27, SuggestionStripState.CELL_COUNT): the
-        // exact/fuzzy passes may hand back one candidate per cell.
-        private const val MAX_RESULTS = 4
+        private const val MAX_RESULTS = 3
         internal const val MAX_PREFIX_BYTES = 128
         private const val MAX_U32 = 0xffff_ffffL
         // O7 follow-up (2026-09-29): upper bound on one front-coded block's RAW byte size under

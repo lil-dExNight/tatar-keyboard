@@ -16,7 +16,7 @@
 
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
-/** Pure, fixed-size state and hit geometry for the four-cell Canvas strip. */
+/** Pure, fixed-size state and hit geometry for the three-cell Canvas strip. */
 internal class SuggestionStripState {
     private val suggestions = arrayOfNulls<String>(CELL_COUNT)
     private var downCell = NO_CELL
@@ -26,18 +26,17 @@ internal class SuggestionStripState {
     // correction the next separator would insert. [NO_CELL] on every ordinary band.
     private var emphasizedCell = NO_CELL
 
-    fun setSuggestions(first: String?, second: String?, third: String?, fourth: String?): Boolean {
+    fun setSuggestions(first: String?, second: String?, third: String?): Boolean {
         var changed = setSuggestion(0, first)
         changed = setSuggestion(1, second) || changed
         changed = setSuggestion(2, third) || changed
-        changed = setSuggestion(3, fourth) || changed
         // A fresh publication describes the whole band, emphasis included: it is re-applied
         // right after this, by the same owner call that publishes the words.
         changed = clearEmphasis() || changed
         return cancelGesture() || changed
     }
 
-    fun clear(): Boolean = setSuggestions(null, null, null, null)
+    fun clear(): Boolean = setSuggestions(null, null, null)
 
     fun suggestionAt(cell: Int): String? =
         if (cell in 0 until CELL_COUNT) suggestions[cell] else null
@@ -92,8 +91,7 @@ internal class SuggestionStripState {
         }
         if (x < cellRight(0, width)) return 0
         if (x < cellRight(1, width)) return 1
-        if (x < cellRight(2, width)) return 2
-        return 3
+        return 2
     }
 
     fun cellLeft(cell: Int, width: Int): Int = width * cell / CELL_COUNT
@@ -164,12 +162,13 @@ internal class SuggestionStripState {
 
     companion object {
         /**
-         * Four cells (T7 of docs/ROADMAP-P4.md reopened, 2026-09-27): the measured latent value at
-         * stored rank 4 was +1.56 pp of next-word hits, and the Tatar bigram table is repacked at
-         * K = 4 to feed it (the Russian one already was). Was 3 since D1e; the change widens no
-         * height (STRIP_HEIGHT_DP stays), only the cell width.
+         * Three cells. Briefly four (T7 of docs/ROADMAP-P4.md reopened 2026-09-27, repacking the
+         * Tatar bigram table at K = 4 for +1.75 pp of next-word hits); reverted 2026-09-29 by an
+         * operator UX decision (docs/GLIDE-LIVE-STRIP4.md footnote). The K = 4 table stays
+         * shipped — its fourth successor is unread headroom (`TatBigrPrefixIndex.MAX_RESULTS`
+         * caps the read at three), free for any future four-cell revisit.
          */
-        const val CELL_COUNT = 4
+        const val CELL_COUNT = 3
         const val NO_CELL = -1
         const val INVALID_POINTER_ID = -1
         /**

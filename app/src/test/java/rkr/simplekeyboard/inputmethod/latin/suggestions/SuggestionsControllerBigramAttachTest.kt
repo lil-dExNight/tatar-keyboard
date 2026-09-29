@@ -36,10 +36,10 @@ class SuggestionsControllerBigramAttachTest {
     private class FakeStrip : StripSurface {
         var reserveCount = 0
         var hideCount = 0
-        val shown = mutableListOf<List<String?>>()
+        val shown = mutableListOf<Triple<String, String?, String?>>()
 
-        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
-            shown += listOf(first, second, third, fourth)
+        override fun showSuggestions(first: String, second: String?, third: String?) {
+            shown += Triple(first, second, third)
         }
 
         override fun reserve() {
@@ -328,7 +328,7 @@ class SuggestionsControllerBigramAttachTest {
         // fills without another keystroke. Before it, the request count stayed at one and the
         // band stayed empty until the next key.
         assertEquals(2, engine.requestedContexts.size)
-        assertEquals(listOf("дә", "үзем", "бу", null), strip.shown.last())
+        assertEquals(Triple("дә", "үзем", "бу"), strip.shown.last())
     }
 
     @Test
@@ -387,7 +387,7 @@ class SuggestionsControllerBigramAttachTest {
         controller.onTextChanged()
 
         assertEquals(1, engine.requestedContexts.size)
-        assertEquals(listOf("🙂", null, null, null), strip.shown.last())
+        assertEquals(Triple("🙂", null, null), strip.shown.last())
 
         // The table attached; the same context has a real answer now. The emoji cell must not read
         // as "the band is filled": the re-request runs, and the words take their front cells with
@@ -396,7 +396,7 @@ class SuggestionsControllerBigramAttachTest {
         bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
         assertEquals(2, engine.requestedContexts.size)
-        assertEquals(listOf("дә", "үзем", "🙂", null), strip.shown.last())
+        assertEquals(Triple("дә", "үзем", "🙂"), strip.shown.last())
     }
 
     @Test
@@ -415,12 +415,12 @@ class SuggestionsControllerBigramAttachTest {
         controller.onTextChanged()
 
         assertEquals(1, engine.requestedContexts.size)
-        assertEquals(listOf("дә", "үзем", "бу", null), strip.shown.last())
+        assertEquals(Triple("дә", "үзем", "бу"), strip.shown.last())
 
         bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
         assertEquals(1, engine.requestedContexts.size)
-        assertEquals(listOf("дә", "үзем", "бу", null), strip.shown.last())
+        assertEquals(Triple("дә", "үзем", "бу"), strip.shown.last())
     }
 
     /** Two warm languages, one bigram preparation each, resolved by the test on demand. */
@@ -486,7 +486,7 @@ class SuggestionsControllerBigramAttachTest {
 
         assertEquals(2, h.engine(PersonalSubtypes.RUSSIAN).requestedContexts.size)
         h.engine(PersonalSubtypes.RUSSIAN).deliverNextWord(listOf("слово", "дело"))
-        assertEquals(listOf("слово", "дело", null, null), h.strip.shown.last())
+        assertEquals(Triple("слово", "дело", null), h.strip.shown.last())
     }
 
     @Test
@@ -496,20 +496,20 @@ class SuggestionsControllerBigramAttachTest {
         h.bigramTable(PersonalSubtypes.TATAR_RU)
             .completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
-        // The active language fills all four cells: the companion is never even asked, and its
+        // The active language fills all three cells: the companion is never even asked, and its
         // attach completing later must not change that.
-        h.engine(PersonalSubtypes.TATAR_RU).nextWordAnswer = listOf("дә", "үзем", "бу", "шул")
+        h.engine(PersonalSubtypes.TATAR_RU).nextWordAnswer = listOf("дә", "үзем", "бу")
         h.editor.context = "мин"
         h.controller.onTextChanged()
 
         assertTrue(h.engine(PersonalSubtypes.RUSSIAN).requestedContexts.isEmpty())
-        assertEquals(listOf("дә", "үзем", "бу", "шул"), h.strip.shown.last())
+        assertEquals(Triple("дә", "үзем", "бу"), h.strip.shown.last())
 
         h.bigramTable(PersonalSubtypes.RUSSIAN)
             .completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
         assertTrue(h.engine(PersonalSubtypes.RUSSIAN).requestedContexts.isEmpty())
-        assertEquals(listOf("дә", "үзем", "бу", "шул"), h.strip.shown.last())
+        assertEquals(Triple("дә", "үзем", "бу"), h.strip.shown.last())
     }
 
     private fun fakeTable() = rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedBigramTable(

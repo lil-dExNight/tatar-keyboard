@@ -37,8 +37,7 @@ import kotlin.math.ceil
  * [RealDictionaryPrefixIndexTest] does), reproduces the same reproducible typo set that
  * `scripts/typo_pack.py` emits -- same seed, same 3-code-point prefix window, same
  * layout-derived long-press pairs, and the same portable FNV-1a/SplitMix64 selection -- then, for
- * each word, looks up its typo prefix and counts how often the correct word lands in the shown
- * cells (the top three at calibration time; four since the 2026-09-27 four-cell strip).
+ * each word, looks up its typo prefix and counts how often the correct word lands in the top three.
  *
  * The set-identity assertion (byte-identical SHA-256 with the generator's independent run) proves
  * the two implementations produce THE SAME set. The recovery number itself is printed as a raw
@@ -167,7 +166,7 @@ class E3aRecoveryCalibrationTest {
         val recovery = recovered.toDouble() / total
         val baseline = baselineRecovered.toDouble() / total
         // Diagnostic: recovery among only those prefixes where the fuzzy pass actually ran. When the
-        // typed (typo) prefix already fills every cell from the exact pass alone, the contract's
+        // typed (typo) prefix already has three or more exact continuations, the contract's
         // cell-fill rule leaves the fuzzy level switched off, so those rows can never recover.
         val conditional = if (fuzzyFired > 0) recovered.toDouble() / fuzzyFired else 0.0
         val sorted = variantCounts.sorted()
@@ -245,9 +244,9 @@ class E3aRecoveryCalibrationTest {
         private const val SEED = 20260727L
         private const val PREFIX_CODE_POINTS = 3
 
-        // The suggestion strip has four cells; the engine runs the fuzzy pass only when the exact
+        // The suggestion strip has three cells; the engine runs the fuzzy pass only when the exact
         // pass leaves at least one empty (TdictPrefixIndex.MAX_RESULTS).
-        private const val MAX_RESULTS = 4
+        private const val MAX_RESULTS = 3
 
         // Independently produced by `python3 scripts/typo_pack.py build ...` on the same committed
         // asset (see docs/DICTIONARY-E3.md). The equality of these with the JVM-built set is the

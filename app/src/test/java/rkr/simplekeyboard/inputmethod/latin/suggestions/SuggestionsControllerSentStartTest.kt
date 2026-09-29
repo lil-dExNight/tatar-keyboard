@@ -55,8 +55,8 @@ class SuggestionsControllerSentStartTest {
         var hideCount = 0
         var tap: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
-            shown.add(listOf(first, second, third, fourth))
+        override fun showSuggestions(first: String, second: String?, third: String?) {
+            shown.add(listOf(first, second, third))
         }
 
         override fun reserve() {
@@ -285,7 +285,7 @@ class SuggestionsControllerSentStartTest {
         val h = Harness()
         h.startAtSentenceStart()
 
-        assertEquals(CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
         // The suppression contract, observable: no NEXT_WORD and no PREFIX request was ever made.
         assertTrue(h.engine(tatar).nextWordRequests.isEmpty())
         assertTrue(h.engine(tatar).prefixRequests.isEmpty())
@@ -298,7 +298,7 @@ class SuggestionsControllerSentStartTest {
 
         h.typeSentenceEndAndSpace()
 
-        assertEquals(CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
         assertTrue(h.engine(tatar).nextWordRequests.isEmpty())
     }
 
@@ -334,7 +334,7 @@ class SuggestionsControllerSentStartTest {
         val h = Harness()
         h.startAtSentenceStart()
         h.typeSentenceEndAndSpace()
-        assertEquals(CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
 
         requireNotNull(h.strip.tap).onTap("Ул")
 
@@ -349,7 +349,7 @@ class SuggestionsControllerSentStartTest {
         val h = Harness(tables = mapOf(tatar to TABLE, russian to RU_TABLE))
         h.startAtSentenceStart(russian)
 
-        assertEquals(RU_CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(RU_CAPITALIZED_TABLE.take(3), h.strip.lastCells())
         // The Russian load never touches the Tatar table, and the engine is never asked.
         assertTrue(h.preparations.keys.none { it == tatar })
         assertTrue(h.engine(russian).nextWordRequests.isEmpty())
@@ -359,13 +359,13 @@ class SuggestionsControllerSentStartTest {
     fun eachLanguageLoadsItsOwnTableExactlyOnce() {
         val h = Harness(tables = mapOf(tatar to TABLE, russian to RU_TABLE))
         h.startAtSentenceStart(tatar)
-        assertEquals(CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
 
         h.controller.onSubtypeChanged(eligible = true, subtypeId = russian)
         h.typeSentenceEndAndSpace()
         h.typeSentenceEndAndSpace()
 
-        assertEquals(RU_CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(RU_CAPITALIZED_TABLE.take(3), h.strip.lastCells())
         assertEquals(1, h.preparations.getValue(tatar).prepareCalls)
         assertEquals(1, h.preparations.getValue(russian).prepareCalls)
     }
@@ -399,7 +399,7 @@ class SuggestionsControllerSentStartTest {
         val h = Harness()
         h.startAtSentenceStart()
         h.typeSentenceEndAndSpace()
-        assertEquals(CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
 
         // The user typed on before tapping: the band is unbound, the tap must be a no-op.
         h.editor.word = "б"
@@ -415,7 +415,7 @@ class SuggestionsControllerSentStartTest {
         val h = Harness()
         h.startAtSentenceStart()
         h.typeSentenceEndAndSpace()
-        assertEquals(CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
 
         h.editor.word = "б"
         h.editor.sentenceStart = false
@@ -461,7 +461,7 @@ class SuggestionsControllerSentStartTest {
 
         h.sentStartPreparation.fire()
 
-        assertEquals(CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
     }
 
     @Test
@@ -511,7 +511,7 @@ class SuggestionsControllerSentStartTest {
         // The Russian band comes from the Russian table, never from the Tatar load.
         h.editor.sentenceStart = true
         h.controller.onTextChanged()
-        assertEquals(RU_CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(RU_CAPITALIZED_TABLE.take(3), h.strip.lastCells())
     }
 
     @Test
@@ -613,7 +613,7 @@ class SuggestionsControllerSentStartTest {
         h.editor.rawText = "сүз. "
         h.controller.onTextChanged()
 
-        assertEquals(CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
         assertTrue(h.engine(tatar).nextWordRequests.isEmpty())
     }
 
@@ -653,19 +653,19 @@ class SuggestionsControllerSentStartTest {
 
         h.typeSentenceEndAndSpace()
 
-        assertEquals(CAPITALIZED_TABLE.take(4), h.strip.lastCells())
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
         assertTrue(h.engine(russian).nextWordRequests.isEmpty())
         assertTrue(h.engine(russian).prefixRequests.isEmpty())
     }
 
     private companion object {
-        /** A five-word table, so the band cap (four cells) is observable. */
-        val TABLE = listOf("бу", "ул", "ә", "бүген", "шул")
+        /** A four-word table, so the band cap (three cells) is observable. */
+        val TABLE = listOf("бу", "ул", "ә", "бүген")
 
         /** P3a: the cells the band actually shows — the table words, capitalized. */
-        val CAPITALIZED_TABLE = listOf("Бу", "Ул", "Ә", "Бүген", "Шул")
+        val CAPITALIZED_TABLE = listOf("Бу", "Ул", "Ә", "Бүген")
 
-        val RU_TABLE = listOf("в", "по", "на", "он", "с")
-        val RU_CAPITALIZED_TABLE = listOf("В", "По", "На", "Он", "С")
+        val RU_TABLE = listOf("в", "по", "на", "он")
+        val RU_CAPITALIZED_TABLE = listOf("В", "По", "На", "Он")
     }
 }
