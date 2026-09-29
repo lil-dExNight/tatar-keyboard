@@ -1,4 +1,28 @@
-# PUBLISH-CHECKLIST — публикация v3.5.0
+# PUBLISH-CHECKLIST — публикация v3.6.0
+
+> **Retargeted 2026-09-29 to candidate v3.6.0 / versionCode 43** — the
+> strip-UX revert wave (the operator's UX decision on the 3.3.0 experiment,
+> executed forward on top of the released 3.5.0): the suggestion strip is
+> back to three cells end to end (state, view, seams, both engines'
+> MAX_RESULTS — the K = 4 bigram table keeps shipping, its fourth successor
+> is simply unused headroom), and during a glide the strip no longer repaints
+> live — suggestions appear at finger lift, the pre-3.3.0 behavior; glide
+> typing itself and glide-triggered learning are unchanged. Baseline/startup
+> profiles regenerated (3 431 → 3 451 rules). Store changelog —
+> `metadata/en-US/changelogs/43.txt` (232 B) + `ru-RU` (408 B) and `tt`
+> (369 B), all ≤ 500 B. **Data-asset delta: NONE** — all 13 shipped data
+> assets are byte-identical to 3.5.0 (CRC32-verified per entry,
+> `docs/APK-AUDIT-3.6.0.md`); on update the device re-inflates NOTHING.
+> Signed artifact `dist/tatar-keyboard-3.6.0.apk` (**1 804 874 B** —
+> byte-size equal to 3.5.0, APK delta +0 — SHA-256
+> `df32bc31ec83f8e2cecc85c2b0b87042987ed2f7c441055cd89b6659dba132b1`,
+> v2-only, cert `98ca6feb…42ad`); the pack run twice is byte-identical;
+> `release_check.sh --full` **19/19 PASS** (see the audit for the RESULT
+> block). Publishing
+> (GitHub Release via the web UI — this machine's `gh` is pull-only — notes
+> in `dist/release-notes-3.6.0.md`), the store upload and the IzzyOnDroid
+> note remain the operator's steps. The notes about 3.5.0 and earlier below
+> stay as history; their checkmarks and numbers do not carry over.
 
 > **Retargeted 2026-09-29 to candidate v3.5.0 / versionCode 42** — the
 > 2026-09-29 optimization + security wave

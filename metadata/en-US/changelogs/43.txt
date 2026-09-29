@@ -1,0 +1,2 @@
+• The suggestion strip is back to 3 cells — the 4-cell experiment of 3.3.0 is reverted
+• While swipe typing, the strip no longer repaints live: suggestions appear at finger lift (glide typing and glide learning are unchanged)

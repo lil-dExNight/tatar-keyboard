@@ -23,8 +23,8 @@ android {
         applicationId "org.tatarkeyboard.ime"
         minSdkVersion 24
         targetSdkVersion 37
-        versionCode 42
-        versionName "3.5.0"
+        versionCode 43
+        versionName "3.6.0"
         // Phase 3b: the app ships three locales only — Tatar, Russian, English.
         resConfigs "tt", "ru", "en"
         // E3b instrumental harness (androidTest only). The legacy platform runner needs no external

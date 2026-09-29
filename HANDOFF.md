@@ -28,6 +28,20 @@ rules the hand-prune had missed).
 3.5.0/42 — already tagged and published; shipping this wave means a version
 bump).
 
+**CLOSED 2026-09-29 — released as 3.6.0 / versionCode 43.** The wave landed
+as four commits (`3b19c495`, `fe0abfaf`, `fe9ec918`, `22b226ef`); the release
+commit sits on top. Signed artifact `dist/tatar-keyboard-3.6.0.apk`,
+**1 804 874 B** (byte-size equal to 3.5.0), SHA-256
+`df32bc31ec83f8e2cecc85c2b0b87042987ed2f7c441055cd89b6659dba132b1`, v2-only,
+cert `98ca6feb…42ad`; the pack run twice is byte-identical;
+`release_check.sh --full` **19/19 PASS** (`docs/APK-AUDIT-3.6.0.md`); all 13
+data assets byte-identical to 3.5.0 — on update the device re-inflates
+nothing. Operator remainders: GitHub Release via the web UI (this machine's
+`gh` is pull-only — attach exactly the `dist/` file, notes in
+`dist/release-notes-3.6.0.md`), the store upload with
+`metadata/{en-US,ru-RU,tt}/changelogs/43.txt` (232/408/369 B), and the
+IzzyOnDroid note.
+
 ---
 
 # HANDOFF — optimization + security plan wave (2026-09-29, UNCOMMITTED)

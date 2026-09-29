@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0] — 2026-09-29
+
+### Changed
+
+- **The suggestion strip is back to three cells.** The four-cell experiment of 3.3.0 is reverted end to end (an operator UX decision); the K = 4 bigram table keeps shipping — its fourth successor is simply unused headroom now, so this release touches no data assets at all.
+- **No live repaint while swiping.** During a glide the strip no longer redraws candidates under the moving finger; suggestions appear only at finger lift — the pre-3.3.0 behavior. Glide typing itself, its accuracy and glide-triggered learning of your saved words are unchanged.
+
 ## [3.5.0] — 2026-09-29
 
 ### Added
