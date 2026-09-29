@@ -26,7 +26,16 @@ import org.junit.Test
  * 2026-09-25 audit, F5 (docs/SECURITY-AUDIT-2026-09-25-FIXES.md): every
  * beginBatchEdit/endBatchEdit pair in `InputLogic` and `RichInputConnection` is a try/finally —
  * a RuntimeException from a dying editor mid-edit must not skip the endBatchEdit and stick the
- * batch nest level forever. Nothing is caught: the exception propagates exactly as before.
+ * batch nest level forever.
+ *
+ * 2026-09-29 audit wave, S8 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the F5 "nothing is
+ * caught" doctrine was scoped to the pairing fix; the hostile-host review then made the
+ * propagation itself the hole — an uncaught editor RuntimeException rides the UI thread up and
+ * kills the IME process. Every editor call in `RichInputConnection` now sits in a
+ * `catch (final RuntimeException e)` that degrades silently (the F6 dead-editor idiom; the
+ * catch keeps the finally's batch-close reachable, never replaces it). `InputLogic` still has
+ * no catch at all: it reaches the editor only through the wrapper (O6-pinned), so absorbing
+ * the failure there covers every one of its paths.
  *
  * Asserted by source because both classes need a live `LatinIME` to run; the regexes are kept
  * honest by the count anchors at the bottom (nine batches in InputLogic, one in
@@ -89,14 +98,33 @@ class BatchEditPairingContractTest {
     }
 
     @Test
-    fun nothingIsCaughtAroundTheBatches() {
-        for ((name, src) in files) {
-            assertFalse(
-                "$name: F5 is finally-only — a catch here would swallow the dying editor's " +
-                    "exception, which must propagate exactly as before",
-                Regex("\\bcatch\\s*\\(").containsMatchIn(src),
-            )
-        }
+    fun catchesLiveOnlyAtTheEditorBoundaryAndOnlyForRuntimeException() {
+        val inputLogic = files.getValue("InputLogic")
+        assertFalse(
+            "InputLogic: S8's catches live in the wrapper alone — InputLogic reaches the " +
+                "editor only through RichInputConnection (O6), so a catch here would be dead " +
+                "code pretending to be a guard",
+            Regex("\\bcatch\\s*\\(").containsMatchIn(inputLogic),
+        )
+        val connection = files.getValue("RichInputConnection")
+        // Comment-stripped so a javadoc {@code catch (...)} mention cannot masquerade as a site.
+        val code = connection
+            .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), " ")
+            .replace(Regex("//[^\\n]*"), " ")
+        val allCatches = Regex("\\bcatch\\s*\\(").findAll(code).count()
+        val runtimeCatches =
+            Regex("catch \\(final RuntimeException e\\)").findAll(code).count()
+        assertEquals(
+            "RichInputConnection: one catch per editor-call site — begin/endBatchEdit, the " +
+                "reload body, commitText, replaceText, deleteTextBeforeCursor, " +
+                "deleteSelectedText, performEditorAction, pasteClipboard, sendKeyEvent, " +
+                "setSelection; a new editor call without one trips the O6 inventory first",
+            11, runtimeCatches,
+        )
+        assertEquals(
+            "every catch is RuntimeException-only — never Throwable, Error, or checked-only",
+            runtimeCatches, allCatches,
+        )
     }
 
     /** The scan is meaningful only while it sees the batches it claims to pair. */

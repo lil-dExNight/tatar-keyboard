@@ -80,6 +80,16 @@ Pins: new `BatchEditPairingContractTest` — every batch opens a try before its 
 end sits inside a finally, no `catch` exists in either file, and the scan anchors to the known
 counts (9/9 InputLogic, 1/1 RichInputConnection) so a silently-missed site goes loud.
 
+> **2026-09-29 footnote (S8, docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md):** the "nothing is
+> caught" stance above was scoped to the pairing fix. The hostile-host review then made the
+> propagation itself the hole — an uncaught editor RuntimeException rides the UI thread up and
+> kills the IME process — so every editor call in `RichInputConnection` (eleven sites) now
+> degrades inside `catch (final RuntimeException e)`, silent per the F6 idiom, with the cache
+> following the intended edit and the F8/F10 reload as the re-sync. The pairing is untouched:
+> every end still sits in its finally, and `BatchEditPairingContractTest` re-anchors the new
+> doctrine (InputLogic stays catch-free — the wrapper is its only path to the editor). The
+> behavioral pins are `HostileHostRobustnessTest`; `InputLogic` is unchanged.
+
 ## F6 — NPEs on a dead editor (fixed)
 
 `deleteSelectedText` checks `isConnected()` right after `beginBatchEdit()` (the refresh point)

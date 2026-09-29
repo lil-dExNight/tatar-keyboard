@@ -29,6 +29,11 @@ import org.junit.Test
  * the reload's threading contract (F8 — the apply runs on the UI thread against a re-verified
  * selection; F10 — coalescing, and the staleness check before the IPC).
  *
+ * Plus the S8 pins of the 2026-09-29 wave (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): every
+ * editor call site wrapped against a hostile host's RuntimeException, and every host-provided
+ * payload bounded to the cache window at the reload writers. The behavioral halves of both live
+ * in [HostileHostRobustnessTest].
+ *
  * Asserted by source for the same reason as [CommitPathConnectionContractTest]: these paths
  * need a live `LatinIME`, a `ClipboardManager` and a real `Handler`, none of which exist in a
  * plain JVM test.
@@ -202,9 +207,90 @@ class RichInputConnectionRobustnessContractTest {
             "the finally posts the bare completion (stale/disconnected/dying-editor paths)",
             reloadBody.contains("mLatinIME.mHandler.post(this::finishReloadTextCache);"),
         )
+        // S8 (2026-09-29): the F10 property survives the hostile-host catch — a throwing editor
+        // degrades to the same bare completion, never to a stuck flag. The catch is
+        // RuntimeException-only (the binder's failure surface), pinned to the wrapper by
+        // BatchEditPairingContractTest.
         assertTrue(
-            "and no exception is swallowed to get there",
-            !Regex("\\bcatch\\s*\\(").containsMatchIn(reloadBody),
+            "the S8 catch degrades a hostile editor's throw to the bare completion",
+            reloadBody.contains("} catch (final RuntimeException e) {"),
         )
+    }
+
+    // --- S8: hostile-host payload bounds -----------------------------------------------------------
+
+    @Test
+    fun theReloadBoundsEveryHostPayloadToTheWindow() {
+        // The before-cursor writer (both reload branches funnel through it) keeps the tail.
+        val reloadWriter = bodyOf("void onBeforeCursorCacheReloaded(", "\n    }\n")
+        assertTrue(
+            "the single before-cursor writer keeps only the window tail of the host's answer",
+            reloadWriter.contains("mTextBeforeCursor = keepWindowTail(textBeforeCursor);"),
+        )
+        assertTrue(
+            "the text-start provenance is measured on the host's answer, not the kept tail",
+            reloadWriter.contains(
+                "mCacheReachedTextStart = textBeforeCursor.length() < " +
+                    "Constants.EDITOR_CONTENTS_CACHE_SIZE;"),
+        )
+        // The S+ split keeps the after-cursor head; the selection stays verbatim on purpose
+        // (it must match the host-reported span — see the comment at the write).
+        val applyBody = bodyOf("boolean applyTextAroundCursor(", "\n    }\n")
+        assertTrue(
+            "the surrounding-text split bounds the after-cursor side",
+            applyBody.contains("mTextAfterCursor = keepWindowHead("),
+        )
+        // The pre-S reload's apply bounds its after-cursor read the same way.
+        assertTrue(
+            "the pre-S apply bounds its after-cursor read",
+            reloadBody.contains("mTextAfterCursor = keepWindowHead(afterCursor);"),
+        )
+        assertFalse(
+            "no verbatim host-payload write may survive",
+            reloadBody.contains("mTextAfterCursor = afterCursor;"),
+        )
+    }
+
+    // --- S8: the throwing-binder degrade -------------------------------------------------------------
+
+    /**
+     * Every `mIC.` call in the class sits between a `try {` and its `catch (final RuntimeException`
+     * within its method body. The count anchors live in BatchEditPairingContractTest (11 catches,
+     * RuntimeException-only) and InputConnectionBinderContractTest (the call inventory); this pin
+     * makes each individual site prove its own wrapping, so a refactor that drops one try/catch
+     * pair goes red even when the counts stay right.
+     */
+    @Test
+    fun everyEditorCallSiteIsWrappedInARuntimeExceptionCatch() {
+        val bodies = listOf(
+            bodyOf("public void beginBatchEdit()", "public void endBatchEdit()"),
+            bodyOf("public void endBatchEdit()", "public void updateSelection("),
+            reloadBody,
+            bodyOf("public void commitText(", "/* package */ void appendToTextBeforeCursor"),
+            replaceTextBody,
+            bodyOf("public void deleteTextBeforeCursor(", "public void deleteSelectedText()"),
+            deleteSelectedBody,
+            bodyOf("public void performEditorAction(", "/**\n     * 2026-09-25 audit, F1"),
+            pasteBody,
+            bodyOf("public void sendKeyEvent(", "/**\n     * Set the selection"),
+            bodyOf("public void setSelection(", "public int getExpectedSelectionStart()"),
+        )
+        for ((index, body) in bodies.withIndex()) {
+            val calls = mutableListOf<Int>()
+            var at = 0
+            while (true) {
+                at = body.indexOf("mIC.", at)
+                if (at < 0) break
+                calls.add(at)
+                at += 4
+            }
+            assertTrue("body #$index holds at least one editor call", calls.isNotEmpty())
+            val tryOpen = body.indexOf("try {")
+            val catchOpen = body.indexOf("catch (final RuntimeException e)")
+            assertTrue("body #$index: a try opens before the first editor call",
+                tryOpen in 0 until calls.first())
+            assertTrue("body #$index: the RuntimeException catch follows the last editor call",
+                catchOpen > calls.last())
+        }
     }
 }
