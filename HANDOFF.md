@@ -1,3 +1,35 @@
+# HANDOFF — strip UX revert wave (2026-09-29, UNCOMMITTED)
+
+**Operator UX feedback on 3.3.0, executed as a forward change on top of the
+released 3.5.0 (`36e84690`):** (A) the live mid-gesture glide preview is
+REMOVED — during a swipe nothing repaints the strip any more, the lift decodes
+and commits (the v3.2.0 behavior; the pixel-level proof: the strip region is
+byte-identical mid-gesture in `build/device-uat-2026-09-29/revert/interactive/`);
+(B) the suggestion strip is back to **3 cells** end to end (state, view, seams,
+both engines' MAX_RESULTS, ~30 test files re-pinned to the exact pre-wave values
+from the `45bcd92f` diff, smoke probes re-derived to thirds). **Kept:**
+glide-triggered learning, the K=4 bigram table (the 4th successor is unread
+headroom — `rebuild_assets.py --check` proves the asset byte-untouched; a future
+4-cell revisit gets it free), `MAX_PERSONAL_BIGRAM_CELLS = 2`, the 44dp strip
+height. The +1.75 pp next-word eval value is knowingly given back (547 → 471 of
+4 347) — recorded in the dated footnotes of `docs/GLIDE-LIVE-STRIP4.md`.
+
+Gates: JVM **1920 tests / 202 suites / 0 failures** (`--rerun-tasks`); python
+507/16; lintRelease 0 errors/29 baselined; `rebuild_assets.py --check` ok;
+check-no-internet both levels; independent verifier verdict SHIP (24 test files
+byte-identical to the pre-wave state, all re-pins match). Device: emulator smoke
+**23 PASS / 0 FAIL / 1 SKIP** with the 3-cell probes; POCO C71 instrumentation
+green (GlideUiDeviceTest 2/2, DrawAllocInstrumentationTest 3/3,
+GlidePointerDeviceTest 4/4); baseline/startup profiles regenerated on the AVD
+and promoted (3451 rules — the regeneration also picked up the LookupTracer
+rules the hand-prune had missed).
+
+**UNCOMMITTED; commits/release are the operator's** (the tree is version
+3.5.0/42 — already tagged and published; shipping this wave means a version
+bump).
+
+---
+
 # HANDOFF — optimization + security plan wave (2026-09-29, UNCOMMITTED)
 
 **State as of 2026-09-29.** The 17-item plan

@@ -38,6 +38,14 @@ commit, master-off silence, half-typed gate, no learning counters moved) and +2 
 tests in `GlideTouchIntegrationContractTest` (armed-branch emission order, throttle gates,
 listener no-op + wiring, "the preview body never calls editor.commit*").
 
+> **2026-09-29 — REVERTED by operator UX decision.** Suggestions appear only at finger lift
+> again (the v3.2.0 behavior): nothing paints mid-gesture — the lift decodes and commits. The
+> whole preview half of this section went with it: the `maybeEmitGlideProgress` throttle in
+> `PointerTracker`, the `onGlideProgress` listener plumbing (`KeyboardActionListener` →
+> `LatinIME` → `SuggestionsController`), the `glideLiftInFlight` discrimination flag,
+> `applyGlideProgressResult`, and the preview tests (5 e2e + 2 contract + 1 device). The glide
+> learning half (section 2) stays untouched.
+
 ## 2. Glide-triggered learning
 
 A lift-committed word is announced as an accepted suggestion
@@ -54,6 +62,14 @@ alternative, refused commit announces nothing, undo keeps the record, the master
 announces).
 
 ## 3. The four-cell strip
+
+> **2026-09-29 — REVERTED to three cells by operator UX decision.** The contract half of this
+> section is undone (`CELL_COUNT`/`MAX_RESULTS` back to 3, the seams back to three arguments,
+> the pins back to the pre-wave values — eval next-word 547 → 471, the +1.75 pp knowingly given
+> back). **The data half is NOT undone:** the Tatar bigram table stays packed at K = 4 — its
+> fourth successor per head is unread headroom (`TatBigrPrefixIndex.MAX_RESULTS` = 3 never reads
+> it), so a future four-cell revisit gets it for free, no repack needed. Glide learning
+> (section 2) is untouched, `MAX_PERSONAL_BIGRAM_CELLS` stays 2, `STRIP_HEIGHT_DP` stays 44.
 
 **Contract change.** `SuggestionStripState.CELL_COUNT` 3 → 4 (same 44dp height — quarters, not
 a taller band), `CompositePrefixComputer.CELL_COUNT` 3 → 4, `TdictPrefixIndex.MAX_RESULTS` 3 → 4,
