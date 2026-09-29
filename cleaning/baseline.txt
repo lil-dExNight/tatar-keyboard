@@ -1,0 +1,28 @@
+# Baseline before the cleanup (main at 842fb4ca)
+
+Gates: JVM 207 suites / 1925 tests / 0 failures / 5 skipped (golden exporters, env-gated);
+python 16 files green; lintRelease green; rebuild_assets --check ok; check-no-internet ok.
+Pre-existing break fixed in phase 0: EmojiGoldenExportTest called the pre-3.5.0 setCellMetrics signature.
+
+doc_links_main=312
+doc_links_tests=190
+doc_links_scripts=102
+doc_links_res=18
+dated_main=202
+dated_tests=200
+dated_scripts=129
+fail_closed=436
+docs_top_md=79
+docs_tracked=651
+docs_non_md=500
+cyr_comments_main=239
+cyr_comments_tests=428
+cyr_comments_res=101
+cyr_hash_scripts=794
+md_with_cyr_excl_readme=153
+missing_doc_links=32
+lines     2254 HANDOFF.md
+lines      915 CHANGELOG.md
+lines     1939 docs/PUBLISH-CHECKLIST.md
+lines      515 docs/README.md
+lines     5623 total

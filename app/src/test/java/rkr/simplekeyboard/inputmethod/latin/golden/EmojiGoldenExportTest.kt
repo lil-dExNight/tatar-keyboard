@@ -202,14 +202,14 @@ class EmojiGoldenExportTest {
         for ((width, height) in listOf(393 to 216, 393 to 176, 852 to 160, 320 to 120)) {
             val state = EmojiPanelState()
             state.setColumns(if (width > 600) 12 else 8)
-            state.setCellMetrics(36, 56, 44, 50, 30, 44, 8, 60)
+            state.setCellMetrics(36, 56, 44, 30, 44, 8, 60)
             state.setSwipeMinDistance(32)
             state.setViewport(width, height)
             state.setSnapshot(display)
             val tops = (0..state.sectionCount()).map { state.sectionTop(it) }
             val starts = (0..state.sectionCount()).map { state.sectionStartIndex(it) }
             w.write("{\"kind\":\"panel\",\"width\":$width,\"height\":$height,\"cellWidth\":${state.cellWidth()},\"cellHeight\":${state.cellHeight()}," +
-                "\"tabBar\":${state.tabBarHeight()},\"searchBar\":${state.searchBarHeight()},\"gridTop\":${state.gridTop()},\"gridHeight\":${state.gridHeight()}," +
+                "\"tabBar\":${state.tabBarHeight()},\"searchBar\":0,\"gridTop\":${state.gridTop()},\"gridHeight\":${state.gridHeight()}," +
                 "\"contentHeight\":${state.contentHeight()},\"maxScroll\":${state.maxScrollY()},\"sectionTops\":$tops,\"sectionStarts\":$starts}\n")
             val scrolls = listOf(0, 1, 77, state.sectionTop(2), state.maxScrollY() / 2, state.maxScrollY())
             for (scroll in scrolls) {
