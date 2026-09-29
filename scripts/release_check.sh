@@ -598,6 +598,263 @@ else
     report FAIL artifact.permissions "aapt2 dump permissions упал: $PERMS"
 fi
 
+# --- 4b. exported surface: точное равенство золотому набору (S2 аудита 2026-09-29) --------------
+# The APK manifest is the merged+built one, so drift can enter through build config, not only
+# source edits. Parse `aapt2 dump xmltree` into component records (kind, name, permission
+# guard, intent-filter actions/categories) and require the EXPORTED set to equal the embedded
+# golden set in both directions (unexpected-exported fails, missing-exported fails). The IME
+# service's exported=false + BIND_INPUT_METHOD pair is pinned separately: a service exported
+# without that guard is the canonical IME finding this gate exists for.
+
+EXPORTED_LOG="$LOG_DIR/exported-surface.log"
+if python3 - "$APK" "$AAPT2" >"$EXPORTED_LOG" 2>&1 <<'PYEOF'
+import re
+import subprocess
+import sys
+
+apk_path, aapt2 = sys.argv[1], sys.argv[2]
+
+COMPONENT_KINDS = ("activity", "activity-alias", "service", "receiver", "provider")
+
+# Golden exported surface, derived 2026-09-29 from dist/tatar-keyboard-3.4.0.apk
+# (`aapt2 dump xmltree --file AndroidManifest.xml`) and verified 1:1 against
+# app/src/main/AndroidManifest.xml (zero runtime dependencies — nothing merges in):
+#   activity rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity
+#       exported, no permission guard, filter MAIN + category LAUNCHER — launcher-icon
+#       entry point (onboarding/setup wizard), must stay reachable.
+#   activity rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity
+#       exported, no permission guard, no filter — settings screen reached by explicit
+#       intents (system IME-settings gear, SetupActivity hand-off), exported by design.
+# Any other exported component, or a changed guard/filter here, is drift and fails.
+GOLDEN_EXPORTED = {
+    ("activity", "rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity", "",
+     ("android.intent.action.MAIN",), ("android.intent.category.LAUNCHER",)),
+    ("activity", "rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity", "",
+     (), ()),
+}
+
+IME_SERVICE = "rkr.simplekeyboard.inputmethod.latin.LatinIME"
+IME_PERMISSION = "android.permission.BIND_INPUT_METHOD"
+
+proc = subprocess.run([aapt2, "dump", "xmltree", "--file", "AndroidManifest.xml", apk_path],
+                      capture_output=True, text=True)
+if proc.returncode != 0:
+    raise SystemExit(f"ERROR: aapt2 dump xmltree упал: {proc.stderr.strip() or proc.stdout.strip()}")
+
+
+def attr_pair(line):
+    # 'A: <ns-uri>:name(0x01010003)="value" (Raw: "value")' -> ("name", "value");
+    # booleans arrive unquoted ('=false'), strings quoted. Plain attrs without an
+    # id (package=...) return None — not needed here.
+    m = re.match(r"A: (\S+)\(0x[0-9a-fA-F]+\)=(.*)$", line)
+    if not m:
+        return None
+    local = m.group(1).rsplit(":", 1)[-1]
+    raw = m.group(2).strip()
+    if raw.startswith('"'):
+        return local, raw[1:raw.find('"', 1)]
+    return local, raw.split(" ", 1)[0]
+
+
+components = []
+stack = []  # {'indent', 'tag', 'comp', 'filt'} — nesting by indent depth
+for raw_line in proc.stdout.splitlines():
+    line = raw_line.strip()
+    indent = len(raw_line) - len(raw_line.lstrip(" "))
+    if line.startswith("E: "):
+        tag = line[3:].split(" ", 1)[0]
+        while stack and stack[-1]["indent"] >= indent:
+            stack.pop()
+        parent = stack[-1] if stack else None
+        entry = {"indent": indent, "tag": tag, "comp": None, "filt": False}
+        if parent and parent["tag"] == "application" and tag in COMPONENT_KINDS:
+            comp = {"kind": tag, "name": "", "exported": None, "permission": "",
+                    "actions": [], "categories": []}
+            components.append(comp)
+            entry["comp"] = comp
+        elif parent and parent["comp"] is not None and tag == "intent-filter":
+            entry["comp"] = parent["comp"]
+            entry["filt"] = True
+        elif parent and parent["filt"] and tag in ("action", "category"):
+            entry["comp"] = parent["comp"]
+            entry["filt"] = True
+        stack.append(entry)
+    elif line.startswith("A: ") and stack:
+        pair = attr_pair(line)
+        if not pair:
+            continue
+        local, value = pair
+        owner = stack[-1]
+        comp = owner["comp"]
+        if comp is None:
+            continue
+        if owner["tag"] in COMPONENT_KINDS and not owner["filt"]:
+            if local in ("name", "exported", "permission"):
+                comp[local] = value
+        elif owner["filt"] and owner["tag"] == "action" and local == "name":
+            comp["actions"].append(value)
+        elif owner["filt"] and owner["tag"] == "category" and local == "name":
+            comp["categories"].append(value)
+
+
+def record_of(comp):
+    if comp["exported"] is not None:
+        exported = comp["exported"] == "true"
+    else:
+        # Platform implicit rule for a missing attribute: a component carrying an
+        # intent-filter is exported (targetSdk 37 forces explicit exported at build
+        # time; the rule is the safe fallback). Fail-closed, not silent-skip.
+        exported = bool(comp["actions"] or comp["categories"])
+    return (comp["kind"], comp["name"], comp["permission"],
+            tuple(sorted(comp["actions"])), tuple(sorted(comp["categories"]))), exported
+
+
+def fmt(key):
+    kind, name, perm, actions, cats = key
+    parts = [kind, name, f"permission={perm or '-'}"]
+    if actions:
+        parts.append("actions=" + ",".join(actions))
+    if cats:
+        parts.append("categories=" + ",".join(cats))
+    return " ".join(parts)
+
+
+problems = []
+actual_exported = {}
+for comp in components:
+    key, exported = record_of(comp)
+    if exported:
+        actual_exported[key] = comp
+
+for key in sorted(actual_exported):
+    if key not in GOLDEN_EXPORTED:
+        problems.append(f"неожиданный экспонированный компонент: {fmt(key)}")
+for key in sorted(GOLDEN_EXPORTED):
+    if key not in actual_exported:
+        problems.append(f"ожидался экспонированный, не найден: {fmt(key)}")
+    else:
+        print(f"OK {fmt(key)}")
+
+ime = [c for c in components if c["kind"] == "service" and c["name"] == IME_SERVICE]
+ime_ok = True
+if len(ime) != 1:
+    problems.append(f"IME-сервис {IME_SERVICE}: найдено записей {len(ime)}, ожидалась 1")
+    ime_ok = False
+else:
+    svc = ime[0]
+    if svc["exported"] != "false":
+        problems.append(f"IME-сервис {IME_SERVICE}: exported={svc['exported']!r}, "
+                        "требуется явное false")
+        ime_ok = False
+    if svc["permission"] != IME_PERMISSION:
+        problems.append(f"IME-сервис {IME_SERVICE}: permission={svc['permission']!r}, "
+                        f"требуется {IME_PERMISSION}")
+        ime_ok = False
+if ime_ok:
+    print(f"OK service {IME_SERVICE} exported=false + {IME_PERMISSION} (пин IME-стража)")
+
+for p in problems:
+    print(f"DRIFT {p}")
+if problems:
+    sys.exit(1)
+print(f"TOTAL {len(GOLDEN_EXPORTED)} экспонированных компонента = золотому набору "
+      "(обе стороны), IME-сервис закрыт пином")
+PYEOF
+then
+    report PASS artifact.exported_surface "$(tail -1 "$EXPORTED_LOG")"
+    grep '^OK ' "$EXPORTED_LOG" | sed 's/^/       /'
+else
+    report FAIL artifact.exported_surface "экспонированная поверхность отличается от золотого набора, лог $EXPORTED_LOG"
+    cat "$EXPORTED_LOG" >&2
+fi
+
+# --- 4c. secrets scan: дерево репозитория (tracked) + записи APK (S4 аудита 2026-09-29) ---------
+# Two fail-closed halves, offenders listed.
+# (a) repo: `git ls-files` — tracked files only, so keystore.properties and the .jks
+#     (gitignored locals) must not trip the gate — scanned for secret filenames
+#     (*.jks, *.keystore, keystore.properties, *.pem, *.p12), private-key block
+#     headers, and common token shapes (GitHub PAT, AWS access key id, sk-tokens).
+# (b) APK: no zip entry may carry a secret filename.
+# Content regexes are shaped so this script's own text never matches them (right after
+# the literal prefix comes '[', outside the accepted class) — the gate scans its own
+# tracked file on every run, so a self-match would be a permanent FAIL.
+
+NO_SECRETS_LOG="$LOG_DIR/no-secrets.log"
+if python3 - "$APK" >"$NO_SECRETS_LOG" 2>&1 <<'PYEOF'
+import re
+import subprocess
+import sys
+import zipfile
+
+apk_path = sys.argv[1]
+
+SECRET_BASENAMES = {"keystore.properties"}
+SECRET_SUFFIXES = (".jks", ".keystore", ".pem", ".p12")
+
+CONTENT_PATTERNS = [
+    ("private-key block header", re.compile(rb"-----BEGIN [A-Z0-9 ]{0,64}PRIVATE KEY")),
+    ("GitHub PAT", re.compile(rb"ghp_[A-Za-z0-9]{36}")),
+    ("AWS access key id", re.compile(rb"AKIA[0-9A-Z]{16}")),
+    ("sk-token", re.compile(rb"sk-[A-Za-z0-9]{20,}")),
+]
+
+
+def secret_name(path):
+    base = path.rsplit("/", 1)[-1].lower()
+    return base in SECRET_BASENAMES or base.endswith(SECRET_SUFFIXES)
+
+
+problems = []
+
+out = subprocess.run(["git", "ls-files", "-z"], capture_output=True, check=True).stdout
+paths = [p for p in out.decode("utf-8", "surrogateescape").split("\0") if p]
+scanned = 0
+for path in paths:
+    if secret_name(path):
+        problems.append(f"repo {path}: имя файла подпадает под секретный шаблон")
+    try:
+        with open(path, "rb") as fh:
+            content = fh.read()
+    except OSError:
+        # Tracked but gone from the worktree (unstaged deletion): scan the staged
+        # blob instead. An intent-to-add entry whose file then vanished has the
+        # empty blob — nothing exists to leak, so that case scans 0 bytes.
+        blob = subprocess.run(["git", "cat-file", "blob", f":{path}"],
+                              capture_output=True)
+        if blob.returncode != 0:
+            problems.append(f"repo {path}: нет ни в рабочем дереве, ни в индексе")
+            continue
+        content = blob.stdout
+    scanned += 1
+    for label, rx in CONTENT_PATTERNS:
+        hit = rx.search(content)
+        if hit:
+            line_no = content.count(b"\n", 0, hit.start()) + 1
+            problems.append(f"repo {path}:{line_no}: найден паттерн «{label}»")
+
+entries = 0
+with zipfile.ZipFile(apk_path) as apk:
+    for name in apk.namelist():
+        if name.endswith("/"):
+            continue
+        entries += 1
+        if secret_name(name):
+            problems.append(f"apk {name}: запись с именем секретного файла")
+
+for p in problems:
+    print(f"LEAK {p}")
+if problems:
+    sys.exit(1)
+print(f"TOTAL 0 находок: {scanned} отслеживаемых файлов (имена + содержимое), "
+      f"{entries} записей APK (имена)")
+PYEOF
+then
+    report PASS artifact.no_secrets "$(tail -1 "$NO_SECRETS_LOG")"
+else
+    report FAIL artifact.no_secrets "найдены секретоподобные файлы/строки, лог $NO_SECRETS_LOG"
+    cat "$NO_SECRETS_LOG" >&2
+fi
+
 # --- 5. подпись: сертификат релизного ключа, ровно один сигнер -----------------------------------
 
 if SIG=$("$APKSIGNER" verify --print-certs "$APK" 2>&1); then
