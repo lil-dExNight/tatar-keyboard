@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin;
 
 import android.content.Context;
 import android.graphics.Rect;
+import android.os.Trace;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewStub;
@@ -200,30 +201,38 @@ public final class InputView extends FrameLayout {
     public EmojiPanelView showEmojiPanel(final int keyboardHeightPx,
             final EmojiSetSnapshot snapshot, final float panelHeightScale,
             final int panelMaxHeightPx) {
-        final EmojiPanelView panel = getOrCreateEmojiPanelView();
-        if (panel == null) {
-            return null;
-        }
-        int panelHeightPx = keyboardHeightPx;
-        if (mSuggestionStripView != null && mSuggestionStripView.getVisibility() == VISIBLE) {
-            // Take the strip's measured height before hiding it, so the panel grows by exactly
-            // what the strip gave up and the keyboard keeps its height.
-            final int stripHeight = mSuggestionStripView.getHeight();
-            mSuggestionStripView.setVisibility(GONE);
-            mStripHiddenByEmojiPanel = true;
-            if (stripHeight > 0) {
-                panelHeightPx += stripHeight;
+        // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): view-side half of the panel-open span —
+        // the first show inflates EmojiPanelView here. A Trace begin/end pair costs ~10 µs;
+        // coarse spans only, never sub-200 µs methods or per-frame paths.
+        Trace.beginSection("TT#emojiPanelView");
+        try {
+            final EmojiPanelView panel = getOrCreateEmojiPanelView();
+            if (panel == null) {
+                return null;
             }
+            int panelHeightPx = keyboardHeightPx;
+            if (mSuggestionStripView != null && mSuggestionStripView.getVisibility() == VISIBLE) {
+                // Take the strip's measured height before hiding it, so the panel grows by exactly
+                // what the strip gave up and the keyboard keeps its height.
+                final int stripHeight = mSuggestionStripView.getHeight();
+                mSuggestionStripView.setVisibility(GONE);
+                mStripHiddenByEmojiPanel = true;
+                if (stripHeight > 0) {
+                    panelHeightPx += stripHeight;
+                }
+            }
+            panelHeightPx = EmojiPanelHeightPresets.applyTo(
+                    panelHeightPx, panelMaxHeightPx, panelHeightScale);
+            panel.setPanelHeightPx(panelHeightPx);
+            panel.setSnapshot(snapshot);
+            if (panel.getVisibility() != VISIBLE) {
+                panel.setVisibility(VISIBLE);
+                notifyInsetsChanged();
+            }
+            return panel;
+        } finally {
+            Trace.endSection();
         }
-        panelHeightPx = EmojiPanelHeightPresets.applyTo(
-                panelHeightPx, panelMaxHeightPx, panelHeightScale);
-        panel.setPanelHeightPx(panelHeightPx);
-        panel.setSnapshot(snapshot);
-        if (panel.getVisibility() != VISIBLE) {
-            panel.setVisibility(VISIBLE);
-            notifyInsetsChanged();
-        }
-        return panel;
     }
 
     /** Hides the emoji panel without creating it, restoring any strip the panel hid. */

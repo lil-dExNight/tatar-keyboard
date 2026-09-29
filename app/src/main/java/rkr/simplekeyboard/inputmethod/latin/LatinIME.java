@@ -35,6 +35,7 @@ import android.os.Build;
 import android.os.Debug;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.Trace;
 import android.os.UserManager;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -382,31 +383,39 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onCreate() {
-        Settings.init(this);
-        RichInputMethodManager.init(this);
-        mRichImm = RichInputMethodManager.getInstance();
-        mRichImm.setSubtypeChangeHandler(this);
-        KeyboardSwitcher.init(this);
-        AudioAndHapticFeedbackManager.init(this);
-        super.onCreate();
+        // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): Perfetto spine for process/IME init.
+        // A Trace begin/end pair costs ~10 µs, so markers wrap only coarse spans — never
+        // sub-200 µs methods or anything running per frame.
+        Trace.beginSection("TT#onCreate");
+        try {
+            Settings.init(this);
+            RichInputMethodManager.init(this);
+            mRichImm = RichInputMethodManager.getInstance();
+            mRichImm.setSubtypeChangeHandler(this);
+            KeyboardSwitcher.init(this);
+            AudioAndHapticFeedbackManager.init(this);
+            super.onCreate();
 
-        // TODO: Resolve mutual dependencies of {@link #loadSettings()} and
-        // {@link #resetDictionaryFacilitatorIfNecessary()}.
-        loadSettings();
+            // TODO: Resolve mutual dependencies of {@link #loadSettings()} and
+            // {@link #resetDictionaryFacilitatorIfNecessary()}.
+            loadSettings();
 
-        mDevicePrefs = PreferenceManagerCompat.getDeviceSharedPreferences(this);
-        setUpSuggestionsController();
-        setUpSuggestionsOffer();
-        setUpEmojiPanelController();
-        // Registered last: everything the handler touches exists by now, so it can never observe a
-        // half-built service.
-        mLastKnownTatarSuggestionsEnabled = Settings.readTatarSuggestionsEnabled(mDevicePrefs);
-        mDevicePrefs.registerOnSharedPreferenceChangeListener(mSuggestionsSettingListener);
+            mDevicePrefs = PreferenceManagerCompat.getDeviceSharedPreferences(this);
+            setUpSuggestionsController();
+            setUpSuggestionsOffer();
+            setUpEmojiPanelController();
+            // Registered last: everything the handler touches exists by now, so it can never
+            // observe a half-built service.
+            mLastKnownTatarSuggestionsEnabled = Settings.readTatarSuggestionsEnabled(mDevicePrefs);
+            mDevicePrefs.registerOnSharedPreferenceChangeListener(mSuggestionsSettingListener);
 
-        // Register to receive ringer mode change.
-        final IntentFilter filter = new IntentFilter();
-        filter.addAction(AudioManager.RINGER_MODE_CHANGED_ACTION);
-        registerReceiver(mRingerModeChangeReceiver, filter);
+            // Register to receive ringer mode change.
+            final IntentFilter filter = new IntentFilter();
+            filter.addAction(AudioManager.RINGER_MODE_CHANGED_ACTION);
+            registerReceiver(mRingerModeChangeReceiver, filter);
+        } finally {
+            Trace.endSection();
+        }
     }
 
     private void loadSettings() {
@@ -1661,13 +1670,21 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public View onCreateInputView() {
-        // The input view is being (re)created (rotation, theme or height change): a deferred show
-        // for the old view must not fire. The panel's "was open" state never survives recreation.
-        abandonEmojiSearch();
-        if (mEmojiPanelController != null) {
-            mEmojiPanelController.onInputViewRecreated();
+        // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): input-view construction, including the
+        // first keyboard load underneath it. Same ~10 µs marker-pair discipline as onCreate.
+        Trace.beginSection("TT#createInputView");
+        try {
+            // The input view is being (re)created (rotation, theme or height change): a deferred
+            // show for the old view must not fire. The panel's "was open" state never survives
+            // recreation.
+            abandonEmojiSearch();
+            if (mEmojiPanelController != null) {
+                mEmojiPanelController.onInputViewRecreated();
+            }
+            return mKeyboardSwitcher.onCreateInputView();
+        } finally {
+            Trace.endSection();
         }
-        return mKeyboardSwitcher.onCreateInputView();
     }
 
     @Override

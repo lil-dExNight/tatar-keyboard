@@ -140,6 +140,11 @@ class SuggestionsController internal constructor(
     // the table through the artifact registry, never through a language string of its own.
     private val sentStartPreparationFactory: (ExecutorService, String) -> SentStartPreparation? =
         { _, _ -> null },
+    // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the Perfetto seam of the lookup round trip.
+    // Same trailing-default shape as the factories above — the frozen test constructors keep
+    // compiling and stay on DISABLED (plain-JVM tests have no android.os.Trace); only the
+    // production constructor passes the real thing.
+    private val lookupTracer: LookupTracer = LookupTracer.DISABLED,
 ) {
     /** Production entry point (frozen contract). */
     constructor(
@@ -170,6 +175,7 @@ class SuggestionsController internal constructor(
                 AssetSentStartPreparation(context, executor, assetPath)
             }
         },
+        LookupTracer.ATRACE,
     )
 
     /** Test entry point: injects a synchronous poster + executor and pre-marks the dictionary. */
@@ -264,6 +270,9 @@ class SuggestionsController internal constructor(
         val resolved = subtypeId?.takeIf { DictionaryArtifactSpec.forSubtype(it) != null }
         if (resolved == activeLanguage) return
         activeSlot()?.engine?.finishInput()
+        // O5: the leaving language's engine is idled and its in-flight lookup (the traced one is
+        // only ever the ACTIVE language's) is invalidated with it — no handoff will arrive.
+        endLookupTrace()
         activeLanguage = resolved
     }
 
@@ -271,6 +280,13 @@ class SuggestionsController internal constructor(
     // older editor state are dropped even if the engine's own generation check would still pass.
     private var sessionId: Long = 0L
     private var requestSessionId: Long = NO_SESSION
+
+    // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the cookie of the one outstanding lookup
+    // slice. At most one active-language request is ever awaited — a new request supersedes and
+    // the engine suppresses the stale handoff upstream — so a single outstanding cookie is exact:
+    // a superseded trip ends where its replacement begins.
+    private var traceLookupCookie: Int = NO_TRACE_COOKIE
+    private var traceCookieSerial: Int = 0
 
     // The latest prefix a lookup was requested for. Not what is on screen; see [displayedPrefix].
     private var pendingPrefix: String = ""
@@ -541,6 +557,9 @@ class SuggestionsController internal constructor(
         bandHasActiveLanguageWord = false
         bandBaseCells = emptyList()
         clearCompanionRequest()
+        // O5: a new field ends whatever lookup the old one was still waiting for (the ineligible
+        // branch below idles the engine, which suppresses the handoff entirely).
+        endLookupTrace()
         setActiveLanguage(subtypeId)
         this.eligible = eligible && activeLanguage != null
         // P7-6: glide answers its own toggle and its own field gate — not the suggestions master.
@@ -603,6 +622,8 @@ class SuggestionsController internal constructor(
         clearRevertState()
         sessionId++
         activeSlot()?.engine?.finishInput()
+        // O5: finishInput invalidates the in-flight generation — no handoff will arrive for it.
+        endLookupTrace()
         // Any in-flight request is invalidated and whatever was shown is no longer bound to the
         // live editor state, so drop the displayed binding immediately.
         displayedPrefix = null
@@ -681,6 +702,8 @@ class SuggestionsController internal constructor(
         glideEligible = false
         strip.hideSuggestions()
         activeSlot()?.engine?.finishInput()
+        // O5: the idled engine's in-flight lookup is invalidated with it — end its slice.
+        endLookupTrace()
         // The other lifecycle boundary at which a deferred release may run.
         runPendingRelease()
     }
@@ -704,6 +727,8 @@ class SuggestionsController internal constructor(
         // language change, and doing it here as well keeps a same-language subtype change (a
         // different layout for the same dictionary) behaving exactly as it always did.
         activeSlot()?.engine?.finishInput()
+        // O5: the idled engine's in-flight lookup is invalidated with it — end its slice.
+        endLookupTrace()
         displayedPrefix = null
         displayedContextWord = null
         displayedGlideAlternativesFor = null
@@ -768,6 +793,8 @@ class SuggestionsController internal constructor(
         clearRevertState()
         sessionId++
         activeSlot()?.engine?.finishInput()
+        // O5: the idled engine's in-flight lookup is invalidated with it — end its slice.
+        endLookupTrace()
         displayedPrefix = null
         displayedContextWord = null
         displayedGlideAlternativesFor = null
@@ -800,6 +827,9 @@ class SuggestionsController internal constructor(
         bandBaseCells = emptyList()
         clearCompanionRequest()
         requestSessionId = NO_SESSION
+        // O5: every engine is idled below (or the band alone dies, glide keeping the engine warm
+        // — but the session bump already invalidates its in-flight lookup's landing either way).
+        endLookupTrace()
         strip.hideSuggestions()
         // P7-6: glide is independent of the master — with the glide gate still open the engine
         // stays warm for the decode and only the band dies with the setting. (The engine staying
@@ -892,6 +922,8 @@ class SuggestionsController internal constructor(
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
+        // O5: the engines are torn down below; no in-flight lookup will ever deliver.
+        endLookupTrace()
         for (slot in slots.values) {
             val handle = slot.engine ?: continue
             if (destroyHandle(handle)) {
@@ -1622,6 +1654,34 @@ class SuggestionsController internal constructor(
         emojiPreparationRequested = false
     }
 
+    /**
+     * O5: opens the async Perfetto slice of a lookup round trip, closing any slice still open —
+     * the request it described has just been superseded (the engine will never deliver its stale
+     * handoff, so this is the only end that trip gets). A marker pair costs ~10 µs, which is why
+     * only this coarse round trip is instrumented — never sub-200 µs methods, never per frame.
+     */
+    private fun beginLookupTrace() {
+        endLookupTrace()
+        val cookie = if (traceCookieSerial == Int.MAX_VALUE) 1 else traceCookieSerial + 1
+        traceCookieSerial = cookie
+        traceLookupCookie = cookie
+        lookupTracer.beginAsync(cookie)
+    }
+
+    /**
+     * O5: closes the outstanding lookup slice, if there is one. Called where the answer arrives
+     * ([applyResult]) and at every boundary that cancels an in-flight request without a newer one
+     * replacing it, so a canceled trip never renders as a seconds-long open slice. An end for a
+     * cookie that was never opened is ignored by the platform, so the defensive calls at the
+     * boundaries are free.
+     */
+    private fun endLookupTrace() {
+        val cookie = traceLookupCookie
+        if (cookie == NO_TRACE_COOKIE) return
+        traceLookupCookie = NO_TRACE_COOKIE
+        lookupTracer.endAsync(cookie)
+    }
+
     private fun requestCurrentPrefix() {
         if (!eligible) return
         val activeEngine = usableEngine()
@@ -1699,8 +1759,13 @@ class SuggestionsController internal constructor(
         pendingPrefix = word
         requestSessionId = sessionId
         val prefixBytes = TatarWordUtils.toLookupBytes(TatarWordUtils.normalizeForLookup(word))
-        val token = activeEngine.request(sessionId, activeLanguage ?: return, prefixBytes)
+        val language = activeLanguage ?: return
+        // O5: the round trip is async (worker hop + re-marshal), hence the async slice; a null
+        // token means no request left the UI thread, so the slice closes again at once.
+        beginLookupTrace()
+        val token = activeEngine.request(sessionId, language, prefixBytes)
         if (token == null) {
+            endLookupTrace()
             clearToReservedBand()
         }
     }
@@ -1756,8 +1821,12 @@ class SuggestionsController internal constructor(
         bandHasActiveLanguageWord = false
         requestSessionId = sessionId
         val contextBytes = TatarWordUtils.toLookupBytes(TatarWordUtils.normalizeForLookup(context))
-        val token = activeEngine.requestNextWord(sessionId, activeLanguage ?: return, contextBytes)
+        val language = activeLanguage ?: return
+        // O5: same async round trip as the PREFIX path — see beginLookupTrace.
+        beginLookupTrace()
+        val token = activeEngine.requestNextWord(sessionId, language, contextBytes)
         if (token == null) {
+            endLookupTrace()
             clearToReservedBand()
         }
     }
@@ -1799,6 +1868,9 @@ class SuggestionsController internal constructor(
         displayedContextWord = null
         unbindPaintedBand()
         clearCompanionRequest()
+        // O5: the gesture's decode supersedes any lookup still in flight (the engine suppresses
+        // its stale handoff, so no arrival will end its slice). The decode itself is not traced.
+        endLookupTrace()
         pendingGlideContext = context
         requestSessionId = sessionId
         // C3 of docs/ROADMAP-P8-PLAN.md: only ONE glide word index may be resident. Warm slots are
@@ -1852,6 +1924,9 @@ class SuggestionsController internal constructor(
         // result arriving now is a preview, never a commit. Placed after the gates, so a gated
         // progress cannot clobber a lift already in flight.
         glideLiftInFlight = false
+        // O5: same supersede as onGlideInput — the decode preempts an in-flight lookup, whose
+        // stale handoff the engine suppresses; end its slice here. The preview is not traced.
+        endLookupTrace()
         activeEngine.requestGlide(sessionId, language, path)
     }
 
@@ -2144,6 +2219,11 @@ class SuggestionsController internal constructor(
             applyCompanionResult(slot, token, suggestions, kind)
             return
         }
+        // O5: the arrival ends the round trip. The engine suppresses stale handoffs upstream, so
+        // an active-slot result that gets here at all is the newest request's answer — ending
+        // before the currency guards is what keeps a session-crossed answer from leaving its
+        // slice open. (Every boundary that makes a result undeliverable ends the slice itself.)
+        endLookupTrace()
         if (sessionId != requestSessionId) return
         val activeEngine = usableEngine() ?: return
         if (!activeEngine.isCurrent(token)) return
@@ -2599,6 +2679,9 @@ class SuggestionsController internal constructor(
         // Sentinel for "no request is outstanding". [sessionId] starts at 0 and only ever grows,
         // so this can never be mistaken for a live generation.
         private const val NO_SESSION = -1L
+
+        // O5: sentinel for "no lookup slice is open"; real cookies are serials starting at 1.
+        private const val NO_TRACE_COOKIE = -1
 
         /**
          * The [displayedContextWord]/[pendingContextWord] binding of a sentence-start band (P4):

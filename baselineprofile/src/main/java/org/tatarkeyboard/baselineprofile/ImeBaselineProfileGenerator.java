@@ -380,8 +380,9 @@ public class ImeBaselineProfileGenerator {
      *  and after "сәлам"+SPACE the strip shows bigram predictions
      *  "биреп | белән | биру" with the emoji-suggest tail cell, so the band is
      *  [биреп · белән · 👋] (verified 2026-09-02 against the emoji_suggest_v1.txt
-     *  mapping сәлам→👋). EMOJI_FIRST_CELL is the first cell of the emoji grid
-     *  (same calibration as scripts/emulator-smoke.sh). */
+     *  mapping сәлам→👋). EMOJI_FIRST_CELL is grid row 0 with the suggestion strip visible
+     *  (the generator always enables suggestions; same calibration as GRID_CELL0_Y in
+     *  scripts/emulator-smoke.sh after the 2026-09-28 search-band collapse). */
     private static final class KeyGeom {
         // {xFraction, yFraction} of key centers on the Tatar layout.
         static final float[] KEY_S = {0.3324f, 0.8474f};
@@ -394,7 +395,7 @@ public class ImeBaselineProfileGenerator {
         static final float[] SUGGESTION_LEFT = {0.167f, 0.60f};
         static final float[] PREDICTION_MIDDLE = {0.5f, 0.60f};
         static final float[] SUGGESTION_RIGHT = {0.833f, 0.60f};
-        static final float[] EMOJI_FIRST_CELL = {0.059f, 0.777f};
+        static final float[] EMOJI_FIRST_CELL = {0.059f, 0.6877f};
 
         static int x(UiDevice device, float[] fraction) {
             return Math.round(device.getDisplayWidth() * fraction[0]);

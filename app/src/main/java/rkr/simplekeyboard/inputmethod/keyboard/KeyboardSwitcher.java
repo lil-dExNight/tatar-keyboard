@@ -21,6 +21,7 @@ package rkr.simplekeyboard.inputmethod.keyboard;
 import android.content.Context;
 import android.content.res.Resources;
 import android.os.Build;
+import android.os.Trace;
 import android.util.Log;
 import android.view.ContextThemeWrapper;
 import android.view.LayoutInflater;
@@ -132,27 +133,36 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
 
     public void loadKeyboard(final EditorInfo editorInfo, final SettingsValues settingsValues,
             final int currentAutoCapsState, final int currentRecapitalizeState) {
-        final KeyboardLayoutSet.Builder builder = new KeyboardLayoutSet.Builder(
-                mThemeContext, editorInfo);
-        final Resources res = mThemeContext.getResources();
-        final int keyboardWidth = mLatinIME.getMaxWidth();
-        final int keyboardHeight = ResourceUtils.getKeyboardHeight(res, settingsValues);
-        final int keyboardBottomOffset = ResourceUtils.getKeyboardBottomOffset(res, settingsValues);
-        mKeyboardBottomOffset = keyboardBottomOffset;
-        builder.setKeyboardTheme(mKeyboardTheme.mThemeId);
-        builder.setKeyboardGeometry(keyboardWidth, keyboardHeight, keyboardBottomOffset);
-        builder.setSubtype(mRichImm.getCurrentSubtype());
-        builder.setLanguageSwitchKeyEnabled(mLatinIME.shouldShowLanguageSwitchKey());
-        builder.setShowSpecialChars(settingsValues.mShowSpecialChars);
-        builder.setShowNumberRow(settingsValues.mShowNumberRow);
-        builder.setShowEmojiKey(settingsValues.mShowEmojiKey);
-        mKeyboardLayoutSet = builder.build();
+        // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the per-layout build. A Trace begin/end
+        // pair costs ~10 µs, so markers wrap only coarse spans — never sub-200 µs methods or
+        // anything running per frame.
+        Trace.beginSection("TT#loadKeyboard");
         try {
-            mState.onLoadKeyboard(currentAutoCapsState, currentRecapitalizeState);
-            mKeyboardTextsSet.setLocale(mRichImm.getCurrentSubtype().getLocaleObject(),
-                    mThemeContext);
-        } catch (KeyboardLayoutSetException e) {
-            Log.w(TAG, "loading keyboard failed: " + e.mKeyboardId, e.getCause());
+            final KeyboardLayoutSet.Builder builder = new KeyboardLayoutSet.Builder(
+                    mThemeContext, editorInfo);
+            final Resources res = mThemeContext.getResources();
+            final int keyboardWidth = mLatinIME.getMaxWidth();
+            final int keyboardHeight = ResourceUtils.getKeyboardHeight(res, settingsValues);
+            final int keyboardBottomOffset = ResourceUtils.getKeyboardBottomOffset(res,
+                    settingsValues);
+            mKeyboardBottomOffset = keyboardBottomOffset;
+            builder.setKeyboardTheme(mKeyboardTheme.mThemeId);
+            builder.setKeyboardGeometry(keyboardWidth, keyboardHeight, keyboardBottomOffset);
+            builder.setSubtype(mRichImm.getCurrentSubtype());
+            builder.setLanguageSwitchKeyEnabled(mLatinIME.shouldShowLanguageSwitchKey());
+            builder.setShowSpecialChars(settingsValues.mShowSpecialChars);
+            builder.setShowNumberRow(settingsValues.mShowNumberRow);
+            builder.setShowEmojiKey(settingsValues.mShowEmojiKey);
+            mKeyboardLayoutSet = builder.build();
+            try {
+                mState.onLoadKeyboard(currentAutoCapsState, currentRecapitalizeState);
+                mKeyboardTextsSet.setLocale(mRichImm.getCurrentSubtype().getLocaleObject(),
+                        mThemeContext);
+            } catch (KeyboardLayoutSetException e) {
+                Log.w(TAG, "loading keyboard failed: " + e.mKeyboardId, e.getCause());
+            }
+        } finally {
+            Trace.endSection();
         }
     }
 
@@ -411,26 +421,32 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
      * MainKeyboardView goes {@code GONE} so the two surfaces are never visible at once.
      */
     public void showEmojiPanel(final EmojiSetSnapshot snapshot) {
-        if (mKeyboardView == null || mCurrentInputView == null) {
-            return;
+        // O5: the panel-open span; same ~10 µs marker-pair discipline as loadKeyboard.
+        Trace.beginSection("TT#emojiPanel");
+        try {
+            if (mKeyboardView == null || mCurrentInputView == null) {
+                return;
+            }
+            final SettingsValues settingsValues = Settings.getInstance().getCurrent();
+            final float panelHeightScale = settingsValues != null
+                    ? settingsValues.mEmojiPanelHeightScale : EmojiPanelHeightPresets.SAME_SCALE;
+            final int panelMaxHeightPx = ResourceUtils.getMaxKeyboardHeight(
+                    mThemeContext.getResources());
+            final EmojiPanelView panel = mCurrentInputView.showEmojiPanel(
+                    mKeyboardView.getHeight(), snapshot, panelHeightScale, panelMaxHeightPx);
+            if (panel == null) {
+                return;
+            }
+            panel.setKeyboardBottomOffsetPx(mKeyboardBottomOffset);
+            panel.setListener(this);
+            if (mEmojiSkinTones != null) {
+                panel.setSkinTones(mEmojiSkinTones);
+            }
+            mEmojiPanelShown = true;
+            mKeyboardView.setVisibility(View.GONE);
+        } finally {
+            Trace.endSection();
         }
-        final SettingsValues settingsValues = Settings.getInstance().getCurrent();
-        final float panelHeightScale = settingsValues != null
-                ? settingsValues.mEmojiPanelHeightScale : EmojiPanelHeightPresets.SAME_SCALE;
-        final int panelMaxHeightPx = ResourceUtils.getMaxKeyboardHeight(
-                mThemeContext.getResources());
-        final EmojiPanelView panel = mCurrentInputView.showEmojiPanel(
-                mKeyboardView.getHeight(), snapshot, panelHeightScale, panelMaxHeightPx);
-        if (panel == null) {
-            return;
-        }
-        panel.setKeyboardBottomOffsetPx(mKeyboardBottomOffset);
-        panel.setListener(this);
-        if (mEmojiSkinTones != null) {
-            panel.setSkinTones(mEmojiSkinTones);
-        }
-        mEmojiPanelShown = true;
-        mKeyboardView.setVisibility(View.GONE);
     }
 
     /**
