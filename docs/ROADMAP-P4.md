@@ -253,6 +253,14 @@ word needing THREE edits stays empty). Otherwise class #5 stays unwired and the 
 (`FuzzyEditPolicy.TATAR` remains {1, 4}); the machinery, the calibration test
 (`TwoSubstitutionCalibrationTest`) and these numbers stand as the documented evidence.
 
+> **2026-09-28: the class-#5 machinery was DELETED from the tree** (plan item L2 of
+> `docs/LEFTOVERS-PLAN-2026-09-28.md`): the driver, probes, scratch and counters in
+> `TdictPrefixIndex.kt`, the `EDIT_CLASS_TWO_SUBSTITUTIONS`/`MAX_EDIT2_PROBES` constants (and the
+> `FuzzyEditPolicy` admission of class #5), and `TwoSubstitutionCalibrationTest`. This section is
+> the sole surviving rejection record — the numbers above are complete and self-sufficient. The
+> code is recoverable from git history (the deletion commit is authored by the operator from that
+> tree state).
+
 **Typo sets** (`scripts/typo_pack.py build --edit-class 5` on the committed 110 000-entry asset;
 the JVM mirror is byte-identical, pinned by SHA-256 of the `word<TAB>typo\n` render):
 

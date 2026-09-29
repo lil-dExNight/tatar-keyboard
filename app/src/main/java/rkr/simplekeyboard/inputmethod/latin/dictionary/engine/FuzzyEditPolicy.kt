@@ -57,8 +57,7 @@ class FuzzyEditPolicy(
                 editClass == TdictPrefixIndex.EDIT_CLASS_LONG_PRESS ||
                     editClass == TdictPrefixIndex.EDIT_CLASS_GEOMETRIC ||
                     editClass == TdictPrefixIndex.EDIT_CLASS_TRANSPOSITION ||
-                    editClass == TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION ||
-                    editClass == TdictPrefixIndex.EDIT_CLASS_TWO_SUBSTITUTIONS,
+                    editClass == TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
             ) { "unknown edit class $editClass" }
         }
     }
