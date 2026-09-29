@@ -104,6 +104,24 @@ including both new gates; `check-no-internet.sh` green at both levels.
   frame p50 and PSS are unmeasured — the ritual needs the release APK with the
   suggestions opt-in, and that flow is not automated yet.
 
+**Released 2026-09-29 as 3.5.0 / versionCode 42.** The wave was committed as
+the twelve commits ending at HEAD `2b4e0fd6`; the release commit is the one
+with the subject `chore: release 3.5.0` directly on top — a commit cannot
+embed its own hash, so the marker is named by subject (the APK's embedded
+version-control info points at `2b4e0fd6`). Signed artifact
+`dist/tatar-keyboard-3.5.0.apk`, **1 804 874 B** (byte-size equal to 3.4.0,
+APK delta +0), SHA-256
+`0e4b99f97bc895f57a1657815e752941429817dc734bb9d6988ca2d01e7fab96`, v2-only,
+cert `98ca6feb…42ad`; the pack run twice is byte-identical;
+`release_check.sh --full` **19/19 PASS** including the two new gates;
+`check-no-internet.sh` green at both levels; audit
+`docs/APK-AUDIT-3.5.0.md` (13 archive entries changed, all 13 data assets
+byte-identical — an update re-inflates nothing). Operator remainders: the
+GitHub Release via the web UI (this machine's `gh` is pull-only) with
+`dist/release-notes-3.5.0.md` as the notes; the store upload with the
+`metadata/*/changelogs/42.txt` changelogs; the IzzyOnDroid note. The
+release-scale frame/PSS leg above stays open.
+
 ---
 
 # HANDOFF — leftovers + emoji-panel wave (2026-09-28/29, UNCOMMITTED)

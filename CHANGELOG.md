@@ -1,5 +1,30 @@
 # Changelog
 
+## [3.5.0] — 2026-09-29
+
+### Added
+
+- **A roomier emoji panel.** The 50dp search row collapsed into a 🔍 cell at the tab strip's right end, so the emoji grid gains 50dp at every keyboard height (on a POCO C71 at the default preset: 1.6 → 2.7 emoji rows visible below the first section header with the suggestion strip off, 2.5 → 3.6 with it on). A new Appearance setting, **"Emoji panel height"**, offers Same as keyboard (the default — the old same-box invariant), Larger (×1.2) and Maximum (46 % of the screen); under Larger/Maximum the keyboard window itself grows while the panel is open — Gboard-style, and strictly opt-in. The floating panel keys slimmed from 44dp to 40dp.
+
+### Changed
+
+- **Faster dictionary reads.** The lookup path now bulk-fetches a whole front-coding block off the memory-mapped dictionary with one relative read instead of per-byte absolute reads; on the POCO C71 the worst measured path (Tatar typo probes) went from p95 5.19 ms to **1.72 ms**, the mapping and its evictable file-backed residency are untouched, and results are byte-identical.
+- **Less per-frame work while drawing:** the board no longer allocates a temporary set on every press frame, and the suggestion strip measures its autocorrect underline once when the content changes instead of on every frame; an on-device gate now pins zero own allocations in the draw loop.
+- **The baseline and startup profiles are regenerated** (3 430 → 3 431 rules), so a Play install compiles the current code paths ahead of time.
+- **Performance discipline (developer-facing):** `TT#` trace sections for Perfetto now bracket startup, input-view and keyboard loading, the emoji panel and the suggestion round trip; the repo carries a scripted device perf ritual (cold starts, frame stats, PSS — with the ceiling set at 114 000 kB on the debug scale).
+
+### Fixed
+
+- **Dead machinery removed:** the two-substitution typo-recovery path (class #5), kept in the tree unwired since its own gates rejected it in phase 4, is deleted together with its calibration suite. No behavior change.
+
+### Security
+
+- **The editor connection is hardened against hostile host apps** — three real holes found and fixed: oversized host answers could re-inflate the bounded text cache (now clamped at every writer), a throwing editor call could crash the keyboard process (all eleven editor-call sites now degrade silently), and impossible cursor positions could create phantom selection state (rejected fail-closed).
+- **Dead debug tracers in the input pipeline are de-texted:** had they ever been enabled, they could have logged key labels of what you type; they now carry coordinates and functional-key flags only. A source contract test pins the reviewed log call-site set.
+- **Proven on-device, not just by manifest: zero network traffic.** The keyboard's UID counters (rx/tx) stayed at exactly 0 across a scripted mixed session on the POCO C71; the app still ships with no INTERNET permission at all.
+- **Supply chain:** build dependency verification is upgraded from plain SHA-256 pins to PGP signature verification with a committed keyring (unsigned artifacts stay SHA-256-pinned), and the release check gained two fail-closed gates — an exported-surface pin and a no-secrets scan of the tree and the APK. Developer-facing; nothing of this ships inside the app.
+- **New test armor (developer-facing):** seeded fuzzing of the five binary readers (61 500 iterations: bit flips, truncations, size-field inflation, garbage — zero validator defects) and an EditorInfo privacy matrix (password, visible-password, TYPE_NULL, no-personalized-learning and normal fields × learning, recents, strip and cache re-read — no behavioral hole).
+
 ## [3.4.0] — 2026-09-28
 
 ### Added

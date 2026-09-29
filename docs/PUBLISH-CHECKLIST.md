@@ -1,4 +1,33 @@
-# PUBLISH-CHECKLIST — публикация v3.4.0
+# PUBLISH-CHECKLIST — публикация v3.5.0
+
+> **Retargeted 2026-09-29 to candidate v3.5.0 / versionCode 42** — the
+> 2026-09-29 optimization + security wave
+> (`docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`, all 17 items landed) plus the
+> emoji-panel space wave (`docs/EMOJI-PANEL-SPACE-2026-09-28.md`, A+B+C): the
+> panel's search row collapsed into a 🔍 cell at the tab strip's right end
+> (+50dp of grid at every keyboard height), a new Appearance setting picks
+> the panel height (Same as keyboard / Larger / Maximum), floating keys
+> 44 → 40dp; dictionary reads bulk-fetch whole blocks off the mmap (worst
+> path p95 5.19 → 1.72 ms on the POCO C71); the editor connection is
+> hardened against hostile hosts (three real holes fixed); the dead debug
+> tracers are de-texted; dependency verification upgraded to PGP signatures
+> with a committed keyring; new release gates (`artifact.exported_surface`,
+> `artifact.no_secrets`); TT# Perfetto sections, the zero-allocation
+> draw-loop gate, the PSS ceiling; zero network traffic proven on-device via
+> netstats. Store changelog — `metadata/en-US/changelogs/42.txt` (335 B) +
+> `ru-RU` (429 B) and `tt` (463 B), all ≤ 500 B. **Data-asset delta: NONE** —
+> all 13 shipped data assets are byte-identical to 3.4.0 (CRC32-verified per
+> entry, `docs/APK-AUDIT-3.5.0.md`); on update the device re-inflates
+> NOTHING. Signed artifact `dist/tatar-keyboard-3.5.0.apk` (**1 804 874 B** —
+> byte-size equal to 3.4.0, APK delta +0 — SHA-256
+> `0e4b99f97bc895f57a1657815e752941429817dc734bb9d6988ca2d01e7fab96`, v2-only,
+> cert `98ca6feb…42ad`); the pack run twice is byte-identical;
+> `release_check.sh --full` **19/19 PASS** including both new gates (see the
+> audit for the RESULT block). Publishing
+> (GitHub Release via the web UI — this machine's `gh` is pull-only — notes
+> in `dist/release-notes-3.5.0.md`), the store upload and the IzzyOnDroid
+> note remain the operator's steps. The notes about 3.4.0 and earlier below
+> stay as history; their checkmarks and numbers do not carry over.
 
 > **Retargeted 2026-09-28 to candidate v3.4.0 / versionCode 41** — the
 > 2026-09-28 backlog wave (`docs/BACKLOG-2026-09-28.md`, all items closed)
