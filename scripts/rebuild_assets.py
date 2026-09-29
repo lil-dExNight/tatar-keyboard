@@ -161,11 +161,8 @@ BIGRAMS = (
         asset="app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
         dictionary="tat",
         heads=10_132,
-        # K: 3 -> 4 (2026-09-27): четырёхклеточная полоса вернулась (T7 переоткрыт) —
-        # измеренная латентная ценность ранга-4 (+1,56 п.п. hit-rate) теперь реализуется;
-        # русская таблица K=4 не переставала быть. Хроника: K = 4 -> 3 (2026-09-23,
-        # ROADMAP-P4 T7, docs/ROADMAP-P4.md): доля ранга-4 в покрытых eval-парах — 2,08 %,
-        # K=3 давал -19 209 Б (81 476 -> 62 267 при том же наборе голов).
+        # Up to four successors per head. The strip shows three; the fourth is kept so a
+        # wider strip needs no repack.
         successes_per_head=4,
         # С 2026-09-23 (ROADMAP-P4 P5a, опция (b)) список расширен правилом EXPAND-1
         # (+3 102 разговорно-устоявшихся слова ниже отсечки; правило — в шапке файла).

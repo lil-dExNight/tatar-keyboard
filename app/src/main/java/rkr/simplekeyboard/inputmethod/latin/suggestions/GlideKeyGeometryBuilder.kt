@@ -26,8 +26,7 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
  * the crossing carries numbers only.
  *
  * Only the alphabet element is a valid source (`KeyboardId.isAlphabetKeyboard()`); anything else
- * (symbols, shifted element) builds an empty geometry, which the decoder treats fail-closed.
- * P7-1 note: nothing calls this yet — P7-2/P7-3 wire it to the live keyboard.
+ * (symbols, shifted element) builds an empty geometry, for which the decoder returns nothing.
  */
 object GlideKeyGeometryBuilder {
     @JvmStatic

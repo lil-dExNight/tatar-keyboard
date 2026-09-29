@@ -8,7 +8,7 @@ namespace `rkr.simplekeyboard.inputmethod`. Ветка работы — `main`.
 
 | Действие | Команда |
 |---|---|
-| JVM-тесты (1920 шт.) | `./gradlew test` (для честного прогона — `--rerun-tasks`) |
+| JVM-тесты | `./gradlew test` (для честного прогона — `--rerun-tasks`) |
 | Python-тесты конвейера (507 шт.) | `for f in tests/*/test_*.py; do python3 "$f" \|\| exit 1; done` — pytest НЕ используется, это чистый unittest |
 | Instrumentation на устройстве (E3b/Phase B) | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest` → `adb install -r` обоих APK → `adb shell am instrument -w -e class rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3bComputeInstrumentationTest org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner` (пакет тестового APK — с суффиксом `.test`; legacy-раннеру нужен `<uses-library android:name="android.test.runner">` в `app/src/androidTest/AndroidManifest.xml`, уже есть). Меряет обе fuzzy-политики (DEFAULT/TATAR, Phase C = {1,4} probe-first) на 22 обзорных префиксах и опечаточных пробах (включая 10-cp «сцләмәтлек» — 380 проб) + дампит живую геометрическую карту соседей (32 пары) для сверки с офлайн-моделью `typo_pack.py`. Прогнан на POCO C71 2026-09-20 (логи — `build/tt-typo-next-phaseB/`, Phase B и Phase C). С 2026-09-28 опечаточные пробы E3b и замер глайд-декода утверждают p95 fail-closed (консервативная граница 5 мс; письменные гейты 3,5 мс по `docs/TT-TYPO-NEXT.md` и 5,0 мс по `docs/ROADMAP-P7.md`) — прогонять на ненагруженном устройстве со включённым экраном. `GlideUiDeviceTest` откалиброван под 720×1640 (POCO C71), на чужой геометрии падает сразу (fail-fast) — целиком классом проходит зелёным. Платформенная готча: HyperOS молча переключает системную клавиатуру при force-stop пакета, владеющего дефолтным IME, — в тестовых циклах такой пакет не останавливать |
 | Эмуляторный смоук (DEV-3) | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk путь] [--no-boot] [--outdir build/emulator-smoke/]` — поднять AVD → установить APK → выбрать IME → сценарий (набор tt/ru/en, подсказки, эмодзи-панель, crash-буфер; TT-SUGGESTIONS P5: two word-form probes — type татар/сәләм + space on the tt layout, tap the given suggestion cell (three cells again since 2026-09-29 — the 2026-09-27 four-cell wave reverted; the Tatar table stays packed at K = 4), read the try-it field; TT-TYPO-NEXT Phase A: a second cell tap after the сәләм probe proves predictions follow an accepted suggestion without a keystroke; EMOJI-LEARN: зонд `learned-emoji-tt` — learned word→emoji override (☀️ после «хәйерле иртә» вытесняет статический 🌅); EMOJI-PANEL: зонд `panel-back-reopen` — панель → BACK → клавиша ложится в поле (страж wedge A6, 2026-09-29)) → строки `RESULT\|PASS/FAIL/SKIP`, свидетельства (скриншоты, дампы) в outdir. Координаты клавиш откалиброваны под 1080×2280; пиксельная дельта полосы подсказок требует ImageMagick на хосте (без него — SKIP) |
@@ -107,7 +107,7 @@ schema 2 по умолчанию (`--schema 1` оставлен для спра�
 - `latin/LatinIME.java` — InputMethodService, точка входа IME.
 - `keyboard/` (Java) — View, PointerTracker, KeyDetector; `latin/suggestions/`,
   `latin/dictionary/**`, `latin/emoji/` (Kotlin) — подсказки, словари, эмодзи.
-- `app/src/test` — 1927 JVM-тестов (JUnit 4, Robolectric нет — осознанно).
+- `app/src/test` — JVM-тесты (JUnit 4, Robolectric нет — осознанно).
 - `scripts/` — python-конвейер ассетов (stdlib only, fail-closed);
   `research/corpus/` — измерительные скрипты и манифесты корпусов (данные OPUS
   не коммитятся — лицензии).

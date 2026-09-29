@@ -59,8 +59,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
     /**
      * The user's "Bottom offset" in px, as last handed to the keyboard geometry. The letter
      * keyboard lifts its rows by it; the emoji panel has to reserve the same strip, or it fills
-     * the space the user deliberately freed and the surface jumps when the two swap
-     * (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-1). Kept here because {@link #showEmojiPanel} runs long
+     * the space the user deliberately freed and the surface jumps when the two swap. Kept here because {@link #showEmojiPanel} runs long
      * after {@link #loadKeyboard} and has no SettingsValues of its own.
      */
     private int mKeyboardBottomOffset;

@@ -57,10 +57,6 @@ public final class InputAttributes {
      * apart. Suggestions in such a field are unaffected.
      */
     final public boolean mIsPostalAddressField;
-    /**
-     * Whether the floating gesture preview should be disabled. If true, this should override the
-     * corresponding keyboard settings preference, always suppressing the floating preview text.
-     */
     final private int mInputType;
 
     public InputAttributes(final EditorInfo editorInfo, final boolean isFullscreenMode) {

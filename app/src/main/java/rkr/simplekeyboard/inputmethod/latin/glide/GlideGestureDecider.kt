@@ -121,8 +121,6 @@ class GlideGestureDecider(
         /** FlorisBoard's velocity threshold: 0.10 dp/ms. */
         const val VELOCITY_THRESHOLD_DP_PER_MS = 0.10f
 
-        /** FlorisBoard's distance threshold: one key width (the caller passes it in px). */
-
         /**
          * The first-move anchor slop as a fraction of the key width (the caller passes the px).
          * Sized just above the platform's 8 dp touch slop — a resting finger's tremor never

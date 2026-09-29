@@ -40,9 +40,6 @@ import java.util.concurrent.Executor
  * domain by construction — no rule enumerates it (the whitelist from E2b-3 already closes backup by
  * default). The `UserManager.isUserUnlocked()` gate is mandatory: before the first unlock the path
  * does not exist, and the store survives that as "empty", never as an exception.
- *
- * Dormant in E4a-2: nothing in the live IME constructs this. Learning, the merge and the settings
- * toggle that will call it are E4b/E4c.
  */
 internal object AndroidPersonalDictionaryStorage {
     /** The single directory this seam owns, inside the base context's `noBackupFilesDir`. */

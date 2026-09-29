@@ -239,7 +239,7 @@ error verbatim. Effort: ~0.5 h.
 9.2.1 with aapt2 `9.2.1-15009934`, build-tools 37.0.0, compileSdk 37 /
 platform android-37.0): `./gradlew :app:assembleDebug` fails at
 `:app:processDebugResources` with, verbatim,
-`ERROR: /home/tarchok/Projects/tatar-keyboard/app/src/main/AndroidManifest.xml:32:9-45: AAPT: error: unexpected element <memory-budget> found in <manifest><application>.`
+`ERROR: <repo>/app/src/main/AndroidManifest.xml:32:9-45: AAPT: error: unexpected element <memory-budget> found in <manifest><application>.`
 Syntax tried was taken from the canonical doc
 (https://developer.android.com/topic/performance/memory/app-memory-budgets):
 `<memory-budget android:maxMb="48" />` plus `android:state="perceptible"` /

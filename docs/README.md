@@ -326,8 +326,7 @@
 - `TT-SUGGESTIONS.md` — mission report for the same (2026-09-19…20): baselines,
   generator validation (kaikki recall 90.34 %), Tatar dictionary 100 000 →
   110 000 entries, same-stem boost 57.58 → 62.82 %, strip-empty at sentence
-  start 100 → 0 %, final gates and emulator smoke. Uncommitted — awaits the
-  operator's commit/release decision.
+  start 100 → 0 %, final gates and emulator smoke. Released in 2.0.0.
 - `TT-TYPO-NEXT-PLAN.md` — approved plan of the typo-recovery / tap-followup
   mission (phases A–D): predictions right after an accepted suggestion, then
   calibrated typo recovery in the strip.
@@ -351,7 +350,7 @@
   Phase D done 2026-09-20: full gates green, signed release APK (1 849 555 B,
   SHA-256 `32cd873b…`), device UAT on the POCO C71 16/16 PASS (tap→predictions,
   the сцләм ladder, no-pollution, cold start 253/265 ms median, clean crash
-  buffer). Uncommitted — awaits the operator's commit/release decision.
+  buffer). Released in 2.0.0.
 - `TT-NEXTWORD-FILL-PLAN.md` — approved plan of the never-empty-strip mission
   (phases A–E, post-2.0.0): after a committed word, cells left free by bigram
   successors and word forms fill with the language's global top-frequency words.
@@ -364,7 +363,7 @@
   operator's scenario was replayed on the emulator instead, 12 rows PASS,
   including the finding that the literal `сэлэм` with two э cannot offer сәләм
   by the single-edit design). Device replay and Phase E (independent
-  re-verification) pending. Uncommitted — awaits the operator's decision.
+  re-verification) pending. Released in 2.0.1.
 - `RESEARCH-FIXES.md` — миссия починки находок ресерча (2026-09-04, релиз 1.9.14):
   текст клавиатурных поверхностей переведён с sp на dp (Р-3), панель эмодзи
   уважает «Нижний отступ» (Р-1) и сжимает свои полосы при малой высоте (Р-2);

@@ -27,7 +27,7 @@ So the emoji panel can show them first, it remembers **up to 24 recently used em
 
 The word-completion dictionaries, the next-word prediction tables and the “word → emoji” table are **shipped inside the app** and unpacked to an internal app folder on first use.
 
-- **Size.** Two unpacked dictionaries (1,276,289 and 1,151,323 bytes) and two prediction tables (135,889 and 131,662 bytes) — about 2.7 MB in total. The emoji lookup tables add a few hundred KB packed and store nothing about you.
+- **Size.** Two unpacked dictionaries (1,276,289 and 1,151,323 bytes) and two prediction tables (170,471 and 131,662 bytes) — about 2.7 MB in total. The emoji lookup tables add a few hundred KB packed and store nothing about you.
 - **What they record about you: nothing.** Suggestions, predictions and emoji suggestions are pure read-only lookups against these bundled tables. They keep no history, no counters, no copy of what you type. The emoji suggestion that appears in the strip reads only the word you just finished, on the device, and is gone from memory with it. In password and other private fields neither word suggestions nor emoji suggestions appear at all.
 - **Two versions kept after an update.** When a new app version brings a new dictionary or table, the previous unpacked copy is kept next to the new one for a while, so the update can be rolled back; an old version is removed on later launches. At most two versions of each artifact are on the device at any time.
 - **Excluded from backup**, like everything else.
@@ -104,7 +104,7 @@ Tatar Keyboard хранит то, что вы печатаете, **на ваш�
 
 Словари подсказок, таблицы предсказания следующего слова и таблица «слово → эмодзи» **поставляются внутри приложения** и распаковываются во внутреннюю папку при первом использовании.
 
-- **Размер.** Два распакованных словаря (1 276 289 и 1 151 323 байта) и две таблицы предсказаний (135 889 и 131 662 байта) — около 2,7 МБ суммарно. Таблицы эмодзи добавляют несколько сотен КБ в упакованном виде и ничего о вас не хранят.
+- **Размер.** Два распакованных словаря (1 276 289 и 1 151 323 байта) и две таблицы предсказаний (170 471 и 131 662 байта) — около 2,7 МБ суммарно. Таблицы эмодзи добавляют несколько сотен КБ в упакованном виде и ничего о вас не хранят.
 - **Что они о вас записывают: ничего.** Подсказки, предсказания и эмодзи-подсказки — это чистые чтения из встроенных таблиц. Никакой истории, счётчиков, копий набранного. Эмодзи-подсказка в полосе читает только что завершённое слово, на устройстве, и исчезает из памяти вместе с ним. В полях паролей и других приватных полях не показываются ни подсказки слов, ни подсказки эмодзи.
 - **Две версии после обновления.** Когда новая версия приложения приносит новый словарь или таблицу, прежняя распакованная копия некоторое время лежит рядом с новой — чтобы обновление можно было откатить; старая версия удаляется при последующих запусках. Одновременно на устройстве не больше двух версий каждого артефакта.
 - **Исключены из бэкапа**, как и всё остальное.

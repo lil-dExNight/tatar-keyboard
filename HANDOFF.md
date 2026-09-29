@@ -1,4 +1,4 @@
-# HANDOFF — strip UX revert wave (2026-09-29, UNCOMMITTED)
+# HANDOFF — strip UX revert wave (2026-09-29, released as 3.6.0)
 
 **Operator UX feedback on 3.3.0, executed as a forward change on top of the
 released 3.5.0 (`36e84690`):** (A) the live mid-gesture glide preview is
