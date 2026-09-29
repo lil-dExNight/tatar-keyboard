@@ -15,7 +15,8 @@
      <device-transfer> must exclude the same domains as <cloud-backup>.
 
      The exact XML shape (whole-domain <exclude> with no path attribute, and the domain
-     name set) is recorded and justified in docs/DICTIONARY-E2.md.
+     name set) is recorded and justified in docs/archive/emoji/DICTIONARY-E2.md (the
+     section "E2b-3 — backup closed as a whitelist").
 -->
 <data-extraction-rules>
     <cloud-backup>

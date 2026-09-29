@@ -1,3 +1,170 @@
+# HANDOFF — optimization + security plan wave (2026-09-29, UNCOMMITTED)
+
+**State as of 2026-09-29.** The 17-item plan
+`docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md` is executed: **all 17 items landed** —
+S8 (hostile-host robustness) closed last and earned its keep: three real holes
+found and fixed in `RichInputConnection` (oversized host payloads re-inflating
+the bounded cache, a throwing InputConnection crashing the IME process,
+negative selection reports creating phantom state); O8 is deferred-with-error on
+the toolchain (aapt2 rejects `<memory-budget>` until AGP ≥ 9.3 + platform
+android-37.2, the aapt2 error verbatim in the plan — a parked toolchain decision,
+not a defect). Everything sits on HEAD `0975ccfa`, **UNCOMMITTED; commits and any
+release are the operator's.**
+
+**Part O — optimization.**
+- **O1:** `docs/PERF-BUDGETS.md` — the living budget table; every metric row names
+  its gate or ritual.
+- **O2:** `scripts/device-perf-ritual.sh` + three green POCO runs; the PSS ceiling
+  is set (**114 000 kB** debug scale = peak reading 90 526 kB after 50 words +
+  ~25 % headroom); debug cold start 667.6 ms median (informational — the debug
+  build runs ~2.3× the release scale); frames p50 8.7–9.4 ms debug. Evidence
+  `build/device-uat-2026-09-29/perf/` + the pre-wave A/B in `perf-base/`.
+- **O3:** `DrawAllocInstrumentationTest` green on the POCO — **zero own
+  allocations** in the board/strip draw paths; the board cycle's 18 allocations
+  over 9 draws are attributed to the platform's StateListDrawable state
+  resolution (reproduced on a bare drawable) and bounded as the documented floor.
+- **O4:** two real fixes — `KeyboardView`'s per-press-frame iterator allocation
+  (invalidated-keys HashSet → ArrayList) and the strip's per-frame
+  autocorrect-underline `measureText` (now cached at content-set) — plus contract
+  pins; the device leg proves both **frame-neutral on hardware**.
+- **O5:** `TT#` Trace sections (onCreate, createInputView, loadKeyboard, emoji
+  panel, the async suggestLookup round trip), `<profileable android:shell="true"/>`
+  in the release manifest, macrobenchmark 1.5.0, verification-metadata extended;
+  the Perfetto capture on the POCO shows all six sections
+  (`build/device-uat-2026-09-29/perfetto/`).
+- **O6:** binder audit **CLEAN** (the F-wave had closed batching/staleness); the
+  eleven IC call kinds are count-anchored in `InputConnectionBinderContractTest`;
+  report `docs/IC-BINDER-AUDIT-2026-09-29.md`.
+- **O7:** the centerpiece, below.
+- **O8:** deferred-with-error (toolchain; the plan carries the final status).
+
+**Part S — security.**
+- **S1:** `docs/THREAT-MODEL.md` — 9 sections, the 31-row standing residual-risk
+  register aggregating all three prior audits, the deliberate `directBootAware`
+  posture documented, OWASP MASVS mapping with NETWORK = prove-absent.
+- **S2/S4:** `release_check.sh` gained `artifact.exported_surface` (aapt2 xmltree
+  vs the golden exported set, both directions, the IME service pinned
+  exported=false behind BIND_INPUT_METHOD) and `artifact.no_secrets` (tracked
+  tree + APK scanned for keystores, PEM blocks, token patterns) — both green in
+  the final 12/12.
+- **S3:** `LogSafetySourceContractTest` (4 tests) pins the reviewed log call-site
+  set of the input pipeline fail-closed; the debug tracers in
+  `PointerTracker`/`KeyboardState` are de-texted (key labels/`printableCode` out,
+  coordinates and functional-key booleans stay).
+- **S5:** `SeededFuzzHarness` + five validator fuzz suites — **61 500 seeded
+  iterations** (bit flips, truncations, size-field inflation, garbage), **zero
+  validator defects**, part of the standard `./gradlew test`.
+- **S6:** `EditorInfoPrivacyMatrixTest` (12 tests) — the
+  {password, visible-password, web-password, TYPE_NULL, NO_PERSONALIZED_LEARNING,
+  normal} × {word/pair/emoji learning, recents, strip, cache re-read} matrix;
+  **no behavioral hole**.
+- **S7:** the runtime no-traffic proof on the POCO — netstats UID counters
+  rx 0→0 / tx 0→0 over a scripted mixed session
+  (`build/device-uat-2026-09-29/netstats/`).
+- **S8:** landed last and earned its keep — **three real holes found and fixed**
+  in `RichInputConnection` (`HostileHostRobustnessTest` 12 tests +
+  `HostileHostSuggestionChurnTest` 2): oversized host answers re-inflated the
+  F3-bounded cache (now window-tail/head clamped at every writer), a throwing
+  editor call crashed the IME (all 11 editor-call sites now degrade silently,
+  RuntimeException-only — a deliberate evolution of the F5 no-catch pin, dated
+  footnote in the audit doc), and negative selection reports created phantom
+  selection state (fail-closed to INVALID_CURSOR_POSITION).
+- **S9:** root `SECURITY.md` + the re-audit ritual (per-release gate suite +
+  delta review, full pass per half-year, event-driven on LatinIME-lineage CVEs).
+
+**The centerpiece — O7: the mmap witness that caught a regression.** The item was
+written as "mmap experiment, decision-gated", but the tree had already shipped
+read-only mmap since 2026-07 (`MappedDictionaryEngine.FILE_MAPPER`), so the
+experiment ran shipped-mmap against the heap arm. The device witness
+(`DictionaryIoStrategyInstrumentationTest` — the first device measurement of the
+production read path) caught the shipped arm **over its bound**: mmap/tatar-typo
+p95 **5.188 ms** vs the 5.0 ms fail-closed gate (heap 3.559 ms). The deficit was
+per-byte absolute `MappedByteBuffer.get`, not paging. The fix in
+`TdictPrefixIndex.kt` bulk-fetches the active front-coding block with one
+relative get off a private duplicate view into two worker-confined scratches
+(≤ 1 107 B each) and parses at array speed — the mapping and its evictable
+file-backed residency are untouched. After: **1.723 ms**, mmap ≤ heap on every
+arm; E3b green on-device at 1.653 ms; host p95 0.017 → 0.009 ms; per-lookup
+allocation unchanged (622 B); results byte-identical. Evidence:
+`build/device-uat-2026-09-29/mmap-witness/` (before/after SUMMARY.md).
+
+**Final gates on the merged tree (2026-09-29):** JVM **1 911 tests / 200 suites /
+0 failures**; python **507 / 16 files**; `lintRelease` **0 errors / 29
+baselined**; `rebuild_assets.py --check` ok; packs reproducible — unsigned
+**1 799 578 B**, signed **1 804 874 B**; `release_check.sh --quick` **12/12**
+including both new gates; `check-no-internet.sh` green at both levels.
+
+**Operator-only remainders.**
+- Commit this wave in split English messages (natural splits: the O7 mmap fix,
+  the O-wave perf tooling, the S-wave security gates + docs, the doc wave).
+- Release decision: the tree is still version **3.4.0 / 41, which is already
+  tagged and published** — shipping this wave means a version bump plus CHANGELOG
+  and the usual ritual.
+- The **release-scale frame/PSS leg stays open**: the current tree's release-APK
+  frame p50 and PSS are unmeasured — the ritual needs the release APK with the
+  suggestions opt-in, and that flow is not automated yet.
+
+---
+
+# HANDOFF — leftovers + emoji-panel wave (2026-09-28/29, UNCOMMITTED)
+
+**State as of 2026-09-29.** The three planned leftovers of
+`docs/LEFTOVERS-PLAN-2026-09-28.md` are resolved (L1 closed not-a-defect, L2/L3 done)
+and the emoji-panel space wave of `docs/EMOJI-PANEL-SPACE-2026-09-28.md` is shipped —
+A+B+C, not just the recommended A+B. Everything sits on HEAD `0975ccfa`,
+**UNCOMMITTED; commits and any release are the operator's.**
+
+- **Emoji panel A+B+C shipped.** The 50dp search row collapsed into a 🔍 cell at the
+  tab strip's right end (+50dp of grid at every preset; POCO Default/OFF 1.6 → 2.7 rows
+  below the first header, Default/ON 2.5 → 3.6). New Appearance setting "Emoji panel
+  height": Same as keyboard (default — the old same-box invariant) / Larger (×1.2) /
+  Max (46 % of the screen); strings ×3 locales + a managed-restriction entry. Under
+  Larger/Max the IME window resizes on panel open — Gboard-style, opt-in. Floating
+  keys slimmed 44 → 40dp. Details: the Shipped section of the doc.
+- **L1 (backlog A6) closed — verdict NOT A DEFECT.** BACK hides the IME window by
+  platform design (framework `InputMethodService.handleBack`); Gboard shows the
+  byte-identical state; scripted reproduction 0/30 on the AVD + 0/20 on the POCO C71;
+  evidence `build/device-uat-2026-09-28/wedge/wedge-report.md`. No code fix warranted —
+  landed instead: the smoke probe `panel-back-reopen` (green), `keyboard_shown()` now
+  reads `mInputShown` (the reliable field; `mIsInputViewShown` is sticky by platform),
+  the stale wedge comment corrected.
+- **L2 (backlog B7) done.** The dead class-#5 machinery is deleted from
+  `TdictPrefixIndex.kt` (−709/+19) together with the `FuzzyEditPolicy.kt` disjunct and
+  `TwoSubstitutionCalibrationTest.kt`; the JVM delta is exactly −6 tests. The
+  python-side `--edit-class 5` generator in `scripts/typo_pack.py` is KEPT deliberately
+  (it keeps the ROADMAP-P4-pinned typo-set SHAs reproducible).
+- **L3 (backlog B9) done.** `gradle/verification-metadata.xml` regenerated with PGP
+  signature verification: 64 trusted keys, 350 component versions signature-verified,
+  33 components / 61 artifacts genuinely unsigned stay sha256-pinned, aapt2 pinned by
+  decision. The keyring `gradle/verification-keyring.{gpg,keys}` (70 keys) is committed —
+  no keyserver needed locally or in CI; `.gitignore` negations + ci.yml comment; the
+  rotation ritual is the L3 row of AGENTS.md. Fail-closed proven: a corrupted checksum
+  and a corrupted key id both fail the build; the cold-cache full cycle is green in 8m43s.
+
+Gates on the merged tree (2026-09-29): JVM **1 839 tests / 190 suites / 0 failures**
+(`--rerun-tasks`); python **507/16 files** (1 pre-existing skip); `lintRelease`
+**0 errors / 29 baselined** (a wave-orphaned `ios_keyboard_background_secondary` color
+was removed to keep the baseline true); `rebuild_assets.py --check` ok (tt 155/0, ru 2/0);
+baseline/startup profiles regenerated and promoted (3 430 → 3 431 rules); two unsigned
+packs byte-identical at **1 798 202 B**; signed pack **1 804 874 B**, SHA-256
+`445d90945dd5fca744669607c289f8830a12e9334b4b9d8177a6109fe679656a`, single signer
+`98ca6feb…42ad` — `release_check.sh --quick` **OVERALL PASS 12/12**;
+`check-no-internet.sh` green at both levels. Independent verifier verdicts: panel SHIP,
+L2 SHIP, L3 SHIP.
+
+**Emulator smoke (`tt_suggest_a14`): 23 PASS / 0 FAIL / 1 SKIP**, including the new
+`panel-back-reopen` probe; evidence `build/emulator-smoke-panel/`, screenshots
+`build/emulator-smoke-panel/shots/` (the search field over the keyboard, the Larger/Max
+window resize, the 40dp floating keys).
+
+**Operator-only remainders.** Commit this wave in split English messages (natural
+splits: the emoji panel, the L1 probe + smoke fix, the L2 deletion, the L3 verification
+hardening). Release decision: the tree is version **3.4.0 / 41, which is ALREADY tagged
+and published** — shipping this wave means a version bump, presumably **3.5.0** (the
+panel-height setting is user-facing), plus CHANGELOG and the usual release ritual.
+
+---
+
 # HANDOFF — backlog 2026-09-28 wave: all items closed + learned-emoji feature (uncommitted)
 
 **State as of 2026-09-28.** Every item of `docs/BACKLOG-2026-09-28.md` is resolved —
@@ -33,7 +200,9 @@ tested and device-verified. The feature report is `docs/EMOJI-LEARN.md`.
   (59 resources; the negative case was exercised). **B6** — `KeyboardTextsTable` javadoc
   states the table is maintained by hand and names the sync points. **B7 — decision
   confirmed: keep** the dead class-#5 calibration evidence in `TdictPrefixIndex`
-  (NO SHIP verdicts in code). **B8** — `scripts/build-tools-pin.sh` is the single source
+  (NO SHIP verdicts in code) — **superseded the same day: L2 executed, the machinery
+  is deleted** (the record is `docs/ROADMAP-P4.md` P6, the code recoverable from git
+  history). **B8** — `scripts/build-tools-pin.sh` is the single source
   of the build-tools pin; read-only consumers prefer the pin with a fallback to newest;
   CI carries the comment. **B9 — decision: deliberately deferred** — checksums in VCS
   catch drift after the fact (the cold-CI run on 2026-09-27 already caught a real
@@ -408,7 +577,8 @@ The ordered work plan for everything below is `docs/ROADMAP-P8-PLAN.md`
 - **P5b trigrams** — offline projection caps at +1.63 pp vs the +2.0 pp gate.
 - **P6 two-edit typo recovery** — ceiling 9.79 % recovery@3 < +10 pp gate; the
   pruned enumeration trips the fail-closed budget on 73.1 % of firing rows.
-  Class #5 machinery stays in the tree, unwired.
+  Class #5 machinery deleted 2026-09-28 (L2, `docs/LEFTOVERS-PLAN-2026-09-28.md`;
+  recoverable from git history).
 - **P7 autocorrect widening** — rejected with gate numbers in ROADMAP-P3 §P7.
   (The header line of `docs/ROADMAP-P3.md` still says "NOT started" — stale by
   its own body; worth a dated footnote.)

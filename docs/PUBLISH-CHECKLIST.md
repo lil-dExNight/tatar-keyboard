@@ -1496,10 +1496,14 @@ Host/JVM tests не являются device evidence. Записать устр�
 - [ ] Samsung/целевое устройство: rotation/recreation, navigation insets, moreKeys,
   hardware keyboard и `onComputeInsets` не теряют touchable regions.
 - [ ] Total PSS показанной клавиатуры уложился в правило дельт на фазу и в абсолютный
-  потолок, пересчитанный по первому валидному замеру на реальном устройстве
-  (`docs/archive/PROPOSALS.md`, раздел «Бюджет памяти (PSS)»); приложены сырые значения — полный вывод
-  `dumpsys meminfo` обоих плеч и медианы.
-- [ ] Cold start < 400 ms; приложены отдельные прогоны и медиана.
+  потолок **114 000 kB** (debug-шкала; установлен 2026-09-29 по замеру ритуала,
+  `docs/PERF-BUDGETS.md`, строка PSS): сценарии `scripts/device-perf-ritual.sh`
+  (плечо B — keyboard-idle / 50 слов tt+ru / панель эмодзи открыта+закрыта / 30 с idle),
+  приложены сырые `dumpsys meminfo` каждого сценария.
+- [ ] Cold start < 400 ms на release-сборке; приложены отдельные прогоны и медиана.
+  Скриптованное плечо — `scripts/device-perf-ritual.sh` (плечо A, kill -9 → первый
+  FrameCompleted; debug-сборка меряется на своей шкале и бюджет не закрывает — см.
+  «Debug numbers are not release numbers» в `docs/PERF-BUDGETS.md`).
 - [ ] Prefix compute p95 ≤ 5 ms и request→guarded UI publish p95 ≤ 16 ms на целевом
   устройстве; visible stale results = 0.
 - [ ] Hot draw/touch allocations = 0, janky frames ≤ 1%, FD/PSS не растут на повторных
