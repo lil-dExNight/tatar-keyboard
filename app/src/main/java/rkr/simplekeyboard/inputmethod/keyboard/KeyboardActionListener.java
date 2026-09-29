@@ -89,14 +89,6 @@ public interface KeyboardActionListener {
      */
     default void onGlideInput(final rkr.simplekeyboard.inputmethod.latin.glide.GlidePath path) {}
 
-    /**
-     * Called WHILE an armed glide moves (live per-MOVE scoring, 2026-09-27): a throttled partial
-     * snapshot for a strip preview. Same buffer rules as {@link #onGlideInput} — [path] is live
-     * and valid only during this call; the receiver must snapshot what it keeps. The default is a
-     * no-op, and nothing here may commit: only the lift ({@link #onGlideInput}) commits.
-     */
-    default void onGlideProgress(final rkr.simplekeyboard.inputmethod.latin.glide.GlidePath path) {}
-
     KeyboardActionListener EMPTY_LISTENER = new Adapter();
 
     class Adapter implements KeyboardActionListener {

@@ -324,16 +324,6 @@ class SuggestionsController internal constructor(
     /** The word a backspace right now would delete whole (the lift-committed or its replacement). */
     private var glideCommittedWord: String? = null
 
-    /**
-     * Live per-MOVE scoring (2026-09-27): whether the latest GLIDE request this controller made
-     * is the LIFT's. The lift sets it BEFORE issuing the request and the progress path clears it
-     * the same way — result delivery may be synchronous in tests, so the flag must be in place
-     * before the engine is asked. A GLIDE result commits only under `true`; under `false` it
-     * paints the unbound mid-gesture preview. Stragglers older than the latest request never get
-     * here at all: the engine's latest-only `isCurrent` check drops them upstream.
-     */
-    private var glideLiftInFlight: Boolean = false
-
     /** P7-7: whether [glideCommittedWord]'s commit prepended the chain space — the undo deletes
      * the space along with the word exactly when the commit added it. */
     private var glideCommitPrependedSpace: Boolean = false
@@ -1882,52 +1872,10 @@ class SuggestionsController internal constructor(
         // does after the idle release.
         releaseGlideIndexesExcept(activeLanguage)
         val language = activeLanguage ?: return
-        // Live per-MOVE scoring: the flag goes up BEFORE the request — a synchronously-answering
-        // engine (the tests') delivers inside the call, and the dispatch must already know this
-        // request is the lift's. The flag also supersedes every outstanding preview of this
-        // gesture: a late progress result is failed by the engine's latest-only check upstream.
-        glideLiftInFlight = true
         val token = activeEngine.requestGlide(sessionId, language, path)
         if (token == null) {
-            glideLiftInFlight = false
             clearToReservedBand()
         }
-    }
-
-    /**
-     * Live per-MOVE scoring (2026-09-27): a throttled PARTIAL path, delivered by PointerTracker
-     * while an armed glide moves. Decodes it on the engine worker and paints the top candidates
-     * as the strip PREVIEW ([applyGlideProgressResult]) — the paint carries no tap binding, so
-     * nothing mid-gesture is committable from the strip; only the lift commits.
-     *
-     * The gates are [onGlideInput]'s plus [eligible]: the preview paints the suggestions surface,
-     * so with the suggestions master off it stays dark while the lift-commit stands on its own
-     * (P7-6). A preview never touches the one-resident-index rule (C3) — the lift's release runs
-     * there; a gesture that never lifts leaves the freshly built index to the idle release, as
-     * before. A cancelled gesture leaves the last preview painted but unbound; any keystroke
-     * repaints, and no tap can land on it.
-     */
-    fun onGlideProgress(path: GlidePath) {
-        if (destroyed || !eligible || !glideEligible) return
-        if (!glideGate.isOn()) return
-        val activeEngine = usableEngine() ?: return
-        if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
-        // The same trailing-word tolerance as the lift: the chain's previous glide commit.
-        val trailingWord = editor.cachedWordBeforeCursor()
-        if (trailingWord.isNotEmpty() && trailingWord != glideCommittedWord) return
-        // The preview applies through applyResult, which demands the request's own session —
-        // exactly what the lift does; the session itself is NOT bumped (the gesture is part of
-        // this session's text).
-        requestSessionId = sessionId
-        val language = activeLanguage ?: return
-        // The flag drops BEFORE the request (a synchronous engine answers inside the call): a
-        // result arriving now is a preview, never a commit. Placed after the gates, so a gated
-        // progress cannot clobber a lift already in flight.
-        glideLiftInFlight = false
-        // O5: same supersede as onGlideInput — the decode preempts an in-flight lookup, whose
-        // stale handoff the engine suppresses; end its slice here. The preview is not traced.
-        endLookupTrace()
-        activeEngine.requestGlide(sessionId, language, path)
     }
 
     /**
@@ -2230,45 +2178,8 @@ class SuggestionsController internal constructor(
         when (kind) {
             LookupKind.PREFIX -> applyPrefixResult(suggestions)
             LookupKind.NEXT_WORD -> applyNextWordResult(suggestions)
-            // Live per-MOVE scoring: only the LIFT's result commits; any other current GLIDE
-            // result is the preview. (Anything older than the latest request never reaches here:
-            // the engine's isCurrent check above already failed it.)
-            LookupKind.GLIDE -> if (glideLiftInFlight) {
-                glideLiftInFlight = false
-                applyGlideResult(suggestions)
-            } else {
-                applyGlideProgressResult(suggestions)
-            }
+            LookupKind.GLIDE -> applyGlideResult(suggestions)
         }
-    }
-
-    /**
-     * Paints the mid-gesture glide preview (live per-MOVE scoring, 2026-09-27): the decode's top
-     * cells, re-cased by the same shift rule as the lift — and NOTHING else: every tap binding is
-     * cleared, so the preview is never committable from the strip (the gliding finger is down
-     * anyway, and a stray tap after the lift finds the alternatives' own binding instead). An
-     * empty decode leaves the band alone — mid-gesture, one throttle window of the previous
-     * content reads better than a flicker to empty.
-     */
-    private fun applyGlideProgressResult(suggestions: List<String>) {
-        if (suggestions.isEmpty()) return
-        val casing = if (glideShiftGate.isShifted()) {
-            TatarWordUtils.PrefixCasing.INITIAL_CAPS
-        } else {
-            TatarWordUtils.PrefixCasing.LOWER
-        }
-        // The paint replaces, so any band bound before the gesture (a typed prefix's) must lose
-        // its binding NOW: "what is painted is tappable" would otherwise let a tap commit the
-        // OLD binding under the NEW words.
-        displayedPrefix = null
-        displayedContextWord = null
-        displayedGlideAlternativesFor = null
-        val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
-        for (candidate in suggestions) {
-            cells.add(TatarWordUtils.applyCasing(candidate, casing))
-            if (cells.size >= SuggestionStripState.CELL_COUNT) break
-        }
-        showBand(cells)
     }
 
     private fun applyPrefixResult(suggestions: List<String>) {

@@ -147,17 +147,6 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     // no listener callbacks). Null whenever no glide is armed.
     private Key mGlideHoveredKey;
 
-    // Live per-MOVE scoring (2026-09-27): the armed glide's throttled preview emission. Both
-    // counters are set on every eligible down; an emission fires at most once per
-    // GLIDE_PROGRESS_MIN_INTERVAL_MS and only after GLIDE_PROGRESS_MIN_NEW_POINTS fresh points.
-    // The interval rides the POCO C71's measured decode cost (p95 ≈ 50 ms, P7-4): at 120 ms the
-    // engine worker stays under ~50 % duty, and the latest-only engine drops what it cannot
-    // serve — a preview that arrives late is simply stale, never wrong.
-    private static final long GLIDE_PROGRESS_MIN_INTERVAL_MS = 120;
-    private static final int GLIDE_PROGRESS_MIN_NEW_POINTS = 5;
-    private long mLastGlideProgressEventTime;
-    private int mLastGlideProgressPointCount;
-
     // TODO: Add PointerTrackerFactory singleton and move some class static methods into it.
     public static void init(final TypedArray mainKeyboardViewAttr, final TimerProxy timerProxy,
             final DrawingProxy drawingProxy) {
@@ -639,9 +628,6 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             // exact where it matters. The cast is explicit — the implicit long->float narrowing
             // here is what error-prone's LongFloatConversion flags (2026-09-24 audit, F12).
             path.addPoint(x, y, (float) eventTime);
-            // Live per-MOVE scoring: the throttle window opens on the down point.
-            mLastGlideProgressEventTime = eventTime;
-            mLastGlideProgressPointCount = path.getSize();
         }
     }
 
@@ -680,23 +666,6 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             }
             mGlideHoveredKey = key;
         }
-    }
-
-    /**
-     * Live per-MOVE scoring (2026-09-27): forwards the partial path to the listener for the
-     * strip preview, throttled by time AND by fresh points so a slow precise drag and a fast
-     * flick both emit at a sane rate. The buffer stays this tracker's own — a receiver that
-     * keeps it across threads snapshots it (the engine request copies). Never fires before
-     * arming (the only caller is the armed MOVE branch) and never past the lift (the lift
-     * delivers and clears the buffer, and the next down resets the throttle).
-     */
-    private void maybeEmitGlideProgress(final long eventTime) {
-        final int size = mGlidePath.getSize();
-        if (size - mLastGlideProgressPointCount < GLIDE_PROGRESS_MIN_NEW_POINTS) return;
-        if (eventTime - mLastGlideProgressEventTime < GLIDE_PROGRESS_MIN_INTERVAL_MS) return;
-        mLastGlideProgressEventTime = eventTime;
-        mLastGlideProgressPointCount = size;
-        sListener.onGlideProgress(mGlidePath);
     }
 
     /**
@@ -817,7 +786,6 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         if (mGlideDecider.isArmed()) {
             mGlidePath.addPoint(x, y, (float) eventTime); // explicit narrowing — see onDownEvent
             updateGlideFeedback(x, y, eventTime);
-            maybeEmitGlideProgress(eventTime);
             return;
         }
         if (mGlideDecider.isTracking() && !mCursorMoved) {

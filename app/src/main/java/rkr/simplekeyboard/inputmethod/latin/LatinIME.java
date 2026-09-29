@@ -2369,22 +2369,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Live per-MOVE scoring (2026-09-27): the armed glide's throttled partial path, handed to
-     * the suggestions controller, which decodes it on the engine worker and paints the strip
-     * WITHOUT binding it — nothing mid-gesture is tappable and nothing here commits; only the
-     * lift ({@link #onGlideInput}) does. Same buffer rule as the lift: the engine request
-     * snapshots before this call returns.
-     */
-    @Override
-    public void onGlideProgress(
-            final rkr.simplekeyboard.inputmethod.latin.glide.GlidePath path) {
-        final SuggestionsController controller = mSuggestionsController;
-        if (controller != null) {
-            controller.onGlideProgress(path);
-        }
-    }
-
-    /**
      * The emoji key was pressed. The emoji panel controller decides what happens: it starts the
      * one-shot snapshot preparation on the first press and shows the panel once (or immediately, if
      * the snapshot is already built). If preparation failed or produced no drawable entries, the
