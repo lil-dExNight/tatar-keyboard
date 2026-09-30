@@ -329,9 +329,8 @@ class FailClosedExitCodeTest(unittest.TestCase):
             self.assertFalse(out.exists())
 
     def test_guardrail_exit_does_not_publish_partial_output(self) -> None:
-        # Force a guardrail breach by pinning the entry count so build proceeds, then shrinking the
-        # allowed rows via a patched module-level ceiling is not exposed; instead corrupt the raw sha
-        # to hit exit 2 while an old file is present, proving no partial overwrite.
+        # The row ceiling cannot be patched, so a corrupted raw SHA forces exit 2 instead, with an
+        # old file present: the old file must survive untouched.
         with _asset_file(FIXTURE_ASSET) as asset, tempfile.TemporaryDirectory() as directory:
             out = self._out(directory)
             out.write_bytes(b"OLD CONTENT")
@@ -346,9 +345,7 @@ class CommittedInputsSmokeTest(unittest.TestCase):
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_real_build_matches_recorded_set_identity(self) -> None:
         typo_set, neighbor_map = pack.generate(DICTIONARY, LAYOUT_DIR)
-        # Recorded in docs/DICTIONARY-E3.md and asserted identically by the Kotlin calibration test.
-        # Recalibrated 2026-09-20 (TT-SUGGESTIONS P2): the dictionary grew to 110 000 entries,
-        # so the reproducible set grew with it (87 360 -> 96 118 rows).
+        # The Kotlin calibration test asserts the same values. A dictionary rebuild changes them.
         self.assertEqual(typo_set.size, 96118)
         self.assertEqual(
             typo_set.sha256,
@@ -359,7 +356,7 @@ class CommittedInputsSmokeTest(unittest.TestCase):
 
 
 class GeometricMapTest(unittest.TestCase):
-    """Edit class #2 geometric neighbours — device-true (gap-aware) model, Phase B."""
+    """Edit class #2 geometric neighbours — device-true (gap-aware) model."""
 
     def setUp(self) -> None:
         self.geo = pack.read_layout_geometry(LAYOUT_DIR)
@@ -369,8 +366,8 @@ class GeometricMapTest(unittest.TestCase):
         self.assertEqual(len(self.geo), 37)
 
     def test_thirty_two_undirected_pairs_and_symmetry(self) -> None:
-        # The horizontal gap kills every same-row "touch" on device: exactly the 32 cross-row
-        # pairs survive (docs/TT-TYPO-NEXT.md).
+        # The horizontal gap removes every same-row "touch" on device: exactly the 32 cross-row
+        # pairs remain.
         undirected = set()
         for node, partners in self.geometric_map.items():
             for partner in partners:
@@ -406,7 +403,7 @@ class GeometricMapTest(unittest.TestCase):
 
 
 class DeviceGeometryModelTest(unittest.TestCase):
-    """The Phase-B device-true geometry model (KeyboardBuilder/KeyboardRow/Key reproduced)."""
+    """The device-true geometry model (KeyboardBuilder/KeyboardRow/Key reproduced)."""
 
     def test_gap_and_paddings_are_read_from_the_base_config(self) -> None:
         gap, left_pad, right_pad = pack.read_keyboard_gaps(
@@ -473,7 +470,7 @@ class DeviceGeometryModelTest(unittest.TestCase):
 
 
 class PrefixWindowCliTest(unittest.TestCase):
-    """TT-TYPO-NEXT Phase B: the typo window is a CLI argument (the 5-cp window is the сцләм case)."""
+    """The typo window is a CLI argument (the 5-cp window covers the сцләм case)."""
 
     def test_default_window_stays_three_code_points(self) -> None:
         with _asset_file(FIXTURE_ASSET) as asset, tempfile.TemporaryDirectory() as directory:
@@ -580,7 +577,7 @@ class LayoutAlphabetTest(unittest.TestCase):
 
 
 class SubstitutionTypoSetTest(unittest.TestCase):
-    """Edit class #4: full single substitution over the layout alphabet (Phase C)."""
+    """Edit class #4: full single substitution over the layout alphabet."""
 
     def setUp(self) -> None:
         self.alphabet = pack.read_layout_alphabet(LAYOUT_DIR)
@@ -649,11 +646,8 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_class1_class2_class3_recorded_identities(self) -> None:
-        # Recalibrated 2026-09-20 (TT-SUGGESTIONS P2) for the 110 000-entry dictionary:
-        # 87 360 / 99 654 / 99 642 -> 96 118 / 109 649 / 109 637 rows.
-        # Recalibrated 2026-09-20 (TT-TYPO-NEXT Phase B): the geometry model learned the
-        # horizontal gap, so the class #2 set identity changed (the device-true 32-pair
-        # relation); classes #1 and #3 do not involve geometry and are unchanged.
+        # A dictionary rebuild changes all three identities; a geometry model change affects
+        # only class #2 (classes #1 and #3 do not involve geometry).
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1)
         self.assertEqual(one.size, 96118)
         self.assertEqual(
@@ -672,7 +666,7 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_class1_and_class2_five_code_point_window_identities(self) -> None:
-        # Phase B second window (the сцләм case).
+        # The second, 5-code-point window (the сцләм case).
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1, prefix_code_points=5)
         self.assertEqual(one.size, 102478)
         self.assertEqual(
@@ -686,8 +680,8 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_class4_recorded_identities(self) -> None:
-        # TT-TYPO-NEXT Phase C (2026-09-20): the full single-substitution sets on the committed
-        # 110k asset, both windows, layout-derived alphabet of 39 letters.
+        # The full single-substitution sets on the committed asset, both windows, over the
+        # layout-derived alphabet of 39 letters.
         four3, alphabet = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=4)
         self.assertEqual(four3.size, 109649)
         self.assertEqual(

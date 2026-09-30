@@ -34,7 +34,7 @@ class EmojiPanelStateTest {
     private val floatingInsetPx = 8
     private val backWidthPx = 60
 
-    /** The search band the grid absorbed on 2026-09-28 (docs/EMOJI-PANEL-SPACE-2026-09-28.md, A). */
+    /** Height of the former collapsed search band, now part of the grid. */
     private val collapsedSearchBandPx = 50
 
     /** The top of the scrolling content: right under the tab row — the search cell lives IN it. */
@@ -109,9 +109,8 @@ class EmojiPanelStateTest {
     }
 
     /**
-     * The cell is square again. The previous panel shrank it so that a whole number of rows filled
-     * the viewport exactly; with one continuous scroll through every section there is no row to
-     * align to, and that squeeze was what made the glyphs look small against the reference.
+     * The cell is square. With one continuous scroll through every section there is no row to align
+     * to, so the cell is not squeezed to fit a whole number of rows (that makes glyphs look small).
      */
     @Test
     fun cellIsSquareAndOnlyClampedToTheDpRange() {
@@ -173,28 +172,27 @@ class EmojiPanelStateTest {
     }
 
     /**
-     * The collapsed search band is gone for good, not hidden: with nothing expanded the grid starts
-     * exactly where the tab row ends and is taller by exactly the old 50px band
-     * (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item A).
+     * There is no collapsed search band, not even a hidden one: with nothing expanded the grid
+     * starts exactly where the tab row ends and is taller by exactly that band's 50px.
      */
     @Test
     fun theCollapsedSearchBandIsGridHeightByDefault() {
         val state = configuredState(snapshotOf(50))
         assertEquals(tabBarPx, state.gridTop())
-        // Before the collapse the grid was 400 - tabBarPx - 50: it gained exactly the band.
+        // With the band the grid would be 400 - tabBarPx - 50: it gained exactly the band.
         val oldGridHeight = 400 - (tabBarPx + collapsedSearchBandPx)
         assertEquals("the grid gained exactly the collapsed search band",
             oldGridHeight + collapsedSearchBandPx, state.gridHeight())
     }
 
-    // --- Нижний инсет под панелью навигации (дефект Д-1) ----------------------------------------
+    // --- Bottom inset under the navigation bar ------------------------------------------------
 
     /**
      * Everything that means "the bottom of the panel" moves up together by the navigation-bar
      * overlap: the floating keys, their touch targets (the same two numbers back the hit test) and
-     * the scrolling viewport. Before the fix the keys were pinned to the panel's own bottom edge,
-     * which from Android 15 lies UNDER the bar — the system took the touches and the user could not
-     * leave the panel (docs/DEVICE-UAT-1.9.12.md, Д-1).
+     * the scrolling viewport. From Android 15 the panel's own bottom edge lies UNDER the bar, so
+     * keys pinned to it would lose their touches to the system and the user could not leave the
+     * panel.
      */
     @Test
     fun bottomInsetLiftsFloatingKeysAndShrinksTheViewport() {
@@ -259,7 +257,7 @@ class EmojiPanelStateTest {
         assertEquals(floatingBottom, state.floatingBottom())
     }
 
-    // --- Сжатие фиксированной полосы при нехватке высоты (Р-2) -----------------------------------
+    // --- Squeezing the fixed band when height runs short ---------------------------------------
 
     /** While everything fits, the band is exactly what the view asked for — nothing is scaled. */
     @Test
@@ -271,10 +269,9 @@ class EmojiPanelStateTest {
 
     /**
      * When the panel is too short, the band yields instead of the content: the grid keeps at least
-     * a header plus one minimum row, which is what "less than one row of emoji" cost the user at
-     * Keyboard height 50 % (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-2). The squeeze now engages only
-     * below 44 + 102 = 146 px of usable height — before the search band collapsed it engaged below
-     * 196 px, so every real preset is already out of the squeeze.
+     * a header plus one minimum row, so a low keyboard height never leaves less than one row of
+     * emoji. The squeeze engages only below 44 + 102 = 146 px of usable height, which no real
+     * height preset reaches.
      */
     @Test
     fun bandsShrinkSoTheGridKeepsItsFloor() {
@@ -355,7 +352,7 @@ class EmojiPanelStateTest {
 
     /**
      * The trailing air is exactly the floating key plus its two insets (40 + 2×8 = 56dp in the
-     * view, item C of docs/EMOJI-PANEL-SPACE-2026-09-28.md), so scrolled to the very bottom the
+     * view), so scrolled to the very bottom the
      * last row's bottom edge ends one inset ABOVE the floating keys — fully clear of them.
      */
     @Test
@@ -502,8 +499,8 @@ class EmojiPanelStateTest {
         assertTrue(EmojiPanelState.isTab(tabTarget))
         assertEquals(1, EmojiPanelState.tabIndexOf(tabTarget))
 
-        // The search cell is the tab row's rightmost slot — there is no band under the row any
-        // more, so where the pill used to sit is now the grid's first header (not a target).
+        // The search cell is the tab row's rightmost slot; there is no band under the row, so
+        // just below it is the grid's first header (not a target).
         val searchCenter = (state.searchCellLeft() + state.searchCellRight()) / 2f
         assertTrue(EmojiPanelState.isSearch(state.targetAt(searchCenter, 1f)))
         assertEquals(EmojiPanelState.NO_TARGET, state.targetAt(width / 2f, tabBarPx + 1f))
@@ -741,7 +738,7 @@ class EmojiPanelStateTest {
         val state = configuredState(multiCategorySnapshot(64), width)
         val variants = 6
 
-        // A cell in the middle: the popup is centred on it and sits above its row.
+        // A cell in the middle: the popup is centered on it and sits above its row.
         assertTrue(state.openPopup(11, variants))
         assertTrue(state.isPopupOpen())
         assertEquals(11, state.popupCell())

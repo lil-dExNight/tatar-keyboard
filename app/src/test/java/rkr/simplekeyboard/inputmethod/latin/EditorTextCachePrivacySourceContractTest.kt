@@ -21,18 +21,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-09-25 audit, privacy: the lifecycle of the editor surrounding-text cache
+ * Privacy: the lifecycle of the editor surrounding-text cache
  * (`RichInputConnection.mTextBeforeCursor` and friends), pinned in source because `LatinIME`
  * cannot be instantiated without Android.
  *
  * Two rules:
  *
- * 1. The cache dies with the input session on EVERY boundary — `onFinishInputView` always cleared
- *    it; `onFinishInputInternal` and `onWindowHidden` used to leave it in memory until the next
- *    field (a lock screen or a home gesture over an unchanged field), and now clear it too.
+ * 1. The cache dies with the input session on EVERY boundary: `onFinishInputView`,
+ *    `onFinishInputInternal` and `onWindowHidden` all clear it, so a lock screen or a home
+ *    gesture over an unchanged field does not leave text in memory until the next field.
  *
  * 2. Password fields are never re-read into the cache at all: every `reloadTextCache` call site
- *    in `LatinIME` is gated by the password check. Auto-caps is unaffected by construction —
+ *    in `LatinIME` is gated by the password check. Auto-caps is unaffected:
  *    `getCursorCapsMode` reads only the local cache (no IPC), and the user's own typing keeps
  *    that cache current inside a password field.
  */

@@ -8,7 +8,7 @@ import org.junit.Test
 import java.lang.management.ManagementFactory
 
 /**
- * Unit tests for [GlideTrail] (P7-5; grown in P7-7): ring semantics (overwrite-oldest, order
+ * Unit tests for [GlideTrail]: ring semantics (overwrite-oldest, order
  * preservation), the age-windowed visibility, the fingertip-to-tail alpha ramp, the post-lift
  * fade-out math, and the zero-allocation discipline of the feed and draw-read paths (fade
  * frames included).
@@ -64,7 +64,7 @@ class GlideTrailTest {
         for (i in 0 until 60) {
             trail.addPoint(i.toFloat(), 0f, i * 10f)
         }
-        // The window is 300 ms (P7-7): points with age > 300 (t < 290, i.e. indices 0..28) hide.
+        // The window is 300 ms: points with age > 300 (t < 290, i.e. indices 0..28) hide.
         assertEquals(29, trail.firstVisible())
         // A newer point shifts the window.
         trail.addPoint(60f, 0f, 600f)
@@ -100,7 +100,7 @@ class GlideTrailTest {
         assertEquals(GlideTrail.MAX_ALPHA, trail.alphaAt(0))
     }
 
-    // --- P7-7: the post-lift fade-out ----------------------------------------------------------
+    // --- The post-lift fade-out -----------------------------------------------------------------
 
     @Test
     fun theFadeDecaysToZeroOverFadeOutMs() {

@@ -23,21 +23,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Mission `tt-personal-dict`, finding A4 of `docs/SILENT-AUDIT.md`: the three insertion paths of the
- * frozen text contract may not report an edit they did not make.
+ * The three insertion paths may not report an edit they did not make.
  *
- * `RichInputConnection` updates its own text cache BEFORE it checks whether a connection exists, and
- * both commit paths used to return `true` unconditionally. With the editor gone between the band
- * being painted and the tap, that produced two wrongs at once: `SuggestionsController.onTap` unbound
- * the candidates and cleared the band for text that reached no editor, and the cache was left
- * holding characters the editor does not have, with `mExpectedSelStart` moved along with them —
- * after which the trailing word, the letter-after-cursor test and the suffix an undo matches are all
- * read off fiction.
+ * `RichInputConnection` updates its own text cache BEFORE it checks whether a connection exists.
+ * If the editor is gone between painting the suggestion strip and the tap, a commit path that
+ * returns `true` anyway makes `SuggestionsController.onTap` clear the strip for text that reached
+ * no editor, and leaves the cache (and `mExpectedSelStart`) holding characters the editor does not
+ * have, so the trailing word, the letter-after-cursor test and the undo suffix are all wrong.
  *
  * Asserted by source: `InputLogic` needs a live `InputMethodService`, a `KeyboardSwitcher` and a
  * `RichInputMethodManager` singleton, so it does not run in a plain JVM test — the same reason the
  * `Autocorrect` and `SuggestionStrip` contracts in this suite are written this way. The predicates
- * are proved fail-capable at the bottom against the exact code they replaced.
+ * are checked at the bottom against a version of the code without the check.
  */
 class CommitPathConnectionContractTest {
 
@@ -61,9 +58,8 @@ class CommitPathConnectionContractTest {
     }
 
     /**
-     * The undo of path two (D3) — missed by 25c1ae28 and covered here since the audit of
-     * 2026-09-24: it deletes and commits through the same cache, so it answers to the same
-     * contract.
+     * The undo of path two: it deletes and commits through the same cache, so it answers to the
+     * same contract.
      */
     private val revertTatarAutocorrection by lazy {
         bodyOf("public boolean revertTatarAutocorrection(", "public boolean commitPredictedWord(")
@@ -99,8 +95,8 @@ class CommitPathConnectionContractTest {
     }
 
     /**
-     * The batch is opened and closed exactly once on BOTH paths through each method — the shape the
-     * frozen text contract pins in `AutocorrectSourceContractTest`, and the reason the check is not
+     * The batch is opened and closed exactly once on BOTH paths through each method — the shape
+     * `AutocorrectSourceContractTest` pins, and the reason the check is not
      * written as an early return with a second `endBatchEdit()`.
      */
     @Test
@@ -113,7 +109,7 @@ class CommitPathConnectionContractTest {
         }
     }
 
-    /** The shape that shipped: same two methods, no check. Every predicate above must reject it. */
+    /** The same two methods without the check. Every predicate above must reject it. */
     @Test
     fun thePredicatesRejectTheShapeTheyReplaced() {
         val shipped = """

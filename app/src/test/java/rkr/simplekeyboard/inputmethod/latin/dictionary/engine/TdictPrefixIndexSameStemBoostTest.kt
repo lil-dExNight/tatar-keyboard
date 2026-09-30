@@ -32,15 +32,14 @@ import kotlin.math.abs
 import kotlin.math.ceil
 
 /**
- * P3 same-stem boost (docs/TT-SUGGESTIONS.md): when the typed prefix is itself a complete
- * dictionary word of at least four code points, exact candidates whose remainder is a known Tatar
- * suffix rank before unrelated continuations; frequency order is preserved within each group; the
- * typed word itself stays excluded. This consciously amends the frozen D1 ranking for that one
- * case — everything else is pinned byte-identical below (no table, a prefix that is not a complete
- * word, or a complete word below the four-code-point threshold).
+ * Same-stem boost: when the typed prefix is itself a complete dictionary word of at least four
+ * code points, exact candidates whose remainder is a known Tatar suffix rank before unrelated
+ * continuations; frequency order holds within each group, and the typed word stays excluded.
+ * Every other case keeps the frozen ranking byte-identical (no table, a prefix that is not a
+ * complete word, or a complete word below four code points).
  *
- * The synthetic tests pin the merge rule itself; the real-asset tests pin the mission's acceptance
- * (prefix татар ranks татарлар/татарча above татарстан*) against the shipped dictionaries.
+ * Synthetic tests pin the merge rule; real-asset tests pin the intended effect (prefix татар
+ * ranks татарлар/татарча above татарстан*) against the shipped dictionaries.
  */
 class TdictPrefixIndexSameStemBoostTest {
 
@@ -63,7 +62,7 @@ class TdictPrefixIndexSameStemBoostTest {
     @Test
     fun withoutATableTheFrozenOrderIsByteIdentical() {
         val index = EngineTestFixtures.index(fixture)
-        // The exact D1 expectation: frequency desc, code-point asc on ties, typed word excluded.
+        // The frozen expectation: frequency desc, code-point asc on ties, typed word excluded.
         assertEquals(listOf("балайт", "балак", "балалы"), lookup(index, "бала"))
     }
 
@@ -71,7 +70,7 @@ class TdictPrefixIndexSameStemBoostTest {
     fun withATableSameStemContinuationsRankBeforeUnrelatedOnes() {
         val index = EngineTestFixtures.index(fixture, TatarSuffixRules)
         // Stem track (балалы 12, балалар 10, балам 4 — frequency desc) fills all three cells; the
-        // unrelated балайт (100) and балак (90) fall off the band despite outranking them all.
+        // unrelated балайт (100) and балак (90) fall off the strip despite outranking them all.
         assertEquals(listOf("балалы", "балалар", "балам"), lookup(index, "бала"))
     }
 
@@ -122,8 +121,8 @@ class TdictPrefixIndexSameStemBoostTest {
     @Test
     fun tatarPrefixBoostsInflectionsAboveToponyms() {
         val index = requireNotNull(tatarWithRules)
-        // Mission acceptance (docs/TT-SUGGESTIONS-PLAN.md P3 "Done when"): татарлар/татарча-type
-        // continuations above татарстан*. татар is five code points — above the threshold.
+        // The intended effect: татарлар/татарча-type continuations above татарстан*. татар is
+        // five code points, above the threshold.
         assertEquals(listOf("татарлар", "татарча", "татарлары"), lookup(index, "татар"))
     }
 

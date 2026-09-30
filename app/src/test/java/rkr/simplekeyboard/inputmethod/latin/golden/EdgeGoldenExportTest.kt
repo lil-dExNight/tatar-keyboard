@@ -31,35 +31,27 @@ import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
 
 /**
- * EDGE golden-vector exporter for the iOS port (ios/docs/VERIFICATION.md §3.1, OD-5). It closes
- * the P2 golden gaps that GoldenExportTest does not reach: malformed / non-UTF-8 prefixes and
+ * Edge-case golden-vector exporter. Inert unless EDGE_GOLDEN_OUT is set; its output feeds the iOS
+ * port's parity suite. Covers what GoldenExportTest does not: malformed / non-UTF-8 prefixes and
  * contexts, empty and very long (MAX_PREFIX_BYTES boundary) inputs, mixed-case prefixes through
- * the controller's casing gate and the autocorrect-preview policy, the fail-closed fuzzy budget
- * abort, and NEXT_WORD on non-dictionary / invalid contexts.
+ * the controller's casing gate and the autocorrect-preview policy, the typo-recovery budget abort,
+ * and NEXT_WORD on non-dictionary / invalid contexts.
  *
- * TEST-ONLY and inert: it runs only when EDGE_GOLDEN_OUT names a directory that already contains
- * keys-tt.tsv / keys-ru.tsv (ios/tools/export-key-geometry), so a normal `./gradlew test` skips it
- * and nothing here reaches the APK.
+ * EDGE_GOLDEN_OUT must name a directory that already contains keys-tt.tsv / keys-ru.tsv (the
+ * canonical key geometry). Nothing here reaches the APK.
  *
  *   EDGE_GOLDEN_OUT=/path/to/dir ./gradlew :app:testDebugUnitTest --tests '*EdgeGoldenExportTest*' --rerun
  *
- * The engine is assembled exactly as in GoldenExportTest (the production wiring of
- * EngineHandle.start / MappedDictionaryEngine.start; no personal sources). Byte inputs travel as
- * lowercase hex because a JSON string cannot carry malformed UTF-8. The fuzzy counters recorded
- * per prefix are the engine's own internal observability fields (lastFuzzyOverBudget,
- * lastFuzzyVariantCount, lastFuzzyVisitedCount, lastFuzzyProbeCount, lastAutocorrectProbeCount);
- * they are written only for inputs that pass the lookup's validity gate, because on the early
- * return the fuzzy counters keep the previous lookup's values by design.
+ * The engine is assembled exactly as in GoldenExportTest (no personal sources). Byte inputs travel
+ * as lowercase hex because a JSON string cannot carry malformed UTF-8. The fuzzy counters
+ * (lastFuzzyOverBudget, lastFuzzyVariantCount, lastFuzzyVisitedCount, lastFuzzyProbeCount,
+ * lastAutocorrectProbeCount) are written only for inputs that pass the lookup's validity gate,
+ * because on the early return they keep the previous lookup's values.
  *
- * Which budget can actually trip was established by instrumenting a throwaway copy of the tree
- * (~1.08 M Tatar and ~1.02 M Russian lookups: every 3-letter alphabet string, letter/pair repeats
- * up to 128 bytes, every dictionary word and last-letter substitutions, 200 k random strings and
- * 50 k glued word triples). Only the class-#1 VARIANT budget (MAX_FUZZY_VARIANTS = 64) — and the
- * autocorrect pass's own class-#1 variant budget — ever tripped, on runs of 33+ letters that have
- * two long-press partners (ә: а/э, һ: г/х). MAX_FUZZY_VISITED, the class-#4 survivor cap and
- * MAX_FUZZY_PROBES never tripped; the largest class-#4 emission seen was 2 432 probes, and the
- * structural maximum is 128 one-byte code points x 38 letters = 4 864 < 8 192. The records below
- * pin both sides of the reachable boundary and the probe maximum.
+ * Only the edit-class-1 variant budget (MAX_FUZZY_VARIANTS), in the lookup and in the
+ * autocorrect pass, can trip: on runs of 33+ letters that have two long-press partners
+ * (ә: а/э, һ: г/х). The other budgets are structurally out of reach. The records pin both sides
+ * of the reachable boundary and the class-4 probe maximum.
  */
 class EdgeGoldenExportTest {
 
@@ -321,8 +313,8 @@ class EdgeGoldenExportTest {
     )
 
     // ---------------------------------------------------------------------------------------
-    // prefix records: the computer's full answer, the D3 verdict, the fuzzy counters, and whether
-    // the engine accepts the request at all.
+    // prefix records: the computer's full answer, the autocorrect advice, the fuzzy counters, and
+    // whether the engine accepts the request at all.
 
     private fun exportPrefixEdges(w: Writer, e: Engine) {
         val inputs = listOf(
@@ -433,7 +425,7 @@ class EdgeGoldenExportTest {
 
     // ---------------------------------------------------------------------------------------
     // controller records: the SuggestionsController PREFIX decision for a RAW typed word —
-    // requestCurrentPrefix's casing gate (MIXED -> no request, reserved empty band), the lookup
+    // requestCurrentPrefix's casing gate (MIXED -> no request, empty strip reserved), the lookup
     // bytes it would send, and what applyPrefixResult paints: the autocorrect preview
     // (computeAutocorrectPreview, gate on) when it fires, else the first four candidates re-cased
     // with applyCasing. Pure composition of the production functions, in the controller's order.
@@ -566,7 +558,7 @@ class EdgeGoldenExportTest {
         listOf(File(path), File("app/$path")).firstOrNull(File::isFile) ?: error("cannot locate $path")
 
     companion object {
-        /** The GoldenExportTest typo map (long-press partners both ways plus a few neighbours). */
+        /** The GoldenExportTest typo map (long-press partners both ways plus a few neighbors). */
         private val TYPO: Map<Int, Int> = mapOf(
             'а'.code to 'ә'.code, 'ә'.code to 'а'.code, 'о'.code to 'ө'.code, 'ө'.code to 'о'.code,
             'у'.code to 'ү'.code, 'ү'.code to 'у'.code, 'ж'.code to 'җ'.code, 'җ'.code to 'ж'.code,

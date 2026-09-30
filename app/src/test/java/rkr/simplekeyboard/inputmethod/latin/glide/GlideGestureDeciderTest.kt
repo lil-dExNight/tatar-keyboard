@@ -7,9 +7,9 @@ import org.junit.Test
 
 /**
  * Unit tests for [GlideGestureDecider]: the glide-vs-tap-vs-long-press decision, the FlorisBoard
- * reference constants (one key width, 0.10 dp/ms, 500 ms window), and the fail-closed cancels.
- * Fixture scale: 100 px keys, 2.75 px/dp (the reference 440 dpi screen), so the velocity
- * threshold is 0.275 px/ms.
+ * reference constants (one key width, 0.10 dp/ms, 500 ms window), and the cancel paths. Fixture
+ * scale: 100 px keys, 2.75 px/dp (the reference 440 dpi screen), so the velocity threshold is
+ * 0.275 px/ms.
  */
 class GlideGestureDeciderTest {
 
@@ -55,11 +55,11 @@ class GlideGestureDeciderTest {
 
     @Test
     fun holdThenFastSwipeArmsEvenPastTheOldWindow() {
-        // The field report verbatim: a finger rests on the first key ~0.5-1 s, then swipes.
+        // A finger rests on the first key for 0.5-1 s, then swipes.
         val d = decider()
         d.onDown(1000f, 1000f, 0L, eligible = true)
         d.onMove(1005f, 1002f, 400L) // resting, within the slop
-        d.onMove(1010f, 1000f, 700L) // still resting at 700 ms — past the old 500 ms window
+        d.onMove(1010f, 1000f, 700L) // still resting at 700 ms — past 500 ms from down
         assertEquals(GlideGestureDecider.State.ARMED, d.onMove(1150f, 1000f, 750L))
     }
 
@@ -81,8 +81,8 @@ class GlideGestureDeciderTest {
         d.onDown(1000f, 1000f, 0L, eligible = true)
         d.onMove(1030f, 1000f, 300L) // 30 px > slop: anchored at t=300
         // 110 px by t=700: 110/400 = 0.275 px/ms from the anchor — NOT strictly above the
-        // threshold: past the distance threshold but too slow. (The old from-down semantics
-        // would have REJECTED the touch at t=500 already — the window runs from the anchor.)
+        // threshold: past the distance threshold but too slow. The window runs from the anchor, not
+        // from down, so the touch is not rejected at t=500.
         assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1110f, 1000f, 700L))
         // A fast continuation arms: 150 px from down over 50 ms from the anchor.
         val e = decider()
@@ -187,8 +187,8 @@ class GlideGestureDeciderTest {
 
     @Test
     fun anImmediateSwipeArmsExactlyAsBeforeTheAnchor() {
-        // The P7-2 behavior on an immediately-swiped gesture is unchanged: the first move sample
-        // crosses the slop at once and the arm lands on the same sample it always did.
+        // An immediately-swiped gesture: the first move sample crosses the slop at once, so the
+        // anchor does not delay the arm.
         val d = decider()
         d.onDown(1000f, 1000f, 0L, eligible = true)
         assertEquals(GlideGestureDecider.State.TRACKING, d.onMove(1050f, 1000f, 20L))

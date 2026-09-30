@@ -26,8 +26,9 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState
 
 /**
- * The single ranking of E4b, one named test per point of the written amendment to «Контракт текста»
- * (2026-07-30, «единая редакция ранжирования на три класса»).
+ * The single three-class ranking (exact, personal, fuzzy), one named test per rule: a
+ * personal-only word takes index 1 after exact candidates (index 0 when there are none), at most
+ * one personal-only word appears, and a personal match of a dictionary word only changes casing.
  *
  * The tests drive [CompositePrefixComputer] with a fake primary, so they exercise the merge itself
  * rather than the mmap index: what is under test is the ORDER, not the dictionary.
@@ -132,7 +133,7 @@ class CompositePrefixComputerTest {
     fun theStoredCasingWinsTheDuplicateWhenItDiffersFromTheNormalizedForm() {
         val result = merge(
             listOf("гүзәл", "гүзәллек"), exactCount = 2,
-            personalSource("Гүзәл" to "гүзәл"), // a name the user saved capitalised
+            personalSource("Гүзәл" to "гүзәл"), // a name the user saved capitalized
         )
         assertEquals("one cell, spelled the way the user saved it",
             listOf("Гүзәл", "гүзәллек"), result)
@@ -184,7 +185,7 @@ class CompositePrefixComputerTest {
         assertTrue(result.size <= CompositePrefixComputer.CELL_COUNT)
     }
 
-    // --- E5c: NEXT_WORD side, two-stage readiness ------------------------------------------------
+    // --- NEXT_WORD side, two-stage readiness ----------------------------------------------------
 
     @Test
     fun predictReturnsEmptyBeforeABigramSourceIsAttached() {
@@ -212,10 +213,9 @@ class CompositePrefixComputerTest {
 
     @Test
     fun predictNeverTouchesThePrimaryOrPersonalSources() {
-        // The PREFIX-path sources stay out of NEXT_WORD even after P1 (docs/ROADMAP-P2.md):
-        // personal bigrams arrive through their OWN seam ([PersonalBigramSource], EMPTY here), so
-        // predict() still never reaches the primary or the prefix personal source — the property
-        // this test pins by call count.
+        // The PREFIX-path sources stay out of NEXT_WORD: learned pairs arrive through their OWN
+        // seam ([PersonalBigramSource], EMPTY here), so predict() never reaches the primary or the
+        // prefix personal source — the property this test pins by call count.
         var primaryCalls = 0
         val primary = object : ClassifiedPrefixComputer {
             override val lastExactCount: Int = 0
@@ -242,7 +242,7 @@ class CompositePrefixComputerTest {
         assertEquals(0, personalCalls)
     }
 
-    // --- P3: after-word forms of the NEXT_WORD slot (docs/TT-SUGGESTIONS.md) ---------------------
+    // --- after-word forms of the NEXT_WORD slot ------------------------------------------------
 
     private fun fakeForms(forms: List<String>): AfterWordForms =
         AfterWordForms { _, _, maxOut -> forms.take(maxOut) }
@@ -281,10 +281,10 @@ class CompositePrefixComputerTest {
 
     @Test
     fun formsAreNotOfferedBeforeABigramSourceIsAttached() {
-        // The first-NEXT_WORD race repair (docs/NEXTWORD-RACE.md) re-issues the request when the
-        // attach lands, but only while the band holds no active-language word; a forms-only band
-        // painted from "not attached yet" would suppress it and the bigram successors — which
-        // outrank forms — would never appear until the next keystroke.
+        // When the bigram table attaches after the first NEXT_WORD request, the request is
+        // re-issued, but only while the strip holds no active-language word. A forms-only strip
+        // painted from "not attached yet" would suppress that, and the bigram successors (which
+        // outrank forms) would not appear until the next keystroke.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр")),
         )
@@ -306,11 +306,10 @@ class CompositePrefixComputerTest {
 
     @Test
     fun predictionsIgnorePersonalDictionaryEntirely() {
-        // The PREFIX-path personal source is still never consulted by predict() — P1 of Phase 2
-        // (docs/ROADMAP-P2.md) brings personal bigrams through their OWN seam, and this computer
-        // was built without it (EMPTY). The call-count proof above (E5c) shows predict() never
-        // reaches the prefix personal source; this is the same property demonstrated by RESULT —
-        // a personal word that would plausibly interfere never appears in or reorders the list.
+        // The PREFIX-path personal source is still never consulted by predict(): learned pairs
+        // come through their OWN seam, and this computer was built without it (EMPTY). The
+        // call-count test above shows predict() never reaches the prefix personal source; this
+        // shows the same by result — a personal word never appears in or reorders the list.
         val personalWithAMatchingWord = object : PersonalCandidateSource {
             override fun candidatesFor(normalizedPrefix: String): List<PersonalCandidate> =
                 listOf(PersonalCandidate("йорт", "йорт"))
@@ -327,7 +326,7 @@ class CompositePrefixComputerTest {
         assertEquals(listOf("бакча", "капка"), result)
     }
 
-    // --- P1: personal bigrams of the NEXT_WORD slot (docs/ROADMAP-P2.md) -------------------------
+    // --- learned word pairs in the NEXT_WORD slot ----------------------------------------------
 
     private fun fakeBigrams(vararg pairs: Pair<String, String>): PersonalBigramSource =
         object : PersonalBigramSource {
@@ -406,10 +405,10 @@ class CompositePrefixComputerTest {
 
     @Test
     fun personalPairsAreNotOfferedBeforeABigramSourceIsAttached() {
-        // The NEXTWORD-RACE rule holds for personal pairs exactly as for forms and the fallback:
-        // a personal-only band painted from "not attached yet" would suppress the re-request the
-        // attach repair fires, and the static successors — which outrank pairs — would never
-        // appear until the next keystroke.
+        // The late-attach rule holds for learned pairs exactly as for forms and the fallback: a
+        // pairs-only strip painted from "not attached yet" would suppress the re-request fired on
+        // attach, and the static successors (which outrank pairs) would not appear until the next
+        // keystroke.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
@@ -483,7 +482,7 @@ class CompositePrefixComputerTest {
         assertSame(bigrams, computer.predict(prefix("өй")))
     }
 
-    // --- TT-NEXTWORD-FILL: the global top-frequency fallback of the NEXT_WORD slot -------------
+    // --- the global top-frequency fallback of the NEXT_WORD slot ------------------------------
 
     /** A fake fallback with the production exclusion semantics, so the merge itself is measured. */
     private fun fakeFallback(words: List<String>): FallbackWords =
@@ -519,9 +518,9 @@ class CompositePrefixComputerTest {
 
     @Test
     fun theFallbackIsNotOfferedBeforeABigramSourceIsAttached() {
-        // The NEXTWORD-RACE repair re-issues the request when the attach lands, but only while the
-        // band holds no active-language word; a fallback-only band painted from "not attached yet"
-        // would suppress it — the exact rule the forms already live by.
+        // The late-attach re-request fires only while the strip holds no active-language word; a
+        // fallback-only strip painted from "not attached yet" would suppress it, the same rule
+        // the forms follow.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм", "белән", "да")),
@@ -562,7 +561,7 @@ class CompositePrefixComputerTest {
         )
         computer.attachBigramSource(NextWordComputer { bigrams })
 
-        // Exactly the pre-fill answer: bigrams + forms, and no third source.
+        // Only bigrams + forms, with no third source.
         assertEquals(listOf("эшләгән", "сүзләр"), computer.predict(prefix("сүз")))
     }
 

@@ -23,13 +23,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The rules the operator found broken on a real phone. In 1.6.0: the caret must sit at the end of
- * the typed query, and the result band must not exist while the query is empty. In 1.6.1: a field
- * holding nothing but spaces is not a query, and the caret must not stand on the hint.
+ * Emoji search layout rules: the caret sits at the end of the typed query, the result band does
+ * not exist while the query is empty, a field holding only spaces is not a query, and the caret
+ * does not stand on the hint.
  *
- * The pure half is checked directly; the half that lives inside `onDraw` / `onMeasure` is checked
- * the way the rest of this package checks drawing code — by grepping the frozen source, in the
- * style of [EmojiPanelSourceContractTest].
+ * The pure half is checked directly; the half inside `onDraw` / `onMeasure` is checked by grepping
+ * the source, like [EmojiPanelSourceContractTest].
  */
 class EmojiSearchLayoutTest {
 
@@ -77,9 +76,8 @@ class EmojiSearchLayoutTest {
     // --- The pure rules -----------------------------------------------------------------------
 
     /**
-     * The caret is exactly at the right edge of the drawn text. 1.6.0 added `closeCrossPx` (5dp)
-     * here, so at the default density the caret stood 5px past the text and the operator read the
-     * gap as a trailing space.
+     * The caret is exactly at the right edge of the drawn text; any extra offset reads as a
+     * trailing space.
      */
     @Test
     fun theCaretXIsTheRightEdgeOfTheTextAndNothingElse() {
@@ -112,13 +110,11 @@ class EmojiSearchLayoutTest {
         )
     }
 
-    // --- Defect 1: the caret sits at the end of the text ---------------------------------------
+    // --- The caret sits at the end of the text ------------------------------------------------
 
     /**
-     * 1.6.0 drew the caret at `textLeft + measureText(queryText) + closeCrossPx`, where
-     * `closeCrossPx` is the half-size of the "✕" key at the other end of the pill. The operator
-     * read the resulting 5dp gap as a trailing space. Nothing but the text width may enter the
-     * caret's x.
+     * Nothing but the text width may enter the caret's x. In particular `closeCrossPx` (the
+     * half-size of the "✕" key at the other end of the pill) must not, or a 5dp gap appears.
      */
     @Test
     fun theCaretIsDrawnAtTheEndOfTheQueryAndNothingIsAddedToIt() {
@@ -156,11 +152,11 @@ class EmojiSearchLayoutTest {
         assertTrue(closeSection.contains("closeCrossPx"))
     }
 
-    // --- Defect 2: no result band while the query is empty -------------------------------------
+    // --- No result band while the query is empty ----------------------------------------------
 
     /**
-     * 1.6.0 always measured `queryRowPx + resultRowPx`, so an empty query reserved 54dp for a band
-     * whose only content was the words "type a query". The band must not be measured at all then.
+     * An empty query measures `queryRowPx` only; adding `resultRowPx` would reserve 54dp for an
+     * empty band.
      */
     @Test
     fun theMeasuredHeightDropsTheResultBandWhileTheQueryIsEmpty() {
@@ -206,12 +202,11 @@ class EmojiSearchLayoutTest {
         )
     }
 
-    // --- Defect 3: a query of spaces is not a query --------------------------------------------
+    // --- A query of spaces is not a query -----------------------------------------------------
 
     /**
-     * The operator typed a space into the empty field in 1.6.1 and got a band saying "nothing
-     * found". The search itself trims before matching, so a run of spaces can never have a result;
-     * every other part of the view has to agree with that and treat such a field as empty.
+     * The search trims before matching, so a run of spaces can never have a result; every other
+     * part of the view must agree and treat such a field as empty (no "nothing found" band).
      */
     @Test
     fun aQueryOfNothingButSpacesIsNotAQuery() {
@@ -269,12 +264,11 @@ class EmojiSearchLayoutTest {
         )
     }
 
-    // --- Defect 4: the caret must not stand on the hint ----------------------------------------
+    // --- The caret must not stand on the hint -------------------------------------------------
 
     /**
-     * With an empty field 1.6.1 drew the hint from `textLeft` and the caret at `textLeft` too, so
-     * the caret stood on the first letter of "Поиск эмодзи"
-     * (`operator-shots/1.6.0-empty-query-plaque.jpg`). The hint starts past the caret's right edge.
+     * With an empty field the caret is at `textLeft`, so the hint starts past the caret's right
+     * edge instead of at `textLeft`, where the caret would cover its first letter.
      */
     @Test
     fun theHintStartsPastTheRightEdgeOfTheCaret() {

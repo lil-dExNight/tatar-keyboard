@@ -1,29 +1,12 @@
 #!/usr/bin/env python3
-"""Доказательство lossless-эквивалентности TATBIGR schema 2 → schema 3 (SIZE-2).
+"""Check that a TATBIGR schema 3 table is lossless against its schema 2 source.
 
-Зеркало ``schema2_equivalence_check.py`` для биграммных таблиц. Сравнивает два
-ассета одной таблицы (поставляемый schema 2 и его перепаковку
-``bigram_asset_pack.py repack``) на двух уровнях:
-
-  1. ПОЛНЫЙ РАЗБОР: для КАЖДОЙ головы (10 204 tat + 9 998 rus) список преемников
-     обязан совпасть пословно и по порядку; наборы голов — точно.
-  2. НЕЗАВИСИМАЯ МОДЕЛЬ ЧИТАТЕЛЯ: V3Index ниже повторяет алгоритм доступа
-     Kotlin-читателя schema 3 (точечный поиск слова в словаре → бинпоиск блока
-     по словарному индексу → потоковый декод дельт и varint-преемников),
-     намеренно НЕ пользуясь результатом разбора из валидатора. Его выдача по
-     каждой голове (и по выборке слов-не-голов, где читатель обязан молчать)
-     сверяется с разбором v2.
-
-Использование:
-
-    python3 scripts/schema3_equivalence_check.py \
-        --v2 app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib \
-        --v3 /tmp/v3/tatar.tatbigr.zlib \
-        --dictionary app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib \
-        --language tat
-
-Коды выхода: 0 — эквивалентны, 1 — расхождение, 2 — входы/окружение.
-Только stdlib.
+The bigram counterpart of ``schema2_equivalence_check.py``. Compares a schema 2 table with its
+``bigram_asset_pack.py repack`` output: the head sets and every head's successor list must match
+exactly, and an independent model of the Kotlin schema 3 reader (V3Index) must return the v2
+successors for every head and nothing for a sample of non-head words. Usage:
+``schema3_equivalence_check.py --v2 V2 --v3 V3 --dictionary DICT --language tat``.
+Exit: 0 equivalent, 1 mismatch, 2 missing input.
 """
 
 from __future__ import annotations
@@ -45,8 +28,8 @@ import dictionary_pack as dp  # noqa: E402
 
 
 class V3Index:
-    """Независимая модель читателя schema 3: бинпоиск по блокам голов + потоковый
-    декод, словарь — плоский список слов со своим бинпоиском (модель
+    """Independent model of the schema 3 reader: binary search over head blocks, then a
+    streaming decode. The dictionary is a flat word list with its own binary search (models
     TdictPrefixIndex.indexOfWord/wordAt)."""
 
     def __init__(self, raw: bytes, dictionary_words: list[str]) -> None:
@@ -100,7 +83,7 @@ class V3Index:
         query_index = self._index_of_word(context.encode("utf-8"))
         if query_index < 0:
             return []
-        # Бинпоиск блока: последний блок с firstDictIndex <= query_index.
+        # Binary search for the last block with firstDictIndex <= query_index.
         block = bisect.bisect_right(self.first_indices, query_index) - 1
         if block < 0:
             return []
@@ -123,7 +106,7 @@ class V3Index:
         if found < 0:
             return []
         head = first + found
-        # Пропустить преемников предыдущих голов блока.
+        # Skip the successors of the earlier heads in the block.
         cursor = self.success_ids_offset + success_offset
         for previous in range(first, head):
             for _ in range(self.raw[self.counts_offset + previous]):
@@ -147,7 +130,7 @@ def run(v2_path: Path, v3_path: Path, dictionary_path: Path, tag: str, top: int)
         bp.decompress(v3_path.read_bytes()), dictionary_words, dictionary_sha
     )
 
-    # Уровень 1: полное тождество разбора.
+    # Level 1: the full parses are identical.
     if parsed_v3.head_words != parsed_v2.head_words:
         print("RESULT|FAIL|heads-differ", file=sys.stderr)
         return 1
@@ -156,7 +139,7 @@ def run(v2_path: Path, v3_path: Path, dictionary_path: Path, tag: str, top: int)
             print(f"RESULT|FAIL|successes-differ|{head!r}", file=sys.stderr)
             return 1
 
-    # Уровень 2: независимая модель читателя — каждая голова + выборка не-голов.
+    # Level 2: the independent reader model, for every head and a sample of non-heads.
     index = V3Index(bp.decompress(v3_path.read_bytes()), dictionary_words)
     for head in parsed_v2.head_words:
         expected = parsed_v2.successes_by_head[head][:top]

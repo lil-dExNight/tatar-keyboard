@@ -207,8 +207,8 @@ class SuggestionsControllerLanguageSwitchTest {
             DictionaryArtifactSpec.forSubtype(russian),
         )
         assertNull(DictionaryArtifactSpec.forSubtype("en_US"))
-        // Separate families and separate directories: this is what keeps an update from 1.6.1 from
-        // touching the Tatar file the device already inflated.
+        // Separate families and separate directories: this is what keeps an update from touching
+        // the Tatar file the device already inflated.
         val specs = DictionaryArtifactSpec.ALL
         assertEquals(specs.size, specs.map { it.family }.distinct().size)
         assertEquals(specs.size, specs.map { it.storageDirectoryName }.distinct().size)
@@ -315,7 +315,7 @@ class SuggestionsControllerLanguageSwitchTest {
         h.editor.word = "сло"
         h.controller.onSubtypeChanged(eligible = true, subtypeId = russian)
 
-        // Inflation has not finished: no engine, and the frozen state table requires GONE.
+        // Inflation has not finished: no engine, and the strip state table requires GONE.
         assertEquals(listOf(tatar), h.engineFactoryCalls)
         assertTrue(!h.strip.visible)
 
@@ -328,8 +328,8 @@ class SuggestionsControllerLanguageSwitchTest {
 
     @Test
     fun turningTheSettingOffReleasesEveryLanguageAtTheNextBoundary() {
-        // The whole feature off = the master AND the glide toggle (P7-6): the release machinery
-        // is pinned for that combination.
+        // The whole feature off = the master AND the glide toggle: the release machinery is pinned
+        // for that combination.
         val h = Harness()
         h.editor.word = "сүз"
         h.controller.onStartInput(eligible = true, subtypeId = tatar, glideEligible = false)
@@ -348,8 +348,8 @@ class SuggestionsControllerLanguageSwitchTest {
 
     @Test
     fun turningTheMasterOffKeepsTheEngineWarmForGlide() {
-        // P7-6: glide is independent — with the glide gate open, the master OFF transition must
-        // not schedule the engine teardown; the band dies alone.
+        // Glide is independent — with the glide gate open, the master OFF transition must not
+        // schedule the engine teardown; the band dies alone.
         val h = Harness()
         h.editor.word = "сүз"
         h.controller.onStartInput(eligible = true, subtypeId = tatar)

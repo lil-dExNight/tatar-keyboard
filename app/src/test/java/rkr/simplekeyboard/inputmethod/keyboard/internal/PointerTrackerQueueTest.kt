@@ -22,12 +22,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-09-25 audit, F13 (docs/SECURITY-AUDIT-2026-09-25-FIXES.md): the queue holds each tracker
- * at most once (a tracker whose up event was lost must not re-enter on the next down), and a
- * cancel-all EVICTS — a cancelled tracker used to linger forever, inflating the active-pointer
- * count and receiving phantom ups meant for live touches. The eventTime overload keeps the
- * ACTION_CANCEL ordering: disable everyone first (a phantom up delivered to a still-enabled
- * tracker would commit its key), then the phantom-up wave, then the eviction.
+ * The queue holds each tracker at most once (a tracker whose up event was lost must not re-enter
+ * on the next down), and a cancel-all evicts, so a cancelled tracker cannot inflate the
+ * active-pointer count or receive phantom ups meant for live touches. The eventTime overload
+ * keeps the ACTION_CANCEL ordering: disable every tracker first (a phantom up delivered to a
+ * still-enabled tracker would commit its key), then the phantom ups, then the eviction.
  *
  * The queue is plain Java with its Android use confined to DEBUG-gated logs, so it runs in a
  * JVM test; [PointerTracker] itself does not (its static state needs a live Resources), and its
@@ -91,7 +90,7 @@ class PointerTrackerQueueTest {
         assertEquals(listOf("cancel:a", "cancel:b", "cancel:c"), log)
         assertEquals("cancelled trackers leave the queue", 0, queue.size())
 
-        // The audit's shape: nothing lingers to receive a later phantom up.
+        // Nothing lingers to receive a later phantom up.
         queue.releaseAllPointers(42L)
         assertEquals("no phantom ups reach evicted trackers", 3, log.size)
     }

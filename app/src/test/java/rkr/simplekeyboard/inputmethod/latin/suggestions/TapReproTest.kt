@@ -25,11 +25,9 @@ import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * Mission tt-tap-repro. Reproduces, from the symptom, the two defects the operator saw on 1.8.0.
- * The cursor-bookkeeping cause behind both symptom-2 tests was fixed in 1.8.1; they pass now and
- * stay here as regression tests. The symptom-1 test was @Ignore'd until mission tt-final: the
- * operator's 2026-08-22 decision made the repaint part of the assignment, and the invariant it
- * asserts — what the strip paints is tappable — now holds.
+ * Regression tests for two strip defects, reproduced from the symptom: (1) what the strip paints
+ * must be tappable, and (2) the cursor bookkeeping must not mistake the keyboard's own backspace
+ * for an external move, which used to leave the band empty.
  *
  * The fakes here differ from [SuggestionsControllerTest]'s in ONE deliberate way: the engine has
  * real latest-only token semantics (a fresh token per request, `isCurrent` true only for the newest
@@ -193,7 +191,7 @@ class TapReproTest {
             frameworkReportsCursor(word.length)
         }
 
-        /** LatinIME.onUpdateSelection, lines 1300-1306, verbatim in shape. */
+        /** LatinIME.onUpdateSelection, verbatim in shape. */
         fun frameworkReportsCursor(offset: Int) {
             val externalMove = offset != connection.expectedSelectionStart ||
                 offset != connection.expectedSelectionEnd
@@ -240,7 +238,7 @@ class TapReproTest {
     }
 
     /**
-     * "Ячейка подсвечивается, но текст не меняется."
+     * "The cell highlights, but the text does not change."
      *
      * The window: the live cached word has moved off the prefix the painted candidates were
      * computed for, and the answer to the new prefix has not come back yet. The controller unbinds
@@ -297,9 +295,9 @@ class TapReproTest {
     }
 
     /**
-     * Rule 3 of the mission dossier, as a test: ordinary monolingual typing must not change. The
-     * words the user ends up looking at after each answered keystroke are exactly the ones the
-     * engine returned, in order, and every one of them commits.
+     * Ordinary monolingual typing must not change. The words the user ends up looking at after each
+     * answered keystroke are exactly the ones the engine returned, in order, and every one of them
+     * commits.
      */
     @Test
     fun ordinaryTypingStillShowsTheEngineAnswerForEveryKeystroke() {

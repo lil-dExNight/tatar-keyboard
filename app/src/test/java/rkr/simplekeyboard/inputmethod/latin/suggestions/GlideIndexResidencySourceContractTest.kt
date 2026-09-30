@@ -21,13 +21,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * C3 of `docs/ROADMAP-P8-PLAN.md`: at most ONE glide word index may be resident.
+ * At most ONE glide word index may be resident.
  *
- * The 3.0.0 audit recorded an accepted worst case of ~5.8 MB — both warm engines holding their
- * own index at once (warm slots are deliberate, see `LanguageSlot`'s class doc). A glide request
- * now drops every OTHER language's index first, so the worst case is one index; the language the
- * user returns to rebuilds lazily on its next gesture, exactly as it already does after the idle
- * release (`releaseGlideIndexes`, O2-3).
+ * Both engines stay warm (see `LanguageSlot`), so without this rule each could hold its own index.
+ * A glide request drops every OTHER language's index first; the language the user returns to
+ * rebuilds lazily on its next gesture, as it does after the idle release (`releaseGlideIndexes`).
  *
  * Why a source contract: the drop is a POST to another engine's serialized worker, so its effect
  * is only observable across threads and a real engine pair. That the drop itself frees the index
@@ -78,8 +76,8 @@ class GlideIndexResidencySourceContractTest {
 
     @Test
     fun theIdleReleaseStillDropsEverything() {
-        // C3 narrows the residency during typing; it must not weaken the idle release that frees
-        // the last index when the keyboard goes away.
+        // The one-index rule narrows residency during typing; it must not weaken the idle release
+        // that frees the last index when the keyboard goes away.
         val fn = controllerSource().substringAfter("fun releaseGlideIndexes()")
             .substringBefore("internal fun signalDictionaryReadyForTest()")
         assertTrue(

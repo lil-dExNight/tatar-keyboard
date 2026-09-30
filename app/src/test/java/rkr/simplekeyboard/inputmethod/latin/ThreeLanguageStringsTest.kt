@@ -22,16 +22,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Mission tt-final, section 3 of the dossier: the interface speaks three languages, and none of the
- * three may quietly lose a sentence.
+ * The interface ships in three languages, and none of them may lose a string.
  *
- * This project ships its OWN strings in exactly three locales — `values` (English), `values-ru` and
- * `values-tt`. Since phase 3b (2026-08-30) those are the only folders: the eighty locale folders
- * inherited from Simple Keyboard upstream were deleted together with the layouts they served.
- *
- * The gap this was written for was real: `tatar_autocorrect` and `tatar_autocorrect_summary` existed
- * in English and in Tatar and were missing in Russian, so the Autocorrect row on a Russian phone
- * stood in English between two Russian rows.
+ * The app's strings live in exactly three locales — `values` (English), `values-ru` and
+ * `values-tt`; the upstream locale folders were removed with the layouts they served. A key missing
+ * from one translation shows up as an English row between translated ones.
  */
 class ThreeLanguageStringsTest {
 
@@ -133,7 +128,7 @@ class ThreeLanguageStringsTest {
     }
 
     /**
-     * The failure messages this keyboard shows are held to one shape (dossier tt-final, section 3):
+     * The failure messages this keyboard shows are held to one shape:
      * say what happened and in what state the data is, offer an action if there is one, and name no
      * file, no path, no error code and no cause. This pins the half a machine can check.
      */

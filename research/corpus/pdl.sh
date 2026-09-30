@@ -1,11 +1,11 @@
 #!/bin/bash
-# Параллельная докачка OpenSubtitles-v2024.ru.txt.gz по Range-запросам.
-# Причина: сервер режет скорость на соединение (0,2 МБ/с против 0,9 МБ/с на свежем).
+# Resume the download of OpenSubtitles-v2024.ru.txt.gz with parallel Range requests.
+# The server throttles each connection, so several connections finish much sooner.
 set -u
 cd "$(dirname "$0")"
 URL=https://object.pouta.csc.fi/OPUS-OpenSubtitles/v2024/mono/ru.txt.gz
 TOTAL=1518001327
-BASE=558000000          # сколько уже лежит в .part (обрезано вниз, ради надёжности)
+BASE=558000000          # bytes already in .part (rounded down to be safe)
 N=8
 truncate -s $BASE OpenSubtitles-v2024.ru.txt.gz.part
 REM=$((TOTAL-BASE)); CH=$(( (REM+N-1)/N ))

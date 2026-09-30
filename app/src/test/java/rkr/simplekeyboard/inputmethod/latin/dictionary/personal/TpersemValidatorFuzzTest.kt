@@ -25,30 +25,13 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiTes
 import java.util.Random
 
 /**
- * Seeded deterministic fuzzing of [TpersemValidator] (the `.tpersem` personal emoji store) — S5
- * of `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`, the mirror of [TpersbValidatorFuzzTest] for
- * (word, emoji) entries. Zero dependencies: mutations come from a seeded [java.util.Random] via
- * [SeededFuzzHarness]; a fixed seed per shape makes every run byte-identical, and on a property
- * violation the failure message names shape + seed + iteration + the touched offsets, which
- * reproduce the exact input.
+ * Seeded fuzzing of [TpersemValidator] (the `.tpersem` learned emoji). See [SeededFuzzHarness].
  *
- * The base image is a fixture-built valid 16-entry Tatar image with distinct words, so the record
- * loop, the word-half normalization checks, the emoji-cluster ruler
+ * The base image is a valid 16-entry Tatar fixture with distinct words, so the record loop, the
+ * word normalization checks, the emoji-cluster ruler
  * ([rkr.simplekeyboard.inputmethod.latin.emoji.EmojiTextUtils.trailingEmojiClusterLength]) and
- * the entry-ordering checks are all reachable by the mutations.
- *
- * Shapes (all against [TpersemValidator.validate]): bit flips (2 500), truncations (2 000),
- * count/size-field inflation (2 000) of the two u32 header fields (entryCount, payloadSize) —
- * [TpersemFormat.MAX_PERSONAL_EMOJI_ENTRIES] and the payload-size check must reject BEFORE any
- * count-sized allocation — random garbage (2 000), and valid-image mutation (3 000) with the
- * embedded SHA-256 refreshed half the time (via
- * [PersonalEmojiTestFixtures.refreshEmbeddedChecksum]) so the fuzz reaches PAST the checksum gate
- * into the structural checks; only refreshed mutations may validate cleanly.
- *
- * Properties asserted on EVERY input (see [SeededFuzzHarness.assertCleanOrValidationFailure]):
- * clean validation or [PersonalDictionaryValidationException], never any other throwable, and —
- * for the shapes that cannot produce a valid image — never a clean validation (fail-closed; the
- * reader turns a rejection into an empty personal-emoji store).
+ * the entry ordering are reachable. Shapes mirror [TpersValidatorFuzzTest], inflating entryCount
+ * and payloadSize.
  */
 class TpersemValidatorFuzzTest {
     @get:Rule

@@ -36,48 +36,25 @@ import rkr.simplekeyboard.inputmethod.latin.InputView
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView
 
 /**
- * O3 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the fail-closed allocation gate for the board
- * draw loop — the project's hard budget is ZERO allocations per frame in the draw path, and until
- * now nothing pinned it.
+ * Allocation gate for the draw loop: the budget is zero allocations per frame in the draw path.
+ * Runs against the live IME (the host enables the debug IME and makes it default beforehand,
+ * like GlideUiDeviceTest).
  *
- * Two probes, both against the LIVE IME (the debug IME is enabled and made default by the host
- * before the run, exactly like GlideUiDeviceTest):
+ *  1. [testBoardAndStripDrawLoopsAllocateNothing] replays the press → invalidate → redraw
+ *     sequence of a tap synchronously on the main thread under per-thread allocation counting.
+ *     Nothing else can run on the main thread meanwhile, so a nonzero delta is a draw-path
+ *     allocation. Windows: control (no draws), blit, same-state redraw, full board cycle, and
+ *     strip redraws of three live cells. Blit, redraw and strip must be zero. The board cycle
+ *     is bounded instead: each StateListDrawable state change on the shared key background
+ *     costs the platform 2 allocations (a bare drawable pays the same, see
+ *     [testDrawAllocStepBreakdown]), which is outside our code.
+ *  2. [testTapBurstsStayWithinAllocationBudget] sends real tap bursts (letters with the strip
+ *     live, deletes on an empty field), each after an identical warmup burst. The delta covers
+ *     the whole per-tap pipeline (dispatch, InputLogic, EditText, strip update), so it is
+ *     bounded, not zero, and logged as RESULT lines.
  *
- *  1. [testBoardAndStripDrawLoopsAllocateNothing] — the gate proper. The press → invalidate →
- *     redraw sequence a real tap causes is replayed SYNCHRONOUSLY on the live views, on the main
- *     thread (the thread the IME draws on), under per-thread allocation counting
- *     (Debug.startAllocCounting + getThreadAllocCount). The synchronous window is hermetic: while
- *     it runs, no other main-thread work (suggestion publications, framework callbacks) can
- *     interleave, so a nonzero delta IS a draw-path allocation. The windows: a control (the
- *     press/invalidate choreography without draws), a blit window (the per-frame shell), a
- *     same-state redraw window, the full board cycle (press+release per key + full redraw), and
- *     strip redraws of a live three-cell band. Negative-test ritual (plan O3 verification): a
- *     deliberate `Rect()` planted in KeyboardView.onDraw must fail this test; the plant is then
- *     reverted.
- *
- *     Provenance (POCO C71, HyperOS, 2026-09-29): same-state redraws, blits and the strip
- *     measured ZERO and are asserted at zero. The board cycle measured 18 over 9 draws; the
- *     step breakdown (testDrawAllocStepBreakdown) attributes it exactly: 2 allocations per
- *     StateListDrawable STATE CHANGE on the shared key background (a pressed key draws with
- *     state_pressed, then the released redraw toggles back), zero for same-state redraws, and
- *     the isolation step reproduces the same 2-per-toggle on a bare drawable with no view
- *     involved — the allocation is the platform's drawable state resolution, provoked by a
- *     semantically required state change. The board window is therefore bounded at
- *     BOARD_TOGGLE_FLOOR_BOUND (documented per-measurement), while every per-frame path that our
- *     code controls stays asserted at exactly zero.
- *
- *  2. [testTapBurstsStayWithinAllocationBudget] — the integration picture. Real
- *     sendPointerSync tap bursts on the try-it field (a letters burst with the suggestion strip
- *     live, then a delete burst on the empty field as the board-only contrast), each preceded by
- *     an identical warmup burst so one-time caches (preview popup, ellipsize widths, MotionEvent
- *     pools, JIT) are not mistaken for steady-state cost. The main-thread delta here is the WHOLE
- *     per-tap pipeline — input dispatch, InputLogic, composing text, the EditText, the strip
- *     republication — which is genuinely non-zero and belongs to the platform and the input path,
- *     not the draw loop; it is therefore bounded (calibrated on the POCO C71, see the constants)
- *     rather than zeroed, and the per-burst numbers are logged as RESULT lines.
- *
- * Same JUnit3/legacy-runner shape as the other device harnesses — resolves offline, never
- * packaged into the release APK.
+ * To check the gate, plant a `Rect()` in KeyboardView.onDraw: test 1 must fail.
+ * Uses the JUnit3 legacy runner like the other device tests; not part of the release APK.
  */
 class DrawAllocInstrumentationTest : InstrumentationTestCase() {
 
@@ -441,7 +418,7 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
             val inputView = requireNotNull(inputViewOf(view)) {
                 "the keyboard view must sit inside the InputView"
             }
-            // Three live cells, one emphasized: the fullest band the strip ever paints. Goes
+            // Three live cells, one emphasized: the fullest strip that is ever painted. Goes
             // through the production entry point, which also inflates the strip stub on first
             // use; the paired setEmphasis runs the (one-off, unmeasured) ellipsize rebuild.
             val strip = requireNotNull(
@@ -496,7 +473,7 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
         view.onDraw(canvas)
     }
 
-    /** Redraws the live suggestion band, as a suggestion republication does. */
+    /** Redraws the live suggestion strip, as a suggestion update does. */
     private fun runStripDrawSequence(strip: SuggestionStripView, canvas: Canvas) {
         var i = 0
         while (i < STRIP_DRAWS_PER_WINDOW) {
@@ -659,8 +636,8 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
     companion object {
         private const val TAG = "DrawAlloc"
 
-        // Screen coordinates of the live 720x1640 layout (calibrated from the device screencap,
-        // 2026-09-24 — the same grid GlideUiDeviceTest uses): с ә л ә м, and the delete key.
+        // Screen coordinates of the live 720x1640 layout (from a device screenshot; the same
+        // grid GlideUiDeviceTest uses): с ә л ә м, and the delete key.
         private const val PROBE_TAP_X = 234f
         private const val PROBE_TAP_Y = 1396f
         private val LETTER_TAPS = floatArrayOf(
@@ -685,13 +662,11 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
         // in the per-frame shell is directly comparable against the board number.
         private const val BLIT_DRAWS_PER_WINDOW = BOARD_DRAWS_PER_WINDOW
 
-        // The board window's documented platform floor (POCO C71, HyperOS, 2026-09-29): every
-        // press/release cycle toggles the SHARED key background StateListDrawable twice, and on
-        // this platform a state change costs the framework 2 allocations (isolated in
-        // testDrawAllocStepBreakdown: a bare selector toggles at the same 2 with no view
-        // involved) — 8 toggles = 16, plus the full redraw's functional/sticky key states ≈ 2,
-        // measured 18. Bounded at 24: any NEW allocation in our draw path (e.g. one object per
-        // draw = +9) trips it. Same-state redraws, blits and the strip stay asserted at ZERO.
+        // The board window's platform floor: every press/release cycle toggles the shared key
+        // background StateListDrawable twice, and each state change costs the framework 2
+        // allocations (isolated in testDrawAllocStepBreakdown), plus a few for the full redraw's
+        // functional/sticky key states. The bound leaves no room for one new object per draw.
+        // Same-state redraws, blits and the strip stay asserted at zero.
         private const val BOARD_TOGGLE_FLOOR_BOUND = 24L
 
         private val PRESSED_STATE = intArrayOf(android.R.attr.state_pressed)
@@ -702,12 +677,10 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
         private const val SETTLE_MS = 1200L
 
         // Whole-pipeline per-burst bounds for testTapBurstsStayWithinAllocationBudget (the draw
-        // loop alone is pinned at ZERO by the gate test). Calibrated on the POCO C71, 2026-09-29:
-        // the letters burst measured 2148 main-thread allocations over 5 taps (input dispatch,
-        // composing text, suggestion publication, the EditText's growth — the platform and
-        // input-path floor), the delete burst on the empty field 1565. Bounded at roughly twice
-        // the measurement so a structural regression (a per-tap bitmap, a leaked listener) trips
-        // the gate while framework jitter cannot.
+        // loop alone is pinned at zero by the gate test). The count covers input dispatch,
+        // composing text, suggestion updates and EditText growth. The bounds are about twice
+        // the calibration-device values, so a structural regression (a per-tap bitmap, a leaked
+        // listener) trips them while framework jitter does not.
         private const val MAX_MAIN_ALLOCS_LETTER_BURST = 4000L
         private const val MAX_MAIN_ALLOCS_DELETE_BURST = 3000L
     }

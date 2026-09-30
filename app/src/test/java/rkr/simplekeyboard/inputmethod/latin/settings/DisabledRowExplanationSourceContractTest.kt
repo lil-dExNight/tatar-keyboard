@@ -21,13 +21,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * C1 of `docs/ROADMAP-P8-PLAN.md`, closing F15(a) of `docs/AUDIT-2026-09-24-FIXES.md`: a settings
- * row dimmed because the switch it depends on is off used to swallow the tap silently. It now
- * explains itself with a short Toast, while the switch inside it stays disabled so the tap can
- * never toggle anything, and TalkBack still calls the row disabled.
+ * A settings row dimmed because the switch it depends on is off explains itself with a short
+ * Toast on tap, while the switch inside it stays disabled so the tap never toggles anything, and
+ * TalkBack still calls the row disabled.
  *
- * `View`, `Toast` and resources do not exist on a plain JVM (no Robolectric here, by design), so
- * this is a source-level contract, the discipline of every other settings pin.
+ * `View`, `Toast` and resources do not exist on a plain JVM (there is no Robolectric in this
+ * project), so this is checked from source like the other settings tests.
  */
 class DisabledRowExplanationSourceContractTest {
 
@@ -89,7 +88,7 @@ class DisabledRowExplanationSourceContractTest {
     @Test
     fun everyRowTapGoesThroughTheGate() {
         val text = rows()
-        // No row may install a raw click listener any more: the gate is the only way in.
+        // No row may install a raw click listener: the gate is the only way in.
         val rawListeners = Regex("row\\.setOnClickListener").findAll(text).count()
         assertTrue("found $rawListeners raw row click listeners, expected 0 outside rowClick",
             rawListeners == 1)

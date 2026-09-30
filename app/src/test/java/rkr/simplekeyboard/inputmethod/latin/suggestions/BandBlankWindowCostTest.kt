@@ -34,26 +34,18 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.ceil
 
 /**
- * How long the suggestion band stays blank, measured rather than argued.
+ * How long the suggestion band stays blank after a keystroke.
  *
- * Mission tt-final closed the dead-button window by taking the words off the strip the moment the
- * candidates behind them are unbound ([SuggestionsController.unbindPaintedBand]). The price of that
- * is a blank band on every keystroke that moves the prefix, lasting until the engine answers the
- * lookup the very same call has just dispatched. Whether that price is visible at all is a question
- * about ONE number: is the round trip shorter than a frame?
+ * The words leave the strip the moment the candidates behind them are unbound
+ * ([SuggestionsController.unbindPaintedBand]), so no stale word can be tapped. The cost is a blank
+ * band on every keystroke that moves the prefix, until the engine answers the lookup the same call
+ * dispatched. Android composes at vsync: a blank and a repaint inside the same 16.7 ms interval
+ * reach the screen as one frame, so the budget is one frame at 60 Hz (also the request-to-handoff
+ * budget of the input path).
  *
- * Android composes at vsync. A blank published and a band published inside the same 16,7 ms
- * interval reach the screen as a single frame — the user never sees the blank. So the budget here
- * is one frame at 60 Hz, which is also the request-to-handoff budget the input path already lives
- * inside (PROPOSALS.md, D1d).
- *
- * Measured on the REAL shipped Tatar dictionary over the REAL prefixes ordinary typing produces —
- * every proper prefix of a common word, because the window opens on each of them in turn.
- *
- * What this does NOT measure: the [UiPoster] hop from the handoff thread to the main looper. It is
- * a `Handler.post` onto a looper that is by construction idle at this instant (the keystroke that
- * opened the window has already returned), and it is the same hop the band's own repaint has always
- * gone through. See docs/FINAL-POLISH.md for the on-device check that backs this up.
+ * Measured on the REAL bundled Tatar dictionary over every proper prefix of common words. Not
+ * measured: the [UiPoster] `Handler.post` from the handoff thread to the idle main looper, the
+ * same hop every repaint takes.
  */
 class BandBlankWindowCostTest {
 

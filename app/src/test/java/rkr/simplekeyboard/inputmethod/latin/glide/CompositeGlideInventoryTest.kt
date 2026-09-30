@@ -6,9 +6,9 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 
 /**
- * Unit tests for [CompositeGlideInventory]: the append order, the synthetic frequency formula,
- * the duplicate/casing-override rule, the fail-closed skip through the real index build, and
- * the memory budget of a full personal dictionary (docs/GLIDE-PERSONAL.md).
+ * Unit tests for [CompositeGlideInventory]: the append order, the synthetic frequency formula, the
+ * duplicate/casing-override rule, the skip of unmappable words in the real index build, and the
+ * memory budget of a full personal dictionary.
  */
 class CompositeGlideInventoryTest {
 
@@ -88,7 +88,7 @@ class CompositeGlideInventoryTest {
         // One candidate, not two: the entry count is the base's alone.
         assertEquals(2, composite.entryCount)
         assertEquals(listOf("гүзәл" to 100L, "сәләм" to 50L), collect(composite))
-        // …and the dictionary entry carries the user's saved casing (E4b's one-cell rule).
+        // …and the dictionary entry carries the user's saved casing (one cell per word).
         assertEquals("Гүзәл", composite.wordAt(0))
         assertEquals("сәләм", composite.wordAt(1))
     }
@@ -161,7 +161,7 @@ class CompositeGlideInventoryTest {
         )
         assertEquals(2_001, compositeIndex.wordCount)
         val delta = compositeIndex.retainedByteEstimate - baseIndex.retainedByteEstimate
-        // The mission's memory gate: +256 KiB worst case (a ~44 B flat-array cost per entry).
+        // Memory budget: +256 KiB worst case (a ~44 B flat-array cost per entry).
         assertTrue("the personal tail added $delta bytes", delta in 1..(256 * 1024L))
     }
 }

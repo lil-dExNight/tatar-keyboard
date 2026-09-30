@@ -24,9 +24,9 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 
 /**
- * The D3 rules as the index enforces them: which typed word gets a verdict at all, and which
- * candidate that verdict names. Everything here runs against the same class #1 (long-press partner)
- * variant generator the E3 band already uses — there is no second edit-distance mechanism to test.
+ * The autocorrect rules as the index enforces them: which typed word gets a verdict at all, and
+ * which candidate that verdict names. Everything here runs against the same class #1 (long-press
+ * partner) variant generator the suggestion strip uses; there is no second edit-distance mechanism.
  *
  * The frequency values below are chosen around [AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY] on
  * purpose, so the threshold is exercised as the number it actually is rather than as a symbol.
@@ -82,8 +82,7 @@ class TdictPrefixIndexAutocorrectTest {
 
     @Test
     fun aCandidateBelowTheFrequencyThresholdIsNotAdvised() {
-        // Re-measured 2026-09-20 (TT-SUGGESTIONS P2) on the 110 000-entry artifact:
-        // 403 -> 411 (frequency of rank 10 000).
+        // The threshold is the frequency of rank 10 000 in the shipped dictionary.
         assertEquals(411L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY)
         val below = index(listOf("китап" to 410L))
         val atThreshold = index(listOf("китап" to 411L))
@@ -115,7 +114,7 @@ class TdictPrefixIndexAutocorrectTest {
     @Test
     fun withoutAKeyNeighborTableNothingIsEverAdvised() {
         // The table comes from the live layout; a non-alphabet layout or an ineligible field yields
-        // none, and D3 then behaves exactly as it did before the phase.
+        // none, and then autocorrect never gives a verdict.
         val index = index(listOf("китап" to 5_000L), withTable = false)
 
         assertNull(advise(index, "китәп"))
@@ -135,9 +134,9 @@ class TdictPrefixIndexAutocorrectTest {
 
     @Test
     fun theMatchIsWholeWordSoAContinuationIsNeverOfferedAsACorrection() {
-        // "китаплар" begins with the variant "китап" and would be a prefix-block hit; D3 replaces a
-        // word by a word one edit away, so with "китап" absent from the dictionary nothing is
-        // advised at all.
+        // "китаплар" begins with the variant "китап" and would be a prefix-block hit; autocorrect
+        // replaces a word by a word one edit away, so with "китап" absent from the dictionary
+        // nothing is advised at all.
         val index = index(listOf("китаплар" to 90_000L))
 
         assertNull(advise(index, "китәп"))
@@ -145,8 +144,8 @@ class TdictPrefixIndexAutocorrectTest {
 
     @Test
     fun theBandIsUnchangedByTheVerdict() {
-        // The D3 pass reads the same index and must not disturb the frozen band: same three cells,
-        // same order, exact before fuzzy.
+        // The autocorrect pass reads the same index and must not disturb the strip: same three
+        // cells, same order, exact before fuzzy.
         val index = index(
             listOf(
                 "китап" to 5_000L,
@@ -198,7 +197,7 @@ class TdictPrefixIndexAutocorrectTest {
         assertNull(composite.lastAutocorrectAdvice)
     }
 
-    /** A personal source holding exactly [words], compared by normalized form as E4d does. */
+    /** A personal source holding exactly [words], matched by normalized form. */
     private fun personalSourceOf(vararg words: String): PersonalCandidateSource =
         object : PersonalCandidateSource {
             override fun candidatesFor(normalizedPrefix: String): List<PersonalCandidate> =
@@ -211,9 +210,9 @@ class TdictPrefixIndexAutocorrectTest {
                 words.contains(normalizedWord)
         }
 
-    // --- ROADMAP-P3 P7: the autocorrect-class policy machinery (measured, gate-rejected) --------
+    // --- the autocorrect edit-class policy (measured, not shipped widened) ----------------------
 
-    /** The P7 candidate arm: display {1, 4} + autocorrect {1, 4}. */
+    /** The widened arm: display {1, 4} + autocorrect {1, 4}. */
     private val widenedPolicy = FuzzyEditPolicy(
         intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
         true,
@@ -231,8 +230,8 @@ class TdictPrefixIndexAutocorrectTest {
 
     @Test
     fun theDefaultAutocorrectClassesAreClass1OnlyEverywhere() {
-        // The P7 verdict keeps every shipped autocorrect class set at {1} — including the Tatar
-        // policy (its display classes are irrelevant to autocorrect).
+        // Every shipped autocorrect class set is {1}, including the Tatar policy (its display
+        // classes are irrelevant to autocorrect).
         assertEquals(
             listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
             FuzzyEditPolicy.DEFAULT.autocorrectClasses.toList(),
@@ -285,7 +284,7 @@ class TdictPrefixIndexAutocorrectTest {
 
     @Test
     fun aDictionaryWordIsNeverAdvisedUnderTheWidenedPolicyEither() {
-        // The G1 construction invariant, pinned on the widened pass: presence early-out wins over
+        // The construction invariant, pinned on the widened pass: presence early-out wins over
         // the whole substitution space.
         val index = policyIndex(listOf("алта" to 5_000L), widenedPolicy)
 

@@ -28,7 +28,7 @@ class TdictPrefixIndexEditClassRankingTest {
     // The full Tatar alphabet keyboard.
     private val tatarTable = E3bTestFixtures.tatarNeighborTable()
 
-    // The reduced letter set of the E3a fixture, with the same long-press partners.
+    // The reduced letter set of [E3aTestFixtures], with the same long-press partners.
     private val longPressOnlyTable = E3aTestFixtures.tatarNeighborTable()
 
     private fun index(entries: List<Pair<String, Long>>, table: KeyNeighborTable): TdictPrefixIndex {
@@ -59,7 +59,7 @@ class TdictPrefixIndexEditClassRankingTest {
     }
 
     /**
-     * Clause 2: "внутри одного класса действует прежний порядок частота/кодпоинт."
+     * Within one edit class the frequency / code-point order applies.
      *
      * Typed "бар": every candidate is reachable only through the single class #1 variant "бәр"
      * (а→ә), so all three share one class and rank purely by the frozen tie-break — frequency
@@ -80,11 +80,11 @@ class TdictPrefixIndexEditClassRankingTest {
     }
 
     /**
-     * Clause 3: "точный кандидат всегда выше любого нечёткого."
+     * An exact candidate always ranks above any fuzzy one.
      *
      * Typed "кат": the exact continuation "катык" (frequency 1) stays first even though the class
      * #1 fuzzy candidate "кәтү" (а→ә) carries frequency 9 999. The exact level is exhausted before
-     * any fuzzy candidate, exactly as in E3a — the amendment does not touch the exact rule.
+     * any fuzzy candidate.
      */
     @Test
     fun anExactCandidateAlwaysOutranksAnyFuzzyCandidate() {
@@ -99,11 +99,11 @@ class TdictPrefixIndexEditClassRankingTest {
     }
 
     /**
-     * Clause 4 (characterization): "при единственном классе правок порядок совпадает с порядком
-     * E3a."
+     * Characterization: with a single contributing edit class the order is the long-press-only
+     * order.
      *
-     * Only class #1 (у→ү) contributes. When a single class contributes, the class key is a constant tie and the order collapses to
-     * the E3a rule (frequency descending, then code point): identical to
+     * Only class #1 (у→ү) contributes, so the class key is a constant tie and the order collapses
+     * to frequency descending, then code point: identical to
      * TdictPrefixIndexFuzzyTest.withinTheFuzzyLevelOrderIsFrequencyDescendingThenCodePointAscending.
      */
     @Test

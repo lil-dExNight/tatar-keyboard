@@ -38,41 +38,22 @@ import java.util.Locale;
 import kotlin.Unit;
 
 /**
- * Phase 4b: Baseline Profile generator for the IME (dev-only, never packaged).
+ * Baseline Profile generator for the IME (dev-only, never packaged). The system starts the
+ * IME process when an editable field gains focus, so each iteration cold-kills the app,
+ * focuses the try-it field of SetupActivity and then runs these journeys with real taps:
+ * <ul>
+ *   <li>type "сәлам" and commit a word completion from the suggestion strip;</li>
+ *   <li>type "сәлам" + SPACE and commit the emoji suggestion cell (👋);</li>
+ *   <li>type "сәлам" + SPACE and commit a next-word prediction;</li>
+ *   <li>glide "сәлам" in one stroke and commit the glide candidate;</li>
+ *   <li>open the emoji panel (long-press comma) and commit an emoji.</li>
+ * </ul>
+ * Word suggestions are off by default, so the first iteration turns them on through the
+ * settings UI (the release APK is not debuggable, so prefs cannot be seeded via run-as).
+ * Emoji suggestions and glide typing are on by default.
  *
- * CUJ (the real user hot path, not a launcher activity): the IME process is started
- * BY THE SYSTEM when an editable field gains focus — so each iteration cold-kills the
- * app process, focuses the try-it field of the app's own SetupActivity, waits for the
- * keyboard, types a Tatar word with real key taps (PointerTracker -> InputLogic ->
- * dictionary suggestion engine -> suggestion strip), commits a suggestion by tapping
- * the strip, commits the word with SPACE (which triggers the bigram next-word
- * prediction), commits the emoji-suggest cell the strip grew for "сәлам" (👋, tail
- * slot — EmojiSuggestIndex load + onEmojiSuggestReady + emoji commit path), commits a
- * predicted word, glides "сәлам" as ONE continuous polyline over the five letter keys
- * (PointerTracker -> GlideGestureDecider -> GlidePath -> GlideDecoder on the engine
- * worker -> the strip's glide band; 2026-09-24 audit, finding 3), commits the glide
- * candidate, and opens the emoji panel (long-press comma) and commits an emoji.
- * This covers process start, onCreateInputView, layout XML parsing/inflation, first
- * frame render, the suggestion engine hot path (tdict unpack + mmap + binary search in
- * TdictPrefixIndex/MappedDictionaryEngine, bigram lookup in TatBigrPrefixIndex), the
- * emoji-suggest path (mission M4), the emoji panel, and the glide decode path (P7).
- *
- * Emoji suggestions are ON by default (mission M4b, PREF_EMOJI_SUGGESTIONS), so no
- * extra toggle is needed: the first eligible lookup starts the one-per-process table
- * load, and the band painted for "сәлам "+SPACE carries the 👋 tail cell once
- * onEmojiSuggestReady re-derives it.
- *
- * Suggestions are opt-in (PREF_TATAR_SUGGESTIONS, default OFF) and a CUJ that never
- * turns them on profiles nothing of the engine (P2 of docs/AUDIT-2026-08-31.md). The
- * release APK is not debuggable, so run-as seeding of the device-protected prefs (the
- * emulator-smoke.sh trick) is unavailable here; instead the first iteration toggles
- * the switch through the real settings UI — exactly how a user enables it. The pref
- * survives the force-stop that killProcess() performs, so later iterations start with
- * suggestions already on.
- *
- * Run: ./gradlew :app:generateReleaseBaselineProfile  (connected API 34 emulator; with
- * several devices attached, pin ANDROID_SERIAL=<emulator-serial> — the generator refuses
- * a non-emulator device unless -e ttAllowPhysicalDevice true is passed).
+ * Run: ./gradlew :app:generateReleaseBaselineProfile on a connected API 34 emulator (device
+ * pinning: see baselineprofile/build.gradle).
  */
 @RunWith(AndroidJUnit4.class)
 public class ImeBaselineProfileGenerator {
@@ -88,10 +69,9 @@ public class ImeBaselineProfileGenerator {
             "rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity";
     private static final String SETTINGS_ACTIVITY =
             "rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity";
-    // A1: generation is calibrated to one emulator (see KeyGeom) and
-    // useConnectedDevices picks an arbitrary attached device — refuse anything
-    // that does not look like an emulator unless this instrumentation argument
-    // (passed as `-e ttAllowPhysicalDevice true`) explicitly allows it.
+    // Generation is calibrated to one emulator (see KeyGeom) and useConnectedDevices may pick
+    // any attached device, so non-emulators are refused unless this instrumentation argument
+    // (`-e ttAllowPhysicalDevice true`) allows them.
     private static final String ARG_ALLOW_PHYSICAL_DEVICE = "ttAllowPhysicalDevice";
 
     @Rule
@@ -117,10 +97,8 @@ public class ImeBaselineProfileGenerator {
     }
 
     /**
-     * Fails fast when the connected device is not an emulator: the CUJ is calibrated to the
-     * tt_suggest_a14 AVD (KeyGeom) and a physical device both measures the wrong hardware and
-     * toggles a real user's IME settings. Override only deliberately with
-     * `-e ttAllowPhysicalDevice true`.
+     * Fails fast on a non-emulator: the journeys are calibrated to the tt_suggest_a14 AVD
+     * (KeyGeom), and a physical device would change a real user's IME settings.
      */
     private void requireEmulatorDevice() {
         Bundle args = InstrumentationRegistry.getArguments();
@@ -192,40 +170,37 @@ public class ImeBaselineProfileGenerator {
         tapKeyFraction(device, KeyGeom.KEY_L);
         tapKeyFraction(device, KeyGeom.KEY_A);
         tapKeyFraction(device, KeyGeom.KEY_M);
-        // Wait for the strip to render the prefix suggestions: the FIRST lookup is
-        // the expensive one (zlib unpack + mmap + binary search), and the whole
-        // point of this CUJ is to get it profiled.
+        // Wait for the strip to render the word completions: the first lookup is the
+        // expensive one (zlib unpack + mmap + binary search) and must be profiled.
         SystemClock.sleep(1_500);
 
-        // Commit a prefix suggestion from the strip ("сәламәтлек" on the
-        // calibration AVD) — SuggestionStripView touch + commit path.
+        // Commit a word completion from the strip ("сәламәтлек" on the calibration AVD):
+        // SuggestionStripView touch + commit path.
         tapKeyFraction(device, KeyGeom.SUGGESTION_LEFT);
         SystemClock.sleep(800);
 
-        // Type "сәлам" again and commit with SPACE: a word separator after a known
-        // head triggers the bigram next-word prediction (TatBigrPrefixIndex) and,
-        // because "сәлам" maps to 👋 in emoji_suggest_v1.txt, the emoji-suggest path
-        // (EmojiSuggestIndex load + onEmojiSuggestReady re-deriving the band).
+        // Type "сәлам" again and commit with SPACE: a word separator after a known head
+        // triggers the next-word prediction (TatBigrPrefixIndex) and, because "сәлам" maps
+        // to 👋 in emoji_suggest_v1.txt, the emoji suggestion path (EmojiSuggestIndex load
+        // + onEmojiSuggestReady updating the strip).
         tapKeyFraction(device, KeyGeom.KEY_S);
         tapKeyFraction(device, KeyGeom.KEY_AE);
         tapKeyFraction(device, KeyGeom.KEY_L);
         tapKeyFraction(device, KeyGeom.KEY_A);
         tapKeyFraction(device, KeyGeom.KEY_M);
         tapKeyFraction(device, KeyGeom.KEY_SPACE);
-        // Longer settle than the prefix wait: the emoji table load is asynchronous
-        // (one per process) and onEmojiSuggestReady must have re-painted the band
-        // before the tail slot is tapped.
+        // Longer wait than for completions: the emoji table loads asynchronously (once
+        // per process) and the strip must be repainted before its right cell is tapped.
         SystemClock.sleep(2_500);
 
-        // Commit the emoji-suggest tail cell (👋 in the right slot after "сәлам "+
-        // on the calibration AVD: band is [биреп · белән · 👋]) — the strip tap path
-        // treats the bound emoji cell exactly like a predicted word, and binding it
-        // also exercises SharedEmojiSearchIndex through the spoken label lookup.
+        // Commit the emoji suggestion cell (👋 in the right cell after "сәлам "; the strip
+        // is [биреп · белән · 👋] on the calibration AVD). The tap path treats it like a
+        // predicted word; binding it also loads SharedEmojiSearchIndex for its spoken label.
         tapKeyFraction(device, KeyGeom.SUGGESTION_RIGHT);
         SystemClock.sleep(800);
 
         // Once more "сәлам" + SPACE, then commit a next-word prediction from the
-        // strip ("белән" in the middle slot after "сәлам" on the calibration AVD).
+        // strip ("белән" in the middle cell after "сәлам" on the calibration AVD).
         tapKeyFraction(device, KeyGeom.KEY_S);
         tapKeyFraction(device, KeyGeom.KEY_AE);
         tapKeyFraction(device, KeyGeom.KEY_L);
@@ -236,11 +211,10 @@ public class ImeBaselineProfileGenerator {
         tapKeyFraction(device, KeyGeom.PREDICTION_MIDDLE);
         SystemClock.sleep(800);
 
-        // Glide (P7): one continuous polyline over the letter keys of "сәлам" — the
-        // finger never lifts, which is what arms GlideGestureDecider; the decode runs on
-        // the engine worker and the strip grows the glide band. Glide typing is on by
-        // default (PREF_GLIDE_TYPING), so no toggle is needed beyond the suggestions one
-        // above (the band the glide candidates ride is subordinate to it).
+        // Glide: one continuous polyline over the letter keys of "сәлам". The finger never
+        // lifts, which arms GlideGestureDecider; the decode runs on the engine worker and
+        // the candidates appear in the strip. Glide typing is on by default; it only needs
+        // word suggestions, enabled above.
         device.swipe(new android.graphics.Point[]{
                 point(device, KeyGeom.KEY_S),
                 point(device, KeyGeom.KEY_AE),
@@ -248,8 +222,8 @@ public class ImeBaselineProfileGenerator {
                 point(device, KeyGeom.KEY_A),
                 point(device, KeyGeom.KEY_M),
         }, /* segmentSteps = */ 25);
-        // The decode is a worker round trip, like the first prefix lookup: give the band
-        // time to paint the glide candidate before committing it.
+        // The decode is a worker round trip, like the first completion lookup: give the
+        // strip time to paint the glide candidate before committing it.
         SystemClock.sleep(2_000);
         tapKeyFraction(device, KeyGeom.SUGGESTION_LEFT);
         SystemClock.sleep(800);
@@ -272,13 +246,9 @@ public class ImeBaselineProfileGenerator {
     }
 
     /**
-     * Turns on PREF_TATAR_SUGGESTIONS through the settings UI (SettingsActivity →
-     * Preferences → "Word suggestions"), once per generation run. Rows are located by
-     * the resource ids assigned in SettingsHostActivity (row_link_preferences,
-     * row_switch_tatar_suggestions) — the UI is localized, so text probes broke whenever
-     * the device locale changed (A1). The checked state is read from the row's Switch
-     * descendant and the row root is only clicked when it is OFF — never blind-toggled,
-     * because the pref survives force-stop and a reused emulator may already have it on.
+     * Turns on PREF_TATAR_SUGGESTIONS once per run through SettingsActivity → Preferences.
+     * Rows are found by resource id (the UI is localized), and the row is clicked only when
+     * its Switch is off: the pref survives force-stop and a reused emulator may have it on.
      */
     private void ensureSuggestionsEnabled(MacrobenchmarkScope scope, UiDevice device) {
         if (mSuggestionsEnsured) {
@@ -371,18 +341,12 @@ public class ImeBaselineProfileGenerator {
         }
     }
 
-    /** Screen-fraction key geometry, calibrated on the tt_suggest_a14 AVD (1080x2280,
-     *  Tatar layout): verified that the five taps commit exactly "сәлам" into the
-     *  try-it field and that long-pressing comma opens the emoji panel.
-     *  Strip geometry verified 2026-08-31 against screenshots of the same AVD: the
-     *  suggestion strip sits at y≈0.60 with three slots (left/middle/right ≈
-     *  0.167/0.5/0.833); tapping SUGGESTION_LEFT after "сәлам" commits "сәламәтлек",
-     *  and after "сәлам"+SPACE the strip shows bigram predictions
-     *  "биреп | белән | биру" with the emoji-suggest tail cell, so the band is
-     *  [биреп · белән · 👋] (verified 2026-09-02 against the emoji_suggest_v1.txt
-     *  mapping сәлам→👋). EMOJI_FIRST_CELL is grid row 0 with the suggestion strip visible
-     *  (the generator always enables suggestions; same calibration as GRID_CELL0_Y in
-     *  scripts/emulator-smoke.sh after the 2026-09-28 search-band collapse). */
+    /** Screen-fraction key geometry, calibrated on the tt_suggest_a14 AVD (1080x2280, Tatar
+     *  layout). The five letter taps type "сәлам"; long-pressing comma opens the emoji panel.
+     *  The suggestion strip sits at y≈0.60 with three cells (x ≈ 0.167/0.5/0.833): after
+     *  "сәлам" the left cell is "сәламәтлек", after "сәлам "+SPACE the strip is
+     *  [биреп · белән · 👋]. EMOJI_FIRST_CELL is grid row 0 with the suggestion strip
+     *  visible (same calibration as GRID_CELL0_Y in scripts/emulator-smoke.sh). */
     private static final class KeyGeom {
         // {xFraction, yFraction} of key centers on the Tatar layout.
         static final float[] KEY_S = {0.3324f, 0.8474f};

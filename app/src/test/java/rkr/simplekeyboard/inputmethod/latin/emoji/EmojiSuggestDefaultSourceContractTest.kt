@@ -22,10 +22,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * M4b source-contract, in the style of EmojiPanelSourceContractTest: emoji suggestions default ON
- * (subordinate to the master suggestions switch, which stays opt-in), and the reader default and
- * the settings-screen default must never drift apart — a drift is exactly how the feature shipped
- * invisible in 1.9.10.
+ * Source contract (like EmojiPanelSourceContractTest): emoji suggestions default ON (under the
+ * master suggestions switch, which stays opt-in), and the reader default and the settings-screen
+ * default must match; if they differ, the feature is silently off.
  */
 class EmojiSuggestDefaultSourceContractTest {
 

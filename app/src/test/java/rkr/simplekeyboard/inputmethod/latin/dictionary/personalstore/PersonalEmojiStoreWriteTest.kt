@@ -38,11 +38,11 @@ import java.io.IOException
 import java.util.concurrent.Executor
 
 /**
- * The personal-emoji acceptance heart, mirroring [PersonalBigramStoreWriteTest]: the whole-file
- * write sequence with a fault injected at EVERY step, the learn threshold of 2 with no plaintext
- * before it, the per-(word, emoji) pending counters, quarantine + salvage + the no-resurrection
- * rule of [PersonalEmojiStore.forget], LRU overflow on disk, the unlock gate, and the flush
- * boundary. All plain JVM, offline.
+ * Write-path contract of the learned-emoji store, mirroring [PersonalBigramStoreWriteTest]: the
+ * whole-file write sequence with a fault injected at every step, the learn threshold of 2 with no
+ * plaintext before it, the per-(word, emoji) pending counters, quarantine, salvage and the
+ * no-resurrection rule of [PersonalEmojiStore.forget], LRU overflow on disk, the unlock gate, and
+ * the flush boundary. Plain JVM.
  */
 class PersonalEmojiStoreWriteTest {
     @get:Rule
@@ -206,7 +206,7 @@ class PersonalEmojiStoreWriteTest {
             repeat(2) { store.noteObservation("бәйрәм", "🎉") }
             fail("expected the simulated process death to propagate")
         } catch (_: PersonalStoreCrash) {
-            // Like process death: the store's fail-closed catch does not swallow an Error.
+            // Like process death: the store's catch-all does not swallow an Error.
         }
         assertEquals(1, temps(directory).size) // a temp is left behind by the crash
 

@@ -1,11 +1,11 @@
-# Tatar word-form exceptions for scripts/wordform_gen.py (TT-SUGGESTIONS P1).
+# Tatar word-form exceptions for scripts/wordform_gen.py.
 #
 # Format: UTF-8, LF, one rule per line: kind<TAB>stem<TAB>payload...
-# Lines starting with '#' and blank lines are skipped. The file is loaded
-# fail-closed: any structural error (unknown kind, wrong field count, empty
-# field, a word outside the normalized Tatar alphabet, duplicates, an unknown
-# override label) aborts the build. This file is pinned by SHA-256 in
-# tests/wordform_gen/test_wordform_gen.py.
+# Lines starting with '#' and blank lines are skipped. Any structural error
+# (unknown kind, wrong field count, empty field, a word outside the normalized
+# Tatar alphabet, duplicates, an unknown override label) aborts the build. The
+# SHA-256 of this file is pinned in tests/wordform_gen/test_wordform_gen.py;
+# re-pin it after any edit.
 #
 # kind=voicing  payload: VOICED_STEM
 #   Possessive-family forms (noun.p1/p2/p3/p1pl/p2pl and the noun.p3.* case

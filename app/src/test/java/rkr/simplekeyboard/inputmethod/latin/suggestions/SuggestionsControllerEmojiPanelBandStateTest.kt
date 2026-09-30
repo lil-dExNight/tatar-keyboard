@@ -25,18 +25,15 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 
 /**
- * Named test for the E2c "Состояния полосы" row (contract amendment 2026-07-27, procedure step 3):
- *
- *   "Настройка ON, ввод разрешён, активен татарский subtype, панель эмодзи показана →
- *    полоса видима, 40dp, lookup не выполняется, ячейки пустые и inert"
- *
- * plus its conditional clause: OFF / a privacy gate that forbids suggestions / a non-Tatar subtype
+ * The strip state while the emoji panel is shown: with the setting ON, input allowed and the Tatar
+ * layout active, the band stays visible at 40dp, no lookup runs, and the cells are empty and inert.
+ * Plus the conditional clause: OFF / a privacy gate that forbids suggestions / a non-Tatar subtype
  * keep the prior GONE rows, and showing the panel does not make the band visible.
  *
  * Showing the panel reaches the controller as [SuggestionsController.onSelectionChanged] — see
  * `LatinIME`'s `EmojiSurface.showPanel`, which empties the strip through that idempotent path and
- * then swaps the surface — so this drives exactly that call. Its own fakes are modelled on the
- * (private) ones in [SuggestionsControllerTest]; existing tests are not touched.
+ * then swaps the surface — so this drives exactly that call. Its own fakes are modeled on the
+ * (private) ones in [SuggestionsControllerTest].
  */
 class SuggestionsControllerEmojiPanelBandStateTest {
 
@@ -188,8 +185,8 @@ class SuggestionsControllerEmojiPanelBandStateTest {
     fun panelShownWhileIneligibleDoesNotMakeTheBandVisible() {
         // Setting OFF, a privacy gate that forbids suggestions, and a non-Tatar subtype all reduce
         // to eligible == false at the controller (LatinIME computes eligibility from the setting,
-        // the editor gate and the subtype together), so one ineligible case covers the row's
-        // "prior GONE rows still apply, and the panel does not affect them" clause.
+        // the editor gate and the subtype together), so one ineligible case covers the clause "the
+        // band stays GONE, and the panel does not change that".
         val h = Harness()
         h.controller.onStartInput(eligible = false)
         assertFalse("precondition: band is hidden when ineligible", h.strip.visible)

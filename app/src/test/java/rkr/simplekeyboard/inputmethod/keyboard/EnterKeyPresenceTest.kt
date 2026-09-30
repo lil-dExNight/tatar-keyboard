@@ -27,13 +27,11 @@ import javax.xml.parsers.DocumentBuilderFactory
  * Structural contract: every SHIPPED layout must have the three keys a keyboard cannot work
  * without — Enter, delete and shift — at EVERY screen bucket the app has resources for.
  *
- * This test exists because of defect Д-2 (`docs/DEVICE-UAT-1.9.12.md`): at smallest width >= 600dp
- * the Tatar and Russian layouts had NO Enter key at all. The mechanism was invisible in any single
- * file — `xml/rows_tatar.xml` and `xml/rows_russian.xml` take Enter from `@xml/row_qwerty4`, and
- * on sw600dp that include resolves to `xml-sw600dp/row_qwerty4.xml`, which ends in a `<Spacer>`
- * because the tablet QWERTY moves Enter into its second row through a tablet `rows_qwerty.xml`
- * that the Cyrillic layouts never got. Neither file is wrong on its own; only the resolved
- * combination is. So the assertion has to walk the includes the way the resource system does.
+ * The failure this guards against is visible only after include resolution: if the Cyrillic
+ * layouts take their bottom row from `@xml/row_qwerty4`, on sw600dp that resolves to
+ * `xml-sw600dp/row_qwerty4.xml`, which ends in a `<Spacer>` (tablet QWERTY has Enter in its
+ * second row), and the Tatar and Russian layouts lose Enter. So the test walks the includes the
+ * way the resource system does.
  *
  * The walk models Android's qualifier precedence: smallestWidth outranks orientation, so a tablet
  * in landscape prefers `xml-sw600dp` over `xml-land`.
@@ -160,8 +158,8 @@ class EnterKeyPresenceTest {
 
     /**
      * The Cyrillic layouts must go through their OWN bottom row. Pins the seam itself: pointing
-     * `rows_tatar`/`rows_russian` back at `@xml/row_qwerty4` would silently restore Д-2 on every
-     * tablet, and the test above would catch it — but only this one says where to look.
+     * `rows_tatar`/`rows_russian` back at `@xml/row_qwerty4` would drop Enter on every tablet;
+     * the test above would catch it, but only this one says where to look.
      */
     @Test
     fun cyrillicLayoutsUseTheirOwnBottomRow() {

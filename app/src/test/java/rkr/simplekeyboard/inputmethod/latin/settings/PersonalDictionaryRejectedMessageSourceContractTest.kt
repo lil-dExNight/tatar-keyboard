@@ -22,8 +22,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Audit `docs/AUDIT-2026-08-31.md`, finding m1: the add-word rejection toast used to name the
- * Tatar alphabet even when the word was headed for the Russian section. The store a hand-added
+ * The add-word rejection toast names the alphabet of the section the word was headed for. The
+ * store a hand-added
  * word goes into is decided by the live subtype (`SettingsHostActivity.targetSubtypeForAddedWord`),
  * so the message must follow the same decision.
  *
@@ -93,7 +93,7 @@ class PersonalDictionaryRejectedMessageSourceContractTest {
         }
     }
 
-    /** The old shape — one hardcoded Tatar message — must turn the branch check red. */
+    /** A single hardcoded Tatar message must fail the branch check. */
     @Test
     fun thePredicatesRejectTheShapeTheyReplaced() {
         val oldBranch = """

@@ -31,16 +31,13 @@ import java.security.MessageDigest
 import kotlin.math.ceil
 
 /**
- * The 2026-09-25 SAFE wave (docs/OPTIMIZE-2026-09-25.md): a p95 pin over the FULL composite
- * NEXT_WORD predict path — static bigram successors, then after-word forms, then the global
- * top-frequency fallback — on the real shipped assets, wired exactly as production does (the
- * fixture mirrors [TtNextWordFillE2ETest], which pins the answers themselves).
+ * p95 of the full composite NEXT_WORD predict path (bigram successors, then after-word forms,
+ * then the global top-frequency fallback) on the real shipped assets, wired as in production (the
+ * fixture mirrors [TtNextWordFillE2ETest], which pins the answers).
  *
- * The probe set exercises every stage of the chain: bigram heads (`сәлам`, `һәм` — the pure
- * successor path), a form-only context (`сәләм` — forms then fallback), and a fallback-only
- * context (`сәләмә` — no successors, no forms). The budget is the same 5 ms the prefix-side
- * real-asset pins use ([RealDictionaryPrefixIndexTest]): prediction shares the keystroke path's
- * worker budget.
+ * The probes cover every stage: bigram heads (`сәлам`, `һәм`), a form-only context (`сәләм`) and
+ * a fallback-only context (`сәләмә`). The budget is the same 5 ms as the prefix-side real-asset
+ * pins ([RealDictionaryPrefixIndexTest]), since prediction shares the keystroke worker.
  */
 class TtNextWordPredictP95Test {
 

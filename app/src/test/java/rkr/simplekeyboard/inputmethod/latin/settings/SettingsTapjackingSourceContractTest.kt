@@ -22,7 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * S1 (docs/AUDIT-2026-08-31.md) source-contract for the tapjacking fix: every interactive
+ * Source contract for tapjacking protection: every interactive
  * element of the settings and setup screens carries `android:filterTouchesWhenObscured="true"`,
  * so a touch arriving while another app's window obscures the screen is dropped instead of
  * toggling a switch the user never saw. Whether a touch is filtered is a framework decision
@@ -30,8 +30,8 @@ import org.junit.Test
  * contract names the actual tap targets, not just the screen roots.
  *
  * The IME's own layouts must stay clean: the keyboard window never sets the flag (its key
- * previews and popups are child views of the same window, and the audit found no overlay
- * scenario there), so this test also pins their absence.
+ * previews and popups are child views of the same window, with no overlay scenario), so this
+ * test also pins their absence.
  */
 class SettingsTapjackingSourceContractTest {
 

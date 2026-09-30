@@ -1,31 +1,11 @@
 #!/usr/bin/env python3
-"""Expand the Tatar extra-heads list with conversationally established words (P5a option b).
+"""Print Tatar words to add to the extra-heads list because they are common in conversation.
 
-Rule EXPAND-1 (written 2026-09-23 in docs/ROADMAP-P4.md; corpus-only, the eval set is never
-consulted): a word joins the list when ALL of these hold:
-
-  1. it is in the shipped dictionary (`tatar_top100k_v1.tdict.zlib`) with FREQUENCY rank
-     >= --heads — below the frequency cutoff, so the H mechanism cannot reach it. The frequency
-     rank mirrors `bigram_pack.select_heads` exactly: descending frequency, ties broken by
-     code point ascending, read from the same dictionary asset (an earlier draft of this script
-     ranked by the dictionary's alphabetical storage order — that was a bug; the packer only
-     deduplicated it into a subset of the intended set);
-  2. its token count in the conversational training input (`tt_conv_train90-sentences.txt`,
-     the held-out-free 90% of Tatoeba + OpenSubtitles) is >= --threshold (default 10);
-  3. it is not already promoted by the H cutoff or by the existing address list
-     (`scripts/bigram_extra_heads_tat.txt`).
-
-Pair evidence is deliberately NOT pre-computed here: the packer's own rule drops a head with no
-in-vocabulary pair (recorded into `scripts/known_asset_drift.json`), so the committed list stays
-the honest statement of the rule and the survival check lives in exactly one place.
-
-Deterministic: same inputs -> same list, one word per line, code-point ascending. Usage:
-
-    python3 scripts/bigram_extra_heads_conv.py \
-        --dictionary app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib \
-        --conversational ~/corpora-leipzig/tt_conv_train90-sentences.txt \
-        --existing scripts/bigram_extra_heads_tat.txt \
-        --heads 10132 --threshold 10
+A word is printed when its frequency rank in the dictionary (ranked as ``bigram_pack.select_heads``
+does) is >= ``--heads``, it occurs >= ``--threshold`` times in the conversational training corpus,
+and it is not already in ``--existing`` (``bigram_extra_heads_tat.txt``). Pairs are not checked:
+the packer drops heads without in-vocabulary pairs. The eval set is never read.
+Output: one word per line on stdout, code-point ascending, deterministic for the same inputs.
 """
 
 from __future__ import annotations

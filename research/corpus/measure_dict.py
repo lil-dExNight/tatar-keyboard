@@ -1,6 +1,6 @@
 """Measure what a conversational corpus would add to the SHIPPED top-100k dictionary.
 
-TEST ARTEFACTS ONLY. Reads app/src/main/assets/... but never writes there.
+TEST ARTIFACTS ONLY. Reads app/src/main/assets/... but never writes there.
 
 Method, and why each step is what it is:
 
@@ -31,7 +31,7 @@ def count_conv(paths, tag, dedup_lines=True):
     lines_used = 0; lines_skipped = 0
     for p in paths:
         p = Path(p); local = Counter()
-        # Per-file dedup, as before -- but keyed by an 8-byte digest, because a set of the
+        # Per-file dedup, keyed by an 8-byte digest, because a set of the
         # Russian OpenSubtitles lines themselves does not fit in memory.
         seen = HashSet64(max(1 << 16, p.stat().st_size // 55))
         with CL.open_text(p) as fh:

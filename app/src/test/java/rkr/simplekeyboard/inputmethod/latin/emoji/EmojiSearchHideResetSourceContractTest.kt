@@ -21,11 +21,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * M4c source-contract, in the style of EmojiPanelSourceContractTest: it greps the frozen source
- * rather than exercising Android, guarding the hide-path reset that keeps the emoji search from
- * resurrecting as a dead band. The defect: the switcher's search/panel flags and the search view
- * survived a plain window hide (home), while the query was already dropped — the band came back
- * visible but swallowed nothing.
+ * Source contract (like EmojiPanelSourceContractTest) for the hide-path reset. A plain window hide
+ * (home) drops the search query, so it must also reset the switcher's search/panel flags and the
+ * search view; otherwise the search row comes back visible but accepts no input.
  */
 class EmojiSearchHideResetSourceContractTest {
 
@@ -50,8 +48,8 @@ class EmojiSearchHideResetSourceContractTest {
     @Test
     fun hidingTheWindowResetsTheEmojiSearch() {
         val body = onWindowHiddenBody()
-        // The query is dropped AND the switcher surfaces/flags reset — one without the other is
-        // exactly the dead band of M4c.
+        // The query is dropped AND the switcher surfaces/flags reset — one without the other
+        // leaves a dead search row.
         assertTrue("onWindowHidden drops the query", body.contains("abandonEmojiSearch()"))
         assertTrue("onWindowHidden resets the switcher", body.contains("hideEmojiPanel()"))
     }

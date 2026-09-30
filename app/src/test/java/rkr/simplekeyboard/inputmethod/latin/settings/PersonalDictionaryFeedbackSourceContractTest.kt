@@ -23,19 +23,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Mission `tt-personal-dict`, finding A2 of `docs/SILENT-AUDIT.md`, on the side of it that cannot
- * run off-device: what the SCREEN does with the outcome.
+ * What the personal-dictionary SCREEN does with a store outcome. The store side is tested in
+ * `PersonalDictionarySilentFailureTest`; this side lives in an `Activity` and in `LatinIME`, so it
+ * is asserted by source, and every predicate is also checked against a broken input.
  *
- * The store half is exercised for real in `PersonalDictionarySilentFailureTest`. Everything asserted
- * here lives in an `Activity` and in `LatinIME`, which need a device, so it is asserted by source in
- * the style this project already uses for both classes — and every predicate below is proved
- * fail-capable against the shape it replaced, so a regression turns it red instead of quietly
- * passing.
- *
- * The rule being pinned: repainting the list is not allowed to happen in the same statement that
- * queues the mutation. The list is drawn from the published snapshot, and the snapshot does not
- * exist until the worker has finished two fsyncs, so the old ordering routinely drew a list without
- * the word the user had just added — and said nothing at all when the write had genuinely failed.
+ * The rule: the list is not repainted in the same statement that queues the mutation. The list is
+ * drawn from the published snapshot, which exists only after the worker's two fsyncs, so an early
+ * repaint would miss the word just added and say nothing when the write failed.
  */
 class PersonalDictionaryFeedbackSourceContractTest {
 
@@ -77,7 +71,7 @@ class PersonalDictionaryFeedbackSourceContractTest {
         assertTrue("adding takes the outcome", add.contains("controller.addWord(subtypeId, field.text.toString()) { saved ->"))
         assertTrue("removing takes the outcome",
             remove.contains("controller.removeWord(row.subtypeId, row.normalizedForm) { removed ->"))
-        // U7 (2026-09-23): the global erase answers twice — once per store — so its lambda names
+        // The global erase answers once per store, so its lambda names
         // the words half; the pairs half arrives in the nested call.
         assertTrue("erasing takes the outcome", erase.contains("controller.eraseAll(subtypeIds) { wordsErased ->"))
 
@@ -154,7 +148,7 @@ class PersonalDictionaryFeedbackSourceContractTest {
         assertTrue(screenController.contains("private val uiPoster: (Runnable) -> Unit"))
         // Seven entry points, nine exits: eraseAll and quarantines each answer on both of their
         // branches (nothing to do, and the counted fan-out). Every one of them ends on the UI
-        // thread. (9th exit 2026-09-23: U7's per-language clearWords, docs/ROADMAP-P2.md.)
+        // thread.
         assertEquals("no answer may be left on the store's worker", 9,
             Regex("uiPoster \\{").findAll(screenController).count())
     }
@@ -191,8 +185,8 @@ class PersonalDictionaryFeedbackSourceContractTest {
     // --- fail-capability -------------------------------------------------------------------------
 
     /**
-     * Each predicate above is only worth its line if the shape it replaced makes it red. These are
-     * the two shapes that actually shipped, fed to the same checks.
+     * Each predicate above must fail on a broken shape. These are two such shapes, fed to the
+     * same checks.
      */
     @Test
     fun thePredicatesRejectTheShapeTheyReplaced() {

@@ -2,26 +2,25 @@
 
 A hint exists only for rows scripts/review_batches.py marks as "not decidable from the word
 alone" (a high mid-line capitalization ratio, or three letters or fewer). Everything else in
-the queue is an ordinary word form, and burying 35 000 of those under example sentences would
+the queue is an ordinary word form, and burying tens of thousands of those under example sentences would
 make the portions unreadable on the phone they are meant to be read on.
 
 Two kinds of hint, and the difference between them is a licence, not a preference:
 
 * AN EXAMPLE SENTENCE, but only from Tatoeba. Tatoeba is CC BY 2.0 FR: redistributing its
   sentences with attribution is exactly what the licence grants, and the attribution is
-  printed in every portion file. This is the hint the dossier asked for.
+  printed in every portion file.
 
 * NEIGHBOURING WORDS WITH COUNTS, for every word Tatoeba does not have. Those words live only
-  in OpenSubtitles, which grants no licence to redistribute its text at all -- the operator
-  accepted the risk of USING the corpus on 2026-08-24 (docs/CORPUS-OS.md), and that decision
-  says nothing about copying its sentences into a public repository. Counts of which words
-  stand next to which are facts about the text rather than the text, the same distinction
-  make_review.py already draws for frequencies. Turning this into real sentences is one flag
-  away (--os-lines) and is the operator's call, not this script's.
+  in OpenSubtitles, which grants no licence to redistribute its text at all. The project uses
+  the corpus, but that does not allow copying its sentences into a public repository. Counts
+  of which words stand next to which are facts about the text rather than the text, the same
+  distinction make_review.py draws for frequencies. Real sentences are available behind a
+  flag (--os-lines) that the curator has to set explicitly.
 
 Stop words are dropped from the neighbour lists by ONE mechanical rule -- membership in the
 top NEIGHBOUR_STOP_RANK of the SHIPPED dictionary. No judgement about a word's quality is made
-anywhere here; that is the operator's job and the dossier forbids this mission to take it over.
+anywhere here; that is left to the human curator.
 """
 from __future__ import annotations
 
@@ -48,7 +47,7 @@ EXAMPLE_MAX_TOKENS = 12
 NEIGHBOUR_STOP_RANK = 60
 NEIGHBOURS_SHOWN = 3
 # A word that occurs three times in the whole corpus has no neighbour that occurs twice, and
-# those rare words are exactly the ones the operator cannot settle by sight. One sighting of a
+# those rare words are exactly the ones the curator cannot settle by sight. One sighting of a
 # neighbour is still evidence, and the count is printed next to it so it can be weighed.
 NEIGHBOUR_MIN_COUNT = 1
 
@@ -86,8 +85,8 @@ def collect_examples(paths, targets, norm, want):
 def collect_neighbours(paths, targets, norm):
     """{word: Counter(neighbour)} over immediate left and right neighbours, all corpora.
 
-    The Russian OpenSubtitles file is 107 446 104 lines, so the loop is written for one pass and
-    a cheap rejection: lowercase-and-strip is enough to tell that a line holds none of the few
+    The Russian OpenSubtitles file has over a hundred million lines, so the loop is written for
+    one pass and a cheap rejection: lowercase-and-strip is enough to tell that a line holds none of the few
     hundred target words, and only the lines that DO hold one pay for full normalization. The
     counts are identical either way -- normalize_word lowercases as its second step, so a token
     that fails the cheap test could not have passed the full one.

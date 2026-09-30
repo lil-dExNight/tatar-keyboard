@@ -23,26 +23,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Mission `tt-corpus-os`, decision 2: the attribution the data sources ask for is IN the product,
- * and stays there.
+ * The data-source attribution is in the product and stays there. The dictionaries use word
+ * frequencies derived from OpenSubtitles, which asks for a link back to `opensubtitles.org`, so
+ * the link lives on a settings screen. The screen is an `Activity`, so it is pinned by source
+ * (as in `PersonalQuarantineScreenSourceContractTest`):
  *
- * The operator decided on 2026-08-24 to use word frequencies derived from OpenSubtitles even though
- * that collection publishes no licence grant. The one thing the collection does ask of anyone who
- * uses it is a link back to `opensubtitles.org`. A link that lives only in a mission report is not
- * in the product, so it lives on a settings screen — and a settings screen is an `Activity`, which
- * needs a device. So it is pinned by source, in the style this class is already pinned by elsewhere
- * (`PersonalQuarantineScreenSourceContractTest`).
- *
- * Three things are being held still, and each one is a thing a later edit could plausibly undo:
- *
- * 1. The screen exists and is reachable — a screen nobody can open attributes nothing.
+ * 1. The screen exists and is reachable.
  * 2. Every source named on it carries its link, `opensubtitles.org` in particular.
- * 3. The screen says where the data actually is. Until 1.9.0 the words sat in acceptance queues and
- *    no packed asset contained one of them, and the test held the two collections OUT of the
- *    shipped section. On 2026-08-24 mission `tt-dict-accept` accepted 27 134 Russian and 226 Tatar
- *    forms by machine rule and packed them, so the assertion is turned around rather than deleted:
- *    all three collections must now stand under the shipped header, and there must be no header
- *    left claiming anything is merely prepared. `docs/DICT-ACCEPT.md` records the rule and counts.
+ * 3. The screen says where the data is: all three collections stand under the shipped header, and
+ *    no header claims anything is merely prepared.
  */
 class DataSourcesScreenSourceContractTest {
 
@@ -63,10 +52,8 @@ class DataSourcesScreenSourceContractTest {
         source.substringAfter(from).substringBefore(to)
 
     /**
-     * Only the body of `buildDataSourcesScreen`. The bound used to be the next KDoc block, which
-     * ran on through several later screens; that was harmless while every assertion was a
-     * `contains`, and stops being harmless the moment one of them is an `assertFalse`. The next
-     * `private fun` is the real end of the function.
+     * Only the body of `buildDataSourcesScreen`, ending at the next `private fun`. A looser bound
+     * would include later screens and make the `assertFalse` checks meaningless.
      */
     private val screenBody by lazy {
         bodyOf(host, "private fun buildDataSourcesScreen()", "\n    private fun ")
@@ -94,14 +81,12 @@ class DataSourcesScreenSourceContractTest {
     }
 
     /**
-     * The link OpenSubtitles asks for, spelled out. This is the whole of what that collection
-     * requests in return for its data, and the reason the row exists at all; a rename of the string
-     * key would still leave the URL, and dropping the URL fails here rather than quietly.
+     * The link OpenSubtitles asks for, spelled out. A rename of the string key would still leave
+     * the URL; dropping the URL fails here.
      */
     @Test
     fun the_opensubtitles_link_is_present_in_the_product() {
-        // The scheme follows the resource: the 2026-09-24 wave moved the link to https, and the
-        // pin holds the product to exactly what it ships.
+        // The scheme follows the resource (https), so the pin matches exactly what ships.
         assertTrue("opensubtitles.org must be a real URL resource",
             appNames.contains("https://www.opensubtitles.org/"))
         assertTrue("NOTICE.txt next to the dictionaries must carry the same link",
@@ -111,11 +96,9 @@ class DataSourcesScreenSourceContractTest {
     }
 
     /**
-     * Since 1.9.0 all three collections are inside the packed dictionaries, so the screen has to
-     * say that and nothing weaker. The check stays two-sided, with both sides reversed: every
-     * source must sit under the shipped header, and the "prepared, not in the app yet" header must
-     * be gone entirely — a header that survives with nothing under it is the same false claim in
-     * a quieter form.
+     * All three collections are inside the packed dictionaries, so the screen has to say so. Two
+     * sides: every source sits under the shipped header, and the "prepared, not in the app yet"
+     * header does not exist at all (an empty header would still be a false claim).
      */
     @Test
     fun every_packed_source_is_shown_as_shipped() {

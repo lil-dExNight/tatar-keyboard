@@ -37,11 +37,11 @@ import java.io.IOException
 import java.util.concurrent.Executor
 
 /**
- * The E4a-2 acceptance heart: the whole-file write sequence and a fault injected at EVERY step,
- * proving that the previous valid file survives, new data never loses old, a partial temp never
- * becomes the main file, and temp garbage never blocks the next open. Plus no-space, LRU overflow
- * on disk, the unlock gate, corruption quarantine, and the "accepted suggestion does not rewrite
- * the file" rule. All plain JVM, offline.
+ * Write-path contract of the personal dictionary store: the whole-file write sequence with a
+ * fault injected at every step, proving that the previous valid file survives, new data never
+ * loses old, a partial temp never becomes the main file, and temp garbage never blocks the next
+ * open. Plus no-space, LRU overflow on disk, the unlock gate, corruption quarantine, and the
+ * "accepted suggestion does not rewrite the file" rule. Plain JVM.
  */
 class PersonalDictionaryStoreWriteTest {
     @get:Rule
@@ -159,7 +159,7 @@ class PersonalDictionaryStoreWriteTest {
         store(directory, ops, RealOpener).addManually("сүзлек")
 
         // The replace already happened: the destination now holds the NEW valid data, readable, and
-        // no temp is left. This matches the dictionary store's post-rename fsync behaviour (D1b).
+        // no temp is left. This matches the dictionary store's post-rename fsync behavior.
         assertEquals(setOf("абыйлар", "сүзлек"), normalizedOnDisk(directory).toSet())
         assertNoTemp(directory)
         assertEquals(2, TpersValidator().validate(destinationFile(directory), subtype).entryCount)
@@ -190,7 +190,7 @@ class PersonalDictionaryStoreWriteTest {
             store(directory, crashingOps, RealOpener).addManually("сүзлек")
             fail("expected the simulated process death to propagate")
         } catch (_: PersonalStoreCrash) {
-            // Like process death: the store's fail-closed catch does not swallow an Error.
+            // Like process death: the store's catch-all does not swallow an Error.
         }
         assertEquals(1, temps(directory).size) // a temp is left behind by the crash
 

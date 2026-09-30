@@ -22,10 +22,10 @@ import org.junit.Test
 import java.io.File
 
 /**
- * The two D3 invariants that live in code shape rather than in behaviour, because the classes that
- * carry them (`InputLogic`, `LatinIME`) cannot be instantiated without Android: the autocorrection
- * inserts through the SAME single commit as an accepted suggestion, and neither path ever creates
- * composing text.
+ * The two autocorrect invariants that live in code shape rather than in behavior, because the
+ * classes that carry them (`InputLogic`, `LatinIME`) cannot be instantiated without Android: the
+ * autocorrection inserts through the SAME single commit as an accepted suggestion, and neither path
+ * ever creates composing text.
  */
 class AutocorrectSourceContractTest {
 
@@ -33,9 +33,8 @@ class AutocorrectSourceContractTest {
     fun autocorrectInsertsThroughTheSameSingleCommitAsAnAcceptedSuggestion() {
         val source = inputLogicSource()
 
-        // Both insertion paths of the frozen text contract delegate to one shared method and do no
-        // editing of their own. That is what makes them the same commit rather than two that look
-        // alike today and drift apart tomorrow.
+        // Both insertion paths delegate to one shared method and do no editing of their own, so
+        // they stay the same commit.
         for (entryPoint in listOf("commitChosenSuggestion", "commitTatarAutocorrection")) {
             val body = methodBody(source, "public boolean $entryPoint(")
             assertEquals(
@@ -95,10 +94,9 @@ class AutocorrectSourceContractTest {
 
     @Test
     fun autocorrectNeverIntroducesComposingText() {
-        // Not "the D3 path does not": no source in the app names a composing API at all, so a
-        // composing region cannot appear on any path, present or future, without this test failing.
-        // The MVP decision "no composing text — commit at once, delete by code points" is what this
-        // pins, and D3 is the second insertion path that had to keep it.
+        // No source in the app names a composing API at all, so a composing region cannot appear on
+        // any path without this test failing. This pins the rule "no composing text — commit at
+        // once, delete by code points", which autocorrect as the second insertion path keeps.
         val offenders = mainSources().filter { file ->
             val text = file.readText()
             COMPOSING_APIS.any(text::contains)

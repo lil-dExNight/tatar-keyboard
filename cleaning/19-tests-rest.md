@@ -319,3 +319,40 @@ P3 — косметика.
    `SuggestionStripStateTest` пинит `CELL_COUNT == 3`). Классы опечаток #5 / live-preview глайда в
    моих файлах не упоминаются. Ложных комментариев не найдено — проблема в объёме и агентном стиле,
    не в фактической неправде.
+
+## Phase 5 result: androidTest/ and baselineprofile/ (WP5.2)
+
+Comments only; no code, identifiers, string literals or assertions changed
+(`git diff -U0` over the area: every changed line is a comment line or inside an XML comment).
+
+Files changed (10): `app/src/androidTest/AndroidManifest.xml`, `DrawAllocInstrumentationTest.kt`,
+`GlidePointerDeviceTest.kt`, `DictionaryIoStrategyInstrumentationTest.kt`,
+`E3bComputeInstrumentationTest.kt`, `EmojiIndexReloadInstrumentationTest.kt`,
+`GlideDeviceInstrumentationTest.kt`, `GlideUiDeviceTest.kt`, `baselineprofile/build.gradle`,
+`ImeBaselineProfileGenerator.java`. Net: +167 / −258 lines.
+
+What was done:
+- Removed mission/phase/finding codes (O2/O3/O5/O7, P7-x, A1, M4/M4b, E3b/Phase-B, "wave"),
+  dates, `docs/*.md` links, "field report", device-run provenance and measured numbers in prose
+  (18, 2148, 1565, 3.306, 31.6 ms, ~50 ms, ~7.5 s).
+- Generator class KDoc: the CUJ narrative is now a five-item list of the journeys it runs plus
+  two lines on the pref setup and how to run it (device pinning refers to `build.gradle`).
+- DrawAlloc class KDoc shrunk; the StateListDrawable 2-allocations-per-toggle platform quirk is
+  kept (it explains `BOARD_TOGGLE_FLOOR_BOUND`).
+- Terminology per Appendix D: band → strip, slot → cell, prefix suggestion → word completion.
+- Kept: 720x1640 / POCO C71 calibration notes (needed to run the tests), the component-id NOTE
+  and the force-stop/IME-reset NOTE in the generator.
+
+Metrics (brief checks, area = `app/src/androidTest baselineprofile`):
+
+| check | before | after |
+|---|---|---|
+| `docs/*.md` / PROPOSALS | 13 | 0 |
+| dates | 20 | 0 |
+| Cyrillic in comments | 38 | 32 (all quoted Tatar/Russian test words: сәлам, сәләм, ә→л→ә→м, …) |
+| operator/uncommitted/handoff/mission | 2 | 0 |
+
+No test pins comment text in this area (`app/src/test` has no reference to androidTest or
+baselineprofile). Open point: `build.gradle` used to say the generated profile lands in
+`app/src/main/generated/baselineProfiles/`; it now says `app/src/release/generated/baselineProfiles/`,
+following `AGENTS.md` and AGP's per-variant default. Not verified by a run (Gradle not run).

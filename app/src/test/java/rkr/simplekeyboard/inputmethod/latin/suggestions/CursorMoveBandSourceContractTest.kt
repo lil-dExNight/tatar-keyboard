@@ -25,13 +25,11 @@ import java.io.File
  * The wiring behind [CursorMoveBandTest], pinned in source shape because the classes that carry it
  * (`LatinIME`, `RichInputConnection`) cannot be instantiated without Android.
  *
- * The rule in one sentence: **every path that blanks the band for a cursor move must also ask for it
- * back once that move has settled** — except the emoji panel and the emoji search, which route
- * through the same invalidation precisely to get a band that stays empty while they are up.
- *
- * This is the test that fails against the code as it stood before mission tt-prefix3-bug: there was
- * no re-derivation of any kind, and a space slide, a delete swipe or a tap into the text left the
- * strip blank until the next keystroke.
+ * The rule in one sentence: **every path that blanks the band for a cursor move must also ask for
+ * it back once that move has settled** — except the emoji panel and the emoji search, which route
+ * through the same invalidation precisely to get a band that stays empty while they are up. Without
+ * the re-derivation, a space slide, a delete swipe or a tap into the text leaves the strip blank
+ * until the next keystroke.
  */
 class CursorMoveBandSourceContractTest {
 
@@ -127,9 +125,9 @@ class CursorMoveBandSourceContractTest {
         // band is decided by the text after the cursor as much as by the text before it — a letter
         // right after the cursor means no candidates at all — so posting where the shift state is
         // posted (which needs the text BEFORE the cursor and nothing else) would re-derive the band
-        // from a half-updated cache. This is measured rather than asserted by eye: in the pre-S
-        // branch the refresh must come after the assignment of mTextAfterCursor, and in the S branch
-        // after setTextAroundCursor, which sets both sides at once.
+        // from a half-updated cache. The order is checked by index: in the pre-S branch the refresh
+        // must come after the assignment of mTextAfterCursor, and in the S branch after
+        // setTextAroundCursor, which sets both sides at once.
         val legacyStart = reload.indexOf("final CharSequence textBeforeCursor")
         assertTrue("the reload must still have its two SDK branches", legacyStart > 0)
         val modern = reload.substring(0, legacyStart)

@@ -1,38 +1,12 @@
 #!/usr/bin/env python3
-"""Build the Tatar Keyboard skin-tone asset from emoji-test.txt.
+"""Build the skin-tone asset: which panel cells accept a tone, and how to compose it.
 
-The tool uses only the Python standard library. The inputs are the locally
-downloaded Unicode Emoji 15.1 ``emoji-test.txt`` with the same pinned SHA-256
-``scripts/emoji_pack.py`` uses, plus the already-generated emoji panel asset
-``emoji_set_v1.txt``; the output is
-``app/src/main/assets/emoji/emoji_skin_v1.txt``, a deterministic UTF-8/LF text
-asset (data, not code).
-
-Why a second asset instead of a change to ``emoji_pack.py``: the panel asset is
-frozen and cuts every skin-toned sequence by code point (docs/DICTIONARY-E2.md).
-That decision stands — the grid still shows one neutral cell per emoji. This
-asset only records WHICH of those neutral cells accept a tone modifier and how
-to compose the toned form, so the panel can offer the five tones on a long press
-without carrying 655 extra grid cells.
-
-One output line per base, in panel-asset order::
-
-    <panel sequence>\\t<prefix>\\t<suffix>
-
-The toned form is ``prefix + modifier + suffix`` for each of the five modifiers
-U+1F3FB..U+1F3FF. The split matters because a tone REPLACES U+FE0F: the panel
-draws ``U+1F590 U+FE0F`` but the toned form is ``U+1F590 U+1F3FB``, so the prefix
-recorded here is the sequence without its variation selector rather than the
-panel sequence itself.
-
-The generator is fail-closed. It exits with a nonzero status and writes no
-partial asset when:
-
-* the input SHA-256 does not match the pin,
-* the version declared in the file header is not 15.1,
-* a composed toned form is not itself a fully-qualified record of the input,
-* the base count falls outside the pinned sanity range, or
-* a guardrail is breached (asset > 8192 bytes or > 400 lines).
+Input: Unicode Emoji 15.1 ``emoji-test.txt`` (pinned as in ``emoji_pack.py``) and the
+panel asset ``emoji_set_v1.txt``. Output: ``assets/emoji/emoji_skin_v1.txt``, one
+``<panel sequence>\\t<prefix>\\t<suffix>`` line per base in panel order; the toned form
+is ``prefix + modifier + suffix``. A tone replaces U+FE0F, so the prefix has no VS16.
+Exits nonzero without writing output on a pin or version mismatch, a composed form that
+is not a fully-qualified record, a base count out of range, or a breached guardrail.
 """
 
 from __future__ import annotations
@@ -56,13 +30,12 @@ EXPECTED_UNICODE_VERSION = "15.1"
 
 VERSION_PREFIX = "# Version:"
 
-# Guardrails. A change to any number is a written decision, not a silent bump.
+# Guardrails on the output size.
 MAX_ASSET_BYTES = 8192
 MAX_LINES = 400
 
-# Sanity range on how many of the panel's neutral cells accept a tone. Unicode
-# 15.1 gives 131 for the committed panel asset; the range catches a source swap
-# that silently empties or explodes the list.
+# Sanity range on how many of the panel's neutral cells accept a tone; it catches
+# a source swap that empties or explodes the list.
 MIN_BASES = 100
 MAX_BASES = 200
 
@@ -77,7 +50,7 @@ SECTION_HEADER_RE = re.compile(r"^#[a-z][a-z0-9-]*$")
 
 
 class EmojiSkinPackError(ValueError):
-    """A fail-closed generator error (exit 2)."""
+    """A generator error; nothing is written (exit 2)."""
 
 
 class EmojiSkinGuardrailError(EmojiSkinPackError):

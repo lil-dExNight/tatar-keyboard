@@ -31,31 +31,18 @@ import java.security.MessageDigest
 import kotlin.math.ceil
 
 /**
- * TT-TYPO-NEXT Phase C calibration (docs/TT-TYPO-NEXT-PLAN.md + the 2026-09-20 orchestrator
- * amendment relaxing G2 to <= 25 % after Phase B proved 2 % miscalibrated — even the shipped
- * class-#1 baseline measures 3.63 %). Gates, all measured BEFORE the ship decision:
+ * Calibration of edit class #4 (full single substitution over the layout alphabet, active only
+ * when the exact pass is empty and the prefix has >= 4 code points), which ships in the Tatar
+ * engine. Measured on the class-#4 typo sets of `scripts/typo_pack.py --edit-class 4`:
  *
- *  - G1-C (recovery): recovery@3 on the NEW class-#4 typo sets (full single substitution over the
- *    layout alphabet, `scripts/typo_pack.py --edit-class 4`) under the exact activation condition
- *    (exact pass empty AND >= 4 code points) must be >= 1.5x the class-#1-only baseline measured
- *    under the SAME condition on its own set. The 3-cp window is the gate-proof arm: class #4 can
- *    never fire there, so the candidate must be byte-identical to the baseline on every row.
- *  - G2-C (precision): among >= 4-cp prefixes derived from `tt_eval_sentences.txt` where the exact
- *    pass is empty (genuinely empty strips — rare; counted), the share receiving any class-#4
- *    candidate must stay <= 25 %. Pollution of a NON-empty strip is impossible by construction.
- *    AMENDED 2026-09-20 (orchestrator, recorded in docs/TT-TYPO-NEXT.md): G2-C2 — the activation
- *    rate itself must stay <= 25 %; the fill rate is reported without a threshold.
- *  - G1-C2 (same amendment): the cross-set ratio of G1-C is replaced by the same-set absolute
- *    lift on the class-#4 5-cp set, candidate minus baseline, gate >= +10 pp.
- *  - G3-C (perf): host p95 <= 5 ms with class #4 engaged; probe counts reported honestly.
- *  - E2E pin, both ways: the candidate wiring puts "сәләм" in cell 1 for "сцләм" by the 5th
- *    letter; the shipped DEFAULT wiring's behavior is pinned separately.
+ *  - recovery: on the same 5-cp set, recovery@3 minus the class-#1-only baseline must be
+ *    >= +10 pp; on the 3-cp set class #4 can never fire, so results must equal the baseline;
+ *  - precision: among >= 4-cp eval prefixes, the share with an empty exact pass (where class #4
+ *    activates) must stay <= 25 %; the fill rate is reported without a threshold;
+ *  - performance: host p95 <= 5 ms with class #4 engaged, probe counts reported;
+ *  - end to end: the shipped wiring puts "сәләм" in cell 1 for "сцләм" by the 5th letter.
  *
- * All metrics are printed as raw lines and the measured counts are pinned exactly. Nothing was
- * tuned to pass: the C-era gates (cross-set ratio, fill-rate cap, naive probe cost) failed, the
- * orchestrator amended them (G1-C2 same-set lift / G2-C2 activation-rate cap / G3-C2 device
- * budget), the probe path was re-engineered (no-cache search + per-position range narrowing),
- * and the corrected gates passed — class #4 ships in the Tatar engine (docs/TT-TYPO-NEXT.md).
+ * Metrics are printed as raw lines and the counts are pinned exactly.
  */
 class TtTypoPhaseCCalibrationTest {
 
@@ -170,9 +157,8 @@ class TtTypoPhaseCCalibrationTest {
             if (class1Bonus.lookup(query) == candidate.lookup(query)) identicalW3++
         }
 
-        // 5-cp window, the activation subset (exact pass empty) on both arms. The whole-set
-        // candidate number is recorded for the Phase-B comparison (its class-#2 headline was
-        // whole-set: 38.4641 % at 5 cp).
+        // 5-cp window, the activation subset (exact pass empty) on both arms, plus the
+        // whole-set candidate number.
         val baseW5 = measureRecovery(baseline, class1w5)
         val candW5 = measureRecovery(candidate, class4w5)
         var candW5Whole = 0
@@ -210,11 +196,9 @@ class TtTypoPhaseCCalibrationTest {
     }
 
     /**
-     * G1-C2 (orchestrator amendment 2026-09-20, replacing the cross-set ratio of G1-C): on the
-     * SAME class-#4 typo set (5-cp window), the candidate's recovery@3 minus the class-#1-only
-     * baseline's recovery@3 — identical conditions — must be >= +10 percentage points. The
-     * whole-set share is the gate number (the contract's literal methodology since E3a); the
-     * activation subset (exact pass empty — where class #4 can act at all) is reported alongside.
+     * Same-set lift: on the class-#4 typo set (5-cp window), the candidate's recovery@3 minus the
+     * class-#1-only baseline's, under identical conditions, must be >= +10 percentage points. The
+     * gate uses the whole-set share; the activation subset (exact pass empty) is reported too.
      */
     @Test
     fun gateG1C2SameSetLift() {
@@ -276,12 +260,10 @@ class TtTypoPhaseCCalibrationTest {
     }
 
     /**
-     * G2-C2 (orchestrator amendment 2026-09-20, replacing G2-C's fill-rate cap): the ACTIVATION
-     * rate — >= 4-cp eval prefixes whose exact pass is empty — must stay <= 25 % (class #4 fires
-     * only where the strip would be empty; it can never leak into a non-empty strip by
-     * construction). The fill rate among activated prefixes is REPORTED without a pass/fail
-     * threshold: a one-edit dictionary word on an otherwise empty strip is standard IME behavior,
-     * not pollution.
+     * Activation rate: >= 4-cp eval prefixes whose exact pass is empty must stay <= 25 % (class #4
+     * fires only where the strip would be empty, never into a non-empty strip). The fill rate among
+     * activated prefixes is reported without a threshold: a one-edit dictionary word on an
+     * otherwise empty strip is normal IME behavior.
      */
     @Test
     fun gateG2CPrecisionOnGenuinelyEmptyStrips() {
@@ -382,8 +364,7 @@ class TtTypoPhaseCCalibrationTest {
 
         // 2 code points: fuzzy never fires; the exact "сц*" block.
         assertEquals(listOf("сценарий", "сценарие", "сценарийлар"), strip("сц"))
-        // 3 code points: exact==0, but the class-#4 gate needs >= 4 cp — the strip stays empty
-        // (the Phase-B {1,2} arm showed the "сәл*" frequency leaders here; Phase C shows nothing).
+        // 3 code points: exact==0, but the class-#4 gate needs >= 4 cp, so the strip stays empty.
         assertEquals(emptyList<String>(), strip("сцл"))
         // 4 code points: class #4 fires (exact==0); the "сәлә*" block's frequency leaders fill the
         // strip — no same-length candidate exists at 4 cp.
@@ -391,9 +372,9 @@ class TtTypoPhaseCCalibrationTest {
         // 5 code points: "сәләм" is the sole surviving variant; the same-length bonus puts the
         // correction itself (freq 36) above "сәләмәтлек" (65).
         assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмәт"), strip("сцләм"))
-        // 10 code points: with the Phase-C2 range narrowing only positions 0-2 probe (the "сцл*"
-        // range is empty, killing positions >= 3 for free) — 3 x 38 = 114 probes instead of the
-        // naive 380; the sole survivor's own word wins.
+        // 10 code points: with the empty-range narrowing only positions 0-2 probe (the "сцл*"
+        // range is empty, which skips positions >= 3) — 3 x 38 = 114 probes instead of 380; the
+        // sole survivor's own word wins.
         val deep = ImmutableUtf8Prefix.copyOf("сцләмәтлек".toByteArray(Charsets.UTF_8))
         assertEquals(listOf("сәләмәтлек"), index.lookup(deep))
         assertEquals(114, index.lastFuzzyProbeCount)
@@ -474,11 +455,7 @@ class TtTypoPhaseCCalibrationTest {
     companion object {
         private const val SEED = 20260727L
 
-        // Exact pins of the Phase-C measurements (2026-09-20, committed 110k asset + eval set);
-        // re-pin consciously when an input changes. The verdicts: G1-C BELOW (ratio of rates
-        // 0.7205x vs the 1.5x gate), G2-C ABOVE (63.14 % vs the 25 % gate) — class #4 stays unwired.
-        // Re-pinned 2026-09-29 (three cells again — the four-cell wave reverted; the exact-empty
-        // and activation subsets are cell-count-invariant and never moved).
+        // Pins over the committed dictionary and eval set; re-pin when an input changes.
         private const val PIN_BASE_W5 = 38_689
         private const val PIN_CAND_W5 = 29_057
         private const val PIN_BASE_W5_SUBSET = 97_318
@@ -487,8 +464,7 @@ class TtTypoPhaseCCalibrationTest {
         private const val PIN_EXACT_EMPTY = 1_579
         private const val PIN_CLASS4_FILLED = 997
 
-        // Exact pins of the G1-C2 same-set lift measurement (2026-09-20); re-pin consciously.
-        // Re-pinned 2026-09-29 (three cells again; the activation subset never moved).
+        // Pins of the same-set lift measurement.
         private const val PIN_C2_BASE_W5_WHOLE = 470
         private const val PIN_C2_CAND_W5_WHOLE = 29_062
         private const val PIN_C2_ACTIVE_ROWS = 101_445
@@ -519,7 +495,7 @@ class TtTypoPhaseCCalibrationTest {
             val tatarRaw = inflate(DictionaryArtifactSpec.TATAR_TOP100K_V1)
             vocabulary = DictionaryTestFixtures.words(tatarRaw)
             check(vocabulary.size == DictionaryArtifactSpec.TATAR_TOP100K_V1.expectedEntryCount.toInt())
-            // The production Tatar shape: P3 suffix rules + the Phase-C fuzzy policy. The baseline
+            // The production Tatar shape: suffix rules + the TATAR fuzzy policy. The baseline
             // carries the suffix rules too, so only the fuzzy policy differs between the arms.
             defaultIndex = openIndex(tatarRaw, DictionaryArtifactSpec.TATAR_TOP100K_V1, TatarSuffixRules, null)
             tatarIndex = openIndex(tatarRaw, DictionaryArtifactSpec.TATAR_TOP100K_V1, TatarSuffixRules, FuzzyEditPolicy.TATAR)
@@ -535,7 +511,7 @@ class TtTypoPhaseCCalibrationTest {
                 index.updateKeyNeighbors(neighborTable)
             }
 
-            // The G2-C prefix derivation: every distinct >= 4-cp prefix of every unique eval word
+            // The precision prefix set: every distinct >= 4-cp prefix of every unique eval word
             // (shorter prefixes can never meet the activation gate).
             val evalLines = locate(
                 "src/test/resources/tt_eval_sentences.txt",

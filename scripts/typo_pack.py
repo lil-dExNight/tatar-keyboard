@@ -1,45 +1,12 @@
 #!/usr/bin/env python3
-"""Build the deterministic edit-class typo sets used to calibrate recovery@3 (E3a/E3b,
-TT-TYPO-NEXT Phase B).
+"""Generate deterministic typo sets (edit classes #1-#4) for calibrating typo recovery.
 
-The tool uses only the Python standard library. It emits a reproducible set of edit
-class #1 typos -- the contract's "замена буквы на её long-press партнёра" -- as a
-deterministic UTF-8/LF text file (data, not code). Given identical inputs the output is
-byte-for-byte identical across runs and hosts: there is no time, locale, path or RNG
-state in the output, and every random choice is a pure function of a fixed seed and the
-word itself.
-
-Two committed inputs, no third:
-
-* the keyboard layout (``res/xml/rowkeys_tatar*.xml`` — and, for the class #2 geometric
-  relation, ``res/xml/rows_tatar.xml`` plus the gap/padding fractions of
-  ``res/values/config.xml``): the long-press pairs are read from the ``latin:moreKeys``
-  attributes and symmetrized + de-duplicated exactly as ``KeyNeighborTable`` does on the
-  device, and the geometry reproduces the device layout formula (KeyboardBuilder /
-  KeyboardRow / Key, horizontal gap included — see the "Geometric adjacency" section
-  below). Not a single pair is hard-coded here -- this is the same principle the engine's
-  ``KeyNeighborTableBuilder`` follows. Since TT-TYPO-NEXT Phase B (2026-09-20) the pair
-  set this model yields is PROVEN equal to the on-device one (the instrumentation dump on
-  a POCO C71, docs/TT-TYPO-NEXT.md).
-* the committed dictionary asset
-  (``app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib``): the words are its
-  110,000-entry vocabulary (110,000 since 2026-09-20, TT-SUGGESTIONS P2), pinned by
-  SHA-256 on both the compressed asset and the inflated raw file. The JVM calibration
-  test enumerates the very same asset and applies the identical selection rule, so the
-  two produce the same reproducible set.
-
-Neither the licensed source corpus nor the emitted typo set is committed to git: the set
-is fully reproducible from this generator and the two inputs above (see docs/DICTIONARY-E3.md).
-
-The generator is fail-closed. It exits nonzero and writes no partial output when:
-
-* the compressed asset SHA-256 does not match the pin,
-* the inflated raw SHA-256 or entry count does not match the pin,
-* the tdict header/section layout is not the canonical schema 1/version 1,
-* a word is not strictly valid UTF-8,
-* the layout resources yield no long-press pair,
-* no dictionary word is eligible for a class #1 typo, or
-* a guardrail is breached (more rows than dictionary entries).
+Input: the Tatar layout (``res/xml/rowkeys_tatar*.xml``; class #2 also reads ``rows_tatar.xml``
+and ``values/config.xml``) and the bundled dictionary ``tatar_top100k_v1.tdict.zlib`` (pinned).
+Output: one ``original<TAB>typo_prefix`` UTF-8/LF row per eligible word, byte-identical for the
+same inputs; every choice is a function of a fixed seed and the word. No key pair is hard-coded.
+The JVM calibration tests apply the same selection rule (classes #1 and #4) to the same asset.
+Exits nonzero without writing output on a pin mismatch, a malformed asset or layout, or bad UTF-8.
 """
 
 from __future__ import annotations
@@ -60,15 +27,9 @@ from pathlib import Path
 from typing import Iterable, Sequence, TextIO
 
 
-# --- Pinned input identity: the committed Tatar top-100k dictionary asset. ------------
-# These match rkr...storage.DictionaryArtifactSpec.TATAR_TOP100K_V1. The SHA-256 pins are
-# the binding gate; the entry count is a readable cross-check.
-# 2026-09-01 (SIZE-1): словарь перешёл на schema 2 (front-coding + varint-частоты,
-# docs/SIZE-SCHEMA2.md) — состав, порядок и частоты слов побайтно те же, поэтому
-# наборы опечаток не пересобираются; поменялись только пины упаковки.
-# 2026-09-20 (TT-SUGGESTIONS P2, docs/TT-SUGGESTIONS.md): словарь расширен допущенными
-# словоформами до 110 000 записей — наборы опечаток пересобраны с нового состава, пины
-# ниже пересчитаны.
+# --- Pinned input identity: the bundled Tatar dictionary asset. -----------------------
+# These match rkr...storage.DictionaryArtifactSpec.TATAR_TOP100K_V1. The SHA-256 values are
+# the check; the entry count is a readable cross-check.
 EXPECTED_ASSET_SHA256 = (
     "e653ef6ee9d88fd25cd7802e59bb57b954be80d9b7ea897c849be66919fa96ed"
 )
@@ -77,18 +38,16 @@ EXPECTED_RAW_SHA256 = (
 )
 EXPECTED_ENTRY_COUNT = 110_000
 
-# --- Deterministic-selection knobs (also documented in docs/DICTIONARY-E3.md). --------
-# The seed is fixed for all time; a change is a written decision, not a silent bump.
+# --- Deterministic-selection knobs. -----------------------------------------------------
+# The seed is fixed; changing it changes every typo set and the JVM tests that mirror them.
 TYPO_SEED = 20260727
-# Prefix length in Unicode code points. Chosen to equal the engine's
-# MIN_FUZZY_PREFIX_CODE_POINTS (TdictPrefixIndex): three code points is the shortest
-# prefix at which the fuzzy pass fires, so it is the conservative worst case and matches
-# the class #1 offline reference "p95 3 variants, максимум 5".
+# Prefix length in Unicode code points. Equal to the engine's MIN_FUZZY_PREFIX_CODE_POINTS
+# (TdictPrefixIndex): the shortest prefix at which typo recovery runs, so the worst case.
 PREFIX_CODE_POINTS = 3
 
 # 64-bit FNV-1a and SplitMix64 constants. The selection is a pure function of (seed,
 # word) via these two portable primitives so the JVM test reproduces every choice
-# bit-for-bit -- see E3aRecoveryCalibrationTest.kt.
+# bit-for-bit (see E3aRecoveryCalibrationTest.kt).
 _MASK64 = (1 << 64) - 1
 _FNV_OFFSET_BASIS = 0xCBF29CE484222325
 _FNV_PRIME = 0x100000001B3
@@ -96,7 +55,7 @@ _SPLITMIX_GAMMA = 0x9E3779B97F4A7C15
 _SPLITMIX_MIX1 = 0xBF58476D1CE4E5B9
 _SPLITMIX_MIX2 = 0x94D049BB133111EB
 
-# --- tdict schema 2/version 1 layout (see docs/SIZE-SCHEMA2.md). -----------------------
+# --- tdict schema 2/version 1 layout. ----------------------------------------------------
 _TDICT_MAGIC = b"TATDICT\x00"
 _TDICT_HEADER_SIZE = 72
 _TDICT_SCHEMA_ID = 2
@@ -115,7 +74,7 @@ _ANDROID_RES_AUTO = "http://schemas.android.com/apk/res-auto"
 
 
 class TypoPackError(ValueError):
-    """A fail-closed generator error (exit 2)."""
+    """A generator error; nothing is written (exit 2)."""
 
 
 class TypoGuardrailError(TypoPackError):
@@ -241,17 +200,12 @@ def read_layout_neighbor_map(layout_dir: Path) -> dict[int, tuple[int, ...]]:
 # Geometric adjacency (edit class #2), reconstructed from the layout geometry (never hard-coded).
 # --------------------------------------------------------------------------------------
 # The row structure and key widths come from res/xml/rows_tatar.xml; the per-row key order comes
-# from the included rowkeys_tatar*.xml. Nothing is hard-coded: the widths, the key order and the
-# gap/padding fractions are all read from the committed resources.
+# from the included rowkeys_tatar*.xml; the gap/padding fractions from res/values/config.xml.
 #
-# TT-TYPO-NEXT Phase B (docs/TT-TYPO-NEXT.md) — the model is now DEVICE-TRUE. The pre-Phase-B
-# model packed keys edge-to-edge on a percent grid, which made same-row keys "touch"
-# (right == left) and produced 33 same-row pairs the device never has: on a real build
-# KeyboardRow subtracts the horizontal gap from every key's width and advances the next key by
-# the full PADDED width (keyWidth + horizontalGap), so on device right < left for every same-row
-# pair and the "touch" relation never fires. The model below reproduces the device formula
-# (KeyboardBuilder/KeyboardRow/Key) on a fixed integer grid — a 100 000-px reference width, one
-# grid unit = 0.001 %p — with one rounding per key edge, exactly as Key does (Math.round):
+# The model reproduces the device layout formula (KeyboardBuilder/KeyboardRow/Key): KeyboardRow
+# subtracts the horizontal gap from every key's width and advances the next key by the full
+# padded width, so same-row keys never touch. It runs on a fixed integer grid (a 100 000-px
+# reference width, one unit = 0.001 %p) with one half-up rounding per key edge, as Key does:
 #
 #   gap, leftPad, rightPad = fractions of the screen width, from res/values/config.xml;
 #   baseWidth = width - leftPad - rightPad + gap
@@ -259,7 +213,7 @@ def read_layout_neighbor_map(layout_dir: Path) -> dict[int, tuple[int, ...]]:
 #   width_k = frac_k * baseWidth - gap, clamped so x_k + width_k <= width - rightPad
 #   key.left = round(x_k);  key.right = round(x_k + width_k)
 #
-# The resulting pair set is identical for all six shipped config variants (values*/config.xml)
+# The resulting pair set is identical for all shipped config variants (values*/config.xml)
 # and across a 320..4000 px width sweep; tests/typo_pack asserts that stability, so the reference
 # width is a modelling device, not a calibration knob.
 _ROWS_TATAR_FILE = "rows_tatar.xml"
@@ -429,7 +383,7 @@ def read_layout_geometry(
     right_padding_percent: float | None = None,
     width_px: int = _GEOMETRY_REFERENCE_WIDTH,
 ) -> list[_GeoKey]:
-    """Device-true integer geometry of every letter key of the Tatar alphabet layout.
+    """Integer key geometry, as the device computes it, for every letter of the Tatar layout.
 
     The gap/padding fractions default to the base phone config (res/values/config.xml, resolved
     relative to ``layout_dir``); tests pass explicit values to prove the pair set is identical
@@ -471,7 +425,7 @@ def read_layout_geometry(
 
 
 def build_geometric_map(geo_keys: Sequence[_GeoKey]) -> dict[int, tuple[int, ...]]:
-    """Edit class #2 relation, verbatim from the contract and identical to KeyNeighborTable.
+    """Edit class #2 relation: geometric key adjacency.
 
     Keys of the same row (same top rank) that touch horizontally (shared vertical edge), plus keys
     of an adjacent row (top rank differing by one) whose horizontal overlap is MORE than 35% of the
@@ -511,9 +465,9 @@ def read_layout_geometric_map(layout_dir: Path) -> dict[int, tuple[int, ...]]:
 
 
 # --------------------------------------------------------------------------------------
-# The typeable alphabet (edit class #4, TT-TYPO-NEXT Phase C) — read from the layout, never
-# hard-coded. Exactly the KeyNeighborTable.nodes set: every letter key of the rowkeys_tatar*.xml
-# files plus every letter appearing in their latin:moreKeys (ё and ъ are more-key-only letters).
+# The typeable alphabet (edit class #4), read from the layout. Exactly the
+# KeyNeighborTable.nodes set: every letter key of the rowkeys_tatar*.xml files plus every
+# letter appearing in their latin:moreKeys (ё and ъ are more-key-only letters).
 # --------------------------------------------------------------------------------------
 def read_layout_alphabet(layout_dir: Path) -> tuple[int, ...]:
     """The layout's typeable letters as a sorted tuple of code points (== KeyNeighborTable.nodes)."""
@@ -654,7 +608,7 @@ def _parse_tdict_words(raw: bytes, *, expected_entry_count: int) -> list[str]:
                 raise TypoPackError("invalid block entry suffix")
             block_words.append(first[:prefix_length] + raw[cursor : cursor + suffix_length])
             cursor += suffix_length
-        # Частотный хвост блока пропускается: набор опечаток — про слова.
+        # Skip the block's frequency tail: the typo set only needs the words.
         for _ in range(in_block):
             while True:
                 if cursor >= block_end:
@@ -790,12 +744,12 @@ def build_geometric_typo_set(
     prefix_code_points: int = PREFIX_CODE_POINTS,
     max_rows: int | None = None,
 ) -> TypoSet:
-    """Edit class #2: replace one prefix letter with a geometric keyboard neighbour.
+    """Edit class #2: replace one prefix letter with a geometric keyboard neighbor.
 
     For every word of at least ``prefix_code_points`` code points whose prefix window holds a letter
-    with a geometric neighbour, one ``(position, neighbour)`` choice is picked deterministically —
+    with a geometric neighbor, one ``(position, neighbor)`` choice is picked deterministically —
     the same ``(seed, word)`` primitive as class #1 — and applied inside the prefix. Enumeration
-    order is position ascending, then neighbour code point ascending, matching the JVM test.
+    order is position ascending, then neighbor code point ascending.
     """
     if prefix_code_points <= 0:
         raise TypoPackError("prefix length must be positive")
@@ -834,7 +788,7 @@ def build_transposition_typo_set(
     For every word of at least ``prefix_code_points`` code points whose prefix window holds at least
     one distinct adjacent pair, one pair ``(i, i+1)`` is picked deterministically and swapped. Swaps
     of two identical code points are ineligible (they reproduce the prefix). Enumeration order is the
-    left index ascending, matching the JVM test.
+    left index ascending.
     """
     if prefix_code_points <= 0:
         raise TypoPackError("prefix length must be positive")
@@ -880,7 +834,7 @@ def build_substitution_typo_set(
     prefix_code_points: int = PREFIX_CODE_POINTS,
     max_rows: int | None = None,
 ) -> TypoSet:
-    """Edit class #4 (Phase C): replace one prefix letter with an arbitrary alphabet letter.
+    """Edit class #4: replace one prefix letter with an arbitrary alphabet letter.
 
     For every word of at least ``prefix_code_points`` code points, the eligible choices are
     ``(position, letter)`` for every position in the window and every alphabet letter other than

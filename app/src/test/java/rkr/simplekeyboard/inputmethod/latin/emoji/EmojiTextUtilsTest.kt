@@ -109,7 +109,7 @@ class EmojiTextUtilsTest {
         )
     }
 
-    // --- Characterization: non-emoji text deletes exactly as many char as it did before E2. ---
+    // --- Characterization: non-emoji text deletes as many char as the plain code-point path. ---
 
     @Test
     fun combiningMarkInDecomposedTextReturnsZero() {
@@ -207,7 +207,7 @@ class EmojiTextUtilsTest {
         assertEquals(0, length(builder.toString()))
     }
 
-    // --- extractContextBeforeEmoji (feature C): the word a picked emoji was co-used with. ---
+    // --- extractContextBeforeEmoji: the word a picked emoji was co-used with. ---
     // ☀️ = U+2600 U+FE0F; 😊 = U+1F60A (a surrogate pair).
 
     private fun context(text: String): String? = EmojiTextUtils.extractContextBeforeEmoji(text)
@@ -269,7 +269,7 @@ class EmojiTextUtilsTest {
     @Test
     fun anEarlierSpaceSeparatedEmojiBreaksTheChain() {
         // «сәләм ☀️ 😊»: the peel stops at the space, and what stands before the space run is an
-        // emoji, not a word — fail-closed, nothing is learned.
+        // emoji, not a word, so nothing is learned.
         assertNull(context("сәләм " + seq(0x2600, 0xFE0F) + " " + seq(0x1F60A)))
     }
 

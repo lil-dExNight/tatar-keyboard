@@ -24,9 +24,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The «Контракт личного словаря» section introduced with E4b, one test per point that is testable
- * today: WHAT is stored, that storage is keyed by subtype, that there are exactly the declared write
- * paths, and that the gates which must exist do exist.
+ * The personal dictionary contract, one test per point testable on the JVM: WHAT is stored, that
+ * storage is keyed by subtype, that there are exactly the declared write paths, and that the
+ * required gates exist.
  *
  * The points about the screen live in `PersonalDictionaryScreenSourceContractTest`, the one about
  * the ranking in `CompositePrefixComputerTest`, the settings ones in
@@ -82,8 +82,8 @@ class PersonalDictionaryContractTest {
             manual,
         )
 
-        // Path 2 — learning from three clean completions (E4c). It must be reachable only through
-        // the audited seam: the store defines it and PersonalLearning calls it under the predicate.
+        // Path 2 — learning from three clean completions. It must be reachable only through one
+        // seam: the store defines it and PersonalLearning calls it under the predicate.
         val learning = mainFiles().filter { it.readText().contains("noteCompletion(") }
             .map { it.name }
             .sorted()

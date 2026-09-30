@@ -6,15 +6,15 @@ import org.junit.Test
 import java.io.File
 
 /**
- * The P7-2 touch-integration contract, pinned at source level (PointerTracker's static state
- * needs a live Resources, so it cannot be instantiated in a JVM test — the behavioral half of
- * the contract lives in [GlideGestureDeciderTest], which pins the real decision machine).
+ * The glide touch-integration contract, pinned at source level (PointerTracker's static state needs
+ * a live Resources, so it cannot be instantiated in a JVM test — the behavioral half of the
+ * contract lives in [GlideGestureDeciderTest], which pins the real decision machine).
  *
  * What is pinned here: the exact branch structure that makes the glide integration safe — the
- * armed/tracking checks ahead of the legacy space/delete swipe branches, the fail-closed UP
- * delivery, the multi-touch and phantom-up cancels, the historical-batch feed, the eligibility
- * gate at DOWN, and the legacy swipe branches' verbatim survival (the pref-OFF path is
- * byte-identical by construction and these pins make a silent restructure loud).
+ * armed/tracking checks ahead of the legacy space/delete swipe branches, the UP delivery that drops
+ * an undecided gesture, the multi-touch and phantom-up cancels, the historical-batch feed, the
+ * eligibility gate at DOWN, and the legacy swipe branches kept verbatim (so the path with the
+ * preference off stays the pre-glide code).
  */
 class GlideTouchIntegrationContractTest {
 
@@ -35,8 +35,7 @@ class GlideTouchIntegrationContractTest {
         assertTrue("armed branch must precede the space swipe branch", armed < spaceSwipe)
         assertTrue("tracking branch must precede the space swipe branch", tracking < spaceSwipe)
         assertTrue("armed branch must precede the delete swipe branch", armed < deleteSwipe)
-        // An armed MOVE feeds the path and returns. (The cast was made explicit in the 2026-09-24
-        // audit wave, finding 12: the same call, the same narrowing — now written out.)
+        // An armed MOVE feeds the path (with an explicit float cast) and returns.
         assertTrue(move.contains("mGlidePath.addPoint(x, y, (float) eventTime);"))
         // A cursor swipe that already started can no longer become a glide.
         assertTrue(move.contains("mGlideDecider.isTracking() && !mCursorMoved"))
@@ -94,8 +93,8 @@ class GlideTouchIntegrationContractTest {
         // The in-flight timer callbacks carry the armed guard.
         assertTrue(methodBody("onLongPressed").contains("if (mGlideDecider.isArmed())"))
         assertTrue(methodBody("onKeyRepeat").contains("if (mGlideDecider.isArmed())"))
-        // The field fix: a long-press that FIRES for an undecided tracker cancels the decider —
-        // a finger moving after the panel opened is a panel selection, never a glide.
+        // A long-press that FIRES for an undecided tracker cancels the decider — a finger moving
+        // after the panel opened is a panel selection, never a glide.
         val longPress = methodBody("onLongPressed")
         val armedGuard = longPress.indexOf("if (mGlideDecider.isArmed())")
         val cancel = longPress.indexOf("mGlideDecider.cancelGlide();")
@@ -134,7 +133,7 @@ class GlideTouchIntegrationContractTest {
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
         )
         assertTrue(latinIme.contains("public void onGlideInput("))
-        // P7-3: the receiver now forwards to the suggestions controller (the P7-2 stub is gone).
+        // The receiver forwards to the suggestions controller.
         assertTrue(latinIme.contains("controller.onGlideInput(path);"))
         assertTrue(latinIme.contains("setGlideGate("))
         assertTrue(latinIme.contains("setGlideShiftStateGate("))
@@ -142,8 +141,8 @@ class GlideTouchIntegrationContractTest {
 
     @Test
     fun thePreferenceIsIndependentOfTheSuggestionsMaster() {
-        // P7-6 (docs/ROADMAP-P7.md, the 2026-09-24 field report): glide answers its own toggle
-        // only — the P7-2 subordination is reverted (Gboard parity).
+        // Glide answers its own toggle only; it does not depend on the suggestions master switch
+        // (as in Gboard).
         val settings = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/Settings.java",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/Settings.java",
@@ -168,9 +167,9 @@ class GlideTouchIntegrationContractTest {
 
     @Test
     fun theSettingsScreenShowsTheSameDefaultAndDoesNotFollowTheMasterSwitch() {
-        // The EmojiSuggestDefaultSourceContractTest shape: the screen default must never drift
-        // from the reader default. P7-6: the row is NOT grayed when the master switch is off —
-        // only the MDM restriction disables it (both the callback site and the initial state).
+        // As in EmojiSuggestDefaultSourceContractTest: the screen default must never drift from the
+        // reader default. The row is NOT grayed when the master switch is off — only the MDM
+        // restriction disables it (both the callback site and the initial state).
         val host = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt",
@@ -198,8 +197,8 @@ class GlideTouchIntegrationContractTest {
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
         )
         assertTrue(latinIme.contains("isSuggestionsEligible(), activeDictionarySubtype(), isGlideEligible()"))
-        // The device catch of the P7-6 UAT: the geometry push must ride the GLIDE gate — with the
-        // master off a suggestions-gated push disables the decode outright (fail-closed null).
+        // The geometry push must follow the GLIDE gate: with the master off, a suggestions-gated
+        // push would pass a null geometry and disable the decode outright.
         val geometrySlice = latinIme.substringAfter("GlideKeyGeometry geometry = null;")
             .substringBefore("mSuggestionsController.updateGlideGeometry(geometry);")
         assertTrue("the glide geometry answers the glide gate",
@@ -210,20 +209,20 @@ class GlideTouchIntegrationContractTest {
 
     @Test
     fun theLiftCommitWiringIsPinned() {
-        // The UX amendment (docs/ROADMAP-P7.md, 2026-09-24): lift commits top-1, alternatives
-        // replace in-editor, one backspace deletes the whole word. The wiring points:
+        // Lift commits top-1, alternatives replace in-editor, one backspace deletes the whole word.
+        // The wiring points:
         val controller = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt",
         )
-        // The commit goes through the glide's OWN commit path (P7-6: the predicted-word re-checks
-        // minus the sentence-start requirement for an empty context — the "сүз ? " field report);
-        // P7-7: the chain's previous commit is the one tolerated trailing word.
+        // The commit goes through the glide's OWN commit path (the predicted-word re-checks minus
+        // the sentence-start requirement for an empty context, so a glide after "сүз ? " still
+        // commits); the chain's previous commit is the one tolerated trailing word.
         val apply = controller.substringAfter("private fun applyGlideResult")
         assertTrue(apply.contains("editor.commitGlideWord(pendingGlideContext, committed, glideCommittedWord)"))
         assertTrue(apply.contains("glideCommittedWord = committed"))
         assertTrue(apply.contains("displayedGlideAlternativesFor = committed"))
-        // P7-7: the prepended-chain-space fact is what the undo needs.
+        // The undo needs to know whether a chain space was prepended.
         assertTrue(apply.contains("glideCommitPrependedSpace = commitResult == EditorSurface.GLIDE_COMMIT_PREPENDED"))
         // The chain gate: a trailing word blocks the gesture unless it IS the previous commit.
         val onGlide = controller.substringAfter("fun onGlideInput(path: GlidePath)")
@@ -262,8 +261,8 @@ class GlideTouchIntegrationContractTest {
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java",
         )
-        // P7-7: the trailing word at the cursor must BE the committed word, and the deletion is
-        // sized by the chain-space flag; both paths refuse a mid-word cursor.
+        // The trailing word at the cursor must BE the committed word, and the deletion is sized by
+        // the chain-space flag; both paths refuse a mid-word cursor.
         for (method in listOf("replaceGlideLiftedWord", "deleteGlideLiftedWord")) {
             val body = inputLogic.substringAfter("public boolean $method(")
             assertTrue("$method checks the trailing word IS the committed word",
@@ -272,9 +271,9 @@ class GlideTouchIntegrationContractTest {
                 body.contains("(prependedSpace ? AUTO_SPACE : \"\") + committedWord"))
             assertTrue("$method refuses a mid-word cursor", body.contains("startsWithWordCharacter(mConnection.getCachedTextAfterCursor())"))
         }
-        // P7-6/P7-7: the glide commit keeps every live re-check of the prediction commit EXCEPT
-        // the sentence-start requirement, and inserts NO auto-space (the chain space prepends) —
-        // both asymmetries are the field-driven contract and must not drift back.
+        // The glide commit keeps every live re-check of the prediction commit EXCEPT the
+        // sentence-start requirement, and inserts NO trailing auto-space (the chain space
+        // prepends). Both differences are intended.
         val glideCommit = inputLogic.substringAfter("public int commitGlideWord(")
             .substringBefore("public boolean")
         assertTrue("the glide commit re-derives the live context",

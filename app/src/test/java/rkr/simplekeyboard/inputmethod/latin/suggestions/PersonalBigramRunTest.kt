@@ -25,14 +25,14 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 
 /**
- * P1 of Phase 2 (docs/ROADMAP-P2.md), the pair-run machine: which typing produces a "this PAIR
- * was completed cleanly" event and, far more importantly, which typing produces none.
+ * The pair-run machine: which typing produces a "this PAIR was completed cleanly" event and, far
+ * more importantly, which typing produces none.
  *
- * The machine shares the run TEXT with the E4c clean-run machine and differs in exactly one
- * place: after an ACCEPTED suggestion the next typed word may still form a pair — the tapped
- * word is a legitimate context ("typed or tapped") and the cursor sits provably right after it.
- * The threshold, the filters and the membership gate live in the store; what is under test here
- * is the event itself — including the acceptance hook of the NEXT_WORD tap path.
+ * The machine shares the run TEXT with the word clean-run machine and differs in exactly one place:
+ * after an ACCEPTED suggestion the next typed word may still form a pair — the tapped word is a
+ * legitimate context ("typed or tapped") and the cursor sits provably right after it. The
+ * threshold, the filters and the membership gate live in the store; what is under test here is the
+ * event itself — including the acceptance hook of the NEXT_WORD tap path.
  */
 class PersonalBigramRunTest {
 
@@ -122,12 +122,11 @@ class PersonalBigramRunTest {
 
         /**
          * Feeds [word] the way the editor cache actually moves under typing: ONE appended code
-         * point per text event, so a [word] that grows the current one arrives as its
-         * intermediate prefixes. Anything that is not plain growth (a backspace, a replacement)
-         * is delivered as the single event it is — and a multi-character jump from an empty word
-         * is a paste, which the 2026-09-25 paste rule (CleanRunMachine) must read as dirty; use
-         * [paste] to say that out loud. The lookup of the last observation is answered with
-         * [result].
+         * point per text event, so a [word] that grows the current one arrives as its intermediate
+         * prefixes. Anything that is not plain growth (a backspace, a replacement) is delivered as
+         * the single event it is — and a multi-character jump from an empty word is a paste, which
+         * the paste rule of CleanRunMachine must read as dirty; use [paste] for that. The lookup of
+         * the last observation is answered with [result].
          */
         fun type(word: String, result: List<String> = emptyList()) {
             val current = editor.word
@@ -173,7 +172,7 @@ class PersonalBigramRunTest {
     fun theFirstBoundaryOfASessionReportsNothing() {
         val h = Harness()
         // No word boundary has been witnessed yet: the trailing word may be text the app pre-filled
-        // and the user merely appended to. Fail closed, exactly like the words machine.
+        // and the user merely appended to. Report nothing, exactly like the words machine.
         h.type("дөн")
         h.type("дөнья")
         h.endWord("сәләм")
@@ -329,9 +328,9 @@ class PersonalBigramRunTest {
 
     @Test
     fun aTypedPhraseTeachesItsPairEveryTime() {
-        // The paste rule's positive pin (2026-09-25 audit): «сәләм дөнья» typed BY HAND, twice,
-        // keeps teaching the pair — per-keystroke observations are one UTF-16 unit each, so the
-        // ≤ 2-unit first-observation budget never fires on real typing.
+        // The paste rule's positive case: «сәләм дөнья» typed BY HAND, twice, keeps teaching the
+        // pair — per-keystroke observations are one UTF-16 unit each, so the ≤ 2-unit
+        // first-observation budget never fires on real typing.
         val h = Harness()
         h.witnessABoundary()
         repeat(2) { round ->
@@ -345,9 +344,9 @@ class PersonalBigramRunTest {
 
     @Test
     fun aPastedWordTeachesNoPairNoMatterHowOftenItIsPasted() {
-        // The paste rule itself (2026-09-25 audit): «дөнья» appearing WHOLE in one text event is
-        // the clipboard's shape, not typing's — the pair machine must not learn from it, neither
-        // the first nor the second time, even though the boundary it ends still re-arms the run.
+        // The paste rule itself: «дөнья» appearing WHOLE in one text event is the clipboard's
+        // shape, not typing's — the pair machine must not learn from it, neither the first nor the
+        // second time, even though the boundary it ends still re-arms the run.
         val h = Harness()
         h.witnessABoundary()
         repeat(2) {

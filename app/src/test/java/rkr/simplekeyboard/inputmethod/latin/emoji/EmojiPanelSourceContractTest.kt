@@ -22,9 +22,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2b-2 source-contract, in the style of SuggestionStripSourceContractTest / EmojiSourceContractTest:
- * it greps the frozen source rather than exercising Android, guarding the exact panel-content shape
- * the phase promises — insertion/deletion only through LatinIME, no allocations in the hot bodies,
+ * Source contract (like SuggestionStripSourceContractTest / EmojiSourceContractTest): greps the
+ * source rather than exercising Android, guarding the panel content — insertion/deletion only
+ * through LatinIME, no allocations in the hot bodies,
  * background-only snapshot preparation, exactly two functional keys, and a never-persisted probe.
  */
 class EmojiPanelSourceContractTest {
@@ -122,7 +122,7 @@ class EmojiPanelSourceContractTest {
         assertTrue(drawBody.contains("while (row <= lastRow)"))
     }
 
-    // --- O4 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): measurement and invalidation ------------
+    // --- Measurement and invalidation ------------------------------------------------------------
 
     @Test
     fun drawPathsNeverMeasureTextAndTheBackKeyWidthIsMeasuredOnceAtConstruction() {

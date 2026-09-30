@@ -22,12 +22,11 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Privacy gate of the personal WRITE package — a MIRROR of `DictionaryStoragePrivacyTest`, not a
- * copy. The dictionary asset asserts it CONTAINS `createDeviceProtectedStorageContext()` (it must be
- * readable in direct boot); for the user's typed words that would be harmful, so this test asserts
- * the opposite: no device-protected context anywhere in the package. It also enforces the two
- * privacy rules that cost the most here: (a) no exception message interpolates the user's word or
- * the file path — messages are constant; (b) no type that carries a word is a `data class`.
+ * Privacy gate of the personal write package, the inverse of `DictionaryStoragePrivacyTest`. The
+ * bundled dictionary must use a device-protected context (it is read in direct boot); the user's
+ * words must not, so this test asserts no device-protected context anywhere in the package. It
+ * also enforces: (a) exception messages are constant and never include the word or the file path;
+ * (b) no type that carries a word is a `data class`.
  */
 class PersonalStorePrivacyTest {
     private val files by lazy {

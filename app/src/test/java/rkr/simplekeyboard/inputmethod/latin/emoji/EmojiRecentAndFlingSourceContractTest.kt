@@ -23,12 +23,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2b-3 source-contract, in the style of EmojiPanelSourceContractTest: it greps the frozen source
- * rather than exercising Android, guarding the exact fling and recent-emoji shapes the phase
- * promises — a single reusable OverScroller, a VelocityTracker obtained once per gesture and
- * recycled on UP/CANCEL, allocation-free hot bodies, the fling physics taken from EmojiFling, the
- * credential-protected medium, the device-protected context confined to its two existing seams, and
- * a settings erase path that never reads the recents content.
+ * Source contract (like EmojiPanelSourceContractTest): greps the source rather than exercising
+ * Android, guarding the fling and recent-emoji code — a single reusable OverScroller, a
+ * VelocityTracker obtained once per gesture and recycled on UP/CANCEL, allocation-free hot bodies,
+ * the fling physics taken from EmojiFling, the credential-protected recents file, the
+ * device-protected context confined to its known seams, and a settings erase path that never reads
+ * the recents content.
  */
 class EmojiRecentAndFlingSourceContractTest {
 
@@ -146,9 +146,8 @@ class EmojiRecentAndFlingSourceContractTest {
             .filter { it.readText().contains("createDeviceProtectedStorageContext(") }
             .map { it.name }
             .toList()
-        // E5c added a third seam alongside the frozen two: AndroidBigramStorageFactory.kt is the
-        // exact same production-wiring pattern as AndroidDictionaryStorageFactory.kt, pointed at
-        // its own device-protected subdirectory (docs/DICTIONARY-E5B.md, "Хранение").
+        // AndroidBigramStorageFactory.kt is the same production-wiring pattern as
+        // AndroidDictionaryStorageFactory.kt, pointed at its own device-protected subdirectory.
         assertEquals("device-protected context must live in exactly three seams: $seams", 3, seams.size)
         assertTrue(seams.contains("PreferenceManagerCompat.java"))
         assertTrue(seams.contains("AndroidDictionaryStorageFactory.kt"))
@@ -188,11 +187,10 @@ class EmojiRecentAndFlingSourceContractTest {
 
     @Test
     fun clearRecentsNamesTheDestructiveActionAndCancelsWithThePlatformString() {
-        // The contract wording is "Кнопки — подтверждение и системная android.R.string.cancel": the
-        // affirmative button carries its own caption naming the action, because the action is
-        // destructive and irreversible, and "OK" would not say what is about to happen. Only the
-        // dismissive button is the platform string. The E1b-8 allowance for android.R.string.ok
-        // covers a one-button informational dialog and does not extend to this one.
+        // The affirmative button names the action, because the action is destructive and
+        // irreversible and "OK" would not say what is about to happen; only the dismissive button
+        // is the platform string. android.R.string.ok is allowed only in one-button informational
+        // dialogs.
         assertTrue(settings.contains("R.string.clear_recent_emoji"))
         assertTrue(settings.contains("R.string.clear_recent_emoji_confirm"))
         assertTrue(settings.contains("setPositiveButton(R.string.clear_recent_emoji_action)"))

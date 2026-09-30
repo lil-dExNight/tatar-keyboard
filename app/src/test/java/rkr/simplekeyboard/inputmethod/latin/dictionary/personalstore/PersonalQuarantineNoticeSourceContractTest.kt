@@ -23,14 +23,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Mission `tt-version-1.8.2`, findings B2 and B3 of `docs/SILENT-AUDIT.md`, on the side of them that
- * cannot run off-device: the path from the store's worker to the sentence the user reads.
+ * The quarantine notice and the failed-removal answer, on the side that cannot run off-device:
+ * the path from the store's worker to the sentence the user reads.
  *
- * The store half is exercised for real in [PersonalDictionarySilentFailureTest] — the file is really
- * set aside, the notice really fires, the failed removal really answers. What is left is the wiring
- * through `PersonalDictionaries` and `LatinIME`, which needs a live `InputMethodService`, so it is
- * asserted by source in the style this project already uses for both classes. Every predicate here is
- * proved fail-capable against the shape it replaced, in the last test.
+ * The store half runs for real in [PersonalDictionarySilentFailureTest]. The wiring through
+ * `PersonalDictionaries` and `LatinIME` needs a live `InputMethodService`, so it is checked from
+ * source. The last test shows every check fails on the old shapes.
  */
 class PersonalQuarantineNoticeSourceContractTest {
 
@@ -54,12 +52,12 @@ class PersonalQuarantineNoticeSourceContractTest {
     private fun bodyOf(source: String, from: String, to: String) =
         source.substringAfter(from).substringBefore(to)
 
-    // --- B2, the store side ----------------------------------------------------------------------
+    // --- quarantine, the store side --------------------------------------------------------------
 
     @Test
     fun theUnreadableFileIsSetAsideAtTheOneSiteThatUsedToDeleteIt() {
-        // `open()` split into the gate and the body when the notice became durable (mission
-        // `tt-quarantine`, B5); the validation-failure branch is in the body.
+        // `open()` is split into the gate and the body; the validation-failure branch is in the
+        // body.
         val load = bodyOf(store, "private fun load() {", "\n    /**")
         assertTrue("the validation-failure branch moves the file", load.contains("quarantine(directory, file)"))
         assertFalse(
@@ -79,8 +77,8 @@ class PersonalQuarantineNoticeSourceContractTest {
     }
 
     /**
-     * B5. The seam is called from ONE place, and that place is every open — not only the open that
-     * quarantined something. That is what carries an unspoken notice across a process death.
+     * The seam is called from one place, and that place is every open, not only the open that
+     * quarantined something. That is what carries an unshown notice across a process death.
      */
     @Test
     fun theNoticeIsRaisedFromEveryOpenThatFindsTheMark() {
@@ -102,9 +100,8 @@ class PersonalQuarantineNoticeSourceContractTest {
 
     @Test
     fun thePendingFileIsReadOncePerOpen() {
-        // 2026-09-24 audit, finding 14: the pending file used to be read twice per load — once
-        // before the dictionary and once after. readPending REPLACES state, so the second read
-        // was pure duplicate I/O; one read, on every path through load, is the contract.
+        // The pending file is read once per load, on every path: readPending replaces state, so a
+        // second read would be duplicate I/O.
         val load = bodyOf(store, "private fun load() {", "\n    /**")
         assertEquals(1, Regex(Regex.escape("readPending(directory)")).findAll(load).count())
     }
@@ -127,14 +124,14 @@ class PersonalQuarantineNoticeSourceContractTest {
             clearAll.contains("deleted { deleteFile(directory, File(directory, quarantineFileName())) }"))
         assertTrue("and a copy left behind sinks the answer",
             clearAll.contains("report(outcome, dictionaryGone && countersGone && saltGone && quarantineGone)"))
-        // B5. The mark is not one of the user's words: a mark that would not delete must not turn
+        // The mark is not one of the user's words: a mark that would not delete must not turn
         // "your words are gone" into "the erasure failed".
         assertFalse("the mark is not part of the answer",
             clearAll.contains("&& quarantineNoticeGone"))
         assertTrue("but it does go", clearAll.contains("quarantineNoticeFileName()"))
     }
 
-    // --- B3, the store side ----------------------------------------------------------------------
+    // --- failed removal, the store side ----------------------------------------------------------
 
     @Test
     fun theRemovalCannotThrowOutOfTheWorker() {
@@ -159,9 +156,9 @@ class PersonalQuarantineNoticeSourceContractTest {
         assertTrue("the store is built with the notice wired in",
             owner.contains("AndroidPersonalDictionaryStorage.create(context, subtypeId, executorLocked()) {"))
         assertTrue(owner.contains("notifyQuarantined(subtypeId)"))
-        // 2026-09-24 audit, finding 13: one pending notice PER LANGUAGE, taken one at a time —
-        // a single shared flag spent every open store's durable mark on the one dialog that was
-        // shown, and the other language's loss went unmentioned.
+        // One pending notice per language, taken one at a time: a single shared flag would spend
+        // every open store's durable mark on the one dialog shown and hide the other language's
+        // loss.
         assertTrue("the notice is remembered, not merely broadcast",
             owner.contains("pendingQuarantineNotices.add(subtypeId)"))
         assertTrue("taken one language at a time, fail-closed when empty",
@@ -229,8 +226,8 @@ class PersonalQuarantineNoticeSourceContractTest {
     // --- fail-capability ------------------------------------------------------------------------
 
     /**
-     * Every predicate above is worth its line only if the shape it replaced makes it red. These are
-     * the shapes that actually shipped in 1.8.1, fed to the same checks.
+     * Each check above must fail on the shape it guards against. These are older shapes without
+     * the wiring, fed to the same checks.
      */
     @Test
     fun thePredicatesRejectTheShapesTheyReplaced() {
@@ -246,7 +243,7 @@ class PersonalQuarantineNoticeSourceContractTest {
         assertFalse("three booleans must not satisfy the four-boolean check",
             shippedClearAll.contains("&& quarantineGone"))
 
-        // Mission `tt-quarantine`, B3 and B5: the shapes 1.8.2 shipped, fed to the checks above.
+        // Older shapes of the failed-removal answer and of the durable notice.
         val unguardedAnswer = "outcome?.onFinished(removed)"
         assertFalse("the callback outside the try must not satisfy the guarded-answer check",
             unguardedAnswer.contains("report(outcome, removed)"))

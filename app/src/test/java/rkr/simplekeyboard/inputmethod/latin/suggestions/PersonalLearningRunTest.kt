@@ -25,8 +25,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 
 /**
- * E4c, the clean-run machine: which typing produces a "this word was completed cleanly" event and,
- * far more importantly, which typing produces none.
+ * The clean-run machine: which typing produces a "this word was completed cleanly" event and, far
+ * more importantly, which typing produces none.
  *
  * The threshold of three lives in the store; what is under test here is the event itself — computed
  * from the hooks that already exist, with the "the dictionary does not know this word" filter built
@@ -107,12 +107,11 @@ class PersonalLearningRunTest {
 
         /**
          * Feeds [word] the way the editor cache actually moves under typing: ONE appended code
-         * point per text event, so a [word] that grows the current one arrives as its
-         * intermediate prefixes. Anything that is not plain growth (a backspace, a replacement)
-         * is delivered as the single event it is — and a multi-character jump from an empty word
-         * is a paste, which the 2026-09-25 paste rule (CleanRunMachine) must read as dirty; use
-         * [paste] to say that out loud. The lookup of the last observation is answered with
-         * [result].
+         * point per text event, so a [word] that grows the current one arrives as its intermediate
+         * prefixes. Anything that is not plain growth (a backspace, a replacement) is delivered as
+         * the single event it is — and a multi-character jump from an empty word is a paste, which
+         * the paste rule of CleanRunMachine must read as dirty; use [paste] for that. The lookup of
+         * the last observation is answered with [result].
          */
         fun type(word: String, result: List<String> = emptyList()) {
             val current = editor.word
@@ -157,7 +156,7 @@ class PersonalLearningRunTest {
     fun theFirstWordOfASessionIsNotCountedAtAll() {
         val h = Harness()
         // No word boundary has been witnessed yet, so the trailing word may well be text the app
-        // pre-filled and the user merely appended to. Fail closed: it is not a run we saw start.
+        // pre-filled and the user merely appended to. Report nothing: it is not a run we saw start.
         h.type("гүз")
         h.type("гүзәлия")
         h.endWord()
@@ -237,10 +236,10 @@ class PersonalLearningRunTest {
 
     @Test
     fun anAcceptedPrefixSuggestionCountsAsAUseOnTheWordSink() {
-        // 2026-09-24 audit, finding 2: the usage bump the store always had is now reachable — a
-        // tap on a PREFIX cell reports the accepted word to the word sink. Whether that word is a
-        // saved personal one (and therefore whether a counter actually moves) is the sink's
-        // decision; the store bumps in memory only and the file moves at the session boundary.
+        // A tap on a PREFIX cell reports the accepted word to the word sink, which drives the
+        // store's usage bump. Whether that word is a saved personal one (and therefore whether a
+        // counter actually moves) is the sink's decision; the store bumps in memory only and the
+        // file moves at the session boundary.
         val h = Harness()
         h.witnessABoundary()
         h.type("гүз")
@@ -312,10 +311,10 @@ class PersonalLearningRunTest {
 
     @Test
     fun aPastedStartMakesTheWholeRunDirty() {
-        // 2026-09-25 audit, the paste rule: a fresh word whose FIRST observation already carries
-        // 3+ UTF-16 units is a paste or a replacement, not typing — the run is born dirty, and
-        // growing it by hand afterwards does not wash it clean (the empty result for a proper
-        // prefix IS observed on the way, so without the rule this word would be reported).
+        // The paste rule: a fresh word whose FIRST observation already carries 3+ UTF-16 units is a
+        // paste or a replacement, not typing — the run is born dirty, and growing it by hand
+        // afterwards does not wash it clean (the empty result for a proper prefix IS observed on
+        // the way, so without the rule this word would be reported).
         val h = Harness()
         h.witnessABoundary()
         h.paste("гүзәл")
@@ -327,9 +326,8 @@ class PersonalLearningRunTest {
 
     @Test
     fun aTwoUnitFirstObservationIsStillOneKeystroke() {
-        // The budget's edge (2026-09-25 audit): two UTF-16 units in the first observation are one
-        // keystroke's worth — a surrogate pair, or two events coalesced by the cache — so the run
-        // stays clean.
+        // The budget's edge: two UTF-16 units in the first observation are one keystroke's worth —
+        // a surrogate pair, or two events coalesced by the cache — so the run stays clean.
         val h = Harness()
         h.witnessABoundary()
         h.paste("гү")

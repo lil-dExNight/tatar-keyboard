@@ -35,27 +35,16 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.SpaceProbe
 
 /**
- * Mission `tt-quarantine`: the store half of finishing the choice 1.8.2 made half-way.
+ * The quarantine copy of an unreadable personal dictionary, store side:
  *
- * 1.8.2 stopped destroying an unreadable personal dictionary — it moves the bytes into one slot per
- * language and tells the user. Three things were left unbuilt, and each of them makes the kept copy
- * worth nothing on its own:
+ * - the copy can be inspected, restored and discarded through the store API around
+ *   [PersonalQuarantineSalvage], and a partial recovery is never presented as a whole one;
+ * - the "not told yet" mark is a one-byte file on disk, so the notice survives process death;
+ * - the outcome callback runs inside the guard, so a throw from it cannot reach
+ *   `KillApplicationHandler` on the store's single-thread executor.
  *
- * - **B4, the copy could not be read back.** No code could open the slot, so the user's words were
- *   being preserved for a recovery path that did not exist. [PersonalQuarantineSalvage] reads them;
- *   what is tested here is the store API around it — inspect, restore, discard — and above all that
- *   a partial recovery is never presented as a whole one.
- * - **B5, the notice did not survive.** The "not told yet" mark was a field on a process that was
- *   usually about to end, and it waited for the next input start. A quarantine at the wrong moment
- *   was never mentioned again, ever. The mark goes to disk now — a flag, one byte, no text.
- * - **B6, the answer could still kill the keyboard.** Every mutation guarded its body and then
- *   called `outcome?.onFinished(...)` OUTSIDE the guard. That callback belongs to an Activity and
- *   posts to the UI thread; a throw from it lands on a bare single-thread executor whose default
- *   handler is `KillApplicationHandler`.
- *
- * The harness is the one [PersonalDictionarySilentFailureTest] already uses — a real directory, a
- * direct executor, injectable durable ops — and the corruption is the real one: a file cut short,
- * which is what a power cut in the middle of a write actually leaves behind.
+ * The harness is the one [PersonalDictionarySilentFailureTest] uses, and the corruption is a file
+ * cut short, which is what a power loss during a write leaves behind.
  */
 class PersonalQuarantineRecoveryTest {
     @get:Rule
@@ -63,12 +52,11 @@ class PersonalQuarantineRecoveryTest {
 
     private val subtype = PersonalSubtypes.TATAR_RU
 
-    // ---- B4: what is in the copy can be seen ----------------------------------------------------
+    // ---- what is in the copy can be seen -------------------------------------------------------
 
     /**
-     * The number the screen shows and the sentence it must add beside it. Two words came out of a
-     * three-word copy, so the count is 2 AND the copy is known incomplete — the one outcome this
-     * feature may never produce is "restored, all done" over a file that lost a third of itself.
+     * Two words came out of a three-word copy, so the count is 2 and the copy is marked
+     * incomplete; the screen must never say "restored, all done" over a partial copy.
      */
     @Test
     fun inspectingAPartlyReadableCopySaysHowManyCameOutAndThatTheRestIsLost() {
@@ -91,9 +79,8 @@ class PersonalQuarantineRecoveryTest {
     }
 
     /**
-     * A copy cut down to its bare header yields no words — and is still a copy. The distinction is
-     * not pedantry: those bytes are on the device, no screen shows them, and the user is entitled to
-     * a button that removes them.
+     * A copy cut down to its bare header yields no words and is still a copy: the bytes are on the
+     * device, so the user must still be able to remove them.
      */
     @Test
     fun aCopyThatYieldsNothingIsStillACopyTheUserCanBeOffered() {
@@ -114,9 +101,9 @@ class PersonalQuarantineRecoveryTest {
         assertNull(inspect(store(directory, unlockGate = { false })))
     }
 
-    // ---- B4: what is in the copy can be put back ------------------------------------------------
+    // ---- what is in the copy can be put back ---------------------------------------------------
 
-    /** The point of the whole mission: the words come back, and they come back into the list. */
+    /** The restored words come back into the list. */
     @Test
     fun restoringPutsTheSalvagedWordsBackIntoTheDictionary() {
         val directory = quarantinedDirectory(dropTailBytes = 5)
@@ -136,9 +123,8 @@ class PersonalQuarantineRecoveryTest {
     }
 
     /**
-     * Restoring into a list that is not empty. The user may well have typed some of the same words
-     * again between the corruption and the moment they find the button, and a restore that put them
-     * in twice would be a repair that damages.
+     * Restoring into a non-empty list: the user may have typed some of the same words again since
+     * the corruption, and a restore must not add them twice.
      */
     @Test
     fun restoringIntoANonEmptyDictionaryAddsNoDuplicates() {
@@ -159,7 +145,7 @@ class PersonalQuarantineRecoveryTest {
         )
     }
 
-    /** And running it twice is harmless — the button is on a screen, and screens get tapped twice. */
+    /** Running it twice is harmless; a button can be tapped twice. */
     @Test
     fun restoringTwiceLeavesTheSameListAsRestoringOnce() {
         val directory = quarantinedDirectory(dropTailBytes = 5)
@@ -175,9 +161,8 @@ class PersonalQuarantineRecoveryTest {
     }
 
     /**
-     * Restoring does NOT remove the copy. The damaged tail is the part no parser could read THIS
-     * time; a later, better reader can only try if the bytes are still there. Deleting them is the
-     * user's own second decision.
+     * Restoring does not remove the copy: a later, better reader may recover the damaged tail.
+     * Deleting the copy is a separate user decision.
      */
     @Test
     fun restoringLeavesTheCopyWhereItIs() {
@@ -200,9 +185,8 @@ class PersonalQuarantineRecoveryTest {
     }
 
     /**
-     * A restore that cannot be written down is a failure, and it has to leave the copy alone: the
-     * words are still only in the quarantine slot, and that is exactly when losing it would be
-     * unrecoverable.
+     * A restore that cannot be written is a failure and leaves the copy alone: the words are
+     * still only in the quarantine slot.
      */
     @Test
     fun aRestoreThatCannotBeWrittenAnswersFailureAndKeepsTheCopy() {
@@ -217,7 +201,7 @@ class PersonalQuarantineRecoveryTest {
             quarantineFile(directory).isFile)
     }
 
-    // ---- B4: the copy can be thrown away --------------------------------------------------------
+    // ---- the copy can be thrown away -----------------------------------------------------------
 
     /** The other button: the copy goes, and nothing else does. */
     @Test
@@ -250,13 +234,11 @@ class PersonalQuarantineRecoveryTest {
         assertTrue(quarantineFile(directory).isFile)
     }
 
-    // ---- U7: a forgotten word is never resurrected by a restore -----------------------------------
+    // ---- a forgotten word is never resurrected by a restore ------------------------------------
 
     /**
-     * The P1 pairs store pinned the no-resurrection rule first (`aForgottenPairIsNotResurrectedByARestore`);
-     * the words store had the hole: `forget` removed the word from the dictionary but left it in the
-     * quarantine copy, and the next restore brought it back from the dead. U7 of Phase 2
-     * (docs/ROADMAP-P2.md) closes it with the same purge the pairs store runs.
+     * `forget` purges the word from the quarantine copy too, as the pairs store does
+     * (`aForgottenPairIsNotResurrectedByARestore`), so a later restore cannot bring it back.
      */
     @Test
     fun aForgottenWordIsNotResurrectedByARestore() {
@@ -316,9 +298,8 @@ class PersonalQuarantineRecoveryTest {
     }
 
     /**
-     * Fail-closed toward NOT resurrecting: a copy that cannot be rewritten without the deleted
-     * word is deleted outright. Losing the salvage of the other words is the smaller lie than
-     * keeping a word the user was told is gone.
+     * When the copy cannot be rewritten without the deleted word, it is deleted outright: losing
+     * the other salvaged words is preferred over keeping a word the user was told is gone.
      */
     @Test
     fun aCopyThatCannotBePurgedIsDeletedOutrightRatherThanLeftToResurrectTheWord() {
@@ -343,16 +324,12 @@ class PersonalQuarantineRecoveryTest {
         assertFalse(quarantineFile(directory).exists())
     }
 
-    // ---- B5: the notice reaches the user, whatever happens to the process ------------------------
+    // ---- the notice reaches the user, whatever happens to the process --------------------------
 
     /**
-     * The finding itself. The mark used to be a `@Volatile` field, and the quarantine happens while
-     * the store opens — on a keyboard, the moment an input field appears, with no settings screen in
-     * sight. The notice waited for a window that never came, the process ended, and the loss was
-     * never mentioned again.
-     *
-     * The second store below IS the next process: a new instance over the same directory, with
-     * nothing carried over in memory.
+     * The quarantine happens while the store opens, often when no window can show the notice, so
+     * the mark must outlive the process. The second store below stands for the next process: a
+     * new instance over the same directory with nothing carried over in memory.
      */
     @Test
     fun aNoticeNobodySawSurvivesTheProcessAndIsRaisedAgainAtTheNextOpen() {
@@ -372,7 +349,7 @@ class PersonalQuarantineRecoveryTest {
         assertEquals("a notice nobody has taken is still owed", 1, secondProcess)
     }
 
-    /** And it stops once it has really been shown — that is what taking the notice means. */
+    /** It stops once it has really been shown; that is what taking the notice means. */
     @Test
     fun theNoticeStopsComingBackOnceItHasBeenDelivered() {
         val directory = newPersonalDir()
@@ -401,8 +378,8 @@ class PersonalQuarantineRecoveryTest {
     }
 
     /**
-     * "Erase all words" takes the mark too. The user emptied the list themselves; being told
-     * afterwards that something was set aside would be a notice about nothing.
+     * "Erase all words" removes the mark too: the user emptied the list themselves, so there is
+     * nothing to tell them.
      */
     @Test
     fun erasingEverythingTakesTheMarkWithTheWords() {
@@ -421,9 +398,8 @@ class PersonalQuarantineRecoveryTest {
     }
 
     /**
-     * But a mark that will not delete may NOT sink the erasure's answer. It is not one of the user's
-     * words; turning "your words are gone" into "the erasure failed" is the same class of lie as the
-     * one this whole register exists to remove, only pointing the other way.
+     * A mark that cannot be deleted does not turn the erasure into a failure: the mark is not one
+     * of the user's words.
      */
     @Test
     fun aMarkThatCannotBeDeletedDoesNotTurnASuccessfulErasureIntoAFailure() {
@@ -444,9 +420,8 @@ class PersonalQuarantineRecoveryTest {
     }
 
     /**
-     * And when the mark cannot be WRITTEN, this session still says it out loud. A silent loss is the
-     * one outcome the whole feature exists to prevent; losing durability is bad, losing the sentence
-     * is worse.
+     * When the mark cannot be written, the current session still shows the notice: losing
+     * durability is acceptable, losing the notice is not.
      */
     @Test
     fun aMarkThatCannotBeWrittenStillLeavesTheNoticeRaisedInThisSession() {
@@ -463,16 +438,14 @@ class PersonalQuarantineRecoveryTest {
         assertEquals(1, notices)
     }
 
-    // ---- B6: nothing a caller does may kill the worker ------------------------------------------
+    // ---- nothing a caller does may kill the worker ---------------------------------------------
 
     /**
-     * The hole all three mutations shared. Each one guarded its body and then reported OUTSIDE the
-     * guard, and the report is a callback owned by an Activity that posts to the UI thread: a
-     * detached screen, a dead Handler, a listener swapped mid-flight — any of them throws from `post`
-     * itself. On the production worker, a bare single-thread executor built with no
-     * `UncaughtExceptionHandler`, that throw reaches `KillApplicationHandler` and the keyboard dies
-     * while typing in someone else's app. The executor below is that worker in miniature, with a
-     * handler standing exactly where the killer stands.
+     * Each mutation reports through a callback owned by an Activity that posts to the UI thread; a
+     * detached screen, a dead Handler or a swapped listener can make `post` throw. On the store's
+     * single-thread executor, built with no `UncaughtExceptionHandler`, that throw would reach
+     * `KillApplicationHandler`, so the report must run inside the guard. The executor below mimics
+     * that worker, with a handler where the app's killer would be.
      */
     @Test
     fun aCallbackThatThrowsDoesNotKillTheWorkerOnAnyMutation() {
@@ -503,7 +476,7 @@ class PersonalQuarantineRecoveryTest {
         assertEquals(emptyList<Throwable>(), uncaught)
     }
 
-    /** And for the notice seam, which reaches an Activity by exactly the same road. */
+    /** The same for the notice seam, which reaches an Activity the same way. */
     @Test
     fun aNoticeSeamThatThrowsDoesNotKillTheWorker() {
         val directory = newPersonalDir()
@@ -521,9 +494,8 @@ class PersonalQuarantineRecoveryTest {
     }
 
     /**
-     * The control that makes the four tests above worth their lines: the harness really does collect
-     * what escapes a mutation. Without it, an executor that swallowed everything would make them all
-     * pass over any implementation at all.
+     * Control for the tests above: the harness really collects what escapes a mutation. An
+     * executor that swallowed everything would make them pass over any implementation.
      */
     @Test
     fun theHarnessReallyCatchesWhatEscapesTheWorker() {
@@ -558,9 +530,8 @@ class PersonalQuarantineRecoveryTest {
         File(temporaryFolder.newFolder(), "personal").also { assertTrue(it.mkdirs()) }
 
     /**
-     * The production worker in miniature: one thread per event, joined so the test stays as
-     * sequential as the direct executor, and an `UncaughtExceptionHandler` standing where
-     * `KillApplicationHandler` stands in the app.
+     * Mimics the store's worker: one thread per event, joined so the test stays as sequential as
+     * the direct executor, and an `UncaughtExceptionHandler` in place of `KillApplicationHandler`.
      */
     private fun workerWithKiller(uncaught: MutableList<Throwable>) = Executor { runnable ->
         val thread = Thread(runnable, "personal-dictionary-test")

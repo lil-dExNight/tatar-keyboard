@@ -1,28 +1,27 @@
 #!/usr/bin/env python3
-"""Build-time Tatar word-form generator (TT-SUGGESTIONS phase P1).
+"""Build-time Tatar word-form generator.
 
-Given a stem, generate its inflectional paradigm (noun cases, possessives,
-verb tenses and gerunds) plus the frequent derivational suffixes, using Tatar
-vowel harmony and consonant assimilation. The output is a CANDIDATE list for
-phase P2: forms are emitted without any corpus check; P2 admits only forms
-attested in the Leipzig/conversational corpora (frequency = corpus count).
+Given a stem, generate its inflectional paradigm (noun cases, possessives, verb tenses and
+gerunds) plus the frequent derivational suffixes, using Tatar vowel harmony and consonant
+assimilation. The output is a CANDIDATE list: forms are emitted without a corpus check, and
+rebuild_assets.py admits only forms attested in the corpora. Errors in the exceptions table or
+in a pattern raise WordformError (exit 2).
 
-Architecture:
+Rules:
 
 * Vowel harmony. The last stem syllable decides: back {а ы о у я ю} vs front
-  {ә е и ө ү э}. (The plan's core sets are {а ы о у}/{ә е и ө ү}; э is front
-  — эшләр/эшкә — and я/ю are й+а/й+у, hence back — юлга, ярлар.) A final
-  у/ү/ю/я written right after another vowel is a diphthong glide and does NOT
-  decide harmony (эшләү is front: эшләүче; дию is front: диде). Stems mixing
-  both harmony classes (most Russian loans: совет = о+е) or carrying a Russian
-  marker letter {ё ъ ь ж ц щ} are generated in BOTH harmony variants — loans
-  take back suffixes in practice (советларга) but a surface rule cannot
-  separate them from native front stems (исемгә); overgeneration is safe
-  because P2 keeps only attested forms.
+  {ә е и ө ү э}. э is front (эшләр/эшкә); я/ю are й+а/й+у, hence back (юлга,
+  ярлар). A final у/ү/ю/я written right after another vowel is a diphthong
+  glide and does NOT decide harmony (эшләү is front: эшләүче; дию is front:
+  диде). Stems mixing both harmony classes (most Russian loans: совет = о+е) or
+  carrying a Russian marker letter {ё ъ ь ж ц щ} are generated in BOTH harmony
+  variants: loans take back suffixes in practice (советларга) but a surface
+  rule cannot separate them from native front stems (исемгә); overgeneration
+  is safe because only attested forms are admitted.
 * Suffix patterns are strings of Cyrillic literals plus archiphonemes:
   A=а/ә, I=ы/е, U=у/ү, Y=ый/и (the present-tense vowel), G=г/к (к after
   voiceless {п к с т ч ш ф х ц щ}), D=д/т (т after voiceless), L=л/н (н after
-  nasals {м н ҥ}), T=д/т/н (ablative: т after voiceless, н after nasals —
+  nasals {м н ң}), T=д/т/н (ablative: т after voiceless, н after nasals:
   урманнан). ``(C~V)`` renders branch C after a consonant-final stem and
   branch V after a vowel-final stem (китеп vs эшләп). Noun possessives split
   the V branch by the final vowel: и/у/ү-final stems take full endings
@@ -38,9 +37,7 @@ Architecture:
   are exception rows.
 * Exceptions live in scripts/wordform_exceptions_tat.tsv (п→б/к→г voicing
   before vocalic possessives, suppletive pronouns, explicit per-label
-  overrides) and are loaded fail-closed.
-* Everything is deterministic: fixed paradigm order, sorted candidate rows,
-  no wall-clock fields, atomic writes (temp file + rename in place).
+  overrides).
 
 Usage:
 
@@ -50,16 +47,11 @@ Usage:
     python3 scripts/wordform_gen.py group --words WORDS.tsv \
         --exceptions scripts/wordform_exceptions_tat.tsv --out GROUPS.tsv
 
-``paradigm`` prints ``label<TAB>form`` rows in canonical paradigm order.
-``candidates`` writes sorted unique ``form<TAB>stem<TAB>label`` rows for every
-listed word (noun + verb + derivational generation). ``group`` analyses the
-word list itself: it strips known suffixes (longest first) to reach another
-LISTED word and keeps the analysis only when the generator round-trips the
-form from that stem; forms reachable from more than one listed stem are
-ambiguous and skipped (fail-closed). Word lists accept one word per line,
-``word<TAB>frequency`` or Leipzig ``id<TAB>word<TAB>frequency``; words that
-fail the dictionary pipeline's own normalization are skipped and counted.
-Both writers print a JSON stats report to stdout. stdlib only.
+``paradigm`` prints ``label<TAB>form`` rows in paradigm order. ``candidates`` writes sorted
+unique ``form<TAB>stem<TAB>label`` rows for every listed word. ``group`` strips known suffixes
+(longest first) to reach another LISTED word and keeps the analysis only when the generator
+round-trips the form from that stem; forms reachable from several stems are skipped. Both
+writers print a JSON stats report to stdout.
 """
 from __future__ import annotations
 
@@ -95,7 +87,7 @@ FRONT = "front"
 
 
 class WordformError(ValueError):
-    """A fail-closed word-form generation error."""
+    """A word-form generation error; the command exits with code 2."""
 
 
 class ExceptionsError(WordformError):
@@ -398,7 +390,7 @@ VOICING_PAIRS = {("п", "б"), ("к", "г")}
 
 
 def _require_word(value: str, source: str, line_number: int, field: str) -> str:
-    """Validate a stem/form field against the dictionary alphabet (fail-closed)."""
+    """Validate a stem/form field against the dictionary alphabet."""
     normalized, reason = coverage.normalize_word(value)
     if normalized is None or normalized != value:
         raise ExceptionsError(
@@ -409,7 +401,7 @@ def _require_word(value: str, source: str, line_number: int, field: str) -> str:
 
 
 def load_exceptions(path: Path) -> Exceptions:
-    """Load the exceptions table; any structural error aborts (fail-closed)."""
+    """Load the exceptions table; any structural error raises ExceptionsError."""
     voicing: dict[str, str] = {}
     pronouns: dict[str, tuple[str, ...]] = {}
     overrides: dict[tuple[str, str], str] = {}
@@ -814,7 +806,7 @@ def _cmd_paradigm(args: argparse.Namespace) -> int:
                 continue
             for label, form in generators[name](stem, harmony, exceptions):
                 rows.append(f"{label}\t{form}")
-        generate_all(stem, exceptions)  # override-consumption check, fail-closed
+        generate_all(stem, exceptions)  # raises if an override matches no generated form
     sys.stdout.write("\n".join(rows) + "\n")
     return 0
 

@@ -33,13 +33,12 @@ import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 import rkr.simplekeyboard.inputmethod.latin.utils.ResourceUtils
 
 /**
- * The 2026-09-24 field fix (docs/ROADMAP-P7.md), proven on the device through the REAL
- * PointerTracker with REAL MotionEvents and real wall-clock holds: the user's exact flow —
- * press a letter, REST, then swipe and lift — must deliver a glide, and a fired long-press must
- * close the gesture instead. The strip-level content of the delivered path is proven by
- * GlideDeviceInstrumentationTest (same device, same geometry, the decode itself).
+ * Glide start through the real PointerTracker with real MotionEvents and wall-clock holds:
+ * pressing a letter, resting, then swiping and lifting must deliver a glide, while a fired
+ * long-press must close the gesture instead. The decoded content of the path is checked by
+ * GlideDeviceInstrumentationTest.
  *
- * Same JUnit3/legacy-runner shape as the other device harnesses; never packaged into a release.
+ * Uses the JUnit3 legacy runner like the other device tests; not part of the release APK.
  */
 class GlidePointerDeviceTest : InstrumentationTestCase() {
 
@@ -129,7 +128,7 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
             .commit()
     }
 
-    /** The user's exact flow: press the letter, REST 700 ms, then glide through the rest. */
+    /** Press the letter, rest 700 ms, then glide through the rest. */
     fun testHoldThenSwipeDeliversAGlide() {
         driveGesture(holdMs = 700L, fast = true)
         assertEquals("exactly one glide must be delivered", 1, recordedGlides.size)
@@ -137,13 +136,13 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
         assertTrue("the path must carry the whole gesture", path.size > 10)
     }
 
-    /** The pre-fix flow that always worked: an immediate swipe. */
+    /** An immediate swipe with no hold. */
     fun testImmediateSwipeStillDeliversAGlide() {
         driveGesture(holdMs = 0L, fast = true)
         assertEquals(1, recordedGlides.size)
     }
 
-    /** P7-5: an armed glide feeds the fading trail and lights the keys it crosses. */
+    /** An armed glide feeds the fading trail and lights the keys it crosses. */
     fun testArmedGlideFeedsTheTrailAndHoversKeys() {
         driveGesture(holdMs = 0L, fast = true)
         assertEquals(1, recordedGlides.size)

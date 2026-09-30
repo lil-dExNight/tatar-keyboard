@@ -26,9 +26,9 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
 
 /**
- * The pure reader of the emoji-suggest table (mission 2 of `docs/EMOJI-SUGGEST-PLAN.md`),
- * exercised the way `EmojiSearchTest` exercises the search index: format, fail-closed parsing,
- * language separation, the glyph-probe filter, and the shipped asset itself.
+ * The pure reader of the emoji-suggest table, exercised the way `EmojiSearchTest` exercises the
+ * search index: format, fail-closed parsing, language separation, the glyph-probe filter, and the
+ * shipped asset itself.
  */
 class EmojiSuggestIndexTest {
 
@@ -78,10 +78,9 @@ class EmojiSuggestIndexTest {
     }
 
     /**
-     * 2026-09-25 audit, F16 (mirrors SentStartIndex): the record count is capped fail-closed —
-     * a corrupt asset reporting tens of thousands stops at MAX_RECORDS instead of growing the map
-     * without bound. The literal 8192 pins the constant (raised 4096 -> 8192 on 2026-09-28,
-     * backlog B3, aligning with the packer's `MAX_LINES = 8192` guardrail).
+     * The record count is capped (as in SentStartIndex): a corrupt asset reporting tens of
+     * thousands stops at MAX_RECORDS instead of growing the map without bound. The literal pins
+     * the constant, which matches the packer's `MAX_LINES`.
      */
     @Test
     fun theRecordCountIsCappedFailClosed() {
@@ -189,7 +188,7 @@ class EmojiSuggestIndexTest {
         assertEquals("✈️", index.lookup("ru", "самолет"))
         assertEquals("❤️", index.lookup("ru", "сердце"))
         assertEquals("❤️", index.lookup("tt", "йөрәк"))
-        // M4a/M4b: закрытые tt-пробелы и конфузибл «йорэк».
+        // Tatar coverage, including «йорэк» («йөрәк» typed with Russian letters).
         assertEquals("🐓", index.lookup("tt", "әтәч"))
         assertEquals("❤️", index.lookup("tt", "йорэк"))
         assertEquals("👋", index.lookup("tt", "сәлам"))

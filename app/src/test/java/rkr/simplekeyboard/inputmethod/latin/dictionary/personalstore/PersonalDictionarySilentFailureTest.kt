@@ -35,14 +35,12 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.SpaceProbe
 
 /**
- * Missions `tt-personal-dict` and `tt-version-1.8.2`: the store half of the silent-failure
- * register in `docs/SILENT-AUDIT.md` — A2, A3, A5, B1, and the last two, B2 and B3.
+ * Silent-failure cases of the personal dictionary store. The store may not log, so every failure
+ * that matters to the user has to reach the caller as a result or a notice: hand-added words,
+ * "Forget word", erasure, and unreadable files.
  *
- * The whole subsystem chose fail-closed and forbade itself logging, and then never built a channel
- * for "this did not work". Every test here is about that missing channel, and each one names the
- * finding it closes. The harness is deliberately the one
- * [PersonalDictionaryStoreWriteTest] already uses — a real directory, a direct executor and
- * injectable durable ops — because the defects live in the write sequence and nowhere else.
+ * The harness is the one [PersonalDictionaryStoreWriteTest] uses (a real directory, a direct
+ * executor, injectable durable ops), because these failures happen in the write sequence.
  */
 class PersonalDictionarySilentFailureTest {
     @get:Rule
@@ -50,13 +48,11 @@ class PersonalDictionarySilentFailureTest {
 
     private val subtype = PersonalSubtypes.TATAR_RU
 
-    // ---- A2: the outcome of a hand-added word ---------------------------------------------------
+    // ---- the outcome of a hand-added word -------------------------------------------------------
 
     /**
-     * A2. `addManually` answered "the word passed the content filter" and the screen printed that as
-     * "saved". A write that never lands — no space, failed re-validation, no directory — has to
-     * arrive at the caller, because it is the only thing the user can be told: the package may not
-     * log, and nothing else waits for the result.
+     * A write that never lands (no space, failed re-validation, no directory) reports failure to
+     * the caller: the package may not log, and the screen must not show "saved".
      */
     @Test
     fun addingAWordThatCannotBeWrittenReportsFailure() {
@@ -72,7 +68,7 @@ class PersonalDictionarySilentFailureTest {
         assertFalse(destinationFile(directory).exists())
     }
 
-    /** A2, the other direction: a write that did land reports success, and only once. */
+    /** A write that did land reports success, exactly once. */
     @Test
     fun addingAWordThatIsWrittenReportsSuccessAfterThePublish() {
         val directory = newPersonalDir()
@@ -82,8 +78,8 @@ class PersonalDictionarySilentFailureTest {
         val outcomes = mutableListOf<Boolean>()
         store.addManually("абыйлар") {
             outcomes.add(it)
-            // The report is not allowed to run BEFORE the snapshot exists: the screen repaints from
-            // this callback, and repainting from an older snapshot is exactly the defect.
+            // The report must not run before the snapshot exists: the screen repaints from this
+            // callback, and repainting from an older snapshot would show the wrong list.
             seenAtCallback.add(store.snapshot.size)
         }
 
@@ -91,7 +87,7 @@ class PersonalDictionarySilentFailureTest {
         assertEquals("the published snapshot already carries the word", listOf(1), seenAtCallback)
     }
 
-    /** A2. A word the content filter rejects is a failure too — the screen must not repaint blind. */
+    /** A word the content filter rejects is a failure too; the screen must not repaint blind. */
     @Test
     fun aRejectedWordAlsoProducesExactlyOneAnswer() {
         val store = store(newPersonalDir())
@@ -102,12 +98,11 @@ class PersonalDictionarySilentFailureTest {
         assertEquals(listOf(false), outcomes)
     }
 
-    // ---- A3: "Forget word" that did not forget --------------------------------------------------
+    // ---- "Forget word" that did not forget -----------------------------------------------------
 
     /**
-     * A3. The rewrite fails, so the word stays both in memory and on disk — but the user had already
-     * been told the opposite: the dialog closed and the band was cleared. The word came back on the
-     * next keystroke with nothing said anywhere.
+     * When the rewrite fails, the word stays in memory and on disk, so the caller must hear
+     * failure; otherwise the dialog closes, and the word comes back on the next keystroke.
      */
     @Test
     fun forgettingAWordReportsFailureWhenTheRewriteDoesNotLand() {
@@ -129,7 +124,7 @@ class PersonalDictionarySilentFailureTest {
         )
     }
 
-    /** A3, the other direction: a rewrite that lands reports success and the word is gone. */
+    /** A rewrite that lands reports success and the word is gone. */
     @Test
     fun forgettingAWordReportsSuccessWhenTheRewriteLands() {
         val directory = newPersonalDir()
@@ -144,7 +139,7 @@ class PersonalDictionarySilentFailureTest {
         assertTrue(store.snapshot.indexOfNormalized("сүзлек") < 0)
     }
 
-    /** A3. A word that was never there is not a failure: from where the user stands it is gone. */
+    /** Forgetting a word that was never saved is not a failure: from the user's view it is gone. */
     @Test
     fun forgettingAWordThatIsNotSavedIsNotReportedAsAFailure() {
         val directory = newPersonalDir()
@@ -157,17 +152,15 @@ class PersonalDictionarySilentFailureTest {
         assertEquals(listOf(true), outcomes)
     }
 
-    // ---- A5: "erased means erased" is a guarantee, not a race -----------------------------------
+    // ---- an erased word is gone before the write finishes --------------------------------------
 
     /**
-     * A5. The band unbinds the instant the dialog is confirmed, but the SOURCE the engine reads used
-     * to lag by one whole-file write — serialize, fsync, re-validate, replace, fsync again, tens to
-     * hundreds of milliseconds on the cheap devices this project targets. A keystroke inside that
-     * window read the old snapshot and put the erased word back on the band, where a tap committed
-     * it through the ordinary path.
+     * The suggestion strip unbinds as soon as the dialog is confirmed, so the snapshot the engine
+     * reads must drop the word before the whole-file write (serialize, fsync, re-validate,
+     * replace, fsync), not after it. Otherwise a keystroke during the write could show the erased
+     * word again.
      *
-     * The probe below reads the published snapshot from inside the write itself — that is the window,
-     * observed from the middle of it.
+     * The probe reads the published snapshot from inside the write itself.
      */
     @Test
     fun theErasedWordIsGoneFromThePublishedSnapshotBeforeTheWriteBegins() {
@@ -201,9 +194,8 @@ class PersonalDictionarySilentFailureTest {
     }
 
     /**
-     * A5's other half, and the reason the publish cannot simply be moved and forgotten: when the
-     * write fails the word IS still saved, so the snapshot has to come back. Claiming it is gone
-     * would be the same lie in the other direction, and this time a permanent one.
+     * When the write fails the word is still saved, so the snapshot has to show it again rather
+     * than claim it is gone.
      */
     @Test
     fun aFailedErasureRestoresThePublishedSnapshot() {
@@ -221,14 +213,12 @@ class PersonalDictionarySilentFailureTest {
         assertTrue(faulting.snapshot.indexOfNormalized("сүзлек") >= 0)
     }
 
-    // ---- B1: "Erase all" must not stop at the first failure -------------------------------------
+    // ---- "Erase all" must not stop at the first failure ----------------------------------------
 
     /**
-     * B1. The three deletions shared one `try`, so a failure on the dictionary file skipped the
-     * pending counters and the salt. What that leaves behind is not harmless leftovers: the salt is
-     * the same, so the hashes match, and words that were two thirds of the way to being learned keep
-     * their progress and come back after three more completions — while the screen shows an empty
-     * list, because memory was wiped first.
+     * Each deletion runs on its own, so a failure on the dictionary file does not skip the pending
+     * counters and the salt. Left behind with the same salt, those counters would let half-learned
+     * words return after a few more completions while the screen shows an empty list.
      */
     @Test
     fun erasingEverythingStillRemovesTheSaltAndTheCountersWhenTheDictionaryCannotBeDeleted() {
@@ -241,7 +231,7 @@ class PersonalDictionarySilentFailureTest {
         assertNotNull("the counters file exists before the erasure", pendingFile(directory))
         assertTrue("the salt exists before the erasure", saltFile(directory).isFile)
 
-        // Only the dictionary file refuses to go: deleteFile() throws on it, as it did in production.
+        // Only the dictionary file refuses to go: deleteFile() throws on it.
         val stubborn = object : PassthroughOps() {
             override fun delete(file: File): Boolean =
                 if (file.name.endsWith(".tpers")) false else super.delete(file)
@@ -258,7 +248,7 @@ class PersonalDictionarySilentFailureTest {
         )
     }
 
-    /** B1. Nothing on disk was touched at all because the user is locked out — also a failure. */
+    /** Nothing on disk was touched because the user is locked out: also a failure. */
     @Test
     fun erasingEverythingBehindTheUnlockGateIsReportedAsAFailure() {
         val directory = newPersonalDir()
@@ -272,7 +262,7 @@ class PersonalDictionarySilentFailureTest {
             destinationFile(directory).isFile)
     }
 
-    /** B1, the ordinary path: everything goes, and that is reported as success. */
+    /** The ordinary path: everything goes, and that is reported as success. */
     @Test
     fun erasingEverythingReportsSuccessWhenEveryFileIsGone() {
         val directory = newPersonalDir()
@@ -291,16 +281,12 @@ class PersonalDictionarySilentFailureTest {
     }
 
 
-    // ---- B2: an unreadable file is set aside, not destroyed --------------------------------------
+    // ---- an unreadable file is set aside, not destroyed ----------------------------------------
 
     /**
-     * B2. Validation failure used to DELETE the file: a truncated write after a power cut, a checksum
-     * that no longer matches, a format the next version changes — any of them wiped the only data
-     * this keyboard keeps about its user, with no copy and no message.
-     *
-     * The bytes are moved aside instead. Most corruption of this file is an interrupted write, so
-     * what survives is most of the words; a future version with a repair path can only read them if
-     * they still exist, and after a delete they never can.
+     * A file that fails validation (a write cut short by power loss, a checksum mismatch, a format
+     * a later version changes) is moved to a quarantine copy instead of being deleted. Most
+     * corruption is an interrupted write, so most of the words survive and can be salvaged.
      */
     @Test
     fun anUnreadableFileIsMovedAsideInsteadOfDestroyed() {
@@ -325,9 +311,8 @@ class PersonalDictionarySilentFailureTest {
     }
 
     /**
-     * B2, the condition that makes the copy affordable: there is ONE quarantine slot per language,
-     * and the next corruption overwrites it. Growth on disk is bounded by one file, not by how many
-     * times the file has ever gone bad.
+     * There is one quarantine slot per language, and the next corruption overwrites it, so disk
+     * use is bounded by one file.
      */
     @Test
     fun aSecondUnreadableFileOverwritesTheOneQuarantineSlot() {
@@ -354,9 +339,8 @@ class PersonalDictionarySilentFailureTest {
     }
 
     /**
-     * B2, the condition without which keeping the copy would be indefensible: "Erase all" erases it.
-     * These bytes are the user's own words, no screen shows them, and a privacy promise the user
-     * cannot enforce is not a promise.
+     * "Erase all" erases the quarantine copy too: those bytes are the user's own words, and no
+     * other screen lets the user remove them.
      */
     @Test
     fun erasingEverythingRemovesTheQuarantineCopyToo() {
@@ -376,7 +360,7 @@ class PersonalDictionarySilentFailureTest {
         assertEquals(listOf(true), outcomes)
     }
 
-    /** B2. A quarantine copy that will not go is a failed erasure: the words are still on the device. */
+    /** A quarantine copy that cannot be deleted is a failed erasure: the words are still there. */
     @Test
     fun anErasureThatCannotRemoveTheQuarantineCopyIsNotReportedAsSuccess() {
         val directory = newPersonalDir()
@@ -399,9 +383,8 @@ class PersonalDictionarySilentFailureTest {
     }
 
     /**
-     * B2, the other half of the finding: the user is TOLD. An empty list that the user did not empty
-     * is exactly the silence this whole register is about — they cannot tell whether they erased it
-     * themselves, and the subsystem may not log, so this notice is the only thing that ever says so.
+     * The user is told when the list was emptied by a quarantine, since the package may not log
+     * and the user cannot otherwise tell it from their own erasure.
      *
      * Once, not once per open: the second `prime()` here is the ordinary second reader arriving.
      */
@@ -419,7 +402,7 @@ class PersonalDictionarySilentFailureTest {
         assertEquals("exactly one notice per corruption", 1, notices)
     }
 
-    /** B2. And nothing at all is said when the file reads fine — the notice is not a startup event. */
+    /** Nothing is said when the file reads fine: the notice is not a startup event. */
     @Test
     fun aReadableFileSaysNothing() {
         val directory = newPersonalDir()
@@ -432,9 +415,8 @@ class PersonalDictionarySilentFailureTest {
     }
 
     /**
-     * B2. If the move itself cannot happen, the unreadable file is removed after all — leaving it
-     * where the reader looks would fail validation again on every single start — and the user is told
-     * either way, because what they are told is that the list is empty and that they did not do it.
+     * If the move itself fails, the unreadable file is removed (left in place it would fail
+     * validation on every start), and the user is told either way.
      */
     @Test
     fun theUserIsToldEvenWhenTheCopyCannotBeMade() {
@@ -458,18 +440,15 @@ class PersonalDictionarySilentFailureTest {
         assertTrue(store.snapshot.isEmpty)
     }
 
-    // ---- B3: a failed removal is an answer, not a dead process ----------------------------------
+    // ---- a failed removal is an answer, not a dead process -------------------------------------
 
     /**
-     * B3. `forget` was the ONE mutation without a `try`, and its exception did not stay inside it.
-     * `deleteFile()` never returns false — it returns true or throws — so removing the LAST saved
-     * word threw straight out of the lambda, onto a single-thread executor created without an
-     * `UncaughtExceptionHandler`, where the default handler is `KillApplicationHandler`: the keyboard
-     * died in the middle of typing in someone else's app.
+     * `deleteFile()` returns true or throws, so removing the last saved word can throw. `forget`
+     * must catch it: the store's worker is a single-thread executor, and an uncaught exception
+     * there reaches `KillApplicationHandler` and kills the keyboard mid-typing.
      *
-     * The executor here is that production worker in miniature — one thread per event, with a handler
-     * standing exactly where the killer stands in the app. Anything it collects would have been a
-     * dead IME.
+     * The executor here mimics that worker: one thread per event, with an uncaught-exception
+     * handler where the app's killer would be. Anything it collects would have been a crash.
      */
     @Test
     fun aRemovalThatCannotDeleteTheFileAnswersInsteadOfKillingTheWorker() {
@@ -493,10 +472,8 @@ class PersonalDictionarySilentFailureTest {
     }
 
     /**
-     * B3, the state the refusal has to describe truthfully: a delete that did not happen leaves the
-     * word saved, so the published snapshot must show it again. Falling over protected nothing here —
-     * that is the whole reason the crash was the wrong answer — but neither may the store claim the
-     * word is gone.
+     * A delete that did not happen leaves the word saved, so the published snapshot must show it
+     * again; the store may not claim the word is gone.
      */
     @Test
     fun aRemovalThatCannotDeleteTheFileLeavesTheWordSavedAndSaysSo() {
@@ -527,9 +504,8 @@ class PersonalDictionarySilentFailureTest {
         File(temporaryFolder.newFolder(), "personal").also { assertTrue(it.mkdirs()) }
 
     /**
-     * The production worker in miniature: one thread per event, joined so the test stays as
-     * sequential as the direct executor, and an `UncaughtExceptionHandler` standing where
-     * `KillApplicationHandler` stands in the app.
+     * Mimics the store's worker: one thread per event, joined so the test stays as sequential as
+     * the direct executor, and an `UncaughtExceptionHandler` in place of `KillApplicationHandler`.
      */
     private fun workerWithKiller(uncaught: MutableList<Throwable>) = Executor { runnable ->
         val thread = Thread(runnable, "personal-dictionary-test")

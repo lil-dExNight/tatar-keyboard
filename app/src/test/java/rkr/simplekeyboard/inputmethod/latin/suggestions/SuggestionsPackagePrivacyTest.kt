@@ -22,12 +22,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E4c extends the privacy scan to `latin/suggestions/`, modelled on `DictionaryEnginePrivacyTest`.
+ * The privacy scan of `latin/suggestions/`, modeled on `DictionaryEnginePrivacyTest`.
  *
  * This is the package where the completed-word detection lives — the code that sees every keystroke
- * and now holds a whole word in a field. It had no privacy gate at all until here, and `Log` happens
- * not to be in it today, so the gate costs nothing to add and works as a guard against a regression
- * that would be very easy to make: one `Log.d` with a word in the message.
+ * and holds a whole word in a field. The scan guards against a regression that is very easy to
+ * make: one `Log.d` with a word in the message.
  */
 class SuggestionsPackagePrivacyTest {
 

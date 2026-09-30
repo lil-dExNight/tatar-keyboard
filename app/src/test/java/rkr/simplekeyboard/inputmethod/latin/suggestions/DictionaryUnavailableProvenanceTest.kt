@@ -28,15 +28,13 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictiona
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.StorageFailure
 
 /**
- * Mission `tt-personal-dict`, finding A1 of `docs/SILENT-AUDIT.md`: the provenance of a preparation
- * request.
+ * The provenance of a dictionary preparation request.
  *
- * [DictionaryUnavailableListener] exists for exactly one situation — the user turned the setting on
- * themselves and it could not be honoured — because, in the words of the comment on it, "leaving
- * that unanswered would look like the setting simply did nothing". The provenance was recorded on a
- * first-writer-wins field AFTER the de-duplication guard, so an explicit enable arriving while an
- * implicit preparation was still in flight was dropped, and that is precisely the case where the
- * user is standing in the settings screen watching the switch.
+ * [DictionaryUnavailableListener] exists for exactly one situation: the user turned the setting on
+ * themselves and it could not be honored, so leaving it unanswered would look like the setting did
+ * nothing. The provenance must survive the de-duplication guard: an explicit enable that arrives
+ * while an implicit preparation is still in flight must still be answered, because that is when the
+ * user is on the settings screen watching the switch.
  */
 class DictionaryUnavailableProvenanceTest {
 
@@ -121,7 +119,7 @@ class DictionaryUnavailableProvenanceTest {
         )
     }
 
-    /** Holds the result until the test releases it: that window IS the finding. */
+    /** Holds the result until the test releases it: that window is the race under test. */
     private class FakePreparation : DictionaryPreparation {
         var prepareCalls = 0
         private var awaiting: ((PreparationResult) -> Unit)? = null

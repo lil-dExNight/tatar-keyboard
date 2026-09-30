@@ -22,12 +22,11 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Source-contract for the personal store's placement (E4a-2): the directory is resolved from the
- * base (credential-protected) `noBackupFilesDir`, through its OWN `PersonalDirectoryProvider` seam,
- * and NEVER through the dictionary asset's `DeviceProtectedDirectoryProvider` nor a device-protected
- * context. Backup exclusion is already proven WHOLE by `BackupWhitelistSourceContractTest`
- * (`personal/` is a sensitive marker there and no allowing element resolves under it), so this test
- * does not re-enumerate it — a rule that names `personal/` under `no_backup` would be forbidden.
+ * Placement of the personal store: the directory is resolved from the base (credential-protected)
+ * `noBackupFilesDir` through its own `PersonalDirectoryProvider` seam, never through the bundled
+ * dictionary's device-protected provider or a device-protected context. Backup exclusion is
+ * covered by `BackupWhitelistSourceContractTest` (`personal/` is a sensitive marker there), so it
+ * is not re-checked here.
  */
 class PersonalStoragePathSourceContractTest {
     private val factory by lazy {

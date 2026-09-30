@@ -22,10 +22,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * P3 (docs/TT-SUGGESTIONS.md): the runtime Tatar suffix table — harmony classes, assimilation,
- * membership of representative suffixes, and the bounded after-word generation. Expected forms are
- * the ones `scripts/wordform_gen.py` emits for the same stems (the runtime table is the fixed
- * single-suffix inventory; chains are covered through their intermediate words).
+ * The runtime Tatar suffix table — harmony classes, assimilation, membership of representative
+ * suffixes, and the bounded after-word generation. Expected forms are the ones
+ * `scripts/wordform_gen.py` emits for the same stems (the runtime table is the fixed single-suffix
+ * inventory; chains are covered through their intermediate words).
  */
 class TatarSuffixRulesTest {
 

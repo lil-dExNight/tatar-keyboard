@@ -76,7 +76,7 @@ class SuggestionsControllerTest {
         var textAfterCursor: String = ""
         val commits = mutableListOf<Pair<String, String>>()
 
-        // --- E5d NEXT_WORD ------------------------------------------------------------------
+        // --- NEXT_WORD ----------------------------------------------------------------------
         var nextWordContext: String = ""
         var predictedCommitResult: Boolean = true
         val predictedCommits = mutableListOf<Pair<String, String>>()
@@ -271,8 +271,8 @@ class SuggestionsControllerTest {
         h.controller.onStartInput(eligible = true)
 
         // DirectExecutor publishes inline: the transition must still be GONE first, then reserve
-        // only after the engine handle has published successfully. The second "reserve" is E5d's
-        // widened re-request gate (publishEngine no longer skips requestCurrentPrefix() on an empty
+        // only after the engine handle has published successfully. The second "reserve" is the
+        // widened re-request gate (publishEngine does not skip requestCurrentPrefix() on an empty
         // prefix, because an empty prefix is exactly when NEXT_WORD needs to fire): with no context
         // word available either (the fake editor's default), requestNextWordContext() falls through
         // to clearToReservedBand(), an idempotent no-op re-assertion of the already-reserved band.
@@ -459,12 +459,8 @@ class SuggestionsControllerTest {
 
     @Test
     fun acceptedPrefixSuggestionIsFollowedByNextWordPredictionsForTheAcceptedWord() {
-        // The E5 contract (docs/archive/PROPOSALS.md, "## E5"): after an ACCEPTED or typed word and
-        // a space the strip shows the continuations of the word that was just committed — a tap is
-        // no exception. This test pinned the pre-NEXT_WORD behavior as
-        // bandStaysEmptyAndVisibleAfterTheAutoSpacedCommitEndsTheWord (D1 era); the empty band it
-        // asserted was a defect, not a design (TT-TYPO-NEXT Phase A, amendment recorded in
-        // docs/TT-TYPO-NEXT.md on 2026-09-20).
+        // After an ACCEPTED or typed word and a space the strip shows the continuations of the word
+        // that was just committed — a tap is no exception.
         val h = Harness()
         h.controller.onStartInput(eligible = true)
         h.editor.word = "сүз"
@@ -627,14 +623,14 @@ class SuggestionsControllerTest {
         assertTrue(h.editor.commits.isEmpty())
     }
 
-    // --- D1e regression: readiness / eligibility lifecycle (BUG 1) -----------------------------
+    // --- Regression: readiness / eligibility lifecycle ------------------------------------------
 
     @Test
     fun eligibleStartWhileDictionaryNotReadyStaysHiddenUntilReadyPublish() {
         val h = Harness(dictionaryReady = false)
         h.editor.word = "сүз"
 
-        // Field opens eligible while preparation is in flight: the frozen state table requires
+        // Field opens eligible while preparation is in flight: the strip state table requires
         // GONE/0dp, with no engine or request.
         h.controller.onStartInput(eligible = true)
         assertEquals(0, h.factoryCalls)
@@ -811,7 +807,7 @@ class SuggestionsControllerTest {
         assertTrue(strip.visible)
     }
 
-    // --- D1e regression: atomic candidate binding (BUG 2) --------------------------------------
+    // --- Regression: atomic candidate binding --------------------------------------------------
 
     @Test
     fun tapOnStaleCandidateAfterTextChangeIsNoOp() {
@@ -982,9 +978,9 @@ class SuggestionsControllerTest {
 
         h.controller.onSubtypeChanged(eligible = true)
 
-        // +2, not +1: E5d's widened re-request gate (see the comment in
-        // eligibleStartShowsBandOnlyAfterColdEnginePublishes) fires requestCurrentPrefix() here too,
-        // and with no prefix and no context word available it falls through to an idempotent
+        // +2, not +1: the widened re-request gate (see the comment in
+        // eligibleStartShowsBandOnlyAfterColdEnginePublishes) fires requestCurrentPrefix() here
+        // too, and with no prefix and no context word available it falls through to an idempotent
         // clearToReservedBand() on top of the explicit reserve() just above it.
         assertEquals(reserveBefore + 2, h.strip.reserveCount)
         assertEquals(hideBefore, h.strip.hideCount)
@@ -1289,7 +1285,7 @@ class SuggestionsControllerTest {
         assertEquals(1, h.engines.size)
     }
 
-    // --- E5d NEXT_WORD ("Контракт текста" amendment, 2026-08-17) --------------------------------
+    // --- NEXT_WORD -----------------------------------------------------------------------------
 
     @Test
     fun emptyPrefixWithSuggestionsOnAndAvailableContextBuildsANextWordRequest() {
@@ -1345,10 +1341,10 @@ class SuggestionsControllerTest {
     @Test
     fun selectionOrLetterAfterCursorClearsResultsRegardlessOfContext() {
         // The LETTER-after-cursor half is testable at this level; the SELECTION half is not — no
-        // EditorSurface method exposes selection state to the controller at all (the same gap the
-        // frozen contract already names for D3: hasSelection() is checked only inside
+        // EditorSurface method exposes selection state to the controller at all (as for
+        // autocorrect: hasSelection() is checked only inside
         // InputLogic.commitPredictedWord/replaceTrailingWord, verified there by source-contract
-        // tests below, not observable from a JVM fake at the controller level).
+        // tests, not observable from a JVM fake at the controller level).
         val h = Harness()
         h.controller.onStartInput(eligible = true)
 
@@ -1392,8 +1388,8 @@ class SuggestionsControllerTest {
 
     @Test
     fun aNonEmptyPrefixNeverShowsAPredictionAndAnEmptyPrefixNeverShowsAPrefixSuggestion() {
-        // PROPOSALS.md, "E5d." fail-closed acceptance: both directions of "Сосуществование" checked
-        // explicitly, not just inferred from the mode-switch test above.
+        // PREFIX and NEXT_WORD never coexist: both directions checked explicitly, not just inferred
+        // from the mode-switch test above.
         val h = Harness()
         h.controller.onStartInput(eligible = true)
 
@@ -1425,8 +1421,8 @@ class SuggestionsControllerTest {
         h.editor.nextWordContext = "сүз"
         h.controller.onTextChanged()
 
-        // "яр" sorts before "әби" in code-point order (see docs/DICTIONARY-E5B.md on 'з' < 'ә'), so
-        // an alphabetical or frequency re-sort would visibly reorder this pair; the packing order
+        // "яр" sorts before "әби" in code-point order (я is U+044F, ә is U+04D9), so an
+        // alphabetical or frequency re-sort would visibly reorder this pair; the packing order
         // handed to onResult must survive to the strip byte-for-byte instead.
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("яр", "әби", "зур"), LookupKind.NEXT_WORD)
 
@@ -1464,14 +1460,14 @@ class SuggestionsControllerTest {
         )
     }
 
-    // --- "Состояния полосы" amendment, 2026-08-17, пятый пункт ----------------------------------
+    // --- Strip states --------------------------------------------------------------------------
 
     @Test
     fun emptyBandStatesShowNextWordRowsWithoutChangingHeightOrCellCount() {
-        // Both new rows are a "частный случай уже существующих строк" by construction: NEXT_WORD
-        // reuses the exact same StripSurface.showSuggestions/reserve calls PREFIX does, so there is
-        // no separate height/cell-count code path that could diverge. Proven here by showing both
-        // the 0-results and the filled NEXT_WORD state through the one StripSurface seam.
+        // The NEXT_WORD states are special cases of the existing PREFIX states: NEXT_WORD reuses
+        // the exact same StripSurface.showSuggestions/reserve calls PREFIX does, so there is no
+        // separate height/cell-count code path that could diverge. Proven here by showing both the
+        // 0-results and the filled NEXT_WORD state through the one StripSurface seam.
         val h = Harness()
         h.controller.onStartInput(eligible = true)
 
@@ -1489,7 +1485,7 @@ class SuggestionsControllerTest {
         assertEquals(1, h.strip.shown.size)
     }
 
-    // --- P3 after-word forms through the real engine (docs/TT-SUGGESTIONS.md) --------------------
+    // --- After-word forms through the real engine ------------------------------------------------
     //
     // The merge itself is pinned in CompositePrefixComputerTest and TatarAfterWordFormsTest; what
     // is proven here is the full path the user sees: committed word + space -> engine worker ->

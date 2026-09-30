@@ -22,17 +22,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The PointerTracker half of the 2026-09-25 input-robustness wave
- * (docs/SECURITY-AUDIT-2026-09-25-FIXES.md), pinned at source level for the same reason as
- * [GlideTouchIntegrationContractTest]: PointerTracker's static state needs a live `Resources`,
- * so it cannot be instantiated in a JVM test. The behavioral half of F13 (the queue itself)
- * lives in `PointerTrackerQueueTest`.
+ * Pins PointerTracker's handling of cancelled and malformed touch streams, checked from source
+ * because PointerTracker's static state needs a live `Resources` (see
+ * [GlideTouchIntegrationContractTest]). The queue's own behavior is tested in
+ * `PointerTrackerQueueTest`.
  *
- * F2: `mCursorMoved` marks THIS gesture's space/delete swipe. It used to reset only on a plain
- * up, so a cancelled swipe leaked the state into the next touch — whose up then dereferenced a
- * null current key (the NPE) or fired the swipe callbacks for a gesture that never swiped.
- * F13: the queue evicts cancelled trackers, so the phantom-up wave must ride inside the
- * queue's cancel-all (a releaseAllPointers after it would iterate an empty queue).
+ * `mCursorMoved` marks this gesture's space/delete swipe and resets at down and at cancel;
+ * otherwise a cancelled swipe leaks into the next touch, whose up dereferences a null key or
+ * fires swipe callbacks. The queue evicts cancelled trackers, so the phantom-up pass must run
+ * inside the queue's cancel-all (a releaseAllPointers after it would see an empty queue).
  */
 class PointerTrackerRobustnessContractTest {
 

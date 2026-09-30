@@ -35,10 +35,9 @@ REVIEW = ROOT / "data" / "dictionary" / "tt-query-review.tsv"
 NOTICE = ASSET.parent / "NOTICE.txt"
 RUSSIAN_ASSET = ASSET.parent / "russian_top100k_v1.tdict.zlib"
 RUSSIAN_REVIEW = ROOT / "data" / "dictionary" / "ru-query-review.tsv"
-# Обе таблицы пересозданы 2026-08-24 миссией tt-dict-accept: словари пересобраны, и
-# тройка кандидатов на двадцати двух русских и двух татарских префиксах изменилась.
-# Даты разные у разных языков и разные у разных пересборок — поэтому они здесь, а не
-# зашиты в dictionary_pack.AUTOMATED_REVIEW_DATE, которая осталась датой первой сборки.
+# Review dates of the two query-review tables. They can differ per language and per rebuild,
+# so they live here instead of in dictionary_pack.AUTOMATED_REVIEW_DATE (the date of the
+# first build).
 RUSSIAN_REVIEW_DATE = "2026-08-24"
 TATAR_REVIEW_DATE = "2026-08-24"
 
@@ -186,10 +185,10 @@ class DictionaryPackTest(unittest.TestCase):
         fields = pack.HEADER.unpack_from(raw)
         self.assertEqual(fields[0], b"TATDICT\0")
         self.assertEqual(fields[1:5], (2, 1, 72, 1))
-        self.assertEqual(fields[5], 3)  # записей
-        self.assertEqual(fields[6], 1)  # блоков
-        self.assertEqual(fields[7], 72)  # индекс блоков
-        self.assertEqual(fields[8], 76)  # начало блоков
+        self.assertEqual(fields[5], 3)  # entries
+        self.assertEqual(fields[6], 1)  # blocks
+        self.assertEqual(fields[7], 72)  # block index
+        self.assertEqual(fields[8], 76)  # start of blocks
         self.assertEqual(fields[9], fields[10] - 76)
         self.assertEqual(fields[10], len(raw))
         parsed = pack.validate_raw(raw)
@@ -197,7 +196,7 @@ class DictionaryPackTest(unittest.TestCase):
         self.assertEqual(parsed.frequencies, tuple(freq for _, freq in entries))
 
     def test_schema_v2_block_boundary_and_round_trip(self) -> None:
-        # Девять записей — два блока: ровно на границе K = 8.
+        # More than K = 8 entries: two blocks.
         entries = [(f"әб{suffix}", i + 1) for i, suffix in enumerate("вгдежзиклн")]
         entries.sort(key=lambda item: item[0])
         raw = pack.serialize_entries(entries, schema=pack.SCHEMA_ID_V2)
@@ -207,7 +206,7 @@ class DictionaryPackTest(unittest.TestCase):
         self.assertEqual(
             parsed.frequencies, tuple(frequency for _, frequency in entries)
         )
-        # v1 → v2 → v1: состав, порядок и частоты возвращаются точно (lossless).
+        # v1 -> v2 -> v1: words, order and frequencies come back exactly (lossless).
         raw_v1 = pack.serialize_entries(entries, schema=pack.SCHEMA_ID)
         built = pack.repack_asset(pack.compress_raw(raw_v1), schema=pack.SCHEMA_ID_V2)
         self.assertEqual(built.parsed.words, parsed.words)
@@ -216,22 +215,22 @@ class DictionaryPackTest(unittest.TestCase):
         self.assertEqual(back.raw, raw_v1)
 
     def test_schema_v2_rejects_noncanonical_and_truncated_varints(self) -> None:
-        # Каноничность varint проверяется напрямую через декодер.
+        # Varint canonicity is checked directly through the decoder.
         self.assertEqual(pack._decode_varint(b"\x09", 0, 1), (9, 1))
         self.assertEqual(pack._decode_varint(bytes([0xAC, 0x02]), 0, 2), (300, 2))
         with self.assertRaises(pack.DictionaryFormatError):
-            pack._decode_varint(b"\x89\x00", 0, 2)  # overlong-форма 9
+            pack._decode_varint(b"\x89\x00", 0, 2)  # overlong form of 9
         with self.assertRaises(pack.DictionaryFormatError):
-            pack._decode_varint(b"\x89", 0, 1)  # обрыв на continuation-бите
+            pack._decode_varint(b"\x89", 0, 1)  # truncated at a continuation bit
         with self.assertRaises(pack.DictionaryFormatError):
-            pack._decode_varint(b"\xff\xff\xff\xff\x7f", 0, 5)  # за пределами u32
-        # Частота 300 пишется двухбайтовым varint 0xAC 0x02: последние четыре байта
-        # файла — частоты 9, 300, 1.
+            pack._decode_varint(b"\xff\xff\xff\xff\x7f", 0, 5)  # out of u32 range
+        # Frequency 300 is written as the two-byte varint 0xAC 0x02: the last four bytes of
+        # the file are the frequencies 9, 300, 1.
         raw = pack.serialize_entries(
             [("алма", 9), ("юл", 300), ("ә", 1)], schema=pack.SCHEMA_ID_V2
         )
         self.assertEqual(raw[-4:], bytes([0x09, 0xAC, 0x02, 0x01]))
-        # Обрыв последнего varint и нулевая частота отвергаются валидатором.
+        # The validator rejects a truncated last varint and a zero frequency.
         with self.assertRaises(pack.DictionaryFormatError):
             pack.validate_raw(rechecksum(raw[:-1]))
         zeroed = bytearray(raw)
@@ -498,11 +497,9 @@ class DictionaryPackTest(unittest.TestCase):
 
     def test_committed_asset_provenance_notice_and_review(self) -> None:
         asset = ASSET.read_bytes()
-        # 110 000 since 2026-09-20 (TT-SUGGESTIONS P2: +9 052 admitted generated forms,
-        # +645 more accepted conversational words than at 100k; nothing displaced).
+        # 110 000 entries: the cutoff leaves room for the admitted generated word forms.
         parsed = pack.validate_asset(asset, expected_count=110_000)
-        # Пины поставляемого ассета (схема 2, SIZE-1) живут в Kotlin-контракте;
-        # архивный DICTIONARY-D1A.md описывает schema-1 сборку и не переписывается.
+        # The pins of the shipped (schema 2) asset live in the Kotlin contract.
         contract = (
             ROOT
             / "app/src/main/java/rkr/simplekeyboard/inputmethod/latin"
@@ -572,8 +569,7 @@ class DictionaryPackTest(unittest.TestCase):
         asset_sha = hashlib.sha256(asset).hexdigest()
         raw_sha = hashlib.sha256(parsed.raw).hexdigest()
         notice = NOTICE.read_text(encoding="utf-8")
-        # Живые пины schema 2 (SIZE-1) — в Kotlin-контракте; архивный
-        # RUSSIAN-DICTIONARY.md описывает schema-1 сборку и не переписывается.
+        # The pins of the shipped (schema 2) asset live in the Kotlin contract.
         contract = (
             ROOT
             / "app/src/main/java/rkr/simplekeyboard/inputmethod/latin"
@@ -610,8 +606,8 @@ class DictionaryPackTest(unittest.TestCase):
         self.assertIn(hashlib.sha256(parsed.raw).hexdigest(), spec)
         self.assertIn(f"expectedCompressedSize = {len(asset):_}".replace("_", "_"), spec)
         self.assertIn(f"{len(parsed.raw):,}".replace(",", "_"), spec)
-        # The Tatar family name and directory are frozen: a device updating from 1.6.1 must find
-        # the file it already inflated exactly where it left it.
+        # The Tatar family name and directory are frozen: a device updating from an older
+        # version must find the file it already inflated exactly where it left it.
         self.assertIn('family = "tatar_top100k"', spec)
         self.assertIn('storageDirectoryName = "dictionaries"', spec)
         self.assertIn('family = "russian_top100k"', spec)
@@ -622,8 +618,8 @@ class DictionaryPackTest(unittest.TestCase):
             ["git", "ls-files"], cwd=ROOT, check=True, capture_output=True, text=True
         )
         # `-sentences.txt` is here for the same reason `-words.txt` is: it is the licensed
-        # input the bigram tables are counted from (`scripts/bigram_asset_pack.py`), and the
-        # Russian table added a second language's worth of them on 2026-08-21.
+        # input the bigram tables are counted from (`scripts/bigram_asset_pack.py`), for both
+        # languages.
         pattern = re.compile(
             r"(^|/)((tat|rus)_(mixed|news|web|wikipedia).*-(words|sentences)\.txt"
             r"|.*\.tar\.gz)$"

@@ -6,10 +6,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Edit class #4 (TT-TYPO-NEXT Phase C): full single substitution over the layout's typeable
- * alphabet. Direct generator tests — the engine-level behavior (activation gate, probe-first
- * budgets, ranking) is in [TdictPrefixIndexPhaseCTest] and the calibration in
- * [TtTypoPhaseCCalibrationTest].
+ * Edit class #4: full single substitution over the layout's typeable alphabet. Direct generator
+ * tests; the engine-level behavior (activation gate, probe-first budgets, ranking) is in
+ * [TdictPrefixIndexPhaseCTest] and the calibration in [TtTypoPhaseCCalibrationTest].
  */
 class FuzzyPrefixVariantsPhaseCTest {
     private val alphabet = E3bTestFixtures.tatarNeighborTable().nodes
@@ -59,7 +58,7 @@ class FuzzyPrefixVariantsPhaseCTest {
     @Test
     fun variantsReEncodeToValidUtf8ForTheWholeAlphabet() {
         // Replacing around the two-byte fifth-row letters must produce valid UTF-8: the alphabet
-        // contains code points above U+04FF never (Cyrillic two-byte only), and every variant of a
+        // never contains code points above U+04FF (two-byte Cyrillic only), and every variant of a
         // fifth-row letter round-trips.
         val (_, variants) = variantsOf("әни")
         assertTrue(variants.all { it.length == "әни".length })

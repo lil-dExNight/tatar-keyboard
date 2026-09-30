@@ -23,14 +23,14 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 
 /**
- * The P1 learning gate (docs/ROADMAP-P2.md): the pair sink shares the ONE five-factor predicate
- * of the words sink — suggestions eligible (field, subtype, no `IME_FLAG_NO_PERSONALIZED_LEARNING`,
- * no null editorInfo), the personal dictionary setting, the unlock state, the postal-address
+ * The learning gate for word pairs: the pair sink shares the one five-factor predicate of the
+ * words sink — suggestions eligible (field, subtype, no `IME_FLAG_NO_PERSONALIZED_LEARNING`, no
+ * null editorInfo), the personal dictionary setting, the unlock state, the postal-address
  * exclusion — and every one of its event paths consults it.
  *
- * The factors themselves are Android state, so what runs as a real test here is the SHAPE — a
- * sink that writes nothing whenever the predicate says no — and the rest is source-contract over
- * the two places the wiring lives: the sink factory and `LatinIME`.
+ * The factors are Android state, so the real test here is the shape (a sink that writes nothing
+ * when the predicate says no); the wiring is checked from source in the sink factory and
+ * `LatinIME`.
  */
 class PersonalBigramLearningGatesTest {
 

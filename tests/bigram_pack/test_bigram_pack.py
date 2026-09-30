@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Fixture tests for the E5a bigram prototype.
+"""Fixture tests for the bigram prototype (scripts/bigram_pack.py).
 
-The corpora themselves are 582 MB and are downloaded by a human, so what is tested here are the
+The corpora are downloaded separately, so what is tested here are the
 RULES — parsing, tokenization, pairing, the matrix, the size formula, the caps and the frozen
 held-out denominator — on synthetic input small enough to read.
 """
@@ -51,13 +51,11 @@ class TokenizationAndPairingTest(unittest.TestCase):
         self.assertEqual([], list(bigram_pack.iter_pairs(tokens, self.VOCABULARY)))
 
     def test_an_imperative_with_a_trailing_mark_yields_no_pair(self) -> None:
-        # The case docs/RUSSIAN-BIGRAMS.md section 12 item 3 raised and docs/BIGRAM-ADJACENCY.md
-        # measured: "позвони!" is rejected WHOLE, so the imperative gets no successor from this
-        # sentence. Pinned as the rule's behaviour, NOT as a defect — the measurement found the
-        # missing prediction after imperatives has a different cause (the H = 10 000 head cutoff,
-        # which this rule cannot influence: see
-        # tests/bigram_asset_pack test_bigram_evidence_never_promotes_a_word_to_a_head), and that
-        # relaxing the rule made the held-out hit-rate WORSE in both languages.
+        # "позвони!" is rejected WHOLE, so the imperative gets no successor from this sentence.
+        # This is the intended rule, not a defect: missing predictions after imperatives come from
+        # the head cutoff, which this rule cannot influence (see tests/bigram_asset_pack
+        # test_bigram_evidence_never_promotes_a_word_to_a_head), and relaxing the rule lowered the
+        # held-out hit rate in both languages.
         tokens = bigram_pack.normalized_tokens("позвони! мин")
         self.assertEqual([None, "мин"], tokens)
         self.assertEqual([], list(bigram_pack.iter_pairs(tokens, self.VOCABULARY | {"позвони", "мин"})))
@@ -217,8 +215,8 @@ class EndToEndMatrixTest(unittest.TestCase):
                 self.assertGreaterEqual(row["raw_bytes"], bigram_pack.HEADER_BYTES)
                 self.assertGreater(row["compressed_bytes"], 0)
                 self.assertGreaterEqual(row["events"], 1)
-        # Every corpus is pinned by SHA-256, including the held-out one — no such pin exists
-        # anywhere for sentences.txt today, and the prototype claims reproducibility.
+        # Every corpus is pinned by SHA-256, including the held-out one, so the run is
+        # reproducible.
         self.assertEqual(2, len(report["corpora"]))
         for corpus in report["corpora"]:
             self.assertEqual(64, len(corpus["sha256"]))

@@ -23,9 +23,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2b-1 source-contract, in the style of SuggestionStripSourceContractTest / EmojiSourceContractTest:
- * it greps the frozen source rather than exercising Android, guarding the exact surface-switching
- * shape and the eight toggle wiring points E2b-1 promises.
+ * Source contract (like SuggestionStripSourceContractTest / EmojiSourceContractTest): greps the
+ * source rather than exercising Android, guarding the emoji key's surface switching and the
+ * eight wiring points of the emoji-key toggle.
  */
 class EmojiKeySurfaceContractTest {
 
@@ -107,7 +107,7 @@ class EmojiKeySurfaceContractTest {
         for (edit in listOf("commitText", "deleteText", "sendKeyCodePoint", "deleteSurroundingText")) {
             assertFalse("emoji branch must not $edit", branch.contains(edit))
         }
-        // Delete inside the panel routes through the ordinary onCodeInput path (E2a cluster delete).
+        // Delete inside the panel routes through the ordinary onCodeInput path (cluster delete).
         val onDelete = keyboardSwitcher.substringAfter("public void onEmojiPanelDelete()")
             .substringBefore("public View onCreateInputView()")
         assertTrue(onDelete.contains("mLatinIME.onCodeInput(Constants.CODE_DELETE"))

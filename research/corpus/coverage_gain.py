@@ -7,7 +7,7 @@ so a subtitle repeated across uploads cannot appear in both halves.
 
 Denominator: every held-out token that survives dict_tokens. A token is COVERED if the word
 is present in the dictionary being tested (the shipped 100k, or the merged 100k). This is
-prefix-suggestion coverage: a word absent from the dictionary can never be suggested.
+word-completion coverage: a word absent from the dictionary can never be suggested.
 """
 from __future__ import annotations
 import json, sys
@@ -20,7 +20,7 @@ from stream import Split
 
 def split_lines(paths):
     """The same split, streamed. Superseded by measure_filtered.py, which also reports what the
-    filter removed; kept because docs/CORPUS.md documents the split rule against this file."""
+    filter removed; kept as the plainest statement of the split rule."""
     split = Split(paths)
     return ([line for line, _ in split.train()], [line for line, _ in split.held()])
 

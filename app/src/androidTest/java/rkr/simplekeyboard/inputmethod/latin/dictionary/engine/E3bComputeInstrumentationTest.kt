@@ -25,18 +25,15 @@ import java.nio.ByteBuffer
 import kotlin.math.ceil
 
 /**
- * Device-side compute harness: the fuzzy lookup latency can only be measured on real hardware,
- * which the host JVM cannot stand in for.
+ * Device-side lookup latency: fuzzy lookup cost can only be measured on real hardware.
  *
- * It measures both shipped policies, [FuzzyEditPolicy.DEFAULT] (class #1 only) and
- * [FuzzyEditPolicy.TATAR] (classes #1 + #4 probe-first full substitution + same-length bonus),
- * over the 22 review prefixes and over typo probes ("сцл", "сцлә", "сцләм", "сйл", plus the
- * 10-code-point "сцләмәтлек": 380 class #4 probes per lookup).
+ * Measures both shipped policies, [FuzzyEditPolicy.DEFAULT] (edit class #1 only) and
+ * [FuzzyEditPolicy.TATAR] (classes #1 + #4: probe-first full substitution plus same-length
+ * bonus), over [REVIEW_PREFIXES] and [TYPO_PROBES].
  *
- * It lives in `app/src/androidTest` and is packaged only into the debug androidTest APK — never
- * the release APK. JUnit3 / legacy-runner style deliberately: the SDK's
- * `android.test.InstrumentationTestRunner` and `android.test.InstrumentationTestCase` resolve
- * offline, so the harness needs no downloaded androidx.test artifact.
+ * Packaged only into the debug androidTest APK. Uses the JUnit3 legacy runner on purpose:
+ * `android.test.InstrumentationTestRunner` and `android.test.InstrumentationTestCase` come with
+ * the SDK, so no androidx.test artifact has to be downloaded.
  */
 class E3bComputeInstrumentationTest : InstrumentationTestCase() {
 
@@ -76,10 +73,9 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
             "PhaseC device compute $label p50=${fmt(p50)} ms p95=${fmt(p95)} ms max=${fmt(max)} ms " +
                 "samples=${timings.size} consumed=$consumed totalProbes=$probes maxProbes=$maxProbes",
         )
-        // Only the typo-probe labels ("typo-default", "typo-tatar") have a written device budget:
-        // p95 <= 3.5 ms per docs/TT-TYPO-NEXT.md (measured 3.306). Asserted at 5.0 as a
-        // conservative flake-safe bound; the recorded breach was 31.6 ms. The review-prefix
-        // labels have no written budget and stay log-only.
+        // Only the typo-probe labels ("typo-default", "typo-tatar") have a device budget,
+        // p95 <= 3.5 ms; the assert uses 5.0 ms to avoid flakes. The review-prefix labels have
+        // no budget and are only logged.
         if (label.startsWith("typo-")) {
             assertTrue(
                 "typo-probe p95 regressed beyond the conservative 5 ms bound " +
@@ -145,16 +141,16 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
             "tatar" to FuzzyEditPolicy.TATAR,
         )
 
-        // The 22 prefixes of docs/DICTIONARY-D1A-QUERY-REVIEW.tsv (RealDictionaryPrefixIndexTest
-        // reads them from disk on the host; on device they are inlined query data, not layout).
+        // The review prefixes that RealDictionaryPrefixIndexTest reads from a TSV file on the
+        // host; inlined here as query data.
         internal val REVIEW_PREFIXES = listOf(
             "сә", "рәх", "исәнм", "хәерл", "безн", "татарч", "кеш", "бал", "мәкт", "китап", "эшл",
             "йорт", "авыл", "шәһ", "вак", "көн", "тел", "гаил", "әни", "әти", "дус", "яң",
         )
 
         // The typo workload: the target case at 3/4/5 code points, "сйл" (сәләм with ә→й), and
-        // the 10-code-point "сцләмәтлек" — the long-prefix class-#4 probe path (10 x 38 = 380
-        // probes per lookup).
+        // the 10-code-point "сцләмәтлек", the long-prefix class #4 probe path (10 x 38 probes
+        // per lookup).
         internal val TYPO_PROBES = listOf("сцл", "сцлә", "сцләм", "сйл", "сцләмәтлек")
     }
 }

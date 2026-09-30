@@ -21,10 +21,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The fail-closed reader of the sentence-start table (`SentStartIndex`, P4 of
- * docs/TT-SUGGESTIONS.md): file order is the ranking, comment and blank lines are skipped,
- * malformed rows are dropped, a fully unreadable input is [SentStartIndex.EMPTY], and no
- * exception ever escapes — the exact `EmojiSuggestIndex` posture.
+ * The reader of the sentence-start table (`SentStartIndex`): file order is the ranking, comment and
+ * blank lines are skipped, malformed rows are dropped, a fully unreadable input is
+ * [SentStartIndex.EMPTY], and no exception ever escapes — the same behavior as `EmojiSuggestIndex`.
  */
 class SentStartIndexTest {
 

@@ -62,7 +62,7 @@ class EmojiPackagePrivacyTest {
     fun recentsMediumIsCredentialProtectedNotDeviceProtected() {
         // The mirror of the dictionary asset assertion: the recents live in the base
         // (credential-protected) noBackupFilesDir, so the package never asks for a device-protected
-        // context. Same assert E4a-2 introduces for the `personal` package.
+        // context. The `personal` package tests make the same assertion.
         assertFalse(source.contains("createDeviceProtectedStorageContext()"))
         assertFalse(source.contains("createCredentialProtectedStorageContext()"))
         // The medium is the base context's noBackupFilesDir.

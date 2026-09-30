@@ -1,76 +1,13 @@
 #!/usr/bin/env python3
-"""Единый вход пересборки ассетов: словари → таблицы биграмм → пины → проверка.
+"""Rebuild the bundled assets in one step: dictionaries, bigram tables, pins, check.
 
-Исторический источник багов, который этот скрипт закрывает: пересборка словаря и
-перепаковка таблиц биграмм были двумя независимыми ручными командами, и вторая половина
-дважды забывалась — татарская таблица разошлась со словарём на 78 голов (закрыто в 1.9.4,
-`docs/archive/bigrams/IMPERATIVE-HEADS.md`), русская — на 4 195 (открыто, число записано
-там же и в KDoc `BigramArtifactSpec.RUSSIAN_BIGRAMS_V1`). Здесь это ОДНА команда, и забыть
-вторую половину невозможно:
-
-    python3 scripts/rebuild_assets.py --baseline <каталог с ассетами 1.8.4>
-
-делает по порядку:
-
-  0. (татарский, с 2026-09-20 — TT-SUGGESTIONS P2) стадию словоформ
-     `build_admitted_wordforms`: основы — состав словаря до отсечки, кандидаты —
-     `scripts/wordform_gen.py`, допуск — засвидетельствованность в Leipzig tt
-     `*-words.txt` тех же двух корпусов, что обучают таблицу, плюс закоммиченный
-     conv-freq-tt.tsv; частота = корпусное число;
-  1. пересборку словарей через существующий entry point
-     `scripts/dict_accept.py pack --write` (состав = ассет 1.8.4 + принятое приёмкой
-     + допущенные словоформы у татарского, частоты = Leipzig + разговорные из
-     `data/dictionary/dict-accept/conv-freq-*`; отсечка — `DictionaryAsset.top`;
-     SHA-256 основы сверяется самим dict_accept, поверх пересобранного не соберётся);
-  2. перепаковку таблиц биграмм через `scripts/bigram_asset_pack.py pack` с
-     параметрами последних поставленных упаковок: татарская H = 10 132, K = 4,
-     `--extra-heads scripts/bigram_extra_heads_tat.txt`; русская H = 10 000, K = 4
-     (`docs/archive/bigrams/IMPERATIVE-HEADS.md` и `RUSSIAN-BIGRAMS.md`);
-  3. пересчёт и атомарную запись пинов (размеры и SHA-256 сжатого и сырого, число
-     записей/голов) в `DictionaryStorageContracts.kt` и `BigramStorageContracts.kt`;
-  4. ту же проверку согласованности, что и `--check`.
-
-`--only tatar|russian` ограничивает пересборку одной стороной: её словарём, её таблицей
-и её пинами. Входы другой стороны не нужны (русские корпуса для `--only tatar` не
-требуются), а её ассеты и пины обязаны остаться побайтно теми же — это проверяется
-снимком SHA-256 до и после, а шаг 4 по-прежнему сверяет все четыре ассета.
-
-Входы пересборки, которых в репозитории нет (и быть не должно — лицензии):
-
-  * `--baseline` — каталог с двумя ассетами 1.8.4. Достаются из git (коммит релиза
-    1.8.4); правильность гарантирует не имя коммита, а пины SHA-256 в dict_accept:
-      git show <1.8.4>:app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib > ...
-      git show <1.8.4>:app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib > ...
-  * `--corpus-dir` (по умолчанию `~/corpora-leipzig`) — Leipzig `*-sentences.txt`:
-    tat_mixed_2015_1M, tat_web_2018_1M, rus_news_2022_1M, rus_news_2019_1M,
-    rus_wikipedia_2021_1M, плюс разговорные входы обеих таблиц:
-    `rus_conv_thinned60-sentences.txt` (с 2026-08-31, часть A; происхождение и рецепт
-    сборки — docs/CORPUS-CONVERSATIONAL-RU.md) и `tt_conv_train90-sentences.txt`
-    (тем же днём, часть B — docs/CORPUS-CONVERSATIONAL-TT.md). Нужны только таблицам
-    биграмм; словарям корпус не нужен (разговорные частоты закоммичены в conv-freq-*.tsv
-    ровно для этого). С P2 татарской стороне нужны ещё и `*-words.txt` двух татарских
-    корпусов — частотный источник допуска словоформ.
-
-Режим проверки (ничего не пересобирает, корпуса и baseline не нужны):
-
-    python3 scripts/rebuild_assets.py --check [--allow-known-drift [ФАЙЛ]]
-
-Сверяет каждый ассет с пинами в контрактах (пины ЧИТАЮТСЯ из Kotlin-файлов, а не
-дублируются здесь) и каждую таблицу биграмм — с её словарём: головы обязаны быть
-подмножеством словаря, а расхождение набора голов с сегодняшним топ-H по частоте считается
-числом в обе стороны. Преемники сознательно НЕ проверяются: таблица хранит свои строки
-сама, и преемник вне словаря — задокументированное состояние (`docs/archive/dictionary/
-DICT-WIDEN.md`: 313 русских преемников), а не расхождение.
-
-Известное расхождение голов фиксируется файлом `scripts/known_asset_drift.json` и
-принимается только под `--allow-known-drift`, и только при ТОЧНОМ совпадении чисел:
-расхождение, которое стало больше или меньше известного (в том числе исчезло — запись
-устарела и должна быть убрана), проваливает проверку. Так CI с `--allow-known-drift`
-зелёный на сегодняшнем дереве и красный на любом НОВОМ расхождении.
-
-Коды выхода: 0 — всё согласовано (с учётом разрешённого известного расхождения);
-1 — расхождение; 2 — входы или окружение (нет файлов, упал шаг пересборки, контракт
-не разобрался). Только stdlib; записи атомарны (temp + replace), как у соседних скриптов.
+Inputs not in the repo: --baseline DIR (the two 1.8.4 dictionary assets, extracted from git)
+and --corpus-dir DIR (the Leipzig and conversational corpus files named in BIGRAMS). Steps:
+Tatar word forms, dict_accept pack, bigram_asset_pack pack, pin rewrite in the Kotlin storage
+contracts, then --check. --only tatar|russian rebuilds one side; the other must stay identical.
+--check compares assets with pins and bigram heads with dictionaries; head drift passes only
+with --allow-known-drift and an exact match in known_asset_drift.json. Exit: 0 ok, 1 mismatch,
+2 missing input, failed step or unparsable contract.
 """
 
 from __future__ import annotations
@@ -107,31 +44,27 @@ DEFAULT_WORK_DIR = Path("build/rebuild_assets")
 
 @dataclass(frozen=True)
 class DictionaryAsset:
-    tag: str  # тег dictionary_coverage: "tat" / "rus"
-    spec: str  # имя константы в DictionaryStorageContracts.kt
-    asset: str  # путь относительно корня репозитория
-    top: int = 100_000  # размер отсечки состава при пересборке
+    tag: str  # dictionary_coverage tag: "tat" / "rus"
+    spec: str  # constant name in DictionaryStorageContracts.kt
+    asset: str  # path relative to the repository root
+    top: int = 100_000  # composition cutoff used by the rebuild
 
 
 @dataclass(frozen=True)
 class BigramAsset:
     tag: str
-    spec: str  # имя константы в BigramStorageContracts.kt
+    spec: str  # constant name in BigramStorageContracts.kt
     asset: str
-    dictionary: str  # tag словаря, с которым таблица поставляется
+    dictionary: str  # tag of the dictionary the table ships with
     heads: int
     successes_per_head: int
-    extra_heads: str | None  # путь относительно корня, если есть
-    train: tuple[str, ...]  # имена *-sentences.txt в каталоге корпусов
+    extra_heads: str | None  # path relative to the root, if any
+    train: tuple[str, ...]  # *-sentences.txt names in the corpus directory
 
 
-# Отсечка состава татарского словаря с 2026-09-20 (TT-SUGGESTIONS P2,
-# docs/TT-SUGGESTIONS.md, раздел P2): выбрана замером — наибольшее N из
-# {100 000, 110 000, 120 000}, при котором собранный с допущенными словоформами ассет
-# влезает в бюджеты (сжатый ≤ 580 000 байт при потолке схемы 600 000; сырой
-# ≤ 1 400 000). Замер 2026-09-20: 100 000 → 501 683 (формы не входят — граница выше
-# их частот), 110 000 → 542 493 (входят 9 052 формы, ничего не вытеснено),
-# 120 000 → 580 805 — за пределом. Меняется только вместе с новым замером.
+# Tatar dictionary cutoff: the largest of 100 000 / 110 000 / 120 000 for which the dictionary
+# with admitted word forms stays within the compressed and raw size budgets (120 000 does not
+# fit; at 100 000 no word form makes the cut). Re-measure before changing it.
 TATAR_DICTIONARY_TOP = 110_000
 
 DICTIONARIES = (
@@ -148,12 +81,9 @@ DICTIONARIES = (
     ),
 )
 
-# Параметры — ровно те, что записаны в отчётах последних упаковок и в KDoc констант:
-# татарская — docs/archive/bigrams/IMPERATIVE-HEADS.md (H = 10 132 выведен из словаря,
-# 13 повелений списком), русская — docs/archive/bigrams/RUSSIAN-BIGRAMS.md плюс
-# BIGRAM-ADJACENCY.md (K: 6 → 4) плюс разговорный вход CORPUS-CONVERSATIONAL-RU.md
-# (часть A, 2026-08-31). Меняются только вместе с решением о перевыборе,
-# и тогда же правится этот файл.
+# Packing parameters of the shipped tables (H heads, K successors per head, extra heads,
+# training corpora). Changing any of them changes the table, so change them only together
+# with a rebuild.
 BIGRAMS = (
     BigramAsset(
         tag="tat",
@@ -164,16 +94,13 @@ BIGRAMS = (
         # Up to four successors per head. The strip shows three; the fourth is kept so a
         # wider strip needs no repack.
         successes_per_head=4,
-        # С 2026-09-23 (ROADMAP-P4 P5a, опция (b)) список расширен правилом EXPAND-1
-        # (+3 102 разговорно-устоявшихся слова ниже отсечки; правило — в шапке файла).
+        # Heads below the H cutoff, added by the rule described in the file header.
         extra_heads="scripts/bigram_extra_heads_tat.txt",
-        # С 2026-08-31 (разговорный корпус, часть B, docs/CORPUS-CONVERSATIONAL-TT.md)
-        # обучение — два Leipzig + разговорный вход: дедуплицированные Tatoeba +
-        # OpenSubtitles tt, строки с id % 10 != 1 (остаток — разговорный held-out).
-        # Без прореживания: разговорная масса — 3,7 % письменной, резать нечего
-        # (решение зафиксировано в DECISION-RULE-PRECOMMIT-TT до прогона). Файл
-        # собирается research/corpus/make_conv_train.py и awk-фильтром из отчёта;
-        # в --corpus-dir его кладут руками, без него пересборка падает fail-closed.
+        # Two Leipzig corpora plus the conversational input: deduplicated Tatoeba +
+        # OpenSubtitles tt lines with id % 10 != 1 (the rest is the conversational held-out
+        # set). Not thinned: the conversational part is small next to the written one. The
+        # file is built with research/corpus/make_conv_train.py and an id filter and placed in
+        # --corpus-dir by hand; without it the rebuild stops before any step runs.
         train=(
             "tat_mixed_2015_1M-sentences.txt",
             "tat_web_2018_1M-sentences.txt",
@@ -188,12 +115,10 @@ BIGRAMS = (
         heads=10_000,
         successes_per_head=4,
         extra_heads=None,
-        # С 2026-08-31 (разговорный корпус, часть A, docs/CORPUS-CONVERSATIONAL-RU.md)
-        # обучение — три Leipzig + разговорный вход: дедуплицированные Tatoeba +
-        # OpenSubtitles, прореженные 1/60 (строки с id % 60 == 0). Файл собирается
-        # скриптом research/corpus/make_conv_train.py из корпусов research/corpus/
-        # и прореживается awk-фильтром, записанными в отчёте; в --corpus-dir его
-        # кладут руками, поэтому полная пересборка без него падает fail-closed.
+        # Three Leipzig corpora plus the conversational input: deduplicated Tatoeba +
+        # OpenSubtitles ru, thinned to 1/60 (lines with id % 60 == 0). Built with
+        # research/corpus/make_conv_train.py and an id filter and placed in --corpus-dir
+        # by hand; without it a full rebuild stops before any step runs.
         train=(
             "rus_news_2022_1M-sentences.txt",
             "rus_news_2019_1M-sentences.txt",
@@ -204,15 +129,12 @@ BIGRAMS = (
 )
 
 
-# --- стадия словоформ (TT-SUGGESTIONS P2, 2026-09-20) -----------------------------------------
+# --- word-form stage --------------------------------------------------------------------------
 #
-# Татарский словарь собирается с допущенными порождёнными словоформами
-# (scripts/wordform_gen.py). Допуск — засвидетельствованность в частотных источниках
-# пайплайна: Leipzig *-words.txt тех же двух корпусов, что обучают татарскую таблицу
-# биграмм, плюс закоммиченный conv-freq-tt.tsv. tat_news_2015_1M сознательно НЕ входит:
-# это замороженный письменный held-out замеров (E5a), и подмешивать его в решения о
-# поставляемых данных нельзя; у базового словаря 1.8.4 его частоты в составе есть
-# (D1a предшествует тому разбиению), у допускаемых форм — нет, вклад записан в отчёт.
+# The Tatar dictionary includes generated word forms (scripts/wordform_gen.py) that are attested
+# in the pipeline frequency sources: the Leipzig *-words.txt of the two corpora that train the
+# Tatar bigram table, plus the committed conv-freq-tt.tsv. tat_news_2015_1M is left out on
+# purpose: it is the frozen written held-out set for evaluation and must not shape shipped data.
 WORDFORM_EXCEPTIONS = Path("scripts/wordform_exceptions_tat.tsv")
 WORDFORM_FREQUENCY_SOURCES = (
     "tat_mixed_2015_1M-words.txt",
@@ -223,14 +145,11 @@ WORDFORM_FREQUENCY_SOURCES = (
 def build_admitted_wordforms(
     root: Path, baseline: Path, corpus_dir: Path, work_dir: Path
 ) -> Path:
-    """Допущенные словоформы татарского словаря: word<TAB>freq TSV в work_dir.
+    """Write the admitted Tatar word forms (word<TAB>freq TSV) to work_dir; return its path.
 
-    Основы — весь состав словаря ДО отсечки (поставляемые 1.8.4 ∪ принятые приёмкой),
-    частоты у него не нужны. Кандидат допускается, если его суммарное число вхождений в
-    источниках выше нуля; частота — это само число. Форма, уже стоящая в составе, —
-    не операция (её частота не меняется). Ход детерминирован: основы отсортированы,
-    запись атомарная, отчёт без полей времени. Сломанная таблица исключений или
-    битый вход падают fail-closed (WordformError / MalformedRowError).
+    Stems are the composition before the cutoff (baseline plus accepted words). A candidate not
+    already in the composition is admitted if its total count in the sources is above zero, and
+    that count is its frequency. Raises WordformError / MalformedRowError on bad input.
     """
     language = coverage.language_for("tat")
     shipped, _asset = dict_accept.load_baseline("tat", baseline)
@@ -254,8 +173,7 @@ def build_admitted_wordforms(
         "stems": 0,
         "stems_skipped_no_harmony": 0,
         "dual_harmony_stems": 0,
-        # Счётчики generated/already_present/unattested — построчные: одна и та же форма,
-        # порождённая двумя основами или двумя метками, считается на каждой строке.
+        # Per-row counters: a form generated by two stems or two labels counts on each row.
         "generated_rows": 0,
         "rows_already_in_composition": 0,
         "rows_unattested": 0,
@@ -270,7 +188,7 @@ def build_admitted_wordforms(
             stats["dual_harmony_stems"] += 1
         for _label, form in wordform_gen.generate_all(stem, exceptions):
             if form == stem:
-                continue  # голая основа (verb.imp.2sg) уже стоит в составе
+                continue  # the bare stem (verb.imp.2sg) is already in the composition
             stats["generated_rows"] += 1
             if form in composition:
                 stats["rows_already_in_composition"] += 1
@@ -305,13 +223,13 @@ def build_admitted_wordforms(
     return out
 
 
-# --- пины: чтение и запись Kotlin-контрактов ------------------------------------------------
+# --- pins: reading and writing the Kotlin contracts -------------------------------------------
 
 
 @dataclass(frozen=True)
 class Pins:
-    """Пять чисел, которыми контракт пинит ассет, плюс (для таблиц schema 3) raw SHA-256
-    словаря, с которым таблица связана. count — записей словаря или голов."""
+    """The five values a contract pins for an asset, plus (for schema 3 bigram tables) the raw
+    SHA-256 of the linked dictionary. count is the dictionary entry count or the head count."""
 
     compressed_size: int
     compressed_sha256: str
@@ -322,15 +240,14 @@ class Pins:
 
 
 class ContractError(ValueError):
-    """Контракт не разобрался: структура Kotlin-файла отъехала от ожидаемой."""
+    """The Kotlin contract file does not have the expected structure."""
 
 
 def _spec_block(text: str, spec: str, kind: str) -> tuple[int, int]:
-    """Позиции [start, end) тела `val <spec> = <kind>(...)` в тексте контракта.
+    """Return [start, end) of the `val <spec> = <kind>(...)` block in the contract text.
 
-    Блок кончается строкой закрывающей скобки на отступе объявления (8 пробелов) —
-    так записаны все четыре спецификации. Не нашлось ровно одного блока — это не
-    «пустой пин», а сломанное предположение о файле, и правильный ответ — упасть.
+    The block ends at a closing parenthesis indented by 8 spaces, as all specs are written.
+    Anything other than exactly one match means the file layout changed, so it raises.
     """
     matches = list(
         re.finditer(rf"val {spec} = {kind}\(.*?\n        \)", text, re.DOTALL)
@@ -382,8 +299,8 @@ def _replace_number(block: str, field: str, value: int) -> str:
 
 
 def _replace_sha(block: str, field: str, value: str) -> str:
-    # Между `=` и строкой хеша в файле перевод строки с отступом; \s* в первой группе
-    # сохраняет как есть — перестраивается только сам литерал.
+    # The file has a newline and indent between `=` and the hash string; \s* in the first
+    # group keeps them, so only the literal itself is rewritten.
     block, count = re.subn(
         rf'({field} =\s*)"[0-9a-f]{{64}}"(,)', rf'\g<1>"{value}"\g<2>', block, count=1
     )
@@ -404,10 +321,9 @@ def write_pins(
     kind: str,
     count_field: str,
 ) -> None:
-    """Переписывает пины в блоках `updates` одним атомарным проходом.
+    """Rewrite the pins of the `updates` blocks in one atomic write.
 
-    После записи файл перечитывается, и каждый блок обязан вернуть ровно те значения,
-    которые писались, — «записал и поверил» здесь не считается записью.
+    The file is read back afterwards, and every block must return exactly the written values.
     """
     text = contract_path.read_text(encoding="utf-8")
     for spec, pins in updates.items():
@@ -429,7 +345,7 @@ def write_pins(
             raise ContractError(f"{spec}: после записи пины не совпали с записанными")
 
 
-# --- измерение ассетов ----------------------------------------------------------------------
+# --- asset measurement ------------------------------------------------------------------------
 
 
 def measure_dictionary(asset_path: Path, tag: str) -> Pins:
@@ -447,9 +363,9 @@ def measure_dictionary(asset_path: Path, tag: str) -> Pins:
 
 
 def measure_bigram(asset_path: Path, dictionary_path: Path, tag: str) -> Pins:
-    """Пины таблицы биграмм. Schema 3 (SIZE-2) валидируется только ВМЕСТЕ со словарём:
-    головы и преемники — индексы в него, а пины включают его raw SHA-256 (связку из
-    заголовка таблицы). Schema 2 читается для старых ассетов (golden/история)."""
+    """Pins of a bigram table. Schema 3 is validated together with its dictionary: heads and
+    successors are indices into it, and the pins include its raw SHA-256 (the link stored in
+    the table header). Schema 2 is still read for older assets."""
     language = coverage.language_for(tag)
     asset = asset_path.read_bytes()
     raw = bigram_asset_pack.decompress(asset)
@@ -479,19 +395,17 @@ def measure_bigram(asset_path: Path, dictionary_path: Path, tag: str) -> Pins:
     )
 
 
-# --- проверка согласованности ---------------------------------------------------------------
+# --- consistency check ------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class Drift:
-    """Расхождение голов таблицы со словарём, числом в обе стороны.
+    """Head drift between a bigram table and its dictionary, counted in both directions.
 
-    missing — слова сегодняшнего топа-H (плюс extra-heads), которых в таблице нет.
-    Легитимный остаток — головы без единой пары в обучении: упаковщик их выбрасывает,
-    а `--check` без корпуса отличить их от настоящего расхождения не может, поэтому
-    судьбу ненулевых чисел решает только known_asset_drift.json, записанный человеком.
-    unexpected — головы таблицы вне сегодняшнего топа-H и вне списка extra-heads.
-    outside — головы, которых нет в словаре вообще: это не дрейф, а поломка,
-    и никакой allowlist её не разрешает.
+    missing: words of the current top H (plus extra heads) absent from the table. Heads with no
+    pair in training are dropped by the packer, and --check cannot tell them apart without the
+    corpus, so nonzero counts are accepted only through known_asset_drift.json.
+    unexpected: table heads outside the current top H and the extra heads.
+    outside: heads not in the dictionary at all. This is corruption, never allowed.
     """
 
     missing: int
@@ -539,7 +453,7 @@ def bigram_drift(
 def _pin_problems(measured: Pins, pinned: Pins) -> list[str]:
     problems = []
     fields = ["compressed_size", "compressed_sha256", "raw_size", "raw_sha256", "count"]
-    # Связка schema 3 со словарём: сравнивается, если хоть одна сторона её несёт.
+    # The schema 3 dictionary link is compared if either side carries it.
     if measured.dictionary_raw_sha256 or pinned.dictionary_raw_sha256:
         fields.append("dictionary_raw_sha256")
     for field in fields:
@@ -571,11 +485,10 @@ def run_check(
     known_drift_path: Path | None,
     stream: TextIO = sys.stdout,
 ) -> int:
-    """Сверка ассетов с пинами и словарями. Ничего не пишет и не пересобирает.
+    """Check assets against pins and dictionaries. Writes and rebuilds nothing.
 
-    Коды выхода как у команды в целом (см. docstring модуля): 1 — расхождение,
-    2 — входы или окружение, в том числе ContractError «контракт не разобрался»
-    (C3 аудита 2026-09-02: раньше он улетал необработанным traceback'ом с кодом 1)."""
+    Returns 1 on a mismatch and 2 on missing inputs or an unparsable contract (ContractError).
+    """
     dict_contract = root / DICT_CONTRACT
     bigram_contract = root / BIGRAM_CONTRACT
     for path in (dict_contract, bigram_contract):
@@ -611,7 +524,7 @@ def run_check(
                 problems = _pin_problems(
                     measure_dictionary(asset_path, dictionary.tag), pinned
                 )
-            except Exception as error:  # битый ассет — это вердикт проверки, а не краш
+            except Exception as error:  # a broken asset is a check verdict, not a crash
                 problems = [f"ассет не читается: {error}"]
             entry["verdict"] = "mismatch" if problems else "ok"
             entry["problems"] = problems
@@ -660,7 +573,7 @@ def run_check(
                     bigram.heads,
                     extra,
                 )
-            except Exception as error:  # битый ассет — вердикт проверки, а не краш
+            except Exception as error:  # a broken asset is a check verdict, not a crash
                 entry["verdict"] = "mismatch"
                 entry["problems"] = [f"ассет не читается: {error}"]
                 failed = True
@@ -713,7 +626,7 @@ def run_check(
         report["bigrams"][bigram.tag] = entry  # type: ignore[index]
 
     for key in sorted(set(known) - used_drift_keys):
-        # Запись про ассет, которого больше нет в реестре, — тоже устаревшая.
+        # An entry for an asset no longer in the registry is stale too.
         print(f"error: {known_drift_path}: запись {key!r} не относится ни к одному ассету",
               file=sys.stderr)
         failed = True
@@ -734,11 +647,11 @@ def run_check(
     return 1 if failed else 0
 
 
-# --- пересборка -----------------------------------------------------------------------------
+# --- rebuild ----------------------------------------------------------------------------------
 
 
 def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: BigramAsset) -> list[str]:
-    """Командная строка перепаковки одной таблицы — отдельной функцией, чтобы тест её видел."""
+    """Command line that repacks one table; a separate function so tests can inspect it."""
     argv = [
         sys.executable,
         str(root / "scripts/bigram_asset_pack.py"),
@@ -774,7 +687,7 @@ def dict_accept_argv(
     dictionary: DictionaryAsset,
     extra_entries: Path | None,
 ) -> list[str]:
-    """Командная строка пересборки одного словаря — отдельной функцией, чтобы тест её видел."""
+    """Command line that rebuilds one dictionary; a separate function so tests can inspect it."""
     argv = [
         sys.executable,
         str(root / "scripts/dict_accept.py"),
@@ -802,11 +715,10 @@ def _run_step(argv: list[str], cwd: Path) -> None:
 
 
 def _side_snapshot(root: Path, tags: frozenset[str]) -> dict[str, object]:
-    """SHA-256 ассетов и пины контрактов языков `tags` — опора гарантии `--only`.
+    """Asset SHA-256 values and contract pins for the languages in `tags`.
 
-    Снимок берётся ДО первого шага пересборки и сверяется после записи пинов: в режиме
-    `--only` сторона, которую не выбрали, обязана остаться побайтно той же — и файлами,
-    и блоками контракта.
+    Taken before the first rebuild step and compared after the pins are written, so that
+    `--only` can prove the unselected side is unchanged, both files and contract blocks.
     """
     snapshot: dict[str, object] = {}
     for dictionary in DICTIONARIES:
@@ -843,9 +755,8 @@ def run_rebuild(
     only: str | None = None,
     stream: TextIO = sys.stdout,
 ) -> int:
-    # `--only tatar|russian` пересобирает одну сторону: её словарь, её таблицу биграмм
-    # и её пины. Другая сторона не требует своих входов (русские корпуса для `--only
-    # tatar` не нужны) и обязана остаться побайтно той же — проверяется снимком до/после.
+    # `--only tatar|russian` rebuilds one side: its dictionary, bigram table and pins. The
+    # other side needs none of its inputs and must stay byte-identical (snapshot before/after).
     selected = frozenset(
         ("tat", "rus") if only is None else ({"tatar": "tat", "russian": "rus"}[only],)
     )
@@ -853,8 +764,8 @@ def run_rebuild(
         root, frozenset(d.tag for d in DICTIONARIES) - selected
     )
 
-    # Сначала собираются ВСЕ недостающие входы выбранных языков: падать на третьем часу
-    # работы из-за файла, которого не было с самого начала, недопустимо.
+    # Collect all missing inputs of the selected languages first, so a long rebuild does not
+    # fail late on a file that was missing from the start.
     missing = []
     for dictionary in DICTIONARIES:
         if dictionary.tag not in selected:
@@ -885,9 +796,9 @@ def run_rebuild(
 
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Словари выбранных языков. dict_accept сам сверяет baseline по SHA-256 и падает,
-    # если ему подсунули уже пересобранный ассет. Татарский перед сборкой проходит
-    # стадию словоформ (P2): допущенные формы ложатся в --extra-entries.
+    # 1. Dictionaries of the selected languages. dict_accept verifies the baseline SHA-256 and
+    # refuses an already rebuilt asset. The Tatar side first runs the word-form stage; the
+    # admitted forms are passed as --extra-entries.
     wordforms: Path | None = None
     if "tat" in selected:
         wordforms = build_admitted_wordforms(root, baseline, corpus_dir, work_dir)
@@ -902,13 +813,13 @@ def run_rebuild(
             cwd=root,
         )
 
-    # 2. Таблицы биграмм выбранных языков — от свежих словарей шага 1.
+    # 2. Bigram tables of the selected languages, built against the dictionaries of step 1.
     for bigram in BIGRAMS:
         if bigram.tag not in selected:
             continue
         _run_step(bigram_pack_argv(root, corpus_dir, work_dir, bigram), cwd=root)
 
-    # 3. Пины выбранных ассетов, одной операцией на файл контракта.
+    # 3. Pins of the selected assets, one write per contract file.
     dict_updates = {
         d.spec: measure_dictionary(root / d.asset, d.tag)
         for d in DICTIONARIES
@@ -931,7 +842,7 @@ def run_rebuild(
     )
     print("пины переписаны в обоих контрактах", file=sys.stderr)
 
-    # 3b. В режиме --only невыбранная сторона обязана остаться побайтно той же.
+    # 3b. With --only, the unselected side must be byte-identical.
     if only is not None:
         after = _side_snapshot(
             root, frozenset(d.tag for d in DICTIONARIES) - selected
@@ -946,8 +857,8 @@ def run_rebuild(
                 print(f"  {key}", file=sys.stderr)
             return 2
 
-    # 4. Проверка результата той же процедурой, что работает в --check; сверяются
-    # все четыре ассета, в том числе нетронутая сторона.
+    # 4. Verify the result with the --check procedure over all four assets, including the
+    # untouched side.
     result = run_check(root, known_drift_path, stream)
     print(
         "дальше руками: прогнать гейты (JVM + python + lintRelease + check-no-internet), "

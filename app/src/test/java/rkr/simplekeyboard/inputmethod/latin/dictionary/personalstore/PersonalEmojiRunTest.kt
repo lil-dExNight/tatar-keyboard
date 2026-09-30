@@ -36,15 +36,14 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.SpaceProbe
 
 /**
- * Feature C end to end, the [rkr.simplekeyboard.inputmethod.latin.suggestions.PersonalBigramRunTest]
- * counterpart one layer down: the REAL learning sink ([PersonalEmojiLearning.sinkOver] — the exact
- * gating logic production wires a Context into), the REAL [PersonalEmojiStore] over a temp
- * directory on a direct executor, and the REAL read path ([SnapshotPersonalEmojiSource] under a
- * live gate, exactly what
- * [PersonalEmojiDictionaries.sourceFor] builds). What is pinned: two clean observations graduate a
- * (word, emoji) pair and the source then offers it; the incognito pause (the sink's predicate)
- * stops learning mid-way without losing what was already observed; the read gate hides without
- * erasing; an erasure empties the source; and the usage half of the ranking outranks frequency.
+ * Learned emoji end to end, one layer below
+ * [rkr.simplekeyboard.inputmethod.latin.suggestions.PersonalBigramRunTest]: the real learning
+ * sink ([PersonalEmojiLearning.sinkOver]), the real [PersonalEmojiStore] over a temp directory on
+ * a direct executor, and the real read path ([SnapshotPersonalEmojiSource] under a live gate, as
+ * [PersonalEmojiDictionaries.sourceFor] builds it). Pinned: two clean observations graduate a
+ * (word, emoji) pair that the source then offers; pausing learning stops it without losing prior
+ * observations; the read gate hides without erasing; erasure empties the source; and usage
+ * outranks frequency.
  */
 class PersonalEmojiRunTest {
     @get:Rule

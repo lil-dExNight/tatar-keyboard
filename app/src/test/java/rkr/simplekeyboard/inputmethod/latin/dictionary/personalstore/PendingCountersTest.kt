@@ -23,7 +23,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** E4c: the pending counters — a threshold, a cap, an expiry rule, and no user text anywhere. */
+/** The pending counters: a threshold, a cap, an expiry rule, and no user text anywhere. */
 class PendingCountersTest {
 
     private val salt = ByteArray(16) { it.toByte() }

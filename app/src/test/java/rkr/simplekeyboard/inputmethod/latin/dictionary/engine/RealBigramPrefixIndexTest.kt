@@ -12,9 +12,9 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.ceil
 
 /**
- * PROPOSALS.md, "E5c. Compute p95 для NEXT_WORD ≤ 5 мс, полный request→publish warm p95 ≤ 16 мс —
- * те же границы, что для префиксного поиска" — mirrors [RealDictionaryPrefixIndexTest] exactly,
- * against the real committed `tatar_bigrams_v1.tatbigr.zlib`.
+ * NEXT_WORD compute p95 <= 5 ms and full request-to-publish warm p95 <= 16 ms, the same bounds as
+ * the prefix search. Mirrors [RealDictionaryPrefixIndexTest] against the real committed
+ * `tatar_bigrams_v1.tatbigr.zlib`.
  */
 class RealBigramPrefixIndexTest {
     @Test
@@ -94,12 +94,9 @@ class RealBigramPrefixIndexTest {
     }
 
     /**
-     * Real, common Tatar function/content words, exercised as NEXT_WORD context queries. Unlike
-     * [RealDictionaryPrefixIndexTest]'s reviewed prefix set, E5b has no curated query-review file
-     * for bigram heads (`docs/DICTIONARY-E5B.md` does not name one — it was not required by the
-     * E5b contract); the timing this measures does not depend on any of these words actually
-     * being a head (a miss and a hit cost the same one binary search), so a fixed, honestly-picked
-     * word list is sufficient for a compute-cost measurement, unlike D1d's correctness audit.
+     * Common Tatar words used as NEXT_WORD context queries. There is no reviewed query file for
+     * bigram heads, and none is needed: a miss and a hit cost the same binary search, so a fixed
+     * word list is enough for a compute-cost measurement.
      */
     private fun sampleContextWords(): List<ImmutableUtf8Prefix> = listOf(
         "мин", "син", "ул", "без", "сез", "алар", "һәм", "бу", "теге", "әйе",

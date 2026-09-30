@@ -1,48 +1,12 @@
 #!/usr/bin/env python3
-"""Build the Tatar Keyboard emoji-search index from CLDR annotations.
+"""Build the emoji-search index from CLDR 44 annotations plus hand-written Tatar keywords.
 
-The tool uses only the Python standard library. The inputs are the locally
-downloaded CLDR 44 annotation files (``common/annotations/{ru,en}.xml`` and
-``common/annotationsDerived/{ru,en}.xml``) with pinned SHA-256s, the
-already-generated emoji panel asset ``emoji_set_v1.txt``, and optionally the
-hand-written Tatar keyword file (``--tt-extra``); the output is
-``app/src/main/assets/emoji/emoji_search_v1.txt``, a deterministic UTF-8/LF text
-asset (data, not code).
-
-One output line per emoji sequence that has at least one keyword::
-
-    <sequence>\\t<name>\\t<keyword> <keyword> ...
-
-Field 1 is the sequence exactly as it appears in ``emoji_set_v1.txt`` — so the
-index can never offer an emoji the panel cannot draw. Field 2 is the Russian
-short name (CLDR ``type="tts"``), used for ranking and shown to nobody. Field 3
-is the space-separated, lowercased, de-duplicated union of the Russian and
-English keywords and names. Russian comes first, which is also the search
-priority.
-
-The generator is fail-closed. It exits with a nonzero status and writes no
-partial asset when:
-
-* an input SHA-256 does not match its pin,
-* an input is not valid UTF-8 or not parseable,
-* a sequence would produce a line containing a tab or a newline,
-* the coverage of the panel set drops below the pinned floor, or
-* a guardrail is breached (asset > 262144 bytes or > 1400 lines).
-
-CLDR strips U+FE0F (VARIATION SELECTOR-16) from its ``cp`` attributes, so a
-sequence is looked up with U+FE0F removed. Tatar cannot be derived from CLDR
-(CLDR 44 ships eight punctuation annotations for ``tt`` and no emoji at all),
-so Tatar keywords come from a hand-written file instead: ``--tt-extra``
-(``scripts/emoji_search_tt_extra.txt``), one line per emoji::
-
-    <sequence>\\t<tt-синоним>,<tt-синоним>,...
-
-The sequence must be exactly the panel-asset sequence (U+FE0F included where
-the panel has it); synonyms are comma-separated, lowercase, NFC, and spelled
-from the Tatar alphabet only. These keywords are appended AFTER the Russian
-and English ones, so they extend the search without changing its ranking. The
-file is validated fail-closed: an unknown or duplicated sequence, a malformed
-line, or a non-Tatar character fails the build.
+Input: CLDR ``annotations{,Derived}/{ru,en}.xml`` (pinned SHA-256), the panel asset
+``emoji_set_v1.txt`` and optionally ``--tt-extra`` (CLDR has no Tatar emoji annotations).
+Output: ``assets/emoji/emoji_search_v1.txt``, one ``<sequence>\\t<ru name>\\t<keywords>`` line
+per panel sequence with keywords: Russian first (search priority), then English, then Tatar.
+Exits nonzero without writing output on a pin mismatch, unparseable input, a tab or newline in
+a field, coverage below the floor, a breached guardrail, or a malformed ``--tt-extra`` file.
 """
 
 from __future__ import annotations
@@ -58,8 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-# Pinned input identity: CLDR release-44 annotation files. The SHA-256 is the
-# binding pin; a change to any of them is a written decision, not a silent bump.
+# Pinned input identity: CLDR release-44 annotation files.
 EXPECTED_INPUT_SHA256 = {
     "ru": "6de7170ec03f1d685b1c30d71c391d5893e366c57e9c9db37f687989893771cb",
     "en": "13db8bb0a85a1ab9c46dd70f6170d72e7938063eb04cb2ee65e46d0378cfebf6",
@@ -69,7 +32,7 @@ EXPECTED_INPUT_SHA256 = {
 
 CLDR_VERSION = "44"
 
-# Guardrails. A change to any number is a written decision, not a silent bump.
+# Guardrails on the output size.
 MAX_ASSET_BYTES = 262144
 MAX_LINES = 1400
 
@@ -95,7 +58,7 @@ XML_ENTITIES = (
 
 
 class EmojiSearchPackError(ValueError):
-    """A fail-closed generator error (exit 2)."""
+    """A generator error; nothing is written (exit 2)."""
 
 
 class EmojiSearchGuardrailError(EmojiSearchPackError):
@@ -184,7 +147,7 @@ def lookup_key(sequence: str) -> str:
 # `PersonalSubtypes.TATAR_RU_ALPHABET` enforces on personal-dictionary words
 # and `TdictValidator` on the packed dictionary. Hand-written Tatar keywords
 # are checked against it, so a stray Russian-only or Latin letter fails the
-# build instead of silently shipping.
+# build.
 TATAR_ALPHABET = frozenset("аәбвгдеёжҗзийклмнңоөпрстуүфхһцчшщъыьэюя")
 
 # A Tatar synonym word: alphabet letters, spaces (a phrase is one keyword;
@@ -196,14 +159,13 @@ TATAR_WORD_CHARS = TATAR_ALPHABET | {" ", "-"}
 def read_tt_extra(
     path: Path, panel_sequences: Sequence[str]
 ) -> dict[str, list[str]]:
-    """Reads the hand-written Tatar keyword file; fail-closed.
+    """Reads the hand-written Tatar keyword file; raises on any invalid line.
 
     One line per emoji: ``<sequence>\\t<synonym>,<synonym>,...`` with the
-    sequence exactly as in the panel asset. Blank lines and ``#`` comment
-    lines are skipped. Every sequence must belong to the panel (otherwise the
-    index would drift from what the panel can draw), may appear once, and
-    every synonym must be non-empty, lowercase, NFC and spelled from
-    :data:`TATAR_WORD_CHARS`.
+    sequence exactly as in the panel asset (U+FE0F included where the panel has
+    it). Blank lines and ``#`` comment lines are skipped. Every sequence must
+    belong to the panel and appear once; every synonym must be non-empty,
+    lowercase, NFC and spelled from :data:`TATAR_WORD_CHARS`.
     """
     try:
         text = path.read_text(encoding="utf-8")

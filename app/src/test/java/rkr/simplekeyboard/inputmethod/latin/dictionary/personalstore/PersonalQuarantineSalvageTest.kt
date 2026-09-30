@@ -31,19 +31,16 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
 
 /**
- * Mission `tt-quarantine`, task 1: version 1.8.2 stopped destroying an unreadable personal
- * dictionary and started setting it aside — and then no code existed that could read the copy back.
- * The data was being kept for a recovery path that did not exist.
+ * Reading back the quarantine copy of an unreadable personal dictionary.
  *
- * The copy breaks, in practice, by losing its tail: a write cut short leaves a header and whole
- * records at the front and a stump at the end. So the reader here refuses the checksum's verdict on
- * purpose (truncation destroys the checksum first, and refusing on it refuses every copy there is)
- * and leans on the per-record contract instead. Two properties are asserted over and over, because
- * they are the two ways this can go wrong:
+ * A copy usually breaks by losing its tail: a write cut short leaves a header and whole records at
+ * the front and a stump at the end. Truncation breaks the checksum first, so the reader ignores
+ * the checksum on purpose and relies on the per-record rules instead. Two properties are asserted
+ * throughout:
  *
- * - what reads, reads — words in front of the damage are not thrown away with it;
- * - what did not read is never passed off as read — [PersonalQuarantineSalvage.readToEnd] is the
- *   only thing allowed to say "nothing is known lost", and it says so only when that is true.
+ * - words in front of the damage are kept;
+ * - what did not read is never reported as read: [PersonalQuarantineSalvage.readToEnd] is true only
+ *   when nothing is known lost.
  */
 class PersonalQuarantineSalvageTest {
     @get:Rule
@@ -54,9 +51,8 @@ class PersonalQuarantineSalvageTest {
     // ---- the copy reads ------------------------------------------------------------------------
 
     /**
-     * The control, and the reason the honesty flag is worth anything: a copy that is whole reads
-     * whole and SAYS it read whole. Without this test, hardwiring `readToEnd = false` would pass
-     * every other test in the file.
+     * Control: a whole copy reads whole and reports it. Without this test, hardwiring
+     * `readToEnd = false` would pass every other test in the file.
      */
     @Test
     fun aWholeCopyReadsWholeAndSaysSo() {
@@ -81,12 +77,11 @@ class PersonalQuarantineSalvageTest {
         assertEquals(listOf("гүзәл"), salvage.normalizedForms)
     }
 
-    // ---- partially readable: the case this exists for -------------------------------------------
+    // ---- partially readable ------------------------------------------------------------------
 
     /**
-     * Task 4, "частично читаемая копия". A write cut short in the middle of the last record. The
-     * words before the cut are the user's words and they are still there; the stump is not a reason
-     * to lose them.
+     * Partially readable copy: a write cut short in the middle of the last record. The words
+     * before the cut are kept.
      */
     @Test
     fun aCopyWhoseTailWasCutOffStillYieldsTheWordsInFrontOfTheCut() {
@@ -140,9 +135,9 @@ class PersonalQuarantineSalvageTest {
     }
 
     /**
-     * A copy larger than the writer could ever produce: read up to the format's own file cap and no
-     * further. Refusing it outright would throw away readable words; reading it whole would let a
-     * corrupt length field ask a budget phone for an array it does not have.
+     * A copy larger than the writer could produce is read up to the format's file cap and no
+     * further: refusing it would drop readable words, and reading it whole would let a corrupt
+     * length field request an oversized array.
      */
     @Test
     fun aCopyBiggerThanTheFormatAllowsIsReadUpToTheCapAndNoFurther() {
@@ -158,10 +153,9 @@ class PersonalQuarantineSalvageTest {
     // ---- the parse stops at the first broken record ---------------------------------------------
 
     /**
-     * The ascending-order rule earns its keep here as a resync detector. A corrupted length byte
-     * lands the cursor in the middle of the payload; if the misread bytes happen to decode as a
-     * word, the first thing that shows is that it no longer sorts after the previous one. Whatever
-     * the reason, the parse stops — it never appends what it did not understand.
+     * The ascending-order rule detects a misaligned cursor. A corrupted length byte lands the
+     * cursor mid-payload; if the misread bytes decode as a word, it no longer sorts after the
+     * previous one. The parse stops there and appends nothing it did not understand.
      */
     @Test
     fun recordsOutOfOrderStopTheParseAtTheFirstOneThatDoesNotSortAfterItsPredecessor() {
@@ -230,9 +224,8 @@ class PersonalQuarantineSalvageTest {
     // ---- completely unreadable, and absent ------------------------------------------------------
 
     /**
-     * Task 4, "полностью нечитаемая". A copy exists but its head is gone, so not one word can be
-     * trusted. That is not the same answer as "there is no copy": the file is still there and the
-     * screen still has to offer to remove it.
+     * Completely unreadable copy: the file exists but its header is gone, so no word can be
+     * trusted. That differs from "no copy": the screen still has to offer to remove the file.
      */
     @Test
     fun aCopyWithNoRecognisableHeaderYieldsNoWordsButStillExists() {
@@ -272,8 +265,8 @@ class PersonalQuarantineSalvageTest {
     }
 
     /**
-     * Task 4, "копия отсутствует". Null, and distinguishable from an unreadable copy: with no file
-     * there is nothing to restore and nothing to delete, so the screen shows no card at all.
+     * No copy: null, distinct from an unreadable copy. With no file there is nothing to restore or
+     * delete, so the screen shows no card at all.
      */
     @Test
     fun anAbsentCopyIsNotTheSameAnswerAsAnUnreadableOne() {
@@ -287,8 +280,8 @@ class PersonalQuarantineSalvageTest {
     // ---- one language never gets another's words ------------------------------------------------
 
     /**
-     * The language tag is not negotiable. Personal dictionaries are per language on purpose, and a
-     * rescue is not an excuse to move a Russian word into the Tatar list, however readable it is.
+     * The language tag is enforced: personal dictionaries are per language, and a salvage never
+     * moves a Russian word into the Tatar list, however readable it is.
      */
     @Test
     fun wordsSavedInAnotherLanguageAreNeverRestoredIntoThisOne() {
@@ -301,7 +294,7 @@ class PersonalQuarantineSalvageTest {
         )
     }
 
-    /** A subtype with no declared alphabet has the feature off entirely — including the rescue. */
+    /** A subtype with no declared alphabet has the feature off entirely, salvage included. */
     @Test
     fun aSubtypeWithNoAlphabetSalvagesNothing() {
         val copy = copyOf(image(Entry("абыйлар"), subtypeTag = "de"))
@@ -312,10 +305,9 @@ class PersonalQuarantineSalvageTest {
     // ---- and it never throws --------------------------------------------------------------------
 
     /**
-     * Decision rule 3 of the mission: parsing a broken file has no right to end the process. Every
-     * single-byte corruption of a valid copy is fed through the reader; the assertion is simply that
-     * it answers. In production this runs on the store's worker thread, whose uncaught handler is
-     * the one that kills the IME.
+     * Parsing a broken file must never throw: this runs on the store's worker thread, whose
+     * uncaught handler kills the IME. Every single-byte corruption of a valid copy is fed through
+     * the reader, and it must answer for each.
      */
     @Test
     fun noSingleByteCorruptionCanMakeTheReaderThrow() {

@@ -26,8 +26,8 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils.PrefixCas
 import java.io.File
 
 /**
- * One named test per point of the four-point "Контракт текста" amendment of 2026-07-27 (owner
- * E4a-1). The block "Фактическое покрытие этих правил тестами" in PROPOSALS.md names these tests.
+ * One named test per point of the four-point text contract for personal records: stored form
+ * versus normalized form, casing at each shift state, and exact-word exclusion.
  */
 class PersonalDictionaryTextContractTest {
     @get:Rule

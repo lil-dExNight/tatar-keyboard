@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# DEV-PLAN п.6: релизный автомат — механическая половина docs/PUBLISH-CHECKLIST.md
-# одной командой. Прогоняет гейты репозитория и артефактные проверки на кандидате,
-# каждая с явным PASS/FAIL, итог — машинным блоком и ненулевым кодом выхода на
-# любом FAIL. Fail-closed: любая непредусмотренная ошибка (нет aapt2, битый APK,
-# отсутствующий контракт) — тоже ненулевой выход.
+# Release checker: runs the repository gates and the artifact checks on a release
+# candidate in one command. Each check prints PASS/FAIL/SKIP; the summary is a
+# machine-readable RESULT block, and any FAIL gives a non-zero exit code. Any
+# unexpected error (no aapt2, broken APK, missing contract) also exits non-zero.
+# Artifact checks: size, asset pins, bundled asset sets, permissions, signature,
+# version, store changelog and the delta against dist/.
 #
-# Запуск из корня репозитория:
-#   bash scripts/release_check.sh [--quick|--full] [путь-к-apk]
+# Run from the repository root:
+#   bash scripts/release_check.sh [--quick|--full] [path/to.apk]
 #
-# Режимы:
-#   (по умолчанию)  артефакт уже собран; гейты гоняются, сборка не пересобирается;
-#   --quick         только артефактные проверки (гейты gradle/python помечаются SKIP);
-#   --full          сначала ./gradlew clean assembleRelease, затем всё остальное
-#                   (проверяется свежесобранный app/build/outputs/apk/release/*.apk).
+# Modes:
+#   (default)  the APK is already built; gates run, nothing is rebuilt;
+#   --quick    artifact checks only (gradle/python gates are reported as SKIP);
+#   --full     ./gradlew clean assembleRelease first, then everything else
+#              (checks the freshly built app/build/outputs/apk/release/*.apk).
 #
-# APK по умолчанию — последний по mtime app/build/outputs/apk/release/*.apk.
-# Скрипт ничего не меняет в репозитории, кроме build/ (логи — build/release_check/,
-# при --full — и сама пересборка).
+# Default APK: the newest (by mtime) app/build/outputs/apk/release/*.apk.
+# The script writes only build output: logs go to build/release_check/, and --full
+# also rebuilds app/build/.
 set -euo pipefail
 
-# --- константы релизного инварианта ---------------------------------------------------------
+# --- release invariants ----------------------------------------------------------------------
 
-# Потолок размера APK (3 МБ), побайтно — AGENTS.md, «Бюджеты».
+# APK size ceiling (3 MB), in bytes.
 APK_SIZE_LIMIT=3145728
 
-# SHA-256 релизного сертификата (CN=Tatar Keyboard), один и тот же для всей линейки
-# релизов с 2026-08-18; зафиксирован в docs/APK-AUDIT-1.9.5.md, раздел «Подпись».
+# SHA-256 of the release signing certificate (CN=Tatar Keyboard), the same for every release.
 RELEASE_CERT_SHA256="98ca6febfed6c146d81c1fdcfe52c79acf7aa926a1033d98b844a59803ec42ad"
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -35,12 +35,13 @@ cd "$REPO_ROOT"
 LOG_DIR="build/release_check"
 mkdir -p "$LOG_DIR"
 
-# --- аргументы -------------------------------------------------------------------------------
+# --- arguments -------------------------------------------------------------------------------
 
 QUICK=0
 FULL=0
 APK=""
 
+# Prints the header comment (lines 2-20); keep the header exactly that long.
 usage() {
     sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
 }
@@ -64,12 +65,12 @@ if [ "$QUICK" -eq 1 ] && [ "$FULL" -eq 1 ]; then
     echo "ERROR: --quick и --full несовместимы" >&2; exit 2
 fi
 
-# --- учёт результатов ------------------------------------------------------------------------
+# --- result bookkeeping ----------------------------------------------------------------------
 
 RESULTS=()
 FAILURES=0
 
-# report <PASS|FAIL|SKIP> <имя-проверки> [деталь]
+# report <PASS|FAIL|SKIP> <check-name> [detail]
 report() {
     local status="$1" name="$2" detail="${3:-}"
     RESULTS+=("$status|$name|$detail")
@@ -79,7 +80,7 @@ report() {
     fi
 }
 
-# run_logged <лог-файл> <команда...> — вывод целиком в лог, код возврата наружу.
+# run_logged <log-file> <command...>: all output goes to the log, the exit code is returned.
 run_logged() {
     local log="$1"; shift
     if "$@" >"$log" 2>&1; then
@@ -88,7 +89,7 @@ run_logged() {
     return 1
 }
 
-# --- инструменты SDK (aapt2, apksigner) ------------------------------------------------------
+# --- SDK tools (aapt2, apksigner) ------------------------------------------------------------
 
 SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
 if [ ! -d "$SDK_ROOT/build-tools" ]; then
@@ -97,15 +98,15 @@ if [ ! -d "$SDK_ROOT/build-tools" ]; then
     exit 1
 fi
 
-# B8 (2026-09-28): единый пин версии build-tools.
+# Pinned build-tools version.
 source "$SCRIPT_DIR/build-tools-pin.sh"
 
-resolve_tool() { # <имя>
+resolve_tool() { # <name>
     local found
-    # B8: read-only consumer (aapt2 dump / apksigner verify) — предпочитаем запиннованный
-    # каталог $TT_BUILD_TOOLS_PIN, а при его отсутствии откатываемся на старшую установленную
-    # версию: вывод dump/verify стабилен между версиями build-tools, байты APK здесь не
-    # производятся (в отличие от release_pack.sh, где откат запрещён).
+    # Read-only use (aapt2 dump / apksigner verify): prefer the pinned $TT_BUILD_TOOLS_PIN
+    # directory, else fall back to the newest installed version. Dump/verify output is stable
+    # across versions and no APK bytes are produced here (unlike release_pack.sh, which
+    # forbids the fallback).
     if [ -d "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" ]; then
         found=$(find "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" -maxdepth 2 -name "$1" -type f | sort -V | tail -1)
     else
@@ -121,13 +122,13 @@ resolve_tool() { # <имя>
 AAPT2=$(resolve_tool aapt2)
 APKSIGNER=$(resolve_tool apksigner)
 
-# --- режим --full: сборка с нуля до всех проверок --------------------------------------------
+# --- --full: build from scratch before all checks --------------------------------------------
 
 echo "== release_check: кандидат и гейты =="
 
 if [ "$FULL" -eq 1 ]; then
-    # `gradlew clean` стирает корневой build/ вместе с LOG_DIR, поэтому чистим отдельно
-    # и пересоздаём каталог логов перед сборкой (та же осторожность, что в release_pack.sh).
+    # `gradlew clean` deletes the root build/ together with LOG_DIR, so clean separately
+    # and recreate the log directory before building (as release_pack.sh does).
     ./gradlew clean --console=plain >/dev/null 2>&1
     mkdir -p "$LOG_DIR"
     if run_logged "$LOG_DIR/assemble-release.log" ./gradlew assembleRelease --console=plain; then
@@ -138,7 +139,7 @@ if [ "$FULL" -eq 1 ]; then
     fi
 fi
 
-# --- выбор APK --------------------------------------------------------------------------------
+# --- APK selection ----------------------------------------------------------------------------
 
 if [ -z "$APK" ]; then
     APK=$(ls -t app/build/outputs/apk/release/*.apk 2>/dev/null | head -1 || true)
@@ -153,7 +154,7 @@ if [ ! -f "$APK" ]; then
 fi
 echo "Кандидат: $APK"
 
-# --- 1. гейты ---------------------------------------------------------------------------------
+# --- 1. gates ---------------------------------------------------------------------------------
 
 if [ "$QUICK" -eq 1 ]; then
     report SKIP gates.gradle_test "--quick"
@@ -162,10 +163,10 @@ if [ "$QUICK" -eq 1 ]; then
     report SKIP gates.no_internet "--quick"
     report SKIP gates.asset_rebuild_check "--quick"
 else
-    # JVM-тесты; счётчик — из XML-отчётов JUnit (каталог app/build/test-results/*/).
-    # --rerun-tasks: честный прогон, а не up-to-date (AGENTS.md).
+    # JVM tests; counts come from the JUnit XML reports (app/build/test-results/*/).
+    # --rerun-tasks forces a real run instead of an up-to-date skip.
     if run_logged "$LOG_DIR/gradle-test.log" ./gradlew test --rerun-tasks --console=plain; then
-        sum_attr() { # <атрибут>
+        sum_attr() { # <attribute>
             grep -hoE "$1=\"[0-9]+\"" app/build/test-results/*/*.xml 2>/dev/null \
                 | awk -F'"' '{s+=$2} END{print s+0}'
         }
@@ -185,7 +186,7 @@ else
         tail -20 "$LOG_DIR/gradle-test.log" >&2 || true
     fi
 
-    # lintRelease с baseline (abortOnError=true).
+    # lintRelease against the baseline (abortOnError=true).
     if run_logged "$LOG_DIR/lint-release.log" ./gradlew lintRelease --console=plain; then
         report PASS gates.lint_release "baseline без новых ошибок"
     else
@@ -193,7 +194,7 @@ else
         tail -20 "$LOG_DIR/lint-release.log" >&2 || true
     fi
 
-    # Python-тесты конвейера: чистый unittest, по файлу за прогон (как в AGENTS.md).
+    # Pipeline Python tests: plain unittest, one file per run.
     py_total=0
     py_failed=0
     : >"$LOG_DIR/python-tests.log"
@@ -212,7 +213,7 @@ else
         report FAIL gates.python_tests "$py_failed файлов с падениями, лог $LOG_DIR/python-tests.log"
     fi
 
-    # no-INTERNET + backup-whitelist на проверяемом APK (оба уровня гейта).
+    # No INTERNET + backup whitelist on the APK under test (both levels of the check).
     if run_logged "$LOG_DIR/no-internet.log" bash scripts/check-no-internet.sh "$APK"; then
         report PASS gates.no_internet "оба уровня (манифест + aapt2), лог $LOG_DIR/no-internet.log"
     else
@@ -220,9 +221,8 @@ else
         cat "$LOG_DIR/no-internet.log" >&2 || true
     fi
 
-    # Аудит 2026-09-25: согласованность ассетов с пинами и голов таблиц со словарями —
-    # тем же входом, что CI и предрелизная сверка (AGENTS.md), а не только косвенно через
-    # извлечённые из APK пины ниже.
+    # Assets against their pins and bigram table heads against the dictionaries, through the
+    # same entry point CI uses, not only indirectly through the pins extracted from the APK below.
     if run_logged "$LOG_DIR/asset-rebuild-check.log" \
             python3 scripts/rebuild_assets.py --check --allow-known-drift; then
         report PASS gates.asset_rebuild_check "пины и связки согласованы, лог $LOG_DIR/asset-rebuild-check.log"
@@ -232,7 +232,7 @@ else
     fi
 fi
 
-# --- 2. размер APK против инварианта -----------------------------------------------------------
+# --- 2. APK size against the ceiling -----------------------------------------------------------
 
 echo "== артефактные проверки =="
 
@@ -244,11 +244,11 @@ else
     report FAIL artifact.size "$APK_SIZE Б превышает потолок $APK_SIZE_LIMIT Б"
 fi
 
-# --- 3. пины ассетов против констант в коде ----------------------------------------------------
-# Извлекаем *.tdict.zlib / *.tatbigr.zlib из APK и сверяем размер и SHA-256 (сжатый и
-# развёрнутый) с константами DictionaryStorageContracts.kt / BigramStorageContracts.kt.
-# Чтение пинов повторяет regex-подход scripts/rebuild_assets.py (read_pins), но
-# самодостаточно: этот гейт не должен зависеть от импортируемости конвейера.
+# --- 3. asset pins against the constants in code ----------------------------------------------
+# Extracts *.tdict.zlib / *.tatbigr.zlib from the APK and compares size and SHA-256 (compressed
+# and raw) with the constants in DictionaryStorageContracts.kt / BigramStorageContracts.kt.
+# The pins are read with the same regex approach as read_pins in scripts/rebuild_assets.py,
+# but self-contained, so this check does not depend on the pipeline being importable.
 
 PINS_LOG="$LOG_DIR/asset-pins.log"
 if python3 - "$APK" >"$PINS_LOG" 2>&1 <<'PYEOF'
@@ -328,12 +328,10 @@ else
     cat "$PINS_LOG" >&2
 fi
 
-# --- 3b. эмодзи-ассеты: APK против дерева ------------------------------------------------------
-# Эмодзи-ассеты — открытый текст (без zlib-обёртки), поэтому их пин — сам файл в
-# дереве: содержимое APK обязано быть побайтно тем, что закоммичено (до 2026-09-01
-# они покрывались только python/JVM-тестами, но не этим гейтом).
-# С 2026-09-02 (C2 аудита) сверяется МНОЖЕСТВО файлов, а не зашитый список:
-# новый файл в дереве без APK (или наоборот) — тоже FAIL, fail-open закрыт.
+# --- 3b. emoji assets: APK against the tree ------------------------------------------------------
+# Emoji assets are plain text (no zlib wrapper), so their pin is the file in the tree: the APK
+# content must be byte-identical to what is committed. The file SET is compared, not a
+# hard-coded list, so a file present only in the tree or only in the APK also fails.
 
 EMOJI_LOG="$LOG_DIR/emoji-assets.log"
 if python3 - "$APK" >"$EMOJI_LOG" 2>&1 <<'PYEOF'
@@ -381,13 +379,11 @@ else
     cat "$EMOJI_LOG" >&2
 fi
 
-# --- 3c. словари и биграммы: APK против дерева ---------------------------------------------------
-# Аудит 2026-09-25: множественная сверка (C2 аудита 2026-09-02) покрывала только assets/emoji/ —
-# посторонний файл под assets/dictionaries/ или assets/bigrams/ в APK проходил мимо гейта, хотя
-# движок читает ассеты изображённым каталогом. Те же правила, что для эмодзи: МНОЖЕСТВО файлов в
-# обе стороны (включая NOTICE.txt и sentstart-таблицы) плюс побайтное содержимое. Пины четырёх
-# zlib-ассетов выше (artifact.asset_pins) при этом остаются отдельной проверкой: она сверяет ещё
-# и развёрнутое содержимое с константами в коде.
+# --- 3c. dictionaries and bigrams: APK against the tree ------------------------------------------
+# Same rules as for emoji: the file SET under assets/dictionaries/ and assets/bigrams/ in both
+# directions (including NOTICE.txt and the sentence-start tables) plus byte-identical content,
+# because the engine reads these directories as a whole. artifact.asset_pins above stays a
+# separate check: it also compares the decompressed content with the constants in code.
 
 TREE_ASSETS_LOG="$LOG_DIR/tree-assets.log"
 if python3 - "$APK" >"$TREE_ASSETS_LOG" 2>&1 <<'PYEOF'
@@ -442,17 +438,17 @@ else
     cat "$TREE_ASSETS_LOG" >&2
 fi
 
-# --- 3d. критические ресурсы: keep.xml реально покрывает живые имена в APK ---------------------
-# B5 (2026-09-28): shrinkResources держится на app/src/main/res/raw/keep.xml, а ресурсы семейств
-# keyboard_layout_set_*/kbd_*/rows_*/rowkeys_*/row_* и строк locale_name_*/label_* грузятся
-# РЕФЛЕКСИВНО (KeyboardLayoutSet собирает "keyboard_layout_set_" + subtype.getKeyboardLayoutSet()
-# и зовёт getIdentifier; KeyboardTextsSet резолвит label_pause_key/label_wait_key;
-# LocaleResourceUtils — locale_name_*). Если keep.xml молча перестанет совпадать с реальными
-# именами (переименование файла, потерянный глоб), прореживание выбросит ресурс и заметит это
-# только запуск на устройстве. Гейт: из ДЕРЕВА перечисляем конкретные имена, покрываемые
-# семействами keep.xml, и требуем каждое в `aapt2 dump resources` кандидата. Обратного направления
-# (dump -> дерево) нет намеренно: дамп включает framework-записи android:*.
-# Отсутствие самого keep.xml — тоже FAIL (охрана охранника).
+# --- 3d. critical resources: keep.xml really covers the live names in the APK -------------------
+# shrinkResources relies on app/src/main/res/raw/keep.xml, because the resource families
+# keyboard_layout_set_*/kbd_*/rows_*/rowkeys_*/row_* and the strings locale_name_*/label_* are
+# looked up by name (KeyboardLayoutSet builds "keyboard_layout_set_" +
+# subtype.getKeyboardLayoutSet() for getIdentifier; KeyboardTextsSet resolves
+# label_pause_key/label_wait_key; LocaleResourceUtils resolves locale_name_*). If keep.xml stops
+# matching the real names (renamed file, lost glob), shrinking drops the resource and only a run
+# on a device shows it. The check lists the concrete names covered by the keep.xml families from
+# the TREE and requires each one in `aapt2 dump resources` of the candidate. There is no reverse
+# direction (dump -> tree) on purpose: the dump includes framework android:* entries.
+# A missing keep.xml also fails.
 
 CRIT_RES_LOG="$LOG_DIR/critical-resources.log"
 if python3 - "$APK" "$AAPT2" >"$CRIT_RES_LOG" 2>&1 <<'PYEOF'
@@ -474,8 +470,8 @@ if not m:
     raise SystemExit(f"ERROR: tools:keep не разобран в {KEEP}")
 keep_pats = [p.strip() for p in m.group(1).split(",") if p.strip()]
 
-# xml-семейства — из самого keep.xml (префиксы @xml/<prefix>*); состав семейств фиксирован:
-# тихая правка keep.xml (потерянное семейство) обязана сломать гейт, а не перечислить меньше.
+# The xml families come from keep.xml itself (@xml/<prefix>* entries) and must equal a fixed
+# list, so a keep.xml edit that loses a family fails instead of silently checking fewer names.
 EXPECTED_XML_FAMILIES = ["keyboard_layout_set_", "kbd_", "rows_", "rowkeys_", "row_"]
 xml_families = [p[len("@xml/"):-1] for p in keep_pats
                 if p.startswith("@xml/") and p.endswith("*")]
@@ -483,13 +479,13 @@ if sorted(xml_families) != sorted(EXPECTED_XML_FAMILIES):
     raise SystemExit(f"ERROR: xml-семейства в {KEEP}: {sorted(xml_families)}, "
                      f"ожидались {EXPECTED_XML_FAMILIES}")
 
-expected = {}  # "тип/имя" -> откуда в дереве
+expected = {}  # "type/name" -> where it comes from in the tree
 
 def want(kind, name, origin):
     expected.setdefault(f"{kind}/{name}", origin)
 
-# Конкретные xml-ресурсы: файлы во ВСЕХ res/xml*/ конфигурациях, чьи имена подпадают под
-# семейства keep.xml (имя ресурса = имя файла без расширения).
+# Concrete xml resources: files in ALL res/xml*/ configurations whose names match the keep.xml
+# families (resource name = file name without extension).
 for d in sorted(RES.glob("xml*")):
     if not d.is_dir():
         continue
@@ -497,8 +493,8 @@ for d in sorted(RES.glob("xml*")):
         if any(f.stem.startswith(pref) for pref in xml_families):
             want("xml", f.stem, str(f))
 
-# Строки, резолвимые KeyboardTextsSet по хардкод-имени: обязаны быть ОПРЕДЕЛЕНЫ в
-# strings-action-keys.xml (иначе проверять в APK нечего — это уже ошибка дерева).
+# Strings that KeyboardTextsSet resolves by hard-coded name must be defined in
+# strings-action-keys.xml; if not, the tree itself is broken.
 ACTION_STRINGS = RES / "values" / "strings-action-keys.xml"
 if not ACTION_STRINGS.is_file():
     raise SystemExit(f"ERROR: нет {ACTION_STRINGS}")
@@ -508,9 +504,9 @@ for name in ("label_pause_key", "label_wait_key"):
         raise SystemExit(f"ERROR: строка {name} не определена в {ACTION_STRINGS}")
     want("string", name, str(ACTION_STRINGS))
 
-# Каждая строка locale_name_* под res/values*/ (LocaleResourceUtils резолвит их по имени
-# локали). Плейсхолдер «locale_name_<locale>» живёт в XML-комментарии donottranslate.xml,
-# поэтому матчим только реальные элементы <string ... name="...">.
+# Every locale_name_* string under res/values*/ (LocaleResourceUtils resolves them by locale
+# name). The "locale_name_<locale>" placeholder lives in an XML comment in donottranslate.xml,
+# so only real <string ... name="..."> elements are matched.
 locale_count = 0
 for d in sorted(RES.glob("values*")):
     if not d.is_dir():
@@ -549,13 +545,12 @@ else
     cat "$CRIT_RES_LOG" >&2
 fi
 
-# --- 3.9. resources.arsc обязан быть STORED (иначе APK не установится на Android 11+) ---------
-# Найдено 2026-09-25 при проверке 3.1.0 на POCO C71 (Android 15): упакованный APK не ставился —
+# --- 3.9. resources.arsc must be STORED (otherwise Android 11+ will not install the APK) -------
+# An app targeting SDK 30+ with a compressed arsc fails to install:
 #   Failure [-124: ... Targeting R+ (version 30 and above) requires the resources.arsc of
 #   installed APKs to be stored uncompressed and aligned on a 4-byte boundary]
-# Виноват был шаг O2-1 упаковщика (arsc STORED -> DEFLATED, −73,7 КБ). Ни один гейт этого не
-# видел: `zipalign -c 4` для сжатого arsc печатает «OK - compressed» и выходит с нулём. Теперь
-# условие проверяется прямо на артефакте: только STORED и только со смещением, кратным 4.
+# `zipalign -c 4` does not catch it (prints "OK - compressed" and exits 0), so the artifact is
+# checked directly: STORED only, with a data offset that is a multiple of 4.
 ARSC_LOG="$LOG_DIR/arsc-stored.log"
 if python3 - "$APK" >"$ARSC_LOG" 2>&1 <<'PYEOF'
 import sys
@@ -583,7 +578,7 @@ else
     report FAIL artifact.arsc_stored "$(tail -2 "$ARSC_LOG")"
 fi
 
-# --- 4. разрешения: ровно VIBRATE --------------------------------------------------------------
+# --- 4. permissions: exactly VIBRATE -----------------------------------------------------------
 
 if PERMS=$("$AAPT2" dump permissions "$APK" 2>&1); then
     perm_count=$(grep -c '^uses-permission:' <<<"$PERMS" || true)
@@ -598,13 +593,12 @@ else
     report FAIL artifact.permissions "aapt2 dump permissions упал: $PERMS"
 fi
 
-# --- 4b. exported surface: точное равенство золотому набору (S2 аудита 2026-09-29) --------------
+# --- 4b. exported surface: exact match with the golden set -------------------------------------
 # The APK manifest is the merged+built one, so drift can enter through build config, not only
 # source edits. Parse `aapt2 dump xmltree` into component records (kind, name, permission
 # guard, intent-filter actions/categories) and require the EXPORTED set to equal the embedded
-# golden set in both directions (unexpected-exported fails, missing-exported fails). The IME
-# service's exported=false + BIND_INPUT_METHOD pair is pinned separately: a service exported
-# without that guard is the canonical IME finding this gate exists for.
+# golden set in both directions. The IME service's exported=false + BIND_INPUT_METHOD pair is
+# checked separately: an IME service exported without that guard is the main risk here.
 
 EXPORTED_LOG="$LOG_DIR/exported-surface.log"
 if python3 - "$APK" "$AAPT2" >"$EXPORTED_LOG" 2>&1 <<'PYEOF'
@@ -616,15 +610,14 @@ apk_path, aapt2 = sys.argv[1], sys.argv[2]
 
 COMPONENT_KINDS = ("activity", "activity-alias", "service", "receiver", "provider")
 
-# Golden exported surface, derived 2026-09-29 from dist/tatar-keyboard-3.4.0.apk
-# (`aapt2 dump xmltree --file AndroidManifest.xml`) and verified 1:1 against
-# app/src/main/AndroidManifest.xml (zero runtime dependencies — nothing merges in):
+# Golden exported surface, matching app/src/main/AndroidManifest.xml (no dependencies merge
+# anything in):
 #   activity rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity
-#       exported, no permission guard, filter MAIN + category LAUNCHER — launcher-icon
-#       entry point (onboarding/setup wizard), must stay reachable.
+#       exported, no permission guard, filter MAIN + category LAUNCHER: the launcher entry
+#       point (onboarding), must stay reachable.
 #   activity rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity
-#       exported, no permission guard, no filter — settings screen reached by explicit
-#       intents (system IME-settings gear, SetupActivity hand-off), exported by design.
+#       exported, no permission guard, no filter: the settings screen, opened by explicit
+#       intents (system IME settings, SetupActivity).
 # Any other exported component, or a changed guard/filter here, is drift and fails.
 GOLDEN_EXPORTED = {
     ("activity", "rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity", "",
@@ -701,9 +694,9 @@ def record_of(comp):
     if comp["exported"] is not None:
         exported = comp["exported"] == "true"
     else:
-        # Platform implicit rule for a missing attribute: a component carrying an
-        # intent-filter is exported (targetSdk 37 forces explicit exported at build
-        # time; the rule is the safe fallback). Fail-closed, not silent-skip.
+        # Platform rule for a missing attribute: a component with an intent-filter is
+        # exported (targetSdk 37 already requires an explicit exported at build time; this
+        # is the safe fallback). Treat it as exported rather than skipping it.
         exported = bool(comp["actions"] or comp["categories"])
     return (comp["kind"], comp["name"], comp["permission"],
             tuple(sorted(comp["actions"])), tuple(sorted(comp["categories"]))), exported
@@ -768,16 +761,16 @@ else
     cat "$EXPORTED_LOG" >&2
 fi
 
-# --- 4c. secrets scan: дерево репозитория (tracked) + записи APK (S4 аудита 2026-09-29) ---------
-# Two fail-closed halves, offenders listed.
-# (a) repo: `git ls-files` — tracked files only, so keystore.properties and the .jks
-#     (gitignored locals) must not trip the gate — scanned for secret filenames
+# --- 4c. secrets scan: tracked repository files + APK entries ------------------------------------
+# Two halves, each listing offenders:
+# (a) repo: `git ls-files` (tracked files only, so the gitignored local keystore.properties
+#     and .jks do not trip the check), scanned for secret filenames
 #     (*.jks, *.keystore, keystore.properties, *.pem, *.p12), private-key block
 #     headers, and common token shapes (GitHub PAT, AWS access key id, sk-tokens).
 # (b) APK: no zip entry may carry a secret filename.
-# Content regexes are shaped so this script's own text never matches them (right after
-# the literal prefix comes '[', outside the accepted class) — the gate scans its own
-# tracked file on every run, so a self-match would be a permanent FAIL.
+# The content regexes are written so this script's own text never matches them (the literal
+# prefix is followed by '[', outside the accepted class). The check scans this tracked file
+# on every run, so a self-match would fail permanently.
 
 NO_SECRETS_LOG="$LOG_DIR/no-secrets.log"
 if python3 - "$APK" >"$NO_SECRETS_LOG" 2>&1 <<'PYEOF'
@@ -855,14 +848,14 @@ else
     cat "$NO_SECRETS_LOG" >&2
 fi
 
-# --- 5. подпись: сертификат релизного ключа, ровно один сигнер -----------------------------------
+# --- 5. signature: release key certificate, exactly one signer -----------------------------------
 
 if SIG=$("$APKSIGNER" verify --print-certs "$APK" 2>&1); then
-    # Аудит 2026-09-25: сигнеров должно быть РОВНО один. Каждый сигнер печатает строку
-    # «… certificate SHA-256 digest: <hash>» (мульти-подпись — «V2 Signer #1/#2: …», проверено
-    # на собранном вручную двухключевом APK); head -1 принимал бы APK с лишним чужим ключом
-    # молча. Один ключ, подписавший по двум схемам, даёт один ДАЙДЖЕСТ дважды — это один
-    # сигнер, поэтому считаем различные дайджесты, а не строки.
+    # There must be exactly one signer. Each signer prints a
+    # "... certificate SHA-256 digest: <hash>" line (with several signers: "V2 Signer #1/#2: ...");
+    # head -1 would silently accept an APK with an extra foreign key. One key signing with two
+    # schemes prints the same digest twice, which is still one signer, so count distinct
+    # digests, not lines.
     mapfile -t CERTS < <(grep -oE 'certificate SHA-256 digest: [0-9a-f]{64}' <<<"$SIG" \
         | grep -oE '[0-9a-f]{64}' | sort -u || true)
     if [ "${#CERTS[@]}" -eq 0 ]; then
@@ -879,7 +872,7 @@ else
     report FAIL artifact.signature "APK не подписан или подпись не верифицируется: $(tail -1 <<<"$SIG")"
 fi
 
-# --- 6. версия: aapt2 badging против app/build.gradle ------------------------------------------
+# --- 6. version: aapt2 badging against app/build.gradle ----------------------------------------
 
 EXPECTED_VC=$(grep -oE 'versionCode [0-9]+' app/build.gradle | awk '{print $2}' | head -1 || true)
 EXPECTED_VN=$(grep -oE 'versionName "[^"]+"' app/build.gradle | head -1 | cut -d'"' -f2 || true)
@@ -904,7 +897,7 @@ else
     report FAIL artifact.version "aapt2 dump badging упал: $BADGE"
 fi
 
-# --- 7. store-заметка metadata/en-US/changelogs/<versionCode>.txt ------------------------------
+# --- 7. store changelog metadata/en-US/changelogs/<versionCode>.txt ----------------------------
 
 CHANGELOG="metadata/en-US/changelogs/${APK_VC:-$EXPECTED_VC}.txt"
 if [ -n "$APK_VC" ] && [ -f "$CHANGELOG" ]; then
@@ -913,9 +906,9 @@ else
     report FAIL artifact.changelog "нет $CHANGELOG"
 fi
 
-# --- 8. дельта к предыдущему релизу из dist/ ----------------------------------------------------
-# Предыдущий = APK из dist/ с максимальным versionCode, строго меньшим кандидатского.
-# Проверка информационная: бюджет размера охраняет artifact.size, здесь только сводка.
+# --- 8. delta against the previous release in dist/ ---------------------------------------------
+# Previous = the dist/ APK with the highest versionCode strictly below the candidate's.
+# Informational only: artifact.size enforces the size budget, this is just a summary.
 
 PREV=""
 PREV_VC=-1
@@ -937,7 +930,7 @@ else
     delta=$((APK_SIZE - PREV_SIZE))
     delta_pct=$(awk -v d="$delta" -v p="$PREV_SIZE" 'BEGIN{printf "%+.1f", d / p * 100}')
 
-    # Сводка по компонентам (несжатые размеры из unzip -l): assets / arsc / dex / res / прочее.
+    # Per-component summary (uncompressed sizes from unzip -l): assets / arsc / dex / res / other.
     component_sizes() { # <apk>
         unzip -l "$1" | awk '
             $1 ~ /^[0-9]+$/ && NF >= 4 {
@@ -966,7 +959,7 @@ else
     report PASS artifact.delta "предыдущий — $(basename "$PREV") (vc $PREV_VC), APK $delta Б ($delta_pct %)"
 fi
 
-# --- 9. итог -----------------------------------------------------------------------------------
+# --- 9. summary --------------------------------------------------------------------------------
 
 echo
 echo "=== ИТОГ ==="

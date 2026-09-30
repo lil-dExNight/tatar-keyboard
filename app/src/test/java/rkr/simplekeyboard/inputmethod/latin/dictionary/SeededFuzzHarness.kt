@@ -21,31 +21,23 @@ import java.nio.ByteOrder
 import java.util.Random
 
 /**
- * Shared seeded-mutation harness for the parser fuzz tests (S5 of
- * `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`), used by the five reader fuzz suites
- * (`TdictValidatorFuzzTest`, `TatBigrValidatorFuzzTest`, `TpersValidatorFuzzTest`,
- * `TpersbValidatorFuzzTest`, `TpersemValidatorFuzzTest`).
+ * Shared seeded-mutation harness for the five validator fuzz tests (`TdictValidatorFuzzTest`,
+ * `TatBigrValidatorFuzzTest`, `TpersValidatorFuzzTest`, `TpersbValidatorFuzzTest`,
+ * `TpersemValidatorFuzzTest`).
  *
- * Everything here is deterministic: mutators draw only from the caller's seeded
- * [java.util.Random] (stdlib, zero dependencies — no fuzzing library), so a seed plus an
- * iteration index reproduces the exact byte image that tripped a failure. Every mutation
- * returns a [MutatedImage] whose [MutatedImage.detail] names the offsets/lengths touched, and
- * the assertion helper prints shape + seed + iteration + detail on any property violation.
+ * Mutators draw only from the caller's seeded [java.util.Random], so a seed plus an iteration
+ * index reproduces the exact byte image. Each [MutatedImage.detail] names the offsets touched,
+ * and a property violation reports shape, seed, iteration and detail.
  *
- * The properties every fuzz loop asserts on EVERY input:
+ * Properties asserted on every input:
  *
- *  1. the reader either validates cleanly or throws the format's OWN validation exception type —
- *     never any other throwable (no IndexOutOfBoundsException, no NegativeArraySizeException,
- *     no OutOfMemoryError: [assertCleanOrValidationFailure] catches [Throwable] and fails the
- *     test with the full reproduction coordinates);
- *  2. no allocation beyond the format's declared caps — the ceiling guard is the cap checks the
- *     validators already carry (count/size fields are validated against the caps and the real
- *     file length BEFORE any count-sized allocation happens); the inflation shape keeps the file
- *     itself small, so any attempt to allocate per an inflated count would blow up and be caught
- *     by property 1;
- *  3. fail-closed: shapes that cannot produce a structurally valid image (bit flips without a
- *     checksum refresh, truncations, random garbage, huge-count inflation) must NEVER validate
- *     cleanly — a clean validation there is itself the defect.
+ *  1. the validator either accepts the image or throws the format's own validation exception;
+ *     any other throwable (IndexOutOfBoundsException, OutOfMemoryError, ...) fails the test;
+ *  2. no allocation beyond the format's caps: count and size fields are checked against the caps
+ *     and the real file length before any count-sized allocation, and the inflation shape keeps
+ *     the file small, so an allocation driven by an inflated count would surface under property 1;
+ *  3. shapes that cannot produce a structurally valid image (bit flips without a checksum
+ *     refresh, truncations, random garbage, huge-count inflation) must never validate.
  */
 internal object SeededFuzzHarness {
 

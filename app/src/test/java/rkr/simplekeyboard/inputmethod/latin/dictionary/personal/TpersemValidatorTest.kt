@@ -27,8 +27,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiTes
 import java.io.File
 
 /**
- * The `.tpersem` format contract: the fail-closed validator accepts exactly what the writer
- * produces and rejects everything else — structure, checksum, subtype, UTF-8, alphabet, length,
+ * The `.tpersem` format contract: the validator accepts exactly what the writer produces and
+ * rejects everything else — structure, checksum, subtype, UTF-8, alphabet, length,
  * cluster shape, ordering and duplicates. The mirror of [TpersbValidatorTest] for (word, emoji)
  * entries.
  */

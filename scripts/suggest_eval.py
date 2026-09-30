@@ -1,37 +1,12 @@
 #!/usr/bin/env python3
-"""Corpus-stat baseline metrics for TT-SUGGESTIONS over the pinned Tatar eval set.
+"""Corpus-statistics metrics of Tatar suggestions over the eval set ``tt_eval_sentences.txt``.
 
-Reads the committed eval set (``app/src/test/resources/tt_eval_sentences.txt``, built by
-``scripts/make_eval_set.py``) and measures it against the SHIPPED assets:
-
-* the Tatar dictionary (``tatar_top100k_v1.tdict.zlib``), decoded in memory through
-  ``dictionary_pack.decompress_asset`` + ``dictionary_pack.validate_raw`` -- the same
-  reader APIs the pipeline's own tests use;
-* the Tatar bigram table (``tatar_bigrams_v1.tatbigr.zlib``, TATBIGR schema 3), decoded
-  through ``bigram_asset_pack.decompress`` + ``bigram_asset_pack.validate_raw_v3``,
-  verified fail-closed against the dictionary's raw SHA-256, exactly like the runtime.
-
-Metrics (one ``EVAL|metric|value`` line each, percentages with four decimals):
-
-* ``eval_lines`` / ``eval_tokens`` / ``eval_unique_words`` -- eval-set sizes;
-* ``dict_word_coverage_tokens_pct`` / ``dict_word_coverage_types_pct`` -- share of eval
-  tokens (and of unique words) present in the shipped dictionary;
-* ``inflected_token_share_pct`` -- heuristic: share of tokens ending in a known Tatar
-  inflectional surface suffix (longest match, stem of at least two code points left).
-  Multi-letter suffixes only; one-letter endings (-а/-ә present, -р future, -у verbal
-  noun) are too ambiguous for a surface heuristic, so this is a LOWER bound, stable
-  across runs -- its job is a before/after comparison, not a linguistic claim;
-* ``bigram_pairs_total`` -- adjacent word pairs in the eval set;
-* ``bigram_head_coverage_pct`` -- pairs whose first word is a head of the shipped table;
-* ``nextword_top3_hit_pct`` -- pairs whose second word is among the head's first three
-  shown successors (packing order = shown order), over ALL pairs;
-* ``nextword_top3_hit_covered_pct`` -- the same restricted to head-covered pairs.
-
-The JVM counterpart (``TtSuggestEvalTest``) measures the same quantities through the
-runtime indexes; matching numbers cross-check the two implementations.
-
-Usage: ``python3 scripts/suggest_eval.py`` (defaults cover the repo layout). stdlib
-only, no network. Exit 2 on any missing or invalid input (fail-closed).
+Input: the eval set, the bundled Tatar dictionary and the schema-3 bigram table (decoded with
+the pipeline readers; the table is checked against the dictionary's raw SHA-256).
+Output: ``EVAL|metric|value`` lines: eval sizes, dictionary coverage of tokens and types, a
+lower-bound share of inflected tokens, bigram head coverage and next-word top-3 hit rate
+(over all pairs and over head-covered pairs). ``TtSuggestEvalTest`` measures the same on the
+JVM. Exit 2 on any missing or invalid input.
 """
 from __future__ import annotations
 
@@ -58,10 +33,11 @@ DEFAULT_BIGRAM_ASSET = (
 
 SHOWN_RESULTS = 3
 
-# Tatar inflectional surface suffixes (docs/TT-SUGGESTIONS-PLAN.md, "Tatar morphology"):
-# plural, six cases, possessives, post-3sg-possessive case forms, the priority verb
-# forms, and the frequent derivational set. Multi-letter only -- see the module docstring
-# for why. Matching is longest-first and requires a stem of >= 2 code points.
+# Tatar inflectional surface suffixes: plural, six cases, possessives, post-3sg-possessive
+# case forms, the main verb forms, and the frequent derivational set. Multi-letter only:
+# one-letter endings (-а/-ә present, -р future, -у verbal noun) are too ambiguous, so the
+# share is a lower bound for before/after comparison. Matching is longest-first and
+# requires a stem of >= 2 code points.
 INFLECTIONAL_SUFFIXES = frozenset(
     [
         # plural
@@ -97,11 +73,11 @@ MIN_STEM_CODE_POINTS = 2
 
 
 class SuggestEvalError(ValueError):
-    """A fail-closed eval error (missing or invalid input)."""
+    """An eval error: missing or invalid input (exit 2)."""
 
 
 def load_eval_lines(path: Path) -> list[str]:
-    """Read the eval set, skipping ``#`` comment lines; fail-closed on bad content."""
+    """Read the eval set, skipping ``#`` comment lines; raises on bad content."""
     if not path.is_file():
         raise SuggestEvalError(f"eval set is missing: {path}")
     lines: list[str] = []
@@ -120,7 +96,7 @@ def load_eval_lines(path: Path) -> list[str]:
 
 
 def load_dictionary_words(asset_path: Path) -> tuple[list[str], bytes]:
-    """Decode the shipped dictionary in memory; returns (words, raw bytes)."""
+    """Decode the bundled dictionary in memory; returns (words, raw bytes)."""
     if not asset_path.is_file():
         raise SuggestEvalError(f"dictionary asset is missing: {asset_path}")
     raw = dictionary_pack.decompress_asset(asset_path.read_bytes())
@@ -131,7 +107,7 @@ def load_dictionary_words(asset_path: Path) -> tuple[list[str], bytes]:
 def load_bigram_successes(
     asset_path: Path, dictionary_words: list[str], dictionary_raw: bytes
 ) -> dict[str, list[str]]:
-    """Decode the shipped schema-3 bigram table against its linked dictionary."""
+    """Decode the bundled schema-3 bigram table against its linked dictionary."""
     if not asset_path.is_file():
         raise SuggestEvalError(f"bigram asset is missing: {asset_path}")
     raw = bigram_asset_pack.decompress(asset_path.read_bytes())

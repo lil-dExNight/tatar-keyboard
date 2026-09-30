@@ -23,15 +23,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E4b, «Контракт личного словаря»: ONE toggle, default OFF, and an enterprise restriction that
+ * The personal dictionary setting: ONE toggle, default OFF, and an enterprise restriction that
  * applies in the RESTRICTIVE direction only.
  *
  * The two direction tests are real JVM tests, not greps: the decision they cover lives in
  * [PersonalDictionaryRestriction] precisely so it can be exercised off-device
  * (`Settings.loadRestrictions` needs a `RestrictionsManager` and real `SharedPreferences`). The
- * remaining assertions are source-contract in the established style — they read the frozen source,
- * and each predicate is proven fail-capable against a deliberately-broken input so a regression
- * turns them red instead of silently passing.
+ * remaining assertions read the source, and each predicate is also checked against a
+ * deliberately broken input.
  */
 class PersonalDictionarySettingsTest {
 

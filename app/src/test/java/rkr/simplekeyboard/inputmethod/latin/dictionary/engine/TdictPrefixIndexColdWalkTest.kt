@@ -4,8 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * P7-1 (docs/GLIDE-PLAN.md): [TdictPrefixIndex.forEachWordCold] — the cold, thread-free
- * enumeration behind the glide decoder's one-time word-index build.
+ * [TdictPrefixIndex.forEachWordCold]: the cold, thread-free enumeration behind the glide
+ * decoder's one-time word-index build.
  */
 class TdictPrefixIndexColdWalkTest {
 

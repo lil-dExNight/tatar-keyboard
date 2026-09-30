@@ -34,11 +34,11 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * P7-3 (docs/GLIDE-PLAN.md): the glide path end to end — controller, real shipped assets (the
- * Tatar and Russian dictionaries and the Tatar bigram table), the fixture layout geometries, and
- * the real decoder. The engine handle is backed by the production machinery ([TdictPrefixIndex],
- * [CompositePrefixComputer], [GlideDecoderHost]) and delivers synchronously, so the whole flow —
- * gesture → decode → band → tap → commit → NEXT_WORD chain — is exercised with no emulator.
+ * The glide path end to end — controller, real bundled assets (the Tatar and Russian dictionaries
+ * and the Tatar bigram table), the fixture layout geometries, and the real decoder. The engine
+ * handle is backed by the production machinery ([TdictPrefixIndex], [CompositePrefixComputer],
+ * [GlideDecoderHost]) and delivers synchronously, so the whole flow — gesture → decode → band → tap
+ * → commit → NEXT_WORD chain — is exercised with no emulator.
  */
 class GlideEndToEndTest {
 
@@ -99,7 +99,7 @@ class GlideEndToEndTest {
         }
 
         override fun commitGlideWord(expectedContextWord: String, suggestion: String, chainedAfter: String?): Int {
-            // The P7-6/P7-7 glide path, modeled: the prediction re-checks minus the sentence-start
+            // The glide path, modeled: the prediction re-checks minus the sentence-start
             // requirement; NO auto-space — the chain space is the only separator, and only after
             // the chain's own previous word.
             val trailing = TatarWordUtils.extractTrailingWord(text)
@@ -252,13 +252,13 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        // The lift commits the top-1 through the glide's own commit path — no tap; P7-7: NO
-        // auto-space; P7-8: the doubled twin needs loop evidence, so the no-loop path's top-1 is
-        // the PLAIN word now (was сәлләм by the frequency prior before P7-8).
+        // The lift commits the top-1 through the glide's own commit path — no tap, NO auto-space.
+        // The doubled twin needs loop evidence, so the no-loop path's top-1 is the PLAIN word, not
+        // the more frequent сәлләм.
         assertEquals("сәләм", h.editor.text)
         assertEquals(listOf("" to "сәләм"), h.editor.predictedCommits)
-        // P7-7: the editor's trailing word after a glide commit IS the committed word — the
-        // strip's later derivations treat it exactly as a typed word (the prefix path).
+        // The editor's trailing word after a glide commit IS the committed word — the strip's later
+        // derivations treat it exactly as a typed word (the prefix path).
         assertEquals("сәләм", h.editor.cachedWordBeforeCursor())
         // The strip then shows the remaining candidates as tappable alternatives.
         val cells = h.strip.shown.last().filterNotNull()
@@ -274,13 +274,11 @@ class GlideEndToEndTest {
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         h.strip.listener!!.onTap("сәлләм")
 
-        // The alternative replaced the lift-committed word in the editor — in place, P7-7: no
-        // space added or removed. (P7-8: the strip order flipped — the plain word is the
-        // lift-commit, the doubled twin rides the alternatives.)
+        // The alternative replaced the lift-committed word in the editor in place: no space added
+        // or removed. (The plain word is the lift-commit, the doubled twin rides the alternatives.)
         assertEquals("сәлләм", h.editor.text)
-        // The strip then behaves as if the word had been typed (P7-7): the trailing word is
-        // "сәлләм", so the band is the prefix path for it (forms), not the NEXT_WORD chain that
-        // followed the auto-spaced commit before P7-7.
+        // The strip then behaves as if the word had been typed: the trailing word is "сәлләм", so
+        // the band is the prefix path for it (forms), not the NEXT_WORD chain.
         assertEquals(listOf("сәлләмнең", "сәлләмгә", null), h.strip.shown.last())
     }
 
@@ -320,7 +318,7 @@ class GlideEndToEndTest {
         assertEquals("", h.editor.text)
     }
 
-    // --- P7-6: glide independent of the suggestions master (the 2026-09-24 field reports) ------
+    // --- Glide independent of the suggestions master switch ------------------------------------
 
     @Test
     fun theLiftCommitsWithSuggestionsOffAndTheStripShowsNothing() {
@@ -328,7 +326,7 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start(eligible = false, glideEligible = true)
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        // The commit is typing, not a suggestion: the word lands (P7-7: with NO auto-space)…
+        // The commit is typing, not a suggestion: the word lands (with NO auto-space)…
         assertEquals("сәләм", h.editor.text)
         // …and the strip — the suggestions surface — shows NOTHING: no alternatives band…
         assertTrue("no band may paint with the master off, was ${h.strip.shown}",
@@ -340,7 +338,7 @@ class GlideEndToEndTest {
 
     @Test
     fun suggestionsOffStillHidesTheStripInNormalTyping() {
-        // The regression pin of the unhook: the master off keeps the band out of the typing path.
+        // The master switch off keeps the band out of the typing path.
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start(eligible = false, glideEligible = true)
@@ -363,7 +361,7 @@ class GlideEndToEndTest {
 
     @Test
     fun theLiftCommitsRightAfterAttachedSentenceFinalPunctuation() {
-        // "сүз? " — a genuine sentence start; worked before P7-6 as well.
+        // "сүз? " — a genuine sentence start.
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
@@ -374,9 +372,9 @@ class GlideEndToEndTest {
 
     @Test
     fun theLiftCommitsAfterSentenceFinalPunctuationTypedWithTheSpaceHabit() {
-        // The P7-6 field report: "сүз ? " (a space BEFORE the mark) is context-free and NOT a
-        // sentence start (the punctuation run must directly follow a letter), so the prediction
-        // tap's stale-band guard refused the lift-commit here and the gesture looked dead.
+        // "сүз ? " (a space BEFORE the mark) is context-free and NOT a sentence start (the
+        // punctuation run must directly follow a letter). The prediction tap's stale-band guard
+        // would refuse here; the glide commit must not, or the gesture looks dead.
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
@@ -401,7 +399,7 @@ class GlideEndToEndTest {
         h.controller.updateGlideGeometry(GlideTestFixtures.russianGeometry())
         h.start(PersonalSubtypes.RUSSIAN)
         h.controller.onGlideInput(GlideTestFixtures.idealPath("работа", GlideTestFixtures.russianGeometry())!!)
-        // The top-1 of the Russian decode is committed on lift (P7-7: NO trailing space); the
+        // The top-1 of the Russian decode is committed on lift (NO trailing space); the
         // alternatives show the rest.
         assertTrue(h.editor.text.isNotEmpty())
         assertFalse("P7-7: a glide commits no auto-space", h.editor.text.endsWith(" "))
@@ -437,7 +435,7 @@ class GlideEndToEndTest {
     @Test
     fun aGlideWithoutGeometryCommitsNothing() {
         val h = Harness()
-        // No updateGlideGeometry at all: fail-closed, exactly like a missing layout.
+        // No updateGlideGeometry at all: nothing is decoded, exactly like a missing layout.
         h.start()
         val shownBefore = h.strip.shown.size
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
@@ -464,8 +462,8 @@ class GlideEndToEndTest {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
-        // A gesture far below the keyboard (every key is above it): no candidate's location
-        // channel survives — the decode is empty, nothing is committed (fail-closed).
+        // A gesture far below the keyboard (every key is above it): no candidate's location channel
+        // survives — the decode is empty, nothing is committed.
         val path = GlidePath()
         var x = 5_000f
         for (i in 0 until 40) {
@@ -484,21 +482,21 @@ class GlideEndToEndTest {
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         // A typed letter: the alternatives are unbound — a tap on a stale alternative is inert.
-        // (P7-7: the typed letter glues onto the space-free committed word, and the new prefix
-        // "сәлләмб" has no band of its own — so the pin is the tap's inertness, not a repaint.)
+        // (The typed letter glues onto the space-free committed word, and the new prefix "сәлләмб"
+        // has no band of its own — so the pin is the tap's inertness, not a repaint.)
         h.editor.text += "б"
         h.controller.onTextChanged()
         h.strip.listener!!.onTap("сәлләм")
         assertEquals("сәләмб", h.editor.text)
     }
 
-    // --- Personal-dictionary glide candidates (docs/GLIDE-PERSONAL.md) -------------------------
+    // --- Personal-dictionary glide candidates ----------------------------------------------------
 
     @Test
     fun aLearnedWordLiftCommitsAndTheStripShowsTheAlternatives() {
-        // "сәлинә" is NOT in the shipped Tatar dictionary (checked against the asset on
-        // 2026-09-26) — only the personal side can produce it. The membership guard keeps the
-        // pin honest: if a dictionary rebuild ever adds the word, pick another one.
+        // "сәлинә" is NOT in the bundled Tatar dictionary — only the personal side can produce it.
+        // The membership guard keeps the test valid: if a dictionary rebuild ever adds the word,
+        // pick another one.
         assertFalse(tatarIndex.containsWordCold("сәлинә"))
         val snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 7)
         val h = Harness()
@@ -507,7 +505,7 @@ class GlideEndToEndTest {
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәлинә", GlideTestFixtures.tatarGeometry())!!)
 
-        // The lift commits the learned word top-1 (P7-7: no auto-space)…
+        // The lift commits the learned word top-1 (no auto-space)…
         assertEquals("сәлинә", h.editor.text)
         assertEquals(listOf("" to "сәлинә"), h.editor.predictedCommits)
         // …and the strip shows the decode's remaining candidates as tappable alternatives,
@@ -520,7 +518,7 @@ class GlideEndToEndTest {
         assertEquals("", h.editor.text)
     }
 
-    // --- Glide-triggered learning (2026-09-27): the commit counts as an acceptance -------------
+    // --- Glide-triggered learning: the commit counts as an acceptance ---------------------------
 
     /** Records the word sink's acceptance events; membership is the store side's business. */
     private class RecordingWordSink : WordCompletionSink {
@@ -598,12 +596,12 @@ class GlideEndToEndTest {
         h.start(eligible = false, glideEligible = true)
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertEquals("сәләм", h.editor.text)
-        // P7-6: the commit is typing, not a suggestion — and the learning event fires anyway;
-        // the predicate on the sink's side (LatinIME) is the only gate.
+        // The commit is typing, not a suggestion — and the learning event fires anyway; the
+        // predicate on the sink's side (LatinIME) is the only gate.
         assertEquals(listOf("сәләм"), sink.accepted)
     }
 
-    // --- P7-7: no auto-space, the chain space is the only separator (2026-09-25) ---------------
+    // --- No auto-space: the chain space is the only separator -----------------------------------
 
     @Test
     fun aSecondGlideChainsWithExactlyOnePrependedSpace() {

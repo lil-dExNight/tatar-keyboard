@@ -35,10 +35,10 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * The emoji cell of the NEXT_WORD band (mission 2 of `docs/EMOJI-SUGGEST-PLAN.md`): it fills a
- * tail cell the word sources left free, never displaces a bigram or a companion word, taps commit
- * through the E5d predicted-word path, and every failure direction — the toggle off, a private
- * field, an unreadable asset, a word without a mapping — is silent.
+ * The emoji cell of the NEXT_WORD band: it fills a tail cell the word sources left free, never
+ * displaces a bigram or a companion word, taps commit through the predicted-word path, and every
+ * failure direction — the toggle off, a private field, an unreadable asset, a word without a
+ * mapping — is silent.
  */
 class SuggestionsControllerEmojiSuggestTest {
 
@@ -176,7 +176,7 @@ class SuggestionsControllerEmojiSuggestTest {
         override fun spokenNameOf(emoji: String): String? = names[emoji]
     }
 
-    /** Records every personal-emoji event (feature C). */
+    /** Records every learned-emoji event. */
     private class RecordingPersonalEmojiSink : PersonalEmojiSink {
         val observations = mutableListOf<Pair<String, String>>()
         val uses = mutableListOf<Pair<String, String>>()
@@ -321,9 +321,9 @@ class SuggestionsControllerEmojiSuggestTest {
 
     @Test
     fun theEmojiTailSurvivesAFallbackFilledBand() {
-        // TT-NEXTWORD-FILL: the fallback fills the NEXT_WORD cells the bigrams and forms leave
-        // free, so a mapped context word can now arrive with a FULL three-word band — the emoji
-        // still takes the tail cell and the two front words keep their order.
+        // The fallback fills the NEXT_WORD cells the bigrams and forms leave free, so a mapped
+        // context word can arrive with a FULL three-word band — the emoji still takes the tail cell
+        // and the two front words keep their order.
         val h = harnessWithMapping("tt", "йөрәк", "❤️")
         h.start(tatar)
         h.typeWordAndSpace("йөрәк")
@@ -571,8 +571,8 @@ class SuggestionsControllerEmojiSuggestTest {
 
     @Test
     fun theBandAfterAnAcceptedWordCellStillCarriesTheEmojiTail() {
-        // TT-TYPO-NEXT Phase A: the follow-up lookup after a tap-commit goes through the ordinary
-        // NEXT_WORD fill path, so the emoji tail rule applies to it unchanged.
+        // The follow-up lookup after a tap-commit goes through the ordinary NEXT_WORD fill path, so
+        // the emoji tail rule applies to it unchanged.
         val h = harnessWithMapping("tt", "китте", "❤️")
         h.start(tatar)
         h.typeWordAndSpace("башка") // no mapping for the FIRST context: a plain one-word band
@@ -588,7 +588,7 @@ class SuggestionsControllerEmojiSuggestTest {
         assertEquals(listOf("бирегә", "❤️"), h.strip.lastCells())
     }
 
-    // --- Recents (B2): an accepted emoji cell is recorded like a panel or search pick -----------
+    // --- Recents: an accepted emoji cell is recorded like a panel or search pick ----------------
 
     @Test
     fun tappingTheEmojiTailCellReportsTheSequenceToTheSink() {
@@ -623,7 +623,7 @@ class SuggestionsControllerEmojiSuggestTest {
 
     @Test
     fun anEmojiTapWithoutASinkStillCommits() {
-        // No sink wired (the fail-closed default): the tap commits exactly as before the seam.
+        // No sink wired (the default): the tap still commits normally.
         val h = harnessWithMapping("tt", "йөрәк", "❤️")
         h.start(tatar)
         h.typeWordAndSpace("йөрәк")
@@ -634,7 +634,7 @@ class SuggestionsControllerEmojiSuggestTest {
         assertEquals(listOf("йөрәк" to "❤️"), h.editor.predictedCommits)
     }
 
-    // --- Feature C: the learned word→emoji co-usage source and sink -------------------------------
+    // --- Learned emoji: the word→emoji co-usage source and sink ----------------------------------
 
     @Test
     fun theLearnedEmojiOverridesTheStaticOneInTheTailCell() {
@@ -738,8 +738,8 @@ class SuggestionsControllerEmojiSuggestTest {
 
     @Test
     fun anEmojiTapWithoutAPersonalSinkStillCommits() {
-        // The source is wired but the sink is not (the fail-closed default): no crash, and the
-        // commit lands exactly as before the seam.
+        // The source is wired but the sink is not (the default): no crash, and the commit lands
+        // normally.
         val h = harnessWithMapping("tt", "йөрәк", "❤️")
         h.controller.setPersonalEmojiSource(
             PersonalEmojiSource { word -> if (word == "йөрәк") "🌙" else null },

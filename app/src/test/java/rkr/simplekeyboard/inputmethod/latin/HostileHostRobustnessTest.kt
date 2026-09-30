@@ -32,46 +32,28 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.common.Constants
 
 /**
- * S8 of `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`: the host app owns the InputConnection and can
- * be malicious or buggy — the IME must not crash, OOM, or corrupt state. This suite drives the
- * REAL [RichInputConnection] against hostile host behavior through the same Android-free seams
- * [RichInputConnectionRobustnessTest] uses (`RichInputConnection(null)` plus the package-private
- * surface), extended with a fake [InputConnection] injected into the private `mIC` field for the
- * throwing-binder shapes. The suggestion-side half of the start/finish churn shape lives in
- * `suggestions/HostileHostSuggestionChurnTest.kt`; the structural pins (every editor call wrapped,
- * every reload write bounded) live in [RichInputConnectionRobustnessContractTest] and
- * `inputlogic/BatchEditPairingContractTest.kt`.
+ * The host app owns the InputConnection and can be malicious or buggy; the IME must not crash,
+ * run out of memory, or corrupt its state. This suite drives the real [RichInputConnection]
+ * through the Android-free seams [RichInputConnectionRobustnessTest] uses
+ * (`RichInputConnection(null)` plus the package-private surface), plus a fake [InputConnection]
+ * injected into the private `mIC` field for the throwing-binder cases. The structural pins live in
+ * [RichInputConnectionRobustnessContractTest] and `inputlogic/BatchEditPairingContractTest.kt`;
+ * the suggestion-side start/finish churn is in `suggestions/HostileHostSuggestionChurnTest.kt`.
  *
- * Per-shape verdicts (2026-09-29):
- *
- *  * Oversized `getTextBeforeCursor`/`getSurroundingText` answers (the asked-for count is only a
- *    hint; the F3 window cap covered LOCAL appends only) — **HOLED, fixed**: a reload payload past
- *    the 1024-char window was stored verbatim, re-inflating the cache to binder-cap size and making
- *    every later append a full-length copy. `onBeforeCursorCacheReloaded` now keeps the window
- *    TAIL, `applyTextAroundCursor` keeps the after-cursor HEAD; the selection string is kept
- *    verbatim on purpose (it must stay consistent with the host-reported selection span; it is
- *    replaced wholesale by every reload, so it cannot grow without bound across reloads).
- *  * Editor calls throwing `RuntimeException` across the binder (`DeadObjectException` from a died
- *    host surfaces as a RuntimeException at the proxy; a hostile host can rethrow its own) —
- *    **HOLED, fixed**: nothing was caught anywhere (the F5 doctrine), so a throwing
- *    commit/delete/batch-close rode the UI thread up and killed the IME process. Every editor call
- *    in `RichInputConnection` now sits in a `catch (RuntimeException)` that degrades silently —
- *    the F6 dead-editor idiom (the F6 guards return silently too) — and the cache keeps following
- *    the INTENDED edit, which the next cursor-move reload re-syncs to the editor's ground truth
- *    (F8/F10). `InputLogic` needed no change: it reaches the editor only through this wrapper
- *    (O6-pinned), so the wrapper absorbing the failure covers every one of its paths.
- *  * Null / malformed SurroundingText — **CLEAN, extended**: null text and out-of-range/inverted
- *    selections already fell back to the empty cache (F4); this suite adds the absent null-text
- *    and `Int.MAX_VALUE` pins. Host-reported negative selection indexes were **HOLED, fixed**:
- *    `updateSelection` only normalized inversion (F7), so `(-5, -2)` survived as a "known" cursor
- *    position and `(5, -1)` normalized to `(-1, 5)` — `hasSelection()` TRUE for a span no host
- *    ever reported, which `deleteSelectedText` would have edited from. Any negative component now
- *    fails closed to the documented `INVALID_CURSOR_POSITION` state (EditorInfo's own "-1 means
- *    unknown" semantics).
- *  * Rapid start/finish-input churn — **CLEAN**: the Android-free seams are exercised under a
- *    seeded 20 000-step hostile op storm with per-step invariants; the suggestion-side interleave
- *    (an in-flight lookup applying after finishInput) was already guarded by the controller's
- *    session stamp and is re-proven under churn in the sibling suite.
+ * Covered host behavior:
+ *  * Oversized `getTextBeforeCursor`/`getSurroundingText` answers (the requested count is only a
+ *    hint): the reload keeps the window tail before the cursor and the head after it; the
+ *    selection string is kept verbatim because it must match the host-reported span, and every
+ *    reload replaces it, so it cannot grow across reloads.
+ *  * Editor calls throwing `RuntimeException` across the binder (`DeadObjectException` from a dead
+ *    host, or a host's own exception): every editor call sits in a `catch (RuntimeException)`
+ *    that returns silently, and the cache follows the intended edit until the next cursor-move
+ *    reload re-syncs it. `InputLogic` reaches the editor only through this wrapper.
+ *  * Null or malformed SurroundingText and negative or inverted selection reports: the cache falls
+ *    back to empty, and any negative component resets to `INVALID_CURSOR_POSITION` (EditorInfo's
+ *    "-1 means unknown").
+ *  * Rapid start/finish-input churn: a seeded random sequence of hostile operations with
+ *    invariants checked after every step.
  */
 class HostileHostRobustnessTest {
 
@@ -190,7 +172,7 @@ class HostileHostRobustnessTest {
     fun aMixedNegativeSelectionReportLeavesNoPhantomSelection() {
         val connection = RichInputConnection(null)
 
-        // (5, -1): the F7 inversion swap alone would have stored (-1, 5) — hasSelection() TRUE for
+        // (5, -1): the inversion swap alone would store (-1, 5) — hasSelection() TRUE for
         // a span no host ever reported, and deleteSelectedText would have computed a 6-char
         // selection length from it.
         connection.updateSelection(5, -1)
@@ -271,7 +253,7 @@ class HostileHostRobustnessTest {
         // The hostile editor throws across the binder: nothing may escape to the caller.
         connection.deleteTextBeforeCursor(1)
         // The cache follows the INTENDED edit either way (the same cache-first order commitText
-        // uses); the next cursor-move reload re-syncs it to the editor's ground truth (F8/F10).
+        // uses); the next cursor-move reload re-syncs it to the editor's ground truth.
         assertEquals("сү", connection.cachedTextBeforeCursor.toString())
 
         // The very next keystroke against the recovered editor lands exactly what is expected.

@@ -23,15 +23,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Mission `tt-quarantine`, task 2: the screen half of the recovery path.
+ * The screen side of recovering a quarantined file (an unreadable personal dictionary). The store
+ * side is tested in `PersonalQuarantineRecoveryTest`; the screen is an `Activity`, so it is
+ * asserted by source, and the last test checks every predicate against a broken input.
  *
- * 1.8.2 kept the bytes of an unreadable personal dictionary and showed them on no screen. The store
- * half of the repair is exercised for real in `PersonalQuarantineRecoveryTest` — the copy is really
- * read, really restored, really discarded. What is left is an `Activity`, which needs a device, so
- * it is asserted by source in the style this project already uses for that class, and every
- * predicate is proved fail-capable against the shape it replaced in the last test.
- *
- * The rules being pinned are the mission's own decision rules, in order:
+ * The rules being pinned:
  *
  * 1. A partial recovery is never presented as a complete one. The count and the damage are printed
  *    together or not at all.
@@ -76,7 +72,7 @@ class PersonalQuarantineScreenSourceContractTest {
 
     // --- the card exists at all ------------------------------------------------------------------
 
-    /** The screen that showed no copy anywhere now builds one card per language that has one. */
+    /** The screen builds one card per language that has a quarantined copy. */
     @Test
     fun theSavedWordsScreenShowsTheCopyThatUsedToBeInvisible() {
         assertTrue("the card is part of the personal-dictionary screen",
@@ -90,8 +86,7 @@ class PersonalQuarantineScreenSourceContractTest {
 
     /**
      * The read is file work: it goes to the store's worker and comes back to the UI thread, and the
-     * screen repaints then. Reading the copy on the UI thread would be the one thing this whole
-     * subsystem has never done.
+     * screen repaints then. The copy is never read on the UI thread.
      */
     @Test
     fun theCopyIsReadOnTheWorkerAndTheScreenRepaintsWhenTheAnswerArrives() {
@@ -113,8 +108,8 @@ class PersonalQuarantineScreenSourceContractTest {
     // --- decision rule 1: never a partial recovery dressed up as a whole one ----------------------
 
     /**
-     * The count and the damage are one decision, made in one `when`. A screen that could print the
-     * number without the sentence beside it is exactly the failure this rule exists to forbid.
+     * The count and the damage are one decision, made in one `when`, so the number is never
+     * printed without the sentence beside it.
      */
     @Test
     fun theCountAndTheDamageAreChosenTogether() {
@@ -193,8 +188,7 @@ class PersonalQuarantineScreenSourceContractTest {
 
     /**
      * Restoring does not delete the copy. Two actions, two decisions: the damaged tail is the part
-     * no reader could handle THIS time, and a repair that destroys it takes the only chance a better
-     * reader would ever have.
+     * this reader could not handle, and keeping it leaves a chance for a better reader.
      */
     @Test
     fun restoringDoesNotTakeTheCopyWithIt() {
@@ -205,7 +199,7 @@ class PersonalQuarantineScreenSourceContractTest {
             restore.contains("if (candidate.containsNormalized(normalized)) continue"))
     }
 
-    /** And "Erase all words" still takes the copy — the link 1.8.2 established is not broken here. */
+    /** And "Erase all words" also removes the copy. */
     @Test
     fun erasingEverythingStillRemovesTheCopyAndInvalidatesTheCard() {
         assertTrue("the erasure still covers the copy",
@@ -255,7 +249,7 @@ class PersonalQuarantineScreenSourceContractTest {
         }
     }
 
-    /** The notice now points at the screen, because there finally is something to point at. */
+    /** The notice points at the screen where the copy is shown. */
     @Test
     fun theNoticeOffersTheActionThatNowExists() {
         val english = stringValue("values", "personal_dictionary_unreadable")
@@ -285,8 +279,8 @@ class PersonalQuarantineScreenSourceContractTest {
     // --- fail-capability -------------------------------------------------------------------------
 
     /**
-     * Every predicate above is worth its line only if the shape it replaced makes it red. These are
-     * the shapes 1.8.2 shipped — a screen with no card at all — fed to the same checks.
+     * Every predicate above must fail on a broken shape: here, a screen with no card at all, fed to
+     * the same checks.
      */
     @Test
     fun thePredicatesRejectTheShapesTheyReplaced() {

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Tests for the E5b real TATBIGR schema-2 packer and its validator.
+"""Tests for the TATBIGR bigram table packer (schema 3) and its validator.
 
-Corpora are 582 MB and downloaded separately (see docs/DICTIONARY-E5A.md); everything here runs
-on synthetic fixtures small enough to read, exactly like tests/bigram_pack does for E5a.
+The real corpora are downloaded separately; everything here runs on small synthetic fixtures,
+like tests/bigram_pack does.
 """
 
 from __future__ import annotations
@@ -117,10 +117,10 @@ def _manual_raw(
 
 
 def _parse(raw: bytes, asset_path: Path) -> pack.ParsedBigramTable:
-    """Разбор таблицы любой схемы: schema 2 напрямую, schema 3 — через словарь ассета.
+    """Parse a table of either schema: schema 2 directly, schema 3 through the asset dictionary.
 
-    Семантические тесты ниже проверяют ВЫБОР голов, а не кодировку, поэтому им нужен
-    единый вид разбора независимо от того, какая схема сегодня поставляется.
+    The semantic tests below check which heads are chosen, not the encoding, so they need one
+    parsed form regardless of the schema that ships.
     """
     schema_id = struct.unpack_from("<H", raw, 8)[0]
     if schema_id == pack.SCHEMA_ID:
@@ -389,14 +389,12 @@ class GeneratorGuardrailTest(unittest.TestCase):
 
 
 class HeadSelectionIsIndependentOfPairEvidenceTest(unittest.TestCase):
-    """The mechanism docs/BIGRAM-ADJACENCY.md measured, pinned so it cannot be re-litigated quietly.
+    """Pins that the head set is chosen from unigram frequencies before any pair is counted.
 
     ``run_pack`` calls ``select_heads(frequencies, heads)`` on the shipped .tdict's UNIGRAM
     frequencies and only then counts pairs, so the head SET is decided before a single sentence is
-    tokenized. That is why no change to the adjacency rule — the one
-    docs/RUSSIAN-BIGRAMS.md section 12 item 3 proposed — can give a successor to a word that is not
-    already a head: "позвони" is absent from russian_top100k_v1 entirely and "приходи" sits at
-    unigram rank 88 861, nine times below the shipped H = 10 000 cutoff.
+    tokenized. No change to the adjacency rule can therefore give successors to a word that is not
+    already a head.
     """
 
     def test_bigram_evidence_never_promotes_a_word_to_a_head(self) -> None:
@@ -407,7 +405,7 @@ class HeadSelectionIsIndependentOfPairEvidenceTest(unittest.TestCase):
             asset_path = _write_asset(directory, ["алма", "китап", "шалтырат"])
             train = directory / "train-sentences.txt"
             # "шалтырат" heads three clean, bare, punctuation-free pairs; "алма" heads exactly one.
-            # No tokenizer rule is in play here at all — the evidence is as good as evidence gets.
+            # No tokenizer rule is involved.
             train.write_text(
                 "1\tшалтырат алма\n"
                 "2\tшалтырат алма\n"
@@ -424,18 +422,18 @@ class HeadSelectionIsIndependentOfPairEvidenceTest(unittest.TestCase):
             self.assertNotIn("шалтырат", parsed.head_words)
             self.assertEqual(["алма", "китап"], parsed.head_words)
             self.assertEqual(2, report["requested_heads"])
-            # And it is reachable as a SUCCESSOR, which is the only role the cutoff leaves it —
-            # proving its absence above is the cutoff, not a vocabulary or tokenization failure.
+            # It is still reachable as a SUCCESSOR, so its absence as a head is caused by the
+            # cutoff, not by a vocabulary or tokenization failure.
             self.assertIn("шалтырат", pack.read_shipped_vocabulary(asset_path, pack.coverage.language_for("tat"))[0])
 
 
 class ExtraHeadsTest(unittest.TestCase):
-    """The addressable head list: the fix docs/IMPERATIVE-HEADS.md measured, pinned as behaviour.
+    """The explicit head list (``--extra-heads``).
 
     ``HeadSelectionIsIndependentOfPairEvidenceTest`` above pins the rule that pair evidence can
-    never promote a word to a head. This class pins the ONE deliberate exception: a word named in
+    never promote a word to a head. This class pins the one deliberate exception: a word named in
     ``--extra-heads`` becomes a head whatever its unigram rank, and nothing else about the file
-    changes. Every test here fails against the packer as it stood before that option existed.
+    changes.
     """
 
     def test_a_word_below_the_cutoff_becomes_a_head_when_named(self) -> None:
@@ -505,11 +503,10 @@ class ExtraHeadsTest(unittest.TestCase):
             self.assertEqual(["шалтырат"], report["extra_heads_dropped_for_no_pairs"])
 
     def test_the_list_may_not_add_a_word_the_dictionary_does_not_ship(self) -> None:
-        """The border the mission dossier draws: heads are not a dictionary.
+        """The head list may only promote shipped words; it cannot add words to the dictionary.
 
-        Promoting a shipped word is a decision about suggestions. Adding an unshipped word would
-        be a decision about the word list itself, which this file must never be able to make —
-        so a word outside the shipped vocabulary stops the generation instead of being skipped.
+        A word outside the shipped vocabulary therefore stops the generation instead of being
+        skipped.
         """
         with TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)
@@ -543,7 +540,7 @@ class ExtraHeadsTest(unittest.TestCase):
 
 
 class ShippedExtraHeadListTest(unittest.TestCase):
-    """The list that actually ships is data, and data can rot — so it is checked, not trusted."""
+    """Checks the shipped head list against the shipped Tatar dictionary."""
 
     LISTING = REPOSITORY_ROOT / "scripts" / "bigram_extra_heads_tat.txt"
     DICTIONARY = (
@@ -556,24 +553,21 @@ class ShippedExtraHeadListTest(unittest.TestCase):
             self.DICTIONARY, pack.coverage.language_for("tat")
         )
         words = pack.read_extra_heads(self.LISTING, vocabulary)
-        # 3 177 = 75 (13 первого отбора IMPERATIVE-HEADS, ранги [10 000, 15 000) + 62 слова
-        # расширенного правила части B CORPUS-CONVERSATIONAL-TT, ранги [15 000, 40 000)) +
-        # 3 102 слова правила EXPAND-1 (2026-09-23, ROADMAP-P4 P5a: частотный ранг >= 10 132,
-        # >= 10 вхождений в разговорном обучении tt_conv_train90 — правило воспроизводится
-        # scripts/bigram_extra_heads_conv.py).
+        # The list has two parts: the imperative rule (frequency ranks [10 000, 40 000)) and
+        # the conversational rule (frequency rank >= 10 132 and >= 10 occurrences
+        # in the tt_conv_train90 training set; reproduced by scripts/bigram_extra_heads_conv.py).
         self.assertEqual(3_177, len(words))
         for expected in ("кил", "кит", "шалтырат", "сөйлә", "утыр", "җибәр", "эшлә", "укы"):
             self.assertIn(expected, words)
-        # Образцы правила EXPAND-1 (первые строки его секции файла).
+        # Samples of the conversational rule (the first lines of its section in the file).
         for expected in ("абага", "абау", "абзар"):
             self.assertIn(expected, words)
 
     def test_no_named_word_is_reachable_by_the_cutoff_the_asset_was_packed_with(self) -> None:
         """If the cutoff ever grows past one of these, the line is dead weight in the file.
 
-        H = 10 132 is the number docs/IMPERATIVE-HEADS.md derives and the shipped asset was
-        packed with; a word inside it would be promoted twice over and its line here would say
-        something untrue about why it is a head.
+        H = 10 132 is the cutoff the shipped asset was packed with; a word inside it would be a
+        head anyway, and its line would give a false reason for why it is a head.
         """
         vocabulary, frequencies = pack.read_shipped_vocabulary(
             self.DICTIONARY, pack.coverage.language_for("tat")
@@ -644,7 +638,7 @@ V3_WORDS = ["әни", "өйгә", "кайтты", "зур", "матур"]
 
 
 def _v3_table() -> tuple[bytes, list[str], bytes]:
-    """Корректная schema-3 таблица над маленьким словарём: (raw, слова, sha256 словаря-raw)."""
+    """A valid schema-3 table over a small dictionary: (raw, words, sha256 of the raw dictionary)."""
     with TemporaryDirectory() as raw_directory:
         asset_path = _write_asset(Path(raw_directory), V3_WORDS)
         parsed_dictionary = dictionary_pack.validate_asset(asset_path.read_bytes())
@@ -683,7 +677,7 @@ class Schema3RoundTripTest(unittest.TestCase):
     def test_pack_and_validate_round_trip(self) -> None:
         raw, words, dictionary_sha = _v3_table()
         parsed = pack.validate_raw_v3(raw, words, dictionary_sha)
-        self.assertEqual(["зур", "әни"], parsed.head_words)  # кодпоинтный порядок
+        self.assertEqual(["зур", "әни"], parsed.head_words)  # code-point order
         self.assertEqual(["матур"], parsed.successes_by_head["зур"])
         self.assertEqual(["өйгә", "кайтты"], parsed.successes_by_head["әни"])
 
@@ -753,7 +747,7 @@ class Schema3ValidatorRejectsTest(unittest.TestCase):
         raw, words, _ = _v3_table()
         deltas_offset = struct.unpack_from("<I", raw, 32)[0]
         changed = bytearray(raw)
-        changed[deltas_offset] = 0  # дельта второй головы: 1 → 0
+        changed[deltas_offset] = 0  # delta of the second head: 1 -> 0
         with self.assertRaises(pack.BigramFormatError):
             pack.validate_raw_v3(bytes(_rechecksum_v3(bytes(changed))), words)
 
@@ -761,7 +755,7 @@ class Schema3ValidatorRejectsTest(unittest.TestCase):
         raw, words, _ = _v3_table()
         counts_offset = struct.unpack_from("<I", raw, 40)[0]
         changed = bytearray(raw)
-        changed[counts_offset] = 3  # было 2; сумма 4 ≠ pairCount 3
+        changed[counts_offset] = 3  # was 2; sum 4 != pairCount 3
         with self.assertRaises(pack.BigramFormatError):
             pack.validate_raw_v3(bytes(_rechecksum_v3(bytes(changed))), words)
 
@@ -769,7 +763,7 @@ class Schema3ValidatorRejectsTest(unittest.TestCase):
         raw, words, _ = _v3_table()
         success_offset = struct.unpack_from("<I", raw, 44)[0]
         changed = bytearray(raw)
-        changed[success_offset] = 90  # varint 90 при словаре из 5 слов
+        changed[success_offset] = 90  # varint 90 with a 5-word dictionary
         with self.assertRaises(pack.BigramFormatError):
             pack.validate_raw_v3(bytes(_rechecksum_v3(bytes(changed))), words)
 

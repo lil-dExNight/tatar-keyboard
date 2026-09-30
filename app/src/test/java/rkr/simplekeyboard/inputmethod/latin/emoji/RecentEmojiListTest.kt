@@ -24,7 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2b-3 pure MRU model and its fail-closed codec, exercised entirely on the plain JVM.
+ * The pure MRU model and its fail-closed codec, exercised entirely on the plain JVM.
  */
 class RecentEmojiListTest {
 

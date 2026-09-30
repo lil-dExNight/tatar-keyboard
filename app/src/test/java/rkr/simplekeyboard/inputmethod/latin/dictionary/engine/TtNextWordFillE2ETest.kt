@@ -32,27 +32,21 @@ import java.nio.ByteBuffer
 import java.security.MessageDigest
 
 /**
- * TT-NEXTWORD-FILL task B/C (docs/TT-NEXTWORD-FILL.md): the NEXT_WORD strip after a committed
- * word, end to end on the real shipped assets with the production wiring (P3 suffix rules + TATAR
- * fuzzy policy + after-word forms + the global top-frequency fallback).
+ * The NEXT_WORD strip after a committed word, end to end on the real shipped assets with the
+ * production wiring (suffix rules, TATAR fuzzy policy, after-word forms and the global
+ * top-frequency fallback).
  *
- * The operator's scenario (2.0.0): after accepting `сәләм` the strip offered only `сәләмә`; after
- * accepting `сәләмә` it went empty. Now: `сәләм` is no bigram head and has exactly one attested
- * form, so the strip is `[сәләмә, һәм, белән]` — the fallback fills the two cells the bigrams and
- * forms leave free; after `сәләмә` (no successors, no forms) it is `[һәм, белән, да]` — the
- * global top words. A bigram head (сәлам) still shows only its successors. The top-8 list is
- * derived from the real asset through the new [TdictPrefixIndex.topFrequentWords] API and pinned
- * as literals.
- *
- * 2026-09-29: the strip is three cells again (the four-cell wave of 2026-09-27 reverted). The
- * Tatar table STAYS packed at K = 4 — `TatBigrPrefixIndex.MAX_RESULTS` = 3 reads the first three
- * successors of a row whose fourth stays as unread headroom (see the pins below).
+ * `сәләм` is no bigram head and has one attested form, so the strip is `[сәләмә, һәм, белән]`:
+ * the fallback fills the cells the bigrams and forms leave free. After `сәләмә` (no successors,
+ * no forms) it is `[һәм, белән, да]`, the global top words. A bigram head (сәлам) still shows only
+ * its first three stored successors (`TatBigrPrefixIndex.MAX_RESULTS` = 3).
  */
 class TtNextWordFillE2ETest {
 
     @Test
     fun theTatarTop8DrivesTheFallbackCells() {
-        // Derived through the new API and pinned as literals: the order the fallback offers.
+        // Derived through [TdictPrefixIndex.topFrequentWords] and pinned as literals: the order
+        // the fallback offers.
         assertEquals(
             listOf("һәм", "белән", "да", "бу", "дә", "дип", "ул", "өчен"),
             requireNotNull(tatarIndex).topFrequentWords(8),
@@ -79,9 +73,9 @@ class TtNextWordFillE2ETest {
 
     @Test
     fun aBigramHeadStillShowsOnlyItsSuccessors() {
-        // сәлам is a head with 4 stored successors (the K = 4 table stays shipped); the read caps
-        // at three (TatBigrPrefixIndex.MAX_RESULTS), so the strip is the first three and the fourth
-        // (хатлары) is the unread headroom of the 2026-09-29 revert — no form, no fallback cell.
+        // сәлам is a head with 4 stored successors; the read caps at three
+        // (TatBigrPrefixIndex.MAX_RESULTS), so the strip is the first three and the fourth
+        // (хатлары) is not read — no form, no fallback cell.
         // The successor белән is ALSO a top-8 word: the dedup rule is exercised here structurally
         // (it must not appear twice, and the fallback never runs at all).
         val result = tatarPredict("сәлам")
@@ -93,9 +87,8 @@ class TtNextWordFillE2ETest {
     @Test
     fun theCommittedWordIsNeverReOffered() {
         // һәм IS the global top word: committing it must not put it back on the strip. It is also
-        // a bigram head — the K = 4 table's first three successors fill the whole strip (the
-        // fourth, ул, is the unread headroom; pre-repack the third cell was the fallback белән),
-        // minus the committed word itself.
+        // a bigram head: its first three stored successors fill the whole strip (the fourth, ул,
+        // is not read), minus the committed word itself.
         val result = tatarPredict("һәм")
         assertFalse(result.contains("һәм"))
         assertEquals(listOf("башка", "аның", "фән"), result)

@@ -1,8 +1,9 @@
 """Top-3 next-word hit-rate on HELD-OUT CONVERSATIONAL text.
 
-This is the E5a metric, moved onto the register the keyboard is actually used in.
+This is the bigram prototype's metric (scripts/bigram_pack.py), moved onto the register the
+keyboard is actually used in.
 
-Denominator (identical to E5a/E5d runtime rule, so the number measures a function the product
+Denominator (identical to the runtime rule, so the number measures a function the product
 really has): every position inside a held-out line where the PREVIOUS token passed
 normalize_word and stands in the same line. Line starts and positions after a rejected token
 are not events. An event with no prediction counts as a MISS.
@@ -17,7 +18,7 @@ Three tables are compared on the same events:
 
 An exact merged rebuild is NOT possible from what is downloaded: the shipped asset stores the
 ORDER of successors but not their counts, and the Leipzig sentence archives that produced them
-are not present. What that would cost is written up in docs/CORPUS.md.
+are not present.
 """
 from __future__ import annotations
 import json, sys

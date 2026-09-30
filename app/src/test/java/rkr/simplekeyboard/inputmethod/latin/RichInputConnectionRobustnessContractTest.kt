@@ -23,16 +23,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The structural half of the 2026-09-25 input-robustness fix wave
- * (docs/SECURITY-AUDIT-2026-09-25-FIXES.md) for [RichInputConnection]: the paste fallback
- * wiring (F1), the dead-editor guards (F6), the batch pairing of deleteSelectedText (F5), and
- * the reload's threading contract (F8 — the apply runs on the UI thread against a re-verified
- * selection; F10 — coalescing, and the staleness check before the IPC).
- *
- * Plus the S8 pins of the 2026-09-29 wave (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): every
- * editor call site wrapped against a hostile host's RuntimeException, and every host-provided
- * payload bounded to the cache window at the reload writers. The behavioral halves of both live
- * in [HostileHostRobustnessTest].
+ * Structural pins for [RichInputConnection]: the paste fallback wiring, the dead-editor guards,
+ * the batch pairing of deleteSelectedText, the reload's threading contract (the apply runs on the
+ * UI thread against a re-verified selection; reloads coalesce and check staleness before the IPC),
+ * every editor call wrapped against a host's RuntimeException, and every host payload bounded to
+ * the cache window. The behavioral side is in [RichInputConnectionRobustnessTest] and
+ * [HostileHostRobustnessTest].
  *
  * Asserted by source for the same reason as [CommitPathConnectionContractTest]: these paths
  * need a live `LatinIME`, a `ClipboardManager` and a real `Handler`, none of which exist in a
@@ -63,7 +59,7 @@ class RichInputConnectionRobustnessContractTest {
         bodyOf("public void reloadTextCache() {", "private void finishReloadTextCache()")
     }
 
-    // --- F1 ---------------------------------------------------------------------------------
+    // --- Paste fallback ---------------------------------------------------------------------
 
     @Test
     fun thePasteThresholdIsPinnedAndGuardsTheDirectCommit() {
@@ -81,7 +77,7 @@ class RichInputConnectionRobustnessContractTest {
         )
     }
 
-    // --- F6 ---------------------------------------------------------------------------------
+    // --- Dead-editor guards -----------------------------------------------------------------
 
     @Test
     fun theDeadEditorGuardsSitBeforeAnyMutation() {
@@ -109,7 +105,7 @@ class RichInputConnectionRobustnessContractTest {
         assertTrue("and guards the context-menu action", pasteRefresh < pasteGuard && pasteGuard < contextMenu)
     }
 
-    // --- F5 ---------------------------------------------------------------------------------
+    // --- Batch pairing ----------------------------------------------------------------------
 
     @Test
     fun deleteSelectedTextClosesItsBatchInFinally() {
@@ -121,7 +117,7 @@ class RichInputConnectionRobustnessContractTest {
         assertTrue("and closes in finally", tryOpen < finallyOpen && finallyOpen < end)
     }
 
-    // --- F10 --------------------------------------------------------------------------------
+    // --- Reload coalescing and staleness ----------------------------------------------------
 
     @Test
     fun theReloadCoalescesAndChecksStalenessBeforeTheIpc() {
@@ -146,7 +142,7 @@ class RichInputConnectionRobustnessContractTest {
         )
     }
 
-    // --- F8 ---------------------------------------------------------------------------------
+    // --- Reload threading -------------------------------------------------------------------
 
     @Test
     fun theBackgroundSectionNeverWritesTheCache() {
@@ -207,8 +203,8 @@ class RichInputConnectionRobustnessContractTest {
             "the finally posts the bare completion (stale/disconnected/dying-editor paths)",
             reloadBody.contains("mLatinIME.mHandler.post(this::finishReloadTextCache);"),
         )
-        // S8 (2026-09-29): the F10 property survives the hostile-host catch — a throwing editor
-        // degrades to the same bare completion, never to a stuck flag. The catch is
+        // A throwing editor also ends in the same bare completion, never in a stuck in-flight
+        // flag. The catch is
         // RuntimeException-only (the binder's failure surface), pinned to the wrapper by
         // BatchEditPairingContractTest.
         assertTrue(
@@ -217,7 +213,7 @@ class RichInputConnectionRobustnessContractTest {
         )
     }
 
-    // --- S8: hostile-host payload bounds -----------------------------------------------------------
+    // --- Hostile-host payload bounds -----------------------------------------------------------
 
     @Test
     fun theReloadBoundsEveryHostPayloadToTheWindow() {
@@ -251,11 +247,11 @@ class RichInputConnectionRobustnessContractTest {
         )
     }
 
-    // --- S8: the throwing-binder degrade -------------------------------------------------------------
+    // --- Throwing binder calls -----------------------------------------------------------------
 
     /**
      * Every `mIC.` call in the class sits between a `try {` and its `catch (final RuntimeException`
-     * within its method body. The count anchors live in BatchEditPairingContractTest (11 catches,
+     * within its method body. The count anchors live in BatchEditPairingContractTest (catch count,
      * RuntimeException-only) and InputConnectionBinderContractTest (the call inventory); this pin
      * makes each individual site prove its own wrapping, so a refactor that drops one try/catch
      * pair goes red even when the counts stay right.

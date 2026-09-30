@@ -22,15 +22,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Feature C, settings leg: the learned-emoji third of the "Personal dictionary" screen —
+ * The learned-emoji part of the "Personal dictionary" screen —
  * the learned word → emoji entries listed per language ("word → emoji", usage count), per-entry
  * delete, per-language "Clear all", the global erase covering all THREE stores, and the quarantine
  * card for an unreadable emoji file.
  *
  * The store half of every mutation named here is exercised for real in the personalstore tests.
  * What is left is the controller wiring and the Activity, which cannot run off-device, so they are
- * pinned by source in the established style — every predicate fail-capable against the shape it
- * replaced.
+ * pinned by source; every predicate is also checked against a broken input.
  *
  * The rules being pinned:
  *
@@ -124,7 +123,7 @@ class PersonalEmojiScreenSourceContractTest {
         assertTrue("and the band is unbound at once",
             clearing.contains("PersonalEmojiDictionaries.notifyErased()"))
         // The global erase covers ALL THREE stores — an "erase everything" that left the learned
-        // emoji behind would read as a lie the suggestions keep contradicting.
+        // emoji behind would be contradicted by the suggestions.
         val erase = bodyOf(host, "private fun showErasePersonalDictionaryDialog(", "\n    /**")
         assertTrue("the words half", erase.contains("controller.eraseAll(subtypeIds)"))
         assertTrue("the pairs half", erase.contains("pairController.eraseAll(subtypeIds)"))

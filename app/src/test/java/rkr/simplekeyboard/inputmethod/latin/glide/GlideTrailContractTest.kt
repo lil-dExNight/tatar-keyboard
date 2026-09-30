@@ -6,15 +6,15 @@ import org.junit.Test
 import java.io.File
 
 /**
- * The P7-5 glide-feedback contract, pinned at source level (same reason as
- * [GlideTouchIntegrationContractTest]: PointerTracker's static state needs a live Resources,
- * and the view needs a real window — the behavioral halves live in GlideTrailTest and the
- * device-side GlidePointerDeviceTest).
+ * The glide-feedback contract, pinned at source level (same reason as
+ * [GlideTouchIntegrationContractTest]: PointerTracker's static state needs a live Resources, and
+ * the view needs a real window — the behavioral halves live in GlideTrailTest and the device-side
+ * GlidePointerDeviceTest).
  *
  * What is pinned here: the trail feed sits exactly inside the two armed-glide branches (so the
- * preference-off path is dead by construction), the hover is graphics-only (no preview, no
- * listener), every glide terminal ends the feedback, the view draws the trail on top of the
- * keys from preallocated state, and the theme carries the trail color.
+ * trail never runs with the preference off), the hover is graphics-only (no preview, no listener),
+ * every glide terminal ends the feedback, the view draws the trail on top of the keys from
+ * preallocated state, and the theme carries the trail color.
  */
 class GlideTrailContractTest {
 
@@ -34,8 +34,7 @@ class GlideTrailContractTest {
     @Test
     fun theTrailFeedSitsExactlyInsideTheArmedBranches() {
         // Two call sites: the armed branch, and the tracking branch that just armed. With the
-        // preference off the decider sits in REJECTED, neither branch runs, and the trail stays
-        // dead — the pref-off path is inert by construction.
+        // preference off the decider sits in REJECTED, neither branch runs, and no trail is fed.
         var count = 0
         var from = 0
         while (true) {
@@ -108,7 +107,7 @@ class GlideTrailContractTest {
             draw.contains("paint.setAlpha((int)(mGlideTrail.alphaAt(i + 1) * fadeFactor));"))
         assertTrue("the draw is a plain polyline on the preallocated paint",
             draw.contains("canvas.drawLine("))
-        // P7-7: the fade-out after the lift — bounded self-scheduling from the draw pass.
+        // The fade-out after the lift: bounded self-scheduling from the draw pass.
         assertTrue("the fade reschedules one frame at a time",
             draw.contains("postInvalidateDelayed(FADE_FRAME_MS)"))
         assertTrue("a spent fade clears the ring and stops the schedule",
@@ -152,10 +151,9 @@ class GlideTrailContractTest {
             "app/src/main/res/values/themes-tatar.xml",
         )
         assertTrue(tatar.contains("<item name=\"glideTrailColor\">@color/ios_glide_trail</item>"))
-        // The 2026-09-25 recolor: Gboard-style near-white (iOS systemGray6) instead of the
-        // accent blue. The literal is pinned so a "harmless" palette edit cannot silently
-        // recolor the trail; the color lives only in values/colors.xml — one near-white
-        // serves both themes (dark keys/background keep it clearly visible).
+        // Gboard-style near-white (iOS systemGray6) instead of the accent blue. The literal is
+        // pinned so a palette edit cannot silently recolor the trail; the color lives only in
+        // values/colors.xml — one near-white serves both themes.
         val colors = read(
             "src/main/res/values/colors.xml",
             "app/src/main/res/values/colors.xml",

@@ -1,26 +1,12 @@
 #!/usr/bin/env python3
-"""Build the deterministic Tatar Keyboard emoji panel asset from emoji-test.txt.
+"""Build the emoji panel asset from Unicode Emoji 15.1 ``emoji-test.txt``.
 
-The tool uses only the Python standard library. The input is the locally
-downloaded Unicode Emoji 15.1 ``emoji-test.txt`` with a pinned SHA-256; the
-output is ``app/src/main/assets/emoji/emoji_set_v1.txt``, a deterministic
-UTF-8/LF text asset (data, not code).
-
-The generator is fail-closed. It exits with a nonzero status and writes no
-partial asset when:
-
-* the input SHA-256 does not match the pin,
-* the version declared in the file header is not 15.1,
-* a sequence is duplicated,
-* a top-level category (group) is unknown,
-* the input is not valid UTF-8, or
-* either guardrail is breached (asset > 65536 bytes or > 1400 entries).
-
-Set composition (see ``docs/DICTIONARY-E2.md``): only ``fully-qualified``
-records are kept; from them, every sequence that contains a skin-tone modifier
-(U+1F3FB..U+1F3FF), a ZWJ (U+200D), a regional indicator (U+1F1E6..U+1F1FF), or
-a tag code point (U+E0020..U+E007F) is cut. Cutting is done by code point, never
-by a literal list. Keycap sequences and single emoji carrying VS16 stay.
+Input: a locally downloaded ``emoji-test.txt`` (pinned SHA-256). Output:
+``app/src/main/assets/emoji/emoji_set_v1.txt``, a deterministic UTF-8/LF asset. Only
+``fully-qualified`` records are kept, minus every sequence with a skin-tone modifier, a ZWJ,
+a regional indicator or a tag code point (cut by code point, never by a literal list).
+Exits nonzero without writing output on a pin or version mismatch, a duplicate sequence,
+an unknown group, invalid UTF-8, or a breached size/entry guardrail.
 """
 
 from __future__ import annotations
@@ -37,14 +23,14 @@ from pathlib import Path
 from typing import Sequence, TextIO
 
 
-# Pinned input identity: Unicode Emoji 15.1 emoji-test.txt (Date 2023-06-05).
-# The SHA-256 is the binding pin; the version string is a readable cross-check.
+# Pinned input identity: Unicode Emoji 15.1 emoji-test.txt.
+# The SHA-256 is the check; the version string is a readable cross-check.
 EXPECTED_INPUT_SHA256 = (
     "d876ee249aa28eaa76cfa6dfaa702847a8d13b062aa488d465d0395ee8137ed9"
 )
 EXPECTED_UNICODE_VERSION = "15.1"
 
-# Guardrails. A change to either number is a written decision, not a silent bump.
+# Guardrails on the output size.
 MAX_ASSET_BYTES = 65536
 MAX_ENTRIES = 1400
 
@@ -61,8 +47,8 @@ VERSION_PREFIX = "# Version:"
 GROUP_PREFIX = "# group:"
 
 # Pinned allowlist of emoji-test.txt top-level groups, in canonical file order.
-# An input group outside this set is an unknown category and fails closed; this
-# guards against a future Unicode version introducing a group without review.
+# An input group outside this set is an unknown category and stops the build, so a
+# future Unicode version cannot add a group without review.
 KNOWN_GROUPS = (
     "Smileys & Emotion",
     "People & Body",
@@ -85,7 +71,7 @@ SECTION_HEADER_RE = re.compile(r"^#[a-z][a-z0-9-]*$")
 
 
 class EmojiPackError(ValueError):
-    """A fail-closed generator error (exit 2)."""
+    """A generator error; nothing is written (exit 2)."""
 
 
 class EmojiGuardrailError(EmojiPackError):

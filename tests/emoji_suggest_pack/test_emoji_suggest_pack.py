@@ -3,11 +3,10 @@
 
 A synthetic TSV and a tiny panel asset drive both the unit surface (TSV
 parsing, denylist, conflicts, guardrails) and the CLI contract (exit codes,
-fail-closed writes). What is pinned there is the CONTRACT of the tool, not the
-data. The committed-asset tests pin the shipped data: SHA-256, record counts,
-positive controls, the polysemy denylist and a checklist of ~170 frequent
-Russian trap words that must never map to an emoji (the acceptance metric of
-mission 1 in docs/EMOJI-SUGGEST-PLAN.md is zero false positives on that list).
+fail-closed writes). These tests pin the tool's contract, not the data.
+The committed-asset tests pin the shipped data: SHA-256, record counts,
+positive controls, the polysemy denylist and a checklist of frequent Russian
+trap words that must never map to an emoji.
 """
 
 from __future__ import annotations
@@ -277,9 +276,8 @@ class CliContractTest(unittest.TestCase):
             self.assertEqual(out.read_bytes(), b"OLD CONTENT")
 
 
-# ~170 frequent Russian words that must NEVER map to an emoji: function words,
-# auxiliaries and the polysemy cases measured in docs/EMOJI-SUGGEST-RESEARCH.md.
-# Zero hits on this checklist is the acceptance metric of mission 1.
+# Frequent Russian words that must NEVER map to an emoji: function words,
+# auxiliaries and polysemous words. The shipped asset must have zero hits here.
 TRAP_WORDS = frozenset("""
 можно работа работаю день нет пока здесь очень когда если жизнь рука дело
 и в не на я ты он она оно мы вы они что это как так все ещё уже только тоже также
@@ -296,7 +294,7 @@ TRAP_WORDS = frozenset("""
 кошелек
 """.split())
 
-# Positive controls from the mission brief: exact (language, word) -> emoji.
+# Positive controls: exact (language, word) -> emoji.
 POSITIVE_CONTROLS = {
     ("ru", "сердце"): "❤️",
     ("ru", "сердца"): "❤️",
@@ -307,15 +305,15 @@ POSITIVE_CONTROLS = {
     ("tt", "йөрәккә"): "❤️",
     ("tt", "сәлам"): "👋",
     ("tt", "эш"): "💼",
-    # M4a: ru-only понятия получили tt-строки; M4b: конфузибл «йорэк».
+    # Concepts that used to have only Russian rows; «йорэк» is йөрәк typed with
+    # Russian look-alike letters.
     ("tt", "әтәч"): "🐓",
     ("tt", "кәҗә"): "🐐",
     ("tt", "йорэк"): "❤️",
     ("tt", "жыр"): "🎵",
 }
 
-# The shipped asset is pinned: a data change is a written decision that also
-# updates these numbers (and the review protocol of docs/emoji-suggest/DATA.md).
+# The shipped asset is pinned: a data change must update these numbers too.
 EXPECTED_ASSET_SHA256 = "54171e32bdf3be6883dc6ffcbcf603257753cb4e6eaa5d20b5b38cd0def42c99"
 EXPECTED_LINE_COUNT = 3976
 EXPECTED_RU_ENTRIES = 2501

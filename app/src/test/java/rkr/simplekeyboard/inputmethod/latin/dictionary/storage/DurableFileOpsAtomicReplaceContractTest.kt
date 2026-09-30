@@ -28,11 +28,10 @@ import java.io.FileDescriptor
 import java.io.IOException
 
 /**
- * The new `DurableFileOps.atomicReplace` (E4a-2) must REPLACE an existing destination, while
- * `atomicRename` must keep its deliberate throw-on-existing-destination behaviour — D1b's staged
- * publication retention depends on it, so its semantics are unchanged. Exercised through the
- * interface default (JVM); the production `Os.rename`-based override is device-only. The 16
- * `AtomicDictionaryStoreTest` cases prove D1b end to end and remain green without edits.
+ * `DurableFileOps.atomicReplace` must replace an existing destination, while `atomicRename` must
+ * keep throwing on an existing destination, because staged-publication retention depends on it.
+ * Exercised through the interface default on the JVM; the production `Os.rename`-based override
+ * is covered only on a device.
  */
 class DurableFileOpsAtomicReplaceContractTest {
     @get:Rule

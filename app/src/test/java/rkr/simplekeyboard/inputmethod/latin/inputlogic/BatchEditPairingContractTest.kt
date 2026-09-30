@@ -23,23 +23,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-09-25 audit, F5 (docs/SECURITY-AUDIT-2026-09-25-FIXES.md): every
- * beginBatchEdit/endBatchEdit pair in `InputLogic` and `RichInputConnection` is a try/finally —
- * a RuntimeException from a dying editor mid-edit must not skip the endBatchEdit and stick the
- * batch nest level forever.
+ * Every beginBatchEdit/endBatchEdit pair in `InputLogic` and `RichInputConnection` is a
+ * try/finally, so a RuntimeException from a dying editor mid-edit cannot skip the endBatchEdit and
+ * leave the batch nest level stuck.
  *
- * 2026-09-29 audit wave, S8 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the F5 "nothing is
- * caught" doctrine was scoped to the pairing fix; the hostile-host review then made the
- * propagation itself the hole — an uncaught editor RuntimeException rides the UI thread up and
- * kills the IME process. Every editor call in `RichInputConnection` now sits in a
- * `catch (final RuntimeException e)` that degrades silently (the F6 dead-editor idiom; the
- * catch keeps the finally's batch-close reachable, never replaces it). `InputLogic` still has
- * no catch at all: it reaches the editor only through the wrapper (O6-pinned), so absorbing
- * the failure there covers every one of its paths.
+ * An uncaught editor RuntimeException would also reach the UI thread and kill the IME process, so
+ * every editor call in `RichInputConnection` sits in a `catch (final RuntimeException e)` that
+ * returns silently; the catch keeps the finally's batch close reachable and never replaces it.
+ * `InputLogic` has no catch at all: it reaches the editor only through that wrapper.
  *
  * Asserted by source because both classes need a live `LatinIME` to run; the regexes are kept
- * honest by the count anchors at the bottom (nine batches in InputLogic, one in
- * RichInputConnection.deleteSelectedText).
+ * honest by the batch-count anchors at the bottom.
  */
 class BatchEditPairingContractTest {
 
@@ -142,7 +136,7 @@ class BatchEditPairingContractTest {
         )
     }
 
-    /** The F7 sibling of the pairing: the negative-range guard ahead of the recapitalization. */
+    /** Next to the pairing: the negative-range guard ahead of the recapitalization. */
     @Test
     fun performRecapitalizationRefusesANegativeSelectionLength() {
         val body = files.getValue("InputLogic")

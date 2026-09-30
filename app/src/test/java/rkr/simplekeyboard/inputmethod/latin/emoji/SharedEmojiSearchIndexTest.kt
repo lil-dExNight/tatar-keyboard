@@ -26,11 +26,11 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Audit 2026-09-02, C7: one parsed [EmojiSearchIndex] per process, however many consumers ask.
+ * One parsed [EmojiSearchIndex] per process, however many consumers ask.
  * The two production consumers (the suggestion strip's spoken names and the panel search) live on
  * different background executors, so the tests drive [SharedEmojiSearchIndex] through its
  * injectable opener — the production one only adds `assets.open` — and assert identity, not just
- * equality: a second parsed copy is exactly the bug being fixed.
+ * equality: a second parsed copy would defeat the sharing.
  */
 class SharedEmojiSearchIndexTest {
 

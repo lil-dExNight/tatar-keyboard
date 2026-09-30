@@ -25,18 +25,12 @@ import java.io.File
  * Two rules that live in the wiring rather than in any pure class, pinned at the source level
  * because neither can be reached from a plain JVM test.
  *
- * Both come from `docs/DEVICE-RESEARCH-GEOMETRY.md`:
- *
- *  * **Р-3** — every text a keyboard surface draws is sized in **dp**, never in **sp**. Each of
- *    them sits in a band of fixed dp height (the suggestion strip 40dp, the tab row 44dp, the
- *    search query row 46dp, a section header 30dp), and the system font scale grows only the
- *    text. At
- *    `font_scale 2.0` the strip degraded to `Мини… · Минем · Мини…` — two of three cells
- *    indistinguishable, for exactly the people who need a large font. The letter keys were always
- *    measured in dp; these surfaces now follow the same rule.
- *  * **Р-1** — the emoji panel reserves the user's "Bottom offset" just as the letter keyboard
- *    does. Without it the panel filled the strip the user had deliberately freed and the two
- *    surfaces jumped apart when they swapped.
+ *  * Every text a keyboard surface draws is sized in **dp**, never in **sp**. Each surface is a
+ *    row of fixed dp height (suggestion strip, tab row, search query row, section header), so sp
+ *    text would grow with the system font scale inside a row that does not: at `font_scale 2.0`
+ *    the strip cells truncate until they are indistinguishable. The letter keys use dp too.
+ *  * The emoji panel reserves the user's "Bottom offset" just as the letter keyboard does;
+ *    otherwise the panel fills the space the user freed and the two surfaces jump when swapped.
  */
 class KeyboardSurfaceMetricsSourceContractTest {
 
@@ -63,7 +57,7 @@ class KeyboardSurfaceMetricsSourceContractTest {
             "rkr/simplekeyboard/inputmethod/keyboard/KeyboardSwitcher.java"
     }
 
-    /** Р-3: no keyboard surface may size text in sp. */
+    /** No keyboard surface may size text in sp. */
     @Test
     fun keyboardSurfacesSizeTheirTextInDpNotSp() {
         for (path in listOf(STRIP, PANEL, SEARCH)) {
@@ -97,7 +91,7 @@ class KeyboardSurfaceMetricsSourceContractTest {
         }
     }
 
-    /** Р-1: the switcher hands the keyboard's bottom offset to the panel when it shows it. */
+    /** The switcher hands the keyboard's bottom offset to the panel when it shows it. */
     @Test
     fun switcherHandsTheBottomOffsetToThePanel() {
         val text = source(SWITCHER)
@@ -111,7 +105,7 @@ class KeyboardSurfaceMetricsSourceContractTest {
         )
     }
 
-    /** Р-1: and the panel adds it to what it reserves at the bottom, on top of the bar overlap. */
+    /** And the panel adds it to what it reserves at the bottom, on top of the bar overlap. */
     @Test
     fun panelReservesTheBottomOffsetTogetherWithTheBarOverlap() {
         val text = source(PANEL)

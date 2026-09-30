@@ -24,9 +24,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * U1+U2 (docs/AUDIT-2026-08-31.md): the Tatar layout showed "$" on the currency key and "ABC"
- * on the symbols-layer return key, because locale tt had no texts table and fell back to
- * TEXTS_DEFAULT. Tatar typography follows Russian, so tt resolves to TEXTS_ru — this pins the
+ * Tatar typography follows Russian, so locale tt resolves to TEXTS_ru instead of falling back to
+ * TEXTS_DEFAULT (which would show "$" on the currency key and "ABC" on the symbols-layer return
+ * key). This pins the
  * user-visible consequences (₽, «АБВ», Russian „“ quotes) and the currency switch that routes
  * the tt symbols layer through "!text/keyspec_currency" instead of the hardcoded dollar style.
  */
@@ -43,14 +43,14 @@ class KeyboardTextsTableTatarTest {
         assertSame(ru, ttRU)
     }
 
-    /** U1: the currency key on the Tatar ?123 layer is the ruble sign, not the dollar. */
+    /** The currency key on the Tatar ?123 layer is the ruble sign, not the dollar. */
     @Test
     fun tatarCurrencyIsTheRubleSign() {
         assertEquals("₽", KeyboardTextsTable.getText("keyspec_currency", tt))
         assertEquals("₽", KeyboardTextsTable.getText("keyspec_currency", ttRU))
     }
 
-    /** U2: the return-to-letters key on the Tatar ?123 layer reads «АБВ», not "ABC". */
+    /** The return-to-letters key on the Tatar ?123 layer reads «АБВ», not "ABC". */
     @Test
     fun tatarToAlphaLabelIsCyrillic() {
         assertEquals("АБВ", KeyboardTextsTable.getText("keylabel_to_alpha", tt))
@@ -58,7 +58,7 @@ class KeyboardTextsTableTatarTest {
             "keylabel_to_alpha", KeyboardTextsTable.getTextsTable(Locale.forLanguageTag("en"))))
     }
 
-    /** U2: Tatar quotes are the Russian „“/‚‘ pairs, not the English default “”/‘’. */
+    /** Tatar quotes are the Russian „“/‚‘ pairs, not the English default “”/‘’. */
     @Test
     fun tatarQuotesFollowRussianTypography() {
         assertEquals("!text/double_9qm_lqm", KeyboardTextsTable.getText("double_quotes", tt))
@@ -68,9 +68,9 @@ class KeyboardTextsTableTatarTest {
     }
 
     /**
-     * The texts table alone is not enough for U1: key_styles_currency.xml must route language
-     * "tt" into key_styles_currency_generic (keySpec="!text/keyspec_currency"), otherwise the
-     * switch falls through to the hardcoded dollar style and the table value is never read.
+     * The texts table alone does not set the ruble sign: key_styles_currency.xml must route
+     * language "tt" into key_styles_currency_generic (keySpec="!text/keyspec_currency"), otherwise
+     * the switch falls through to the hardcoded dollar style and the table value is never read.
      */
     @Test
     fun currencySwitchRoutesTatarToTheGenericRubleStyle() {

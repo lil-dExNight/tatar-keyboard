@@ -1,59 +1,12 @@
 #!/usr/bin/env python3
-"""Build the pinned Tatar suggestion-eval set (TT-SUGGESTIONS phase P0).
+"""Build the Tatar suggestion eval set: Tatoeba sentences held out of bigram training.
 
-The eval set is a held-out slice of Tatoeba Tatar sentences: sentences that did NOT go
-into the conversational training mix ``tt_conv_train90`` the shipped Tatar bigram table
-was trained on (docs/CORPUS-CONVERSATIONAL-TT.md).
-
-Provenance chain, reproduced here exactly so membership is not a guess:
-
-1. ``research/corpus/make_conv_train.py`` converts Tatoeba tt + OpenSubtitles tt into the
-   Leipzig ``id<TAB>sentence`` shape, deduplicating by stripped line content (Tatoeba
-   first). The documented output is 218 552 rows, 12 619 164 bytes, SHA-256
-   ``8420ec0a…82e2``; this script re-runs the converter into a build directory and
-   VERIFIES that digest -- a mismatch means the reconstruction diverged from the
-   documented recipe, which is a hard error (fail-closed), never a fallback.
-2. The documented split keeps rows with ``id % 10 != 1`` for training (``train90``) and
-   holds out ``id % 10 == 1``. Every unique Tatoeba line appears exactly once in the
-   converted stream, so a Tatoeba line is in train90 iff its row id is not 1 mod 10.
-3. Eval candidates are the Tatoeba-origin rows (the first ``tatoeba_unique_kept`` rows of
-   the stream -- Tatoeba is converted first) with ``id % 10 == 1``.
-
-Each candidate is then normalized exactly like the dictionary pipeline normalizes corpus
-tokens: surrounding punctuation is stripped (the ``dict_tokens`` rule of
-research/corpus/corpuslib.py, which mirrors Leipzig word-list semantics) and every token
-goes through ``dictionary_coverage.normalize_word`` (NFC, lowercase, Tatar alphabet
-filter). Tokens that fail normalization are DROPPED -- they can never be dictionary
-entries, so they are not what the eval measures; the surviving tokens joined by single
-spaces are the eval sentence. Sentences with fewer than 3 or more than 12 surviving
-tokens are dropped, normalized duplicates collapse (first occurrence wins), and a
-sentence whose normalized form also appears in normalized train90 is excluded
-(conservative: casing/punctuation variants of a trained sentence are still training
-data).
-
-Selection is a deterministic sample with a pinned seed: candidates are ordered by
-SHA-256 of ``"<seed>\\t<line>"`` and the first ``--limit`` (default 1000) are taken, then
-sorted by Unicode code point for a stable, diff-friendly file. Hash-ordered selection is
-used instead of ``random.Random(seed).sample`` because the latter's algorithm is not
-guaranteed stable across Python versions; this build must be byte-identical everywhere.
-
-Output: UTF-8, LF line endings, ``#`` comment header (attribution + provenance), one
-normalized sentence per line. Written atomically (temp file + rename in the target
-directory). No wall-clock field appears anywhere in the output, so a rebuild over the
-same inputs reproduces the committed file byte for byte.
-
-License: Tatoeba sentences are CC BY 2.0 FR (attribution required -- the header below IS
-the attribution, and app/src/main/assets/dictionaries/NOTICE.txt already covers
-Tatoeba). Only Tatoeba lines are written; no OpenSubtitles sentence is reproduced.
-
-Usage:
-
-    python3 scripts/make_eval_set.py [--corpus-dir research/corpus]
-        [--workdir build/tt-suggestions]
-        [--out app/src/test/resources/tt_eval_sentences.txt]
-        [--limit 1000] [--min-words 3] [--max-words 12]
-
-Prints a JSON stats report to stdout. stdlib only.
+Input: the Tatoeba and OpenSubtitles tt dumps in ``--corpus-dir``; the training mix is rebuilt
+with ``research/corpus/make_conv_train.py`` and checked against CONV_SENTENCES_SHA256.
+Output: ``app/src/test/resources/tt_eval_sentences.txt`` (UTF-8/LF, ``#`` attribution header,
+one normalized sentence per line, byte-identical on rebuild) and a JSON report on stdout.
+Only Tatoeba lines (CC BY 2.0 FR) are written. Exits nonzero without writing output if an
+input or the converter is missing or the rebuilt training mix does not match its digest.
 """
 from __future__ import annotations
 
@@ -81,26 +34,24 @@ TATOEBA_FILE = "Tatoeba-v2026-07-08.tt.txt.gz"
 OPENSUBTITLES_FILE = "OpenSubtitles-v2024.tt.txt.gz"
 CONVERTER = "make_conv_train.py"
 
-# The documented digest of the converted stream (docs/CORPUS-CONVERSATIONAL-TT.md,
-# "Входы": 218 552 rows, 12 619 164 bytes). Verified on every build; a mismatch means
-# the local corpus files or the converter no longer reproduce the documented recipe.
+# Digest, size and line count of the converted training stream. Verified on every build;
+# a mismatch means the local corpus files or the converter no longer reproduce it.
 CONV_SENTENCES_SHA256 = (
     "8420ec0a3c7f329094989ece7cee396ee0dfe987e5e131f91424d7e2e5826b49"
 )
 CONV_SENTENCES_BYTES = 12_619_164
 CONV_SENTENCES_LINES = 218_552
 
-# Pinned sampling seed: the P0 execution date (2026-09-19). It never changes; changing
-# it is a new eval set, not a rebuild.
+# Pinned sampling seed. Changing it produces a new eval set, not a rebuild.
 SAMPLE_SEED = 20260919
 
 DEFAULT_LIMIT = 1_000
 DEFAULT_MIN_WORDS = 3
 DEFAULT_MAX_WORDS = 12
 
-# Characters that may legitimately hug a word inside a Tatoeba sentence -- the exact
-# rule of research/corpus/corpuslib.py (``_EDGE``), kept in sync by value, not by
-# import, so scripts/ stays self-contained.
+# Characters that may hug a word inside a Tatoeba sentence: the rule of
+# research/corpus/corpuslib.py (``_EDGE``), copied by value so scripts/ stays
+# self-contained.
 EDGE_CHARS = "\"'«»„“”‘’()[]{}<>.,!?;:…—–-*_/\\|~`^&#№%+=@$"
 
 HEADER_LINES = (
@@ -130,7 +81,7 @@ HEADER_LINES = (
 
 
 class EvalSetError(ValueError):
-    """A fail-closed eval-set build error (bad inputs or a diverged reconstruction)."""
+    """An eval-set build error (bad inputs or a diverged reconstruction); nothing is written."""
 
 
 @dataclass(frozen=True)
@@ -183,12 +134,11 @@ def normalize_sentence(line: str) -> list[str]:
 
 
 def run_conv_recipe(corpus_dir: Path, workdir: Path) -> ConvRecipe:
-    """Re-run the documented train90 recipe and verify it byte-for-byte.
+    """Re-run the train90 conversion and verify it byte-for-byte.
 
-    Raises ``EvalSetError`` when the corpus inputs or the converter are missing, or when
-    the converted stream does not match the digest recorded in
-    docs/CORPUS-CONVERSATIONAL-TT.md (the reconstruction is then NOT the documented one,
-    and guessing at membership is not an option).
+    ``make_conv_train.py`` converts Tatoeba (first) and OpenSubtitles into Leipzig
+    ``id<TAB>sentence`` rows, deduplicated by content. Raises ``EvalSetError`` when an input or
+    the converter is missing, or the stream does not match CONV_SENTENCES_SHA256.
     """
     converter = corpus_dir / CONVERTER
     tatoeba = corpus_dir / TATOEBA_FILE
@@ -249,7 +199,15 @@ def build_eval_set(
     min_words: int = DEFAULT_MIN_WORDS,
     max_words: int = DEFAULT_MAX_WORDS,
 ) -> EvalBuild:
-    """Build the eval set deterministically; returns lines and provenance data."""
+    """Build the eval set deterministically; returns lines and provenance data.
+
+    Candidates are Tatoeba rows (the first ``tatoeba_rows`` of the stream) with ``id % 10 == 1``;
+    training keeps the rest. Each is tokenized by ``normalize_sentence``; sentences outside
+    [min_words, max_words] are dropped, normalized duplicates collapse (first wins), and any
+    sentence whose normalized form occurs in normalized train90 is excluded. Candidates are
+    ordered by SHA-256 of ``"<seed>\\t<line>"`` (stable across Python versions, unlike
+    ``random.sample``), the first ``limit`` are kept and sorted by code point.
+    """
     if limit <= 0:
         raise EvalSetError("limit must be positive")
     if not 0 < min_words <= max_words:

@@ -42,8 +42,8 @@ import org.w3c.dom.Element
  *  - with showEmojiKey=true **and** the globe enabled there is no emoji key at all: the row has no
  *    width left for a second function key, so the space bar keeps its full width and the emoji
  *    panel moves onto the comma key's long press (see key_styles_settings.xml). Without this the
- *    space bar drops to 30%p — 111dp on a 1080×2280 phone, with its centre 6mm right of the screen
- *    centre — which is the regression this test exists to prevent.
+ *    space bar drops to 30%p — 111dp on a 1080×2280 phone, with its center 6mm right of the screen
+ *    center — which is the regression this test exists to prevent.
  */
 class SpaceKeyLayoutTest {
 

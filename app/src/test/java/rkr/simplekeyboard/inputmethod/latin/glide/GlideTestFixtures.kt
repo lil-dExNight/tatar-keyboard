@@ -44,7 +44,7 @@ internal object GlideTestFixtures {
         listOf(10.8, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711),
     )
 
-    /** The key at index [col] of [row] with the device-modelled edges and the reference y. */
+    /** The key at index [col] of [row] with the device-modeled edges and the reference y. */
     private fun geoKey(
         base: Char,
         row: Int,

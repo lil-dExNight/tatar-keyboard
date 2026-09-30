@@ -466,7 +466,7 @@ class SuggestionsControllerLanguagePriorityTest {
         assertEquals(emptyList<String>(), h.engine(russian).nextWordRequests)
     }
 
-    // --- Цена на UI-потоке ----------------------------------------------------------------------
+    // --- Cost on the UI thread ----------------------------------------------------------------
 
     /**
      * Everything the rule adds to the UI thread itself, measured: dispatching the second lookup and
@@ -474,9 +474,8 @@ class SuggestionsControllerLanguagePriorityTest {
      * worker thread and is measured separately ([LanguagePriorityCostTest]); what is left here is
      * the only work that can ever sit between a keystroke and a frame.
      *
-     * The budget is deliberately loose — this is a few string comparisons and one strip call, so a
-     * whole millisecond is already three orders of magnitude of headroom over what it should cost.
-     * It exists to catch a future change that puts real work on this path, not to police jitter.
+     * The budget is deliberately loose — this is a few string comparisons and one strip call. It
+     * exists to catch a future change that puts real work on this path, not to police jitter.
      */
     @Test
     fun theUiThreadWorkTheRuleAddsPerKeystrokeIsUnderAMillisecond() {

@@ -24,7 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2b-3 controller ↔ recent-store wiring: a tap records through the background executor (never on
+ * Controller ↔ recent-store wiring: a tap records through the background executor (never on
  * the caller thread), the write happens on hide, and a non-empty list shows as the first category.
  */
 class EmojiPanelControllerRecentsTest {

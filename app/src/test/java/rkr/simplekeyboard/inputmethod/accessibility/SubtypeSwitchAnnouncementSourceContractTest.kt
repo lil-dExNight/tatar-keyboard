@@ -21,7 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * U3 source-contract for the TalkBack language-switch announcement. Behavioural TalkBack
+ * Source contract for the TalkBack language-switch announcement. Behavioral TalkBack
  * checks need a device (announceForAccessibility is a framework call), so this guards the
  * frozen shape of the code, in the style of [EmojiPanelAccessibilitySourceContractTest]:
  *
@@ -128,9 +128,9 @@ class SubtypeSwitchAnnouncementSourceContractTest {
 
     @Test
     fun theNewLayoutGeometryReachesTheEngineBeforeTheSubtypeChangeIsAnnounced() {
-        // 2026-09-24 audit, finding 6: onSubtypeChanged may immediately re-derive the band for a
-        // warm engine, and that lookup must already see the NEW layout's neighbor table — not the
-        // one of the layout the user just left.
+        // onSubtypeChanged may immediately recompute the suggestions for a warm engine, and that
+        // lookup must already see the NEW layout's neighbor table — not the one of the layout the
+        // user just left.
         val handler = latinIme
             .substringAfter("public void onCurrentSubtypeChanged(final boolean userInitiated)")
             .substringBefore("private void announceCurrentLanguageForAccessibility()")

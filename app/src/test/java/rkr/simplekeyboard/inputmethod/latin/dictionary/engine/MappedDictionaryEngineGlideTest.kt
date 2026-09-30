@@ -21,9 +21,9 @@ import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
 
 /**
- * P7-3 (docs/GLIDE-PLAN.md): the GLIDE lookup kind through the real engine stack —
- * [LatestOnlyPrefixEngine] token/serial discipline, the [CompositePrefixComputer] seam, the
- * lazily built [GlideDecoderHost] — over a fixture dictionary on the fixture Tatar geometry.
+ * The GLIDE lookup kind through the real engine stack ([LatestOnlyPrefixEngine] token/serial
+ * rules, the [CompositePrefixComputer] seam, the lazily built [GlideDecoderHost]) over a fixture
+ * dictionary on the fixture Tatar geometry.
  *
  * The token discipline pins mirror the NEXT_WORD ones: a glide result is dropped the moment a
  * newer request of ANY kind supersedes it, and a rejected glide request never invalidates a
@@ -47,9 +47,9 @@ class MappedDictionaryEngineGlideTest {
         requireNotNull(GlideTestFixtures.idealPath(word, geometry))
 
     /**
-     * A personal source with a caller-swappable snapshot (docs/GLIDE-PERSONAL.md): each swap
-     * publishes a NEW immutable instance, exactly like the store's `@Volatile` republish on a
-     * learning event, so the tests drive the host's snapshot-identity rebuild for real.
+     * A personal source with a caller-swappable snapshot: each swap publishes a NEW immutable
+     * instance, like the store's `@Volatile` republish on a learning event, so the tests drive the
+     * host's snapshot-identity rebuild for real.
      */
     private class FakePersonalSource : PersonalCandidateSource {
         @Volatile
@@ -119,7 +119,7 @@ class MappedDictionaryEngineGlideTest {
         val prefixToken = requireNotNull(engine.request(1, "tt", utf8("ки")))
         executor.runAll()
 
-        // The glide computed first but its handoff was dropped as stale; only the prefix landed.
+        // The glide computed first but its result was dropped as stale; only the prefix landed.
         assertEquals(1, published.size)
         assertEquals(LookupKind.PREFIX, published.single().kind)
         assertTrue(engine.suppressedStaleResultCount >= 1)
@@ -175,9 +175,8 @@ class MappedDictionaryEngineGlideTest {
     }
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release drops the lazily built glide
-     * word index through the engine's serialized worker; the next glide simply rebuilds it and
-     * answers identically. The mission's pin: after a deallocate, a glide still works.
+     * The idle memory release drops the lazily built glide word index through the engine's
+     * serialized worker; the next glide rebuilds it and answers identically.
      */
     @Test
     fun anIdleReleaseDropsTheIndexAndTheNextGlideRebuildsIt() {
@@ -220,7 +219,7 @@ class MappedDictionaryEngineGlideTest {
         engine.destroy(1, TimeUnit.SECONDS)
     }
 
-    // --- Personal-dictionary glide candidates (docs/GLIDE-PERSONAL.md) -------------------------
+    // --- Personal-dictionary glide candidates -------------------------------------------------
 
     @Test
     fun aLearnedWordDecodesThroughTheWorker() {
@@ -300,7 +299,7 @@ class MappedDictionaryEngineGlideTest {
         executor.runAll()
         assertEquals("сәлинә", published.single().suggestions.first())
 
-        // O2's idle memory release drops the decoder; the rebuild must read the CURRENT
+        // The idle memory release drops the decoder; the rebuild must read the CURRENT
         // snapshot (here unchanged), not a stale one — the word survives.
         engine.releaseGlideIndex()
         executor.runAll()

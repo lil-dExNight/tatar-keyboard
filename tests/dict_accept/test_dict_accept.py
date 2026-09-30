@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Tests for scripts/dict_accept.py and scripts/dict_accept_check.py.
 
-The selection rule (1.9.1: accept everything except formal fragments and
-operator-excluded words) is exercised on synthetic Row objects — no corpora,
+The selection rule (accept everything except formal fragments and
+curator-excluded words) is exercised on synthetic Row objects — no corpora,
 no queue files. The select/pack contract runs on tiny temporary inputs: a
 synthetic baseline dictionary built with dictionary_pack (its SHA-256 pinned
 into the module under test), a two-row queue and a two-word conv-freq file.
 Fail-closed paths are checked both ways: a wrong baseline SHA-256 must stop
 both select and pack. A live-tree test runs dict_accept_check against the
-committed assets and the 1.8.4 baseline and asserts the operator-visible
-invariants the mission promised: no named garbage, no `можна`, silent words
-present.
+committed assets and the shipped-1.8.4 baseline and asserts the invariants the
+curator relies on: no named garbage, no `можна`, silent words present.
 """
 
 from __future__ import annotations
@@ -109,8 +108,8 @@ class FragmentRuleTest(unittest.TestCase):
         self.assertTrue(da.fragment_reason("ме", "rus"))
 
     def test_rus_word_without_vowels_is_fragment(self) -> None:
-        # Порог длины проверяется первым: «щрн» (3 буквы) — «короче 4 букв»,
-        # безгласный диагноз получает слово, прошедшее длину.
+        # The length threshold is checked first: "щрн" (3 letters) is "shorter than 4
+        # letters"; the no-vowel diagnosis goes to a word that passed the length check.
         self.assertEqual(da.fragment_reason("щрнб", "rus"), "ни одной гласной")
         self.assertTrue(da.fragment_reason("щрн", "rus").startswith("короче"))
 
@@ -118,13 +117,13 @@ class FragmentRuleTest(unittest.TestCase):
         self.assertEqual(da.fragment_reason("привет", "rus"), "")
 
     def test_tat_has_no_length_threshold(self) -> None:
-        # «док», «ох», «фу» — живые татарские слова короче четырёх букв.
+        # "док", "ох", "фу" are real Tatar words shorter than four letters.
         self.assertEqual(da.fragment_reason("док", "tat"), "")
         self.assertEqual(da.fragment_reason("ох", "tat"), "")
 
     def test_tat_word_without_vowels_is_fragment(self) -> None:
         self.assertEqual(da.fragment_reason("щгл", "tat"), "ни одной гласной")
-        # Татарские гласные ә, ө, ү считаются гласными.
+        # The Tatar vowels ә, ө, ү count as vowels.
         self.assertEqual(da.fragment_reason("көр", "tat"), "")
 
 
@@ -173,8 +172,8 @@ class PriorVerdictTest(unittest.TestCase):
 
 class DecideTest(unittest.TestCase):
     def test_operator_excluded_wins_over_everything(self) -> None:
-        # `можна` проходит и две-корпусную планку, и порог длины — и всё равно
-        # отклоняется: оператор назвал её поимённо.
+        # `можна` passes both the two-corpora bar and the length threshold and is still
+        # rejected: the curator excluded it by name.
         row = make_row("можна", sources="OpenSubtitles+Tatoeba", freq=99999)
         accepted, rejected = da.decide([row], "rus", frozenset())
         self.assertEqual(accepted, [])
@@ -200,7 +199,7 @@ class DecideTest(unittest.TestCase):
         self.assertIn("single-source", accepted[0][2])
 
     def test_cap_ratio_no_longer_decides(self) -> None:
-        # 1.9.1: регистровая улика — метка в деталях, а не отказ.
+        # Capitalization evidence is a label in the details, not a rejection.
         accepted, _ = da.decide(
             [make_row("вася", cap_ratio=0.9)], "rus", frozenset())
         self.assertEqual(accepted[0][1], "operator-widened")
@@ -268,8 +267,8 @@ class SelectPackContractTest(unittest.TestCase):
         self.assertEqual(rus["rejected_by_rule"],
                          {"fragment": 1, "operator-excluded": 1})
         tat = report["languages"]["tat"]
-        self.assertEqual(tat["accepted"], 2)  # сәлам + док (без порога длины)
-        self.assertEqual(tat["rejected"], 1)  # щгл — ни одной гласной
+        self.assertEqual(tat["accepted"], 2)  # сәлам + док (no length threshold)
+        self.assertEqual(tat["rejected"], 1)  # щгл has no vowel
 
     def test_accepted_tsv_rows_carry_rule_and_detail(self) -> None:
         code, _ = self._run_select()
@@ -343,13 +342,13 @@ class SelectPackContractTest(unittest.TestCase):
         with patched(QUEUE=self.queues, OUT_DIR=self.out_dir,
                      BASELINE_SHA256=self.pins):
             shipped, accepted, entries = da.merged_entries("rus", self.baseline)
-        # Состав — поставляемое плюс принятое (давай через two-corpora,
-        # работала через shipped-paradigm); отклонённое (ме, можна) не входит.
+        # Contents: shipped plus accepted words (давай via two-corpora, работала via
+        # shipped-paradigm); rejected words (ме, можна) are left out.
         words = {w for w, _ in entries}
         self.assertEqual(words, set(RUS_WORDS) | {"давай", "работала"})
         freqs = dict(entries)
-        # Частота — письменная плюс разговорная, у каждого слова состава;
-        # train_freq очереди в ассет НЕ идёт (у «давай» её 1000, вошло 100).
+        # Frequency is written plus conversational for every word; the queue's train_freq
+        # does NOT go into the asset ("давай" has 1000 there, 100 went in).
         self.assertEqual(freqs["мама"], 200 + 5)
         self.assertEqual(freqs["давай"], 100)
         self.assertEqual(freqs["папа"], 100 + 1)
@@ -361,7 +360,7 @@ class SelectPackContractTest(unittest.TestCase):
 
 
 class DictAcceptCheckLiveTreeTest(unittest.TestCase):
-    """dict_accept_check against the committed assets and the 1.8.4 baseline."""
+    """dict_accept_check against the committed assets and the shipped-1.8.4 baseline."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -385,8 +384,8 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
                 self.report[tag]["operator_excluded_in_dictionary"], [])
 
     def test_tatar_me_was_shipped_not_accepted(self) -> None:
-        # `ме` в татарском словаре стоит с Leipzig-времён — это измеренный факт
-        # из шапки dict_accept_check.py, а не провал правила приёмки.
+        # `ме` has been in the Tatar dictionary since it was built from Leipzig alone
+        # (see the header of dict_accept_check.py); it is not a failure of the acceptance rule.
         self.assertEqual(
             self.report["tat"]["operator_garbage_already_shipped"], ["ме"])
         self.assertEqual(self.report["rus"]["operator_garbage_already_shipped"],
@@ -399,23 +398,21 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
                                      msg=f"{tag}: {word} не попал в словарь")
 
     def test_added_and_displaced_counts_match_the_documented_rules(self) -> None:
-        # rus, как в 1.9.1: отсечка 100 000, разговорные слова вытесняют хвост Leipzig
-        # ровно на своё число.
+        # rus: cutoff 100 000; conversational words displace the same number of words
+        # from the Leipzig tail.
         self.assertEqual(self.report["rus"]["entries_after"], 100_000)
         self.assertGreater(self.report["rus"]["words_added"], 0)
         self.assertEqual(self.report["rus"]["words_added"],
                          self.report["rus"]["words_displaced"])
-        # tat, с 2026-09-20 (TT-SUGGESTIONS P2, docs/TT-SUGGESTIONS.md): отсечка поднята
-        # до 110 000 именно чтобы словоформы никого не вытесняли — добавлено ровно
-        # 10 000 слов к составу 1.8.4 (948 разговорных против 303 при старой отсечке,
-        # плюс 9 052 допущенных словоформы), вытеснено 0.
+        # tat: cutoff 110 000, so that the admitted word forms displace nothing; the added
+        # conversational words and word forms fill exactly the extra 10 000 entries.
         self.assertEqual(self.report["tat"]["entries_after"], 110_000)
         self.assertEqual(self.report["tat"]["words_added"], 10_000)
         self.assertEqual(self.report["tat"]["words_displaced"], 0)
 
     def test_mozhna_pair_shows_single_word_on_prefix(self) -> None:
-        # Условие готовности tt-dict-widen: на префиксе `можн` нет пары
-        # `можно | можна` — `можна` исключена оператором поимённо.
+        # On the prefix `можн` there is no `можно | можна` pair: the curator excluded
+        # `можна` by name.
         top3 = self.report["rus"]["prefix_top3"]["можн"]["after"]
         self.assertNotIn("можна", top3)
         self.assertIn("можно", top3)

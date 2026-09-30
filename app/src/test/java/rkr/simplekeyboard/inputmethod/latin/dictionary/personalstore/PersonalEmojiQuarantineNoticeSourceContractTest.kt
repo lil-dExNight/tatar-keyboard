@@ -22,16 +22,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Feature C (docs/EMOJI-LEARN.md), the emoji sibling of the IME half of
- * [PersonalQuarantineNoticeSourceContractTest]: the learned-emoji store raises the same
- * quarantine notice the words and pairs stores raise, and the path from the store's worker to
- * the sentence the user reads is wired exactly the same way — listener in `onCreate`, dialog
- * that consumes the notice only when it really shows, deferred boundary in
- * `onStartInputViewInternal`, drop in `onDestroy`.
+ * The learned-emoji store raises the same quarantine notice as the words and pairs stores, and
+ * the IME wires it the same way as in [PersonalQuarantineNoticeSourceContractTest]: listener in
+ * `onCreate`, a dialog that consumes the notice only when it really shows, the deferred boundary
+ * in `onStartInputViewInternal`, and the drop in `onDestroy`.
  *
- * The store half is exercised for real in [PersonalEmojiStoreWriteTest]; what is pinned here by
- * source cannot run off-device. Every predicate is proved fail-capable against the shape it
- * replaced, in the last test.
+ * The store half runs for real in [PersonalEmojiStoreWriteTest]; the IME half needs a live
+ * service, so it is checked from source. The last test shows every check fails on the old shape.
  */
 class PersonalEmojiQuarantineNoticeSourceContractTest {
 
@@ -118,8 +115,8 @@ class PersonalEmojiQuarantineNoticeSourceContractTest {
     // --- fail-capability ------------------------------------------------------------------------
 
     /**
-     * The shapes this pinning replaced: the emoji store shipped with the notice API but no IME
-     * listener, no dialog and no boundary. Fed to the checks above, they must come out red.
+     * Shapes without the wiring (notice API present, but no IME listener, dialog or boundary).
+     * Fed to the checks above, they must fail.
      */
     @Test
     fun thePredicatesRejectTheShapesTheyReplaced() {

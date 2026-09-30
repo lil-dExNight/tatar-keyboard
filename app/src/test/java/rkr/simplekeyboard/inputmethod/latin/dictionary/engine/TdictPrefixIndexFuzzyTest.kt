@@ -70,7 +70,7 @@ class TdictPrefixIndexFuzzyTest {
         assertEquals(listOf("балалар", "балә", "бәла"), result)
     }
 
-    // Rule 4 (characterization): with no fuzzy candidates the order is exactly D1's.
+    // Rule 4 (characterization): with no fuzzy candidates the order is exactly the exact-only one.
     @Test
     fun withNoNeighborTableTheResultIsByteForByteTheD1Result() {
         val entries = listOf(
@@ -82,7 +82,7 @@ class TdictPrefixIndexFuzzyTest {
             "бар" to 100L,
         )
         val withoutTable = index(entries, withTable = false)
-        // Identical to the frozen D1 expectation in TdictPrefixIndexTest.
+        // Identical to the frozen expectation in TdictPrefixIndexTest.
         assertEquals(listOf("бала", "балан", "балчык"), lookup(withoutTable, "бал"))
         assertEquals(listOf("балан", "балалар"), lookup(withoutTable, "бала"))
     }
@@ -178,11 +178,11 @@ class TdictPrefixIndexFuzzyTest {
         assertTrue("many=$many bytes/lookup", many <= 8L)
     }
 
-    // TT-TYPO-NEXT Phase C (G3-C): the same allocation contract with edit class #4 engaged — the
-    // calibrated Tatar policy {1, 4}, so the heavy arm runs the probe-first full substitution
-    // (152 probes, 0 survivors, 0 scanned variants). Both prefixes return the SAME empty result
-    // (the result-list materialization of a non-empty lookup is pre-existing and out of scope);
-    // the probe path and the bonus branch are primitive arithmetic — they allocate nothing.
+    // The same allocation contract with edit class #4 engaged: under the Tatar policy {1, 4} the
+    // heavy arm runs the probe-first full substitution (probes only, 0 survivors, 0 scanned
+    // variants). Both prefixes return the SAME empty result (materializing a non-empty result is
+    // out of scope); the probe path and the bonus branch are primitive arithmetic and allocate
+    // nothing.
     @Test
     fun perLookupAllocationWithTheTatarPolicyDoesNotDependOnTheNumberOfProbes() {
         val bean = ManagementFactory.getThreadMXBean() as? ThreadMXBean
@@ -198,7 +198,7 @@ class TdictPrefixIndexFuzzyTest {
         )
         index.updateKeyNeighbors(tatarTable)
         // "abc": no letter is in the table at all -> 0 variants, 0 probes. "мсмә": 4 code points
-        // with an empty exact pass -> the class #4 gate fires; with the Phase-C2 range narrowing
+        // with an empty exact pass -> the class #4 gate fires; with the empty-range narrowing
         // only positions 0 ("*смә", whole dictionary) and 1 ("м*мә", the "мин" range) are probed —
         // 2 x 38 = 76 probes, no survivor.
         val fewVariants = ImmutableUtf8Prefix.copyOf("abc".toByteArray(Charsets.UTF_8))

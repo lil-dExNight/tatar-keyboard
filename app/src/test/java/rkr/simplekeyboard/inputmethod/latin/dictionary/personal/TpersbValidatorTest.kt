@@ -27,10 +27,9 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramTe
 import java.io.File
 
 /**
- * The `.tpersb` format contract (P1 of Phase 2, docs/ROADMAP-P2.md): the fail-closed validator
- * accepts exactly what the writer produces and rejects everything else — structure, checksum,
- * subtype, UTF-8, casing, alphabet, length, ordering and duplicates. The mirror of
- * [TpersValidatorTest] for word pairs.
+ * The `.tpersb` format contract: the validator accepts exactly what the writer produces and
+ * rejects everything else — structure, checksum, subtype, UTF-8, casing, alphabet, length,
+ * ordering and duplicates. The mirror of [TpersValidatorTest] for word pairs.
  */
 class TpersbValidatorTest {
     @get:Rule
@@ -79,7 +78,7 @@ class TpersbValidatorTest {
 
     @Test
     fun aOneLetterPairMemberIsAccepted() {
-        // The P1 floor is 1 code point — «а» is an ordinary Tatar word.
+        // The length floor is 1 code point — «а» is an ordinary Tatar word.
         val validated = validate(PersonalBigramTestFixtures.build(listOf(Entry("а", "б"))))
         assertEquals(1, validated.pairCount)
     }

@@ -22,10 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * O4 of `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`: the board's draw loop, pinned at the source
- * level (no Robolectric here, by design — the discipline of the other *SourceContract tests).
- *
- * What these pins freeze:
+ * Pins the keyboard's draw loop, checked from source (there is no Robolectric in this project):
  * - a key press invalidates the touched key's RECT, never the whole board, and the press/release
  *   plumbing routes through `invalidateKey(Key)`;
  * - the offscreen buffer is redrawn only for invalidated keys, one indexed loop, no collection

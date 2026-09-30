@@ -11,17 +11,14 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * The schema-3 (SIZE-2) sibling of the E5b validator contract: one test per corruption class —
- * чужой magic, schema ≠ 3, неверная версия/размер заголовка/алгоритм checksum, несовпадение
- * checksum, сырого SHA-256 или SHA-256 СЛОВАРЯ против пина (связка таблицы со словарём),
- * неканоническая арифметика секций, ненулевые reserved-байты, нулевой/переполненный счётчик
- * голов, пустой диапазон преемников, нулевая дельта индекса головы, немонотонные записи
- * блочного индекса, сумма u8-счётчиков ≠ pairCount, хвостовые байты — плюс zlib-классы
- * ([TatBigrValidator.inflateAsset]), зеркально [TdictValidatorTest].
+ * One test per corruption class of the schema-3 bigram table, mirroring [TdictValidatorTest]:
+ * foreign magic, wrong schema, version, header size or checksum algorithm; checksum, raw SHA-256
+ * or linked-dictionary SHA-256 mismatch; non-canonical section layout; nonzero reserved bytes;
+ * zero or overflowing head count; empty successor range; zero head-index delta; non-monotonic
+ * block index; u8 counts not summing to pairCount; trailing bytes; plus the zlib classes.
  *
- * Класса «id ≥ размера словаря» здесь нет: у schema 3 нет собственного словаря преемников —
- * верхнюю границу индексов проверяет `TatBigrPrefixIndex.open`, у которого словарь есть
- * (см. KDoc [TatBigrValidator]).
+ * There is no "index beyond the dictionary" class: schema 3 carries no word list, so the upper
+ * bound of indices is checked by `TatBigrPrefixIndex.open`, which has the dictionary.
  */
 class TatBigrValidatorTest {
     @get:Rule
@@ -49,32 +46,14 @@ class TatBigrValidatorTest {
             BigramArtifactSpec.TATAR_BIGRAMS_V1,
         )
 
-        // Schema 3 since 2026-09-01 (SIZE-2, docs/SIZE-SCHEMA3.md): content carried over from the
-        // schema-2 asset verbatim — 10 204 heads and 40 734 pairs are the 2026-08-31
-        // conversational repack's (docs/CORPUS-CONVERSATIONAL-TT.md); only the encoding changed.
-        // Repacked 2026-09-20 (TT-SUGGESTIONS P2) against the 110 000-entry dictionary: the head
-        // set is identical (generated forms enter far below the H = 10 132 cutoff) and the same
-        // three -гәнчә converbs are dropped pairless; ten pairs whose successor was outside the
-        // old dictionary now count (бервакытта → бернәрсәдә, …), so the pair total moves
-        // 40 734 -> 40 735. Repacked 2026-09-23 (ROADMAP-P4 batch A, docs/ROADMAP-P4.md): T7
-        // drops the 4th stored successor per head and P5a adds 2 950 EXPAND-1 heads (with 152
-        // pairless conversational candidates dropped alongside the same three converbs —
-        // known_asset_drift.json 3/0 -> 155/0). Repacked 2026-09-27 at K = 4 (the four-cell
-        // strip, T7 reopened): the head set is untouched, the 4th stored successor per head adds
-        // 12 610 pairs (38 874 -> 51 484).
+        // Pins of the committed schema-3 table (packed at K = 4 successors per head); re-pin when
+        // the asset is rebuilt.
         assertEquals(13_154, validated.headCount)
         assertEquals(170_471, validated.rawSize)
         assertEquals(51_484, validated.pairCount)
     }
 
-    /**
-     * The ru table shipped in 1.8.x with no test against its real committed bytes while the tt
-     * table had one; both are pinned since the K = 4 repack.
-     *
-     * Schema 3 since 2026-09-01 (SIZE-2): the 9 998 heads / 39 949 pairs of the 2026-08-31
-     * conversational repack (docs/CORPUS-CONVERSATIONAL-RU.md), cross-referenced into the
-     * shipped Russian dictionary instead of carrying own word blobs.
-     */
+    /** The committed Russian table validates against its spec; its counts are pinned too. */
     @Test
     fun acceptsCommittedRussianBigramAssetWithFrozenProvenance() {
         val validated = validateCommitted(

@@ -13,15 +13,13 @@ internal data class TestBigramArtifact(
 )
 
 /**
- * Builds fixture TATBIGR schema-3 files (SIZE-2, docs/SIZE-SCHEMA3.md) from a head ->
- * ordered-successes list plus the word list of the dictionary the table cross-references; the
- * same role [DictionaryTestFixtures] plays for the dictionary itself. Callers list heads in
- * code-point ascending order themselves (the validator enforces strictly increasing dictionary
- * indices, this builder does not re-sort) — the same discipline [DictionaryTestFixtures.raw]
- * expects of its entries. The default dictionary is exactly the heads and successes involved,
- * sorted; the default dictionary SHA is [DEFAULT_DICTIONARY_SHA], matching the fixture identity
- * of `EngineTestFixtures` so a fixture dictionary index opens a fixture table without pinning
- * real hashes.
+ * Builds fixture TATBIGR schema-3 files from a head -> ordered-successors list plus the word
+ * list of the dictionary the table references, as [DictionaryTestFixtures] does for the
+ * dictionary. Callers list heads in code-point order (the validator requires strictly increasing
+ * dictionary indices; this builder does not re-sort). The default dictionary is exactly the
+ * heads and successors involved, sorted, identified by [DEFAULT_DICTIONARY_SHA], the same
+ * fixture identity as `EngineTestFixtures`, so fixture indexes open fixture tables without
+ * pinning real hashes.
  */
 internal object BigramTestFixtures {
     val DEFAULT_DICTIONARY_SHA: String = "a".repeat(64)

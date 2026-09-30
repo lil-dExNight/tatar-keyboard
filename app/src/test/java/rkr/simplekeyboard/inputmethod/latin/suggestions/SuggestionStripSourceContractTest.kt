@@ -33,7 +33,7 @@ class SuggestionStripSourceContractTest {
         for (layout in listOf(normalLayout, v28Layout)) {
             assertTrue(layout.contains("<ViewStub"))
             assertTrue(layout.contains("@layout/suggestion_strip"))
-            // W5 of stage B (docs/ROADMAP-P8-PLAN.md): the strip is 44dp, the iOS tap target.
+            // The strip is 44dp, the iOS tap target.
             assertTrue(layout.contains("android:layout_height=\"44dp\""))
             assertEquals(1, "<rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView".toRegex()
                 .findAll(layout).count())
@@ -150,18 +150,17 @@ class SuggestionStripSourceContractTest {
             sourceRoot(),
             "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView.kt",
         ).readText()
-        // O4 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): a finger sliding inside one cell
-        // redraws nothing — a frame is requested only when the pressed cell actually changes.
-        // invalidate() is view-scoped and the view IS the 44dp band, so this guard is the
-        // finest granularity that pays (under hardware acceleration a per-cell dirty rect
-        // would re-record the same display list anyway).
+        // A finger sliding inside one cell redraws nothing — a frame is requested only when the
+        // pressed cell actually changes. invalidate() is view-scoped and the view IS the 44dp band,
+        // so this guard is the finest granularity that pays (under hardware acceleration a per-cell
+        // dirty rect would re-record the same display list anyway).
         val touchBody = viewSource.substringAfter("override fun onTouchEvent")
             .substringBefore("override fun dispatchHoverEvent")
         assertTrue(touchBody.contains("if (oldPressed != state.pressedCell()) {"))
         assertTrue(touchBody.contains("if (oldPressed != state.pressedCell()) invalidate()"))
     }
 
-    // --- P2 of Phase 3 (docs/ROADMAP-P3.md): the autocorrect preview's emphasis ------------------
+    // --- The autocorrect preview's emphasis ------------------------------------------------------
 
     @Test
     fun theEmphasizedCellDrawsBoldAccentedAndUnderlinedWithNoAllocation() {
@@ -178,13 +177,12 @@ class SuggestionStripSourceContractTest {
         assertTrue(drawBody.contains("state.isEmphasized(cell)"))
         assertTrue(drawBody.contains("emphasisTextPaint"))
         assertTrue(drawBody.contains("canvas.drawLine("))
-        // O4 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the underline width is the cached
-        // content-set measurement, never a per-frame measureText.
+        // The underline width is the cached content-set measurement, never a per-frame measureText.
         assertTrue(drawBody.contains("val halfText = emphasisTextWidthPx / 2f"))
         assertFalse(drawBody.contains("measureText("))
 
-        // The paint is bold by construction, not per frame; the colour is a theme attr with the
-        // plain text colour as the fail-closed default.
+        // The paint is made bold once, not per frame; the color is a theme attr with the plain text
+        // color as the default.
         assertTrue(viewSource.contains("Typeface.create(textPaint.typeface, Typeface.BOLD)"))
         assertTrue(
             viewSource.contains("R.styleable.SuggestionStripView_suggestionEmphasisColor"),
@@ -204,8 +202,8 @@ class SuggestionStripSourceContractTest {
             sourceRoot(),
             "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView.kt",
         ).readText()
-        // O4 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the one text measurement of the band
-        // lives in the publication path, next to the ellipsize it must agree with.
+        // The one text measurement of the band lives in the publication path, next to the ellipsize
+        // it must agree with.
         assertTrue(viewSource.contains("private var emphasisTextWidthPx = 0f"))
         val rebuildBody = viewSource.substringAfter("private fun rebuildDisplaySuggestions()")
             .substringBefore("private fun clearDisplaySuggestions()")
@@ -229,15 +227,15 @@ class SuggestionStripSourceContractTest {
             main,
             "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt",
         ).readText()
-        // The seam is a default no-op, so a surface written before P2 simply never emphasizes.
+        // The seam is a default no-op, so a surface that does not implement it never emphasizes.
         assertTrue(controller.contains("fun setEmphasizedCell(cell: Int) {}"))
         // The single band writer publishes the marker with the words, never apart from them.
         val showBandBody = controller.substringAfter("private fun showBand(")
             .substringBefore("    /**")
         assertTrue(showBandBody.contains("strip.setEmphasizedCell(emphasizedCell)"))
-        // 2026-09-25 audit: the emphasis (which runs the publication's one display rebuild in the
-        // view) goes BEFORE the spoken labels — the label lookup reads the emoji index and can
-        // fail, and sitting between words and emphasis it stranded the band half-published.
+        // The emphasis (which runs the publication's one display rebuild in the view) goes BEFORE
+        // the spoken labels: the label lookup reads the emoji index and can fail, and between words
+        // and emphasis it would leave the band half-published.
         val emphasisAt = showBandBody.indexOf("strip.setEmphasizedCell(")
         val labelsAt = showBandBody.indexOf("strip.setSpokenCellLabels(")
         assertTrue("showBand must send the emphasis before the spoken labels",
@@ -287,7 +285,7 @@ class SuggestionStripSourceContractTest {
         val commitBody = inputLogic.substringAfter("public boolean commitChosenSuggestion")
             .substringBefore("public int getCurrentRecapitalizeState()")
 
-        // Fail-closed second line of defense, before any edit reaches the editor.
+        // Second line of defense (refuse, edit nothing), before any edit reaches the editor.
         assertTrue(
             commitBody.indexOf("startsWithWordCharacter(mConnection.getCachedTextAfterCursor())")
                 in 0 until commitBody.indexOf("deleteTextBeforeCursor"),
@@ -305,10 +303,9 @@ class SuggestionStripSourceContractTest {
     fun acceptedSuggestionCarriesItsAutoSpaceInsideTheSameCommit() {
         val javaRoot = File(sourceRoot(), "java/rkr/simplekeyboard/inputmethod/latin")
         val inputLogic = File(javaRoot, "inputlogic/InputLogic.java").readText()
-        // D3 made the word replacement a method shared by BOTH insertion paths of the frozen text
-        // contract, so the slice moved from `commitChosenSuggestion` (which now only says "with
-        // auto-space" and delegates) to that shared method. Everything asserted below is unchanged
-        // and still describes the accepted suggestion: it is the same code, in its new single home.
+        // The word replacement is a method shared by BOTH insertion paths (accepted suggestion and
+        // autocorrect); `commitChosenSuggestion` only says "with auto-space" and delegates, so the
+        // slice is the shared method. Everything asserted below describes the accepted suggestion.
         val commitBody = inputLogic.substringAfter("private boolean replaceTrailingWord")
             .substringBefore("public boolean revertTatarAutocorrection")
 
@@ -333,13 +330,12 @@ class SuggestionStripSourceContractTest {
         assertTrue(commitBody.contains("mLastSpaceDownTime = 0"))
     }
 
-    // --- E5d: commitPredictedWord ("Контракт текста" amendment, 2026-08-17, пункт 4) ------------
+    // --- commitPredictedWord: the NEXT_WORD insertion path ---------------------------------------
 
     @Test
     fun commitChosenSuggestionIsByteForByteUnchangedByThisPhase() {
-        // commitChosenSuggestion's own body is a single delegating line; asserting it verbatim is a
-        // full "unchanged" proof for the method itself, not just a partial one — there is no more of
-        // it to diverge. replaceTrailingWord's shared body is proven unchanged separately by
+        // commitChosenSuggestion's own body is a single delegating line, so asserting it verbatim
+        // pins the whole method. replaceTrailingWord's shared body is pinned separately by
         // acceptedSuggestionCarriesItsAutoSpaceInsideTheSameCommit above, unaffected by
         // commitPredictedWord living outside that slice (see the next test).
         val inputLogic = File(
@@ -364,9 +360,8 @@ class SuggestionStripSourceContractTest {
         ).readText()
         val commitBody = inputLogic.substringAfter("public boolean commitPredictedWord(")
             .substringBefore("private static boolean endsWith(final CharSequence text, final String suffix)")
-        // NEXT_WORD never trails an existing prefix to remove — the whole point of the third
-        // insertion path (PROPOSALS.md, "Контракт текста" amendment, "Отдельный путь коммита") —
-        // so this method must never call a delete of any kind.
+        // NEXT_WORD never trails an existing prefix to remove — that is why it has its own
+        // insertion path — so this method must never call a delete of any kind.
         assertFalse(commitBody.contains("deleteTextBeforeCursor"))
         assertFalse(commitBody.contains("deleteSurroundingText"))
     }
@@ -418,11 +413,10 @@ class SuggestionStripSourceContractTest {
             ),
         )
         // The live context word, re-extracted by the exact same algorithm the request was built
-        // with — cache-boundary knowledge included (docs/NEXTWORD-RACE.md): the tap path and the
-        // request path must agree on a first-word-of-field context, or the tap would be refused
-        // as stale — matching expectedContextWord. The knowledge is the connection's provenance
-        // flag (audit 2026-09-02, C6), NOT a length re-derivation, which local cache mutations
-        // (a cursor swipe re-slicing the window, a long backspace run) make lie.
+        // with — cache-boundary knowledge included: the tap path and the request path must agree on
+        // a first-word-of-field context, or the tap would be refused as stale. The knowledge is the
+        // connection's provenance flag, NOT a length re-derivation, which local cache mutations (a
+        // cursor swipe re-slicing the window, a long backspace run) make wrong.
         assertTrue(
             commitBody.contains(
                 "TatarWordUtils.extractNextWordContext(mConnection.getCachedTextBeforeCursor(),",
@@ -438,10 +432,10 @@ class SuggestionStripSourceContractTest {
 
     @Test
     fun theCacheBoundaryKnowledgeIsProvenanceNotLengthInference() {
-        // Audit 2026-09-02, C6: after a local cache mutation (a setSelection re-slice, a
-        // deleteTextBeforeCursor truncation) the cache's length proves nothing about the text
-        // start, so the only place allowed to compare it against the window size is the reload
-        // seam inside RichInputConnection. The two consumers read the provenance flag.
+        // After a local cache mutation (a setSelection re-slice, a deleteTextBeforeCursor
+        // truncation) the cache's length proves nothing about the text start, so the only place
+        // allowed to compare it against the window size is the reload seam inside
+        // RichInputConnection. The two consumers read the provenance flag.
         for (file in listOf("latin/LatinIME.java", "latin/inputlogic/InputLogic.java")) {
             val source = File(sourceRoot(), "java/rkr/simplekeyboard/inputmethod/$file").readText()
             assertFalse(
@@ -453,10 +447,9 @@ class SuggestionStripSourceContractTest {
 
     @Test
     fun noSeparateNextWordPredictionToggleExistsAnywhere() {
-        // PROPOSALS.md, "E5d. Отдельного тумблера предсказаний НЕТ": prediction is governed by the
-        // existing PREF_TATAR_SUGGESTIONS, not by a new PREF_NEXT_WORD_PREDICTION key, reader,
-        // SettingsValues field, switchRow string, or translation — the same logic E4 already applied
-        // to reject two personal-dictionary toggles.
+        // There is no separate next-word prediction toggle: prediction is governed by the existing
+        // PREF_TATAR_SUGGESTIONS, not by a new PREF_NEXT_WORD_PREDICTION key, reader,
+        // SettingsValues field, switchRow string, or translation.
         val settingsRoot = File(sourceRoot(), "java/rkr/simplekeyboard/inputmethod/latin/settings")
         val settings = File(settingsRoot, "Settings.java").readText()
         val settingsValues = File(settingsRoot, "SettingsValues.java").readText()

@@ -28,15 +28,13 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifac
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 
 /**
- * Contract of the shipped sentence-start asset
- * (`assets/dictionaries/tatar_sentstart_v1.txt`, TT-SUGGESTIONS phase P4,
- * `docs/TT-SUGGESTIONS.md`): the frequency-ranked table of Tatar sentence-initial words built by
- * `scripts/sentstart_pack.py`. This test pins the data side the way `EmojiSuggestAssetTest` pins
- * the emoji table: a `#` header carrying the Leipzig attribution, `word<TAB>freq` rows sorted by
- * (frequency desc, word asc), every word in the Tatar alphabet and in the exact normalized form
- * the dictionary is keyed by, and — the packer's strict filter — every word present in the
- * shipped Tatar dictionary. The record count and the SHA-256 are pinned exactly: a data change is
- * a written decision that re-pins them.
+ * Contract of the bundled sentence-start table (`assets/dictionaries/tatar_sentstart_v1.txt`): the
+ * frequency-ranked table of Tatar sentence-initial words built by `scripts/sentstart_pack.py`. This
+ * test pins the data side the way `EmojiSuggestAssetTest` pins the emoji table: a `#` header
+ * carrying the Leipzig attribution, `word<TAB>freq` rows sorted by (frequency desc, word asc),
+ * every word in the Tatar alphabet and in the exact normalized form the dictionary is keyed by, and
+ * — the packer's strict filter — every word present in the bundled Tatar dictionary. The record
+ * count and the SHA-256 are pinned exactly: a data change must re-pin them.
  */
 class TatarSentStartAssetTest {
 
@@ -159,8 +157,8 @@ class TatarSentStartAssetTest {
     }
 
     private companion object {
-        // Measured 2026-09-20 on the committed inputs; re-pin consciously when the table changes
-        // (rebuild recipe in docs/TT-SUGGESTIONS.md, P4 section).
+        // Pinned from the committed table; re-pin deliberately when `scripts/sentstart_pack.py`
+        // rebuilds it.
         const val EXPECTED_RECORD_COUNT = 64
         const val EXPECTED_ASSET_SHA256 =
             "f84e82074fa5a5cdca91c41184e8486a0c0afac951c4e2e1cbcc123afbc22216"

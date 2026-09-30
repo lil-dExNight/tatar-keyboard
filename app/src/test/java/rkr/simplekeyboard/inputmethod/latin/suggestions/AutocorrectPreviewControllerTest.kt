@@ -28,15 +28,15 @@ import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * The P2 state machine of ROADMAP Phase 3 (docs/ROADMAP-P3.md): the autocorrect preview the
- * strip shows WHILE the user types, the keep-typed refusal, and the way the separator-time
- * replacement (D3, pinned in [AutocorrectControllerTest]) composes with it.
+ * The autocorrect preview the strip shows WHILE the user types, the refusal through the typed-word
+ * cell, and the way the separator-time replacement (pinned in [AutocorrectControllerTest]) composes
+ * with it.
  *
- * Unlike the D3 harness, whose fake engine never answers a lookup, this one delivers every
- * result synchronously — the preview lives in the result path, so the band must actually be
- * painted here. The editor fake is the same little text model, and the harness reproduces
- * `LatinIME.onEvent` in the order the service runs it: the separator's correction BEFORE the
- * separator is committed, the backspace undo first, the one `onTextChanged()` after every edit.
+ * Unlike the [AutocorrectControllerTest] harness, whose fake engine never answers a lookup, this
+ * one delivers every result synchronously — the preview lives in the result path, so the band must
+ * actually be painted here. The editor fake is the same little text model, and the harness
+ * reproduces `LatinIME.onEvent` in the order the service runs it: the separator's correction BEFORE
+ * the separator is committed, the backspace undo first, the one `onTextChanged()` after every edit.
  */
 class AutocorrectPreviewControllerTest {
 
@@ -140,9 +140,9 @@ class AutocorrectPreviewControllerTest {
     }
 
     /**
-     * Delivers every result synchronously, exactly as the D3 fake deliberately does NOT: the
-     * preview lives in the result path, so the band must be painted here. The verdict mirror is
-     * unchanged — it belongs to the NEWEST completed PREFIX lookup, and to it only.
+     * Delivers every result synchronously, exactly as the [AutocorrectControllerTest] fake does
+     * NOT: the preview lives in the result path, so the band must be painted here. The verdict
+     * mirror is unchanged — it belongs to the NEWEST completed PREFIX lookup, and to it only.
      */
     private class FakeEngine : EngineHandle {
         val adviceByWord = mutableMapOf<String, AutocorrectAdvice>()
@@ -168,8 +168,8 @@ class AutocorrectPreviewControllerTest {
             subtypeId: String,
             contextWordUtf8: ByteArray,
         ): Any? {
-            // A NEXT_WORD lookup never moves the verdict — the D3 advice belongs to the newest
-            // PREFIX lookup, exactly like CompositePrefixComputer.predict never touches it.
+            // A NEXT_WORD lookup never moves the verdict — the autocorrect advice belongs to the
+            // newest PREFIX lookup, exactly like CompositePrefixComputer.predict never touches it.
             val context = String(contextWordUtf8, Charsets.UTF_8)
             val token = Any()
             callback?.onResult(
@@ -214,7 +214,7 @@ class AutocorrectPreviewControllerTest {
         override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean = true
     }
 
-    /** Records what E4c would have been told, so "a refused correction still learns" is checkable. */
+    /** Records what learning was told, so "a refused correction still learns" is checkable. */
     private class RecordingSink : WordCompletionSink {
         val completions = mutableListOf<String>()
 
@@ -376,7 +376,8 @@ class AutocorrectPreviewControllerTest {
         h.type("п")
 
         // The stale verdict is not announced for "китәп": the marker is gone, and the separator
-        // then does nothing at all — the D3 provenance check, mirrored by the preview's.
+        // then does nothing at all — the separator path's provenance check, mirrored by the
+        // preview's.
         assertEquals(SuggestionStripState.NO_CELL, h.strip.currentEmphasis)
         h.separator(' ')
         assertEquals("китәп ", h.editor.before)
@@ -455,11 +456,11 @@ class AutocorrectPreviewControllerTest {
     @Test
     fun aKeepTypedRefusalIsNotAnAcceptedSuggestionSoTheWordMayStillBeLearned() {
         // The user spelled every letter themselves and then kept the spelling: the clean run
-        // survives the tap, so an unknown word reaches the personal dictionary exactly as it
-        // would with autocorrect off. A correction, by contrast, teaches nothing (D3).
+        // survives the tap, so an unknown word reaches the personal dictionary exactly as it would
+        // with autocorrect off. A correction, by contrast, teaches nothing.
         val h = Harness()
         h.start()
-        // E4c sacrifices the session's first word by contract (it was not seen from its start);
+        // Personal learning skips the session's first word (it was not seen from its start);
         // witness a boundary so the word below is a run of its own.
         h.typeWord("баш")
         h.separator(' ')
@@ -501,7 +502,7 @@ class AutocorrectPreviewControllerTest {
         h.typeWord("китәп")
         h.type("а")
 
-        // The strip no longer shows the preview: a late tap naming its keep-typed cell must do
+        // The strip no longer shows the preview: a late tap naming its typed-word cell must do
         // nothing and must NOT suppress anything either.
         h.tap("китәп")
 
@@ -541,7 +542,8 @@ class AutocorrectPreviewControllerTest {
 
         h.backspace()
 
-        // Byte-for-byte what the user typed, separator included — the D3 undo, unchanged.
+        // Byte-for-byte what the user typed, separator included — the separator-time undo,
+        // unchanged.
         assertEquals("китәп ", h.editor.before)
         assertEquals(
             listOf("replace:китәп->китап", "revert:китап ->китәп "),
@@ -557,7 +559,7 @@ class AutocorrectPreviewControllerTest {
         assertEquals(listOf("китәп", "китап", null), band.cells)
         assertEquals(1, band.emphasized)
 
-        // The refusal path works from here: keep-typed, then the separator commits as-is.
+        // The refusal path works from here: typed-word cell, then the separator commits as-is.
         h.tap("китәп")
         h.separator('.')
         assertEquals("китәп.", h.editor.before)
@@ -580,7 +582,7 @@ class AutocorrectPreviewControllerTest {
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
     }
 
-    // --- Fail-closed -----------------------------------------------------------------------------
+    // --- Switched off or ineligible --------------------------------------------------------------
 
     @Test
     fun withTheToggleOffNoPreviewEverAppearsAndNothingIsCorrected() {

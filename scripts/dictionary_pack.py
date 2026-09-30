@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Build, validate, evaluate, and audit a packed Cyrillic dictionary asset.
 
-The tool uses only the Python standard library. Parsing, normalization, alphabet,
-length, frequency ranking, and tie-breaking come from dictionary_coverage.py.
-
-One binary format serves every language: the language decides only which alphabet the
-corpus rows are filtered by and which size budget the result must fit. ``--language tat``
-is the default and reproduces the D1a Tatar asset byte for byte.
+Parsing, normalization, alphabet, length, frequency ranking and tie-breaking come from
+dictionary_coverage.py. One binary format serves every language; the language only selects
+the alphabet that filters corpus rows. ``--language tat`` is the default.
 """
 
 from __future__ import annotations
@@ -40,18 +37,14 @@ HEADER_SIZE = 72
 CHECKSUM_OFFSET = 40
 CHECKSUM_SIZE = 32
 MAX_U32 = 0xFFFF_FFFF
-# ONE budget for the format, the same for every language. The Russian top-100k measured
-# 606,315 / 2,540,622 bytes against these caps — within a hundred kilobytes of the Tatar one,
-# because Russian words are barely longer (8.9 vs 8.7 code points on average). A per-language
-# budget was considered and dropped: a second, laxer number would only ever be an invitation to
-# ship a bigger artifact without noticing, and there is nothing to buy with it.
+# One size budget per schema, shared by all languages: Russian words are only slightly longer
+# than Tatar ones, so both dictionaries fit the same caps.
 MAX_COMPRESSED_BYTES = 700_000
 MAX_UNCOMPRESSED_BYTES = 2_936_012
-# Schema 2 (SIZE-1, docs/SIZE-SCHEMA2.md): блочный front-coding (K = 8 — замер 2026-09-01
-# на обоих поставляемых словарях дал ему минимум и по zlib-размеру, и по работе декода),
-# u8-длины вместо u32-оффсетов, varint-частоты. Lossless: состав, порядок и частоты
-# побайтно те же, что в schema 1. Бюджеты пересмотрены под измеренное (татарский
-# 502 092 / 1 162 870, русский 540 573 / 1 151 323) с запасом ~10 %/~20 %, как у schema 1.
+# Schema 2: block front coding (K = 8, which gave the smallest zlib size and the least decode
+# work on both shipped dictionaries), u8 lengths instead of u32 offsets, varint frequencies.
+# Lossless: words, order and frequencies are the same as in schema 1. The budgets leave about
+# 10 % (compressed) and 20 % (raw) headroom over the shipped dictionaries.
 SCHEMA_ID_V2 = 2
 FORMAT_VERSION_V2 = 1
 BLOCK_SIZE_V2 = 8
@@ -71,7 +64,7 @@ assert HEADER.size == HEADER_SIZE
 
 
 class DictionaryPackError(ValueError):
-    """Base class for a fail-closed dictionary error."""
+    """Base class for dictionary errors; the command exits nonzero and writes nothing."""
 
 
 class DictionaryInputError(DictionaryPackError):
@@ -174,7 +167,7 @@ def _checksum_with_zeroed_digest(raw: bytes) -> bytes:
 
 
 def _encode_varint(value: int) -> bytes:
-    """Минимальный little-endian base-128 varint; единственная каноничная запись."""
+    """Minimal little-endian base-128 varint, the only canonical encoding."""
     if not 0 <= value <= MAX_U32:
         raise DictionaryInputError(f"varint value is not a u32: {value}")
     out = bytearray()
@@ -189,7 +182,7 @@ def _encode_varint(value: int) -> bytes:
 
 
 def _decode_varint(raw: bytes, offset: int, limit: int) -> tuple[int, int]:
-    """Читает каноничный varint из raw[offset:limit]; возвращает (value, next_offset)."""
+    """Read a canonical varint from raw[offset:limit]; return (value, next_offset)."""
     value = 0
     shift = 0
     cursor = offset
@@ -213,7 +206,7 @@ def _check_canonical_entries(
     entries: Sequence[tuple[str, int]],
     language: coverage.Language,
 ) -> list[tuple[bytes, int]]:
-    """Общие для обеих схем проверки состава: каноничность, сортировка, частоты."""
+    """Entry checks shared by both schemas: canonical words, sort order, frequencies."""
     checked: list[tuple[bytes, int]] = []
     previous_word: str | None = None
     for word, frequency in entries:
@@ -238,14 +231,14 @@ def serialize_entries_v2(
     entries: Sequence[tuple[str, int]],
     language: coverage.Language = coverage.DEFAULT_LANGUAGE,
 ) -> bytes:
-    """Schema 2: блочный front-coding (K = BLOCK_SIZE_V2) + u8-длины + varint-частоты.
+    """Schema 2: block front coding (K = BLOCK_SIZE_V2), u8 lengths, varint frequencies.
 
-    Блок: первое слово целиком (u8 длина + байты), дальше K-1 записей
-    (varint общего байтового префикса с ПЕРВЫМ словом блока + u8 длина суффикса +
-    суффикс), затем K varint-частот в том же порядке. Перед блоками — массив
-    u32-оффсетов их начал (абсолютные), по первым словам блоков работает
-    бинарный поиск. Общий префикс двух валидных UTF-8 строк всегда кончается
-    на границе кодпоинта, поэтому байтовый префикс безопасен.
+    A block holds the first word in full (u8 length + bytes), then K-1 entries (varint length
+    of the byte prefix shared with the block's FIRST word + u8 suffix length + suffix), then
+    K varint frequencies in the same order. The blocks are preceded by an array of absolute
+    u32 block offsets; binary search runs over the first words of the blocks. The common
+    prefix of two valid UTF-8 strings always ends on a code point boundary, so a byte prefix
+    is safe.
     """
     checked = _check_canonical_entries(entries, language)
     if not checked:
@@ -445,8 +438,8 @@ def validate_raw(
     expected_count: int | None = None,
     language: coverage.Language = coverage.DEFAULT_LANGUAGE,
 ) -> ParsedDictionary:
-    # Бюджетный потолок выше обеих схем: переполнение — BudgetError независимо от того,
-    # какая схема записана в заголовке (schema-1 валидатор ужимает до своего лимита сам).
+    # The larger of the two schema caps: exceeding it is a BudgetError whatever schema the
+    # header declares (the schema 1 validator applies its own lower limit itself).
     if len(raw) > max(MAX_UNCOMPRESSED_BYTES, MAX_UNCOMPRESSED_BYTES_V2):
         raise DictionaryBudgetError(
             f"uncompressed dictionary is {len(raw)} bytes; "
@@ -468,11 +461,10 @@ def _validate_header(
     schema_id: int,
     format_version: int,
 ) -> tuple[int, int, int, int, int, int, bytes]:
-    """Общая часть обеих схем: бюджет, магия, версии, контрольная сумма.
+    """Header checks shared by both schemas: budget, magic, versions, checksum.
 
-    Возвращает (entry_count, поле20, поле24, поле28, поле32, file_size, checksum) —
-    семантика полей 20–32 своя у каждой схемы, каноничность раскладки проверяет
-    вызывающий валидатор.
+    Returns (entry_count, field20, field24, field28, field32, file_size, checksum). Fields
+    20-32 mean different things in each schema; the calling validator checks their layout.
     """
     if len(raw) > max_uncompressed:
         raise DictionaryBudgetError(
@@ -779,7 +771,7 @@ def _validate_raw_v1(
 
 
 def _schema_caps(schema_id: int) -> tuple[int, int]:
-    """(max_compressed, max_uncompressed) схемы."""
+    """(max_compressed, max_uncompressed) for the schema."""
     if schema_id == SCHEMA_ID_V2:
         return MAX_COMPRESSED_BYTES_V2, MAX_UNCOMPRESSED_BYTES_V2
     return MAX_COMPRESSED_BYTES, MAX_UNCOMPRESSED_BYTES
@@ -828,12 +820,10 @@ def repack_asset(
     language: coverage.Language = coverage.DEFAULT_LANGUAGE,
     schema: int = SCHEMA_ID_V2,
 ) -> BuiltDictionary:
-    """Перепаковка готового ассета в новую схему без изменения состава.
+    """Repack an existing asset into another schema without changing its entries.
 
-    Источник валидируется строго, записи (слово, частота) сериализуются заново
-    в том же порядке — состав, порядок и частоты lossless по построению, что
-    и доказывает транскодинг v1 → v2. Провал любой проверки — исключение,
-    ничего не пишется (fail-closed, как у build).
+    The source is validated strictly and its (word, frequency) entries are serialized again in
+    the same order. Any failed check raises, and nothing is written.
     """
     parsed = validate_asset(asset, language=language)
     entries = list(zip(parsed.words, parsed.frequencies, strict=True))

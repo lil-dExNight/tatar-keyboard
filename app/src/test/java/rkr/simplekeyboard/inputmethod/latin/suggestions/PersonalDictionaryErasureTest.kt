@@ -26,12 +26,11 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 
 /**
- * «Стёрто значит стёрто» (E4b, раздел «Контракт личного словаря»).
+ * Erased means erased.
  *
  * Erasure must not merely change the NEXT lookup. Without unbinding what is already displayed, the
  * user who has just confirmed the dialog keeps seeing the erased word in the band and can insert it
- * with a tap — through the same single commit path as any other candidate. For a feature whose whole
- * value is that erasing works, that is a defect in the guarantee, not a cosmetic one.
+ * with a tap — through the same single commit path as any other candidate.
  */
 class PersonalDictionaryErasureTest {
 
@@ -175,9 +174,8 @@ class PersonalDictionaryErasureTest {
         val controller = File(sourceRoot(),
             "java/rkr/simplekeyboard/inputmethod/latin/settings/PersonalDictionaryScreenController.kt")
             .readText()
-        // The signature grew a completion callback (mission tt-personal-dict, finding A2): the
-        // screen may not repaint or claim success before the erasure has actually run. What this
-        // test guards — one call, every subtype it is given — is unchanged.
+        // The call also takes a completion callback: the screen may not repaint or claim success
+        // before the erasure has actually run.
         assertTrue("erase-all iterates every subtype it is given",
             controller.contains("fun eraseAll(subtypeIds: List<String>,"))
         assertTrue("the list it loops over is derived from ALL of them",

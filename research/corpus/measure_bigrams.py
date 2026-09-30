@@ -2,17 +2,17 @@
 
 TEST MEASUREMENT ONLY -- no asset under app/src/main/assets is written or replaced.
 
-Pair extraction uses the E5a adjacency rule verbatim (bigram_tokens): whitespace split, and a
-token rejected by normalize_word BREAKS adjacency instead of being transparent. That rule was
-re-tested and kept by tt-bigram-adjacency, so pairs counted here are comparable with the ones
-already in the shipped table. Self-pairs are dropped, as in E5a.
+Pair extraction uses the bigram packer's adjacency rule verbatim (bigram_tokens): whitespace
+split, and a token rejected by normalize_word BREAKS adjacency instead of being transparent, so
+pairs counted here are comparable with the ones already in the shipped table. Self-pairs are
+dropped, as in the packer.
 
 Two separate questions are answered, because they have different answers:
   1. With heads UNCHANGED, how many conversational pairs are new successors, and how many
      would actually change the three cells the strip displays?
   2. With heads RECOMPUTED from merged unigram frequencies at H = 10 000, which heads enter?
-     This is the question that matters, because tt-bigram-adjacency proved the imperatives are
-     silent due to head selection, not due to the adjacency rule.
+     This is the question that matters, because imperatives get no predictions due to head
+     selection, not due to the adjacency rule.
 """
 from __future__ import annotations
 import json, sys
@@ -28,7 +28,7 @@ from measure_filtered import collect, collect_split
 
 H = 10_000
 DISPLAY = 3          # TatBigrPrefixIndex.MAX_RESULTS
-K = 4                # shipped cutoff after tt-bigram-adjacency
+K = 4                # shipped successors per head
 
 SHIPPED_BIGRAMS = {
     "tat": "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
@@ -59,7 +59,7 @@ def main():
     split, freq, ev = collect_split(paths, tag)
     kept, removed = F.apply_filters(freq, ev, tag)
 
-    # Vocabulary rule of E5a: both ends must be in the SHIPPED top-100k. For the "merged"
+    # Vocabulary rule of the packer: both ends must be in the SHIPPED top-100k. For the "merged"
     # variant the vocabulary is the merged top-100k (lower bound -- the conservative one).
     merged = dict(shipped_dict)
     for w, c in kept.items():
@@ -95,7 +95,7 @@ def main():
     # would the displayed three cells change? merge counts: shipped order is known but shipped
     # COUNTS are not stored in the asset, so we can only report displacement candidates.
     # One grouped pass over the pair table, not one pass per head: at Russian OpenSubtitles
-    # scale the per-head rescan of the tt-corpus version would be ten thousand full scans.
+    # scale a per-head rescan would be ten thousand full scans.
     challengers = P.top_successors(conv_pairs, heads_touched, DISPLAY)
     changed = 0
     for head_id in heads_touched:

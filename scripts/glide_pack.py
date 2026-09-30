@@ -1,76 +1,12 @@
 #!/usr/bin/env python3
-"""Build the deterministic synthetic glide-gesture set used to calibrate the glide decoder
-(P7-1 of docs/GLIDE-PLAN.md; mission report docs/ROADMAP-P7.md).
+"""Generate the deterministic synthetic glide-gesture set that calibrates the glide decoder.
 
-The tool uses only the Python standard library, reuses ``scripts/typo_pack.py`` for the
-device-true layout geometry (x edges) and the pinned dictionary reader, and emits a
-reproducible gesture set as a UTF-8/LF text file: one ``word<TAB>x0,y0,t0;x1,y1,t1;...`` row
-per selected word. Given identical inputs the output is byte-for-byte identical across runs
-and hosts: there is no time, locale, path or RNG state in the output, and every random choice
-is a pure function of a fixed seed and the word itself (the same FNV-1a + SplitMix64 primitive
-as ``typo_pack.py``). All coordinate arithmetic is INTEGER-EXACT (the single square root of
-the segment walk is an IEEE-correctly-rounded double on both sides), so the JVM calibration
-test regenerates the identical bytes -- the set file is a build artifact, the SHA-256 pins in
-``tests/glide_pack/`` and in the JVM calibration test are the contract.
-
-Three committed inputs, no fourth:
-
-* the keyboard layout (``res/xml/rows_tatar.xml`` + ``res/values/config.xml`` via typo_pack's
-  device-true x model, plus the vertical model documented below);
-* the committed Tatar dictionary asset (pins inherited from typo_pack);
-* the eval words ``app/src/test/resources/tt_eval_sentences.txt``.
-
-Word selection (mirrored bit-for-bit by the JVM calibration test):
-
-* every eval-file token of >= 5 code points whose letters all have keys and which the
-  dictionary carries;
-* every dictionary word of >= 5 code points whose letters all have keys and whose
-  ``splitmix64(GLIDE_SEED ^ fnv1a64(word)) % DICT_MODULUS == 0`` -- a deterministic ~1/40
-  corpus-side thinning;
-* the union, sorted by code point, one gesture per word.
-
-Vertical model (the x model is typo_pack's): the default 5-row Tatar keyboard
-(``kbd_tatar.xml``: rowHeight 20%p, verticalGap ``config_key_vertical_gap_5row`` 2.814%p,
-top padding ``config_keyboard_top_padding`` 2.335%p) at the default height
-(``config_default_keyboard_height`` 205.6 dp) on the reference screen (1080 px wide,
-440 dpi -- the emulator smoke AVD class). Heights are computed in integer pixels with one
-round-half-up per value (typo_pack's ``_device_round``) and then scaled into the 100 000-unit
-reference grid by the same rule. This is a documented model, not a measurement: the P7-4
-device tuning re-derives the constants from live geometry.
-
-Noise model (per word, draws consumed in this exact order from the SplitMix64 stream seeded
-by ``splitmix64(GLIDE_SEED ^ fnv1a64(word.utf8))``):
-
-1. doubled-letter loop (P7-8): the loop is no longer a draw — the SET carries both variants
-   of a doubled word (``generate_set`` emits the no-jog row first, then the jog row, the two
-   drawn from the same word stream so the pair differs exactly in the detour), because the
-   decoder's P7-8 rule scores a doubled word only against its looped ideal path and the
-   calibration must measure both classes. ``generate_gesture`` takes ``draw_loop`` from the
-   caller;
-2. sampling step: ``STEP_MIN + draw % STEP_VAR`` grid units -- the raw-path sampling density
-   varies per word like a real digitizer's event rate does with finger speed;
-3. timestamp step: ``TSTEP_MIN + draw % TSTEP_VAR`` milliseconds per sample (carried for the
-   touch-side recorder; the scoring channels ignore t);
-4. corner cutting: every interior non-loop vertex is independently (probability
-   1/CUT_MODULUS) pulled halfway toward its chord: ``V' = (P + 2V + Q) / 4`` per coordinate
-   (integer floor division), all decisions taken on the ORIGINAL vertices;
-5. the polyline is walked at the word's sampling step with integer segment lengths
-   (``round(sqrt(dx^2+dy^2))``) and rational (floor-division) interpolation;
-6. smooth wander: the per-point offset from the walked path is a clamped random walk, not
-   independent noise -- real finger paths deviate smoothly, and independent per-sample jitter
-   would inflate the path length far beyond what the decoder's length channel accepts. The
-   initial x/y offsets are two draws in [-JITTER, +JITTER]; every subsequent point first draws
-   an x increment then a y increment, each uniform in [-WANDER, +WANDER], applied and clamped
-   to [-JITTER, +JITTER]. All integer, added after the (already integer) interpolation.
-
-Historical note (2026-09-25): the pre-P7-8 model decided the loop by ``stream %
-LOOP_MODULUS == 0`` with LOOP_MODULUS = 8 -- nominally 12.5 %, but 75.1 % of the selection's
-doubled words drew it (the low bits of the seeded SplitMix64 stream are not uniform enough
-for that modulus; measured, not chased -- the two-row model makes the quirk moot).
-
-The generator is fail-closed exactly like typo_pack: wrong dictionary pins, missing layout or
-eval inputs, an unmappable-alphabet or an empty/over-large set all exit nonzero with no
-partial output.
+Input: the Tatar layout (``rows_tatar.xml``, ``values/config.xml``; x edges via ``typo_pack.py``),
+the bundled Tatar dictionary (pins from ``typo_pack.py``) and ``tt_eval_sentences.txt``.
+Output: one ``word<TAB>x0,y0,t0;x1,y1,t1;...`` UTF-8/LF row per selected word, byte-identical
+for the same inputs. All arithmetic is integer-exact, so the JVM calibration test regenerates
+the same bytes; the SHA-256 pins in ``tests/glide_pack/`` and that test are the contract.
+Exits nonzero without writing output on a pin mismatch, missing inputs or an empty/oversized set.
 """
 
 from __future__ import annotations
@@ -100,17 +36,23 @@ def _load_typo_pack():
 
 typo_pack = _load_typo_pack()
 
-# Dictionary pins are inherited from typo_pack (the committed Tatar top-110k asset).
+# Dictionary pins are inherited from typo_pack (the bundled Tatar dictionary).
 EXPECTED_ASSET_SHA256 = typo_pack.EXPECTED_ASSET_SHA256
 EXPECTED_RAW_SHA256 = typo_pack.EXPECTED_RAW_SHA256
 EXPECTED_ENTRY_COUNT = typo_pack.EXPECTED_ENTRY_COUNT
 
-# --- Deterministic knobs (a change is a written decision, not a silent bump). -------------
+# --- Deterministic knobs. Changing any of them changes the set and its pins. -------------
 GLIDE_SEED = 20260924
-# Word-selection knobs: >= 5 code points (the G1 gate's word class), ~1/40 dictionary thinning.
+# Word selection (mirrored bit-for-bit by the JVM calibration test): every eval-file token and
+# every dictionary word with ``splitmix64(GLIDE_SEED ^ fnv1a64(word)) % DICT_MODULUS == 0``
+# (about 1/40), each of >= 5 code points, all letters on keys, present in the dictionary; the
+# union is sorted by code point, one gesture per word.
 MIN_WORD_CODE_POINTS = 5
 DICT_MODULUS = 40
-# Vertical model (see the module docstring).
+# Vertical model (the x model is typo_pack's): the default 5-row Tatar keyboard (kbd_tatar.xml)
+# at the default height on a 1080 px, 440 dpi reference screen. Heights are integer pixels with
+# one half-up rounding per value, then scaled into the 100 000-unit grid by the same rule. This
+# is a model, not a measurement.
 _REFERENCE_SCREEN_WIDTH_PX = 1080
 _REFERENCE_DENSITY_DPI = 440
 _KEYBOARD_HEIGHT_DP_X10 = 2056  # config_default_keyboard_height = 205.6 dp
@@ -119,9 +61,20 @@ _VERTICAL_GAP_PERCENT_X1000 = 2814  # config_key_vertical_gap_5row = 2.814%p
 _TOP_PADDING_PERCENT_X1000 = 2335  # config_keyboard_top_padding = 2.335%p
 _LETTER_ROWS = 4  # the extra Tatar row plus the three qwerty rows
 _GRID_WIDTH = typo_pack._GEOMETRY_REFERENCE_WIDTH  # 100 000
-# Noise model (see the module docstring). STEP/JITTER are in grid units; TSTEP in ms.
-# LOOP_MODULUS is historical (pre-P7-8 the loop was a 1/LOOP_MODULUS draw; the set now carries
-# both variants of a doubled word) — the constant stays pinned for the golden vectors.
+# Noise model. Draws come in this order from the SplitMix64 stream seeded by
+# ``splitmix64(GLIDE_SEED ^ fnv1a64(word.utf8))``:
+#   1. sampling step: step_min + draw % step_min grid units, step_min = narrowest key width /
+#      STEP_DIVISOR (sampling density varies per word, like a digitizer's rate with finger speed);
+#   2. timestamp step: TSTEP_MIN + draw % TSTEP_VAR ms per sample (the scoring ignores t);
+#   3. corner cutting: each interior non-loop vertex, with probability 1/CUT_MODULUS, moves to
+#      (P + 2V + Q) / 4 (floor division), decided on the original vertices;
+#   4. the polyline is walked at the step with integer segment lengths round(sqrt(dx^2 + dy^2))
+#      and floor-division interpolation;
+#   5. smooth wander: the per-point offset is a random walk clamped to +/-jitter (two initial
+#      draws, then an x and a y increment in +/-wander per point). Independent per-sample jitter
+#      would inflate the path length beyond what the decoder's length channel accepts.
+# A doubled letter is not a draw: the set carries both variants (see generate_set). STEP/JITTER
+# are in grid units, TSTEP in ms. LOOP_MODULUS is unused here; kept for the golden vectors.
 LOOP_MODULUS = 8
 CUT_MODULUS = 10
 STEP_DIVISOR = 6  # step range = [narrowestKeyWidth/6, narrowestKeyWidth/3): ~12-25 device px
@@ -134,7 +87,7 @@ _MASK64 = (1 << 64) - 1
 
 
 class GlidePackError(ValueError):
-    """A fail-closed generator error (exit 2)."""
+    """A generator error; nothing is written (exit 2)."""
 
 
 class GlideGuardrailError(GlidePackError):
@@ -150,7 +103,7 @@ def fnv1a64(data: bytes) -> int:
 
 
 # --------------------------------------------------------------------------------------
-# Geometry: typo_pack's device-true x model plus the documented vertical model.
+# Geometry: typo_pack's device x model plus the vertical model above.
 # --------------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class _Rect:
@@ -187,7 +140,7 @@ def vertical_model() -> tuple[int, int, int]:
 
 
 def read_glide_geometry(layout_dir: Path) -> list[_Rect]:
-    """Device-true letter-key rectangles of the Tatar layout in the 100 000-unit grid."""
+    """Letter-key rectangles of the Tatar layout, as the device computes them, in grid units."""
     pitch, key_height, top = vertical_model()
     rects: list[_Rect] = []
     for geo in typo_pack.read_layout_geometry(layout_dir):
@@ -296,9 +249,8 @@ def generate_gesture(
 ) -> list[tuple[int, int, int]]:
     """One synthetic gesture for ``word`` as (x, y, t) integer samples; see the noise model.
 
-    P7-8: the loop is the CALLER's decision, not a draw — the calibration set carries both
-    variants of a doubled word (the loop-decision draw of the pre-P7-8 model is gone, and the
-    stream starts feeding the step draw immediately).
+    ``draw_loop`` is the caller's choice, not a draw: the set carries both variants of a doubled
+    word, and the stream feeds the step draw first.
     """
     has_double = any(word[i] == word[i - 1] for i in range(1, len(word)))
     stream = splitmix64(seed ^ fnv1a64(word.encode("utf-8")))
@@ -397,8 +349,9 @@ def generate_set(
     radius = key_radius(rects)
     rows: list[str] = []
     for word in words:
-        # P7-8: a doubled word contributes BOTH variants — the no-jog row first, then the jog
-        # row — drawn from the same word stream, so the pair differs exactly in the detour.
+        # A doubled word contributes both variants (the decoder scores it only against its
+        # looped path): the no-jog row first, then the jog row, from the same word stream, so
+        # the pair differs only in the detour.
         rows.append(render_gesture(word, generate_gesture(word, by_letter, radius, seed=seed)))
         if any(word[i] == word[i - 1] for i in range(1, len(word))):
             rows.append(

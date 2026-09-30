@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Contract tests for the TT-SUGGESTIONS phase-P0 eval set and its builder.
+"""Contract tests for the Tatar suggestion eval set and its builder.
 
 What is pinned and why:
 
 * The committed eval file (``app/src/test/resources/tt_eval_sentences.txt``) is pinned by
-  byte SHA-256 and by line count: any regeneration changes the set, and the set is what
-  every baseline number in docs/TT-SUGGESTIONS.md is measured against.
+  byte SHA-256 and by line count: any regeneration changes the set, and every suggestion
+  quality baseline is measured against it.
 * The format contract is checked field by field (comment header, NFC lowercase words that
   pass the dictionary pipeline's own ``normalize_word`` unchanged, 3..12 words per line,
   deduplicated, code-point sorted) so a hand edit cannot silently weaken the set.
@@ -16,8 +16,8 @@ What is pinned and why:
 
 The last two groups need the licensed corpus inputs (``research/corpus/*.txt.gz``), which
 are gitignored and therefore absent on a clean CI checkout. Those tests SKIP with an
-explicit reason when the inputs are missing -- skipping is stated loudly by unittest; the
-pin and format tests above never skip, so a corrupted committed file fails everywhere.
+explicit reason when the inputs are missing; the pin and format tests above never skip, so
+a corrupted committed file fails everywhere.
 """
 from __future__ import annotations
 
@@ -35,8 +35,8 @@ CORPUS_DIR = ROOT / "research" / "corpus"
 MAKE_EVAL_SCRIPT = ROOT / "scripts" / "make_eval_set.py"
 COVERAGE_SCRIPT = ROOT / "scripts" / "dictionary_coverage.py"
 
-# Pinned at P0 creation (2026-09-19). Changing either means a new eval set, and every
-# baseline number derived from it must be re-measured in the same commit.
+# Changing either means a new eval set, and every baseline number derived from it must be
+# re-measured in the same commit.
 EXPECTED_LINES = 1_000
 EXPECTED_SHA256 = "d2ff0db52983028d352bbad464006f8c9552fc16b95d4cb5bdc2f724c8c0f619"
 
@@ -120,7 +120,7 @@ class CommittedEvalSetTest(unittest.TestCase):
 
 
 class CorpusDependentTest(unittest.TestCase):
-    """Determinism and held-out tests; SKIP loudly when the licensed corpus is absent."""
+    """Determinism and held-out tests; SKIP when the licensed corpus is absent."""
 
     def build(self, workdir: Path):
         return make_eval_set.build_eval_set(CORPUS_DIR, workdir)

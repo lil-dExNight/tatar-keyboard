@@ -23,7 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The app-locale policy of 2026-09-25, pinned: the app's own screens (Setup,
+ * The app-locale policy: the app's own screens (Setup,
  * Settings) default to TATAR — system tt → tt, system ru → ru, anything else
  * (English included) → tt. The mapping half is pure and tested directly; the
  * Android half (createConfigurationContext) is pinned at source level like the
@@ -40,7 +40,7 @@ class AppLocaleTest {
     @Test
     fun everyOtherSystemLanguageIsForcedToTatar() {
         // English included: the resource fallback (values/) being English does NOT make
-        // English the app default — the operator's call is a Tatar default.
+        // English the app default; the default is Tatar.
         for (language in listOf("en", "de", "tr", "zh", "ar", "")) {
             assertEquals("system '$language' must land on Tatar",
                 "tt", AppLocale.forcedLocaleFor(language)?.language)

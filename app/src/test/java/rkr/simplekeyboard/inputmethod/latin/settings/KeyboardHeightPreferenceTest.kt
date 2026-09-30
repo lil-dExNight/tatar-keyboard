@@ -23,11 +23,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * U6 of Phase 5 (docs/ROADMAP-P5.md): the "Keyboard height" row is three named presets
+ * The "Keyboard height" row is three named presets
  * (Compact / Default / Tall) stored as the very same `pref_keyboard_height` float the
  * inherited seek bar wrote.
  *
- * The preset mapping is pure and tested directly; everything Android-flavoured (the pipeline
+ * The preset mapping is pure and tested directly; everything Android-specific (the pipeline
  * that turns the float into a taller keyboard and the live-apply seam) is pinned at the
  * source level, in the style of EmojiKeySurfaceContractTest — this project's JVM suite runs
  * without Robolectric on purpose.
@@ -128,7 +128,7 @@ class KeyboardHeightPreferenceTest {
 
     @Test
     fun heightPipelineMultipliesTheScaleOntoTheDefaultHeight() {
-        // Layout selection honours the preference at exactly this multiplication: the base
+        // Layout selection honors the preference at exactly this multiplication: the base
         // height comes from the resources, the preference scales it, and KeyboardBuilder then
         // derives every row height, key hit box and the bonus height from the result, so the
         // KeyDetector grid and the popup previews follow on their own.

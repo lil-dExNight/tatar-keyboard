@@ -25,36 +25,12 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictiona
 import java.util.Random
 
 /**
- * Seeded deterministic fuzzing of [TpersValidator] (the `.tpers` personal dictionary) — S5 of
- * `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`. Zero dependencies: mutations come from a seeded
- * [java.util.Random] via [SeededFuzzHarness]; a fixed seed per shape makes every run
- * byte-identical, and on a property violation the failure message names shape + seed + iteration
- * + the touched offsets, which reproduce the exact input.
+ * Seeded fuzzing of [TpersValidator] (the `.tpers` personal dictionary). See [SeededFuzzHarness].
  *
- * The base image is a fixture-built valid 24-entry Tatar image, so the record loop, the
- * UTF-8/casing/alphabet checks and the ordering checks are all reachable by the mutations.
- *
- * Shapes (all against [TpersValidator.validate]):
- *
- *  * **bit flips** (2 500): 1–4 single-bit flips, no checksum refresh — the integrity gates must
- *    reject from every position;
- *  * **truncations** (2 000): strict prefixes at random lengths — the header's payload size can
- *    never match, so all must reject;
- *  * **count/size-field inflation** (2 000): the two u32 header fields (entryCount, payloadSize)
- *    set to huge values — [TpersFormat.MAX_PERSONAL_ENTRIES] and the payload-size check must
- *    reject BEFORE any count-sized allocation; the file itself stays ~400 bytes, so an allocation
- *    attempt per an inflated count would blow up and be caught;
- *  * **random garbage** (2 000): random bytes of random length;
- *  * **valid-image mutation** (3 000): payload corruption, then half the time the embedded
- *    SHA-256 is refreshed (via [PersonalDictionaryTestFixtures.refreshEmbeddedChecksum]) so the
- *    fuzz reaches PAST the checksum gate into the structural checks. A refreshed mutation may
- *    validate cleanly (the corruption can land in bytes the structure leaves free, e.g. inside a
- *    last-use serial); a non-refreshed one must always reject.
- *
- * Properties asserted on EVERY input (see [SeededFuzzHarness.assertCleanOrValidationFailure]):
- * clean validation or [PersonalDictionaryValidationException], never any other throwable, and —
- * for the shapes that cannot produce a valid image — never a clean validation (fail-closed; the
- * reader turns a rejection into an empty personal dictionary).
+ * The base image is a valid 24-entry Tatar fixture, so the record loop and the UTF-8, casing,
+ * alphabet and ordering checks are reachable. Shapes: bit flips, truncations, inflation of the
+ * two u32 header fields (entryCount, payloadSize), random garbage, and payload corruption with
+ * the checksum refreshed half the time; only refreshed mutations may validate.
  */
 class TpersValidatorFuzzTest {
     @get:Rule

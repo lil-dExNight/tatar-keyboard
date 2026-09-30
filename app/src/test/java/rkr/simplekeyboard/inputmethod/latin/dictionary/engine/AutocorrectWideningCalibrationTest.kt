@@ -32,17 +32,14 @@ import java.security.MessageDigest
 import kotlin.math.ceil
 
 /**
- * ROADMAP-P3 P7 calibration (docs/ROADMAP-P3.md, gates G1–G4 written 2026-09-23 BEFORE measuring):
- * widening the D3 autocorrect edit classes from {1} to {1, 4} (probe-first full single
- * substitution), frequency floor 411 and the single-candidate rule unchanged. Tatar only.
+ * Calibration of widening the autocorrect edit classes from {1} to {1, 4} (probe-first full
+ * single substitution), with the frequency floor 411 and the single-candidate rule unchanged.
+ * Tatar only. The widened arm is not shipped: it made false corrections that change meaning and
+ * gave little recovery lift.
  *
- * Arms, differing ONLY in [FuzzyEditPolicy.autocorrectClasses] — the display configuration of both
- * is today's shipped Tatar one ({1, 4} + the same-length bonus):
- *  - CURRENT: autocorrect classes {1} — the pre-P7 shipped behavior;
- *  - WIDENED: autocorrect classes {1, 4} — the P7 candidate.
- *
- * All metrics are printed as raw lines and the measured counts are pinned exactly. Nothing is
- * tuned to pass: if a gate fails, the autocorrect classes stay {1} and the numbers stand.
+ * The arms differ only in [FuzzyEditPolicy.autocorrectClasses]; both use the shipped Tatar display
+ * configuration ({1, 4} + same-length bonus). CURRENT is autocorrect {1}, WIDENED is {1, 4}.
+ * Metrics are printed as raw lines and the counts are pinned exactly.
  */
 class AutocorrectWideningCalibrationTest {
 
@@ -116,10 +113,9 @@ class AutocorrectWideningCalibrationTest {
     }
 
     /**
-     * G1a — false corrections on the eval set's OOV words. Every would-fire case is printed for
-     * the report's manual review (fail-closed: one implausible case fails the gate). The
-     * construction invariant is pinned alongside: a word PRESENT in the dictionary never gets a
-     * verdict, on every eval word that is present.
+     * False corrections on the eval set's OOV words. Every would-fire case is printed for manual
+     * review. Also pinned: a word present in the dictionary never gets a verdict, on every eval
+     * word that is present.
      */
     @Test
     fun gateG1FalseCorrectionsOnEvalOovWords() {
@@ -157,10 +153,9 @@ class AutocorrectWideningCalibrationTest {
     }
 
     /**
-     * G1b — the rare-but-correct proxy: the dictionary's own lowest-frequency decile, at the
-     * variant level (the decile words ARE present, so the real pass never fires on them; this
-     * simulates "if this rare word were OOV"). A word would-fire when its substitution space
-     * contains EXACTLY ONE other dictionary word with frequency >= 411. Listed for review.
+     * Rare-but-correct proxy: the dictionary's lowest-frequency decile at the variant level (these
+     * words are present, so this simulates "if this rare word were OOV"). A word would fire when
+     * its substitution space contains exactly one other dictionary word with frequency >= 411.
      */
     @Test
     fun gateG1FalseCorrectionsOnTheLowestFrequencyDecile() {
@@ -194,10 +189,10 @@ class AutocorrectWideningCalibrationTest {
     }
 
     /**
-     * Variant-level whole-word single-match frequency of [wordBytes]'s substitution space: how the
-     * D3 pass counts candidates, minus the presence early-out. Returns the single matching
-     * dictionary entry's frequency, or null when zero or >= 2 matches exist. [geometric] selects
-     * the class (#1 long-press when false, #4 full substitution when true).
+     * Variant-level whole-word single-match frequency of [wordBytes]'s substitution space, counted
+     * as the autocorrect pass counts candidates minus the presence early-out. Returns the single
+     * match's frequency, or null for zero or >= 2 matches. [geometric] selects the class (#1
+     * long-press when false, #4 full substitution when true).
      */
     private fun singleMatchFrequency(
         wordBytes: ByteArray,
@@ -237,9 +232,9 @@ class AutocorrectWideningCalibrationTest {
     }
 
     /**
-     * G2 — autocorrect-recovery@separator on the 5-cp typo sets, identical conditions both arms:
+     * Autocorrect recovery at the separator on the 5-cp typo sets, same conditions for both arms:
      * a row recovers when its typo prefix is absent from the dictionary and the advice names the
-     * original word (the >= 411 floor applies — it stays unchanged).
+     * original word (the >= 411 floor applies).
      */
     @Test
     fun gateG2RecoveryAtSeparatorOnTheTypoSets() {
@@ -290,9 +285,9 @@ class AutocorrectWideningCalibrationTest {
     }
 
     /**
-     * G3 — multi-candidate safety: the single-candidate rule STAYS, so widening turns some
-     * recoverable typos into safe no-fires. Reported: zero / exactly-one / multi match rates on
-     * the class-#4 5-cp set (the single-match bucket is the fire-eligible one before the floor).
+     * Multi-candidate safety: the single-candidate rule stays, so widening turns some recoverable
+     * typos into safe no-fires. Reports zero / exactly-one / multi match rates on the class-#4
+     * 5-cp set (the single-match bucket is the fire-eligible one before the floor).
      */
     @Test
     fun gateG3MultiCandidateSafetyRates() {
@@ -336,8 +331,8 @@ class AutocorrectWideningCalibrationTest {
     }
 
     /**
-     * G4 — host perf with the widened advice pass engaged: a deterministic sample of the class-#4
-     * 5-cp set (absent >= 4-cp words, so the class-#4 autocorrect probes actually run), both arms.
+     * Host performance with the widened advice pass engaged: a deterministic sample of the
+     * class-#4 5-cp set (absent >= 4-cp words, so the class-#4 probes actually run), both arms.
      */
     @Test
     fun gateG4HostComputeWithWidenedAutocorrect() {
@@ -386,7 +381,7 @@ class AutocorrectWideningCalibrationTest {
 
     /**
      * The widened policy's pinned real cases: "аашнең" — absent, NOT reachable by class #1, and
-     * exactly one single-substitution dictionary neighbour (ааҗнең, frequency 1 738 >= 411) — is
+     * exactly one single-substitution dictionary neighbor (ааҗнең, frequency 1 738 >= 411) — is
      * corrected by WIDENED and left alone by CURRENT; the two-candidate "ааҗнңң" (ааҗның + ааҗнең)
      * is refused by the single-candidate rule under WIDENED too.
      */
@@ -413,10 +408,9 @@ class AutocorrectWideningCalibrationTest {
     }
 
     /**
-     * G4 — zero-allocation contract with the widened advice pass engaged: an absent >= 4-cp word
-     * that does NOT fire (the common path) must stay within the <= 8 bytes/lookup contract. The
-     * firing path allocates the AutocorrectAdvice object itself — pre-existing behavior of the
-     * class-#1 pass, unchanged and out of scope.
+     * Zero-allocation contract with the widened advice pass engaged: an absent >= 4-cp word that
+     * does not fire (the common path) stays within <= 8 bytes/lookup. The firing path allocates
+     * the AutocorrectAdvice object itself, as the class-#1 pass does; that is out of scope.
      */
     @Test
     fun gateG4ZeroAllocationWithWidenedAutocorrect() {
@@ -460,7 +454,7 @@ class AutocorrectWideningCalibrationTest {
         private const val SEED = 20260727L
 
         // The two arms differ ONLY in the autocorrect class set; the display side of both is the
-        // shipped Tatar configuration (TT-TYPO-NEXT C2).
+        // shipped Tatar configuration.
         private val CURRENT_POLICY = FuzzyEditPolicy(
             intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
             true,
@@ -472,9 +466,7 @@ class AutocorrectWideningCalibrationTest {
             intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
         )
 
-        // Exact pins of the P7 measurements (2026-09-23); re-pin consciously. The verdict was
-        // NOT SHIPPED: G1 failed on manual review (3 of the 5 widened would-fire cases on the
-        // eval OOV set change meaning), G2 measured +0.57 pp of lift vs the +5 pp gate.
+        // Pins over the committed assets and eval set; re-pin when an input changes.
         private const val PIN_G1A_PRESENT = 2_373
         private const val PIN_G1A_CURRENT_FIRES = 1
         private const val PIN_G1A_WIDENED_FIRES = 5

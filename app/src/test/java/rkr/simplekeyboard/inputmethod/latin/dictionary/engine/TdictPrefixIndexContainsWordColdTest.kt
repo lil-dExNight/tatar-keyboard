@@ -25,10 +25,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * P1 of Phase 2 (docs/ROADMAP-P2.md): the thread-safe, cache-free whole-word membership read the
- * personal-bigram context gate consults from the store's worker — never from the lookup worker.
- * Pinned here: exact agreement with the dictionary contents, the input guards, and a concurrency
- * smoke run proving the cold read races no scratch the hot lookup path owns.
+ * The thread-safe, cache-free whole-word membership read that the learned-pairs context gate
+ * consults from the store's worker, never from the lookup worker. Pinned: exact agreement with the
+ * dictionary contents, the input guards, and a concurrency smoke run showing the cold read shares
+ * no scratch with the hot lookup path.
  */
 class TdictPrefixIndexContainsWordColdTest {
 

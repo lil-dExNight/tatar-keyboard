@@ -1,11 +1,11 @@
 #!/bin/bash
-# device-netstats-proof.sh — the repeatable runtime no-traffic proof (S7 of
-# docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md, NETWORK row of docs/THREAT-MODEL.md).
+# device-netstats-proof.sh: repeatable runtime proof that the app sends and
+# receives no network traffic.
 #
-# The offline claim's dynamic leg: snapshot the per-UID traffic counters of the
-# package under test, drive a scripted ~2-minute mixed session (tt typing with
-# suggestion accepts, ru typing, emoji panel + emoji search), snapshot again,
-# and assert the rx/tx delta is EXACTLY zero bytes. One machine-readable
+# Snapshot the per-UID traffic counters of the package under test, drive a
+# scripted ~2-minute mixed session (tt typing with suggestion accepts, ru typing,
+# emoji panel + emoji search), snapshot again, and assert the rx/tx delta is
+# EXACTLY zero bytes. One machine-readable
 # RESULT|... line per check goes to stdout and $OUTDIR/result.txt; raw evidence
 # (both full snapshots, the UID slices, their diff, screenshots) lands in
 # $OUTDIR.
@@ -22,23 +22,20 @@
 # corroborating bpf.zero-traffic line. Stale history buckets for a recycled UID
 # cannot false-FAIL the proof: the verdict is on the before->after DELTA.
 #
-# Force-stop discipline (same lesson as device-perf-ritual.sh): this script
-# never force-stops anything — the only process control is `ime set`, which
-# never resets the IME selection (HyperOS resets the default IME only when the
-# SELECTED package is force-stopped). The package under test is exercised warm,
-# the realistic user scenario. The as-found default IME is restored by the
+# This script never force-stops anything (HyperOS resets the default IME when the
+# SELECTED package is force-stopped; see device-perf-ritual.sh). The only process
+# control is `ime set`, which does not reset the selection. The package under test
+# runs warm, as in real use. The default IME found at start is restored by the
 # EXIT trap either way.
 #
-# Key/strip/panel coordinates are the perf ritual's 720x1640 calibration
-# (tt rows y=1110/1206/1301/1396, ru rows y=1153/1258/1363, bottom row y=1490,
-# globe x=216, comma long-press x=144) plus the strip band y~1020 (three cells
-# again since 2026-09-29 — the four-cell wave reverted; thirds -> centres
-# x=120/360/600, and the taps at x=90/270 land in cells 0/1 exactly as they did
-# at quarters) and the emoji-panel geometry
-# verified on the 2026-09-29 screencaps of this script: tab bar (with the search
-# cell its rightmost slot, centre ~(670,1055)) at the panel top, recents row
-# centre y~1201, first grid row centre y~1355. Panel taps are session content,
-# not verdict input: only the byte deltas decide.
+# Key/strip/panel coordinates reuse the 720x1640 calibration of
+# device-perf-ritual.sh (tt rows y=1110/1206/1301/1396, ru rows y=1153/1258/1363,
+# bottom row y=1490, globe x=216, comma long-press x=144), plus the suggestion strip
+# at y~1020 (three cells, centers x=120/360/600; the taps at x=90/270 land in cells
+# 0/1) and the emoji panel: tab row at the panel top with the search cell as its
+# rightmost slot (center ~(670,1055)), recents row center y~1201, first grid row
+# center y~1355. Panel taps only generate session activity; the verdict is decided
+# by the byte deltas alone.
 #
 # Flags:
 #   --serial <id>     device serial (default: $ANDROID_SERIAL, else the single
@@ -152,7 +149,7 @@ RUN_AS_OK=0
 A shell "run-as $PKG true" >/dev/null 2>&1 && RUN_AS_OK=1
 VER=$(SHELL dumpsys package "$PKG" 2>/dev/null | grep -m1 versionName | grep -oP '= *\K\S+')
 
-# The xt_qtaguid fallback probe: absent on this kernel, recorded for the archive.
+# The xt_qtaguid fallback probe: absent on this kernel; the result is saved as evidence.
 SHELL "cat /proc/net/xt_qtaguid/stats" > "$OUTDIR/xtaguid-probe.txt" 2>&1
 XTAGUID="absent"
 grep -q "^uid" "$OUTDIR/xtaguid-probe.txt" && XTAGUID="present"
@@ -176,8 +173,8 @@ if [ "$WH" != "720x1640" ]; then
 fi
 
 # Suggestions make the session heavier (dictionary loads, strip updates); the
-# debuggable package gets the same surgical run-as pref write the perf ritual
-# does. A non-debuggable package keeps whatever state it has.
+# debuggable package gets the same targeted run-as pref write as
+# device-perf-ritual.sh. A non-debuggable package keeps whatever state it has.
 PREFS_PATH="/data/user_de/0/$PKG/shared_prefs/${PKG}_preferences.xml"
 if [ "$RUN_AS_OK" = 1 ]; then
     pref=$(SHELL "run-as $PKG cat $PREFS_PATH" 2>/dev/null | tr -d '\r' \
@@ -237,7 +234,7 @@ dump_ui() {
     SHELL uiautomator dump /data/local/tmp/proof-ui.xml >/dev/null 2>&1
     A exec-out cat /data/local/tmp/proof-ui.xml 2>/dev/null | tr -d '\r'
 }
-# tap_node <resource-id-substring> -> taps the centre of the first match
+# tap_node <resource-id-substring> -> taps the center of the first match
 tap_node() {
     local dump bounds x y
     dump=$(dump_ui)
@@ -302,7 +299,7 @@ type_text() { # type_text tt|ru "text" <gap-seconds>
     local gap="$3" pts line x y
     # Materialize the point list BEFORE the tap loop: `adb shell` inside a
     # `while read` pipeline would eat the loop's stdin and silently drop every
-    # point after the first few (the perf ritual's 2026-09-29 lesson).
+    # point after the first few.
     pts=$(script_points "$1" "$2") || { log "script_points failed for layout $1"; return 1; }
     while IFS= read -r line; do
         x="${line% *}"; y="${line#* }"
@@ -311,7 +308,7 @@ type_text() { # type_text tt|ru "text" <gap-seconds>
     done <<< "$pts"
 }
 
-# switch the subtype via the globe key with pref feedback (the cycle order is
+# Switch the language via the globe key with pref feedback (the cycle order is
 # MRU-rotated, so blind tap counts are meaningless).
 globe_to() { # globe_to tt|ru|en -> 0 when pref_current_subtype starts with the code
     local want="$1" i poll pref=""
@@ -337,7 +334,7 @@ snapshot_netstats() { # snapshot_netstats before|after
 }
 
 # uid_slice <netstats-file> <uid> -> the UID's blocks of the "UID stats:"
-# section (ident line + its st= bucket lines), for the archived diff.
+# section (ident line + its st= bucket lines), for the saved diff.
 uid_slice() {
     python3 - "$1" "$2" <<'PYEOF'
 import re
@@ -439,8 +436,8 @@ if raise_keyboard_over_setup; then
         log "typing the tt half"
         type_text tt "сәләм дөнья мин сине яратам дус һәм белән татар теле дәүләт китап укытучы мәктәп иртә кич бүген әти әни бала " 0.12 \
             && EVENTS="$EVENTS tt-words"
-        # suggestion accepts: word + space, then a strip cell (three cells again
-        # since 2026-09-29; the taps land in cells 1 and 0 exactly as at quarters)
+        # suggestion accepts: word + space, then a strip cell (x=270 is cell 1,
+        # x=90 is cell 0)
         type_text tt "татар " 0.15 && SHELL input tap 270 1020 </dev/null >/dev/null 2>&1 && EVENTS="$EVENTS tt-cell2"
         sleep 0.8
         type_text tt "сәләм " 0.15 && SHELL input tap 90 1020 </dev/null >/dev/null 2>&1 && EVENTS="$EVENTS tt-cell1"
@@ -479,7 +476,7 @@ else
     result FAIL session "keyboard did not raise over SetupActivity"
 fi
 
-# Pad to the documented ~2-minute floor with the process alive, then re-snapshot.
+# Pad to the --min-seconds floor with the process alive, then snapshot again.
 elapsed=$((SECONDS - SESSION_START))
 if [ "$elapsed" -lt "$MIN_SECONDS" ]; then
     log "padding $((MIN_SECONDS - elapsed)) s to the $MIN_SECONDS s floor"

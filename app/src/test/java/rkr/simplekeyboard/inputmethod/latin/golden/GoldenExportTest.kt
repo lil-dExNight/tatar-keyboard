@@ -25,16 +25,13 @@ import java.io.Writer
 import java.nio.ByteBuffer
 
 /**
- * Golden-vector exporter for the iOS port (ios/docs/VERIFICATION.md §3.1). TEST-ONLY and inert:
- * it runs only when the environment variable GOLDEN_OUT names a directory, so the normal
- * `./gradlew test` run (CI, release_check) skips it and nothing here reaches the APK.
+ * Golden-vector exporter. Inert unless GOLDEN_OUT names a directory; its output feeds the iOS
+ * port's parity suite. Nothing here reaches the APK.
  *
  *   GOLDEN_OUT=/path/to/dir ./gradlew :app:testDebugUnitTest --tests '*GoldenExportTest*'
  *
- * The directory must already contain keys-tt.tsv / keys-ru.tsv — the canonical key geometry the
- * iOS side also builds its KeyNeighborTable from (ios/tools/export-key-geometry). Output is
- * deterministic UTF-8 JSON Lines; the iOS parity suite replays every record against the Swift
- * port and requires exact equality.
+ * The directory must already contain keys-tt.tsv / keys-ru.tsv, the canonical key geometry both
+ * ports build their KeyNeighborTable from. Output is deterministic UTF-8 JSON Lines.
  */
 class GoldenExportTest {
 
@@ -210,7 +207,7 @@ class GoldenExportTest {
     }
 
     // ---------------------------------------------------------------------------------------
-    // prefix-<lang>.jsonl — the full PREFIX answer (exact + fuzzy + ranking) and the D3 verdict.
+    // prefix-<lang>.jsonl — the full PREFIX answer (exact + fuzzy + ranking) and autocorrect advice.
 
     private fun queryWords(lang: String, e: Engine, evalWords: List<String>): List<String> {
         val base = LinkedHashSet<String>()
@@ -224,7 +221,7 @@ class GoldenExportTest {
             val cps = word.codePoints().toArray()
             for (n in 1..cps.size) out.add(String(cps, 0, n))
             // Deterministic one-letter typos to exercise the fuzzy classes: long-press partners
-            // (class #1) and a neighbour substitution in the middle (class #4).
+            // (class #1) and a neighbor substitution in the middle (class #4).
             for (pos in cps.indices) {
                 val swapped = TYPO[cps[pos]] ?: continue
                 val t = cps.copyOf(); t[pos] = swapped
@@ -314,7 +311,7 @@ class GoldenExportTest {
         listOf(File(path), File("app/$path")).firstOrNull(File::isFile) ?: error("cannot locate $path")
 
     companion object {
-        /** Deterministic typo map: long-press partners both ways plus a few row neighbours. */
+        /** Deterministic typo map: long-press partners both ways plus a few row neighbors. */
         private val TYPO: Map<Int, Int> = mapOf(
             'а'.code to 'ә'.code, 'ә'.code to 'а'.code, 'о'.code to 'ө'.code, 'ө'.code to 'о'.code,
             'у'.code to 'ү'.code, 'ү'.code to 'у'.code, 'ж'.code to 'җ'.code, 'җ'.code to 'ж'.code,

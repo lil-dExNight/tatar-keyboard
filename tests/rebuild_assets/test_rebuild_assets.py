@@ -2,8 +2,8 @@
 """Tests for scripts/rebuild_assets.py — the dictionary+bigram rebuild orchestrator.
 
 Everything runs on synthetic fixtures in a temporary directory: a handful of Tatar words
-instead of a 100k dictionary, a two-head bigram table instead of 518 KB. What is pinned
-here is not the data but the CONTRACT of the tool: it reads pins from the Kotlin files
+instead of a 100k dictionary, a two-head bigram table instead of the real one. These tests
+pin the tool's contract, not the data: it reads pins from the Kotlin files
 rather than duplicating them, it rewrites them byte-carefully, and `--check` is green on
 a consistent set and red — with the right diagnosis — on a diverged one.
 """
@@ -51,7 +51,7 @@ def build_dictionary_asset(directory: Path, words=WORDS, frequencies=FREQUENCIES
 def build_bigram_asset(directory: Path, heads, table, dictionary_asset: Path,
                        successes_per_head=2,
                        name="tatar_bigrams_v1.tatbigr.zlib") -> Path:
-    """Schema 3: таблица кросс-референсит словарь фикстуры — индексы и его raw SHA-256."""
+    """Schema 3: the table refers to the fixture dictionary by indices and by its raw SHA-256."""
     import hashlib
 
     parsed_dictionary = dictionary_pack.validate_asset(dictionary_asset.read_bytes())
@@ -67,7 +67,7 @@ def build_bigram_asset(directory: Path, heads, table, dictionary_asset: Path,
 
 SHA0 = "0" * 64
 
-# Путь словаря внутри фикстурного дерева (создаётся в FakeTreeTest.setUp).
+# Dictionary path inside the fixture tree (created in FakeTreeTest.setUp).
 DICT_ASSET = Path("app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib")
 
 DICT_BLOCK = """\
@@ -244,18 +244,17 @@ class CheckTest(FakeTreeTest):
         self.assertTrue(report["dictionaries"]["tat"]["problems"])
 
     def test_a_head_outside_the_dictionary_is_unrepresentable(self):
-        # Schema 3 хранит индексы в словарь: голова вне словаря НЕВЫРАЗИМА — упаковщик
-        # падает fail-closed ещё до записи файла (у schema 2 это был дрейф-вердикт
-        # «heads_outside_dictionary», который больше не нужен: класс закрыт конструкцией).
+        # Schema 3 stores indices into the dictionary, so a head outside the dictionary
+        # cannot be encoded: the packer fails before writing the file.
         table = dict(self.table)
-        table["дус"] = [(WORDS[0], 5)]  # «дус» в словаре нет
+        table["дус"] = [(WORDS[0], 5)]  # "дус" is not in the dictionary
         with self.assertRaises(bigram_asset_pack.BigramInputError):
             build_bigram_asset(self.root / "app/src/main/assets/bigrams",
                                WORDS[:3] + ["дус"], table, self.root / DICT_ASSET)
 
     def test_a_table_packed_against_another_dictionary_is_red(self):
-        # Связка schema 3: таблица упакована от одного словаря, пины и словарь сменились —
-        # заголовок таблицы называет СТАРЫЙ словарь, и проверка красная по связке.
+        # Schema 3 link: the table was packed against one dictionary, then the dictionary
+        # and pins changed; the table header names the OLD dictionary, so the check fails.
         pin_everything(self.root, self.dictionary, self.bigram)
         build_dictionary_asset(self.root / "app/src/main/assets/dictionaries",
                                frequencies=[100 + i for i in range(len(WORDS))])
@@ -264,7 +263,7 @@ class CheckTest(FakeTreeTest):
         self.assertEqual("mismatch", report["bigrams"]["tat"]["verdict"])
 
     def test_drift_is_counted_in_both_directions(self):
-        # Таблица упакована с головами по СТАРОМУ порядку частот: «өлкә» вместо «мәхәббәт».
+        # The table is packed with heads in the OLD frequency order: "өлкә" instead of "мәхәббәт".
         build_bigram_asset(self.root / "app/src/main/assets/bigrams",
                            [WORDS[5], WORDS[1], WORDS[2]],
                            {w: [(WORDS[1], 7)] for w in (WORDS[5], WORDS[1], WORDS[2])},
@@ -273,14 +272,14 @@ class CheckTest(FakeTreeTest):
         code, report = self.run_check()
         self.assertEqual(1, code)
         drift = report["bigrams"]["tat"]["drift"]
-        self.assertEqual(1, drift["missing_top_heads"])  # нет «мәхәббәт»
-        self.assertEqual(1, drift["unexpected_heads"])  # лишняя «өлкә»
+        self.assertEqual(1, drift["missing_top_heads"])  # "мәхәббәт" is missing
+        self.assertEqual(1, drift["unexpected_heads"])  # "өлкә" is extra
         self.assertEqual(0, drift["heads_outside_dictionary"])
         self.assertEqual("drift", report["bigrams"]["tat"]["verdict"])
 
     def test_known_drift_is_accepted_only_on_exact_numbers(self):
         build_bigram_asset(self.root / "app/src/main/assets/bigrams",
-                           [WORDS[1], WORDS[2]],  # «мәхәббәт» не упакована
+                           [WORDS[1], WORDS[2]],  # "мәхәббәт" is not packed
                            {w: [(WORDS[1], 7)] for w in (WORDS[1], WORDS[2])},
                            self.root / DICT_ASSET)
         pin_everything(self.root, self.dictionary, self.bigram)
@@ -299,7 +298,7 @@ class CheckTest(FakeTreeTest):
         self.assertEqual("drift", report["bigrams"]["tat"]["verdict"])
 
     def test_a_stale_known_drift_entry_fails_the_check(self):
-        pin_everything(self.root, self.dictionary, self.bigram)  # расхождения нет
+        pin_everything(self.root, self.dictionary, self.bigram)  # no mismatch
         stale = self.write_known_drift({
             "bigrams/tatar_bigrams_v1.tatbigr.zlib": {
                 "missing_top_heads": 1, "unexpected_heads": 0, "reason": "тест"}})
@@ -322,8 +321,8 @@ class CheckTest(FakeTreeTest):
         self.assertEqual(2, code)
 
     def test_unparseable_dict_contract_is_an_input_error(self):
-        # C3 аудита 2026-09-02: ContractError («контракт не разобрался») — код 2,
-        # а не необработанный traceback с кодом 1.
+        # ContractError (the contract could not be parsed) gives exit code 2, not an
+        # unhandled traceback with code 1.
         contract = self.root / rebuild_assets.DICT_CONTRACT
         text = contract.read_text(encoding="utf-8")
         contract.write_text(text.replace("expectedCompressedSize", "expectedGone"),
@@ -343,20 +342,20 @@ class CheckTest(FakeTreeTest):
 
 
 class PackArgvTest(unittest.TestCase):
-    """The canned pack commands are the mission's parameters, pinned verbatim."""
+    """The canned pack commands and their parameters, pinned verbatim."""
 
     def test_tatar_command(self):
         argv = rebuild_assets.bigram_pack_argv(
             Path("/root"), Path("/corpora"), Path("/work"), rebuild_assets.BIGRAMS[0])
         text = " ".join(argv)
         self.assertIn("--heads 10132", text)
-        # K: 3 -> 4 (2026-09-27): четырёхклеточная полоса вернулась (T7 переоткрыт).
+        # Four successors per head (the table's K; unrelated to the number of strip cells).
         self.assertIn("--successes-per-head 4", text)
         self.assertIn("--extra-heads /root/scripts/bigram_extra_heads_tat.txt", text)
         self.assertIn("--language tat", text)
         self.assertIn("/corpora/tat_mixed_2015_1M-sentences.txt", text)
         self.assertIn("/corpora/tat_web_2018_1M-sentences.txt", text)
-        # С части B (2026-08-31) — разговорный вход, docs/CORPUS-CONVERSATIONAL-TT.md.
+        # Conversational input.
         self.assertIn("/corpora/tt_conv_train90-sentences.txt", text)
 
     def test_russian_command(self):
@@ -369,7 +368,7 @@ class PackArgvTest(unittest.TestCase):
         self.assertIn("--language rus", text)
         for name in ("rus_news_2022_1M", "rus_news_2019_1M", "rus_wikipedia_2021_1M"):
             self.assertIn(f"/corpora/{name}-sentences.txt", text)
-        # С части A (2026-08-31) — разговорный вход, docs/CORPUS-CONVERSATIONAL-RU.md.
+        # Conversational input.
         self.assertIn("/corpora/rus_conv_thinned60-sentences.txt", text)
 
 
@@ -466,8 +465,9 @@ class OnlyModeTest(unittest.TestCase):
         (self.corpora / "tt_corpus-sentences.txt").write_text("", encoding="utf-8")
         self.assertEqual(2, self.run_rebuild("tatar"))
         # …and with the exceptions table present the gate passes: the run proceeds into
-        # the wordform stage and dies on the fake baseline bytes (dict_accept refuses a
-        # non-1.8.4 SHA) — a SystemExit, not the input-gate return code.
+        # the word-form stage and dies on the fake baseline bytes (dict_accept refuses a
+        # baseline whose SHA is not the shipped-1.8.4 one) — a SystemExit, not the input-gate
+        # return code.
         scripts_dir = self.root / "scripts"
         scripts_dir.mkdir()
         (scripts_dir / "wordform_exceptions_tat.tsv").write_text("# empty\n",
@@ -586,8 +586,8 @@ class WordformStageTest(unittest.TestCase):
 class RealTreeTest(unittest.TestCase):
     """The committed assets against the committed contracts — the CI gate, as a test.
 
-    The known-drift file makes this green today AND red the day the drift changes in
-    either direction without a conscious edit of that file.
+    The known-drift file keeps this green, and it turns red as soon as the drift changes in
+    either direction without a matching edit of that file.
     """
 
     def test_committed_assets_match_their_pins(self):
@@ -603,8 +603,7 @@ class RealTreeTest(unittest.TestCase):
         report = json.loads(stream.getvalue())
         self.assertEqual(1, code)
         self.assertEqual("drift", report["bigrams"]["rus"]["verdict"])
-        # Since corpus-conversational part A (2026-08-31, docs/CORPUS-CONVERSATIONAL-RU.md)
-        # only 2 remain, and they are the generator rule, not a drift: «окей» and «берегись»
+        # The remaining two come from the generator rule, not from a drift: «окей» and «берегись»
         # have no in-vocabulary pair in the thinned conversational input and are dropped,
         # not stored empty.
         self.assertEqual(2, report["bigrams"]["rus"]["drift"]["missing_top_heads"])

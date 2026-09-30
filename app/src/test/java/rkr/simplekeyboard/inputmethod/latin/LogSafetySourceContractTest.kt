@@ -23,12 +23,9 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * Log-safety gate for the input pipeline (S3 of `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`).
- *
- * A keystroke or a piece of committed text must never reach logcat — the classic AOSP-lineage
- * regression. The 2026-09-24 audit accepted the current posture ("metadata-only logging"); this
- * contract pins it fail-closed at source level because these JVM tests have no Android framework
- * to observe logcat with. Scanned packages, recursively, `.java` and `.kt` alike:
+ * Log-safety check for the input pipeline: a keystroke or committed text must never reach logcat.
+ * Checked from source because these JVM tests have no Android framework to observe logcat with.
+ * Scanned packages, recursively, `.java` and `.kt` alike:
  *
  *   * `keyboard/` (incl. `keyboard/internal/`)
  *   * `latin/suggestions/`
@@ -38,38 +35,25 @@ import org.junit.Test
  * Three rules:
  *
  * 1. **Pinned call-site set.** The exact set of `Log.d/e/i/v/w/wtf/println` call sites, normalized
- *    as `path::trimmed first line`, each group justified in [EXPECTED_CALL_SITES]. ANY addition,
- *    removal, or edit of a log statement in the pipeline fails the build, so a new log is always
- *    a conscious, reviewed act. Maintenance: to add a pipeline log, confirm it carries no
- *    composing/committed text, then pin it here with its justification in the same commit.
+ *    as `path::trimmed first line`, each group justified in [EXPECTED_CALL_SITES]. Any addition,
+ *    removal, or edit of a log statement in the pipeline fails the test. To add a pipeline log,
+ *    confirm it carries no composing/committed text, then pin it here with its justification.
  *
- * 2. **Text-carrier denylist.** Every call site's full statement (continuation lines included,
- *    string literals kept — a literal like `"committing text: "` is a red flag too) is checked
- *    against name fragments that only ever travel with user text: word, typed, composing, commit,
- *    suggestion, text, charsequence, codepoint, label. Unlike rule 1 this rule cannot be argued
- *    away by updating the pin — editing [TEXT_CARRIER_DENYLIST] is the loudest possible review.
- *    Known sharp edge: `text` also matches innocuous substrings like `context`; rewording the log
- *    is the intended resolution, not relaxing the list.
+ * 2. **Text-carrier denylist.** Every call site's full statement (continuation lines and string
+ *    literals included — a literal like `"committing text: "` is a red flag too) is checked
+ *    against name fragments that only travel with user text (see [TEXT_CARRIER_DENYLIST]).
+ *    Updating the rule-1 pin does not bypass this rule. `text` also matches harmless substrings
+ *    like `context`; reword the log rather than relaxing the list.
  *
  * 3. **Debug guards stay off.** Every `boolean DEBUG*` declaration in the scanned packages must
  *    resolve to the compile-time constant `false` (a chain into another DEBUG flag is followed).
- *    The S3 survey found the tree carrying AOSP's armed-but-dead keystroke tracers —
- *    `PointerTracker` logged `Constants.printableCode(key.getCode())` (the typed character) in
- *    onPress/onCodeInput/onRelease/printTouchEvent, and onCodeInput's `output` argument even
- *    carried `key.getOutputText()` (committed text); `KeyboardState` logged
- *    `Constants.printableCode(code)` in onPressKey/onReleaseKey/onEvent. They were unreachable
- *    only because `DEBUG_LISTENER`/`DEBUG_EVENT`/`DEBUG_MOVE_EVENT` are `false`. De-texted the
- *    same day (2026-09-29): the tracers now log key position / key kind / functional-key
- *    booleans only, so even an armed guard cannot leak a keystroke. Rule 3 still pins the
- *    flags off.
+ *    These flags guard AOSP's keystroke tracers in `PointerTracker` and `KeyboardState`. The
+ *    tracers now log only key position, key kind and functional-key flags, but they once logged
+ *    the typed character and committed text, so the flags stay pinned off.
  *
- * Survey result at creation (2026-09-29): 66 call sites, all in `keyboard/`; the other three
- * packages have none. All 66 are metadata-only (state names, geometry, ids, exceptions); the
- * only text-carrying ones were the dead debug tracers named above — de-texted the same day
- * (see rule 3). Limits: this is a grep-level contract — a rewrite like
- * `if (DEBUG_LISTENER)` → `if (true)` trips no rule here (the code-review ritual owns that), and
- * the comment stripper does not honour comment openers inside string literals (none exist in the
- * scanned tree; rule 1 pins the consequence).
+ * Limits: this is a grep-level check. A rewrite like `if (DEBUG_LISTENER)` → `if (true)` trips
+ * no rule here (code review catches that), and the comment stripper does not honor comment
+ * openers inside string literals (none exist in the scanned tree; rule 1 pins the consequence).
  */
 class LogSafetySourceContractTest {
 
@@ -134,7 +118,7 @@ class LogSafetySourceContractTest {
             EXPECTED_DEBUG_FLAG_COUNT,
             declarations.size,
         )
-        // The armed-but-dead keystroke tracers from the finding are disarmed by these flags;
+        // The keystroke tracers described in the class KDoc are disarmed by these flags;
         // their absence would mean the guard was renamed or deleted.
         for (required in listOf("DEBUG_EVENT", "DEBUG_MOVE_EVENT", "DEBUG_LISTENER", "DEBUG_MODE",
                 "DEBUG_ACTION", "DEBUG_TIMER_ACTION", "DEBUG_INTERNAL_ACTION", "DEBUG_CACHE")) {
@@ -201,7 +185,7 @@ class LogSafetySourceContractTest {
 
     /**
      * The source with block comments blanked and `//` tails cut, one entry per source line.
-     * Naive on purpose: string literals are not honoured while tracking comments (none of the
+     * Naive on purpose: string literals are not honored while tracking comments (none of the
      * scanned files embed a comment opener in a literal — rule 1 pins the consequence).
      */
     private fun logicalLines(text: String): List<String> {
@@ -305,8 +289,8 @@ class LogSafetySourceContractTest {
 
         /**
          * Lowercase substrings that only ever travel with user text; a Log statement whose text
-         * (literals included) contains any of them can carry composing/committed text. Today's 66
-         * statements trip none — verified by [noLogStatementMentionsTextCarryingNames].
+         * (literals included) contains any of them can carry composing/committed text. Checked by
+         * [noLogStatementMentionsTextCarryingNames].
          */
         val TEXT_CARRIER_DENYLIST = listOf(
             "word", // mWord, mTypedWord, suggestedWords
@@ -328,7 +312,7 @@ class LogSafetySourceContractTest {
          * arguments are the cache size and the KeyboardId (element id / geometry / locale).
          *
          * KeyboardSwitcher.java — the `Log.w` is reachable: a layout-load failure warning carrying
-         * the KeyboardId and the exception cause. The ten `Log.d` sites sit behind the
+         * the KeyboardId and the exception cause. The `Log.d` sites sit behind the
          * SwitchActions interface constants `DEBUG_ACTION`/`DEBUG_TIMER_ACTION` (`false`) and log
          * shift/symbols state names only.
          *
@@ -339,18 +323,17 @@ class LogSafetySourceContractTest {
          *
          * MoreKeysKeyboard.java — reachable layout-geometry error (widths/columns ints).
          *
-         * PointerTracker.java — all eight sites are behind `DEBUG_LISTENER`/`DEBUG_MODE`
-         * (= `DEBUG_EVENT`)/`DEBUG_MOVE_EVENT`, all `false` and pinned by rule 3. The S3 finding
-         * (format args carried `Constants.printableCode(key.getCode())` / `key.getOutputText()`)
-         * is fixed: the tracers now pass key position, key kind, and event flags only, so an
-         * armed guard still cannot leak a keystroke.
+         * PointerTracker.java — all sites are behind `DEBUG_LISTENER`/`DEBUG_MODE`
+         * (= `DEBUG_EVENT`)/`DEBUG_MOVE_EVENT`, all `false` and pinned by rule 3. The tracers pass
+         * key position, key kind, and event flags only (never `Constants.printableCode(...)` or
+         * `key.getOutputText()`), so an armed guard still cannot leak a keystroke.
          *
          * internal/AlphabetShiftState.java — behind `DEBUG = false`; shift-state enum names.
          *
          * internal/KeyStylesSet.java — behind `DEBUG = false`; style names from static layout XML.
          *
-         * internal/KeyboardBuilder.java — the two `Log.w` sites are reachable XML-parse-failure
-         * warnings carrying only the caught exception. The three `Log.d` sites are the
+         * internal/KeyboardBuilder.java — the `Log.w` sites are reachable XML-parse-failure
+         * warnings carrying only the caught exception. The `Log.d` sites are the
          * startTag/endTag/startEndTag trace helpers; every call to them sits behind
          * `DEBUG = false`, and their arguments are XML tag names / KeyboardIds / Key.toString()
          * (static layout labels from the APK's own XML — never user input).
@@ -360,10 +343,9 @@ class LogSafetySourceContractTest {
          *
          * internal/KeyboardRow.java — reachable layout-geometry errors (floats).
          *
-         * internal/KeyboardState.java — all fourteen sites are behind `DEBUG_EVENT`/
-         * `DEBUG_INTERNAL_ACTION` (`false`). The S3 finding (onPressKey/onReleaseKey/onEvent
-         * logged `Constants.printableCode(code)` — the typed character / event codepoint) is
-         * fixed: they now log only whether the key is a functional key.
+         * internal/KeyboardState.java — all sites are behind `DEBUG_EVENT`/
+         * `DEBUG_INTERNAL_ACTION` (`false`). onPressKey/onReleaseKey/onEvent log only whether the
+         * key is a functional key, never the typed character.
          *
          * internal/ModifierKeyState.java and internal/ShiftKeyState.java — behind `DEBUG = false`
          * (declared on ModifierKeyState, inherited by ShiftKeyState); `mName` is the
@@ -371,8 +353,8 @@ class LogSafetySourceContractTest {
          *
          * internal/NonDistinctMultitouchHelper.java — reachable warning carrying pointer counts.
          *
-         * internal/PointerTrackerQueue.java — the six `Log.d` sites sit behind `DEBUG = false`;
-         * the three `Log.w` duplicate tripwires are reachable, and `pointer` renders as
+         * internal/PointerTrackerQueue.java — the `Log.d` sites sit behind `DEBUG = false`;
+         * the `Log.w` duplicate tripwires are reachable, and `pointer` renders as
          * `PointerTracker@<hash>` (PointerTracker has no toString override) — identity metadata.
          */
         val EXPECTED_CALL_SITES = listOf(
@@ -401,7 +383,7 @@ class LogSafetySourceContractTest {
             "rkr/simplekeyboard/inputmethod/keyboard/MainKeyboardView.java::Log.w(TAG, \"Cannot find android.R.id.content view to add DrawingPreviewPlacerView\");",
             // MoreKeysKeyboard.java — layout-geometry error (reachable, ints).
             "rkr/simplekeyboard/inputmethod/keyboard/MoreKeysKeyboard.java::Log.e(TAG, \"Keyboard is too small to hold the requested more keys columns: \"",
-            // PointerTracker.java — de-texted after the S3 finding: format args carry key
+            // PointerTracker.java — no typed text: format args carry key
             // position / key kind / flags only; dead behind DEBUG_LISTENER/DEBUG_MOVE_EVENT/
             // DEBUG_MODE = false.
             "rkr/simplekeyboard/inputmethod/keyboard/PointerTracker.java::Log.d(TAG, String.format(\"[%d] onPress    : %s%s%s\", mPointerId,",
@@ -440,7 +422,7 @@ class LogSafetySourceContractTest {
             "rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardState.java::Log.d(TAG, \"setAlphabetKeyboard: \" + stateToString(autoCapsFlags, recapitalizeMode));",
             "rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardState.java::Log.d(TAG, \"setSymbolsKeyboard\");",
             "rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardState.java::Log.d(TAG, \"setSymbolsShiftedKeyboard\");",
-            // internal/KeyboardState.java — de-texted after the S3 finding: functional-key
+            // internal/KeyboardState.java — no typed text: functional-key
             // boolean instead of the typed character; dead behind DEBUG_EVENT = false.
             "rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardState.java::Log.d(TAG, \"onPressKey: functional=\" + (code < 0)",
             "rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardState.java::Log.d(TAG, \"onReleaseKey: functional=\" + (code < 0)",
@@ -448,7 +430,7 @@ class LogSafetySourceContractTest {
             "rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardState.java::Log.d(TAG, \"onUpdateShiftState: \" + stateToString(autoCapsFlags, recapitalizeMode));",
             "rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardState.java::Log.d(TAG, \"onResetKeyboardStateToAlphabet: \"",
             "rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardState.java::Log.d(TAG, \"onFinishSlidingInput: \" + stateToString(autoCapsFlags, recapitalizeMode));",
-            // internal/KeyboardState.java — de-texted, same shape as onPressKey above.
+            // internal/KeyboardState.java — no typed text, same shape as onPressKey above.
             "rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardState.java::Log.d(TAG, \"onEvent: functional=\" + event.isFunctionalKeyEvent()",
             // internal/ModifierKeyState.java / ShiftKeyState.java — mName is the constructor-passed
             // constant; DEBUG = false declared on ModifierKeyState.

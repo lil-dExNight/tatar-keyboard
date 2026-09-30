@@ -1,12 +1,11 @@
-"""Bigram pair counting that survives a 1,5-ГБ corpus.
+"""Bigram pair counting for corpora too large for an in-memory Counter.
 
-The tt-corpus version built a ``collections.Counter`` keyed by ``(head, successor)`` string
-tuples and then, for every touched head, re-scanned the whole Counter to find that head's top
-three successors. Both are fine at Tatoeba scale and neither is possible on the Russian
-OpenSubtitles file: the Counter alone would need tens of gigabytes, and the re-scan is
-O(heads x pairs) -- ten thousand passes over tens of millions of pairs.
+The reference counter (``measure_bigrams.count_pairs``) uses a ``collections.Counter`` keyed
+by ``(head, successor)`` string tuples, and finding each head's top successors by re-scanning
+that Counter per head is O(heads x pairs). Both are fine at Tatoeba scale and neither works on
+the Russian OpenSubtitles file: the Counter alone would need tens of gigabytes.
 
-The rule being counted is unchanged and is still the E5a adjacency rule verbatim:
+The rule being counted is unchanged and is the bigram packer's adjacency rule verbatim:
 
     * tokens come from a plain whitespace split, WITHOUT stripping surrounding punctuation
       (that is ``bigram_tokens``, not ``dict_tokens``);

@@ -1,7 +1,7 @@
-// Phase 4b: Baseline Profile generator module (dev-only).
-// Runs BaselineProfileRule against :app on a connected device/emulator and produces
-// app/src/main/generated/baselineProfiles/baseline-prof.txt, which is then promoted
-// to app/src/main/baseline-prof.txt (packaged by AGP into assets/dexopt/baseline.prof).
+// Baseline Profile generator module (dev-only).
+// Runs BaselineProfileRule against :app on a connected emulator and writes the baseline and
+// startup profiles under app/src/release/generated/baselineProfiles/; they are then copied to
+// app/src/main/{baseline,startup}-prof.txt (packaged by AGP into assets/dexopt/).
 // Nothing from this module is compiled into or packaged with the app.
 plugins {
     id 'com.android.test'
@@ -26,22 +26,20 @@ android {
 }
 
 baselineProfile {
-    // Connected device (booted AVD, API 34 >= 33) instead of a Gradle-managed device:
-    // no system-image download needed, and the measurement AVD stays the same one
-    // used for all previous cold-start runs (tt_suggest_a14).
+    // A booted AVD (API 34) instead of a Gradle-managed device: no system-image download,
+    // and the profile is recorded on the same AVD used for cold-start measurements.
     useConnectedDevices = true
 }
 
-// DEVICE PIN (A1): useConnectedDevices picks one attached device nondeterministically,
-// so run generation with ONLY the emulator attached or pin it explicitly:
+// useConnectedDevices picks one attached device nondeterministically, so run generation
+// with only the emulator attached or pin it explicitly:
 //     ANDROID_SERIAL=<emulator-serial> ./gradlew :app:generateReleaseBaselineProfile
-// As a second line of defense the generator fails fast on any device that does not look
-// like an emulator (ro.kernel.qemu=1 or a generic/sdk/emulator fingerprint); the only
-// override is the instrumentation argument `-e ttAllowPhysicalDevice true`.
+// The generator also fails fast on a device that does not look like an emulator
+// (ro.kernel.qemu=1 or a generic/sdk/emulator fingerprint); the only override is the
+// instrumentation argument `-e ttAllowPhysicalDevice true`.
 
 dependencies {
-    // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): newest stable, bumped from 1.4.1 — the
-    // plan's trace-instrumentation wave readies TraceSectionMetric assertions on >= 1.5.0.
+    // TraceSectionMetric assertions need 1.5.0 or newer.
     implementation 'androidx.benchmark:benchmark-macro-junit4:1.5.0'
     implementation 'androidx.test.uiautomator:uiautomator:2.3.0'
     implementation 'androidx.test.ext:junit:1.2.1'

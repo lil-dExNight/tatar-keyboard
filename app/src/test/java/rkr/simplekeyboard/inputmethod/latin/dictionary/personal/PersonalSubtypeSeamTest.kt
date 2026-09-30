@@ -26,9 +26,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictiona
 import java.io.File
 
 /**
- * Guards the "boolean eligible -> active subtype identifier" refactor owned by E4a-1: one source of
- * truth for the subtype id, everything new keyed by it, and a re-checked guard for a subtypeId that
- * does not match the file it is asked to read.
+ * Guards the subtype seam: one source of truth for the subtype id, everything personal keyed by
+ * it, and a re-checked guard for a subtypeId that does not match the file it is asked to read.
  */
 class PersonalSubtypeSeamTest {
     @get:Rule

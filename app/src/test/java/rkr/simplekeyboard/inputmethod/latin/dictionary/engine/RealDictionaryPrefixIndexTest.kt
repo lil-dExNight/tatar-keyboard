@@ -80,11 +80,10 @@ class RealDictionaryPrefixIndexTest {
     }
 
     /**
-     * TT-TYPO-NEXT Phases B/C (G3/G3-C, host): the same p95 measurement over the 22 review
-     * prefixes, but with the calibrated Tatar fuzzy policy (Phase C: classes #1 + #4 +
-     * same-length bonus) and the layout-derived neighbour table engaged. Most of these prefixes
-     * fill all three cells from the exact pass, so this measures the COMMON typing path with the
-     * fuzzy pass armed — the typo-set p95 lives in [TtTypoPhaseCCalibrationTest].
+     * The same p95 measurement over the 22 review prefixes, with the shipped Tatar fuzzy policy
+     * (classes #1 + #4 + same-length bonus) and the layout-derived neighbor table. Most prefixes
+     * fill all three cells from the exact pass, so this measures the common typing path with the
+     * fuzzy pass enabled; the typo-set p95 lives in [TtTypoPhaseCCalibrationTest].
      */
     @Test
     fun computeP95WithTheTatarFuzzyPolicyOverReviewPrefixesIsAtMostFiveMilliseconds() {
@@ -168,7 +167,7 @@ class RealDictionaryPrefixIndexTest {
 
     companion object {
         private var realIndex: TdictPrefixIndex? = null
-        // Phase B (G3): the same dictionary under the calibrated Tatar fuzzy policy.
+        // The same dictionary under the shipped Tatar fuzzy policy.
         private var tatarPolicyIndex: TdictPrefixIndex? = null
 
         @JvmStatic

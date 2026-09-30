@@ -22,21 +22,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * P3 (docs/AUDIT-2026-08-31.md) source-contract for the key-preview dismiss animator.
- * The animation itself is a framework `ObjectAnimator` on a pooled view, so behavioural
- * checks need a device; what a JVM test can pin is the frozen shape of the fix:
+ * Source contract for the key-preview dismiss animator. The animation is a framework
+ * `ObjectAnimator` on a pooled view, so behavior needs a device; a JVM test pins the code shape:
  *
- * - the animator is built in code, never via `AnimatorInflater` (the XML parse on every
- *   key press was the finding);
- * - the visual parameters are exactly the ones the deleted
- *   `res/anim/key_preview_dismiss_lxx.xml` had: scaleY 1.0 -> 0.94 over 53 ms under an
- *   `AccelerateInterpolator` (the scaleX 1.0 -> 1.0 half of the old set was a no-op);
+ * - the animator is built in code, never via `AnimatorInflater` (no XML parse per key press);
+ * - the visual parameters: scaleY 1.0 -> 0.94 over 53 ms under an `AccelerateInterpolator`
+ *   (the former XML also had a no-op scaleX 1.0 -> 1.0);
  * - the choreographer caches the animator per pooled preview view, so the per-press path
  *   allocates nothing;
  * - the animation-end listener resolves the key from the view at END time
  *   (`dismissKeyPreviewView`) instead of capturing a key at creation time — the cached
  *   animator outlives the key press it was created for;
- * - the XML resource, its theme attribute and the styleable entry are really gone.
+ * - the former XML resource, its theme attribute and the styleable entry do not exist.
  */
 class KeyPreviewDismissAnimatorSourceContractTest {
 

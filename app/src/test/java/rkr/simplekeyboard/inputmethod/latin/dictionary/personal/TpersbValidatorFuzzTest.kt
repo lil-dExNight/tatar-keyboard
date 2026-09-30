@@ -25,29 +25,11 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramTe
 import java.util.Random
 
 /**
- * Seeded deterministic fuzzing of [TpersbValidator] (the `.tpersb` personal bigram store) — S5 of
- * `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`, the mirror of [TpersValidatorFuzzTest] for word
- * pairs. Zero dependencies: mutations come from a seeded [java.util.Random] via
- * [SeededFuzzHarness]; a fixed seed per shape makes every run byte-identical, and on a property
- * violation the failure message names shape + seed + iteration + the touched offsets, which
- * reproduce the exact input.
+ * Seeded fuzzing of [TpersbValidator] (the `.tpersb` learned word pairs). See [SeededFuzzHarness].
  *
- * The base image is a fixture-built valid 20-pair Tatar image with distinct contexts, so the
- * record loop, the two-word UTF-8/normalization checks and the pair-ordering checks are all
- * reachable by the mutations.
- *
- * Shapes (all against [TpersbValidator.validate]): bit flips (2 500), truncations (2 000),
- * count/size-field inflation (2 000) of the two u32 header fields (pairCount, payloadSize) —
- * [TpersbFormat.MAX_PERSONAL_BIGRAM_PAIRS] and the payload-size check must reject BEFORE any
- * count-sized allocation — random garbage (2 000), and valid-image mutation (3 000) with the
- * embedded SHA-256 refreshed half the time (via
- * [PersonalBigramTestFixtures.refreshEmbeddedChecksum]) so the fuzz reaches PAST the checksum
- * gate into the structural checks; only refreshed mutations may validate cleanly.
- *
- * Properties asserted on EVERY input (see [SeededFuzzHarness.assertCleanOrValidationFailure]):
- * clean validation or [PersonalDictionaryValidationException], never any other throwable, and —
- * for the shapes that cannot produce a valid image — never a clean validation (fail-closed; the
- * reader turns a rejection into an empty personal-bigram store).
+ * The base image is a valid 20-pair Tatar fixture with distinct contexts, so the record loop, the
+ * two-word UTF-8 and normalization checks and the pair ordering are reachable. Shapes mirror
+ * [TpersValidatorFuzzTest], inflating pairCount and payloadSize.
  */
 class TpersbValidatorFuzzTest {
     @get:Rule

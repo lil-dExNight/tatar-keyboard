@@ -518,7 +518,7 @@ class LatestOnlyPrefixEngineTest {
         assertEquals(listOf("new"), newPublished.single().suggestions)
     }
 
-    // --- E5c: NEXT_WORD requests share the same engine, token and executor as PREFIX ------------
+    // --- NEXT_WORD requests share the same engine, token and executor as PREFIX ---------------
 
     @Test
     fun requestNextWordInvokesNextWordComputerNotPrefixComputerLookup() {
@@ -566,8 +566,8 @@ class LatestOnlyPrefixEngineTest {
         engine.requestNextWord(1, "tt", utf8("өй"))
         executor.runAll()
 
-        // PROPOSALS.md, "E5c. Повреждённый, отсутствующий или неактивируемый файл биграмм даёт 0
-        // предсказаний" — a computer with no bigram source attached is exactly that state.
+        // A corrupt, missing or non-activatable bigram file yields 0 predictions; a computer with
+        // no bigram source attached is exactly that state.
         assertTrue(published.single().suggestions.isEmpty())
     }
 

@@ -127,8 +127,7 @@ class EmojiSkinTonesTest {
 
     /**
      * The panel asset itself must stay free of toned sequences: the grid shows one neutral cell per
-     * emoji and the tones live behind the long press. This is the frozen E2 decision, and the new
-     * table is what makes it survivable rather than a limitation.
+     * emoji and the tones live behind the long press, reached through the skin-tone table.
      */
     @Test
     fun thePanelAssetStillCarriesNoTonedSequence() {

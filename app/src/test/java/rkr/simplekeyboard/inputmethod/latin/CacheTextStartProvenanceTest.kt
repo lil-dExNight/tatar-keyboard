@@ -23,10 +23,10 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.common.Constants
 
 /**
- * Audit 2026-09-02, C6: "the before-cursor cache starts at the start of the text" is PROVENANCE,
- * carried by [RichInputConnection] from the full reload that filled the cache — never re-derived
- * from the cache's length. The D1 fix (docs/NEXTWORD-RACE.md) derived it as
- * `length < EDITOR_CONTENTS_CACHE_SIZE`, which local mutations break: a cursor swipe re-slices
+ * "The before-cursor cache starts at the start of the text" is provenance, carried by
+ * [RichInputConnection] from the full reload that filled the cache, never re-derived from the
+ * cache's length. A length rule (`length < EDITOR_CONTENTS_CACHE_SIZE`) breaks under local
+ * mutations: a cursor swipe re-slices
  * the cached window to a handful of chars ([RichInputConnection.setSelection]) and a long
  * backspace run truncates it ([RichInputConnection.deleteTextBeforeCursor]); both leave a short
  * cache whose index 0 is NOT the text start, and the length rule would accept a truncated word
@@ -35,8 +35,8 @@ import rkr.simplekeyboard.inputmethod.latin.common.Constants
  * Only Android-free paths are driven here: [RichInputConnection.onBeforeCursorCacheReloaded] is
  * the single writer every full reload funnels through, [RichInputConnection.deleteTextBeforeCursor]
  * is the one mutation reachable without a live editor, and the invariant the tests pin — local
- * mutations preserve the provenance — is what makes the rest (commitText/setSelection, which only
- * move the cursor-side edge of the same window) correct by construction.
+ * mutations preserve the provenance — also covers commitText/setSelection, which only move the
+ * cursor-side edge of the same window.
  */
 class CacheTextStartProvenanceTest {
 
@@ -56,14 +56,14 @@ class CacheTextStartProvenanceTest {
     fun aFullWindowReloadDoesNotClaimTheTextStart() {
         val connection = RichInputConnection(null)
 
-        // Exactly the window size: there may be more text above — fail closed.
+        // Exactly the window size: there may be more text above, so it is not the text start.
         connection.onBeforeCursorCacheReloaded("х".repeat(window))
 
         assertFalse(connection.cacheReachedTextStart())
     }
 
     /**
-     * The audit's shape: a cache that was filled to the full window (start unknown) loses most of
+     * A cache that was filled to the full window (start unknown) loses most of
      * its length to local edits. The length rule would now answer "text start reached" for a cache
      * that starts mid-text; the provenance must not move.
      */

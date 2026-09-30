@@ -19,13 +19,11 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 import java.io.File
 
 /**
- * Reads a `.tpers` file for one subtype into an immutable [PersonalDictionary]. Read-only: it opens
- * the file only for reading and writes nothing (E4a-2 owns writing).
+ * Reads a `.tpers` file for one subtype into an immutable [PersonalDictionary], read-only.
  *
  * Fail-closed at every step. A missing file, an unsupported subtype, a validation failure or any
  * unexpected error all yield [PersonalDictionary.EMPTY] rather than an exception escaping to the
- * caller. Nothing is logged and no error path carries the user's word or the file path — the
- * corrupt file is simply treated as an empty personal dictionary, and its removal is E4a-2.
+ * caller. Nothing is logged and no error path carries the user's word or the file path.
  *
  * Lives in the test sourceset: production code never reads a `.tpers` back (writing and in-memory
  * use go through the personal store), only the personal-dictionary tests do.

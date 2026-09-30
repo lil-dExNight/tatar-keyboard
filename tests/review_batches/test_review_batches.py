@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Tests for scripts/review_batches.py.
 
-The two invariants worth a test above all others are the two the dossier states as rules
-rather than as features:
+The two most important invariants:
 
     * ``approved`` is never written, under any command, on any path;
-    * an unmarked word counts as accepted ONLY inside a portion the operator declared read,
+    * an unmarked word counts as accepted ONLY inside a portion the curator declared read,
       because otherwise "nobody marked it" and "nobody looked at it" are the same bytes.
 """
 

@@ -22,7 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2b-3 fling physics boundary, exercised on the plain JVM: the scroll clamp and the
+ * The fling physics boundary, exercised on the plain JVM: the scroll clamp and the
  * fling-or-tap decision that the [EmojiPanelView] delegates to on release.
  */
 class EmojiFlingTest {

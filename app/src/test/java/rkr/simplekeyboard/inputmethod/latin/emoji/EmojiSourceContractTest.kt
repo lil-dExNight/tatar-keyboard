@@ -23,8 +23,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Source-contract test in the style of SuggestionStripSourceContractTest: it greps the frozen
- * source rather than exercising Android, so it guards the exact integration shape E2a promises.
+ * Source contract (like SuggestionStripSourceContractTest): greps the source rather than
+ * exercising Android, guarding how emoji input is wired into the IME.
  */
 class EmojiSourceContractTest {
 

@@ -1,31 +1,22 @@
 #!/usr/bin/env bash
-# SIZE-3: релизная упаковка с zopfli-рекомпрессией (docs/SIZE-OPTIMIZATION-RESEARCH.md,
-# упаковочный уровень: zipalign -z даёт ~40 КБ). Порядок обязателен: zipalign ДО
-# подписи (подпись v2 покрывает байты zip-записей — перепаковка подписанного APK
-# её инвалидирует).
+# Release packaging with zopfli recompression. Order matters: zipalign runs before
+# signing, because the v2 signature covers the zip entry bytes and repacking a signed
+# APK invalidates it. resources.arsc stays STORED (see step 1.5).
 #
-# O2 (2026-09-25, docs/OPTIMIZE-2026-09-25.md): resources.arsc deflate-ится ДО zipalign —
-# AGP хранит arsc в STORED ради mmap, но он стоит ~100 КБ несжатых байт; после deflate
-# (−71 КБ) читатель грузит его в память, что и меряется на устройстве (гейт холодного
-# старта POCO C71). Выравнивание на этом шаге не нужно нарочно: zipalign -z после него
-# раскладывает записи заново (включая 4-байтовое выравнивание оставшихся STORED), а
-# zipalign -c это проверяет перед подписью.
+# Pipeline:
+#   1. ./gradlew clean assembleRelease -PskipReleaseSigning  -> unsigned APK
+#   2. zipalign -f -z 4                                      -> zopfli recompression + alignment
+#   3. zipalign -c, resources.arsc STORED                    -> alignment and arsc checked
+#   4. apksigner sign (keys from keystore.properties, v2 only, as in the AGP build)
+#   5. apksigner verify --print-certs                        -> signature is valid
 #
-# Пайплайн одной командой:
-#   1. ./gradlew clean assembleRelease -PskipReleaseSigning  → unsigned APK
-#   3. zipalign -f -z 4                                      → zopfli-рекомпрессия + выравнивание
-#   4. zipalign -c                                           → выравнивание сохранено
-#   5. apksigner sign (ключи из keystore.properties, v2-only — как у AGP-сборки)
-#   6. apksigner verify --print-certs                        → подпись валидна
+# Run from the repository root:
+#   bash scripts/release_pack.sh [--no-sign] [output.apk]
+# Default output: app/build/outputs/apk/release/app-release-zopfli.apk.
 #
-# Запуск из корня репозитория:
-#   bash scripts/release_pack.sh [путь-результата.apk]
-# По умолчанию результат — app/build/outputs/apk/release/app-release-zopfli.apk.
-#
-# Воспроизводимость (DEV-2) сохраняется: и AGP-сборка unsigned, и zopfli (при
-# пиннованной версии build-tools — resolve_tool берёт старшую установленную), и
-# apksigner v2 детерминированы; два прогона одного дерева дают одинаковый SHA-256.
-# Скрипт ничего не меняет в репозитории, кроме build/ и app/build/.
+# The output is reproducible: the unsigned AGP build, zopfli (with the pinned build-tools)
+# and apksigner v2 are all deterministic, so two runs on one tree give the same SHA-256.
+# The script writes nothing outside build/ and app/build/.
 set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -35,10 +26,8 @@ cd "$REPO_ROOT"
 LOG_DIR="build/release_pack"
 mkdir -p "$LOG_DIR"
 
-# T8 (стадия D, docs/ROADMAP-P8-PLAN.md): --no-sign доводит пайплайн до выровненного
-# НЕподписанного APK и останавливается. Это ровно та часть, детерминизм которой раньше не
-# проверялся в CI (у CI нет keystore.properties): джоба reproducible теперь прогоняет упаковку
-# дважды и сверяет байты. Локальный релизный ритуал по-прежнему идёт полным путём с подписью.
+# --no-sign stops after alignment and leaves an aligned unsigned APK. CI (no keystore)
+# uses it to pack twice and compare the bytes; local releases take the full signed path.
 NO_SIGN=0
 if [ "${1:-}" = "--no-sign" ]; then
     NO_SIGN=1
@@ -47,15 +36,14 @@ fi
 
 OUT="${1:-app/build/outputs/apk/release/app-release-zopfli.apk}"
 
-# Аудит 2026-09-25: выходной путь не должен оказаться симлинком (apksigner писал бы по его
-# цели — потенциально чужому файлу) или осиротевшим файлом прошлого прогона, который при
-# падении середины пайплайна можно принять за свежий результат. Стираем заранее: дальше
-# каждый шаг либо пишет OUT заново, либо валится — ложного «готового» APK не остаётся.
+# Remove the output path up front. If it were a symlink, apksigner would write to its
+# target; a stale file from an earlier run could be mistaken for a fresh result after a
+# mid-pipeline failure. From here on each step either rewrites OUT or fails.
 if [ -L "$OUT" ] || [ -e "$OUT" ]; then
     rm -f -- "$OUT"
 fi
 
-# --- инструменты SDK (zipalign, apksigner) ---------------------------------------------------
+# --- SDK tools (zipalign, apksigner) ---------------------------------------------------
 
 SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
 if [ ! -d "$SDK_ROOT/build-tools" ]; then
@@ -64,14 +52,11 @@ if [ ! -d "$SDK_ROOT/build-tools" ]; then
     exit 1
 fi
 
-resolve_tool() { # <имя>
+resolve_tool() { # <name>
     local found
-    # T6 (docs/SECURITY-AUDIT-2026-09-25.md), закрыт в стадии D docs/ROADMAP-P8-PLAN.md:
-    # раньше здесь бралась СТАРШАЯ установленная версия build-tools, то есть результат упаковки
-    # менялся от установки нового SDK-пакета — а APK обязан быть побайтно воспроизводимым.
-    # Теперь версия запиннована; её можно переопределить переменной окружения (для проверки
-    # обновления), но по умолчанию инструмент берётся только из пиннованного каталога и
-    # отсутствие каталога — это громкая ошибка, а не молчаливый откат на другую версию.
+    # Tools come only from the pinned build-tools directory, so installing a newer SDK
+    # package cannot change the APK bytes. TT_BUILD_TOOLS_VERSION overrides the pin (to
+    # try an update); a missing directory is an error, never a fallback to another version.
     local pinned_dir="$SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION"
     if [ ! -d "$pinned_dir" ]; then
         echo "ERROR: запиннованные build-tools $BUILD_TOOLS_VERSION не найдены ($pinned_dir)." >&2
@@ -87,10 +72,8 @@ resolve_tool() { # <имя>
     printf '%s' "$found"
 }
 
-# Пин версии build-tools: 37.0.0 — та, на которой собран и проверен релиз 3.1.0
-# (docs/APK-AUDIT-3.1.0.md). Обновление версии — осознанный шаг с пересчётом SHA-256 артефакта.
-# B8 (2026-09-28): само значение живёт в scripts/build-tools-pin.sh (единый источник для всех
-# потребителей build-tools); здесь остаются только env-override и fail-closed поведение выше.
+# The pinned version lives in scripts/build-tools-pin.sh. Changing it means re-measuring the
+# artifact SHA-256.
 source "$SCRIPT_DIR/build-tools-pin.sh"
 BUILD_TOOLS_VERSION="${TT_BUILD_TOOLS_VERSION:-$TT_BUILD_TOOLS_PIN}"
 
@@ -100,7 +83,7 @@ echo "build-tools: $BUILD_TOOLS_VERSION (пин; переопределяетс�
 echo "zipalign:  $ZIPALIGN"
 echo "apksigner: $APKSIGNER"
 
-# --- ключи из keystore.properties (та же конвенция, что app/build.gradle) --------------------
+# --- signing keys from keystore.properties (same convention as app/build.gradle) --------------
 
 KS_PROPS="keystore.properties"
 if [ "$NO_SIGN" = 0 ] && [ ! -f "$KS_PROPS" ]; then
@@ -108,7 +91,7 @@ if [ "$NO_SIGN" = 0 ] && [ ! -f "$KS_PROPS" ]; then
     exit 1
 fi
 
-ks_prop() { # <ключ>
+ks_prop() { # <key>
     [ -f "$KS_PROPS" ] || return 0
     grep -E "^$1=" "$KS_PROPS" | head -1 | cut -d= -f2-
 }
@@ -120,7 +103,7 @@ if [ "$NO_SIGN" = 0 ] && { [ -z "$KS_FILE" ] || [ -z "$KS_ALIAS" ]; }; then
     echo "ERROR: в keystore.properties нет storeFile/keyAlias" >&2
     exit 1
 fi
-# storeFile относительный — резолвится от app/ (как file() в app/build.gradle).
+# A relative storeFile resolves against app/ (like file() in app/build.gradle).
 case "$KS_FILE" in
     /*) ;;
     *)  KS_FILE="app/$KS_FILE" ;;
@@ -140,7 +123,7 @@ mkdir -p "$LOG_DIR"
         tail -20 "$LOG_DIR/assemble.log" >&2 || true
         exit 1
     }
-# gradle clean стирает корневой build/ вместе с LOG_DIR — создаём заново.
+# gradle clean deletes the root build/ together with LOG_DIR; recreate it.
 mkdir -p "$LOG_DIR"
 
 UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
@@ -149,16 +132,13 @@ if [ ! -f "$UNSIGNED" ]; then
     exit 1
 fi
 
-# --- 1.5. resources.arsc ОСТАЁТСЯ STORED -------------------------------------------------------
-# ЗДЕСЬ БЫЛ шаг O2-1 (docs/OPTIMIZE-2026-09-25.md): resources.arsc перепаковывался STORED ->
-# DEFLATED и давал −73,7 КБ в архиве. Шаг УДАЛЁН 2026-09-25 после проверки релиза на POCO C71
-# (Android 15): такой APK НЕ УСТАНАВЛИВАЕТСЯ вообще —
+# --- 1.5. resources.arsc stays STORED ----------------------------------------------------------
+# Do not deflate resources.arsc. Android 11+ refuses to install an app targeting SDK 30+
+# whose arsc is compressed (it is mmapped):
 #   Failure [-124: ... Targeting R+ (version 30 and above) requires the resources.arsc of
 #   installed APKs to be stored uncompressed and aligned on a 4-byte boundary]
-# Требование платформы (targetSdk 30+) — arsc читается mmap'ом, поэтому он обязан лежать
-# несжатым и выровненным. `zipalign -c 4` этого не ловит: он печатает «OK - compressed» и
-# выходит с нулём, поэтому дефект прошёл все гейты и был бы опубликован. Гейт добавлен в
-# release_check.sh (artifact.arsc_stored) — не возвращать этот шаг.
+# `zipalign -c 4` does not catch this (it prints "OK - compressed" and exits 0), so step 3
+# checks it explicitly, and release_check.sh has the artifact.arsc_stored gate.
 
 # --- 2. zipalign -z (zopfli) -----------------------------------------------------------------
 
@@ -166,7 +146,7 @@ echo "== 2/5 zipalign -z (zopfli) =="
 ALIGNED="$LOG_DIR/app-release-zopfli-aligned.apk"
 "$ZIPALIGN" -f -z 4 "$UNSIGNED" "$ALIGNED"
 
-# --- 3. проверка выравнивания -----------------------------------------------------------------
+# --- 3. alignment check -----------------------------------------------------------------------
 
 echo "== 3/5 zipalign -c + resources.arsc STORED =="
 if "$ZIPALIGN" -c 4 "$ALIGNED" >"$LOG_DIR/zipalign-check.log" 2>&1; then
@@ -175,9 +155,8 @@ else
     echo "ERROR: выравнивание сломано, лог $LOG_DIR/zipalign-check.log" >&2
     exit 1
 fi
-# `zipalign -c` печатает «OK - compressed» для сжатого resources.arsc и выходит с нулём, то есть
-# сам по себе НЕ ловит APK, который Android 11+ откажется устанавливать (см. блок 1.5).
-# Поэтому условие проверяется здесь явно и fail-closed.
+# `zipalign -c` accepts a compressed resources.arsc ("OK - compressed", exit 0), so it does not
+# catch an APK that Android 11+ refuses to install (see step 1.5). Check it explicitly here.
 python3 - "$ALIGNED" <<'PYEOF'
 import sys
 import zipfile
@@ -192,7 +171,7 @@ if info.compress_type != zipfile.ZIP_STORED:
 print(f'resources.arsc: STORED, {info.file_size} B')
 PYEOF
 
-# --- 4. подпись (v2-only — как у AGP-сборки линейки с 2026-08-18) ------------------------------
+# --- 4. signing (v2 only, as in the AGP build) -------------------------------------------------
 
 if [ "$NO_SIGN" = 1 ]; then
     cp -- "$ALIGNED" "$OUT"
@@ -208,8 +187,8 @@ if [ "$NO_SIGN" = 1 ]; then
 fi
 
 echo "== 4/5 apksigner sign =="
-# Пароли — через env:-форму, а не pass: в argv: командная строка процесса видна
-# любому пользователю хоста через ps (C1 аудита 2026-09-02), окружение — нет.
+# Passwords go through env: rather than pass: in argv, because any user on the host can
+# read a process's command line via ps, but not its environment.
 KS_STORE_PASS="$KS_STORE_PASS" KS_KEY_PASS="$KS_KEY_PASS" \
 "$APKSIGNER" sign \
     --ks "$KS_FILE" --ks-key-alias "$KS_ALIAS" \
@@ -217,7 +196,7 @@ KS_STORE_PASS="$KS_STORE_PASS" KS_KEY_PASS="$KS_KEY_PASS" \
     --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled false \
     --out "$OUT" "$ALIGNED"
 
-# --- 5. верификация ----------------------------------------------------------------------------
+# --- 5. verification ---------------------------------------------------------------------------
 
 echo "== 5/5 apksigner verify =="
 if ! "$APKSIGNER" verify --print-certs "$OUT" | tee "$LOG_DIR/verify.log"; then

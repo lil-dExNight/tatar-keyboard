@@ -32,19 +32,16 @@ import java.security.MessageDigest
 import java.util.concurrent.Executor
 
 /**
- * Personal-dictionary golden-vector exporter for the iOS port (ios/docs/VERIFICATION.md §3.1,
- * ios P4: "personal.jsonl byte parity"). TEST-ONLY and inert: it runs only when the environment
- * variable PERSONAL_GOLDEN_OUT names an existing directory, so the normal `./gradlew test` run
- * skips it and nothing here reaches the APK.
+ * Personal-dictionary golden-vector exporter (`personal.jsonl`). Inert unless PERSONAL_GOLDEN_OUT
+ * names an existing directory; its output feeds the iOS port's parity suite (exact byte
+ * equality). Nothing here reaches the APK.
  *
  *   PERSONAL_GOLDEN_OUT=/path/to/dir ./gradlew :app:testDebugUnitTest --tests '*PersonalGoldenExportTest*'
  *
- * It writes personal.jsonl: deterministic scenarios over the REAL production classes
- * (PersonalEntries / PersonalBigramEntries / PendingCounters serialization, the two validators,
- * the two quarantine salvage readers, the snapshot lookups, the word filters, and two
- * end-to-end store runs whose on-disk files are dumped after every event). The iOS parity suite
- * replays every record against the Swift port and requires exact byte equality. The words are
- * fixed test words, never user text.
+ * Deterministic scenarios over the real production classes (PersonalEntries /
+ * PersonalBigramEntries / PendingCounters serialization, the two validators, the two quarantine
+ * salvage readers, the snapshot lookups, the word filters, and two end-to-end store runs whose
+ * on-disk files are dumped after every event). The words are fixed test words, never user text.
  */
 class PersonalGoldenExportTest {
 

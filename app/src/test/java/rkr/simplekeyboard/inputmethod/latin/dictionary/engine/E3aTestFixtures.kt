@@ -1,7 +1,7 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 /**
- * Shared fixtures for the E3a fuzzy-suggestion tests.
+ * Shared fixtures for the long-press typo recovery tests (edit class #1).
  *
  * The neighbor table is built through the public [KeyNeighborTable.build] from hand-written
  * [KeyNeighborTable.RawKey]s that mirror the long-press pairs declared in `rowkeys_tatar*.xml`.

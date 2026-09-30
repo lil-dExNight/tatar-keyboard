@@ -15,17 +15,14 @@ import java.io.File
 import java.io.Writer
 
 /**
- * Emoji golden-vector exporter for the iOS port (ios/docs/VERIFICATION.md §3.1, `emoji.jsonl`).
- * TEST-ONLY and inert: it runs only when EMOJI_GOLDEN_OUT names an existing directory, so the
- * normal `./gradlew test` run (CI, release_check) skips it and nothing here reaches the APK.
+ * Emoji golden-vector exporter (`emoji.jsonl`). Inert unless EMOJI_GOLDEN_OUT names an existing
+ * directory; its output feeds the iOS port's parity suite. Nothing here reaches the APK.
  *
  *   EMOJI_GOLDEN_OUT=/path/to/dir ./gradlew :app:testDebugUnitTest --tests '*EmojiGoldenExportTest*'
  *
- * Writes deterministic UTF-8 JSON Lines: the parsed catalog (category order and entries), the
- * skin-tone variants of every base, ranked search results over a deterministic query set, the
- * recents MRU/codec scripts, the trailing-cluster lengths, the panel geometry and hit tests at an
- * iPhone-sized viewport, and the suggest table as parsed. The iOS parity suite replays every
- * record against the Swift port and requires exact equality.
+ * Writes deterministic UTF-8 JSON Lines: the parsed catalog, skin-tone variants, ranked search
+ * results, recents MRU/codec scripts, trailing-cluster lengths, panel geometry and hit tests at an
+ * iPhone-sized viewport, and the suggest table as parsed.
  */
 class EmojiGoldenExportTest {
 

@@ -5,9 +5,9 @@ import org.junit.Test
 import java.io.File
 
 /**
- * The glide package keeps the keyboard layout as data (mirroring the E3b engine contract): no
- * Cyrillic literal in code — comments may name letters, literals may not — and no Android import
- * anywhere in `latin/glide` (the package must stay JVM-testable; the single Android crossing is
+ * The glide package keeps the keyboard layout as data (like the dictionary engine): no Cyrillic
+ * literal in code — comments may name letters, literals may not — and no Android import anywhere in
+ * `latin/glide` (the package must stay JVM-testable; the single Android crossing is
  * `GlideKeyGeometryBuilder` in the suggestions package).
  */
 class GlideSourceContractTest {

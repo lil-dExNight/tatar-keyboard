@@ -22,10 +22,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Item B of docs/EMOJI-PANEL-SPACE-2026-09-28.md: the "Emoji panel height" Appearance row is three
+ * The "Emoji panel height" Appearance row is three
  * named presets (Same as keyboard / Larger / Max) stored as the single `pref_emoji_panel_height`
  * float — a scale of the keyboard box. Mirrors [KeyboardHeightPreferenceTest]: the preset mapping
- * and the scale/cap rule are pure and tested directly; everything Android-flavoured (the
+ * and the scale/cap rule are pure and tested directly; everything Android-specific (the
  * restriction pipeline, the settings row, the consumption at the panel's show path) is pinned at
  * the source level, because this project's JVM suite runs without Robolectric on purpose.
  */

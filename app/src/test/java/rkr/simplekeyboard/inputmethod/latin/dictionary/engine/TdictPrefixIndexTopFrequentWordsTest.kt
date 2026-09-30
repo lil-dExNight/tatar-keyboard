@@ -30,11 +30,10 @@ import java.nio.ByteBuffer
 import kotlin.math.abs
 
 /**
- * TT-NEXTWORD-FILL task A (docs/TT-NEXTWORD-FILL.md): [TdictPrefixIndex.topFrequentWords] — the
- * one-scan top-N frequency read that feeds the NEXT_WORD fallback pool. Pins: the frozen ranking
- * (frequency descending, then code-point ascending — with TIES exercised), the exact top-8 lists
- * of both shipped dictionaries, and proof that the lookup path's zero-allocation contract is
- * untouched by the scan.
+ * [TdictPrefixIndex.topFrequentWords]: the one-scan top-N frequency read that feeds the NEXT_WORD
+ * fallback pool. Pins: the ranking (frequency descending, then code point ascending, with ties),
+ * the exact top-8 lists of both shipped dictionaries, and that the scan leaves the lookup path's
+ * zero-allocation rule intact.
  */
 class TdictPrefixIndexTopFrequentWordsTest {
 
@@ -88,7 +87,7 @@ class TdictPrefixIndexTopFrequentWordsTest {
 
         val index = EngineTestFixtures.index(entries)
         // The one O(N) scan happens OFF the lookup path; afterwards the lookup must stay within
-        // the same <= 8 bytes/lookup contract the E3 zero-alloc test pins. The query returns
+        // the same <= 8 bytes/lookup limit the zero-allocation tests pin. The query returns
         // nothing (no "зы*" word in the fixture) so the measurement isolates the machinery from
         // the result-list materialization, exactly like the existing allocation tests.
         index.topFrequentWords(8)

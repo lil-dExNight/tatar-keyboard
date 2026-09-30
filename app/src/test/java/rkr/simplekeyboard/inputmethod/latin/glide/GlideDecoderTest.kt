@@ -9,8 +9,8 @@ import org.junit.Test
 import java.lang.management.ManagementFactory
 
 /**
- * Unit tests for [GlideDecoder] on the fixture Tatar geometry with a small list-backed
- * inventory: decode mechanics, fail-closed edges, determinism, and the zero-allocation
+ * Unit tests for [GlideDecoder] on the fixture Tatar geometry with a small list-backed inventory:
+ * decode mechanics, empty results on degenerate input, determinism, and the zero-allocation
  * discipline of the decode path.
  */
 class GlideDecoderTest {
@@ -92,10 +92,10 @@ class GlideDecoderTest {
 
     @Test
     fun aDoubledWordNeedsLoopEvidenceInThePath() {
-        // P7-8 (the 2026-09-25 field report: gliding сәләм committed сәлләм — the doubled
-        // word won on frequency alone). With both twins in the inventory and сәлләм the
-        // frequency favorite by 200x, a NO-LOOP path over с-ә-л-ә-м must decode to сәләм,
-        // and the same letters with a jog at л must decode to сәлләм.
+        // Doubled-letter evidence: gliding сәләм must not commit сәлләм on frequency alone. With
+        // both twins in the inventory and сәлләм the frequency favorite by 200x, a NO-LOOP path
+        // over с-ә-л-ә-м must decode to сәләм, and the same letters with a jog at л must decode to
+        // сәлләм.
         val decoder = decoderOf(
             listOf(
                 "сәләм" to 36L,
@@ -117,8 +117,8 @@ class GlideDecoderTest {
         val tap = GlidePath()
         tap.addPoint(1000f, 1000f, 0f)
         assertEquals(0, decodeWords(decoder, tap).size)
-        // A pruned-out input: a one-unit wiggle on a key no inventory word starts AND ends
-        // near. Fail-closed means no candidates, not an exception.
+        // A pruned-out input: a one-unit wiggle on a key no inventory word starts AND ends near.
+        // The result is no candidates, not an exception.
         val key = geometry.keyIndexOfLetter('т'.code)
         val wiggle = GlidePath()
         wiggle.addPoint(geometry.centerX(key), geometry.centerY(key), 0f)
@@ -186,8 +186,8 @@ class GlideDecoderTest {
         assertEquals(0, path.size)
     }
 
-    // The G3 discipline on the fixture: the decode machinery allocates nothing after warmup;
-    // the only per-call allocation is the result materialization (the surfaced strings).
+    // Zero-allocation rule on the fixture: the decode machinery allocates nothing after warmup; the
+    // only per-call allocation is the result materialization (the surfaced strings).
     @Test
     fun decodeAllocationsAfterWarmup() {
         val bean = ManagementFactory.getThreadMXBean() as? ThreadMXBean
@@ -231,8 +231,8 @@ class GlideDecoderTest {
 
         val wordBytes = perCallBytes(wordPath, 20_000)
         assertTrue("the ideal path returned no candidates", result.count > 0)
-        // The result materialization is bounded: at most TOP_N strings with their decoded
-        // backing arrays (measured well under 256 B/word for these fixture words).
+        // The result materialization is bounded: at most TOP_N strings with their decoded backing
+        // arrays (well under 256 B/word for these fixture words).
         assertTrue(
             "bytes/call with results: $wordBytes (bound = ${GlideDecoder.TOP_N} strings)",
             wordBytes <= GlideDecoder.TOP_N * 256L,

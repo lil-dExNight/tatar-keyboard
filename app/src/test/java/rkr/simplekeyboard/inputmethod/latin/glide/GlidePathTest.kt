@@ -63,8 +63,8 @@ class GlidePathTest {
     }
 
     /**
-     * 2026-09-25 audit, F14: a NaN/Infinity sample would poison every distance the decoder
-     * measures from the path, so it is refused at the gate — fail-closed, like the capacity cap.
+     * A NaN/Infinity sample would poison every distance the decoder measures from the path, so it
+     * is refused on entry, like a sample past the capacity cap.
      */
     @Test
     fun nonFinitePointsAreRefusedFailClosed() {

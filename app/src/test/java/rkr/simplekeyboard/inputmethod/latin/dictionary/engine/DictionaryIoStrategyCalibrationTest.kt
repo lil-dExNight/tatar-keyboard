@@ -13,32 +13,19 @@ import java.nio.ByteBuffer
 import kotlin.math.ceil
 
 /**
- * O7 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the host leg of the dictionary I/O-strategy
- * experiment.
+ * Compares two I/O strategies for the dictionary on the committed Tatar asset: the shipped
+ * read-only mmap (`MappedDictionaryEngine.FILE_MAPPER`) and a heap copy
+ * (`ByteBuffer.wrap(readBytes())`), both through the `DictionaryMapper` seam.
  *
- * The plan item's premise — the schema-2 reader keeps a heap copy and could move to
- * `FileChannel.map()` — is inverted in the tree as found: production has read the inflated
- * dictionary through a read-only mmap since 2026-07-23 (`MappedDictionaryEngine.FILE_MAPPER`,
- * pinned by `MappedDictionaryEngineTest.repeatedReadOnlyMmapLifecycleDoesNotRetainFileDescriptorsOrLeases`),
- * and the `DictionaryMapper` seam already admits the alternative. What this harness therefore
- * measures is the experiment in its decision direction: the shipped MMAP strategy against the
- * HEAP alternative (`ByteBuffer.wrap(readBytes())`) over the SAME committed Tatar dictionary.
- *
- *  - [lookupResultsAreByteIdenticalAcrossIoStrategies]: the engine is buffer-kind-agnostic by
- *    construction (`TdictPrefixIndex` only ever calls `ByteBuffer.get` on a read-only buffer);
- *    this pins that equivalence on the real asset, including the probe-heavy typo path and the
- *    cold read surfaces (whole-word membership, the glide inventory walk).
+ *  - [lookupResultsAreByteIdenticalAcrossIoStrategies]: `TdictPrefixIndex` only calls
+ *    `ByteBuffer.get` on a read-only buffer; this pins identical results on the real asset,
+ *    including the typo path and the cold reads (whole-word membership, glide inventory walk).
  *  - [perLookupLatencyAndAllocationStayWithinTheShippedBoundForBothStrategies]: p50/p95 over the
- *    22 D1a review prefixes and the 5 TT-TYPO-NEXT typo probes under the shipped Tatar fuzzy
- *    policy, both strategies held to the shipped 5 ms host bound; per-lookup allocated bytes come
- *    from the thread-local counter and must not differ between strategies.
- *  - [coldLoadCostOfBothStrategiesIsRecorded]: buffer acquisition + `open()` (the full structural
- *    pass) medians, print-only. The host page cache is warm after the first repetition, so these
- *    are warm-bound numbers; the cold-read and PSS legs belong to the device probe
- *    (`DictionaryIoStrategyInstrumentationTest`), run by the wave-3 POCO session.
- *
- * Prints machine-readable `O7 host io-strategy ...` lines; the decision note lives in the plan
- * file's O7 item.
+ *    22 review prefixes and 5 typo probes under the Tatar fuzzy policy, both held to the 5 ms host
+ *    bound, with equal per-lookup allocation.
+ *  - [coldLoadCostOfBothStrategiesIsRecorded]: acquisition + `open()` medians, print-only and
+ *    warm-cache on the host; the cold-read and PSS measurements belong to
+ *    `DictionaryIoStrategyInstrumentationTest` on a device.
  */
 class DictionaryIoStrategyCalibrationTest {
 
@@ -54,8 +41,8 @@ class DictionaryIoStrategyCalibrationTest {
                 mapped.lookup(query),
             )
         }
-        // The other read surfaces of the same buffer (P2 whole-word membership, used by the
-        // personal-bigram store's worker; P7-1 glide inventory walk) must agree as well.
+        // The other read surfaces of the same buffer (whole-word membership, used by the
+        // learned-pairs store's worker; the glide inventory walk) must agree as well.
         for (word in listOf("сәләм", "татарча", "китап", "сцләмәткәй-absent")) {
             assertEquals(
                 "containsWordCold differs between io strategies for $word",
@@ -101,9 +88,8 @@ class DictionaryIoStrategyCalibrationTest {
 
     /**
      * Acquisition + open() medians over interleaved repetitions, print-only: wall-clock ratios on
-     * a shared CI runner are noise (the G2 lesson, docs/PERF-BUDGETS.md), so the decision uses the
-     * printed medians, not an assert. Note the host page cache is warm after the first rep — these
-     * are the WARM bound; the device probe owns the cold-read leg.
+     * a shared CI runner are noise. The host page cache is warm after the first repetition, so
+     * these are warm numbers; the device test owns the cold read.
      */
     @Test
     fun coldLoadCostOfBothStrategiesIsRecorded() {
@@ -220,9 +206,9 @@ class DictionaryIoStrategyCalibrationTest {
     }
 
     companion object {
-        // The TT-TYPO-NEXT workload, inlined exactly as in E3bComputeInstrumentationTest: the
-        // target case at 3/4/5 code points, "сйл", and the 10-code-point "сцләмәтлек" — the
-        // heaviest reader of the dictionary bytes (380 class-#4 probes per lookup).
+        // The typo workload, inlined as in E3bComputeInstrumentationTest: the target case at
+        // 3/4/5 code points, "сйл", and the 10-code-point "сцләмәтлек", the heaviest reader of the
+        // dictionary bytes.
         private val TYPO_PROBES = listOf("сцл", "сцлә", "сцләм", "сйл", "сцләмәтлек")
         private const val REPS = 21
 
@@ -254,8 +240,8 @@ class DictionaryIoStrategyCalibrationTest {
             identity = loadedIdentity
             val heapBuffer = ByteBuffer.wrap(file.readBytes())
             val mappedBuffer = MappedDictionaryEngine.FILE_MAPPER.mapReadOnly(file, validated.rawSize)
-            // The strategies are what they claim to be; the mmap pin of MappedDictionaryEngineTest
-            // covers the production side, these pin the experiment's two arms.
+            // The strategies are what they claim to be; MappedDictionaryEngineTest covers the
+            // production mmap side, these pin the two arms compared here.
             assertTrue(heapBuffer.hasArray())
             assertTrue(mappedBuffer.isDirect && mappedBuffer.isReadOnly)
             heapIndex = openIndex(heapBuffer, loadedIdentity, spec)

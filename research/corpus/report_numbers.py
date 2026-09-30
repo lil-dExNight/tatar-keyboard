@@ -1,8 +1,7 @@
-"""Print every number docs/CORPUS-OS.md quotes, straight from out/os_*.json.
+"""Print the OpenSubtitles measurement report tables, straight from out/os_*.json.
 
-Written so the report is transcribed by a program rather than by hand: each table below is
-printed in the shape it appears in the document, and every value is read from the JSON a
-measurement actually wrote. If a file is missing the row says so instead of guessing.
+Every value is read from the JSON a measurement wrote, so the report is not transcribed by
+hand. If a file is missing the row says so instead of guessing.
 """
 from __future__ import annotations
 

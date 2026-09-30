@@ -44,19 +44,11 @@ import java.util.concurrent.TimeUnit
  * The band must never be left describing nothing while the cursor sits at the end of a word the
  * dictionary answers.
  *
- * The failure this pins was reported from the operator's hands as three snapshots: «др» showed
- * `друг · другой · друга`, «дру» showed an EMPTY band with the cell dividers still drawn, and
- * «друг» showed `другой · друга · других` again. The dictionary is not at fault — the shipped
- * Russian artifact answers all three prefixes, which the first test below asserts against the real
- * asset. What went wrong is the state: a cursor move (an external one, or the keyboard's own space
- * slide / delete swipe) routes into [SuggestionsController.onSelectionChanged], which unbinds the
- * band, blanks it and invalidates the in-flight generation — and used to stop there. Nothing looked
- * anything up again, so the band stayed blank until the next keystroke although the trailing word
- * had not changed at all.
- *
- * [SuggestionsController.onCursorMoveSettled] is the other half, and this is its behaviour:
- * re-derive the band once the cursor has settled, and stay out of the way otherwise. The wiring
- * that calls it from every cursor-move path is pinned by [CursorMoveBandSourceContractTest].
+ * A cursor move (external, or the keyboard's own space slide / delete swipe) routes into
+ * [SuggestionsController.onSelectionChanged], which unbinds and blanks the band; the band for
+ * «др», «дру», «друг» must still come back. [SuggestionsController.onCursorMoveSettled]
+ * re-derives the band once the cursor has settled and stays out of the way otherwise; the wiring
+ * from every cursor-move path is pinned by [CursorMoveBandSourceContractTest].
  */
 class CursorMoveBandTest {
 
@@ -138,10 +130,10 @@ class CursorMoveBandTest {
     }
 
     /**
-     * The controller wired to the REAL shipped Russian dictionary, with the poster modelling
-     * `Handler.post`: a posted runnable runs after the call that posted it returns, never inside it.
-     * That ordering is not cosmetic — it is what lets `requestCompanionFill` record its outstanding
-     * request before the answer to it can arrive.
+     * The controller wired to the REAL shipped Russian dictionary, with the poster modeling
+     * `Handler.post`: a posted runnable runs after the call that posted it returns, never inside
+     * it. That ordering is not cosmetic — it is what lets `requestCompanionFill` record its
+     * outstanding request before the answer to it can arrive.
      */
     private class Harness {
         val strip = FakeStrip()

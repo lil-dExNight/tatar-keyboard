@@ -23,8 +23,7 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.common.Constants
 
 /**
- * The behavioral half of the 2026-09-25 input-robustness fix wave
- * (docs/SECURITY-AUDIT-2026-09-25-FIXES.md): the pieces of [RichInputConnection] that run
+ * Behavioral robustness tests for the pieces of [RichInputConnection] that run
  * without a live editor, driven exactly like [CacheTextStartProvenanceTest] drives them —
  * `RichInputConnection(null)` plus the package-private seams. The structural half (batch
  * pairing, dead-editor guards, the reload's threading) lives in
@@ -34,7 +33,7 @@ class RichInputConnectionRobustnessTest {
 
     private val window = Constants.EDITOR_CONTENTS_CACHE_SIZE
 
-    // --- F3: the before-cursor cache is bounded ------------------------------------------------
+    // --- The before-cursor cache is bounded ----------------------------------------------------
 
     @Test
     fun appendingBeyondTheWindowKeepsTheTailAndDropsTheProvenance() {
@@ -64,7 +63,7 @@ class RichInputConnectionRobustnessTest {
         assertTrue(connection.cacheReachedTextStart())
     }
 
-    // --- F4: a lying SurroundingText falls back to the empty cache ------------------------------
+    // --- A lying SurroundingText falls back to the empty cache ------------------------------
 
     @Test
     fun aValidSurroundingTextSplitsAroundTheSelection() {
@@ -82,7 +81,7 @@ class RichInputConnectionRobustnessTest {
         val connection = RichInputConnection(null)
         connection.applyTextAroundCursor("hello world", 3, 5)
 
-        // start > end: the pre-fix code crashed here in String.subSequence.
+        // start > end: must not reach String.subSequence, which would throw.
         assertFalse(connection.applyTextAroundCursor("hello world", 5, 3))
         assertEquals("", connection.cachedTextBeforeCursor.toString())
         assertEquals("", connection.selectedText.toString())
@@ -98,7 +97,7 @@ class RichInputConnectionRobustnessTest {
         assertEquals("", connection.cachedTextAfterCursor.toString())
     }
 
-    // --- F7: an inverted selection report is normalized -----------------------------------------
+    // --- An inverted selection report is normalized ---------------------------------------------
 
     @Test
     fun anInvertedSelectionReportIsNormalized() {
@@ -116,7 +115,7 @@ class RichInputConnectionRobustnessTest {
         assertFalse(connection.hasSelection())
     }
 
-    // --- F1: the paste threshold -----------------------------------------------------------------
+    // --- The paste threshold ---------------------------------------------------------------------
 
     @Test
     fun thePasteThresholdAdmitsOnlySmallNonEmptyClips() {
@@ -133,7 +132,7 @@ class RichInputConnectionRobustnessTest {
         assertFalse(RichInputConnection.shouldCommitPasteDirectly("х".repeat(70 * 1024)))
     }
 
-    // --- F11: getUnicodeSteps at ZWJ tails --------------------------------------------------------
+    // --- getUnicodeSteps at ZWJ tails ------------------------------------------------------------
 
     @Test
     fun aZwjClusterEndingAtTheCursorIsOneStep() {
@@ -144,9 +143,9 @@ class RichInputConnectionRobustnessTest {
     }
 
     /**
-     * The F11 boundary fix: the cached window is a TAIL slice of the editor text, so a ZWJ can
-     * sit at index 0 (the slice started mid-cluster). The old `i > 1` boundary skipped the
-     * ZWJ check at index 1 and left the dangling joiner behind the cursor; `i >= 1` swallows it.
+     * The cached window is a TAIL slice of the editor text, so a ZWJ can sit at index 0 (the
+     * slice started mid-cluster). The loop boundary `i >= 1` (not `i > 1`) checks index 1 too, so
+     * no dangling joiner is left behind the cursor.
      */
     @Test
     fun aZwjTailAtTheWindowStartIsSwallowedWhole() {

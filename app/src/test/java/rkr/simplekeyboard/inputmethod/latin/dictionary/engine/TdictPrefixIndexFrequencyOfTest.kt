@@ -24,9 +24,9 @@ import org.junit.Test
 import java.lang.management.ManagementFactory
 
 /**
- * P3 (docs/TT-SUGGESTIONS.md): [TdictPrefixIndex.frequencyOf] — exact whole-word frequency lookup,
- * reusing the block-search machinery, with the lookup-path allocation discipline pinned by the
- * same ThreadMXBean pattern the fuzzy pass uses.
+ * [TdictPrefixIndex.frequencyOf]: exact whole-word frequency lookup, reusing the block-search
+ * machinery, with the lookup path's zero-allocation rule pinned by the same ThreadMXBean pattern
+ * the fuzzy pass uses.
  */
 class TdictPrefixIndexFrequencyOfTest {
 

@@ -1,4 +1,4 @@
-"""Proof that the streaming rewrite measures the same thing the tt-corpus scripts measured.
+"""Check that the streaming rewrite measures the same thing as the in-memory scripts.
 
 Run it before trusting any number produced with stream.py. It compares, on real corpus files:
 

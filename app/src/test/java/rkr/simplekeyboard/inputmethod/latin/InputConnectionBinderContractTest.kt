@@ -22,12 +22,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * O6 of `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md` — the InputConnection binder audit
- * (findings: `docs/IC-BINDER-AUDIT-2026-09-29.md`). Every `InputConnection` call is a binder
- * transaction into the host app, and the platform docs name binder stalls a top UI-thread stall
- * source, so the audit's verified properties are pinned here in the project's source-contract
- * idiom (the same reason `CommitPathConnectionContractTest` is written this way: `InputLogic`
- * and `RichInputConnection` need a live `LatinIME` and do not run in a plain JVM test).
+ * Every `InputConnection` call is a binder transaction into the host app, and binder stalls are a
+ * main source of UI-thread stalls, so the binder traffic of the input path is pinned from source
+ * (`InputLogic` and `RichInputConnection` need a live `LatinIME`; see
+ * `CommitPathConnectionContractTest`).
  *
  * What is pinned:
  *
@@ -35,8 +33,9 @@ import org.junit.Test
  *    `deleteSurroundingText` for backspace); every per-keystroke READ is served by
  *    `RichInputConnection`'s local cache, and `InputLogic` never holds a raw connection.
  * 2. The whole editor-call inventory of `RichInputConnection` is count-anchored, so a new call
- *    site is a conscious act (fail-closed), and every editor READ lives inside the coalesced
- *    background reload — with the payload window bounded by `EDITOR_CONTENTS_CACHE_SIZE`.
+ *    site fails this test until the inventory is updated, and every editor READ lives inside the
+ *    coalesced background reload, with the payload window bounded by
+ *    `EDITOR_CONTENTS_CACHE_SIZE`.
  * 3. Key events stay deliberately unbatched (the platform ignores batch edits for them);
  *    `replaceText`'s two-call pre-34 fallback only ever runs inside `performRecapitalization`'s
  *    batch. The try/finally pairing of every batch is `BatchEditPairingContractTest`'s job and
@@ -54,7 +53,7 @@ class InputConnectionBinderContractTest {
     private val inputLogic by lazy { readMain("$LATIN/inputlogic/InputLogic.java") }
     private val latinIme by lazy { readMain("$LATIN/LatinIME.java") }
 
-    // --- Q1: per-keystroke cost --------------------------------------------------------------
+    // --- Per-keystroke cost ------------------------------------------------------------------
 
     @Test
     fun inputLogicReachesTheEditorOnlyThroughTheCacheAwareWrapper() {
@@ -93,7 +92,7 @@ class InputConnectionBinderContractTest {
             latinIme.contains("EditorInfo getCurrentInputEditorInfo"))
     }
 
-    // --- Q4: the read inventory — every editor read is the bounded background reload ----------
+    // --- The read inventory — every editor read is the bounded background reload --------------
 
     @Test
     fun theOnlyEditorReadsAreTheCoalescedBackgroundReload() {
@@ -137,7 +136,7 @@ class InputConnectionBinderContractTest {
         assertFalse(body.contains("mIC.getTextBeforeCursor("))
     }
 
-    // --- Q1/Q2: the write inventory — a new editor call site must go loud ---------------------
+    // --- The write inventory — a new editor call site must fail this test ---------------------
 
     @Test
     fun theEditorCallInventoryIsExactlyTheKnownSet() {
@@ -164,14 +163,13 @@ class InputConnectionBinderContractTest {
         }
     }
 
-    // --- Q2: the deliberate non-batches --------------------------------------------------------
+    // --- The deliberate non-batches ------------------------------------------------------------
 
     @Test
     fun keyEventsStayUnbatchedByPlatformDesign() {
-        // The AOSP doctrine, kept in the sendDownUpKeyEvent javadoc: batch edits are ignored for
+        // The AOSP rule, kept in the sendDownUpKeyEvent javadoc: batch edits are ignored for
         // key events (they travel a different, asynchronous binder), so wrapping the DOWN/UP pair
-        // would be dead code pretending to be a guard. Two fragments because the sentence wraps
-        // across javadoc lines.
+        // would guard nothing. Two fragments because the sentence wraps across javadoc lines.
         assertTrue(inputLogic.contains("asynchronous binder. Also, batch edits"))
         assertTrue(inputLogic.contains("are ignored for key events"))
         val downUp = bodyOf(
@@ -210,7 +208,7 @@ class InputConnectionBinderContractTest {
         assertTrue("the pre-34 fallback is delete-then-commit, adjacently", delete in 0 until commit)
     }
 
-    // --- Q3: the draw path can never reach the binder ------------------------------------------
+    // --- The draw path can never reach the binder ----------------------------------------------
 
     @Test
     fun theKeyboardPackageNeverReferencesTheConnection() {
@@ -249,7 +247,7 @@ class InputConnectionBinderContractTest {
         }
     }
 
-    // --- Q5: the cache refresh discipline --------------------------------------------------------
+    // --- The cache refresh discipline ------------------------------------------------------------
 
     @Test
     fun theCacheIsReloadedAtExactlyTheKnownBoundaries() {

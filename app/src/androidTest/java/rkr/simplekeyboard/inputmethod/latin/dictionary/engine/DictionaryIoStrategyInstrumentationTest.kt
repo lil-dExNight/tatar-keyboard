@@ -26,33 +26,23 @@ import java.nio.ByteBuffer
 import kotlin.math.ceil
 
 /**
- * O7 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the device leg of the dictionary I/O-strategy
- * experiment — the shipped read-only mmap (`MappedDictionaryEngine.FILE_MAPPER`, the production
- * read path since 2026-07-23) against the heap alternative (`ByteBuffer.wrap(readBytes())`) on
- * real hardware. Same JUnit3/legacy-runner shape as the other device harnesses here — never
- * packaged into the release APK.
+ * Device comparison of dictionary I/O strategies over the same inflated Tatar dictionary: the
+ * shipped read-only mmap (`MappedDictionaryEngine.FILE_MAPPER`) against a heap buffer
+ * (`ByteBuffer.wrap(readBytes())`).
  *
- * Three measurements, all over the SAME inflated Tatar dictionary file:
+ *  1. PSS (`Debug.getMemoryInfo`, "total/dalvik/other" kB): baseline → mmap loaded (every page
+ *     touched) → released and GC'd → heap loaded. With mmap the dictionary should sit in
+ *     evictable file-backed pages, not the dalvik heap. Logged only (device PSS is noisy), and
+ *     measured first, before the other sections keep their own buffers alive.
+ *  2. Load time: buffer acquisition (file read vs `FileChannel.map`) plus
+ *     `TdictPrefixIndex.open`, which for mmap is also the first touch of every page. Without
+ *     root there is no `drop_caches`, so later repetitions hit a warm page cache; rep 1 is
+ *     logged separately as the closest cold value.
+ *  3. Lookup p50/p95/max over the review prefixes and typo probes of
+ *     [E3bComputeInstrumentationTest], both fuzzy policies with the neighbor table, for each
+ *     strategy; p95 must stay within the same 5.0 ms bound.
  *
- *  1. PSS signature (`Debug.getMemoryInfo`, "total/dalvik/other" kB): baseline → mmap loaded
- *     (post-open, every page touched) → released and GC'd → heap loaded. The expected signature
- *     of the shipped strategy is the dictionary's ~1.25 MB living in evictable file-backed pages
- *     instead of the anonymous dalvik heap. Observational (no assert): device PSS is noisy and
- *     the O2 ritual owns the PSS budget row. Measured FIRST, before the other sections hold their
- *     own buffers alive.
- *  2. Cold load: buffer acquisition (file read vs `FileChannel.map`) plus `TdictPrefixIndex.open`
- *     — the full structural pass, which for the mmap arm is also the first-touch walk over every
- *     page. CAVEAT: without root there is no `drop_caches`, so after the first repetition the
- *     page cache is warm and the medians are the warm bound; rep 1 is logged separately as the
- *     closest available cold witness.
- *  3. Lookup p50/p95/max over the 22 review prefixes and the typo probes, under BOTH fuzzy
- *     policies with the offline-model neighbour table engaged (the E3b workload shape), for each
- *     strategy — held to the same conservative 5.0 ms fail-closed bound as
- *     [E3bComputeInstrumentationTest]. Note E3b itself recorded its gates on a HEAP buffer; this
- *     probe is the first device measurement of the actual production (mmap) read path.
- *
- * Run (wave-3 POCO session; idle device, screen on, USB power — the docs/PERF-BUDGETS.md
- * discipline):
+ * Run on an idle device with the screen on:
  *
  *     ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
  *     adb install -r app/build/outputs/apk/debug/app-debug.apk
@@ -136,8 +126,8 @@ class DictionaryIoStrategyInstrumentationTest : InstrumentationTestCase() {
                     "openMmap=${fmt(median(openMapped))} ms consumed=$consumed",
             )
 
-            // 3. Lookup latency: both policies, both strategies, identical workloads — the E3b
-            // shape, neighbour table engaged for both policies exactly as E3b measures it.
+            // 3. Lookup latency: both policies, both strategies, identical workloads, with the
+            // neighbor table engaged as in E3bComputeInstrumentationTest.
             val neighborTable = E3bComputeInstrumentationTest().offlineModelNeighborTable()
             val heapBytes = rawFile.readBytes()
             val mappedBytes =

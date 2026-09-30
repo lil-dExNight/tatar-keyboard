@@ -27,43 +27,13 @@ import java.nio.ByteOrder
 import java.util.Random
 
 /**
- * Seeded deterministic fuzzing of [TdictValidator] — S5 of
- * `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`. Zero dependencies: mutations come from a seeded
- * [java.util.Random] via [SeededFuzzHarness]; a fixed seed per shape makes every run
- * byte-identical, and on a property violation the failure message names shape + seed + iteration
- * + the touched offsets, which reproduce the exact input.
+ * Seeded fuzzing of [TdictValidator]. See [SeededFuzzHarness].
  *
- * The base image is a fixture-built valid TATDICT schema-2 dictionary of 40 words (5 front-coding
- * blocks), so every structural loop — block index walk, per-block entries, frequency varints — is
- * reachable by the mutations.
- *
- * Shapes (all against [TdictValidator.validateRaw] unless noted):
- *
- *  * **bit flips** (2 500): 1–4 single-bit flips, no checksum refresh — the integrity gates must
- *    reject from every position;
- *  * **truncations** (2 000): strict prefixes at random lengths — the header's declared file
- *    size can never match, so all must reject;
- *  * **count/size-field inflation** (2 000): the six u32 header fields (entryCount, blockCount,
- *    blockIndexOffset, blocksOffset, blocksSize, declaredFileSize) set to huge values — the caps
- *    and the canonical-layout check must reject BEFORE any count-sized allocation; the file
- *    itself stays ~500 bytes, so an allocation attempt per an inflated count would blow up and be
- *    caught;
- *  * **random garbage** (2 000): random bytes of random length;
- *  * **valid-image mutation** (3 000): payload corruption, then half the time the embedded
- *    SHA-256 is refreshed (via [DictionaryTestFixtures.refreshEmbeddedChecksum]) and/or the spec
- *    pins are re-derived from the mutated image — this reaches PAST the checksum gate into the
- *    structural checks, which is where random corruption otherwise never gets. Only
- *    refresh + derived-spec mutations may validate cleanly (the corruption can land in bytes the
- *    structure does not constrain, e.g. inside a frequency varint); every other combination must
- *    reject;
- *  * **compressed stream** (2 000): the same corruption shapes against
- *    [TdictValidator.inflateAsset], including a decompression-bomb probe (a tiny zlib stream
- *    inflating past the raw cap); successful inflations are fed on to [TdictValidator.validateRaw]
- *    exactly like the real pipeline does.
- *
- * Properties asserted on EVERY input (see [SeededFuzzHarness.assertCleanOrValidationFailure]):
- * clean validation or [DictionaryValidationException], never any other throwable, and — for the
- * shapes that cannot produce a valid image — never a clean validation (fail-closed).
+ * The base image is a valid 40-word schema-2 fixture dictionary (5 front-coding blocks), so the
+ * block index walk, the per-block entries and the frequency varints are all reachable. Shapes:
+ * bit flips, truncations, header count/size inflation, random garbage, payload corruption with an
+ * optional checksum refresh and re-derived spec pins (only these may validate), and the same
+ * corruptions of the compressed stream, including a decompression-bomb probe.
  */
 class TdictValidatorFuzzTest {
     @get:Rule

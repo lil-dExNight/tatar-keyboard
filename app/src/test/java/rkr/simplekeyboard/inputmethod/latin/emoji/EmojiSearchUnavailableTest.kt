@@ -22,7 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Mission tt-final, the sweep of section 2: a gesture that does nothing must say so.
+ * A gesture that does nothing must say so.
  *
  * The search cell is a button drawn inside the emoji panel's tab row. It is drawn whether or not
  * the search index can be read, and the index is read at most once per process —

@@ -1,26 +1,13 @@
 #!/usr/bin/env python3
-"""Доказательство lossless-эквивалентности TATDICT schema 1 → schema 2 (SIZE-1).
+"""Check that a TATDICT schema 2 asset is lossless against its schema 1 source.
 
-Сравнивает два ассета одного словаря (например, поставляемый v1 и его перепаковку
-``dictionary_pack.py repack --schema 2``) на трёх уровнях:
-
-  1. ПОЛНЫЙ РАЗБОР: (слова, порядок, частоты) обоих файлов обязаны совпасть
-     точно — это полное доказательство тождества данных.
-  2. НЕЗАВИСИМАЯ МОДЕЛЬ ЧИТАТЕЛЯ: V2BlockIndex ниже повторяет алгоритм доступа
-     Kotlin-читателя schema 2 (бинпоиск по первым словам блоков, последовательный
-     декод внутри блока), намеренно НЕ пользуясь разобранным списком слов из
-     валидатора. Его выдача по КАЖДОМУ distinct-префиксу длины 1..5 всех слов
-     сверяется с ``prefix_candidates`` по разбору v1: слова, порядок и частоты.
-  3. Сводка печатается JSON-строкой RESULT|... для протокола.
-
-Использование:
-
-    python3 scripts/schema2_equivalence_check.py \
-        --v1 app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib \
-        --v2 /tmp/v2/tat.tdict.zlib --language tat
-
-Коды выхода: 0 — эквивалентны, 1 — расхождение, 2 — входы/окружение.
-Только stdlib.
+Compares two assets of one dictionary (for example the v1 asset and its
+``dictionary_pack.py repack --schema 2`` output): the full parses must have the same words,
+order and frequencies, and an independent model of the Kotlin schema 2 reader (V2BlockIndex,
+which does not use the validator's word list) must return the same completions as the v1
+parse for every distinct prefix of length 1..5. Usage:
+``schema2_equivalence_check.py --v1 V1 --v2 V2 --language tat``. Exit: 0 equivalent,
+1 mismatch, 2 missing input.
 """
 
 from __future__ import annotations
@@ -41,10 +28,10 @@ import dictionary_pack as dp  # noqa: E402
 
 
 class V2BlockIndex:
-    """Независимая модель читателя schema 2: бинпоиск по блокам + декод блока.
+    """Independent model of the schema 2 reader: binary search over blocks, then block decode.
 
-    Слова хранятся как байты; сравнение — побайтовое беззнаковое, как у
-    ByteBuffer-читателя (для UTF-8 оно совпадает с кодпоинтным порядком).
+    Words are kept as bytes and compared as unsigned bytes, like the ByteBuffer reader (for
+    UTF-8 this matches code point order).
     """
 
     def __init__(self, raw: bytes) -> None:
@@ -71,7 +58,7 @@ class V2BlockIndex:
         self.block_offsets = struct.unpack_from(
             f"<{block_count}I", raw, block_index_offset
         )
-        # Первые слова блоков — для бинарного поиска.
+        # First words of the blocks, for binary search.
         self.first_words = [self._first_word(b) for b in range(block_count)]
 
     def _first_word(self, block: int) -> bytes:
@@ -112,7 +99,7 @@ class V2BlockIndex:
         return words[position], frequencies[position]
 
     def lower_bound(self, prefix: bytes) -> int:
-        """Индекс первого слова >= prefix — бинпоиск по блокам, затем в блоке."""
+        """Index of the first word >= prefix: binary search over blocks, then in the block."""
         block = bisect.bisect_right(self.first_words, prefix) - 1
         if block < 0:
             return 0
@@ -151,7 +138,7 @@ def run(v1_path: Path, v2_path: Path, tag: str, top: int) -> int:
     parsed_v1 = dp.validate_asset(v1_path.read_bytes(), language=language)
     parsed_v2 = dp.validate_asset(v2_path.read_bytes(), language=language)
 
-    # Уровень 1: полное тождество разбора.
+    # Level 1: the full parses are identical.
     if parsed_v1.words != parsed_v2.words:
         print("RESULT|FAIL|words-differ", file=sys.stderr)
         return 1
@@ -159,7 +146,7 @@ def run(v1_path: Path, v2_path: Path, tag: str, top: int) -> int:
         print("RESULT|FAIL|frequencies-differ", file=sys.stderr)
         return 1
 
-    # Уровень 2: все distinct-префиксы длины 1..5 через независимую модель.
+    # Level 2: every distinct prefix of length 1..5 through the independent model.
     index = V2BlockIndex(parsed_v2.raw)
     prefixes: set[str] = set()
     for word in parsed_v1.words:
@@ -180,7 +167,7 @@ def run(v1_path: Path, v2_path: Path, tag: str, top: int) -> int:
             return 1
         checked += 1
 
-    # Случайный точечный доступ word_at против плоского разбора.
+    # Spot-check word_at against the flat parse at evenly spaced indices.
     step = max(1, parsed_v1.entry_count // 10_000)
     for i in range(0, parsed_v1.entry_count, step):
         word, frequency = index.word_at(i)

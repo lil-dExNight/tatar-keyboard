@@ -41,7 +41,7 @@ class TatBigrPrefixIndexTest {
 
     @Test
     fun headInDictionaryButNotInTableReturnsEmpty() {
-        // "юл" IS in the fixture dictionary (as a success of "аб") but is not a head — the block
+        // "юл" IS in the fixture dictionary (as a successor of "аб") but is not a head — the block
         // scan walks past its dictionary index without finding it among the heads.
         val index = EngineTestFixtures.bigramIndex(listOf("аб" to listOf("юл")))
 
@@ -103,7 +103,7 @@ class TatBigrPrefixIndexTest {
     @Test
     fun openRejectsADictionaryOtherThanTheLinkedOne() {
         // The schema-3 link: the header names the dictionary's raw SHA-256, and open() refuses a
-        // table paired with any other dictionary — fail closed, exactly like the validator.
+        // table paired with any other dictionary, like the validator.
         val heads = listOf("аб" to listOf("аба"))
         val raw = BigramTestFixtures.raw(heads)
         val dictionaryWords = BigramTestFixtures.defaultDictionaryWords(heads)
@@ -146,10 +146,10 @@ class TatBigrPrefixIndexTest {
     @Test
     fun openRejectsZeroSuccessCount() {
         // The exact shape scripts/bigram_asset_pack.py refuses to ever produce (a head with zero
-        // successes is dropped, not stored with an empty range) — the reader must refuse it too.
+        // successors is dropped, not stored with an empty range) — the reader must refuse it too.
         val heads = listOf("аб" to listOf("аба"))
         val raw = BigramTestFixtures.raw(heads)
-        raw[readU32(raw, 40)] = 0 // countsOffset: the only head's success count
+        raw[readU32(raw, 40)] = 0 // countsOffset: the only head's successor count
 
         val index = TatBigrPrefixIndex.open(
             ByteBuffer.wrap(raw), EngineTestFixtures.bigramIdentity, fixtureDictionary(heads),
@@ -217,13 +217,12 @@ class TatBigrPrefixIndexTest {
         )
         assertTrue(index != null)
         // "мин" (I/me) is an extremely common Tatar word and, if present as a head at all, must
-        // return at most MAX_RESULTS successes without throwing.
+        // return at most MAX_RESULTS successors without throwing.
         val results = index!!.predict(ImmutableUtf8Prefix.copyOf("мин".toByteArray(Charsets.UTF_8)))
         assertTrue(results.size <= TatBigrPrefixIndex.MAX_RESULTS)
-        // The imperative "кил" is an extra-list head (docs/archive/bigrams/IMPERATIVE-HEADS.md);
-        // its successor row is pinned by the schema-3 equivalence check — the reader must serve
-        // it. The shipped table is K = 4 (stays so after the 2026-09-29 three-cell revert): the
-        // 4th stored successor (монда) is the unread headroom, MAX_RESULTS caps the row at three.
+        // The imperative "кил" is an extra-list head; its successor row is pinned by the schema-3
+        // equivalence check, so the reader must serve it. The shipped table stores K = 4
+        // successors per head; MAX_RESULTS caps the row at three, leaving the 4th (монда) unread.
         assertEquals(
             listOf("дә", "әле", "һәм"),
             index.predict(ImmutableUtf8Prefix.copyOf("кил".toByteArray(Charsets.UTF_8))),

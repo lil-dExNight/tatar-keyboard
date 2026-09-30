@@ -25,19 +25,16 @@ gen/
 out/
 
 # Gradle files
-# Каталог gradle/ игнорируется ПОСОДЕРЖИМО (gradle/*, а не gradle/): git не умеет
-# ре-включать файл, у которого исключён родительский каталог, а два файла ниже обязаны
-# лежать в репозитории.
+# gradle/ is ignored by content (gradle/*, not gradle/): git cannot re-include a file
+# whose parent directory is excluded, and the files re-included below must be tracked.
 gradle/*
 release/
 !/gradle/wrapper
 gradle/wrapper/*
 !/gradle/wrapper/gradle-wrapper.properties
-# T7 (stage D, docs/ROADMAP-P8-PLAN.md): the dependency checksums must be versioned — they are
-# the supply-chain pin itself, useless if only the local machine has them.
+# Dependency checksums are the supply-chain pin; they only work if versioned.
 !/gradle/verification-metadata.xml
-# L3 (docs/LEFTOVERS-PLAN-2026-09-28.md): the exported PGP keyring is the same kind of
-# supply-chain pin — versioned so CI and fresh checkouts verify signatures offline.
+# The exported PGP keyring is versioned so CI and fresh clones verify signatures offline.
 !/gradle/verification-keyring.gpg
 !/gradle/verification-keyring.keys
 
@@ -67,19 +64,20 @@ keystore.properties
 
 .idea
 
-# Локальные релизные артефакты (APK не коммитим)
+# Local release artifacts (APKs are not committed)
 dist/
 
-# Локальные git worktree
+# Local git worktrees
 .wt/
 
-# Рабочий каталог оператора (скринкасты, черновики; не коммитится — ROADMAP-P1 T6)
+# Local scratch directory (screencasts, drafts)
 .temp/
 
+# Tatar Leipzig corpora (licensed dictionary and bigram inputs; not committed).
 tat_*.tar.gz
 tat_*-words.txt
 tat_*-sentences.txt
-# То же для русских корпусов Leipzig (входы русской таблицы биграмм и словаря).
+# Same for the Russian Leipzig corpora (inputs of the Russian bigram table and dictionary).
 rus_*.tar.gz
 rus_*-words.txt
 rus_*-sentences.txt
@@ -92,10 +90,9 @@ docs/**/*
 data/dictionary/dict-accept/sample-*.txt
 .smgr/
 
-# Разговорные корпуса миссии tt-corpus (OPUS) и её тестовые артефакты.
-# Причина та же, по которой выше игнорируются tat_*-sentences.txt: это лицензионные
-# исходники, они в репозиторий не кладутся. Числа перенесены в docs/CORPUS.md,
-# скрипты замера (research/corpus/*.py) — коммитятся, данные — нет.
+# Conversational OPUS corpora and their test artifacts. Like tat_*-sentences.txt above,
+# these are licensed sources and stay out of the repository; the measurement scripts
+# (research/corpus/*.py) are committed, the data is not.
 research/corpus/*.txt.gz
 research/corpus/*.part
 research/corpus/out/

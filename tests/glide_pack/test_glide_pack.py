@@ -192,7 +192,7 @@ class NoiseModelTest(unittest.TestCase):
 
     def test_doubled_letter_can_draw_the_loop(self) -> None:
         # The loop machinery: a doubled letter with draw_loop=True contributes the 4 corners
-        # (3 extra vertices). P7-8: the loop is the CALLER's decision, and generate_set emits
+        # (3 extra vertices). The loop is the CALLER's decision, and generate_set emits
         # both variants of a doubled word — the no-jog row first, then the jog row.
         plain = pack._ideal_vertices("абба", FIXTURE_BY_LETTER, False)[0]
         looped = pack._ideal_vertices("абба", FIXTURE_BY_LETTER, True)[0]
@@ -248,9 +248,8 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         letters = frozenset(rect.code_point for rect in rects)
         selected = pack.select_words(words, EVAL_WORDS, letters)
         _, data = pack.generate_set(selected, rects)
-        # Recorded in docs/ROADMAP-P7.md and asserted identically by the Kotlin calibration
-        # test (GlideRecoveryCalibrationTest) -- the cross-language mirror pin. P7-8: the set
-        # carries both variants of every doubled word (the row count outgrew the word count).
+        # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values.
+        # The set carries both variants of every doubled word, so there are more rows than words.
         self.assertEqual(len(selected), 4498)
         self.assertEqual(len(data), 10113092)
         self.assertEqual(

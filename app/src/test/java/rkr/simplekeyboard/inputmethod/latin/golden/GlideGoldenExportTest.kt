@@ -27,17 +27,15 @@ import java.security.MessageDigest
 import kotlin.math.sqrt
 
 /**
- * Glide golden-vector exporter for the iOS port (ios/docs/VERIFICATION.md §3.1, `glide.jsonl`).
- * TEST-ONLY and inert: it runs only when GLIDE_GOLDEN_OUT names an existing directory that holds
- * keys-tt.tsv / keys-ru.tsv (ios/tools/export-key-geometry), so the normal `./gradlew test` run
- * skips it and nothing here reaches the APK.
+ * Glide golden-vector exporter (`glide.jsonl`). Inert unless GLIDE_GOLDEN_OUT names an existing
+ * directory holding keys-tt.tsv / keys-ru.tsv; its output feeds the iOS port's parity suite.
+ * Nothing here reaches the APK.
  *
  *   GLIDE_GOLDEN_OUT=/path/to/dir ./gradlew :app:testDebugUnitTest --tests '*GlideGoldenExportTest*'
  *
- * Both sides decode IDENTICAL inputs: the integer key rectangles are written into the file, and
- * the synthetic gestures come from the `scripts/glide_pack.py` generator (mirrored here exactly as
- * GlideRecoveryCalibrationTest mirrors it; the fixture-geometry render is asserted against that
- * test's pinned SHA-256), parametrized by the geometry. Records: geometry tables, word-index
+ * Both sides decode identical inputs: the integer key rectangles are written into the file, and
+ * the synthetic gestures come from a mirror of the `scripts/glide_pack.py` generator (checked
+ * against GlideRecoveryCalibrationTest's pinned render). Records: geometry tables, word-index
  * digests, the rendered-set identity, every row's top-8 words + score bits + prune counters, a
  * personal-dictionary composite, decider scripts and resampler vectors.
  */
@@ -180,7 +178,7 @@ class GlideGoldenExportTest {
     }
 
     // ---------------------------------------------------------------------------------------
-    // The personal composite (docs/GLIDE-PERSONAL.md): a deterministic snapshot of learned
+    // The personal composite: a deterministic snapshot of learned
     // words (new words, casing overrides of dictionary words, an unmappable word), decoded on
     // every 7th set row and on each learned word's own generated gesture.
 

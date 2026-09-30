@@ -23,12 +23,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * C2 of `docs/ROADMAP-P8-PLAN.md`: the emoji-suggestion table is parsed AND glyph-filtered in one
- * pass, so the load no longer holds two copies of the table at its peak.
- *
- * The filtering verdicts must be identical to the old two-pass shape (parse everything →
- * `distinctEmoji()` → `filterTo`), and the probe must still be asked once per DISTINCT emoji
- * sequence, not once per record.
+ * The emoji-suggestion table is parsed AND glyph-filtered in one pass, so the load never holds two
+ * copies of the table. The verdicts must equal the two-pass result (parse everything →
+ * `distinctEmoji()` → `filterTo`), and the probe is asked once per DISTINCT emoji sequence, not
+ * once per record.
  */
 class EmojiSuggestIndexFilteringTest {
 

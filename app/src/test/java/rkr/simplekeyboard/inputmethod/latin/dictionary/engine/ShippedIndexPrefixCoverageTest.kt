@@ -28,21 +28,14 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryTestFix
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 
 /**
- * A prefix the dictionary continues must never come back with an empty band.
+ * A prefix the dictionary continues must never produce an empty suggestion strip. The sweep uses
+ * the shipped dictionaries: every seventh word of each, and every prefix of it that some other
+ * word continues, through the real [TdictPrefixIndex].
  *
- * Written while hunting the blank band of `docs/SUGGEST-DIES.md`, to settle whether the data or the
- * lookup could be at fault before the search moved on to the IME plumbing — where the cause
- * actually was. Two things make it worth keeping.
- *
- * It sweeps the SHIPPED artifacts rather than a fixture: every seventh word of each dictionary,
- * every prefix of it that some other word continues, through the real [TdictPrefixIndex].
- *
- * And it runs with the key-neighbour table ARMED. That is not decoration: an armed table is the
- * one condition under which the D3 autocorrect pass inside `lookup()` executes at all, and that
- * pass starts at exactly [AutocorrectPolicy.MIN_WORD_CODE_POINTS] = 4 code points — the only
- * four-letter boundary anywhere in the search. Any exception it threw would be swallowed by the
- * `catch (_: RuntimeException)` around the whole lookup and would silently discard candidates the
- * exact pass had already found. A sweep with no table would never execute that code.
+ * It runs with the key-neighbor table set, because only then does the autocorrect pass inside
+ * `lookup()` execute. That pass starts at [AutocorrectPolicy.MIN_WORD_CODE_POINTS] = 4 code
+ * points, and an exception from it would be swallowed by the `catch (_: RuntimeException)` around
+ * the lookup, silently discarding candidates the exact pass had found.
  */
 class ShippedIndexPrefixCoverageTest {
 
@@ -72,7 +65,7 @@ class ShippedIndexPrefixCoverageTest {
         }
     }
 
-    /** The four prefixes of the operator's report, named so a regression is readable at a glance. */
+    /** Four prefixes once seen with an empty strip, named so a regression is easy to read. */
     @Test
     fun theReportedPrefixesAllAnswerFromTheShippedRussianDictionary() {
         val loaded = russian ?: error("ru index did not load")

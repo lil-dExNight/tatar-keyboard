@@ -14,8 +14,8 @@ def profile(path: Path, tag: str) -> dict:
     alpha = lang.alphabet
     norm = fast_normalizer(alpha)
     lines = 0; chars = 0
-    # A Python set of the corpus's own lines is what made this script impossible on the
-    # 1,5-ГБ Russian file; HashSet64 stores an 8-byte digest per unique line instead.
+    # A Python set of the corpus's own lines does not fit in memory for the Russian
+    # OpenSubtitles file; HashSet64 stores an 8-byte digest per unique line instead.
     seen = HashSet64(max(1 << 16, path.stat().st_size // 55)); dup_lines = 0
     raw_tokens = 0; kept = 0
     h = hashlib.sha256()

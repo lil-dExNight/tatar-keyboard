@@ -1,38 +1,11 @@
 #!/usr/bin/env python3
-"""E5a: measure the size and the usefulness of a Tatar bigram table before any Android code.
+"""Measure the size and usefulness of a bigram table over an H x K matrix (prototype).
 
-The phase gate is decided by numbers this script produces, so every rule it applies is the rule
-written in PROPOSALS.md ("## E5"), not a convenient approximation:
-
-* pairs come from ``*-sentences.txt`` of the three Leipzig archives already pinned in
-  docs/DICTIONARY-D1A.md — the ready-made ``*-co_n.txt`` is deliberately NOT used, because its
-  weight semantics were never verified offline while these rules can be checked by reading;
-* a sentence row is EXACTLY two tab-separated fields, the first a positive decimal id; anything
-  else stops the generation with a non-zero exit instead of being skipped in silence;
-* tokens are split on runs of whitespace, and a token rejected by ``normalize_word`` BREAKS
-  adjacency rather than being transparent — otherwise "х , у" would produce the pair (х, у)
-  across punctuation and the table would be trained on events the runtime is forbidden to show;
-* both halves of a pair must be in the SHIPPED top-100k, read through
-  ``dictionary_pack.decompress_asset`` + ``validate_raw``: one proven source for both the word
-  list and the unigram frequencies, so nothing can drift from the shipped artifact in silence;
-* training is ``tat_mixed`` + ``tat_web``; ``tat_news`` is held out in full.
-
-Multilingual since 2026-08-21 (`docs/RUSSIAN-BIGRAMS.md`): ``--language`` picks the alphabet the
-tokenizer and the shipped-vocabulary read apply, and every entry point defaults to Tatar, so a
-caller written before this ran behaves exactly as it did — same tokens, same filtering, same
-bytes.
-
-Two independent caps are enforced by the generator itself, not only by the phase acceptance:
-compressed <= 250 000 B and raw <= 1 048 576 B per language. The raw cap binds first and is what
-limits the matrix.
-
-Usage (the corpora are downloaded by a human — agents have no network):
-
-    python3 scripts/bigram_pack.py matrix \\
-        --train tat_mixed_2015_1M-sentences.txt tat_web_2018_1M-sentences.txt \\
-        --holdout tat_news_2015_1M-sentences.txt \\
-        --asset app/src/main/assets/<shipped .tdict asset> \\
-        --report docs/DICTIONARY-E5A.generated.json
+Input: Leipzig ``*-sentences.txt`` training and held-out corpora (downloaded by hand) and the
+bundled dictionary asset (``--asset``); ``--language`` picks the alphabet (default Tatar).
+Output: a JSON report per (heads, successes) configuration: sizes, held-out hit rate, peak RSS.
+A pair counts only if both words are in the dictionary; ``bigram_asset_pack.py`` reuses this code.
+Exits nonzero on a malformed sentence row, and when no configuration fits both size caps.
 """
 
 from __future__ import annotations
@@ -55,7 +28,7 @@ import dictionary_coverage as coverage  # noqa: E402
 from dictionary_coverage import normalize_word  # noqa: E402
 from dictionary_pack import decompress_asset, validate_raw  # noqa: E402
 
-# The two caps of the early gate, both binding, both wired into the generator.
+# Size caps per language; both are enforced by the generator (the raw cap binds first).
 MAX_COMPRESSED_BYTES = 250_000
 MAX_RAW_BYTES = 1_048_576
 
@@ -65,13 +38,13 @@ SUCCESSES_PER_HEAD = (4, 6, 8, 10)
 EXCLUDED_CORNER = (10_000, 10)
 
 # Successes kept per head while counting. Exact for every K in the matrix; anything beyond the
-# largest K can never enter a shipped table, so it is dropped as soon as a shard pass completes.
+# largest K can never enter a bundled table, so it is dropped as soon as a shard pass completes.
 KEPT_SUCCESSES_PER_HEAD = 32
 
-# Header of the schema-2 file, from the size formula in PROPOSALS.md ("Бюджет размера APK").
+# Header size of the schema-2 file.
 HEADER_BYTES = 96
 
-# zlib settings — the same mode as D1a, so compressed sizes are comparable across artifacts.
+# zlib settings: the same mode as dictionary_pack.py, so compressed sizes are comparable.
 COMPRESSION_LEVEL = 9
 COMPRESSION_WBITS = 15
 COMPRESSION_MEM_LEVEL = 9
@@ -147,7 +120,7 @@ class Configuration:
 
 
 def sha256_of(path: Path) -> str:
-    """The pin required by the contract: no ``sentences.txt`` hash is recorded anywhere yet."""
+    """SHA-256 of an input corpus, recorded in the report."""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1 << 20), b""):
@@ -158,10 +131,8 @@ def sha256_of(path: Path) -> str:
 def parse_sentence_row(line: str, source: str, line_number: int) -> str:
     """Return the sentence text of one row, or raise.
 
-    The rule is written out rather than borrowed: ``dictionary_coverage.parse_row`` understands
-    only the id/word/frequency shape of ``words.txt`` and raises on a sentence line, so this
-    parser is new — and a new parser is exactly the kind of thing that quietly changes what
-    "reproducible from a documented input" means.
+    A row is exactly two tab-separated fields, the first a positive decimal id. Anything else
+    raises instead of being skipped (``dictionary_coverage.parse_row`` reads only ``words.txt``).
     """
     fields = line.rstrip("\n").split("\t")
     if len(fields) != 2:
@@ -189,14 +160,10 @@ def normalized_tokens(
 ) -> list[str | None]:
     """Tokens of one sentence, with ``None`` wherever ``normalize_word`` rejected the token.
 
-    The ``None`` is the whole point: it is what breaks adjacency. Cleaning "сүз," down to "сүз"
-    is NOT done — ``normalize_word`` rejects a token whole, which systematically loses the last
-    word of every clause, and that bias is recorded in the report instead of being papered over.
-
-    ``alphabet`` is the language's own; it defaults to Tatar so callers older than the second
-    language keep their exact behaviour. It matters for more than tidiness: Tatar's alphabet is a
-    strict superset of Russian's, so tokenizing Russian text with it would let a stray Tatar
-    letter through as a token instead of breaking adjacency there.
+    The ``None`` breaks adjacency, so no pair spans punctuation. "сүз," is not cleaned to "сүз":
+    the token is rejected whole, which loses the last word of each clause; the report records
+    that loss. ``alphabet`` defaults to Tatar; Russian text needs the Russian alphabet, because
+    the Tatar one is a superset and would let a stray Tatar letter through as a token.
     """
     result: list[str | None] = []
     for raw_token in sentence.split():
@@ -222,7 +189,7 @@ def iter_pairs(tokens: Sequence[str | None], vocabulary: frozenset[str]) -> Iter
 def read_shipped_vocabulary(
     asset_path: Path, language: coverage.Language = coverage.DEFAULT_LANGUAGE
 ) -> tuple[frozenset[str], dict[str, int]]:
-    """The word list AND the unigram frequencies, both from the shipped artifact."""
+    """The word list and the unigram frequencies, both from the bundled dictionary asset."""
     parsed = validate_raw(decompress_asset(asset_path.read_bytes()), language=language)
     frequencies = {word: frequency for word, frequency in zip(parsed.words, parsed.frequencies)}
     return frozenset(parsed.words), frequencies
@@ -244,9 +211,8 @@ def count_pairs(
 ) -> dict[str, list[tuple[str, int]]]:
     """Count pairs for every head, one shard of heads per pass over the corpora.
 
-    A dictionary of tuples over millions of pairs does not fit in memory on an ordinary machine,
-    which is why this is sharded and why peak RSS is part of the report: without it the prototype
-    is not reproducible elsewhere.
+    All pairs at once do not fit in memory on an ordinary machine, hence the shards; peak RSS is
+    reported so the run can be reproduced elsewhere.
     """
     table: dict[str, list[tuple[str, int]]] = {}
     for shard in range(shards):
@@ -274,7 +240,7 @@ def count_pairs(
 
 
 def blob_bytes(words: Iterable[str]) -> int:
-    """Measured UTF-8 size of a word blob — the estimate of 17.42 B/word is replaced by fact."""
+    """Measured UTF-8 size of a word blob."""
     return sum(len(word.encode("utf-8")) for word in words)
 
 
@@ -304,11 +270,10 @@ def compress(raw: bytes) -> bytes:
 def serialize_table(
     heads: Sequence[str], table: dict[str, list[tuple[str, int]]], successes_per_head: int
 ) -> tuple[bytes, int, list[str]]:
-    """A byte image of the table whose SIZE is what the gate cares about.
+    """A byte image of the table, built only to measure its compressed size.
 
-    The shape follows the documented layout closely enough for the compressed number to mean
-    something: head blob, per-head success id runs, success blob. No explicit weight byte — the
-    order of successes is fixed at packing time and the rank is implied by position.
+    Close enough to the schema-2 layout for the number to be meaningful: head blob, per-head
+    success id runs, success blob. No weight byte: the rank is implied by position.
     """
     success_vocabulary: dict[str, int] = {}
     pair_ids: list[int] = []
@@ -351,13 +316,11 @@ def evaluate(
     stats: list[CorpusStats],
     alphabet: frozenset[str] = coverage.TATAR_ALPHABET,
 ) -> None:
-    """One pass over the held-out corpus, all seven configurations tallied at once.
+    """One pass over the held-out corpus, all configurations tallied at once.
 
-    The denominator is the one frozen in the contract BEFORE this ran, and it is the runtime rule:
-    every position inside a held-out sentence whose PREVIOUS token passed ``normalize_word`` and
-    stands in the same sentence. Sentence starts and positions right after punctuation are not
-    events at all (a rejected token breaks adjacency, so they drop out by construction). An event
-    with no prediction available counts as a MISS, which is what makes the number unconditional.
+    An event is every position whose previous token in the same sentence passed
+    ``normalize_word`` (the runtime rule); sentence starts and positions after punctuation are not
+    events. An event with no prediction counts as a miss, so the rate is unconditional.
     """
     tallies = [HeldOutTally() for _ in configurations]
     for path in holdout_paths:
@@ -520,8 +483,7 @@ def main(argv: Sequence[str] | None = None, stream: TextIO = sys.stdout) -> int:
         if entry["passes_raw_cap"] and entry["passes_compressed_cap"]
     ]
     if not passing:
-        # The caps are enforced here, not only in the phase acceptance: a matrix where every row
-        # is over the cap is a failed gate, and it must not look like a successful run.
+        # A matrix where every configuration is over a cap must not look like a successful run.
         print("no configuration fits both caps", file=sys.stderr)
         return 2
     return 0

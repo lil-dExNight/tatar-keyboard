@@ -31,12 +31,10 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.SpaceProbe
 
 /**
- * S2 (docs/AUDIT-2026-08-31.md): `readPending` used to call `file.readBytes()` with no size cap.
- * The format can never legitimately exceed [PendingCounters.MAX_SERIALIZED_BYTES] (a 20-byte
- * header plus at most MAX_PENDING 14-byte records), so anything larger is rejected from
- * `File.length()` alone, before a single byte is read or allocated. That matters beyond tidiness:
- * past 2 GiB `readBytes()` throws `OutOfMemoryError` — an `Error`, which the store's
- * `catch (Exception)` cannot stop — on the worker thread that the rest of the keyboard shares.
+ * `readPending` rejects a pending file larger than [PendingCounters.MAX_SERIALIZED_BYTES] (a
+ * 20-byte header plus at most MAX_PENDING 14-byte records) from `File.length()` alone, before
+ * anything is read or allocated. Past 2 GiB `readBytes()` throws `OutOfMemoryError`, an `Error`
+ * the store's `catch (Exception)` cannot stop, on the worker thread the keyboard shares.
  */
 class PersonalPendingFileSizeCapTest {
     @get:Rule
@@ -71,10 +69,9 @@ class PersonalPendingFileSizeCapTest {
     }
 
     /**
-     * A 3 GiB pending file — larger than any byte array can even hold — is rejected from its
-     * length alone. If the store read it, `readBytes()` would throw `OutOfMemoryError` on the
-     * test's direct executor, i.e. right into the test thread: this test passing IS the proof
-     * that no read (and no allocation) happened.
+     * A 3 GiB pending file, larger than any byte array, is rejected from its length alone. Reading
+     * it would throw `OutOfMemoryError` on the direct executor, i.e. in the test thread, so the
+     * test passing shows that no read and no allocation happened.
      */
     @Test
     fun anOversizedPendingFileIsRejectedWithoutBeingRead() {

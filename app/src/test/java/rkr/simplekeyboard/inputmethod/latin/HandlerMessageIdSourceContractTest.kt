@@ -30,16 +30,12 @@ import org.junit.Test
  * ALONE — the callback is not part of the comparison — so `removeMessages(0)` deletes every posted
  * runnable still waiting on that handler.
  *
- * That is not theory. `LatinIME.UIHandler.MSG_UPDATE_SHIFT_STATE` used to be 0, and
- * `postUpdateShiftState()` — which runs at the end of every editor text-cache reload, i.e. after
- * practically every keystroke — began with `removeMessages(MSG_UPDATE_SHIFT_STATE)`. The
- * suggestion engine delivers its results by posting a runnable on that very handler
- * (`SuggestionsController`'s `UiPoster`), so a result that had not been dispatched yet was thrown
- * away: the engine answered with three candidates and the band was never repainted. The emoji
- * panel's poster and four dialogs ride on the same handler and were losing messages the same way.
- * The whole story, with the traces, is in `docs/SUGGEST-DIES.md`.
+ * Example: `postUpdateShiftState()` runs after almost every keystroke and starts with
+ * `removeMessages(MSG_UPDATE_SHIFT_STATE)`. If that id were 0, it would drop the suggestion
+ * results that `SuggestionsController`'s `UiPoster` posts on the same handler, and the suggestion
+ * strip would never repaint. The emoji panel's poster and several dialogs use that handler too.
  *
- * A source-contract test rather than a behavioural one because these JVM tests have no Android
+ * A source-contract test rather than a behavioral one because these JVM tests have no Android
  * framework: `Handler`, `Looper` and `MessageQueue` do not exist here, so the invariant is pinned
  * where it is written down.
  */
@@ -99,7 +95,7 @@ class HandlerMessageIdSourceContractTest {
 
     /**
      * The invariant is only worth having while runnables really are posted on such a handler. If
-     * this ever stops being true the test above becomes decoration, and this says so out loud.
+     * this ever stops being true the test above checks nothing, and this test fails.
      */
     @Test
     fun runnablesAreStillPostedOnTheImeHandler() {

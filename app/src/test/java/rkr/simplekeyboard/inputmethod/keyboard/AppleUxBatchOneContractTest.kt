@@ -23,19 +23,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Stage A of `docs/ROADMAP-P8-PLAN.md` — the Apple-UX batch-1 values, pinned so a later theme
- * edit cannot silently drift them back:
- *
- * - **W1** key shadow alpha 0.30 in light mode (`#4D000000`), matching the KeyboardKit master
- *   asset; the dark value was already 0.70 and stays.
- * - **W2** functional key light fill `#ABB1BA` (KeyboardKit master; the old `#B3B7C0` was the
- *   6.9.4 pin).
- * - **W3** the spacebar language label no longer fades: final alpha 255.
- * - **W6** `performHapticFeedback` must not carry `FLAG_IGNORE_GLOBAL_SETTING` — the
- *   system-wide haptics switch wins on API < 29 exactly as the Vibrator honours it on API 29+.
- *
- * Resources and framework classes do not exist on a plain JVM (no Robolectric here, by design),
- * so these are source-level pins, the discipline used across the settings contract tests.
+ * Pins the iOS-style theme values so a later theme edit cannot move them:
+ * - key shadow alpha 0.30 in light mode (`#4D000000`); dark stays 0.70;
+ * - functional key light fill `#ABB1BA`;
+ * - the spacebar language label does not fade (final alpha 255);
+ * - `performHapticFeedback` does not pass `FLAG_IGNORE_GLOBAL_SETTING`, so the system haptics
+ *   switch applies on API < 29 as the Vibrator already does on API 29+.
+ * Checked from source because resources and framework classes are unavailable on a plain JVM.
  */
 class AppleUxBatchOneContractTest {
 

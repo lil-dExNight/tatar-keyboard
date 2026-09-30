@@ -1,26 +1,13 @@
 #!/usr/bin/env python3
-"""Cut the dictionary acceptance queues into portions a human can actually read.
+"""Cut the dictionary acceptance queues into numbered portions for manual review.
 
-The queues (data/dictionary/*-conv-review.tsv) are 35 444 and 3 734 rows long. Nobody reads
-that in one sitting, and nobody ever will. This script does two things and nothing else:
+    slice    -- split each queue (data/dictionary/*-conv-review.tsv) into fixed-size TSV portions
+                in queue order, and set mechanical garbage aside in a separate file with reasons.
+    collect  -- read the portions back, count accepted and refused words, and record refusals in
+                the queue's ``note`` column and in a marks file.
 
-    slice    -- split a queue into numbered TSV portions of a fixed size, in the queue's own
-                order (descending usefulness), and set aside the rows that are mechanically
-                garbage into a separate file WITH THE REASON.
-    collect  -- read the portions back, report how many words were accepted and how many were
-                refused, and record the refusals durably.
-
-Two rules this script must never break, both from the mission dossier:
-
-* ``approved`` IS NEVER WRITTEN. Not "yes", not "no", not by any code path here. Filling that
-  column is the operator's own act, personally and by name. ``collect`` records his refusals in
-  the ``note`` column and in a marks file; turning them into ``approved`` stays his to do.
-* AN UNMARKED WORD IS AN ACCEPTED WORD -- but only inside a portion the operator has declared
-  read. Without that declaration "unmarked" and "unread" are the same bytes, and counting an
-  unread portion as accepted would silently approve words nobody looked at. Hence the
-  ``# вычитано:`` line in every portion header.
-
-Nothing here reads a corpus or judges a word. Hints come from make_hints.py, which does.
+``approved`` is never written; a check on every write enforces it. An unmarked word counts as
+accepted only in a portion whose ``# вычитано:`` line the reviewer has filled in.
 """
 from __future__ import annotations
 
@@ -43,10 +30,8 @@ DEFAULT_SIZE = 200
 
 # --- mechanical rejection ------------------------------------------------------------------
 #
-# The dossier permits removing OBVIOUS machine garbage before the human sees it, on the
-# condition that what was removed is kept, with its reason, and counted in the report. It is
-# deliberately not a quality filter: judging whether a word is good is the operator's job and
-# this file must not start doing it for him.
+# Only obvious machine garbage is removed before review, and it is kept with its reason and
+# counted. This is not a quality filter: judging a word is left to the reviewer.
 
 LATIN = re.compile(r"[A-Za-z]")
 DIGIT = re.compile(r"[0-9]")
@@ -54,7 +39,7 @@ MAX_LEN = 30
 
 
 def rejection_reason(word: str) -> str | None:
-    """Why this word is mechanical garbage, or None if it has to go to the operator."""
+    """Why this word is mechanical garbage, or None if it goes to the reviewer."""
     if LATIN.search(word):
         return "латиница в кириллическом наборе"
     if DIGIT.search(word):
@@ -68,14 +53,12 @@ def rejection_reason(word: str) -> str | None:
 
 # --- what counts as "not obvious from the word alone" ---------------------------------------
 #
-# The hint column is filled only for rows a person cannot settle by looking at the word. Two
-# mechanical signals decide it, both already measured by the queue generator:
-#   * cap_ratio -- the share of occurrences capitalized mid-line. High means "probably a name
-#     that slipped through the proper-noun filter", and that is precisely the call the operator
-#     has to make by hand.
-#   * length <= 3 -- interjections, fragments and OCR debris live here and look alike.
-# Everything else is an ordinary word form; adding a sentence under each of 35 000 of them
-# would turn a scannable list into a wall of text on a phone screen.
+# The hint column is filled only for rows that cannot be settled from the word alone. Two
+# signals from the queue generator decide it:
+#   * cap_ratio -- share of occurrences capitalized mid-line; high means "probably a name that
+#     slipped through the proper-noun filter".
+#   * length <= 3 -- interjections, fragments and OCR debris, which look alike.
+# Other rows get no hint, so the list stays easy to scan on a phone.
 
 CAP_SUSPECT = 0.35
 SHORT_WORD = 3
@@ -86,12 +69,8 @@ def needs_hint(row: dict[str, str]) -> bool:
 
 
 def hint_for(row: dict[str, str], hints: dict[str, str]) -> str:
-    """The hint cell: the capitalization evidence first, then whatever context exists.
-
-    The capitalization share is put first because for most flagged rows it IS the decision --
-    «краглин, с заглавной 100 %» settles itself, and no example sentence would settle it
-    faster. The context that follows comes from make_hints.py and may be absent for a word so
-    rare that it has no repeated neighbour.
+    """The hint cell: the capitalization share first (for most flagged rows it decides the
+    case), then the context from make_hints.py, which may be absent for very rare words.
     """
     if not needs_hint(row):
         return ""
@@ -134,11 +113,8 @@ def read_queue(path: Path) -> tuple[list[str], list[str], list[dict[str, str]]]:
 
 def write_queue(path: Path, preamble: list[str], header: list[str],
                 rows: list[dict[str, str]], approved_before: list[str]) -> None:
-    """Rewrite the queue, proving on the way out that ``approved`` came through untouched.
-
-    [approved_before] is the column exactly as it was read. The comparison is the whole point
-    of the argument: it turns "this script does not set approved" from a claim about the code
-    into a check that runs on every write.
+    """Rewrite the queue; refuse to write if ``approved`` differs from [approved_before],
+    the column exactly as it was read.
     """
     now = [row.get("approved", "") for row in rows]
     if now != approved_before:
@@ -159,9 +135,8 @@ def write_queue(path: Path, preamble: list[str], header: list[str],
 BATCH_HEADER = ["нет", "слово", "частота", "ист", "подсказка"]
 UNMARKED = {"", "."}
 DONE_PREFIX = "# вычитано:"
-# The portion header invites the operator to write the reason next to the refusal («x имя»).
-# Keeping that reason costs nothing and is the only place it could ever be written down, so the
-# mark is split into the refusal itself and whatever he added after it.
+# The portion header lets the reviewer write a reason after the refusal mark («x имя»), so a
+# mark is split into the refusal and the text after it.
 REFUSAL_MARKS = "xXхХ"
 
 

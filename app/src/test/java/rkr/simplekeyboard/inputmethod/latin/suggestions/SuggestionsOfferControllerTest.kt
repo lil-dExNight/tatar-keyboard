@@ -271,7 +271,7 @@ class SuggestionsOfferControllerTest {
     // --- IME_FLAG_NO_PERSONALIZED_LEARNING ---------------------------------------------------------
 
     /**
-     * The field of the reported break: an ordinary short-message text field whose inputType allows
+     * An incognito field: an ordinary short-message text field whose inputType allows
      * suggestions — so [FakeEnvironment.editorInputTypeAllowsSuggestions] stays true, exactly as in
      * the control test below — but whose imeOptions carry `IME_FLAG_NO_PERSONALIZED_LEARNING`.
      * Signal's "incognito keyboard" switch and a Chrome incognito tab both produce this shape.

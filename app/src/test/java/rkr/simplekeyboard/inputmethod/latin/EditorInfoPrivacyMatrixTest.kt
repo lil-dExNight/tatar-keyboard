@@ -44,11 +44,10 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.RecentEmojiGateState
 import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils
 
 /**
- * S6 of docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md — the EditorInfo privacy matrix as explicit JVM
- * tests: for every protected field variant NO write reaches a personal store, the recent-emoji
- * medium stays closed, the suggestion strip is never populated, and the editor text cache is never
- * re-read from the field; the one normal control row opens every column, so the matrix cannot be
- * vacuously green.
+ * The EditorInfo privacy matrix as explicit JVM tests: for every protected field variant NO write
+ * reaches a personal store, the recent-emoji medium stays closed, the suggestion strip is never
+ * populated, and the editor text cache is never re-read from the field; the one normal control row
+ * opens every column, so the matrix cannot be vacuously green.
  *
  * THE MATRIX — inputType/imeOptions held exactly as Android delivers them; every non-field factor
  * (the suggestions setting, a dictionary-bearing subtype, a known cursor, the personal-dictionary
@@ -66,17 +65,17 @@ import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils
  * | postal-address           |  no  |  no  |  no   |   yes   |  yes  |      yes      |
  * | normal (control)         | yes  |  yes |  yes  |   yes   |  yes  |      yes      |
  *
- * The number-password row extends the plan's list: it belongs to the same password family and is
- * the row that proves the classifier's number-class branch.
+ * The number-password row belongs to the same password family and covers the classifier's
+ * number-class branch.
  *
- * The deliberate asymmetries, so a future reader does not "fix" them:
+ * The deliberate asymmetries:
  * - postal-address keeps suggestions and recents and loses ONLY learning: a street or village
  *   name in Cyrillic passes every content filter the personal stores have, so the field type is
  *   the only thing that can keep it out — while the recent-emoji list holds emoji, never text,
  *   and the strip shows built-in dictionary suggestions, not field content.
  * - NO_PERSONALIZED_LEARNING keeps the cache reload: the flag asks "do not learn from me", not
- *   "do not read me" — auto-caps needs the local text. But the strip reserves no band and no
- *   persistence path is fed.
+ *   "do not read me" — auto-caps needs the local text. But the strip shows nothing and
+ *   no persistence path is fed.
  * - TYPE_NULL is re-read by the cache gate (it is not a password type), but a TYPE_NULL editor
  *   serves no surrounding text by contract; and the cache is in-memory only and dies on every
  *   session boundary regardless of the variant.
@@ -100,7 +99,7 @@ import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils
  * - SuggestionsOfferControllerTest: a NO_PERSONALIZED_LEARNING field gets no offer and is never
  *   read for it.
  *
- * What THIS suite adds — the holes that remained after those suites:
+ * What THIS suite adds on top of them:
  * - the per-variant FIELD -> outcome mapping itself, driven through the real classifiers
  *   ([InputTypeUtils.isPasswordInputType] / [InputTypeUtils.isVisiblePasswordInputType]), the real
  *   conjunction ([PersonalLearningGates.mayLearn]), the real recent-emoji gate state
@@ -407,7 +406,7 @@ class EditorInfoPrivacyMatrixTest {
                 variant.cacheReloadExpected, variant.cacheReloaded)
         }
         // For ANY variant the cache has no persistence sink at all: RichInputConnection touches no
-        // file, no preferences, no stream. Fail-closed token scan over the whole class.
+        // file, no preferences, no stream. Token scan over the whole class.
         val connection = read(RICH_INPUT_CONNECTION)
         for (token in listOf(
             "SharedPreferences", "openFileOutput", "getFilesDir", "OutputStream", "File(", "persist",

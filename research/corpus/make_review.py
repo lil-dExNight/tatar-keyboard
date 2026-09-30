@@ -1,10 +1,9 @@
-"""Generate a word-acceptance queue for the operator: data/dictionary/*-conv-review.tsv.
+"""Generate a word-acceptance queue for the curator: data/dictionary/*-conv-review.tsv.
 
 `approved` is written EMPTY for every row, always. This script has no code path that can
-write anything else into that column -- setting it is the operator's act, personally and by
-name, and nothing here may do it on his behalf.
+write anything else into that column; only the human curator fills it in.
 
-Sort order = descending usefulness, so a human can work top-down and stop whenever he likes:
+Sort order = descending usefulness, so the curator can work top-down and stop at any point:
 primary key is how many times the word occurs in the HELD-OUT conversational split (text that
 took no part in ranking it), because that is literally "how often this word would have been
 available to suggest". Train frequency breaks ties, then code-point order for determinism.
@@ -13,8 +12,8 @@ No sentence from any corpus is written into the repository. The columns carry co
 provenance only. Example sentences would have been genuinely useful for review, but they are
 corpus text, and the largest source of that text -- OpenSubtitles -- grants no licence to
 redistribute it. Word forms with counts are facts about the text, not the text itself; whole
-sentences would be the text. That distinction is the whole reason this file holds only
-counters, and it survives the operator's decision to use the source.
+sentences would be the text. That is why this file holds only counters, even though the
+project uses the source.
 """
 from __future__ import annotations
 import sys
@@ -29,21 +28,18 @@ HEADER = ["word", "heldout_hits", "train_freq", "train_freq_clean", "sources",
           "license_status", "cap_ratio", "enters_top100k", "approved", "reviewer",
           "review_date", "note"]
 
-# Licence of each source, decided by reading the source's own terms (docs/CORPUS.md).
+# Licence of each source, decided by reading the source's own terms.
 # A word inherits the MOST permissive status among the sources it was seen in, because that
 # is the status under which it could actually be shipped. The `sources` column keeps the full
 # provenance either way, so a word's origin never becomes indistinguishable.
 #
-# OpenSubtitles moved from "undecided" to "risk" on 2026-08-24: the operator answered the
-# question tt-corpus put to him and chose to use it for BOTH languages knowing that it carries
-# no licence grant at all. The status is deliberately NOT merged into "clean" -- the decision
-# was to accept a risk, not to discover a licence, and the queue has to keep saying which
-# words carry it. docs/CORPUS-OS.md records the decision; docs/PUBLISH-CHECKLIST.md carries it
-# forward to release.
+# OpenSubtitles has no licence grant; the project uses it for both languages as an accepted
+# risk. Its status is deliberately NOT merged into "clean", so the queue keeps saying which
+# words carry that risk.
 LICENSE_RANK = {"clean": 0, "risk": 1, "unusable": 2}
 SOURCE_LICENSE = {
     "Tatoeba": "clean",          # CC BY 2.0 FR -- a real grant
-    "OpenSubtitles": "risk",     # no licence grant at all; used by operator decision 2026-08-24
+    "OpenSubtitles": "risk",     # no licence grant at all; used as an accepted risk
     "QED": "unusable",           # "made public for RESEARCH purpose only"
     "TED2020": "unusable",       # TED Talks Usage Policy = CC BY-NC-ND 4.0
 }
@@ -99,9 +95,9 @@ def main():
     lang = cov.language_for(tag); alpha = lang.alphabet
     shipped, B = CL.load_shipped(tag)
 
-    # Streaming split: the same dedup-then-every-tenth-line rule as before, but the lines are
-    # replayed from the files instead of being held in memory. The Russian OpenSubtitles file
-    # is 1,5 ГБ compressed and does not fit the old shape. selftest.py proves the split is
+    # Streaming split: the same dedup-then-every-tenth-line rule as the in-memory version, but
+    # the lines are replayed from the files instead of being held in memory, because the
+    # Russian OpenSubtitles file does not fit in memory. selftest.py checks that the split is
     # line-for-line identical.
     split = Split(paths)
     norm = fast_normalizer(alpha)
@@ -110,7 +106,7 @@ def main():
     # what ranks the word. Without this column a row marked clean:CC-BY-2.0-FR reads as "owes
     # nothing to OpenSubtitles", which is false: in the Russian run every single clean row is
     # OpenSubtitles+Tatoeba, and its rank comes overwhelmingly from the subtitles. This column is
-    # what actually survives if the operator reverts the OpenSubtitles decision.
+    # what remains if OpenSubtitles is ever dropped.
     clean_freq = Counter()
 
     ev = F.CaseEvidence(); freq = Counter()
@@ -155,8 +151,8 @@ def main():
 
     # Words seen ONLY in a source that can never be licensed (QED "research purpose only",
     # TED2020 CC BY-NC-ND) are dropped from the queue entirely rather than listed as
-    # unapprovable. They cannot be accepted under ANY decision the operator might take, so
-    # carrying them would only cost him reading time. Their count is reported instead.
+    # unapprovable. They cannot be accepted under ANY decision, so carrying them would only
+    # cost the curator reading time. Their count is reported instead.
     all_new = [w for w in kept if w not in shipped]
     dropped_unusable = [w for w in all_new if status_of(w) == "unusable"]
     usable = [w for w in all_new if status_of(w) != "unusable"]
@@ -164,13 +160,8 @@ def main():
     # A word that does not reach top-100k even at the UPPER end of the interval cannot enter the
     # shipped asset under any assumption about the frequencies the asset does not carry -- the
     # cutoff is fixed at 100 000 entries. Reviewing such a word is work that cannot change
-    # anything, so it is left out and counted instead.
-    #
-    # This bound did nothing until OpenSubtitles arrived: every one of the 3 734 Tatar candidates
-    # is reachable, so the Tatar queue is unchanged by it. The Russian corpus produced 454 375
-    # candidates, of which 35 444 are reachable; carrying the other 418 931 would have put a
-    # 33-МБ file into the repository for a person who cannot read it and could not act on it.
-    # Same rule for both languages on purpose: the project has refused per-language rules before.
+    # anything, so it is left out and counted instead. In practice this removes most Russian
+    # candidates and no Tatar ones; the rule is the same for both languages on purpose.
     rows = [w for w in usable if w in reachable]
     dropped_unreachable = [w for w in usable if w not in reachable]
     rows.sort(key=lambda w: (-held_hits.get(w, 0), -kept[w], w))

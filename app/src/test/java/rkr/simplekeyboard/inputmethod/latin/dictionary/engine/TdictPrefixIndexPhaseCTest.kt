@@ -6,11 +6,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Engine behavior of edit class #4 (TT-TYPO-NEXT Phase C): the activation gate (empty exact pass
- * AND >= 4 code points), the probe-first cost shape (one probe per variant, scans only for
- * survivors), the shared fail-closed budgets, and the ranking of the class against class #1.
- * The calibration on the real asset lives in [TtTypoPhaseCCalibrationTest]; the policy pins in
- * [TdictPrefixIndexShippedFuzzyClassesTest].
+ * Engine behavior of edit class #4: the activation gate (empty exact pass AND >= 4 code points),
+ * the probe-first cost shape (one probe per variant, scans only for survivors), the shared
+ * budgets (exceeding one drops the whole fuzzy level), and the ranking of the class against
+ * class #1. The calibration on the real asset lives in [TtTypoPhaseCCalibrationTest]; the policy
+ * pins in [TdictPrefixIndexShippedFuzzyClassesTest].
  */
 class TdictPrefixIndexPhaseCTest {
     private val table = E3bTestFixtures.tatarNeighborTable()
@@ -44,7 +44,7 @@ class TdictPrefixIndexPhaseCTest {
     fun probeFirstScansOnlySurvivorsAndCountsThemSeparately() {
         val index = index(listOf("китап" to 10L), FuzzyEditPolicy.TATAR)
         lookup(index, "аита")
-        // Phase C2 narrowing: "аита" has no word starting with "а" in this dictionary, so every
+        // Position narrowing: "аита" has no word starting with "а" in this dictionary, so every
         // position past the first is skipped for free — only position 0's (39 - 1) = 38 probes are
         // issued. Exactly one survivor ("кита"). The shared variant budget counts the class-#1
         // emissions (а→ә at the two а positions) plus the survivor: 2 + 1 = 3.
@@ -113,7 +113,7 @@ class TdictPrefixIndexPhaseCTest {
         )
         index.updateKeyNeighbors(huge)
         // "кумеш" would recover "күмеш" through class #1 — but the class #4 probe budget trips and
-        // the whole fuzzy level drops, class #1 included (fail-closed, never partial).
+        // the whole fuzzy level drops, class #1 included (never partial).
         assertEquals(emptyList<String>(), lookup(index, "кумеш"))
         assertTrue(index.lastFuzzyOverBudget)
     }

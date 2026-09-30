@@ -23,16 +23,14 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.common.Constants
 
 /**
- * E2b-1: the emoji key resolves to CODE_EMOJI, every code name actually referenced from res/xml
- * keeps the exact code it had before E2, and the ID_TO_NAME (17) vs DEFAULT (15) length desync is
- * gone — "key_right" and "key_unspecified" used to index past DEFAULT and throw
- * ArrayIndexOutOfBoundsException.
+ * The emoji key resolves to CODE_EMOJI, every code name referenced from res/xml keeps its code,
+ * and ID_TO_NAME and DEFAULT have matching lengths, so "key_right" and "key_unspecified" cannot
+ * index past DEFAULT and throw ArrayIndexOutOfBoundsException.
  */
 class KeyboardCodesSetTest {
 
-    // The full expected mapping after E2b-1. Indices 0..13 are byte-for-byte the pre-E2 codes;
-    // key_emoji is inserted right after key_language_switch; key_left/key_right/key_unspecified all
-    // resolve to CODE_UNSPECIFIED (key_left already did, the other two used to crash).
+    // The full expected mapping. Indices 0..13 are the original upstream codes; key_emoji follows
+    // key_language_switch; key_left/key_right/key_unspecified all resolve to CODE_UNSPECIFIED.
     private val expected = linkedMapOf(
         "key_tab" to Constants.CODE_TAB,
         "key_enter" to Constants.CODE_ENTER,
@@ -69,7 +67,7 @@ class KeyboardCodesSetTest {
 
     @Test
     fun previouslyOutOfBoundsNamesNoLongerThrow() {
-        // Before the desync fix these read DEFAULT[15] / DEFAULT[16] on a 15-element array.
+        // With mismatched array lengths these would read DEFAULT[15] / DEFAULT[16] of 15 elements.
         assertEquals(Constants.CODE_UNSPECIFIED, KeyboardCodesSet.getCode("key_right"))
         assertEquals(Constants.CODE_UNSPECIFIED, KeyboardCodesSet.getCode("key_unspecified"))
         assertEquals(Constants.CODE_UNSPECIFIED, KeyboardCodesSet.getCode("key_left"))
@@ -85,7 +83,7 @@ class KeyboardCodesSetTest {
                 regex.findAll(file.readText()).forEach { used.add(it.groupValues[1]) }
             }
         assertTrue("expected !code/ references in res", used.isNotEmpty())
-        // key_emoji is now genuinely referenced (emojiKeyStyle).
+        // key_emoji is referenced from res/xml (emojiKeyStyle).
         assertTrue("key_emoji referenced from res/xml", used.contains("key_emoji"))
         for (name in used) {
             val exp = expected[name] ?: error("res references unmapped code name $name")

@@ -23,13 +23,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Contract of the shipped emoji-suggest asset (`assets/emoji/emoji_suggest_v1.txt`,
- * mission 1 of `docs/EMOJI-SUGGEST-PLAN.md`): a curated word -> emoji table for the
- * suggestion strip, built by `scripts/emoji_suggest_pack.py` from
- * `scripts/emoji_suggest_data.tsv`. The reader lands in mission 2; this test pins the
- * data side the way `EmojiSearchTest` pins the search index: three tab-separated
- * fields per line, only `ru`/`tt` words, only emoji the panel asset can draw, the
- * positive controls of the mission brief, and zero hits for the polysemy traps.
+ * Contract of the shipped emoji-suggest asset (`assets/emoji/emoji_suggest_v1.txt`): a curated
+ * word -> emoji table for the suggestion strip, built by `scripts/emoji_suggest_pack.py` from
+ * `scripts/emoji_suggest_data.tsv`. Pins the data the way `EmojiSearchTest` pins the search
+ * index: three tab-separated fields per line, only `ru`/`tt` words, only emoji the panel asset
+ * can draw, known positive examples, and zero hits for the polysemy traps.
  */
 class EmojiSuggestAssetTest {
 
@@ -77,7 +75,7 @@ class EmojiSuggestAssetTest {
         }
     }
 
-    /** The positive controls of the mission brief. */
+    /** Known positive examples. */
     @Test
     fun theShippedTableAnswersTheObviousQueries() {
         val table = readTable()
@@ -93,10 +91,9 @@ class EmojiSuggestAssetTest {
     }
 
     /**
-     * False-positive traps: frequent and polysemous words from the research
-     * measurements (`docs/EMOJI-SUGGEST-RESEARCH.md`) and the curation denylist
-     * (`scripts/emoji_suggest_pack.py`). Zero hits is the mission 1 acceptance metric;
-     * the exhaustive ~170-word checklist lives in `tests/emoji_suggest_pack/`.
+     * False-positive traps: frequent and polysemous words and the curation denylist
+     * (`scripts/emoji_suggest_pack.py`). None may have an emoji; the full checklist lives in
+     * `tests/emoji_suggest_pack/`.
      */
     @Test
     fun theShippedTableNeverMapsThePolysemyTraps() {

@@ -199,7 +199,7 @@ class EmojiSearchTest {
     }
 
     /**
-     * Audit `docs/AUDIT-2026-08-31.md`, finding m2: CLDR has no Tatar annotations, so the index
+     * CLDR has no Tatar annotations, so the index
      * carries hand-written Tatar keywords (`scripts/emoji_search_tt_extra.txt`, appended by
      * `scripts/emoji_search_pack.py --tt-extra`). Matching itself needed no change: a query is
      * lowercased and prefix-matched against space-separated words, and the Tatar-specific letters
@@ -214,7 +214,7 @@ class EmojiSearchTest {
         assertTrue("мәче", results(index, "мәче").isNotEmpty())
         assertTrue("сәлам", results(index, "сәлам").contains("👋"))
         assertTrue("китап", results(index, "китап").contains("📖"))
-        // M4a: the rooster had no Tatar keyword before the coverage audit.
+        // A hand-written Tatar keyword (the rooster).
         assertTrue("этэч", results(index, "этэч").contains("🐓"))
         assertTrue("этэ (prefix)", results(index, "этэ").contains("🐓"))
         // A prefix of a Tatar word matches, a suffix does not.
@@ -292,7 +292,7 @@ class EmojiSearchTest {
         assertNotEquals(first, query.text())
     }
 
-    // --- nameOf (the strip's spoken labels, mission 2 of docs/EMOJI-SUGGEST-PLAN.md) ----------
+    // --- nameOf (the strip's spoken labels) ---------------------------------------------------
 
     @Test
     fun nameOfAnswersTheShortNameWithoutASearch() {

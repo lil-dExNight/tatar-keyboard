@@ -1,56 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <lint>
-    <!-- lintRelease runs with abortOnError=true against lint-baseline.xml.
-         DEV-4 (2026-08-31): the 22 former baseline ERRORS are fixed in code —
-         18x ResourceType (EmojiPanelView/EmojiSearchView now read theme colours via
-         R.styleable.EmojiPanelView / R.styleable.EmojiSearchView declared in
-         res/values/attrs.xml, same attrs and same defaults as the old manual int[])
-         and 4x StringFormatMatches (%s -> %d in abbreviation_unit_milliseconds /
-         abbreviation_unit_percent; %d renders an Int identically to %s).
-         The regenerated baseline holds 36 WARNINGS, each classified below
-         (2026-08-31, P1: 5x IconLauncherShape dropped — icons converted PNG ->
-         lossless WebP and lint's icon-shape detector does not analyse WebP;
-         baseline now holds 31 warnings; 2026-09-25 SAFE wave: the two
-         UnusedResources entries left together with the dead resources they
-         described, and the AndroidGradlePluginVersion pin left after its
-         message drifted (lint flagged it as unmatched) — the baseline holds 29;
-         2026-09-25 O2: the GradleDependency entry left with the dependency
-         itself — the baseline holds 28):
-
-         Conscious design / false positive (leave):
-         - ApplySharedPref (Settings.java): commit() is deliberately synchronous for the
-           one-shot "suggestions offered" flag; apply() would change write semantics.
-         - CustomViewStyleable (KeyboardView vs Keyboard_Key styleable): upstream AOSP
-           naming; renaming the styleable would break every keyboard/theme XML.
-         - InlinedApi x3 (IME_FLAG_NO_PERSONALIZED_LEARNING): the flag is an inlined
-           constant; on API < 26 the bit is simply ignored by the system.
-         - UnusedAttribute (enableOnBackInvokedCallback): required on API 33+ to opt out
-           of predictive back; ignored below.
-         - DataExtractionRules: allowBackup="false" — backup is disabled entirely, so
-           fullBackupContent is meaningless.
-         - DiscouragedApi x4 (getIdentifier by name): locale/layout resource lookup is
-           part of the AOSP-fork design.
-         - StaticFieldLeak (KeyboardSwitcher singleton): lives exactly as long as the
-           IME process by design.
-         - InflateParams: the IME input view is inflated parentless by design.
-
-         Cosmetic / not actionable (leave):
-         - RedundantLabel x3, Overdraw x2, UseRequiresApi, UsableSpace,
-           TextFields, Autofill x2,
-           LabelFor x2, ClickableViewAccessibility x2 (legacy views).
-           (The UnusedResources x2 — icon_launcher_text glyph data and the
-           AppText.Button style — were deleted with the resources themselves in
-           the 2026-09-25 SAFE wave.)
-
-         Live but conscious, reported outside the baseline:
-         - VectorPath (ic_launcher_foreground.xml, O2): the traced brand icon's
-           compound path is 3 217 chars; the icon renders once per launcher
-           layout, so the redraw cost the detector warns about never recurs.
-
-         Version pins (conscious):
-         - (GradleDependency left with the dependency itself in O2: there is no
-           androidx.customview to pin anymore.) The AndroidGradlePluginVersion
-           pin self-invalidated on 2026-09-25 when the
-           "newer Gradle" message drifted (9.7.1 -> 9.8.0); it is reported live
-           now and re-pinned only on a deliberate wrapper bump. -->
+    <!-- lintRelease runs with abortOnError=true against lint-baseline.xml. Baselined checks:
+         ApplySharedPref: commit() is deliberately synchronous for the one-shot "suggestions offered" flag.
+         CustomViewStyleable: upstream AOSP styleable naming; renaming breaks every keyboard/theme XML.
+         InlinedApi: IME_FLAG_NO_PERSONALIZED_LEARNING is an inlined constant, ignored below API 26.
+         UnusedAttribute: enableOnBackInvokedCallback opts out of predictive back on API 33+, ignored below.
+         DataExtractionRules: allowBackup="false" disables backup entirely.
+         DiscouragedApi: getIdentifier() by name is how the AOSP fork looks up locale/layout resources.
+         StaticFieldLeak: the KeyboardSwitcher singleton lives exactly as long as the IME process.
+         InflateParams: the IME input view is inflated without a parent by design.
+         RedundantLabel, Overdraw, UseRequiresApi, UsableSpace, TextFields, Autofill, LabelFor,
+         ClickableViewAccessibility: cosmetic findings in legacy views, not actionable.
+         VectorPath (reported, not baselined): the launcher icon path is long but is drawn once per layout. -->
 </lint>

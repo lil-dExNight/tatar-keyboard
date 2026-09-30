@@ -1,73 +1,12 @@
 #!/usr/bin/env python3
-"""E5b: pack the shipped Tatar bigram table asset — magic ``TATBIGR\\0``.
+"""Pack the bundled bigram table asset (magic ``TATBIGR\\0``, schema 3 by default).
 
-Schema 3 (the shipped one since SIZE-2, 2026-09-01, ``docs/SIZE-SCHEMA3.md``) stores NO words:
-heads are delta-varint indices into the linked TATDICT schema-2 dictionary, successes are varint
-indices into it, and the header names that dictionary by raw SHA-256 — a table is valid only
-with the exact dictionary it was packed against. Schema 2 (six sections, own word blobs) is kept
-selectable via ``pack --schema 2`` for golden tests and history, exactly like SIZE-1 kept
-``dictionary_pack.py --schema 1``; ``repack`` converts a schema-2 asset corpus-free.
-
-This is the real, byte-exact artifact generator. It is deliberately a SEPARATE file from
-``scripts/bigram_pack.py`` (E5a): that script is the measurement prototype whose gate was
-independently reviewed on 2026-08-17, and its own docstring says its job is "measure ... before
-any Android code" — turning it into the production packer as well would blur what was reviewed.
-This module imports E5a's low-level, already-tested data-layer helpers (``count_pairs``,
-``select_heads``, ``read_shipped_vocabulary``, corpus stats) rather than duplicating them, and
-adds nothing to E5a's own behaviour.
-
-Format (PROPOSALS.md, "## E5" / "E5b. Секции", byte-for-byte):
-
-* header, 96 bytes, all integers unsigned little-endian:
-  magic(8) + 4×u16(schemaId, formatVersion, headerSize, checksumAlgorithm) +
-  12×u32(headCount, pairCount, successVocabularyCount, six section offsets, headBlobLength,
-  successBlobLength, fileSize) + SHA-256(32) at byte offset 64 — the checksum is computed over
-  the full raw file with the digest bytes themselves zeroed, the same trick as
-  ``dictionary_pack.py``'s schema 1 (there at offset 40, here at 64 because schema 2 carries
-  twice as many u32 fields for its six sections instead of schema 1's three);
-* six sections, no padding, no separators: (1) H+1 u32 head-word offsets, (2) UTF-8 head-word
-  blob in code-point lexical ascending order (binary search), (3) H+1 u32 success-range
-  boundaries, (4) P u32 success ids in packing order (count descending, tie code-point
-  ascending) grouped by head, (5) V+1 u32 success-word offsets, (6) UTF-8 deduplicated
-  success-word blob in code-point lexical ascending order.
-
-Two independent caps, the same ones E5a measured against, are enforced here too: compressed
-<= 250 000 B and raw <= 1 048 576 B. A configuration that violates either stops generation with a
-non-zero exit; no partial asset is ever written (the whole raw image is built and validated in
-memory before either output file is touched).
-
-**Heads are chosen by unigram frequency, and a word just below the cutoff can be named
-explicitly.** ``--extra-heads FILE`` adds the words of a list to the head set whatever their
-rank, without moving the cutoff for everyone. This exists because frequent Tatar imperatives
-(the bare verb stem: "кил" — come, "кит" — go) sit just below H and therefore predicted
-nothing, while "бир" — the same grammatical form, one rank band higher — predicted "бир әле"
-(docs/BIGRAM-ADJACENCY.md, "Почему повелительные формы молчат"). Naming fourteen words costs
-the bytes of fourteen heads; raising H far enough to reach them would drag in several hundred
-words nobody asked for. A word in the list must already be in the shipped vocabulary — the list
-grants a word successors, it does not add a word to the dictionary, and the two must not be
-confused.
-
-**A head selected by frequency that ends up with zero successes in training is dropped from the
-file, not stored with an empty range.** The validator below rejects empty ranges as corruption
-(PROPOSALS.md, "E5b. Генератор, строгий валидатор" — "пустые диапазоны" is in the rejected list),
-so the generator must never produce one; the alternative (storing H exactly as requested) would
-make the generator capable of emitting a file its own validator calls corrupt. Dropped heads, if
-any, are named in the report — nothing is silently resized.
-
-Multilingual since 2026-08-21 (`docs/RUSSIAN-BIGRAMS.md`): ``--language`` picks the alphabet the
-tokenizer and the shipped-vocabulary read apply, and defaults to Tatar, so the shipped Tatar asset
-rebuilds byte for byte from the same inputs and the same command line as before.
-
-Usage:
-
-    python3 scripts/bigram_asset_pack.py pack \\
-        --train tat_mixed_2015_1M-sentences.txt tat_web_2018_1M-sentences.txt \\
-        --asset app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib \\
-        --heads 10000 --successes-per-head 6 \\
-        --extra-heads scripts/bigram_extra_heads_tat.txt \\
-        --out-raw tatar_bigrams_v1.tatbigr \\
-        --out-compressed tatar_bigrams_v1.tatbigr.zlib \\
-        --report docs/DICTIONARY-E5B.generated.json
+Input: ``pack`` takes sentence corpora, the linked dictionary asset, head/successor limits and an
+optional ``--extra-heads`` list; ``repack`` converts a schema-2 table without a corpus. Shares the
+data-layer helpers of ``bigram_pack.py``. ``--language`` picks the alphabet (default Tatar).
+Output: raw and zlib-compressed table plus a JSON report; ``--schema 2`` is kept for golden tests.
+Exits nonzero without writing output if a cap is exceeded, a word is missing from the dictionary,
+or the built image fails its own validator.
 """
 
 from __future__ import annotations
@@ -105,23 +44,34 @@ CHECKSUM_OFFSET = 64
 CHECKSUM_SIZE = 32
 CHECKSUM_ALGORITHM_SHA256 = 1
 
-# 8s (magic) + 4 x u16 (meta) + 12 x u32 (counts, six section offsets, two blob lengths, file
-# size) + 32s (digest) = 8 + 8 + 48 + 32 = 96, and the digest starts at byte 64 — both numbers
-# the contract names explicitly, and both fall out of this format string rather than being typed
-# twice.
+# --- schema 2 --------------------------------------------------------------------------------
+#
+# Header, 96 bytes, unsigned little-endian: 8s (magic) + 4 x u16 (schemaId, formatVersion,
+# headerSize, checksumAlgorithm) + 12 x u32 (headCount, pairCount, successVocabularyCount, six
+# section offsets, headBlobLength, successBlobLength, fileSize) + 32s SHA-256 at offset 64,
+# computed over the whole raw file with the digest bytes zeroed (as in dictionary_pack.py).
+#
+# Six sections, no padding, no separators: (1) H+1 u32 head-word offsets, (2) UTF-8 head-word
+# blob in code-point ascending order (binary search), (3) H+1 u32 success-range boundaries,
+# (4) P u32 success ids grouped by head in packing order (count descending, tie code-point
+# ascending), (5) V+1 u32 success-word offsets, (6) UTF-8 deduplicated success-word blob in
+# code-point ascending order.
+#
+# Caps for both schemas: compressed <= MAX_COMPRESSED_BYTES and raw <= MAX_RAW_BYTES. The whole
+# image is built and validated in memory before any output file is touched.
 HEADER_FORMAT = "<8s" + "H" * 4 + "I" * 12 + "32s"
 HEADER = struct.Struct(HEADER_FORMAT)
 assert HEADER.size == HEADER_SIZE
 
-# --- schema 3 (SIZE-2, 2026-09-01, docs/SIZE-SCHEMA3.md) --------------------------------------
+# --- schema 3 --------------------------------------------------------------------------------
 #
 # Cross-reference into the dictionary instead of own word blobs: heads are delta-varint indices
-# into the shipped TATDICT schema-2 dictionary (both orderings are code-point ascending, so the
+# into the bundled TATDICT schema-2 dictionary (both orderings are code-point ascending, so the
 # indices of sorted heads strictly increase), successes are plain varint indices into the same
 # dictionary, success-range boundaries are u8 counts (1..K), and the header carries the raw
-# SHA-256 of the dictionary the table was packed against — the table is valid only together with
-# that exact dictionary, and both validators (this module's and Android's TatBigrValidator) plus
-# the runtime reader check the link fail-closed.
+# SHA-256 of the dictionary the table was packed against. The table is valid only together with
+# that exact dictionary; both validators (this module's and Android's TatBigrValidator) and the
+# runtime reader reject a mismatch.
 #
 # Header, 128 bytes: magic(8) + 4 x u16 (same four meta fields as schema 2) + 10 x u32
 # (headCount, pairCount, headBlockCount, blockIndexOffset, headDeltasOffset, headDeltasSize,
@@ -152,8 +102,8 @@ assert HEADER_V3.size == HEADER_SIZE_V3
 BLOCK_RECORD_V3 = struct.Struct("<3I")
 
 
-# zlib settings — identical mode to dictionary_pack.py / bigram_pack.py, so compressed sizes are
-# comparable across every asset the project ships.
+# zlib settings: the same mode as dictionary_pack.py / bigram_pack.py, so compressed sizes are
+# comparable across all bundled assets.
 COMPRESSION_LEVEL = 9
 COMPRESSION_WBITS = 15
 COMPRESSION_MEM_LEVEL = 9
@@ -164,7 +114,7 @@ class BigramFormatError(ValueError):
 
 
 class BigramBudgetError(ValueError):
-    """A cap the generator enforces on itself, not only in phase acceptance."""
+    """A size cap the generator enforces on its own output."""
 
 
 @dataclass
@@ -243,10 +193,10 @@ def _check_strictly_ascending(words: Sequence[str], label: str) -> None:
 
 
 def validate_raw(raw: bytes) -> ParsedBigramTable:
-    """Strict validator — every corruption class PROPOSALS.md ('E5b') names is rejected here.
+    """Strict schema-2 validator: rejects any header, offset, ordering or UTF-8 inconsistency.
 
-    Malformed/truncated/concatenated zlib is caught one layer up, by ``decompress`` — this
-    function only ever sees already-inflated bytes, exactly like ``dictionary_pack.validate_raw``.
+    Malformed, truncated or concatenated zlib is caught one layer up, by ``decompress``; this
+    function only sees inflated bytes, like ``dictionary_pack.validate_raw``.
     """
     if len(raw) < HEADER_SIZE:
         raise BigramFormatError(f"file is {len(raw)} bytes, shorter than the {HEADER_SIZE}-byte header")
@@ -372,14 +322,13 @@ def pack_bigram_table(
     table: dict[str, list[tuple[str, int]]],
     successes_per_head: int,
 ) -> PackResult:
-    """Build the real schema-2 raw+compressed image for one (H, K) configuration.
+    """Build the schema-2 raw+compressed image for one (H, K) configuration.
 
-    ``heads_by_frequency`` is the top-H head list in FREQUENCY order (as ``select_heads``
-    returns it) — that is the order that decides SET membership. Storage order is different: the
-    contract requires the head blob in code-point lexical ascending order for binary search, so
-    the kept heads are re-sorted before serialization. Reordering heads does not touch each
-    head's own success list, which keeps its packing order (count descending, tie code-point
-    ascending) regardless of where the head ends up in the file.
+    ``heads_by_frequency`` is the top-H list in frequency order (as ``select_heads`` returns it)
+    and decides set membership only. A head with no successes in training is dropped, not stored
+    with an empty range (the validator rejects empty ranges); dropped heads are named in the
+    report. Kept heads are re-sorted into code-point order for binary search; each head's success
+    list keeps its packing order (count descending, tie code-point ascending).
     """
     kept_successes: dict[str, list[str]] = {}
     dropped_heads: list[str] = []
@@ -496,12 +445,10 @@ def _serialize_v3(
     word_index: dict[str, int],
     dictionary_raw_sha256: bytes,
 ) -> tuple[bytes, int]:
-    """The schema-3 raw image of an already-selected head set. Internal: both the corpus ``pack``
-    front-end and the v2 ``repack`` front-end end up here, so the byte layout exists exactly once.
+    """The schema-3 raw image of an already-selected head set; shared by ``pack`` and ``repack``.
 
-    Every head and every success must be present in ``word_index`` — the whole point of schema 3
-    is that the table stores NO words of its own, so a word the dictionary does not contain is
-    unrepresentable, not merely suspect.
+    Every head and every success must be present in ``word_index``: schema 3 stores no words of
+    its own, so a word the dictionary does not contain cannot be represented.
     """
     head_indices: list[int] = []
     for head in kept_heads:
@@ -787,21 +734,11 @@ def pack_bigram_table_v3(
 
 
 def read_extra_heads(path: Path, vocabulary: frozenset[str]) -> list[str]:
-    """Words named explicitly as heads, read from a reviewable list.
+    """Words named explicitly as heads, whatever their frequency rank (``--extra-heads``).
 
-    The file is one word per line; ``#`` starts a comment, so a line may carry the evidence that
-    put the word there (rank, frequency, paradigm cells, pairs) next to the word itself. Blank
-    lines are ignored.
-
-    Two rules are enforced here rather than left to the caller, because both failures would
-    otherwise be silent and both matter:
-
-    * a word absent from the SHIPPED vocabulary stops the generation. The list may only promote a
-      word the dictionary already ships; it is not a back door for adding words to the
-      dictionary, and a typo in the list must not quietly produce a table one word smaller than
-      the list claims;
-    * a duplicate is dropped rather than counted twice, so the report's head arithmetic stays
-      readable.
+    One word per line; ``#`` starts a comment (the evidence for the word may sit next to it);
+    blank lines are ignored. A word missing from the bundled vocabulary stops the generation:
+    the list grants successors, it does not add words to the dictionary. Duplicates are dropped.
     """
     words: list[str] = []
     seen: set[str] = set()
@@ -853,9 +790,8 @@ def run_pack(
         result = pack_bigram_table(ordered_heads, table, successes_per_head)
     elif schema == SCHEMA_ID_V3:
         # Schema 3 stores dictionary indices, so the packer reads the linked dictionary's ordered
-        # word list and raw digest, and fails closed on the first head or success the dictionary
-        # does not contain (the resource the whole schema stands on: 100 % of both are in it,
-        # docs/SIZE-OPTIMIZATION-RESEARCH.md).
+        # word list and raw digest, and stops on the first head or success the dictionary does
+        # not contain.
         parsed_dictionary = dictionary_pack.validate_asset(
             asset_path.read_bytes(), language=language
         )
@@ -1030,8 +966,8 @@ def main(argv: Sequence[str] | None = None, stream: TextIO = sys.stdout) -> int:
     if arguments.report is not None:
         arguments.report.write_text(text + "\n", encoding="utf-8")
     print(text, file=stream)
-    # Only written after both the raw image and its compression have been validated above —
-    # a partially written or over-cap asset never lands on disk.
+    # Written only after both the raw image and its compression have been validated above, so
+    # a partial or over-cap asset never lands on disk.
     _atomic_write(arguments.out_raw, result.raw)
     _atomic_write(arguments.out_compressed, result.compressed)
     return 0

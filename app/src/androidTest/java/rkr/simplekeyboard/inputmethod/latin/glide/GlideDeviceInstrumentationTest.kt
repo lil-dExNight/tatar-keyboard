@@ -37,12 +37,11 @@ import java.nio.ByteBuffer
 import kotlin.math.ceil
 
 /**
- * P7-4 device-side glide harness (docs/GLIDE-PLAN.md): the decode latency gate (p95 ≤ 5 ms on
- * the POCO C71) can only be measured on real hardware, and the сәләм decode is proven against
- * the LIVE Tatar keyboard geometry (built through the production KeyboardLayoutSet path).
+ * Device-side glide tests: decode latency (p95 ≤ 5 ms) can only be measured on real hardware,
+ * and the сәләм decode is checked against the live Tatar keyboard geometry (built through the
+ * production KeyboardLayoutSet path).
  *
- * Same JUnit3/legacy-runner shape as the E3b harness — resolves offline, never packaged into
- * the release APK.
+ * Uses the JUnit3 legacy runner like the other device tests; not part of the release APK.
  */
 class GlideDeviceInstrumentationTest : InstrumentationTestCase() {
 
@@ -65,7 +64,7 @@ class GlideDeviceInstrumentationTest : InstrumentationTestCase() {
     }
 
 
-    /** The P7-4 gate: decode p95 ≤ 5 ms over the real dictionary on this device. */
+    /** The latency gate: decode p95 ≤ 5 ms over the real dictionary on this device. */
     fun testDecodeLatencyOnDevice() {
         val context = instrumentation.targetContext
         val geometry = liveTatarGeometry(context)
@@ -93,16 +92,14 @@ class GlideDeviceInstrumentationTest : InstrumentationTestCase() {
                 "samples=${timings.size} consumed=$consumed gate=p95<=5.0ms " +
                 "verdict=${if (p95 <= 5.0) "PASS" else "FAIL"}",
         )
-        // Budget per docs/ROADMAP-P7.md; the pre-fix record was ~50 ms, so this cannot pass
-        // silently on a regression.
+        // Device latency budget for glide decoding.
         assertTrue("glide decode p95 must stay within the 5 ms device budget, was $p95 ms", p95 <= 5.0)
     }
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): the price of the idle index release. A decoder rebuilt
-     * from scratch (its [GlideWordIndex] included) answers its first decode this much later than
-     * a warm one. The rebuild runs on the engine worker, so the UI thread never pays it — this
-     * test only puts a device number on the worker-side cost.
+     * Cost of rebuilding the index after an idle release: a fresh decoder builds its
+     * [GlideWordIndex] inside the first decode. The rebuild runs on the engine worker, never
+     * the UI thread; the test logs the cold first decode against warm decodes.
      */
     fun testIndexRebuildCostAfterRelease() {
         val context = instrumentation.targetContext
@@ -212,7 +209,7 @@ class GlideDeviceInstrumentationTest : InstrumentationTestCase() {
     companion object {
         private const val TAG = "GlideDevice"
         private const val SAMPLES = 1_000
-        // Probe words with every letter on the Tatar layout (ё/ъ never glide — P7-1 note).
+        // Probe words with every letter on the Tatar layout (ё and ъ are not glide letters).
         private val PROBE_WORDS = listOf("сәләм", "татар", "сакчы", "теле", "дәүләт", "белән")
     }
 }

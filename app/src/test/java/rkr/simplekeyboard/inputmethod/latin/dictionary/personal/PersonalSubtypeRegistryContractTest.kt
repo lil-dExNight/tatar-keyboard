@@ -25,17 +25,14 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 
 /**
- * T5 (ROADMAP Phase 1, `docs/ROADMAP-P1.md`): the artifact registry
- * (`DictionaryArtifactSpec.ALL`) is the ONE list of shipped languages. `PersonalSubtypes`
- * carries only DATA (the tag constants, the alphabet sets); every predicate — its own
- * [PersonalSubtypes.alphabetFor]/[PersonalSubtypes.isSupported], the suggestions eligibility
- * in LatinIME, the settings screens — resolves through the registry, so a second
- * hand-maintained language list cannot drift back in.
+ * The artifact registry (`DictionaryArtifactSpec.ALL`) is the one list of shipped languages.
+ * `PersonalSubtypes` carries only data (the tag constants, the alphabet sets); every predicate —
+ * [PersonalSubtypes.alphabetFor]/[PersonalSubtypes.isSupported], the suggestions eligibility in
+ * LatinIME, the settings screens — resolves through the registry, so no second hand-maintained
+ * language list can appear.
  *
- * Two pin layers: the runtime agreement (registry languages are exactly the supported
- * subtypes, with the very alphabet instances the specs carry) and the source shape (the
- * delegation is present, the `when`-enumeration it replaced is gone, and each spec entry
- * carries its alphabet).
+ * Pinned at runtime (registry languages are exactly the supported subtypes, with the alphabet
+ * instances the specs carry) and in source (the delegation exists, the old `when` is gone).
  */
 class PersonalSubtypeRegistryContractTest {
 
@@ -56,7 +53,7 @@ class PersonalSubtypeRegistryContractTest {
         }
     }
 
-    /** The pre-T5 behavior, pinned identical: exact alphabets per shipped language. */
+    /** Exact alphabets per shipped language. */
     @Test
     fun theAlphabetsAreTheOnesTheStoresHaveAlwaysFilteredBy() {
         assertEquals(39, PersonalSubtypes.TATAR_RU_ALPHABET.size)

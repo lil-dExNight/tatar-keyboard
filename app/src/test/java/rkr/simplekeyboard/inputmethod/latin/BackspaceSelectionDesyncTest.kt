@@ -21,17 +21,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
- * Mission tt-tap-repro found the root cause of both suggestion symptoms here; mission
- * tt-version-1.8.1 fixed it. These are its regression tests — they failed on 1.8.0 and guard the
- * fix from here on.
- *
- * The defect: a plain backspace goes through [RichInputConnection.deleteTextBeforeCursor], which
- * moved `mExpectedSelStart` back but left `mExpectedSelEnd` where it was. Every other cursor-moving
- * mutator in the same class re-collapses the pair (`commitText`, `sendKeyEvent` x3), and the two
- * delete-then-commit call sites hid the omission because `commitText` repairs it one line later.
- * A BARE backspace has no such repair, so between the keypress and the framework's next
- * `onUpdateSelection` the keyboard believed a one-character selection was active. The fix collapses
- * the pair in `deleteTextBeforeCursor` itself, under `hasCursorPosition()`, like `commitText` does.
+ * A plain backspace goes through [RichInputConnection.deleteTextBeforeCursor], which must move
+ * both `mExpectedSelStart` and `mExpectedSelEnd`, as every other cursor-moving mutator does. If
+ * only the start moves, then until the framework's next `onUpdateSelection` the keyboard believes
+ * a one-character selection is active: a suggestion tap is refused, and the keyboard's own edit is
+ * taken for an external cursor move. The delete-then-commit paths hide this because `commitText`
+ * repairs the pair one line later; a bare backspace does not.
  *
  * No Android objects are touched: `deleteTextBeforeCursor` only reads `isConnected()` (false with a
  * null connection) and both `updateSelection` and `hasSelection` are plain field arithmetic.
@@ -46,7 +41,7 @@ class BackspaceSelectionDesyncTest {
         connection.updateSelection(10, 10)
 
         // One plain backspace: InputLogic.handleBackspaceEvent -> deleteTextBeforeCursor(1),
-        // with no commitText behind it (InputLogic.java:430).
+        // with no commitText behind it.
         connection.deleteTextBeforeCursor(1)
 
         assertEquals("selection start moved back", 9, connection.expectedSelectionStart)
@@ -58,8 +53,8 @@ class BackspaceSelectionDesyncTest {
     }
 
     /**
-     * Consequence 1 — symptom 1. `InputLogic.replaceTrailingWord` refuses outright when
-     * `hasSelection()` is true (InputLogic.java:557), and that is the single gate every accepted
+     * Consequence 1. `InputLogic.replaceTrailingWord` refuses outright when
+     * `hasSelection()` is true, and that is the single gate every accepted
      * suggestion passes through. With a phantom selection the tap is rejected before the trailing
      * word is even looked at: the cell highlights, the text does not change.
      */
@@ -77,8 +72,8 @@ class BackspaceSelectionDesyncTest {
     }
 
     /**
-     * Consequence 2 — symptom 2. `LatinIME.onUpdateSelection` classifies a cursor move as EXTERNAL
-     * by comparing both ends against the expected pair (LatinIME.java:1300-1302). The framework
+     * Consequence 2. `LatinIME.onUpdateSelection` classifies a cursor move as EXTERNAL
+     * by comparing both ends against the expected pair. The framework
      * reports the keyboard's own backspace as a collapsed cursor at 9,9 — which no longer matches
      * the expected 9,10 — so the keyboard's own edit is mistaken for the user tapping elsewhere.
      */

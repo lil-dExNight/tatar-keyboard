@@ -1,11 +1,10 @@
 #!/bin/bash
-# device-perf-ritual.sh — the per-release performance ritual against a real device
-# (calibrated for the POCO C71, 720x1640, Android 15 HyperOS; O2/O4 of
-# docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md, feeding docs/PERF-BUDGETS.md).
+# device-perf-ritual.sh: per-release performance check on a real device
+# (calibrated for the POCO C71, 720x1640, Android 15 HyperOS).
 #
 # Three legs, one machine-readable RESULT|... line per measurement (stdout and
-# $OUTDIR/result.txt; raw evidence — meminfo dumps, framestats, screencaps — in
-# $OUTDIR):
+# $OUTDIR/result.txt; raw evidence such as meminfo dumps, framestats and
+# screencaps goes to $OUTDIR):
 #   a) cold start x5: process start (field 22 of /proc/<pid>/stat, CLK_TCK=100)
 #      -> first FrameCompleted of the InputMethod window (gfxinfo framestats).
 #      The process is killed with `run-as <pkg> kill -9`, NOT am force-stop:
@@ -17,30 +16,28 @@
 #      as the IME, not as our own setup activity).
 #   b) PSS via dumpsys meminfo after four scenarios on our own SetupActivity
 #      try-it field: keyboard open idle; after 50 scripted words (25 tt + 25 ru);
-#      emoji panel open (the historical peak) and after close; after 30 s hidden
+#      emoji panel open (the expected peak) and after close; after 30 s hidden
 #      (the idle-release path fires at 10 s: glide + emoji indexes drop).
-#   c) frame stats (O2-2 protocol): gfxinfo reset -> fixed 32-event Tatar typing
-#      script ("сәләм дөнья мин сине яратам дус " — 27 letters + 5 spaces,
+#   c) frame stats: gfxinfo reset -> fixed 32-event Tatar typing
+#      script ("сәләм дөнья мин сине яратам дус ": 27 letters + 5 spaces,
 #      0.35 s between taps) -> the InputMethod window's last <=120 PROFILEDATA
 #      rows; frame duration = FrameCompleted - IntendedVsync; p50/p90/p95 per
 #      run, 3 runs.
 #
-# Force-stop discipline: safe_force_stop() NEVER force-stops the package while
-# its IME is the selected one — it reads `settings get secure default_input_method`
-# first and dances through a neutral IME (Gboard) when needed. The primary kill
-# path is run-as kill -9, which needs no dance at all.
+# Force-stop rule: safe_force_stop() NEVER force-stops the package while its IME
+# is the selected one; it reads `settings get secure default_input_method` first
+# and switches to a neutral IME (Gboard) when needed. The primary kill path is
+# run-as kill -9, which needs no switch at all.
 #
 # Columns of the framestats CSV are located BY HEADER NAME: on Android 15
-# FrameCompleted is column 17, not 14 as in the pre-FrameTimeline format the
-# 2026-09-04 cold-start script assumed (it silently read SyncStart — ~30 ms
-# earlier on the cold first frame here (26.6–32.7 ms across the five
-# 2026-09-29 runs); still comfortably inside the 400 ms budget).
+# FrameCompleted is column 17, not 14 as in the pre-FrameTimeline format, and a
+# fixed index would silently read another column (SyncStart).
 #
 # Key coordinates are computed from the layout XMLs (rows_tatar/rows_russian +
-# row_qwerty4) against the 720x1640 screen and verified on 2026-09-29 screencaps
-# (build/device-uat-2026-09-29/perf/): tt rows y=1110/1206/1301/1396, bottom row
-# y=1500; ru rows y=1153/1258/1363, bottom row y=1468; the globe and the space
-# bar are tapped at y=1490 which lands inside the bottom row of BOTH layouts.
+# row_qwerty4) for the 720x1640 screen and checked on screenshots: tt rows
+# y=1110/1206/1301/1396, bottom row y=1500; ru rows y=1153/1258/1363, bottom row
+# y=1468; the globe and the space bar are tapped at y=1490, which is inside the
+# bottom row of BOTH layouts.
 #
 # Flags:
 #   --serial <id>     device serial (default: $ANDROID_SERIAL, else the single
@@ -82,7 +79,7 @@ RESULTS="$OUTDIR/result.txt"
 : > "$RESULTS"
 FAILURES=0
 
-# Neutral IME for the force-stop dance (verified to exist in the preflight).
+# Neutral IME to switch to before a force-stop (checked in the preflight).
 NEUTRAL_IME="com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
 # Foreign host app for the cold-start leg: Chrome's omnibox is a deterministic
 # text field (resource-id url_bar) on any screen size.
@@ -172,9 +169,9 @@ if [ "$WH" != "720x1640" ]; then
     result INFO screen-size "screen $WH differs from the 720x1640 calibration; taps may miss"
 fi
 
-# Suggestions must be live for the frame leg (O2-2 measured with the strip
-# updating). The debuggable package gets the same surgical run-as pref write the
-# emulator smoke does; a non-debuggable package keeps whatever state it has.
+# Suggestions must be on for the frame leg (frames are measured with the strip
+# updating). The debuggable package gets the same targeted run-as pref write as
+# the emulator smoke; a non-debuggable package keeps whatever state it has.
 PREFS_PATH="/data/user_de/0/$PKG/shared_prefs/${PKG}_preferences.xml"
 if [ "$RUN_AS_OK" = 1 ]; then
     pref=$(SHELL "run-as $PKG cat $PREFS_PATH" 2>/dev/null | tr -d '\r' \
@@ -231,9 +228,9 @@ wait_keyboard() { # wait_keyboard <seconds> -> 0 if mInputShown=true in time
 }
 
 # Never force-stop the package while its IME is selected: HyperOS silently
-# resets the default IME. Dance through the neutral IME first, re-select ours
-# after. (The cold leg uses run-as kill -9 instead; this is the fallback and
-# the documented discipline for any future force-stop in this script.)
+# resets the default IME. Switch to the neutral IME first and select ours again
+# after. (The cold leg uses run-as kill -9 instead; this is the fallback and the
+# rule for any other force-stop in this script.)
 safe_force_stop() {
     local cur
     cur=$(current_ime)
@@ -248,9 +245,9 @@ safe_force_stop() {
     fi
 }
 
-# kill_app: process death without touching the IME selection. run-as kill -9
-# keeps default_input_method intact (verified 2026-09-29) and leaves the process
-# start to the next field focus — the honest cold-start trigger.
+# kill_app: kill the process without touching the IME selection. run-as kill -9
+# keeps default_input_method intact and leaves the process start to the next
+# field focus, which is a realistic cold-start trigger.
 kill_app() {
     local pid
     pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
@@ -269,7 +266,7 @@ dump_ui() {
     SHELL uiautomator dump /data/local/tmp/ritual-ui.xml >/dev/null 2>&1
     A exec-out cat /data/local/tmp/ritual-ui.xml 2>/dev/null | tr -d '\r'
 }
-# tap_node <resource-id-substring> -> taps the centre of the first match
+# tap_node <resource-id-substring> -> taps the center of the first match
 tap_node() {
     local dump bounds x y
     dump=$(dump_ui)
@@ -334,7 +331,7 @@ type_text() { # type_text tt|ru "text" <gap-seconds>
     local gap="$3" pts line x y
     # Materialize the point list BEFORE the tap loop: `adb shell` inside a
     # `while read` pipeline would eat the loop's stdin and silently drop every
-    # point after the first few (hit 2026-09-29: 5 frames for a 32-tap script).
+    # point after the first few.
     pts=$(script_points "$1" "$2") || { log "script_points failed for layout $1"; return 1; }
     while IFS= read -r line; do
         x="${line% *}"; y="${line#* }"
@@ -343,9 +340,9 @@ type_text() { # type_text tt|ru "text" <gap-seconds>
     done <<< "$pts"
 }
 
-# switch the subtype via the globe key with pref feedback (the cycle order is
-# MRU-rotated, so blind tap counts are meaningless — same lesson as the smoke).
-# The pref value looks like "tt_RU:tatar" — match a bare prefix, not "<code>:".
+# Switch the language via the globe key with pref feedback (the cycle order is
+# MRU-rotated, so blind tap counts are meaningless; see emulator-smoke.sh).
+# The pref value looks like "tt_RU:tatar", so match a bare prefix, not "<code>:".
 globe_to() { # globe_to tt|ru|en -> 0 when pref_current_subtype starts with the code
     local want="$1" i poll pref=""
     [ "$RUN_AS_OK" = 1 ] || return 2
@@ -414,8 +411,8 @@ PYEOF
 }
 
 # ── leg A: cold start xN ─────────────────────────────────────────────────────
-# Dance: ours must NOT be force-stopped while selected. kill -9 needs no dance;
-# the ime selection is only touched to make ours the default once, up front.
+# Ours must NOT be force-stopped while selected. kill -9 needs no IME switch; the
+# IME selection is only touched once, up front, to make ours the default.
 
 if [ "$RUN_AS_OK" != 1 ]; then
     result SKIP cold-start "package $PKG not debuggable; run-as kill -9 unavailable (force-stop would contaminate the start timestamp via ime set)"
@@ -512,7 +509,7 @@ else
     result FAIL pss "keyboard did not raise over SetupActivity"
 fi
 
-# ── leg C: frame stats, O2-2 protocol (32-event tt script, <=120 frames x3) ──
+# ── leg C: frame stats (32-event tt script, <=120 frames x3) ──
 
 FRAME_SCRIPT="сәләм дөнья мин сине яратам дус "   # 27 letters + 5 spaces = 32 events
 n_events=$(python3 -c "print(len('$FRAME_SCRIPT'))")

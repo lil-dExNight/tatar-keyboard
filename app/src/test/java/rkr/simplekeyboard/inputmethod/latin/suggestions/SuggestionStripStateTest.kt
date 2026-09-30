@@ -214,15 +214,14 @@ class SuggestionStripStateTest {
     @Test
     fun stripContractIs44DpAndThreeCells() {
         assertEquals(44, SuggestionStripState.STRIP_HEIGHT_DP)
-        // Three cells (2026-09-29: the 2026-09-27 four-cell wave reverted; the K = 4 Tatar
-        // bigram table stays shipped, its fourth successor unread).
+        // Three cells. The Tatar bigram table is packed at K = 4; its fourth successor is unread.
         assertEquals(3, SuggestionStripState.CELL_COUNT)
     }
 
     /**
-     * 2026-09-25 audit, F17: a NaN coordinate passes every bounds comparison (all false) and
-     * used to fall through to the LAST cell — a MotionEvent carrying NaN would click a cell the
-     * finger never touched. Non-finite input is no cell at all.
+     * A NaN coordinate fails every bounds comparison and would fall through to the LAST cell, so a
+     * MotionEvent carrying NaN would click a cell the finger never touched. Non-finite input is no
+     * cell at all.
      */
     @Test
     fun nonFiniteCoordinatesHitNoCell() {

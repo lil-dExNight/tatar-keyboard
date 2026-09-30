@@ -22,16 +22,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Mission tt-final, section 2 of the dossier: the sweep for ONE class of defect — the person made a
- * gesture, nothing happened, and nobody told them why.
+ * One class of defect: the user makes a gesture, nothing happens, and nothing says why.
  *
- * Three of the four found live in an `Activity` or in `LatinIME`, which need a device, so they are
- * pinned by source in the style this project already uses for both classes
- * (`PersonalDictionaryFeedbackSourceContractTest`). The fourth, the emoji search affordance, is a
- * real behavioural test — see `EmojiSearchUnavailableTest`.
- *
- * Each gesture below was reproduced by hand on the SIGNED 1.8.3 build on the AVD before it was
- * fixed; the pictures are in docs/final-polish/.
+ * The three cases here live in an `Activity` or in `LatinIME`, which need a device, so they are
+ * pinned by source (as in `PersonalDictionaryFeedbackSourceContractTest`). The emoji search case
+ * is a behavioral test in `EmojiSearchUnavailableTest`.
  */
 class SilentGestureSourceContractTest {
 
@@ -54,11 +49,9 @@ class SilentGestureSourceContractTest {
     // --- 1. Long press on a suggestion that is not a saved word ---------------------------------
 
     /**
-     * Long-pressing a band cell offers "Forget «X»?" for a word the personal dictionary holds. For
-     * an ordinary dictionary word the lookup finds nothing and the method used to simply return, so
-     * the same deliberate gesture produced a dialog on one word and absolute silence on the next —
-     * and the user has no way to tell which words are theirs. Reproduced on the signed build:
-     * docs/final-polish/s2-longpress-ordinary.png.
+     * Long-pressing a suggestion cell offers "Forget «X»?" for a word the personal dictionary
+     * holds. For an ordinary dictionary word the lookup finds nothing; without feedback the same
+     * gesture would show a dialog on one word and nothing on the next.
      */
     @Test
     fun aLongPressOnAnOrdinaryWordIsAnsweredRatherThanIgnored() {
@@ -94,8 +87,8 @@ class SilentGestureSourceContractTest {
 
     /**
      * `onEmojiKeyPressed()` returns false when the panel will not show in this process — the
-     * snapshot could not be built, so the key is dead for good. The caller threw that answer away,
-     * which made a visible key on the keyboard a permanent no-op.
+     * snapshot could not be built, so the key is dead for good. The caller must act on that
+     * answer, or a visible key becomes a permanent no-op.
      */
     @Test
     fun aDeadEmojiKeyIsAnsweredRatherThanIgnored() {
@@ -116,9 +109,7 @@ class SilentGestureSourceContractTest {
 
     /**
      * "Privacy Policy" and "License" open a browser. With no app able to handle the intent the row
-     * did nothing at all and the only trace was a log line the user cannot see — on a keyboard whose
-     * whole claim is privacy, the privacy policy being a dead row is the worst row to lose.
-     * Reproduced on the signed build with the browser disabled: docs/final-polish/s12-link-dead.txt.
+     * must tell the user, not just write a log line they cannot see.
      */
     @Test
     fun aLinkWithNothingToOpenItIsAnsweredRatherThanLogged() {

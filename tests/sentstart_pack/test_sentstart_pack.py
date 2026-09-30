@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests for scripts/sentstart_pack.py — the sentence-start table packer (P4).
+"""Tests for scripts/sentstart_pack.py — the sentence-start table packer.
 
 Synthetic sentence files and a tiny synthetic dictionary drive both the unit
 surface (first-token extraction, normalization, the dictionary-membership
 filter, ranking, guardrails) and the CLI contract (exit codes, fail-closed
-writes). What is pinned there is the CONTRACT of the tool, not the data. The
+writes). These tests pin the tool's contract, not the data. The
 committed-asset tests pin the shipped data: SHA-256, record count, the sorting
 and normalization contracts, and the membership of every record in the shipped
 Tatar dictionary. No network, no corpus dependency: the only live-tree inputs
@@ -328,8 +328,7 @@ class CliContractTest(unittest.TestCase):
             self.assertEqual(out.read_bytes(), b"OLD CONTENT")
 
 
-# The shipped asset is pinned: a data change is a written decision that also
-# updates these numbers (rebuild recipe in docs/TT-SUGGESTIONS.md, P4 section).
+# The shipped asset is pinned: a data change must update these numbers too.
 EXPECTED_ASSET_SHA256 = "f84e82074fa5a5cdca91c41184e8486a0c0afac951c4e2e1cbcc123afbc22216"
 EXPECTED_RECORD_COUNT = 64
 
@@ -394,7 +393,7 @@ class CommittedAssetTest(unittest.TestCase):
 
 
 class RussianLanguageTest(unittest.TestCase):
-    """The P3b --language rus path: ru normalization, ru header, ru dictionary filter."""
+    """The --language rus path: ru normalization, ru header, ru dictionary filter."""
 
     WORDS = ["в", "по", "он", "это", "ещё", "как"]
     SENTENCES = (
@@ -445,9 +444,7 @@ class RussianLanguageTest(unittest.TestCase):
         self.assertIn("tat_mixed_2015_1M", header)
 
 
-# The shipped Russian asset (P3b) is pinned the same way: a data change is a
-# written decision that also updates these numbers (rebuild recipe in
-# docs/ROADMAP-P1.md).
+# The shipped Russian asset is pinned the same way.
 EXPECTED_RU_ASSET_SHA256 = "ffab114daf924d8f23f295d833a0d90df7298b16fb139b3ba1bdb87a7783f86d"
 EXPECTED_RU_RECORD_COUNT = 64
 

@@ -27,41 +27,13 @@ import java.nio.ByteOrder
 import java.util.Random
 
 /**
- * Seeded deterministic fuzzing of [TatBigrValidator] (TATBIGR schema 3) — S5 of
- * `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`, the mirror of [TdictValidatorFuzzTest] for the
- * bigram table. Zero dependencies: mutations come from a seeded [java.util.Random] via
- * [SeededFuzzHarness]; a fixed seed per shape makes every run byte-identical, and on a property
- * violation the failure message names shape + seed + iteration + the touched offsets, which
- * reproduce the exact input.
+ * Seeded fuzzing of [TatBigrValidator] (schema 3). See [SeededFuzzHarness].
  *
- * The base image is a fixture-built valid table of 70 heads (two head blocks) with two successes
- * each, cross-referenced into the fixture dictionary, so both the block-index walk and the
- * per-block delta/count/success streams are reachable by the mutations.
- *
- * Shapes (all against [TatBigrValidator.validateRaw] unless noted):
- *
- *  * **bit flips** (2 500): 1–4 single-bit flips, no checksum refresh — the integrity gates must
- *    reject from every position;
- *  * **truncations** (2 000): strict prefixes at random lengths — the header's declared file
- *    size can never match, so all must reject;
- *  * **count/size-field inflation** (2 000): the ten u32 header fields (headCount, pairCount,
- *    blockCount, the four section offsets, the two stream sizes, declaredFileSize) set to huge
- *    values — the caps and the canonical-layout check must reject BEFORE any count-sized walk or
- *    allocation; the file itself stays ~400 bytes, so an allocation attempt per an inflated count
- *    would blow up and be caught;
- *  * **random garbage** (2 000): random bytes of random length;
- *  * **valid-image mutation** (3 000): payload corruption, then half the time the embedded
- *    SHA-256 is refreshed (via [BigramTestFixtures.refreshEmbeddedChecksum]) and/or the spec pins
- *    (raw size/SHA, head count, linked-dictionary SHA) are re-derived from the mutated image —
- *    this reaches PAST the checksum gate into the structural checks. Only refresh + derived-spec
- *    mutations may validate cleanly; every other combination must reject;
- *  * **compressed stream** (2 000): the same corruption shapes against
- *    [TatBigrValidator.inflateAsset], including a decompression-bomb probe; successful inflations
- *    are fed on to [TatBigrValidator.validateRaw] exactly like the real pipeline does.
- *
- * Properties asserted on EVERY input (see [SeededFuzzHarness.assertCleanOrValidationFailure]):
- * clean validation or [BigramValidationException], never any other throwable, and — for the
- * shapes that cannot produce a valid image — never a clean validation (fail-closed).
+ * The base image is a valid fixture table of 70 heads (two head blocks) with two successors each,
+ * linked to the fixture dictionary, so the block-index walk and the per-block streams are
+ * reachable. Shapes mirror [TdictValidatorFuzzTest]: bit flips, truncations, inflation of the ten
+ * u32 header fields, random garbage, payload corruption with an optional checksum refresh and
+ * re-derived spec pins (only these may validate), and compressed-stream corruption.
  */
 class TatBigrValidatorFuzzTest {
     @get:Rule

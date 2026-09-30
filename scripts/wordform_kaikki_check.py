@@ -1,31 +1,12 @@
 #!/usr/bin/env python3
-"""Dev-time validation of wordform_gen.py against kaikki.org Tatar paradigms.
+"""Dev-time check of wordform_gen.py noun paradigms against kaikki.org Tatar tables.
 
-Downloads (or reuses a cached copy of) the kaikki.org Tatar dictionary extract
-and compares the generator's noun paradigms with the declension tables found
-there, per stem and per label. Prints agreement stats; informational only —
-this tool is NEVER part of a gate (it needs the network on first run).
-
-Data source: https://kaikki.org/dictionary/Tatar/kaikki.org-dictionary-Tatar.jsonl
-License: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/); the
-extract is derived from Wiktionary (https://www.wiktionary.org/). The download
-is cached under build/ (gitignored); nothing from it is committed or shipped.
-
-Usage:
-
-    python3 scripts/wordform_kaikki_check.py [--jsonl PATH] [--download]
-        [--limit N] [--show N]
-
-Scope notes: kaikki possessive-case cells beyond the nominative (e.g. dative
-of 1sg possessive татарыма), the genitive of the 3sg possessive (баласының)
-and the plural-possessed variants inside possessive cells (абаларым next to
-абам) are forms the P1 generator deliberately does not emit; they are filtered
-out of the comparison, never counted as disagreements. kaikki's two
-3rd-person possessive cells mix our noun.p3 and noun.p3pl (абасы/абалары), so
-they compare against the union of both. "Extra" means a generated in-scope
-form absent from the stem's whole kaikki form set — mostly our dual-harmony
-loan variants (советләргә next to советларга), which P2's attestation filter
-removes.
+Input: the kaikki.org Tatar JSONL (CC BY-SA 4.0, from Wiktionary), fetched with
+``--download`` or reused from the gitignored build/ cache; nothing is committed.
+Output: per-stem, per-label agreement stats on stdout. Informational only, not a
+release check (needs the network on first run). Cells the generator does not emit
+are filtered out; "extra" is a generated form absent from the stem's kaikki forms.
+Exit 2 on missing input or bad rows.
 """
 from __future__ import annotations
 
@@ -58,7 +39,7 @@ PERSON_TAGS = {"first-person": "p1", "second-person": "p2", "third-person": "p3"
 OUR_NOUN_LABELS = frozenset(gen.NOUN_LABELS) - {"noun.pron"}
 
 # kaikki possessive cells also list plural-possessed forms (абаларым next to
-# абам); P1 deliberately does not generate plural+possessive combos, so those
+# абам); the generator does not produce plural+possessive combos, so those
 # forms are filtered out of the comparison. kaikki's two 3rd-person cells both
 # mix our noun.p3 and noun.p3pl (абасы/абалары), which we do generate, so
 # those cells compare against the union of the two labels.
@@ -77,7 +58,7 @@ def is_possessive_label(label: str) -> bool:
 
 
 class KaikkiError(ValueError):
-    """A fail-closed kaikki-check error (missing input, bad rows)."""
+    """A kaikki-check error: missing input or bad rows."""
 
 
 def map_tags(tags: list[str]) -> str | None:
@@ -170,7 +151,7 @@ def compare(
             else:
                 reference = ours.get(label, set())
                 if is_possessive_label(label):
-                    # Drop plural-possessed forms (абаларым): out of P1 scope.
+                    # Drop plural-possessed forms (абаларым): the generator does not emit them.
                     plural_possessed = {form for form in kaikki_forms if is_plural_possessed(form)}
                     out_of_scope_forms += len(plural_possessed)
                     kaikki_forms -= plural_possessed

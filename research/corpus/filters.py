@@ -1,12 +1,11 @@
 """Filtering conversational corpora before their words are proposed for a keyboard dictionary.
 
-Dossier rule: "Мусор в данных дороже отсутствия данных." Every filter here must be able to
+Garbage in the data costs more than missing data. Every filter here must be able to
 report what it removed, and the report must include examples that PASSED and should not have.
 
 Filters, in the order applied:
 
 1. LINE DEDUP -- subtitle collections repeat the same line across alternative uploads.
-   Measured at 23.34 % duplicate lines for tat OpenSubtitles.
 
 2. PROPER-NOUN BY CASE EVIDENCE -- the dominant garbage in subtitles is character names
    (Локк, Десмонд, Сойер, Макфлай, Танос). They are indistinguishable from ordinary words
@@ -44,8 +43,8 @@ PROFANITY_ROOTS = {
     # мудрость-adjacent forms. A root that costs ordinary words is not worth the obscenity
     # it catches, because the obscenity is also caught by the fuller roots kept above.
     # NOTE: "сука" is deliberately ABSENT from the Tatar list. Tatar "сука" is a plough and
-    # "сукалар" is an ordinary verb form; the Russian root convicts them wrongly. Measured:
-    # the only Tatar word the root ever caught was "сукалар" (2 occurrences), a false positive.
+    # "сукалар" is an ordinary verb form; the Russian root convicts them wrongly. In the Tatar
+    # corpora the root caught only such false positives.
     "tat": ("хуй", "пизд", "еба", "ёб", "бляд", "мудак", "пидор"),
 }
 

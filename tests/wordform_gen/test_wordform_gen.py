@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract tests for the TT-SUGGESTIONS phase-P1 Tatar word-form generator.
+"""Contract tests for the Tatar word-form generator (scripts/wordform_gen.py).
 
 What is pinned and why:
 
@@ -9,8 +9,8 @@ What is pinned and why:
   possessive override (су→суы), suppletive pronouns, vowel-stem present
   contraction (эшлә→эшли) and the derivational set (дуслык, мөмкинлек).
 * The committed exceptions table (scripts/wordform_exceptions_tat.tsv) is
-  pinned by byte SHA-256 and by row counts: editing the tables is a conscious
-  act that must re-pin the tests, exactly like the dictionary asset pins.
+  pinned by byte SHA-256 and by row counts: editing the table must re-pin
+  the tests, like the dictionary asset pins.
 * The exceptions loader is fail-closed: every malformed row shape is a hard
   error, never a skipped line.
 * Determinism: candidate and group builders produce byte-identical output on
@@ -29,10 +29,10 @@ ROOT = Path(__file__).resolve().parents[2]
 GENERATOR_SCRIPT = ROOT / "scripts" / "wordform_gen.py"
 EXCEPTIONS_FILE = ROOT / "scripts" / "wordform_exceptions_tat.tsv"
 
-# Pinned at P1 creation (2026-09-19). Changing the exceptions table changes
-# the generated candidate forms; re-pin in the same commit.
+# Changing the exceptions table changes the generated candidate forms;
+# re-pin in the same commit.
 EXPECTED_EXCEPTIONS_SHA256 = (
-    "715020c2a80b3383789e6f74396a3ae36bdfe524cda613dbb84558b8226d663e"
+    "bc2810cf9593333c0caec976dd4592557965bb0fc826c429313b6d675198e8da"
 )
 EXPECTED_VOICING_ROWS = 3
 EXPECTED_PRONOUN_ROWS = 7
@@ -368,7 +368,7 @@ class GoldenVerbParadigmTest(unittest.TestCase):
         self.assertNotIn("verb.part.asi", forms)  # consonant stems only
 
     def test_uku_present_is_regular_negatives_suppletive(self):
-        # The contraction rule covers the present (укы→укый); the будущее and
+        # The contraction rule covers the present (укы→укый); the future and
         # negative forms switch to the suppletive stem ук- (kaikki-attested).
         uku = verb_forms("укы", "back")
         self.assertEqual(uku["verb.pres.3sg"], "укый")
@@ -384,8 +384,8 @@ class GoldenVerbParadigmTest(unittest.TestCase):
         self.assertEqual(uku["verb.ger.neg"], "укмыйча")
 
     def test_diyu_is_regular(self):
-        # дию needs no exception rows: stem ди contracts regularly; the plan's
-        # "диген" is a typo for дигән (generated here), дип is regular too.
+        # дию needs no exception rows: stem ди contracts regularly; "диген" is a
+        # misspelling of дигән (generated here), дип is regular too.
         diyu = verb_forms("ди", "front")
         self.assertEqual(diyu["verb.pres.3sg"], "ди")
         self.assertEqual(diyu["verb.rpast.3sg"], "дигән")
@@ -394,7 +394,7 @@ class GoldenVerbParadigmTest(unittest.TestCase):
         self.assertEqual(diyu["verb.fut.3sg"], "дияр")  # monosyllabic vowel stem
 
     def test_future_allomorphy(self):
-        # Verified against kaikki.org Tatar verb tables (2026-09): -ар/-әр for
+        # Verified against kaikki.org Tatar verb tables: -ар/-әр for
         # monosyllabic consonant stems, -ыр/-ер for longer ones, -р after
         # vowels, -яр for monosyllabic vowel stems.
         self.assertEqual(verb_forms("ат")["verb.fut.3sg"], "атар")
@@ -558,8 +558,8 @@ class CandidatesTest(unittest.TestCase):
             ("дуслык", "дус", "deriv.lik"),
             ("дусча", "дус", "deriv.ca"),
             ("мөмкинлек", "мөмкин", "deriv.lik"),
-            # Dual-harmony loan: both variants are candidates; P2 keeps the
-            # attested one (советларга).
+            # Dual-harmony loan: both variants are candidates; the attestation
+            # stage keeps the attested one (советларга).
             ("советларга", "совет", "noun.pl.dat"),
             ("советләргә", "совет", "noun.pl.dat"),
         }
@@ -600,7 +600,7 @@ class GroupTest(unittest.TestCase):
 
     def test_ambiguous_strips_skipped(self):
         # язам analyzes as яза+м (noun.p1 of яза) and as яз+ам
-        # (verb.pres.1sg of яз); both stems listed → fail-closed skip.
+        # (verb.pres.1sg of яз); both stems listed → ambiguous, skipped.
         # яза itself groups unambiguously under яз (verb.pres.3sg).
         words = ["яз", "яза", "язам"]
         rows, stats = gen.build_groups(words, EXC)
@@ -627,7 +627,7 @@ class CliTest(unittest.TestCase):
         return gen.main(list(argv))
 
     def test_paradigm_prints_full_paradigm(self):
-        # Smoke: exit 0 and sane output for the brief's two probe stems.
+        # Smoke: exit 0 and sane output for two probe stems.
         import contextlib
         import io
 

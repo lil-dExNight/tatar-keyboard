@@ -25,9 +25,8 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
 
 /**
- * The pure model of the personal-bigram store (P1 of Phase 2, docs/ROADMAP-P2.md): insertion,
- * reinforcement, acceptance, removal, the LRU eviction and the pinned lookup order — all without
- * a file, exactly like [PersonalEntriesTest] for the words store.
+ * The pure model of the learned-pairs store: insertion, reinforcement, acceptance, removal, LRU
+ * eviction and the pinned lookup order, all without a file, like [PersonalEntriesTest] for words.
  */
 class PersonalBigramEntriesTest {
 

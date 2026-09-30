@@ -415,3 +415,37 @@ SIZE-1/2/3, P7-1, TT-SUGGESTIONS Px, ROADMAP-P4), датами (95 сносок 
       тестом/движком → [DEAD], см. таблицу удаления.
     - «версия 3.6.0/43»: в scripts версия нигде не захардкожена (`release_check.sh` читает её из
       `app/build.gradle` динамически) — **находок нет**, это правильно.
+
+## Phase 5 result: dictionary pipeline scripts (WP5.4, stage p5-scripts-pipeline)
+
+Area: `rebuild_assets.py`, `dictionary_pack.py`, `dict_accept.py`, `dict_accept_check.py`,
+`review_batches.py`, `schema2_equivalence_check.py`, `schema3_equivalence_check.py`,
+`wordform_gen.py`, `wordform_exceptions_tat.tsv` (header), `known_asset_drift.json` (`reason`).
+
+Comments and docstrings only. For each `.py` file the AST with docstrings stripped is identical to
+`HEAD` (checked with a script), so no code or string literal changed. Printed messages, argparse help
+text and the templates written into data files (`PREAMBLE`, `SAMPLE_HEAD`, `CONV_FREQ_HEAD`,
+`batch_preamble`) are output and were not touched.
+
+- All docstrings and `#` comments are in English now. Removed: mission/phase codes, dates,
+  `docs/*.md` links, "operator", the stdlib boilerplate and rhetoric.
+- Module docstrings are 8 lines or less (what / input / output / exit codes). The exception is
+  `wordform_gen.py`: its linguistic rules stay in the docstring, and its header and usage parts
+  are shorter. Also fixed a wrong letter in the nasal set there: `ҥ` → `ң`, which matches `NASALS`.
+- `wordform_exceptions_tat.tsv`: header only. The SHA-256 pin in
+  `tests/wordform_gen/test_wordform_gen.py` was recomputed and updated.
+- `known_asset_drift.json`: both `reason` fields are rewritten in English. The Tatar reason used to
+  say "K 4→3", which is stale because the table is packed at K = 4. No test pins the `reason` text.
+
+| check | before | after |
+|---|---|---|
+| `docs/*.md` / PROPOSALS | 19 | 2 |
+| dates | 18 | 3 |
+| Cyrillic in comment lines | 216 | 102 |
+| operator/uncommitted/handoff/mission | 16 | 8 |
+
+Every remaining hit is in code, not in a comment. The doc links, dates and "operator" hits are in
+string templates, help text, the `"operator-widened"`/`"operator-excluded"` labels and
+`AUTOMATED_REVIEW_DATE`. The Cyrillic count mostly comes from `#` lines inside those string
+templates; the real comments that contain Cyrillic quote Tatar or Russian examples. Gates: all
+Python tests pass, and `rebuild_assets.py --check --allow-known-drift` exits 0.

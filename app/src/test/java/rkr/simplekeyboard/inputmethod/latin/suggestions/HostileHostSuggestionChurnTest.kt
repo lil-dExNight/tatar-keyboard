@@ -24,20 +24,13 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 
 /**
- * S8 of `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md`, suggestion side of the rapid
- * start/finish-input churn shape: a hostile or buggy host can bounce the IME through
- * start/finish cycles at any rate, and an engine result requested in one editor session can be
- * delivered in the middle of the next one. A result computed for a dead session must never paint
- * the strip, and the controller must keep working after the storm.
- *
- * Driven exactly like [SuggestionsControllerTest] — the real [SuggestionsController] over fakes —
- * extending its single-boundary stale-drop pins ([staleResultDroppedWhenFinishInputBumpsSession]
- * and siblings) with the interleave: results landing mid-churn, repeated finish without start,
- * selection changes and re-requests inside the storm.
- *
- * Per-shape verdict (2026-09-29): **CLEAN** — the controller's session stamp already drops every
- * result issued before a lifecycle boundary; the storm adds nothing to the guard set, it proves
- * the guards hold under interleaving and that a fresh session after the storm works end to end.
+ * Rapid start/finish-input churn: a hostile or buggy host can bounce the IME through start/finish
+ * cycles at any rate, so a result requested in one editor session can arrive in the next one. A
+ * result computed for a dead session must never paint the strip, and the controller must keep
+ * working after the storm. Driven like [SuggestionsControllerTest] (the real controller over
+ * fakes), extending its single-boundary stale-drop tests
+ * ([staleResultDroppedWhenFinishInputBumpsSession] and siblings) with interleaving: results landing
+ * mid-churn, repeated finish without start, selection changes and re-requests.
  */
 class HostileHostSuggestionChurnTest {
 

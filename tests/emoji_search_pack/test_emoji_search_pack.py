@@ -4,8 +4,8 @@
 Synthetic CLDR annotation files (a handful of annotations instead of the real
 CLDR 44 pair) and a tiny panel asset drive both the unit surface (parsing,
 U+FE0F lookup, keyword union order, guardrails) and the CLI contract (exit
-codes, fail-closed writes). What is pinned here is the CONTRACT of the tool,
-not the data. A live-tree test additionally checks the committed asset against
+codes, fail-closed writes). These tests pin the tool's contract, not the data.
+A live-tree test additionally checks the committed asset against
 the committed panel asset: the index must never offer an emoji the panel
 cannot draw.
 """
@@ -602,8 +602,8 @@ class CommittedAssetTest(unittest.TestCase):
             self.assertNotIn("️", fields[1] + fields[2])
 
     def test_tatar_keywords_reached_the_committed_asset(self) -> None:
-        # Mission m2 of docs/AUDIT-2026-08-31.md: the hand-written Tatar
-        # synonyms of scripts/emoji_search_tt_extra.txt must be in the index.
+        # The hand-written Tatar synonyms of scripts/emoji_search_tt_extra.txt
+        # must be in the index.
         tt_words = {
             "❤️": ["йөрәк", "мәхәббәт", "сөю"],
             "😀": ["елмаю", "шатлык"],
@@ -611,7 +611,7 @@ class CommittedAssetTest(unittest.TestCase):
             "👋": ["сәлам", "исәнмесез"],
             "📖": ["китап"],
             "🕌": ["мәчет"],
-            # M4a positive control: the rooster had no Tatar keyword at all.
+            # Positive control: without the hand-written file the rooster has no Tatar keyword.
             "🐓": ["әтәч", "этэч"],
         }
         by_sequence = {}
@@ -625,7 +625,7 @@ class CommittedAssetTest(unittest.TestCase):
                               msg=f"{word} missing for {sequence}")
 
     def test_tatar_keywords_never_lead_a_line(self) -> None:
-        # Ranking promise: a Tatar word never stands before the Russian name
+        # Ranking rule: a Tatar word never stands before the Russian name
         # and the CLDR keywords of the same line.
         for line in self.search_lines:
             fields = line.split("\t")

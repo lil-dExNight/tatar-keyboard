@@ -339,7 +339,7 @@ class MappedDictionaryEngineTest {
         assertEquals(listOf(2, 3), retained)
     }
 
-    // --- E5c: two-stage readiness — attachBigramSource after an already-published engine --------
+    // --- two-stage readiness: attachBigramSource after an already-published engine ------------
 
     @Test
     fun beforeAttachRequestNextWordReturnsEmptyWithoutBlockingStart() {
@@ -352,7 +352,7 @@ class MappedDictionaryEngineTest {
         assertEquals(LookupKind.NEXT_WORD, token.kind)
         // No assertion needed on WHAT is published here beyond "no crash, no block" — the
         // ResultHandoff in startWithDictionaryOnly discards results; the empty-before-attach
-        // behaviour itself is covered end to end by the next test.
+        // behavior itself is covered end to end by the next test.
         engine.destroy(1, TimeUnit.SECONDS)
     }
 

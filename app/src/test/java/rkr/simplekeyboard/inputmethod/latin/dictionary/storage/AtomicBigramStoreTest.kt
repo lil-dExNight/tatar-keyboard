@@ -102,10 +102,9 @@ class AtomicBigramStoreTest {
 
     @Test
     fun sharingADirectoryWithAForeignDictionaryFinalDoesNotTouchIt() {
-        // Not the contract's real deployment shape (the two artifacts get separate
-        // subdirectories) — this proves the bigram store's own regex/retention leaves an
-        // unrelated .tdict file alone even if one ever ended up in the same directory, i.e. the
-        // isolation is a property of the pattern, not just of never colliding by construction.
+        // Not the real deployment layout (the two artifacts get separate subdirectories): this
+        // proves the bigram store's own file pattern and retention leave an unrelated .tdict
+        // file alone even if one ended up in the same directory.
         val bigram = BigramTestFixtures.artifact()
         val foreignDictionary = DictionaryTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("shared-directory")
@@ -124,12 +123,11 @@ class AtomicBigramStoreTest {
 
     @Test
     fun aLiveDictionaryLeaseNeverBlocksOrIsBlockedByABigramLease() {
-        // PROPOSALS.md, "E5b. Артефакт лежит в собственной поддиректории device-protected
-        // storage; тест подтверждает, что живой lease основного словаря не блокирует активацию
-        // биграмм и наоборот" — the two stores below are wired to DIFFERENT directories
-        // (ProcessDictionaryStorageOwner / ProcessBigramStorageOwner key their shared state by
-        // canonical directory path, and the two registries are themselves separate objects), so
-        // this exercises the actual deployment shape, not just type separation.
+        // Each artifact lives in its own device-protected subdirectory, and a live lease on the
+        // main dictionary must not block bigram activation or vice versa. The two stores below
+        // use DIFFERENT directories (ProcessDictionaryStorageOwner / ProcessBigramStorageOwner
+        // key their shared state by canonical directory path, and the registries are separate
+        // objects), so this exercises the deployment layout, not just type separation.
         val dictionaryDirectory = temporaryFolder.newFolder("dictionaries")
         val bigramDirectory = temporaryFolder.newFolder("bigrams")
         val dictionaryArtifact = DictionaryTestFixtures.artifact()

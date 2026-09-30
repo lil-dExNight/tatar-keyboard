@@ -21,15 +21,13 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * PROPOSALS.md, "E5c. Готовность вычислителя двухступенчатая": bigram-table preparation and
- * attachment must never be on the path that publishes the dictionary engine — `strip.reserve()`
- * and the already-typed prefix being looked up must both have already happened by the time
- * [SuggestionsController.onStartInput] returns, whether or not bigram preparation has completed
- * (or exists, or fails) by then. [PendingBigramPreparation] models this faithfully: unlike a
- * fake that resolves synchronously, it holds its callback until the test fires it explicitly —
- * exactly the "requested now, resolves later, off the UI thread" shape the real
- * `BackgroundBigramPreparer` has, and the only way to observe a real ordering guarantee instead
- * of an accidental one produced by fully-synchronous fakes.
+ * Two-stage engine readiness: bigram-table preparation and attachment must never be on the path
+ * that publishes the dictionary engine — `strip.reserve()` and the already-typed prefix being
+ * looked up must both have already happened by the time [SuggestionsController.onStartInput]
+ * returns, whether or not bigram preparation has completed (or exists, or fails) by then.
+ * [PendingBigramPreparation] holds its callback until the test fires it — the "requested now,
+ * resolves later, off the UI thread" shape of the real `BackgroundBigramPreparer`; fully
+ * synchronous fakes would hide the ordering under test.
  */
 class SuggestionsControllerBigramAttachTest {
 
@@ -56,7 +54,7 @@ class SuggestionsControllerBigramAttachTest {
     private class FakeEditor : EditorSurface {
         var word: String = ""
 
-        /** E5d: the live NEXT_WORD context the editor cache would re-derive. */
+        /** The live NEXT_WORD context the editor cache would re-derive. */
         var context: String = ""
 
         override fun cachedWordBeforeCursor(): String = word
@@ -313,7 +311,7 @@ class SuggestionsControllerBigramAttachTest {
         // The engine is published, but the bigram attach is still in flight. The user finished a
         // word and pressed space BEFORE the attach completed: the NEXT_WORD request goes to an
         // engine without a table and gets the "not attached yet" empty list, which looks exactly
-        // like "no prediction for this context" (docs/NEXTWORD-RACE.md).
+        // like "no prediction for this context".
         editor.context = "мин"
         controller.onTextChanged()
 
@@ -324,9 +322,8 @@ class SuggestionsControllerBigramAttachTest {
         engine.nextWordAnswer = listOf("дә", "үзем", "бу")
         bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
-        // The fix: a completed attach re-asks the still-pending NEXT_WORD context, and the band
-        // fills without another keystroke. Before it, the request count stayed at one and the
-        // band stayed empty until the next key.
+        // A completed attach re-asks the still-pending NEXT_WORD context, and the band fills
+        // without another keystroke.
         assertEquals(2, engine.requestedContexts.size)
         assertEquals(Triple("дә", "үзем", "бу"), strip.shown.last())
     }
@@ -364,8 +361,9 @@ class SuggestionsControllerBigramAttachTest {
         assertTrue(engine.requestedContexts.isEmpty())
     }
 
-    // --- Audit 2026-09-02, B4: the re-request guard asks "did the ACTIVE language put a WORD on
-    // the band", not "is the band occupied" ---------------------------------------------------------
+    // --- The re-request guard asks "did the ACTIVE language put a WORD on the band", not "is the
+    // band occupied"
+    // -------------------------------------------------------------------------------
 
     @Test
     fun emojiOnlyBandDoesNotBlockTheAttachReRequest() {

@@ -31,7 +31,7 @@ internal object EngineTestFixtures {
 
     fun bigramIndex(headsToSuccesses: List<Pair<String, List<String>>>): TatBigrPrefixIndex {
         // Schema 3 resolves words through the linked dictionary: the fixture dictionary is
-        // exactly the heads and successes involved, and the table header names this fixture's
+        // exactly the heads and successors involved, and the table header names this fixture's
         // identity hash (BigramTestFixtures.DEFAULT_DICTIONARY_SHA == identity.rawSha256).
         val dictionaryWords = BigramTestFixtures.defaultDictionaryWords(headsToSuccesses)
         val dictionary = index(dictionaryWords.map { it to 1L })

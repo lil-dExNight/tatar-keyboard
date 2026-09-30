@@ -22,9 +22,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * W4 of stage A (`docs/ROADMAP-P8-PLAN.md`, from `docs/APPLE-UX-2026-09-25.md`): the strip's
- * decoration is iOS-shaped — separators inset vertically instead of running edge to edge, the
- * pressed cell an inset rounded rect instead of a full-bleed square one, cell text 18dp.
+ * The strip's decoration is iOS-shaped — separators inset vertically instead of running edge to
+ * edge, the pressed cell an inset rounded rect instead of a full-bleed square one, cell text 18dp.
  *
  * `Canvas` does not exist on a plain JVM (no Robolectric here, by design), so the draw shape is
  * pinned at the source level, like the other strip contracts. The allocation-free requirement is

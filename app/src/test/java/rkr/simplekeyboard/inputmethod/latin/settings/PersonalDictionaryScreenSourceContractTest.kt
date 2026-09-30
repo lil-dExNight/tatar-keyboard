@@ -29,7 +29,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersona
 
 /**
  * The "Personal dictionary" screen, one test per guarantee the contract names: all languages, words
- * AND learned pairs (U7 of Phase 2, docs/ROADMAP-P2.md) AND learned emoji, a usage count on every
+ * AND learned pairs AND learned emoji, a usage count on every
  * row, a cap of 200 materialized rows shared across all three stores, "showing N of M",
  * `FLAG_SECURE` on the whole Activity and the three privacy flags on BOTH text fields.
  *

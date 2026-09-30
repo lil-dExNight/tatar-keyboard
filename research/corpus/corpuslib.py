@@ -1,19 +1,18 @@
-"""Shared measurement helpers for the tt-corpus mission.
+"""Shared measurement helpers for the research/corpus scripts.
 
-Nothing here touches app/src/main/assets. Every artefact this module builds is written
-under research/corpus/out/ and is a TEST artefact by construction.
+Nothing here touches app/src/main/assets. Every artifact this module builds is written
+under research/corpus/out/ and is a test artifact only.
 
 Two token rules live here on purpose, because the shipped pipelines use two:
 
 * ``dict_tokens``  mirrors Leipzig ``*-words.txt`` semantics: surrounding punctuation is
   stripped before ``normalize_word``, because Leipzig's own tokenizer already stripped it
   when it produced the word lists the shipped dictionary was built from. Counting raw
-  whitespace tokens instead would silently discard ~20 % of every sentence corpus and make
+  whitespace tokens instead would discard a large share of every sentence corpus and make
   the conversational frequencies incomparable with the shipped ones.
-* ``bigram_tokens`` mirrors the E5a adjacency rule verbatim: split on whitespace, a token
-  rejected by ``normalize_word`` BREAKS adjacency rather than being transparent. This is the
-  rule tt-bigram-adjacency re-confirmed, so the numbers stay comparable with the shipped
-  table.
+* ``bigram_tokens`` mirrors the bigram packer's adjacency rule verbatim: split on whitespace,
+  a token rejected by ``normalize_word`` BREAKS adjacency rather than being transparent, so
+  the numbers stay comparable with the shipped table.
 """
 from __future__ import annotations
 
@@ -69,7 +68,7 @@ def dict_tokens(line: str, alphabet):
 
 
 def bigram_tokens(line: str, alphabet):
-    """Yield (word_or_None) per whitespace token; None means adjacency BREAKS here (E5a rule)."""
+    """Yield (word_or_None) per whitespace token; None means adjacency BREAKS here (packer rule)."""
     for chunk in line.split():
         norm, _ = cov.normalize_word(chunk, alphabet)
         yield norm

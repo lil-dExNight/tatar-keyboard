@@ -271,10 +271,10 @@ class SuggestionsControllerBigramLanguageSwitchTest {
         assertEquals(tables.size, tables.map { it.storageDirectoryName }.distinct().size)
         assertEquals(tables.size, tables.map { it.assetPath }.distinct().size)
 
-        // FROZEN: family, tag, generation and directory of the file 1.6.0 inflated on devices.
-        // The schema segment is deliberately NOT frozen: s2 → s3 (SIZE-2, 2026-09-01) is exactly
-        // what makes a device re-inflate the cross-referenced table next to the old one instead
-        // of opening a format it does not understand.
+        // FROZEN: family, tag, generation and directory of the file already inflated on devices.
+        // The schema segment is deliberately NOT frozen: a schema bump (s2 → s3) is exactly what
+        // makes a device re-inflate the cross-referenced table next to the old one instead of
+        // opening a format it does not understand.
         val tt = BigramArtifactSpec.TATAR_BIGRAMS_V1
         assertEquals("bigrams", tt.storageDirectoryName)
         assertEquals(
@@ -348,8 +348,8 @@ class SuggestionsControllerBigramLanguageSwitchTest {
 
     @Test
     fun aLanguageWithNoTableStaysSilentAndNeverBorrowsTheOtherLanguagesTable() {
-        // Fail-closed, and closed on the RIGHT language: the shape a language that ships a
-        // dictionary but no next-word table must have.
+        // No table, and only for the RIGHT language: the shape a language that ships a dictionary
+        // but no next-word table must have.
         val h = Harness(languagesWithTable = setOf(PersonalSubtypes.TATAR_RU))
         h.editor.word = "сүз"
         h.controller.onStartInput(eligible = true, subtypeId = tatar)

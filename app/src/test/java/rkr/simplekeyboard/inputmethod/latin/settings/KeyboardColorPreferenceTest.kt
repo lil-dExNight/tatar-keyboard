@@ -21,14 +21,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The 2026-09-25 SAFE wave: `readKeyboardColor` used to evaluate
- * `readKeyboardDefaultColor(context)` — a walk over the theme table and the colour resource
- * arrays — on EVERY read, including the common case where the preference holds a value and the
- * default is thrown away. The reader now asks `contains` first: preference set -> the stored
- * value, the default never computed; preference absent -> the theme default.
+ * `readKeyboardColor` asks `contains` first: preference set -> the stored value, and
+ * `readKeyboardDefaultColor(context)` (a walk over the theme table and the color resource
+ * arrays) is never computed; preference absent -> the theme default.
  *
- * `SharedPreferences` and `Context` do not exist on a plain JVM (no Robolectric here, by
- * design), so the branch structure is pinned at the source level — the same way
+ * `SharedPreferences` and `Context` do not exist on a plain JVM (there is no Robolectric in this
+ * project), so the branch structure is pinned at the source level — the same way
  * [AppRestrictionsSourceContractTest] pins the restriction loader.
  */
 class KeyboardColorPreferenceTest {

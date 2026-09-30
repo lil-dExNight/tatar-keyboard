@@ -28,13 +28,13 @@ import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * The D3 state machine as the controller runs it: when a word is replaced, when the single undo is
- * still possible, and what happens with the feature switched off.
+ * The autocorrect state machine as the controller runs it: when a word is replaced, when the single
+ * undo is still possible, and what happens with the feature switched off.
  *
- * The editor fake below is a real little text model, and its two D3 methods mirror the guards of
- * `InputLogic.replaceTrailingWord` / `InputLogic.revertTatarAutocorrection` — the collapsed
- * selection, the cursor not inside a word, the live trailing word, the exact suffix. The production
- * methods themselves cannot be instantiated without Android; what they DO is pinned by
+ * The editor fake below is a real little text model, and its two autocorrect methods mirror the
+ * guards of `InputLogic.replaceTrailingWord` / `InputLogic.revertTatarAutocorrection` — the
+ * collapsed selection, the cursor not inside a word, the live trailing word, the exact suffix. The
+ * production methods themselves cannot be instantiated without Android; what they DO is pinned by
  * [AutocorrectSourceContractTest], and what the controller decides is pinned here.
  *
  * The harness reproduces `LatinIME.onEvent` in the order the service runs it: a backspace is offered
@@ -175,7 +175,7 @@ class AutocorrectControllerTest {
         override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean = true
     }
 
-    /** Records what E4c would have been told, so "an autocorrection teaches nothing" is checkable. */
+    /** Records what learning was told, so "an autocorrection teaches nothing" is checkable. */
     private class RecordingSink : WordCompletionSink {
         val completions = mutableListOf<String>()
 
@@ -186,7 +186,7 @@ class AutocorrectControllerTest {
         override fun onInputFinished() = Unit
     }
 
-    /** Records what the P1 pair machine would have been told, so pair context is checkable. */
+    /** Records what the learned-pair machine would have been told, so pair context is checkable. */
     private class RecordingPairSink : PairCompletionSink {
         val pairs = mutableListOf<Pair<String, String>>()
 
@@ -203,7 +203,7 @@ class AutocorrectControllerTest {
         val pairSink = RecordingPairSink()
         var autocorrectEnabled = autocorrectOn
 
-        /** False reproduces a build that never calls the D3 entry points at all. */
+        /** False reproduces a build that never calls the autocorrect entry points at all. */
         private val wired = wireAutocorrect
 
         val controller = SuggestionsController(
@@ -297,8 +297,8 @@ class AutocorrectControllerTest {
 
     @Test
     fun aMixedCaseWordIsNeverAutocorrected() {
-        // Mixed case has no defined display form in the frozen contract (0 results), so it has no
-        // defined replacement form either.
+        // Mixed case has no defined display form (0 results), so it has no defined replacement form
+        // either.
         val h = Harness()
         h.start()
         h.advise("китәп", "китап")
@@ -312,8 +312,8 @@ class AutocorrectControllerTest {
 
     @Test
     fun aVerdictComputedForADifferentWordIsNeverApplied() {
-        // Coalescing: the lookup for the finished word never ran, so the newest verdict belongs to a
-        // shorter prefix. Nothing is replaced — fail-closed, exactly like the E4c clean-run filter.
+        // Coalescing: the lookup for the finished word never ran, so the newest verdict belongs to
+        // a shorter prefix. Nothing is replaced, exactly like the clean-run filter of learning.
         val h = Harness()
         h.start()
         h.advise("китә", "китап")
@@ -329,9 +329,9 @@ class AutocorrectControllerTest {
 
     @Test
     fun aCandidateBelowTheFrequencyThresholdIsRefusedByTheControllerToo() {
-        // The engine already applies the threshold; the controller re-checks it, because one side of
-        // a two-sided decision must not be the only place a rule lives. 410 is one below
-        // MIN_CANDIDATE_FREQUENCY (411 since the 2026-09-20 P2 rebuild).
+        // The engine already applies the threshold; the controller re-checks it, because one side
+        // of a two-sided decision must not be the only place a rule lives. 410 is one below
+        // MIN_CANDIDATE_FREQUENCY (411).
         val h = Harness()
         h.start()
         h.advise("китәп", "китап", frequency = 410L)
@@ -373,8 +373,9 @@ class AutocorrectControllerTest {
 
     @Test
     fun theReplacedWordTeachesNothing() {
-        // "Автозамена не учит": the run is marked dirty exactly as an accepted suggestion marks it,
-        // so neither the corrected word nor what the user typed reaches the personal dictionary.
+        // An autocorrection teaches nothing: the run is marked dirty exactly as an accepted
+        // suggestion marks it, so neither the corrected word nor what the user typed reaches the
+        // personal dictionary.
         val h = Harness()
         h.start()
         h.advise("китәп", "китап")
@@ -387,10 +388,9 @@ class AutocorrectControllerTest {
 
     @Test
     fun aCorrectedWordStillBecomesPairContextForTheNextCleanWord() {
-        // 2026-09-24 audit, finding 7: the replacement re-arms the pair boundary exactly like an
-        // accepted suggestion does — without it the run machine's no-change early return would
-        // keep the pair machine dirty past the separator, and the corrected word could never be a
-        // pair's context half.
+        // The replacement re-arms the pair boundary exactly like an accepted suggestion does —
+        // without it the run machine's no-change early return would keep the pair machine dirty
+        // past the separator, and the corrected word could never be a pair's context half.
         val h = Harness()
         h.start()
         h.typeWord("баш")
@@ -532,14 +532,14 @@ class AutocorrectControllerTest {
         assertEquals("китап", h.editor.before)
     }
 
-    // --- Fail-closed acceptance ------------------------------------------------------------------
+    // --- Switched off ----------------------------------------------------------------------------
 
     @Test
     fun withAutocorrectOffTheResultIsByteForByteTheResultBeforeIt() {
-        // Left: the shipped build with the setting off, D3 entry points called on every separator
-        // and every backspace exactly as LatinIME calls them.
+        // Left: the shipped build with the setting off, autocorrect entry points called on every
+        // separator and every backspace exactly as LatinIME calls them.
         val off = Harness(autocorrectOn = false)
-        // Right: a build that has no D3 at all — the entry points are never reached.
+        // Right: a build without autocorrect at all — the entry points are never reached.
         val without = Harness(autocorrectOn = false, wireAutocorrect = false)
 
         for (h in listOf(off, without)) {

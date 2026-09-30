@@ -21,7 +21,7 @@ import org.junit.Assert.assertSame
 import org.junit.Test
 
 /**
- * Phase 4a: KeyPreviewView.getTextWidth() reuses a single growing scratch buffer instead of
+ * KeyPreviewView.getTextWidth() reuses a single growing scratch buffer instead of
  * allocating `new float[len]` on every key preview. These tests pin the contract of the
  * buffer helpers without android.graphics.TextPaint (unavailable in JVM unit tests):
  * repeated measurements with varying text lengths must not corrupt results — a buffer left

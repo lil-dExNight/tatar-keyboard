@@ -22,18 +22,12 @@ import org.junit.Test
 import java.io.File
 
 /**
- * The TYPING path never writes a personal word.
- *
- * E4a-2 stated this as "nothing outside the store's own package references it", which was true while
- * the feature was dormant. E4b connects it: the screen adds, removes and erases words, and the IME
- * reads the published snapshot and registers an erasure listener. What must NOT arrive before E4c is
- * learning — a word saved as a consequence of typing — so the guarantee is now stated where it
- * actually lives:
+ * The typing path never writes a personal word:
  *
  *  - `SuggestionsController`, the class that sees every keystroke, does not reference the store
- *    package at all (unchanged, and the strongest of the three);
- *  - `LatinIME` may reach the process-wide owner for the READ source and the erasure listener, but
- *    calls no mutation on it;
+ *    package at all;
+ *  - `LatinIME` may reach the process-wide owner for the read source and the erasure listener,
+ *    but calls no mutation on it;
  *  - outside the store package, the only file allowed to call a mutation is the settings screen,
  *    where the user asks for it explicitly.
  */

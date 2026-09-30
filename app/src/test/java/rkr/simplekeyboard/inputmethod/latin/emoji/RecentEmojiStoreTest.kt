@@ -23,7 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2b-3 recent-emoji store: the three-factor gate, the "write once per hide, only when changed"
+ * Recent-emoji store: the three-factor gate, the "write once per hide, only when changed"
  * rule, the "erased never resurrects" rule and the fail-closed reads — all on the plain JVM through
  * the injected file, gate and medium seams.
  */

@@ -5,11 +5,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The personal-dictionary glide candidates at the decoder level (docs/GLIDE-PERSONAL.md): a
- * learned word decodes on its own gesture, a clear dictionary gesture keeps its dictionary
- * verdict, and the dictionary's relative order survives the personal tail. All decodes run the
- * real [GlideDecoder] over the fixture Tatar geometry; the inventory side is the
- * [ListGlideInventory] fixture plus a [CompositeGlideInventory] wrap.
+ * The personal-dictionary glide candidates at the decoder level: a learned word decodes on its own
+ * gesture, a clear dictionary gesture keeps its dictionary verdict, and the dictionary's relative
+ * order survives the personal tail. All decodes run the real [GlideDecoder] over the fixture Tatar
+ * geometry; the inventory side is the [ListGlideInventory] fixture plus a [CompositeGlideInventory]
+ * wrap.
  */
 class GlideDecoderPersonalTest {
 

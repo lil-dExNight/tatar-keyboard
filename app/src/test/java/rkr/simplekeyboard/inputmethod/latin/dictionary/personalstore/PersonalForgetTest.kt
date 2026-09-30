@@ -26,7 +26,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictiona
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersonalDictionary
 
 /**
- * E4d: "Forget «X»?" — who owns a shown word, and what a long press may and may not do.
+ * "Forget «X»?": who owns a shown word, and what a long press may and may not do.
  *
  * The lookup itself is exercised for real (it is pure Kotlin over the published snapshot); the touch
  * timer and the dialog are source-contract, since neither a View nor an InputMethodService runs off

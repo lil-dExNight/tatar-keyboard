@@ -22,7 +22,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Audit 2026-09-02, C5: every dialog the app shows must drop touches delivered while another
+ * Every dialog the app shows must drop touches delivered while another
  * window obscures it (`filterTouchesWhenObscured`). The dialogs are built from framework layouts
  * whose button panel cannot carry the XML flag, so [DialogUtils.filterObscuredTouches] sets it
  * programmatically on the decor view — the one ViewGroup every touch into the dialog passes
@@ -32,7 +32,7 @@ import java.io.File
  * helper exists and does the right call, and every AlertDialog creation site in the app passes
  * through it — a new dialog that forgets it fails here.
  *
- * A sibling rule lives here too (audit 2026-09-25): the activity-wide FLAG_SECURE does not extend
+ * A related rule lives here too: the activity-wide FLAG_SECURE does not extend
  * to dialog windows, so the settings dialogs that render personal content set it on their own
  * window through [DialogUtils.securePersonalContent].
  */
@@ -55,9 +55,8 @@ class DialogObscuredTouchContractTest {
             javaBody(ime, "private void attachDialogToInputWindow")
                 .contains("DialogUtils.filterObscuredTouches(dialog)"),
         )
-        // Every dialog LatinIME shows is attached through it: 10 call sites plus the definition.
-        // (9th site 2026-09-23: the P1 personal-bigrams unreadable dialog, docs/ROADMAP-P2.md;
-        // 10th site 2026-09-28: the Feature C personal-emoji unreadable dialog, docs/EMOJI-LEARN.md.)
+        // Every dialog LatinIME shows is attached through it: the pinned call-site count plus the
+        // definition.
         assertEquals(11, ime.occurrencesOf("attachDialogToInputWindow("))
     }
 
@@ -82,7 +81,7 @@ class DialogObscuredTouchContractTest {
             dialogs, filters,
         )
         assertEquals(1, read(SEEK_BAR_HELPER).occurrencesOf("DialogUtils.filterObscuredTouches("))
-        // 2026-09-24 audit, finding 9: the languages screen builds its own dialog (the add-language
+        // The languages screen builds its own dialog (the add-language
         // picker) — it is covered by the same rule, counted the same way.
         val languages = read(SETTINGS_LANGUAGES_SCREENS)
         assertEquals(
@@ -94,7 +93,7 @@ class DialogObscuredTouchContractTest {
 
     @Test
     fun personalContentDialogsAreSecureFromCapture() {
-        // 2026-09-25 audit: FLAG_SECURE on the activity window does NOT cover dialog windows —
+        // FLAG_SECURE on the activity window does NOT cover dialog windows —
         // each dialog is a window of its own. The three dialogs that render personal content
         // (the word the forget-word dialog names, the pair the forget-pair dialog names, the
         // field the add-word dialog takes) secure their own window through the helper; the

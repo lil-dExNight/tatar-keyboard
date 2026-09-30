@@ -28,15 +28,14 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifac
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 
 /**
- * Contract of the shipped Russian sentence-start asset
- * (`assets/dictionaries/russian_sentstart_v1.txt`, ROADMAP Phase 1 P3b, `docs/ROADMAP-P1.md`):
- * the frequency-ranked table of Russian sentence-initial words built by
- * `scripts/sentstart_pack.py --language rus`, mirroring `TatarSentStartAssetTest` pin for pin:
- * a `#` header carrying the Leipzig attribution, `word<TAB>freq` rows sorted by (frequency
- * desc, word asc), every word in the Russian alphabet and in the exact normalized form the
- * dictionary is keyed by, and — the packer's strict filter — every word present in the
- * shipped Russian dictionary. The record count and the SHA-256 are pinned exactly: a data
- * change is a written decision that re-pins them.
+ * Contract of the bundled Russian sentence-start table
+ * (`assets/dictionaries/russian_sentstart_v1.txt`): the frequency-ranked table of Russian
+ * sentence-initial words built by `scripts/sentstart_pack.py --language rus`, mirroring
+ * `TatarSentStartAssetTest` pin for pin: a `#` header carrying the Leipzig attribution,
+ * `word<TAB>freq` rows sorted by (frequency desc, word asc), every word in the Russian alphabet and
+ * in the exact normalized form the dictionary is keyed by, and — the packer's strict filter — every
+ * word present in the bundled Russian dictionary. The record count and the SHA-256 are pinned
+ * exactly: a data change must re-pin them.
  */
 class RussianSentStartAssetTest {
 
@@ -161,8 +160,8 @@ class RussianSentStartAssetTest {
     }
 
     private companion object {
-        // Measured 2026-09-22 on the committed inputs; re-pin consciously when the table changes
-        // (rebuild recipe in docs/ROADMAP-P1.md, P3b section).
+        // Pinned from the committed table; re-pin deliberately when `scripts/sentstart_pack.py`
+        // rebuilds it.
         const val EXPECTED_RECORD_COUNT = 64
         const val EXPECTED_ASSET_SHA256 =
             "ffab114daf924d8f23f295d833a0d90df7298b16fb139b3ba1bdb87a7783f86d"

@@ -33,16 +33,13 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.SpaceProbe
 
 /**
- * The feature-C learning gate — the mirror of [PersonalBigramLearningGatesTest] for the emoji
- * sink: the sink shares the ONE six-factor predicate of the words and pairs sinks, and every one
- * of its event paths (the observation, the accepted-suggestion use, the end-of-session flush)
- * consults it. With the predicate closed — incognito above all — not even a pending hash is
- * written.
+ * The learned-emoji gate, mirroring [PersonalBigramLearningGatesTest]: the emoji sink shares the
+ * one six-factor predicate of the words and pairs sinks, and every event path (observation,
+ * accepted suggestion, end-of-session flush) consults it. With the predicate closed (pause
+ * learning above all) not even a pending hash is written.
  *
- * Two halves, exactly like the bigram pins: the SHAPE runs as real behavior (the production
- * gating logic of [PersonalEmojiLearning.sinkOver] over a real store on a direct executor, no
- * Android), and the WIRING is source-contract over the two places it lives — the sink factory and
- * `LatinIME`.
+ * The shape runs as real behavior ([PersonalEmojiLearning.sinkOver] over a real store on a direct
+ * executor); the wiring is checked from source in the sink factory and `LatinIME`.
  */
 class PersonalEmojiLearningGatesTest {
     @get:Rule
@@ -124,7 +121,7 @@ class PersonalEmojiLearningGatesTest {
         assertNull(h.store.snapshot.emojiFor("сәләм"))
         val filesBeforePause = h.directory.list()?.toSet() ?: emptySet<String>()
 
-        h.learningOn = false // incognito on
+        h.learningOn = false // learning paused
         h.sink.noteObservation("сәләм", "☀️")
         h.sink.noteUse("сәләм", "☀️")
         h.sink.onInputFinished()
@@ -133,7 +130,7 @@ class PersonalEmojiLearningGatesTest {
         assertEquals(filesBeforePause, h.directory.list()?.toSet() ?: emptySet<String>())
         assertNull(h.store.snapshot.emojiFor("сәләм"))
 
-        h.learningOn = true // incognito off: the pre-pause observation still counts in memory
+        h.learningOn = true // learning resumed: the pre-pause observation still counts in memory
         h.sink.noteObservation("сәләм", "☀️")
         assertEquals("☀️", h.store.snapshot.emojiFor("сәләм"))
         assertTrue(storeFile(h.directory).isFile)

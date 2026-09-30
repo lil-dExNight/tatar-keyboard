@@ -21,18 +21,16 @@ import android.test.InstrumentationTestCase
 import android.util.Log
 
 /**
- * O2 (docs/OPTIMIZE-2026-09-25.md): the device-side price of the emoji indexes' idle release —
- * what a lazy RELOAD costs after MSG_DEALLOCATE_MEMORY dropped them. Both reloads run on their
- * consumers' background executors, so the UI thread never pays this; the test only puts numbers
- * on the worker-side work:
+ * Device-side cost of reloading the emoji indexes after MSG_DEALLOCATE_MEMORY dropped them.
+ * Both reloads run on their consumers' background executors, so the UI thread never pays this;
+ * the test logs the worker-side cost of:
  *
  *  - the panel search reload: SharedEmojiSearchIndex re-parse of emoji_search_v1.txt plus the
  *    glyph-available filter the panel applies;
- *  - the suggest reload: emoji_suggest_v1.txt parse plus the glyph probe over the distinct
+ *  - the suggestion reload: emoji_suggest_v1.txt parse plus the glyph probe over the distinct
  *    emoji (the AssetEmojiSuggestPreparation pass).
  *
- * Same JUnit3/legacy-runner shape as the other device harnesses here — never packaged into the
- * release APK.
+ * Uses the JUnit3 legacy runner like the other device tests; not part of the release APK.
  */
 class EmojiIndexReloadInstrumentationTest : InstrumentationTestCase() {
 

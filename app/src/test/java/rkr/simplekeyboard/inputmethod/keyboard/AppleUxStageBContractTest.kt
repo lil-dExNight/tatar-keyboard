@@ -24,20 +24,14 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.keyboard.internal.KeyPreviewBalloonDrawable
 
 /**
- * Stage B of `docs/ROADMAP-P8-PLAN.md` (all seven items authorized by the operator on
- * 2026-09-25). Source-level pins for the parts that are structure rather than pixels; the pixels
- * themselves were checked on the emulator and the screenshots are named in the stage report.
- *
- * - **B1/M5** settings screens animate on push and pop, and stand still when the system
- *   animation scale is 0.
- * - **B2/M4** an ACTION key is accent-filled and its glyph flips to the action colour.
- * - **B3/M3** the more-keys panel lives on the key surface and highlights the selected
- *   alternative in the accent colour with a white glyph.
- * - **B4/W5** the strip is 44dp everywhere, including the smoke test's calibration.
- * - **B5/M2** a letter key with a live balloon does not darken; functional keys and the glide
- *   highlight still do.
- * - **B6/S1** the droplet balloon honours the framework's padding contract.
- * - **B7/S2** the platform dialog carries the iOS card styling.
+ * Pins the structural parts of the iOS-style UI (pixels are checked on the emulator):
+ * - settings screens animate on push and pop, and do not move when the animation scale is 0;
+ * - an action key is accent-filled and its glyph uses the action color;
+ * - the more-keys panel uses the key surface and marks the selected key with the accent color;
+ * - the suggestion strip is 44dp everywhere, including the smoke test's tap coordinates;
+ * - a letter key with a visible preview balloon does not darken; functional keys and glide do;
+ * - the droplet balloon respects the framework's padding contract;
+ * - the platform dialog uses the iOS card style.
  */
 class AppleUxStageBContractTest {
 
@@ -50,7 +44,7 @@ class AppleUxStageBContractTest {
 
     private fun source(relative: String) = project(relative).readText()
 
-    // ----- B1 (M5) -----
+    // ----- Settings screen transitions -----
 
     @Test
     fun b1PushAndPopSetTheTransitionDirection() {
@@ -92,7 +86,7 @@ class AppleUxStageBContractTest {
         )
     }
 
-    // ----- B2 (M4) -----
+    // ----- Action key -----
 
     @Test
     fun b2AnActionKeyIsAccentFilledWithItsOwnGlyphColour() {
@@ -139,7 +133,7 @@ class AppleUxStageBContractTest {
         }
     }
 
-    // ----- B3 (M3) -----
+    // ----- More-keys panel -----
 
     @Test
     fun b3ThePanelUsesTheKeySurfaceAndAnAccentSelection() {
@@ -170,7 +164,7 @@ class AppleUxStageBContractTest {
         )
     }
 
-    // ----- B4 (W5) -----
+    // ----- Suggestion strip height -----
 
     @Test
     fun b4TheStripIsFortyFourDpEverywhere() {
@@ -192,13 +186,13 @@ class AppleUxStageBContractTest {
             else listOf(File("scripts/emulator-smoke.sh"), File("../scripts/emulator-smoke.sh"))
                 .first(File::isFile).readText()
         }
-        // W5 raised the strip 40dp → 44dp (the y moved to 0.5954); 2026-09-29 the strip is back
-        // to THREE cells (the four-cell wave reverted), so the smoke taps third-centers again.
+        // At 44dp the strip's center sits at y = 0.5954; the strip has three cells, so the smoke
+        // test taps the center of each third.
         assertTrue("the strip cell moved with the height", smoke.contains("STRIP_CELL2=\"0.8333,0.5954\""))
         assertTrue("the strip's three cells are pinned", smoke.contains("STRIP_CELL0=\"0.1667,0.5954\""))
     }
 
-    // ----- B5 (M2) -----
+    // ----- Key press feedback -----
 
     @Test
     fun b5ALetterKeyWithABalloonDoesNotDarken() {
@@ -230,7 +224,7 @@ class AppleUxStageBContractTest {
         )
     }
 
-    // ----- B6 (S1) -----
+    // ----- Preview balloon -----
 
     @Test
     fun b6TheDropletHonoursThePaddingContract() {
@@ -260,7 +254,7 @@ class AppleUxStageBContractTest {
         assertFalse("draw() allocates nothing", draw.contains("new "))
     }
 
-    // ----- B7 (S2) -----
+    // ----- Platform dialog -----
 
     @Test
     fun b7ThePlatformDialogCarriesTheIosCard() {

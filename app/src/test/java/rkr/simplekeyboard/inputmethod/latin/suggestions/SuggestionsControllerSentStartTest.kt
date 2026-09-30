@@ -31,16 +31,13 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictiona
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog
 
 /**
- * The sentence-start band (TT-SUGGESTIONS phase P4, `docs/TT-SUGGESTIONS.md`; ROADMAP Phase 1
- * P3a/P3b/P4, `docs/ROADMAP-P1.md`): where the frozen contract used to show nothing — the start
- * of the field, or sentence-ending punctuation followed by space(s) — the slot shows the top of
- * ITS language's sentence-start table, answered synchronously from the loaded asset with NO
- * engine request (a sentence boundary resets the context: no bigram successors, no after-word
- * forms, no fallback). Since P3a the cells are shown AND committed capitalized; since P3b the
- * table is per language through the artifact-registry seam, so the Russian slot answers from the
- * Russian table exactly like the Tatar one; and since P4 non-final punctuation (`, ; :`) keeps
- * the word before it as an ordinary NEXT_WORD context — pinned here end-to-end through the REAL
- * extraction. A subtype with no table stays silent, exactly as pre-P4.
+ * The sentence-start band: at the start of the field, or after sentence-ending punctuation and
+ * space(s), the slot shows the top of ITS language's sentence-start table, answered synchronously
+ * from the loaded table with NO engine request (a sentence boundary resets the context: no bigram
+ * successors, no after-word forms, no fallback). The cells are shown AND committed capitalized; the
+ * table is per language through the artifact registry, so the Russian slot answers from the Russian
+ * table; non-final punctuation (`, ; :`) keeps the word before it as an ordinary NEXT_WORD context,
+ * pinned end-to-end through the REAL extraction. A subtype with no table stays silent.
  */
 class SuggestionsControllerSentStartTest {
 
@@ -84,9 +81,9 @@ class SuggestionsControllerSentStartTest {
         var knownCursor: Boolean = true
 
         /**
-         * When set, the three text seams are answered by the REAL [TatarWordUtils] extraction
-         * over this text (with cache-start provenance) — the end-to-end mode the P4 punctuation
-         * cases are pinned through, so the controller and the extraction can never drift apart.
+         * When set, the three text seams are answered by the REAL [TatarWordUtils] extraction over
+         * this text (with cache-start provenance) — the end-to-end mode the punctuation cases are
+         * pinned through, so the controller and the extraction can never drift apart.
          */
         var rawText: String? = null
         val predictedCommits = mutableListOf<Pair<String, String>>()
@@ -206,9 +203,9 @@ class SuggestionsControllerSentStartTest {
     }
 
     /**
-     * The per-language harness (P3b): [tables] is the factory's answer per subtype — the test's
-     * stand-in for the artifact registry. A subtype absent from the map has NO table, exactly
-     * like a language the registry carries without a `sentStartAssetPath`.
+     * The per-language harness: [tables] is the factory's answer per subtype — the test's stand-in
+     * for the artifact registry. A subtype absent from the map has NO table, exactly like a
+     * language the registry carries without a `sentStartAssetPath`.
      */
     private class Harness(
         words: List<String> = TABLE,
@@ -327,7 +324,7 @@ class SuggestionsControllerSentStartTest {
         assertEquals(listOf("белән"), h.strip.lastCells())
     }
 
-    // --- P3a: the capitalization ---------------------------------------------------------------
+    // --- The capitalization --------------------------------------------------------------------
 
     @Test
     fun theCellsAreShownAndCommittedCapitalized() {
@@ -342,7 +339,7 @@ class SuggestionsControllerSentStartTest {
         assertEquals(listOf("" to "Ул"), h.editor.predictedCommits)
     }
 
-    // --- P3b: the Russian slot answers from its own table ----------------------------------------
+    // --- The Russian slot answers from its own table ---------------------------------------------
 
     @Test
     fun theRussianFieldStartOffersTheRussianTableCapitalized() {
@@ -531,7 +528,7 @@ class SuggestionsControllerSentStartTest {
         assertEquals(emptyList<String>(), h.strip.lastCells())
     }
 
-    // --- P4: non-final punctuation keeps the word before it as the context -----------------------
+    // --- Non-final punctuation keeps the word before it as the context ---------------------------
 
     @Test
     fun afterACommaTheWordBeforeItIsTheContextAskedFromTheEngine() {
@@ -662,7 +659,7 @@ class SuggestionsControllerSentStartTest {
         /** A four-word table, so the band cap (three cells) is observable. */
         val TABLE = listOf("бу", "ул", "ә", "бүген")
 
-        /** P3a: the cells the band actually shows — the table words, capitalized. */
+        /** The cells the band actually shows — the table words, capitalized. */
         val CAPITALIZED_TABLE = listOf("Бу", "Ул", "Ә", "Бүген")
 
         val RU_TABLE = listOf("в", "по", "на", "он")

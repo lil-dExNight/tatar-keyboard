@@ -19,7 +19,7 @@ PACK_SCRIPT = ROOT / "scripts" / "emoji_pack.py"
 ASSET = ROOT / "app" / "src" / "main" / "assets" / "emoji" / "emoji_set_v1.txt"
 NOTICE = ASSET.parent / "NOTICE.txt"
 
-# The Unicode input is deliberately not committed; the orchestrator provides it.
+# The Unicode input is deliberately not committed; pass its path in EMOJI_TEST_TXT.
 INPUT = Path(os.environ.get("EMOJI_TEST_TXT", "/tmp/emoji-test-15.1.txt"))
 
 SAMPLE = FIXTURES / "emoji_sample.txt"
@@ -27,7 +27,7 @@ VERSION_MISMATCH = FIXTURES / "version_mismatch.txt"
 UNKNOWN_GROUP = FIXTURES / "unknown_group.txt"
 DUPLICATE_SEQUENCE = FIXTURES / "duplicate_sequence.txt"
 
-# Values pinned by docs/DICTIONARY-E2.md for the committed asset.
+# Pinned values of the committed asset.
 COMMITTED_ENTRY_COUNT = 1389
 COMMITTED_ASSET_BYTES = 7540
 EXPECTED_INPUT_SHA256 = (

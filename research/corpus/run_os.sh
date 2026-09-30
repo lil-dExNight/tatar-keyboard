@@ -1,7 +1,7 @@
 #!/bin/bash
-# Полный пересчёт с OpenSubtitles по решению оператора 2026-08-24 (вариант B, оба языка).
-# Строго последовательно: каждая мера держит в памяти счётчики по типам слов, а русский
-# OpenSubtitles — 59 038 144 уникальных строк, так что параллельный запуск съел бы память.
+# Recompute all measures for both languages with OpenSubtitles included.
+# Strictly sequential: each measure keeps per-word-type counters in memory, and the Russian
+# OpenSubtitles corpus is large enough that parallel runs would exhaust memory.
 set -u
 cd "$(dirname "$0")"
 RU="Tatoeba-v2026-07-08.ru.txt.gz OpenSubtitles-v2024.ru.txt.gz"

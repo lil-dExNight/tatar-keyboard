@@ -23,7 +23,7 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearningGates
 
 /**
- * U8 of Phase 2 (docs/ROADMAP-P2.md) — incognito mode: ONE switch, default OFF, that pauses ALL
+ * Pause learning (incognito): ONE switch, default OFF, that pauses ALL
  * learning while it is on.
  *
  * The semantics, as pinned here:
@@ -33,9 +33,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLea
  *    completion event, and both sinks gate that event (and the acceptance bump, and the
  *    end-of-session flush) on the ONE predicate the incognito factor vetoes.
  * 2. **What is already saved keeps surfacing.** The READ side never consults the pause: the gates
- *    the engines are constructed with read the personal-dictionary setting and nothing else. This
- *    is a documented choice, not an oversight — hiding the learned words would be a second feature
- *    ("forget for a while"), and the user already has "turn the personal dictionary off" for that.
+ *    the engines are constructed with read the personal-dictionary setting and nothing else. Hiding
+ *    learned words would be a different feature; turning the personal dictionary off does that.
  * 3. **Turning OFF resumes learning; nothing is retro-learned.** While the pause was on, no
  *    observation reached any counter, so there is nothing to make up afterwards.
  *

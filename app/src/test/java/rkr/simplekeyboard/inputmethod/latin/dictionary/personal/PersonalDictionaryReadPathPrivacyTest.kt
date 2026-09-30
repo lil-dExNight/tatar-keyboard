@@ -26,9 +26,8 @@ import java.io.File
 
 /**
  * Privacy of the read-only personal package: no logging or network, no user text in exception
- * messages, no user-text-carrying `data class`, and no write API at all in E4a-1. The full mirror
- * of `DictionaryStoragePrivacyTest` (public-surface method names, device-protected assertion) is
- * E4a-2; the tree-wide device-protected assertion in the emoji suite already covers this package.
+ * messages, no user-text-carrying `data class`, and no write API. The device-protected storage
+ * assertion for this package is the tree-wide one in the emoji suite.
  */
 class PersonalDictionaryReadPathPrivacyTest {
     @get:Rule

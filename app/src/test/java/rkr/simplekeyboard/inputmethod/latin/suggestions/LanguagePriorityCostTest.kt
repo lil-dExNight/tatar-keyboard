@@ -35,17 +35,15 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.ceil
 
 /**
- * The price of the language-priority rule, measured rather than argued.
+ * The cost of the language-priority rule.
  *
  * The rule adds exactly ONE thing to the input path: when the active language leaves a cell empty,
  * the other language's already-warm engine is asked the same query. That second lookup runs on the
- * other engine's own worker thread, so what it can cost the user is bounded by the same two budgets
- * the first lookup already lives inside — compute p95 <= 5 ms and request-to-handoff p95 <= 16 ms
- * (PROPOSALS.md, D1d). This measures the second lookup against both, on the REAL shipped Russian
- * dictionary, over the REAL prefixes a Tatar-layout user leaves the band under-filled with.
- *
- * The frequency of that second lookup is measured offline instead (docs/LANG-PRIORITY.md, "Цена"):
- * it is a property of the two shipped assets, not of the runtime.
+ * other engine's own worker thread, so it is bounded by the same two budgets as the first lookup:
+ * compute p95 <= 5 ms and request-to-handoff p95 <= 16 ms. This measures the second lookup against
+ * both, on the REAL bundled Russian dictionary, over the REAL prefixes a Tatar-layout user leaves
+ * the band under-filled with. How often the second lookup happens depends only on the two bundled
+ * dictionaries, not on the runtime, so it is not measured here.
  */
 class LanguagePriorityCostTest {
 
@@ -116,10 +114,10 @@ class LanguagePriorityCostTest {
     fun theWorstCaseSecondLookupIsStillWithinTheSameComputeBudget() {
         val index = requireNotNull(russianIndex)
         // The under-filled prefixes above are long and rare, which is WHY they are under-filled —
-        // and why their second lookup is nearly free. The honest upper bound is the opposite case:
-        // a one-letter prefix, the widest block the Russian dictionary has. The active language
-        // would have to answer a one-letter prefix with fewer than three words for this to happen
-        // at all, but the budget must hold even then.
+        // and why their second lookup is nearly free. The real upper bound is the opposite case: a
+        // one-letter prefix, the widest block the Russian dictionary has. The active language would
+        // have to answer a one-letter prefix with fewer than three words for this to happen at all,
+        // but the budget must hold even then.
         val widest = ImmutableUtf8Prefix.copyOf("п".toByteArray(Charsets.UTF_8))
         repeat(500) { index.lookup(widest) }
 
@@ -145,8 +143,8 @@ class LanguagePriorityCostTest {
     companion object {
         /**
          * Real prefixes a Tatar-layout user can type that leave the Tatar band under-filled, so the
-         * Russian engine is the one that answers them. Taken from the offline case set in
-         * `docs/LANG-PRIORITY.md`; every one of them is a live second lookup on a real device.
+         * Russian engine is the one that answers them. Every one of them is a live second lookup on
+         * a real device.
          */
         private val UNDERFILLED_TATAR_PREFIXES = listOf(
             "поздрав", "спасиб", "здравств", "пожалуйст", "которы", "конечн",

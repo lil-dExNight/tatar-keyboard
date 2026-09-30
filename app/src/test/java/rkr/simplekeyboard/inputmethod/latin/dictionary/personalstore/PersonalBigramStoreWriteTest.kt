@@ -38,11 +38,11 @@ import java.io.IOException
 import java.util.concurrent.Executor
 
 /**
- * The P1 acceptance heart (docs/ROADMAP-P2.md), mirroring [PersonalDictionaryStoreWriteTest]:
- * the whole-file write sequence with a fault injected at EVERY step, the learn threshold of 2
- * with no plaintext before it, the context-membership gate at graduation, quarantine + salvage +
- * the no-resurrection rule of [PersonalBigramStore.forget], LRU overflow on disk, the unlock
- * gate, and the flush boundary. All plain JVM, offline.
+ * Write-path contract of the learned-pairs store, mirroring [PersonalDictionaryStoreWriteTest]:
+ * the whole-file write sequence with a fault injected at every step, the learn threshold of 2
+ * with no plaintext before it, the context-membership gate at graduation, quarantine, salvage and
+ * the no-resurrection rule of [PersonalBigramStore.forget], LRU overflow on disk, the unlock gate
+ * and the flush boundary. Plain JVM.
  */
 class PersonalBigramStoreWriteTest {
     @get:Rule
@@ -202,7 +202,7 @@ class PersonalBigramStoreWriteTest {
             repeat(2) { store.notePair("бәйрәм", "котлы") }
             fail("expected the simulated process death to propagate")
         } catch (_: PersonalStoreCrash) {
-            // Like process death: the store's fail-closed catch does not swallow an Error.
+            // Like process death: the store's catch-all does not swallow an Error.
         }
         assertEquals(1, temps(directory).size) // a temp is left behind by the crash
 

@@ -24,13 +24,13 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 
 /**
- * The E4c learning predicate: ONE predicate with six factors, shared by every write path — U8 of
- * Phase 2 (docs/ROADMAP-P2.md) added the incognito pause as the sixth.
+ * The learning predicate: one predicate with six factors (the last is the pause-learning switch),
+ * shared by every write path.
  *
- * The factors themselves are Android state (a subtype, preferences, `UserManager`, an `EditorInfo`),
- * so what runs as a real test here is the SHAPE — a sink that writes nothing whenever the predicate
- * says no, whichever factor said it — and the rest is source-contract over the one place the
- * predicate is computed. The conjunction's arithmetic is exercised for real in `IncognitoModeTest`.
+ * The factors are Android state (a subtype, preferences, `UserManager`, an `EditorInfo`), so the
+ * real test here is the shape (a sink that writes nothing whenever the predicate says no); the
+ * rest is checked from source in the one place the predicate is computed. The conjunction itself
+ * is exercised in `IncognitoModeTest`.
  */
 class PersonalLearningGatesTest {
 
@@ -55,8 +55,7 @@ class PersonalLearningGatesTest {
     @Test
     fun aClosedPredicateWritesNothingOnAnyEventPath() {
         // The sink is the only bridge from typing to the store, and all three of its methods
-        // consult the predicate — the completion, the acceptance bump (2026-09-24 audit, finding
-        // 2) AND the end-of-session flush.
+        // consult the predicate — the completion, the acceptance bump AND the end-of-session flush.
         var completions = 0
         var acceptances = 0
         var flushes = 0
@@ -103,10 +102,9 @@ class PersonalLearningGatesTest {
             predicate.contains("userManager.isUserUnlocked()"))
         assertTrue("and the postal-address exclusion",
             predicate.contains("mIsPostalAddressField"))
-        // U8: the incognito pause is the sixth factor (the conjunction itself is the pure
-        // PersonalLearningGates, whose arithmetic IncognitoModeTest exercises). The UserManager
-        // null-check inverted its shape when the conjunction was extracted (2026-09-23): the
-        // pinned text now matches the extracted form — a missing UserManager still means locked.
+        // The pause-learning switch is the sixth factor (the conjunction itself is the pure
+        // PersonalLearningGates, exercised by IncognitoModeTest). The pinned text matches the
+        // extracted form, in which a missing UserManager still means locked.
         assertTrue("a missing UserManager means locked, not open",
             predicate.contains("userManager != null && userManager.isUserUnlocked()"))
         assertTrue("the incognito pause",

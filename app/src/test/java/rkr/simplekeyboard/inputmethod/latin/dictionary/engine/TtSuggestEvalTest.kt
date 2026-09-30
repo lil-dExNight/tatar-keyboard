@@ -32,45 +32,21 @@ import java.io.File
 import java.nio.ByteBuffer
 
 /**
- * TT-SUGGESTIONS phase P0 (docs/TT-SUGGESTIONS-PLAN.md): drives the REAL shipped Tatar
- * dictionary and bigram indexes over the pinned held-out eval set
- * `app/src/test/resources/tt_eval_sentences.txt` (built by `scripts/make_eval_set.py`,
- * Tatoeba lines that never entered the `tt_conv_train90` training mix) and prints the
- * baseline suggestion metrics as `EVAL|metric|value` lines.
+ * Runs the real shipped Tatar dictionary and bigram indexes over the held-out eval set
+ * `app/src/test/resources/tt_eval_sentences.txt` (built by `scripts/make_eval_set.py` from
+ * Tatoeba lines that never entered the training mix) and prints `EVAL|metric|value` lines:
+ *  - prefix top-3 completion: for each unique word, prefixes of 1/2/3 code points are looked up
+ *    in [TdictPrefixIndex] (fuzzy pass off) and the word must be in the top-3;
+ *  - next-word top-3 hit rate: for each adjacent pair, the successor must be among the results
+ *    [TatBigrPrefixIndex.predict] shows for the head;
+ *  - strip-empty at sentence start and sentence-start top-3 hit rate, via the sentence-start
+ *    table (`tatar_sentstart_v1.txt`, parsed by [SentStartIndex]).
  *
- * Four metrics:
- *  - prefix top-3 completion: for each unique eval word, the prefixes of 1/2/3 code
- *    points (where the word is long enough) are looked up in [TdictPrefixIndex] and the
- *    word must appear among the top-3 exact results (key-neighbor fuzzy pass disabled,
- *    so everything returned is exact);
- *  - next-word top-3 hit rate: for each adjacent word pair, the successor must appear
- *    among the (at most three) results [TatBigrPrefixIndex.predict] shows for the head;
- *  - strip-empty at sentence start: with no typed prefix and no previous-word context
- *    the strip shows nothing -- the P0 baseline pinned 100 %, and phase P4 re-pinned it
- *    to 0 %: the sentence-start table (`tatar_sentstart_v1.txt`, parsed through the
- *    production [SentStartIndex] reader) now answers every sentence start;
- *  - sentence-start top-3 hit rate (P4): the fraction of eval sentences whose first word
- *    is among the top-3 sentence-start suggestions.
- *
- * 2026-09-29 (back to three cells): the 2026-09-27 four-cell wave is reverted by an operator
- * UX decision (docs/GLIDE-LIVE-STRIP4.md footnote); the membership metrics measure the THREE
- * cells again. Re-pinned counts: prefix cp1/2/3 85/364/836 -> 64/301/741, same-stem 1 193 ->
- * 1 078 (control 1 083 -> 988), sentence-start 126 -> 123, next-word hits 547 -> 471 — the
- * +1.75 pp the fourth cell bought is knowingly given back. The Tatar table STAYS packed at
- * K = 4: `TatBigrPrefixIndex.MAX_RESULTS` = 3 leaves its fourth successor unread, and the
- * top-3 answer of the K = 4 table is byte-identical to the old K = 3 one (same packing
- * order, truncated), so the JVM pins match `scripts/suggest_eval.py` (SHOWN_RESULTS = 3)
- * again exactly — the four-cell era's JVM/python disagreement on this metric is closed.
- *
- * Usage is strictly read-only; the zero-allocation and p95 lookup contracts keep their
- * own dedicated tests ([RealDictionaryPrefixIndexTest], [RealBigramPrefixIndexTest]).
- *
- * The pinned counts below are exact on purpose: both assets and the eval set are
- * SHA-pinned, so every number here is a deterministic function of committed bytes. Any
- * change -- asset rebuild, eval-set regeneration, ranking change -- trips an equality
- * and forces a conscious re-pin, which is exactly what the mission's before/after
- * discipline needs. The shared metrics are also pinned to the values the python harness
- * (`scripts/suggest_eval.py`) prints, cross-checking the two implementations.
+ * Metrics count the three strip cells; the Tatar table stores K = 4 successors but
+ * `TatBigrPrefixIndex.MAX_RESULTS` = 3, so the results match `scripts/suggest_eval.py`.
+ * Assets and eval set are SHA-pinned, so the exact counts below are a deterministic function of
+ * committed bytes: re-pin when the assets, the eval set or the ranking change. Zero-allocation and
+ * p95 contracts live in [RealDictionaryPrefixIndexTest] and [RealBigramPrefixIndexTest].
  */
 class TtSuggestEvalTest {
 
@@ -78,9 +54,7 @@ class TtSuggestEvalTest {
     fun prefixTop3CompletionRatesOnTheEvalSet() {
         val index = requireNotNull(dictionaryIndex)
         // Fuzzy pass off: everything the lookup returns is an exact dictionary candidate. The
-        // index carries the production Tatar wiring — the P3 same-stem boost table — so these
-        // counters are the before/after evidence for the boost; the P2 baseline values are quoted
-        // in docs/TT-SUGGESTIONS.md next to the re-pinned ones.
+        // index carries the production Tatar wiring, including the same-stem boost table.
         index.updateKeyNeighbors(null)
 
         val wordsPerLength = IntArray(4)
@@ -112,11 +86,10 @@ class TtSuggestEvalTest {
     }
 
     /**
-     * The P3 same-stem boost metric: for every unique eval word that decomposes as stem+suffix —
-     * the remainder a form in the runtime suffix table, the stem a dictionary word — is the word
-     * in the top-3 when the user has typed exactly the stem? Decomposition is deterministic: the
-     * LONGEST qualifying stem wins. The same measurement against an index without the table is the
-     * control (what the frozen D1 ranking achieved); both counters are pinned exactly.
+     * The same-stem boost metric: for every unique eval word that splits into a dictionary stem
+     * plus a suffix from the runtime table, is the word in the top-3 when the user has typed
+     * exactly the stem? The longest qualifying stem wins. The same measurement on an index without
+     * the table is the control; both counters are pinned.
      */
     @Test
     fun sameStemBoostCompletionAtStemLengthPrefix() {
@@ -195,22 +168,15 @@ class TtSuggestEvalTest {
         assertEquals(PIN_TOP3_HITS, hits)
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
         assertEquals("84.1730", format(coveredPct))
-        // Three cells again (2026-09-29, the four-cell wave reverted): the stored rank-4
-        // successors no longer land on the band — hits 547 -> 471. The python harness
-        // (SHOWN_RESULTS = 3) prints the same pair again.
         assertEquals("10.8351", format(hitPct))
         assertEquals("12.8724", format(hitCoveredPct))
     }
 
     /**
-     * P4 (docs/TT-SUGGESTIONS.md): at a sentence start the strip now answers from the committed
-     * sentence-start table. The P0 baseline pinned `strip_empty_sentence_start_pct` at 100.0000
-     * (no prefix, no context word, nothing to show); it is re-pinned at 0.0000 — the table always
-     * answers — and the new hit-rate metric is the honest quality measure of a static table on a
-     * held-out conversational set: the fraction of eval sentences whose first word is among the
-     * top-3 suggestions. The prefix side of the contract is unchanged and stays pinned: an empty
-     * typed prefix still has no completions, and the bigram table is still never queried without
-     * a context word.
+     * At a sentence start the strip answers from the committed sentence-start table, so
+     * `strip_empty_sentence_start_pct` is 0; the hit rate is the fraction of eval sentences whose
+     * first word is among the top-3 suggestions. An empty typed prefix still has no completions,
+     * and the bigram table is never queried without a context word.
      */
     @Test
     fun sentenceStartPredictionsOnTheEvalSet() {
@@ -240,11 +206,9 @@ class TtSuggestEvalTest {
     }
 
     /**
-     * TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the strip-empty-after-word rate over the eval
-     * set — for each unique eval word as the committed context, whether the production NEXT_WORD
-     * answer (bigram successors + after-word forms) is EMPTY. Measured twice in one run: WITHOUT
-     * the fallback (the pre-fill production shape) and WITH it — the before/after evidence of the
-     * fill. The after value is pinned at 0: with the top-frequency pool wired, a committed word's
+     * The strip-empty-after-word rate: for each unique eval word as the committed context,
+     * whether the NEXT_WORD answer (bigram successors + after-word forms) is empty, measured
+     * without and with the top-frequency fallback. With the fallback it is 0: a committed word's
      * strip is never empty while suggestions are on.
      */
     @Test
@@ -294,43 +258,26 @@ class TtSuggestEvalTest {
     private fun format(value: Double): String = "%.4f".format(java.util.Locale.ROOT, value)
 
     companion object {
-        // Pins measured on 2026-09-19 against the committed assets and the committed eval
-        // set; re-pin consciously when either changes (see class KDoc). Next-word counters
-        // recalibrated 2026-09-23 (ROADMAP-P4 P5a + T7): the table gained 2 950 heads
-        // (10 204 -> 13 154) and dropped its 4th stored successor — covered 3 276 -> 3 659,
-        // hits 415 -> 471, hit 9.5468 % -> 10.8351 %, covered-conditional 12.6679 % -> 12.8724 %.
+        // Pins over the committed assets and eval set; re-pin when either changes (see class KDoc).
         private const val PIN_EVAL_LINES = 1_000
         private const val PIN_UNIQUE_WORDS = 2_670
         private const val PIN_PAIRS = 4_347
         private const val PIN_COVERED = 3_659
-        // Re-pinned 2026-09-29 (three cells again, the four-cell wave reverted): 547 -> 471.
         private const val PIN_TOP3_HITS = 471
         private const val PIN_CP1_WORDS = 2_670
         private const val PIN_CP2_WORDS = 2_668
         private const val PIN_CP3_WORDS = 2_626
-        // P3 with the 2026-09-20 refinement (docs/TT-SUGGESTIONS.md): the same-stem boost is gated
-        // at >= 4 code-point prefixes, and this metric types 1-3 code-point prefixes — so the
-        // counters are exactly the P2 baseline again. The measured excursion without the gate was
-        // cp1 64 -> 29, cp2 301 -> 235, cp3 741 -> 685; the gate exempts those prefixes entirely.
-        // Re-pinned 2026-09-29 (three cells again — the 2026-09-27 four-cell wave reverted;
-        // membership is the three cells now): cp1 85 -> 64, cp2 364 -> 301, cp3 836 -> 741.
+        // The same-stem boost only engages at >= 4 code points, so these 1-3 code-point prefix
+        // counters are unaffected by it.
         private const val PIN_CP1_HITS = 64
         private const val PIN_CP2_HITS = 301
         private const val PIN_CP3_HITS = 741
-        // P3 same-stem metric, measured 2026-09-20 on the committed assets, boost gated at >= 4
-        // code points: 988 (boost off) -> 1 078; the ungated variant measured 1 201.
-        // Re-pinned 2026-09-29 (three cells again): 988 (boost off) -> 1 078.
         private const val PIN_SAMESTEM_WORDS = 1_716
         private const val PIN_SAMESTEM_HITS = 1_078
         private const val PIN_SAMESTEM_HITS_BOOST_OFF = 988
-        // P4 sentence-start metric, measured 2026-09-20 on the committed table against the pinned
-        // eval set: 123 of 1 000 first words are in the top-3 (бу, ул, ә).
-        // Re-pinned 2026-09-29 (three cells again): 126 -> 123 — бүген leaves the band.
         private const val PIN_SENTSTART_TOP3_HITS = 123
-        // TT-NEXTWORD-FILL (2026-09-20): unique eval words whose committed-word strip is empty
-        // WITHOUT the fallback (the pre-fill production shape). With the fallback the count is
-        // pinned at 0 by the assertion in the test. Recalibrated 2026-09-23 (ROADMAP-P4 P5a):
-        // the new heads give 205 of the 889 formerly-empty words successors -> 684.
+        // Unique eval words whose committed-word strip is empty WITHOUT the top-frequency
+        // fallback; with the fallback the count is asserted to be 0.
         private const val PIN_NEXTWORD_EMPTY_BEFORE = 684
 
         private lateinit var evalLines: List<String>
@@ -351,7 +298,7 @@ class TtSuggestEvalTest {
                 .filter { it.isNotEmpty() && !it.startsWith("#") }
             uniqueWords = evalLines.flatMap { it.split(" ") }.distinct()
 
-            // P4: the committed sentence-start table, parsed through the production reader.
+            // The committed sentence-start table, parsed through the production reader.
             val sentStart = SentStartIndex.parse(
                 locate(
                     "src/main/assets/dictionaries/tatar_sentstart_v1.txt",
@@ -381,13 +328,12 @@ class TtSuggestEvalTest {
                     validated.rawSha256,
                 )
                 val raw = dictRawFile.readBytes()
-                // The production Tatar engine is constructed with the P3 suffix rules and —
-                // since TT-TYPO-NEXT Phase C2 — the TATAR fuzzy policy (class #1 + the gated
-                // class #4 + the same-length bonus): the eval index carries both, and a second
-                // rules-free instance is the boost control. The policy is provably inert on these
-                // metrics (class #4 fires only on an empty exact pass at >= 4 code points, and
-                // fuzzy candidates only ever fill cells the exact pass left free), so the pinned
-                // counters do not move.
+                // The production Tatar engine is constructed with the suffix rules and the TATAR
+                // fuzzy policy (class #1, the gated class #4, the same-length bonus): the eval
+                // index carries both, and a second rules-free instance is the boost control. The
+                // policy does not affect these metrics (class #4 fires only on an empty exact
+                // pass at >= 4 code points, and fuzzy candidates only fill cells the exact pass
+                // left free).
                 dictionary = requireNotNull(
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(raw), identity,

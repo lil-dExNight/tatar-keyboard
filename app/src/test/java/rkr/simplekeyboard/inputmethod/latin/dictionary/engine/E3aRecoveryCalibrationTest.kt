@@ -30,18 +30,12 @@ import java.security.MessageDigest
 import kotlin.math.ceil
 
 /**
- * E3a calibration: recovery@3 of edit class #1 (letter -> long-press partner) on the REAL
- * committed dictionary.
- *
- * The test enumerates the committed `tatar_top100k_v1.tdict.zlib` vocabulary (inflated exactly as
- * [RealDictionaryPrefixIndexTest] does), reproduces the same reproducible typo set that
- * `scripts/typo_pack.py` emits -- same seed, same 3-code-point prefix window, same
- * layout-derived long-press pairs, and the same portable FNV-1a/SplitMix64 selection -- then, for
- * each word, looks up its typo prefix and counts how often the correct word lands in the top three.
- *
- * The set-identity assertion (byte-identical SHA-256 with the generator's independent run) proves
- * the two implementations produce THE SAME set. The recovery number itself is printed as a raw
- * line and reported to docs/DICTIONARY-E3.md; the class is not skipped and produces a real number.
+ * Calibration of recovery@3 for edit class #1 (letter -> long-press partner) on the real
+ * committed dictionary. The test enumerates the committed `tatar_top100k_v1.tdict.zlib`
+ * vocabulary, rebuilds the typo set `scripts/typo_pack.py` emits (same seed, same 3-code-point
+ * prefix window, same layout-derived long-press pairs, same FNV-1a / SplitMix64 selection), then
+ * counts how often each word's typo prefix puts the word in the top three. A SHA-256 match with
+ * the generator's run shows both build the same set; the recovery number is printed.
  */
 class E3aRecoveryCalibrationTest {
 
@@ -143,7 +137,7 @@ class E3aRecoveryCalibrationTest {
         assertEquals(GENERATOR_SET_SHA256, sha)
 
         // Baseline: exact pass only (no neighbor table => no fuzzy level). A typo prefix carries
-        // the wrong letter, so the correct word cannot appear; this pins the "без нечёткого прохода"
+        // the wrong letter, so the correct word cannot appear; this pins the no-fuzzy-pass
         // reference the calibration is measured against. We also record, per row, whether the fuzzy
         // pass would even fire (the engine runs it only when the exact pass returns < MAX_RESULTS).
         index.updateKeyNeighbors(null)
@@ -166,8 +160,8 @@ class E3aRecoveryCalibrationTest {
         val recovery = recovered.toDouble() / total
         val baseline = baselineRecovered.toDouble() / total
         // Diagnostic: recovery among only those prefixes where the fuzzy pass actually ran. When the
-        // typed (typo) prefix already has three or more exact continuations, the contract's
-        // cell-fill rule leaves the fuzzy level switched off, so those rows can never recover.
+        // typed (typo) prefix already has three or more exact continuations, the cell-fill rule
+        // leaves the fuzzy level switched off, so those rows can never recover.
         val conditional = if (fuzzyFired > 0) recovered.toDouble() / fuzzyFired else 0.0
         val sorted = variantCounts.sorted()
         val p50 = sorted[sorted.size / 2]
@@ -194,10 +188,8 @@ class E3aRecoveryCalibrationTest {
             "fuzzy must recover strictly more than the exact-only baseline",
             recovered > baselineRecovered,
         )
-        // NO hard equality gate on the contract's 14.2%. E3a calibration mandates measuring and
-        // REPORTING the real number and leaving the verdict to the orchestrator; a mismatch must not
-        // be tuned away in code, test, generator or tolerance. See docs/DICTIONARY-E3.md, "Сверка".
-        // The measured 7.2835% diverges from 14.2% and is reported there rather than asserted here.
+        // No hard equality gate on the 14.2% target: the test measures and prints the real number,
+        // and a mismatch must not be tuned away in code, test, generator or tolerance.
     }
 
     private fun lookupContains(index: TdictPrefixIndex, prefixUtf8: ByteArray, word: String): Boolean {
@@ -206,10 +198,9 @@ class E3aRecoveryCalibrationTest {
     }
 
     /**
-     * Records what the fuzzy pass ADDS on the 22 everyday prefixes reviewed in D1a. These are real
-     * prefixes (not typos): the fuzzy level fills only cells the exact pass left empty and never
-     * shifts an exact candidate. The printed deltas populate docs/DICTIONARY-E3-TYPO-REVIEW.tsv,
-     * where they wait for a human reviewer -- machine classification does not replace it.
+     * Records what the fuzzy pass adds on the 22 reviewed everyday prefixes. These are real
+     * prefixes, not typos: the fuzzy level fills only cells the exact pass left empty and never
+     * shifts an exact candidate. The printed deltas are for human review.
      */
     @Test
     fun fuzzyAddedCandidatesOnTheTwentyTwoEverydayPrefixes() {
@@ -223,7 +214,7 @@ class E3aRecoveryCalibrationTest {
             index.updateKeyNeighbors(neighborTable)
             val fuzzy = index.lookup(query)
             // The exact candidates are never shifted, replaced or removed: the fuzzy result begins
-            // with exactly the D1 result.
+            // with exactly the exact-only result.
             assertEquals(exact, fuzzy.take(exact.size))
             val added = fuzzy.drop(exact.size)
             println("E3a fuzzy-delta\t$prefix\texact=${exact.joinToString("|")}\tadded=${added.joinToString("|")}")
@@ -249,15 +240,13 @@ class E3aRecoveryCalibrationTest {
         private const val MAX_RESULTS = 3
 
         // Independently produced by `python3 scripts/typo_pack.py build ...` on the same committed
-        // asset (see docs/DICTIONARY-E3.md). The equality of these with the JVM-built set is the
-        // cross-implementation "same reproducible set" proof.
-        // Recalibrated 2026-09-20 (TT-SUGGESTIONS P2): the dictionary grew to 110 000 entries,
-        // so the reproducible set grew with it (87 360 -> 96 118 rows, new SHA-256).
+        // asset; equality with the JVM-built set shows both implementations build the same set.
+        // Re-pin when the dictionary is rebuilt.
         private const val GENERATOR_SET_SIZE = 96_118
         private const val GENERATOR_SET_SHA256 =
             "1bf09f403a288c111a1607c83eecee3faa410ee5669015b558e292cbe28e9aee"
 
-        // Contract target and the chosen tolerance (docs/DICTIONARY-E3.md).
+        // Target recovery and the chosen tolerance, in percentage points.
         private const val CONTRACT_RECOVERY_PP = 14.2
         private const val TOLERANCE_PP = 1.0
 

@@ -6,24 +6,15 @@ on:
 permissions:
   contents: read
 
-# NOTE (T5, stage D of docs/ROADMAP-P8-PLAN.md, 2026-09-25): every action below is pinned to a
-# FULL-LENGTH COMMIT SHA, with the tag it corresponded to in the trailing comment. A floating
-# major tag (the previous state) follows whatever upstream moves it to, so a compromised action
-# repository would reach this pipeline silently. The SHAs were resolved from the GitHub API on
-# 2026-09-25 (annotated tags dereferenced to their commits):
-#   actions/checkout            v4 -> 11d5960a326750d5838078e36cf38b85af677262
-#   actions/setup-java          v4 -> cf277c60eb25467037889841efdb72551f06f6c3
-#   gradle/actions/setup-gradle v4 -> ed408507eac070d1f99cc633dbcf757c94c7933a
-#   actions/setup-python        v5 -> a26af69be951a213d495a4c3e4e4022e16d87065
-#   actions/upload-artifact     v4 -> ea165f8d65b6e75b540449e92b4886f43607fa02
-# Updating an action is now a deliberate step: resolve the new tag's commit and change the pin
-# together with its comment.
+# Every action is pinned to a full-length commit SHA, with its tag in the trailing comment.
+# A floating tag follows wherever upstream moves it, so a compromised action repository would
+# reach this pipeline silently. To update an action, resolve the new tag's commit (dereference
+# annotated tags) and change the pin together with its comment.
 
 jobs:
-  # Dependency verification (L3, 2026-09-28): gradle/verification-metadata.xml enforces PGP
-  # signatures with SHA-256 fallback for unsigned artifacts; the public keys ship in the
-  # committed gradle/verification-keyring.gpg / verification-keyring.keys, so CI never
-  # contacts a keyserver. This cold-cache job is the fail-closed proof on every push.
+  # gradle/verification-metadata.xml enforces PGP signatures, with SHA-256 as the fallback for
+  # unsigned artifacts. The public keys are committed (gradle/verification-keyring.gpg and
+  # .keys), so CI never contacts a keyserver. This cold-cache job checks them on every push.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -51,7 +42,7 @@ jobs:
       - name: Run JVM unit tests
         run: ./gradlew test --console=plain
 
-      # Build-time python packers: plain unittest, no pytest (Phase 4a).
+      # Build-time Python packers: plain unittest, no pytest.
       # Pinned to 3.12 so 3.13+ APIs fail here, not on contributors' machines.
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -59,46 +50,43 @@ jobs:
       - name: Run python packer tests
         run: for f in tests/*/test_*.py; do python3 "$f" || exit 1; done
 
-      # Full release lint with baseline (Phase 4a): pre-existing findings live in
-      # app/lint-baseline.xml, any NEW lint error breaks the build.
+      # Existing findings live in app/lint-baseline.xml; any new lint error breaks the build.
       - name: Run release lint
         run: ./gradlew lintRelease --console=plain
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
-      # keystore.properties is gitignored, so signingConfig is skipped by design
-      # (app/build.gradle) and assembleRelease produces an unsigned APK. That is
-      # correct for CI: the gates below check size and resources, not the signature
-      # (the signature is verified locally with apksigner).
+      # keystore.properties is gitignored, so assembleRelease produces an unsigned APK
+      # (see signingConfig in app/build.gradle). The gates below check size, permissions
+      # and backup rules, not the signature; the signature is verified locally with apksigner.
       - name: Build release APK (unsigned)
         run: ./gradlew assembleRelease
 
-      # PERF-01: hard budget 3 MB = 3145728 bytes (1024*1024*3), byte-exact via stat.
+      # Hard budget: 3 MB = 3145728 bytes, byte-exact via stat.
       - name: Check release APK size (PERF-01 ≤ 3 MB)
         run: test $(stat -c%s app/build/outputs/apk/release/app-release-unsigned.apk) -le 3145728
 
-      # PERF-04, both levels: source manifest + aapt2 dump permissions on the built APK.
-      # Run against both debug and release; release uses the merged manifest and may differ
-      # if a buildType-specific library or manifest overlay were ever added.
+      # Both levels: source manifest + aapt2 dump permissions on the built APK. Checked on
+      # debug and release, since the release merged manifest could differ if a
+      # buildType-specific library or manifest overlay were ever added.
       - name: Check no INTERNET permission (debug APK)
         run: bash scripts/check-no-internet.sh app/build/outputs/apk/debug/app-debug.apk
       - name: Check no INTERNET permission (release APK)
         run: bash scripts/check-no-internet.sh app/build/outputs/apk/release/app-release-unsigned.apk
 
-      # 2026-09-25 audit: never upload artifacts from pull_request runs — a fork PR
-      # builds code the author chose, and the artifact would be a maintainer-hosted
-      # trojan candidate. Push runs (trusted tree) keep uploading the debug APK.
+      # No artifacts from pull_request runs: a fork PR builds code of the author's choosing,
+      # so its APK is untrusted. Push runs (trusted tree) upload the debug APK.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name != 'pull_request'
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
 
-  # DEV-2: reproducible build gate. Two full clean rebuilds of the same tree must
-  # produce byte-identical APKs. CI has no keystore.properties, so both APKs are
-  # unsigned and compared whole (locally the signed APK is reproducible too after
-  # the Dependency Info Block was dropped — see app/build.gradle).
+  # Reproducible build: two clean rebuilds of the same tree must produce byte-identical APKs.
+  # CI has no keystore.properties, so both APKs are unsigned and compared whole. Locally the
+  # signed APK is reproducible too, because the Dependency Info Block is disabled in
+  # app/build.gradle.
   reproducible:
     runs-on: ubuntu-latest
     steps:
@@ -124,16 +112,10 @@ jobs:
           sha256sum /tmp/repro-1.apk app/build/outputs/apk/release/app-release-unsigned.apk
           cmp /tmp/repro-1.apk app/build/outputs/apk/release/app-release-unsigned.apk
 
-      # T8 (stage D, docs/ROADMAP-P8-PLAN.md): the PACK pipeline used to sit outside this gate —
-      # determinism of the arsc-deflate + zopfli steps was only ever proven by the release
-      # ritual's double run on the maintainer's machine. --no-sign stops before apksigner (CI has
-      # no keystore), so the same two steps are now compared here on every push. The runner's
-      # build-tools version is whatever the image ships, hence the explicit override of the
-      # release pin.
-      # B8 (2026-09-28): the pinned version lives in scripts/build-tools-pin.sh
-      # (TT_BUILD_TOOLS_PIN); the runner image does not carry that pinned build-tools, which is
-      # exactly why this job discovers the runner's latest and overrides TT_BUILD_TOOLS_VERSION.
-      # Local releases go through release_pack.sh with the pin from that file.
+      # The release_pack.sh packing (zopfli zipalign) must be deterministic too:
+      # pack twice with --no-sign (CI has no keystore) and compare. The runner image does not
+      # carry the build-tools version pinned in scripts/build-tools-pin.sh, so this job uses
+      # the runner's newest build-tools via TT_BUILD_TOOLS_VERSION. Local releases use the pin.
       - name: Pack twice without signing
         env:
           TT_BUILD_TOOLS_VERSION: ''

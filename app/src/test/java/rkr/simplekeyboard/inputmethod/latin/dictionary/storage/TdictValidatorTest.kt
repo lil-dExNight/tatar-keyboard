@@ -45,9 +45,7 @@ class TdictValidatorTest {
             DictionaryArtifactSpec.TATAR_TOP100K_V1,
         )
 
-        // 110 000 / 1 276 289 since 2026-09-20 (TT-SUGGESTIONS P2, docs/TT-SUGGESTIONS.md):
-        // the dictionary grew by 9 052 admitted generated word forms and 645 further accepted
-        // conversational words; nothing was displaced (was 100 000 / 1 162 870).
+        // Pins of the committed dictionary; re-pin when the asset is rebuilt.
         assertEquals(110_000, validated.entryCount)
         assertEquals(1_276_289, validated.rawSize)
     }

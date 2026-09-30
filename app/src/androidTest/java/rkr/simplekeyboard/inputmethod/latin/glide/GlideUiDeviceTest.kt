@@ -25,21 +25,16 @@ import android.widget.EditText
 import rkr.simplekeyboard.inputmethod.R
 
 /**
- * The 2026-09-24 field fix on the live UI (docs/ROADMAP-P7.md): the user's exact flow through
- * the REAL keyboard on screen — the debug IME is enabled and made default by the host before
- * the run — press с, REST ~0.8 s, drag through ә→л→ә→м, lift.
+ * Glide through the real on-screen keyboard (the host enables the debug IME and makes it
+ * default beforehand): press с, rest ~0.8 s, drag through ә→л→ә→м, lift.
  *
- * The P7-5 lift-commit contract: the lift itself commits the decode's top cell; the strip keeps
- * the remaining candidates as tappable alternatives, and tapping the cell that holds the doubled
- * twin replaces the committed word in place. P7-7 (2026-09-25): the commits carry NO auto-space,
- * and a second glide right after the first prepends exactly ONE chain space (the д hereby path
- * below: д→о→н→ь→я). P7-8: the doubled letter needs loop evidence, so the no-loop сәләм path
- * commits the PLAIN word (сәләм) and сәлләм rides the alternatives (before P7-8 it was the other
- * way round — the doubled word won on frequency, the field report of 2026-09-25).
+ * Checked behavior: the lift commits the top candidate with no auto-space; the strip keeps the
+ * other candidates, and tapping one replaces the committed word in place. A second glide right
+ * after the first prepends exactly one space (the д→о→н→ь→я path below). A doubled letter needs
+ * a loop at that key, so the loop-free сәләм path commits сәләм and сәлләм is an alternative.
  *
- * The events go through `Instrumentation.sendPointerSync` — real system-level injection into
- * the live IME window, with real wall-clock holds. The strip-visible screenshot is taken by the
- * host during the logged pause. Never packaged into a release APK.
+ * Events are injected with `Instrumentation.sendPointerSync` into the live IME window, with
+ * real wall-clock holds. The host takes the strip screenshot during the logged pause.
  */
 class GlideUiDeviceTest : InstrumentationTestCase() {
 
@@ -83,9 +78,9 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
     }
 
     /**
-     * P7-8: the same с-ә-л-ә-м gesture but with a deliberate small loop at л — the doubled word
-     * «сәлләм» must win (the loop IS the evidence). Screen-loop of ±16 px x / ±24 px y around
-     * the л key, matching the ideal path's quarter-key detour.
+     * The same с-ә-л-ә-м gesture with a small loop at л: the doubled word «сәлләм» must win.
+     * The loop is ±16 px x / ±24 px y around the л key, matching the ideal path's quarter-key
+     * detour.
      */
     fun testALoopAtTheDoubledLetterDeliversTheDoubledWord() {
         val field = prepareField()
@@ -155,9 +150,9 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         assertTrue("the keyboard never processed a probe tap", field.text.toString().endsWith("с"))
         field.text.clear()
         Thread.sleep(500)
-        // The engine publishes ~7.5 s after the first field focus on a cold install (the
-        // dictionary was already prepared here, but the start is still slow on this class of
-        // device). Wait it out; the gesture must see a live engine.
+        // The engine starts publishing several seconds after the first field focus on this
+        // class of device, even with the dictionary already prepared. Wait it out; the gesture
+        // must see a live engine.
         Thread.sleep(9000)
         return field
     }
@@ -166,7 +161,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         val field = prepareField()
 
         // The gesture: down on с, rest 800 ms, then ә → л → ә → м, lift. Screen coordinates of
-        // the live 720x1640 layout (calibrated from the device screencap, 2026-09-24).
+        // the live 720x1640 layout (from a device screenshot).
         val path = listOf(
             234f to 1396f, // с
             60f to 1110f, // ә
@@ -198,7 +193,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
             after == "сәлләм",
         )
 
-        // P7-7 chaining: a second glide right after prepends exactly ONE space.
+        // Chaining: a second glide right after prepends exactly one space.
         val second = listOf(
             540f to 1301f, // д
             414f to 1301f, // о
@@ -229,7 +224,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
 
     /**
      * One gesture: down on the first point, an optional rest, the drag through the rest, lift.
-     * Screen coordinates of the live 720x1640 layout (calibrated from the device screencap).
+     * Screen coordinates of the live 720x1640 layout (from a device screenshot).
      */
     private fun drivePath(
         instrumentation: Instrumentation,

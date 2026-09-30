@@ -22,7 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2b-3 display snapshot composition: the Recent tab is first and exists only when the list is
+ * Display snapshot composition: the Recent tab is first and exists only when the list is
  * non-empty, which is a consequence of the empty list rather than a separate code branch.
  */
 class EmojiDisplaySnapshotsTest {

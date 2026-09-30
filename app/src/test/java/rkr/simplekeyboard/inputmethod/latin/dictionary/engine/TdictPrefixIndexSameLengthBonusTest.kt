@@ -42,8 +42,8 @@ class TdictPrefixIndexSameLengthBonusTest {
 
     @Test
     fun withoutTheBonusTheFrequencyOrderIsExactlyThePrePhaseBOne() {
-        // The DEFAULT policy (no bonus): the same two candidates rank by frequency — the frozen
-        // pre-Phase-B order of TdictPrefixIndexFuzzyTest.
+        // The DEFAULT policy (no bonus): the same two candidates rank by frequency, the order
+        // pinned in TdictPrefixIndexFuzzyTest.
         val index = index(listOf("күл" to 100L, "күләк" to 9_999L), null)
         assertEquals(listOf("күләк", "күл"), lookup(index, "кул"))
     }

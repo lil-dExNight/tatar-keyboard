@@ -23,20 +23,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2b-3 source-contract: backup is closed as a WHITELIST, in the style of the other
- * source-contract tests (it greps the frozen source rather than exercising Android). The
- * exact XML shape is not invented here — it is fixed in docs/DICTIONARY-E2.md together
- * with the final XML; what is checked is the RESULT, in the three assertions the contract
- * names, plus a fourth on the code:
+ * Source contract: backup is closed as a WHITELIST (the test greps the source rather than
+ * exercising Android). What is checked is the result, not the exact XML shape:
  *
  *  (1) neither section of the rule file carries a single allowing (<include>) element;
  *  (2) no allowing element can resolve to a path under `personal/`, `dictionaries/` or the
  *      "recent emoji" medium (`recent_emoji*`);
  *  (3) the manifest carries android:allowBackup="false" and references the
  *      dataExtractionRules edition (and carries neither android:fullBackupOnly nor the
- *      legacy android:fullBackupContent — dead once allowBackup=false, removed in
- *      phase 3a; dataExtractionRules stays because on API 31+ allowBackup=false does
- *      NOT close device-to-device transfer, the <device-transfer> section does);
+ *      legacy android:fullBackupContent, which is dead once allowBackup=false;
+ *      dataExtractionRules stays because on API 31+ allowBackup=false does NOT close
+ *      device-to-device transfer, the <device-transfer> section does);
  *  (4) not one call to BackupManager remains in the code.
  *
  * The level-2 check on the BUILT artifact (aapt2 on the APK) lives in

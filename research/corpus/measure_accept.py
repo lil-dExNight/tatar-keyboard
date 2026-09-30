@@ -1,33 +1,30 @@
-"""Один проход по корпусу на язык: таблица разговорных частот и все числа приёмки.
+"""One corpus pass per language: the conversational frequency table and every acceptance number.
 
-Проход дорогой (русский корпус — 107 446 104 строки, около пяти минут на чтение), поэтому
-он делает всё сразу и оставляет после себя два артефакта:
+The pass is expensive (the Russian corpus takes minutes just to read), so it does everything
+at once and leaves two artifacts:
 
-1. `data/dictionary/dict-accept/conv-freq-{ru,tt}.tsv` — разговорная частота каждого слова, которое
-   либо стоит в поставляемом словаре 1.8.4, либо стоит в очереди приёмки. Этот файл
-   КОММИТИТСЯ, и именно по нему `scripts/dict_accept.py pack` собирает ассет. Без него
-   пересборка требовала бы 1,5 ГБ корпуса на диске; с ним она воспроизводится из репозитория.
-2. `research/corpus/out/accept_cov_{tag}.json` — охват на отложенной выборке.
+1. `data/dictionary/dict-accept/conv-freq-{ru,tt}.tsv` — the conversational frequency of every
+   word that is either in the shipped-1.8.4 dictionary or in the acceptance queue. This file IS
+   COMMITTED, and `scripts/dict_accept.py pack` builds the asset from it, so a rebuild is
+   reproducible from the repository without the corpus on disk.
+2. `research/corpus/out/accept_cov_{tag}.json` — coverage on the held-out split.
 
-Почему разговорная частота нужна и поставляемым словам, а не только новым. Досье разделяет
-два вопроса: СОСТАВ словаря режется вторым независимым источником, а ЧАСТОТЫ берутся из всего
-корпуса целиком. Первая сборка этой миссии нарушила вторую половину: новые слова получали
-частоту из субтитров, а поставляемые оставались с частотой Leipzig, то есть письменной. Шкалы
-разные, и на префиксе «пап» тройка становилась `папочка|папин|папочку` — 8 929 вхождений в
-субтитрах против 918 у «папы» в новостях и Википедии. Слово `папа` из словаря никуда не
-девалось, но подсказать его было уже нельзя. Числа этого прогона печатаются в
-`docs/DICT-ACCEPT.md` рядом с исправлением.
+Shipped words need a conversational frequency too, not only new ones: dictionary CONTENTS are
+limited by a second independent source, but FREQUENCIES come from the whole corpus. If new
+words got subtitle frequencies while shipped words kept their written Leipzig frequencies,
+the scales would differ: on the prefix «пап» the top three became `папочка|папин|папочку`
+and `папа` could no longer be suggested although it was still in the dictionary.
 
-Охват считается на четырёх словарях сразу, на одной и той же отложенной выборке:
+Coverage is computed for four dictionaries at once, on the same held-out split:
 
-  shipped        — ассет 1.8.4, база сравнения;
-  accepted       — состав `поставляемые ∪ принятые`, частота = письменная + разговорная.
-                   Ровно то, что собирает `scripts/dict_accept.py pack`;
-  whole_queue    — то же, но принята ВСЯ очередь: цена планки, выраженная охватом;
-  filtered_lower — полное слияние отфильтрованного корпуса, без всякого отбора. Это в
-                   точности `coverage_filtered_lower_pct` из docs/CORPUS-OS.md и он здесь
-                   затем, чтобы сойтись с опубликованным числом: если сходится, значит
-                   выборка, разбиение и нормализация не поехали.
+  shipped        — the shipped-1.8.4 asset, the comparison baseline;
+  accepted       — `shipped ∪ accepted` words, frequency = written + conversational.
+                   Exactly what `scripts/dict_accept.py pack` builds;
+  whole_queue    — the same, but with the WHOLE queue accepted: the cost of the bar,
+                   expressed as coverage;
+  filtered_lower — the full merge of the filtered corpus with no selection. It must equal
+                   the `coverage_filtered_lower_pct` of the OpenSubtitles measurement; if it
+                   does, the sample, the split and the normalization have not drifted.
 """
 from __future__ import annotations
 
@@ -49,12 +46,11 @@ from measure_filtered import collect_split, held_tokens
 
 
 def load_baseline(tag: str, directory: Path):
-    """Словарь ДО пересборки, из явно названного каталога.
+    """The dictionary BEFORE the rebuild, from an explicitly named directory.
 
-    Не `CL.load_shipped`: к моменту замера `app/src/main/assets` уже содержит новый ассет, и
-    «сейчас» перестало быть тем «сейчас», с которым сравниваются все прежние отчёты. Базовая
-    копия берётся из коммита 1.8.4, её SHA-256 печатается в результат и стоит в
-    `docs/DICT-ACCEPT.md`, поэтому сравнение воспроизводимо и после смены ассета в дереве.
+    Not `CL.load_shipped`: by the time of the measurement `app/src/main/assets` already holds
+    the new asset. The baseline copy comes from the 1.8.4 commit and its SHA-256 is printed in
+    the result, so the comparison stays reproducible after the asset in the tree changes.
     """
     language = cov.language_for(tag)
     asset = (directory / CL.SHIPPED[tag].name).read_bytes()
@@ -80,9 +76,9 @@ def main() -> None:
     split, freq, evidence = collect_split(paths, tag)
     kept, _removed = F.apply_filters(freq, evidence, tag)
 
-    # Артефакт для сборки: разговорная частота слов, которые могут оказаться в ассете.
-    # Слова, которых нет ни в словаре, ни в очереди, сюда не идут — в состав они не попадут
-    # ни при каком решении, и таскать их в репозитории незачем.
+    # Build artifact: the conversational frequency of words that may end up in the asset.
+    # Words in neither the dictionary nor the queue are left out: no decision can add them,
+    # so there is no reason to keep them in the repository.
     interesting = set(shipped) | set(queue)
     conv = {word: kept[word] for word in interesting if kept.get(word)}
     DA.write_conv_freq(tag, conv, sources=paths, baseline_sha=baseline_sha)
@@ -127,8 +123,8 @@ def main() -> None:
         if name != "shipped":
             out[f"gain_{name}_pp"] = round(out[f"coverage_{name}_pct"] - base, 4)
 
-    # Цена планки, выраженная не в словах, а в том, сколько раз отклонённые слова реально
-    # встретились в тексте, который в их ранжировании не участвовал.
+    # The cost of the bar, expressed not in words but in how often the rejected words occur
+    # in text that took no part in ranking them.
     rejected_words = set(queue) - set(accepted)
     out["held_hits_on_rejected"] = sum(c for w, c in held.items() if w in rejected_words)
     out["held_hits_on_accepted"] = sum(c for w, c in held.items() if w in accepted)

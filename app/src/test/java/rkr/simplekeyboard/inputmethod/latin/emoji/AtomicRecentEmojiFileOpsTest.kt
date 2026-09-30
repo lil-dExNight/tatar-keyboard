@@ -24,7 +24,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * The recents medium's read side (2026-09-24 audit, finding 11): a legitimately tiny file is
+ * The recents file's read side: a legitimately tiny file is
  * read, an oversized one is refused on its LENGTH — before any byte is decoded — and the
  * absent/unreadable shapes still answer null. The write side is untouched by the cap.
  */

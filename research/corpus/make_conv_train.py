@@ -8,9 +8,9 @@ only place where they meet.
 
 Rules, each chosen to match an already-reviewed rule rather than invent a new one:
 
-* DEDUP FIRST, by ``line.strip()`` exactly as ``stream.Split`` does (the tt-corpus
-  mission measured 45.05 % duplicate lines in the Russian OpenSubtitles; left in, they
-  would multiply the pair counts of repeated subtitle lines). Keys are the same
+* DEDUP FIRST, by ``line.strip()`` exactly as ``stream.Split`` does (the Russian
+  OpenSubtitles dump is close to half duplicate lines; left in, they would multiply the
+  pair counts of repeated subtitle lines). Keys are the same
   deterministic 64-bit BLAKE2b digests as ``bigset.line_key`` -- same collision
   accounting applies.
 * FILE ORDER IS SIGNIFICANT and mirrors every corpus measurement of the project:

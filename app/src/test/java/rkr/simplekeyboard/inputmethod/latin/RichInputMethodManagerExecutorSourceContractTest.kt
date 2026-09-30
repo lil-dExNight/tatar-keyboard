@@ -25,11 +25,10 @@ import org.junit.Test
 /**
  * `switchToTargetIme` runs on ONE shared executor, never on a per-call one.
  *
- * Every IME-picker switch used to call `Executors.newSingleThreadExecutor()` and never shut the
- * executor down, leaking one thread per switch (audit B1). The executor is now the field
- * `mSwitchExecutor`, created once in `initInternal` — the idiom `AudioAndHapticFeedbackManager`
- * uses for its background thread. A source contract because these JVM tests have no Android
- * framework to drive the picker with.
+ * A per-call `Executors.newSingleThreadExecutor()` that is never shut down leaks one thread per
+ * IME-picker switch. The executor is the field `mSwitchExecutor`, created once in `initInternal`,
+ * the same idiom `AudioAndHapticFeedbackManager` uses for its background thread. A source contract
+ * because these JVM tests have no Android framework to drive the picker with.
  */
 class RichInputMethodManagerExecutorSourceContractTest {
 

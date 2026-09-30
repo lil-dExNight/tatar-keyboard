@@ -1,10 +1,7 @@
-"""The live case: what happens to the exact words the project recorded as silent.
+"""The live case: what happens to a fixed list of words that got no next-word predictions.
 
-Word lists are taken verbatim from the project's own documents, not invented here:
-  * tat  -- docs/RUSSIAN-BIGRAMS.md section 7 ("Отсутствуют, однако, те же девять
-            императивов и состояний") plus docs/BIGRAM-ADJACENCY.md table.
-  * rus  -- docs/RUSSIAN-BIGRAMS.md section 7 ("15 отсутствуют целиком").
-H = 10 000 is the bigram head cutoff actually shipped (docs/BIGRAM-ADJACENCY.md).
+The word lists (frequent conversational imperatives and states) were recorded earlier by
+the project, not chosen here. H = 10 000 is the bigram head cutoff the shipped table uses.
 """
 from __future__ import annotations
 import json, sys

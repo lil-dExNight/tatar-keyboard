@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Merge Leipzig word-frequency files and report dictionary token coverage.
 
-This tool intentionally uses only the Python standard library.  It accepts the
-canonical Leipzig format (numeric id, word, frequency) and the reduced format
-(word, frequency), both tab-separated.
+It accepts the canonical Leipzig format (numeric id, word, frequency) and the
+reduced format (word, frequency), both tab-separated. Also the shared home of
+``normalize_word`` and the per-language alphabets used by the other packers.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ MAX_WORD_LENGTH = 64
 class Language:
     """One packable language: its tag, its accepted alphabet and its marker letters.
 
-    ``alphabet`` is the ONLY thing that decides which corpus rows survive filtering, and it is
+    ``alphabet`` is the only thing that decides which corpus rows survive filtering, and it is
     the same set the Kotlin validator enforces on the packed asset. ``specific`` is reporting
     only: the letters whose presence marks a word as characteristic of this language rather
     than of the shared Cyrillic core (Tatar's six extra letters; Russian's «ё» and «ъ», which no
@@ -83,12 +83,7 @@ class SourceStats:
 def normalize_word(
     raw_word: str, alphabet: frozenset[str] = TATAR_ALPHABET
 ) -> tuple[str | None, str | None]:
-    """Return a normalized Cyrillic word of [alphabet], or a filtering reason.
-
-    The default is the Tatar alphabet, so every caller written before the dictionary became
-    multilingual keeps its exact behaviour, byte for byte, including the filtering reason it
-    records.
-    """
+    """Return a normalized Cyrillic word of [alphabet], or a filtering reason."""
     word = unicodedata.normalize("NFC", raw_word.strip()).lower()
     if not word:
         return None, "empty_word"
@@ -181,7 +176,7 @@ def sorted_entries(frequencies: Counter[str]) -> list[tuple[str, int]]:
 
 
 def serialized_bytes(entries: Iterable[tuple[str, int]]) -> bytes:
-    """Serialize the future-friendly word<TAB>frequency<LF> form as UTF-8."""
+    """Serialize the word<TAB>frequency<LF> form as UTF-8."""
     return b"".join(
         f"{word}\t{frequency}\n".encode("utf-8") for word, frequency in entries
     )
@@ -269,9 +264,7 @@ def build_report(
             "unique_words": len(entries),
             "duplicates_merged": total_accepted_rows - len(entries),
             "hapax_words": sum(1 for _, frequency in entries if frequency == 1),
-            # Renamed from tatar_specific_* in schema 2: the same counter now serves whichever
-            # language was packed, and calling a Russian «ё» count "tatar_specific" would be a lie
-            # in the one artifact a reader consults to check the data.
+            # Letters specific to the packed language (see Language.specific).
             "language_specific_letters": "".join(sorted(specific_letters)),
             "language_specific_words": specific_words,
             "language_specific_tokens": specific_tokens,

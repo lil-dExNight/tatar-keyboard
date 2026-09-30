@@ -23,10 +23,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * E2c source-contract for the panel's accessibility delegate, its resilience to input-view
- * recreation, and its memory release. Behavioural TalkBack and on-device checks are device-UAT
- * (recorded NOT_COVERED in docs/DICTIONARY-E2.md); this guards the frozen shape of the code, in the
- * style of [EmojiPanelSourceContractTest] and `SuggestionStripSourceContractTest`.
+ * Source contract for the panel's accessibility delegate, its resilience to input-view
+ * recreation, and its memory release. TalkBack behavior needs a device test; this guards the
+ * code shape, like [EmojiPanelSourceContractTest] and `SuggestionStripSourceContractTest`.
  */
 class EmojiPanelAccessibilitySourceContractTest {
 
@@ -61,8 +60,8 @@ class EmojiPanelAccessibilitySourceContractTest {
         assertTrue(panel.contains("importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES"))
         // Hover events are routed to the helper, like the suggestion strip does.
         assertTrue(panel.contains("accessibilityHelper.dispatchHoverEvent(event)"))
-        // O2 (2026-09-25): the helper is the AOSP fork in our compat package — the
-        // androidx.customview dependency itself is GONE (the last use it had).
+        // The helper is the AOSP fork in our compat package; the app has no androidx.customview
+        // dependency.
         val gradle = listOf(File("build.gradle"), File("app/build.gradle"))
             .firstOrNull(File::isFile)?.readText()
             ?: error("cannot locate app/build.gradle")
@@ -168,7 +167,7 @@ class EmojiPanelAccessibilitySourceContractTest {
     fun invalidateRootRunsOnlyThroughTheTouchExplorationGate() {
         // Every invalidateRoot() call goes through the single guarded helper, so it never fires
         // while touch exploration is off (this is what the TalkBack "no invalidateRoot on scroll
-        // while exploration off" acceptance turns into at the source level).
+        // while exploration off" requirement looks like at the source level).
         assertEquals(
             "invalidateRoot() must be called from exactly one place",
             1,

@@ -1,16 +1,9 @@
-"""Проверки принятого словаря на глаз и числом: то, что должно быть видно в отчёте.
+"""Sanity checks of the accepted dictionary, printed as JSON for review.
 
-Ничего не собирает и ничего не пишет в ассеты — только читает два ассета (до и после) и
-печатает JSON. Три вопроса, на каждый из которых отчёт обязан ответить числом:
-
-1. Мусор, который оператор называл лично (`щрн`, `нб`, `фп`, `бш`, `ме`), — в словаре или
-   нет, и если да, то приёмка его пустила или он стоял там до неё. Если приёмка пустила хоть
-   один — правило неверное, и об этом надо узнать здесь, а не от человека.
-1а. Слова, исключённые оператором поимённо (`можна`), — в словаре их быть не должно.
-2. Слова, которые проект записал как молчащие (`docs/RUSSIAN-BIGRAMS.md` раздел 7,
-   `docs/CORPUS-OS.md` раздел 9), — попали ли они в словарь и на каком месте.
-3. Тройка подсказок на обычных префиксах — что она была и что стала. Это единственная
-   проверка, которая видит не состав словаря, а то, что человек увидит на полосе.
+Usage: dict_accept_check.py BEFORE_DIR. Reads the dictionary assets in BEFORE_DIR and in the
+tree, writes nothing, and reports: known garbage words (added by acceptance or already shipped),
+words excluded by hand (must be absent), the rank of known silent words before and after, and
+the top three completions for common prefixes before and after.
 """
 from __future__ import annotations
 
@@ -25,15 +18,12 @@ sys.path.insert(0, str(ROOT / "research/corpus"))
 import dictionary_coverage as cov
 import dictionary_pack as dp
 
-# Слова, которые оператор показал лично как мусор. Ни одно не должно оказаться в словаре.
-# `ме` добавлено в 1.9.1: его называла мусором docs/CORPUS-OS.md, и до 1.9.0 его удерживала
-# регистровая улика, которая с расширением перестала решать. Теперь его держит только правило
-# формального обрывка (два символа), и проверить это надо здесь, а не поверить на слово.
+# Known garbage words; acceptance must not add any of them. `ме` is kept out only by the
+# formal-fragment rule (too short), so it is checked here explicitly.
 OPERATOR_GARBAGE = ["щрн", "нб", "фп", "бш", "ме"]
-# Слова, исключённые оператором поимённо (`EXCLUDED_WORDS` в scripts/dict_accept.py).
-# Условие готовности миссии tt-dict-widen названо прямо: `можна` в ассете быть не должно.
+# Words excluded by hand (`EXCLUDED_WORDS` in scripts/dict_accept.py); none may be in the asset.
 OPERATOR_EXCLUDED = ["можна"]
-# Названные проектом молчащими: docs/RUSSIAN-BIGRAMS.md р. 7 и docs/CORPUS-OS.md р. 9.
+# Conversational words known to be under-suggested; their ranks are reported.
 SILENT_RU = ["привет", "давай", "ладно", "слушай", "извини", "забыл", "ага", "позвони",
              "устал", "здравствуй", "целую", "скучаю", "приходи", "купи", "голоден",
              "напиши", "обнимаю"]
@@ -67,9 +57,8 @@ def main() -> None:
         before, bf, br = load(before_dir / name, tag)
         after, af, ar = load(ROOT / "app/src/main/assets/dictionaries" / name, tag)
         out[tag] = {
-            # Различать «приёмка пустила» и «стояло в поставляемом словаре с 1.1.0» надо
-            # обязательно: татарское `ме` (частота 78) приехало из Leipzig задолго до всех
-            # разговорных корпусов, и объявить это провалом правила приёмки было бы неправдой.
+            # Keep "added by acceptance" apart from "already shipped": the Tatar `ме` came from
+            # Leipzig long before the conversational corpora and is not an acceptance failure.
             "operator_garbage_added_by_acceptance": [w for w in OPERATOR_GARBAGE
                                                      if w in af and w not in bf],
             "operator_garbage_already_shipped": [w for w in OPERATOR_GARBAGE

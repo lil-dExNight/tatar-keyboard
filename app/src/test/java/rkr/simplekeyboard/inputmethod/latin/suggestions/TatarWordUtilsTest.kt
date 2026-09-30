@@ -118,7 +118,7 @@ class TatarWordUtilsTest {
         assertEquals("ёлка", TatarWordUtils.extractTrailingWord("бу ёлка"))
     }
 
-    // --- extractNextWordContext (E5d, "Контракт текста" amendment, 2026-08-17) ------------------
+    // --- extractNextWordContext ------------------------------------------------------------------
 
     @Test
     fun extractNextWordContextReturnsTheWordBeforeATrailingSpaceRun() {
@@ -137,8 +137,8 @@ class TatarWordUtilsTest {
 
     @Test
     fun sentenceStartAndPositionsAfterPunctuationNeverBuildAContext() {
-        // "Начало предложения и позиция после пунктуации предсказаний не получают" — a mechanical
-        // consequence of the separator rule being EXACTLY U+0020, not any non-word character.
+        // The sentence start and positions right after punctuation build no context — a consequence
+        // of the separator rule being EXACTLY U+0020, not any non-word character.
         assertEquals("", TatarWordUtils.extractNextWordContext("")) // sentence / field start
         assertEquals("", TatarWordUtils.extractNextWordContext("сүз.")) // right after a period
         assertEquals("", TatarWordUtils.extractNextWordContext("сүз,")) // right after a comma
@@ -149,24 +149,24 @@ class TatarWordUtilsTest {
 
     @Test
     fun extractNextWordContextEmptyWhenTheSeparatorItselfReachesTheCacheBoundary() {
-        // "если разделитель ... упирается в нулевой индекс кэша" — an all-spaces cache with no
-        // letter in front of it at all: the true separator run might extend further back than what
-        // this snippet shows, so it cannot be trusted to be exactly "one or more U+0020".
+        // The separator reaches index 0 of the cache — an all-spaces cache with no letter in front
+        // of it at all: the true separator run might extend further back than what this snippet
+        // shows, so it cannot be trusted to be exactly "one or more U+0020".
         assertEquals("", TatarWordUtils.extractNextWordContext("   "))
     }
 
     @Test
     fun extractNextWordContextEmptyWhenTheWordItselfReachesTheCacheBoundary() {
-        // "или слово ... упирается в нулевой индекс кэша" — the word touches index 0 of the given
-        // text, so it may have been cut off by the real cache limit
-        // (Constants.EDITOR_CONTENTS_CACHE_SIZE, 1024 characters) rather than genuinely starting
-        // there. The single-argument overload cannot tell and stays conservative; production
-        // passes the cache-start knowledge explicitly (see the two-argument tests below).
+        // The word reaches index 0 of the cache — the word touches index 0 of the given text, so it
+        // may have been cut off by the real cache limit (Constants.EDITOR_CONTENTS_CACHE_SIZE, 1024
+        // characters) rather than genuinely starting there. The single-argument overload cannot
+        // tell and stays conservative; production passes the cache-start knowledge explicitly (see
+        // the two-argument tests below).
         assertEquals("", TatarWordUtils.extractNextWordContext("сүз "))
         assertEquals("", TatarWordUtils.extractNextWordContext("сүз ", false))
     }
 
-    // --- extractNextWordContext with cache-start knowledge (docs/NEXTWORD-RACE.md, 2026-09-01) ---
+    // --- extractNextWordContext with cache-start knowledge ---------------------------------------
 
     @Test
     fun extractNextWordContextAtTheProvenTextStartReturnsTheFirstWordOfAField() {
@@ -203,7 +203,7 @@ class TatarWordUtilsTest {
         assertEquals("", TatarWordUtils.extractNextWordContext(""))
     }
 
-    // --- isSentenceStartContext (P4, docs/TT-SUGGESTIONS.md) --------------------------------------
+    // --- isSentenceStartContext ------------------------------------------------------------------
 
     @Test
     fun sentenceStartAfterEachOfTheFourEndingCharacters() {
@@ -263,7 +263,7 @@ class TatarWordUtilsTest {
     fun sentenceStartAndNextWordContextNeverAnswerTheSamePosition() {
         // The two detectors are complementary by construction: wherever a context word exists the
         // position is not a sentence start, and wherever a sentence start is detected the context
-        // is empty (the frozen NEXT_WORD exclusion of punctuation is unchanged).
+        // is empty (NEXT_WORD still excludes positions after punctuation).
         for (text in listOf("сүз. ", "сүз! ", "сүз… ", "сүз.» ", "сүз, ", "")) {
             if (TatarWordUtils.isSentenceStartContext(text, true)) {
                 assertEquals("", TatarWordUtils.extractNextWordContext(text, true))
@@ -273,7 +273,7 @@ class TatarWordUtilsTest {
         assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз ", true))
     }
 
-    // --- extractNextWordContext after non-final punctuation (ROADMAP Phase 1, P4) ----------------
+    // --- extractNextWordContext after non-final punctuation --------------------------------------
 
     @Test
     fun extractNextWordContextAfterNonFinalPunctuationReturnsTheWordBeforeIt() {
@@ -482,7 +482,7 @@ class TatarWordUtilsTest {
         // Cursor in the middle of "китап": committing a replacement would corrupt the text.
         assertTrue(TatarWordUtils.startsWithWordCharacter("тап"))
         assertTrue(TatarWordUtils.startsWithWordCharacter("ә"))
-        // Deliberately wider than the Tatar alphabet: fail-closed also for Russian and Latin.
+        // Deliberately wider than the Tatar alphabet: Russian and Latin letters refuse too.
         assertTrue(TatarWordUtils.startsWithWordCharacter("ыть"))
         assertTrue(TatarWordUtils.startsWithWordCharacter("word"))
     }

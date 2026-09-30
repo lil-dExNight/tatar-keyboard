@@ -29,8 +29,7 @@ import org.w3c.dom.Element
  * before the key changes. The fork shipped 5.0dp, which is *below* the platform's own touch slop
  * (`ViewConfiguration.getScaledTouchSlop()`, 8dp) -- below the movement Android itself still calls
  * a tap rather than a drag. A press landing a few pixels inside the edge of a letter therefore
- * typed the neighbour after 5dp of tremor. `docs/SYMBOL-KEY-EDGE-FIX.md` §7 left this open;
- * `docs/TOUCH-SLOP-TUNING.md` closes it by raising the value to the platform touch slop, which is
+ * typed the neighbor after 5dp of tremor. The value is now the platform touch slop, which is
  * also what HeliBoard ships.
  *
  * The price is that every slide now switches key 3dp later. The tests below bound that price with

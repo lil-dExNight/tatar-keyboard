@@ -26,21 +26,21 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * The `?123` key must switch the layout from anywhere on the key, not only from its centre.
+ * The `?123` key must switch the layout from anywhere on the key, not only from its center.
  *
  * Pressing a modifier key (`?123`, shift) switches the layout at once
  * and arms `SWITCH_STATE_MOMENTARY_ALPHA_AND_SYMBOL`, which springs back on release as soon as
  * `PointerTracker` decides the finger left the key. That decision used to be made by
  * `keyHysteresisDistance` alone, measured *from the key edge*, so a press landing at the edge left
- * the key after 5dp of movement while a press in the centre needed a whole half key width. Hence
- * the operator's report: the switch bounces back unless you hit the middle.
+ * the key after 5dp of movement while a press in the center needed a whole half key width, so
+ * the switch bounced back unless the press hit the middle.
  *
  * All coordinates below are measured, not invented: they come from the AVD `tatar_e5_test`
  * (1080x2280, density 440, 2.75 px/dp), where the `?123` hitbox is x in [0, 162), y in [2008, 2150)
  * and the switch was observed to bounce back at exactly 15px past the right edge and 14px past the
- * top edge. See `docs/SYMBOL-KEY-EDGE-FIX.md`.
+ * top edge.
  *
- * `PointerTracker` and `Key` cannot be loaded in a JVM unit test (their static initialisers and
+ * `PointerTracker` and `Key` cannot be loaded in a JVM unit test (their static initializers and
  * constructors need a live `Resources`), but [KeyDetector] is free of Android imports. The gesture
  * replay below therefore drives the real [KeyDetector] and mirrors only the two lines of
  * `Key.squaredDistanceToHitboxEdge` and the surrounding branch of
@@ -74,7 +74,7 @@ class SlidingModifierSlopTest {
         /** Measured hitbox of `?123` on the letters keyboard (and of `АБВ` on the symbols one). */
         private val SYMBOL_KEY = Hitbox(left = 0, top = 2008, right = 162, bottom = 2150)
 
-        /** Measured hitbox of the `,` key immediately to its right, and its centre. */
+        /** Measured hitbox of the `,` key immediately to its right, and its center. */
         private val COMMA_KEY = Hitbox(left = 162, top = 2008, right = 270, bottom = 2150)
 
         /** An ordinary letter key from the same keyboard, used as the untouched control. */
@@ -133,7 +133,7 @@ class SlidingModifierSlopTest {
     // ---------------------------------------------------------------- the defect, as it was
 
     /**
-     * Characterises the behaviour this fix removes. With no slop -- the state of the fork before
+     * Characterizes the behavior this fix removes. With no slop -- the state of the fork before
      * the fix -- a press 6px inside the right edge of `?123` leaves the key after the 15px of
      * movement that was measured on the emulator, which is what springs the layout back.
      */
@@ -183,7 +183,7 @@ class SlidingModifierSlopTest {
         val det = detector(shippedSlopDp())
         val centre = Point(80, 2068)
         assertFalse(leavesKey(det, SYMBOL_KEY, centre, Point(101, 2068), downOnModifierKey = true))
-        // A press in the centre has always needed 96px to break out; that is unchanged.
+        // A press in the center has always needed 96px to break out; that is unchanged.
         assertTrue(leavesKey(det, SYMBOL_KEY, centre, Point(176, 2068), downOnModifierKey = true))
     }
 
@@ -192,12 +192,12 @@ class SlidingModifierSlopTest {
     @Test
     fun deliberateSlideStillLeavesTheModifierKey() {
         val det = detector(shippedSlopDp())
-        // Press ?123 in the centre, slide up to the "5" key: the momentary switch must still arm.
+        // Press ?123 in the center, slide up to the "5" key: the momentary switch must still arm.
         assertTrue(
             leavesKey(det, SYMBOL_KEY, Point(80, 2068), Point(484, 1558), downOnModifierKey = true),
         )
-        // The shortest deliberate slide there is: from the right edge of ?123 to the centre of the
-        // neighbouring "," key. This is the case the slop must not eat.
+        // The shortest deliberate slide there is: from the right edge of ?123 to the center of the
+        // neighboring "," key. This is the case the slop must not eat.
         val commaCentre = Point(
             (COMMA_KEY.left + COMMA_KEY.right) / 2,
             (COMMA_KEY.top + COMMA_KEY.bottom) / 2,
@@ -294,13 +294,13 @@ class SlidingModifierSlopTest {
 
     /**
      * The shipped slop must sit between the platform's own tap/drag boundary and the shortest
-     * deliberate slide; both bounds are stated in `docs/SYMBOL-KEY-EDGE-FIX.md`.
+     * deliberate slide.
      */
     @Test
     fun shippedSlopStaysWithinItsMeasuredBounds() {
         val slop = shippedSlopDp()
         val platformTouchSlopDp = 8.0
-        val shortestDeliberateSlideDp = (216 - 155) / PX_PER_DP // ?123 edge -> "," centre
+        val shortestDeliberateSlideDp = (216 - 155) / PX_PER_DP // ?123 edge -> "," center
         assertTrue("slop $slop dp must exceed the platform touch slop", slop >= platformTouchSlopDp)
         assertTrue(
             "slop $slop dp must stay below the shortest deliberate slide $shortestDeliberateSlideDp dp",

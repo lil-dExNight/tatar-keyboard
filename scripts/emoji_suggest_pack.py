@@ -1,42 +1,12 @@
 #!/usr/bin/env python3
-"""Build the Tatar Keyboard emoji-suggest table from the curated TSV.
+"""Build the word-to-emoji suggestion table from the curated ``emoji_suggest_data.tsv``.
 
-The tool uses only the Python standard library. The input is the hand-curated
-``scripts/emoji_suggest_data.tsv`` — one word form per line::
-
-    <emoji>\\t<language>\\t<word>
-
-``language`` is ``ru`` or ``tt``; ``word`` is a single lowercase NFC word that
-must pass :func:`dictionary_coverage.normalize_word` with the alphabet of its
-language (Tatar words — TATAR_ALPHABET, Russian words — RUSSIAN_ALPHABET);
-``emoji`` is a sequence exactly as it appears in the panel asset
-``emoji_set_v1.txt`` — so the suggestion bar can never offer an emoji the
-panel cannot draw. The output is
-``app/src/main/assets/emoji/emoji_suggest_v1.txt``, a deterministic UTF-8/LF
-text asset (data, not code), one line per word form sorted by (language,
-word)::
-
-    <language>\\t<word>\\t<emoji>
-
-The generator is fail-closed. It exits with a nonzero status and writes no
-partial asset when:
-
-* the input is not valid UTF-8, has a malformed line, or an empty data file,
-* a word is not canonical for its language (normalize_word rejects it),
-* an emoji sequence is absent from the panel asset,
-* the same (language, word) pair maps to two different emoji (a conflict —
-  one word yields exactly one emoji per language),
-* the same (emoji, language, word) row appears twice,
-* a (language, word) pair is on the polysemy DENYLIST below (the word is too
-  ambiguous to ever suggest an emoji for; the reasons are written next to the
-  entries), or
-* a guardrail is breached (asset > MAX_ASSET_BYTES, zlib-compressed asset >
-  MAX_ZLIB_BYTES, or the line count leaves [MIN_LINES, MAX_LINES]).
-
-The denylist is the project's defence against false positives measured in
-``docs/EMOJI-SUGGEST-RESEARCH.md`` (CLDR raw hits like «можно» → 🚬) plus
-word-form collisions found during curation. Adding a denied word to the TSV
-fails the build loudly instead of shipping a misleading suggestion.
+Input: ``<emoji>\\t<ru|tt>\\t<word>`` lines; each word must pass ``normalize_word`` for its
+language, each emoji must be a sequence of the panel asset ``emoji_set_v1.txt``.
+Output: ``assets/emoji/emoji_suggest_v1.txt``, ``<language>\\t<word>\\t<emoji>`` sorted by
+(language, word). Exits nonzero without writing output on invalid UTF-8, a malformed line, a
+non-canonical word, an unknown emoji, a duplicate or conflicting (language, word), a word on the
+polysemy DENYLIST, or a breached guardrail.
 """
 
 from __future__ import annotations
@@ -64,9 +34,8 @@ LANG_ALPHABETS = {
 }
 
 # Polysemy denylist: (language, word) -> reason. A word listed here must never
-# appear in the curated data; the packer fails the build if it does. Sources:
-# the false-positive measurements of docs/EMOJI-SUGGEST-RESEARCH.md and the
-# curation passes of docs/emoji-suggest/DATA.md.
+# appear in the curated data; the packer fails the build if it does. Entries
+# come from raw CLDR false positives («можно» -> 🚬) and word-form collisions.
 DENYLIST: dict[tuple[str, str], str] = {
     ("ru", "можно"): "модальное слово; сырой CLDR-хит давал 🚬 (замер ресерча)",
     ("ru", "работа"): "абстракция; сырой CLDR-хит давал 😫 (замер ресерча)",
@@ -122,20 +91,18 @@ DENYLIST: dict[tuple[str, str], str] = {
     ("tt", "ак"): "белый vs повелительное «теки» (агу)",
 }
 
-# Guardrails. A change to any number is a written decision, not a silent bump.
-# MAX_ZLIB_BYTES is the release budget of docs/EMOJI-SUGGEST-PLAN.md
-# (≤ 32 КБ сжатого); the raw asset is allowed more because APK assets are
-# compressed on packaging anyway.
+# Guardrails. MAX_ZLIB_BYTES is the size budget of the compressed table; the
+# raw asset is allowed more because APK assets are compressed on packaging.
 MAX_ASSET_BYTES = 131072
 MAX_ZLIB_BYTES = 32768
 MAX_LINES = 8192
-MIN_LINES = 2000  # ниже — данные явно потерялись при редактировании
+MIN_LINES = 2000  # fewer lines means data was lost while editing
 
 SECTION_HEADER_RE = re.compile(r"^#[a-z][a-z0-9-]*$")
 
 
 class EmojiSuggestPackError(ValueError):
-    """A fail-closed generator error (exit 2)."""
+    """A generator error; nothing is written (exit 2)."""
 
 
 class EmojiSuggestGuardrailError(EmojiSuggestPackError):
@@ -186,7 +153,7 @@ def read_panel_sequences(path: Path) -> tuple[str, ...]:
 
 
 def read_data(path: Path) -> dict[tuple[str, str], str]:
-    """Reads the curated TSV into a (language, word) -> emoji map; fail-closed.
+    """Reads the curated TSV into a (language, word) -> emoji map; raises on bad data.
 
     Blank lines and ``#`` comment lines are skipped. Every data line must be
     exactly ``<emoji>\\t<language>\\t<word>`` with a panel sequence, a known

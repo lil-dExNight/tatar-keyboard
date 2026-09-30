@@ -1,63 +1,11 @@
-"""Машинная приёмка слов из очередей `data/dictionary/*-conv-review.tsv`.
+"""Machine acceptance of new words from the queues `data/dictionary/*-conv-review.tsv`.
 
-Ручная вычитка 39 176 слов не состоится — оператор сказал это прямо. Планку ставит машина,
-человек смотрит два образца по сто слов. Правило одно и умещается в одну фразу:
-
-    Слово принимается, если его подтверждает ВТОРОЙ НЕЗАВИСИМЫЙ ИСТОЧНИК
-    и регистровая улика не выдаёт в нём имя собственное.
-
-«Второй независимый источник» — ровно одно из трёх, и все три проверяются данными проекта,
-без единой внешней зависимости:
-
-  A. `two-corpora`  — слово встречается и в OpenSubtitles, и в Tatoeba. Разные корпуса,
-     разные авторы, разные жанры; совпадение двух — это подтверждение, одно упоминание в
-     субтитрах — нет. Именно здесь отсеиваются `щрн` (9 263 вхождения), `нб`, `фп`, `бш`.
-  B. `shipped-word` — слово уже стоит в поставляемом словаре. По построению очереди
-     (`make_review.py`: `all_new = [w for w in kept if w not in shipped]`) такого слова в
-     очереди быть не может, поэтому ветка никогда не срабатывает. Она оставлена явной, потому
-     что досье называет её планкой, и «условие не сработало ни разу» — это измеренный факт,
-     который надо предъявить, а не умолчание.
-  C. `shipped-paradigm` — ТОЛЬКО русский: основа слова уже стоит в поставляемом словаре не
-     меньше чем в трёх других формах. Поставляемый словарь собран из Leipzig — письменного
-     корпуса, никак не связанного ни с субтитрами, ни с Tatoeba, — поэтому три засвидетель-
-     ствованные формы той же основы это второй источник в том же смысле, что и A.
-
-Регистровая улика — колонка `cap_ratio` очереди: доля вхождений с заглавной буквы НЕ в начале
-строки. У обычного слова она около нуля, у имени собственного и у мусора распознавания —
-высокая. Фильтр корпуса уже снял всё, что ≥ 0,80; приёмка режет строже, на 0,50, потому что
-ложно принятое слово хуже ложно отклонённого: отклонённое — это подсказка, которой не будет,
-принятое — подсказка, которая позорит клавиатуру у живого человека.
-
-Отклонённое НЕ удаляется: оно ложится файлом рядом с принятым, с причиной отказа, и его всегда
-можно принять позже одной правкой правила.
-
-────────────────────────────────────────────────────────────────────────────────────────────
-РАСШИРЕНИЕ 1.9.1 (миссия tt-dict-widen, отчёт — docs/DICT-WIDEN.md)
-
-Оператор посмотрел сто случайных отклонённых слов, нашёл их нормальными и снял планку
-«второй независимый источник»: отклонённые тоже принимаются. Прежнее правило не удалено — оно
-считается по-прежнему и его вердикт записан в колонку `rule` у каждого принятого слова, чтобы
-происхождение каждой строки было видно и через год. Изменилось только то, что делается с
-отклонённым: раньше оно откладывалось, теперь принимается — КРОМЕ двух случаев.
-
-  1. ФОРМАЛЬНЫЕ ОБРЫВКИ. Принять буквально всё нельзя, и это измерено, а не предположено:
-     среди 8 310 отклонённых русских слов 417 (5 %) короче четырёх букв или вовсе без гласных,
-     и сидят они на самом верху по частоте — `ме` (19 092), `щрн` (9 263), `нб` (7 407),
-     `фп` (5 869), `бш` (4 541). Это обрывки распознавания субтитров: приняв всё подряд, мы
-     пустили бы в подсказки именно их, и первыми, потому что частота у них высокая.
-
-     Для РУССКОГО: обрывок — слово короче MIN_WORD_LEN[rus] букв ИЛИ без единой гласной.
-     Для ТАТАРСКОГО порог длины НЕ применяется, и это не оплошность. Тот же признак там врёт:
-     из 2 046 отклонённых он пометил бы 62, а среди них живые слова и междометия — `док`,
-     `ох`, `фу`, `упс`, `оһ`, `уһ`, `кун`, `коп`. Татарские слова короче русских, резать их по
-     длине нельзя; остаётся только признак «нет ни одной гласной» (с учётом ә, ө, ү).
-
-  2. СЛОВА, ИСКЛЮЧЁННЫЕ ОПЕРАТОРОМ ПОИМЁННО — EXCLUDED_WORDS. Сейчас там одно слово,
-     `можна`; оно проходило и старое правило, и новое, но на префиксе `можн` пара
-     `можно | можна` выглядит как ошибка клавиатуры, а не как подсказка.
-
-Список исключаемого за пределы формального мусора и EXCLUDED_WORDS не расширяется: это
-решение оператора, а не автора правила.
+`select` labels each queue word with the original rule: accepted if a second independent source
+confirms it (two-corpora: both OpenSubtitles and Tatoeba; shipped-word; shipped-paradigm, Russian
+only: the stem has other forms in the shipped dictionary) and cap_ratio is below MAX_CAP_RATIO.
+Words that fail it are accepted too, except formal fragments and EXCLUDED_WORDS; rejected words
+stay in rejected-*.tsv with the reason. `pack` builds the dictionary assets from the SHA-256
+checked 1.8.4 baseline plus accepted words, with written plus conversational frequencies.
 """
 from __future__ import annotations
 
@@ -80,28 +28,28 @@ QUEUE = {
 OUT_DIR = ROOT / "data/dictionary/dict-accept"
 SUFFIX = {"rus": "ru", "tat": "tt"}
 
-# Доля заглавных вне начала строки, при которой слово перестаёт считаться обычным.
-# Корпусный фильтр (`research/corpus/filters.py`) режет на 0,80 — до очереди; приёмка режет
-# на 0,50 — после. Разные пороги намеренно: фильтр решает «это имя собственное», приёмка
-# решает «в этом достаточно сомнения, чтобы не показывать человеку».
+# Share of capitalized occurrences outside sentence start at which a word no longer counts as
+# ordinary. The corpus filter (`research/corpus/filters.py`) cuts at 0.80 before the queue;
+# acceptance cuts at 0.50 after it, because a wrongly accepted word is worse than a wrongly
+# rejected one.
 MAX_CAP_RATIO = 0.50
 
-# Минимальная длина основы для ветки C. Без нижней границы «ме» распалось бы на «м» + «е»,
-# а у односимвольной основы формы в словаре найдутся всегда.
+# Minimum stem length for the shipped-paradigm branch. Without it `ме` would split into
+# `м` + `е`, and a one-letter stem always has forms in the dictionary.
 MIN_STEM = 4
-# Сколько ДРУГИХ форм той же основы должно стоять в поставляемом словаре.
+# How many OTHER forms of the same stem must be in the shipped dictionary.
 MIN_PARADIGM_SIBLINGS = 3
 
-# ── расширение 1.9.1 ────────────────────────────────────────────────────────────────────────
-# Слова, названные оператором поимённо и не принимаемые ни при какой частоте. Список ведёт
-# оператор; правило его не пополняет.
+# ── fragments and exclusions ───────────────────────────────────────────────────────────────
+# Words rejected at any frequency, listed by hand; the rule never adds to this list. `можна`
+# looks like a typo next to `можно` at the prefix `можн`.
 EXCLUDED_WORDS = frozenset({"можна"})
 
-# Минимальная длина слова, ниже которой оно считается формальным обрывком. У татарского
-# порога нет: татарские слова короче русских, и по длине среди них режутся живые.
+# Minimum word length below which a word is a formal fragment. Tatar has no length threshold:
+# Tatar words are shorter, and a length cut would drop real words (`ох`, `фу`, `оһ`).
 MIN_WORD_LEN = {"rus": 4, "tat": 1}
 
-# Гласные. Слово без единой гласной — обрывок распознавания на обоих языках.
+# Vowels. A word without a single vowel is a recognition fragment in both languages.
 VOWELS = {
     "rus": frozenset("аеёиоуыэюя"),
     "tat": frozenset("аәеёиоөуүыэюя"),
@@ -109,7 +57,7 @@ VOWELS = {
 
 
 def fragment_reason(word: str, tag: str) -> str:
-    """Почему слово — формальный обрывок. Пустая строка, если оно им не является."""
+    """Why the word is a formal fragment; an empty string if it is not."""
     if len(word) < MIN_WORD_LEN[tag]:
         return f"короче {MIN_WORD_LEN[tag]} букв ({len(word)})"
     if not (set(word) & VOWELS[tag]):
@@ -118,7 +66,7 @@ def fragment_reason(word: str, tag: str) -> str:
 
 
 def fragment_rule_text(tag: str) -> str:
-    """Одной строкой: что для этого языка считается формальным обрывком — в шапку файлов."""
+    """One-line description of the fragment rule for this language, for file headers."""
     vowels = "".join(sorted(VOWELS[tag]))
     if MIN_WORD_LEN[tag] > 1:
         return (f"короче {MIN_WORD_LEN[tag]} букв или без единой гласной "
@@ -126,24 +74,23 @@ def fragment_rule_text(tag: str) -> str:
     return (f"без единой гласной ({vowels}); порога длины у татарского нет — "
             "по длине там режутся живые слова")
 
-# Русские словоизменительные окончания. Список плоский и намеренно избыточный: он не должен
-# быть морфологически точным, он должен позволить найти основу. Точность даёт не он, а
-# требование трёх засвидетельствованных форм: у выдуманной основы их не бывает.
+# Russian inflectional endings. The list is flat and deliberately broad: it only has to find a
+# stem. Precision comes from requiring several attested forms, which an invented stem lacks.
 RUSSIAN_ENDINGS = frozenset({
     "",
-    # именное и адъективное словоизменение
+    # noun and adjective inflection
     "а", "е", "и", "о", "у", "ы", "й", "ь", "я", "ю", "ё", "э",
     "ам", "ами", "ах", "ев", "ей", "ем", "ов", "ом", "ой", "ою", "ую",
     "ая", "ое", "ые", "ый", "ым", "ых", "ыми", "его", "его", "ему", "ого", "ому",
     "ий", "ия", "ии", "ию", "ием", "иях", "иям", "иями", "ими", "их",
     "ок", "ка", "ко", "ки", "ек", "ец", "ца", "цу", "цы", "цев",
-    # глагольное словоизменение
+    # verb inflection
     "ть", "ти", "л", "ла", "ло", "ли", "в", "вши",
     "ешь", "ет", "ете", "ут", "ют", "ит", "им", "ите", "ат", "ят", "ишь", "йте",
     "ся", "сь", "ась", "ись", "лся", "лась", "лось", "лись", "ться", "тся",
     "ешься", "ется", "емся", "етесь", "утся", "ются", "ится", "имся", "итесь",
     "атся", "ятся",
-    # причастия и краткие формы
+    # participles and short forms
     "ущий", "ющий", "ащий", "ящий", "вший", "нный", "тый", "мый",
     "ен", "на", "но", "ны", "ена", "ено", "ены",
 })
@@ -189,12 +136,10 @@ def read_queue(tag: str) -> list[Row]:
 
 
 def paradigm_siblings(word: str, shipped: frozenset[str]) -> tuple[int, str, str]:
-    """Сколько ДРУГИХ форм той же основы стоит в поставляемом словаре — по лучшему разбору.
+    """Count OTHER forms of the word's stem in the shipped dictionary, using the best split.
 
-    Возвращает (число, основа, окончание). Перебираются все разборы `word = stem + ending`
-    с окончанием из списка и основой не короче MIN_STEM; побеждает тот, у которого форм больше.
-    Само `word` в счёт не идёт: оно не в словаре по построению очереди, но проверка явная,
-    чтобы правило не зависело от этого построения.
+    Returns (count, stem, ending). Every split `word = stem + ending` with a listed ending and a
+    stem of at least MIN_STEM is tried; the split with most forms wins. `word` itself never counts.
     """
     best, best_stem, best_ending = 0, "", ""
     for ending in RUSSIAN_ENDINGS:
@@ -216,11 +161,10 @@ def paradigm_siblings(word: str, shipped: frozenset[str]) -> tuple[int, str, str
 
 
 def prior_verdict(row: Row, tag: str, shipped: frozenset[str]) -> tuple[bool, str, str]:
-    """Вердикт правила 1.9.0 — «второй источник плюс регистровая улика».
+    """Verdict of the original rule: a second source and no proper-noun evidence.
 
-    В 1.9.1 он уже не решает судьбу слова, но считается по-прежнему: его ответ ложится в
-    колонку `rule` принятого и в деталь расширенного, чтобы происхождение каждой строки
-    словаря читалось файлом, а не восстанавливалось по памяти.
+    It no longer decides acceptance but is still recorded in the `rule` column (or the detail of
+    a widened word), so the origin of every dictionary row is visible in the file.
     """
     if row.cap_ratio >= MAX_CAP_RATIO:
         return False, "proper-noun-evidence", f"cap_ratio={row.cap_ratio:.2f}>={MAX_CAP_RATIO:.2f}"
@@ -237,12 +181,10 @@ def prior_verdict(row: Row, tag: str, shipped: frozenset[str]) -> tuple[bool, st
 
 
 def decide(rows: list[Row], tag: str, shipped: frozenset[str]):
-    """Прогнать правило. Возвращает (accepted, rejected); в каждом — (Row, причина, деталь).
+    """Apply the rule; return (accepted, rejected), each a list of (Row, rule, detail).
 
-    Правило 1.9.1: принимается ВСЁ, кроме формальных обрывков и слов из EXCLUDED_WORDS.
-    Слово, которое прошло бы и старую планку, сохраняет её метку (`two-corpora` и прочие);
-    слово, которое старая планка отклоняла, получает метку `operator-widened` и в детали —
-    ту самую причину прежнего отказа.
+    Everything is accepted except formal fragments and EXCLUDED_WORDS. A word that passes the
+    original rule keeps its label; the others get the widened label and the original reason.
     """
     accepted, rejected = [], []
     for row in rows:
@@ -326,17 +268,11 @@ def load_shipped(tag: str):
     return freqs, boundary
 
 
-# Почему `select` требует --baseline и больше не читает ассет из дерева.
-#
-# «Поставляемый словарь» — это опора двух веток правила: `shipped-word` и `shipped-paradigm`.
-# До 1.9.0 в `app/src/main/assets` лежал ассет 1.8.4, и `corpuslib.load_shipped` читал именно
-# его. После 1.9.0 там лежит уже пересобранный словарь, в котором стоят принятые слова, — и
-# тот же вызов молча даёт другой ответ: при первом прогоне 1.9.1 ветка `shipped-word`
-# сработала 2 382 раза вместо нуля, потому что «поставляемым» оказался свежий ассет.
-#
-# На состав словаря 1.9.1 это не влияет (принимается всё, кроме обрывков), но метка
-# происхождения у 2 382 строк была бы неверной, а повторный прогон давал бы третий ответ.
-# Поэтому основа называется явно и сверяется по SHA-256 — той же функцией, что и в `pack`.
+# `select` requires --baseline instead of reading the asset from the tree. The shipped-word and
+# shipped-paradigm branches depend on the shipped dictionary, but the tree holds the rebuilt
+# dictionary, which already contains the accepted words: reading it would mislabel rows and make
+# each rerun give a different answer. The baseline is named explicitly and checked by SHA-256
+# with the same function as in `pack`.
 def shipped_for_rule(tag: str, baseline: Path | None) -> frozenset[str]:
     if baseline is None:
         freqs, _boundary = load_shipped(tag)
@@ -388,7 +324,7 @@ def select(args) -> int:
             "rejected_tokens": sum(r.freq for r, _, _ in rejected),
             "accepted_heldout_hits": sum(r.heldout for r, _, _ in accepted),
             "rejected_heldout_hits": sum(r.heldout for r, _, _ in rejected),
-            # Сколько слов принято сверх прежней планки 1.9.0 и во что это обошлось.
+            # Words accepted beyond the original rule, and what they add.
             "widened": sum(1 for _r, rule, _d in accepted if rule == "operator-widened"),
             "widened_heldout_hits": sum(r.heldout for r, rule, _d in accepted
                                         if rule == "operator-widened"),
@@ -414,7 +350,7 @@ def select(args) -> int:
 
 
 def read_accepted(tag: str) -> dict[str, int]:
-    """{слово: train_freq} из data/dictionary/dict-accept/accepted-*.tsv."""
+    """{word: train_freq} from data/dictionary/dict-accept/accepted-*.tsv."""
     path = OUT_DIR / f"accepted-{SUFFIX[tag]}.tsv"
     out = {}
     with path.open(encoding="utf-8") as handle:
@@ -484,10 +420,10 @@ def read_conv_freq(tag: str) -> dict[str, int]:
     return out
 
 
-# Ассет 1.8.4 — единственная законная основа пересборки. Пин нужен затем, чтобы `pack` нельзя
-# было натравить на уже пересобранный файл: иначе разговорная частота прибавилась бы второй раз,
-# состав поехал бы, и ошибку не увидел бы никто. Сверка точная, по SHA-256, и падает, а не
-# предупреждает. Достать основу: git show <коммит 1.8.4>:app/src/main/assets/dictionaries/<файл>
+# The 1.8.4 assets are the only valid rebuild base. The pin keeps `pack` from running on an
+# already rebuilt file, which would add the conversational frequencies a second time. The match
+# must be exact, and a mismatch stops the run. Extract the base with
+# git show <1.8.4 commit>:app/src/main/assets/dictionaries/<file>
 BASELINE_SHA256 = {
     "rus": "f4b91cef2a4e10c096997f358811b71cdb17d0a10097b03ab3b9de9324c2c48f",
     "tat": "2d98ed359aa11261a5042a13c5ca9459c6e365c6ab4bf0563d0e3604a7485cae",
@@ -495,7 +431,7 @@ BASELINE_SHA256 = {
 
 
 def load_baseline(tag: str, directory: Path):
-    """Поставляемый словарь 1.8.4 из явно названного каталога, с проверкой SHA-256."""
+    """The 1.8.4 shipped dictionary from an explicit directory, checked by SHA-256."""
     import hashlib
     import corpuslib as CL
     import dictionary_coverage as cov
@@ -513,14 +449,9 @@ def load_baseline(tag: str, directory: Path):
 
 
 def read_extra_entries(path: Path, tag: str) -> dict[str, int]:
-    """Дополнительные записи (слово<TAB>частота), вливаемые в состав сверх приёмки.
-
-    С 2026-09-20 (TT-SUGGESTIONS P2) так подаются порождённые словоформы татарского
-    (scripts/wordform_gen.py, допущенные корпусной засвидетельствованностью —
-    см. scripts/rebuild_assets.py). Формат и фильтр — те же, что у конвейера: слово
-    обязано пройти `dictionary_coverage.normalize_word` для языка без изменений,
-    частота — положительный u32; дубль или битая строка останавливают сборку
-    (fail-closed, как у всего пайплайна).
+    """Extra word<TAB>frequency entries merged into the composition, such as the admitted Tatar
+    word forms from rebuild_assets.py. Each word must pass `normalize_word` unchanged and each
+    frequency must be a positive u32; a duplicate or malformed row stops the build.
     """
     import dictionary_coverage as cov
     language = cov.language_for(tag)
@@ -555,17 +486,12 @@ def read_extra_entries(path: Path, tag: str) -> dict[str, int]:
 
 def merged_entries(tag: str, baseline: Path, top: int = 100_000,
                    extra: dict[str, int] | None = None):
-    """Состав нового ассета и частоты в нём.
+    """Composition and frequencies of the new asset.
 
-    СОСТАВ — поставляемые слова плюс принятые, плюс (с 2026-09-20, TT-SUGGESTIONS P2)
-    дополнительные записи из `extra` — и ничего больше: отклонённое не входит ни при
-    какой частоте. ЧАСТОТА — письменная плюс разговорная, у КАЖДОГО слова состава,
-    включая те, что стояли в словаре и раньше. Это прямо записано в досье: «Частоты
-    и биграммы берём из всего корпуса… Здесь ничего не режем», и режется только состав.
-    Запись из `extra`, совпавшая с существующим словом состава, — не операция:
-    существующая частота сохраняется.
-
-    Отсечка жёстко `top` записей: слова не добавляются, а вытесняют самые редкие.
+    Composition: shipped plus accepted words plus `extra`, nothing else. Frequency: written plus
+    conversational for every word, shipped ones included; only the composition is filtered. An
+    `extra` entry for an existing word keeps the existing frequency. The result keeps the `top`
+    most frequent entries.
     """
     shipped, _asset = load_baseline(tag, baseline)
     accepted = read_accepted(tag)
@@ -591,8 +517,8 @@ def pack(args) -> int:
         language = cov.language_for(tag)
         extra = None
         if args.extra_entries is not None:
-            # --extra-entries/--top осмыслены только с --only: они поязыковые, а без --only
-            # собирались бы оба языка с одними и теми же дополнительными записями.
+            # --extra-entries/--top require --only: they are per language, and without --only
+            # both languages would get the same extra entries.
             extra = read_extra_entries(Path(args.extra_entries), tag)
         shipped, before = load_baseline(tag, baseline)
         _shipped, accepted, entries = merged_entries(
@@ -638,9 +564,8 @@ def pack(args) -> int:
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
-    """Запись ассета как у `dictionary_pack._write_outputs`: temp в том же каталоге,
-    fsync, затем атомарный os.replace. Краш посреди записи не должен оставлять битый
-    ассет в дереве — старый файл переживает любую точку отказа."""
+    """Write the asset like `dictionary_pack._write_outputs`: a temp file in the same directory,
+    fsync, then atomic os.replace, so a crash never leaves a broken asset in the tree."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
     try:

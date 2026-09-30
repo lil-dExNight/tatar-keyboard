@@ -1,30 +1,24 @@
 #!/usr/bin/env bash
-# PERF-04 + E2b-3: verify two properties the project promises are checkable, not just
-# claimed — on the BUILT artifact, not only in source:
-#   (1) the app never carries android.permission.INTERNET;
-#   (2) backup is closed as a whitelist (E2b-3): android:allowBackup="false" and the
-#       dataExtractionRules reference present, with the referenced res/xml rule carrying
-#       no allowing (<include>) element while excluding every app data domain whole in
-#       BOTH sections (cloud-backup and device-transfer).
+# Checks two privacy properties on the built APK, not only in source:
+#   (1) the app never requests android.permission.INTERNET;
+#   (2) backup is a whitelist: android:allowBackup="false", and the dataExtractionRules
+#       file it references has no <include> element and excludes every app data domain
+#       in both sections (cloud-backup and device-transfer).
 #
-# dataExtractionRules is LIVE and must stay: on Android 12+ allowBackup="false" stops
-# cloud backup but does NOT stop device-to-device transfer — the <device-transfer>
-# section is the only thing closing that channel (E2b-3). The legacy
-# android:fullBackupContent edition was dead (Auto Backup never runs with
-# allowBackup=false) and was removed in phase 3a; its reappearance is an error.
+# dataExtractionRules must stay: on Android 12+ allowBackup="false" stops cloud backup
+# but not device-to-device transfer; only the <device-transfer> section closes that.
+# android:fullBackupContent is dead with allowBackup=false (Auto Backup never runs), so
+# its presence is an error.
 #
-# Level 1: grep the source manifest for INTERNET (instant signal, no toolchain needed).
-# Level 2: aapt2 on the built APK (authoritative — sees the merged manifest):
+# Level 1: grep the source manifest for INTERNET (instant, no toolchain needed).
+# Level 2: aapt2 on the built APK (authoritative, sees the merged manifest):
 #   - INTERNET: aapt2 dump permissions.
-#   - Backup:   aapt2 dump xmltree of the in-APK manifest confirms the actual
-#               android:allowBackup value and the dataExtractionRules reference, then
-#               the referenced res/xml file is extracted from the APK (its path is
-#               obfuscated by resource shrinking in release, so it is resolved through
-#               the resource id the manifest points at) and checked against the whitelist
-#               edition. Rationale: <application> attributes are subject to manifest
-#               merging and tools:replace, and a backup mistake is silent — the user only
-#               learns of it by seeing their data on a new phone. Same two-level shape as
-#               the no-INTERNET gate.
+#   - Backup:   aapt2 dump xmltree of the in-APK manifest gives the actual allowBackup
+#               value and the dataExtractionRules resource id; the rules file is then
+#               extracted through that id (release resource shrinking obfuscates its
+#               path) and checked. <application> attributes are subject to manifest
+#               merging and tools:replace, and a backup mistake is invisible until the
+#               user finds their data on a new phone.
 # Usage: check-no-internet.sh [path/to.apk]  (default: debug APK)
 set -euo pipefail
 
@@ -38,7 +32,7 @@ MANIFEST="app/src/main/AndroidManifest.xml"
 # res/xml/data_extraction_rules.xml.
 BACKUP_DOMAINS=(file database sharedpref external device_file device_database device_sharedpref)
 
-# E2b-3 level 2: prove on the built APK that backup is a whitelist.
+# Level 2 for backup: prove on the built APK that backup is a whitelist.
 # Args: <apk> <aapt2>
 check_backup_apk() {
     local apk="$1" aapt2="$2"
@@ -65,8 +59,8 @@ check_backup_apk() {
         echo "       (it is the only thing closing device-to-device transfer on API 31+; E2b-3)" >&2
         exit 1
     fi
-    # fullBackupContent was dead once allowBackup became false (Auto Backup never runs)
-    # and was removed in phase 3a; it must not come back.
+    # fullBackupContent is dead once allowBackup is false (Auto Backup never runs);
+    # it must not come back.
     fbc_id=$(grep -F ":fullBackupContent(" <<<"$manifest_tree" | sed -nE 's/.*=@(0x[0-9a-fA-F]+).*/\1/p' | head -1 || true)
     if [ -n "$fbc_id" ]; then
         echo "ERROR: android:fullBackupContent reference present in built manifest in $apk" >&2
@@ -150,9 +144,9 @@ if [ -f "$APK" ]; then
         echo "ERROR: Android SDK build-tools not found (set ANDROID_HOME or ANDROID_SDK_ROOT)" >&2
         exit 1
     fi
-    # B8 (2026-09-28): read-only consumer (aapt2 dump) — предпочитаем запиннованный каталог
-    # $TT_BUILD_TOOLS_PIN (scripts/build-tools-pin.sh), а при его отсутствии откатываемся на
-    # старшую установленную версию: вывод dump стабилен между версиями build-tools.
+    # Read-only use (aapt2 dump): prefer the pinned $TT_BUILD_TOOLS_PIN directory
+    # (scripts/build-tools-pin.sh), else fall back to the newest installed version,
+    # since dump output is stable across build-tools versions.
     source "$SCRIPT_DIR/build-tools-pin.sh"
     if [ -d "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" ]; then
         AAPT2=$(find "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" -name aapt2 | sort -V | tail -1)

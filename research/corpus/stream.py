@@ -1,12 +1,11 @@
-"""Streaming replacement for the in-memory line handling of the tt-corpus scripts.
+"""Streaming replacement for the in-memory line handling of the earlier corpus scripts.
 
-The tt-corpus mission measured Tatoeba and the 1,7-МБ Tatar OpenSubtitles file, and for those
-it was right to keep every deduplicated line in a Python list. The Russian OpenSubtitles file
-is 1 518 001 327 Б compressed and does not fit that shape: the list alone would need more
-memory than the machine has.
+For Tatoeba and the small Tatar OpenSubtitles file, keeping every deduplicated line in a
+Python list is fine. The Russian OpenSubtitles file does not fit that shape: the list alone
+would need more memory than a workstation has.
 
-The split RULE is unchanged, on purpose -- the dossier of tt-corpus-os requires the gain to be
-computed the same way as in tt-corpus so the numbers stay comparable:
+The split RULE is unchanged, on purpose, so the numbers stay comparable with the in-memory
+scripts:
 
     * a line is keyed by ``line.strip()``; empty keys are dropped;
     * a key already seen is dropped (deduplication happens BEFORE the split, so one subtitle
@@ -15,8 +14,8 @@ computed the same way as in tt-corpus so the numbers stay comparable:
 
 What changed is only WHERE the decision lives. [Split] makes one pass over the files, records
 one byte per physical line (0 = dropped, 1 = train, 2 = held), and then replays the files as
-often as a measurement needs. One byte per line costs ~200 МБ for the largest corpus here,
-against tens of gigabytes for the list of lines it replaces.
+often as a measurement needs. One byte per line costs a few hundred megabytes for the largest
+corpus here, against tens of gigabytes for the list of lines it replaces.
 
 [fast_normalizer] is a speed-only replacement for ``dictionary_coverage.normalize_word``.
 It performs the same three steps in the same order (NFC, lower, length limit, alphabet
@@ -62,8 +61,8 @@ class Split:
     def __init__(self, paths, capacity_hint: int | None = None) -> None:
         self.paths = [Path(p) for p in paths]
         if capacity_hint is None:
-            # ~55 Б of compressed data per unique line, measured on the corpora at hand; the
-            # table grows on its own if the guess is low, so this only saves a rehash.
+            # An estimate of compressed bytes per unique line; the table grows on its own if
+            # the guess is low, so this only saves a rehash.
             capacity_hint = max(1 << 16, sum(p.stat().st_size for p in self.paths) // 55)
         seen = HashSet64(capacity_hint)
         self.codes: list[bytearray] = []

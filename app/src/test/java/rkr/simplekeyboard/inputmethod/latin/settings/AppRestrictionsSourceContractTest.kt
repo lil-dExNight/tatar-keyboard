@@ -23,8 +23,8 @@ import java.io.File
 /**
  * The managed-restrictions loader reads values an administrator supplies, so it must survive a
  * value of the wrong type. `Bundle.getString` returns null both when the key is absent and when it
- * holds something that is not a string; the colour branch called `startsWith` on the result
- * straight away and took the whole restriction load down with an NPE.
+ * holds something that is not a string, so the color branch must not call `startsWith` on the
+ * result unchecked, or an NPE aborts the whole restriction load.
  *
  * The loader takes a `Bundle` and a `SharedPreferences.Editor`, neither of which exists on a plain
  * JVM, so the guard is pinned at the source level — the same way the other settings contracts in
@@ -41,7 +41,7 @@ class AppRestrictionsSourceContractTest {
         return file.readText()
     }
 
-    /** A colour restriction of the wrong type must not be dereferenced. */
+    /** A color restriction of the wrong type must not be dereferenced. */
     @Test
     fun colourRestrictionIsNullCheckedBeforeUse() {
         val text = settingsSource()
@@ -56,7 +56,7 @@ class AppRestrictionsSourceContractTest {
     }
 
     /**
-     * A colour that does not parse is dropped rather than thrown: the restriction load must finish
+     * A color that does not parse is dropped rather than thrown: the restriction load must finish
      * even when one value is nonsense, leaving that preference at its default.
      */
     @Test
