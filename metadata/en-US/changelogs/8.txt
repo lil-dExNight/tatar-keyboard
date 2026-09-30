@@ -1,6 +1,3 @@
-• Swipe left or right in the emoji panel to move between sections
-• Long-press an emoji to pick a skin tone — 131 emoji have them
-• A tinted pick goes into recents like any other emoji
-• Tapping near the edge of a letter no longer types its neighbour
-• The key-change threshold now matches the system touch slop
-• Still no internet permission and no backup of what you type
+• Swipe left or right in the emoji panel to switch sections
+• Long-press an emoji to choose a skin tone
+• Tapping near the edge of a letter no longer types the neighboring letter

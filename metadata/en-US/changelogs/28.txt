@@ -1,5 +1,3 @@
-• Tatar emoji search now covers almost the whole set: "этэч" finds 🐓; the word-to-emoji dictionary grew to 3,976 forms
-• Emoji suggestions are on by default and understand common misspellings: "йорэк " → ❤️
-• The emoji search strip no longer dies after the keyboard is hidden
-• Predictions are steadier: attach races closed, the first word keeps its prediction after a cursor swipe
-• Dialogs protected against tapjacking; dictionaries unchanged; no network
+• Tatar emoji search now covers almost all emoji: "этэч" finds 🐓
+• Emoji suggestions are on by default and understand common misspellings: "йорэк" → ❤️
+• Emoji search no longer gets stuck after the keyboard is hidden, and predictions are more reliable

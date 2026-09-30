@@ -1,5 +1,2 @@
-• On tablets the Tatar and Russian layouts have their Enter key back — at screen widths from 600dp it was missing entirely
-• On Android 15 the emoji panel no longer slides under the system navigation bar: the "АБВ" and delete keys can be pressed again
-• The emoji grid also stops above the system bar instead of hiding beneath it
-• On Android 14 and below nothing changed
-• Dictionaries and prediction tables unchanged; a single permission — vibration; no network
+• Tablets: the Tatar and Russian layouts have their Enter key back
+• Android 15: the emoji panel no longer slides under the navigation bar, so the "АБВ" and delete keys work again

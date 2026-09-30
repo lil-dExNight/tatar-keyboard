@@ -1,3 +1,2 @@
-• Fixed: next-word prediction and the emoji suggestion now work on the first word of a field too — before, the first word of an empty field never got a prediction
-• Closed a race on prediction-table readiness: on a cold start the strip no longer freezes empty, the prediction is asked for again
-• Dictionaries and tables unchanged; still a single permission — vibration; no network
+• Fixed: next-word prediction and emoji suggestions now work on the first word in an empty field
+• Fixed: the suggestion strip no longer stays empty right after the keyboard starts

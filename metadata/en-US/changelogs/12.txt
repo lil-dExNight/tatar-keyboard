@@ -1,5 +1,2 @@
 • Suggestions come back after you delete a letter
-• Tapping a suggestion right after a backspace inserts the word
-• Both came from one cursor-bookkeeping bug, on both layouts
-• Nothing else changed since 1.8.0
-• Still no internet permission and no new dependencies
+• Tapping a suggestion right after Backspace now inserts the word

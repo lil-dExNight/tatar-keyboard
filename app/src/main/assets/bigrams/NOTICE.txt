@@ -2,9 +2,9 @@ Bigram (next-word prediction) table data notice
 
 Both shipped tables are derived from downloadable text corpora in the Leipzig
 Corpora Collection -- the sentence-aligned files, not the word-frequency lists
-the top-100k dictionaries are built from. Since 2026-08-31 both tables
-additionally contain a conversational admixture from Tatoeba and
-OpenSubtitles (details in their sections below).
+the top-100k dictionaries are built from. Both tables additionally contain a
+conversational admixture from Tatoeba and OpenSubtitles (details in their
+sections below).
 
 Source catalogue: https://wortschatz.uni-leipzig.de/en/download
 Terms: https://wortschatz.uni-leipzig.de/en/usage
@@ -21,12 +21,11 @@ tatar_bigrams_v1.tatbigr.zlib
 
 Derived from the Tatar corpora tat_mixed_2015_1M and tat_web_2018_1M.
 A third corpus, tat_news_2015_1M, was used only to measure the table's
-predictive usefulness before it was built (docs/DICTIONARY-E5A.md) and
-contributed no data to the shipped table itself.
+predictive usefulness before it was built and contributed no data to the
+shipped table itself.
 Catalogue page: https://wortschatz.uni-leipzig.de/en/download/tat
 
-Since 2026-08-31 (corpus-conversational part B, docs/CORPUS-CONVERSATIONAL-TT.md)
-the training input additionally contains a deduplicated conversational part
+The training input additionally contains a deduplicated conversational part
 (Tatoeba + OpenSubtitles, Tatar lines, minus the 10 % reserved for the eval
 set -- it is only a few percent of the written mass), from the same two
 sources and under the same terms as the Russian section below spells out.
@@ -43,9 +42,9 @@ head, packed into a versioned binary format (schema 3, distinct from the
 dictionary's schema 2) with SHA-256, and zlib-compressed.
 The conversational lines were deduplicated before counting, and no sentence
 from either collection is stored in the app -- the table holds word pairs and
-their ranks only. Full transformation record: docs/DICTIONARY-E5B.md,
-docs/CORPUS-CONVERSATIONAL-TT.md and docs/ROADMAP-P4.md (the head-list
-expansion and the move from 4 to 3 successors per head).
+their ranks only. The table is built by scripts/bigram_asset_pack.py, with
+the extra heads listed in scripts/bigram_extra_heads_tat.txt;
+docs/ASSET-PIPELINE.md describes the rebuild.
 
 --------------------------------------------------------------------------------
 russian_bigrams_v1.tatbigr.zlib
@@ -57,19 +56,17 @@ measure the table's predictive usefulness before it was built and contributed
 no data to the shipped table itself.
 Catalogue page: https://wortschatz.uni-leipzig.de/en/download/Russian
 
-Since 2026-08-31 (corpus-conversational part A, docs/CORPUS-CONVERSATIONAL-RU.md)
-the training input additionally contains a deduplicated, deterministically
+The training input additionally contains a deduplicated, deterministically
 thinned (every 60th unique line) conversational part built from:
 
 - Tatoeba, https://tatoeba.org/ -- Creative Commons Attribution 2.0 France
   (CC BY 2.0 FR), https://creativecommons.org/licenses/by/2.0/fr/
 - OpenSubtitles, taken from the OPUS collection (OpenSubtitles v2024),
   http://www.opensubtitles.org/ -- OpenSubtitles publishes NO license grant
-  for this text, and this table now carries data derived from it: the
-  project's operator decided on 2026-08-24 to use the data anyway, knowing
-  there is no grant. The decision, the measurements behind it and the release
-  risk are recorded in ../dictionaries/NOTICE.txt, docs/CORPUS-OS.md and
-  docs/PUBLISH-CHECKLIST.md. Recommended citation: P. Lison, J. Tiedemann,
+  for this text, and this table carries data derived from it: the project
+  uses the data anyway, knowing there is no grant, as an accepted risk
+  stated in ../dictionaries/NOTICE.txt.
+  Recommended citation: P. Lison, J. Tiedemann,
   "OpenSubtitles2016: Extracting Large Parallel Corpora from Movie and TV
   Subtitles", LREC 2016.
 
@@ -80,9 +77,8 @@ belong to; this table keeps its own shape -- the top 10,000 head words by
 unigram frequency and the top 4 successors per head -- with the same binary
 format, the same SHA-256 and zlib settings. The conversational lines were
 deduplicated before counting, and no sentence from either collection is stored
-in the app -- the table holds word pairs and their ranks only. Full
-transformation records: docs/RUSSIAN-BIGRAMS.md and
-docs/CORPUS-CONVERSATIONAL-RU.md.
+in the app -- the table holds word pairs and their ranks only. The pipeline
+is the same as for the Tatar table (docs/ASSET-PIPELINE.md).
 
 --------------------------------------------------------------------------------
 The Leipzig-derived table data remains a separate CC BY 4.0 component; the

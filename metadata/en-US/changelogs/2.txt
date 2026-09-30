@@ -1,5 +1,3 @@
-• Fixed a crash when opening keyboard settings and the language picker
-• Selected language now survives process restarts
-• Settings migration for early dev builds
-• New app icon; visible long-press hints on keys; onboarding with a try-it field
-• Key preview popup is suppressed in password fields
+• Tatar layout with an always-visible fifth row ә ө ү җ ң һ, plus Russian and English
+• Fixed a crash when opening settings or the language list
+• The language you choose now stays selected after the keyboard restarts

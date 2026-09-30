@@ -1,4 +1,2 @@
-• The keyboard is 16.8% lighter: APK 2,111,775 bytes
-• 75 locales and about 70 unused layouts inherited from the fork are gone — Tatar, Russian and English remain
-• Dead code and unused themes removed; a baseline profile added
-• Dictionaries and suggestions are unchanged to the byte; still a single permission, VIBRATE
+• Smaller app: layouts for languages other than Tatar, Russian and English are gone
+• If you had one of them enabled, the keyboard switches to Tatar, Russian or English and keeps your settings

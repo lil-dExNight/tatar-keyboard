@@ -1,915 +1,428 @@
 # Changelog
 
+User-facing changes to Tatar Keyboard, newest first. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+These hold for every release and are not repeated in the entries below:
+
+- The keyboard works fully offline. The app has no `INTERNET` permission; the only permission it
+  requests is `VIBRATE`. Nothing you type leaves the device.
+- Every release is signed with the same certificate. Its SHA-256 digest is pinned as
+  `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
+  `apksigner verify --print-certs <apk>`.
+
 ## [3.6.0] — 2026-09-29
 
 ### Changed
 
-- **The suggestion strip is back to three cells.** The four-cell experiment of 3.3.0 is reverted end to end (an operator UX decision); the K = 4 bigram table keeps shipping — its fourth successor is simply unused headroom now, so this release touches no data assets at all.
-- **No live repaint while swiping.** During a glide the strip no longer redraws candidates under the moving finger; suggestions appear only at finger lift — the pre-3.3.0 behavior. Glide typing itself, its accuracy and glide-triggered learning of your saved words are unchanged.
+- The suggestion strip is back to three cells; the four-cell layout from 3.3.0 is reverted.
+
+### Removed
+
+- The live candidate preview during glide typing: suggestions appear when you lift your finger, as before 3.3.0.
 
 ## [3.5.0] — 2026-09-29
 
 ### Added
 
-- **A roomier emoji panel.** The 50dp search row collapsed into a 🔍 cell at the tab strip's right end, so the emoji grid gains 50dp at every keyboard height (on a POCO C71 at the default preset: 1.6 → 2.7 emoji rows visible below the first section header with the suggestion strip off, 2.5 → 3.6 with it on). A new Appearance setting, **"Emoji panel height"**, offers Same as keyboard (the default — the old same-box invariant), Larger (×1.2) and Maximum (46 % of the screen); under Larger/Maximum the keyboard window itself grows while the panel is open — Gboard-style, and strictly opt-in. The floating panel keys slimmed from 44dp to 40dp.
+- A new Appearance setting, "Emoji panel height": Same as keyboard (default), Larger or Max.
 
 ### Changed
 
-- **Faster dictionary reads.** The lookup path now bulk-fetches a whole front-coding block off the memory-mapped dictionary with one relative read instead of per-byte absolute reads; on the POCO C71 the worst measured path (Tatar typo probes) went from p95 5.19 ms to **1.72 ms**, the mapping and its evictable file-backed residency are untouched, and results are byte-identical.
-- **Less per-frame work while drawing:** the board no longer allocates a temporary set on every press frame, and the suggestion strip measures its autocorrect underline once when the content changes instead of on every frame; an on-device gate now pins zero own allocations in the draw loop.
-- **The baseline and startup profiles are regenerated** (3 430 → 3 431 rules), so a Play install compiles the current code paths ahead of time.
-- **Performance discipline (developer-facing):** `TT#` trace sections for Perfetto now bracket startup, input-view and keyboard loading, the emoji panel and the suggestion round trip; the repo carries a scripted device perf ritual (cold starts, frame stats, PSS — with the ceiling set at 114 000 kB on the debug scale).
-
-### Fixed
-
-- **Dead machinery removed:** the two-substitution typo-recovery path (class #5), kept in the tree unwired since its own gates rejected it in phase 4, is deleted together with its calibration suite. No behavior change.
+- The emoji panel has more room for emoji: the search row moved into a 🔍 cell at the end of the tab strip, and the floating keys are slightly smaller.
+- Dictionary lookups are faster, most noticeably in Tatar typo recovery.
+- Drawing the keyboard and the suggestion strip does less work per frame, and startup profiles are refreshed for installs from Google Play.
 
 ### Security
 
-- **The editor connection is hardened against hostile host apps** — three real holes found and fixed: oversized host answers could re-inflate the bounded text cache (now clamped at every writer), a throwing editor call could crash the keyboard process (all eleven editor-call sites now degrade silently), and impossible cursor positions could create phantom selection state (rejected fail-closed).
-- **Dead debug tracers in the input pipeline are de-texted:** had they ever been enabled, they could have logged key labels of what you type; they now carry coordinates and functional-key flags only. A source contract test pins the reviewed log call-site set.
-- **Proven on-device, not just by manifest: zero network traffic.** The keyboard's UID counters (rx/tx) stayed at exactly 0 across a scripted mixed session on the POCO C71; the app still ships with no INTERNET permission at all.
-- **Supply chain:** build dependency verification is upgraded from plain SHA-256 pins to PGP signature verification with a committed keyring (unsigned artifacts stay SHA-256-pinned), and the release check gained two fail-closed gates — an exported-surface pin and a no-secrets scan of the tree and the APK. Developer-facing; nothing of this ships inside the app.
-- **New test armor (developer-facing):** seeded fuzzing of the five binary readers (61 500 iterations: bit flips, truncations, size-field inflation, garbage — zero validator defects) and an EditorInfo privacy matrix (password, visible-password, TYPE_NULL, no-personalized-learning and normal fields × learning, recents, strip and cache re-read — no behavioral hole).
+- Host apps that return oversized text, fail on editor calls or report impossible cursor positions can no longer crash or confuse the keyboard.
+- Debug logging in the input pipeline can no longer record the letters you type, even if it is switched on.
 
 ## [3.4.0] — 2026-09-28
 
 ### Added
 
-- **The keyboard learns which emoji you put after a word.** Place the same emoji after the same word twice — from the emoji panel, from emoji search, or from the strip's own emoji cell — and it starts leading the strip's tail cell after that word, ahead of the static suggestion. Until a pair earns its place it exists nowhere in plaintext (salted-hash pending counters, exactly like the learned word pairs); the store is capped at 500 entries, lives only on this device, and incognito mode pauses the learning. The clipboard never teaches. Learned pairs are managed on the personal dictionary screen next to your saved words and word pairs, and nothing is ever auto-inserted — the learned emoji is only a suggestion.
+- Learned emoji: put the same emoji after the same word twice, and the strip's last cell suggests it after that word.
+- Learned emoji are never inserted automatically, stay on the device, pause while "Incognito mode" is on, and can be managed on the "Saved words" screen.
 
 ### Fixed
 
-- **An emoji picked from the suggestion strip now lands in your recent emoji:** the strip's emoji cell updated the suggestion but never told the recents store, so a strip-picked emoji never rose in the panel's recent row.
-- **Switching the input method from the keyboard's picker no longer leaks a thread:** the switcher spun up a fresh executor on every call; it now reuses a single one created at startup.
-
-### Changed
-
-- **The baseline and startup profiles are regenerated** (3 282 → 3 430 rules) and their generator is repaired: it finds settings rows by resource-id instead of text (the text search broke when the app's own screens defaulted to Tatar) and refuses to run on a physical device unless explicitly allowed. On a Play install the refreshed profile is what gets compiled ahead of time.
-- **More headroom for emoji suggestions:** the in-memory index cap rose from 4 096 to 8 192 records, matching the packer's limit; the shipped table itself is unchanged.
-- **Developer-facing only:** the on-device latency measurements now assert their p95 budget fail-closed, the glide UI device test no longer wedges on whole-class runs (and fails fast on a display it is not calibrated for), the release check gained a fail-closed gate for the resources that must survive shrinking, and the build-tools version pin has a single source of truth.
+- An emoji picked from the suggestion strip now appears in the recent row of the emoji panel.
+- Switching input methods from the keyboard's picker no longer leaks a background thread.
 
 ## [3.3.0] — 2026-09-28
 
 ### Added
 
-- **The suggestion strip shows four cells now** (was three): the fourth cell carries the fourth stored next-word successor — the Tatar bigram table is repacked at K = 4 for it — plus the next word form or top-frequency word where the table runs out.
-- **Swipe typing previews its candidates live, while the finger is still moving** (throttled decodes of the partial path; only lifting the finger commits — the preview itself never edits text).
-- **Swipe-typed words teach the personal dictionary the same way tapped suggestions do:** a glide commit counts as a use for a saved word, so the words you taught keep rising by usage.
+- The suggestion strip shows four cells instead of three (reverted in 3.6.0).
+- Glide typing previews candidates while your finger is still moving (removed in 3.6.0).
+- Words entered by glide typing count as uses in the personal dictionary, the same as tapped suggestions.
 
 ## [3.2.0] — 2026-09-26
 
 ### Added
 
-- **Swipe typing now knows the words you taught the keyboard:** learned words (names, slang, rare forms) appear as glide candidates, ranked by shape first and your usage count second — a clear dictionary word always wins. Your own casing is kept, words already in the built-in dictionary are not duplicated, and the glide follows the same personal-dictionary switch as the suggestion strip. As with everything else in this app, nothing is logged or sent anywhere.
-
-### Changed
-
-- **Static-analysis cleanup:** 52 of the 67 error-prone warnings in the legacy Java sources are closed (visibility narrowed, explicit casts, dead code removed); the remaining 15 are reviewed and deliberately kept (`docs/ERRORPRONE-TRIAGE.md`). Internal only — no behavior change.
+- Glide typing suggests the words you taught the keyboard, ranked by shape first and your usage second; a clear dictionary match still wins.
 
 ## [3.1.1] — 2026-09-25
 
 ### Fixed
 
-- **The 3.1.0 build could not be installed at all on Android 11 and newer.** The optimization wave compressed `resources.arsc` inside the APK (−73.7 KB in the archive), and the platform refuses such a package outright: *"Targeting R+ (version 30 and above) requires the resources.arsc of installed APKs to be stored uncompressed and aligned on a 4-byte boundary"*. Caught on a POCO C71 (Android 15) while verifying the release; the step is removed, the APK grew back by 69 632 B, and a gate now fails the release check if `resources.arsc` is ever compressed or misaligned again. `zipalign -c` did not catch this — for a compressed table it prints "OK - compressed" and exits zero, which is exactly how the defect passed every gate. No 3.1.0 artifact was ever published.
+- The app installs again on Android 11 and newer; the 3.1.0 build was rejected by the system and was never published.
 
 ## [3.1.0] — 2026-09-25
 
 ### Changed
 
-- **The keyboard looks closer to the iOS original** (`docs/APPLE-UX-2026-09-25.md`, batch 1 and the operator-authorized batch 2):
-  - **Shift now has three states, not two:** off is a hollow arrow on a grey key, one-shot shift is a filled arrow on an inverted (white / dark-grey) key, and caps lock keeps the filled arrow with the bar. Before this, shift and caps looked identical.
-  - **Letter keys answer a tap with the balloon only** — they no longer darken under the finger, exactly as on iOS. Functional keys (shift, delete, 123, return, spacebar) still change fill, and if you switch the balloon off in settings the keys keep their old pressed look, so no key is ever left without feedback. The swipe-typing key highlight is unchanged.
-  - **The balloon is a droplet:** a rounded body with a short neck flowing into the key, instead of the tall rectangle that used to cover two key rows.
-  - **Actionable Return keys are accent blue with a white glyph** (Go, Search, Send, Done, Next, Previous, a custom action label); a plain Return is a grey functional key.
-  - **The long-press alternatives panel is white (dark: key grey) with an accent-blue selected cell and a white glyph**, instead of grey on grey.
-  - **Suggestion strip:** 44dp tall (the iOS tap target), 18dp text, vertically inset hairlines, and a rounded inset highlight on the pressed cell.
-  - Key shadow slightly deeper in light mode, functional-key grey re-matched to the reference, and **the language label on the spacebar no longer fades while you type**.
-  - **Settings screens slide and fade when you open and leave them** (200 ms), and stand still if you have system animations turned off.
-  - Dialogs are iOS-shaped: a rounded card, a centered title and accent buttons that no longer SHOUT IN CAPS.
-- **Vibration follows your system setting:** on Android 7–9 the keyboard asked the system to vibrate even when you had haptics turned off system-wide. It no longer overrides your setting — the behaviour now matches Android 10+ and the keyboard's own toggle still works as before.
-- **The app is 8.5 % smaller and draws faster:** a zero-quality-loss optimization wave (`docs/OPTIMIZE-2026-09-25.md`) took the signed APK from 1 846 564 B to 1 690 074 B (−156 490 B) — the resource table is now deflated, the launcher icon is a vector instead of ten WebP layers, and the last third-party runtime library (`androidx.customview`, whose accessibility helper is now a small in-tree fork) is gone, so the app genuinely ships with zero runtime dependencies. Measured on a POCO C71: keyboard frame time 8.2 → 6.8 ms (−17 %), cold start 275 → 257 ms, about 6.5 MB less memory held while idle. Nothing about the behaviour changed. (2026-09-25)
-- **Less memory while swipe typing:** only one language's swipe index stays in memory now. Both warm languages could hold one at the same time (about 5.8 MB worst case); a gesture now drops the other language's index first, halving the worst case. The language you switch back to rebuilds its index on your next gesture, as it already did after an idle pause.
-- **Emoji suggestions load in half the memory:** the table used to be built twice during loading (once whole, once filtered to the emoji your device can draw). It is now filtered while it is read, so the peak is one table instead of two.
-- **Glide trail is white-gray instead of blue:** the trail that follows the finger during a swipe used the app's accent blue; it now draws in a near-white light gray (`#F2F2F7`, iOS systemGray6 — the Gboard look) in both the light and the dark theme. The key highlight under the fingertip during a glide was already the neutral gray pressed-key fill, so nothing else follows the recolor. (2026-09-25)
-- **The app's own screens default to Tatar:** Setup and Settings used to follow the system language with English as the fallback, so a phone in English (or any language other than Russian/Tatar) showed the app in English. Now: system Tatar → Tatar, system Russian → Russian, anything else → **Tatar** — the product is a Tatar keyboard, and that is the deliberate default (English strings stay shipped as the resource fallback). No new dependency: the screens wrap their context to the Tatar configuration at creation. (2026-09-25)
+- The keyboard looks closer to iOS: three Shift states, a droplet-shaped key preview, blue action Return keys, a white long-press panel and a taller suggestion strip.
+- Letter keys answer a tap with the key preview only; functional keys still change color, and letter keys keep their pressed look when the key preview is off.
+- The spacebar language label no longer fades while you type, and the glide trail is light gray instead of blue.
+- Settings screens slide in and out unless system animations are off, and dialogs are restyled.
+- The app's own screens are in Tatar by default unless the system language is Russian.
+- The app is 8.5% smaller, draws frames faster, starts quicker and uses less memory, including during glide typing and while loading emoji suggestions.
 
 ### Fixed
 
-- **A dimmed settings row now tells you why it is dimmed.** Tapping a row that depends on a switch that is off used to do nothing at all; it now says which switch to turn on (or that your device administrator locked it).
-- **Privacy: the text cache no longer outlives the field.** The keyboard keeps a small cache of the text around the cursor to offer predictions. It used to survive locking the screen or hiding the keyboard, and it was re-read even in password fields. Now the cache is cleared when the input session ends and when the keyboard window hides, and password fields are never re-read — they get a clear instead of a reload. Auto-capitalization is unaffected. (2026-09-25)
-- **Pasting text no longer teaches the personal dictionary.** A word or a word pair could be learned from pasted text, because a paste looks like a very fast typing burst. A word's first observation may now carry at most one keystroke worth of text; anything larger marks the observation as untrusted, so pasting the same word twice learns nothing while typing it twice still does. (2026-09-25)
-- **Dialogs with your saved words are protected from screenshots.** The add-word, forget-word and forget-pair dialogs now carry the secure-window flag on their own windows; the activity-wide flag did not extend to them. (2026-09-25)
-- **Crashes and freezes found by the robustness audit** (`docs/SECURITY-AUDIT-2026-09-25.md`, 17 items): a very large paste into a text field, a stuck cursor-moved flag that could silence predictions for the rest of the session, host apps reporting impossible cursor positions or text lengths, an inverted text selection, a race between the background cache reload and typing, unbounded growth of the cache and of the emoji-suggestion table, non-finite glide points, duplicate touch trackers, and a 0×0 keyboard view during layout. None of these needed a user-visible feature change; they were all fail-closed hardening. (2026-09-25)
+- On Android 7–9 the keyboard respects the system-wide haptics setting.
+- Tapping a dimmed settings row explains which switch to turn on, or that your device administrator locked it.
+- Pasted text no longer teaches the personal dictionary.
+- Several crashes, freezes and silent prediction failures caused by very large pastes, unusual host app behavior and edge cases in glide typing and layout.
 
-### Added
+### Security
 
-- **Release tooling gained real teeth:** the packer now verifies every zip entry byte-for-byte after writing and refuses duplicate entry names, the release checker fails on anything but exactly one signer and compares the shipped dictionaries and bigram tables against the tree file by file, the Gradle distribution is pinned by SHA-256, and the asset-pin check is part of the non-quick gate set. Developer-facing only — nothing of this ships inside the APK. (2026-09-25)
-- **Supply-chain hardening** (`docs/ROADMAP-P8-PLAN.md`, stage D): every CI action is pinned to a commit SHA instead of a floating major tag, the packer uses a pinned build-tools version instead of "whatever is newest", `gradle/verification-metadata.xml` now records a SHA-256 for every build dependency, CI packs the APK twice and compares the bytes, and `gradlew` is byte-identical to the official 9.6.0 script again (which restores the `-Dfile.encoding=UTF-8` default the local copy had lost). Developer-facing only.
+- The cached text around the cursor is cleared when the input session ends or the keyboard hides, and password fields are never re-read.
+- Dialogs that show your saved words are protected from screenshots.
 
 ## [3.0.2] — 2026-09-25
 
-### Fixed
-
-- **Glide decodes the word you actually drew past a doubled letter:** a doubled word (сәлләм) used to win over its plain twin (сәләм) on frequency alone, because its plain ideal path degenerates to the twin's path — gliding сәләм committed сәлләм. A doubled-letter candidate now scores only against its looped ideal path: without a jog at the doubled key the doubled word loses, with one it wins. On the calibration set the plain-word class slightly IMPROVED (the doubled candidates stopped stealing wins), and the twin confusion on no-jog paths dropped from ~79% to ~7%.
-- **Glide typing works with suggestions off:** the gesture answered the suggestions master switch instead of its own toggle, and — the subtler half — the glide geometry push rode the suggestions eligibility, so with the master off the decode was disabled outright. Glide typing is now fully independent (Gboard parity): the lift still commits the word (that's typing, not a suggestion) and the strip stays out of it. The settings row no longer grays out with the master switch.
-- **Glide after "word ? " (a space before the punctuation):** the lift-commit reused the prediction tap's stale-band guard, which refuses empty-context positions away from a sentence start — and the space-before-the-mark habit produces exactly such a position, so the gesture looked dead mid-sentence. The glide now commits through its own path with the same live re-checks minus that requirement.
-- **Glide typing tolerates a resting finger:** the gesture detection's decision window and speed check now start at the first real movement, not at touch-down — resting on the first letter for a moment before swiping used to make the glide never fire ("зажимаю букву и начинаю вести её в сторону второй — не работает"). A long-press that actually opens its panel during the rest still wins and closes the gesture. (Field report, 2026-09-24; see docs/ROADMAP-P7.md.)
-
 ### Added
 
-- **Lifting your finger commits the glide's best word:** a finished swipe types its top candidate into the field at once (with the current shift state), and the remaining candidates stay in the strip as tappable alternatives — tapping one swaps the committed word in place. One backspace right after the lift deletes the whole committed word, and a swipe that decodes to nothing commits nothing. A glide inserts NO space of its own: it types the bare word, and only a glide right after another word prepends exactly one space — gliding word after word produces "сәләм дөнья" with nothing hanging at the end; undoing the second word of a chain removes it together with that space.
-- **Glide trail and key feedback:** while gliding, a fading trail follows the finger across the keys and the key under the fingertip lights up — graphics only, no popups and no haptics. The tail reaches ~300 ms behind the finger, and at the lift the trail fades out over a quarter of a second instead of vanishing. Both follow the glide typing switch; with glide typing off the touch path is unchanged.
+- Lifting your finger after a glide types the best word at once; the other candidates stay in the strip, and tapping one replaces the word.
+- One backspace right after a glide deletes the whole word; consecutive glides are joined with exactly one space.
+- A fading trail follows your finger while gliding, and the key under your fingertip lights up.
+
+### Fixed
+
+- Glide typing tells doubled-letter words from their plain twins (`сәләм` vs `сәлләм`).
+- Glide typing works with suggestions turned off; it has its own switch.
+- Glide typing works mid-sentence after a space placed before punctuation.
+- Resting your finger on the first letter before gliding no longer prevents the glide.
 
 ## [3.0.1] — 2026-09-24
 
-Post-release audit of 3.0.0 (`docs/AUDIT-2026-09-24.md`): one release-blocker link fix, two real correctness fixes in the autocorrect and learning paths, the startup profile extended to glide typing, and an accuracy sweep of the docs and strings. No feature changes.
+### Fixed
 
-### What changed
-
-- **Privacy and license links point to the right place:** both in-app links went to the old repository owner and broke — they now open the current repo (`lil-dExNight`), and the OpenSubtitles link is https
-- **Autocorrect undo is reliable:** the backspace-undo of an autocorrection ran its text edits without checking the editor connection — the missing guard is in, matching every other text-mutation path
-- **Tapping your saved word now counts:** accepting a personal-dictionary word from the strip updates its usage counters (the event existed but never reached the store) — learning adapts to what you actually pick
-- **Glide typing is in the startup profile:** the baseline profile now covers the glide path (3 071 → 3 240 rules), so a Play install compiles it ahead of time
-- **Fixes around the edges:** fresh key geometry reaches the engine before a language switch is announced; a word fixed by autocorrect can be the context half of a learned pair again; quarantine notices are per-language (one unreadable store no longer spends another's notice); the managed-configuration (MDM) restriction titles are the right way round; the tt `%1$d-се` orthography and the ru plural on the layouts row are corrected
-- **Docs accuracy:** the NOTICE files name the real table shape (13 154 heads, K = 3) and the word-form admission sources; `PRIVACY.md` describes the pending-hash stage, the 2 000-word cap and the clipboard; the emoji search/skin tables gained their missing pins in the test suites
-
-### What stayed the same
-
-- Dictionaries, prediction tables, layouts, emoji — byte-identical; updating from 3.0.0 re-inflates nothing
-- One permission only — VIBRATE; no INTERNET, gate verified on the built APK
-- Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
+- The privacy policy and license links open the current repository over https.
+- Undoing an autocorrection with backspace is reliable, and a corrected word can again be learned as part of a word pair.
+- Tapping a word from your personal dictionary counts toward its usage.
+- Notices about unreadable saved data are shown per language, and several Tatar and Russian strings are corrected.
 
 ## [3.0.0] — 2026-09-24
 
-Sentence starts finally look and work like sentence starts — in both languages — predictions no longer stop at a comma, and the keyboard now learns your word pairs on-device (with a proper management screen and an incognito pause).
+### Added
 
-### What changed
+- Glide typing for Tatar and Russian, on by default: slide over the letters and lift; turn it off in Preferences → "Glide typing".
+- Learned word pairs: type a pair twice and the second word is predicted after the first. Part of the personal dictionary, off by default.
+- Learned word pairs never outrank the built-in predictions and are stored only as salted hashes until confirmed.
+- The "Saved words" screen lists learned words and word pairs per language, with usage counts, delete and clear actions, and restore for a quarantined file.
+- An "Incognito mode" switch pauses all personal learning; what is already saved still appears in suggestions.
+- Russian sentence-start suggestions, and next-word predictions after a comma, semicolon or colon.
+- Keyboard height presets: Compact, Default and Tall.
 
-- **Sentence-start suggestions are capitalized:** at the start of a field and after `.`/`!`/`?` the strip offers `Бу · Ул · Ә` instead of lowercase forms
-- **Sentence-start suggestions for Russian:** the strip offers the most frequent Russian sentence-initial words (`В · По · На`…) at a field start and after sentence-ending punctuation — the same Tatar feature, now for the Russian layout, with its own corpus-built table
-- **Predictions after a comma (and `;` `:`):** `татар, ` now offers the word's next-word predictions (`теле · дәүләт · телен`) instead of nothing — bigram successors, word forms and the frequency fallback apply exactly as after a space; sentence-ending punctuation keeps its own behavior
-- **The keyboard learns your word pairs:** type a pair cleanly twice («сәләм дөнья») and the second word becomes a prediction after the first (`сәләм ` → `дөнья`). Learned pairs rank after the built-in prediction tables and never displace them, and until a pair earns its place it exists nowhere in plaintext (salted-hash pending counters). Everything stays on-device in the same credential-protected, never-backed-up store as the saved words. Part of the personal dictionary (off by default)
-- **Manage saved words and pairs in one place:** the Saved words screen now lists every learned word AND every learned pair per language with usage counts — delete one, clear all words or all pairs of a language, or erase everything saved (both stores). An unreadable saved file gets a quarantine card with restore/delete, and a deleted word or pair can never be resurrected by a restore
-- **Incognito mode:** one switch pauses all personal learning (words and pairs, pending counters included); what is already saved keeps appearing in suggestions, and turning it back off resumes learning exactly where it stopped
-- **Autocorrection you can see coming (autocorrect toggle):** when a space would fix a word, the strip now shows the decision BEFORE it happens — your typed word on the left ("keep what I typed") and the correction in the center, emphasized (bold, accent colour, underlined). Tap your word to keep it (that occurrence is left alone), tap the correction or just type the separator to accept it; one backspace still undoes the fix
-- **Many more Tatar words predict the next one:** the next-word table now covers 13 154 words instead of 10 204 — everyday conversational words (e.g. `автобуска`, `сакчы`) now offer their natural continuations. Measured on the pinned eval set: sentence-pair coverage 75.4 % → 84.2 %, next-word found in the top three 9.5 % → 10.8 %. The table is also repacked leaner (−19 209 B of unused 4th successors)
-- **Keyboard height presets:** Appearance → "Keyboard height" now offers three named presets — Compact (85 %), Default (100 %), Tall (115 %) — instead of the inherited 50–150 % slider; the same stored preference, so an existing custom value keeps working and shows as a percent until you pick a preset
-- **Internals:** the largest source files were split into cohesive units (no behavior change — the same 1 456 tests stay green), and the startup profile now covers them
-- **Glide typing (new, on by default):** type a word by sliding your finger over its letters without lifting, in Tatar and in Russian — the candidates appear in the strip when you lift, and a tap commits the word like any prediction. Everything is decoded on this device; nothing is recorded. Turn it off any time in Preferences → "Glide typing"
-- **Cold start kept fast:** the baseline profile is regenerated for the new prediction paths (2 278 → 2 433 rules); measured cold start stays well under the 400 ms budget
-- **Smaller APK:** 55 unused legacy layout resources removed (English keeps QWERTY / QWERTZ / ABC); the release keystore no longer lives in the repository checkout
+### Changed
 
-### What stayed the same
-
-- Tatar/Russian dictionaries, layouts, emoji — unchanged; the Tatar prediction table is the one asset that changed (described above); already-saved personal words and pairs are preserved and keep working
-- One permission only — VIBRATE; no INTERNET, gate verified on the built APK
-- Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
+- Sentence-start suggestions are capitalized.
+- With autocorrect on, the strip shows the correction before it happens, with your word in the typed-word cell; tap your word to keep it.
+- Many more Tatar words offer next-word predictions.
 
 ## [2.0.1] — 2026-09-21
 
-The strip after a committed word is never empty: predictions now fall back to the language's most frequent words.
+### Changed
 
-### What changed
-
-- **Predictions after a committed word always fill the strip:** when a committed word has few or no next-word predictions or word forms, the remaining cells show the language's most frequent words (Tatar: һәм, белән, да…; Russian: я, не, в…). Bigram predictions, word forms and the emoji cell keep priority and are never displaced; the word just committed is never re-offered
-
-### What stayed the same
-
-- Dictionaries, prediction tables, layouts, emoji — unchanged; the fallback is computed from the shipped dictionary at engine start, no new assets
-- One permission only — VIBRATE; no INTERNET, gate verified on the built APK
-- Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
+- After a committed word, empty cells are filled with the language's most frequent words, so the strip is never blank.
 
 ## [2.0.0] — 2026-09-20
 
-Tatar prediction learns the language's morphology: after a committed word the strip offers its inflected forms, complete words rank their own continuations first, and the strip is no longer empty at the start of a sentence. Accepting a suggestion now immediately offers the next word, and a mistyped Tatar word that matches nothing exactly offers the nearest dictionary words one letter away.
+### Added
 
-### What changed
+- Word forms: after a Tatar word and a space, free cells offer its inflected forms (`сакчы` → `сакчысы`, `сакчылар`).
+- Tatar sentence-start suggestions at the start of a field and after sentence-ending punctuation.
+- Tatar typo recovery: when a prefix of four or more letters matches nothing, the strip offers dictionary words one letter off (`сцләм` → `сәләм`).
 
-- **Word-form suggestions after a Tatar word:** type `сакчы` + space and the strip offers its inflected forms (`сакчысы · сакчылар · сакчысын`), ranked by frequency, in the cells the next-word predictions leave free — predictions keep priority and are never displaced. Part of the existing Tatar suggestions toggle
-- **Complete words rank their own continuations first:** a typed Tatar word of 4+ letters now completes to its own forms — `татар` suggests `татарлар, татарча, татарлары` instead of the toponyms `татарстан*`. Short prefixes behave exactly as before
-- **Sentence-start suggestions (Tatar):** the strip offers the most frequent sentence-initial words at the start of a field and after `.`/`!`/`?`/`…` + space, where it used to be empty
-- **Larger Tatar dictionary:** 100 000 → 110 000 entries — 9 052 corpus-attested word forms produced by the project's own build-time paradigm generator plus 948 conversational words; word coverage on the held-out eval set 93.49 → 94.31 % of tokens. No previously known word was dropped
-- **Predictions continue right after a tapped suggestion:** accepting a word from the strip immediately offers the next word's predictions — previously the strip stayed empty until the next keystroke
-- **Typo suggestions on an otherwise empty strip (Tatar):** when a typed prefix of 4+ letters matches nothing exactly, the strip offers the nearest dictionary words one letter away — `сцләм` suggests `сәләм` in the first cell by the fifth letter. Correctly typed prefixes are never affected: the correction tier only fills a strip that would stay empty
+### Changed
 
-### What stayed the same
-
-- Russian dictionary and prediction tables are byte-identical; layouts, personal dictionary, emoji — unchanged
-- One permission only — VIBRATE; no INTERNET, gate verified on the built APK
-- Signed with the same key (`98ca6feb…42ad`); the build is byte-for-byte reproducible
+- A complete Tatar word of four or more letters ranks its own forms first (`татар` → `татарлар`, `татарча`).
+- The Tatar dictionary grew from 100,000 to 110,000 entries, mostly word forms found in the corpus.
+- Next-word predictions appear right after you tap a suggestion, without waiting for the next keystroke.
 
 ## [1.9.15] — 2026-09-05
 
-Служебный релиз: разобран накопленный backlog статического анализатора, среди находок оказался настоящий дефект в загрузке корпоративных политик.
+### Fixed
 
-### Что изменилось
-
-- **Настройка клавиатуры через корпоративные политики больше не падает целиком:** если администратор задавал цвет клавиатуры значением не того типа (числом вместо строки), разбор политик обрывался с ошибкой и **ни одна** настройка не применялась. Теперь такое значение просто игнорируется, остальные политики применяются
-- **Подпись языка на пробеле центрируется точно** — раньше она могла быть смещена на полпикселя из-за округления
-- Внутренняя уборка: убрана ветка выбора режима, неотличимая от общей; приватный помощник переименован, чтобы не читаться как перегрузка `equals`; объяснено намеренное игнорирование неразбираемого цвета
-
-### Что не изменилось
-
-- Раскладки, словари, таблицы предсказаний, эмодзи-ассеты — байт-в-байт прежние
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима
+- A managed-configuration keyboard color of the wrong type no longer stops all other managed settings from applying.
+- The language label on the spacebar is centered exactly.
 
 ## [1.9.14] — 2026-09-04
 
-Три находки ресерча на живом устройстве: подсказки перестали вырождаться при крупном системном шрифте, панель эмодзи научилась уважать настройку «Нижний отступ» и перестала задыхаться при маленькой высоте клавиатуры.
+### Fixed
 
-### Что изменилось
-
-- **Подсказки читаемы при любом размере системного шрифта:** раньше текст полосы рос вместе с системной настройкой, а высота полосы — нет, и при максимальном шрифте две ячейки из трёх сжимались до «Мини…» и становились неразличимы. Теперь размеры текста на клавиатурных поверхностях считаются так же, как размеры клавиш, и не зависят от системного масштаба
-- **Панель эмодзи уважает «Нижний отступ»:** если вы подняли клавиатуру этой настройкой, панель поднимается вместе с ней, а не заполняет освобождённое место
-- **Панель эмодзи не задыхается при малой высоте клавиатуры:** раньше при высоте 50 % от вкладок и строки поиска не оставалось места под эмодзи — было видно меньше одного ряда. Теперь полосы уступают первыми, а сетке гарантирован минимум
-- **Витрина:** заметки о версиях для английской локали переписаны по-английски (с версии 1.3.0 они по недосмотру публиковались по-русски), русские тексты переехали в русскую локаль
-
-### Что не изменилось
-
-- Раскладки, словари, таблицы предсказаний, эмодзи-ассеты — байт-в-байт прежние
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима
+- Suggestions stay readable at large system font sizes; keyboard text no longer scales with the system font setting.
+- The emoji panel respects the "Bottom offset" setting and keeps room for its grid at small keyboard heights.
 
 ## [1.9.13] — 2026-09-04
 
-Два дефекта, найденных первой проверкой на живом устройстве: на планшетах у татарской и русской раскладок не было клавиши Enter, а панель эмодзи на Android 15 уезжала под системную панель навигации.
+### Fixed
 
-### Что изменилось
-
-- **На планшетах вернулась клавиша Enter:** при ширине экрана от 600dp у татарской и русской раскладок её не было вообще — отправить сообщение или заполнить форму такой раскладкой было нельзя. У английской раскладки Enter был на своём месте, у кириллических он пропадал из-за отсутствующего планшетного ресурса
-- **Панель эмодзи больше не уходит под панель навигации:** на Android 15 кнопки «АБВ» (возврат к буквам) и удаления рисовались в полосе системных кнопок и не нажимались — выйти из панели штатным способом было невозможно. Теперь панель знает, сколько её закрывает системная полоса, и поднимает над ней и кнопки, и сетку эмодзи. На Android 14 и ниже ничего не изменилось: там система поднимает клавиатуру сама
-- Первые замеры на реальном устройстве (POCO C71, Android 15 Go edition): холодный старт — медиана 300,6 мс при бюджете 400 мс, память в пике 46,6 МБ
-
-### Что не изменилось
-
-- Раскладки на телефонах — все три, бит-в-бит; планшетная английская не тронута
-- Словари, таблицы предсказаний, эмодзи-ассеты — байт-в-байт прежние, пины сверены
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима
+- On tablets (600dp and wider) the Tatar and Russian layouts have an Enter key again.
+- On Android 15 the emoji panel no longer slides under the navigation bar, so its "АБВ" and delete keys work again.
 
 ## [1.9.12] — 2026-09-02
 
-Татарский поиск эмодзи покрывает почти весь набор, эмодзи-подсказки включены по умолчанию, полоса поиска эмодзи больше не дохнет после скрытия клавиатуры, а предсказания стали надёжнее.
+### Changed
 
-### Что изменилось
+- Tatar emoji search covers almost the whole emoji set (`этэч` finds 🐓).
+- Emoji suggestions are on by default and also match common misspellings (`йорэк` → ❤️).
 
-- **Татарский поиск эмодзи покрывает почти весь набор:** 200 → 1318 эмодзи из 1389 (животные, еда, эмоции, жесты, транспорт, погода, символы, флаги) — «этэч» теперь находит 🐓. Синхронно дополнен словарь «слово → эмодзи»: 3 825 → 3 976 словоформ (tt 1 324 → 1 475)
-- **Эмодзи-подсказки включены по умолчанию** (переключатель «Подсказки эмодзи» в настройках остаётся — выключившие вручную не затрагиваются). Подсказки понимают и частотные опечатки-конфузиблы: «йорэк » → ❤️, «жыр » → 🎵
-- **Полоса поиска эмодзи больше не дохнет после скрытия клавиатуры:** раньше после сворачивания она оставалась на экране с результатами, но буквы уходили в редактор; теперь поиск честно сбрасывается при скрытии
-- **Предсказания надёжнее:** страж перезапроса после распаковки таблицы больше не блокируется эмодзи-ячейкой полосы (attach-гонки); предсказание первого слова не теряется после свайпа курсора или длинного бэкспейса (явный флаг «кэш достиг начала текста»)
-- **Мелкая безопасность:** все диалоги приложения защищены от нажатий сквозь затемняющее окно (tapjacking); подпись релизного APK больше не показывает пароль keystore в списке процессов
-- **Витрина:** скриншоты и описание в metadata пересняты под реальный продукт (та же работа — в репозитории)
-- Baseline-профиль регенерирован под новый код (2 708 правил)
+### Fixed
 
-### Что не изменилось
+- Emoji search resets when the keyboard hides, instead of sending letters to the app afterwards.
+- Next-word predictions are more reliable right after the prediction table loads and after cursor swipes or long backspaces.
 
-- Словари и таблицы предсказаний — байт-в-байт прежние, пины ассетов сверены; при обновлении с 1.9.11 они не переинфлируются
-- Раскладки, подсказки по префиксу, личный словарь — на месте
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима
+### Security
+
+- App dialogs reject taps passed through overlaying windows (tapjacking).
 
 ## [1.9.11] — 2026-09-01
 
-Исправление: предсказание следующего слова и эмодзи-подсказка теперь работают и на первом слове поля — раньше первое слово пустого поля никогда не получало предсказание.
+### Fixed
 
-### Что изменилось
-
-- **Первое слово пустого поля предсказывается:** набрали «мин », поставили пробел — полоса сразу показывает `дә · аны · бу`, как для любого другого слова. Раньше страховка от усечённого кэша текста не отличала начало поля от обрезанного фрагмента и молчала на первом слове всегда; теперь кэш сам подтверждает «это начало текста»
-- **Закрыта гонка готовности таблицы предсказаний:** если слово с пробелом появилось раньше, чем таблица распаковалась (холодный запуск, поле открылось на готовом тексте), пустой ответ больше не «застывает» — по завершении распаковки предсказание переспрашивается и полоса заполняется
-- Фикс затрагивает и эмодзи-подсказку 1.9.10: она сидит в той же полосе и теперь тоже появляется на первом слове поля
-- Проверено на эмуляторе пятью холодными прогонами из пяти: первое слово пустого поля заполняет полосу сразу
-
-### Что не изменилось
-
-- Словари, таблицы предсказаний, словарь «слово → эмодзи» — байт-в-байт прежние, пины ассетов сверены
-- Раскладки, подсказки по префиксу, личный словарь — на месте
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима
+- The first word in an empty field now gets next-word predictions and emoji suggestions.
+- On a cold start, predictions no longer stay empty when the text appears before the prediction table finishes loading.
 
 ## [1.9.10] — 2026-09-01
 
-Эмодзи-подсказки в полосе над клавиатурой: набрали слово, поставили пробел — в конце полосы появляется подходящий эмодзи, тап добавляет его в текст. Русский и татарский. По умолчанию выключено — включается в настройках.
+### Added
 
-### Что изменилось
-
-- **Эмодзи-подсказки на завершённом слове (ru + tt):** набрали «самолет », поставили пробел — в хвостовой ячейке полосы появляется ✈️, тап дописывает эмодзи и пробел («самолет ✈️ »). Набрали tt «йөрәк » — появляется ❤️. Тап — только добавление, набранное никогда не заменяется
-- **Курируемый словарь «слово → эмодзи»:** 681 понятие, 3 825 словоформ (русский — падежи и ё/е-варианты, татарский — частотные аффиксы), выписанных вручную; слова-ловушки («можно», «работа», «кит», tt «бар», «көн»…) сознательно не подсказывают эмодзи — 52 слова в запретном списке
-- **По умолчанию выключено** — отдельный переключатель «Подсказки эмодзи» в настройках (строки на русском, татарском и английском), подчинён общему переключателю подсказок; в полях паролей и в английской раскладке эмодзи не показываются
-- **Доступность:** ячейка эмодзи называется TalkBack'ом коротким именем эмодзи
-- APK 1 775 548 → **~1 792 000 Б** (+17 КБ — ассет и код)
-
-### Что не изменилось
-
-- Предсказания следующего слова, подсказки по префиксу, словари, личный словарь, раскладки — байт-в-байт те же, пины ассетов сверены
-- Словарные и биграммные кандидаты не вытесняются: эмодзи занимает только хвостовую ячейку
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима
+- Emoji suggestions for Russian and Tatar: after a word and a space, a matching emoji appears in the last cell; a tap adds it and never changes your word.
+- The word-to-emoji table is curated by hand; ambiguous words deliberately suggest nothing, and TalkBack reads the emoji by its short name.
+- Off by default, with its own "Emoji suggestions" switch; not shown in password fields or on the English layout.
 
 ## [1.9.9] — 2026-09-01
 
-Кампания ужатия APK (SIZE-1/2/3): клавиатура похудела на 15 % без единой потери в выдаче — поменялась только упаковка словарей и таблиц предсказаний, содержимое байт-в-байт то же.
+### Changed
 
-### Что изменилось
-
-- **APK 2 095 592 → 1 775 548 Б (−15,3 % против 1.9.8)** — три миссии: словари на TATDICT schema 2 (блочный front-coding), таблицы биграмм на TATBIGR schema 3 (кросс-референс в словарь), zopfli-рекомпрессия упаковки
-- **Идентичность выдачи доказана полными сверками**, а не выборочно: словари — 100 000 слов × 2 и все 76 839 distinct-префиксов длины 1..5; таблицы — все 20 202 головы и 80 683 пары пословно и по порядку (скрипты `schema2_equivalence_check.py` / `schema3_equivalence_check.py`, расхождений 0)
-- **Таблицы теперь связаны со словарями по SHA-256** — голова или преемник вне словаря невыразимы конструкцией; при несовпадении версий предсказания молчат, ввод не затрагивается
-- **Скорость в бюджетах:** медиана разбора подсказки 0,004 мс, предсказания следующего слова 0,003 мс (p95 0,064 мс при бюджете 5 мс — запас два порядка)
-- Baseline-профиль регенерирован под новые читатели форматов
-
-### Что не изменилось
-
-- Раскладки, подсказки, предсказания, личный словарь, эмодзи — то же содержимое, та же выдача
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима (включая zopfli-шаг)
+- The app is about 15% smaller thanks to denser packing of the dictionaries and prediction tables; suggestions and predictions are identical.
+- Each prediction table is tied to its dictionary; on a mismatch predictions stay off and typing is unaffected.
 
 ## [1.9.8] — 2026-08-31
 
-Предсказания следующего слова выучили разговорный язык — на обеих раскладках. Обе таблицы биграмм перепакованы со смешанным обучением: новостные корпуса Leipzig плюс дедуплицированные разговорные Tatoeba/OpenSubtitles. Словари не тронуты.
+### Changed
 
-### Что изменилось
-
-- **Татарская раскладка: заговорили все шесть названных повелений** — `шалтырат`, `сөйлә`, `утыр`, `җибәр`, `эшлә`, `укы` (ранги 15 500–34 200; в новостных корпусах пар у них не было, и таблица молчала). `ул шалтырат ` → `һәм`. Список защищённых голов-императивов расширен по правилу с 13 до **75 слов**
-- **«кил әле» чинится:** у `кит` повелительное `әле` поднялось с невидимого четвёртого ранга на второй видимый (`финанс · әле · балыгы`); у `кил` тройка `дә · әле · һәм`
-- **Русская раскладка: 57 из 59 молчавших разговорных слов топа-10 000 заговорили** — `позвонишь`, `прощай`, `погоди`, `волнуйся` и ещё полсотни слов, которых не было в новостях и Википедии
-- Таблицы пересобраны без потери качества на письменном тексте: на разговорном held-out **+1,74 п.п. (ru) / +0,80 п.п. (tt)** попаданий на пересечении голов; русская таблица ещё и похудела (152 947 → **149 118 Б**), татарская чуть выросла (175 843 → **176 749 Б**)
-
-### Что не изменилось
-
-- **Оба словаря — байт в байт прежние**, пины сверены; кода в релизе нет
-- Раскладки, подсказки по префиксу, личный словарь, эмодзи — на месте
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима
-
-### Честно о границах
-
-`кит` всё ещё ведёт существительным в первой ячейке (`финанс`) — новостная масса её не отпускает; повеление `әле` видимо, но вторым. Два русских слова (`окей`, `берегись`) молчат по-прежнему — пар в прореженном разговорном входе нет, записано в `scripts/known_asset_drift.json`. Цена разговорного выигрыша измерена: на письменном held-out пересечение голов −0,097 п.п. (ru) и −0,009 п.п. (tt) — оба отклонения разобраны поимённо в отчётах `docs/CORPUS-CONVERSATIONAL-RU.md` и `docs/CORPUS-CONVERSATIONAL-TT.md`.
+- Next-word prediction learned everyday conversational language on both layouts; the dictionaries are unchanged.
+- Tatar: common imperatives such as `шалтырат`, `сөйлә`, `утыр`, `эшлә` and `укы` get predictions, and `кил` and `кит` offer `әле`.
+- Russian: dozens of conversational words such as `позвонишь`, `прощай` and `погоди` get predictions.
 
 ## [1.9.7] — 2026-08-31
 
-Русские предсказания следующего слова перепакованы от текущего словаря: закрыт давний дрейф — 4 195 из 10 000 голов таблицы разошлись со словарём после пересборок 1.9.0/1.9.1.
+### Fixed
 
-### Что изменилось
-
-- **Русская таблица предсказаний перепакована от текущего поставляемого словаря** (H = 10 000, K = 4 — параметры прежние). Предсказания теперь идут за словами, которые по сегодняшнему словарю печатают чаще всего, а не по словарю двух версий назад
-- **То, что предсказывало, предсказывает прежнее:** у 5 776 из 5 805 сохранившихся голов видимая тройка та же пословно; у остальных 29 изменения — только вымывание 47 «мёртвых» преемников, которых в словаре больше нет (`вера → брежнева` уступило `вера → не`)
-- Таблица при этом похудела: 160 510 → **152 947 Б**
-
-### Что не изменилось
-
-- Татарская таблица и оба словаря — байт в байт прежние, пины сверены
-- Раскладки, подсказки по префиксу, личный словарь, эмодзи — на месте
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима
-
-### Честно о границах
-
-59 разговорных слов топа-10 000 (погоди, волнуйся, окей…) молчат: в обучающих корпусах (новости и Википедия) у них нет пар — это жанровое ограничение данных, а не дефект сборки; число записано в `scripts/known_asset_drift.json`. Подробности и замеры — `docs/RUSSIAN-BIGRAMS-REPACK.md`.
+- Russian next-word predictions are rebuilt against the current dictionary, dropping stale words; most predictions are unchanged.
 
 ## [1.9.6] — 2026-08-31
 
-Итог полного аудита безопасности, удобства и оптимизации (`docs/AUDIT-2026-08-31.md`): три major-находки UX, три находки оптимизации и обе находки безопасности закрыты. Та же клавиатура — чуть легче, заметно аккуратнее в мелочах, которые видны каждый день.
+### Added
 
-### Что изменилось
+- On the Tatar layout: a ruble sign ₽ on the currency key's long-press, an "АБВ" label on the key back to letters, and „“ and «» quotes on the symbols layer.
+- TalkBack announces the language name when you switch layouts.
+- Emoji search understands Tatar for 200 common emoji (`көлү` finds 😄).
 
-- **На татарской раскладке появился знак рубля ₽** (долгое нажатие на валютной клавише), клавиша возврата к буквам подписана **«АБВ»** вместо «ABC», а кавычки на слое символов — русские „“ и «» вместо англо-немецких
-- **TalkBack объявляет смену языка:** при переключении раскладки глобусом или выбором в списке проговаривается имя языка — «татар», «русский», «English»
-- **Поиск эмодзи понимает татарский:** для 200 частых эмодзи добавлены руками написанные татарские синонимы (в CLDR татарских аннотаций нет вовсе) — «көлү» находит 😄
-- **Показ превью клавиши ускорен:** аниматор исчезновения превью больше не разбирается из XML на каждое нажатие — строится один раз и переиспользуется (~75 аллокаций в секунду при наборе убраны)
-- **Baseline-профиль теперь покрывает движок подсказок:** при установке из Google Play первые подсказки на слабом устройстве не уходят в интерпретатор (профиль вырос 1560 → 2640 правил)
-- **Иконки конвертированы в lossless WebP** — пиксели побайтово те же, файлы легче на 29 КБ
-- **Сообщение личного словаря говорит на языке секции:** отказ при добавлении слова в русскую секцию больше не называет её татарской
-- **Настройки защищены от tapjacking:** экраны настроек и первого запуска не принимают тапы сквозь перекрывающее окно
-- **Кап размера pending-файла личного словаря** до чтения (закрыта low-находка аудита)
-- APK 2 111 775 → **2 105 064 Б** (−6 711). От 1.9.4: 2 538 949 → 2 105 064 (−433 885, −17,1 %). Запас до потолка 3 МиБ — 33,1 %
+### Changed
 
-### Что не изменилось
+- Key previews and the first suggestions after an install from Google Play are faster, and the app is slightly smaller.
 
-- **Словари и таблицы предсказаний — байт в байт те же**, 16 пинов (размер + SHA-256, сжатые и распакованные) сверены с кодом. Всё, что предсказывалось, предсказывает так же
-- Раскладки tt/ru/en, подсказки, личный словарь, эмодзи-панель — на месте; обновление поверх 1.9.5 на эмуляторе: словари не переинфлируются, настройки сохраняются
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом (`98ca6feb…42ad`); сборка побайтно воспроизводима
-- Холодный старт: медиана 131,1 мс при инварианте 400 (эмулятор, verify-режим) — разница с 1.9.5 (125,0) меньше разброса между попытками
+### Security
 
-### Честно о границах
-
-Смоук-сценарий набора откалиброван под экран 1080×2280; на AVD другого размера часть проверок честно пропускается. Эффект расширенного baseline-профиля на эмуляторе не измеряется (интерпретируемый lookup укладывается в первый кадр) — выигрыш ожидается на слабом ARM-железе. Ландшафт и планшеты (m3/m4 аудита) не тронуты — ждут замеров на реальном устройстве.
-
-Подробности — `docs/AUDIT-2026-08-31.md`, артефакт — `docs/APK-AUDIT-1.9.6.md`.
+- Settings and setup screens reject taps passed through overlaying windows (tapjacking), and the personal dictionary checks file sizes before reading.
 
 ## [1.9.5] — 2026-08-30
 
-Та же клавиатура, легче на 16,8 %. Эта версия — итог кампании реструктуризации и очистки: из приложения убрано всё, что не работало на того, кто печатает, — и ничего из того, что работало.
+### Changed
 
-### Что изменилось
+- The app is about 17% smaller, and a startup profile lets installs from Google Play precompile the most-used code.
 
-- **APK 2 538 949 → 2 111 775 Б (−427 174, −16,8 %).** Запас до обязательного потолка 3 МиБ — 32,9 %
-- **Из списка выбора убраны раскладки языков, кроме татарской, русской и английской.** Форк нёс около семидесяти раскладок от белорусской до хинди и 75 каталогов переводов интерфейса — с ними ушли 287 XML-файлов раскладок и 668 КБ строк. Если у вас была включена одна из убранных, клавиатура мягко переключится на tt/ru/en — настройки и набранное не пострадают
-- **Убран код, который никогда не выполнялся:** мёртвый кластер тем LXX (30 стилей, 40 цветов, 10 иконок), debug-флаги, устаревшая редакция правил резервного копирования, мёртвые ветки
-- **Добавлен baseline-профиль** — правила AOT-компиляции горячих путей (старт, отрисовка, подсказки). При установке из Google Play система скомпилирует их заранее; при установке APK вручную профиль молча игнорируется — вреда нет, стоит он 1 299 Б
-- **Превью клавиши больше не выделяет память при каждом показе** — буфер ширин переиспользуется
-- **Иконки пережаты без потерь** — пиксели побайтово те же, файлы меньше
-- **Контроль качества усилен:** в CI добавлены 181 python-тест и полный lint с baseline — любая новая ошибка ломает сборку
+### Removed
 
-### Что не изменилось
-
-- **Словари и таблицы предсказаний — байт в байт те же**, пины SHA-256 сверены с кодом. Всё, что предсказывалось раньше, предсказывает так же
-- Татарская раскладка с пятым рядом ә ө ү җ ң һ, подсказки, личный словарь, эмодзи-панель, настройки — на месте; проверено на эмуляторе, включая обновление поверх 1.9.4 (словари не переустанавливались, настройки сохранились)
-- Разрешений по-прежнему одно — VIBRATE; INTERNET нет, гейт проверен на собранном APK
-- Подпись тем же ключом
-- Холодный старт: медиана ~126 мс при инварианте 400 (эмулятор) — разницы с 1.9.4 на эмуляторе не измеряется
-
-### Честно о границах
-
-Дополнительные раскладки языков, кроме tt/ru/en, **убраны из списка выбора** — это решение осознанное, а не побочный эффект: 75 локалей и 70 раскладок форка стоили ~400 КБ и плату вниманием при каждой новой строке интерфейса. Если вам нужна одна из убранных раскладок — напишите, вернём адресно.
-
-Подробности — `docs/RESTRUCTURE.md`, артефакт — `docs/APK-AUDIT-1.9.5.md`.
+- Layouts and interface translations for languages other than Tatar, Russian and English; if you used one, the keyboard switches to one of these three and keeps your settings.
 
 ## [1.9.4] — 2026-08-25
 
-Частые татарские повеления молчали. «Кил» (приходи), «кит» (уходи), «кайт» (вернись) не давали ни одной подсказки, хотя «бир» (дай) — та же грамматическая форма — исправно предлагал «бир әле». Дело было не в грамматике и не в правиле соседства: таблица подсказок хранит преемников только для десяти тысяч самых частых слов, а эти формы стояли сразу за отсечкой.
+### Changed
 
-### Что изменилось
-
-- **Тринадцать частых повелительных форм внесены в таблицу подсказок адресно.** Теперь «кил» предлагает **әле · дә · син** — «кил әле» и есть та живая просьба, ради которой всё затевалось. Вместе с ней заговорили «кит», «тукта», «өстә», «чәч», «суын», «чал», «тыңла», «чиген», «кыл», «ян», «бел», «кайт»
-- **Список собран правилом, а не на глаз:** слово берётся, если стоит в рангах 10 000–15 000 поставляемого словаря и если тот же словарь подтверждает его глагольную парадигму не менее чем четырьмя формами из шести. Правило записано до замеров и после них не двигалось
-- **Слов в словарь не добавлено ни одного.** Все тринадцать уже лежали в поставляемом словаре — изменилось только то, у каких слов таблица хранит продолжения
-
-### Что не изменилось
-
-- **Ничего из того, что предсказывало раньше, не перестало.** Обе таблицы сверены слово за словом: из 9 996 прежних записей не потеряна ни одна и ни у одной не изменились показываемые три подсказки. Полоса на «бир» и «мин» — попиксельно тот же кадр, что в 1.9.3
-- Русская таблица, оба словаря, раскладки, разрешения и манифест — байт в байт те же. Кода приложения правка не меняет: только сам ассет и пины, которые его охраняют
-- APK 2 536 741 → 2 538 949 Б (+2 208). Запас до 3 МиБ — **19,29 %** (было 19,36 %). Сами тринадцать форм из этой прибавки стоят около 364 Б; остальное — плата за то, чтобы при пересборке таблицы не потерять 78 слов, которые предсказывают сегодня
-- Холодный старт: медиана 126,3 мс при инварианте 400 (эмулятор)
-
-### Честно о границах
-
-«Кит» показывает **финанс · балыгы · син** — это существительное «кит» (животное) из новостного корпуса, а не повеление; повелительное продолжение у него четвёртое и на экран не попадает. «Шалтырат» (позвони) молчит и дальше: его ранг 34 170, далеко за взятым диапазоном. И то и другое лечится разговорным корпусом, а не отбором записей в таблице.
-
-Подробности — `docs/archive/bigrams/IMPERATIVE-HEADS.md`, артефакт — `docs/archive/apk-audits/APK-AUDIT-1.9.4.md`.
+- Thirteen common Tatar imperatives get next-word predictions: `кил` offers `әле · дә · син`, and `кит`, `тукта`, `кайт` and others work too.
 
 ## [1.9.3] — 2026-08-24
 
-Второй дефект того же семейства, что 1.9.2, и снова из рук оператора: при обычном наборе, без единого касания текста, на четвёртой букве слова подсказки пропадали и не возвращались до конца слова. `при` → **привет · придется · пришел**, `прив` → пусто, `приве` → пусто, `привет` → пусто. Словарь и здесь был ни при чём: на всех четырёх префиксах он отдаёт по три слова.
+### Fixed
 
-### Что чинилось
-
-- **Результат поиска подсказок больше не выбрасывается из очереди сообщений.** Идентификатор сообщения «обновить состояние Shift» был равен нулю — а ровно такой же идентификатор Android ставит каждому `Handler.post(Runnable)`. Отмена этого сообщения (`removeMessages`) сравнивает только идентификатор и стирала заодно всё, что клавиатура положила в ту же очередь как runnable: доставку найденных подсказок, кадры панели эмодзи, четыре диалога. Отмена происходит в конце каждого перечитывания текста вокруг курсора, то есть практически после каждого нажатия
-- **Это гонка, а не отдельное слово.** Кто успеет: доставка результата или перечитывание кэша. Замер на живой клавиатуре в настоящем приложении, слово третье в строке, 66 нажатий по префиксам, которые словарь отвечает: **58 пустых полос до правки и 0 после**
-- **Ноль убран и во втором хэндлере** — том, что ведёт таймеры клавиш. Дефекта там нет, потому что runnable на него никто не кладёт; ноль убран, чтобы первая строка, которая это сделает, не воскресила дефект
-
-### Что не изменилось
-
-- Ни словари, ни таблицы биграмм, ни раскладки, ни разрешения, ни манифест — ни одним байтом. Содержательного кода в правке **две константы**; остальное в диффе — комментарии
-- Пустая полоса там, где она правильна, осталась пустой: курсор внутри слова, эмодзи-панель, эмодзи-поиск, поле без подсказок, слово, которое словарь не продолжает
-- APK 2 536 717 → 2 536 741 Б (+24). Запас до 3 МиБ — 19,36 %, как и было
-
-Подробности — `docs/archive/missions/SUGGEST-DIES.md`, артефакт — `docs/archive/apk-audits/APK-AUDIT-1.9.3.md`.
+- Suggestions no longer vanish mid-word during normal typing (for example at `прив`); found suggestions were being discarded before they reached the strip.
 
 ## [1.9.2] — 2026-08-24
 
-Один дефект, показанный оператором тремя снимками: на «др» три подсказки, на «дру» пустая полоса, на «друг» снова три. Словарь был ни при чём — на «дру» в нём 86 подходящих слов.
+### Fixed
 
-### Что чинилось
-
-- **Полоса подсказок больше не остаётся пустой после движения курсора.** Любое движение — тап по тексту, слайд по пробелу, свайп-удаление, а также сообщение приложения о позиции курсора, не совпавшей с ожидаемой, — гасило полосу и ничего не запрашивало заново. До следующего нажатия клавиши полоса так и стояла пустой, хотя слово под курсором прекрасно искалось
-- **Это был класс, а не «дру».** Прогон по всем 54 853 префиксам длины 1–5 обоих поставляемых словарей: при обычном наборе пустых полос 0, после движения курсора пустели **все 54 853**. Теперь — 0
-- **Дефект не новый.** Он есть с самого включения подсказок (23 июля 2026); правка «нарисованная подсказка всегда тапабельна» из 1.8.x его не создала, а сделала заметнее
-
-### Что не изменилось
-
-- Ни словари, ни таблицы биграмм, ни раскладки, ни разрешения, ни манифест — ни одним байтом. В коде изменены три файла на 88 строк, из них большая часть комментарии
-- Пустая полоса там, где она правильна, осталась пустой: курсор внутри слова, эмодзи-панель, эмодзи-поиск, поле без подсказок
-- APK 2 536 605 → 2 536 717 Б (+112). Запас до 3 МиБ — 19,36 %, как и было
-
-Подробности — `docs/archive/missions/PREFIX3-BUG.md`, артефакт — `docs/archive/apk-audits/APK-AUDIT-1.9.2.md`.
+- The suggestion strip no longer stays empty after the cursor moves (a tap in the text, a spacebar slide, a swipe delete) until the next keystroke.
 
 ## [1.9.1] — 2026-08-24
 
-Продолжение 1.9.0 и, по сути, её вторая половина. В 1.9.0 машина принимала слово только с подтверждением второго независимого источника — иначе слово откладывалось. Оператор прочитал сто случайных отложенных, нашёл их обычными словами и снял планку. Теперь в словарь идёт вся очередь, кроме того, что даже не похоже на слово.
+### Changed
 
-### Слова
-
-- **32 833 русских и 303 татарских разговорных формы в словарях** вместо 27 134 и 226. Вернулись `чертова`, `убьешь`, `дамочка`, `констебль`, `прикончить`, `зацепки`, татарские `кебекме`, `ярармы`, `очабыз` — обычные формы, у которых просто не нашлось второго корпуса
-- **Не пущены 417 русских обрывков** распознавания субтитров: короче четырёх букв или без единой гласной. Это `ме` (19 092 вхождения), `щрн`, `нб`, `фп`, `бш` — те самые, которые оператор показывал лично. У татарского порога длины нет: татарские слова короче, и по длине там режутся живые — `док`, `ох`, `фу`, `оһ`. Отсеяны только пять слов без гласных
-- **`можна` убрано.** Разговорное написание «можно», прошедшее все правила: на префиксе `можн` пара `можно | можна` выглядела как ошибка клавиатуры. Исключено поимённо
-
-### Что это меняет на глаз
-
-- Русский охват отложенной разговорной выборки — с 91,7499 % до **94,4234 %** (+2,6735 п.п.). Потолок, который дала бы приёмка вообще без разбора, — 94,4757 %: взято **98,1 %** возможного вместо 91,3 % в 1.9.0
-- Татарский — с 91,6802 % до **92,3702 %** (+0,69 п.п.). Это ровно потолок: взято всё, что вообще можно было взять
-- Из 22 проверяемых русских троек подсказок изменилась одна — `можн`. Татарские не изменились ни одной: расширение состава прибавляет редкие слова, а верхушку не трогает
-- Предсказание следующего слова не изменилось: таблицы биграмм не трогались ни одним байтом
-
-### Размер
-
-- **Оба словаря стали меньше, чем в 1.9.0**, хотя слов в них больше: русский 639 584 → 638 758 Б, татарский 601 143 → 601 118 Б. Разговорные формы короче вытесняемых письменных, и чем больше их вошло, тем короче файл
-- APK 2 536 993 → 2 536 605 Б. Запас до 3 МиБ — 19,37 %
-
-### Честно про цену
-
-- Вместе с живыми словами вошли обрывки распознавания длиннее трёх букв: `еякх` (9 222-е место), `гдеяэ`, `лпояы`. По выборке в сорок слов — примерно каждое восьмое из вошедших расширением сомнительно. Полный разбор — `docs/archive/dictionary/DICT-WIDEN.md`
-- Слов, у которых нет лицензионного гранта (только OpenSubtitles), в русском словаре стало 9 137 вместо 2 382, в татарском — 72 вместо нуля. Пункт `docs/PUBLISH-CHECKLIST.md` про риск OpenSubtitles по-прежнему открыт и ждёт оператора
-- Из поставляемого словаря Leipzig вытеснено 32 833 письменные формы вместо 27 134
+- Many more conversational Russian and Tatar word forms are in the dictionaries (`чертова`, `дамочка`, `кебекме`, `ярармы`).
+- Subtitle recognition fragments (very short or vowel-less strings) and the colloquial spelling `можна` are kept out.
 
 ## [1.9.0] — 2026-08-24
 
-Первая версия, в которой словари собраны не только из письменных текстов. Разговорные слова — повеления, вторые лица, обращения — лежали измеренными с 2026-08-24 и ждали, пока их кто-нибудь вычитает: 39 178 слов, около двадцати семи часов чтения. Их приняла машина по правилу, которое можно проверить, а не человек по списку, который никто не осилит.
+### Added
 
-### Слова, которых не было
-
-- **27 134 русских и 226 татарских разговорных форм вошли в словари.** `позвони`, `заберем`, `послушай`, `перестань`, `хәтерлисеңме`, `шалтыратырмын` — слова, которые в письменном корпусе почти не встречаются, а в переписке встречаются постоянно. Раньше клавиатура не могла подсказать их вообще: их не было в словаре
-- **Правило приёмки одно и умещается в одну фразу:** слово принимается, если его подтверждает второй независимый источник и регистровая улика не выдаёт в нём имя собственное. Второй источник — либо второй корпус, либо поставляемый словарь, где уже стоят три другие формы той же основы
-- **Отклонено 8 310 русских и 2 046 татарских слов.** Из очереди не вошло ничего, что держится на одном источнике: `щрн` с частотой 9 263, `нб`, `фп`, `бш` — обрывки распознавания субтитров, механически безупречные и бессмысленные. Отклонённое не удалено: оно лежит в `docs/archive/dictionary/dict-accept/` с причиной отказа
-- Правило ошибается и в другую сторону: `вышибалы`, `размолвки`, `богомол`, татарские `җитешмәдем`, `сүзлегем` отклонены зря. Отчёт называет их поимённо — `docs/archive/dictionary/DICT-ACCEPT.md`
-
-### Что это меняет на глаз
-
-- Русский охват отложенной разговорной выборки — с 91,7499 % до 94,2398 %: **+2,49 п.п.**, девять десятых от того, что дала бы приёмка вообще без разбора
-- Татарский — с 91,6802 % до 92,1499 %: **+0,47 п.п.** Меньше, и причина не в правиле: разговорного татарского в открытом доступе почти нет
-- Предсказание следующего слова не изменилось: таблицы биграмм не трогались ни одним байтом
-
-### Размер
-
-- Русский словарь: 606 315 → 639 584 Б (**+33 269**). Татарский: 600 606 → 601 143 Б (**+537**). APK 2 496 781 → 2 536 993 Б, запас до 3 МиБ упал с 20,63 % до 19,35 %
-- Число записей в обоих осталось ровно 100 000: слова не добавляются, а вытесняют самые редкие письменные формы
-
-### Прочее
-
-- Экран «Источники данных» больше не делит источники на упакованные и подготовленные: все три упакованы. Заголовок «Подготовлено, в приложении ещё нет» убран, подписи трёх строк переписаны
-- Разрешения INTERNET по-прежнему нет; новых зависимостей версия не приносит
-- Раскладки и наборы эмодзи не изменились
+- Conversational words such as imperatives, second-person forms and forms of address join both dictionaries (`позвони`, `послушай`, `хәтерлисеңме`).
 
 ## [1.8.4] — 2026-08-24
 
-Версия про одно: любой жест получает ответ. В 1.8.2 клавиатура научилась не молчать, когда у неё что-то не вышло; здесь закрыты места, где она молчала, когда делать было нечего. Плюс подсказка, которую видно, теперь всегда та, которую можно нажать.
+### Fixed
 
-### Полоса подсказок
-
-- **Нарисованная подсказка всегда тапабельна.** Стоило набрать ещё одну букву, и кандидаты на полосе переставали относиться к набранному слову: контроллер их отвязывал, а с экрана не убирал. Пока не придёт ответ словаря, каждая кнопка выглядела живой и не делала ничего. Теперь слова уходят с полосы одновременно с отвязкой, а высота полосы не меняется — клавиатура не прыгает
-- Цена — пустая полоса на одно обращение к словарю. Измерено на настоящем татарском словаре по всем собственным префиксам обычных слов: медиана 0,006 мс, худший случай 0,141 мс при кадре в 16,7 мс. Пустая полоса и заполненная попадают в один кадр, так что увидеть это нельзя
-
-### Жесты, которые молчали
-
-- **Долгое нажатие по подсказке всегда отвечает.** Личный словарь по умолчанию выключен — и в этом состоянии долгое нажатие не делало ничего и ничего не говорило, то есть у всех, кто его не включал. Теперь клавиатура говорит, что сохранение слов выключено, и называет, где его включить. Если словарь включён, а слово взято из встроенного словаря, — говорит и это: забыть можно только свои слова
-- **Клавиша эмодзи говорит, когда открывать нечего.** Если набор эмодзи в этом запуске прочитать не удалось, панель уже не покажется, и клавиша молча ничего не делала до перезапуска клавиатуры
-- **Пилюля поиска эмодзи — то же самое.** Три пути заканчивались без поиска и без единого слова, а решение «поиск непригоден» держится до перезапуска, так что кнопка оставалась мёртвой насовсем
-
-### Настройки
-
-- **«Политика конфиденциальности» и «Лицензия» говорят, когда ссылку открыть нечем.** Раньше строка принимала нажатие, экран не менялся, и о причине знал только системный лог
-- **Строка «Исправление слов» снова по-русски.** Она существовала по-английски и по-татарски, а по-русски потерялась и стояла английской между двумя русскими
-- **Пустой личный словарь больше не советует включить то, что уже включено.** Подсказка «когда личный словарь включён» показывалась и при включённом словаре, отправляя искать переключатель, который не выключен
-
-### Прочее
-
-- Разрешения INTERNET по-прежнему нет; новых зависимостей версия не приносит
-- Раскладки, словари и таблицы предсказания не изменились — ни одним байтом
-- Обычный набор на одном языке не изменился: это закреплено тестом, который был зелёным и до правки полосы, и после
+- A suggestion shown in the strip is always tappable; stale candidates are cleared as soon as you type another letter.
+- Long-pressing a suggestion always responds: it explains that the personal dictionary is off, or that built-in words cannot be forgotten.
+- The emoji key, emoji search and the privacy policy and license rows say so when they cannot open anything, instead of doing nothing.
+- The autocorrect settings row is in Russian again, and the empty "Saved words" screen no longer asks you to turn on a switch that is already on.
 
 ## [1.8.3] — 2026-08-23
 
-Продолжение 1.8.2. Там клавиатура научилась не терять слова молча и начала откладывать повреждённый словарь в копию — но эту копию нельзя было ни увидеть, ни прочитать. Теперь можно: слова из неё возвращаются на место. Плюс приложение стало меньше, а предсказание — ровно тем же, что было.
+### Added
 
-### Повреждённый словарь больше не тупик
+- Words from a damaged personal dictionary can be restored on the "Saved words" screen, which says how many survived; the damaged copy can be deleted separately.
 
-- **Слова из повреждённого словаря можно вернуть.** Раньше копия просто лежала на устройстве: её никто не показывал, прочитать её было нечем, а убрать можно было только через «Стереть все слова». Теперь на экране «Сохранённые слова» появляется карточка того языка, чей словарь не прочитался, и кнопка «Вернуть слова» ставит обратно всё, что уцелело
-- **Сразу сказано, сколько слов вернётся и что остальное потеряно.** Не «восстановлено» без подробностей: карточка называет число уцелевших слов и, если конец копии повреждён, честно говорит, что остальное вернуть нельзя
-- **Копию можно убрать отдельно.** Кнопка «Удалить копию» — на той же карточке, с подтверждением. «Вернуть слова» копию не удаляет: повреждённый хвост остаётся на месте
-- **Сообщение о непрочитанном словаре больше не пропадает.** Раньше оно жило только в памяти работающей клавиатуры: если та закрывалась раньше, чем успевала показать сообщение, человек не узнавал о потере никогда. Теперь напоминание лежит на устройстве и дожидается момента, когда его действительно есть кому прочитать, — и по-прежнему показывается ровно один раз
-- **Клавиатура больше не может закрыться из-за ответа об успехе.** Оставалось место, где сбой при доставке ответа «слово сохранено» уносил с собой всю клавиатуру посреди набора
+### Fixed
 
-### Приложение стало меньше
-
-- **Таблицы предсказания перепакованы: около 100 КБ экономии, и ни одна подсказка не изменилась.** У каждого слова таблица хранила до шести продолжений, а полоса показывает три; лишние два ранга не читал никто. Проверено по всем 19 996 словам обеих таблиц: ни у одного из них видимая тройка не поменялась
-- Заодно убран блок настроек экрана, который не применялся ни на одном устройстве: собранное приложение от его удаления не изменилось ни на байт
-- **Честно про место на устройстве.** Меньше становится сам файл приложения. У тех, кто обновляется с 1.8.2, прежние таблицы остаются на устройстве рядом с новыми — так сделано нарочно, чтобы обновление можно было откатить, — и место, которое они занимают, само не освобождается. При установке начисто этого нет
-
-### Прочее
-
-- Правило, по которому предсказание считает слова соседними, проверялось и **оставлено прежним**: все проверенные варианты предсказывали хуже в обоих языках
-- Разрешения INTERNET по-прежнему нет; новых зависимостей версия не приносит
-- Раскладки и словари не изменились; изменились только таблицы предсказания — тем, что из них убраны ранги, которых не видно
+- The notice about an unreadable personal dictionary waits until it can be shown, and a failure while confirming a saved word can no longer crash the keyboard.
 
 ## [1.8.2] — 2026-08-22
 
-Версия про одну вещь: клавиатура больше не молчит, когда у неё что-то не получилось. Восемь мест, где неудача выглядела точно как успех, — в личном словаре, в подсказках и при вставке слова. Ничего нового версия не добавляет, ни одна настройка не изменилась.
+### Fixed
 
-### Личный словарь больше не теряет слова молча
-
-- **«Забыть слово» больше не может уронить клавиатуру.** Когда удаляли последнее сохранённое слово и файл не удавалось удалить, клавиатура закрывалась посреди набора — в чужом приложении, без всякого объяснения. Теперь в этом случае приходит сообщение, что слово осталось в словаре, а набор продолжается
-- **Повреждённый словарь больше не исчезает без следа.** Раньше словарь, который не удалось прочитать (например, после того как телефон выключился в момент записи), стирался целиком и молча: человек видел пустой список и не мог понять, стёр ли он его сам. Теперь клавиатура один раз говорит, что слова не удалось прочитать, а сами данные не уничтожаются — они остаются на устройстве, пока вы не нажмёте «Стереть все слова»
-- **«Стереть все слова» стирает действительно всё.** Раньше при неудаче на первом же файле оставались служебные данные, и слова, стоявшие на полпути к запоминанию, дозапоминались заново — при пустом списке на экране
-- **Про неудачу говорят, а не показывают вид, что всё получилось.** Не удалось сохранить слово, удалить слово, стереть всё — на каждый случай своё сообщение, и оно приходит по факту записи, а не в момент нажатия. Ни одно сообщение не называет ни слова, ни файла, ни причины: их можно увидеть поверх любого приложения
-- **Стёртое слово больше не может вернуться на полосу.** Между подтверждением в диалоге и концом записи оставалось окно, в котором нажатие клавиши возвращало только что стёртое слово в подсказки, откуда его можно было вставить тапом
-
-### Подсказки и вставка
-
-- **Переключатель подсказок, нажатый в неудачный момент, больше не молчит.** Если словарь в это время как раз распаковывался, включение терялось, и сообщение «словарь недоступен» не показывалось никому: переключатель выглядел как просто не работающий
-- **Тап по подсказке в закрывшемся поле больше не портит следующие слова.** Если поле ввода исчезало между появлением подсказки и нажатием, клавиатура считала вставку удавшейся, хотя текст никуда не попал, и дальше принимала решения по несуществующему тексту
-
-### Прочее
-
-- Разрешения INTERNET по-прежнему нет; новых зависимостей версия не приносит
-- Все изменения — внутри клавиатуры: раскладки, словари и таблицы предсказаний в этой версии те же, что в 1.8.1
+- Forgetting a saved word can no longer crash the keyboard, and failures to save, forget or erase words show a message.
+- A personal dictionary that cannot be read is no longer wiped silently: you get a one-time notice and the data stays until you erase it.
+- "Erase all words" removes everything, and an erased word can no longer reappear in the strip.
+- Turning on suggestions while the dictionary loads, or tapping a suggestion after the field has closed, no longer fails silently.
 
 ## [1.8.1] — 2026-08-22
 
-Исправительная версия. В ней одна правка, но она чинит сразу две вещи, которые мешали каждый день: подсказки пропадали после стирания буквы, а нажатие на подсказку иногда ничего не вставляло. Больше в 1.8.1 нет ничего — всё остальное такое же, как в 1.8.0.
+### Fixed
 
-### Стирание больше не ломает подсказки
-
-- **Подсказки возвращаются, когда лишняя буква стёрта.** Раньше было так: набрано «како», в полосе «какой»; дописали лишнюю «ц» — подсказки пропали (правильно); стёрли её, снова «како» — и полоса оставалась пустой, хотя на этом же слове только что показывала слова. Приходилось стирать всё слово и набирать заново. Теперь подсказки появляются сразу
-- **Нажатие на подсказку сразу после стирания вставляет слово.** Раньше в этот момент ячейка подсвечивалась под пальцем, но текст не менялся — тап пропадал впустую
-- Обе — следствия одной ошибки в учёте положения курсора: после обычного стирания клавиатура считала, что в поле выделен символ, хотя курсор был схлопнут. Проявлялось на обеих раскладках, потому что к словарю отношения не имело
-
-### Прочее
-
-- Разрешения INTERNET по-прежнему нет; новых зависимостей версия не приносит
-- Размер APK не изменился: правка в одну строку
+- Suggestions come back after you delete a mistyped letter, and tapping a suggestion right after a backspace inserts the word.
 
 ## [1.8.0] — 2026-08-22
 
-Предсказание следующего слова заговорило по-русски. Плюс две шероховатости в поиске эмодзи, которые было видно каждый раз, когда поиск открывали.
+### Added
 
-### Русское предсказание следующего слова
+- Next-word prediction for Russian, with its own table chosen by the layout; Tatar predictions never appear on the Russian layout.
 
-- **На русской раскладке после набранного слова полоса подсказок предлагает продолжение.** Раньше так умела только татарская раскладка; теперь у каждого языка своя таблица сочетаний, и она выбирается вместе с раскладкой — как до этого выбирался словарь
-- Таблица собрана из тех же открытых корпусов Лейпцигского университета, что и русский словарь, тем же конвейером, что татарская таблица: 10 000 самых частых слов, у каждого до шести продолжений
-- **Если продолжения нет — полоса молчит.** Она никогда не подставит татарское предсказание на русской раскладке и наоборот; на английской раскладке полосы подсказок нет вовсе, как и раньше
-- Переключение раскладки туда и обратно ничего не пересобирает: таблица языка, с которого вы ушли, остаётся готовой
-- Татарское предсказание не изменилось ни на слово: татарская таблица в этой версии осталась ровно той же, что была
-- **Про регистр честно.** Корпуса новостные, и это видно: «в связи», «по данным», «в том числе» предсказываются с первой ячейки, а бытовое и разговорное — заметно хуже. Слова вроде «привет», «давай», «ладно», «позвони» в таблицу не попали, и после них полоса будет пустой. Расширить её разговорной речью — отдельная работа
+### Fixed
 
-### Поиск эмодзи
-
-- **Один пробел больше не считается запросом.** Раньше он открывал полосу результатов с надписью «Ничего не найдено» — при том, что поиск пробелы всё равно отбрасывает. Теперь запрос из одних пробелов — то же самое, что пустое поле
-- **Каретка больше не стоит на первой букве подсказки.** При пустом поле мигающая черта налезала на «П» в «Поиск эмодзи»; теперь подсказка отодвинута правее каретки, как в обычном поле ввода
-
-### Прочее
-
-- Убран код, работавший только на планшетах и никогда на них не проверявшийся: величина, на которую палец должен уйти за край клавиши, теперь одна на все экраны — та самая, что измерялась на телефоне
-- Разрешения INTERNET по-прежнему нет; таблица лежит внутри приложения, интернет для предсказаний не нужен
-- Новых зависимостей версия не приносит
-- APK вырос до 2,46 МиБ из-за русской таблицы — потолок в 3 МБ соблюдён
+- In emoji search, a query of only spaces counts as empty, and the cursor no longer overlaps the hint text.
 
 ## [1.7.0] — 2026-08-21
 
-Русские подсказки. До этой версии словарь был один — татарский; теперь их два, и словарь выбирается сам по раскладке, на которой вы печатаете.
+### Added
 
-### Русский словарь
-
-- **На русской раскладке подсказки теперь русские.** 100 000 форм, собранных из открытых корпусов Лейпцигского университета тем же конвейером, что и татарский словарь
-- **Словарь переключается вместе с раскладкой**: русская раскладка — русские подсказки, татарская — татарские, английская — полосы подсказок нет, как и раньше. Переключение происходит на лету, ждать нечего: словарь языка, с которого вы ушли, остаётся готовым и заново не разбирается
-- **«ё» не сворачивается в «е».** Обе орфографии живут в словаре отдельно: по префиксу «ещ» первым идёт «еще», вторым «ещё» — вставится ровно та, которую выберете. Слова на «ё» тоже находятся
-- Личный словарь (слова, которые вы добавляли сами) у каждого языка свой и с чужим не смешивается
-- Предсказание следующего слова по-прежнему работает только на татарской раскладке — русская таблица будет отдельно
-- Подписи в настройках перестали быть татарскими по названию («Подсказки слов» вместо «Татарские подсказки слов»): один и тот же переключатель управляет обоими языками. Ранее сделанный выбор сохранён
-
-### Прочее
-
-- Разрешения INTERNET по-прежнему нет; словари лежат внутри приложения, интернет для подсказок не нужен
-- Новых зависимостей версия не приносит
-- APK вырос до 2,28 МиБ из-за второго словаря — потолок в 3 МБ соблюдён
+- Russian word completion from a 100,000-word dictionary, switching automatically with the layout.
+- `ё` and `е` spellings are kept apart, so you get exactly the one you pick.
+- Personal dictionary words are kept per language.
 
 ## [1.6.1] — 2026-08-20
 
-Исправительная версия: две правки в поиске по эмодзи, замеченные на телефоне. Больше в ней ничего нет — всё остальное такое же, как в 1.6.0.
+### Fixed
 
-### Поиск эмодзи
-
-- **Каретка стоит вплотную к набранному слову.** Раньше между последней буквой запроса и мигающей чертой был зазор в 5dp — он читался как лишний пробел, которого в запросе нет
-- **Пока запрос пуст, под полосой поиска больше ничего нет.** Раньше там держалась пустая полоса высотой 54dp с надписью «Наберите запрос»; теперь буквенная раскладка начинается сразу под полем запроса, а полоса результатов появляется с первым набранным символом и исчезает с последним удалённым
-- Надпись «Ничего не найдено» осталась на месте: она показывается, когда запрос набран, но ничего не нашлось
-
-### Прочее
-
-- Разрешения INTERNET по-прежнему нет; новых зависимостей версия не приносит
-- APK стал на 452 байта меньше 1.6.0 — за счёт удалённой строки-заполнителя
+- In emoji search the cursor sits right after the query, and the result row stays hidden until you type.
 
 ## [1.6.0] — 2026-08-20
 
-Продолжение работы над панелью эмодзи из 1.5.0 плюс отдельная правка точности попадания по клавишам. Код ввода текста, словари и подсказки не менялись с 1.4.0.
+### Added
 
-### Эмодзи: свайп между разделами
+- Swipe sideways in the emoji panel to move between sections.
+- Long-press an emoji with people to pick one of five skin tones; your choice goes into recent emoji.
 
-- **Разделы листаются пальцем вбок.** Свайп влево — следующий раздел, вправо — предыдущий; на краях жест упирается, а не заворачивается по кругу. Раньше перейти к разделу можно было только тапом по вкладке или прокруткой
-- Ось жеста выбирается один раз — тем направлением, которое первым перешагнуло порог, — поэтому наклонная прокрутка не перескакивает в соседний раздел на середине движения
-- Жест, ставший свайпом, никогда не вставляет эмодзи, с которого начался
-- Активная вкладка переезжает сама, прыжок анимируется
+### Fixed
 
-### Эмодзи: кожные тона
-
-- **Долгое нажатие на эмодзи с людьми открывает карточку из шести вариантов** — нейтральный и пять кожных тонов. Тона есть у 131 эмодзи набора
-- Выбрать можно двумя способами: не отпуская, доехать пальцем до нужного тона, либо отпустить и коснуться варианта отдельно
-- Выбранный тон попадает в «недавние» наравне с обычным эмодзи
-- Карточка встаёт над ячейкой, а для верхнего ряда — под ней, и никогда не уезжает за край панели
-- Пока карточка открыта, TalkBack читает её варианты; сетка под ней на это время недоступна — до неё всё равно не дотянуться пальцем
-- **Сетка не изменилась**: как и раньше, на каждое эмодзи в ней одна нейтральная ячейка. 131 база в шести оттенках — это 655 лишних клеток, панель превратилась бы в простыню повторов
-- Татарских ключевых слов в поиске по-прежнему нет: в источнике (CLDR) для татарского нет ни одной аннотации к эмодзи
-
-### Точность попадания по клавишам
-
-- **Нажатие у самого края буквы больше не печатает соседнюю букву.** Порог, на который палец должен уйти за край клавиши, чтобы она сменилась, поднят с 5dp до 8dp — ровно до того движения, которое сама Android ещё считает нажатием, а не протяжкой. Дрожь пальца при тапе теперь целиком укладывается внутрь порога
-- Цена — скольжение пальцем по клавиатуре переключает клавишу на 2,5dp позже. Это вдвое меньше половины самой узкой клавиши, так что под пальцем и в поле ввода по-прежнему одна и та же буква
-- Долгое нажатие и попап вариантов правкой не задеты
-- Починен планшетный накопитель пути: он больше не засчитывает движением пальца хвост предыдущего нажатия и скачок координат при смене высоты раскладки. На телефонах эта ветка кода выключена
-
-### Прочее
-
-- Разрешения INTERNET по-прежнему нет; новых зависимостей и новых хранилищ пользовательских данных версия не приносит
-- Таблица кожных тонов собрана из того же Unicode Emoji 15.1, что и набор панели, и лежит в самом приложении (1456 байт)
+- A tap near the edge of a letter key no longer types the neighboring letter.
 
 ## [1.5.0] — 2026-08-20
 
-Одна тема: панель эмодзи переделана заново — теперь она устроена как в клиенте Telegram — и в ней появился поиск. Код ввода текста, словари, подсказки и нижний ряд клавиатуры не менялись с 1.4.0.
+### Added
 
-### Панель эмодзи выглядит и работает иначе
+- Emoji search in Russian and English, fully offline; the query never reaches the app's text field.
 
-- **Категории переехали наверх** — отдельным рядом во всю ширину; активная категория подсвечена круглой подложкой, первая вкладка — часы («недавние»)
-- **Прокрутка стала непрерывной**: все разделы идут одной лентой, каждый начинается своим заголовком. Раньше панель показывала одну категорию за раз, и переход между ними был скачком
-- **Эмодзи стали крупнее**: ячейка снова квадратная, глиф занимает больше её высоты. Мелкими они были из-за подгонки высоты ряда под высоту панели, которой при непрерывной прокрутке больше нет
-- **«АБВ» и `⌫` теперь плавают поверх сетки** — пилюля «АБВ» в левом нижнем углу, круглый backspace в правом. По горизонтали «АБВ» осталась там же, где `?123` на буквенной клавиатуре
-- Нижней полосы с категориями больше нет; сетка занимает всю панель
+### Changed
 
-### Поиск по эмодзи
-
-- **Полоса поиска под категориями.** Нажатие на неё открывает буквенную раскладку, а на месте строки подсказок встают запрос и лента найденных эмодзи с горизонтальной прокруткой
-- Поиск работает **по русским и английским словам**: `кот` и `cat` находят одно и то же. Словарь имён и ключевых слов взят из Unicode CLDR и лежит в самом приложении — интернет для поиска не нужен, как и для всего остального
-- Находятся только те эмодзи, которые есть в панели и которые умеет нарисовать система, — пустых квадратов в результатах не будет
-- **Набранный запрос никогда не попадает в поле ввода приложения**: буквы, набранные при открытом поиске, до текста не доходят; в поле уходит только выбранное эмодзи
-- Выход из поиска — крестик в полосе запроса или backspace на пустом запросе; сетка возвращается на ту же позицию прокрутки
-- Татарских ключевых слов в поиске нет: в источнике (CLDR) для татарского нет ни одной аннотации к эмодзи
-
-### Прочее
-
-- Разрешения INTERNET по-прежнему нет, и ничего из набранного никуда не отправляется и не копируется в бэкап
-- Способ открыть панель не изменился: долгое нажатие на запятую (или отдельная клавиша эмодзи, если клавиша смены языка выключена)
+- The emoji panel is redesigned: categories on top, one continuous scrolling list with section headers, larger emoji, and floating "АБВ" and delete keys.
 
 ## [1.4.0] — 2026-08-20
 
-Три правки по внешнему виду и поведению клавиатуры: длинный пробел вместо отдельной кнопки эмодзи, переделанная панель эмодзи и надёжная клавиша `?123`. Код ввода текста не менялся, словари и подсказки работают как в 1.3.0.
+### Changed
 
-### Нижний ряд: пробел стал длиннее, эмодзи переехали на запятую
+- The spacebar is wider; while the language key is shown, the emoji panel opens with a long-press on the comma.
+- The emoji panel uses the keyboard background, and its bottom bar no longer overlaps categories or the last row.
 
-- **Отдельной клавиши эмодзи рядом с пробелом больше нет**, когда показана клавиша смены языка (глобус) — а она показана по умолчанию. Панель эмодзи теперь открывается **долгим нажатием на запятую**; на самой запятой для этого нарисована подсказка ☺
-- Обычный тап по запятой по-прежнему печатает запятую; вставка из буфера и настройки остались в том же длинном нажатии, на одну позицию правее
-- Пробел за счёт этого вырос со 111 до 150dp — ровно столько же, сколько отводят ему AOSP и Gboard. Его левый край отодвинулся от середины экрана с 3 до 9 мм, поэтому удар большим пальцем вслепую больше не попадает в чужую клавишу
-- Если клавиша смены языка выключена, всё как раньше: кнопка эмодзи стоит в ряду отдельной клавишей. Переключатель «Показать клавишу эмодзи» в настройках остался и по-прежнему включён по умолчанию
+### Fixed
 
-### Панель эмодзи
-
-- Фон панели теперь цвета клавиатуры, а не цвета клавиши: панель перестала выглядеть чужим серым листом поверх клавиатуры
-- Нижняя полоса перекроена: «АБВ» и `⌫` больше не накладываются на соседние категории, категории прокручиваются между ними
-- Последний ряд эмодзи не обрезается полосой категорий
-- Над панелью больше не висит пустая строка подсказок
-
-### Клавиша `?123`
-
-- Нажатие у самого края клавиши `?123` больше не срывается: раньше при нажатии близко к краю палец «уходил» с клавиши после 5px движения, раскладка не переключалась, а в текст попадала лишняя запятая. Теперь порог отсчитывается от точки касания, а не от края клавиши, и клавиша одинаково надёжна в любой её точке
+- The `?123` key switches layouts reliably when pressed near its edge, instead of typing a comma.
 
 ## [1.3.0] — 2026-08-19
 
-Панель эмодзи, личный словарь, устойчивость подсказок к опечаткам, предсказание следующего слова и автозамена с отменой. Все новые функции работают целиком на устройстве и остаются выключенными по умолчанию, кроме клавиши эмодзи.
+### Added
 
-### Панель эмодзи
+- Emoji panel with categories and a recent row of up to 24 emoji; only emoji the system can draw are shown.
+- Personal dictionary, off by default: learns Tatar words you type three times, with a screen to review, search and erase them.
+- Next-word prediction: after a word and a space, the strip offers three likely next words; suggestions also tolerate a typo in the current word.
+- Autocorrect with undo, off by default: fixes a clearly misspelled Tatar word on space or punctuation; backspace right after restores what you typed.
 
-- Отдельная клавиша эмодзи рядом с пробелом открывает панель с вкладками по категориям; клавишу можно убрать в настройках
-- Панель не тянет за собой собственный шрифт: показываются только те эмодзи, которые умеет нарисовать сама система, поэтому пустых квадратов на старых прошивках нет
-- Сетка на 8 колонок в портрете и 12 в альбоме, плавная прокрутка с инерцией
-- Вкладка «Недавние» помнит 24 последних эмодзи в порядке использования; список можно стереть из настроек
-- «Недавние» не запоминаются в приватных полях и до первой разблокировки после перезагрузки
-- Backspace удаляет эмодзи целиком, включая составные — флаги, семьи, эмодзи с тоном кожи
+### Security
 
-### Личный словарь
-
-- Клавиатура может запоминать татарские слова, которых нет в словаре, и предлагать их наравне со словарными; функция выключена по умолчанию
-- Слово запоминается только после того, как набрано целиком три раза; в полях пароля, email, адреса и там, где приложение просит не персонализироваться, обучение не идёт
-- Экран «Личный словарь» в настройках показывает все запомненные слова с группировкой по языку и поиском; содержимое экрана скрыто от снимков экрана
-- Долгое нажатие на подсказке предлагает забыть слово — текст при этом не вставляется
-- Личное слово показывается первым среди подсказок, но не более одного на запрос
-- Всё стирается одной кнопкой; после стирания слово не вернётся
-
-### Подсказки
-
-- Подсказки переживают опечатку в наборе: перепутанная буква в текущем слове больше не обнуляет полосу
-- Над полосой появилось предсказание следующего слова — после набранного слова и пробела клавиатура предлагает три вероятных продолжения фразы
-- Предсказания включаются тем же переключателем «Татарские подсказки» и так же работают офлайн
-- Первое предложение включить подсказки показывается один раз — после первого набранного слова, а не при первом показе клавиатуры
-
-### Автозамена с отменой
-
-- Отдельный переключатель «Татарча сүзләрне төзәтү» исправляет хаталы татарское слово в момент, когда нажат пробел или знак препинания; по умолчанию выключен и работает только вместе с татарскими подсказками
-- Backspace сразу после замены возвращает ровно то, что было набрано; следующий backspace работает как обычно
-- Слова из личного словаря не заменяются никогда
-- Заменяются только уверенные случаи: слово от четырёх букв, ровно один достаточно частотный кандидат; при неоднозначности текст остаётся нетронутым
-- Enter и Tab автозамену не запускают, чтобы не править уже отправляемое поле
-
-### Приватность
-
-- По-прежнему нет разрешения INTERNET — ни одна из новых функций не выходит в сеть
-- Резервное копирование приложения полностью отключено: личный словарь, «недавние» эмодзи и настройки не уезжают в облако и не переносятся на новое устройство
-- Личные данные хранятся в защищённой паролем области, недоступной до первой разблокировки
-
-### Производительность
-
-- Словарь готовится лениво — при первом обращении, а не при запуске клавиатуры, поэтому холодный старт не платит за подсказки
-- Включение и выключение подсказок в настройках больше не требует перезапуска клавиатуры
-
-### Доступность
-
-- Панель эмодзи и экран личного словаря доступны в TalkBack; действие «забыть слово» объявляется на всех заполненных ячейках полосы, чтобы состав личного списка не был слышен со стороны
+- App backup is disabled: saved words, recent emoji and settings never go to the cloud or to a new device.
+- Personal data is kept in credential-protected storage, unavailable before the first unlock.
 
 ## [1.2.0] — 2026-07-24
 
-Полностью офлайн-подсказки для татарского ввода, включаемые пользователем и по умолчанию выключенные.
+### Added
 
-### Татарские подсказки
-
-- Над татарской раскладкой можно включить полосу с тремя частотными продолжениями текущего слова
-- Словарь работает целиком на устройстве, без сетевого доступа, аналитики и передачи введённого текста
-- Подсказки автоматически отключаются для паролей, адресов, email и других приватных или несовместимых полей
-- Тап безопасно заменяет только актуальный набранный префикс; устаревшая подсказка не изменяет текст
-- После тапа слово подставляется вместе с пробелом, поэтому следующее слово можно печатать сразу; перед знаком препинания и там, где пробел уже есть, лишний пробел не добавляется
-- Подсказки сохраняют набранный регистр: слово с заглавной буквы подставляется с заглавной, набранное ЗАГЛАВНЫМИ — заглавными; при непривычном смешанном регистре подсказки не показываются
-- Если курсор стоит внутри слова, полоса остаётся пустой — подсказка не может вклиниться в середину уже набранного слова
-- Свайп по пробелу и свайп-удаление сразу убирают показанные подсказки, чтобы тап не подставил слово для прежнего места курсора
-- Подсказки работают и при переключении на татарскую раскладку прямо в открытом поле ввода
-- Слово распознаётся корректно и когда система передаёт буквы вроде «й» и «ё» в разложенном виде
-
-### Доступность
-
-- TalkBack объявляет подсказки один раз при их появлении, а не на каждое нажатие клавиши; сами слова по-прежнему доступны обходом полосы
+- Optional offline Tatar word completion, off by default: a strip with three frequent completions of the current word.
+- Suggestions are hidden in password, email, address and other private fields; a tapped word keeps your capitalization and adds a space.
+- TalkBack announces suggestions once when they appear.
 
 ## [1.1.0] — 2026-07-21
 
-Татарский интерфейс, обновлённые экраны приложения и улучшения доступности.
+### Added
 
-### Татарский интерфейс
+- Full Tatar translation of settings, onboarding and TalkBack strings.
+- TalkBack support for long-press alternatives, the spacebar language and Shift state changes.
 
-- Добавлен полный татарский перевод настроек, онбординга и строк TalkBack
-- Перевод прошёл лингвистическую проверку; финальные формулировки и терминология подтверждены носителем языка
+### Changed
 
-### Доступность
-
-- Альтернативы по долгому нажатию стали доступны в TalkBack: символы можно услышать и выбрать проводкой пальца
-- Пробел озвучивает текущий язык клавиатуры
-- TalkBack сообщает об изменениях статусов онбординга и ручном переключении Shift/Caps Lock
-
-### Интерфейс приложения
-
-- Онбординг, настройки и управление языками получили единый карточный интерфейс со светлым и тёмным оформлением
-- Экраны настроек переведены с устаревшего `android.preference` на лёгкие нативные View без новых зависимостей
+- Onboarding and settings have a new card design with light and dark themes.
 
 ## [1.0.1] — 2026-07-20
 
-Исправления по итогам первого тестирования на устройстве.
+First public release.
 
-### Исправления
+### Fixed
 
-- Исправлен краш экрана настроек и выбора языков (долгое нажатие глобуса): ресурсы названий языков искались по Java-namespace вместо applicationId, что приводило к падению приложения. Ошибка присутствовала во всех сборках 1.0.0
-- Выбранный язык теперь сохраняется немедленно и не сбрасывается после остановки процесса клавиатуры; автопереключение по языковой подсказке поля ввода больше не перезаписывает выбор пользователя
-- Миграция настроек ранних dev-сборок: tt → tt_RU, ru:east_slavic → ru:russian
-- Экран настроек устойчив к некорректным интентам от прошивок производителей
+- Settings and the language picker no longer crash.
+- The selected language is saved immediately and is no longer overwritten by a field's language hint.
 
 ## [1.0.0] — 2026-07-19
 
-**Версия не публиковалась** — критические ошибки найдены при тестировании на устройстве до публикации; первым релизом стала 1.0.1.
+Not published: critical bugs were found in device testing, and 1.0.1 became the first public release.
 
-Первый публичный релиз.
+### Added
 
-### Ввод по-татарски
-
-- Татарская раскладка: стандартная ЙЦУКЕН + отдельный видимый пятый ряд **ә ө ү җ ң һ** — все буквы татарского алфавита одним нажатием
-- Русская и английская раскладки; переключение языков клавишей-глобусом (тап — цикл tt→ru→en, долгое нажатие — системный выбор клавиатуры)
-- Long-press дубли на русской раскладке: а→ә, о→ө, у→ү, ж→җ, н→ң, х→һ, э→ә, г→һ; плюс е→ё и ь→ъ на обеих кириллических раскладках
-- Слои символов ?123 и #+=
-
-### Механика ввода
-
-- Shift и caps lock (двойной тап или долгое нажатие shift), автокапитализация по контексту поля
-- Ускоряющийся backspace с корректным удалением татарских букв (по кодпоинтам)
-- Enter подстраивается под поле: отправить, искать, перенос строки, готово
-- Двойной пробел → точка (с откатом по backspace)
-- Свайп по пробелу двигает курсор
-- Multi-touch: быстрая печать двумя пальцами без потери букв
-
-### Внешний вид и отклик
-
-- Аккуратный минималистичный дизайн со знакомой эргономикой; светлая и тёмная темы
-- Мгновенный баллон-превью нажатой клавиши, панель альтернатив при долгом нажатии
-- Звук и вибрация при нажатии — с тумблерами в настройках
-
-### Доступность и удобство
-
-- Полная поддержка TalkBack: каждая клавиша озвучивается, татарские буквы — с описаниями («татарская э» для ә)
-- Онбординг из двух шагов: от установки до первой татарской буквы без инструкций
-- Работа до первой разблокировки устройства (directBoot)
-
-### Приватность и размер
-
-- Полностью офлайн: в манифесте нет разрешения INTERNET (проверяется CI на каждом коммите)
-- Без аналитики, рекламы и трекеров
-- APK меньше 1 МБ
+- Tatar layout: the standard `ЙЦУКЕН` plus a visible fifth row `ә ө ү җ ң һ`; Russian and English layouts with a globe key to switch.
+- Tatar letters on long-press on the Russian layout, symbol layers, double-space period, spacebar cursor slide and multi-touch typing.
+- Light and dark themes, key preview, sound and vibration, full TalkBack support, two-step onboarding and direct boot support.

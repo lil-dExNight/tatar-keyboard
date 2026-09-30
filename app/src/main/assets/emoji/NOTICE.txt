@@ -101,7 +101,7 @@ scripts/emoji_suggest_pack.py validates every word against the alphabet of
 its language and every emoji against emoji_set_v1.txt, enforces the polysemy
 denylist written into the packer, and writes the asset as one
 language<TAB>word<TAB>emoji line per word form, sorted by (language, word).
-The method (intersection of CLDR keyword candidates with the project's
-dictionary frequency lists, followed by manual review) and the review
-protocol are documented in docs/emoji-suggest/DATA.md; the CLDR annotations
-were used only as a source of candidate concepts, not copied as data.
+The candidates were chosen by intersecting CLDR keyword candidates with the
+project's dictionary frequency lists, followed by manual review; the CLDR
+annotations were used only as a source of candidate concepts, not copied as
+data.

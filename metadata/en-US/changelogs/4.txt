@@ -1,7 +1,3 @@
-• Optional Tatar word suggestions, off by default and fully offline
-• Up to three frequency-ranked completions for the current Tatar word
-• Automatic privacy gating for passwords, addresses, email, and unsupported fields
-• Safe taps that replace only the current matching prefix and ignore stale suggestions
-• Tapping a suggestion adds a space, so you can type the next word
-• Suggestions keep the capitalization you typed
-• Nothing is offered while the cursor sits inside a word
+• Optional Tatar word suggestions: three completions above the keyboard, off by default, fully offline
+• Tapping a suggestion inserts the word with a space and keeps your capitalization
+• No suggestions in password, email and address fields

@@ -1,63 +1,121 @@
-# Бриф проекта: Татарская клавиатура для Android
+# Project brief: Tatar Keyboard for Android
 
-Все решения ниже — итог ресерча (детали в `research/`, главный документ — `research/00-itog-i-roadmap.md`). Считать их зафиксированными, если явно не помечено «открытый вопрос».
+The product vision and the decisions treated as fixed. A decision changes only by an explicit
+choice, recorded here. Items marked "open question" are not fixed.
 
-## Видение
+## Vision
 
-Нативная Android-клавиатура (IME) с татарской раскладкой, визуально в стиле системной клавиатуры iOS, максимально лёгкая и отзывчивая на слабых/бюджетных устройствах. Приватность как фича: полностью офлайн, без разрешения INTERNET, open-source.
+A native Android keyboard (IME) with a Tatar layout, visually close to the iOS system keyboard, as
+light and responsive as possible on weak and budget devices. Privacy is a feature: fully offline,
+no INTERNET permission, open source.
 
-Целевая аудитория: татароязычные пользователи в Татарстане/России, в основном на бюджетных Android-устройствах (Xiaomi/Redmi, Samsung A-серия). Разработчик — соло, новичок в Android.
+Audience: Tatar speakers in Tatarstan and across Russia, mostly on budget Android phones
+(Xiaomi/Redmi, Samsung A series). Developed by one person.
 
-## Зафиксированные технические решения
+## Fixed technical decisions
 
-- **База: форк Simple Keyboard (rkkr)** — Apache-2.0, Java, APK ~0.65 МБ. Не писать с нуля. План Б (только если MVP без автокоррекции провалит проверку юзабельности): форк HeliBoard, цена — GPL-3.0.
-- **Язык**: новый код на Kotlin через interop, Java-базу форка не конвертировать массово.
-- **UI**: один кастомный View с отрисовкой на Canvas. Запрещены: Jetpack Compose в IME-процессе, Flutter/RN, deprecated KeyboardView (новый код на нём). Compose допустим только в Activity настроек.
-- **Без NDK/C++**, без сторонних зависимостей, без разрешения INTERNET (CI-проверка обязательна).
-- **SDK**: minSdk 24, targetSdk/compileSdk 37.
-- **IME**: InputMethodService, directBootAware, onEvaluateFullscreenMode()=false; три subtype: tt_RU, ru, en_US; переключение клавишей-глобусом.
-- В MVP не использовать composing-текст — коммитить символы сразу; удаление через deleteSurroundingText по кодпоинтам.
+- **Base: a fork of Simple Keyboard (rkkr)**, Apache-2.0, Java, itself derived from AOSP LatinIME.
+  Not written from scratch.
+- **Language:** new code is Kotlin, called from the Java base through interop. The Java base is
+  not converted wholesale.
+- **UI:** the keyboard is one custom View drawn on a Canvas. Not allowed: Jetpack Compose in the
+  IME process, Flutter or React Native, new code on the deprecated `KeyboardView`. Compose is
+  allowed only in the settings Activity.
+- **No NDK/C++, no third-party runtime dependencies, no INTERNET permission** (checked in CI).
+- **SDK:** minSdk 24, targetSdk and compileSdk 37.
+- **IME:** `InputMethodService`, `directBootAware`, no fullscreen mode; three languages: tt_RU, ru,
+  en_US, switched with the globe key. Locales and layouts are limited to these three.
+- **Input:** characters are committed immediately, without composing text. Backspace deletes one
+  code point, or a whole emoji cluster.
 
-## Бюджеты производительности (жёсткие)
+## Performance budgets
 
-- APK ≤ 3 МБ; PSS — правило дельт на фазу, абсолютный потолок пересчитывается по первому валидному замеру на реальном устройстве (`docs/archive/PROPOSALS.md`, раздел «Бюджет памяти (PSS)»); холодный старт до показа клавиатуры < 400 мс (главная метрика); ноль аллокаций в цикле отрисовки.
-- Планка размера здесь одна и она обязательная — APK ≤ 3 МБ (3 145 728 Б). Целевой планки в этом файле нет и никогда не было: цель «после D1 ≤ 1,7 МБ» жила в `docs/archive/PROPOSALS.md`, в критериях приёмки D1, и снята оператором 2026-08-21 («размер на данном этапе вообще не важен»); новая цель не назначена. Уточнение внесено 2026-08-23, потому что шесть отчётов приёмки приписывали планку 1,7 MiB этому файлу — см. `docs/CLEANUP.md`.
+- Release APK ≤ 3 MB (3 145 728 bytes). This is the only size limit.
+- Cold start to the visible keyboard < 400 ms on a budget device. This is the main metric.
+- Zero allocations in the draw loop.
+- Memory (PSS): the ceiling and the measurement procedure live in `docs/PERF-BUDGETS.md`.
 
-## Раскладка (зафиксировано)
+Where the numbers come from. Budget devices, and MIUI/HyperOS in particular, kill background
+processes aggressively. The system restarts the IME on the next tap in a text field, so the user
+sees a cold start far more often than on stock Android; cold start therefore matters more than
+average speed. Google's guidance for apps is a cold start ≤ 500 ms; a keyboard needs a tighter
+bound, hence 400 ms. On weak devices, garbage-collection pauses, not heap size, cause visible jank,
+hence the zero-allocation rule for `onDraw` and touch handling. Keyboards without an ML engine or
+native code fit in 1–3 MB, hence the size limit.
 
-- Татарская: стандартная русская ЙЦУКЕН + отдельный видимый пятый ряд для ә ө ү җ ң һ, плюс дублирующий long-press на родственных русских буквах (а→ә, о→ө, у→ү, ж→җ, н→ң, х→һ). Причина: ә — 5-я по частоте буква (6.65%), недопустимо прятать в long-press.
-- Раскладки хранить данными (XML), не кодом. Латиница (Zamanälif) — не в MVP, но формат должен позволить добавить.
-- Открытый вопрос: порядок клавиш пятого ряда (алфавитный vs частотный) — юзер-тест после MVP.
+## Layout
 
-## Стиль iOS (границы зафиксированы)
+- Tatar: the standard Russian ЙЦУКЕН plus a separate, always-visible fifth row for `ә ө ү җ ң һ`,
+  with the same letters also on long-press of the related Russian letters (`а→ә`, `о→ө`, `у→ү`, `ж→җ`,
+  `н→ң`, `х→һ`).
+- Why the fifth row: in the Written Corpus of the Tatar Language (corpus.tatar, letter unigram
+  list), `ә` is the 5th most frequent letter (6.65 %), ahead of `л`, `ы`, `т` and `к`. The six extra letters
+  together make up 10.6 % of all letters, about one letter in nine. A long press costs 300–500 ms
+  plus aiming in a popup, which is too slow for letters this common. The other five are rarer
+  (`ү` 1.21 %, `ң` 1.01 %, `ө` 0.90 %, `җ` 0.46 %, `һ` 0.40 %), so for them long-press alone would be
+  tolerable, and a dedicated key is a comfort.
+- Layouts are data (XML), not code. A Latin Tatar layout (Zamanälif) is not planned, but the format
+  must allow it.
+- Open question: the order of the fifth-row keys (alphabetical `ә ө ү җ ң һ`, the current one, or by
+  frequency `ә ү ң ө җ һ`); to be decided by user testing.
 
-- Воспроизводим: геометрию, радиусы ~5dp, палитру (светлая: фон #D4D6DD, клавиши #FFF, служебные #B3B7C0; тёмная: #2C2C2C/#6B6B6B/#474747), резкую 1dp-тень, баллон-превью над клавишей, реакцию на ACTION_DOWN с хаптикой KEYBOARD_TAP, светлую/тёмную темы.
-- Запрещено: шрифт SF Pro (используем Roboto), иконки SF Symbols, звуки Apple, слова iPhone/iOS в маркетинге и сторах.
+## iOS style: limits
 
-## Scope MVP (v1.0)
+Apple publishes no specification of its keyboard; the values below are community reverse
+engineering (KeyboardKit color assets, screenshot measurements), with 1 pt taken as 1 dp.
 
-1. Раскладки: tt (с пятым рядом), ru, en; слои цифр/символов ?123 и #+=.
-2. Shift/Caps Lock, автокапитализация; backspace с автоповтором; Enter по imeOptions; свайп по пробелу = перемещение курсора; multi-touch.
-3. iOS-скин: попап-превью клавиши, long-press панель альтернатив, светлая/тёмная темы.
-4. Хаптика и звук клика (отключаемые).
-5. Онбординг-экран (включение IME, выбор клавиатуры) + минимальные настройки.
-6. Доступность: ExploreByTouchHelper, контент-описания татарских букв.
-7. Корректная работа: password-поля, edge-to-edge/WindowInsets (API 35+), WebView (keyCode 229), ландшафт.
+- Reproduced: the geometry (key corner radius 5 dp, gaps, row proportions), the palette (light:
+  background #D4D6DD, letter keys #FFFFFF, function keys about #B3B7C0; dark: #2C2C2C / #6B6B6B /
+  #474747), a sharp 1 dp shadow under each key (offset only, no blur, unlike Material elevation),
+  the key preview balloon above the pressed key, reaction on `ACTION_DOWN` with `KEYBOARD_TAP`
+  haptics, light and dark themes, a three-cell suggestion strip. The exact values in use live in
+  `app/src/main/res/values/colors.xml`, `values-night/colors.xml` and the `ios_key_*` drawables.
+- Not allowed: the SF Pro font (its license forbids use outside Apple platforms and embedding in
+  software; the keyboard uses the system font, Roboto), SF Symbols icons (same license), Apple
+  sounds, and the words iPhone/iOS in marketing and store listings. The shared patterns (gray
+  background, white keys, gray function keys, rounded corners, balloon preview) are common across
+  the industry; copied Apple assets are not.
 
-**Не в MVP** (v1+): автокоррекция и подсказки (v1 — свой движок на Kotlin: префиксный поиск + Дамерау–Левенштейн ≤2 с учётом соседних клавиш; словарь из ttwiki+Leipzig, 150–250 тыс. словоформ), эмодзи-панель, история буфера. **Исключено из планов**: голосовой ввод, свой C++. Свайп-ввод, изначально исключённый, позже реализован (набор свайпом, пакет `latin/glide/`).
+## Scope
 
-## Верификация
+Shipped:
 
-- Unit/Robolectric-тесты на логику (раскладки, shift-машина, обработка InputConnection).
-- Ручная матрица: Telegram, Chrome/WebView, поле пароля, MIUI/HyperOS, One UI, ландшафт.
-- Замеры бюджетов: adb dumpsys meminfo, время старта; позже Macrobenchmark + Baseline Profile.
+1. Layouts tt (with the fifth row), ru, en; number and symbol layers.
+2. Shift and Caps Lock, auto-capitalization, backspace with auto-repeat, Enter by `imeOptions`,
+   space-bar swipe to move the cursor, multi-touch.
+3. The iOS-style skin: key preview, long-press alternatives panel, light and dark themes.
+4. Haptics and key-click sound, both optional.
+5. Two-step onboarding and the settings screens.
+6. Accessibility: explore-by-touch, spoken descriptions of the Tatar letters.
+7. Correct behavior in password fields, with edge-to-edge insets (API 35+), in WebView, in
+   landscape.
+8. Word completion and next-word prediction for Tatar and Russian in a three-cell suggestion
+   strip, with typo recovery and optional autocorrect; bundled dictionaries and bigram tables built
+   by the Python pipeline in `scripts/`. Suggestions are opt-in.
+9. Glide typing for Tatar and Russian (`latin/glide/`); the word is committed on lift, and other
+   candidates appear in the strip when suggestions are on.
+10. The emoji panel (categories, search, recent emoji) and emoji suggestions in the strip.
+11. The opt-in personal dictionary: learned words, learned word pairs and learned emoji, with a
+    pause-learning (incognito) switch and a screen to review and erase them.
 
-## Дистрибуция (после MVP)
+Excluded: voice input, custom C++ code, clipboard history.
 
-GitHub + IzzyOnDroid сразу → RuStore → Google Play closed testing (12 тестеров × 14 дней) → F-Droid (reproducible build). Privacy policy: «данные не собираются».
+## Verification
 
-## Riski / ограничения для планирования
+- JVM unit tests for the logic (layouts, the shift state machine, `InputConnection` handling,
+  engines, stores). No Robolectric.
+- Manual matrix: Telegram, Chrome/WebView, a password field, MIUI/HyperOS, One UI, landscape.
+- Budget measurements on a real budget device: `adb shell dumpsys meminfo`, cold-start time,
+  frame times; a baseline profile ships with the app.
 
-- Зоопарк InputConnection — закладывать тестирование на каждом этапе, не в конце.
-- MIUI убивает IME-процесс — холодный старт важнее «средней» производительности.
-- Соло-новичок: фазы делать маленькими, каждая должна давать работающую сборку.
+## Distribution
+
+Channels: GitHub Releases, IzzyOnDroid and F-Droid (reproducible build); the procedure is in
+`docs/PUBLISH-CHECKLIST.md`. RuStore and Google Play closed testing (12 testers for 14 days) were
+planned as later steps. Privacy policy: `PRIVACY.md`.
+
+## Risks and planning constraints
+
+- `InputConnection` behavior differs from app to app: test at every stage, not at the end.
+- MIUI/HyperOS kill the IME process, so cold start matters more than average performance.
+- One developer: keep changes small, each one producing a working build.

@@ -1,5 +1,1 @@
-• Fixed: the suggestion strip no longer stays empty after the cursor moves
-• A tap in the text, a space slide or a delete swipe used to blank it until the next key press
-• The strip now comes back on its own, with the words for the word the cursor stopped at
-• It still stays empty where it should: cursor inside a word, emoji panel, emoji search
-• Dictionaries, next-word tables, layouts and permissions are byte-for-byte unchanged
+• Fixed: suggestions no longer disappear after you move the cursor (a tap in the text, a slide on the space bar or a swipe delete)

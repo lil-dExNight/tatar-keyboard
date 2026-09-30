@@ -1,4 +1,2 @@
-• The keyboard lost 15% of its weight (2.0 → 1.7 MB) — a new packing of the dictionaries and prediction tables with no loss in what they return
-• Identical output proved by full comparisons: every word, every prefix and 80,000 prediction pairs matched
-• Prediction tables are now tied to their dictionaries by checksum — a version mismatch is impossible by construction
-• Still a single permission — vibration; no network
+• Smaller app: dictionaries and prediction tables are packed more tightly
+• Suggestions and predictions stay exactly the same

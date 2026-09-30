@@ -1,6 +1,3 @@
-• Closer to iOS: three shift states, droplet balloon, blue action Return, white alternatives panel, taller strip
-• Letter keys answer with the balloon only
-• Settings screens animate; dialogs restyled
-• 8.5% smaller, faster drawing, quicker start
-• Less memory while swipe typing
-• Text cache cleared on lock; password fields never re-read
+• A look closer to iOS: three Shift states, a droplet-shaped key preview, a blue action key, a white alternatives panel, a taller suggestion strip
+• The app's screens now default to Tatar; the app is smaller and draws faster
+• Privacy: the text cache is cleared when the keyboard hides and password fields are never re-read; pasted text no longer teaches the personal dictionary

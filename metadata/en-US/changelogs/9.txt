@@ -1,5 +1,2 @@
-• The caret now sits right against the typed search query
-• No more empty "type a query" band under the search field
-• The result band appears with the first character and goes with the last
-• "Nothing found" still shows when a typed query matches nothing
-• Still no internet permission and no new dependencies
+• Emoji search: the cursor now sits right after the typed query
+• Emoji search: no more empty row under the search field; results appear as soon as you type

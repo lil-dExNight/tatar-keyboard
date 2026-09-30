@@ -1,3 +1,2 @@
-• The keyboard learns which emoji you put after a word — twice, and it leads the strip's tail cell after that word; manage or forget on the personal dictionary screen
-• An emoji picked from the suggestion strip now lands in recent emoji; no more thread leak when switching keyboards via the picker
-• Launch profiles regenerated; internal tooling fixes
+• With the personal dictionary on, the keyboard learns which emoji you put after a word: use the same one twice and it is suggested after that word. Learned emoji are listed on the Saved words screen
+• Emoji picked from the suggestion strip now show up in recent emoji

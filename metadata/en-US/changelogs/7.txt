@@ -1,6 +1,3 @@
-• Emoji panel rebuilt: categories on top, one continuous scroll with section headers
-• Emoji glyphs are larger; ABC and backspace now float over the grid
-• New: search emoji by Russian or English words, fully offline
-• Search results only ever show emoji your device can actually draw
-• What you type into search never reaches the text field of the app
-• Still no internet permission and no backup of what you type
+• Redesigned emoji panel: categories on top, one continuous scroll, larger emoji
+• Search emoji by Russian or English words, offline
+• What you type in emoji search never reaches the app's text field

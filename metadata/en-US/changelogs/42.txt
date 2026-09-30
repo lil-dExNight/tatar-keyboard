@@ -1,3 +1,3 @@
-• Roomier emoji panel: the search row collapsed into a 🔍 cell in the tab strip (+50dp of grid), and a new Appearance setting picks the panel height
-• Faster dictionary reads — worst path p95 5.19 → 1.72 ms
-• Hardening: editor connection vs hostile host apps, de-texted debug tracers, zero network traffic proven on-device
+• A roomier emoji panel: search moved to a 🔍 button in the tab row, leaving more room for emoji
+• New setting Appearance → Emoji panel height: Same as keyboard, Larger or Max
+• Faster dictionary suggestions; the keyboard is better protected against misbehaving apps

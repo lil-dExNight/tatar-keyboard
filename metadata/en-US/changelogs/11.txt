@@ -1,7 +1,2 @@
 • Next-word prediction now works on the Russian layout too
-• The prediction table follows the layout, like the dictionary does
-• Tatar prediction is unchanged; English still has no suggestion strip
-• The corpora are news text, so everyday words often predict nothing
-• Emoji search: a query of only spaces counts as empty
-• Emoji search: the caret no longer sits on top of the hint
-• Still no internet permission and no new dependencies
+• Emoji search: a query of only spaces counts as empty, and the cursor no longer overlaps the hint text

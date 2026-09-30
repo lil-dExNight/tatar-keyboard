@@ -1,4 +1,2 @@
-• Emoji suggestions in the strip above the keyboard (Russian and Tatar): type a word, press space, and a matching emoji appears at the end of the strip; a tap adds it to your text
-• Off by default — turned on by its own "Emoji suggestions" switch in the settings
-• A curated dictionary of 3,825 word forms; trap words ("можно", "работа"…) suggest no emoji
-• Predictions and dictionaries unchanged; still a single permission — vibration; no network
+• Emoji suggestions: type a word and a space, and a matching emoji appears at the end of the suggestion strip; tap it to add it
+• Works in Russian and Tatar; off by default, turn on "Emoji suggestions" in settings

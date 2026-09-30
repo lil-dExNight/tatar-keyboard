@@ -1,4 +1,3 @@
-• The Tatar layout gains the ₽ sign, an "АБВ" key and Russian quotation marks
-• TalkBack announces a language switch; emoji search understands Tatar (200 words)
-• Faster key preview; the baseline profile now covers suggestions; lighter icons (WebP)
-• Dictionaries and suggestions are unchanged to the byte; still a single permission, VIBRATE
+• Tatar layout: the ₽ sign (long press on the currency key), an "АБВ" key back to letters, and Russian quotation marks
+• TalkBack announces the language when you switch layouts
+• Emoji search understands Tatar words: "көлү" finds 😄

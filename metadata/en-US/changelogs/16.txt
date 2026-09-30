@@ -1,5 +1,2 @@
-• Everyday words are in the dictionaries: 27 134 Russian and 226 Tatar forms
-• "позвони", "заберем", "хәтерлисеңме" and thousands more can now be suggested
-• Every added word was confirmed by two independent sources, not by one
-• Data sources screen now names all three collections as shipped
-• Layouts, next-word tables and permissions are unchanged
+• The dictionaries now include everyday conversational words such as "позвони", "послушай" and "хәтерлисеңме"
+• The Data sources screen now lists all three bundled sources

@@ -1,4 +1,3 @@
-• Glide polish: resting a finger on the first key no longer kills the swipe; works with suggestions off
-• Lifting your finger commits the best word at once — no strip tap; alternatives swap it in place
-• Chained glides join with exactly one space; one backspace undoes a glide
-• Fading trail and key highlight while gliding
+• Glide typing: lifting your finger types the best word at once, one space after the previous word; tap an alternative to swap it, one backspace removes it
+• Glide typing works with suggestions off and when your finger rests on the first letter, and no longer turns сәләм into сәлләм
+• A fading trail and key highlight follow your finger while gliding

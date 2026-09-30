@@ -1,5 +1,3 @@
 • Glide typing: slide your finger over the letters to type a word, in Tatar and Russian (on by default)
-• Predictions: capitalized sentence starts (Russian too), after-comma predictions, far more Tatar words predict the next one
-• Learns your word pairs on-device; manage saved words and pairs on one screen; incognito mode pauses learning
-• Autocorrect shows its fix before applying — tap your word to keep it
-• Keyboard height presets: Compact / Default / Tall
+• Capitalized predictions at sentence starts, predictions after a comma, and more Tatar next-word predictions
+• The keyboard can learn your word pairs (Saved words screen, incognito mode); autocorrect shows its fix before applying it; keyboard height presets

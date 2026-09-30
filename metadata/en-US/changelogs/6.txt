@@ -1,6 +1,3 @@
-• Longer space bar: the emoji key no longer sits next to it
-• Emoji panel now opens with a long press on the comma key (☺ hint)
-• Emoji panel redesigned: keyboard-coloured background, no overlap
-• Last row of emoji is no longer cut off by the category strip
-• The ?123 key no longer slips when pressed near its edge
-• Still no internet permission and no backup of what you type
+• Longer space bar: the emoji panel now opens with a long press on the comma key (☺ hint)
+• Restyled emoji panel; its last row is no longer cut off
+• The ?123 key no longer misfires when pressed near its edge

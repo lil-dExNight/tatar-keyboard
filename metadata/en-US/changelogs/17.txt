@@ -1,5 +1,2 @@
-• The dictionaries take the whole conversational queue now, not the safe part of it
-• 32 833 Russian and 303 Tatar forms are in, up from 27 134 and 226
-• Only subtitle debris is still kept out: 417 fragments too short or without a vowel
-• "можна" removed — it is a misspelling, not a suggestion
-• Both files are SMALLER than in 1.9.0; layouts, next-word tables, permissions unchanged
+• Thousands more conversational words in the Russian and Tatar dictionaries
+• The misspelling "можна" is no longer suggested

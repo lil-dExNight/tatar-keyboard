@@ -1,3 +1,1 @@
-• Russian next-word predictions repacked against the current dictionary: a drift of 4,195 heads closed
-• What was predicted is still predicted: 99.5% of the surviving heads keep the same three words
-• The table is 7.5 KB lighter; the Tatar table and both dictionaries are unchanged to the byte
+• Russian next-word predictions now follow the current dictionary

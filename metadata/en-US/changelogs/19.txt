@@ -1,4 +1,1 @@
-• Fixed: suggestions no longer vanish mid-word during ordinary typing
-• The cause was a zero system-message id: cancelling it also wiped the delivery of the suggestions already found
-• Measured on a live keyboard: 58 empty strips out of 66 key presses before, 0 after
-• Dictionaries, prediction tables, layouts and permissions are unchanged to the byte
+• Fixed: suggestions no longer disappear in the middle of a word while you type

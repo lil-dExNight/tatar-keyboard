@@ -37,27 +37,18 @@ Coordinated disclosure, ~90 days from report to publication at most, shorter
 when a fix is ready earlier. Critical egress bugs stay embargoed until the
 point release carrying the fix is out.
 
-## Re-audit ritual
+## Audit cadence
 
-This project keeps its security posture executable rather than aspirational:
+- **Every release** runs the automated checks: `scripts/release_check.sh` (among others: the
+  permission set is exactly `[VIBRATE]`, the APK has a single signer with the release
+  certificate, the bundled dictionaries and bigram tables match their pinned sizes and SHA-256) and
+  `scripts/check-no-internet.sh` (the source manifest and the built APK), plus the privacy and
+  parser test suites in `./gradlew test`. A maintainer also reviews every change to the input
+  pipeline, the personal dictionary, the binary parsers, the manifest and the build.
+- **Full audit** once every six months, or immediately when Android changes platform behavior the
+  app depends on (backup and restore rules, touch filtering, IME windowing). The threat model and
+  the register of accepted risks are in [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
+- **Android Security Bulletins** are checked for CVEs in the inputmethod/LatinIME code this app
+  descends from; a relevant CVE triggers an extra review.
 
-- **Every release** runs the gate suite: `scripts/release_check.sh`
-  (artifact gates include permissions exactly `[VIBRATE]`, a single-signer
-  release certificate, and asset pins) plus `scripts/check-no-internet.sh`
-  (two levels: manifest and the built APK) plus the security contract tests
-  in `./gradlew test` (`PersonalLearningGatesTest`,
-  `EditorTextCachePrivacySourceContractTest`,
-  `BackupWhitelistSourceContractTest`, the `*ValidatorTest` fail-closed
-  parser suites, the `*PrivacyTest` package suites) — plus a human delta
-  review of changes to the input pipeline, personal stores, binary parsers,
-  the manifest and the build.
-- **Full audit pass** once per calendar half-year, or immediately when
-  Android platform behavior changes under the app (backup/restore rules,
-  touch filtering, IME windowing). Past passes: `docs/FINAL-AUDIT-2026-09-02.md`,
-  `docs/AUDIT-2026-09-24.md`, `docs/SECURITY-AUDIT-2026-09-25.md`.
-- **Event-driven watch**: Android Security Bulletins are checked for CVEs in
-  the inputmethod/LatinIME lineage this tree descends from; a relevant CVE
-  triggers an out-of-cycle review.
-
-The app holds no `INTERNET` permission by design; the offline claim is a
-build-time gate, not a promise.
+The app has no `INTERNET` permission; CI verifies this on the manifest and on the built APK.

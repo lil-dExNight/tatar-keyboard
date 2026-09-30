@@ -1,4 +1,2 @@
-• Swipe typing now knows the words you taught the keyboard: learned words appear as glide candidates
-• Ranked by shape first, your usage count second — a clear dictionary word always wins; your casing is kept
-• Follows the same personal-dictionary switch; nothing is logged or sent anywhere
-• Internal static-analysis cleanup, no behavior change
+• Glide typing now knows the words you taught the keyboard: saved words appear among glide candidates, with your own capitalization
+• A clear dictionary word still wins; it works only with the personal dictionary on, and nothing leaves your device

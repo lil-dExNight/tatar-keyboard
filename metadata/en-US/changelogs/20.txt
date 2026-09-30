@@ -1,4 +1,1 @@
-• "Кил", "кит", "кайт" and ten more frequent imperatives now offer continuations
-• Thirteen forms were entered into the prediction table deliberately, by a rule written down before the measurements
-• No words were added to the dictionary; everything predicted before is predicted the same way
-• Permissions, layouts and both dictionaries are unchanged to the byte
+• Common Tatar imperatives such as "кил", "кит" and "кайт" now get next-word predictions: "кил" suggests "әле"
