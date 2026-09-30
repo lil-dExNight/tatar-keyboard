@@ -16,6 +16,7 @@ These hold for every release and are not repeated in the entries below:
 ### Fixed
 
 - Glide typing under Caps Lock types the word in capitals.
+- Sliding across keys in English and in fields without glide typing types letters again, instead of drawing a trail that typed nothing.
 
 ## [3.6.0] — 2026-09-29
 

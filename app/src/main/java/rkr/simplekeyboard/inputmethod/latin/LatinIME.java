@@ -65,6 +65,7 @@ import rkr.simplekeyboard.inputmethod.keyboard.KeyboardActionListener;
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardId;
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardSwitcher;
 import rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView;
+import rkr.simplekeyboard.inputmethod.keyboard.PointerTracker;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.inputlogic.InputLogic;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec;
@@ -1427,6 +1428,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      */
     private void updateKeyNeighbors() {
         if (mSuggestionsController == null) {
+            PointerTracker.setGlideAvailable(false);
             return;
         }
         final Keyboard keyboard = mKeyboardSwitcher.getKeyboard();
@@ -1460,6 +1462,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
         }
         mSuggestionsController.updateGlideGeometry(geometry);
+        // Without a geometry a slide over letters stays ordinary sliding key input.
+        PointerTracker.setGlideAvailable(geometry != null);
     }
 
     @Override

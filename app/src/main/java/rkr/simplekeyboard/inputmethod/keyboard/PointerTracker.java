@@ -80,6 +80,9 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     private static TimerProxy sTimerProxy;
     private static KeyboardActionListener sListener = KeyboardActionListener.EMPTY_LISTENER;
 
+    // Whether the current field and layout can decode a glide; set by the IME. Without it a slide
+    // is ordinary sliding key input. UI thread only.
+    private static boolean sGlideAvailable;
     // The {@link KeyDetector} is set whenever the down event is processed. Also this is updated
     // when new {@link Keyboard} is set by {@link #setKeyDetector(KeyDetector)}.
     private KeyDetector mKeyDetector = new KeyDetector();
@@ -191,6 +194,11 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     public static void setKeyboardActionListener(final KeyboardActionListener listener) {
         sListener = listener;
+    }
+
+    /** Sets whether the current field and layout can decode a glide. UI thread only. */
+    public static void setGlideAvailable(final boolean available) {
+        sGlideAvailable = available;
     }
 
     public static void setKeyDetector(final KeyDetector keyDetector) {
@@ -601,12 +609,13 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             //mStartY = y;
             mStartTime = System.currentTimeMillis();
         }
-        // Start the glide decision for this touch. Eligible means the preference is on and the
-        // down key is a letter key (space/delete/shift/enter and the digit row never start a
-        // glide; their swipe and long-press behaviors keep priority). The down point opens the
-        // path. With the preference off the decider sits in REJECTED and no glide branch in
-        // this class runs.
+        // Start the glide decision for this touch. Eligible means the field and layout can decode
+        // a glide, the preference is on and the down key is a letter key (space/delete/shift/enter
+        // and the digit row never start a glide; their swipe and long-press behaviors keep
+        // priority). The down point opens the path. Otherwise the decider sits in REJECTED and no
+        // glide branch in this class runs.
         final boolean glideEligible = key != null
+                && sGlideAvailable
                 && Settings.getInstance().getCurrent().mGlideTypingEnabled
                 && Character.isLetter(key.getCode());
         mGlideDecider.onDown(x, y, eventTime, glideEligible);

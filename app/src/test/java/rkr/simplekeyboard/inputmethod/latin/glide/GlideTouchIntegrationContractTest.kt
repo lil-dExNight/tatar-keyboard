@@ -119,6 +119,23 @@ class GlideTouchIntegrationContractTest {
         assertTrue(down.contains("mGlideTypingEnabled"))
         assertTrue(down.contains("Character.isLetter(key.getCode())"))
         assertTrue(down.contains("mGlideDecider.onDown(x, y, eventTime, glideEligible);"))
+        val gate = down.substringAfter("final boolean glideEligible").substringBefore(";")
+        assertTrue("a glide arms only where it can be decoded", gate.contains("sGlideAvailable"))
+    }
+
+    @Test
+    fun theImeSetsGlideAvailabilityFromTheGeometry() {
+        val latinIme = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
+        )
+        val update = latinIme.substringAfter("private void updateKeyNeighbors()")
+            .substringBefore("public void onDestroy()")
+        assertTrue(update.contains("PointerTracker.setGlideAvailable(geometry != null);"))
+        val cleared = update.indexOf("PointerTracker.setGlideAvailable(false);")
+        val nullReturn = update.indexOf("return;")
+        assertTrue("availability is cleared before the null-controller return",
+            cleared in 0 until nullReturn)
     }
 
     @Test
@@ -137,6 +154,12 @@ class GlideTouchIntegrationContractTest {
         assertTrue(latinIme.contains("controller.onGlideInput(path);"))
         assertTrue(latinIme.contains("setGlideGate("))
         assertTrue(latinIme.contains("setGlideShiftStateGate("))
+        val shiftGate = latinIme.substringAfter("setGlideShiftStateGate(").substringBefore("});")
+        assertTrue(
+            "Caps Lock gives an all-caps glide word",
+            shiftGate.contains("ELEMENT_ALPHABET_SHIFT_LOCKED") &&
+                shiftGate.contains("PrefixCasing.ALL_CAPS"),
+        )
     }
 
     @Test

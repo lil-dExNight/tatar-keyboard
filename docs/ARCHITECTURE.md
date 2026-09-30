@@ -149,7 +149,9 @@ Settings screens list, delete and erase entries.
 ## Glide typing
 
 On by default (`PREF_GLIDE_TYPING`), for Tatar and Russian. `GlideGestureDecider` in
-`PointerTracker` decides whether a touch is a glide; `GlideTrail` draws the trail. On lift the path
+`PointerTracker` decides whether a touch is a glide; `GlideTrail` draws the trail. A glide arms
+only where the field and layout can decode it (`PointerTracker.setGlideAvailable`, set from the
+glide geometry); elsewhere, English included, a slide is ordinary sliding key input. On lift the path
 goes to `SuggestionsController.onGlideInput` and to the engine as a `GLIDE` request; nothing is
 decoded while the finger moves. `GlideDecoder` is a SHARK2-style statistical classifier (shape and
 location channels plus a frequency weight), ported with attribution from FlorisBoard's
