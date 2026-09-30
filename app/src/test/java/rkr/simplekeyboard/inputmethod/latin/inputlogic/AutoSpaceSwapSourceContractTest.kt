@@ -79,6 +79,7 @@ class AutoSpaceSwapSourceContractTest {
             "public void startInput(",
             "public InputTransaction onTextInput(",
             "public void onUpdateSelection(",
+            "public void onKeyboardCursorMove(",
             "private void handleConsumedEvent(",
             "private void handleNonSeparatorEvent(",
             "private void handleBackspaceEvent(",

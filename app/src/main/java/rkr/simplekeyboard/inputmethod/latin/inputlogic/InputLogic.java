@@ -148,6 +148,16 @@ public final class InputLogic {
         mConnection.updateSelection(newSelStart, newSelEnd);
     }
 
+    /**
+     * Call after the keyboard itself moved the cursor or selection (space slide, delete swipe).
+     * Those moves are expected, so {@link #onUpdateSelection} keeps the space state; this drops it.
+     */
+    public void onKeyboardCursorMove() {
+        mJustDoubleSpaced = false;
+        mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
+    }
+
     public void reloadTextCache() {
         mConnection.reloadTextCache();
 

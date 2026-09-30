@@ -2041,11 +2041,13 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Invalidates the suggestion strip after the keyboard itself moved the cursor or selection
-     * (space slide, delete swipe). {@link #onUpdateSelection} does not see these as external
-     * moves, so without this the strip would keep words for the old position. Idempotent.
+     * Handles a cursor or selection move made by the keyboard itself (space slide, delete swipe):
+     * drops the double-space and auto-space state and invalidates the suggestion strip.
+     * {@link #onUpdateSelection} does not see these as external moves, so without this both would
+     * keep state for the old position. Idempotent.
      */
     private void onSuggestionsAffectingCursorMove() {
+        mInputLogic.onKeyboardCursorMove();
         if (mSuggestionsController != null) {
             mSuggestionsController.onSelectionChanged();
             // Then refresh the strip for the new position, or it stays blank until the next
