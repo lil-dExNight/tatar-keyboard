@@ -18,6 +18,8 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 
 import android.content.Context
 import android.graphics.Paint
+import java.io.InputStream
+import java.util.Collections
 import java.util.concurrent.ExecutorService
 
 /**
@@ -70,19 +72,11 @@ class AssetEmojiSuggestPreparation(
     }
 
     private fun load(): EmojiSuggestSource? {
-        // The glyph probe runs during the parse, so the load never holds an unfiltered and a
-        // filtered table at once. The probe is called once per distinct emoji sequence (memoized
-        // inside parse).
-        val probe = PaintGlyphProbe(Paint())
+        // The glyph filter runs during the parse, so the load never holds an unfiltered and a
+        // filtered table at once. Only the first load of the process probes the font.
         val filtered = try {
             appContext.assets.open(SUGGEST_ASSET_PATH).use { stream ->
-                EmojiSuggestIndex.parse(stream) { sequence ->
-                    try {
-                        probe.hasGlyph(sequence)
-                    } catch (_: Throwable) {
-                        false
-                    }
-                }
+                EmojiGlyphVerdicts.PROCESS.parse(stream) { PaintGlyphProbe(Paint()) }
             }
         } catch (_: Throwable) {
             EmojiSuggestIndex.EMPTY
@@ -107,5 +101,43 @@ class AssetEmojiSuggestPreparation(
 
     private companion object {
         const val SUGGEST_ASSET_PATH = "emoji/emoji_suggest_v1.txt"
+    }
+}
+
+/**
+ * The emoji sequences of the suggestion table that the system font cannot draw, remembered after
+ * the first complete load so an idle reload filters without a [GlyphProbe]. Kept in memory only:
+ * fonts do not change within a process, while a file could outlive a font update and then show
+ * tofu or hide emoji that became drawable.
+ */
+internal class EmojiGlyphVerdicts {
+    @Volatile
+    private var rejected: Set<String>? = null
+
+    /**
+     * Parses [input], keeping the emoji the font can draw. Probes with [probe] (a probe error
+     * counts as "cannot draw") until one parse gives a non-empty table, then reuses its verdicts.
+     */
+    fun parse(input: InputStream, probe: () -> GlyphProbe): EmojiSuggestIndex {
+        val known = rejected
+        if (known != null) return EmojiSuggestIndex.parse(input) { it !in known }
+        val glyphs = probe()
+        val rejectedNow = HashSet<String>()
+        val table = EmojiSuggestIndex.parse(input) { sequence ->
+            val drawable = try {
+                glyphs.hasGlyph(sequence)
+            } catch (_: Throwable) {
+                false
+            }
+            if (!drawable) rejectedNow += sequence
+            drawable
+        }
+        if (!table.isEmpty) rejected = Collections.unmodifiableSet(rejectedNow)
+        return table
+    }
+
+    companion object {
+        /** The instance shared by every load in the process. */
+        val PROCESS = EmojiGlyphVerdicts()
     }
 }

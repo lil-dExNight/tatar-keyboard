@@ -28,7 +28,8 @@ import android.util.Log
  *  - the panel search reload: SharedEmojiSearchIndex re-parse of emoji_search_v1.txt plus the
  *    glyph-available filter the panel applies;
  *  - the suggestion reload: emoji_suggest_v1.txt parse plus the glyph probe over the distinct
- *    emoji (the AssetEmojiSuggestPreparation pass).
+ *    emoji (the first AssetEmojiSuggestPreparation pass of a process), and the same parse
+ *    filtered by the remembered verdicts (every later pass).
  *
  * Uses the JUnit3 legacy runner like the other device tests; not part of the release APK.
  */
@@ -68,11 +69,28 @@ class EmojiIndexReloadInstrumentationTest : InstrumentationTestCase() {
             drawable = available.size
         }
 
+        var rememberedMs = 0.0
+        var rememberedEntries = 0
+        run {
+            val verdicts = EmojiGlyphVerdicts()
+            context.assets.open(SUGGEST_ASSET).use { stream ->
+                verdicts.parse(stream) { PaintGlyphProbe(Paint()) }
+            }
+            val started = System.nanoTime()
+            val table = context.assets.open(SUGGEST_ASSET).use { stream ->
+                verdicts.parse(stream) { error("a reload must not probe the font") }
+            }
+            rememberedMs = (System.nanoTime() - started) / 1_000_000.0
+            rememberedEntries = table.entryCount
+        }
+
         Log.i(
             TAG,
             "O2 emoji reload: searchParse=${fmt(searchMs)} ms (entries=$searchEntries) " +
-                "suggestParseAndProbe=${fmt(suggestMs)} ms (entries=$suggestEntries, drawable=$drawable)",
+                "suggestParseAndProbe=${fmt(suggestMs)} ms (entries=$suggestEntries, drawable=$drawable) " +
+                "suggestParseRemembered=${fmt(rememberedMs)} ms (entries=$rememberedEntries)",
         )
+        assertEquals("remembered verdicts keep the probed table", suggestEntries, rememberedEntries)
         assertTrue("the search index must parse to something", searchEntries > 0)
         assertTrue("the suggest table must survive the glyph probe", suggestEntries > 0)
     }
