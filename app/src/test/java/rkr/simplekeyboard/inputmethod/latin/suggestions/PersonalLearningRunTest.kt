@@ -132,6 +132,12 @@ class PersonalLearningRunTest {
             callback?.onResult(engine.requested.size.toLong(), result, LookupKind.PREFIX)
         }
 
+        /** The paste key: the controller is told first, then [word] appears in ONE text event. */
+        fun pasteOnto(word: String, result: List<String> = emptyList()) {
+            controller.onClipboardPaste()
+            paste(word, result)
+        }
+
         /** A paste or wholesale replacement: the whole [word] appears in ONE text event. */
         fun paste(word: String, result: List<String> = emptyList()) {
             editor.word = word
@@ -360,6 +366,23 @@ class PersonalLearningRunTest {
         h.witnessABoundary()
         h.paste("гү")
         h.type("гүзә")
+        h.type("гүзәлия")
+        h.endWord()
+        assertEquals(listOf("гүзәлия"), h.completions)
+    }
+
+    @Test
+    fun aPasteThatCompletesATypedStartIsNotLearned() {
+        // Growth from "с" to "секрет" looks like typing to the run machine; the paste key is what
+        // tells them apart.
+        val h = Harness()
+        h.witnessABoundary()
+        h.type("с")
+        h.pasteOnto("секрет")
+        h.endWord()
+        assertTrue("a word completed by a paste is not learned", h.completions.isEmpty())
+        // The next word typed by hand is learned as usual.
+        h.type("гүз")
         h.type("гүзәлия")
         h.endWord()
         assertEquals(listOf("гүзәлия"), h.completions)

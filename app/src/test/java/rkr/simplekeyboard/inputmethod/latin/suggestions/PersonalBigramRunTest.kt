@@ -144,6 +144,12 @@ class PersonalBigramRunTest {
             engine.callback?.onResult(engine.requested.size.toLong(), result, LookupKind.PREFIX)
         }
 
+        /** The paste key: the controller is told first, then [word] appears in ONE text event. */
+        fun pasteOnto(word: String, result: List<String> = emptyList()) {
+            controller.onClipboardPaste()
+            paste(word, result)
+        }
+
         /** A paste or wholesale replacement: the whole [word] appears in ONE text event. */
         fun paste(word: String, result: List<String> = emptyList()) {
             editor.word = word
@@ -365,5 +371,22 @@ class PersonalBigramRunTest {
         h.paste("🙂") // a lone emoji: one key, two UTF-16 units
         h.endWord("сәләм")
         assertEquals(listOf("сәләм" to "🙂"), h.pairs)
+    }
+
+    @Test
+    fun aPasteThatCompletesATypedStartIsNotLearned() {
+        // Growth from "с" to "секрет" looks like typing to the run machine; the paste key is what
+        // tells them apart.
+        val h = Harness()
+        h.witnessABoundary()
+        h.type("с")
+        h.pasteOnto("секрет")
+        h.endWord("сәләм")
+        assertTrue("a word completed by a paste forms no pair", h.pairs.isEmpty())
+        // The next pair typed by hand is learned as usual.
+        h.witnessABoundary()
+        h.type("дөнья")
+        h.endWord("баш")
+        assertEquals(listOf("баш" to "дөнья"), h.pairs)
     }
 }

@@ -252,6 +252,8 @@ public final class InputLogic {
                 onSettingsKeyPressed();
                 break;
             case Constants.CODE_PASTE:
+                // Before the paste, so the text change it causes already sees a dirty run.
+                mLatinIME.onBeforeClipboardPaste();
                 mConnection.pasteClipboard();
                 break;
             case Constants.CODE_ACTION_NEXT:

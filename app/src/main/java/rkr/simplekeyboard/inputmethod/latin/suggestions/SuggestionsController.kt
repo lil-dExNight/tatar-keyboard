@@ -564,6 +564,14 @@ class SuggestionsController internal constructor(
         requestCurrentPrefix()
     }
 
+    /**
+     * Called right before the paste key inserts the clipboard. The run is dirty, so a word the
+     * paste completes or extends is never learned, however short the pasted text.
+     */
+    fun onClipboardPaste() {
+        runMachine.markRunDirty()
+    }
+
     fun onSelectionChanged() {
         // A selection change (external, or an internal cursor gesture routed here by LatinIME)
         // breaks the run: what looks like growth afterwards may be a different word. It also

@@ -2201,6 +2201,13 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
     }
 
+    /** Called by the paste key right before it inserts the clipboard; nothing pasted is learned. */
+    public void onBeforeClipboardPaste() {
+        if (mSuggestionsController != null) {
+            mSuggestionsController.onClipboardPaste();
+        }
+    }
+
     /**
      * The emoji key was pressed. The emoji panel controller decides what happens: it starts the
      * one-shot snapshot preparation on the first press and shows the panel once (or immediately, if
