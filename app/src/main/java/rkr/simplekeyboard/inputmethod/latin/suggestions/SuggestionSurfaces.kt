@@ -157,11 +157,13 @@ fun interface GlideGate {
 }
 
 /**
- * Reads the keyboard's shift state for the glide commit's casing: shifted (manual or automatic)
- * capitalizes the committed word, as it would a typed one. A seam, so JVM tests can flip shift.
+ * Reads the keyboard's shift state for the glide commit's casing: shift (manual or automatic)
+ * gives [TatarWordUtils.PrefixCasing.INITIAL_CAPS], Caps Lock gives
+ * [TatarWordUtils.PrefixCasing.ALL_CAPS], otherwise [TatarWordUtils.PrefixCasing.LOWER]. A seam,
+ * so JVM tests can flip shift.
  */
 fun interface ShiftStateGate {
-    fun isShifted(): Boolean
+    fun glideCasing(): TatarWordUtils.PrefixCasing
 }
 
 /**

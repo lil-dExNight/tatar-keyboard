@@ -11,6 +11,12 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [Unreleased]
+
+### Fixed
+
+- Glide typing under Caps Lock types the word in capitals.
+
 ## [3.6.0] — 2026-09-29
 
 ### Changed

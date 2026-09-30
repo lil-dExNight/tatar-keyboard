@@ -1183,7 +1183,7 @@ HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$$ExternalSyntheticLambda7;-><i
 PLrkr/simplekeyboard/inputmethod/latin/LatinIME$$ExternalSyntheticLambda7;->isOn()Z
 Lrkr/simplekeyboard/inputmethod/latin/LatinIME$$ExternalSyntheticLambda8;
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$$ExternalSyntheticLambda8;-><init>(Lrkr/simplekeyboard/inputmethod/latin/LatinIME;)V
-PLrkr/simplekeyboard/inputmethod/latin/LatinIME$$ExternalSyntheticLambda8;->isShifted()Z
+PLrkr/simplekeyboard/inputmethod/latin/LatinIME$$ExternalSyntheticLambda8;->glideCasing()Lrkr/simplekeyboard/inputmethod/latin/suggestions/TatarWordUtils$PrefixCasing;
 Lrkr/simplekeyboard/inputmethod/latin/LatinIME$$ExternalSyntheticLambda9;
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$$ExternalSyntheticLambda9;-><init>(Lrkr/simplekeyboard/inputmethod/latin/LatinIME;)V
 Lrkr/simplekeyboard/inputmethod/latin/LatinIME$1;

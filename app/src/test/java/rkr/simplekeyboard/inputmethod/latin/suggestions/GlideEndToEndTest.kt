@@ -386,11 +386,27 @@ class GlideEndToEndTest {
     @Test
     fun aGlideWithShiftOnLiftCommitsTheCapitalizedTop1() {
         val h = Harness()
-        h.controller.setGlideShiftStateGate(ShiftStateGate { true })
+        h.controller.setGlideShiftStateGate(ShiftStateGate { TatarWordUtils.PrefixCasing.INITIAL_CAPS })
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertEquals("Сәләм", h.editor.text)
+    }
+
+    @Test
+    fun aGlideUnderCapsLockCommitsAllCapsAndAllCapsAlternatives() {
+        val h = Harness()
+        h.controller.setGlideShiftStateGate(ShiftStateGate { TatarWordUtils.PrefixCasing.ALL_CAPS })
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("СӘЛӘМ", h.editor.text)
+        val cells = h.strip.shown.last().filterNotNull()
+        assertTrue("the doubled twin rides the alternatives in capitals, was $cells",
+            cells.contains("СӘЛЛӘМ"))
+        for (cell in cells) {
+            assertEquals("an alternative carries the Caps Lock casing", cell.uppercase(), cell)
+        }
     }
 
     @Test

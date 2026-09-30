@@ -307,7 +307,7 @@ class SuggestionsController internal constructor(
     private var glideGate: GlideGate = GlideGate { false }
 
     /** The keyboard's shift state for the glide commit's casing rule; OFF until wired. */
-    private var glideShiftGate: ShiftStateGate = ShiftStateGate { false }
+    private var glideShiftGate: ShiftStateGate = ShiftStateGate { TatarWordUtils.PrefixCasing.LOWER }
 
     // The current layout's key geometry for the glide decoder, built by LatinIME from the live
     // keyboard. Remembered and re-pushed like [keyNeighbors]. Null disables glide.
@@ -1760,11 +1760,7 @@ class SuggestionsController internal constructor(
             if (eligible) strip.reserve()
             return
         }
-        val casing = if (glideShiftGate.isShifted()) {
-            TatarWordUtils.PrefixCasing.INITIAL_CAPS
-        } else {
-            TatarWordUtils.PrefixCasing.LOWER
-        }
+        val casing = glideShiftGate.glideCasing()
         val committed = TatarWordUtils.applyCasing(suggestions[0], casing)
         // The glide commit path re-derives the live context and refuses a stale gesture itself
         // (see [EditorSurface.commitGlideWord]); a refusal commits nothing.

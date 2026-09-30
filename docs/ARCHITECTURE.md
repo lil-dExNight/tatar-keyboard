@@ -156,7 +156,8 @@ location channels plus a frequency weight), ported with attribution from FlorisB
 `StatisticalGlideTypingClassifier`. Its word index is built lazily on the engine worker
 (`GlideDecoderHost`); only one language keeps an index in memory. The top word is committed on
 lift; with suggestions on, the other candidates appear in the strip and a tap replaces the word.
-One backspace right after a glide deletes the whole word (`LatinImeGlide`).
+The word takes the shift state: shift capitalizes it, Caps Lock types it in capitals. One
+backspace right after a glide deletes the whole word (`LatinImeGlide`).
 
 ## Emoji panel
 

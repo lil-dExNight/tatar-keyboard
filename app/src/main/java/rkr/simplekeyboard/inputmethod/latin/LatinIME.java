@@ -730,18 +730,24 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
         });
         // Glide typing: the setting is read live and does not depend on the suggestions setting.
-        // The shift-state gate capitalizes a glide word when the alphabet keyboard is shifted,
-        // as typed letters would be.
+        // The shift-state gate cases a glide word as typed letters would be: shift capitalizes
+        // it, Caps Lock types it in capitals.
         mSuggestionsController.setGlideGate(
                 () -> mSettings.getCurrent().mGlideTypingEnabled);
         mSuggestionsController.setGlideShiftStateGate(() -> {
             final Keyboard current = mKeyboardSwitcher.getKeyboard();
             if (current == null || current.mId == null) {
-                return false;
+                return TatarWordUtils.PrefixCasing.LOWER;
             }
             final int elementId = current.mId.mElementId;
-            return elementId == KeyboardId.ELEMENT_ALPHABET_MANUAL_SHIFTED
-                    || elementId == KeyboardId.ELEMENT_ALPHABET_AUTOMATIC_SHIFTED;
+            if (elementId == KeyboardId.ELEMENT_ALPHABET_SHIFT_LOCKED) {
+                return TatarWordUtils.PrefixCasing.ALL_CAPS;
+            }
+            if (elementId == KeyboardId.ELEMENT_ALPHABET_MANUAL_SHIFTED
+                    || elementId == KeyboardId.ELEMENT_ALPHABET_AUTOMATIC_SHIFTED) {
+                return TatarWordUtils.PrefixCasing.INITIAL_CAPS;
+            }
+            return TatarWordUtils.PrefixCasing.LOWER;
         });
         mSuggestionsController.onCreate();
         // Erasing words on the settings screen must unbind what the strip shows: the screen and
