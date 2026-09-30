@@ -147,14 +147,10 @@ object TatarWordUtils {
      * is recorded against, read from the live text at completion time, never from remembered
      * state.
      *
-     * Wider than [extractNextWordContext]: the separators skipped are any non-word characters
-     * (a space, a comma, "., "), because pair completion fires on every word boundary. The scan
-     * skips the separator after B, then B, then the separator between A and B; the next word is A.
-     * Both words use [extractTrailingWord]'s rules.
-     *
-     * Cache edges as in [extractNextWordContext]: if a run reaches index 0 before its word, there
-     * is no pair; if A itself reaches index 0, A is returned only when the cache provably reached
-     * the text start.
+     * The separator after B may be any non-word run, because pair completion fires on every word
+     * boundary. The context is what [extractNextWordContext] would return right before B, so a
+     * pair is learned only where it can be predicted: a sentence end, a line break, a number or an
+     * emoji between the words gives "". Cache edges follow that function.
      */
     @JvmStatic
     fun extractWordBeforeTrailingWord(
@@ -170,20 +166,13 @@ object TatarWordUtils {
         val wordB = extractTrailingWord(textBeforeCursor.subSequence(0, end))
         if (wordB.isEmpty()) return ""
         end -= wordB.length
-        // The separator between the two words.
-        while (end > 0 && !isWordCharacter(textBeforeCursor[end - 1])) end--
-        if (end == 0) return ""
-        val wordA = extractTrailingWord(textBeforeCursor.subSequence(0, end))
-        if (wordA.isEmpty()) return ""
-        // A reaching index 0 is whole only when the cache provably reached the text start.
-        if (!cacheReachedTextStart && end - wordA.length == 0) return ""
-        return wordA
+        return extractNextWordContext(textBeforeCursor.subSequence(0, end), cacheReachedTextStart)
     }
 
     /**
      * True when the cursor sits where a new sentence begins: the text before it is the start of
-     * the field, or ends in a run of sentence-ending punctuation ('.', '!', '?', '…') followed by
-     * one or more U+0020.
+     * the field, ends in a line break followed by zero or more U+0020, or ends in a run of
+     * sentence-ending punctuation ('.', '!', '?', '…') followed by one or more U+0020.
      *
      * A detector only: the bigram table is still never consulted at these positions (a sentence
      * boundary resets the context). Anything else before the space run (a word, a comma, a quote,

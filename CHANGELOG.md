@@ -18,6 +18,7 @@ These hold for every release and are not repeated in the entries below:
 - Glide typing under Caps Lock types the word in capitals.
 - Sliding across keys in English and in fields without glide typing types letters again, instead of drawing a trail that typed nothing.
 - The personal dictionary learns new Tatar words that are close to dictionary words.
+- Learned word pairs are no longer formed across sentences, line breaks, numbers or emoji.
 
 ## [3.6.0] — 2026-09-29
 

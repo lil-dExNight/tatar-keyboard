@@ -408,6 +408,27 @@ class AutocorrectControllerTest {
         assertTrue(h.sink.completions.isEmpty())
     }
 
+    @Test
+    fun noPairIsLearnedAcrossASentenceEnd() {
+        val control = Harness()
+        control.start()
+        control.typeWord("баш")
+        control.separator(' ')
+        control.typeWord("дөнья")
+        control.separator(' ')
+        assertEquals(listOf("баш" to "дөнья"), control.pairSink.pairs)
+
+        val h = Harness()
+        h.start()
+        h.typeWord("баш")
+        h.separator('.')
+        h.separator(' ')
+        h.typeWord("дөнья")
+        h.separator(' ')
+        assertEquals("баш. дөнья ", h.editor.before)
+        assertTrue("a sentence end separates the words", h.pairSink.pairs.isEmpty())
+    }
+
     // --- The single undo -------------------------------------------------------------------------
 
     @Test

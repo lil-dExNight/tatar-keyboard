@@ -134,7 +134,11 @@ learned emoji). Files live in the credential-protected `noBackupFilesDir`.
 - **Learning gates.** `PersonalLearningGates.mayLearn`: suggestions eligible for the field (which
   excludes `IME_FLAG_NO_PERSONALIZED_LEARNING`), personal dictionary on, user unlocked since boot,
   not a postal-address field, learning not paused. `CleanRunMachine` reports only cleanly typed
-  words and pairs.
+  words and pairs. A word counts as unknown to the dictionary when the exact pass for one of its
+  proper prefixes was empty, whatever typo recovery showed
+  (`CompositePrefixComputer.lastExactMissPrefix`). A pair is learned only where the first word
+  would be the next-word context of the second, so never across a sentence end, a line break, a
+  number or an emoji.
 - **Pending counters.** An entry is saved in plain text only after
   `PendingCounters.LEARN_THRESHOLD` clean observations; until then only a truncated salted SHA-256
   is kept, and it expires.

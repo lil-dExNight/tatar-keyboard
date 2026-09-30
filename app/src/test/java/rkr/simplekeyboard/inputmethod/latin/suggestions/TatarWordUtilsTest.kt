@@ -583,4 +583,33 @@ class TatarWordUtilsTest {
             TatarWordUtils.applyCasing(candidate, TatarWordUtils.classifyCasing("С")),
         )
     }
+
+    // --- extractWordBeforeTrailingWord -----------------------------------------------------------
+
+    @Test
+    fun thePairContextIsTheWordBeforeASpaceRun() {
+        assertEquals("сүз", TatarWordUtils.extractWordBeforeTrailingWord("яз сүз бүген ", false))
+        assertEquals("сүз", TatarWordUtils.extractWordBeforeTrailingWord("яз сүз, бүген ", false))
+        assertEquals("сүз", TatarWordUtils.extractWordBeforeTrailingWord("яз сүз  бүген.", false))
+    }
+
+    @Test
+    fun noPairContextAcrossASentenceLineNumberOrEmoji() {
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("Казан. Бүген ", true))
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("сүз\nбүген ", true))
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("сүз 5 бүген ", true))
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("сүз 🙂 бүген ", true))
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("сүз — бүген ", true))
+        // No space after the comma: next-word prediction gives no context there either.
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("сүз,бүген ", true))
+    }
+
+    @Test
+    fun thePairContextFollowsTheCacheEdgeRules() {
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("бүген ", true))
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("сүз бүген ", false))
+        assertEquals("сүз", TatarWordUtils.extractWordBeforeTrailingWord("сүз бүген ", true))
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord(null, true))
+        assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("  ", true))
+    }
 }
