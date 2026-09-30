@@ -90,6 +90,13 @@ tasks.withType(JavaCompile).configureEach {
     }
 }
 
+// Two JVM test forks where there are at least 8 CPUs, one elsewhere: the calibration suites take
+// most of the run, and host timing asserts must not compete with a second fork on small CI
+// runners. Each fork is its own JVM and the tests use their own temporary files.
+tasks.withType(Test).configureEach {
+    maxParallelForks = Math.max(1, Math.min(2, Runtime.runtime.availableProcessors().intdiv(4)))
+}
+
 dependencies {
     // Build-time only. error_prone_core on the annotationProcessor configurations puts
     // it on the javac processor path (which also lifts AGP's -proc:none);

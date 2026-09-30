@@ -4,7 +4,7 @@
 # APK invalidates it. resources.arsc stays STORED (see step 1.5).
 #
 # Pipeline:
-#   1. ./gradlew clean assembleRelease -PskipReleaseSigning  -> unsigned APK
+#   1. ./gradlew clean assembleRelease -PskipReleaseSigning --no-build-cache -> unsigned APK
 #   2. zipalign -f -z 4                                      -> zopfli recompression + alignment
 #   3. zipalign -c, resources.arsc STORED                    -> alignment and arsc checked
 #   4. apksigner sign (keys from keystore.properties, v2 only, as in the AGP build)
@@ -115,9 +115,9 @@ fi
 
 # --- 1. unsigned release ---------------------------------------------------------------------
 
-echo "== 1/5 clean assembleRelease -PskipReleaseSigning =="
+echo "== 1/5 clean assembleRelease -PskipReleaseSigning --no-build-cache =="
 mkdir -p "$LOG_DIR"
-./gradlew clean assembleRelease -PskipReleaseSigning --console=plain \
+./gradlew clean assembleRelease -PskipReleaseSigning --no-build-cache --console=plain \
     >"$LOG_DIR/assemble.log" 2>&1 || {
         echo "ERROR: сборка упала, лог $LOG_DIR/assemble.log" >&2
         tail -20 "$LOG_DIR/assemble.log" >&2 || true

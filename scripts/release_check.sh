@@ -12,7 +12,7 @@
 # Modes:
 #   (default)  the APK is already built; gates run, nothing is rebuilt;
 #   --quick    artifact checks only (gradle/python gates are reported as SKIP);
-#   --full     ./gradlew clean assembleRelease first, then everything else
+#   --full     ./gradlew clean assembleRelease --no-build-cache first, then everything else
 #              (checks the freshly built app/build/outputs/apk/release/*.apk).
 #
 # Default APK: the newest (by mtime) app/build/outputs/apk/release/*.apk.
@@ -131,7 +131,7 @@ if [ "$FULL" -eq 1 ]; then
     # and recreate the log directory before building (as release_pack.sh does).
     ./gradlew clean --console=plain >/dev/null 2>&1
     mkdir -p "$LOG_DIR"
-    if run_logged "$LOG_DIR/assemble-release.log" ./gradlew assembleRelease --console=plain; then
+    if run_logged "$LOG_DIR/assemble-release.log" ./gradlew assembleRelease --no-build-cache --console=plain; then
         report PASS build.assemble_release "clean assembleRelease, лог $LOG_DIR/assemble-release.log"
     else
         report FAIL build.assemble_release "сборка упала, лог $LOG_DIR/assemble-release.log"
