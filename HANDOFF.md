@@ -41,8 +41,7 @@ recents tab holds a non-😀 emoji; the emoji is committed), a tapped suggestion
 gives "татар дәүләт, " and a second comma "татар дәүләт,, ", an English slide types a letter, and a
 Tatar glide still commits a word. The golden vectors exported by the exporter in
 `app/src/test/.../golden/` (run with `GOLDEN_OUT` set) change for the context `"ул китте\n"`, now a
-sentence start; re-export them when the parity suite on the other platform is next synced. Two
-known bugs found on the emulator are listed in `docs/BACKLOG.md`.
+sentence start; re-export them when the parity suite on the other platform is next synced.
 
 Performance and build changes on the same `main`, with no change in behavior:
 
@@ -66,6 +65,34 @@ APKs, release APK size, `text_hygiene_check.py`, two byte-identical
 `clean assembleRelease --no-build-cache` builds (and the same bytes from the build cache). On the
 emulator: the smoke test gives the same result as above, and a Tatar glide typed right after
 turning the number row on decodes correctly.
+
+Security and input fixes from an audit against OWASP MASVS v2 and the IME threat model, also under
+`[Unreleased]` in `CHANGELOG.md` (the register is `docs/THREAT-MODEL.md`):
+
+- Glide typing works after a globe-key cycle: the engine that becomes active is handed the stored
+  key-neighbor table and glide geometry (`SuggestionsController.setActiveLanguage`), because
+  `LatinIME` publishes the new layout while the language being left is still active.
+- A space typed at an auto-space is swallowed and arms the double-space period
+  (`TatarWordUtils.swallowsSpaceAtAutoSpace`).
+- Keyboard cursor moves (space slide, delete swipe) drop the double-space and auto-space state
+  (`InputLogic.onKeyboardCursorMove`).
+- A glide starts only on an alphabet keyboard (`PointerTracker`, the down gate).
+- While the keyguard is shown, also after the first unlock, there is no strip, glide, learning or
+  Recent tab (`LatinIME.isKeyguardLocked`, `RecentEmojiGateState.allowsDisplay`); pause learning
+  also stops recording recent emoji.
+- The paste key marks the clean run dirty (`SuggestionsController.onClipboardPaste`), so a word
+  completed by a paste is not learned.
+- CI checkouts do not persist the token (`persist-credentials: false`).
+- The baseline and startup profiles were edited by hand for the new and changed methods
+  (`RecentEmojiGateState`, `LatinIME.isKeyguardLocked`); they were not regenerated.
+
+Verified: JVM tests (the new glide-cycle and paste tests fail without their fixes), python tests,
+`lintRelease`, `check-no-internet.sh` on source and APKs, release APK size and
+`text_hygiene_check.py`. On the emulator, against a build of the previous `main`: a Tatar glide
+after tt → en → ru → tt committed nothing before and commits the word now; a tapped suggestion and
+a space gave "татарстан  " before and give "татарстан " now, and two quick spaces give
+"татарстан. ". The smoke test result is the same as above. Not checked on a device: the
+lock-screen behavior (see `docs/BACKLOG.md`).
 
 Earlier cleanup of the same `main`:
 

@@ -74,12 +74,15 @@ the app's languages and, when the system allows it, moves to the next input meth
 ## Suggestions
 
 Suggestions for Tatar and Russian are off by default (`Settings.PREF_TATAR_SUGGESTIONS`) and never
-run in password fields or fields that disallow suggestions or personalized learning.
+run in password fields, in fields that disallow suggestions or personalized learning, or while the
+keyguard is shown (`LatinIME.isKeyguardLocked`, also after the first unlock).
 
 **Threads.** `SuggestionsController` owns all strip state and runs on the UI thread only. Each
 language has a `LanguageSlot` with one engine, and each engine runs lookups on its own single
 worker thread. A separate executor starts engines and prepares dictionaries. Switching language
-idles the old engine instead of tearing it down.
+idles the old engine instead of tearing it down. `LatinIME` publishes the new layout's key-neighbor
+table and glide geometry before the switch, and the engine that becomes active is handed both
+(`SuggestionsController.setActiveLanguage`).
 
 **Tokens.** `LatestOnlyPrefixEngine` keeps only the latest request; a new one supersedes a pending
 one. Each request gets a `LookupToken` (engine instance, serial, editor session, language, query,
@@ -94,7 +97,9 @@ table (`SentStartIndex`, `assets/dictionaries/*_sentstart_v1.txt`).
 **Strip.** `SuggestionStripView` is one Canvas view with three cells
 (`SuggestionStripState.CELL_COUNT`). A tap commits the word with a space; a punctuation mark that
 attaches to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ",
-"сүз?! "), tracked by the cursor position in `InputLogic`.
+"сүз?! "), tracked by the cursor position in `InputLogic`. A space typed there is swallowed and
+counts as the first space of a double-space period. Cursor moves by the keyboard itself (space
+slide, delete swipe) drop this state (`InputLogic.onKeyboardCursorMove`).
 
 **Word completion** (`CompositePrefixComputer.lookup`): exact dictionary candidates by frequency,
 then at most one personal-dictionary word not already shown, then typo-recovery candidates. Typo
@@ -141,9 +146,9 @@ learned emoji). Files live in the credential-protected `noBackupFilesDir`.
 - **Learning gates.** `PersonalLearningGates.mayLearn`: suggestions eligible for the field (which
   excludes `IME_FLAG_NO_PERSONALIZED_LEARNING`), personal dictionary on, user unlocked since boot,
   not a postal-address field, learning not paused. `CleanRunMachine` reports only cleanly typed
-  words and pairs. A word counts as unknown to the dictionary when the exact pass for one of its
-  proper prefixes was empty, whatever typo recovery showed
-  (`CompositePrefixComputer.lastExactMissPrefix`). A pair is learned only where the first word
+  words and pairs; the paste key marks the run dirty (`SuggestionsController.onClipboardPaste`).
+  A word counts as unknown to the dictionary when the exact pass for one of its proper prefixes
+  was empty, whatever typo recovery showed (`CompositePrefixComputer.lastExactMissPrefix`). A pair is learned only where the first word
   would be the next-word context of the second, so never across a sentence end, a line break, a
   number or an emoji.
 - **Pending counters.** An entry is saved in plain text only after
@@ -161,8 +166,9 @@ Settings screens list, delete and erase entries.
 
 On by default (`PREF_GLIDE_TYPING`), for Tatar and Russian. `GlideGestureDecider` in
 `PointerTracker` decides whether a touch is a glide; `GlideTrail` draws the trail. A glide arms
-only where the field and layout can decode it (`PointerTracker.setGlideAvailable`, set from the
-glide geometry); elsewhere, English included, a slide is ordinary sliding key input. On lift the path
+only on an alphabet keyboard where the field and layout can decode it
+(`PointerTracker.setGlideAvailable`, set from the glide geometry); elsewhere, English and the
+symbols pages included, a slide is ordinary sliding key input. On lift the path
 goes to `SuggestionsController.onGlideInput` and to the engine as a `GLIDE` request; nothing is
 decoded while the finger moves. `GlideDecoder` is a SHARK2-style statistical classifier (shape and
 location channels plus a frequency weight), ported with attribution from FlorisBoard's
@@ -178,8 +184,9 @@ backspace right after a glide deletes the whole word (`LatinImeGlide`).
 swaps them and `EmojiPanelController` loads data in the background from `assets/emoji/`: the set
 (`EmojiSet`), search names (`EmojiSearchIndex`, shown in `EmojiSearchView` in place of the strip)
 and skin tones (`EmojiSkinTones`). No emoji font is shipped; `GlyphProbe` drops entries the system
-font cannot draw. Recents (`RecentEmojiStore`) are credential-protected. The panel opens from the
-emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
+font cannot draw. Recents (`RecentEmojiStore`) are credential-protected, hidden while the keyguard
+is shown and not recorded while learning is paused (`RecentEmojiGateState`). The panel opens from
+the emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
 
 ## Settings
 
@@ -195,7 +202,9 @@ saved words out of screenshots and recent apps. Enterprise restrictions
   manifest and the built APK.
 - `allowBackup="false"` and `data_extraction_rules.xml` keep all data out of backup and transfer.
 - `LatinIME` is `directBootAware`: bundled dictionaries and preferences are device-protected and
-  work before the first unlock; personal data and recents are credential-protected.
+  readable before the first unlock; personal data and recents are credential-protected. While the
+  keyguard is shown, before or after the first unlock, there is no suggestion strip, no glide
+  typing, no Recent tab and no learning.
 - Every binary reader validates before use and rejects bad input; personal words are never logged.
 
 Details and the risk register: [THREAT-MODEL.md](THREAT-MODEL.md).

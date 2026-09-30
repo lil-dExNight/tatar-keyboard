@@ -23,6 +23,9 @@ Open work only. When an item is done, delete it; the change itself is the record
 - **Interactive check of the 3.1 visual refresh** on a real device (settings, keyboard theme,
   suggestion strip, emoji panel in both themes).
 - **Direct Boot, live:** reboot, then type the PIN with this keyboard before the first unlock.
+- **Lock-screen quick reply:** after the first unlock, reply to a notification from the lock screen
+  and check that no suggestion strip, glide or Recent tab appears; needs an app that posts a
+  `RemoteInput` notification.
 - **Telegram:** typing, suggestions and emoji in Telegram's custom editor (not installed on the
   test device).
 - **Tablet layout:** no tablet hardware available.
@@ -31,15 +34,14 @@ Open work only. When an item is done, delete it; the change itself is the record
 - **Full gesture navigation:** HyperOS ignores the adb toggle, so the mode has to be switched by
   hand and tested.
 
-## Known bugs
+## Build and release checks
 
-- **Tatar glide dead after a language cycle.** After tt → ru → en → tt with the globe key, a
-  Tatar glide arms but commits nothing until the field is refocused. Suspected cause:
-  `LatinIME.updateKeyNeighbors` in `onCurrentSubtypeChanged` builds the glide geometry from the
-  previous keyboard.
-- **Double space after an auto-space.** A space typed right where an auto-space was appended
-  (a tapped suggestion, or the space moved after a punctuation mark) gives two spaces; it should
-  be swallowed.
+- **Corpus SHA-256 manifest.** The asset pipeline reads corpora that are not committed, so their
+  bytes are not pinned; a manifest of per-file SHA-256 values checked by `scripts/rebuild_assets.py`
+  would catch a changed corpus before the output pins do.
+- **`artifact.exported_surface` and `artifact.no_secrets` in CI.** Both run only in
+  `scripts/release_check.sh`; CI would need them to run on the unsigned release APK without the
+  keystore.
 
 ## Researched, not done
 
