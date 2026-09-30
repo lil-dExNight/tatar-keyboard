@@ -1,0 +1,6 @@
+# Exceptions for scripts/text_hygiene_check.py.
+# One entry per line: path, path:line, path:rule or path:line:rule, then `# reason`.
+# Entries that match no finding fail the check, so remove an entry once its finding is gone.
+# Prefer path:rule over path:line: line entries break when the file is edited above them.
+
+docs/HISTORY.md:broken-link  # lists the paths of removed documents; they are meant not to exist

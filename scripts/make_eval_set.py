@@ -167,8 +167,8 @@ def run_conv_recipe(corpus_dir: Path, workdir: Path) -> ConvRecipe:
         or report["output_lines"] != CONV_SENTENCES_LINES
     ):
         raise EvalSetError(
-            "the reconstructed conversational stream does not match the documented one "
-            f"(docs/CORPUS-CONVERSATIONAL-TT.md): got {report['output_lines']} rows, "
+            "the reconstructed conversational stream does not match the pinned one: "
+            f"got {report['output_lines']} rows, "
             f"{report['output_bytes']} bytes, SHA-256 {report['output_sha256']}; "
             f"expected {CONV_SENTENCES_LINES} rows, {CONV_SENTENCES_BYTES} bytes, "
             f"SHA-256 {CONV_SENTENCES_SHA256}"

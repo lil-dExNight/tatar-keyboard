@@ -252,7 +252,7 @@ class SuggestionsController internal constructor(
         if (resolved == activeLanguage) return
         activeSlot()?.engine?.finishInput()
         // The leaving language's engine is idled and its in-flight lookup (only the active
-        // language's lookup is traced) is invalidated with it: no handoff will arrive.
+        // language's lookup is traced) is invalidated with it: no result will arrive.
         endLookupTrace()
         activeLanguage = resolved
     }
@@ -263,7 +263,7 @@ class SuggestionsController internal constructor(
     private var requestSessionId: Long = NO_SESSION
 
     // The cookie of the one outstanding traced lookup. At most one active-language request is
-    // awaited (a new request supersedes the old one and the engine drops the stale handoff), so a
+    // awaited (a new request supersedes the old one and the engine drops the stale result), so a
     // superseded trip ends where its replacement begins.
     private var traceLookupCookie: Int = NO_TRACE_COOKIE
     private var traceCookieSerial: Int = 0
@@ -498,7 +498,7 @@ class SuggestionsController internal constructor(
         bandBaseCells = emptyList()
         clearCompanionRequest()
         // A new field ends whatever traced lookup the old one was waiting for (the ineligible
-        // branch below idles the engine, which suppresses the handoff).
+        // branch below idles the engine, which suppresses the result delivery).
         endLookupTrace()
         setActiveLanguage(subtypeId)
         this.eligible = eligible && activeLanguage != null
@@ -559,7 +559,7 @@ class SuggestionsController internal constructor(
         clearRevertState()
         sessionId++
         activeSlot()?.engine?.finishInput()
-        // finishInput invalidates the in-flight generation, so no handoff will arrive for it.
+        // finishInput invalidates the in-flight generation, so no result will arrive for it.
         endLookupTrace()
         // Any in-flight request is invalidated and whatever was shown is no longer bound to the
         // live editor state, so drop the displayed binding immediately.
@@ -1505,7 +1505,7 @@ class SuggestionsController internal constructor(
 
     /**
      * Opens the async Perfetto slice of a lookup round trip, closing any slice still open: that
-     * request was just superseded, and the engine never delivers its stale handoff. See
+     * request was just superseded, and the engine never delivers its stale result. See
      * [LookupTracer] for what may be traced.
      */
     private fun beginLookupTrace() {
@@ -1706,7 +1706,7 @@ class SuggestionsController internal constructor(
         displayedContextWord = null
         unbindPaintedBand()
         clearCompanionRequest()
-        // The decode supersedes any lookup in flight (the engine drops its stale handoff, so no
+        // The decode supersedes any lookup in flight (the engine drops its stale result, so no
         // arrival will end its slice). The decode itself is not traced.
         endLookupTrace()
         pendingGlideContext = context

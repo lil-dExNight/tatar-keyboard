@@ -1,113 +1,151 @@
-# AGENTS.md — руководство для агентных сессий
+# AGENTS.md — guide for agent sessions
 
-Проект: офлайн Android-клавиатура с татарской раскладкой (форк Simple Keyboard /
-AOSP LatinIME; Java-наследие + новый код на Kotlin). package `org.tatarkeyboard.ime`,
-namespace `rkr.simplekeyboard.inputmethod`. Ветка работы — `main`.
+Offline Android keyboard with a Tatar layout. It is a fork of Simple Keyboard (itself based on
+AOSP LatinIME): legacy Java code plus new Kotlin code. Application id `org.tatarkeyboard.ime`,
+source namespace `rkr.simplekeyboard.inputmethod`. Work happens on branch `main`.
 
-## Команды
+Current state: `HANDOFF.md`. Documentation index: `docs/README.md`. Code map: `docs/ARCHITECTURE.md`.
 
-| Действие | Команда |
+## Commands
+
+Run everything from the repository root. On macOS the shell scripts need GNU coreutils and GNU
+grep first in `PATH` (they use `stat -c`, `sha256sum` and `grep -P`):
+`PATH="$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix grep)/libexec/gnubin:$PATH"`.
+
+| Task | Command and note |
 |---|---|
-| JVM-тесты | `./gradlew test` (для честного прогона — `--rerun-tasks`) |
-| Python-тесты конвейера (507 шт.) | `for f in tests/*/test_*.py; do python3 "$f" \|\| exit 1; done` — pytest НЕ используется, это чистый unittest |
-| Instrumentation на устройстве (E3b/Phase B) | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest` → `adb install -r` обоих APK → `adb shell am instrument -w -e class rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3bComputeInstrumentationTest org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner` (пакет тестового APK — с суффиксом `.test`; legacy-раннеру нужен `<uses-library android:name="android.test.runner">` в `app/src/androidTest/AndroidManifest.xml`, уже есть). Меряет обе fuzzy-политики (DEFAULT/TATAR, Phase C = {1,4} probe-first) на 22 обзорных префиксах и опечаточных пробах (включая 10-cp «сцләмәтлек» — 380 проб) + дампит живую геометрическую карту соседей (32 пары) для сверки с офлайн-моделью `typo_pack.py`. Прогнан на POCO C71 2026-09-20 (логи — `build/tt-typo-next-phaseB/`, Phase B и Phase C). С 2026-09-28 опечаточные пробы E3b и замер глайд-декода утверждают p95 fail-closed (консервативная граница 5 мс; письменные гейты 3,5 мс по `docs/TT-TYPO-NEXT.md` и 5,0 мс по `docs/ROADMAP-P7.md`) — прогонять на ненагруженном устройстве со включённым экраном. `GlideUiDeviceTest` откалиброван под 720×1640 (POCO C71), на чужой геометрии падает сразу (fail-fast) — целиком классом проходит зелёным. Платформенная готча: HyperOS молча переключает системную клавиатуру при force-stop пакета, владеющего дефолтным IME, — в тестовых циклах такой пакет не останавливать |
-| Эмуляторный смоук (DEV-3) | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk путь] [--no-boot] [--outdir build/emulator-smoke/]` — поднять AVD → установить APK → выбрать IME → сценарий (набор tt/ru/en, подсказки, эмодзи-панель, crash-буфер; TT-SUGGESTIONS P5: two word-form probes — type татар/сәләм + space on the tt layout, tap the given suggestion cell (three cells again since 2026-09-29 — the 2026-09-27 four-cell wave reverted; the Tatar table stays packed at K = 4), read the try-it field; TT-TYPO-NEXT Phase A: a second cell tap after the сәләм probe proves predictions follow an accepted suggestion without a keystroke; EMOJI-LEARN: зонд `learned-emoji-tt` — learned word→emoji override (☀️ после «хәйерле иртә» вытесняет статический 🌅); EMOJI-PANEL: зонд `panel-back-reopen` — панель → BACK → клавиша ложится в поле (страж wedge A6, 2026-09-29)) → строки `RESULT\|PASS/FAIL/SKIP`, свидетельства (скриншоты, дампы) в outdir. Координаты клавиш откалиброваны под 1080×2280; пиксельная дельта полосы подсказок требует ImageMagick на хосте (без него — SKIP) |
-| Девайсный перф-ритуал (O2, 2026-09-29) | `bash scripts/device-perf-ritual.sh [--serial <id>] [--pkg org.tatarkeyboard.ime.debug] [--outdir build/device-perf-ritual]` — на POCO C71 (координаты под 720×1640): холодный старт ×5 (run-as kill -9, НЕ force-stop: HyperOS сбрасывает выбранный IME, а `ime set` сам поднимает процесс; тап в Chrome-омнибокс → /proc-stat → первый FrameCompleted, колонки framestats по ИМЕНИ — на Android 15 FrameCompleted = 17-я, не 14-я), PSS по четырём сценариям (потолок 114 000 kB debug-шкалы, `docs/PERF-BUDGETS.md`), кадры по протоколу O2-2 (32 события tt, 120 кадров ×3) — всё со строками `RESULT\|…`; состояние устройства (IME, stayon, сон) восстанавливается по trap EXIT |
-| Линт | `./gradlew lintRelease` (baseline `app/lint-baseline.xml` — 0 errors, 29 осознанных warning (32 → 29 в SAFE-волне 2026-09-25: обе UnusedResources ушли вместе с мёртвыми ресурсами, запись AndroidGradlePluginVersion самоустранилась дрейфом сообщения 9.7.1 → 9.8.0; 29 → 28 в O2-волне тем же днём: GradleDependency ушла вместе с androidx.customview — рантайм-зависимостей в приложении больше нет вообще; 28 → 29 2026-09-28: UsableSpace фабрики эмодзи-хранилища `PersonalEmojiDictionaries.kt:161`, тот же класс находки, что и два существующих), классификация в `app/lint.xml`; `abortOnError=true`) |
-| error-prone (DEV-4) | встроен в компиляцию Java (плагин net.ltgt.errorprone 4.3.0 + error_prone_core 2.42.0 — последняя на JDK 17; build-time, в APK не попадает). Все находки — warnings (`allErrorsAsWarnings`), сборку не роняют; новые стоит разбирать по мере появления в выводе `compile*JavaWithJavac` |
-| Release APK | `bash scripts/release_pack.sh [--no-sign] [путь-результата]` (SIZE-3: unsigned `assembleRelease -PskipReleaseSigning` → `zipalign -z` (zopfli, строго ДО подписи) → `apksigner sign` v2-only ключом из `keystore.properties`; детерминирован при пиннованных build-tools). Голый `./gradlew assembleRelease` тоже валиден (подпись при наличии `keystore.properties`), но без zopfli-перепаковки |
-| Гейт «без INTERNET + backup-whitelist» | `bash scripts/check-no-internet.sh [путь-к-apk]` (по умолчанию debug APK; два уровня: манифест + aapt2) |
-| Релизный автомат (DEV-6) | `bash scripts/release_check.sh [--quick\|--full] [путь-к-apk]` (по умолчанию свежий release APK): гейты (в не-quick режиме включая `rebuild_assets.py --check`, аудит-волна 2026-09-25) + размер + пины ассетов + побайтная сверка множеств assets/{emoji,dictionaries,bigrams} с деревом + разрешения + подпись (ровно один сигнер, мульти-подпись — FAIL) + версия + changelog + дельта к dist/, итог машинным блоком `RESULT\|…` |
-| Воспроизводимость сборки (DEV-2) | два `clean assembleRelease` обязаны давать побайтно одинаковый APK; в CI — джоба `reproducible` (`cmp` двух unsigned-прогонов). Недетерминизм был в Dependency Info Block (эфемерный ключ AGP) — отключён `dependenciesInfo { includeInApk = false }` в `app/build.gradle`; заново не включать |
-| Верификация зависимостей (L3) | `gradle/verification-metadata.xml` проверяет PGP-подписи всех зависимостей, SHA-256 остаётся запасным вариантом для неподписанных артефактов; публичные ключи закоммичены (`gradle/verification-keyring.gpg` + `gradle/verification-keyring.keys`), поэтому ни локальной сборке, ни CI кейсервер не нужен. Ритуал при истечении/ротации ключа (истечение — главный эксплуатационный риск) или смене дерева зависимостей: перегенерировать метаданные на чистом изолированном кэше (`GRADLE_USER_HOME=/tmp/<чистый> ./gradlew --write-verification-metadata pgp,sha256 clean test lintRelease assembleRelease -PskipReleaseSigning`), затем тем же home `./gradlew --export-keys`, закоммитить метаданные и оба файла ключей. Ошибка верификации на холодном кэше — повод разбираться с артефактом, а не слепо перепиновывать |
-| Генерация baseline-профиля | `./gradlew :app:generateReleaseBaselineProfile` (нужен запущенный эмулятор). Отдельной startup-profile задачи НЕТ: генератор вызывает `collect(..., includeInStartupProfile = true)`, поэтому тот же прогон пересобирает и startup-профиль; оба результата лежат в `app/src/release/generated/baselineProfiles/` и промоутятся копированием в `app/src/main/{baseline,startup}-prof.txt` (SAFE-волна 2026-09-25: startup-профиль регенерирован — появились правила LatinIme*/glide, которых не было со времён до фазы 6). С 2026-09-28 генератор выбирает строки настроек по resource-id, а не по тексту (текстовый поиск сломался, когда UI по умолчанию перешёл на татарский) и отказывается запускаться на не-эмуляторе без `-e ttAllowPhysicalDevice true`; при нескольких подключённых устройствах эмулятор пинить через `ANDROID_SERIAL` |
+| JVM tests | `./gradlew test` (`--rerun-tasks` forces a full rerun); JUnit 4, no Robolectric. |
+| Python tests | `for f in tests/*/test_*.py; do python3 "$f" \|\| exit 1; done`; plain `unittest` modules, pytest is not used. |
+| Device tests | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, `adb install -r` both APKs, then `adb shell am instrument -w -e class <test class> org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner`; timing assertions need an idle device with the screen on, and `GlideUiDeviceTest` is calibrated for a 720x1640 screen and fails fast on any other. |
+| Emulator smoke test | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk <path>] [--no-boot] [--outdir build/emulator-smoke/]`; installs and selects the IME, runs the typing, suggestion and emoji probes and prints `RESULT\|…` lines. |
+| Device performance check | `bash scripts/device-perf-ritual.sh [--serial <id>] [--pkg org.tatarkeyboard.ime.debug] [--outdir build/device-perf-ritual]`; measures cold start, PSS and frame times on a 720x1640 device and restores the device state on exit. |
+| Lint | `./gradlew lintRelease`; `abortOnError` is on, baseline `app/lint-baseline.xml`, rule classification `app/lint.xml`. |
+| Error Prone | Runs inside Java compilation (`compile*JavaWithJavac`, plugin `net.ltgt.errorprone`); all findings are warnings, so review new ones in the compiler output. |
+| Release APK | `bash scripts/release_pack.sh [--no-sign] [<output.apk>]`; unsigned build, zopfli `zipalign` before signing, then v2 signing with the key from `keystore.properties` (plain `./gradlew assembleRelease` skips the zopfli step). |
+| No-INTERNET and backup check | `bash scripts/check-no-internet.sh [<apk>]`; checks the source manifest, then the built APK (default: debug) with aapt2 for no INTERNET permission and no backup or device transfer. |
+| Release checker | `bash scripts/release_check.sh [--quick\|--full] [<apk>]`; runs the repository gates plus artifact checks (size, pinned assets, permissions, single signer, version, store changelog, delta to `dist/`) and prints a `RESULT\|…` block. |
+| Asset consistency | `python3 scripts/rebuild_assets.py --check --allow-known-drift`; compares the bundled dictionaries and bigram tables with their pins without rebuilding. |
+| Reproducible build | Two `./gradlew clean assembleRelease` runs must give byte-identical APKs (CI job `reproducible`), so keep `dependenciesInfo { includeInApk = false }` in `app/build.gradle`. |
+| Dependency verification | When a key expires or rotates, or dependencies change: `GRADLE_USER_HOME=/tmp/<clean> ./gradlew --write-verification-metadata pgp,sha256 clean test lintRelease assembleRelease -PskipReleaseSigning`, then `./gradlew --export-keys` with the same home, and commit `gradle/verification-metadata.xml` with `gradle/verification-keyring.{gpg,keys}`; a failure on a cold cache means the artifact must be investigated, not re-pinned. |
+| Baseline profile | `./gradlew :app:generateReleaseBaselineProfile` with a running emulator (`ANDROID_SERIAL` pins one); the run writes both the baseline and the startup profile to `app/src/release/generated/baselineProfiles/`, to be copied to `app/src/main/baseline-prof.txt` and `app/src/main/startup-prof.txt`. |
 
-Гейты обязательны после любой правки кода/ресурсов: JVM + python + lintRelease +
-check-no-internet (исходник и собранный APK) + размер release APK ≤ 3 145 728 Б.
+Device quirks:
 
-Эмуляторные AVD: `tatar_e5_test`, `tt_prefix3`, `tt_suggest_a14`
-(`~/Android/Sdk/emulator/emulator -avd <имя> -no-window &`, adb в
-`~/Android/Sdk/platform-tools/`).
+- HyperOS silently switches the system keyboard when the package that owns the default IME is
+  force-stopped. Do not force-stop it in test loops; the scripts use `run-as <pkg> kill -9`.
+- The baseline profile generator refuses physical devices unless the instrumentation argument
+  `ttAllowPhysicalDevice=true` is set.
+- Emulator: `<sdk>/emulator/emulator -avd tt_suggest_a14 -no-window &`, `adb` in
+  `<sdk>/platform-tools/`, where `<sdk>` is `sdk.dir` from `local.properties`.
 
-## Жёсткие ограничения (нарушать нельзя)
+## Mandatory gates
 
-- **Ноль сторонних runtime-зависимостей.** Dev/build-time инструменты (lint,
-  detekt, Macrobenchmark) допустимы, в APK попадать не должны.
-- **Без `android.permission.INTERNET`** — проверяется гейтом в CI трижды.
-- **Без NDK/C++**, без Compose в IME-процессе (Compose допустим только в
-  Activity настроек), без сторонних звуков/шрифтов Apple.
-- Бюджеты: APK ≤ 3 МБ, холодный старт < 400 мс, ноль аллокаций в цикле отрисовки.
-- Локали и раскладки — только tt/ru/en (срезано осознанно в кампании
-  реструктуризации; `resConfigs "tt","ru","en"`).
+After any change to code or resources, all of these must pass:
 
-## Ассеты и пины
+- `./gradlew test`
+- the python test loop above
+- `./gradlew lintRelease`
+- `bash scripts/check-no-internet.sh` on the source and on the built APK
+- release APK size ≤ 3 145 728 B (checked by `scripts/release_check.sh`)
+- `python3 scripts/text_hygiene_check.py`
 
-Словари (`*.tdict.zlib`) и таблицы биграмм (`*.tatbigr.zlib`) собираются
-python-конвейером (`scripts/`), а не руками. Их размеры и SHA-256 **запинены**
-в `app/src/main/java/.../dictionary/storage/DictionaryStorageContracts.kt` и
-`BigramStorageContracts.kt` — любая пересборка ассета требует пересчёта пинов,
-иначе красные тесты.
+## Hard constraints
 
-Эмодзи-ассеты (`assets/emoji/*.txt`, включая `emoji_suggest_v1.txt` — таблицу
-«слово → эмодзи» для подсказок в полосе, 1.9.10) контрактов хранилища не имеют
-и в гейт пинов `release_check.sh` не входят: их пины (SHA-256, числа записей)
-живут в `tests/emoji_*` (python) и JVM-контрактах `Emoji*AssetTest` — правка
-данных без пересчёта пина даёт красные тесты там.
+- Zero third-party runtime dependencies. Build-time tools (lint, Error Prone, Macrobenchmark) are
+  allowed but must not end up in the APK.
+- No `android.permission.INTERNET`; CI checks the manifest and the built APKs.
+- No NDK/C++. No Compose in the IME process. No Apple fonts, icons or sounds.
+- Budgets: APK ≤ 3 MiB, cold start < 400 ms, zero allocations in the draw loop
+  (`docs/PERF-BUDGETS.md`).
+- Locales and layouts: tt, ru and en only (`resConfigs "tt", "ru", "en"`).
 
-С 2026-09-01 (миссия SIZE-1, `docs/SIZE-SCHEMA2.md`) словари — **TATDICT
-schema 2**: блочный front-coding (K = 8) + u8-длины + varint-частоты, lossless
-к schema 1. Читатель schema 1 удалён; `dictionary_pack.py build`/`repack` пишут
-schema 2 по умолчанию (`--schema 1` оставлен для справки и golden-тестов).
-Эквивалентность доказывается `scripts/schema2_equivalence_check.py`.
+## Assets and pins
 
-Тем же днём (миссия SIZE-2, `docs/SIZE-SCHEMA3.md`) таблицы биграмм —
-**TATBIGR schema 3**: собственных слов нет, головы — дельта-varint индексов
-в словарь (блочный индекс по 64), преемники — varint-индексы в словарь,
-диапазоны — u8-счётчики. Таблица связана со словарём по raw SHA-256 (заголовок
-+ пин `expectedDictionaryRawSha256`); валидатор, читатель и
-`rebuild_assets.py --check` проверяют связку fail-closed. Читатель schema 2
-удалён; `bigram_asset_pack.py pack` пишет schema 3 по умолчанию (`--schema 2` —
-для golden/истории), корпусо-независимый перевод — `bigram_asset_pack.py repack`.
-Эквивалентность доказывается `scripts/schema3_equivalence_check.py`.
+Bundled dictionaries (`*.tdict.zlib`) and bigram tables (`*.tatbigr.zlib`) are built by the
+python pipeline, never by hand; `scripts/rebuild_assets.py` is the single entry point. Their
+pinned size and SHA-256 live in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`;
+emoji assets are pinned in the python tests under `tests/emoji_*`. An asset change
+without recomputed pins fails the tests. Build, pins and known drift: `docs/ASSET-PIPELINE.md`;
+binary formats: `docs/ASSET-FORMATS.md`.
 
-Единый вход пересборки — **`scripts/rebuild_assets.py`** (DEV-1): одна команда
-делает словари → обе таблицы биграмм → пересчёт пинов → проверку, поэтому забытой
-второй половины больше не бывает (исторический источник багов — см. `HANDOFF.md`).
-С 2026-09-20 (TT-SUGGESTIONS P2, `docs/TT-SUGGESTIONS.md`) татарский словарь перед
-сборкой проходит стадию словоформ (`scripts/wordform_gen.py`, допуск по корпусной
-засвидетельствованности, отсечка 110 000 — константа `TATAR_DICTIONARY_TOP`), а режим
-`--only tatar|russian` пересобирает одну сторону с гарантией побайтной неизменности
-другой (снимок SHA-256 до/после).
-Проверка согласованности без пересборки (нужен в CI и перед релизом):
-`python3 scripts/rebuild_assets.py --check --allow-known-drift` — сверяет ассеты
-с пинами, головы таблиц — со словарями; известные расхождения пинутся
-по точным числам в `scripts/known_asset_drift.json` (сейчас там только
-правило-генераторные остатки: русская 2/0 — «окей» и «берегись» без пар в
-прореженном разговорном входе, см. `docs/CORPUS-CONVERSATIONAL-RU.md`;
-татарская 155/0 — те же три деепричастия на -гәнчә плюс 152 адресных
-кандидата EXPAND-1 без внутрисловарных пар (см. `docs/ROADMAP-P4.md`);
-дрейф русской таблицы
-4 195/4 195 закрыт перепаковкой в 1.9.7, см. `docs/RUSSIAN-BIGRAMS-REPACK.md`).
+## Documents and commits
 
-## Дисциплина документов и коммитов
+- Git is the record. Documents describe the current state and are rewritten, not appended to; a
+  finished plan or report is deleted in the same change (list it in `docs/HISTORY.md`).
+- Live documents sit in `docs/`, indexed in `docs/README.md`; `HANDOFF.md` holds the current
+  state of the project.
+- Commits are written only by the operator, in Russian, split by meaning. No co-author trailers.
+- Push, external tags and publishing happen only on the operator's explicit command.
+- `dist/` is local and never committed. `keystore.properties` and the release `.jks` are secrets
+  and never enter git.
 
-- Историю git и содержимое завершённых отчётов не переписываем; уточнения —
-  датированными сносками. Живые документы — наверху `docs/` (индекс:
-  `docs/README.md`), архив миссий — `docs/archive/`.
-- Коммиты пишет только оператор; сторонние трейлеры соавторства запрещены.
-- Актуальное состояние проекта — корневой `HANDOFF.md`; планы работ —
-  `docs/RESTRUCTURE-PLAN.md` (выполнен) и `docs/DEV-PLAN.md` (tooling).
-- Коммиты по-русски, раздельные по смыслу. Push, теги наружу, публикация —
-  только по явной команде оператора.
-- `dist/` локален и не коммитится; `keystore.properties` и
-  `tatar-keyboard-release.jks` — секреты, в git им пути нет.
+## Writing rules
 
-## Структура кода (кратко)
+These apply to all comments (code, tests, scripts, build files, CI, resources, manifest) and to all
+Markdown documents.
 
-- `latin/LatinIME.java` — InputMethodService, точка входа IME.
-- `keyboard/` (Java) — View, PointerTracker, KeyDetector; `latin/suggestions/`,
-  `latin/dictionary/**`, `latin/emoji/` (Kotlin) — подсказки, словари, эмодзи.
-- `app/src/test` — JVM-тесты (JUnit 4, Robolectric нет — осознанно).
-- `scripts/` — python-конвейер ассетов (stdlib only, fail-closed);
-  `research/corpus/` — измерительные скрипты и манифесты корпусов (данные OPUS
-  не коммитятся — лицензии).
+1. A comment explains the code, not its history: no dates, release numbers, audit or finding
+   numbers, mission/phase/item codes, no workflow words (`agent`, `handoff`, `uncommitted`) and
+   no mention of who made a change. History belongs in git.
+2. No links from code to `docs/*.md`; state the rule in the comment. The exception is a path the
+   code reads at runtime or build time.
+3. Length: class docs ≤ 8 lines, member docs ≤ 3 lines, unless the text documents a binary format,
+   an algorithm or a platform quirk that cannot be read from the code.
+4. One explanation, one place. Replace duplicates with `See [Canonical]`.
+5. No numbers that drift in prose: no test counts, APK sizes, SHA-256 values, p95 timings or rule
+   counts. Real pins live in constants and assertions.
+6. Plain wording, no rhetoric. "Fail-closed" only where it literally describes failure behavior.
+7. Canonical English everywhere except the root `README.md` (which stays bilingual): plain
+   technical English, US spelling, the terms below, no calques from Russian. Tatar and Russian
+   appear only as quoted language data (`сәләм`, `ә`) or proper names. Not covered: localized
+   strings in `res/values-{ru,tt}/`, store texts in `metadata/{ru-RU,tt}/`, test data, and commit
+   messages.
+8. Upstream text stays: AOSP and Simple Keyboard license headers, javadoc and TODOs are not edited.
+9. A document has an owner and a lifetime. A finished plan or report is deleted in the change that
+   finishes it. Live documents carry no gate tables and no run logs.
+
+### Terminology
+
+The right column lists the Russian source terms (quoted language data), which should not be
+translated literally.
+
+| Use | Avoid | Russian source term |
+|---|---|---|
+| suggestion strip | suggestion band, strip band | `полоса подсказок` |
+| cell (of the strip) | slot, box | `ячейка` |
+| typed-word cell | keep-typed cell | `ячейка «оставить как есть»` |
+| word completion | prefix suggestion | `подсказка по префиксу` |
+| next-word prediction | successor suggestion | `предсказание следующего слова` |
+| word form | wordform, paradigm form | `словоформа` |
+| autocorrect / autocorrection | auto-replacement | `автозамена` |
+| undo autocorrect | revert window | `откат автозамены` |
+| typo recovery; edit class | fuzzy class, typo class | `исправление опечаток`; `класс правок` |
+| glide typing | swipe input, gesture typing | `набор свайпом` |
+| personal dictionary | user dictionary, personal store | `личный словарь` |
+| learned word pairs | personal bigrams | `личные пары` |
+| learned emoji | personal emoji co-usage | `выученные эмодзи` |
+| pause learning (incognito) | incognito mode | `пауза обучения / инкогнито` |
+| quarantined file | quarantine card | `карантин` |
+| emoji panel | emoji keyboard | `панель эмодзи` |
+| layout | keyboard layout set (except in code identifiers) | `раскладка` |
+| language (tt, ru, en) | subtype (except in code identifiers) | `язык / subtype` |
+| bundled dictionary / bigram table | asset (outside the pipeline context) | `словарь / таблица биграмм` |
+| pinned size and SHA-256 | pin (unexplained) | `пин` |
+| release gate / check | gate (unexplained), ritual | `гейт, ритуал` |
+| device test | UAT on hardware, device leg | `девайсная проверка` |
+| fails without writing output | fail-closed (when only this is meant) | fail-closed |
+
+## Code structure
+
+Sources are under `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
+
+- `latin/LatinIME.java`: the `InputMethodService`, entry point of the IME.
+- `keyboard/` (Java): keyboard view, `PointerTracker`, `KeyDetector`.
+- `latin/suggestions/`, `latin/dictionary/`, `latin/glide/`, `latin/emoji/` (Kotlin): suggestion
+  strip, bundled and personal dictionaries, glide typing, emoji panel.
+- `latin/settings/`: settings screens.
+- `app/src/test`: JVM tests. `app/src/androidTest`: device tests. `baselineprofile/`: profile
+  generator.
+- `scripts/`: python asset pipeline (stdlib only) and release scripts; `tests/`: their unittests.
+  `research/corpus/`: corpus measurement scripts and manifests (OPUS data is not committed for
+  licensing reasons).

@@ -1,0 +1,22 @@
+doc_links_main=0
+doc_links_tests=1
+doc_links_scripts=12
+doc_links_res=0
+dated_main=0
+dated_tests=1
+dated_scripts=20
+fail_closed=35
+docs_top_md=9
+docs_tracked=9
+docs_non_md=0
+cyr_comments_main=117
+cyr_comments_tests=307
+cyr_comments_res=76
+cyr_hash_scripts=268
+md_with_cyr_excl_readme=5
+missing_doc_links=8
+lines       63 HANDOFF.md
+lines      428 CHANGELOG.md
+lines      120 docs/PUBLISH-CHECKLIST.md
+lines       30 docs/README.md
+lines      641 total

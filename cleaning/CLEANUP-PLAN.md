@@ -495,8 +495,8 @@ Done when: every changelog is rewritten and the three locales match for each ver
 - Remove test counts, mission codes and dated notes from the command table. Each row becomes a
   command plus one sentence; device-specific notes move to the scripts' `--help`.
 
-**WP7.2 Automated hygiene check.** Add `scripts/check_text_hygiene.py` (stdlib only) and a
-unittest in `tests/check_text_hygiene/`. Run it in CI next to `check-no-internet.sh`. It fails on:
+**WP7.2 Automated hygiene check.** Add `scripts/text_hygiene_check.py` (stdlib only) and a
+unittest in `tests/text_hygiene_check/`. Run it in CI next to `check-no-internet.sh`. It fails on:
 - `docs/…\.md` in comments under `app/src`, `scripts`, `tests`, `research`, `baselineprofile`;
 - dated footnotes (`\b20\d\d-\d\d-\d\d\b`) in comments under the same roots;
 - `\b(operator|UNCOMMITTED|handoff)\b` in `app/src/main` comments (the identifiers `ResultHandoff`

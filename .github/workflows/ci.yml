@@ -50,6 +50,10 @@ jobs:
       - name: Run python packer tests
         run: for f in tests/*/test_*.py; do python3 "$f" || exit 1; done
 
+      # Writing rules for comments and Markdown; exceptions in scripts/text_hygiene_allowlist.txt.
+      - name: Check text hygiene
+        run: python3 scripts/text_hygiene_check.py
+
       # Existing findings live in app/lint-baseline.xml; any new lint error breaks the build.
       - name: Run release lint
         run: ./gradlew lintRelease --console=plain
