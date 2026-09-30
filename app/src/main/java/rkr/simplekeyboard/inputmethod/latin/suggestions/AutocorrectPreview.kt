@@ -58,6 +58,7 @@ internal fun computeAutocorrectPreview(
     gate: AutocorrectGate,
     word: String,
     suppressedWord: String?,
+    refusedWords: Set<String> = emptySet(),
     adviceProvider: () -> AutocorrectAdvice?,
 ): AutocorrectPreview? {
     if (!gate.isOn()) return null
@@ -72,6 +73,8 @@ internal fun computeAutocorrectPreview(
     val advice = adviceProvider() ?: return null
     val normalized = TatarWordUtils.normalizeForLookup(word)
     if (advice.typedWord != normalized) return null
+    // A correction the user undid in this field session is not announced again.
+    if (normalized in refusedWords) return null
     if (normalized.codePointCount(0, normalized.length) <
         AutocorrectPolicy.MIN_WORD_CODE_POINTS
     ) {

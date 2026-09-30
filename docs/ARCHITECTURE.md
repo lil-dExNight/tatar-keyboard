@@ -111,7 +111,8 @@ emoji for the context word: a learned emoji first, else the static table (`Emoji
 **Autocorrect** (opt-in `PREF_TATAR_AUTOCORRECT`, requires suggestions). The lookup that fills the
 strip also yields an `AutocorrectAdvice` from edit class #1. On a space or punctuation
 `LatinImeAutocorrect` has the controller replace the word before the separator reaches
-`InputLogic`; one backspace right after undoes it (`RevertWindow`).
+`InputLogic`; one backspace right after undoes it (`RevertWindow`). An undone correction is not
+repeated or previewed for that word again in the same field session.
 
 ## Bundled dictionaries
 

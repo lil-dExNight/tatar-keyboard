@@ -17,6 +17,7 @@ These hold for every release and are not repeated in the entries below:
 
 - A comma, period or other punctuation typed right after a tapped suggestion replaces the added space, so you get "сүз, " instead of "сүз ,".
 - Sentence-start suggestions also appear at the start of a new line.
+- After you undo an autocorrection, the same word is not corrected again in that field.
 
 ### Fixed
 

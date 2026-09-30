@@ -359,6 +359,13 @@ class SuggestionsController internal constructor(
      */
     private var suppressedPreviewWord: String? = null
 
+    /**
+     * Normalized words whose correction the user undid in this field session; they are not
+     * corrected or previewed again until the session ends. Memory only, capped at
+     * [MAX_REFUSED_CORRECTIONS] (the oldest refusal goes first).
+     */
+    private val refusedCorrections = LinkedHashSet<String>()
+
     // --- Emoji suggestion state. Not persisted; the source is immutable once loaded, and the emoji
     // cell is simply part of [bandBaseCells], so every clear/invalidate path covers it.
     /** The emoji-suggestions setting, read live. OFF until LatinIME wires the real one. */
@@ -487,6 +494,7 @@ class SuggestionsController internal constructor(
                      glideEligible: Boolean = eligible) {
         runMachine.markRunDirty()
         clearRevertState()
+        refusedCorrections.clear()
         // Lifecycle boundary: one of the only two places allowed to run the blocking engine
         // teardown that a disabled setting scheduled.
         runPendingRelease()
@@ -614,6 +622,7 @@ class SuggestionsController internal constructor(
         runMachine.markRunDirty()
         // The replacement state never outlives the editor session.
         clearRevertState()
+        refusedCorrections.clear()
         // The one boundary where the personal dictionary and learned pairs write what they have
         // accumulated; see [CleanRunMachine.onInputFinished].
         runMachine.onInputFinished()
@@ -650,6 +659,7 @@ class SuggestionsController internal constructor(
                          glideEligible: Boolean = eligible) {
         runMachine.markRunDirty()
         clearRevertState()
+        refusedCorrections.clear()
         sessionId++
         // Idles the engine of the language being left; setActiveLanguage does the same for a real
         // language change, and doing it here too covers a same-language subtype change (a
@@ -1999,7 +2009,9 @@ class SuggestionsController internal constructor(
         // When the separator-time autocorrect would fire on this word, the strip shows the coming
         // replacement instead of continuations, as in AOSP. The preview owns the whole strip: no
         // companion fill.
-        val preview = computeAutocorrectPreview(autocorrectGate, pendingPrefix, suppressedPreviewWord) {
+        val preview = computeAutocorrectPreview(
+            autocorrectGate, pendingPrefix, suppressedPreviewWord, refusedCorrections,
+        ) {
             usableEngine()?.autocorrectAdvice()
         }
         previewKeepTypedCell = preview?.typedShown
@@ -2107,6 +2119,7 @@ class SuggestionsController internal constructor(
      *  - the feature is on (and suggestions too: [eligible] carries that);
      *  - the user has not refused this occurrence's correction through the preview's typed-word
      *    cell (a one-shot refusal, consumed here);
+     *  - the user has not undone a correction of this word earlier in the field session;
      *  - an engine is usable and the cursor is known;
      *  - the cursor is not inside a word, and the word is not in mixed case (no defined form);
      *  - the word is long enough ([AutocorrectPolicy.MIN_WORD_CODE_POINTS], on the normalized form);
@@ -2135,6 +2148,8 @@ class SuggestionsController internal constructor(
         val casing = TatarWordUtils.classifyCasing(word)
         if (casing == TatarWordUtils.PrefixCasing.MIXED) return false
         val normalized = TatarWordUtils.normalizeForLookup(word)
+        // The user undid this word's correction earlier in the field session.
+        if (normalized in refusedCorrections) return false
         if (normalized.codePointCount(0, normalized.length) <
             AutocorrectPolicy.MIN_WORD_CODE_POINTS
         ) {
@@ -2182,9 +2197,20 @@ class SuggestionsController internal constructor(
         if (!autocorrectGate.isOn()) return false
         if (!editor.hasKnownCursor()) return false
         runMachine.markRunDirty()
-        return editor.revertTypedWord(
+        val reverted = editor.revertTypedWord(
             replacement.insertedForm, replacement.separator, replacement.typedForm,
         )
+        // An undone correction is not repeated for that word in this field session.
+        if (reverted) refuseCorrection(TatarWordUtils.normalizeForLookup(replacement.typedForm))
+        return reverted
+    }
+
+    private fun refuseCorrection(normalized: String) {
+        refusedCorrections.remove(normalized)
+        refusedCorrections.add(normalized)
+        if (refusedCorrections.size > MAX_REFUSED_CORRECTIONS) {
+            refusedCorrections.remove(refusedCorrections.first())
+        }
     }
 
     /**
@@ -2359,6 +2385,9 @@ class SuggestionsController internal constructor(
          */
         internal const val DEFAULT_LANGUAGE = PersonalSubtypes.TATAR_RU
         private const val DESTROY_TIMEOUT_MS = 60L
+
+        /** How many undone corrections one field session remembers. */
+        internal const val MAX_REFUSED_CORRECTIONS = 16
 
         // Sentinel for "no request is outstanding". [sessionId] starts at 0 and only ever grows,
         // so this can never be mistaken for a live generation.

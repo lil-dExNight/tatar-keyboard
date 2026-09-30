@@ -304,6 +304,26 @@ class AutocorrectPreviewControllerTest {
     }
 
     @Test
+    fun afterAnUndoTheSameWordShowsNoPreview() {
+        val h = Harness()
+        h.start()
+        h.advise("китәп", "китап")
+        h.engine.suggestionsByWord["китәп"] = listOf("китәпләр")
+        h.typeWord("китәп")
+        assertEquals(PREVIEW_EMPHASIZED_CELL, h.strip.lastBand()!!.emphasized)
+        h.separator(' ')
+        h.backspace()
+        assertEquals("китәп ", h.editor.before)
+
+        h.typeWord("китәп")
+
+        // The ordinary suggestions for the word, not the announcement of a correction.
+        val band = h.strip.lastBand()!!
+        assertEquals(listOf("китәпләр", null, null), band.cells)
+        assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
+    }
+
+    @Test
     fun aDictionaryWordShowsItsOrdinarySuggestionsInstead() {
         // The engine never advises a word people write; the fake mirrors that by simply holding
         // no verdict for it. The band must stay the plain ranked list — no typed-word cell, no

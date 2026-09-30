@@ -523,6 +523,75 @@ class AutocorrectControllerTest {
         assertTrue(editsAfterReplacement >= 1)
     }
 
+    // --- An undone correction is not repeated -------------------------------------------------
+
+    /** Types [word], corrects it at a space and undoes the correction with one backspace. */
+    private fun Harness.correctAndUndo(word: String) {
+        advise(word, "китап")
+        typeWord(word)
+        separator(' ')
+        assertEquals("китап ", editor.before.takeLast("китап ".length))
+        backspace()
+        assertTrue(editor.before.endsWith("$word "))
+    }
+
+    @Test
+    fun aRevertedWordIsNotCorrectedAgainInTheSameSession() {
+        val h = Harness()
+        h.start()
+        h.correctAndUndo("китәп")
+
+        h.typeWord("китәп")
+        h.separator(' ')
+
+        assertEquals("китәп китәп ", h.editor.before)
+        assertEquals(1, h.editor.edits.count { it.startsWith("replace:") })
+    }
+
+    @Test
+    fun aNewSessionForgetsTheRefusal() {
+        val h = Harness()
+        h.start()
+        h.correctAndUndo("китәп")
+
+        h.controller.onFinishInput()
+        h.editor.before = ""
+        h.start()
+        h.typeWord("китәп")
+        h.separator(' ')
+
+        assertEquals("китап ", h.editor.before)
+    }
+
+    @Test
+    fun anotherWordIsStillCorrected() {
+        val h = Harness()
+        h.start()
+        h.correctAndUndo("китәп")
+
+        h.advise("дәфтар", "дәфтәр")
+        h.typeWord("дәфтар")
+        h.separator(' ')
+
+        assertEquals("китәп дәфтәр ", h.editor.before)
+    }
+
+    @Test
+    fun theOldestRefusalIsForgottenPastTheCap() {
+        val h = Harness()
+        h.start()
+        val words = (0..SuggestionsController.MAX_REFUSED_CORRECTIONS).map { "китәп" + ('а' + it) }
+        for (word in words) h.correctAndUndo(word)
+
+        h.typeWord(words[0])
+        h.separator(' ')
+        assertTrue("the first refusal was evicted", h.editor.before.endsWith(" китап "))
+
+        h.typeWord(words[1])
+        h.separator(' ')
+        assertTrue("the second one is still remembered", h.editor.before.endsWith(" ${words[1]} "))
+    }
+
     @Test
     fun theUndoWindowDoesNotSurviveTheEndOfTheEditorSession() {
         val h = Harness()
