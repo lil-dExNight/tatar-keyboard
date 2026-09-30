@@ -104,6 +104,13 @@ interface EngineHandle {
     fun autocorrectAdvice(): AutocorrectAdvice? = null
 
     /**
+     * The normalized prefix of the newest completed lookup whose exact dictionary pass was empty,
+     * or null. Read on the UI thread with the lookup's result; the reader compares it with its own
+     * prefix. Default null: no exact pass is ever reported empty.
+     */
+    fun exactMissPrefix(): String? = null
+
+    /**
      * Exact whole-word membership of [normalizedWord] in this engine's dictionary: the dictionary
      * half of the learned-pair context check. Safe from any thread (a cache-free read of the
      * read-only mapping). Default false, which leaves the personal half of the check to decide.
@@ -154,6 +161,8 @@ class MappedEngineHandle private constructor(
     override fun updateKeyNeighbors(table: KeyNeighborTable?) = engine.updateKeyNeighbors(table)
 
     override fun autocorrectAdvice(): AutocorrectAdvice? = engine.autocorrectAdvice
+
+    override fun exactMissPrefix(): String? = engine.exactMissPrefix
 
     override fun containsWord(normalizedWord: String): Boolean = engine.containsWord(normalizedWord)
 

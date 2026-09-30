@@ -1370,7 +1370,7 @@ Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/CompositePrefixComputer;
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/CompositePrefixComputer;-><clinit>()V
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/CompositePrefixComputer;-><init>(Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/ClassifiedPrefixComputer;Lrkr/simplekeyboard/inputmethod/latin/dictionary/personal/PersonalCandidateSource;Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/AfterWordForms;Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FallbackWords;Lrkr/simplekeyboard/inputmethod/latin/dictionary/personal/PersonalBigramSource;Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/GlideDecoderHost;)V
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/CompositePrefixComputer;->attachBigramSource(Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/NextWordComputer;)V
-PLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/CompositePrefixComputer;->clearAutocorrectAdvice()V
+PLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/CompositePrefixComputer;->clearLookupVerdicts()V
 PLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/CompositePrefixComputer;->decodeGlide(Lrkr/simplekeyboard/inputmethod/latin/glide/GlidePath;)Ljava/util/List;
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/CompositePrefixComputer;->lookup(Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/ImmutableUtf8Prefix;)Ljava/util/List;
 PLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/CompositePrefixComputer;->predict(Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/ImmutableUtf8Prefix;)Ljava/util/List;

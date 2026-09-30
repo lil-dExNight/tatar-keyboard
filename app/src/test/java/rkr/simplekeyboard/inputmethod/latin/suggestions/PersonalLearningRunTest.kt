@@ -59,9 +59,12 @@ class PersonalLearningRunTest {
             requested.add(String(prefixUtf8, Charsets.UTF_8))
             return ++serial
         }
+        /** What the engine reports as the newest lookup with an empty exact pass. */
+        var exactMiss: String? = null
         override fun isCurrent(token: Any): Boolean = token == serial
         override fun finishInput() = Unit
         override fun updateKeyNeighbors(table: KeyNeighborTable?) = Unit
+        override fun exactMissPrefix(): String? = exactMiss
         override fun destroy(timeoutMs: Long): Boolean = true
     }
 
@@ -185,6 +188,31 @@ class PersonalLearningRunTest {
         h.type("гүзәл", listOf("гүзәллек"))
         h.endWord()
         assertTrue("without an empty result the word is not reported", h.completions.isEmpty())
+    }
+
+    @Test
+    fun aWordWhosePrefixesOnlyGetTypoRecoveryIsStillReported() {
+        val h = Harness()
+        h.witnessABoundary()
+        // Typo recovery fills every strip, but the exact pass for "күл" found no dictionary word.
+        h.engine.exactMiss = "күл"
+        h.type("күл", listOf("көл"))
+        h.engine.exactMiss = null
+        h.type("күлә", listOf("көлә"))
+        h.endWord()
+        assertEquals(listOf("күлә"), h.completions)
+    }
+
+    @Test
+    fun aStaleExactMissTagIsIgnored() {
+        val h = Harness()
+        h.witnessABoundary()
+        // The tag names another prefix, so it proves nothing about "күл".
+        h.engine.exactMiss = "кү"
+        h.type("күл", listOf("көл"))
+        h.type("күлә", listOf("көлә"))
+        h.endWord()
+        assertTrue(h.completions.isEmpty())
     }
 
     @Test

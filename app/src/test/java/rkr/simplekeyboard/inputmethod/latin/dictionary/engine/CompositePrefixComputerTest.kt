@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -584,5 +585,42 @@ class CompositePrefixComputerTest {
         val filled = fallback.fallbackWords(prefix("һәм"), listOf("белән", "да", "бу"), 3)
         assertTrue(filled.isEmpty())
         assertEquals(filled.distinct(), filled)
+    }
+
+    // --- The exact-miss verdict ------------------------------------------------------------------
+
+    @Test
+    fun anEmptyExactPassIsReportedEvenWhenTypoRecoveryFilledTheStrip() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(listOf("көлә", "кулә"), lastExactCount = 0), PersonalCandidateSource.EMPTY,
+        )
+        assertEquals(listOf("көлә", "кулә"), computer.lookup(prefix("күлә")))
+        assertEquals("күлә", computer.lastExactMissPrefix)
+    }
+
+    @Test
+    fun anExactCandidateClearsTheExactMissVerdict() {
+        val primary = object : ClassifiedPrefixComputer {
+            var exact = 0
+            override val lastExactCount: Int get() = exact
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> =
+                if (exact == 0) emptyList() else listOf("гүзәл")
+        }
+        val computer = CompositePrefixComputer(primary, PersonalCandidateSource.EMPTY)
+        computer.lookup(prefix("гүз"))
+        assertEquals("гүз", computer.lastExactMissPrefix)
+        primary.exact = 1
+        computer.lookup(prefix("гүз"))
+        assertNull(computer.lastExactMissPrefix)
+    }
+
+    @Test
+    fun clearingTheVerdictsDropsTheExactMiss() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), lastExactCount = 0), PersonalCandidateSource.EMPTY,
+        )
+        computer.lookup(prefix("гүз"))
+        computer.clearLookupVerdicts()
+        assertNull(computer.lastExactMissPrefix)
     }
 }

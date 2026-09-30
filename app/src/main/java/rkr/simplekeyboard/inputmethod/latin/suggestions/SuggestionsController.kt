@@ -1988,7 +1988,12 @@ class SuggestionsController internal constructor(
     }
 
     private fun applyPrefixResult(suggestions: List<String>) {
-        if (suggestions.isEmpty()) {
+        // Typo recovery and personal words can fill a strip whose exact dictionary pass was
+        // empty; the learning rule needs only the empty exact pass.
+        val exactMiss = usableEngine()?.exactMissPrefix()
+        if (suggestions.isEmpty() ||
+            (exactMiss != null && exactMiss == TatarWordUtils.normalizeForLookup(pendingPrefix))
+        ) {
             runMachine.observeEmptyResult(pendingPrefix)
         }
         // When the separator-time autocorrect would fire on this word, the strip shows the coming

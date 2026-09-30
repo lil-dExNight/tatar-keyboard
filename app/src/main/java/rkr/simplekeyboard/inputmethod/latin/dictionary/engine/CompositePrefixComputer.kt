@@ -93,9 +93,19 @@ internal class CompositePrefixComputer(
     var lastAutocorrectAdvice: AutocorrectAdvice? = null
         private set
 
-    /** Drops the current verdict; called when the engine idles or is torn down. */
-    fun clearAutocorrectAdvice() {
+    /**
+     * The normalized prefix of the newest lookup whose exact pass found no dictionary word
+     * continuing it, else null. Written by the worker, read on the UI thread; the reader checks it
+     * against its own prefix.
+     */
+    @Volatile
+    var lastExactMissPrefix: String? = null
+        private set
+
+    /** Drops the current verdicts; called when the engine idles or is torn down. */
+    fun clearLookupVerdicts() {
         lastAutocorrectAdvice = null
+        lastExactMissPrefix = null
     }
 
     /**
@@ -213,6 +223,10 @@ internal class CompositePrefixComputer(
     override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
         val dictionary = primary.lookup(normalizedPrefixUtf8)
         lastAutocorrectAdvice = withoutPersonalWords(primary.lastAutocorrectAdvice)
+        // Decoded only on an empty exact pass, which the learning rule needs whatever typo
+        // recovery added after it.
+        lastExactMissPrefix =
+            if (primary.lastExactCount == 0) normalizedPrefixUtf8.decodeUtf8() else null
         if (personal.isEmpty()) return dictionary
         val matches = try {
             personal.candidatesFor(normalizedPrefixUtf8.decodeUtf8())

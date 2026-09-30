@@ -102,9 +102,9 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
     }
 
     /**
-     * Records that nothing in the dictionary continues [prefix], so no longer word starting with
-     * it is in the dictionary either. The shortest such prefix is kept: the rule needs a proper
-     * prefix of the completed word, and the last empty result of a run is usually the whole word.
+     * Records that the exact dictionary pass for [prefix] was empty, whatever typo recovery or
+     * personal words added: no longer word starting with it is in the dictionary. The shortest
+     * such prefix is kept: the rule needs a proper prefix of the completed word.
      */
     fun observeEmptyResult(prefix: String) {
         if (runClean && prefix.isNotEmpty()) {
@@ -120,8 +120,8 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
     /**
      * Reports [word] as cleanly completed, but only when the run also proved the word is NOT in the
      * shipped dictionary: some PROPER prefix of it, actually requested during this same run, came
-     * back with an empty result. An empty result for p means no dictionary word other than p itself
-     * begins with p, so a longer word starting with p cannot be in the dictionary either.
+     * back with an empty exact pass. That means no dictionary word other than p itself begins with
+     * p, so a longer word starting with p cannot be in the dictionary either.
      *
      * If no such observation was made (requests were coalesced, the engine was not ready, the strip
      * was ineligible), nothing is reported: when in doubt, learn less.

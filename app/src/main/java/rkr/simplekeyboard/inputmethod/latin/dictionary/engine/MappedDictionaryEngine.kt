@@ -133,9 +133,16 @@ class MappedDictionaryEngine private constructor(
     val autocorrectAdvice: AutocorrectAdvice?
         get() = computer.lastAutocorrectAdvice
 
+    /**
+     * The normalized prefix of the newest completed lookup whose exact pass was empty, or null.
+     * The reader must check it against its own prefix, as with [autocorrectAdvice].
+     */
+    val exactMissPrefix: String?
+        get() = computer.lastExactMissPrefix
+
     fun finishInput() {
-        // Idling the engine invalidates the generation, so the verdict computed for it goes too.
-        computer.clearAutocorrectAdvice()
+        // Idling the engine invalidates the generation, so the verdicts computed for it go too.
+        computer.clearLookupVerdicts()
         engine.finishInput()
     }
 
@@ -165,7 +172,7 @@ class MappedDictionaryEngine private constructor(
     fun isCurrent(token: LookupToken): Boolean = engine.isCurrent(token)
 
     fun destroy(timeout: Long, unit: TimeUnit): Boolean {
-        computer.clearAutocorrectAdvice()
+        computer.clearLookupVerdicts()
         return engine.destroy(timeout, unit)
     }
 
