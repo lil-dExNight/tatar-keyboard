@@ -1416,9 +1416,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     private KeyboardId mNeighborTableKeyboardId;
     private KeyNeighborTable mNeighborTable;
 
-    // The glide typing key geometry of the current layout, cached by KeyboardId like the
-    // neighbor table above.
-    private KeyboardId mGlideGeometryKeyboardId;
+    // The glide typing key geometry of the current layout. It is kept while a rebuilt geometry
+    // has the same content, so the engine keeps its decoder and word index across keyboard ids
+    // that differ only in shift state, editor action or other flags that do not move keys.
     private GlideKeyGeometry mGlideGeometry;
 
     /**
@@ -1453,11 +1453,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         GlideKeyGeometry geometry = null;
         if (keyboard != null && keyboard.mId.isAlphabetKeyboard() && subtypeId != null
                 && isGlideEligible()) {
-            if (keyboard.mId.equals(mGlideGeometryKeyboardId) && mGlideGeometry != null) {
+            geometry = GlideKeyGeometryBuilder.fromKeyboard(keyboard);
+            if (mGlideGeometry != null && mGlideGeometry.sameLayoutAs(geometry)) {
                 geometry = mGlideGeometry;
             } else {
-                geometry = GlideKeyGeometryBuilder.fromKeyboard(keyboard);
-                mGlideGeometryKeyboardId = keyboard.mId;
                 mGlideGeometry = geometry;
             }
         }

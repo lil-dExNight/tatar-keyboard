@@ -1,6 +1,7 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -60,6 +61,31 @@ class GlideKeyGeometryTest {
         assertTrue(geometry.isEmpty)
         assertEquals(0f, geometry.keyRadius, 0f)
         assertEquals(0, geometry.findClosestKeys(0f, 0f, IntArray(2)))
+    }
+
+    @Test
+    fun sameLayoutIgnoresLetterCaseAndKeyOrderButNotRectanglesOrLetters() {
+        val lower = listOf(raw('а', 0, 0, 100, 100), raw('б', 100, 0, 200, 100))
+        val base = GlideKeyGeometry.build(lower)
+        val shifted = GlideKeyGeometry.build(
+            listOf(raw('Б', 100, 0, 200, 100), raw('А', 0, 0, 100, 100), raw(' ', 0, 100, 200, 200)),
+        )
+        val moved = GlideKeyGeometry.build(listOf(raw('а', 0, 0, 100, 100), raw('б', 101, 0, 201, 100)))
+        val taller = GlideKeyGeometry.build(listOf(raw('а', 0, 0, 100, 100), raw('б', 100, 0, 200, 101)))
+        val otherLetter = GlideKeyGeometry.build(listOf(raw('а', 0, 0, 100, 100), raw('в', 100, 0, 200, 100)))
+        val fewer = GlideKeyGeometry.build(listOf(raw('а', 0, 0, 100, 100)))
+
+        assertTrue(base.sameLayoutAs(base))
+        assertTrue(base.sameLayoutAs(GlideKeyGeometry.build(lower)))
+        assertTrue(base.sameLayoutAs(shifted))
+        assertTrue(shifted.sameLayoutAs(base))
+        assertFalse(base.sameLayoutAs(moved))
+        assertFalse(base.sameLayoutAs(taller))
+        assertFalse(base.sameLayoutAs(otherLetter))
+        assertFalse(base.sameLayoutAs(fewer))
+        assertTrue(
+            GlideTestFixtures.tatarGeometry().sameLayoutAs(GlideTestFixtures.tatarGeometry()),
+        )
     }
 
     @Test

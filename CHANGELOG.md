@@ -25,6 +25,7 @@ These hold for every release and are not repeated in the entries below:
 - Sliding across keys in English and in fields without glide typing types letters again, instead of drawing a trail that typed nothing.
 - The personal dictionary learns new Tatar words that are close to dictionary words.
 - Learned word pairs are no longer formed across sentences, line breaks, numbers or emoji.
+- After you turn the number row on or off, glide typing reads the new key positions instead of typing wrong words until the keyboard restarts.
 
 ## [3.6.0] — 2026-09-29
 

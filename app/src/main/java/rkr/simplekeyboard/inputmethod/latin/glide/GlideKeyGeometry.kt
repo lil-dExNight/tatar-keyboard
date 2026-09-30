@@ -50,6 +50,20 @@ class GlideKeyGeometry private constructor(
     fun halfHeight(keyIndex: Int): Float = halfHeights[keyIndex]
 
     /**
+     * True when [other] has the same letters at the same rectangles, so a decoder built for one
+     * decodes identically with the other.
+     */
+    fun sameLayoutAs(other: GlideKeyGeometry): Boolean =
+        this === other || (
+            keyRadius == other.keyRadius &&
+                letters.contentEquals(other.letters) &&
+                centerXs.contentEquals(other.centerXs) &&
+                centerYs.contentEquals(other.centerYs) &&
+                halfWidths.contentEquals(other.halfWidths) &&
+                halfHeights.contentEquals(other.halfHeights)
+            )
+
+    /**
      * Writes the indices of the [out].size keys whose centers are nearest to ([x], [y]) into
      * [out], nearest first, and returns how many were written (<= out.size, <= [keyCount]).
      * Distance ties go to the lower key index, so the result is deterministic. The selection is
