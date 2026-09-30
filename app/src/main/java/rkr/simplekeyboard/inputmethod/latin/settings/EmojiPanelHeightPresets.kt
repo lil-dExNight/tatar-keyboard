@@ -19,21 +19,14 @@ package rkr.simplekeyboard.inputmethod.latin.settings
 import kotlin.math.abs
 
 /**
- * The "Emoji panel height" Appearance row (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B), modelled
- * on [KeyboardHeightPresets]: three named presets stored as one float scale of the keyboard box in
- * `pref_emoji_panel_height`.
- *
- * `same` is exactly the pre-setting behavior — the panel's box IS the keyboard's box, strip bonus
- * included, and no ceiling is consulted, so the same-box invariant holds bit for bit. `larger`
- * scales the box by 1.2 and `max` takes it to the platform ceiling — the 46%p-of-screen
- * `config_max_keyboard_height` fraction, passed in by the caller because this holder is pure.
- * [MAX_SCALE] is deliberately not a measured factor: it is any scale far past the ceiling, and the
- * clamp in [applyTo], not the number, is what "max" means. A managed restriction writes an integer
- * percent through the same float (100 = same, 120 = larger, 10000 = max); percents above 100 apply
- * verbatim, scaled and clamped, while percents at or below 100 floor at `same` — the panel is never
- * smaller than the keyboard box.
- *
- * Pure value holder with no Android imports: the mapping is unit-tested on the JVM.
+ * The "Emoji panel height" presets, modeled on [KeyboardHeightPresets]: one float scale of the
+ * keyboard box in `pref_emoji_panel_height`. `same` makes the panel box exactly the keyboard box
+ * (suggestion strip included, no ceiling consulted); `larger` scales it by 1.2; `max` takes it to
+ * the platform ceiling (the 46%p `config_max_keyboard_height` fraction, passed in by the caller).
+ * [MAX_SCALE] is just far past the ceiling: the clamp in [applyTo] is what "max" means. A managed
+ * restriction writes an integer percent (100 = same, 120 = larger, 10000 = max); values at or
+ * below 100 floor at `same`, so the panel is never smaller than the keyboard box.
+ * Pure value holder with no Android imports, so the mapping is unit-tested on the JVM.
  */
 object EmojiPanelHeightPresets {
     const val SAME_SCALE = 1.0f
@@ -60,9 +53,9 @@ object EmojiPanelHeightPresets {
 
     /**
      * The panel box height for [scale] applied to [panelHeightPx] (keyboard height plus the
-     * suggestion-strip bonus, already final). `same` returns it untouched — never clamped — so the
-     * default path is exactly the old invariant; anything above scales and is capped at
-     * [maxHeightPx]. A non-positive cap means "no ceiling known" and only the scale applies.
+     * suggestion-strip bonus, already final). `same` returns it untouched and never clamped;
+     * anything above scales and is capped at [maxHeightPx]. A non-positive cap means "no ceiling
+     * known" and only the scale applies.
      */
     @JvmStatic
     fun applyTo(panelHeightPx: Int, maxHeightPx: Int, scale: Float): Int = when {
@@ -71,6 +64,6 @@ object EmojiPanelHeightPresets {
         else -> minOf((panelHeightPx * scale).toInt(), maxHeightPx)
     }
 
-    /** Wider than float-identity to absorb the percent arithmetics a restriction can write. */
+    /** Wider than float identity to absorb the percent arithmetic a restriction can write. */
     private const val EPSILON = 0.001f
 }

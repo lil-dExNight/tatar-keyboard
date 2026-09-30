@@ -21,8 +21,7 @@ import java.io.InputStream
 /**
  * The emoji-suggest table: an immutable, Android-free mapping of "(language, finished word) ->
  * emoji" built from `assets/emoji/emoji_suggest_v1.txt` (see `scripts/emoji_suggest_pack.py` and
- * the NOTICE beside the asset; the data is curated, Russian and Tatar only, mission 1 of
- * `docs/EMOJI-SUGGEST-PLAN.md`).
+ * the NOTICE beside the asset; the data is curated, Russian and Tatar only).
  *
  * The asset is data, not code: UTF-8, LF line endings, one entry per line, three tab-separated
  * fields — the language tag (`ru`/`tt`), the word in the exact normalized form
@@ -87,15 +86,9 @@ class EmojiSuggestIndex private constructor(
         private const val MAX_LINE_CHARS = 512
 
         /**
-         * Hard cap on the parsed record count (2026-09-25 audit, F16, mirrors SentStartIndex):
-         * it exists to stop a corrupt asset from growing the map without bound — parsing stops at
-         * the cap instead. 8192 aligns with the packer's own guardrail `MAX_LINES = 8192` in
-         * `scripts/emoji_suggest_pack.py`, so a table the packer would ship can never be truncated
-         * here. Resident cost is ~140 B/record (557 KB @ 3 976 records, docs/ROADMAP-P8.md C2), so
-         * the worst case is ~1.1 MB for an opt-in, idle-released feature. Raised 4096 -> 8192 on
-         * 2026-09-28 (backlog B3): the shipped table had crossed into <4% headroom. Re-measurement
-         * ritual: when the shipped table crosses 4 096 entries, re-measure resident memory per the
-         * ROADMAP-P8 C2 method and re-review this cap.
+         * Cap on the parsed record count, so a corrupt asset cannot grow the map without bound
+         * (parsing stops at the cap, as in SentStartIndex). Equal to `MAX_LINES` in
+         * `scripts/emoji_suggest_pack.py`, so a table the packer accepts is never truncated here.
          */
         private const val MAX_RECORDS = 8192
 
@@ -109,7 +102,7 @@ class EmojiSuggestIndex private constructor(
         fun assetLanguageOf(subtypeId: String): String = subtypeId.substringBefore('_')
 
         /**
-         * Fail-closed parser. A malformed line is dropped, a duplicate (language, word) key keeps
+         * A malformed line is dropped, a duplicate (language, word) key keeps
          * its first mapping, input past [MAX_RECORDS] records is truncated, and a fully
          * unreadable input yields [EMPTY]; no exception ever escapes.
          */
@@ -121,14 +114,10 @@ class EmojiSuggestIndex private constructor(
                 EMPTY
             }
 
-        /** Reads [input] as UTF-8 and parses it; an unreadable stream yields [EMPTY]. */
         /**
-         * C2 of `docs/ROADMAP-P8-PLAN.md`: parses AND filters in one pass. The load path used to
-         * build the whole table, ask the glyph probe about every distinct emoji, then build a
-         * SECOND filtered table — so its peak held two copies of ~0.5 MB for a table whose steady
-         * state is one. With [emojiFilter] the rejected records are never inserted, and the peak
-         * equals the steady state. The predicate is called once per DISTINCT emoji sequence
-         * (memoized here), exactly as often as the old `distinctEmoji()` pass called it.
+         * Reads [input] as UTF-8 and parses it, keeping only records whose emoji passes
+         * [emojiFilter]. Rejected records are never inserted, so peak memory equals the final
+         * table. The predicate is called once per distinct emoji sequence (memoized here).
          */
         @JvmStatic
         fun parse(input: InputStream, emojiFilter: (String) -> Boolean): EmojiSuggestIndex {
@@ -143,6 +132,7 @@ class EmojiSuggestIndex private constructor(
             }
         }
 
+        /** Reads [input] as UTF-8 and parses it; an unreadable stream yields [EMPTY]. */
         @JvmStatic
         fun parse(input: InputStream): EmojiSuggestIndex {
             val text = try {

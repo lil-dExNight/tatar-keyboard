@@ -20,25 +20,19 @@ import java.text.Normalizer
 import java.util.Arrays
 
 /**
- * Immutable adjacency source ("источник соседства") derived from the live keyboard layout.
+ * Immutable key-adjacency table derived from the live keyboard layout.
  *
- * It is built by a pure function ([build]) from a plain list of [RawKey]s so it carries no Android
- * type and can be exercised by ordinary JVM tests. The keyboard is queried on the Android side
- * (`Keyboard.getSortedKeys()` / `Key.getMoreKeys()`) and adapted into [RawKey]s there
- * ([rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder]); not a single letter
- * or key pair is hard-coded here.
+ * Built by a pure function ([build]) from a plain list of [RawKey]s, so it carries no Android type
+ * and runs in plain JVM tests. The Android side reads the keyboard (`Keyboard.getSortedKeys()`,
+ * `Key.getMoreKeys()`) in [rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder];
+ * no letter, key pair or coordinate is hard-coded here.
  *
- * E3a fills in the edit class #1 source — long-press partners taken from the layout's `moreKeys`.
- * E3b adds the edit class #2 source — geometric neighbours derived from the raw geometry
- * (`left/top/right/bottom`) of every letter key, read from the very same source. Not a single
- * letter, pair or coordinate is hard-coded: the geometry always comes from the live layout
- * (`Keyboard.getSortedKeys()` on the device) and the relation below is a pure function of it.
+ * Two relations: edit class #1, long-press partners from the layout's `moreKeys`; edit class #2,
+ * geometric neighbors derived from the key rectangles.
  *
- * The table carries the [subtypeId] it was built for so the engine can refuse a fuzzy pass when the
- * table does not match the requesting subtype. It is fully immutable once built.
- *
- * Partners are stored in a sorted [IntArray] searched by primitive binary search: the hot fuzzy
- * path never boxes a code point, so it allocates nothing per position or per variant.
+ * The table carries the [subtypeId] it was built for, so the engine can refuse a typo-recovery
+ * pass when it does not match the requesting language. Partners are stored in sorted [IntArray]s
+ * searched by primitive binary search, so the hot path never boxes a code point.
  */
 class KeyNeighborTable private constructor(
     val subtypeId: String,
@@ -48,17 +42,15 @@ class KeyNeighborTable private constructor(
     private val geometricValues: Array<IntArray>,
     /** Every distinct code point that is a node of the table (keys plus more-key-only letters). */
     val nodes: IntArray,
-    /** Geometry-bearing letter keys actually read from the layout (37 on the Tatar layout). */
+    /** Letter keys with geometry actually read from the layout. */
     val letterKeyCount: Int,
 ) {
 
     val isEmpty: Boolean get() = nodes.isEmpty()
 
     /**
-     * Long-press partners of [codePoint] (edit class #1), or null when the code point has none.
-     *
-     * The returned array is shared and MUST NOT be mutated by the caller: fuzzy variant generation
-     * reads it on the hot lookup path and allocates nothing per variant.
+     * Long-press partners of [codePoint] (edit class #1), or null when it has none. The array is
+     * shared and must not be mutated: it is read on the hot lookup path.
      */
     fun longPressPartnersOf(codePoint: Int): IntArray? {
         val index = Arrays.binarySearch(partnerKeys, codePoint)
@@ -66,11 +58,8 @@ class KeyNeighborTable private constructor(
     }
 
     /**
-     * Geometric neighbours of [codePoint] (edit class #2), or null when the code point has none.
-     *
-     * A geometric neighbour is a key adjacent to [codePoint] under the layout's geometry (see the
-     * neighbour rule in [build]). The returned array is shared and MUST NOT be mutated by the
-     * caller: it is read on the hot lookup path and allocates nothing per variant.
+     * Geometric neighbors of [codePoint] (edit class #2, see the rule in [build]), or null when it
+     * has none. The array is shared and must not be mutated.
      */
     fun geometricNeighborsOf(codePoint: Int): IntArray? {
         val index = Arrays.binarySearch(geometricKeys, codePoint)
@@ -78,11 +67,8 @@ class KeyNeighborTable private constructor(
     }
 
     /**
-     * One alphabet key as read from the live layout, before any normalization.
-     *
-     * [codePoint] is the key's code; [moreKeyCodePoints] are the `mCode`s of the key's more-keys
-     * (the long-press partners). Geometry is the visible key rectangle in pixels, retained for the
-     * E3b geometric-neighbour relation.
+     * One alphabet key as read from the live layout, before normalization. [moreKeyCodePoints] are
+     * the codes of the key's more-keys (long-press partners); the rectangle is in pixels.
      */
     class RawKey(
         val codePoint: Int,
@@ -95,18 +81,16 @@ class KeyNeighborTable private constructor(
 
     companion object {
         /**
-         * Builds the table from the keys of a single keyboard element.
+         * Builds the table from the keys of one keyboard element.
          *
-         * The whole table is empty unless [isAlphabetElement] is true: on the shifted element the
-         * codes are upper-case and on symbols they are not letters, so only the alphabet element
-         * (`KeyboardId.isAlphabetKeyboard()`) is a valid source. This is an engineering precaution
-         * rather than a proven fact about `getSortedKeys()`, and it is confirmed by the phase test.
+         * The table is empty unless [isAlphabetElement] is true: on the shifted element the codes
+         * are upper case and on symbols they are not letters, so only the alphabet element
+         * (`KeyboardId.isAlphabetKeyboard()`) is a valid source.
          *
-         * Every code (primary and more-key) is folded to its NFC lower-case form; non-code-point
-         * and non-letter keys are dropped. Long-press pairs in the layout are one-directional and
-         * duplicated ("ә" is declared on both "а" and "э", with no back link from "ә"), so the map
-         * is symmetrized and de-duplicated explicitly — without that half the diacritic pairs would
-         * silently never fire.
+         * Every code is folded to NFC lower case; non-letter keys are dropped. Long-press pairs in
+         * the layout are one-directional and duplicated (one diacritic letter is declared on two
+         * base keys, with no back link), so the map is symmetrized and de-duplicated; otherwise
+         * half the diacritic pairs would never fire.
          */
         fun build(
             subtypeId: String,
@@ -121,9 +105,9 @@ class KeyNeighborTable private constructor(
             val pairs = HashMap<Int, MutableSet<Int>>()
             val nodeSet = sortedSetOf<Int>()
             var letterKeys = 0
-            // Parallel geometry records for the letter keys, in encounter order. A key contributes a
-            // geometric record only when it folds to a letter (more-key-only letters like ё/ъ have
-            // no geometry of their own and take part in edit class #1 alone).
+            // Parallel geometry records for the letter keys, in encounter order. Only keys that fold
+            // to a letter get a record; more-key-only letters have no geometry and take part in
+            // edit class #1 only.
             val geomCode = ArrayList<Int>(keys.size)
             val geomLeft = ArrayList<Int>(keys.size)
             val geomTop = ArrayList<Int>(keys.size)
@@ -161,17 +145,15 @@ class KeyNeighborTable private constructor(
         }
 
         /**
-         * Edit class #2 relation, verbatim from the contract: keys of the same row that touch
-         * horizontally, plus keys of an adjacent row whose horizontal overlap is MORE than 35% of
-         * the width of the narrower of the two.
+         * Edit class #2 relation: keys of the same row that touch horizontally, plus keys of an
+         * adjacent row whose horizontal overlap is more than 35% of the narrower key's width.
          *
-         * "Same row" is same top coordinate; "adjacent row" is a difference of exactly one in the
-         * rank of the distinct top coordinates (so an empty row between two letter rows, or a
-         * dropped digit row, cannot make non-adjacent letter rows neighbours). "Touch horizontally"
-         * is a shared vertical edge (`right == left`), which is why two coincident rectangles — the
-         * degenerate geometry used by the class #1 unit fixtures — produce no geometric neighbour at
-         * all. The 35% comparison is exact integer arithmetic (`100*overlap > 35*minWidth`) so the
-         * relation is identical on every host and reproducible by the offline model.
+         * "Same row" is the same top coordinate; "adjacent row" is a difference of exactly one in
+         * the rank of the distinct top coordinates, so a missing row cannot make non-adjacent rows
+         * neighbors. "Touch horizontally" is a shared vertical edge (`right == left`), so two
+         * coincident rectangles (the degenerate geometry of the class #1 test fixtures) are not
+         * neighbors. The 35% check is integer arithmetic (`100*overlap > 35*minWidth`), identical on
+         * every host and reproducible by the offline model.
          */
         private fun computeGeometricPairs(
             code: List<Int>,

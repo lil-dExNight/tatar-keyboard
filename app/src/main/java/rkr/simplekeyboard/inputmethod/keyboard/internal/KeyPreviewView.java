@@ -105,9 +105,8 @@ public class KeyPreviewView extends TextView {
         sNoScaleXTextSet.clear();
     }
 
-    // Reused scratch buffer for getTextWidths(): this ran on every key preview show and
-    // allocated a new float[] each time. The view lives on the UI thread, so a single
-    // growing buffer is race-free.
+    // Reused scratch buffer for getTextWidths(), so a key preview show does not allocate a
+    // new float[]. The view lives on the UI thread, so a single growing buffer is race-free.
     private float[] mTextWidthsBuffer = new float[0];
 
     private float getTextWidth(final String text, final TextPaint paint) {

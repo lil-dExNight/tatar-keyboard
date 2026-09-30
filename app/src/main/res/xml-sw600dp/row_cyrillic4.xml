@@ -21,21 +21,20 @@
 <merge
     xmlns:latin="http://schemas.android.com/apk/res-auto"
 >
-    <!-- Планшетный нижний ряд кириллических раскладок: xml-sw600dp/row_qwerty4.xml,
-         в котором <Spacer> заменён клавишей Enter.
+    <!-- Tablet bottom row of the Cyrillic layouts: xml-sw600dp/row_qwerty4.xml with
+         its <Spacer> replaced by an Enter key.
 
-         Почему Enter именно здесь, а не во втором ряду, как у планшетной QWERTY:
-         у tatar и russian нет планшетных rows_*.xml, они берут базовые — те же,
-         что на телефоне. Класть Enter на его телефонное место дешевле и не ломает
-         мышечную память; переносить его в ряд выше пришлось бы вместе с полной
-         планшетной копией обоих rows_*.xml, а это второй экземпляр раскладки,
-         который будет расходиться с первым.
+         Enter goes here rather than into the second row (as on the tablet QWERTY)
+         because tatar and russian have no tablet rows_*.xml and use the phone ones.
+         Keeping Enter at its phone position keeps muscle memory; moving it up a row
+         would need a full tablet copy of both rows_*.xml, a second copy of each
+         layout that would drift from the first.
 
-         Сумма ширин сохранена без пересчёта: 10 + 9 + 63 + 9 + 9 = 100 %p
-         (инвариант записан в key_space_7kw.xml). Enter занимает ровно те 9 %p,
-         которые в латинском варианте отданы <Spacer>. Фон клавиши задан её
-         собственным стилем (defaultEnterKeyStyle, backgroundType="action") и не
-         наследует functional-фон ряда. -->
+         The widths still total 10 + 9 + 63 + 9 + 9 = 100 %p (the invariant is stated
+         in key_space_7kw.xml): Enter takes exactly the 9 %p that the Latin variant
+         gives to <Spacer>. The key's background comes from its own style
+         (defaultEnterKeyStyle, backgroundType="action"), not from the row's
+         functional background. -->
     <Row
         latin:keyWidth="9.0%p"
         latin:backgroundType="functional"

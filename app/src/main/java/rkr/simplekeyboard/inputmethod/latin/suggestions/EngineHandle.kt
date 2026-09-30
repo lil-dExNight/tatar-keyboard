@@ -40,9 +40,8 @@ import java.util.concurrent.TimeUnit
  * as the underlying engine's [ResultHandoff] contract requires. [token] is opaque; hand it straight
  * back to [EngineHandle.isCurrent].
  *
- * [kind] is E5d's addition: the owner of state (the controller) must know which kind of result it
- * holds to choose the right commit path and the right display rule (NEXT_WORD skips the casing
- * re-application PREFIX needs) — PROPOSALS.md, "E5c. Вид запроса" / "Контракт текста" amendment.
+ * [kind] tells the controller which commit path and display rule apply (NEXT_WORD skips the
+ * casing re-application that PREFIX needs).
  */
 fun interface ResultCallback {
     fun onResult(token: Any, suggestions: List<String>, kind: LookupKind)
@@ -60,33 +59,28 @@ interface EngineHandle {
     fun request(editorSessionId: Long, subtypeId: String, prefixUtf8: ByteArray): Any?
 
     /**
-     * E5c NEXT_WORD sibling of [request] — same underlying engine, token and executor, a
-     * different kind (PROPOSALS.md, "E5c. Вид запроса"). Default null so a fake handle written
-     * before E5c keeps compiling and simply never predicts a next word.
+     * NEXT_WORD variant of [request]: same engine, token and executor, a different kind. Default
+     * null: a fake handle never predicts a next word.
      */
     fun requestNextWord(editorSessionId: Long, subtypeId: String, contextWordUtf8: ByteArray): Any? = null
 
     /**
-     * P7-3 (docs/GLIDE-PLAN.md): the GLIDE sibling of [request] — the recorded gesture path is
-     * snapshotted inside the engine before this call returns, so the caller's buffer stays the
-     * PointerTracker's live one. Returns an opaque token, or null if the request was rejected.
-     * Default null so a fake handle written before P7-3 keeps compiling and simply never decodes
-     * a glide.
+     * GLIDE variant of [request]. The engine snapshots [path] before returning, so the caller's
+     * buffer can stay the PointerTracker's live one. Returns a token, or null if rejected (the
+     * default, so a fake handle never decodes a glide).
      */
     fun requestGlide(editorSessionId: Long, subtypeId: String, path: GlidePath): Any? = null
 
     /**
-     * P7-3: pushes the live layout's key geometry for the glide decode side. Default no-op so
-     * fakes keep compiling; the real handle forwards it to the engine. Null disables glide
-     * decoding (fail-closed).
+     * Pushes the live layout's key geometry to the glide decoder. Null disables glide decoding.
+     * Default no-op; the real handle forwards it to the engine.
      */
     fun updateGlideGeometry(geometry: GlideKeyGeometry?) {}
 
     /**
-     * E5c two-stage readiness: wires a bigram source into an ALREADY-published handle. Call off
-     * the UI thread — this performs mmap I/O. Returns false (and leaves [requestNextWord]
-     * answering empty) if the table is unavailable or invalid; default false so a fake handle
-     * written before E5c keeps compiling.
+     * Wires a bigram source into an already published handle. Performs mmap I/O, so call it off
+     * the UI thread. Returns false (and [requestNextWord] keeps answering empty) if the table is
+     * unavailable or invalid; false is also the default.
      */
     fun attachBigramSource(catalog: PublishedBigramTableCatalog): Boolean = false
 
@@ -97,35 +91,28 @@ interface EngineHandle {
     fun finishInput()
 
     /**
-     * Pushes the current key-neighbor table used by the fuzzy suggestion pass. Default no-op so
-     * fakes that predate fuzzy suggestions keep compiling; the real handle forwards it to the
-     * engine.
+     * Pushes the current key-neighbor table used by typo recovery. Default no-op; the real handle
+     * forwards it to the engine.
      */
     fun updateKeyNeighbors(table: KeyNeighborTable?) {}
 
     /**
-     * The D3 autocorrect verdict of the newest completed lookup, or null when nothing may be
-     * replaced. Read on the UI thread at the moment a word separator is pressed; there is no request
-     * and no token, because the verdict was produced by the lookup the band already paid for.
-     *
-     * Default null so a handle that predates D3 keeps compiling and simply never autocorrects.
+     * The autocorrect verdict of the newest completed lookup, or null when nothing may be replaced.
+     * Read on the UI thread when a word separator is pressed; no request or token is needed, since
+     * the lookup behind the current strip produced it. Default null: never autocorrects.
      */
     fun autocorrectAdvice(): AutocorrectAdvice? = null
 
     /**
-     * P1 of Phase 2 (docs/ROADMAP-P2.md): exact whole-word membership of [normalizedWord] in this
-     * engine's dictionary — the dictionary half of the personal-bigram context gate. Safe to call
-     * from any thread (the production answer is a cache-free read of the read-only mapping, never
-     * the lookup path's scratch). Default false so a fake handle written before P1 keeps compiling
-     * and simply proves no context — a dictionary half that says nothing makes the personal half
-     * of the gate decide alone, the fail-closed direction.
+     * Exact whole-word membership of [normalizedWord] in this engine's dictionary: the dictionary
+     * half of the learned-pair context check. Safe from any thread (a cache-free read of the
+     * read-only mapping). Default false, which leaves the personal half of the check to decide.
      */
     fun containsWord(normalizedWord: String): Boolean = false
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of the glide word index
-     * (~6 MB of pure derivation, rebuilt on the next decode). The real handle posts the drop
-     * onto the engine's serialized worker; default no-op so a fake handle keeps compiling.
+     * Releases the glide word index while idle; the next decode rebuilds it. The real handle
+     * posts the drop onto the engine's serialized worker; default no-op.
      */
     fun releaseGlideIndex() {}
 
@@ -186,25 +173,18 @@ class MappedEngineHandle private constructor(
          * ([SuggestionsController.engineCatalog]): the engine neither builds a second store nor
          * spawns a throwaway executor of its own.
          *
-         * [suffixRules] is the P3 word-form wiring (docs/TT-SUGGESTIONS.md): the one object carries
-         * both engine addons — the same-stem boost table of the prefix pass and the after-word
-         * forms of the NEXT_WORD slot. The Tatar engine is started with it, the Russian engine with
-         * null, and neither behavior exists without it.
+         * [suffixRules] carries the word-form addons: the same-stem boost table of the prefix pass
+         * and the after-word forms of NEXT_WORD. The Tatar engine gets it; the Russian engine gets
+         * null and has neither.
          *
-         * [fuzzyEditPolicy] is the TT-TYPO-NEXT wiring (docs/TT-TYPO-NEXT.md): the Tatar engine
-         * ships [FuzzyEditPolicy.TATAR] — class #1 (always) plus class #4 (probe-first full
-         * single substitution, gated on an empty exact pass at >= 4 code points) with the
-         * same-length bonus, the configuration the corrected C2 gates measured and passed
-         * (2026-09-20). Engines started with null run [FuzzyEditPolicy.DEFAULT], bit-identical
-         * to the pre-Phase-B behavior — the Russian engine included.
+         * [fuzzyEditPolicy]: the Tatar engine uses [FuzzyEditPolicy.TATAR]; null means
+         * [FuzzyEditPolicy.DEFAULT] (the Russian engine).
          *
-         * [fallbackWordsFactory] is the TT-NEXTWORD-FILL wiring (docs/TT-NEXTWORD-FILL.md): both
-         * shipped languages get the factory — it builds the top-frequency pool from the engine's
-         * own dictionary at startup, so each language's NEXT_WORD fallback is its own.
+         * [fallbackWordsFactory] builds the top-frequency NEXT_WORD fallback from the engine's own
+         * dictionary at startup, so each language has its own.
          *
-         * [personalBigrams] is the P1 wiring (docs/ROADMAP-P2.md): the user's learned pairs of the
-         * NEXT_WORD slot, resolved per subtype and gated live on the personal-dictionary setting;
-         * [PersonalBigramSource.EMPTY] keeps the pre-P1 behavior byte-identical.
+         * [personalBigrams] supplies the user's learned word pairs for NEXT_WORD, per subtype and
+         * gated live on the personal-dictionary setting; [PersonalBigramSource.EMPTY] disables them.
          */
         @JvmStatic
         @JvmOverloads

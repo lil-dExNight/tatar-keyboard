@@ -23,9 +23,7 @@
     <string name="privacy_policy_url" translatable="false">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.md</string>
     <string name="license_url" translatable="false">https://github.com/lil-dExNight/tatar-keyboard/blob/main/LICENSE</string>
     <!-- Data-source names and links, shown on the Data sources screen. Names of collections are
-         not translated; the link next to each is the attribution their terms ask for. The
-         OpenSubtitles link in particular is the one thing that collection asks of anyone who
-         uses it, and it is the reason this row exists. -->
+         not translated; the link next to each is the attribution their terms ask for. -->
     <string name="data_sources_leipzig_title" translatable="false">Leipzig Corpora Collection</string>
     <string name="data_sources_leipzig_url" translatable="false">https://wortschatz.uni-leipzig.de/en/download</string>
     <string name="data_sources_tatoeba_title" translatable="false">Tatoeba</string>

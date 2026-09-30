@@ -15,9 +15,9 @@
 -->
 
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Sticky keys (shift on, caps locked): M1 of docs/APPLE-UX-2026-09-25.md — iOS
-         INVERTS the key to the letter-key surface (white in light, key grey in dark)
-         instead of tinting it a darker grey. -->
+    <!-- Sticky keys (shift on, caps locked): as on iOS, the key inverts to the
+         letter-key surface (white in light, key gray in dark) instead of turning a
+         darker gray. -->
     <item android:state_checkable="true" android:state_checked="true">
         <layer-list>
             <item android:top="1dp">

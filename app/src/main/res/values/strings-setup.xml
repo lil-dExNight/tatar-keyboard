@@ -14,7 +14,7 @@
      limitations under the License.
 -->
 
-<!-- Onboarding (SETUP-01) strings, English base. The screen title shows the
+<!-- Onboarding strings, English base. The screen title shows the
      brand via @string/english_ime_name directly in the layout — the brand
      name is never hardcoded in these strings. -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">

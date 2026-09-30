@@ -26,16 +26,12 @@ import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 
 /**
- * What could be read out of a quarantined `.tpers` copy: the words, and whether the file ran out
- * before it said it would.
+ * What could be read out of a quarantined `.tpers` file: the words, and whether the file was read
+ * to its end.
  *
- * NOT a Kotlin `data class`: it carries the user's own words, and a synthesised `toString` would
- * print them at the first interpolation. Nothing here is ever logged.
- *
- * [readToEnd] is the honesty flag. It is true only when every record the header declared was read,
- * nothing was left over and no cap cut the read short. Whenever it is false the user must be told
- * that the rest of the file is damaged and lost — a partial recovery presented as a complete one
- * would be a new defect of exactly the class this whole path exists to fix.
+ * A plain class without a generated `toString`, because it carries the user's words. Nothing here
+ * is logged. [readToEnd] is true only when every declared record was read, nothing was left over
+ * and no cap cut the read short; when it is false the user must be told the rest is lost.
  */
 internal class PersonalQuarantineSalvage internal constructor(
     /** Words in their ORIGINAL on-disk form, in ascending normalized order, as read. */
@@ -50,22 +46,16 @@ internal class PersonalQuarantineSalvage internal constructor(
     companion object {
         /**
          * Reads as much of [file] as parses, for the personal dictionary of [requestedSubtypeId].
-         * Returns null when there is no copy at all; an empty salvage with [readToEnd] false when a
-         * copy exists but nothing in it can be trusted.
+         * Returns null when there is no file; an empty salvage with [readToEnd] false when nothing
+         * in it can be trusted.
          *
-         * The stored checksum is deliberately NOT consulted. A truncated write is the ordinary way
-         * this file breaks, and the checksum is the first thing truncation destroys — refusing on it
-         * would refuse every copy there is, which is the hole being closed. What stands in its place
-         * is the per-record contract: the header must identify this exact schema, format and
-         * LANGUAGE, and every record must pass the same content and ordering checks `TpersValidator`
-         * enforces. The ascending-order check earns its keep here as a resync detector: a corrupted
-         * length byte lands the cursor in the middle of the payload, and the first thing that shows
-         * is a word that no longer sorts after the previous one.
+         * The stored checksum is not checked: truncation, the usual failure, breaks it first. The
+         * header must match this schema, format and language, and every record must pass the
+         * content and ordering checks of `TpersValidator`. The ascending-order check detects a
+         * corrupted length byte that puts the cursor mid-payload.
          *
-         * Parsing stops at the FIRST record that violates anything; everything before it is kept.
-         * Nothing in here throws on bad input — a broken file has no right to end a process — but
-         * callers still run it inside their own `try`, because `File` I/O can fail for its own
-         * reasons.
+         * Parsing stops at the first bad record; everything before it is kept. Bad input does not
+         * throw, but callers still wrap the call in a `try` for I/O errors.
          */
         fun read(file: File, requestedSubtypeId: String): PersonalQuarantineSalvage? {
             val length = try {
@@ -79,8 +69,8 @@ internal class PersonalQuarantineSalvage internal constructor(
             val cap = TpersFormat.MAX_FILE_SIZE
             val bytes = readAtMost(file, minOf(length, cap).toInt()) ?: return NOTHING
             if (bytes.size < TpersFormat.HEADER_SIZE) return NOTHING
-            // A file longer than the writer could ever produce is already not whole, but its head may
-            // still hold words, so it is read up to the cap rather than refused.
+            // A file larger than the writer could produce is damaged, but its head may still hold
+            // words, so it is read up to the cap.
             var readToEnd = length <= cap && bytes.size.toLong() == length
 
             val header = ByteBuffer.wrap(bytes, 0, TpersFormat.HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
@@ -100,8 +90,7 @@ internal class PersonalQuarantineSalvage internal constructor(
             if (formatVersion != TpersFormat.FORMAT_VERSION) return NOTHING
             if (headerSize != TpersFormat.HEADER_SIZE) return NOTHING
             if (checksumAlgorithm != TpersFormat.CHECKSUM_ALGORITHM_SHA256) return NOTHING
-            // The language tag is not negotiable: words saved while writing another language have no
-            // business appearing in this one's list, however readable they are.
+            // Words saved in another language never appear in this one's list.
             if (decodeSubtypeTag(subtypeTagBytes) != requestedSubtypeId) return NOTHING
 
             if (payloadSize != length - TpersFormat.HEADER_SIZE) readToEnd = false
@@ -145,13 +134,12 @@ internal class PersonalQuarantineSalvage internal constructor(
             return PersonalQuarantineSalvage(rawForms, normalizedForms, readToEnd)
         }
 
-        /** A copy that exists and yields nothing: no words, and certainly not read to the end. */
+        /** A file that exists and yields nothing: no words, not read to the end. */
         private val NOTHING = PersonalQuarantineSalvage(emptyList(), emptyList(), false)
 
         /**
-         * Reads at most [limit] bytes. Deliberately capped rather than [File.readBytes]: a corrupt
-         * length field is exactly the kind of thing that would otherwise ask for a several-hundred-
-         * megabyte array on a phone that has none.
+         * Reads at most [limit] bytes, unlike [File.readBytes], so a corrupt length field cannot
+         * request a huge array.
          */
         private fun readAtMost(file: File, limit: Int): ByteArray? = try {
             FileInputStream(file).use { input ->

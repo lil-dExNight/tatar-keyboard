@@ -21,9 +21,8 @@ class AtomicDictionaryStore(
         require(supportedArtifacts.map { it.generation }.distinct().size == supportedArtifacts.size)
         require(supportedArtifacts.map { it.finalFileName }.distinct().size == supportedArtifacts.size)
         // One store serves exactly one family, in that family's own directory. Retention counts
-        // files by [finalFilePattern] and the process-wide lease map is keyed by directory, so a
-        // store spanning two families would count the other language's file against this one's
-        // retention budget and would refuse to activate it while the other holds a lease.
+        // files by [finalFilePattern] and the lease map is keyed by directory, so two families in
+        // one store would share a retention budget and a lease counter.
         require(supportedArtifacts.map { it.family }.distinct().size == 1)
         require(supportedArtifacts.map { it.storageDirectoryName }.distinct().size == 1)
     }

@@ -14,8 +14,8 @@
      limitations under the License.
 -->
 
-<!-- More-keys panel background for the Tatar theme: 5dp corner radius of the
-     phase-6 drawable family; 5dp padding must match
+<!-- More-keys panel background for the Tatar theme: 5dp corner radius, like the
+     other ios_* key drawables; 5dp padding must match
      keyboard_popup_panel_background — the panel key insets depend on it. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">

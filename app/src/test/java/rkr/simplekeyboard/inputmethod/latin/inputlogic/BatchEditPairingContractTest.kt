@@ -147,7 +147,7 @@ class BatchEditPairingContractTest {
     fun performRecapitalizationRefusesANegativeSelectionLength() {
         val body = files.getValue("InputLogic")
             .substringAfter("private void performRecapitalization()")
-            .substringBefore("/**\n     * Gets the current auto-caps state")
+            .substringBefore("public int getCurrentAutoCapsState(")
         val compute = body.indexOf("final int numCharsSelected = selectionEnd - selectionStart;")
         val guard = body.indexOf("if (numCharsSelected < 0) {")
         val rotate = body.indexOf("mRecapitalizeStatus.rotate();")

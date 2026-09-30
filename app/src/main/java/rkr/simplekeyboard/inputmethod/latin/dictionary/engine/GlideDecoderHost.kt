@@ -28,24 +28,20 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlideResult
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideWordInventory
 
 /**
- * Owns one engine's glide decode side (P7-3, docs/GLIDE-PLAN.md): the lazily built
- * [GlideDecoder] (its word index is built once per dictionary on the FIRST decode — the engine
- * worker is already a background thread) plus the current layout geometry.
+ * Owns one engine's glide decode side: the lazily built [GlideDecoder] (its word index is built
+ * on the first decode, on the engine worker) plus the current layout geometry.
  *
- * Threading mirrors the fuzzy pass exactly: [decodeGlide] runs on the engine's serialized worker
- * (the decoder's scratch and the result buffer are worker-confined like the lookup path's);
- * [updateGlideGeometry] is a `@Volatile` swap from the UI thread. A geometry change rebuilds the
- * decoder — the word index's key indices are only meaningful against the geometry they were
- * built from. A null or empty geometry fails closed: no candidates, never an exception.
+ * Threading: [decodeGlide] runs on the engine's serialized worker (decoder scratch and result
+ * buffer are worker-confined); [updateGlideGeometry] is a `@Volatile` swap from the UI thread. A
+ * geometry change rebuilds the decoder, because the word index's key indices only make sense
+ * against the geometry they were built from. A null or empty geometry returns no candidates.
  *
- * The personal-dictionary integration (docs/GLIDE-PERSONAL.md) rides the same rebuild: a decode
- * reads the personal source's current immutable snapshot (one `@Volatile` hop, no I/O) and
- * rebuilds the decoder when the snapshot's IDENTITY changed — one rebuild per learning event,
- * paid on the worker. An empty snapshot (feature off, nothing learned) keeps the base inventory
- * unwrapped, so the decode stays byte-identical to the pre-personal behavior;
- * [PersonalDictionary.EMPTY] is a singleton, so the identity comparison does not churn.
- * [dictionaryMembership] is the duplicate check of the composite inventory (the dictionary's
- * cold exact-membership read); it runs only inside such a rebuild, never per gesture.
+ * Personal dictionary: a decode reads the personal source's current immutable snapshot (one
+ * `@Volatile` read, no I/O) and rebuilds the decoder when the snapshot's identity changed, so one
+ * rebuild per learning event, on the worker. An empty snapshot keeps the base inventory
+ * unwrapped; [PersonalDictionary.EMPTY] is a singleton, so the identity check does not churn.
+ * [dictionaryMembership] is the duplicate check of the composite inventory; it runs only during
+ * such a rebuild, never per gesture.
  */
 internal class GlideDecoderHost(
     private val inventory: GlideWordInventory,
@@ -66,12 +62,9 @@ internal class GlideDecoderHost(
     }
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): drops the lazily built decoder — its [GlideWordIndex] is
-     * the ~6 MB structure the idle memory release (LatinIME `MSG_DEALLOCATE_MEMORY`) targets.
-     * The index is a pure derivation of the inventory, the live geometry and the current personal
-     * snapshot, so the next [decodeGlide] simply rebuilds it. Worker-confined like every other
-     * touch of [decoder]: the caller routes this through the engine's serialized executor, never
-     * the UI thread.
+     * Drops the lazily built decoder and its [GlideWordIndex], the large structure the idle memory
+     * release (LatinIME `MSG_DEALLOCATE_MEMORY`) targets; the next [decodeGlide] rebuilds it.
+     * Worker-confined: the caller routes this through the engine's serialized executor.
      */
     fun releaseIndex() {
         decoder = null

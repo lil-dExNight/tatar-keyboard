@@ -118,10 +118,9 @@ public final class KeyPreviewDrawParams {
     private static final AccelerateInterpolator ACCELERATE_INTERPOLATOR =
             new AccelerateInterpolator();
 
-    // The parameters of the former res/anim/key_preview_dismiss_lxx.xml, built in code instead:
-    // the XML used to be parsed by AnimatorInflater on EVERY key press (~15 objects per press).
-    // The scaleX 1.0 -> 1.0 half of that set is a no-op (the pool resets both scales to 1 on
-    // reuse), so one ObjectAnimator on scaleY is the whole animation.
+    // The dismiss animation is built in code rather than inflated from XML, which would
+    // allocate a set of objects on every key press. Only scaleY animates: the pool resets both
+    // scales to 1 on reuse, so one ObjectAnimator on scaleY is the whole animation.
     private static final long DISMISS_ANIMATION_DURATION_MS = 53;
     private static final float DISMISS_ANIMATION_FROM_SCALE_Y = 1.0f;
     private static final float DISMISS_ANIMATION_TO_SCALE_Y = 0.94f;

@@ -147,8 +147,8 @@ class EmojiSearchLayoutTest {
     @Test
     fun theCloseCrossConstantIsUsedOnlyByTheCloseKey() {
         val queryRow = bodyOf("private fun drawQueryRow", "private fun drawCaret")
-        val closeSection = queryRow.substringAfter("// The close key sits inside")
-        val outsideCloseKey = queryRow.substringBefore("// The close key sits inside")
+        val closeSection = queryRow.substringAfter("val closeX = w - pillInsetXPx - closeInsetPx")
+        val outsideCloseKey = queryRow.substringBefore("val closeX = w - pillInsetXPx - closeInsetPx")
         assertFalse(
             "closeCrossPx is used before the close key is drawn",
             outsideCloseKey.contains("closeCrossPx"),
@@ -178,7 +178,7 @@ class EmojiSearchLayoutTest {
     /** The placeholder text is gone: an empty query draws no message at all. */
     @Test
     fun anEmptyQueryDrawsNoPlaceholderMessage() {
-        val results = bodyOf("private fun drawResults", "/** Widest scroll offset")
+        val results = bodyOf("private fun drawResults", "private fun maxScrollX()")
         assertFalse(
             "the \"type a query\" placeholder is still drawn",
             results.contains("typeMoreText"),
@@ -192,7 +192,7 @@ class EmojiSearchLayoutTest {
     /** A query that gains or loses its first character changes the measured height, so re-layout. */
     @Test
     fun changingTheQueryRequestsLayoutBecauseTheHeightCanChange() {
-        val setQuery = bodyOf("fun setQuery(query: String)", "/** Drops the bound index")
+        val setQuery = bodyOf("fun setQuery(query: String)", "override fun onMeasure(")
         assertTrue("setQuery must requestLayout when the band appears or goes", setQuery.contains("requestLayout()"))
     }
 

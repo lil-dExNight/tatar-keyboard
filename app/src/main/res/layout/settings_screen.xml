@@ -14,8 +14,8 @@
      limitations under the License.
 -->
 
-<!-- Shared scaffold for every SettingsHostActivity screen (IOS-REDESIGN.md
-     S1.1): back chevron, 34sp large title, then a scrollable column that
+<!-- Shared scaffold for every SettingsHostActivity screen: back chevron,
+     34sp large title, then a scrollable column that
      the activity fills with grouped cards built from row_link / row_switch /
      row_value. Classic View on purpose — no new dependencies. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"

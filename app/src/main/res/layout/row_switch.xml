@@ -15,7 +15,7 @@
 -->
 
 <!-- Toggle row: title (+ optional summary) with the iOS-style Switch
-     (wave D track/thumb). The whole row is the single click and
+     (app_switch_track / app_switch_thumb). The whole row is the single click and
      accessibility target — the Switch itself is decorative here, it is
      toggled by SettingsHostActivity, which also mirrors the checked
      state into the row's accessibility node. splitTrack must stay off:

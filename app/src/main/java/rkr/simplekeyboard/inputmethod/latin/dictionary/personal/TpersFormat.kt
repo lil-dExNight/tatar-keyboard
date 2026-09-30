@@ -19,10 +19,9 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 /**
  * The frozen `.tpers` personal-dictionary binary format.
  *
- * The format is deliberately its own schema rather than a reuse of `.tdict`: the dictionary asset
- * is an immutable, name-sha256-and-count-before-build artifact activated through a lease that
- * returns null while a foreign reader is alive, which is unusable for a file that changes during a
- * session. See `docs/DICTIONARY-E4.md` for the written justification.
+ * It is its own schema rather than `.tdict`: the dictionary asset is immutable, pinned before the
+ * build and activated through a lease that fails while another reader is alive, which does not
+ * suit a file that changes during a session.
  *
  * Header layout (little-endian, [HEADER_SIZE] = 72 bytes), the same checksum convention as
  * `TdictValidator.calculateDigests` (SHA-256 over the whole file with the checksum field zeroed):
@@ -49,11 +48,9 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
  * |    4 | lastUseSerial u32                             |
  * |    N | word bytes, UTF-8, stored in its ORIGINAL form |
  *
- * The record stores the ORIGINAL (as-entered) form of the word; sorting, deduplication, content
- * filters and search all operate on the normalized NFC lowercase form (see the "Контракт текста"
- * amendment of 2026-07-27, four points, owned by E4a-1). This is what lets the personal name
- * "Гүзәл" be shown and inserted with its capital while still being keyed, ordered and deduplicated
- * as "гүзәл".
+ * The record stores the original (as-entered) form of the word; sorting, deduplication, content
+ * filters and search use the normalized NFC lowercase form. So "Гүзәл" is shown and inserted with
+ * its capital while being keyed, ordered and deduplicated as "гүзәл".
  */
 internal object TpersFormat {
     const val MAGIC = "TATPERS\u0000"
@@ -78,10 +75,10 @@ internal object TpersFormat {
     /** Fixed record overhead: wordByteLength u8 + usageCount u16 + lastUseSerial u32. */
     const val RECORD_HEADER_SIZE = 7
 
-    /** Cap on records per subtype (E4a-2 limit; enforced fail-closed by the reader from day one). */
+    /** Cap on records per subtype; the reader rejects a file over it. */
     const val MAX_PERSONAL_ENTRIES = 2_000L
 
-    /** Cap on the whole file, 128 KiB (E4a-2 limit; enforced by the reader from day one). */
+    /** Cap on the whole file; the reader rejects a larger file. */
     const val MAX_FILE_SIZE = 131_072L
 
     /** Inclusive code-point length bounds for the normalized form of a personal word. */
@@ -93,9 +90,7 @@ internal object TpersFormat {
 
     /**
      * The on-disk file name for a subtype, e.g. `personal-tt_RU-s1-f1.tpers`. The schema and format
-     * version are woven into the name so a file written by an incompatible build is never even
-     * opened for the wrong reader. The directory that holds it is owned by E4a-2; this phase only
-     * reads.
+     * version are part of the name, so a reader never opens a file from an incompatible build.
      */
     fun personalFileName(subtypeTag: String): String =
         "personal-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tpers"

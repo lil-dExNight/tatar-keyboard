@@ -128,7 +128,7 @@ class InputConnectionBinderContractTest {
         val body = bodyOf(
             connection,
             "public void reloadTextCache(final EditorInfo",
-            "/**\n     * 2026-09-25 audit, F10",
+            "private boolean mReloadInFlight",
         )
         assertTrue("the S+ branch fills the cache from the already-delivered parcel",
             body.contains(".getInitialSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE"))
@@ -177,7 +177,7 @@ class InputConnectionBinderContractTest {
         val downUp = bodyOf(
             inputLogic,
             "public void sendDownUpKeyEvent(final int keyCode, final int metaState)",
-            "/**\n     * Sends a code point",
+            "private void sendKeyCodePoint(final int codePoint)",
         )
         assertEquals("the pair is DOWN + UP", 2, occurrences(downUp, "mConnection.sendKeyEvent("))
         assertFalse(downUp.contains("beginBatchEdit"))
@@ -196,7 +196,7 @@ class InputConnectionBinderContractTest {
         val body = bodyOf(
             inputLogic,
             "private void performRecapitalization()",
-            "/**\n     * Gets the current auto-caps state",
+            "public int getCurrentAutoCapsState(",
         )
         val begin = body.indexOf("mConnection.beginBatchEdit();")
         val replace = body.indexOf("mConnection.replaceText(")

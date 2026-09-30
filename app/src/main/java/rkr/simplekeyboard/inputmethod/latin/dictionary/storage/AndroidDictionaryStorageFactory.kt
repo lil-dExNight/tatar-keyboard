@@ -12,10 +12,9 @@ import java.util.concurrent.Executor
 
 object AndroidDictionaryStorageFactory {
     /**
-     * Storage for ONE artifact. [artifact] names both the asset to inflate and the directory to
-     * inflate it into ([DictionaryArtifactSpec.storageDirectoryName]), so a second language gets a
-     * second controller rather than a second code path — and the Tatar one keeps addressing the
-     * very directory and file name it published in 1.6.1.
+     * Storage for one artifact. [artifact] names both the asset to inflate and the directory to
+     * inflate it into ([DictionaryArtifactSpec.storageDirectoryName]); each language gets its own
+     * controller.
      */
     @JvmStatic
     @JvmOverloads
@@ -45,10 +44,8 @@ object AndroidDictionaryStorageFactory {
 }
 
 /**
- * The one production [DurableFileOps]. `internal` (not `private`) so the personal store's
- * whole-file write path (E4a-2) can reuse the same fsync/rename/replace logic instead of
- * duplicating it. The dictionary-asset store keeps using [atomicRename]; the personal store uses
- * [atomicReplace].
+ * The one production [DurableFileOps]. `internal` so the personal store's whole-file write can
+ * reuse it: the dictionary-asset store uses [atomicRename], the personal store [atomicReplace].
  */
 internal object AndroidDurableFileOps : DurableFileOps {
     override fun createNewFile(file: File): Boolean = file.createNewFile()
@@ -66,7 +63,7 @@ internal object AndroidDurableFileOps : DurableFileOps {
 
     override fun atomicReplace(source: File, destination: File) {
         // POSIX rename(2) is atomic and replaces an existing destination in place. No pre-existence
-        // check: unlike atomicRename, replacing the current file is exactly what E4a-2 needs.
+        // check: unlike atomicRename, the personal store needs to replace the current file.
         translateErrno("replace personal file") {
             Os.rename(source.absolutePath, destination.absolutePath)
         }

@@ -271,7 +271,7 @@ class SuggestionStripSourceContractTest {
             latinIme.substringAfter("public void onUpWithDeletePointerActive")
                 .substringBefore("public void onUpWithSpacePointerActive"),
             latinIme.substringAfter("public void onUpWithSpacePointerActive")
-                .substringBefore("/**"),
+                .substringBefore("private void onSuggestionsAffectingCursorMove()"),
         )
         gestureBodies.forEach {
             assertTrue(it.contains("onSuggestionsAffectingCursorMove()"))
@@ -363,7 +363,7 @@ class SuggestionStripSourceContractTest {
             "java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java",
         ).readText()
         val commitBody = inputLogic.substringAfter("public boolean commitPredictedWord(")
-            .substringBefore("/** Allocation-free suffix test over the cached text")
+            .substringBefore("private static boolean endsWith(final CharSequence text, final String suffix)")
         // NEXT_WORD never trails an existing prefix to remove — the whole point of the third
         // insertion path (PROPOSALS.md, "Контракт текста" amendment, "Отдельный путь коммита") —
         // so this method must never call a delete of any kind.
@@ -378,7 +378,7 @@ class SuggestionStripSourceContractTest {
             "java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java",
         ).readText()
         val commitBody = inputLogic.substringAfter("public boolean commitPredictedWord(")
-            .substringBefore("/** Allocation-free suffix test over the cached text")
+            .substringBefore("private static boolean endsWith(final CharSequence text, final String suffix)")
         assertEquals(1, "mConnection\\.commitText\\(".toRegex().findAll(commitBody).count())
         assertTrue(commitBody.contains("suggestion + AUTO_SPACE"))
         assertTrue(
@@ -401,7 +401,7 @@ class SuggestionStripSourceContractTest {
             "java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java",
         ).readText()
         val commitBody = inputLogic.substringAfter("public boolean commitPredictedWord(")
-            .substringBefore("/** Allocation-free suffix test over the cached text")
+            .substringBefore("private static boolean endsWith(final CharSequence text, final String suffix)")
         // Collapsed selection — the same check replaceTrailingWord makes.
         assertTrue(commitBody.contains("mConnection.hasSelection()"))
         // No letter right after the cursor — the same check replaceTrailingWord makes.
@@ -513,7 +513,7 @@ class SuggestionStripSourceContractTest {
             "java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
         ).readText()
         val triggerBody = latinIme.substringAfter("private void maybeOfferTatarSuggestions(")
-            .substringBefore("// A helper method to split the code point")
+            .substringBefore("public static Event createSoftwareKeypressEvent(")
 
         // The decision must not be "the editor calls this a word separator" on its own: Enter and
         // Tab are separators and would spend the one-shot offer on a keystroke that hides the

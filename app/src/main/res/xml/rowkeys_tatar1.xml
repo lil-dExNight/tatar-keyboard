@@ -35,7 +35,7 @@
     <!-- U+043A: "к" CYRILLIC SMALL LETTER KA -->
     <Key
         latin:keySpec="&#x043A;" />
-    <!-- U+0435: "е" CYRILLIC SMALL LETTER IE; long-press U+0451: "ё" (ревью F1) -->
+    <!-- U+0435: "е" CYRILLIC SMALL LETTER IE; long-press U+0451: "ё" -->
     <Key
         latin:keySpec="&#x0435;"
         latin:keyHintLabel="&#x0451;"

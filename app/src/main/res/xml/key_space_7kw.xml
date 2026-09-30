@@ -28,9 +28,7 @@
              width (9%p on sw600dp) out of the space bar and is only laid out when the language
              switch key is not already spending a slot. When both are asked for, the emoji key is
              dropped and the emoji panel moves onto the comma key's long press (key_styles_settings.xml), so
-             the bottom row behaves the same way on every form factor.
-
-             The showEmojiKey="false" cases are byte-for-byte identical to the pre-emoji layout. -->
+             the bottom row behaves the same way on every form factor. -->
         <case
             latin:keyboardLayoutSet="bengali_akkhor|farsi|kannada|nepali_romanized|nepali_traditional|urdu|telugu"
             latin:languageSwitchKeyEnabled="true"

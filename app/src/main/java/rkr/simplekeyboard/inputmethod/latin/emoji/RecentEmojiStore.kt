@@ -21,8 +21,8 @@ import java.io.FileOutputStream
 
 /**
  * The single file the recents store owns. Production resolves it under the base (credential-
- * protected) `noBackupFilesDir`; that seam is deliberately its own, not the dictionary's
- * `DeviceProtectedDirectoryProvider`, whose name would become a lie for a credential-protected file.
+ * protected) `noBackupFilesDir`. It has its own provider instead of the dictionary's
+ * `DeviceProtectedDirectoryProvider`, because this file is credential-protected.
  */
 fun interface RecentEmojiFileProvider {
     fun file(): File
@@ -33,7 +33,7 @@ interface RecentEmojiFileOps {
     /** The medium's content, or null when it is absent or unreadable. */
     fun read(file: File): String?
 
-    /** Atomically replaces the medium with [content]. Off the UI thread by construction. */
+    /** Atomically replaces the medium with [content]. Called only off the UI thread. */
     fun writeAtomic(file: File, content: String)
 }
 
@@ -180,17 +180,16 @@ internal class RecentEmojiStore(
  * It uses only `java.io`, so the emoji package owns this credential-protected file end to end
  * without a device-protected seam. Never throws and never logs; a failure leaves the previous
  * medium in place. The medium is a plain file under the base context's `noBackupFilesDir`, which is
- * not a subdirectory of `files/` and so is excluded from every backup domain by construction.
+ * not a subdirectory of `files/` and so is outside every backup domain.
  */
 internal object AtomicRecentEmojiFileOps : RecentEmojiFileOps {
 
     private const val TEMP_SUFFIX = ".tmp"
 
     /**
-     * Fail-closed read cap (2026-09-24 audit, finding 11): the medium this class writes holds at
-     * most [RecentEmojiList.MAX_CHARS] UTF-16 `char`, which is under 2 KiB in UTF-8. A file past
-     * this bound is not a medium to decode but a corrupt one to refuse — the check runs on the
-     * length, BEFORE a single byte is read, so a bloated file never reaches memory at all.
+     * Read cap: the medium holds at most [RecentEmojiList.MAX_CHARS] UTF-16 `char` (under 2 KiB
+     * in UTF-8), so a larger file is corrupt and is refused. The length is checked before any byte
+     * is read, so a bloated file never reaches memory.
      */
     private const val MAX_MEDIUM_BYTES = 4096L
 

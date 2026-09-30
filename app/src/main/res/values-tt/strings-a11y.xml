@@ -16,11 +16,11 @@
  * limitations under the License.
  */
 -->
-<!-- Machine-assisted translation; awaiting native-speaker proofread (T5) -->
-<!-- Татарча spoken-тасвирламалар TalkBack өчен (strings-a11y.xml оверлее).
-     Хәреф исемнәре — татар әлифбасындагы традицион исемнәр буенча. -->
+<!-- Machine-assisted translation; review by a native speaker welcome. -->
+<!-- Tatar spoken descriptions for TalkBack (overlay of strings-a11y.xml).
+     Letter names follow the traditional names of the Tatar alphabet. -->
 <resources>
-    <!-- Татар хәрефләре (юл хәрефләре); баш хәрефләр — spoken_description_upper_case аша. -->
+    <!-- Tatar letters (lowercase); uppercase is built via spoken_description_upper_case. -->
     <string name="spoken_letter_04d9">ә хәрефе</string>
     <string name="spoken_letter_04e9">ө хәрефе</string>
     <string name="spoken_letter_04af">ү хәрефе</string>
@@ -28,20 +28,20 @@
     <string name="spoken_letter_04a3">эң хәрефе</string>
     <string name="spoken_letter_04bb">һэ хәрефе</string>
 
-    <!-- Баш хәреф шаблоны: «Баш <юл хәрефе тасвирламасы>». -->
+    <!-- Template for uppercase letters: "Баш <lowercase description>". -->
     <string name="spoken_description_upper_case">Баш %s</string>
 
-    <!-- Shift төймәсе, раскладка халәте буенча. -->
+    <!-- Shift key, per keyboard element state. -->
     <string name="spoken_description_shift">Баш хәреф төймәсе</string>
     <string name="spoken_description_shift_shifted">Баш хәрефләр кабызылган</string>
     <string name="spoken_description_caps_lock">Caps Lock кабызылган</string>
     <string name="spoken_description_symbols_shift">Өстәмә символлар</string>
     <string name="spoken_description_symbols_shift_shifted">Символлар</string>
 
-    <!-- Башка хезмәти төймәләр. -->
+    <!-- Other functional keys. -->
     <string name="spoken_description_tab">Табуляция</string>
     <string name="spoken_description_delete">Бетерү</string>
-    <!-- Буш урын: тасвирлама һәрвакыт керү телен атый («Буш урын, Татарча»). -->
+    <!-- Spacebar: always includes the current input language ("Буш урын, Татарча"). -->
     <string name="spoken_description_space_language">Буш урын, %s</string>
     <string name="spoken_description_return">Кертү</string>
     <string name="spoken_description_search">Эзләү</string>
@@ -57,21 +57,22 @@
     <string name="spoken_description_settings">Көйләүләр</string>
     <string name="spoken_description_unknown">Билгесез символ</string>
 
-    <!-- Озын басу панеле (moreKeys) ачылу/ябылу хәбәрләре. -->
+    <!-- Long-press (moreKeys) panel open/close announcements. -->
     <string name="spoken_open_more_keys_keyboard">Өстәмә символлар бар</string>
     <string name="spoken_close_more_keys_keyboard">Өстәмә символлар яшерелде</string>
 
-    <!-- Шифт режиме алмашуын тавышландыру (AOSP исемнәре). -->
+    <!-- Shift-mode change announcements (AOSP naming). -->
     <string name="spoken_description_shiftmode_on">Баш хәрефләр кабызылган</string>
     <string name="spoken_description_shiftmode_locked">Caps Lock кабызылган</string>
     <string name="spoken_description_shiftmode_off">Баш хәрефләр сүндерелгән</string>
 
-    <!-- Тәкъдимнәр барлыкка килгәндә тавышландырыла; %s — тәкъдимнәр исемлеге. -->
+    <!-- Announced when word suggestions become available; %s is the joined suggestion list. -->
     <string name="spoken_suggestions_available">Тәкъдимнәр бар: %s</string>
 
-    <!-- Эмодзи панеле вкладкалары исемнәре (TalkBack). Ячейкалар үзләре эзлеклелек белән
-         тавышландырыла (эмодзи исемнәре базасы юк); вкладкалар һәм ике функциональ төймә генә
-         локальләштерелә («АБВ» — spoken_description_to_alpha, бетерү — spoken_description_delete). -->
+    <!-- Emoji-panel category tab names (TalkBack). The emoji cells are announced as their
+         sequence (there is no emoji-name database); only the tabs and the two functional keys
+         ("АБВ" reuses spoken_description_to_alpha, delete reuses spoken_description_delete)
+         are localized. -->
     <string name="spoken_emoji_category_recent">Соңгы кулланылганнар</string>
     <string name="spoken_emoji_category_smileys">Елмаюлар һәм хисләр</string>
     <string name="spoken_emoji_category_people">Кешеләр һәм тән</string>

@@ -17,46 +17,37 @@
 package rkr.simplekeyboard.inputmethod.latin.emoji
 
 /**
- * The pieces of [EmojiSearchView] geometry and state that can be got wrong without anything
- * crashing, so they live here, Android-free, and are exercised on the plain JVM — the same split
- * the panel makes between the view and [EmojiPanelState].
- *
- * Every rule here comes from a defect the operator found on a real phone. In 1.6.0: the caret had a
- * key's constant added to its x and read as a trailing space, and the result band was measured even
- * when its only content was an invitation to type. In 1.6.1: a field holding nothing but spaces
- * counted as a query, and the caret stood on the first letter of the hint.
+ * The parts of [EmojiSearchView] geometry and state that can go wrong without a crash, kept
+ * Android-free so they run on the plain JVM (the same split as the panel and [EmojiPanelState]):
+ * caret position, hint position, whether there is a query, and the measured height.
  */
 internal object EmojiSearchLayout {
 
     /**
      * X of the caret: the right edge of the drawn query and nothing else. The caret follows the
-     * text, so no inset, padding or key half-size may enter here — [textLeft] is where the query is
-     * drawn from and [textWidth] is what the paint measured for it.
+     * text, so no inset, padding or key half-size is added: [textLeft] is where the query is drawn
+     * from and [textWidth] is its measured width. An extra offset reads as a trailing space.
      */
     fun caretX(textLeft: Float, textWidth: Float): Float = textLeft + textWidth
 
     /**
      * Where the hint is drawn from while there is no query: past the right edge of the caret, which
-     * stands at [caretX] and is [caretStrokeWidth] wide, plus [gapPx] of air. Drawing the hint from
-     * the caret's own x is what put the caret on the first letter of the hint itself.
+     * stands at [caretX] and is [caretStrokeWidth] wide, plus [gapPx]. Drawing the hint from the
+     * caret's own x would put the caret on the hint's first letter.
      */
     fun hintLeft(caretX: Float, caretStrokeWidth: Float, gapPx: Float): Float =
         caretX + caretStrokeWidth / 2f + gapPx
 
     /**
-     * Whether the field holds a query at all — the one answer the whole view uses, for the band,
-     * for the measured height, for the hint and for what a screen reader is told.
-     *
-     * A run of spaces is not a query. [EmojiSearchIndex.search] trims before matching, so spaces
-     * alone can never have a result; a view that called them a query opened a band whose only
-     * content was the words "nothing found" over a field the user sees as untouched.
+     * Whether the field holds a query. The whole view uses this one answer: for the result band,
+     * the measured height, the hint and the screen-reader text. A run of spaces is not a query,
+     * because [EmojiSearchIndex.search] trims before matching and spaces alone never match.
      */
     fun hasQuery(queryText: String): Boolean = queryText.isNotBlank()
 
     /**
-     * Whether the band under the query row exists at all — [hasQuery] and nothing else. An empty
-     * query has nothing to report, and a band filled with placeholder words is worse than a band
-     * that is not there: the space goes back to the keyboard instead.
+     * Whether the result band under the query row is shown: exactly when [hasQuery]. An empty query
+     * shows no placeholder band; the space goes to the keyboard instead.
      */
     fun showsResultBand(queryText: String): Boolean = hasQuery(queryText)
 

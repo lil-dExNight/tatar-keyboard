@@ -21,19 +21,19 @@
 <merge
     xmlns:latin="http://schemas.android.com/apk/res-auto"
 >
-    <!-- Нижний ряд кириллических раскладок (tatar, russian).
+    <!-- Bottom row of the Cyrillic layouts (tatar, russian).
 
-         На телефоне он ровно тот же, что у латинских раскладок, поэтому здесь
-         делегирование, а не копия: одна точка правды, дрейфовать нечему.
+         On the phone it is the same row as in the Latin layouts, so this file
+         delegates to it instead of copying it.
 
-         Файл заведён ради sw600dp-варианта рядом. Планшетный
-         xml-sw600dp/row_qwerty4.xml заканчивается <Spacer>, потому что
-         планшетная QWERTY уносит Enter во ВТОРОЙ ряд собственным
-         xml-sw600dp/rows_qwerty.xml. У tatar и russian планшетных rows_*.xml
-         нет — они берут базовые xml/rows_tatar.xml и xml/rows_russian.xml, где
-         enterKeyStyle не встречается ни разу: Enter приходил к ним только
-         отсюда. В итоге при smallest width >= 600dp обе кириллические раскладки
-         оставались вообще без Enter — дефект Д-2, docs/DEVICE-UAT-1.9.12.md. -->
+         The file exists for the sw600dp variant next to it. The tablet
+         xml-sw600dp/row_qwerty4.xml ends with a <Spacer> because the tablet QWERTY
+         moves Enter to the second row in its own xml-sw600dp/rows_qwerty.xml.
+         tatar and russian have no tablet rows_*.xml: they use the base
+         xml/rows_tatar.xml and xml/rows_russian.xml, which contain no
+         enterKeyStyle, so Enter can only come from this row. Without the sw600dp
+         variant both Cyrillic layouts would have no Enter key at smallest
+         width >= 600dp. -->
     <include
         latin:keyboardLayout="@xml/row_qwerty4" />
 </merge>

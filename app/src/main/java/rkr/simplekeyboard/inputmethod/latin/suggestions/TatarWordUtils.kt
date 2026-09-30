@@ -43,8 +43,8 @@ object TatarWordUtils {
      * the raw text.
      *
      * A word character is a [Character.isLetter] letter or a combining mark bound to a preceding
-     * base character. Marks have to continue the run because the frozen contract accepts
-     * canonically decomposed (NFD) input: in NFD "й" is "и" + U+0306 and "ё" is "е" + U+0308, and
+     * base character. Marks have to continue the run because canonically decomposed (NFD) input
+     * is accepted: in NFD "й" is "и" + U+0306 and "ё" is "е" + U+0308, and
      * those marks are not letters, so a letters-only scan would cut the word short — or return ""
      * when the decomposed letter is the last thing typed. All three mark categories continue the
      * run: Mn covers the Cyrillic/Latin canonical decompositions we actually see, Mc appears in the
@@ -60,7 +60,7 @@ object TatarWordUtils {
      * when the trailing run holds no letter at all (marks without a base letter are orphans, not a
      * word); leading orphan marks are trimmed off the span for the same reason. Only BMP letters
      * occur in Tatar Cyrillic, Latin, and Russian Cyrillic text, so char-based classification is
-     * sufficient and matches the frozen contract.
+     * sufficient.
      */
     @JvmStatic
     fun extractTrailingWord(textBeforeCursor: CharSequence?): String {
@@ -81,41 +81,29 @@ object TatarWordUtils {
     }
 
     /**
-     * E5d NEXT_WORD context extraction (PROPOSALS.md, "Контракт текста" amendment, 2026-08-17,
-     * пункт 1): the word immediately before a trailing run of one-or-more U+0020, or "" if there is
-     * no such run right at the cursor.
+     * NEXT_WORD context: the word immediately before a trailing run of one or more U+0020, or ""
+     * if there is no such run right at the cursor.
      *
-     * The separator is deliberately narrower than [isWordCharacter]'s complement: it is EXACTLY one
-     * or more U+0020 and nothing else. A newline, tab, NBSP, or sentence-final punctuation right
-     * before the cursor yields "" — not because those characters cannot end a word, but because
-     * the contract reserves NEXT_WORD for word contexts (the bigram table is a word-context table
-     * and stays one; sentence starts are answered separately from the sentence-start table —
-     * [isSentenceStartContext] — and this exclusion still doubles as the thing that keeps
-     * NEXT_WORD out of the auto-capitalization codepath).
+     * The separator is exactly U+0020, nothing else. A newline, tab, NBSP or sentence-final
+     * punctuation before the cursor yields "": NEXT_WORD is for word contexts only, sentence starts
+     * are handled by [isSentenceStartContext], and this also keeps NEXT_WORD out of the
+     * auto-capitalization path.
      *
-     * ROADMAP Phase 1 (P4, docs/ROADMAP-P1.md) amends the punctuation rule deliberately and
-     * narrowly: when the character before the space run is a NON-final punctuation mark — exactly
-     * ',', ';' or ':' — the context is the word before the punctuation run ("сүз, " predicts the
-     * successors of сүз). Sentence-final '.', '!', '?', '…' are NOT in that set: a sentence
-     * boundary keeps resetting the context, and a run mixing the two kinds ("сүз.., ") has no
-     * word before the non-final run and yields "" — fail-closed, exactly like a comma with
-     * nothing before it (", ").
+     * One exception: when the space run follows non-final punctuation (exactly ',', ';' or ':'),
+     * the context is the word before the punctuation run ("сүз, " predicts the successors of сүз).
+     * Sentence-final '.', '!', '?', '…' reset the context, and a run mixing both kinds ("сүз.., ")
+     * yields "", like a comma with nothing before it (", ").
      *
-     * The word itself is [extractTrailingWord] of the text before the separator run — the exact same
-     * word-boundary algorithm PREFIX mode uses, so "context word" and "prefix" agree on what a word
-     * is. Both the separator run and the word must fit inside [textBeforeCursor] without touching its
-     * start: if either reaches index 0, the true word may have been cut off by the caller's cache
-     * limit ([rkr.simplekeyboard.inputmethod.latin.common.Constants.EDITOR_CONTENTS_CACHE_SIZE],
-     * 1024 characters) rather than genuinely starting there, and "" is returned because a possibly
-     * truncated context word cannot be trusted for a lookup.
+     * The word is [extractTrailingWord] of the text before the separator run, so the context word
+     * and the PREFIX agree on what a word is. If the separator run or the word reaches index 0,
+     * the word may have been cut off by the cache limit
+     * ([rkr.simplekeyboard.inputmethod.latin.common.Constants.EDITOR_CONTENTS_CACHE_SIZE]), and ""
+     * is returned: a possibly truncated context word is not trusted.
      *
-     * The single-argument overload cannot tell a truncated cache from a genuinely short field, so it
-     * treats both the same, conservatively. [extractNextWordContext] with `cacheReachedTextStart` is
-     * the same extraction for a caller that CAN tell ([RichInputConnection]'s cache is filled with a
-     * request for the full 1024-character window, so a shorter result provably starts at the start of
-     * the text — docs/NEXTWORD-RACE.md): the boundary guard then applies only to a genuinely full
-     * cache, and the first word of an empty field — which always sits at index 0 without being
-     * truncated — is extracted like any other.
+     * This overload cannot tell a truncated cache from a short field and treats both
+     * conservatively. The `cacheReachedTextStart` overload is for callers that can tell
+     * ([RichInputConnection] requests the full window, so a shorter result starts at the text
+     * start); there the first word of a field is extracted like any other.
      */
     @JvmStatic
     fun extractNextWordContext(textBeforeCursor: CharSequence?): String =
@@ -139,9 +127,8 @@ object TatarWordUtils {
         if (separatorStart == 0) return "" // the separator itself reaches the cache boundary
         var wordEnd = separatorStart
         if (isNonFinalPunctuation(textBeforeCursor[wordEnd - 1])) {
-            // ROADMAP Phase 1 (P4): a run of non-final punctuation keeps the word before it as
-            // the context. The run reaching index 0 means there is no word before it at all —
-            // which is "", with or without cache provenance.
+            // A run of non-final punctuation keeps the word before it as the context. The run
+            // reaching index 0 means there is no word before it: "", with or without provenance.
             while (wordEnd > 0 && isNonFinalPunctuation(textBeforeCursor[wordEnd - 1])) {
                 wordEnd--
             }
@@ -155,23 +142,19 @@ object TatarWordUtils {
     }
 
     /**
-     * P1 of Phase 2 (docs/ROADMAP-P2.md): the committed word immediately BEFORE the trailing
-     * completed word — for «A B » at the cursor (the separator that ended B just committed), the
-     * word A. This is the context half a personal bigram is learned against: typed or tapped, it
-     * is read from the live text at the completion moment, never from remembered state, so it can
-     * never go stale against what the editor actually holds.
+     * The committed word before the trailing completed word: for "A B " at the cursor (the
+     * separator that ended B just committed), the word A. This is the context a learned word pair
+     * is recorded against, read from the live text at completion time, never from remembered
+     * state.
      *
-     * The scan is deliberately wider than [extractNextWordContext]'s: the separator runs it skips
-     * are ANY non-word characters (a space, a comma, "., "), because pair completion fires on
-     * every word boundary, not only on the U+0020-run the NEXT_WORD lookup reserves. The two
-     * skipped runs are: the separator that ended B, then B itself, then the separator between A
-     * and B; the word that follows is A. Both A and B are read with [extractTrailingWord]'s exact
-     * word-boundary rules, so "word" means the same thing here as everywhere else.
+     * Wider than [extractNextWordContext]: the separators skipped are any non-word characters
+     * (a space, a comma, "., "), because pair completion fires on every word boundary. The scan
+     * skips the separator after B, then B, then the separator between A and B; the next word is A.
+     * Both words use [extractTrailingWord]'s rules.
      *
-     * Fail-closed at the cache edges exactly like [extractNextWordContext]: if any run reaches
-     * index 0 before its word is found there IS no pair ("B" alone, separators alone); if the
-     * word A itself reaches index 0 the answer is A only when the cache provably reached the
-     * start of the text — a possibly truncated context word is no context at all.
+     * Cache edges as in [extractNextWordContext]: if a run reaches index 0 before its word, there
+     * is no pair; if A itself reaches index 0, A is returned only when the cache provably reached
+     * the text start.
      */
     @JvmStatic
     fun extractWordBeforeTrailingWord(
@@ -198,26 +181,21 @@ object TatarWordUtils {
     }
 
     /**
-     * The P4 sentence-start detection (docs/TT-SUGGESTIONS.md): true when the cursor sits where a
-     * new sentence begins, i.e. the text before it either IS the start of the field or ends in a
-     * run of sentence-ending punctuation ('.', '!', '?', '…') followed by one or more U+0020.
+     * True when the cursor sits where a new sentence begins: the text before it is the start of
+     * the field, or ends in a run of sentence-ending punctuation ('.', '!', '?', '…') followed by
+     * one or more U+0020.
      *
-     * This amends the frozen "no prediction after punctuation" contract deliberately and narrowly:
-     * it is a DETECTOR, not a relaxation of [extractNextWordContext] — the bigram table is still
-     * never consulted at these positions (a sentence boundary resets the context), and the set of
-     * sentence-ending characters is exactly the four above. Anything else before the space run —
-     * a word, a comma, a quote, a closing parenthesis — is not a sentence start. The punctuation
-     * run must directly follow a letter ("сүз. ", "нәрсә?! ") or open the field: a digit+period
-     * ("5. ") is a number, not a sentence end. Closing quotes/brackets after the period ("сүз.» ")
-     * are an accepted miss — over-matching would offer sentence starts mid-sentence, which is the
-     * worse direction.
+     * A detector only: the bigram table is still never consulted at these positions (a sentence
+     * boundary resets the context). Anything else before the space run (a word, a comma, a quote,
+     * a closing parenthesis) is not a sentence start. The punctuation run must directly follow a
+     * letter ("сүз. ", "нәрсә?! ") or open the field: "5. " is a number, not a sentence end.
+     * Closing quotes after the period ("сүз.» ") are a known miss; over-matching would offer
+     * sentence starts mid-sentence, which is worse.
      *
-     * [cacheReachedTextStart] carries the same provenance as in [extractNextWordContext]
-     * (docs/NEXTWORD-RACE.md): an empty or all-spaces cache, and a punctuation run touching index
-     * 0, are only trusted when the cache provably reached the start of the text — a truncated
-     * window may hide the word that actually precedes. The single-argument overload cannot tell,
-     * so it treats those conservatively (false), while mid-text cases like "сүз. " need no
-     * provenance: the period is visible right where it matters.
+     * [cacheReachedTextStart] works as in [extractNextWordContext]: an empty or all-spaces cache,
+     * and a punctuation run touching index 0, count only when the cache provably reached the text
+     * start. The single-argument overload assumes false; mid-text cases like "сүз. " need no
+     * provenance.
      *
      * Allocation-free; the scans are bounded by the cache size
      * ([rkr.simplekeyboard.inputmethod.latin.common.Constants.EDITOR_CONTENTS_CACHE_SIZE]).
@@ -250,14 +228,14 @@ object TatarWordUtils {
         return Character.isLetter(textBeforeCursor[punctStart - 1])
     }
 
-    /** The four sentence-ending characters of the P4 contract: '.', '!', '?', '…' (U+2026). */
+    /** The four sentence-ending characters: '.', '!', '?', '…' (U+2026). */
     private fun isSentenceEndingPunctuation(ch: Char): Boolean =
         ch == '.' || ch == '!' || ch == '?' || ch == '…'
 
     /**
-     * The three NON-final punctuation marks that keep the word before them as the NEXT_WORD
-     * context (ROADMAP Phase 1, P4): ',', ';', ':'. Sentence-final punctuation is deliberately
-     * absent — it resets the context instead ([isSentenceStartContext]).
+     * The three non-final punctuation marks that keep the word before them as the NEXT_WORD
+     * context: ',', ';', ':'. Sentence-final punctuation resets the context instead
+     * ([isSentenceStartContext]).
      */
     private fun isNonFinalPunctuation(ch: Char): Boolean =
         ch == ',' || ch == ';' || ch == ':'
@@ -266,22 +244,17 @@ object TatarWordUtils {
      * True when the text before the cursor ends in a word that holds at least [minLetters] letters,
      * ignoring whatever non-word characters trail it.
      *
-     * This is the "the user has just finished a real word" test behind the one-shot offer to turn
-     * Tatar suggestions on: the offer fires on a committed word separator, so the tail normally ends
-     * with the separator that was just typed and the word sits in front of it. Several separators in
-     * a row ("сүз!.. ") are skipped the same way, and a tail that ends in a letter (an editor whose
-     * cache has not caught up with the separator yet) is simply measured as it stands — the trailing
-     * run is the only thing this function looks at.
+     * The "user has just finished a real word" test behind the one-shot offer to turn Tatar
+     * suggestions on. The offer fires on a committed word separator, so the tail normally ends with
+     * that separator; several in a row ("сүз!.. ") are skipped, and a tail ending in a letter (the
+     * cache has not caught up yet) is measured as it stands.
      *
-     * Counting matches [extractTrailingWord] so the same text never qualifies here and fails there:
-     * combining marks continue the run but are not counted as letters, and letters are
-     * [Character.isLetter] CODE POINTS, so a supplementary letter counts once rather than twice.
-     * Letter class is deliberately not narrowed to the Tatar alphabet — the intent to type Tatar is
-     * proven by the active tt_RU subtype, not by which letters the word happens to contain.
+     * Counting matches [extractTrailingWord]: combining marks continue the run but are not letters,
+     * and letters are [Character.isLetter] code points, so a supplementary letter counts once.
+     * Letters are not narrowed to the Tatar alphabet; the active tt_RU subtype shows the intent.
      *
-     * Allocates nothing and reads at most [MAX_TAIL_SCAN] code points of the tail, counting up to
-     * [minLetters] and no further, because this runs on the keystroke path. A tail longer than that
-     * budget returns false: an offer that never appears is the accepted failure direction.
+     * Allocates nothing and reads at most [MAX_TAIL_SCAN] code points, because this runs on the
+     * keystroke path. A longer tail returns false (the offer just does not appear).
      */
     @JvmStatic
     fun endsWithWordOfAtLeast(textBeforeCursor: CharSequence?, minLetters: Int): Boolean {
@@ -310,12 +283,11 @@ object TatarWordUtils {
      * True when the text right after the cursor continues the word the cursor sits in, i.e. when
      * the cursor is INSIDE a word rather than at its end.
      *
-     * The frozen contract clears the results when a Tatar letter follows the cursor, because
-     * replacing the trailing word would then splice the suggestion into the middle of the user's
-     * text. This test is deliberately wider than "Tatar letter": any [Character.isLetter] letter
-     * (Latin and Russian included) and any combining mark counts, because being fail-closed can
-     * only cost a suggestion, while being too narrow corrupts text. A leading combining mark means
-     * the cursor is inside a canonically decomposed character, which is inside a word too.
+     * Results are cleared when a letter follows the cursor, because replacing the trailing word
+     * would splice the suggestion into the middle of the user's text. Any [Character.isLetter]
+     * letter (Latin and Russian included) and any combining mark counts: being too wide only costs
+     * a suggestion, being too narrow corrupts text. A leading combining mark means the cursor is
+     * inside a decomposed character, which is inside a word too.
      *
      * Reads the FIRST CODE POINT, not the first char, so a supplementary letter is classified
      * correctly instead of being seen as a lone (caseless, non-letter) surrogate.
@@ -341,10 +313,9 @@ object TatarWordUtils {
      *   rather than a hardcoded ASCII list, so the typography Tatar and Russian actually use — «»,
      *   the em dash, the ellipsis, curly quotes — is covered too.
      *
-     * Math symbols (Sm: "+", "=") are deliberately NOT treated as hugging punctuation, because they
-     * are written with spaces around them ("2 + 2"). Anything else — a digit, an emoji, a letter —
-     * also keeps the space: a space too many costs one backspace, a space too few costs the feature
-     * its whole point.
+     * Math symbols (Sm: "+", "=") are not hugging punctuation, because they are written with spaces
+     * around them ("2 + 2"). Anything else (a digit, an emoji, a letter) also keeps the space: an
+     * extra space costs one backspace.
      *
      * Reads the FIRST CODE POINT, exactly like [startsWithWordCharacter], so a supplementary
      * character is classified as itself instead of as a lone (uncategorized) surrogate.
@@ -358,23 +329,19 @@ object TatarWordUtils {
     }
 
     /**
-     * True for the separators an autocorrection (D3) may fire on: the contract says «пробел или
-     * пунктуация», and this is that sentence and nothing more.
+     * True for the separators autocorrect may fire on: a space or punctuation.
      *
-     * [Character.isSpaceChar] covers the plain space and the non-breaking space; the punctuation
-     * categories are the very ones [needsAutoSpace] already uses, so «сүз,» and «сүз —» end a word
-     * here for exactly the reason they hug it there.
+     * [Character.isSpaceChar] covers the plain and the non-breaking space; the punctuation
+     * categories are those of [needsAutoSpace], so "сүз," and "сүз —" end a word here for the same
+     * reason they hug it there.
      *
-     * Enter and Tab are deliberately NOT separators for this purpose, even though they arrive as
-     * ordinary code points ('\n', '\t') and both are listed in `symbols_word_separators`.
-     * [Character.isWhitespace] would have swept them in; [Character.isSpaceChar] does not. The
-     * reason is not taste: Enter may perform an editor action instead of committing anything, so a
-     * replacement made just before it would edit a field that is being submitted — with nothing
-     * committed after the word, and usually no field left to revert in.
+     * Enter and Tab are not separators here, although they arrive as code points ('\n', '\t')
+     * listed in `symbols_word_separators` ([Character.isWhitespace] would include them). Enter may
+     * perform an editor action, so a replacement just before it would edit a field being submitted,
+     * usually with no field left to undo in.
      *
-     * The caller ALSO requires the code point to be a word separator of the live layout
-     * (`SettingsValues.isWordSeparator`); the two conditions are a conjunction, never an
-     * alternative.
+     * The caller also requires a word separator of the live layout
+     * (`SettingsValues.isWordSeparator`); both conditions must hold.
      */
     @JvmStatic
     fun isAutocorrectSeparator(codePoint: Int): Boolean =
@@ -422,12 +389,11 @@ object TatarWordUtils {
     /**
      * The casing shape of the prefix the user actually typed, as classified by [classifyCasing].
      *
-     * The dictionary ASSET stores NFC lowercase words only, so for asset (and fuzzy) candidates the
-     * shape is what re-applies the user's capitalization ([applyCasing]) — the displayed and the
-     * inserted form always share it. The PERSONAL dictionary instead stores each word in its
-     * original form and uses the NFC lowercase form only for sorting, dedup, filters and search
-     * (see the "Контракт текста" amendment of 2026-07-27); at a LOWER prefix a personal record is
-     * shown in its stored casing, so [applyCasing] is not applied to it.
+     * The bundled dictionary stores NFC lowercase words only, so for its candidates (and typo
+     * recovery) the shape re-applies the user's capitalization ([applyCasing]); the displayed and
+     * the inserted form always share it. The personal dictionary stores each word in its original
+     * form and uses the NFC lowercase form only for sorting, dedup, filters and search; at a LOWER
+     * prefix a personal word is shown in its stored casing, without [applyCasing].
      */
     enum class PrefixCasing {
         /** No uppercase letter: candidates are shown exactly as the dictionary stores them. */
@@ -439,12 +405,12 @@ object TatarWordUtils {
         /** Two or more uppercase letters and no lowercase letter. */
         ALL_CAPS,
 
-        /** Any other mix of cases; the frozen contract requires 0 results for it. */
+        /** Any other mix of cases; it yields 0 results. */
         MIXED,
     }
 
     /**
-     * Classifies the casing of the RAW (unnormalized) prefix per the frozen text contract:
+     * Classifies the casing of the RAW (unnormalized) prefix:
      * all-lowercase -> [PrefixCasing.LOWER]; one uppercase letter, or a leading uppercase letter
      * followed only by lowercase ones -> [PrefixCasing.INITIAL_CAPS]; two or more uppercase letters
      * with no lowercase letter -> [PrefixCasing.ALL_CAPS]; anything else -> [PrefixCasing.MIXED],
@@ -488,9 +454,9 @@ object TatarWordUtils {
      * ranking runs on the normalized lowercase forms. Casing uses the invariant locale, exactly
      * like [normalizeForLookup], so it stays in step with the Python packing pipeline.
      *
-     * [PrefixCasing.MIXED] must never reach this function: the frozen contract requires 0 results
-     * for mixed case, so the caller drops the candidates earlier. It is handled as a pass-through
-     * rather than as a throw because an exception on the tap path would take the keyboard down.
+     * [PrefixCasing.MIXED] must never reach this function: mixed case yields 0 results, so the
+     * caller drops the candidates earlier. It is a pass-through rather than a throw because an
+     * exception on the tap path would take the keyboard down.
      */
     @JvmStatic
     fun applyCasing(candidate: String, casing: PrefixCasing): String = when (casing) {

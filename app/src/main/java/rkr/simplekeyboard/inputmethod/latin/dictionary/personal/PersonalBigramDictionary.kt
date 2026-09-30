@@ -18,19 +18,16 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
 
 /**
- * An immutable in-memory snapshot of one subtype's personal bigrams (P1 of Phase 2,
- * docs/ROADMAP-P2.md), with a read-only per-context lookup. Parallel arrays, all ordered by the
- * pair key ascending (context first, then successor, both by their normalized forms compared as
- * unsigned UTF-8 bytes — the same order [TpersbValidator] enforces on disk):
+ * An immutable in-memory snapshot of one subtype's learned word pairs, with a read-only
+ * per-context lookup. Parallel arrays, all ordered by the pair key ascending (normalized context,
+ * then normalized successor, as unsigned UTF-8 bytes; the order [TpersbValidator] enforces):
  * - [contexts] — normalized context words (the lookup key; never displayed);
  * - [successorRawForms] — successors as the user typed them (what is shown and inserted);
  * - [successorNormalizedForms] — the parallel normalized forms used for ordering and dedup;
  * - [usageCounts] — accepted-prediction counters (taps);
  * - [frequencyCounts] — clean typed-observation counters.
  *
- * NOT a Kotlin `data class`: it carries the user's words, and a synthesised `toString` would print
- * them at the first interpolation. This class writes nothing to disk; the atomic writer and the
- * LRU eviction live in the store package.
+ * See [PersonalDictionary] for the privacy and read-only rules.
  */
 class PersonalBigramDictionary private constructor(
     private val contexts: Array<String>,
@@ -59,15 +56,9 @@ class PersonalBigramDictionary private constructor(
     fun frequencyCountAt(index: Int): Int = frequencyCounts[index]
 
     /**
-     * The successors learned for [normalizedContext], in the pinned personal order: usage count
-     * descending, then frequency count descending, then normalized form ascending (the array order
-     * within one context, so the tiebreak costs no comparator of its own). The context is matched
-     * on its NORMALIZED form only — the caller normalizes, exactly as the bigram-table lookup
-     * already does for the static successors.
-     *
-     * A binary search bounds the contiguous context range; only the successors of THIS context are
-     * touched. Returns [PersonalCandidate] so the merge in the NEXT_WORD slot compares and dedups
-     * personal pairs with the very same shape it already uses for personal words.
+     * The successors learned for [normalizedContext] (already normalized by the caller), ordered by
+     * usage descending, frequency descending, then normalized form ascending (array order). A binary
+     * search bounds the context range; only that range is scanned.
      */
     fun successorsFor(normalizedContext: String): List<PersonalCandidate> {
         if (isEmpty || normalizedContext.isEmpty()) return emptyList()
@@ -78,7 +69,7 @@ class PersonalBigramDictionary private constructor(
         val matches = ArrayList<Int>(end - first)
         for (index in first until end) matches.add(index)
         // Stable within-(usage, frequency) order preserves the successor-ascending array order as
-        // the final tiebreak — the pinned order is usage desc, frequency desc, normalized asc.
+        // the final tiebreak.
         matches.sortWith(
             compareByDescending<Int> { usageCounts[it] }
                 .thenByDescending { frequencyCounts[it] }
@@ -90,9 +81,8 @@ class PersonalBigramDictionary private constructor(
     }
 
     /**
-     * The index of the pair ([normalizedContext], [normalizedSuccessor]) in the parallel arrays,
-     * or -1. A BINARY search over the pair key, for the same reason [PersonalDictionary]'s
-     * membership test is one: a long-press timer must never pay a linear scan.
+     * The index of the pair ([normalizedContext], [normalizedSuccessor]), or -1. A binary search,
+     * see [PersonalDictionary.indexOfNormalized].
      */
     fun indexOfPair(normalizedContext: String, normalizedSuccessor: String): Int {
         var low = 0

@@ -17,10 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
 /**
- * The personal-bigram side of the NEXT_WORD merge (P1 of Phase 2, docs/ROADMAP-P2.md), as seen by
- * the engine. Kept as a seam so the composite computer is testable without a file, a snapshot or
- * Android — the exact shape [PersonalCandidateSource] has on the prefix path, for the other kind
- * of query.
+ * The learned-pairs side of the NEXT_WORD merge, as seen by the engine. A seam so the composite
+ * computer is testable without a file, a snapshot or Android; see [PersonalCandidateSource].
  */
 fun interface PersonalBigramSource {
     /**
@@ -31,11 +29,7 @@ fun interface PersonalBigramSource {
      */
     fun successorsFor(normalizedContextWord: String): List<PersonalCandidate>
 
-    /**
-     * True when this source cannot produce anything at all (feature off, locked device, empty
-     * store). The merge checks it FIRST so a disabled personal-bigram store costs the prediction
-     * path nothing — not even decoding the context bytes into a String.
-     */
+    /** True when this source cannot produce anything. See [PersonalCandidateSource.isEmpty]. */
     fun isEmpty(): Boolean = false
 
     companion object {
@@ -50,11 +44,7 @@ fun interface PersonalBigramSource {
     }
 }
 
-/**
- * The production source: reads whatever immutable snapshot [snapshot] currently returns. The
- * snapshot itself is published by the personal-bigram store on its own worker, so this only ever
- * reads a `@Volatile` reference — no I/O, no lock, no checksum on the engine thread.
- */
+/** The production source. See [SnapshotPersonalCandidateSource]. */
 class SnapshotPersonalBigramSource(
     private val snapshot: () -> PersonalBigramDictionary,
 ) : PersonalBigramSource {

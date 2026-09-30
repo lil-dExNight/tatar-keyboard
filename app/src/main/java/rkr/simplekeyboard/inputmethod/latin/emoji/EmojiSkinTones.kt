@@ -20,12 +20,11 @@ import java.io.InputStream
 
 /**
  * Which of the panel's neutral cells accept a skin-tone modifier, and how to compose the toned
- * form. Built from `assets/emoji/emoji_skin_v1.txt` (see `scripts/emoji_skin_pack.py`; the data is
- * Unicode Emoji 15.1 `emoji-test.txt`, the same pinned file the panel asset comes from).
+ * form. Built from `assets/emoji/emoji_skin_v1.txt` (see `scripts/emoji_skin_pack.py`; the data
+ * comes from the same Unicode `emoji-test.txt` as the panel asset).
  *
- * The panel asset itself deliberately still carries no toned sequence: the grid shows ONE neutral
- * cell per emoji, and the five tones live behind a long press. That keeps 655 extra cells out of
- * the grid while making every one of them reachable.
+ * The panel asset carries no toned sequences: the grid shows one neutral cell per emoji, and the
+ * five tones are behind a long press.
  *
  * The asset is data, not code: UTF-8, LF line endings, one base per line, three tab-separated
  * fields — the panel sequence, and the prefix and suffix a modifier slots between. The split
@@ -90,8 +89,8 @@ class EmojiSkinTones private constructor(
         val EMPTY = EmojiSkinTones(HashMap(), emptyArray(), emptyArray())
 
         /**
-         * Fail-closed parser. A malformed line is dropped, a duplicate base is dropped, and a fully
-         * unreadable input yields [EMPTY]; no exception ever escapes.
+         * A malformed line is dropped, a duplicate base is dropped, and a fully unreadable input
+         * yields [EMPTY]; no exception ever escapes.
          */
         @JvmStatic
         fun parse(text: String): EmojiSkinTones =

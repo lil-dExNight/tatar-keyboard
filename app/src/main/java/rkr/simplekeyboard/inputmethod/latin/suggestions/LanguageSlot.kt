@@ -20,43 +20,33 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
  * Everything that belongs to ONE language: its storage seams, its readiness, its engine and
  * the bookkeeping of its preparation and release.
  *
- * Slots are what makes switching layouts free. Both dictionaries are separate artifacts in
- * separate device-protected directories with separate leases, so the engine of a language the
- * user leaves is simply idled ([EngineHandle.finishInput]) and kept warm — it is NOT torn down.
- * A teardown blocks the UI thread for up to 240 ms and its release is deliberately deferred to a
- * lifecycle boundary, so tearing down on every press of the globe key would either stall the
- * keystroke or leave the user with no suggestions until they left the field. Warm slots cost one
- * idle worker thread and one read-only mapping each; the mapping is file-backed, so its pages are
- * evictable and only the ones actually touched by a lookup are resident.
- *
- * Pure move from `SuggestionsController.kt` (ROADMAP Phase 6, T2): the class referenced no outer
- * state, so the `inner` modifier is simply gone; `internal` replaces file-private for the same
- * reason.
+ * Slots make switching layouts cheap. The engine of a language the user leaves is only idled
+ * ([EngineHandle.finishInput]) and kept warm, not torn down: a teardown blocks the UI thread and
+ * its release is deferred to a lifecycle boundary, so tearing down on every globe-key press would
+ * stall the keystroke or leave the strip empty until the user left the field. A warm slot costs
+ * one idle worker thread and one read-only, file-backed mapping whose pages are evictable.
  */
 internal class LanguageSlot(val subtypeId: String) {
     /** Storage seam, created on this language's first preparation request. */
     @Volatile
     var preparation: DictionaryPreparation? = null
 
-    /** E5c two-stage readiness: same lazy-seam shape as [preparation], for the bigram table. */
+    /** Storage seam of the bigram table, created lazily like [preparation]. */
     @Volatile
     var bigramPreparation: BigramPreparation? = null
 
     @Volatile
     var dictionaryReady: Boolean = false
 
-    // Read by [SuggestionsController.engineContainsWord] from the personal store's worker thread
-    // (P1), hence `@Volatile`; the handle behind it answers cross-thread membership reads by
-    // construction.
+    // Read by [SuggestionsController.engineContainsWord] from the personal store's worker thread,
+    // hence `@Volatile`; the handle behind it is safe for cross-thread membership reads.
     @Volatile
     var engine: EngineHandle? = null
     var starting: Boolean = false
 
-    // Lifecycle of the "preparation requested" flag, in one place because nothing below it
-    // de-duplicates: it is set the moment preparation is requested, it is NEVER cleared after a
-    // Published result (readiness survives every later transition of the setting and the engine
-    // is restarted from the already published file), and it is cleared ONLY when the last known
-    // result was Unavailable and a fresh OFF -> ON transition of the setting has been observed.
+    // Set when preparation is requested. Never cleared after a Published result (the engine is
+    // restarted from the already published file); cleared only when the last result was
+    // Unavailable and the setting has gone OFF -> ON again. Nothing below de-duplicates requests.
     var preparationRequested: Boolean = false
     var lastPreparationUnavailable: Boolean = false
 
@@ -66,15 +56,12 @@ internal class LanguageSlot(val subtypeId: String) {
     var preparationRequestedByExplicitEnable: Boolean = false
 
     // Set when the setting goes ON -> OFF. The blocking engine teardown is deferred to the next
-    // lifecycle boundary instead of running inside the settings handler, where it would hold
-    // the UI thread for up to 240 ms on the very keystroke that flipped the setting.
+    // lifecycle boundary so it does not block the UI thread inside the settings handler.
     var releasePending: Boolean = false
 
-    // True once a deferred release has been attempted at a boundary and refused. The attempt is
-    // not free of consequences: the engine has already been told to stop and rejects every
-    // later lookup, so it is no longer a correct mapping and the setting coming back on may no
-    // longer cancel its release. Without this the cancellation would strand a permanently dead
-    // engine — nothing would release it and nothing would replace it — and the user would see
-    // an empty band for the rest of the process.
+    // True once a deferred release was attempted at a boundary and refused. The engine has
+    // already been told to stop and rejects every lookup, so turning the setting back on must not
+    // cancel its release; otherwise a dead engine would stay in the slot and the strip would stay
+    // empty for the rest of the process.
     var releaseAttemptFailed: Boolean = false
 }

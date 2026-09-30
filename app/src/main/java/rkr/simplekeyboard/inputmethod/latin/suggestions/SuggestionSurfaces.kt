@@ -18,10 +18,9 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 /**
  * The injected seams [SuggestionsController] is driven through: the editor surface, the tap
- * listener, the two live setting gates, the UI-thread poster and the dictionary-unavailability
- * listener. Pure declarations, extracted verbatim from `SuggestionsController.kt`
- * (ROADMAP Phase 6, T2). [StripSurface] deliberately stays in `SuggestionsController.kt`: a
- * source-contract test pins its default no-op emphasis seam to that file.
+ * listener, the live setting gates, the UI-thread poster and the dictionary-unavailability
+ * listener. [StripSurface] stays in `SuggestionsController.kt`: a source-contract test pins its
+ * default no-op emphasis seam to that file.
  */
 
 /** Fired when the user taps a suggestion in the strip (UI thread). */
@@ -37,22 +36,17 @@ interface EditorSurface {
 
     /**
      * True when the cursor sits inside a word, i.e. the text right after it starts with a letter
-     * (or with a combining mark, which can only continue one). Typing in the middle of a word is
-     * not supported by the frozen contract: the results are cleared instead, because replacing the
-     * trailing word would splice the suggestion into the user's text.
+     * (or with a combining mark, which can only continue one). Suggestions are not offered in the
+     * middle of a word: the results are cleared instead, because replacing the trailing word
+     * would splice the suggestion into the user's text.
      */
     fun hasLetterAfterCursor(): Boolean
 
     /**
-     * The SECOND insertion path of the frozen text contract (D3): replaces the trailing word
-     * [expectedPrefix] with [replacement] through the very same explicit delete-by-code-points plus
-     * `commitText` in ONE batch edit that an accepted suggestion goes through, and with the same
-     * re-checks. It differs from [commitSuggestion] in one thing only — no trailing auto-space,
-     * because the separator the user just pressed is committed right after it by the ordinary input
-     * path.
-     *
-     * Returns false without editing anything if any check fails. Defaults to false so an editor
-     * surface written before D3 keeps compiling and simply never autocorrects.
+     * Autocorrect insertion path: replaces the trailing word [expectedPrefix] with [replacement]
+     * using the same delete-by-code-points plus `commitText` batch edit and re-checks as
+     * [commitSuggestion], but without the auto-space: the separator the user just pressed follows
+     * through the ordinary input path. Returns false without editing if any check fails (default).
      */
     fun replaceTypedWord(expectedPrefix: String, replacement: String): Boolean = false
 
@@ -60,102 +54,77 @@ interface EditorSurface {
      * Undoes the last autocorrection: where [insertedForm] + [separator] stands immediately before
      * the cursor, puts [typedForm] + [separator] back, in one batch edit.
      *
-     * The suffix match IS the position check the contract asks for, and a stricter one than an
-     * offset: an offset can coincide again after unrelated edits, the exact text cannot. Returns
-     * false without editing anything when the text before the cursor is no longer what the
-     * replacement left there. Defaults to false, like [replaceTypedWord].
+     * The suffix match is the position check, and stricter than an offset: an offset can coincide
+     * again after unrelated edits, the exact text cannot. Returns false without editing when the
+     * text before the cursor is no longer what the replacement left there (default).
      */
     fun revertTypedWord(insertedForm: String, separator: String, typedForm: String): Boolean = false
 
     /**
-     * E5d NEXT_WORD context extraction from the live cache (PROPOSALS.md, "Контракт текста"
-     * amendment, 2026-08-17): the word immediately before a trailing run of one-or-more U+0020 right
-     * at the cursor, or "" if there is none — with the ROADMAP Phase 1 (P4, docs/ROADMAP-P1.md)
-     * amendment: when the space run follows non-final punctuation (exactly ',', ';', ':'), the
-     * context is the word BEFORE the punctuation run ("сүз, " → "сүз"). Defaults to "" so an editor
-     * surface written before E5d keeps compiling and NEXT_WORD simply never fires.
+     * NEXT_WORD context from the live cache. See [TatarWordUtils.extractNextWordContext] for the rule.
+     * Defaults to "", so NEXT_WORD never fires.
      */
     fun cachedNextWordContext(): String = ""
 
     /**
-     * P1 of Phase 2 (docs/ROADMAP-P2.md): the committed word immediately BEFORE the trailing
-     * completed word — the context half of a just-typed pair «A B ». Read from the live cache at
-     * the moment the trailing word has just become empty, so the tail ends with the separator
-     * that completed B; the word before that separator is B and the word before B is A. "" when
-     * there is no such word, or when the cache cannot prove it (a window cut off before the text
-     * start). Defaults to "" so an editor surface written before P1 keeps compiling and personal
-     * bigrams simply never observe a pair.
+     * The committed word before the just-completed trailing word: A in a just-typed "A B ". Read
+     * when the trailing word has just become empty, so the tail ends with the separator after B.
+     * "" when there is no such word or the cache cannot prove it (a window cut off before the
+     * text start). Defaults to "", so no pair is ever learned.
      */
     fun cachedWordBeforeTrailingWord(): String = ""
 
     /**
-     * P4 sentence-start detection over the live cache (docs/TT-SUGGESTIONS.md): true when the
-     * cursor sits where a new sentence begins — the start of the field, or sentence-ending
-     * punctuation followed by space(s) — by [TatarWordUtils.isSentenceStartContext]'s exact rules,
-     * cache-start provenance included. Defaults to false so an editor surface written before P4
-     * keeps compiling and simply never shows sentence-start predictions.
+     * True when the cursor sits where a new sentence begins (field start, or sentence-ending
+     * punctuation followed by spaces), by [TatarWordUtils.isSentenceStartContext]'s rules,
+     * cache-start provenance included. Defaults to false: no sentence-start predictions.
      */
     fun isAtSentenceStart(): Boolean = false
 
     /**
-     * The THIRD insertion path of the frozen text contract (E5d): commits a predicted next word.
-     * Unlike [commitSuggestion] and [replaceTypedWord], this one deletes NOTHING — NEXT_WORD only
-     * ever fires on an empty prefix, so there is nothing trailing to remove; it only inserts, with
-     * the same auto-space rule an accepted suggestion uses.
+     * Commits a predicted next word. Unlike [commitSuggestion] and [replaceTypedWord] it deletes
+     * nothing (NEXT_WORD fires only on an empty prefix) and only inserts, with the same auto-space
+     * rule as an accepted suggestion.
      *
-     * Re-checked against the live cache: collapsed selection, no letter right after the cursor (the
-     * same two checks the other two paths make), an EMPTY trailing word (a non-empty one means the
-     * user typed something after the request was built — the tap is stale), and the live context
-     * word re-extracted by [cachedNextWordContext]'s own algorithm matching [expectedContextWord]
-     * exactly. P4 adds one case to that equality: at a sentence start the context word is EMPTY on
-     * both sides, and the production path then additionally requires the live position to still be
-     * a sentence start ([isAtSentenceStart]), so a tap after ", " commits nothing. Defaults to
-     * false, like [replaceTypedWord] and [revertTypedWord].
+     * Re-checked against the live cache: collapsed selection, no letter right after the cursor, an
+     * empty trailing word (otherwise the tap is stale), and the live context word from
+     * [cachedNextWordContext] equal to [expectedContextWord]. When both are empty (a sentence
+     * start), the live position must still be a sentence start ([isAtSentenceStart]), so a tap
+     * after ", " commits nothing. Defaults to false.
      */
     fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean = false
 
     /**
-     * The glide lift-commit's own commit path (P7-6, docs/ROADMAP-P7.md — the 2026-09-24 field
-     * report): [commitPredictedWord]'s live re-checks MINUS the P4 sentence-start requirement for
-     * an empty context. A gesture ends at the cursor the user is looking at — there is no "stale
-     * band painted a minute ago" window the sentence-start sub-check exists for — so an
-     * empty-context position that is not a sentence start ("сүз ? " typed with the space habit)
-     * is a valid commit target for a glide while it never is one for a tap on a prediction.
+     * Commit path of a glide lift: [commitPredictedWord]'s live re-checks without the
+     * sentence-start requirement for an empty context. A gesture ends at the cursor the user is
+     * looking at, so there is no stale strip to guard against, and an empty-context position that
+     * is not a sentence start ("сүз ? ") is a valid glide target.
      *
-     * P7-7 (the 2026-09-25 contract change): a glide commits NO auto-space — the gesture is
-     * typing, not a suggestion acceptance. Chaining is the one separator rule: when the cursor
-     * stands right after a word character the commit prepends ONE space (gliding word after word
-     * produces "сәләм дөнья"); after whitespace/punctuation/at a field start nothing is
-     * prepended. [chainedAfter] is the only trailing word the commit tolerates — the word the
-     * PREVIOUS glide of the chain committed (still in its undo window); any other trailing word
-     * is a half-typed prefix and refuses the commit, exactly as before.
+     * A glide commits no auto-space: the gesture is typing, not accepting a suggestion. When the
+     * cursor stands right after a word character, one space is prepended (gliding word after word
+     * produces "сәләм дөнья"); after whitespace, punctuation or at a field start nothing is.
+     * [chainedAfter] is the only trailing word tolerated: the word the previous glide of the chain
+     * committed (still in its undo window). Any other trailing word is a half-typed prefix and
+     * refuses the commit.
      *
-     * Returns [GLIDE_COMMIT_REFUSED] (no edit), [GLIDE_COMMIT_BARE] or
-     * [GLIDE_COMMIT_PREPENDED] — the undo needs to know whether the inserted text carried the
-     * chain space. Defaults to [GLIDE_COMMIT_REFUSED], like [commitPredictedWord].
+     * Returns [GLIDE_COMMIT_REFUSED] (no edit, the default), [GLIDE_COMMIT_BARE] or
+     * [GLIDE_COMMIT_PREPENDED]; the undo needs to know whether the chain space was inserted.
      */
     fun commitGlideWord(expectedContextWord: String, suggestion: String, chainedAfter: String?): Int =
         GLIDE_COMMIT_REFUSED
 
     /**
-     * The glide lift-commit's replacement path (the UX amendment, docs/ROADMAP-P7.md): the word a
-     * glide just committed is replaced by the tapped alternative, IN PLACE — P7-7: no space is
-     * added or removed; [prependedSpace] says whether the committed text carried the chain space
-     * (the replacement carries it too). The suffix match (the trailing word must BE
-     * [committedWord] right before the cursor) IS the position check, the same one
-     * [revertTypedWord] makes; a stale tap edits nothing. Returns false without editing anything
-     * when any check fails. Defaults to false so an editor surface written before the lift-commit
-     * keeps compiling and simply never replaces.
+     * Replaces the word a glide just committed with the tapped alternative, in place: no space is
+     * added or removed, and [prependedSpace] says whether the committed text carried the chain
+     * space. The suffix match ([committedWord] right before the cursor) is the position check, as
+     * in [revertTypedWord]; a stale tap edits nothing. Returns false without editing (default).
      */
     fun replaceGlideLiftedWord(committedWord: String, alternative: String, prependedSpace: Boolean): Boolean = false
 
     /**
-     * The glide lift-commit's whole-word undo (the Gboard gesture-undo): one backspace right after
-     * the lift deletes the committed word from before the cursor — INCLUDING the chain space when
-     * [prependedSpace] says the commit prepended one (undoing the second glide of a chain returns
-     * to exactly the first word's state) — and commits NOTHING back. Same position check as the
-     * replacement; false without an edit on any failure. Defaults to false, like
-     * [replaceGlideLiftedWord].
+     * Whole-word undo of a glide lift: one backspace right after the lift deletes the committed
+     * word, including the chain space when [prependedSpace] is set, and commits nothing back.
+     * Same position check as [replaceGlideLiftedWord]; false without an edit on failure (default).
      */
     fun deleteGlideLiftedWord(committedWord: String, prependedSpace: Boolean): Boolean = false
 
@@ -180,28 +149,24 @@ fun interface AutocorrectGate {
 }
 
 /**
- * Reads the live value of `PREF_GLIDE_TYPING` (P7-3, docs/GLIDE-PLAN.md) — the exact same seam
- * shape as [AutocorrectGate]. Read at every gesture, so flipping the setting takes effect on the
- * next glide without restarting anything.
+ * Reads the live value of `PREF_GLIDE_TYPING`, like [AutocorrectGate]. Read at every gesture, so
+ * flipping the setting takes effect on the next glide.
  */
 fun interface GlideGate {
     fun isOn(): Boolean
 }
 
 /**
- * Reads the keyboard's current shift state for the glide commit's casing rule (P7-3): shifted
- * (manual or automatic) means the committed word is capitalized, exactly as the letters of a
- * typed word would have been. A seam, so JVM tests can flip shift between two gestures.
+ * Reads the keyboard's shift state for the glide commit's casing: shifted (manual or automatic)
+ * capitalizes the committed word, as it would a typed one. A seam, so JVM tests can flip shift.
  */
 fun interface ShiftStateGate {
     fun isShifted(): Boolean
 }
 
 /**
- * Reads the live value of `PREF_EMOJI_SUGGESTIONS` — the exact same seam shape as
- * [AutocorrectGate], for the emoji cell of the NEXT_WORD band (mission 2 of
- * docs/EMOJI-SUGGEST-PLAN.md). Read on every fill, so flipping the setting takes effect on the
- * next band without restarting anything.
+ * Reads the live value of `PREF_EMOJI_SUGGESTIONS`, like [AutocorrectGate], for the emoji cell of
+ * the NEXT_WORD strip. Read on every fill, so flipping the setting takes effect on the next strip.
  */
 fun interface EmojiSuggestGate {
     fun isOn(): Boolean
@@ -219,10 +184,9 @@ fun interface UiPoster {
  * Notified when a dictionary preparation that an *explicit* enable asked for ended
  * [PreparationResult.Unavailable].
  *
- * Only explicit enables are reported. A preparation started by the controller becoming eligible for
- * the first time was never asked for by the user, so failing it silently is the right answer; a
- * preparation started by an observed OFF -> ON transition answers a switch the user just flipped,
- * and leaving that unanswered would look like the setting simply did nothing.
+ * Only explicit enables are reported. A preparation started because the controller became eligible
+ * was never asked for by the user and may fail silently; one started by an OFF -> ON transition
+ * answers a switch the user just flipped, and silence would look like the setting did nothing.
  */
 fun interface DictionaryUnavailableListener {
     fun onDictionaryUnavailableAfterExplicitEnable()

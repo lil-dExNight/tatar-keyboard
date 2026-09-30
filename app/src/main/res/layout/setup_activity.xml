@@ -14,12 +14,11 @@
      limitations under the License.
 -->
 
-<!-- Two-step onboarding (SETUP-01). Classic View/XML on purpose: no new
-     dependencies, system Material widgets under platformSettingsTheme.
-     iOS grouped-table restyle (IOS-REDESIGN.md D6): flat cards on a
-     grouped-table field, 34sp large title, system-blue filled actions,
-     all colored by the shared app_* design tokens (wave D). View ids
-     are load-bearing (SetupActivity.kt) — do not rename. -->
+<!-- Two-step onboarding. Classic View/XML on purpose: no new dependencies,
+     system Material widgets under platformSettingsTheme. iOS-style grouped
+     table: flat cards on a grouped-table field, 34sp large title, system-blue
+     filled actions, all colored by the shared app_* design tokens. View ids
+     are referenced by SetupActivity.kt; do not rename them. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/setup_root"
     android:layout_width="match_parent"
@@ -184,8 +183,8 @@
                 android:text="@string/setup_done_hint"
                 android:textAppearance="?android:attr/textAppearanceMedium" />
 
-            <!-- Try-it field in its own card. The moment of victory — the
-                 freshly selected keyboard opens right here. The hint is also
+            <!-- Try-it field in its own card: the freshly selected keyboard
+                 opens here. The hint is also
                  the field's TalkBack label (no contentDescription on an
                  EditText). -->
             <EditText

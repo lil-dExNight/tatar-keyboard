@@ -20,7 +20,7 @@
 
 <resources>
     <style name="platformSettingsTheme" parent="@android:style/Theme.Material" />
-    <!-- S2: the same iOS alert styling on the dark platform dialog; the colours resolve to
+    <!-- The same iOS-style alert styling on the dark platform dialog; the colors resolve to
          their night variants through @color. -->
     <style name="platformDialogTheme" parent="@android:style/Theme.DeviceDefault.Dialog">
         <item name="android:windowBackground">@drawable/app_dialog_bg</item>

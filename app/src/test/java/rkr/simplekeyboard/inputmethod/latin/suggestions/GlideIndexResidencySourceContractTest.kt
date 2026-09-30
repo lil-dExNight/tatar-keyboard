@@ -81,7 +81,7 @@ class GlideIndexResidencySourceContractTest {
         // C3 narrows the residency during typing; it must not weaken the idle release that frees
         // the last index when the keyboard goes away.
         val fn = controllerSource().substringAfter("fun releaseGlideIndexes()")
-            .substringBefore("/**")
+            .substringBefore("internal fun signalDictionaryReadyForTest()")
         assertTrue(
             "the idle path keeps no exception",
             fn.contains("for (slot in slots.values)") && fn.contains("slot.engine?.releaseGlideIndex()"),

@@ -24,43 +24,35 @@ import kotlin.math.sqrt
  *
  * The algorithm follows the AnySoftKeyboard PR #1870 parameter study (Etienne Desticourt's
  * write-up) as implemented by FlorisBoard's `StatisticalGlideTypingClassifier` (Apache-2.0,
- * (C) the FlorisBoard contributors). The math is ported with attribution; the code is written
- * fresh for this engine's discipline — fixed scratch buffers, no allocations after warmup,
- * fail-closed on degenerate input. The channel sigmas and the frequency exponent are tuned
- * against the train split of the synthetic calibration set (docs/ROADMAP-P7.md).
+ * (C) the FlorisBoard contributors). The math is ported with attribution; the code is new:
+ * fixed scratch buffers, no allocations after warmup, no candidates on degenerate input. The
+ * channel sigmas and the frequency exponent are tuned on a synthetic gesture set.
  *
  * Pipeline of one [decode]:
- *  1. Extremity pruning: the two nearest keys to the gesture's start x the two nearest to its
- *     end select up to four buckets of the [GlideWordIndex] (the study measures ~99.5 %
- *     dictionary rejection at ~93.9 % sensitivity).
- *  2. Length pruning: a survivor stays only when its plain OR looped ideal-path length lies
+ *  1. Extremity pruning: the two keys nearest the gesture's start x the two nearest its end
+ *     select up to four buckets of the [GlideWordIndex].
+ *  2. Length pruning: a candidate stays only when its plain or looped ideal-path length lies
  *     within [GlideConstants.lengthThreshold] x key radius of the gesture's length.
- *  3. Scoring, per survivor against its ONE ideal path (the looped variant when the word has a
- *     doubled letter, the plain one otherwise — P7-8, the 2026-09-25 field report: the old
- *     best-of-both-variants let the doubled word's PLAIN variant match the undoubled twin's
- *     path exactly, so frequency decided between the twins and сәлләм beat сәләм on every
- *     no-loop path; a doubled letter now requires loop evidence in the user path): shape
- *     distance (bbox-normalized pointwise L1
+ *  3. Scoring against the candidate's single ideal path (the looped variant when the word has
+ *     a doubled letter, the plain one otherwise): shape distance (bbox-normalized pointwise L1
  *     over the resampled paths, Gaussian with [GlideConstants.shapeStd]) x location distance
  *     (absolute pointwise L1/2, Gaussian with [GlideConstants.locationStdFactor] x key radius)
- *     x a frequency weight. The confidence competes for the top-N; cheap
- *     fail-fast checks (frequency alone, then shape alone) skip the expensive channels when a
- *     candidate cannot reach the current k-th worst score.
+ *     x a frequency weight. The confidence competes for the top-N; cheap fail-fast checks
+ *     (frequency alone, then shape alone) skip the expensive channels when a candidate cannot
+ *     reach the current k-th worst score.
  *
- * The decode entry is `decode(path, out)`: deterministic (score ties break on the dictionary
- * order the CSR buckets preserve), zero-allocation after warmup except the result strings
- * themselves, and safe on empty or pruned-out input (no candidates, never an exception).
+ * Scoring is one fused loop: the ideal path's arc-equidistant points are produced on the fly
+ * by the resampler's segment walk (segment lengths cached by the path writer), and both
+ * channels accumulate against them. The shape channel sums L1, not L2 (no sqrt per point),
+ * and both paths normalize by their raw bbox, which the loop needs before it starts.
  *
- * P7-4 (the POCO C71 perf iteration, docs/ROADMAP-P7.md): the per-variant scoring is ONE fused
- * loop — the ideal path's arc-equidistant points are produced on the fly by the same segment
- * walk the resampler runs (segment lengths cached by the path writer), and both channels
- * accumulate against them; the shape channel sums pointwise L1, not L2 (a library sqrt per
- * point measurably hurt the Go-class interpreter; the calibration set re-validates the
- * constants), and both sides normalize by their RAW path bbox, needed before the loop starts.
+ * `decode(path, out)` is deterministic (score ties break on dictionary order, which the CSR
+ * buckets preserve), allocates nothing after warmup except the result strings, and returns no
+ * candidates, never an exception, on empty or fully pruned input.
  *
- * Threading: an instance is WORKER-CONFINED exactly like the dictionary index it reads — one
- * engine worker thread decodes through it. The lazily built word index is published through a
- * @Volatile reference and is immutable, which is all a racing first decode needs.
+ * Threading: an instance is worker-confined like the dictionary index it reads. The lazily
+ * built word index is immutable and published through a @Volatile reference, which is all a
+ * racing first decode needs.
  */
 class GlideDecoder(
     private val geometry: GlideKeyGeometry,
@@ -70,10 +62,9 @@ class GlideDecoder(
     /**
      * Tuning knobs of the classifier. [lengthThreshold], [sampleCount], [extremityNeighbors] and
      * [frequencyWeight] carry the AnySoftKeyboard PR #1870 study values (as ported through
-     * FlorisBoard). [shapeStd], [locationStdFactor] and [frequencyExponent] are TUNED on the
-     * train split of the synthetic gesture set against the real Tatar dictionary — the study's
-     * σ values (22.08 / 0.5109) sit on the same plateau but lower; see the tuning surface in
-     * docs/ROADMAP-P7.md (P7-1) and the held-out numbers in GlideRecoveryCalibrationTest.
+     * FlorisBoard). [shapeStd], [locationStdFactor] and [frequencyExponent] are tuned on the
+     * train split of a synthetic gesture set against the Tatar dictionary; the study's sigma
+     * values (22.08 / 0.5109) lie on the same plateau.
      */
     class GlideConstants(
         /** Gaussian sigma of the shape channel, in bbox-normalized units x sample count. */
@@ -93,7 +84,7 @@ class GlideDecoder(
          * frequencies quantized to a 0..255 byte, which bounds the weight ratio of any two words
          * to 255:1; raw dictionary counts span 1..10^6 and would drown the shape and location
          * channels entirely. gamma = 1 is linear, gamma = 0 makes the channel uniform; 0.25
-         * keeps frequency a live but mild prior (train-split tuned, docs/ROADMAP-P7.md).
+         * keeps frequency a mild prior (tuned on the train split).
          */
         val frequencyExponent: Float = 0.25f,
     )
@@ -120,7 +111,7 @@ class GlideDecoder(
     private val userNY = FloatArray(constants.sampleCount)
     private val idealX = FloatArray(GlideIdealPaths.MAX_POINTS)
     private val idealY = FloatArray(GlideIdealPaths.MAX_POINTS)
-    // The ideal polyline's segment lengths and bbox, written alongside the points (P7-4 fusion).
+    // The ideal polyline's segment lengths and bbox, written alongside the points (fused loop).
     private val idealSegLens = FloatArray(GlideIdealPaths.MAX_POINTS)
     private val idealInvSegLens = FloatArray(GlideIdealPaths.MAX_POINTS)
     private val idealStats = FloatArray(4)
@@ -142,8 +133,8 @@ class GlideDecoder(
 
     /**
      * Decodes [path] into [out] (reset on entry) and returns the candidate count, best first.
-     * Fewer than two path points, an empty geometry or an all-pruned candidate space yield 0 —
-     * the strip shows nothing, which is the fail-closed answer for a non-word gesture.
+     * Fewer than two path points, an empty geometry or an all-pruned candidate space yield 0,
+     * and the strip shows nothing for the gesture.
      */
     fun decode(path: GlidePath, out: GlideResult): Int {
         out.reset()
@@ -155,11 +146,9 @@ class GlideDecoder(
 
         val samples = constants.sampleCount
         GlideResampler.resample(path.xs, path.ys, path.size, userX, userY, samples)
-        // P7-4: the shape channel normalizes by the RAW path's bounding box (computed from the
-        // recorded points), not the resampled samples' — the fused scoring pass needs the
-        // factors before its loop, and the raw extent is the honest one anyway (a resampled
-        // path can miss an unsampled extremal vertex). Same rule on the ideal side (the path
-        // writer reports the polyline's bbox), so the comparison stays apples-to-apples.
+        // The shape channel normalizes by the raw path's bounding box, not the resampled one:
+        // the fused scoring loop needs the factors before it starts, and resampling can miss an
+        // extremal vertex. The ideal side uses its raw polyline bbox the same way.
         var minX = Float.MAX_VALUE
         var maxX = -Float.MAX_VALUE
         var minY = Float.MAX_VALUE
@@ -279,13 +268,9 @@ class GlideDecoder(
             return topCount
         }
         var best = Float.POSITIVE_INFINITY
-        // P7-8 (the 2026-09-25 field report "сәләм typed, сәлләм committed"): a doubled letter
-        // must show EVIDENCE in the user path — the candidate scores against its LOOPED ideal
-        // path only. Its plain variant degenerates to the undoubled twin's path (the doubled
-        // letter contributes a zero-length visit the resampler skips), so the old best-of-both
-        // let FREQUENCY decide between the twins — and сәлләм's prior beat сәләм on every
-        // no-loop path. A path with a jog/dwell at the doubled key matches the looped variant;
-        // a path without one no longer does.
+        // A word with a doubled letter scores against its looped ideal path only, so the doubled
+        // letter needs a loop or dwell in the user path. Its plain variant equals the undoubled
+        // twin's path, and frequency alone would pick between the two words.
         val loopedOnly = index.loopLengthAt(entry) >= 0f
         best = scoreVariant(
             index, entry, topCount, loopedOnly, shapeFactor, locationFactor,
@@ -315,10 +300,8 @@ class GlideDecoder(
     }
 
     /**
-     * Scores one candidate against its ONE ideal path ([loopedOnly] selects the doubled-letter
-     * loop detour; P7-8: there is no best-of-variants anymore) and returns its confidence
-     * (POSITIVE_INFINITY when any fail-fast rejects it). The fused walk, the bails and the
-     * arithmetic are the P7-4 ones, unchanged.
+     * Scores one candidate against its single ideal path ([loopedOnly] selects the doubled-letter
+     * loop) and returns its confidence, or POSITIVE_INFINITY when a fail-fast check rejects it.
      */
     private fun scoreVariant(
         index: GlideWordIndex,
@@ -339,9 +322,8 @@ class GlideDecoder(
         if (points < 0) return Float.POSITIVE_INFINITY
         val totalLength =
             if (loopedOnly) index.loopLengthAt(entry) else index.plainLengthAt(entry)
-        // The normalize factors of the RAW polyline's bbox (P7-4: the fused loop below
-        // needs them before it starts; the user's path is normalized by its raw bbox the
-        // same way — see decode()).
+        // Normalization factors from the raw polyline's bbox; the fused loop below needs them
+        // before it starts (the user path is normalized the same way, see decode()).
         val idealWidth = idealStats[1] - idealStats[0]
         val idealHeight = idealStats[3] - idealStats[2]
         val longestSide = maxOf(maxOf(idealWidth, idealHeight), 0.00001f)
@@ -360,7 +342,7 @@ class GlideDecoder(
             shapeLimit = (constants.shapeStd *
                 Math.sqrt(-2.0 * Math.log(needed / shapeFactor))).toFloat()
         }
-        // The fused scoring pass (P7-4): ONE walk producing the ideal path's arc-equidistant
+        // The fused scoring pass: one walk producing the ideal path's arc-equidistant
         // points on the fly (the same segment walk the resampler runs, segment lengths cached
         // by the writer), with both channels accumulating against them. The shape bail ends
         // the walk early; location's own bail is subsumed (a shape-bailed candidate never
@@ -414,9 +396,8 @@ class GlideDecoder(
                 }
                 val inx = ix * invSide - centroidX
                 val iny = iy * invSide - centroidY
-                // No library calls per point: manual abs (a call per abs measurably hurts
-                // on the interpreter-ish Go-class ART) and the shape channel sums pointwise
-                // L1 instead of L2 (sigma re-validated, not re-tuned — docs/ROADMAP-P7.md).
+                // No library calls per point: manual abs (a call per point is slow on low-end
+                // ART devices), and the shape channel sums pointwise L1 instead of L2.
                 val dx = inx - userNX[k]
                 val dy = iny - userNY[k]
                 shapeDistance += (if (dx < 0f) -dx else dx) + (if (dy < 0f) -dy else dy)
@@ -436,8 +417,8 @@ class GlideDecoder(
             return Float.POSITIVE_INFINITY
         }
         if (topCount == TOP_N) {
-            // The location limit of the pre-fusion code (bail inside the location loop) is
-            // already earned: the fused walk accumulated the full location sum alongside.
+            // Location check: the fused walk has already accumulated the full location sum,
+            // so this bound is checked once here instead of inside the loop.
             val needed = 1.0 /
                 (topScores[TOP_N - 1].toDouble() * shapeProbability * frequencyWeight)
             if (needed >= locationFactor) return Float.POSITIVE_INFINITY

@@ -22,7 +22,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalWor
 
 /**
  * One word row of the "Personal dictionary" screen: a word of one language, with the key to delete
- * it by and the usage count to show beside it (U7 of Phase 2, docs/ROADMAP-P2.md).
+ * it by and the usage count to show beside it.
  */
 internal class PersonalWordRow(
     val subtypeId: String,
@@ -68,10 +68,9 @@ internal class PersonalEmojiRow(
 }
 
 /**
- * Everything shown for one language: the word rows, the pair rows and the emoji rows that survived
- * the search and the cap, plus the TRUE saved totals ([wordCount], [pairCount], [emojiCount]) — the
- * counts a section prints must not shrink just because a query hid the rows or the cap stopped
- * materializing them.
+ * Everything shown for one language: the word, pair and emoji rows that survived the search and
+ * the cap, plus the true saved totals ([wordCount], [pairCount], [emojiCount]). A section's counts
+ * must not shrink because a query hid rows or the cap stopped materializing them.
  */
 internal class PersonalLanguageSection(
     val subtypeId: String,
@@ -98,23 +97,14 @@ internal class PersonalScreenContent(
 }
 
 /**
- * The pure content model of the "Personal dictionary" screen — grouping, search and the row cap,
- * with no Android and no I/O, so all of it is covered by plain JVM tests.
+ * The pure content model of the "Personal dictionary" screen: grouping, search and the row cap,
+ * with no Android and no I/O, so it is covered by plain JVM tests.
  *
- * The performance limiter is a CAP ON ROWS, not a choice of one language, and that is not cosmetic:
- * `SettingsHostActivity` builds its content imperatively into a `ScrollView` + `LinearLayout`
- * without view reuse, and rebuilds the whole screen in `onStart` — that is, on every return to the
- * foreground and after every dialog. `RecyclerView` is not available (since O2 of
- * 2026-09-25 the app carries no androidx dependency at all, and adding `recyclerview` costs
- * on the order of a hundred kilobytes against a phase budget of 25 600 B), so the list simply
- * must not grow without bound. At a cap of 200 it does
- * not matter at all whether those rows come from one language or two, from words, pairs or emoji.
- *
- * Showing only the active subtype was rejected for a reason that is not convenience: "erase all"
- * deletes the files of EVERY language, so a screen that shows one language would silently erase what
- * is not on it. The same holds for the three stores: the pairs and the emoji of a language sit in
- * the same section as its words, because a screen that showed one store and erased all three would
- * tell the same lie.
+ * The performance limit is a cap on rows: `SettingsHostActivity` builds the screen imperatively in
+ * a `ScrollView` without view reuse and rebuilds it in `onStart`, and the app has no androidx
+ * dependency (no `RecyclerView`), so the list must not grow without bound. Every language and all
+ * three stores are shown, because "erase all" deletes the files of every language and store: the
+ * screen never erases anything it does not show.
  */
 internal object PersonalDictionaryScreenModel {
 
@@ -125,13 +115,10 @@ internal object PersonalDictionaryScreenModel {
      * Builds the content for [dictionaries], [bigrams] and [emoji] (all in the order the languages
      * should appear) narrowed by [query].
      *
-     * Matching is on the NORMALIZED form of both sides, so a search for "гүзәл" finds a saved
-     * "Гүзәл"; the row still shows the saved spelling. A pair matches when EITHER its context or
-     * its successor does — a search that quietly covered only the words would read as "you have
-     * no such pair saved", which is a lie the user cannot detect. An emoji entry matches on its
-     * word half — the emoji half is a cluster, not searchable text. Filtering happens HERE, before
-     * a single View exists — that is what the contract means by "the search narrows the list
-     * before the views are built".
+     * Matching is on the normalized form of both sides, so a search for "гүзәл" finds a saved
+     * "Гүзәл"; the row still shows the saved spelling. A pair matches when either its context or
+     * its successor does; an emoji entry matches on its word only (the emoji is not searchable
+     * text). Filtering happens here, before any View exists.
      */
     fun build(
         dictionaries: List<Pair<String, PersonalDictionary>>,

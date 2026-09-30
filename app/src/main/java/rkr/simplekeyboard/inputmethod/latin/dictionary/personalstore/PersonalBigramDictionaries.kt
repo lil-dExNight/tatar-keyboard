@@ -22,45 +22,33 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSo
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SnapshotPersonalBigramSource
 
 /**
- * The ONE process-wide owner of the personal-bigram stores (P1 of Phase 2, docs/ROADMAP-P2.md) —
- * one store per subtype, serialized on the SAME single background executor as the words stores
- * (see [PersonalDictionaries.sharedStoreExecutor]), so the two features can never race each
- * other's in-flight temp files in the shared `personal/` directory.
+ * The process-wide owner of the learned-pairs stores, one per subtype, on
+ * [PersonalDictionaries.sharedStoreExecutor]. See [PersonalDictionaries].
  *
- * Everything else mirrors [PersonalDictionaries]: the settings screen and the IME share the one
- * process, so the screen can forget a pair or erase all of them through the same serialized owner
- * the engine reads from; and reading is gated live through [PersonalDictionaryGate], so turning
- * the personal-dictionary setting off stops personal predictions on the very next lookup.
- *
- * The context-membership probe ([setContextMembershipProbe]) is the dictionary half of the
- * learn-time context gate: the store consults it on its worker at graduation, and it is owned
- * here — not by the store — because answering it needs the live engines, which belong to the IME
- * that wires the probe. With no probe installed the personal-dictionary half alone answers, and
- * an unknown context simply does not graduate: fail-closed, exactly like a cold engine.
+ * The context-membership probe ([setContextMembershipProbe]) answers whether the bundled dictionary
+ * knows a context word; the store asks it on its worker at graduation. It lives here because it
+ * needs the live engines, which the IME owns. Without a probe only the personal dictionary answers,
+ * and an unknown context does not graduate.
  */
 object PersonalBigramDictionaries {
 
     private val lock = Any()
     private val stores = HashMap<String, PersonalBigramStore>()
 
-    /**
-     * Notified after pairs are erased ("Erase all" / "Forget"), so the IME can unbind whatever is
-     * still displayed — the "erased means erased" guarantee of the words store, for predictions.
-     */
+    /** Notified after pairs are erased. See `PersonalDictionaries.erasureListener`. */
     @Volatile
     private var erasureListener: Runnable? = null
 
-    /** Notified when an unreadable bigram file has been set aside on a store's first open. */
+    /** Notified when a store quarantines an unreadable file. See `PersonalDictionaries.quarantineListener`. */
     @Volatile
     private var quarantineListener: Runnable? = null
 
-    /** Guarded by [lock]; one entry per language that lost something (2026-09-24 audit, F13). */
+    /** Guarded by [lock]; one entry per language that lost something. */
     private val pendingQuarantineNotices = LinkedHashSet<String>()
 
     /**
-     * The dictionary-membership half of the context gate, installed by the IME (which is the only
-     * place that can reach the engines) and cleared on its destroy. Called on a store's worker
-     * thread, never on the UI thread.
+     * The bundled-dictionary half of the context gate, installed by the IME and cleared on its
+     * destroy. Called on a store's worker thread, never on the UI thread.
      */
     @Volatile
     private var contextMembershipProbe: PersonalBigramContextMembership? = null
@@ -80,14 +68,7 @@ object PersonalBigramDictionaries {
             }
         }
 
-    /**
-     * The engine's read side for [subtypeId]. Returns [PersonalBigramSource.EMPTY] semantics
-     * whenever the setting is off, so a disabled personal dictionary costs the prediction path
-     * nothing beyond one boolean read.
-     *
-     * Called from the controller's background executor at engine start (the store's first open
-     * reads a file), never from the UI thread.
-     */
+    /** The engine's read side for [subtypeId]. See [PersonalDictionaries.sourceFor]. */
     @JvmStatic
     fun sourceFor(
         context: Context,
@@ -96,10 +77,7 @@ object PersonalBigramDictionaries {
     ): PersonalBigramSource {
         val store = storeFor(context, subtypeId)
         if (gate.isOn()) store.prime()
-        // The source itself is built in the `personal` package, which owns the read model: this
-        // package hands it nothing but a supplier of the published snapshot. That is also what
-        // keeps the frozen privacy rule of the store package true — no method name here names
-        // typed text.
+        // Built in the `personal` package from a snapshot supplier; see PersonalDictionaries.sourceFor.
         return SnapshotPersonalBigramSource {
             if (gate.isOn()) store.snapshot else PersonalBigramDictionary.EMPTY
         }
@@ -129,12 +107,7 @@ object PersonalBigramDictionaries {
     fun hasPendingQuarantineNotice(): Boolean =
         synchronized(lock) { pendingQuarantineNotices.isNotEmpty() }
 
-    /**
-     * Takes ONE waiting notice — the earliest-raised language's — if there is one; see
-     * [PersonalDictionaries.consumeQuarantineNotice] for the contract this mirrors, including
-     * spending the durable mark of THAT language's store only, so a second language that lost
-     * something keeps its own notice (2026-09-24 audit, finding 13).
-     */
+    /** Takes one waiting notice. See [PersonalDictionaries.consumeQuarantineNotice]. */
     @JvmStatic
     fun consumeQuarantineNotice(): Boolean {
         val subtypeId = synchronized(lock) {
@@ -153,11 +126,9 @@ object PersonalBigramDictionaries {
     }
 
     /**
-     * The context gate one store is constructed with: the personal dictionary of the subtype first
-     * (a word the user saved is a known word even with no engine running — read off the published
-     * snapshot, which costs no I/O), then the IME-installed probe (the shipped dictionary's half).
-     * Both fail closed: a personal store that was never opened answers EMPTY, and a missing probe
-     * answers unknown, so a context graduates only on a positive answer somebody really gave.
+     * The context gate a store is built with: first the subtype's personal dictionary snapshot (no
+     * I/O, works without an engine), then the IME-installed probe. An unopened personal store and a
+     * missing probe both answer "unknown", so only a positive answer lets a pair graduate.
      */
     private fun contextMembership(context: Context): PersonalBigramContextMembership {
         val appContext = context.applicationContext
@@ -173,7 +144,7 @@ object PersonalBigramDictionaries {
         }
     }
 
-    /** Called on the store's worker when it set an unreadable file aside. */
+    /** Called on the store's worker when it quarantined an unreadable file. */
     private fun notifyQuarantined(subtypeId: String) {
         synchronized(lock) { pendingQuarantineNotices.add(subtypeId) }
         quarantineListener?.run()

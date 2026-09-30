@@ -24,18 +24,12 @@
 
 package rkr.simplekeyboard.inputmethod.keyboard.internal;
 
-// ВНИМАНИЕ: файл исторически генерировался инструментом форка (make-KeyboardTextsTable),
-// сам генератор в репозиторий не попал и утерян. С 2026-08-30 (срез локалей до tt/ru/en,
-// docs/RESTRUCTURE.md фаза 3б) файл правится ВРУЧНУЮ: остались таблицы DEFAULT, en, ru.
-// При добавлении локали: новый массив TEXTS_<locale>, запись в sLocaleToTextsTableMap,
-// регистрация в SubtypeLocaleUtils — синхронно.
-
 import java.util.HashMap;
 import java.util.Locale;
 
 /**
- * Key-label texts per locale, maintained BY HAND — the generator that once produced this table
- * is lost. Adding a locale or a layout requires synchronized edits here (a new TEXTS_ array and
+ * Key-label texts per locale, maintained by hand (the generator that produced the upstream table
+ * is not part of this repository). Adding a locale or a layout requires synchronized edits here (a new TEXTS_ array and
  * an sLocaleToTextsTableMap entry) and in SubtypeLocaleUtils (the sSupportedLocales list and the
  * LAYOUT_ layout-set names).
  */
@@ -690,16 +684,14 @@ public final class KeyboardTextsTable {
 
     private static final Object[] LOCALES_AND_TEXTS = {
     // "locale", TEXT_ARRAY,  /* numberOfNonNullText/lengthOf_TEXT_ARRAY localeName */
-    // Phase 3b (2026-08-30): only the three shipped locales remain; the table is edited by
-    // hand although it was generated — every other locale falls back to TEXTS_DEFAULT.
+    // Only the three shipped locales are listed; every other locale falls back to TEXTS_DEFAULT.
         "DEFAULT", TEXTS_DEFAULT, /* 176/176 DEFAULT */
         "en"     , TEXTS_en,    /*   8/ 10 English */
         "ru"     , TEXTS_ru,    /*   9/ 32 Russian */
-    // U1+U2 (2026-08-31, docs/AUDIT-2026-08-31.md): Tatar inherits the Russian table wholesale —
-    // Tatar typography follows Russian («АБВ» alpha key, ₽ currency, „“ quotes). No separate
-    // TEXTS_tt: every non-null field of TEXTS_ru is either correct for tt as-is or never
-    // consulted, because the tatar rowkeys (rowkeys_tatar*.xml) reference no "!text/" names at
-    // all and set their moreKeys explicitly.
+    // Tatar inherits the Russian table as a whole: Tatar typography follows Russian («АБВ»
+    // alpha key, ₽ currency, „“ quotes). There is no separate TEXTS_tt: every non-null field of
+    // TEXTS_ru is either correct for tt as is or never consulted, because the Tatar rowkeys
+    // (rowkeys_tatar*.xml) reference no "!text/" names and set their moreKeys explicitly.
         "tt"     , TEXTS_ru,    /* Tatar → Russian typography */
     };
 

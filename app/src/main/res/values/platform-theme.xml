@@ -20,12 +20,10 @@
 
 <resources>
     <style name="platformSettingsTheme" parent="@android:style/Theme.Material.Light.LightStatusBar" />
-    <!-- S2 (docs/APPLE-UX-2026-09-25.md): iOS alert styling on the platform dialog — card
-         surface with a 13dp radius, a CENTERED 17sp semibold title, and accent, non-shouting
-         buttons. NOT iOS: the full-width STACKED button bar, which lives in the framework's
-         dialog layout and cannot be restyled by a theme; changing it would mean replacing every
-         AlertDialog in the app with a custom view (and re-pinning their source contracts).
-         Recorded as a deliberate partial in the stage-B report. -->
+    <!-- iOS-style alert styling on the platform dialog: card surface with a 13dp radius,
+         a centered 17sp semibold title, and accent-colored buttons that are not all caps.
+         The full-width stacked button bar stays as on Android: it lives in the framework's
+         dialog layout and cannot be restyled by a theme. -->
     <style name="platformDialogTheme" parent="@android:style/Theme.DeviceDefault.Light.Dialog">
         <item name="android:windowBackground">@drawable/app_dialog_bg</item>
         <item name="android:colorAccent">@color/app_accent</item>
@@ -48,7 +46,7 @@
     </style>
 
     <!-- SettingsHostActivity: platformSettingsTheme without the ActionBar —
-         the screens draw their own 34sp large title (IOS-REDESIGN.md S1.1).
+         the screens draw their own 34sp large title.
          Defined once: the parent and colors resolve their night variants at
          runtime. windowBackground avoids a launch flash on the grouped field. -->
     <style name="settingsHostTheme" parent="@style/platformSettingsTheme">

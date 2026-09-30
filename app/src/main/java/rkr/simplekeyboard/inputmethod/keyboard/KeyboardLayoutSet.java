@@ -374,8 +374,8 @@ public final class KeyboardLayoutSet {
                 } else if (variation == InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE) {
                     return KeyboardId.MODE_IM;
                 } else {
-                    // Сюда же попадает TYPE_TEXT_VARIATION_FILTER: у него отдельная ветка
-                    // возвращала ровно MODE_TEXT и была неотличима от общей.
+                    // TYPE_TEXT_VARIATION_FILTER also lands here: it maps to MODE_TEXT like
+                    // every other variation, so it needs no branch of its own.
                     return KeyboardId.MODE_TEXT;
                 }
             default:

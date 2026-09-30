@@ -28,8 +28,7 @@ import java.util.Locale
 
 /**
  * A validated `.tpersb` file, ready to become an immutable snapshot. Parallel arrays in the
- * on-disk (pair-key ascending) order. Not a `data class`: it carries the user's words and an
- * auto-generated `toString` would print them on the first interpolation.
+ * on-disk (pair-key ascending) order. See [ValidatedPersonalDictionary].
  */
 class ValidatedPersonalBigrams internal constructor(
     /** Context words in the NORMALIZED form (the only form the format stores for them). */
@@ -51,13 +50,9 @@ class ValidatedPersonalBigrams internal constructor(
 }
 
 /**
- * Fail-closed validator for the `.tpersb` format, modelled on [TpersValidator].
- *
- * Every check is explicitly attributed to the CONTEXT or the SUCCESSOR half of a record, mirroring
- * the frozen contract. Any violation throws [PersonalDictionaryValidationException] — shared with
- * the words store on purpose: it carries a constant message and no user text, which is the whole
- * contract of the type. The reader turns a violation into an empty personal-bigram store. Nothing
- * here logs, and no message carries user text.
+ * Strict validator for the `.tpersb` format; see [TpersValidator]. Every check applies to either
+ * the context or the successor half of a record. Violations throw the shared
+ * [PersonalDictionaryValidationException]; the reader turns them into an empty pair store.
  */
 class TpersbValidator {
     /**
@@ -154,8 +149,8 @@ class TpersbValidator {
             val context = decodeStrictUtf8(contextBytes)
             checkNormalizedWord(context, alphabet)
 
-            // SUCCESSOR half: raw form stored; casing must not be MIXED, the normalized form must
-            // pass the same content checks as the context.
+            // SUCCESSOR half: raw form stored; casing must not be MIXED, and the normalized form
+            // passes the same content checks as the context.
             val successorRaw = decodeStrictUtf8(successorBytes)
             if (TatarWordUtils.classifyCasing(successorRaw) == TatarWordUtils.PrefixCasing.MIXED) {
                 fail("successor casing is mixed")
@@ -164,9 +159,8 @@ class TpersbValidator {
                 .lowercase(Locale.ROOT)
             checkNormalizedWord(successorNormalized, alphabet)
 
-            // The order key is the PAIR, compared member by member: context first, successor on a
-            // tie. Comparing the concatenation instead would call («аб», «вг») and («абв», «г»)
-            // equal — the byte boundary between the two words is part of the key.
+            // The order key is the pair, compared member by member: context first, successor on a
+            // tie. A concatenation would make («аб», «вг») and («абв», «г») equal.
             val previousContext = previousContextBytes
             if (previousContext != null && previousSuccessorBytes != null) {
                 val contextOrder = compareUnsigned(previousContext, contextBytes)
@@ -202,9 +196,9 @@ class TpersbValidator {
     }
 
     /**
-     * The content checks every NORMALIZED word of a pair passes: it is its own NFC lowercase form,
-     * its length is within the frozen bounds, no combining mark is left after NFC, and every code
-     * point belongs to the subtype alphabet.
+     * Content checks for each normalized word of a pair: it is its own NFC lowercase form, its
+     * length is within bounds, no combining mark is left after NFC, and every code point belongs to
+     * the subtype alphabet.
      */
     private fun checkNormalizedWord(normalized: String, alphabet: Set<Int>) {
         if (Normalizer.normalize(normalized, Normalizer.Form.NFC) != normalized ||

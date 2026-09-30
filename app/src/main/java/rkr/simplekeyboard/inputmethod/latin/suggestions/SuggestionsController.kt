@@ -44,26 +44,21 @@ interface StripSurface {
     fun showSuggestions(first: String, second: String?, third: String?)
 
     /**
-     * Optional spoken labels for cells whose own text does not read well aloud — an emoji cell
-     * (mission 2 of `docs/EMOJI-SUGGEST-PLAN.md`). Called in the same publication as
-     * [showSuggestions], after the words and their emphasis; a null entry means "speak the
-     * cell's text". Defaults to a no-op so a surface written before emoji suggestions keeps
-     * compiling and simply speaks the glyph.
+     * Optional spoken labels for cells whose own text does not read well aloud (an emoji cell).
+     * Called in the same publication as [showSuggestions], after the words and their emphasis; a
+     * null entry means "speak the cell's text". Default no-op: the glyph is spoken.
      */
     fun setSpokenCellLabels(first: String?, second: String?, third: String?) {}
 
     /**
-     * The autocorrect preview's emphasis marker (P2 of Phase 3, docs/ROADMAP-P3.md): the cell
-     * holding the correction the next separator would insert, or
-     * [SuggestionStripState.NO_CELL] on every ordinary band. Called immediately after
-     * [showSuggestions] by the same owner call — and before the spoken labels (2026-09-25
-     * audit: the emphasis carries the publication's display rebuild, so it must be in place
-     * before a label lookup that can fail) — so the marker can never describe a band it did
-     * not arrive with; a surface written before P2 keeps compiling and simply never emphasizes.
+     * The autocorrect preview's emphasis marker: the cell holding the correction the next
+     * separator would insert, or [SuggestionStripState.NO_CELL] on every ordinary strip. Called
+     * right after [showSuggestions] and before the spoken labels (the emphasis triggers the
+     * display rebuild, which must happen even if a label lookup fails). Default no-op.
      */
     fun setEmphasizedCell(cell: Int) {}
 
-    /** Make the strip VISIBLE with no words (empty band), keeping its reserved 44dp height. */
+    /** Make the strip VISIBLE with no words, keeping its reserved height. */
     fun reserve()
 
     fun hideSuggestions()
@@ -71,25 +66,22 @@ interface StripSurface {
 }
 
 /**
- * Receives the sequence of an emoji cell accepted from the strip's NEXT_WORD band, so the
- * recent-emoji list learns it exactly as it learns a panel or search pick (B2). Word cells never
- * reach it, and a tap the editor refused is not an insertion. Fired on the UI thread.
+ * Receives the sequence of an emoji cell accepted from the NEXT_WORD strip, so the recent-emoji
+ * list learns it like a panel or search pick. Word cells never reach it, and a tap the editor
+ * refused is not an insertion. Fired on the UI thread.
  */
 fun interface EmojiInsertionSink {
     fun onEmojiInserted(sequence: String)
 }
 
 /**
- * Receives the (context word, emoji) events of the strip's emoji tail cell so the personal
- * co-usage store can learn them (feature C). [noteObservation] fires on every committed emoji cell
- * of a NEXT_WORD band; [noteUse] fires ADDITIONALLY when the tapped cell is exactly what the
- * learned source itself offered for that word (the acceptance half of the pinned ranking);
- * [onInputFinished] is the session-end flush boundary shared with the word and pair sinks. All
- * calls are on the UI thread; what actually persists — and whether anything may — is the store
- * side's decision, under the learning predicate the sink is built with. The
- * one-abstract-plus-defaults shape mirrors
- * [rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink]: a listener that
- * only cares about observations stays a lambda.
+ * Receives the (context word, emoji) events of the strip's emoji cell, for learned emoji.
+ * [noteObservation] fires on every committed emoji cell of a NEXT_WORD strip; [noteUse] fires
+ * additionally when the tapped cell is what the learned source itself offered for that word;
+ * [onInputFinished] is the session-end flush boundary shared with the word and pair sinks. UI
+ * thread only; what persists is decided by the store under its learning predicate. Shaped like
+ * [rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink], so an
+ * observation-only listener can be a lambda.
  */
 fun interface PersonalEmojiSink {
     fun noteObservation(contextWord: String, emojiSequence: String)
@@ -123,30 +115,20 @@ class SuggestionsController internal constructor(
     private val executorFactory: () -> ExecutorService?,
     private val preparationFactory: (ExecutorService, String) -> DictionaryPreparation?,
     initialDictionaryReady: Boolean,
-    // E5c: trailing default so every existing internal test constructor below (there is no
-    // bigram table in any of their fakes) needs no change at all — only the production
-    // constructor passes real wiring.
+    // Trailing defaults (bigram, emoji, sentence-start, tracer): the test constructors below pass
+    // none of them, which is also how a missing asset behaves; only the production constructor
+    // passes real wiring.
     private val bigramPreparationFactory: (ExecutorService, String) -> BigramPreparation? =
         { _, _ -> null },
-    // Emoji-suggest (mission 2 of docs/EMOJI-SUGGEST-PLAN.md): trailing default so every existing
-    // test constructor keeps compiling with no emoji source at all — which is also the exact
-    // fail-closed shape a missing asset has.
     private val emojiSuggestPreparationFactory: (ExecutorService) -> EmojiSuggestPreparation? =
         { null },
-    // P4/P3b sentence-start tables (docs/TT-SUGGESTIONS.md, docs/ROADMAP-P1.md): same
-    // trailing-default shape as the bigram factory — (executor, subtypeId), no factory, no
-    // source, no sentence-start band, and every pre-P4 test constructor keeps compiling. The
-    // subtypeId parameter is what makes the load per-language: the production factory resolves
-    // the table through the artifact registry, never through a language string of its own.
+    // Per language: the production factory resolves the table through the artifact registry.
     private val sentStartPreparationFactory: (ExecutorService, String) -> SentStartPreparation? =
         { _, _ -> null },
-    // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the Perfetto seam of the lookup round trip.
-    // Same trailing-default shape as the factories above — the frozen test constructors keep
-    // compiling and stay on DISABLED (plain-JVM tests have no android.os.Trace); only the
-    // production constructor passes the real thing.
+    // Perfetto tracing of the lookup round trip; DISABLED in plain-JVM tests (no android.os.Trace).
     private val lookupTracer: LookupTracer = LookupTracer.DISABLED,
 ) {
-    /** Production entry point (frozen contract). */
+    /** Production entry point. */
     constructor(
         context: Context,
         strip: StripSurface,
@@ -168,9 +150,8 @@ class SuggestionsController internal constructor(
         },
         { executor -> AssetEmojiSuggestPreparation(context, executor) },
         { executor, subtypeId ->
-            // P3b: which language ships a sentence-start table is the artifact registry's
-            // answer, not a language string checked here — a language absent from the registry
-            // simply gets no preparation and its sentence starts stay silent.
+            // The artifact registry decides which language ships a sentence-start table; a
+            // language absent from it gets no preparation and no sentence-start predictions.
             DictionaryArtifactSpec.sentStartAssetForSubtype(subtypeId)?.let { assetPath ->
                 AssetSentStartPreparation(context, executor, assetPath)
             }
@@ -230,25 +211,25 @@ class SuggestionsController internal constructor(
     private var eligible: Boolean = false
 
     /**
-     * P7-6 (docs/ROADMAP-P7.md): the glide's own field-level gate — the same field checks as
-     * [eligible] (a real cursor, no password-type field, no NO_PERSONALIZED_LEARNING flag, a
-     * shipped dictionary) but WITHOUT the suggestions master. A gesture may commit its word in a
-     * suggestions-off field; the strip (the suggestions surface) then shows nothing.
+     * The glide's own field-level gate: the field checks of [eligible] (a real cursor, no
+     * password-type field, no NO_PERSONALIZED_LEARNING flag, a bundled dictionary) without the
+     * suggestions setting. A gesture may commit its word with suggestions off; the strip then
+     * shows nothing.
      */
     private var glideEligible: Boolean = false
     private var destroyed: Boolean = false
 
-    // The key-neighbor table for the fuzzy pass, built by LatinIME from the live layout. Remembered
+    // The key-neighbor table for typo recovery, built by LatinIME from the live layout. Remembered
     // so an engine started later is handed the current table, and re-pushed on every publish. Null
-    // disables the fuzzy pass; the strip and its exact suggestions are unaffected either way.
+    // disables typo recovery; exact suggestions are unaffected.
     private var keyNeighbors: KeyNeighborTable? = null
 
     /** Set by LatinIME; see [DictionaryUnavailableListener]. */
     var dictionaryUnavailableListener: DictionaryUnavailableListener? = null
 
     init {
-        // The frozen test entry points seed readiness without naming a language; they mean the one
-        // that was the only one for the app's first five releases.
+        // The test entry points seed readiness without naming a language; they mean the default
+        // one.
         if (initialDictionaryReady) slotFor(DEFAULT_LANGUAGE).dictionaryReady = true
     }
 
@@ -270,8 +251,8 @@ class SuggestionsController internal constructor(
         val resolved = subtypeId?.takeIf { DictionaryArtifactSpec.forSubtype(it) != null }
         if (resolved == activeLanguage) return
         activeSlot()?.engine?.finishInput()
-        // O5: the leaving language's engine is idled and its in-flight lookup (the traced one is
-        // only ever the ACTIVE language's) is invalidated with it — no handoff will arrive.
+        // The leaving language's engine is idled and its in-flight lookup (only the active
+        // language's lookup is traced) is invalidated with it: no handoff will arrive.
         endLookupTrace()
         activeLanguage = resolved
     }
@@ -281,10 +262,9 @@ class SuggestionsController internal constructor(
     private var sessionId: Long = 0L
     private var requestSessionId: Long = NO_SESSION
 
-    // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the cookie of the one outstanding lookup
-    // slice. At most one active-language request is ever awaited — a new request supersedes and
-    // the engine suppresses the stale handoff upstream — so a single outstanding cookie is exact:
-    // a superseded trip ends where its replacement begins.
+    // The cookie of the one outstanding traced lookup. At most one active-language request is
+    // awaited (a new request supersedes the old one and the engine drops the stale handoff), so a
+    // superseded trip ends where its replacement begins.
     private var traceLookupCookie: Int = NO_TRACE_COOKIE
     private var traceCookieSerial: Int = 0
 
@@ -298,161 +278,134 @@ class SuggestionsController internal constructor(
     private var displayedPrefix: String? = null
     private var displayedSessionId: Long = NO_SESSION
 
-    // --- E5d NEXT_WORD state, the exact same shape as pendingPrefix/displayedPrefix above, for the
-    // other kind of query. At most one of displayedPrefix/displayedContextWord is ever non-null at a
-    // time (PROPOSALS.md, "Контракт текста" amendment, "Сосуществование") — enforced by clearing the
-    // other one every time either request path runs, not assumed.
+    // --- NEXT_WORD state, shaped like pendingPrefix/displayedPrefix above. At most one of
+    // displayedPrefix/displayedContextWord is non-null at a time; every request path clears the
+    // other one.
     private var pendingContextWord: String = ""
     private var displayedContextWord: String? = null
 
-    // --- P7-3 GLIDE state (docs/GLIDE-PLAN.md), the exact same shape as the other two bindings.
-    // At most one of displayedPrefix/displayedContextWord/displayedGlideAlternativesFor is ever
-    // non-null — enforced the same way: every request path clears the other two. A glide's decode
-    // is requested against the NEXT_WORD context of the gesture moment (the word before the
-    // cursor; "" at a field start): the lift-commit goes through the E5d predicted-word path,
-    // whose own re-checks (empty trailing word, live context still equal) are the second line of
-    // defense.
+    // --- GLIDE state, shaped like the other two bindings. At most one of displayedPrefix,
+    // displayedContextWord and displayedGlideAlternativesFor is non-null; every request path clears
+    // the other two. A glide decode is requested against the NEXT_WORD context of the gesture
+    // (the word before the cursor; "" at a field start), and the commit re-checks it live.
     //
-    // The UX amendment (2026-09-24, the "tapping or lifting commits" line of docs/GLIDE-PLAN.md's
-    // DONE-WHEN): finger lift commits the top-1 candidate immediately; the strip then shows the
-    // remaining candidates as tappable ALTERNATIVES bound to the committed word
-    // ([displayedGlideAlternativesFor]), and one backspace right after a lift-commit deletes the
-    // whole committed word ([glideCommittedWord] — the gesture-undo).
+    // Lifting the finger commits the top candidate immediately; the strip then shows the remaining
+    // candidates as tappable alternatives bound to the committed word
+    // ([displayedGlideAlternativesFor]), and one backspace right after the lift deletes the whole
+    // committed word ([glideCommittedWord]).
     private var pendingGlideContext: String = ""
-    /** The word the currently shown glide alternatives belong to (null when no such band). */
+    /** The word the currently shown glide alternatives belong to (null when none are shown). */
     private var displayedGlideAlternativesFor: String? = null
     /** The word a backspace right now would delete whole (the lift-committed or its replacement). */
     private var glideCommittedWord: String? = null
 
-    /** P7-7: whether [glideCommittedWord]'s commit prepended the chain space — the undo deletes
-     * the space along with the word exactly when the commit added it. */
+    /** Whether [glideCommittedWord]'s commit prepended the chain space; the undo deletes the
+     * space with the word exactly when the commit added it. */
     private var glideCommitPrependedSpace: Boolean = false
 
-    /** The glide pref, read live; OFF until LatinIME wires the real one. Same seam shape as the
-     * autocorrect gate. */
+    /** The glide setting, read live; OFF until LatinIME wires the real one. */
     private var glideGate: GlideGate = GlideGate { false }
 
     /** The keyboard's shift state for the glide commit's casing rule; OFF until wired. */
     private var glideShiftGate: ShiftStateGate = ShiftStateGate { false }
 
-    // The current layout's key geometry for the glide decode side, built by LatinIME from the
-    // live keyboard. Remembered so an engine started later is handed it, and re-pushed on every
-    // publish — the [keyNeighbors] pattern verbatim. Null disables glide (fail-closed).
+    // The current layout's key geometry for the glide decoder, built by LatinIME from the live
+    // keyboard. Remembered and re-pushed like [keyNeighbors]. Null disables glide.
     private var glideGeometry: GlideKeyGeometry? = null
 
-    // Audit 2026-09-02, B4: whether the band the ACTIVE language painted for [pendingContextWord]
-    // holds at least one WORD cell of that language. This is NOT "the band is occupied": an
-    // emoji-only band and a band the companion language filled both leave it false, and both still
-    // deserve the re-request a finished bigram attach exists to issue ([onBigramAttached]). Written
-    // only where the NEXT_WORD band is (re)bound: a fresh request clears it for the new moment, and
-    // [applyNextWordResult] sets it from the answer it actually painted.
+    // Whether the strip the active language painted for [pendingContextWord] holds at least one
+    // word cell of that language. Not "the strip is occupied": an emoji-only strip and one filled
+    // by the companion language both leave it false and still deserve the re-request that a
+    // finished bigram attach issues ([onBigramAttached]). A fresh NEXT_WORD request clears it;
+    // [applyNextWordResult] sets it from the answer it painted.
     private var bandHasActiveLanguageWord: Boolean = false
 
-    // --- Правило приоритета языков (docs/LANG-PRIORITY.md). The layout the user chose with their
-    // own hand owns the band; the other language may only fill the cells that language left empty,
-    // and only from the end.
+    // --- Language priority. The layout the user chose owns the strip; the other (companion)
+    // language may only fill the cells that language left empty, and only from the end.
     //
-    // [bandBaseCells] is what is on the strip right now, in strip order and already re-cased — the
-    // exact strings handed to [StripSurface.showSuggestions]. The companion's candidates are
-    // APPENDED to this list and never mixed into it, which is what makes "no cell the current
-    // language occupies ever changes" true by construction rather than by review.
+    // [bandBaseCells] is what is on the strip right now, in strip order and already re-cased (the
+    // strings handed to [StripSurface.showSuggestions]). The companion's candidates are appended to
+    // this list, never mixed into it, so no cell of the current language ever changes.
     private var bandBaseCells: List<String> = emptyList()
 
-    // The one outstanding companion lookup, or null when there is none. The kind and the exact text
-    // it was made for are kept here so a result that arrives after the user has typed on is dropped
-    // by comparing against them, never by trusting the engine's own currency check alone: the
-    // companion engine is not asked again on every keystroke, so its newest token can be an old
-    // word's.
+    // The one outstanding companion lookup, or null. Its kind and text are kept so a result that
+    // arrives after the user typed on is dropped by comparing against them: the companion engine
+    // is not asked on every keystroke, so its newest token can belong to an old word.
     private var companionSlot: LanguageSlot? = null
     private var companionKind: LookupKind? = null
     private var companionQuery: String = ""
 
-    /**
-     * The clean-run machines of E4c (completed words) and P1 (completed pairs,
-     * docs/ROADMAP-P2.md) — state and transitions live in [CleanRunMachine]; everything here used
-     * to be six loose fields on this class.
-     */
+    /** The clean-run machines for completed words and completed pairs; see [CleanRunMachine]. */
     private val runMachine = CleanRunMachine(editor)
 
-    // --- D3 autocorrect state. Nothing here is persisted and nothing leaves this object except the
+    // --- Autocorrect state. Nothing here is persisted and nothing leaves this object except the
     // two editor calls that perform the replacement and its single undo.
     /** The autocorrect setting, read live. OFF until LatinIME wires the real one. */
     private var autocorrectGate: AutocorrectGate = AutocorrectGate { false }
 
-    // --- P2 of Phase 3 (docs/ROADMAP-P3.md): the autocorrect preview. Nothing here is persisted
-    // either; both fields describe the current trailing word only and die with it.
+    // --- Autocorrect preview. Not persisted; both fields describe the current trailing word only.
     /**
-     * The displayed text of the keep-typed cell while the band IS a preview, null on every
-     * other band. Consulted only under the tap path's own freshness guards (bound prefix, live
-     * session), so a value left behind by an unbound band is never acted on; every
-     * [applyPrefixResult] rewrites it, null or fresh.
+     * The displayed text of the typed-word cell while the strip is a preview, null otherwise.
+     * Consulted only under the tap path's freshness guards (bound prefix, live session), and
+     * rewritten by every [applyPrefixResult].
      */
     private var previewKeepTypedCell: String? = null
 
     /**
-     * The word whose coming correction the user refused by tapping the keep-typed cell, in its
+     * The word whose coming correction the user refused by tapping the typed-word cell, in its
      * raw as-typed form. Word-scoped: cleared the moment the trailing word is anything else
      * (including empty), consumed by the first separator it refuses, and dropped at every
      * boundary [clearRevertState] covers.
      */
     private var suppressedPreviewWord: String? = null
 
-    // --- Emoji-suggest state (mission 2 of docs/EMOJI-SUGGEST-PLAN.md). Nothing here is persisted;
-    // the source is immutable once loaded and the band carries no emoji state of its own — the
-    // emoji cell is simply part of [bandBaseCells], so every existing clear/invalidate path covers
-    // it unchanged.
+    // --- Emoji suggestion state. Not persisted; the source is immutable once loaded, and the emoji
+    // cell is simply part of [bandBaseCells], so every clear/invalidate path covers it.
     /** The emoji-suggestions setting, read live. OFF until LatinIME wires the real one. */
     private var emojiSuggestGate: EmojiSuggestGate = EmojiSuggestGate { false }
 
     /** The loaded table, or null while it has never finished loading. Load failure is terminal. */
     private var emojiSource: EmojiSuggestSource? = null
 
-    /** Lazily built loading seam; null means fail-closed, with no emoji cell ever. */
+    /** Lazily built loading seam; null means no emoji cell, ever. */
     private var emojiPreparation: EmojiSuggestPreparation? = null
 
     /** Set the moment the one-per-process load is requested; a failure is not retried. */
     private var emojiPreparationRequested: Boolean = false
 
-    /** Records an accepted emoji cell in the recents (B2); null — no recording — until wired. */
+    /** Records an accepted emoji cell in the recents; null (no recording) until wired. */
     private var emojiInsertionSink: EmojiInsertionSink? = null
 
     /**
-     * Learns the (context word, emoji) co-usage of an accepted emoji tail cell and flushes it at
-     * the session boundary (feature C); null — no learning — until wired.
+     * Learns the (context word, emoji) pair of an accepted emoji cell and flushes it at the
+     * session boundary; null (no learning) until wired.
      */
     private var personalEmojiSink: PersonalEmojiSink? = null
 
     /**
-     * The learned word→emoji source consulted BEFORE the static table for the tail cell (feature
-     * C); null — static only — until wired. Read live on every band fill and on the tap that
-     * decides [PersonalEmojiSink.noteUse]: the personal-dictionary gate lives inside the source,
-     * and the incognito pause never gates a READ (writes only), exactly like the words and pairs.
+     * The learned word→emoji source consulted before the static table for the emoji cell; null
+     * (static only) until wired. Read live on every fill and on the tap that decides
+     * [PersonalEmojiSink.noteUse]. The personal-dictionary gate lives inside the source; pausing
+     * learning gates writes only, never reads, as for words and pairs.
      */
     private var personalEmojiSource: PersonalEmojiSource? = null
 
-    // --- Sentence-start state (P4, docs/TT-SUGGESTIONS.md; per-language since P3b,
-    // docs/ROADMAP-P1.md). The exact emoji-suggest shape, keyed by language: a source is
-    // immutable once loaded, the band carries no sentence-start state of its own beyond the
-    // empty-context binding, and every failure direction is silent. Loads are at most once per
-    // language per process and happen only when that language actually reaches a sentence
-    // start — a Tatar-only user never pays for the Russian table.
+    // --- Sentence-start state, per language, shaped like the emoji state: a source is immutable
+    // once loaded and every failure is silent. Each language loads at most once per process, and
+    // only when it actually reaches a sentence start.
     /** The loaded tables by language; a language absent here has never finished loading. */
     private val sentStartSources = HashMap<String, SentStartSource>()
 
-    /** Lazily built loading seams by language; a null factory answer means fail-closed. */
+    /** Lazily built loading seams by language; a null factory answer means no table. */
     private val sentStartPreparations = HashMap<String, SentStartPreparation>()
 
     /** The languages whose one-per-process load was requested; a failure is not retried. */
     private val sentStartPreparationRequested = HashSet<String>()
 
-    /**
-     * The D3 undo window: state and transitions live in [RevertWindow]. Nothing here is persisted
-     * and nothing leaves this object except the two editor calls that perform the replacement and
-     * its single undo.
-     */
+    /** The undo-autocorrect window; see [RevertWindow]. */
     private val revertWindow = RevertWindow()
 
-    /** Set once by LatinIME. Kept out of the constructor so the frozen test entry points stay put. */
+    /** Set once by LatinIME. Kept out of the constructor so the test entry points stay unchanged. */
     fun setCompletionSink(sink: WordCompletionSink) {
         runMachine.completionSink = sink
     }
@@ -507,10 +460,10 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Publishes the key-neighbor table used by the fuzzy suggestion pass. LatinIME rebuilds it from
-     * the live layout whenever the keyboard or subtype changes and hands it here; a null table (a
-     * non-alphabet layout or an ineligible field) disables the fuzzy pass. Stored so an engine
-     * started later still receives it, and forwarded to the running engine at once. UI thread only.
+     * Publishes the key-neighbor table used by typo recovery. LatinIME rebuilds it from the live
+     * layout on every keyboard or subtype change; null (a non-alphabet layout or an ineligible
+     * field) disables typo recovery. Stored for engines started later and forwarded to the running
+     * engine at once. UI thread only.
      */
     fun updateKeyNeighbors(table: KeyNeighborTable?) {
         keyNeighbors = table
@@ -521,9 +474,7 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Publishes the live layout's key geometry for the glide decode side (P7-3). Same shape as
-     * [updateKeyNeighbors]: LatinIME rebuilds it whenever the keyboard or subtype changes; stored
-     * so an engine started later still receives it, and forwarded to the running engine at once.
+     * Publishes the live layout's key geometry for the glide decoder, like [updateKeyNeighbors].
      * A null geometry disables glide decoding without touching anything else. UI thread only.
      */
     fun updateGlideGeometry(geometry: GlideKeyGeometry?) {
@@ -535,7 +486,6 @@ class SuggestionsController internal constructor(
     fun onStartInput(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE,
                      glideEligible: Boolean = eligible) {
         runMachine.markRunDirty()
-        // A new field is one of the six events that make an undo impossible.
         clearRevertState()
         // Lifecycle boundary: one of the only two places allowed to run the blocking engine
         // teardown that a disabled setting scheduled.
@@ -547,25 +497,25 @@ class SuggestionsController internal constructor(
         bandHasActiveLanguageWord = false
         bandBaseCells = emptyList()
         clearCompanionRequest()
-        // O5: a new field ends whatever lookup the old one was still waiting for (the ineligible
-        // branch below idles the engine, which suppresses the handoff entirely).
+        // A new field ends whatever traced lookup the old one was waiting for (the ineligible
+        // branch below idles the engine, which suppresses the handoff).
         endLookupTrace()
         setActiveLanguage(subtypeId)
         this.eligible = eligible && activeLanguage != null
-        // P7-6: glide answers its own toggle and its own field gate — not the suggestions master.
+        // Glide has its own setting and field gate, independent of the suggestions setting.
         this.glideEligible = glideEligible && activeLanguage != null
         if (!this.eligible && !this.glideEligible) {
             strip.hideSuggestions()
             activeSlot()?.engine?.finishInput()
             return
         }
-        // Eligibility alone is not enough to expose the band: while the dictionary is preparing
-        // or the engine is unavailable the frozen state table requires GONE/0dp. A successful
-        // publishEngine() transitions a cold session to the reserved state.
+        // Eligibility alone does not show the strip: while the dictionary is preparing or the
+        // engine is unavailable it stays GONE (0dp). A successful publishEngine() moves a cold
+        // session to the reserved state.
         val engineWasReady = usableEngine() != null
         if (!this.eligible) {
-            // P7-6: suggestions off — the band stays hidden (it is the suggestions surface), but
-            // the engine still warms below: the glide decode reads it.
+            // Suggestions off: the strip stays hidden, but the engine still warms below because
+            // the glide decoder reads it.
             strip.hideSuggestions()
         } else {
             if (!engineWasReady) {
@@ -583,10 +533,9 @@ class SuggestionsController internal constructor(
         // before maybeStartEngine() so a cold engine that publishes inline still requests exactly
         // once from publishEngine().
         maybeStartEngine()
-        // E5d: no longer gated on a non-empty prefix — requestCurrentPrefix() falls through to
-        // NEXT_WORD on an empty one, and re-requesting on this boundary is what lets switching
-        // fields show a prediction without an extra keystroke, the same reason this call exists
-        // for PREFIX at all. (Itself gated on [eligible]: the band is the suggestions surface.)
+        // Not gated on a non-empty prefix: requestCurrentPrefix() falls through to NEXT_WORD on an
+        // empty one, so switching fields shows a prediction without an extra keystroke. Gated on
+        // [eligible], because the strip belongs to suggestions.
         if (this.eligible && engineWasReady && editor.hasKnownCursor()) {
             requestCurrentPrefix()
         }
@@ -594,9 +543,8 @@ class SuggestionsController internal constructor(
 
     fun onTextChanged() {
         revertWindow.advance(sessionId)
-        // The lift-commit's whole-word undo lives exactly one text change: any other edit (a
-        // typed character above all) closes it — and dissolves a pending alternatives band with
-        // the rest of the band state (re-derived below).
+        // The glide whole-word undo lives exactly one text change: any other edit closes it, and
+        // the alternatives strip is re-derived below with the rest of the strip state.
         glideCommittedWord = null
         glideCommitPrependedSpace = false
         runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
@@ -604,15 +552,14 @@ class SuggestionsController internal constructor(
     }
 
     fun onSelectionChanged() {
-        // A selection change — external, or an internal cursor gesture, which LatinIME routes here —
-        // breaks the run: what looks like growth afterwards may be growth of a different word. It is
-        // also two of the six events that close the undo window, and for the same reason: the text
-        // the replacement described is no longer the text at the cursor.
+        // A selection change (external, or an internal cursor gesture routed here by LatinIME)
+        // breaks the run: what looks like growth afterwards may be a different word. It also
+        // closes the undo window, because the replaced text is no longer at the cursor.
         runMachine.markRunDirty()
         clearRevertState()
         sessionId++
         activeSlot()?.engine?.finishInput()
-        // O5: finishInput invalidates the in-flight generation — no handoff will arrive for it.
+        // finishInput invalidates the in-flight generation, so no handoff will arrive for it.
         endLookupTrace()
         // Any in-flight request is invalidated and whatever was shown is no longer bound to the
         // live editor state, so drop the displayed binding immediately.
@@ -621,8 +568,8 @@ class SuggestionsController internal constructor(
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
-        // Keep the reserved band only after an engine has actually published. Eligibility while
-        // the dictionary is preparing/unavailable remains fail-closed at GONE/0dp.
+        // Keep the reserved strip only after an engine has published. While the dictionary is
+        // preparing or unavailable, the strip stays GONE (0dp).
         if (eligible) {
             if (usableEngine() == null) {
                 strip.hideSuggestions()
@@ -633,36 +580,31 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * The cursor move that [onSelectionChanged] invalidated the band for has settled, and the
-     * editor cache behind [EditorSurface] now describes the position the cursor actually stopped at.
+     * The cursor move that [onSelectionChanged] invalidated the strip for has settled, and the
+     * editor cache now describes the position the cursor stopped at.
      *
-     * [onSelectionChanged] does half the job: it drops the binding, blanks the band and invalidates
-     * the in-flight generation. It deliberately does NOT look anything up — the emoji panel routes
-     * through it precisely to get a band that stays empty, and at the moment it runs the text cache
-     * of an EXTERNAL move has not been refetched yet, so a lookup made there would be a lookup for
-     * the text the cursor has already left. This is the other half: the band is re-derived from the
-     * live editor state once, when that state is known to be current.
+     * [onSelectionChanged] drops the binding, blanks the strip and invalidates the in-flight
+     * generation, but does not look anything up: the emoji panel routes through it to get a strip
+     * that stays empty, and for an external move the text cache has not been refetched yet. This
+     * is the other half: the strip is re-derived once, when the editor state is current, like
+     * [onStartInput], [onSubtypeChanged] and [publishEngine] do. Otherwise the strip would stay
+     * blank until the next keystroke.
      *
-     * Without it the band stays blank until the next keystroke, although the cursor sits at the end
-     * of a word the dictionary answers perfectly well — the very failure this method exists for.
-     * Every other boundary that unbinds the band already re-derives it in exactly this way
-     * ([onStartInput], [onSubtypeChanged], [publishEngine]); a cursor move was the one that did not.
-     *
-     * Three guards keep it from costing anything on the ordinary typing path, where it is posted
-     * after every editor cache reload:
-     *  - a band that is still BOUND to displayed candidates describes live text already;
+     * Guards that keep it free on the ordinary typing path, where it is posted after every cache
+     * reload:
+     *  - a strip still bound to displayed candidates already describes live text;
      *  - a lookup already issued for this session is on its way, and re-issuing it would drop the
-     *    outstanding companion request with it;
-     *  - an ineligible field, an unusable engine or an unknown cursor have nothing to derive from.
+     *    outstanding companion request;
+     *  - an ineligible field, an unusable engine or an unknown cursor has nothing to derive from.
      *
-     * UI thread only, like every other method here.
+     * UI thread only.
      */
     fun onCursorMoveSettled() {
         if (destroyed || !eligible) return
         if (usableEngine() == null) return
         if (!editor.hasKnownCursor()) return
         if (displayedPrefix != null || displayedContextWord != null) return
-        // A bound glide-alternatives band is a bound band: the backstop must not re-derive over it.
+        // A strip bound to glide alternatives is bound too: do not re-derive over it.
         if (displayedGlideAlternativesFor != null) return
         if (requestSessionId == sessionId) return
         requestCurrentPrefix()
@@ -670,15 +612,13 @@ class SuggestionsController internal constructor(
 
     fun onFinishInput() {
         runMachine.markRunDirty()
-        // The contract names this boundary explicitly: the replacement state is erased on
-        // onFinishInput and never outlives the editor session.
+        // The replacement state never outlives the editor session.
         clearRevertState()
-        // The one boundary where the personal store writes what it has accumulated: usage counters
-        // and pending hashes, once, and only if something changed. The pair store (P1) flushes at
-        // the same boundary and under the same rule.
+        // The one boundary where the personal dictionary and learned pairs write what they have
+        // accumulated; see [CleanRunMachine.onInputFinished].
         runMachine.onInputFinished()
-        // The personal-emoji store (feature C) flushes at the same boundary and under the same
-        // rule; the sink itself decides whether anything may be written at all.
+        // Learned emoji flush at the same boundary; the sink decides whether anything may be
+        // written.
         personalEmojiSink?.onInputFinished()
         sessionId++
         displayedPrefix = null
@@ -692,32 +632,30 @@ class SuggestionsController internal constructor(
         glideEligible = false
         strip.hideSuggestions()
         activeSlot()?.engine?.finishInput()
-        // O5: the idled engine's in-flight lookup is invalidated with it — end its slice.
+        // The idled engine's in-flight lookup is invalidated with it: end its trace slice.
         endLookupTrace()
         // The other lifecycle boundary at which a deferred release may run.
         runPendingRelease()
     }
 
     /**
-     * The active subtype changed. [subtypeId] is the NEW subtype's identifier, and it — not the
-     * boolean — is what selects the dictionary: switching between the Tatar and the Russian layout
-     * switches which of the two shipped dictionaries answers the next keystroke.
+     * The active subtype changed. [subtypeId], not the boolean, selects the dictionary: switching
+     * between the Tatar and the Russian layout switches which bundled dictionary answers the next
+     * keystroke.
      *
-     * The boolean-only overload is the monolingual shorthand every caller written before the second
-     * dictionary used: it means "still the Tatar subtype, eligibility recomputed".
+     * The boolean-only overload means "still the Tatar subtype, eligibility recomputed".
      */
     @JvmOverloads
     fun onSubtypeChanged(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE,
                          glideEligible: Boolean = eligible) {
         runMachine.markRunDirty()
-        // A subtype change is one of the six events that make an undo impossible.
         clearRevertState()
         sessionId++
         // Idles the engine of the language being left; setActiveLanguage does the same for a real
-        // language change, and doing it here as well keeps a same-language subtype change (a
-        // different layout for the same dictionary) behaving exactly as it always did.
+        // language change, and doing it here too covers a same-language subtype change (a
+        // different layout for the same dictionary).
         activeSlot()?.engine?.finishInput()
-        // O5: the idled engine's in-flight lookup is invalidated with it — end its slice.
+        // The idled engine's in-flight lookup is invalidated with it: end its trace slice.
         endLookupTrace()
         displayedPrefix = null
         displayedContextWord = null
@@ -726,7 +664,7 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         setActiveLanguage(subtypeId)
         this.eligible = eligible && activeLanguage != null
-        // P7-6: the glide gate follows the new subtype exactly like the suggestions gate does.
+        // The glide gate follows the new subtype like the suggestions gate does.
         this.glideEligible = glideEligible && activeLanguage != null
         if (this.eligible) {
             val engineWasReady = usableEngine() != null
@@ -736,28 +674,26 @@ class SuggestionsController internal constructor(
                 // Cold, preparing and unavailable engines all stay GONE until publish succeeds.
                 strip.hideSuggestions()
             }
-            // The strip view is created lazily, so a listener registered while it did not exist
-            // yet was silently dropped. Switching INTO the Tatar subtype with the globe key in an
-            // already-open field is a routine path for a bilingual user and may be the first
-            // moment the strip exists, so (re)wire the tap listener exactly like onStartInput()
-            // does; without this a tap would do nothing for the rest of the editor session.
+            // The strip view is created lazily, so a listener registered before it existed was
+            // dropped. Switching into the Tatar subtype in an open field may be the first moment
+            // the strip exists, so re-wire the tap listener like onStartInput() does; otherwise a
+            // tap would do nothing for the rest of the editor session.
             strip.setTapListener(SuggestionTapListener { suggestion -> onTap(suggestion) })
-            // Switching INTO an eligible subtype in an already-open field must start the engine
-            // (if not already running); a freshly started engine looks up the current prefix from
-            // publishEngine(). An already-published engine has no publish callback to do that work,
-            // so re-request the cached prefix immediately after tt -> non-tt -> tt. Capture the
-            // state before maybeStartEngine() so even an inline test executor cannot double-request
-            // when a cold engine publishes synchronously.
+            // Switching into an eligible subtype in an open field must start the engine if
+            // needed; a fresh engine looks up the current prefix from publishEngine(). An already
+            // published engine has no publish callback, so re-request the cached prefix here.
+            // Readiness is captured before maybeStartEngine() so an inline executor cannot
+            // double-request when a cold engine publishes synchronously.
             requestPreparationIfNeeded()
             maybeStartEngine()
-            // E5d: see the comment on the identical gate in onStartInput().
+            // See the comment on the same gate in onStartInput().
             if (engineWasReady && editor.hasKnownCursor()) {
                 requestCurrentPrefix()
             }
         } else {
             strip.hideSuggestions()
             if (this.glideEligible) {
-                // P7-6: the band stays out, but the NEW language's engine still warms for glide.
+                // The strip stays hidden, but the new language's engine still warms for glide.
                 requestPreparationIfNeeded()
                 maybeStartEngine()
             }
@@ -765,25 +701,21 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Personal words were erased ("Erase all" or "Forget", E4b) while the keyboard is up.
+     * Personal words were erased ("Erase all" or "Forget") while the keyboard is up.
      *
-     * Uses EXACTLY the mechanism of an actual subtype change — bump the session (which invalidates
-     * any in-flight generation), idle the engine, unbind the displayed candidates — because a second
-     * mechanism for the same job is what drifts apart later. The engine itself is untouched: the
-     * personal source it reads has already published an empty snapshot, so the next lookup simply
-     * finds nothing personal.
+     * Uses the same mechanism as a subtype change: bump the session (invalidating any in-flight
+     * generation), idle the engine, unbind the displayed candidates. The engine itself is
+     * untouched; the personal source it reads has already published an empty snapshot.
      *
-     * Saying only "the NEXT lookup has no personal candidates" would not be enough: the user who
-     * just confirmed the dialog would still see the erased word in the band, and a tap would insert
-     * it through the single commit path like any other candidate. For a feature whose whole value is
-     * "erased means erased", that is a defect in the guarantee itself.
+     * Clearing the strip now matters: otherwise the user who just confirmed the dialog would still
+     * see the erased word, and a tap would insert it.
      */
     fun onPersonalDictionaryErased() {
         if (destroyed) return
         clearRevertState()
         sessionId++
         activeSlot()?.engine?.finishInput()
-        // O5: the idled engine's in-flight lookup is invalidated with it — end its slice.
+        // The idled engine's in-flight lookup is invalidated with it: end its trace slice.
         endLookupTrace()
         displayedPrefix = null
         displayedContextWord = null
@@ -798,10 +730,9 @@ class SuggestionsController internal constructor(
      * The suggestions setting went ON -> OFF while the IME is live.
      *
      * Everything the user can see or reach stops at once, but the engine teardown is only
-     * *scheduled*: [destroyHandle] blocks the UI thread for up to 240 ms, which must never land on
-     * the keystroke that flipped the setting. Deliberately a separate method rather than a reuse of
-     * [onSubtypeChanged]: the two events differ in exactly the part that matters here, whether the
-     * engine has to go away at all.
+     * scheduled: [destroyHandle] blocks the UI thread, which must not happen on the keystroke that
+     * flipped the setting. Separate from [onSubtypeChanged] because here the engine has to go
+     * away.
      */
     fun onSuggestionsSettingDisabled() {
         if (destroyed) return
@@ -817,13 +748,13 @@ class SuggestionsController internal constructor(
         bandBaseCells = emptyList()
         clearCompanionRequest()
         requestSessionId = NO_SESSION
-        // O5: every engine is idled below (or the band alone dies, glide keeping the engine warm
-        // — but the session bump already invalidates its in-flight lookup's landing either way).
+        // Every engine is idled below (or only the strip goes, glide keeping the engine warm);
+        // the session bump invalidates the in-flight lookup either way.
         endLookupTrace()
         strip.hideSuggestions()
-        // P7-6: glide is independent of the master — with the glide gate still open the engine
-        // stays warm for the decode and only the band dies with the setting. (The engine staying
-        // warm is the same treatment an ineligible field already gets in publishEngine.)
+        // Glide is independent of the suggestions setting: with the glide gate open the engine
+        // stays warm for the decoder and only the strip goes (as for an ineligible field in
+        // publishEngine).
         if (glideEligible) return
         // The setting is global, so EVERY language stops, not just the active one: a warm engine of
         // a language the user is not typing in right now still holds a lease and a mapping, and the
@@ -853,11 +784,9 @@ class SuggestionsController internal constructor(
         // is un-stopped here.
         for (slot in slots.values) {
             // The setting came back before the deferred release ran: the live engine is still the
-            // right mapping, so the release is cancelled instead of being performed and immediately
-            // undone. Only a release that has not been ATTEMPTED yet may be cancelled: a refused
-            // attempt has already stopped the engine for good (it rejects every later lookup), so
-            // that one stays scheduled and the next boundary retries it, after which a fresh engine
-            // is started.
+            // right mapping, so the release is cancelled. Only a release not yet attempted may be
+            // cancelled: a refused attempt has already stopped the engine for good, so it stays
+            // scheduled, the next boundary retries it, and a fresh engine is started afterwards.
             if (!slot.releaseAttemptFailed) {
                 slot.releasePending = false
             }
@@ -885,18 +814,14 @@ class SuggestionsController internal constructor(
             strip.hideSuggestions()
         }
         // The strip view is inflated lazily from setTapListener(), and while the setting was off it
-        // may never have existed at all, so an earlier registration was silently dropped. Re-wire
-        // it exactly like onStartInput() does; without this a tap would do nothing for the rest of
-        // the editor session (closed HIGH finding of the D1 audit).
+        // may never have existed, so an earlier registration was dropped. Re-wire it like
+        // onStartInput() does; otherwise a tap would do nothing for the rest of the session.
         strip.setTapListener(SuggestionTapListener { suggestion -> onTap(suggestion) })
         requestPreparationIfNeeded(explicitEnable = true)
         // Same shape as onStartInput(): capture readiness first so a cold engine that publishes
         // inline requests the current prefix exactly once, from publishEngine().
         maybeStartEngine()
-        // E5d: no longer gated on a non-empty prefix — requestCurrentPrefix() falls through to
-        // NEXT_WORD on an empty one, and re-requesting on this boundary is what lets switching
-        // fields show a prediction without an extra keystroke, the same reason this call exists
-        // for PREFIX at all.
+        // See the comment on the same gate in onStartInput().
         if (engineWasReady && editor.hasKnownCursor()) {
             requestCurrentPrefix()
         }
@@ -912,7 +837,7 @@ class SuggestionsController internal constructor(
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
-        // O5: the engines are torn down below; no in-flight lookup will ever deliver.
+        // The engines are torn down below; no in-flight lookup will deliver.
         endLookupTrace()
         for (slot in slots.values) {
             val handle = slot.engine ?: continue
@@ -928,31 +853,26 @@ class SuggestionsController internal constructor(
 
     /**
      * Catalog for the production engine factory. Null until a preparation request has actually
-     * created the storage controller; the factory then produces no engine at all and the strip
-     * stays GONE, which is the intended fail-closed behaviour rather than an error.
+     * created the storage controller; the factory then produces no engine and the strip stays
+     * GONE, which is intended, not an error.
      */
     fun engineCatalog(subtypeId: String): PublishedDictionaryCatalog? =
         slots[subtypeId]?.preparation?.catalog()
 
     /**
-     * P1 of Phase 2 (docs/ROADMAP-P2.md): the dictionary half of the personal-bigram context
-     * gate — exact whole-word membership of [normalizedWord] in the dictionary of [subtypeId]'s
-     * CURRENT engine, or false when that language has no live engine. Safe to call from the
-     * personal store's worker thread: [slots] is concurrent, [LanguageSlot.engine] is `@Volatile`,
-     * and the handle's answer is a cache-free read of the read-only mapping. A cold or missing
-     * engine answers false — the pair simply does not graduate, the same fail-closed posture the
-     * E4c empty-result filter has when the engine never answered.
+     * The dictionary half of the learned-pair context check: exact whole-word membership of
+     * [normalizedWord] in the dictionary of [subtypeId]'s current engine. Safe from the personal
+     * store's worker thread ([slots] is concurrent, [LanguageSlot.engine] is `@Volatile`, the read
+     * is cache-free). A cold or missing engine answers false, and the pair is not learned.
      */
     fun engineContainsWord(subtypeId: String, normalizedWord: String): Boolean =
         slots[subtypeId]?.engine?.containsWord(normalizedWord) == true
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of every live engine's glide
-     * word index — LatinIME's MSG_DEALLOCATE_MEMORY (10 s after the keyboard closes) reaches
-     * here. Each handle posts the drop onto its own serialized worker (the decoder is
-     * worker-confined), so this UI-thread call only enqueues; a glide right after the keyboard
-     * reopens rebuilds the index on the worker and simply answers a little later — the strip
-     * never blocks.
+     * Releases every live engine's glide word index while idle; called from LatinIME's
+     * MSG_DEALLOCATE_MEMORY after the keyboard closes. Each handle posts the drop onto its own
+     * worker (the decoder is worker-confined), so this only enqueues; the next glide rebuilds the
+     * index on the worker.
      */
     fun releaseGlideIndexes() {
         for (slot in slots.values) {
@@ -993,14 +913,12 @@ class SuggestionsController internal constructor(
         if (destroyed) return
         val slot = activeSlot() ?: return
         if (slot.preparationRequested) {
-            // The request is already in flight, but its PROVENANCE can still be upgraded, and must
-            // be. A preparation started implicitly by opening a field takes hundreds of milliseconds
-            // (unpacking and validating the artifact); the user who sees no band in that window goes
-            // to the settings and flips the switch OFF -> ON, which lands here. Dropping the explicit
-            // enable on the floor meant the Unavailable result that followed was attributed to the
-            // implicit request and reported to nobody — the switch looked like it simply did nothing,
-            // the one outcome DictionaryUnavailableListener exists to prevent. Upgrade only: an
-            // implicit call never downgrades an explicit request that is already outstanding.
+            // The request is already in flight, but its provenance must still be upgraded. A
+            // preparation started implicitly by opening a field takes a while (unpacking and
+            // validating the artifact); a user who flips the switch OFF -> ON meanwhile lands
+            // here, and an Unavailable result must then be reported to them
+            // ([DictionaryUnavailableListener]). Upgrade only: an implicit call never downgrades
+            // an outstanding explicit request.
             if (explicitEnable) slot.preparationRequestedByExplicitEnable = true
             return
         }
@@ -1044,7 +962,7 @@ class SuggestionsController internal constructor(
         }
     }
 
-    /** Lazily built storage seam; null means fail-closed, with no dictionary and no engine. */
+    /** Lazily built storage seam; null means no dictionary and no engine. */
     private fun dictionaryPreparation(slot: LanguageSlot): DictionaryPreparation? {
         slot.preparation?.let { return it }
         val backgroundExecutor = backgroundExecutor() ?: return null
@@ -1057,7 +975,7 @@ class SuggestionsController internal constructor(
         return created
     }
 
-    /** E5c two-stage readiness: [dictionaryPreparation]'s exact shape, for the bigram table. */
+    /** Lazily built storage seam of the bigram table, like [dictionaryPreparation]. */
     private fun bigramPreparationSeam(slot: LanguageSlot): BigramPreparation? {
         slot.bigramPreparation?.let { return it }
         val backgroundExecutor = backgroundExecutor() ?: return null
@@ -1071,32 +989,24 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * PROPOSALS.md, "E5c. Готовность вычислителя двухступенчатая": called from [publishEngine]
-     * strictly AFTER the dictionary engine has already been assigned, reserved and (if a prefix
-     * was already typed) looked up — never on the path that gets there. Preparing and attaching
-     * the bigram table both happen on the background executor and touch no UI-visible state of
-     * their own while they run: unlike [onDictionaryReady], there is nothing here for the strip
-     * to reflect — [CompositePrefixComputer.predict] simply starts answering once attached.
-     * A missing, corrupted, or not-yet-published table leaves [handle] answering NEXT_WORD with
-     * an empty list, exactly like before this ran — no failure path reaches the UI thread.
+     * Second readiness stage: prepares and attaches the bigram table. Called from [publishEngine]
+     * only after the dictionary engine is assigned, reserved and (if a prefix was typed) looked
+     * up, so the table never delays publication. Both steps run on the background executor and
+     * touch no UI state; [CompositePrefixComputer.predict] starts answering once attached. A
+     * missing, corrupted or unpublished table leaves NEXT_WORD answering an empty list.
      *
-     * The one thing a SUCCESSFUL attach must repair is the window it just closed
-     * (docs/NEXTWORD-RACE.md): a NEXT_WORD request that ran while the table was still attaching
-     * got its empty list from "not attached yet", not from "no prediction for this context" — and
-     * nothing would ask again until the next keystroke, so a field opened on a draft that already
-     * ends in "слово␣" showed an empty band indefinitely. [onBigramAttached] re-derives the band
-     * on the serialized UI owner, guarded to the exact NEXT_WORD moment the lost request was made
-     * for; a context the table genuinely has no answer for comes back empty again and the band
-     * stays silent, exactly as before.
+     * A successful attach must repair one race: a NEXT_WORD request that ran while the table was
+     * attaching got an empty list, and nothing would ask again until the next keystroke (a field
+     * opened on a draft ending in "слово " would show an empty strip). [onBigramAttached]
+     * re-derives the strip on the UI thread, guarded to the NEXT_WORD moment of the lost request.
      */
     private fun maybeAttachBigramSource(slot: LanguageSlot, handle: EngineHandle) {
         val preparation = bigramPreparationSeam(slot) ?: return
         try {
             preparation.prepare { result ->
-                // Runs on the background executor, exactly like requestPreparationIfNeeded's own
-                // callback — attachBigramSource performs the same class of blocking I/O and must
-                // stay off the UI thread, so this is NOT re-marshaled through uiPoster. Only the
-                // tiny re-derivation nudge after a successful attach is.
+                // Runs on the background executor: attachBigramSource does blocking I/O and must
+                // stay off the UI thread. Only the re-derivation after a successful attach is
+                // posted through uiPoster.
                 if (result is BigramPreparationResult.Published &&
                     handle.attachBigramSource(preparation.catalog())
                 ) {
@@ -1104,33 +1014,25 @@ class SuggestionsController internal constructor(
                 }
             }
         } catch (_: Throwable) {
-            // Best-effort: NEXT_WORD simply keeps answering empty, exactly like a corrupted or
-            // missing table would.
+            // Best effort: NEXT_WORD keeps answering empty, as with a missing table.
         }
     }
 
     /**
-     * The bigram table finished attaching to [handle] (E5c's second stage) — the repair half of
-     * the first-NEXT_WORD-request race (docs/NEXTWORD-RACE.md).
+     * The bigram table finished attaching to [handle]: the repair half of the race described at
+     * [maybeAttachBigramSource].
      *
-     * Every guard fails towards leaving the band exactly as it is, the same shape as
-     * [onEmojiSuggestReady]: the attach may belong to a language the user has already left, to an
-     * engine a scheduled release has since made unusable, or to a controller that is gone; and the
-     * live editor state must still be the exact NEXT_WORD moment the outstanding request was
-     * built for — re-derived through [EditorSurface] exactly like the tap path re-derives it, so
-     * an attach that finished after the user typed on changes nothing.
+     * Every guard leaves the strip as it is, like [onEmojiSuggestReady]: the attach may belong to
+     * a language the user has left, to an engine a scheduled release made unusable, or to a
+     * destroyed controller; and the live editor state, re-derived through [EditorSurface] like on
+     * the tap path, must still be the NEXT_WORD moment of the outstanding request.
      *
-     * The last guard is about WHAT the band shows, not THAT it shows something (audit 2026-09-02,
-     * B4): an emoji-only band and a band the companion language filled both bind
-     * [displayedContextWord] without a single word of the ACTIVE language on them, and both still
-     * deserve the re-request — the attach is exactly what could turn their "no answer yet" into
-     * words. Only a band that already holds an active-language word cell is left alone: the
-     * request was answered late-but-correctly and needs nothing. The re-issued request of a
-     * context the table genuinely does not answer comes back empty and the reserved band stays
-     * empty: legitimate silence is preserved, only the "never asked again" kind is repaired.
+     * The last guard checks what the strip shows: an emoji-only strip and one filled by the
+     * companion language still deserve the re-request. Only a strip that already holds an
+     * active-language word is left alone. A context the table has no answer for comes back empty
+     * again.
      *
-     * An attach of a NON-active slot takes [onCompanionBigramAttached]: the companion language
-     * races its own table the same way (docs/LANG-PRIORITY.md).
+     * An attach of a non-active slot goes to [onCompanionBigramAttached].
      */
     private fun onBigramAttached(slot: LanguageSlot, handle: EngineHandle) {
         if (destroyed || !eligible) return
@@ -1149,15 +1051,12 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * The bigram table of the COMPANION language finished attaching (audit 2026-09-02, B4). A
-     * companion NEXT_WORD lookup issued while its table was still attaching answered empty exactly
-     * like the active language's did, and nothing would ask again — so the tail cells stayed empty
-     * until the next keystroke. The guards mirror the active path's (same session, same live
-     * NEXT_WORD moment, the attach must belong to the engine the slot still holds), plus the one
-     * the fill rule itself lives by: there must be a cell left to fill. A moment whose active
-     * request is still in flight may see one companion lookup too many — the active answer, when
-     * it lands, re-issues the fill anyway ([applyNextWordResult]), so the band always ends in the
-     * state the fill rule prescribes.
+     * The bigram table of the companion language finished attaching. A companion NEXT_WORD lookup
+     * issued while its table was attaching answered empty, and nothing would ask again. Guards
+     * mirror the active path (same session, same live NEXT_WORD moment, the engine the slot still
+     * holds), plus the fill rule: a cell must be left to fill. If the active request is still in
+     * flight, one extra companion lookup may run; the active answer re-issues the fill anyway
+     * ([applyNextWordResult]).
      */
     private fun onCompanionBigramAttached(slot: LanguageSlot, handle: EngineHandle) {
         if (slot.releasePending) return
@@ -1167,8 +1066,8 @@ class SuggestionsController internal constructor(
         if (editor.cachedWordBeforeCursor().isNotEmpty()) return
         val context = editor.cachedNextWordContext()
         if (context.isEmpty() || context != pendingContextWord) return
-        // The room rule of [applyCompanionResult]: word cells stay put, the pinned emoji tail is
-        // not a cell the companion may take.
+        // The room rule of [applyCompanionResult]: word cells stay put, and the companion may not
+        // take the emoji cell at the end.
         val base = bandBaseCells
         val emojiTail = if (base.isNotEmpty() && isEmojiCell(base.last())) base.last() else null
         val room = SuggestionStripState.CELL_COUNT - (if (emojiTail != null) 1 else 0)
@@ -1194,8 +1093,8 @@ class SuggestionsController internal constructor(
     }
 
     private fun maybeStartEngine() {
-        // P7-6: a suggestions-off but glide-eligible session still starts the engine — the glide
-        // decode reads it; the band never does.
+        // A suggestions-off but glide-eligible session still starts the engine for the glide
+        // decoder.
         if (!eligible && !glideEligible) return
         val slot = activeSlot() ?: return
         if (slot.engine != null || slot.starting || !slot.dictionaryReady) return
@@ -1233,7 +1132,7 @@ class SuggestionsController internal constructor(
             return
         }
         if (handle == null) {
-            // Engine creation failed: do not reserve an empty band for an unavailable dictionary.
+            // Engine creation failed: do not reserve an empty strip for an unavailable dictionary.
             if (slot !== activeSlot()) return
             displayedPrefix = null
             displayedContextWord = null
@@ -1244,10 +1143,9 @@ class SuggestionsController internal constructor(
             return
         }
         slot.engine = handle
-        // E5c two-stage readiness: started AFTER the engine is already assigned, never before —
-        // this is what makes it true that the bigram table cannot delay publication. Kicked off
-        // regardless of `eligible` below: the engine stays warm across an ineligible editor, and
-        // attaching costs nothing the UI can observe either way.
+        // Started after the engine is assigned, so the bigram table cannot delay publication.
+        // Regardless of `eligible`: the engine stays warm across an ineligible editor, and
+        // attaching has no visible effect.
         maybeAttachBigramSource(slot, handle)
         if (slot !== activeSlot()) {
             // The user switched language while this engine was starting. Keep it — warm and idle —
@@ -1257,21 +1155,21 @@ class SuggestionsController internal constructor(
             handle.finishInput()
             return
         }
-        // Hand the freshly started engine the current key-neighbor table so its fuzzy pass is armed
-        // without waiting for the next layout change. Null is a valid value (fuzzy pass disabled).
+        // Hand the fresh engine the current key-neighbor table so typo recovery works without
+        // waiting for the next layout change. Null disables typo recovery.
         handle.updateKeyNeighbors(keyNeighbors)
-        // P7-3: same push for the glide geometry (null disables glide decoding, fail-closed).
+        // Same for the glide geometry (null disables glide decoding).
         handle.updateGlideGeometry(glideGeometry)
         if (!eligible) {
             handle.finishInput()
             strip.hideSuggestions()
             return
         }
-        // Successful publication is the transition from preparing/unavailable (GONE) to the stable
-        // eligible band. Look up whatever the user has already typed without waiting for another
-        // keystroke; an empty/unknown prefix leaves the now-available band reserved with 0 results.
+        // Successful publication moves the strip from GONE (preparing/unavailable) to reserved.
+        // Look up whatever the user has already typed without waiting for a keystroke; an empty
+        // or unknown prefix leaves the strip reserved with 0 results.
         strip.reserve()
-        // E5d: see the comment on the identical gate in onStartInput().
+        // See the comment on the same gate in onStartInput().
         if (editor.hasKnownCursor()) {
             requestCurrentPrefix()
         }
@@ -1286,9 +1184,8 @@ class SuggestionsController internal constructor(
      * starts a fresh engine from the already published file. The engine reference is dropped only
      * on a successful release; a lease that refused to close keeps the request pending so the next
      * boundary retries it, and until then no new engine is started on top of it. A refusal is also
-     * remembered in [releaseAttemptFailed], which takes the cancellation in
-     * [onSuggestionsSettingEnabled] off the table for this release: the handle has already been
-     * asked to stop and would be kept alive as a permanently mute engine.
+     * remembered in [LanguageSlot.releaseAttemptFailed], so [onSuggestionsSettingEnabled] cannot
+     * cancel this release: the handle was already told to stop and would stay a mute engine.
      */
     private fun runPendingRelease() {
         for (slot in slots.values) {
@@ -1315,11 +1212,10 @@ class SuggestionsController internal constructor(
     /**
      * The engine that may still be used, or null.
      *
-     * An engine with a pending release is deliberately invisible to every path that exposes the
-     * band or dispatches a lookup. Before the release is attempted this only avoids painting a band
-     * that is about to go away; after a refused attempt it is what keeps the strip honest, because
-     * the handle rejects every request from then on and a reserved band would stay empty forever.
-     * The reference itself is kept so the release can be retried at the next boundary.
+     * An engine with a pending release is invisible to every path that shows the strip or
+     * dispatches a lookup: before the release attempt this avoids painting a strip about to go
+     * away; after a refused attempt the handle rejects every request, and a reserved strip would
+     * stay empty forever. The reference is kept so the release can be retried at the next boundary.
      */
     private fun usableEngine(): EngineHandle? {
         val slot = activeSlot() ?: return null
@@ -1337,31 +1233,12 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * The single request path. Reads the current cached prefix and dispatches a lookup, clearing
-     * the displayed binding whenever the words are (or become) empty/unresolvable and whenever the
-     * prefix changes so stale candidates cannot be tapped in the window before the fresh result
-     * arrives. Reused verbatim by [onTextChanged] and by [publishEngine] right after a successful
-     * engine publish.
-     *
-     * It is also where the frozen text contract's "0 results" states are enforced, all BEFORE the
-     * engine is asked anything: a cursor sitting inside a word (shared by both PREFIX and NEXT_WORD),
-     * and a prefix in mixed capitalization (PREFIX only — NEXT_WORD does not check the context word's
-     * casing at all, PROPOSALS.md, "Контракт текста" amendment, "Регистр предсказаний").
-     *
-     * E5d: an EMPTY prefix no longer unconditionally clears the band. It falls through to
-     * [requestNextWordContext], which is where NEXT_WORD's own "0 results" state (no context word
-     * available) is enforced — "Сосуществование" in the same amendment: a non-empty prefix always
-     * means PREFIX-only, an empty one means NEXT_WORD-only or nothing, never both in the same band.
-     */
-    /**
      * The language that may fill the cells the active one leaves empty, or null when there is none.
      *
-     * "May" is deliberately narrow: the slot must already hold a live engine. A language whose
-     * dictionary was never prepared is NOT prepared for this, and a cold engine is NOT started for
-     * it — starting one costs an mmap and a worker thread on the input path, and the cold-start
-     * invariant is not something a tail cell is worth. The shipped languages are read off
-     * [DictionaryArtifactSpec.ALL] in its own order, so which language answers is fixed by the
-     * registry rather than by iteration order of the slot map.
+     * The slot must already hold a live engine: a dictionary is not prepared and a cold engine is
+     * not started for this, since that costs an mmap and a worker thread on the input path. The
+     * languages are read from [DictionaryArtifactSpec.ALL] in order, so the registry, not the
+     * slot map's iteration order, decides which language answers.
      */
     private fun companionSlotForFill(): LanguageSlot? {
         val active = activeLanguage ?: return null
@@ -1378,10 +1255,9 @@ class SuggestionsController internal constructor(
      * Asks the companion language for [query], but only after the active language has already
      * answered and left a cell empty.
      *
-     * Deliberately lazy. The active language fills all three cells for about nine keystrokes in ten
-     * (docs/LANG-PRIORITY.md, "Цена"), so asking both engines on every press would pay twice for
-     * nothing nine times out of ten; and because this runs only AFTER the active result was applied,
-     * the first cell reaches the screen at exactly the moment it does today.
+     * Lazy on purpose: the active language usually fills all three cells, so asking both engines on
+     * every keystroke would mostly be wasted work; and because this runs only after the active
+     * result was applied, it never delays the first cell.
      */
     private fun requestCompanionFill(kind: LookupKind, query: String) {
         clearCompanionRequest()
@@ -1393,7 +1269,7 @@ class SuggestionsController internal constructor(
             LookupKind.PREFIX -> engine.request(sessionId, slot.subtypeId, bytes)
             LookupKind.NEXT_WORD -> engine.requestNextWord(sessionId, slot.subtypeId, bytes)
             // A companion language is never asked for a glide: the gesture belongs to the active
-            // layout, and the fill rule is a prefix/next-word feature (P7-3 MVP).
+            // layout, and the fill rule covers only prefix and next-word lookups.
             LookupKind.GLIDE -> null
         }
         if (token == null) return
@@ -1402,7 +1278,7 @@ class SuggestionsController internal constructor(
         companionQuery = query
     }
 
-    /** Forgets the outstanding companion lookup; a result for it can no longer reach the band. */
+    /** Forgets the outstanding companion lookup; a result for it can no longer reach the strip. */
     private fun clearCompanionRequest() {
         companionSlot = null
         companionKind = null
@@ -1412,10 +1288,10 @@ class SuggestionsController internal constructor(
     /**
      * Appends the companion language's candidates to the cells the active language left empty.
      *
-     * Every guard here fails towards leaving the band exactly as the active language painted it.
-     * The three that carry the rule itself: the result must belong to the ONE outstanding companion
-     * lookup, the text it was made for must still be the text under the cursor, and the base cells
-     * are copied first, so no candidate of the active language can be displaced or reordered.
+     * Every guard leaves the strip as the active language painted it. The key ones: the result must
+     * belong to the one outstanding companion lookup, its text must still be the text under the
+     * cursor, and the base cells are copied first, so no candidate of the active language is
+     * displaced or reordered.
      */
     private fun applyCompanionResult(
         slot: LanguageSlot,
@@ -1440,9 +1316,8 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         if (suggestions.isEmpty()) return
         val base = bandBaseCells
-        // The emoji cell, when present, is always the tail one (mission 2 of
-        // docs/EMOJI-SUGGEST-PLAN.md): companion words insert BEFORE it and never push it out.
-        // A word cell is always a letter sequence; only the emoji cell is letter-free.
+        // The emoji cell, when present, is always the last one: companion words go before it and
+        // never push it out. A word cell is always a letter sequence; only the emoji cell is not.
         val emojiTail = if (base.isNotEmpty() && isEmojiCell(base.last())) base.last() else null
         val wordBase = if (emojiTail != null) base.dropLast(1) else base
         val room = SuggestionStripState.CELL_COUNT - (if (emojiTail != null) 1 else 0)
@@ -1479,14 +1354,10 @@ class SuggestionsController internal constructor(
     ) {
         bandBaseCells = cells
         strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2))
-        // P2: the emphasis travels with the words it marks, in the same publication — a marker
-        // set apart from them could describe a band that is already gone. It runs BEFORE the
-        // spoken labels (2026-09-25 audit): setEmphasis is what runs the publication's one
-        // display rebuild in the view, and the label lookup reads the emoji index, which can
-        // fail — with the labels between words and emphasis, such a failure stranded the band
-        // with new words, the emphasis cleared and the rebuild pending. A label failure now
-        // leaves a whole consistent band and merely missing labels: setSuggestions clears them
-        // on every publication, and the next one re-sends them.
+        // The emphasis travels with the words it marks, in the same publication. It runs before
+        // the spoken labels: setEmphasis triggers the view's one display rebuild, and the label
+        // lookup reads the emoji index, which can fail. A label failure then leaves a consistent
+        // strip with missing labels, which the next publication re-sends.
         strip.setEmphasizedCell(emphasizedCell)
         strip.setSpokenCellLabels(
             spokenLabelFor(cells[0]),
@@ -1496,11 +1367,10 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * True when [cell] holds the emoji candidate rather than a word: every word the band can ever
-     * show is a letter sequence (dictionary, bigram and personal candidates are all alphabet-checked
-     * by their packers), so a letter-free cell IS the emoji cell. Char-level on purpose: words here
-     * are BMP, and a supplementary letter would read as two non-letters — "emoji", the safe
-     * direction.
+     * True when [cell] holds the emoji candidate rather than a word: every word the strip can show
+     * is a letter sequence (all candidate sources are alphabet-checked), so a letter-free cell is
+     * the emoji cell. Char-level on purpose: words here are BMP, and a supplementary letter would
+     * read as two non-letters, i.e. "emoji", the safe answer.
      */
     private fun isEmojiCell(cell: String): Boolean {
         var index = 0
@@ -1513,36 +1383,32 @@ class SuggestionsController internal constructor(
 
     /**
      * The spoken label of a cell, or null when the cell's own text reads fine aloud. Only the emoji
-     * cell gets a label — the emoji's short name from the search index; a source that never loaded
-     * (or a name the index does not hold) leaves the glyph to speak for itself, which TalkBack
-     * already does meaningfully.
+     * cell gets a label (the emoji's short name from the search index); if the source never loaded
+     * or has no name, TalkBack speaks the glyph itself.
      */
     private fun spokenLabelFor(cell: String?): String? {
         if (cell.isNullOrEmpty() || !isEmojiCell(cell)) return null
         return emojiSource?.spokenNameOf(cell)
     }
 
-    // --- Emoji suggest (mission 2 of docs/EMOJI-SUGGEST-PLAN.md) --------------------------------
+    // --- Emoji suggestions --------------------------------------------------------------------
 
     /**
      * The emoji mapped to [contextWord] on the active language, or null. Every early exit is
-     * silent by design: the feature off, a subtype with no table, an unloaded or unusable asset
-     * and a word without a mapping all look exactly alike from the strip — the band shows what it
-     * would have shown anyway. The FIRST eligible miss is what starts the one-per-process
-     * background load, so a user who never turns the toggle on never reads the asset at all.
+     * silent: the feature off, a subtype with no table, an unloaded or unusable asset and a word
+     * without a mapping all look alike to the strip. The first eligible miss starts the
+     * one-per-process background load, so the asset is never read while the setting is off.
      *
-     * Feature C: the user's own learned co-usage outranks the static table for this one cell —
-     * the personal source answers first, the static table only when it has nothing. The learned
-     * read is live and is NOT gated by incognito (the pause closes writes only, exactly like the
-     * words and pairs read paths); its gate is the personal-dictionary setting inside the source.
+     * Learned emoji outrank the static table for this cell. The learned read is live and not
+     * gated by paused learning (which gates writes only); its gate is the personal-dictionary
+     * setting inside the source.
      */
     private fun emojiCandidate(contextWord: String): String? {
         if (!emojiSuggestGate.isOn()) return null
         val language = activeLanguage ?: return null
         if (emojiSource == null) {
-            // Not loaded yet: start the one-time background load. Re-read the field afterwards —
-            // a preparation that answers synchronously (a direct test executor) has already
-            // published the source by the time the call returns.
+            // Not loaded yet: start the one-time background load. The field is re-read afterwards,
+            // because a synchronous preparation (a direct test executor) has already published it.
             maybePrepareEmojiSuggest()
         }
         val normalized = TatarWordUtils.normalizeForLookup(contextWord)
@@ -1555,12 +1421,10 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Appends the emoji cell to the tail of the current NEXT_WORD band, applying the same
-     * tail-pinning [applyNextWordResult] applies synchronously: front cells keep their order, the
-     * emoji takes the tail, and the lowest-ranked word cell is the only one that ever yields. Runs
-     * from [onEmojiSuggestReady] only, for a band painted before the table finished loading; when
-     * it is what puts the first cell on an otherwise empty band it also BINDS the band, so the tap
-     * path treats the emoji exactly like a predicted word.
+     * Appends the emoji cell to the end of the current NEXT_WORD strip, like [applyNextWordResult]
+     * does: front cells keep their order, the emoji takes the last cell, and only the lowest-ranked
+     * word cell may yield. Runs from [onEmojiSuggestReady] only, for a strip painted before the
+     * table loaded; it also binds the strip, so the tap path treats the emoji like a predicted word.
      */
     private fun maybeAppendEmojiTail(contextWord: String) {
         if (contextWord.isEmpty()) return
@@ -1581,8 +1445,8 @@ class SuggestionsController internal constructor(
 
     /**
      * Starts the one-per-process background load of the emoji-suggest table, at most once and only
-     * while the feature is on. A factory or executor failure is silent and terminal: the band
-     * simply never grows an emoji cell.
+     * while the feature is on. A factory or executor failure is silent and terminal: the strip
+     * never gets an emoji cell.
      */
     private fun maybePrepareEmojiSuggest() {
         if (destroyed || emojiPreparationRequested) return
@@ -1605,15 +1469,15 @@ class SuggestionsController internal constructor(
                 uiPoster.post { onEmojiSuggestReady(source) }
             }
         } catch (_: Throwable) {
-            // Silent: the band behaves exactly as if no word ever had a mapping.
+            // Silent: the strip behaves as if no word had a mapping.
         }
     }
 
     /**
-     * The table finished loading. A NEXT_WORD band painted before the table arrived gets its emoji
-     * cell filled NOW rather than after the next word — but only if the live editor state is still
-     * exactly the NEXT_WORD moment the last request was built for: the same re-derivation the tap
-     * path performs, so a load that finished after the user typed on changes nothing.
+     * The table finished loading. A NEXT_WORD strip painted before it arrived gets its emoji cell
+     * now, but only if the live editor state is still the NEXT_WORD moment of the last request
+     * (re-derived like on the tap path), so a load that finishes after the user typed on changes
+     * nothing.
      */
     private fun onEmojiSuggestReady(source: EmojiSuggestSource?) {
         if (destroyed) return
@@ -1628,13 +1492,10 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of the emoji-suggest table
-     * (LatinIME MSG_DEALLOCATE_MEMORY). A table that actually loaded gets ONE lazy reload — the
-     * next eligible miss re-runs [maybePrepareEmojiSuggest]; a terminal load failure stays
-     * terminal (the one-shot flag is reset only when a source existed, so a release never
-     * resurrects a broken asset). UI thread, like every method here. A band showing an emoji
-     * cell right now is untouched: deallocate fires only after the keyboard has been closed for
-     * ten seconds, when no band is on screen.
+     * Releases the emoji suggestion table while idle (LatinIME MSG_DEALLOCATE_MEMORY). A loaded
+     * table is reloaded lazily on the next eligible miss; a failed load stays failed (the flag is
+     * reset only when a source existed). UI thread. Called only after the keyboard has closed, so
+     * no emoji cell is on screen.
      */
     fun releaseEmojiSuggest() {
         if (emojiSource == null) return
@@ -1643,10 +1504,9 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * O5: opens the async Perfetto slice of a lookup round trip, closing any slice still open —
-     * the request it described has just been superseded (the engine will never deliver its stale
-     * handoff, so this is the only end that trip gets). A marker pair costs ~10 µs, which is why
-     * only this coarse round trip is instrumented — never sub-200 µs methods, never per frame.
+     * Opens the async Perfetto slice of a lookup round trip, closing any slice still open: that
+     * request was just superseded, and the engine never delivers its stale handoff. See
+     * [LookupTracer] for what may be traced.
      */
     private fun beginLookupTrace() {
         endLookupTrace()
@@ -1657,11 +1517,9 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * O5: closes the outstanding lookup slice, if there is one. Called where the answer arrives
-     * ([applyResult]) and at every boundary that cancels an in-flight request without a newer one
-     * replacing it, so a canceled trip never renders as a seconds-long open slice. An end for a
-     * cookie that was never opened is ignored by the platform, so the defensive calls at the
-     * boundaries are free.
+     * Closes the outstanding lookup slice, if any. Called where the answer arrives ([applyResult])
+     * and at every boundary that cancels an in-flight request without replacing it, so a canceled
+     * trip never shows as a long open slice. Ending an unopened cookie is ignored by the platform.
      */
     private fun endLookupTrace() {
         val cookie = traceLookupCookie
@@ -1670,12 +1528,22 @@ class SuggestionsController internal constructor(
         lookupTracer.endAsync(cookie)
     }
 
+    /**
+     * The single request path. Reads the cached prefix and dispatches a lookup, clearing the
+     * displayed binding whenever the words become empty or the prefix changes, so stale candidates
+     * cannot be tapped before the fresh result arrives. Used by [onTextChanged] and [publishEngine].
+     *
+     * The "0 results" states are enforced here, before the engine is asked: a cursor inside a word
+     * (PREFIX and NEXT_WORD) and a prefix in mixed case (PREFIX only; NEXT_WORD ignores the context
+     * word's casing). An empty prefix falls through to [requestNextWordContext]: a non-empty prefix
+     * means PREFIX only, an empty one NEXT_WORD or nothing, never both on one strip.
+     */
     private fun requestCurrentPrefix() {
         if (!eligible) return
         val activeEngine = usableEngine()
         if (activeEngine == null) {
-            // Text events can arrive while preparation/start is still in flight. Do not expose the
-            // band until publishEngine() establishes that the dictionary is actually available.
+            // Text events can arrive while preparation/start is still in flight. Do not show the
+            // strip until publishEngine() establishes that the dictionary is available.
             displayedPrefix = null
             displayedContextWord = null
             displayedGlideAlternativesFor = null
@@ -1688,51 +1556,43 @@ class SuggestionsController internal constructor(
             clearToReservedBand()
             return
         }
-        // Cursor inside a word: the contract clears the results instead of offering a replacement
-        // that would be spliced into the middle of the user's text ("ки|тап" + "т" must not become
-        // "китапларtап"). Checked before either path below so the engine is never even asked, and
-        // checked ONCE — moved ahead of the prefix/context branch below (it used to run only on the
-        // PREFIX path) because "Контракт текста" amendment пункт 2 requires it to gate NEXT_WORD too:
-        // "При selection или букве... сразу после курсора правило действует без изменений — NEXT_WORD
-        // запрос не строится вообще". Neither check depended on the other's outcome, so this reorders
-        // without changing PREFIX behaviour at all.
+        // Cursor inside a word: clear the results instead of offering a replacement that would be
+        // spliced into the middle of the user's text ("ки|тап" + "т" must not become
+        // "китапларtап"). Checked once, before both the PREFIX and the NEXT_WORD path, so the
+        // engine is never asked.
         if (editor.hasLetterAfterCursor()) {
             clearToReservedBand()
             return
         }
         val word = editor.cachedWordBeforeCursor()
-        // P2: the keep-typed refusal is word-scoped — it lives exactly as long as the trailing
-        // word it was made for. A different word, including none at all, is a new occurrence.
+        // A refused preview lives exactly as long as the trailing word it was made for. A
+        // different word, including none, is a new occurrence.
         if (word != suppressedPreviewWord) suppressedPreviewWord = null
         if (word.isEmpty()) {
             requestNextWordContext(activeEngine)
             return
         }
-        // Mixed capitalization has no defined display form in the frozen contract, which requires
-        // 0 results for it. Classified on the RAW prefix, before NFC/lowercase folding.
+        // Mixed capitalization has no defined display form, so it yields 0 results. Classified on
+        // the raw prefix, before NFC/lowercase folding.
         val casing = TatarWordUtils.classifyCasing(word)
         if (casing == TatarWordUtils.PrefixCasing.MIXED) {
             clearToReservedBand()
             return
         }
-        // Duplicate suppression: the band is already bound to THIS word's results, computed by a
-        // request issued in THIS session — a re-request would be answered identically. A prefix
-        // revisited after a different one (backspace) does not match: the newer request moved
-        // pendingPrefix/displayedPrefix on, so the revisit re-requests as before. A PREFIX-mode
-        // companion fill possibly in flight for this very word survives the skip: its answer
-        // appends to the band exactly as it would have after a duplicate active round trip.
+        // Duplicate suppression: the strip is already bound to this word's results from this
+        // session, and a re-request would be answered identically. A prefix revisited after a
+        // different one (backspace) does not match and re-requests. A companion fill in flight for
+        // this word survives the skip and still appends its answer.
         if (word == displayedPrefix && displayedSessionId == sessionId) return
-        // Prefix changed relative to what is on screen: invalidate the displayed candidates NOW so
-        // a tap arriving before the new result can never commit the old candidate against the new
-        // prefix. [unbindPaintedBand] takes the words off the strip in the same breath — see its
-        // own comment for why unbinding alone is not enough.
+        // The prefix changed relative to what is on screen: invalidate the displayed candidates now
+        // so a tap before the new result cannot commit an old candidate against the new prefix.
+        // [unbindPaintedBand] also takes the words off the strip; see its comment.
         if (word != displayedPrefix) {
             displayedPrefix = null
             unbindPaintedBand()
         }
-        // A non-empty prefix is unconditionally PREFIX mode: drop whatever NEXT_WORD state might
-        // still be bound from a moment ago, so the two kinds never coexist in the band. The P7-3
-        // glide binding is dropped the same way.
+        // A non-empty prefix is always PREFIX mode: drop any NEXT_WORD or glide binding, so the
+        // kinds never coexist on the strip.
         if (displayedContextWord != null) {
             displayedContextWord = null
             unbindPaintedBand()
@@ -1748,8 +1608,8 @@ class SuggestionsController internal constructor(
         requestSessionId = sessionId
         val prefixBytes = TatarWordUtils.toLookupBytes(TatarWordUtils.normalizeForLookup(word))
         val language = activeLanguage ?: return
-        // O5: the round trip is async (worker hop + re-marshal), hence the async slice; a null
-        // token means no request left the UI thread, so the slice closes again at once.
+        // The round trip crosses threads, hence the async slice; a null token means no request
+        // left the UI thread, so the slice closes at once.
         beginLookupTrace()
         val token = activeEngine.request(sessionId, language, prefixBytes)
         if (token == null) {
@@ -1759,31 +1619,25 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * E5d NEXT_WORD request path, the sibling [requestCurrentPrefix] falls through to on an empty
-     * prefix. Mirrors its PREFIX counterpart's shape exactly (change detection, session stamping,
-     * clear-on-null-token) but has no casing gate — "Контракт текста" amendment, "Регистр
-     * предсказаний": a mixed-case context word does not suppress a prediction, because nothing about
-     * its casing is ever carried into the shown/inserted form.
+     * NEXT_WORD request path, which [requestCurrentPrefix] falls through to on an empty prefix.
+     * Mirrors the PREFIX path (change detection, session stamping, clear on a null token) without
+     * the casing gate: the context word's casing is never carried into the shown or inserted form.
      */
     private fun requestNextWordContext(activeEngine: EngineHandle) {
         val context = editor.cachedNextWordContext()
         if (context.isEmpty()) {
-            // P4 (docs/TT-SUGGESTIONS.md): an empty context at a sentence boundary is not silence
-            // but a fresh sentence start, answered synchronously from the sentence-start table —
-            // no engine request is issued, so the bigram successors and the P3 after-word forms
-            // are suppressed for this slot by construction (a sentence boundary resets context).
-            // Anywhere else the frozen "no prediction without a context word" behavior stands.
+            // An empty context at a sentence boundary is a sentence start, answered synchronously
+            // from the sentence-start table. No engine request is issued, so bigram successors and
+            // after-word forms do not appear. Anywhere else: no context word, no prediction.
             if (requestSentenceStart()) return
             clearToReservedBand()
             return
         }
-        // Duplicate suppression, the exact mirror of the PREFIX path's, with one extra gate:
-        // bandHasActiveLanguageWord. An emoji-only band (the active language answered empty but
-        // the context maps to an emoji) also carries displayedContextWord, and the
-        // onCompanionBigramAttached re-request for it passes through here — skipping THAT one
-        // would strand the tail cells the companion attach is meant to fill (audit B4). With an
-        // active-language word on the band the attach handler never re-requests, so the skip is
-        // safe exactly under this conjunct.
+        // Duplicate suppression as in the PREFIX path, plus bandHasActiveLanguageWord: an
+        // emoji-only strip also carries displayedContextWord, and skipping the re-request that
+        // onCompanionBigramAttached sends for it would leave the cells empty. With an
+        // active-language word on the strip the attach handler never re-requests, so the skip is
+        // safe.
         if (context == displayedContextWord && displayedSessionId == sessionId
             && bandHasActiveLanguageWord
         ) return
@@ -1791,9 +1645,8 @@ class SuggestionsController internal constructor(
             displayedContextWord = null
             unbindPaintedBand()
         }
-        // A NEXT_WORD request is unconditionally not PREFIX mode: drop whatever prefix candidates
-        // might still be bound (there should not be any, since this path only runs on an empty
-        // prefix, but the invariant is enforced here rather than assumed). The glide binding too.
+        // A NEXT_WORD request is never PREFIX mode: drop any prefix or glide binding (there should
+        // be none on an empty prefix, but the invariant is enforced, not assumed).
         if (displayedPrefix != null) {
             displayedPrefix = null
             unbindPaintedBand()
@@ -1804,13 +1657,13 @@ class SuggestionsController internal constructor(
         }
         clearCompanionRequest()
         pendingContextWord = context
-        // A new NEXT_WORD moment begins: whatever the band painted for the previous one says
-        // nothing about this one (audit B4).
+        // A new NEXT_WORD moment begins: what the strip painted for the previous one says nothing
+        // about this one.
         bandHasActiveLanguageWord = false
         requestSessionId = sessionId
         val contextBytes = TatarWordUtils.toLookupBytes(TatarWordUtils.normalizeForLookup(context))
         val language = activeLanguage ?: return
-        // O5: same async round trip as the PREFIX path — see beginLookupTrace.
+        // Same async round trip as the PREFIX path; see beginLookupTrace.
         beginLookupTrace()
         val token = activeEngine.requestNextWord(sessionId, language, contextBytes)
         if (token == null) {
@@ -1819,55 +1672,49 @@ class SuggestionsController internal constructor(
         }
     }
 
-    // --- Glide (P7-3, docs/GLIDE-PLAN.md) ---------------------------------------------------------
+    // --- Glide typing -----------------------------------------------------------------------------
 
     /**
      * A glide gesture completed on the letter keys (PointerTracker via LatinIME, UI thread).
-     * Requests the decode on the engine worker; nothing is shown during the gesture itself
-     * (MVP: decode once at ACTION_UP). Every early exit is silent and leaves the band exactly as
-     * it is, fail-closed in every direction:
-     *  - the feature off (the glide toggle — since P7-6 glide is INDEPENDENT of the suggestions
-     *    master; [glideEligible] carries the field-level gate), a destroyed controller, no usable
-     *    engine;
-     *  - the editor in a state the commit path could not honor: an unknown cursor, a letter right
-     *    after the cursor, or a half-typed trailing word (the decoder decodes WHOLE words;
-     *    completing a typed prefix by glide is not the MVP). P7-7: the ONE tolerated trailing word
-     *    is the chain's previous glide commit — it gets the chain space and the gesture proceeds.
+     * Requests the decode on the engine worker; nothing is shown during the gesture (one decode at
+     * ACTION_UP). Every early exit is silent and leaves the strip as it is:
+     *  - glide off (its own setting, independent of suggestions; [glideEligible] is the field
+     *    gate), a destroyed controller, no usable engine;
+     *  - an editor state the commit path could not honor: an unknown cursor, a letter right after
+     *    the cursor, or a half-typed trailing word (the decoder decodes whole words). The one
+     *    tolerated trailing word is the chain's previous glide commit, which gets the chain space.
      *
-     * The glide band is bound to the NEXT_WORD context of the moment (the word before the cursor,
-     * "" at a field start) — exactly what the lift-commit's [EditorSurface.commitGlideWord]
-     * re-derives live before editing. One binding at a time: the other two are dropped here.
+     * The glide strip is bound to the NEXT_WORD context of the moment (the word before the cursor,
+     * "" at a field start), which [EditorSurface.commitGlideWord] re-derives live before editing.
+     * One binding at a time: the other two are dropped here.
      */
     fun onGlideInput(path: GlidePath) {
         if (destroyed || !glideEligible) return
         if (!glideGate.isOn()) return
         val activeEngine = usableEngine() ?: return
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
-        // P7-7: the one tolerated trailing word is the chain's previous glide commit (still in
-        // its undo window) — a second glide then extends it ("сәләм" → "сәләм дөнья"). Any other
-        // trailing word is a half-typed prefix, and completing that by glide is not the MVP.
+        // The one tolerated trailing word is the chain's previous glide commit (still in its undo
+        // window); a second glide extends it ("сәләм" → "сәләм дөнья"). Any other trailing word is
+        // a half-typed prefix, which glide does not complete.
         val trailingWord = editor.cachedWordBeforeCursor()
         if (trailingWord.isNotEmpty() && trailingWord != glideCommittedWord) return
         val context = editor.cachedNextWordContext()
-        // A glide gesture ends any word's preview moment: no stale keep-typed cell may ride the
-        // glide band (the tap path's refusal check would swallow the tap).
+        // A glide gesture ends any autocorrect preview: no stale typed-word cell may stay on the
+        // glide strip (the tap path's refusal check would swallow the tap).
         previewKeepTypedCell = null
         displayedPrefix = null
         displayedContextWord = null
         unbindPaintedBand()
         clearCompanionRequest()
-        // O5: the gesture's decode supersedes any lookup still in flight (the engine suppresses
-        // its stale handoff, so no arrival will end its slice). The decode itself is not traced.
+        // The decode supersedes any lookup in flight (the engine drops its stale handoff, so no
+        // arrival will end its slice). The decode itself is not traced.
         endLookupTrace()
         pendingGlideContext = context
         requestSessionId = sessionId
-        // C3 of docs/ROADMAP-P8-PLAN.md: only ONE glide word index may be resident. Warm slots are
-        // kept alive on purpose (LanguageSlot's doc), so before this language builds its index the
-        // other languages drop theirs — the worst case goes from "every warm engine holds an
-        // index" to exactly one. Each drop is POSTED to its own engine's worker
-        // (LatestOnlyPrefixEngine.releaseGlideIndex), so nothing here touches foreign state, and a
-        // language the user returns to rebuilds lazily on its next gesture, exactly as it already
-        // does after the idle release.
+        // Only one glide word index may be resident. Warm slots stay alive on purpose (see
+        // LanguageSlot), so before this language builds its index the others drop theirs. Each
+        // drop is posted to its own engine's worker (LatestOnlyPrefixEngine.releaseGlideIndex),
+        // and a language the user returns to rebuilds lazily on its next gesture.
         releaseGlideIndexesExcept(activeLanguage)
         val language = activeLanguage ?: return
         val token = activeEngine.requestGlide(sessionId, language, path)
@@ -1877,8 +1724,8 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * C3: drops every glide word index but [keepSubtypeId]'s. A null id drops all of them (the
-     * caller has no active language, so no index is worth keeping).
+     * Drops every glide word index but [keepSubtypeId]'s. A null id drops all of them (with no
+     * active language no index is worth keeping).
      */
     private fun releaseGlideIndexesExcept(keepSubtypeId: String?) {
         for ((subtypeId, slot) in slots) {
@@ -1888,33 +1735,22 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * The glide counterpart of [applyPrefixResult]/[applyNextWordResult] — and, since the UX
-     * amendment (2026-09-24, docs/ROADMAP-P7.md), the lift-commit: the plan's DONE-WHEN always
-     * said "tapping or lifting commits"; P7-3 shipped tap-only, this closes the Gboard-parity
-     * behavior. With candidates present the top-1 is committed IMMEDIATELY through the glide's
-     * own commit path ([EditorSurface.commitGlideWord] — P7-6: the predicted-word path's live
-     * re-checks minus the sentence-start requirement for an empty context), and the strip then
-     * shows the REMAINING candidates as tappable alternatives bound to the committed word; a tap
-     * on one replaces the committed word in the editor ([onTap]). With the suggestions master
-     * off ([eligible] false, P7-6) the commit still lands — typing, not a suggestion — and the
-     * strip shows NOTHING: no alternatives, no follow-up chain.
+     * The glide counterpart of [applyPrefixResult]/[applyNextWordResult], and the lift-commit: the
+     * top candidate is committed immediately through [EditorSurface.commitGlideWord], and the strip
+     * then shows the remaining candidates as alternatives bound to the committed word; a tap on
+     * one replaces the committed word ([onTap]). With suggestions off ([eligible] false) the
+     * commit still lands (it is typing) and the strip shows nothing.
      *
-     * Casing is the display-time rule of the prefix path, sourced from the shift gate (a gesture
-     * types no letters to read the casing off): the committed AND the shown forms carry it. With
-     * zero candidates nothing is committed and nothing special shows (fail-closed). With exactly
-     * one, there are no alternatives and the strip falls through to a fresh derivation for the
-     * committed word — P7-7: with no auto-space the committed word IS the trailing word, so the
-     * strip behaves exactly as if the word had been typed (the prefix path: forms etc.).
+     * Casing follows the prefix path's display rule, taken from the shift gate (a gesture types
+     * no letters to read casing from); the committed and the shown forms both carry it. With zero
+     * candidates nothing is committed. With exactly one there are no alternatives, and the strip
+     * is derived afresh as if the word had been typed (the committed word is the trailing word).
      *
-     * Learning (pinned): a lift-committed word behaves exactly like a tapped suggestion — the run
-     * is marked dirty (it is not a clean run for the word itself), the boundary it establishes is
-     * trusted for the pair machine, and the committed word is announced as an accepted suggestion:
-     * if it is a saved personal word, its usage counter moves (the sink decides; the file itself
-     * moves at the session boundary). It is NOT a noteAcceptedPrediction (nothing was predicted
-     * from a learned pair). A later alternative replacement counts the ALTERNATIVE the same way;
-     * the lift's own bump is not rolled back, and neither is it by the one-backspace undo — the
-     * same accepted imprecision the tap path already lives with (a bump survives a later
-     * backspace), which keeps the undo paths free of counter arithmetic.
+     * Learning: a lift-committed word behaves like a tapped suggestion. The run is marked dirty,
+     * the new boundary is trusted for pairs, and the word is reported as an accepted suggestion
+     * (not as an accepted prediction). A later alternative counts the same way. Neither the
+     * replacement nor the one-backspace undo rolls back the usage bump, as on the tap path, which
+     * keeps the undo paths free of counter arithmetic.
      */
     private fun applyGlideResult(suggestions: List<String>) {
         previewKeepTypedCell = null
@@ -1930,12 +1766,8 @@ class SuggestionsController internal constructor(
             TatarWordUtils.PrefixCasing.LOWER
         }
         val committed = TatarWordUtils.applyCasing(suggestions[0], casing)
-        // The lift-commit: the glide's own commit path re-derives the live context and refuses a
-        // stale gesture itself (P7-6: without the prediction tap's sentence-start requirement for
-        // an empty context — a gesture at a context-free position like "сүз ? " still types its
-        // word; P7-7: no auto-space, the chain separator is the only space a glide inserts, and
-        // the chain's previous word is the one tolerated trailing word); a refusal commits
-        // nothing and shows nothing special.
+        // The glide commit path re-derives the live context and refuses a stale gesture itself
+        // (see [EditorSurface.commitGlideWord]); a refusal commits nothing.
         val commitResult = editor.commitGlideWord(pendingGlideContext, committed, glideCommittedWord)
         if (commitResult == EditorSurface.GLIDE_COMMIT_REFUSED) {
             displayedGlideAlternativesFor = null
@@ -1943,24 +1775,22 @@ class SuggestionsController internal constructor(
             if (eligible) strip.reserve()
             return
         }
-        // Not the user spelling the word out: the run stops counting; the boundary the committed
-        // word just established is trusted for the pair machine (the tap path's exact semantics).
+        // Not the user spelling the word out: the run stops counting, and the new boundary is
+        // trusted for pairs, as on the tap path.
         runMachine.markRunDirty()
         runMachine.trustPairBoundary()
-        // The lift-commit IS the acceptance: if the committed word is a saved personal word its
-        // usage counter moves (in memory; the file moves at the session boundary) — a dictionary
-        // or unknown word changes nothing, the sink decides. Gated by the learning predicate on
-        // the sink's side, so this also runs with the suggestions master off (P7-6).
+        // The lift-commit is the acceptance: a saved personal word's usage counter moves (in
+        // memory; the file is written at the session boundary). The sink applies the learning
+        // predicate, so this also runs with suggestions off.
         runMachine.noteAcceptedSuggestion(committed)
-        // One backspace right after the lift deletes the whole committed word (the gesture-undo):
-        // the undo word tracks the editor's content — it moves to an alternative if one replaces —
-        // and the chain space dies with the word exactly when the commit added it (P7-7).
+        // One backspace right after the lift deletes the whole committed word. The undo word
+        // tracks the editor (it moves to an alternative if one replaces it), and the chain space
+        // goes with the word exactly when the commit added it.
         glideCommittedWord = committed
         glideCommitPrependedSpace = commitResult == EditorSurface.GLIDE_COMMIT_PREPENDED
         if (!eligible) {
-            // P7-6: suggestions off — the lift-commit stands on its own (typing, not a
-            // suggestion), and the strip, the suggestions surface, shows NOTHING: no alternatives
-            // band, no NEXT_WORD chain request.
+            // Suggestions off: the lift-commit stands on its own (it is typing), and the strip
+            // shows nothing: no alternatives, no NEXT_WORD request.
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             return
@@ -1971,9 +1801,8 @@ class SuggestionsController internal constructor(
             if (alternatives.size >= SuggestionStripState.CELL_COUNT) break
         }
         if (alternatives.isEmpty()) {
-            // Nothing to offer as an alternative: the strip falls through to a fresh derivation
-            // for the committed word — with P7-7's no-space commit that word is the trailing
-            // word, so this is exactly the band a typed word would have (the prefix path).
+            // No alternatives: derive the strip afresh for the committed word, which is the
+            // trailing word, so the strip is what a typed word would get (the prefix path).
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
@@ -1986,35 +1815,30 @@ class SuggestionsController internal constructor(
         showBand(alternatives)
     }
 
-    // --- Sentence start (P4, docs/TT-SUGGESTIONS.md) ---------------------------------------------
+    // --- Sentence start ------------------------------------------------------------------------
 
     /**
-     * Paints the sentence-start band when the current position is one, synchronously — the table
-     * is static, so there is no engine request, no token and no callback, and the whole paint
-     * happens on the UI thread inside the request path, exactly where a NEXT_WORD request would
-     * have been issued. Returns false (the caller then falls back to the reserved empty band) in
-     * every no-show direction, all silent by design: the active language ships no table (the
-     * artifact registry decides per language — since P3b both shipped languages carry one; a
-     * subtype absent from the registry never gets a band), the position is not a sentence
-     * start, the table is missing/broken/still loading, or it has nothing to offer.
+     * Paints the sentence-start strip synchronously when the position is a sentence start: the
+     * table is static, so there is no engine request, token or callback. Returns false (the caller
+     * then shows the reserved empty strip) when the active language ships no table (the artifact
+     * registry decides), the position is not a sentence start, the table is missing, broken or
+     * still loading, or it has nothing to offer.
      *
-     * The band is bound to the EMPTY context — the one value [displayedContextWord] can hold that
-     * the NEXT_WORD path never binds (it refuses an empty context outright) — and the tap path
-     * commits it through the same E5d predicted-word editor call, whose production implementation
-     * re-derives the live sentence start before editing. [requestSessionId] is stamped NO_SESSION
-     * on purpose: no engine request is outstanding, so nothing in flight — a late prefix result of
-     * the word before the period above all — may ever land on top of this band, the exact
-     * protection [clearToReservedBand] buys with the same stamp. No companion is ever asked either:
-     * its query would be the empty context, which [requestCompanionFill] rejects itself.
+     * The strip is bound to the empty context, a value the NEXT_WORD path never binds, and the tap
+     * path commits it through the predicted-word editor call, which re-derives the live sentence
+     * start. [requestSessionId] is set to NO_SESSION because no engine request is outstanding, so
+     * no late result (such as a prefix result for the word before the period) can land on top, as
+     * in [clearToReservedBand]. No companion is asked: [requestCompanionFill] rejects an empty
+     * query.
      */
     private fun requestSentenceStart(): Boolean {
         val language = activeLanguage ?: return false
         if (!editor.isAtSentenceStart()) return false
         var source = sentStartSources[language]
         if (source == null) {
-            // Not loaded yet: start this language's one-time background load. Re-read the map
-            // afterwards — a preparation that answers synchronously (a direct test executor)
-            // has already published the source by the time the call returns.
+            // Not loaded yet: start this language's one-time background load. The map is re-read
+            // afterwards, because a synchronous preparation (a direct test executor) has already
+            // published the source.
             maybePrepareSentStart(language)
             source = sentStartSources[language]
         }
@@ -2025,10 +1849,9 @@ class SuggestionsController internal constructor(
             return false
         }
         if (words.isEmpty()) return false
-        // P3a (docs/ROADMAP-P1.md): a sentence start is where a capital belongs, so the cells
-        // are shown capitalized — the same display-boundary casing applyPrefixResult applies to
-        // prefix candidates, and the tap commits the displayed (capitalized) string verbatim.
-        // The table itself and every lookup stay lowercase; this is display-only.
+        // A sentence start takes a capital, so the cells are shown capitalized (display-time
+        // casing, as in applyPrefixResult), and the tap commits the displayed string. The table
+        // and every lookup stay lowercase.
         val cells = ArrayList<String>(words.size)
         for (word in words) {
             cells.add(TatarWordUtils.applyCasing(word, TatarWordUtils.PrefixCasing.INITIAL_CAPS))
@@ -2047,8 +1870,8 @@ class SuggestionsController internal constructor(
 
     /**
      * Starts [language]'s one-per-process background load of its sentence-start table, at most
-     * once. A factory or executor failure is silent and terminal: a sentence start simply shows
-     * the reserved empty band, exactly as before the feature existed.
+     * once. A factory or executor failure is silent and terminal: a sentence start then shows the
+     * reserved empty strip.
      */
     private fun maybePrepareSentStart(language: String) {
         if (destroyed || language in sentStartPreparationRequested) return
@@ -2070,18 +1893,15 @@ class SuggestionsController internal constructor(
                 uiPoster.post { onSentStartReady(language, source) }
             }
         } catch (_: Throwable) {
-            // Silent: the band behaves exactly as if the table did not exist.
+            // Silent: the strip behaves as if the table did not exist.
         }
     }
 
     /**
-     * [language]'s table finished loading. The source is stored for its language even when the
-     * user has since switched away — the next switch back finds it ready. A sentence start
-     * reached BEFORE the table arrived showed the reserved empty band; fill it now rather than
-     * after the next keystroke — but only if that language is still the active one and the live
-     * editor state is still exactly a sentence-start moment with nothing bound, the same
-     * re-derivation [onEmojiSuggestReady] performs, so a load that finished after the user typed
-     * on changes nothing.
+     * [language]'s table finished loading. The source is stored even if the user has switched
+     * away. A sentence start reached before the table arrived showed the reserved empty strip;
+     * fill it now, but only if the language is still active and the live editor state is still a
+     * sentence start with nothing bound (re-derived like in [onEmojiSuggestReady]).
      */
     private fun onSentStartReady(language: String, source: SentStartSource?) {
         if (destroyed) return
@@ -2103,20 +1923,16 @@ class SuggestionsController internal constructor(
      * Takes off the strip whatever it is still painting, once the candidates behind it have been
      * unbound. Keeps the reserved height, so the keyboard does not resize.
      *
-     * The invariant this exists for is the one the user relies on and the only one they can check:
-     * **what the strip is painting is tappable.** Unbinding alone does not hold it. [onTap] reads
-     * [displayedPrefix]/[displayedContextWord] and returns without committing when both are null,
-     * so between the unbind and the arrival of the fresh result every word still on the strip is a
-     * button that does nothing and says nothing — the exact shape of failure this keyboard treats
-     * as a defect even where the code is formally right.
+     * Invariant: what the strip paints is tappable. Unbinding alone does not hold it: [onTap]
+     * returns without committing when [displayedPrefix] and [displayedContextWord] are both null,
+     * so until the fresh result arrives every word left on the strip would be a dead button.
      *
-     * Costs one repaint per keystroke that changes the prefix, and only when words were actually
-     * painted: `bandBaseCells` empty means the strip is already blank and nothing is touched. The
-     * blank lasts one engine round trip, which the caller has just dispatched (see
-     * docs/FINAL-POLISH.md for the measured length of that window).
+     * Costs one repaint per keystroke that changes the prefix, only when words were painted (empty
+     * `bandBaseCells` means the strip is already blank). The blank lasts one engine round trip,
+     * which the caller has just dispatched.
      *
-     * Deliberately does NOT touch [requestSessionId] — unlike [clearToReservedBand], the callers
-     * here are about to issue a lookup and the result of that lookup must be allowed to land.
+     * Does not touch [requestSessionId], unlike [clearToReservedBand]: the callers are about to
+     * issue a lookup whose result must be allowed to land.
      */
     private fun unbindPaintedBand() {
         if (bandBaseCells.isEmpty()) return
@@ -2125,11 +1941,11 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Publishes the empty-but-visible band and unbinds everything the strip was showing.
+     * Shows the empty but visible strip and unbinds everything it was showing.
      *
-     * The in-flight request generation is invalidated too: these paths deliberately do NOT issue a
-     * new lookup, so the engine would still consider an older token current and a late result
-     * could repaint words for text the user has already left. Clearing means clearing.
+     * The in-flight request generation is invalidated too: these paths issue no new lookup, so the
+     * engine would still consider an older token current and a late result could repaint words
+     * for text the user has already left.
      */
     private fun clearToReservedBand() {
         displayedPrefix = null
@@ -2138,8 +1954,7 @@ class SuggestionsController internal constructor(
         bandBaseCells = emptyList()
         clearCompanionRequest()
         requestSessionId = NO_SESSION
-        // P7-6: the band is the suggestions surface — with the master off a rejected glide
-        // request must not summon an empty 44dp band either.
+        // With suggestions off, a rejected glide request must not show an empty strip either.
         if (eligible) strip.reserve() else strip.hideSuggestions()
     }
 
@@ -2150,25 +1965,21 @@ class SuggestionsController internal constructor(
         suggestions: List<String>,
         kind: LookupKind,
     ) {
-        // P7-6: a GLIDE result answers the glide gate, not the suggestions master — with the
-        // master off the lift-commit must still land (the band stays out of it either way).
+        // A GLIDE result is gated by the glide gate, not the suggestions setting: with suggestions
+        // off the lift-commit must still land.
         if (!eligible && !(kind == LookupKind.GLIDE && glideEligible)) return
-        // A result computed by the engine of a language the user has left may never repaint the
-        // band ON ITS OWN. The session check below already covers it (every language change bumps
-        // the session), and the engine's own token carries the dictionary identity, but the owner of
-        // the state says so itself rather than relying on either.
+        // A result from the engine of a language the user has left may never repaint the strip on
+        // its own. The session check below covers it too, but the state owner checks explicitly.
         //
-        // The ONE thing such a result may do is fill cells the active language left empty, and only
-        // when this controller asked it to — that path is [applyCompanionResult] and it never
-        // touches a cell the active language occupies.
+        // Such a result may only fill cells the active language left empty, and only when this
+        // controller asked for it: [applyCompanionResult], which never touches an active cell.
         if (slot !== activeSlot()) {
             applyCompanionResult(slot, token, suggestions, kind)
             return
         }
-        // O5: the arrival ends the round trip. The engine suppresses stale handoffs upstream, so
-        // an active-slot result that gets here at all is the newest request's answer — ending
-        // before the currency guards is what keeps a session-crossed answer from leaving its
-        // slice open. (Every boundary that makes a result undeliverable ends the slice itself.)
+        // The arrival ends the round trip. The engine drops stale handoffs, so an active-slot
+        // result here answers the newest request; ending before the currency guards keeps a
+        // session-crossed answer from leaving its slice open.
         endLookupTrace()
         if (sessionId != requestSessionId) return
         val activeEngine = usableEngine() ?: return
@@ -2184,10 +1995,9 @@ class SuggestionsController internal constructor(
         if (suggestions.isEmpty()) {
             runMachine.observeEmptyResult(pendingPrefix)
         }
-        // P2 (docs/ROADMAP-P3.md): when the separator-time policy would fire on this word, the
-        // band stops ranking continuations and announces the coming replacement instead —
-        // exactly the AOSP visual contract. The preview owns the whole band: no companion fill
-        // rides a band whose cells are a refusal and a correction.
+        // When the separator-time autocorrect would fire on this word, the strip shows the coming
+        // replacement instead of continuations, as in AOSP. The preview owns the whole strip: no
+        // companion fill.
         val preview = computeAutocorrectPreview(autocorrectGate, pendingPrefix, suppressedPreviewWord) {
             usableEngine()?.autocorrectAdvice()
         }
@@ -2206,8 +2016,8 @@ class SuggestionsController internal constructor(
             displayedPrefix = null
             bandBaseCells = emptyList()
             strip.reserve()
-            // Nothing of the active language is displaced by an empty band, so the companion may
-            // fill it from the first cell — that is the one case where its candidate leads.
+            // An empty strip displaces nothing of the active language, so the companion may fill
+            // it from the first cell; the one case where its candidate leads.
             requestCompanionFill(LookupKind.PREFIX, pendingPrefix)
             return
         }
@@ -2234,22 +2044,19 @@ class SuggestionsController internal constructor(
 
 
     /**
-     * E5d NEXT_WORD counterpart of [applyPrefixResult]. No E4c learning (that filter is about
-     * PROPER prefixes of a growing word; NEXT_WORD only ever fires on an empty prefix, so there is no
-     * prefix growth to observe) and no casing re-application — "Контракт текста" amendment, "Регистр
-     * предсказаний": predictions are shown and inserted exactly as the bigram table stores them.
+     * NEXT_WORD counterpart of [applyPrefixResult]. No empty-result observation (NEXT_WORD fires on
+     * an empty prefix, so there is no prefix growth) and no casing re-application: predictions are
+     * shown and inserted exactly as stored.
      */
     private fun applyNextWordResult(suggestions: List<String>) {
-        // The emoji cell is pinned to the TAIL of the band whenever the context word maps to one
-        // (mission 2 of docs/EMOJI-SUGGEST-PLAN.md): word predictions keep their order in the
-        // front cells, the emoji never leads a band that has words, and the one candidate that
-        // ever yields to it is the lowest-ranked tail one (bigram #3). With no mapping the band
-        // is byte-for-byte what it was before this feature existed.
+        // When the context word maps to an emoji, the emoji takes the last cell: word predictions
+        // keep their order in the front cells, the emoji never leads a strip that has words, and
+        // only the lowest-ranked word yields to it.
         val emoji = emojiCandidate(pendingContextWord)
         if (suggestions.isEmpty()) {
-            // The active language put no WORD on the band either way (audit B4): a later bigram
-            // attach may still re-ask this context — the emoji cell and any companion fill must
-            // not read as "the active language already answered with words".
+            // The active language put no word on the strip: a later bigram attach may still
+            // re-ask this context, so the emoji cell and any companion fill must not count as an
+            // active-language answer.
             bandHasActiveLanguageWord = false
             if (emoji == null) {
                 displayedContextWord = null
@@ -2286,8 +2093,8 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * A word separator has been pressed and is ABOUT to be committed: the last chance to correct the
-     * word it finishes (D3). Returns true when the trailing word was actually replaced.
+     * A word separator has been pressed and is about to be committed: the last chance to correct
+     * the word it finishes. Returns true when the trailing word was actually replaced.
      *
      * Called before the separator reaches the input logic on purpose. At this instant the editor is
      * in exactly the state an accepted suggestion needs — a trailing word, a collapsed cursor right
@@ -2295,22 +2102,19 @@ class SuggestionsController internal constructor(
      * the separator afterwards travels the ordinary path untouched (auto-space, the double-space
      * gesture and the shift update all behave as they always did).
      *
-     * Every condition is checked here, and every one of them fails towards NOT editing text:
-     *  - the feature is on (and subordinate to suggestions: [eligible] already carries that);
-     *  - the user has not refused THIS occurrence's correction through the P2 preview's
-     *    keep-typed cell (docs/ROADMAP-P3.md) — a refusal is one-shot and consumed here;
+     * Every condition fails towards not editing text:
+     *  - the feature is on (and suggestions too: [eligible] carries that);
+     *  - the user has not refused this occurrence's correction through the preview's typed-word
+     *    cell (a one-shot refusal, consumed here);
      *  - an engine is usable and the cursor is known;
-     *  - the cursor is not inside a word, and the word is not in mixed case (which the frozen
-     *    contract gives 0 results for, so it has no defined replacement form either);
+     *  - the cursor is not inside a word, and the word is not in mixed case (no defined form);
      *  - the word is long enough ([AutocorrectPolicy.MIN_WORD_CODE_POINTS], on the normalized form);
-     *  - a verdict exists AND was computed for THIS word — a coalesced or never-answered lookup
-     *    leaves an older verdict behind, and applying it to a different word is exactly the failure
-     *    this comparison exists to prevent;
+     *  - a verdict exists and was computed for this word: a coalesced or unanswered lookup leaves
+     *    an older verdict behind, which must not be applied to a different word;
      *  - the candidate is frequent enough ([AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY]).
      *
-     * The last two are re-checked here although the engine already applied them, for the same reason
-     * the tap path re-checks the prefix inside the editor: one side of a two-sided decision must not
-     * be the only place a rule lives.
+     * The last two are re-checked although the engine already applied them, so the rule does not
+     * live on one side of the decision only.
      */
     fun maybeAutocorrectBeforeSeparator(separatorCodePoint: Int): Boolean {
         if (destroyed || !eligible) return false
@@ -2320,9 +2124,9 @@ class SuggestionsController internal constructor(
         if (editor.hasLetterAfterCursor()) return false
         val word = editor.cachedWordBeforeCursor()
         if (word.isEmpty()) return false
-        // P2 (docs/ROADMAP-P3.md): the user refused THIS occurrence's correction by tapping the
-        // preview's keep-typed cell. One-shot: the very separator it armed itself against
-        // consumes the refusal, so the same word typed later is a new occurrence.
+        // The user refused this occurrence's correction by tapping the preview's typed-word cell.
+        // One-shot: this separator consumes the refusal, so the same word typed later is a new
+        // occurrence.
         if (word == suppressedPreviewWord) {
             suppressedPreviewWord = null
             return false
@@ -2347,18 +2151,17 @@ class SuggestionsController internal constructor(
         // does for an accepted suggestion, so the replaced word reaches neither the pending set nor
         // the personal dictionary.
         runMachine.markRunDirty()
-        // Whatever the band was showing described the word that no longer stands there.
+        // Whatever the strip was showing described the word that no longer stands there.
         displayedPrefix = null
         displayedContextWord = null
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
         revertWindow.arm(word, replacement, separatorCodePoint, sessionId)
-        // ...but the boundary it establishes IS trusted for pairs (2026-09-24 audit, finding 7),
-        // exactly like the tap path: the cursor sits provably right after a real word and the
-        // separator the user pressed, so the NEXT cleanly typed word may form a pair with the
-        // corrected one. Without this re-arm the early return of the run machine's
-        // no-change branch would keep the pair machine dirty past the boundary.
+        // ...but the boundary it establishes is trusted for pairs, as on the tap path: the cursor
+        // is known to sit right after a real word and the separator, so the next cleanly typed
+        // word may pair with the corrected one. Without this the pair machine would stay dirty
+        // past the boundary (the run machine returns early when the word is unchanged).
         runMachine.trustPairBoundary()
         return true
     }
@@ -2368,7 +2171,7 @@ class SuggestionsController internal constructor(
      * made immediately before it, in which case no character is deleted; false leaves the key to the
      * ordinary backspace path.
      *
-     * There is exactly ONE undo. The state is dropped BEFORE the editor is asked to do anything, so
+     * There is exactly one undo. The state is dropped before the editor is asked to do anything, so
      * a refused undo cannot be retried and the second backspace deletes a character like any other.
      */
     fun maybeRevertAutocorrect(): Boolean {
@@ -2384,9 +2187,9 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Drops the undo window outright: a field, subtype, selection or setting boundary. The P2
-     * keep-typed refusal dies at the same boundaries — each of them also ends the word
-     * occurrence the refusal was scoped to.
+     * Closes the undo windows. Called at every event that makes an undo impossible: a new field,
+     * a subtype change, a selection change, a tap, a setting change. A refused preview is dropped
+     * too, since each of these also ends the word occurrence it was scoped to.
      */
     private fun clearRevertState() {
         revertWindow.clear()
@@ -2397,12 +2200,10 @@ class SuggestionsController internal constructor(
     }
 
     private fun onTap(suggestion: String) {
-        // P2 (docs/ROADMAP-P3.md): a tap on the keep-typed cell of a preview band refuses the
-        // coming correction for THIS occurrence of the word. It is deliberately NOT an accepted
-        // suggestion: nothing is committed (the run is not dirtied — the user typed every letter
-        // themselves), the undo window is untouched (a preview can only exist several keystrokes
-        // after it provably closed), and the band falls back to the ordinary suggestions of the
-        // same word, re-derived so the refusal is visible at once.
+        // A tap on the typed-word cell of a preview strip refuses the coming correction for this
+        // occurrence of the word. It is not an accepted suggestion: nothing is committed (the run
+        // stays clean, the user typed every letter), the undo window is untouched (it closed
+        // keystrokes ago), and the strip falls back to the word's ordinary suggestions at once.
         val keepTyped = previewKeepTypedCell
         if (keepTyped != null && displayedSessionId == sessionId && suggestion == keepTyped) {
             val prefix = displayedPrefix ?: return
@@ -2418,19 +2219,15 @@ class SuggestionsController internal constructor(
         }
         // An accepted suggestion is not the user spelling the word out: the run stops counting.
         runMachine.markRunDirty()
-        // A tap is one of the six events that close the undo window.
         clearRevertState()
         if (displayedSessionId != sessionId) {
             // Nothing bound to the current session is displayed (e.g. the text changed and the old
             // candidates were invalidated): a tap must be a no-op and must never commit.
             return
         }
-        // Exactly one of the three bindings is ever non-null (PROPOSALS.md, "Контракт текста"
-        // amendment, "Сосуществование") — the owner of state reads the kind off what is actually
-        // bound, not off the tapped string's content, which is the same rule E5c's engine-level
-        // guarantee exists for, one layer up. The branches below are deliberately EXCLUSIVE
-        // (2026-09-24 audit, finding 8): if the invariant ever broke, a tap must still commit at
-        // most once — never one edit per binding.
+        // At most one of the three bindings is non-null, and the kind is read off what is bound,
+        // not off the tapped string. The branches below are exclusive: even if the invariant
+        // broke, a tap would still commit at most once.
         val prefix = displayedPrefix
         if (prefix != null) {
             // Commit against the DISPLAYED prefix, not the mutable pendingPrefix. The editor's own
@@ -2438,32 +2235,25 @@ class SuggestionsController internal constructor(
             // word == expectedPrefix, deletes by code points) is the second line of defense.
             if (editor.commitSuggestion(prefix, suggestion)) {
                 // The field is still eligible after a commit; clear the words but keep the reserved
-                // band so accepting a suggestion does not resize the keyboard.
+                // strip so accepting a suggestion does not resize the keyboard.
                 displayedPrefix = null
                 displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
-                // The accepted cell counts as a use: if it shows a saved personal word, the sink
-                // bumps its usage counter (in memory; the file moves at the session boundary). A
-                // dictionary or unknown word changes nothing — the sink decides (2026-09-24 audit,
-                // finding 2; the pairs mirror is noteAcceptedPrediction in the NEXT_WORD branch).
+                // The accepted cell counts as a use: for a saved personal word the sink bumps its
+                // usage counter (in memory; the file is written at the session boundary).
                 runMachine.noteAcceptedSuggestion(suggestion)
-                // P1: the tapped word itself never counts (markRunDirty above already saw to
-                // that), but the boundary it just established — the cursor sits provably right
-                // after the committed word and its auto-space — is one the pair machine trusts:
-                // the NEXT word the user types out cleanly may form a pair with it ("typed or
-                // tapped" context, docs/ROADMAP-P2.md).
+                // The tapped word itself never counts (markRunDirty above), but the boundary after
+                // it (the committed word and its auto-space) is trusted for pairs: the next cleanly
+                // typed word may pair with it.
                 runMachine.trustPairBoundary()
-                // A tap-commit never reaches onTextChanged() (no InputTransaction wraps it) and the
-                // settle backstop self-cuts on requestSessionId == sessionId, so unless the
-                // follow-up lookup is issued right here the band stays empty until the next
-                // keystroke. The editor's text cache is synchronously current at this point: with
-                // the auto-space appended this falls into the NEXT_WORD path for the word just
-                // committed (E5, docs/archive/PROPOSALS.md — predictions after an ACCEPTED word);
-                // without it the committed word is the new trailing prefix, exactly as after typed
-                // input. The session is deliberately NOT bumped: the commit is part of this
-                // session's text, and a late onCursorMoveSettled must still self-cut.
+                // A tap-commit never reaches onTextChanged() (no InputTransaction wraps it), and
+                // onCursorMoveSettled skips when requestSessionId == sessionId, so the follow-up
+                // lookup must be issued here or the strip stays empty until the next keystroke. The
+                // text cache is current: with the auto-space this takes the NEXT_WORD path for the
+                // committed word; without it the committed word is the new trailing prefix. The
+                // session is not bumped: the commit is part of this session's text.
                 requestCurrentPrefix()
             }
             return
@@ -2471,7 +2261,7 @@ class SuggestionsController internal constructor(
         val context = displayedContextWord
         val glideAlternativesFor = displayedGlideAlternativesFor
         if (context != null) {
-            // Same second line of defense as the PREFIX path, through the E5d commit path instead:
+            // Same second line of defense as the PREFIX path, through the predicted-word commit:
             // the editor re-derives the live context word and refuses a stale tap itself.
             if (editor.commitPredictedWord(context, suggestion)) {
                 displayedContextWord = null
@@ -2479,19 +2269,16 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 strip.reserve()
-                // B2: an accepted emoji tail cell is an emoji insertion like a panel or search
-                // pick — report it so the recent-emoji list learns it. Word cells never reach the
-                // sink: only the letter-free tail cell of a NEXT_WORD band reads as an emoji cell,
-                // and a refused commit above never gets here at all.
+                // An accepted emoji cell is an emoji insertion like a panel or search pick, so
+                // the recent-emoji list learns it. Word cells never reach the sink, and a refused
+                // commit never gets here.
                 if (isEmojiCell(suggestion)) {
                     emojiInsertionSink?.onEmojiInserted(suggestion)
-                    // Feature C: the same pick teaches the personal (word, emoji) co-usage —
-                    // always as an observation, and additionally as a USE when the tapped cell is
-                    // exactly what the learned source itself offered for this context (the
-                    // acceptance half of the pinned ranking). The learned lookup runs here, at tap
-                    // time, rather than being remembered from the fill: stateless, so no stale
-                    // remembered answer can ever bump the wrong entry. A sentence-start band
-                    // carries no word to learn against, and it never shows an emoji cell anyway.
+                    // The same pick teaches learned emoji: always as an observation, and also as a
+                    // use when the tapped cell is what the learned source itself offered for this
+                    // context. The learned lookup runs at tap time rather than being remembered
+                    // from the fill, so a stale answer cannot bump the wrong entry. A
+                    // sentence-start strip has no word to learn against.
                     val personalSink = personalEmojiSink
                     if (personalSink != null && context.isNotEmpty()) {
                         personalSink.noteObservation(context, suggestion)
@@ -2502,11 +2289,8 @@ class SuggestionsController internal constructor(
                         }
                     }
                 }
-                // P1: an accepted NEXT_WORD cell backed by a learned pair bumps that pair's usage
-                // counter (the other half of the pinned usage-then-frequency ranking). The sink
-                // decides whether the cell IS a learned pair — a static successor, a word form or
-                // a fallback word changes nothing — and a sentence-start band (empty context) is
-                // never a pair at all.
+                // See [CleanRunMachine.noteAcceptedPrediction]; a sentence-start strip (empty
+                // context) is never a pair.
                 if (context.isNotEmpty()) {
                     runMachine.noteAcceptedPrediction(context, suggestion)
                 }
@@ -2518,18 +2302,14 @@ class SuggestionsController internal constructor(
                 requestCurrentPrefix()
             }
         } else if (glideAlternativesFor != null) {
-            // P7-3.5 (the lift-commit UX amendment, docs/ROADMAP-P7.md): a tap on a glide
-            // ALTERNATIVE replaces the just-committed glide word in the editor — the editor's own
-            // position re-check (the trailing word must still BE the committed word right before
-            // the cursor) is the second line of defense; P7-7: the replacement keeps the chain
-            // space exactly as committed, never adds or removes one. The replacement is still not
-            // a clean run (the markRunDirty above already saw to that), the ALTERNATIVE counts as
-            // the accepted suggestion (the same usage-counter bump the lift-commit gave the word
-            // it replaces), the pair machine's trusted boundary moves to the alternative, and the
-            // strip refreshes for it.
+            // A tap on a glide alternative replaces the just-committed glide word in the editor,
+            // which re-checks that the committed word still stands right before the cursor. The
+            // chain space stays as committed. The run stays dirty (markRunDirty above), the
+            // alternative counts as the accepted suggestion, the trusted pair boundary moves to
+            // it, and the strip refreshes for it.
             if (editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion,
                     glideCommitPrependedSpace)) {
-                // The undo window tracks the text: a backspace now deletes the ALTERNATIVE whole
+                // The undo window tracks the text: a backspace now deletes the alternative whole
                 // (with the same chain-space treatment).
                 glideCommittedWord = suggestion
                 displayedGlideAlternativesFor = null
@@ -2545,28 +2325,24 @@ class SuggestionsController internal constructor(
 
     /**
      * One backspace right after a glide lift-commit deletes the whole committed word instead of
-     * one character — the Gboard gesture-undo. P7-7: the deletion covers the chain space exactly
-     * when the commit prepended it, so undoing the second glide of a chain returns to exactly the
-     * first word's state. Returns true when it did.
+     * one character, including the chain space when the commit prepended it, so undoing the second
+     * glide of a chain returns to the first word's state. Returns true when it did.
      *
-     * The window holds exactly one word and dies the moment the text changes for any other reason
-     * (a typed character, a selection move, a boundary), exactly like the autocorrect undo window
-     * it mirrors: the state is dropped BEFORE the editor is asked, so a refused undo cannot be
-     * retried and the second backspace deletes a character like any other. The editor's own
-     * position re-check (the trailing word must still be the committed word right before the
-     * cursor) is the second line of defense.
+     * The window holds one word and closes when the text changes for any other reason, like the
+     * autocorrect undo: the state is dropped before the editor is asked, so a refused undo cannot
+     * be retried. The editor re-checks that the committed word still stands before the cursor.
      */
     fun maybeUndoGlideCommit(): Boolean {
         val word = glideCommittedWord ?: return false
         val prependedSpace = glideCommitPrependedSpace
         glideCommittedWord = null
         glideCommitPrependedSpace = false
-        // The band of alternatives (if any) described the word that no longer stands there.
+        // The alternatives (if any) described the word that no longer stands there.
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
-        // P7-6: the undo is part of the gesture's typing UX, so it answers the glide gate — it
-        // works with the suggestions master off, where no band ever painted.
+        // The undo belongs to glide typing, so it follows the glide gate and works with
+        // suggestions off.
         if (destroyed || !glideEligible) return false
         if (!editor.hasKnownCursor()) return false
         return editor.deleteGlideLiftedWord(word, prependedSpace)
@@ -2576,11 +2352,9 @@ class SuggestionsController internal constructor(
         /**
          * The language a call that names none means.
          *
-         * The app shipped monolingual for five releases and its whole test suite drives the
-         * controller through the boolean-only overloads; those mean the language that used to be
-         * the only one. Reads the single source of truth (`PersonalSubtypes.TATAR_RU`) so the
-         * request key can never drift from `LatinIME.isSuggestionsEligible()`, which reads the same
-         * constant.
+         * The boolean-only overloads (used by most tests) mean Tatar. Reads
+         * `PersonalSubtypes.TATAR_RU`, the same constant as `LatinIME.isSuggestionsEligible()`, so
+         * the two cannot drift apart.
          */
         internal const val DEFAULT_LANGUAGE = PersonalSubtypes.TATAR_RU
         private const val DESTROY_TIMEOUT_MS = 60L
@@ -2589,15 +2363,13 @@ class SuggestionsController internal constructor(
         // so this can never be mistaken for a live generation.
         private const val NO_SESSION = -1L
 
-        // O5: sentinel for "no lookup slice is open"; real cookies are serials starting at 1.
+        // Sentinel for "no lookup slice is open"; real cookies are serials starting at 1.
         private const val NO_TRACE_COOKIE = -1
 
         /**
-         * The [displayedContextWord]/[pendingContextWord] binding of a sentence-start band (P4):
-         * the empty string, the one context value the NEXT_WORD path never binds — it refuses an
-         * empty context outright — so it names "a sentence start" unambiguously. The tap path
-         * commits it through the ordinary E5d predicted-word call, whose production implementation
-         * re-derives the live sentence start before editing.
+         * The [displayedContextWord]/[pendingContextWord] binding of a sentence-start strip: the
+         * empty string, which the NEXT_WORD path never binds, so it means "a sentence start". See
+         * [requestSentenceStart].
          */
         private const val SENTENCE_START_CONTEXT = ""
     }

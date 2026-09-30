@@ -270,9 +270,9 @@ class RichInputConnectionRobustnessContractTest {
             replaceTextBody,
             bodyOf("public void deleteTextBeforeCursor(", "public void deleteSelectedText()"),
             deleteSelectedBody,
-            bodyOf("public void performEditorAction(", "/**\n     * 2026-09-25 audit, F1"),
+            bodyOf("public void performEditorAction(", "private static final int MAX_DIRECT_PASTE_CHARS"),
             pasteBody,
-            bodyOf("public void sendKeyEvent(", "/**\n     * Set the selection"),
+            bodyOf("public void sendKeyEvent(", "public void setSelection("),
             bodyOf("public void setSelection(", "public int getExpectedSelectionStart()"),
         )
         for ((index, body) in bodies.withIndex()) {

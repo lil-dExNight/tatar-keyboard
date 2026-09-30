@@ -19,18 +19,15 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 import java.nio.charset.StandardCharsets
 
 /**
- * An immutable in-memory snapshot of one subtype's personal (word, emoji) entries, with a
- * read-only per-word lookup — the emoji sibling of [PersonalBigramDictionary]. Parallel arrays,
- * all ordered by the entry key ascending (the normalized word first, then the emoji cluster, both
- * compared as unsigned UTF-8 bytes — the same order [TpersemValidator] enforces on disk):
+ * An immutable in-memory snapshot of one subtype's learned (word, emoji) entries, with a read-only
+ * per-word lookup. Parallel arrays, all ordered by the entry key ascending (normalized word, then
+ * emoji cluster, as unsigned UTF-8 bytes; the order [TpersemValidator] enforces):
  * - [words] — normalized words (the lookup key; also what the settings list shows);
  * - [emojiClusters] — the raw emoji clusters (what is shown and inserted);
  * - [usageCounts] — accepted-suggestion counters (taps);
  * - [frequencyCounts] — clean co-usage observation counters.
  *
- * NOT a Kotlin `data class`: it carries the user's words, and a synthesised `toString` would print
- * them at the first interpolation. This class writes nothing to disk; the atomic writer and the
- * LRU eviction live in the store package.
+ * See [PersonalDictionary] for the privacy and read-only rules.
  */
 class PersonalEmojiDictionary private constructor(
     private val words: Array<String>,
@@ -55,12 +52,9 @@ class PersonalEmojiDictionary private constructor(
     fun frequencyCountAt(index: Int): Int = frequencyCounts[index]
 
     /**
-     * The top emoji learned for [normalizedWord] — the one the strip's emoji tail cell offers — by
-     * the pinned personal order: usage count descending, then frequency count descending, then the
-     * array order within the word (emoji bytes ascending, the final tiebreak). The word is matched
-     * on its NORMALIZED form only — the caller normalizes, exactly as the bigram-table lookup
-     * already does for the static successors. A binary search bounds the contiguous word range, and
-     * the scan touches only THIS word's entries.
+     * The top emoji learned for [normalizedWord] (already normalized by the caller) for the strip's
+     * emoji cell: usage descending, frequency descending, then emoji bytes ascending (array order).
+     * A binary search bounds the word range; only that range is scanned.
      */
     fun emojiFor(normalizedWord: String): String? {
         if (isEmpty || normalizedWord.isEmpty()) return null
@@ -83,9 +77,8 @@ class PersonalEmojiDictionary private constructor(
     }
 
     /**
-     * Every emoji learned for [normalizedWord], in the same pinned order [emojiFor] takes the top
-     * of: usage descending, frequency descending, emoji bytes ascending. The mirror of
-     * [PersonalBigramDictionary.successorsFor] for the word's emoji.
+     * Every emoji learned for [normalizedWord], in the order [emojiFor] takes the top of. See
+     * [PersonalBigramDictionary.successorsFor].
      */
     fun emojisFor(normalizedWord: String): List<String> {
         if (isEmpty || normalizedWord.isEmpty()) return emptyList()
@@ -96,7 +89,7 @@ class PersonalEmojiDictionary private constructor(
         val matches = ArrayList<Int>(end - first)
         for (index in first until end) matches.add(index)
         // Stable within-(usage, frequency) order preserves the emoji-ascending array order as the
-        // final tiebreak — the pinned order is usage desc, frequency desc, key asc.
+        // final tiebreak.
         matches.sortWith(
             compareByDescending<Int> { usageCounts[it] }
                 .thenByDescending { frequencyCounts[it] }
@@ -106,12 +99,10 @@ class PersonalEmojiDictionary private constructor(
     }
 
     /**
-     * The index of the entry ([normalizedWord], [emoji]) in the parallel arrays, or -1. A BINARY
-     * search over the entry key, for the same reason [PersonalDictionary]'s membership test is
-     * one. The word half compares as a String — alphabet words are all BMP, where string order and
-     * unsigned-byte order coincide; the emoji half compares as unsigned UTF-8 bytes, because a
-     * variation selector (BMP, U+FE0E/U+FE0F) and a supplementary modifier inside a cluster order
-     * differently in UTF-16 units than in bytes, and the array is sorted by bytes.
+     * The index of the entry ([normalizedWord], [emoji]), or -1, by binary search. The word compares
+     * as a String (alphabet words are BMP, where String and byte order agree); the emoji compares as
+     * unsigned UTF-8 bytes, since variation selectors and supplementary code points order differently
+     * in UTF-16 units.
      */
     fun indexOfEntry(normalizedWord: String, emoji: String): Int {
         var low = 0

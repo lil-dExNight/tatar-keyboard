@@ -20,8 +20,8 @@ import android.content.Context
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 
 /**
- * The six factors that decide whether ANYTHING may be learned. One predicate, deliberately, rather
- * than six checks spread over the read and the write paths — that is how the two drift apart.
+ * The factors that decide whether anything may be learned, kept in one predicate so the checks
+ * cannot drift apart across paths.
  *
  * Every factor is supplied by `LatinIME`, which is the only place that sees all of them:
  *  1. Tatar suggestions are eligible for this field and subtype (which already implies the field
@@ -31,8 +31,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSi
  *  4. the field is not a postal address;
  *  5. — folded into (1): a field with no editor info at all is never eligible, so the
  *     `editorInfo == null` case is closed by the same factor rather than by a separate check;
- *  6. incognito mode is OFF (U8, docs/ROADMAP-P2.md): the pause gates WRITES only — this sink
- *     included, pending counters included — while the read side keeps surfacing what is saved.
+ *  6. learning is not paused (incognito): the pause gates writes only, pending counters
+ *     included, while the read side keeps showing what is saved.
  *
  * The conjunction itself is [PersonalLearningGates.mayLearn], pure and JVM-tested; this interface
  * is the shape `LatinIME` hands the sinks.
@@ -50,9 +50,9 @@ fun interface ActiveSubtypeSupplier {
  * Turns clean-completion and accepted-suggestion events into store mutations, under
  * [PersonalLearningPredicate].
  *
- * This is the ONE place where typing can cause a write, and it is deliberately not in `LatinIME` and
- * not in `SuggestionsController`: the class that sees every keystroke announces an event, and the
- * decision to persist anything lives here, inside the package that owns the file.
+ * This is the only place where typing can cause a write. It is not in `LatinIME` or
+ * `SuggestionsController`: the class that sees every keystroke only announces events, and the
+ * decision to write lives in the package that owns the file.
  */
 object PersonalLearning {
 
@@ -70,11 +70,9 @@ object PersonalLearning {
     /**
      * The sink for whatever language is active at the moment of the event.
      *
-     * The subtype is resolved per event, not per sink: the sink is built once for the IME's whole
-     * lifetime, while the user switches layouts inside a single editor session. A word completed on
-     * the Russian layout must reach the Russian store and nothing else — there is no shared
-     * "default" store, and writing it to the Tatar one would put Russian words into Tatar
-     * suggestions for good. A null subtype (a layout with no dictionary) writes nothing.
+     * The subtype is resolved per event, not per sink: the sink lives as long as the IME, while the
+     * user switches layouts within one session, and a word must reach its own language's store. A
+     * null subtype (a layout with no dictionary) writes nothing.
      */
     @JvmStatic
     fun sinkFor(
@@ -89,18 +87,15 @@ object PersonalLearning {
         }
 
         override fun onAcceptedSuggestion(word: String) {
-            // The acceptance bump is a write like any other (2026-09-24 audit, finding 2): the
-            // same predicate, the same per-event subtype resolution, the same store package. The
-            // store itself decides whether the word is a saved one and never rewrites the file
-            // here — it bumps the counter in memory and lets the session-end flush persist it.
+            // The acceptance bump is a write like any other: same predicate, same per-event
+            // subtype. The store bumps the counter in memory; the session-end flush writes it.
             if (!predicate.mayLearn()) return
             val subtypeId = activeSubtype.get() ?: return
             PersonalDictionaries.storeFor(context, subtypeId).noteAcceptedSuggestion(word)
         }
 
         override fun onInputFinished() {
-            // The flush is gated too: without the predicate a session that became ineligible could
-            // still put what it accumulated on disk.
+            // The flush is gated too, so a session that became ineligible writes nothing.
             if (!predicate.mayLearn()) return
             val subtypeId = activeSubtype.get() ?: return
             PersonalDictionaries.storeFor(context, subtypeId).flush()

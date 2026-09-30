@@ -21,10 +21,9 @@ import rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 
 /**
- * The audio/haptic key feedback of {@link LatinIME} (T2 split, part 2 of 3): the per-press
- * feedback with its key-repeat thinning, and the tick of the cursor gestures. Static methods
- * taking the service, so the bodies moved here verbatim; the feedback itself is performed by
- * {@link AudioAndHapticFeedbackManager} exactly as before.
+ * The audio/haptic key feedback of {@link LatinIME}: the per-press feedback with its key-repeat
+ * thinning, and the tick of the cursor gestures. The feedback itself is performed by
+ * {@link AudioAndHapticFeedbackManager}.
  */
 final class LatinImeKeyFeedback {
     private static final int PERIOD_FOR_AUDIO_AND_HAPTIC_FEEDBACK_IN_KEY_REPEAT = 2;

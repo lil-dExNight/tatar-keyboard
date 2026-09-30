@@ -17,15 +17,11 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
 /**
- * One personal-dictionary match: the form to SHOW ([rawForm], as the user saved it) together with
- * the form to COMPARE by ([normalizedForm]).
+ * One personal-dictionary match: the form to show ([rawForm], as the user saved it) and the form
+ * to compare by ([normalizedForm]). Duplicate detection against dictionary candidates and the
+ * exact-word exclusion use the normalized form.
  *
- * Both are needed by the three-class merge (E4b): the display form carries the user's own casing,
- * while duplicate detection against dictionary candidates and the exact-word exclusion are defined
- * on the normalized form ("Контракт текста", правка 3 из E4a-1).
- *
- * NOT a Kotlin `data class`, and [toString] is overridden: this type carries the user's word, and a
- * synthesised `toString` would print it at the first interpolation.
+ * A plain class with a silent [toString], because it carries the user's word.
  */
 class PersonalCandidate(val rawForm: String, val normalizedForm: String) {
     /** Deliberately says nothing: the user's word must never reach a log or an exception message. */
@@ -51,23 +47,14 @@ fun interface PersonalCandidateSource {
     fun isEmpty(): Boolean = false
 
     /**
-     * True when [normalizedWord] is ITSELF a personal record — the membership test D3 needs to leave
-     * the user's own words alone. Distinct from [candidatesFor], which deliberately EXCLUDES the
-     * record equal to the prefix because it must never suggest what is already typed.
-     *
-     * Defaults to false so a source written before D3 keeps compiling and simply vetoes nothing.
+     * True when [normalizedWord] is itself a personal record, so autocorrection leaves it alone.
+     * Unlike [candidatesFor], which excludes the record equal to the prefix. Defaults to false.
      */
     fun containsNormalized(normalizedWord: String): Boolean = false
 
     /**
-     * The immutable snapshot the GLIDE decode side indexes (docs/GLIDE-PERSONAL.md): the whole
-     * personal dictionary, read once per decoder rebuild on the engine worker. A glide decode
-     * never walks prefix matches — it needs the entries themselves, and only when the snapshot's
-     * identity changes, so the per-gesture cost of an unchanged personal dictionary is one
-     * reference read.
-     *
-     * Defaults to [PersonalDictionary.EMPTY] so a source written before the glide integration
-     * keeps compiling and adds no glide candidates.
+     * The whole personal dictionary for the glide decoder, read on the engine worker when the
+     * decoder is rebuilt after the snapshot identity changes. Defaults to [PersonalDictionary.EMPTY].
      */
     fun glideSnapshot(): PersonalDictionary = PersonalDictionary.EMPTY
 

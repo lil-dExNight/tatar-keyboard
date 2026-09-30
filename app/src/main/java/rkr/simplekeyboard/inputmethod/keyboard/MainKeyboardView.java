@@ -105,7 +105,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     // TODO: Consider extending to support multiple more keys panels
     private MoreKeysPanel mMoreKeysPanel;
 
-    // The glide trail (P7-5): the fading polyline drawn under the fingertip of an armed glide.
+    // The glide trail: the fading polyline drawn under the fingertip of an armed glide.
     // Fed through {@link DrawingProxy#onGlideTrailPoint}; preallocated, zero-allocation draw.
     private final GlideTrail mGlideTrail = new GlideTrail();
     private final Paint mGlideTrailPaint = new Paint();
@@ -344,13 +344,11 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     @Override
     public void onKeyPressed(final Key key, final boolean withPreview) {
         final boolean showPreview = withPreview && !key.noKeyPreview();
-        // M2 (docs/APPLE-UX-2026-09-25.md): on iOS a LETTER key answers a tap with the balloon
-        // ONLY — it does not darken. Functional keys (shift, delete, 123, enter, spacebar) DO
-        // change fill on iOS and keep the pressed state here. The fill also stays whenever the
-        // balloon cannot appear — the popup switched off in settings, or a key that has no
-        // preview at all — because feedback-less keys would be worse than non-iOS ones. The
-        // glide highlight is unaffected: it arrives with withPreview == false, so it still
-        // presses the key (P7-5, PointerTracker.updateGlideFeedback).
+        // As on iOS, a letter key answers a tap with the balloon only and does not darken.
+        // Functional keys (shift, delete, 123, enter, spacebar) keep the pressed fill. The fill
+        // also stays whenever the balloon cannot appear (popup off in settings, or a key with no
+        // preview), so no key is left without feedback. The glide highlight arrives with
+        // withPreview == false, so it still presses the key (PointerTracker.updateGlideFeedback).
         final boolean balloonCarriesTheFeedback =
                 showPreview && key.isNormalBackground() && mKeyPreviewDrawParams.isPopupEnabled();
         if (!balloonCarriesTheFeedback) {
@@ -424,7 +422,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         if (mGlideTrail.isEmpty()) {
             return;
         }
-        // P7-7: the lift fades the trail out over GlideTrail.FADE_OUT_MS instead of erasing it
+        // The lift fades the trail out over GlideTrail.FADE_OUT_MS instead of erasing it
         // instantly; the fade drives its own bounded re-invalidation from the draw pass.
         mGlideTrail.startFadeOut((float) SystemClock.uptimeMillis());
         invalidate();
@@ -662,10 +660,10 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     }
 
     /**
-     * The fade's frame cadence. 33 ms (≈30 fps) instead of one animation frame: the fade itself
-     * is wall-clock anchored (GlideTrail.fadeFactor), so the cadence changes only how often the
-     * strip is redrawn during the 250 ms fade-out, never the fade's duration or shape — and the
-     * coarser grid halves the redraw count of a purely cosmetic animation.
+     * The fade's frame cadence, about 30 fps instead of one animation frame. The fade is
+     * anchored to the wall clock (GlideTrail.fadeFactor), so the cadence changes only how often
+     * the view is redrawn during the fade-out, not its duration or shape, and it halves the
+     * redraw count of a purely cosmetic animation.
      */
     private static final long FADE_FRAME_MS = 33L;
 

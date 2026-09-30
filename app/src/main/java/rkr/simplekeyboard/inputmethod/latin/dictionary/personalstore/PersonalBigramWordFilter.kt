@@ -23,18 +23,10 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Pure input filter for one word of a personal-bigram pair (P1 of Phase 2, docs/ROADMAP-P2.md) —
- * the pair analogue of [PersonalWordFilter], applying exactly the per-record checks that
- * `TpersbValidator` enforces when reading a `.tpersb` file, so a word this filter accepts
- * round-trips through the writer and back through the validator without surprise.
- *
- * The one deliberate difference from the words store is the length window: pair words are
- * 1..24 code points ([TpersbFormat.MIN_WORD_CODE_POINTS]/[TpersbFormat.MAX_WORD_CODE_POINTS])
- * instead of 3..24 — a one-letter word is a legitimate pair member, and the dictionary-membership
- * gate on the context, not a length floor, is what keeps junk out.
- *
- * All checks are content checks — no I/O, no logging, no user text in any message (there are none
- * here). Not a `data class`; there is nothing to carry.
+ * Pure input filter for one word of a learned pair; see [PersonalWordFilter]. It applies the checks
+ * `TpersbValidator` enforces. The only difference is the length window, 1..24 code points
+ * ([TpersbFormat.MIN_WORD_CODE_POINTS]..[TpersbFormat.MAX_WORD_CODE_POINTS]): a one-letter word is
+ * a legitimate pair member.
  */
 internal object PersonalBigramWordFilter {
     /** The NFC lowercase form used for ordering, dedup, hashing and lookup. */
@@ -42,20 +34,16 @@ internal object PersonalBigramWordFilter {
         Normalizer.normalize(word, Normalizer.Form.NFC).lowercase(Locale.ROOT)
 
     /**
-     * Returns the normalized form of [rawWord] if it is eligible as a member of a personal-bigram
-     * pair for a subtype whose [alphabet] is given, or null otherwise. Rejects (fail-closed toward
-     * NOT storing): MIXED casing of the raw form, a normalized length outside 1..24 code points, a
-     * leftover combining mark after NFC, any code point outside the alphabet (which rules out
-     * digits, Latin, `@`, dots, dashes and every other symbol), and a raw form that would not fit
-     * the on-disk byte-length u8 field.
+     * Returns the normalized form of [rawWord] if it is eligible as a pair member for a subtype
+     * with [alphabet], or null. The same rejections as [PersonalWordFilter.acceptedNormalizedForm],
+     * with the 1..24 length window.
      */
     fun acceptedNormalizedForm(rawWord: String, alphabet: Set<Int>): String? {
         if (rawWord.isEmpty()) return null
         // RAW form: casing must not be MIXED (same rule as the validator's raw-form check).
         if (TatarWordUtils.classifyCasing(rawWord) == TatarWordUtils.PrefixCasing.MIXED) return null
-        // The raw form is what goes on disk for the successor; its UTF-8 length must fit the u8
-        // field. The context is stored normalized, which can only ever be shorter, so the one
-        // check covers both halves of the record.
+        // The raw successor goes on disk; its UTF-8 length must fit the u8 field. The context is
+        // stored normalized, which is never longer, so one check covers both halves.
         if (rawWord.toByteArray(StandardCharsets.UTF_8).size > MAX_RAW_WORD_BYTES) return null
 
         val normalized = normalize(rawWord)

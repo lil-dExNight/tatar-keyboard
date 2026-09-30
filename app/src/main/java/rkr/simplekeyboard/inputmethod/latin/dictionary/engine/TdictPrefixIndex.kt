@@ -16,15 +16,13 @@ internal fun interface PrefixComputer {
 }
 
 /**
- * P3 same-stem boost seam (docs/TT-SUGGESTIONS.md): a language-specific table of inflectional
- * suffix forms, consulted by the exact pass of [TdictPrefixIndex.lookup] when the typed prefix is
- * itself a complete dictionary word. The remainder of a candidate comes from a caller-supplied
- * buffer in at most two contiguous pieces (a schema-2 word is a shared prefix of its block's first
- * word plus a suffix of its own), so the test takes them as two byte ranges and must never
- * allocate. The lookup path hands a heap view of the block scratch — a verbatim bulk-fetched copy
- * of the mapped block (O7 follow-up, 2026-09-29) — so the test reads at array speed while the
- * mapping stays the source of truth. The Tatar engine is constructed with `TatarSuffixRules`;
- * the Russian engine passes null and never applies Tatar rules.
+ * Same-stem boost: a language-specific table of inflectional suffixes, consulted by the exact pass
+ * of [TdictPrefixIndex.lookup] when the typed prefix is itself a complete dictionary word.
+ *
+ * A candidate's remainder arrives in at most two contiguous byte ranges (a schema-2 word is a
+ * shared prefix of its block's first word plus its own suffix), and the test must not allocate.
+ * The buffer is a heap copy of the mapped block (see [TdictPrefixIndex]). The Tatar engine uses
+ * `TatarSuffixRules`; the Russian engine passes null.
  */
 fun interface InflectedSuffixTable {
     fun isInflectedContinuation(
@@ -37,50 +35,47 @@ fun interface InflectedSuffixTable {
 }
 
 /**
- * Exact whole-word frequency of a dictionary: the P3 after-word forms keep only generated
- * candidates the dictionary actually carries. [TdictPrefixIndex] is the implementation; the
- * sentinel for "absent" is 0 (schema 2 stores strictly positive frequencies).
+ * Exact whole-word frequency in a dictionary; after-word forms keep only generated candidates the
+ * dictionary contains. [TdictPrefixIndex] is the implementation; 0 means absent (schema 2 stores
+ * strictly positive frequencies).
  */
 fun interface WordFrequencySource {
     fun frequencyOf(word: String): Long
 }
 
 /**
- * Sink of [TdictPrefixIndex.forEachWordCold] (P7-1, docs/GLIDE-PLAN.md): one visit per entry, in
- * dictionary order, with the word and its raw frequency. A fun interface with a primitive Long
- * (not a Kotlin lambda type) so the full-dictionary walk does not box a Long per word.
+ * Sink of [TdictPrefixIndex.forEachWordCold]: one visit per entry, in dictionary order, with the
+ * word and its raw frequency. A fun interface with a primitive Long (not a Kotlin function type),
+ * so the full-dictionary walk does not box a Long per word.
  */
 fun interface ColdWordVisitor {
     fun visit(word: String, frequency: Long)
 }
 
 /**
- * A [PrefixComputer] that also reports how many of the results it just returned were EXACT
- * dictionary candidates; the rest are fuzzy (E3).
+ * A [PrefixComputer] that also reports how many of the results it just returned were exact
+ * dictionary candidates; the rest come from typo recovery.
  *
- * The three-class merge of E4b has to insert one personal word BETWEEN the exact and the fuzzy
- * candidates, so it must know where the boundary is — and the frozen `lookup` signature returns a
- * bare `List<String>` that cannot carry it. The count is exposed as state rather than as a richer
- * return type on purpose: `lookup` stays frozen, and no object is allocated per lookup to carry two
- * numbers. Reading it is safe under exactly the guarantee the index's scratch buffers already rely
- * on — at most one active worker, serialized by `LatestOnlyPrefixEngine`.
+ * The personal merge inserts one personal word between the exact and the typo-recovery candidates,
+ * so it needs the boundary, and `lookup` returns a bare `List<String>`. The count is exposed as
+ * state so no object is allocated per lookup. Reading it relies on the same guarantee as the
+ * index's scratch buffers: at most one active worker, serialized by `LatestOnlyPrefixEngine`.
  */
 internal interface ClassifiedPrefixComputer : PrefixComputer {
-    /** Number of LEADING results of the last [lookup] that are exact candidates. */
+    /** Number of leading results of the last [lookup] that are exact candidates. */
     val lastExactCount: Int
 
     /**
-     * The D3 autocorrect verdict of the last [lookup], or null when the typed word must not be
-     * replaced. Read from the UI thread, hence the implementations publish it through a `@Volatile`
-     * reference; a computer that does not run the class #1 pass simply never advises anything.
+     * Autocorrect verdict of the last [lookup], or null when the typed word must not be replaced.
+     * Read from the UI thread, so implementations publish it through a `@Volatile` reference.
      */
     val lastAutocorrectAdvice: AutocorrectAdvice?
         get() = null
 }
 
 /**
- * Receives the current key-neighbor table for a computer that runs a fuzzy pass. Kept separate from
- * [PrefixComputer] so the frozen `lookup` signature never changes.
+ * Receives the current key-neighbor table for a computer that runs a typo-recovery pass. Separate
+ * from [PrefixComputer] so the `lookup` signature stays unchanged.
  */
 internal interface KeyNeighborSink {
     fun updateKeyNeighbors(table: KeyNeighborTable?)
@@ -140,12 +135,11 @@ private inline fun isValidUtf8Scalar(size: Int, byteAt: (Int) -> Int): Boolean {
 }
 
 /**
- * Immutable schema-2 reader. The supplied buffer must already have passed D1b validation.
+ * Schema-2 dictionary reader. The supplied buffer must already have passed storage validation;
+ * [open] re-checks the invariants lookups depend on.
  *
- * [suffixTable] is the P3 same-stem boost table (docs/TT-SUGGESTIONS.md): null for an engine that
- * never boosts (the Russian one, and every fixture that predates P3 — their behavior is
- * byte-identical to the frozen D1 pass). It is consulted by the exact pass only, and only when the
- * typed prefix is itself a complete dictionary word.
+ * [suffixTable] is the same-stem boost table, null for an engine that never boosts (the Russian
+ * one). It is consulted by the exact pass only, when the typed prefix is itself a complete word.
  */
 internal class TdictPrefixIndex private constructor(
     private val bytes: ByteBuffer,
@@ -157,9 +151,9 @@ internal class TdictPrefixIndex private constructor(
     private val fuzzyPolicy: FuzzyEditPolicy,
 ) : ClassifiedPrefixComputer, KeyNeighborSink, BigramDictionary, WordFrequencySource,
     TopFrequencySource {
-    // Reusable per-index scratch. The index stops being fully immutable: these buffers are touched
-    // ONLY inside lookup(), whose exclusivity is guaranteed by LatestOnlyPrefixEngine serialization
-    // (at most one active worker). updateKeyNeighbors() only swaps a @Volatile reference.
+    // Reusable per-index scratch, touched only inside lookup(), whose exclusivity is guaranteed by
+    // LatestOnlyPrefixEngine serialization (at most one active worker). updateKeyNeighbors() only
+    // swaps a @Volatile reference.
     private val exactScratch = ByteArray(MAX_PREFIX_BYTES)
     private val variantScratch = ByteArray(MAX_PREFIX_BYTES + VARIANT_HEADROOM)
     private val codePointScratch = IntArray(MAX_PREFIX_BYTES)
@@ -167,72 +161,59 @@ internal class TdictPrefixIndex private constructor(
     // comparisons (ranking tie-breaks) decode the second word into word B. Neither escapes lookup().
     private val wordScratchA = ByteArray(TdictFormat.MAX_WORD_BYTES)
     private val wordScratchB = ByteArray(TdictFormat.MAX_WORD_BYTES)
-    // Phase C2: the probe path's own decode scratch, deliberately separate from A/B — probes
-    // interleave with survivor scans whose tie-breaks use A/B, and a shared scratch would have to
-    // prove the absence of interleavings rather than just having it.
+    // Decode scratch of the probe path, separate from A/B: probes interleave with survivor scans
+    // whose tie-breaks use A/B.
     private val probeScratch = ByteArray(TdictFormat.MAX_WORD_BYTES)
-    // Phase C2: per-position search ranges for the class #4 probes — words starting with the
-    // first N code points of the typed prefix, incrementally narrowed once per lookup. A variant
-    // substituted at position p shares the typed prefix's first p code points, so its survivors
-    // can only live in probeRange[p] — and an empty range skips the whole position for free.
+    // Per-position search ranges for the class #4 probes: words starting with the first N code
+    // points of the typed prefix, narrowed once per lookup. A variant substituted at position p
+    // shares the typed prefix's first p code points, so its survivors can only be in
+    // probeRange[p]; an empty range skips the whole position.
     private val probeRangeStart = IntArray(MAX_PREFIX_BYTES)
     private val probeRangeEnd = IntArray(MAX_PREFIX_BYTES)
-    // The block touched by the last access, fully decoded: concatenated word bytes, per-word
-    // start offsets and frequencies. Range scans (the exact pass over thousands of matches for a
-    // one-letter prefix, the fuzzy variant scans) touch every entry of a block, so decoding the
-    // block once — instead of re-walking it per entry — is what keeps schema 2 at schema-1
-    // latency. Worker-confined exactly like the scratches above; the data is immutable, so the
-    // cache is valid across lookups and never needs invalidation.
+    // The block touched by the last access, fully decoded: concatenated word bytes, per-word start
+    // offsets and frequencies. Range scans touch every entry of a block, so the block is decoded
+    // once instead of re-walked per entry. Worker-confined like the scratches above; the data is
+    // immutable, so the cache never needs invalidation.
     private val blockWordBytes = ByteArray(TdictFormat.BLOCK_SIZE * TdictFormat.MAX_WORD_BYTES)
     private val blockWordStarts = IntArray(TdictFormat.BLOCK_SIZE + 1)
     private val blockFrequencies = LongArray(TdictFormat.BLOCK_SIZE)
     private var cachedBlock = -1
-    // O7 follow-up (2026-09-29, docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): raw-block fetch
-    // scratches. The POCO C71 witness (build/device-uat-2026-09-29/mmap-witness) showed per-byte
-    // absolute MappedByteBuffer.get is the mmap arm's deficit against the heap arm — every page
-    // is already pre-touched by open()'s structural pass, so page faults are not it — and the
-    // fix is to bulk-fetch the whole active block with ONE relative bulk get off a private
-    // duplicate view, then parse from the array (the heap-speed path). The mapping stays the
-    // source of truth and keeps its evictable file-backed residency; the scratches copy at most
-    // one block each. Two scratches, not one: decodeWordInto (the probe path and the ranking
-    // tie-break compares) runs INSIDE scanBlockRange's callbacks, so a shared scratch would have
-    // to prove the absence of interleavings rather than just having it — the same discipline the
-    // A/B/probe word scratches above already follow. Worker-confined exactly like them; the data
-    // is immutable, so the tags never need invalidation.
+    // Raw-block fetch scratches. Per-byte MappedByteBuffer.get is slow, so the active block is
+    // copied into a heap array with one bulk get and parsed from there. The mapping stays the
+    // source of truth (evictable, file-backed); each scratch holds at most one block. Two
+    // scratches, because decodeWordInto (probe path, ranking tie-breaks) runs inside
+    // scanBlockRange's callbacks. Worker-confined; the data is immutable, so the block tags never
+    // need invalidation.
     private val rangeScanBytes = ByteArray(MAX_BLOCK_RAW_BYTES)
     private val probeBlockBytes = ByteArray(MAX_BLOCK_RAW_BYTES)
     private var rangeScanBlockNumber = -1
     private var probeBlockNumber = -1
-    // A position-independent duplicate of the mapped buffer, existing only so the bulk fetches
-    // can position it without ever mutating the supplied buffer's own position/limit. A heap view
-    // of the CURRENT scan block, handed to the P3 suffix test so its piecewise remainder reads
-    // run at array speed; scanBlockRange's remainder positions are relative to it.
+    // A duplicate of the mapped buffer, so bulk fetches can set its position without touching the
+    // supplied buffer's position/limit. rangeScanView is a heap view of the current scan block,
+    // handed to the suffix test; scanBlockRange's remainder positions are relative to it.
     private val blockFetchView: ByteBuffer = bytes.duplicate()
     private val rangeScanView: ByteBuffer = ByteBuffer.wrap(rangeScanBytes)
     private val rankedIndices = IntArray(MAX_RESULTS)
     private val rankedFrequencies = LongArray(MAX_RESULTS)
-    // P3 same-stem boost (docs/TT-SUGGESTIONS.md): the two tracks of the dual-track exact pass —
-    // candidates whose remainder is a known suffix, and the rest. Fixed-size scratch, allocated
-    // once per index; the pass itself stays allocation-free.
+    // Same-stem boost: the two tracks of the exact pass, candidates whose remainder is a known
+    // suffix and the rest. Fixed-size scratch allocated once per index.
     private val stemTrackIndices = IntArray(MAX_RESULTS)
     private val stemTrackFrequencies = LongArray(MAX_RESULTS)
     private val stemTrackClasses = IntArray(MAX_RESULTS)
     private val otherTrackIndices = IntArray(MAX_RESULTS)
     private val otherTrackFrequencies = LongArray(MAX_RESULTS)
     private val otherTrackClasses = IntArray(MAX_RESULTS)
-    // Ranking key carried alongside every ranked slot as a plain primitive int — no boxing, no
-    // collection. Exact candidates all carry EDIT_CLASS_EXACT, so the key is a no-op tie on
-    // the exact level and its frozen order is unchanged; fuzzy candidates carry their packed rank
-    // key (edit class x2 minus the same-length bonus — see [fuzzyRankKey]), so the fuzzy level
-    // orders by class first (see [ranksBefore]).
+    // Ranking key carried with every ranked slot as a primitive int. Exact candidates all carry
+    // EDIT_CLASS_EXACT, so the key never changes the exact order; typo-recovery candidates carry
+    // their packed rank key (see [fuzzyRankKey]), so that level orders by class first (see
+    // [ranksBefore]).
     private val rankedClasses = IntArray(MAX_RESULTS)
     private val fuzzyIndices = IntArray(MAX_RESULTS)
     private val fuzzyFrequencies = LongArray(MAX_RESULTS)
     private val fuzzyClasses = IntArray(MAX_RESULTS)
-    // Scratch of the D3 pass. Separate buffers rather than a reuse of the two above, because the
-    // autocorrect pass must stay independent of whether the display fuzzy level ran at all: it is
-    // decided by rules of its own (word length, word absent from the dictionary), never by how many
-    // cells the exact pass happened to leave empty.
+    // Scratch of the autocorrect pass, separate from the display pass: autocorrect has its own
+    // rules (word length, word absent from the dictionary) and runs whether or not the display
+    // typo-recovery level ran.
     private val autocorrectCodePointScratch = IntArray(MAX_PREFIX_BYTES)
     private val autocorrectVariantScratch = ByteArray(MAX_PREFIX_BYTES + VARIANT_HEADROOM)
 
@@ -240,20 +221,16 @@ internal class TdictPrefixIndex private constructor(
     private var neighborTable: KeyNeighborTable? = null
 
     /**
-     * How many leading results of the last [lookup] are exact. Worker-confined exactly like the
-     * scratch buffers above; reset at the top of every lookup so a failed or rejected one cannot
-     * leave a stale boundary behind for the merge to trust.
+     * How many leading results of the last [lookup] are exact. Worker-confined; reset at the start
+     * of every lookup, so a failed or rejected one leaves no stale boundary.
      */
     override var lastExactCount = 0
         private set
 
     /**
-     * The D3 verdict of the last [lookup]. Written by the serialized worker, read on the UI thread
-     * when a word separator is pressed, hence `@Volatile`: the object itself is immutable, so
-     * publishing the reference publishes everything the reader needs.
-     *
-     * Reset at the top of every lookup, exactly like [lastExactCount], so a rejected or failed
-     * lookup can never leave an older word's verdict behind for the next separator to act on.
+     * Autocorrect verdict of the last [lookup]. Written by the worker, read on the UI thread when a
+     * word separator is pressed; the object is immutable, so `@Volatile` publication is enough.
+     * Reset at the start of every lookup, like [lastExactCount].
      */
     @Volatile
     override var lastAutocorrectAdvice: AutocorrectAdvice? = null
@@ -264,10 +241,9 @@ internal class TdictPrefixIndex private constructor(
         lastAutocorrectAdvice = null
     }
 
-    // Test-only observability of the last lookup's fuzzy work. These are plain ints assigned on the
-    // hot path (no allocation, no logging); they let the JVM harness report measured variants and
-    // visited entries and prove the fail-closed budget never trips on the typo set. Phase C adds
-    // the probe counter (edit class #4 probe-first).
+    // Test-only counters of the last lookup's typo-recovery work: plain ints assigned on the hot
+    // path (no allocation, no logging), so JVM tests can check variants, visited entries, probes
+    // and whether the budget tripped.
     internal var lastFuzzyVariantCount = 0
         private set
     internal var lastFuzzyVisitedCount = 0
@@ -277,12 +253,11 @@ internal class TdictPrefixIndex private constructor(
     internal var lastFuzzyProbeCount = 0
         private set
 
-    // Same observability for the D3 autocorrect pass (ROADMAP-P3 P7): class-#4 probes issued by
-    // the last lookup's advice computation. Worker-confined exactly like the counters above.
+    // Same for the autocorrect pass: class #4 probes issued by the last advice computation.
     internal var lastAutocorrectProbeCount = 0
         private set
 
-    // Fuzzy-pass accumulator, private to a single lookup() invocation and reset on each entry.
+    // Typo-recovery accumulator, private to one lookup() call and reset on each entry.
     private var fuzzyExactCount = 0
     private var fuzzyRemaining = 0
     private var fuzzyCount = 0
@@ -290,18 +265,17 @@ internal class TdictPrefixIndex private constructor(
     private var fuzzyOverBudget = false
     private var fuzzyPrefixLength = 0
     // Variants that consumed the shared MAX_FUZZY_VARIANTS budget so far (every class #1/#2/#3
-    // variant, and each class #4 SURVIVOR — its probes count against MAX_FUZZY_PROBES instead).
+    // variant and each class #4 survivor; class #4 probes count against MAX_FUZZY_PROBES).
     private var fuzzyVariantsUsed = 0
     private var fuzzyProbesUsed = 0
 
-    // The edit class of the variant pass currently running (EDIT_CLASS_LONG_PRESS/GEOMETRIC/
-    // TRANSPOSITION/SUBSTITUTION). A plain int, set before each class's generator runs and read by
-    // scanVariantBlock so every fuzzy candidate is tagged with the class that produced it.
+    // Edit class of the variant pass currently running, set before each generator runs and read by
+    // scanVariantBlock, so every candidate is tagged with the class that produced it.
     private var fuzzyCurrentClass = EDIT_CLASS_LONG_PRESS
 
-    // D3 accumulator, private to a single computeAutocorrectAdvice() invocation. The pass counts
-    // WHOLE-WORD matches: how many class #1/#4 variants of the typed word are themselves dictionary
-    // entries, and which one. Anything but exactly one means no replacement.
+    // Autocorrect accumulator, private to one computeAutocorrectAdvice() call. It counts whole-word
+    // matches: how many variants of the typed word are dictionary entries, and which one. Anything
+    // but exactly one means no replacement.
     private var autocorrectMatchCount = 0
     private var autocorrectMatchIndex = NO_ENTRY
     private var autocorrectProbesUsed = 0
@@ -341,16 +315,14 @@ internal class TdictPrefixIndex private constructor(
             for (offset in 0 until prefixLength) {
                 exactScratch[offset] = normalizedPrefixUtf8.byteAt(offset).toByte()
             }
-            // One binary search serves both the exact pass and the autocorrect pass: the fuzzy
-            // level between them only ever READS exactScratch, so the bound computed here is
-            // still the answer computeAutocorrectAdvice would otherwise re-derive.
+            // One binary search serves both the exact pass and the autocorrect pass: the
+            // typo-recovery level between them only reads exactScratch, so the bound stays valid.
             val exactLowerBound = lowerBound(exactScratch, prefixLength, 0)
             var resultCount = collectExact(prefixLength, exactLowerBound)
-            // Recorded before the fuzzy pass appends to the same ranked arrays: everything after
-            // this many slots is fuzzy, which is exactly what the E4b merge needs to know.
+            // Recorded before typo recovery appends to the same ranked arrays: the personal merge
+            // needs this boundary.
             lastExactCount = resultCount
-            // The fuzzy level fills only cells left empty by D1, and only when the exact pass
-            // returned fewer than three candidates: one check, no new state. Exact candidates are
+            // Typo recovery fills only cells the exact pass left empty; exact candidates are
             // never shifted or replaced.
             if (resultCount < MAX_RESULTS) {
                 val table = neighborTable
@@ -361,8 +333,8 @@ internal class TdictPrefixIndex private constructor(
                     resultCount = collectFuzzy(prefixLength, table, resultCount, codePointCount)
                 }
             }
-            // Deliberately outside the `resultCount < MAX_RESULTS` guard above: the D3 verdict is
-            // about the typed word itself and must not depend on how full the band happens to be.
+            // Outside the `resultCount < MAX_RESULTS` guard: the autocorrect verdict is about the
+            // typed word itself and must not depend on how full the strip is.
             computeAutocorrectAdvice(normalizedPrefixUtf8, prefixLength, exactLowerBound)
             if (resultCount == 0) return emptyList()
             ArrayList<String>(resultCount).also { result ->
@@ -378,30 +350,21 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * The D3 pass: decides whether the word that was just looked up may be autocorrected, and to
-     * what. Runs on the same worker, right after the display passes, and touches the same mmap'd
-     * buffer they do — so no new thread, no new request and no new token exist anywhere.
-     *
-     * Every condition of the contract is checked here, in the contract's own order:
+     * Decides whether the word just looked up may be autocorrected, and to what. Runs on the same
+     * worker right after the display passes, on the same mapped buffer. Conditions, in order:
      *  - the word is at least [AutocorrectPolicy.MIN_WORD_CODE_POINTS] code points long;
-     *  - the word is ABSENT from the dictionary (a word people write is never "corrected");
-     *  - EXACTLY ONE class #1 (long-press partner) variant of it is itself a dictionary word —
-     *    counted before any frequency filter, so an ambiguous typo is left alone rather than
-     *    resolved by frequency;
-     *  - that one candidate's frequency is at least [AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY].
+     *  - the word is absent from the dictionary;
+     *  - exactly one variant of it is a dictionary word, counted before any frequency filter, so
+     *    an ambiguous typo is left alone rather than resolved by frequency;
+     *  - that candidate's frequency is at least [AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY].
      *
-     * Two properties are worth naming. The match is WHOLE-WORD, not prefix-block: the contract
-     * replaces a word by a word one edit away from it, and a prefix scan would offer continuations
-     * instead. And the class set is the policy's OWN [FuzzyEditPolicy.autocorrectClasses], never
-     * the display set: a display policy enabling classes #2/#4 (the Tatar one) must not make
-     * autocorrect follow implicitly — the D3 widening is decided by its own written gates
-     * (ROADMAP-P3 P7, docs/ROADMAP-P3.md). With the default policy this pass is byte-identical to
-     * the frozen D3 class-#1 behavior.
+     * The match is whole-word, not prefix: a word is replaced by a word one edit away, not by a
+     * continuation. The edit classes are [FuzzyEditPolicy.autocorrectClasses], never the display
+     * set, so enabling display classes does not change autocorrect.
      *
-     * The class-#1 side costs one binary search per variant and scans no block at all. The class-#4
-     * side is probe-first exactly like the display pass (the TT-TYPO-NEXT C2 engineering reused):
-     * per-position narrowed no-cache probes, whole-word equality, never a range scan. The whole
-     * pass runs only for words long enough to qualify, so short prefixes pay nothing.
+     * Class #1 costs one binary search per variant and scans no block. Class #4 is probe-first like
+     * the display pass: per-position narrowed no-cache probes and whole-word equality, never a
+     * range scan. Short words skip the pass entirely.
      */
     private fun computeAutocorrectAdvice(
         normalizedPrefixUtf8: ImmutableUtf8Prefix,
@@ -414,8 +377,8 @@ internal class TdictPrefixIndex private constructor(
         if (codePointCount < AutocorrectPolicy.MIN_WORD_CODE_POINTS) {
             return
         }
-        // The typed word's lower bound arrives from lookup(): collectExact has already run the
-        // one binary search over this exact exactScratch content (the fuzzy pass never writes it).
+        // The typed word's lower bound comes from lookup(); typo recovery never writes
+        // exactScratch, so it is still valid.
         if (typedEntry < entryCount && wordEquals(typedEntry, exactScratch, prefixLength)) return
         autocorrectMatchCount = 0
         autocorrectMatchIndex = NO_ENTRY
@@ -426,15 +389,13 @@ internal class TdictPrefixIndex private constructor(
                 exactScratch, prefixLength, table, autocorrectCodePointScratch,
                 autocorrectVariantScratch, MAX_FUZZY_VARIANTS, autocorrectConsumer,
             )
-            // Fail closed on a budget overrun or malformed input, exactly like the display level: a
-            // partially generated variant set could hide the second candidate that makes a typo
-            // ambiguous, and acting on it would replace text on incomplete evidence.
+            // On a budget overrun or malformed input give no advice: a partial variant set could
+            // hide the second candidate that makes the typo ambiguous.
             if (emitted < 0) return
         }
 
-        // ROADMAP-P3 P7: the widened side — full single substitution, probe-first. Early-out once
-        // the word is already ambiguous: further probes can only add candidates, never remove one,
-        // and the verdict below is already NO.
+        // Full single substitution, probe-first. Skipped once the word is already ambiguous:
+        // further probes can only add candidates, and the verdict is already no.
         if (EDIT_CLASS_SUBSTITUTION in fuzzyPolicy.autocorrectClasses &&
             autocorrectMatchCount < 2
         ) {
@@ -464,23 +425,22 @@ internal class TdictPrefixIndex private constructor(
         val entry = lowerBound(variantBytes, variantLength, 0)
         if (entry >= entryCount) return
         if (!wordEquals(entry, variantBytes, variantLength)) return
-        // Distinct variants are distinct byte strings, so this can only fire on a defensive re-entry;
+        // Distinct variants are distinct byte strings, so this only guards against re-entry;
         // counting the same entry twice would turn one candidate into a false ambiguity.
         if (entry == autocorrectMatchIndex) return
         autocorrectMatchCount++
         autocorrectMatchIndex = entry
     }
 
-    /** The probe-first whole-word consumer of the class-#4 autocorrect variants (ROADMAP-P3 P7). */
+    /** Probe-first whole-word consumer of the class #4 autocorrect variants. */
     private val autocorrectProbeConsumer =
         FuzzyPrefixVariants.PositionedVariantConsumer { position, bytes, length ->
             probeAutocorrectWholeWord(position, bytes, length)
         }
 
     /**
-     * One narrowed no-cache probe per class-#4 variant, then whole-word equality — never a range
-     * scan. Counts a match exactly like [matchWholeWord] does (dedup by entry index across
-     * classes; stops caring past two).
+     * One narrowed no-cache probe per class #4 variant, then whole-word equality, never a range
+     * scan. Counts a match like [matchWholeWord] (dedup by entry index; stops past two).
      */
     private fun probeAutocorrectWholeWord(position: Int, variantBytes: ByteArray, variantLength: Int) {
         if (autocorrectMatchCount > 1) return
@@ -495,28 +455,24 @@ internal class TdictPrefixIndex private constructor(
         for (offset in 0 until variantLength) {
             if (unsigned(probeScratch[offset]) != (variantBytes[offset].toInt() and 0xff)) return
         }
-        // A class-#1/class-#4 duplicate must not count twice, or one candidate would read as two.
+        // A class #1 / class #4 duplicate must not count twice, or one candidate would read as two.
         if (probe == autocorrectMatchIndex) return
         autocorrectMatchCount++
         autocorrectMatchIndex = probe
     }
 
     /**
-     * The frozen D1 exact pass: fills [rankedIndices] with up to [MAX_RESULTS] and returns count.
+     * The exact pass: fills [rankedIndices] with up to [MAX_RESULTS] and returns the count.
      *
-     * P3 (docs/TT-SUGGESTIONS.md): with a suffix table injected AND the typed prefix being itself a
-     * complete dictionary word of at least [MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS] code points,
-     * the pass runs dual-track — candidates whose remainder is a known suffix rank before unrelated
-     * continuations, frequency order preserved within each group, the typed word itself still
-     * excluded. Every other case is byte-identical to the frozen pass. The complete-word test costs
-     * no search of its own: [lowerBound] has already landed on the entry when the prefix is one.
+     * With a suffix table and a typed prefix that is itself a complete dictionary word of at least
+     * [MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS] code points, the pass runs in two tracks: candidates
+     * whose remainder is a known suffix rank before other continuations, frequency order kept
+     * within each track, the typed word excluded. The complete-word test needs no extra search:
+     * [lowerBound] has already landed on the entry.
      *
-     * The length gate (P3 refinement, 2026-09-20): a short complete word (су, ал, өй) is a common
-     * MID-TYPING state — the user is usually on the way to a longer word, so its inflections must
-     * not displace unrelated continuations; a long one is likely an intentional word end. The
-     * threshold mirrors [AutocorrectPolicy.MIN_WORD_CODE_POINTS], the one other place the engine
-     * treats a typed word as "settled enough to act on". It also keeps the eval proxies honest:
-     * the completion metric types 1–3 code-point prefixes, which the gate exempts entirely.
+     * The length threshold exists because a short complete word is usually a mid-typing state on
+     * the way to a longer word, so its word forms must not displace other continuations. It
+     * matches [AutocorrectPolicy.MIN_WORD_CODE_POINTS].
      */
     private fun collectExact(prefixLength: Int, start: Int): Int {
         // [start] is the prefix's lower bound, computed once in lookup() and shared with the
@@ -571,8 +527,8 @@ internal class TdictPrefixIndex private constructor(
                 }
             },
         )
-        // Same-stem candidates first, then the rest fill the cells they leave — all within
-        // MAX_RESULTS, both tracks already in the frozen (frequency, code point) order.
+        // Same-stem candidates first, then the rest fill the remaining cells; both tracks are
+        // already in (frequency, code point) order.
         var resultCount = 0
         for (slot in 0 until stemCount) {
             rankedIndices[resultCount] = stemTrackIndices[slot]
@@ -591,33 +547,21 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * Fills the cells the exact pass left empty with the best fuzzy candidates. Within the fuzzy
-     * level the order is edit class first (class #1 long-press partner, then #2 geometric
-     * neighbour, then #3 transposition, then #4 full single substitution); inside one class the
-     * TT-TYPO-NEXT Phase-B same-length bonus applies when the engine's policy enables it (a
-     * candidate exactly as long as the typed prefix ranks before its own continuations), and then
-     * the frozen tie-break (frequency descending, then code-point lexical ascending). Exact
-     * candidates are never touched and always outrank any fuzzy candidate. Returns the total
-     * candidate count.
+     * Fills the cells the exact pass left empty with the best typo-recovery candidates. Order:
+     * edit class first (#1 long-press partner, #2 geometric neighbor, #3 transposition, #4 full
+     * single substitution); within a class, the same-length bonus if the policy enables it; then
+     * frequency descending, then code point ascending. Exact candidates always rank first and are
+     * never touched. Returns the total candidate count.
      *
-     * WHICH edit classes run is the engine's [FuzzyEditPolicy], injected per engine through
-     * [open] (TT-TYPO-NEXT Phases B/C/C2, docs/TT-TYPO-NEXT.md). The Tatar engine ships
-     * [FuzzyEditPolicy.TATAR] — class #1 + the gated class #4 + the same-length bonus — which
-     * passed the corrected C2 gates (2026-09-20). [FuzzyEditPolicy.DEFAULT] (class #1 only, no
-     * bonus) is what every other engine runs — bit-identical to the pre-Phase-B behavior (the E3b
-     * verdict, PROPOSALS.md section "Контракт текста", line "Итог, 2026-07-27",
-     * docs/archive/missions/DICTIONARY-E3.md). Classes #2 (geometric neighbour — rejected by
-     * Phase-B G1) and #3 (transposition — never re-calibrated) stay unreachable through a shipped
-     * lookup(); their generators stay in the tree as infrastructure with direct tests. There is
-     * no per-request state and no user-facing toggle.
+     * The classes that run come from the engine's [FuzzyEditPolicy], set through [open]. No
+     * shipped policy enables classes #2 and #3; their generators have direct tests.
      *
-     * Class #4 (Phase C, probe-first full single substitution) carries its own ACTIVATION GATE on
-     * top of the policy: it runs only when the exact pass returned ZERO results and the prefix is
-     * at least [MIN_SUBSTITUTION_PREFIX_CODE_POINTS] code points — the strip is empty in those
-     * cases, so a correct guess is pure gain and a wrong one displaces nothing.
+     * Class #4 has an extra condition: it runs only when the exact pass returned nothing and the
+     * prefix has at least [MIN_SUBSTITUTION_PREFIX_CODE_POINTS] code points. The strip is empty
+     * then, so a wrong guess displaces nothing.
      *
-     * The whole fuzzy level is dropped (returns [exactCount]) if variant generation or the block
-     * scan trips a fixed budget: the level is discarded in full, never in part.
+     * If variant generation or the block scan exceeds a fixed budget, the whole level is dropped
+     * (returns [exactCount]), never kept in part.
      */
     private fun collectFuzzy(
         prefixLength: Int,
@@ -633,13 +577,11 @@ internal class TdictPrefixIndex private constructor(
         fuzzyPrefixLength = prefixLength
         fuzzyVariantsUsed = 0
         fuzzyProbesUsed = 0
-        // The enabled classes share one variant budget: the total number of variants SCANNED across
-        // all of them must stay within MAX_FUZZY_VARIANTS (for class #4 only survivors consume it —
-        // its probes count against MAX_FUZZY_PROBES instead). The edit class DOES affect ranking
-        // (class #1 before #2 before #3 before #4, then the same-length bonus, then frequency inside
-        // a class); each candidate is tagged with a rank key derived from fuzzyCurrentClass, set
-        // below before its class runs. Any single class returning -1 (its slice of a budget
-        // exceeded) drops the whole fuzzy level, never a part of it.
+        // The enabled classes share one budget: variants scanned across all of them stay within
+        // MAX_FUZZY_VARIANTS (for class #4 only survivors count; its probes count against
+        // MAX_FUZZY_PROBES). Each candidate is tagged with a rank key derived from
+        // fuzzyCurrentClass, set before its class runs. Any class returning -1 drops the whole
+        // level.
 
         if (EDIT_CLASS_LONG_PRESS in fuzzyPolicy.editClasses) {
             fuzzyCurrentClass = EDIT_CLASS_LONG_PRESS
@@ -683,12 +625,11 @@ internal class TdictPrefixIndex private constructor(
             fuzzyVariantsUsed += emitted
         }
 
-        // Class #4 (Phase C): full single substitution over the layout's alphabet, PROBE-FIRST —
-        // each of the n x alphabet variants gets one existence probe (binary search, no range
-        // scan), and only survivors are scanned and counted against the shared variant budget.
-        // The activation gate is the point of the design: the class fires only when the exact
-        // pass found NOTHING and the prefix is settled (>= 4 code points), so it can only ever
-        // fill an otherwise empty strip.
+        // Class #4: full single substitution over the layout's alphabet, probe-first. Each of the
+        // n x alphabet variants gets one existence probe (binary search, no range scan); only
+        // survivors are scanned and counted against the shared variant budget. It runs only when
+        // the exact pass found nothing and the prefix has >= 4 code points, so it can only fill
+        // an otherwise empty strip.
         if (EDIT_CLASS_SUBSTITUTION in fuzzyPolicy.editClasses &&
             exactCount == 0 && codePointCount >= MIN_SUBSTITUTION_PREFIX_CODE_POINTS
         ) {
@@ -704,9 +645,8 @@ internal class TdictPrefixIndex private constructor(
                 lastFuzzyProbeCount = fuzzyProbesUsed
                 return exactCount
             }
-            // fuzzyProbesUsed was already incremented per issued probe by the consumer; `emitted`
-            // is the generated-variant count (probes issued + skipped-by-empty-range), which must
-            // NOT be added — that would double-count.
+            // The consumer already counted each issued probe in fuzzyProbesUsed; `emitted` also
+            // includes variants skipped by an empty range, so adding it would double-count.
         }
 
         lastFuzzyVariantCount = fuzzyVariantsUsed
@@ -721,27 +661,22 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * The probe-first consumer of edit class #4: one existence probe per variant — a binary
-     * search plus a starts-with check, no range scan — and only a variant that provably starts at
-     * least one dictionary word (a survivor) consumes the shared variant budget and gets its block
-     * scanned by [scanVariantBlock]. A survivor overflow trips the budget fail-closed, exactly
-     * like a generator overflow.
+     * Probe-first consumer of edit class #4: one existence probe per variant (binary search plus a
+     * starts-with check, no range scan). Only a variant that starts at least one dictionary word
+     * (a survivor) consumes the shared variant budget and gets its block scanned by
+     * [scanVariantBlock]; too many survivors trip the budget like a generator overflow.
      *
-     * Phase C2 (docs/TT-TYPO-NEXT.md) — the probe cost engineering, in two steps:
+     * Two things keep probes cheap:
+     * 1. The probe search never uses the shared decoded-block cache. Hundreds of probes per lookup
+     *    follow nearly identical binary-search paths, and a one-entry cache would make every probe
+     *    evict the previous probe's block. Each compared word is decoded directly into a dedicated
+     *    scratch ([decodeWordInto]): a bounded front-coded walk, no allocation.
+     * 2. The search is narrowed per position: a variant substituted at position p shares the typed
+     *    prefix's first p code points, so its survivors can only be in probeRange[p] (see
+     *    [computeProbeRanges]); an empty range skips the position without a probe.
      *
-     * 1. The probe's search NEVER touches the shared decoded-block cache. The Phase-C profile
-     *    showed why: hundreds of probes per lookup traverse nearly identical binary-search paths,
-     *    and routing each step through the one-entry cache made every probe evict the previous
-     *    probe's block — ~17 full block decodes per probe, 31.6 ms p95 on the reference device.
-     *    The probe reads each compared word directly off the mapped bytes ([decodeWordInto] into
-     *    a dedicated scratch): a bounded front-coded walk, no cache involvement, no allocations.
-     * 2. The search is NARROWED per position: a variant substituted at position p shares the typed
-     *    prefix's first p code points, so its survivors can only live in probeRange[p] — computed
-     *    once per lookup by [computeProbeRanges], incrementally narrowed, and free to skip when
-     *    empty (a prefix no word starts with kills every later position without a single probe).
-     *
-     * The result is bit-identical to the Phase-C probe — [probeLowerBound] mirrors [lowerBound]
-     * comparison-for-comparison — and the pinned Phase-C recovery/precision counts prove it.
+     * [probeLowerBound] mirrors [lowerBound] comparison for comparison, so results are the same as
+     * a cached search.
      */
     private fun probeAndScanVariant(position: Int, variantBytes: ByteArray, variantLength: Int) {
         if (fuzzyOverBudget) return
@@ -765,11 +700,9 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * Phase C2: the per-position probe ranges — probeRange[p] holds the entry range of words
-     * starting with the typed prefix's first p code points (p = 0 is the whole dictionary),
-     * computed once per class-#4 lookup by incremental narrowing (each range is searched within
-     * its predecessor, so the whole chain costs one descent's worth of warm steps). Once a range
-     * is empty every later range is empty too — the loop just propagates it.
+     * Per-position probe ranges: probeRange[p] is the entry range of words starting with the typed
+     * prefix's first p code points (p = 0 is the whole dictionary). Each range is searched within
+     * its predecessor; once a range is empty, every later one is empty too.
      */
     private fun computeProbeRanges(codePointCount: Int) {
         probeRangeStart[0] = 0
@@ -794,8 +727,8 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * [lowerBound]'s exact twin over a no-cache comparator: the first entry in [low0, high0) not
-     * smaller than the query in whole-word-then-length order. Only the probe path uses it.
+     * [lowerBound] over a no-cache comparator: the first entry in [low0, high0) not smaller than
+     * the query in whole-word-then-length order. Probe path only.
      */
     private fun probeLowerBound(query: ByteArray, queryLength: Int, low0: Int, high0: Int): Int {
         var low = low0
@@ -808,7 +741,7 @@ internal class TdictPrefixIndex private constructor(
         return low
     }
 
-    /** [upperBound]'s exact twin over the no-cache prefix comparator. Only the probe path. */
+    /** [upperBound] over the no-cache prefix comparator. Probe path only. */
     private fun probeUpperBound(query: ByteArray, queryLength: Int, low0: Int, high0: Int): Int {
         var low = low0
         var high = high0
@@ -857,21 +790,18 @@ internal class TdictPrefixIndex private constructor(
                     fuzzyOverBudget = true
                     return@scanBlockRange SCAN_ABORT
                 }
-                // Exact-word exclusion applies on both levels: never suggest the typed word itself.
-                // A word is de-duplicated by dictionary index so it can never occupy two cells. Because
-                // classes run in order (#1 … #4), the first class to reach a word keeps it,
-                // which is also its best (lowest) class — consistent with the class-first ranking.
+                // Never suggest the typed word itself, and never put one word in two cells
+                // (de-duplicated by dictionary index). Classes run in order (#1 to #4), so the
+                // first class to reach a word is also its best one.
                 if (equalsQuery ||
                     containsIndex(rankedIndices, fuzzyExactCount, index) ||
                     containsIndex(fuzzyIndices, fuzzyCount, index)
                 ) {
                     return@scanBlockRange SCAN_SKIP
                 }
-                // TT-TYPO-NEXT Phase B: the same-length bonus. A candidate whose remainder past the
-                // variant is empty IS the variant itself — and a substitution variant has exactly
-                // the typed prefix's code-point length — so an empty remainder marks precisely the
-                // candidates whose length equals the typed prefix length, with no counting on the
-                // hot path. The bonus only applies when the engine's policy enables it.
+                // Same-length bonus. A candidate with an empty remainder past the variant is the
+                // variant itself, and a substitution variant has the typed prefix's length, so an
+                // empty remainder marks exactly the same-length candidates without counting.
                 if (fuzzyPolicy.sameLengthBonus && remFirstLength == 0 && remSecondLength == 0) {
                     SCAN_TAKE_SAME_LENGTH
                 } else {
@@ -889,12 +819,10 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * The ranking key of a fuzzy candidate: edit class first (ascending), then — only under
-     * [FuzzyEditPolicy.sameLengthBonus] — a same-length candidate before its own continuations,
-     * then the frozen (frequency descending, code-point ascending) tie-break inside
-     * [insertRanked]. Packed as `class * 2 - bonus` so a single int comparison implements both
-     * keys in order; with the bonus off (or a longer candidate) the key is `class * 2`, so a
-     * bonus-less engine's order is bit-identical to the pre-Phase-B class-then-frequency one.
+     * Rank key of a typo-recovery candidate: edit class ascending, then (under
+     * [FuzzyEditPolicy.sameLengthBonus]) a same-length candidate before its continuations; ties go
+     * to [insertRanked] (frequency descending, code point ascending). Packed as `class * 2 - bonus`,
+     * so one int comparison covers both keys.
      */
     private fun fuzzyRankKey(editClass: Int, sameLength: Boolean): Int =
         editClass * 2 - if (sameLength) 1 else 0
@@ -1009,10 +937,8 @@ internal class TdictPrefixIndex private constructor(
         rankedIndex: Int,
         rankedFrequency: Long,
     ): Boolean = when {
-        // Ranking key first (ascending). Exact candidates all share EDIT_CLASS_EXACT, so this key
-        // is a tie among them and their frozen order is untouched. Fuzzy candidates carry the
-        // packed key of [fuzzyRankKey]: edit class dominant (#1 … #4), with the same-length bonus
-        // ordering inside a class when the policy enables it.
+        // Rank key first (ascending). Exact candidates all share EDIT_CLASS_EXACT, so it never
+        // reorders them; typo-recovery candidates carry the packed key of [fuzzyRankKey].
         candidateClass != rankedClass -> candidateClass < rankedClass
         candidateFrequency != rankedFrequency -> candidateFrequency > rankedFrequency
         else -> compareWords(candidateIndex, rankedIndex) < 0
@@ -1034,9 +960,9 @@ internal class TdictPrefixIndex private constructor(
         return String(blockWordBytes, start, cachedWordEnd(index) - start, Charsets.UTF_8)
     }
 
-    // --- BigramDictionary (SIZE-2): the schema-3 bigram table resolves its head/success indices
-    // through exactly these two reads, on the same serialized worker as lookup() — so the block
-    // cache and the scratch discipline above apply unchanged.
+    // --- BigramDictionary: the schema-3 bigram table resolves its head/successor indices through
+    // these two reads, on the same serialized worker as lookup(), so the block cache and scratch
+    // rules above apply.
     override val rawSha256: String
         get() = identity.rawSha256
 
@@ -1048,10 +974,9 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * P3 (docs/TT-SUGGESTIONS.md): exact whole-word frequency of [query], or 0 when the dictionary
-     * does not contain it (schema 2 stores strictly positive frequencies, so 0 is a safe absent
-     * sentinel). One exact binary search plus one cached-block read — no word is materialized, so
-     * this byte-level form allocates nothing and shares the lookup path's worker confinement.
+     * Exact whole-word frequency of [query], or 0 when absent (schema 2 stores strictly positive
+     * frequencies). One binary search plus a cached-block read; allocates nothing and is
+     * worker-confined like the lookup path.
      */
     fun frequencyOf(query: ByteArray, queryLength: Int): Long {
         if (queryLength == 0 || queryLength > TdictFormat.MAX_WORD_BYTES) return 0L
@@ -1060,8 +985,8 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * The string form of [frequencyOf] — it encodes, so it belongs to bounded off-hot-path callers
-     * (the P3 after-word forms), never to the per-keystroke scan.
+     * String form of [frequencyOf]. It encodes, so it is for bounded callers off the hot path (the
+     * after-word forms), never the per-keystroke scan.
      */
     override fun frequencyOf(word: String): Long {
         val bytes = word.toByteArray(Charsets.UTF_8)
@@ -1069,18 +994,13 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * P1 of Phase 2 (docs/ROADMAP-P2.md): exact whole-word membership of [normalizedWord],
-     * answered WITHOUT the block cache and without ANY shared scratch — every byte comes straight
-     * from the read-only mapping into local state. That is what makes this the one read that is
-     * safe to call from a thread that is not the lookup worker (the personal-bigram store's
-     * worker, at pair-graduation time): the mapping is read-only, and plain [ByteBuffer.get] reads
-     * need no happens-before of their own beyond the one the caller's `@Volatile` handoff already
-     * provides.
+     * Exact whole-word membership of [normalizedWord], without the block cache or any shared
+     * scratch: every byte goes from the read-only mapping into local state. This makes it safe to
+     * call from a thread other than the lookup worker (the learned-pairs store's worker); plain
+     * [ByteBuffer.get] reads need no ordering beyond the caller's `@Volatile` publication.
      *
-     * The cost is a cold binary search — about log2([entryCount]) front-coded decodes, each
-     * walking at most one block — bounded and paid only at graduation, never per keystroke. The
-     * comparator is the same unsigned-byte order [lowerBound] relies on, so the answer agrees
-     * with the lookup path on every word.
+     * Cost: a cold binary search, about log2([entryCount]) front-coded decodes of at most one block
+     * each, paid only when a pair is learned. Same unsigned-byte order as [lowerBound].
      */
     fun containsWordCold(normalizedWord: String): Boolean {
         val query = normalizedWord.toByteArray(Charsets.UTF_8)
@@ -1111,13 +1031,10 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * P7-1 (docs/GLIDE-PLAN.md): cold enumeration of every entry with its frequency, for the
-     * glide decoder's one-time word-index build. The walk is a single sequential pass over the
-     * read-only mapping with LOCAL varint state — like [containsWordCold] it never touches the
-     * worker-confined block cache or the shared [varintValue]/[varintNext], so it is safe to
-     * call from the thread that builds the glide index (the engine worker at first glide), and
-     * it never enters the per-keystroke lookup path or its budgets. One String per word is
-     * materialized — build-time cost, paid once per dictionary.
+     * Cold enumeration of every entry with its frequency, for the glide decoder's one-time
+     * word-index build. One sequential pass over the mapping with local varint state; like
+     * [containsWordCold] it never touches the block cache or the shared [varintValue]/[varintNext].
+     * Allocates one String per word, once per dictionary.
      */
     internal fun forEachWordCold(visitor: ColdWordVisitor) {
         val wordBytes = ByteArray(TdictFormat.BLOCK_SIZE * TdictFormat.MAX_WORD_BYTES)
@@ -1175,9 +1092,9 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * The cold-read twin of [decodeWordInto]: same front-coded walk, but the varint decode is
-     * LOCAL — it never touches [varintValue]/[varintNext] — so concurrent lookup workers are not
-     * raced. Used only by [containsWordCold].
+     * Cold-read version of [decodeWordInto]: same front-coded walk, but with local varint state
+     * instead of [varintValue]/[varintNext], so it cannot race the lookup worker. Used only by
+     * [containsWordCold].
      */
     private fun decodeWordCold(index: Int, scratch: ByteArray): Int {
         val block = index / TdictFormat.BLOCK_SIZE
@@ -1220,16 +1137,12 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the [count] most frequent words of the
-     * dictionary, in the frozen ranking order (frequency descending, then code-point ascending —
-     * UTF-8 byte order is code-point order, so the same comparator as the lookup path applies).
+     * The [count] most frequent words of the dictionary, frequency descending, then code point
+     * ascending (UTF-8 byte order is code-point order, so the lookup comparator applies).
      *
-     * ONE linear scan of the dictionary: blocks decode sequentially through the shared block cache
-     * (each block decoded exactly once), the top-N selection state is two fixed primitive arrays,
-     * and the tie-break compare reads both words through the no-cache [decodeWordInto] — so the
-     * scan allocates nothing per entry and never touches the per-keystroke structures differently
-     * than any other read. It runs at engine START (the fallback factory builds the pool there),
-     * at most once per engine; it is never on the lookup path.
+     * One linear scan: blocks decode sequentially through the block cache, top-N state is two
+     * primitive arrays, and tie-breaks read words through the no-cache [decodeWordInto], so nothing
+     * is allocated per entry. Runs once per engine at start, never on the lookup path.
      */
     override fun topFrequentWords(count: Int): List<String> {
         require(count >= 0)
@@ -1298,9 +1211,9 @@ internal class TdictPrefixIndex private constructor(
             }
             val suffixLength = unsigned(raw[cursor])
             cursor++
-            // The prefix refers to the block's FIRST word, which lies contiguously in the fetched
-            // block — copying from there (not from the partially overwritten cache) is what makes
-            // every entry of the block independently decodable.
+            // The prefix refers to the block's first word, which lies contiguously in the fetched
+            // block; copying from there (not from the partly overwritten cache) keeps every entry
+            // independently decodable.
             System.arraycopy(raw, firstStart, blockWordBytes, writeAt, prefixLength)
             System.arraycopy(raw, cursor, blockWordBytes, writeAt + prefixLength, suffixLength)
             cursor += suffixLength
@@ -1308,7 +1221,7 @@ internal class TdictPrefixIndex private constructor(
             blockWordStarts[entry + 1] = writeAt
         }
         for (entry in 0 until count) {
-            // Inline varint fast path; a varint holds a u32, interpreted unsigned (schema 1 parity).
+            // Inline varint fast path; a varint holds a u32, interpreted unsigned.
             var frequency = unsigned(raw[cursor])
             cursor++
             if (frequency >= 0x80) {
@@ -1322,28 +1235,21 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * Streams the entry range [start, end) without materializing words: per in-range entry it
-     * reports [onEntry] — (index, equalsQuery), computed piecewise against the current block's
-     * fetched bytes, plus the candidate's remainder past the query as two contiguous byte ranges
-     * RELATIVE to that fetched block (P3's suffix-membership test consumes them through
-     * [rangeScanView] without a copy; the positions stay valid only until the scan advances to
-     * the next block, which is all a synchronous callback needs) — and only for entries
-     * where [onEntry] answered [SCAN_TAKE] or [SCAN_TAKE_STEM] it then reports [onFrequency] with
-     * that verdict, still inside the same block visit. The function is `inline`, so neither
-     * callback allocates; each block is bulk-fetched once per visit ([ensureRangeScanBlock]) and
-     * parsed from the array, so a one-letter prefix scan pays a couple of array varint reads per
-     * entry instead of a full block decode.
+     * Streams the entry range [start, end) without materializing words. For each entry it calls
+     * [onEntry] with (index, equalsQuery) and the candidate's remainder past the query as two byte
+     * ranges relative to the fetched block, which the suffix test reads through [rangeScanView]
+     * without a copy (valid only until the scan moves to the next block). For entries [onEntry]
+     * accepted, it then calls [onFrequency] with the verdict, in the same block visit. `inline`,
+     * so no callback allocates; each block is bulk-fetched once per visit ([ensureRangeScanBlock]).
      *
-     * [onEntry] verdicts: [SCAN_SKIP] — not a candidate; [SCAN_TAKE] — candidate, report its
-     * frequency via [onFrequency]; [SCAN_TAKE_STEM] — same, flagged as a same-stem candidate of
-     * the P3 dual-track pass; [SCAN_TAKE_SAME_LENGTH] — same, flagged as a candidate whose length
-     * equals the typed prefix length (the TT-TYPO-NEXT Phase-B same-length bonus; only the fuzzy
-     * pass ever returns it); [SCAN_ABORT] — stop the whole scan immediately (the fuzzy budget
-     * trip, after which the level is dropped in full and pending frequencies are never needed, so
-     * [onFrequency] may then be skipped).
+     * [onEntry] verdicts: [SCAN_SKIP], not a candidate; [SCAN_TAKE], a candidate;
+     * [SCAN_TAKE_STEM], a same-stem candidate of the two-track exact pass;
+     * [SCAN_TAKE_SAME_LENGTH], a candidate as long as the typed prefix (typo recovery only);
+     * [SCAN_ABORT], stop at once (budget trip; the level is dropped, so [onFrequency] may be
+     * skipped).
      *
-     * The [insertRanked] call sequence is unchanged versus the schema-1 loop: [onFrequency] fires
-     * in ascending index order within a block and blocks are visited in ascending order.
+     * [onFrequency] fires in ascending index order within a block, and blocks are visited in
+     * ascending order.
      */
     private inline fun scanBlockRange(
         start: Int,
@@ -1397,8 +1303,8 @@ internal class TdictPrefixIndex private constructor(
                             firstStart, prefixLength, suffixStart,
                             query, queryLength,
                         )
-                    // The remainder past the query, piecewise against the fetched block (P3): the
-                    // shared prefix may reach past the query's end, never the reverse — every word
+                    // The remainder past the query, piecewise against the fetched block. The
+                    // shared prefix may reach past the query's end, never the reverse: every word
                     // in [start, end) begins with the query.
                     val remFirstLength: Int
                     val remSecondStart: Int
@@ -1461,10 +1367,9 @@ internal class TdictPrefixIndex private constructor(
 
     /**
      * Piecewise equality of a front-coded word (prefix of the block's first word + suffix at
-     * [suffixStart]) against [query], read from the current scan block's fetched scratch — only
-     * [scanBlockRange] calls this, and only while its fetch is current. Caller guarantees prefix +
-     * suffix lengths equal [queryLength] (checked before the call), so [prefixLength] never
-     * exceeds it.
+     * [suffixStart]) against [query], read from the current scan block's scratch. Called only by
+     * [scanBlockRange] while its fetch is current; the caller has checked that the word length
+     * equals [queryLength].
      */
     private fun wordBytesEqual(
         firstStart: Int,
@@ -1500,20 +1405,16 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * Decodes word [index] of the front-coded block structure into [scratch] and returns its
-     * byte length. Used by the no-cache probe path ([probeCompareWholeWordToVariant],
-     * [probeCompareWordToPrefixBlock]) and by [compareWords], whose two words may live in
-     * different blocks and therefore cannot share the single-block cache; the binary-search and
-     * scan paths above all go through the cache instead. A block stores its first word in full
-     * and every following word as a varint shared-prefix length against that FIRST word plus a
-     * u8-length suffix, so decoding word p walks p entries of the block (≤ [TdictFormat.BLOCK_SIZE]
-     * - 1) — and only reads varints and skips suffix bytes on the way, copying nothing until the
-     * target word. The block is bulk-fetched into [probeBlockBytes] once per block switch
-     * ([ensureProbeBlock]): the Phase-C2 no-cache discipline is about the DECODED-block cache,
-     * not about re-reading the mapping per byte. The prefix bytes are copied from the fetched
-     * block (where the block's first word always lies contiguously), never from [scratch]:
-     * consecutive decodes into one scratch would otherwise corrupt the prefix the next word
-     * refers to.
+     * Decodes word [index] into [scratch] and returns its byte length. Used by the no-cache probe
+     * path and by [compareWords], whose two words may be in different blocks and so cannot share
+     * the single-block cache; binary search and scans go through the cache.
+     *
+     * A block stores its first word in full and every following word as a varint shared-prefix
+     * length against that first word plus a u8-length suffix, so decoding word p walks p entries
+     * (≤ [TdictFormat.BLOCK_SIZE] - 1), copying nothing until the target. The raw block is
+     * bulk-fetched into [probeBlockBytes] once per block switch ([ensureProbeBlock]); "no-cache"
+     * means no decoded-block cache. Prefix bytes are copied from the fetched block, never from
+     * [scratch], so consecutive decodes into one scratch cannot corrupt the prefix.
      */
     private fun decodeWordInto(index: Int, scratch: ByteArray): Int {
         val block = index / TdictFormat.BLOCK_SIZE
@@ -1546,7 +1447,7 @@ internal class TdictPrefixIndex private constructor(
         return prefixLength + suffixLength
     }
 
-    // Shared varint decode result, worker-confined exactly like the word scratches above.
+    // Shared varint decode result, worker-confined like the word scratches above.
     private var varintValue = 0
     private var varintNext = 0
 
@@ -1566,7 +1467,7 @@ internal class TdictPrefixIndex private constructor(
         varintNext = cursor
     }
 
-    /** The [decodeVarint] twin over a fetched block scratch; same result fields, array reads. */
+    /** [decodeVarint] over a fetched block scratch; same result fields, array reads. */
     private fun decodeVarint(raw: ByteArray, offset: Int) {
         var value = 0
         var shift = 0
@@ -1583,11 +1484,10 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * Bulk-fetches block [block]'s raw bytes into [scratch] with one relative bulk get off
-     * [blockFetchView]; the block's extent comes from the block index, the last block ending at
-     * the buffer limit ([open] has validated both against the file's own header numbers). A
-     * corrupt extent overflows [scratch] or the view and throws — lookup()'s catch turns that
-     * into an empty result, the same fail-closed posture as any other malformed read.
+     * Bulk-fetches block [block]'s raw bytes into [scratch] with one relative get off
+     * [blockFetchView]. The extent comes from the block index, the last block ending at the buffer
+     * limit ([open] validated both). A corrupt extent throws, and lookup()'s catch returns an
+     * empty result, as for any malformed read.
      */
     private fun fetchBlock(block: Int, scratch: ByteArray) {
         val start = blockOffset(block)
@@ -1619,12 +1519,11 @@ internal class TdictPrefixIndex private constructor(
         private const val MAX_RESULTS = 3
         internal const val MAX_PREFIX_BYTES = 128
         private const val MAX_U32 = 0xffff_ffffL
-        // O7 follow-up (2026-09-29): upper bound on one front-coded block's RAW byte size under
-        // the canonical encoding the packer/validator produce — u8 length + first word, then per
-        // following entry a ≤5-byte u32 varint prefix length, a u8 suffix length and the suffix,
-        // then one ≤5-byte u32 frequency varint per entry. A file with non-canonical over-long
-        // varint encodings could exceed it; fetchBlock then throws inside lookup()'s fail-closed
-        // catch instead of reading past the scratch.
+        // Upper bound on one front-coded block's raw byte size in the canonical encoding: u8
+        // length + first word, then per following entry a <=5-byte u32 varint prefix length, a u8
+        // suffix length and the suffix, then one <=5-byte frequency varint per entry. A file with
+        // over-long varints could exceed it; fetchBlock then throws inside lookup()'s catch
+        // instead of reading past the scratch.
         private const val MAX_U32_VARINT_BYTES = 5
         private const val MAX_BLOCK_RAW_BYTES =
             1 + TdictFormat.MAX_WORD_BYTES +
@@ -1635,75 +1534,55 @@ internal class TdictPrefixIndex private constructor(
         /** "No dictionary entry"; entry indices are non-negative. */
         private const val NO_ENTRY = -1
 
-        // Edit-class ranking keys, carried as plain ints. Exact candidates sort as EDIT_CLASS_EXACT
-        // (a tie on the exact level, whose order is unchanged); within the fuzzy level the ascending
-        // order is #1 long-press partner < #2 geometric neighbour < #3 transposition < #4 full
-        // single substitution, applied ahead of frequency by [ranksBefore] — for fuzzy candidates
-        // through the packed rank key (see [fuzzyRankKey]), which keeps the class dominant. The
-        // exact level always outranks the fuzzy level regardless of these values, because exact and
-        // fuzzy candidates live in separate arrays and the exact ones are merged first.
+        // Edit-class ranking keys. Exact candidates all sort as EDIT_CLASS_EXACT. For typo
+        // recovery the ascending order is #1 long-press partner < #2 geometric neighbor < #3
+        // transposition < #4 full single substitution, applied ahead of frequency by [ranksBefore]
+        // through the packed key of [fuzzyRankKey]. Exact candidates always rank first because
+        // they live in separate arrays and are merged first.
         private const val EDIT_CLASS_EXACT = 0
         internal const val EDIT_CLASS_LONG_PRESS = 1
         internal const val EDIT_CLASS_GEOMETRIC = 2
         internal const val EDIT_CLASS_TRANSPOSITION = 3
         internal const val EDIT_CLASS_SUBSTITUTION = 4
 
-        // Which edit classes reach an engine's fuzzy pass is no longer a global constant: since
-        // TT-TYPO-NEXT Phase B (docs/TT-TYPO-NEXT.md) it is the per-engine [FuzzyEditPolicy]
-        // injected through [open] — [FuzzyEditPolicy.DEFAULT] (class #1 only, no bonus) reproduces
-        // exactly what the E3b verdict shipped (PROPOSALS.md, section "Контракт текста", line
-        // "Итог, 2026-07-27", docs/archive/missions/DICTIONARY-E3.md), and [FuzzyEditPolicy.TATAR]
-        // is the Tatar configuration shipped since Phase C2 (2026-09-20): class #1 plus the gated,
-        // probe-first class #4 with the same-length bonus. The #2/#3 generators, the geometry map
-        // and the instrumentation harness stay in the tree as infrastructure regardless of policy
-        // and keep their direct tests.
+        // Which edit classes run is the per-engine [FuzzyEditPolicy] passed to [open].
 
-        // Fuzzy pass. Extra headroom on the variant buffer covers a re-encode that is a few bytes
-        // longer than the prefix; edit classes #1/#2 (single-letter substitution) and #3
-        // (transposition) keep the code-point length identical in practice.
+        // Extra headroom on the variant buffer covers a re-encode a few bytes longer than the
+        // prefix; all edit classes keep the code-point length.
         private const val VARIANT_HEADROOM = 8
 
-        // The fuzzy pass (all three E3b classes) needs at least three code points; the count is
-        // taken off the UTF-8 lead bytes so a two-letter Cyrillic prefix (four bytes) is rejected.
+        // Typo recovery needs at least three code points; the count is taken off the UTF-8 lead
+        // bytes, so a two-letter Cyrillic prefix (four bytes) is rejected.
         private const val MIN_FUZZY_PREFIX_CODE_POINTS = 3
 
-        // Phase C (docs/TT-TYPO-NEXT.md): edit class #4 (full single substitution) additionally
-        // requires the exact pass to have returned ZERO results (see collectFuzzy) and a settled
-        // prefix of at least four code points — the boundary the D3 contract already uses for
-        // "settled word" (AutocorrectPolicy.MIN_WORD_CODE_POINTS).
+        // Edit class #4 also requires an empty exact pass (see collectFuzzy) and a prefix of at
+        // least four code points, the same bound as AutocorrectPolicy.MIN_WORD_CODE_POINTS.
         private const val MIN_SUBSTITUTION_PREFIX_CODE_POINTS = 4
 
-        // P3 same-stem boost: the typed prefix must be a complete word AND at least this many code
-        // points (counted off the UTF-8 lead bytes, same as MIN_FUZZY_PREFIX_CODE_POINTS). Mirrors
-        // the AutocorrectPolicy.MIN_WORD_CODE_POINTS convention of treating four letters as the
-        // "settled word" boundary.
+        // Same-stem boost: the typed prefix must be a complete word of at least this many code
+        // points (counted off the UTF-8 lead bytes), as in AutocorrectPolicy.MIN_WORD_CODE_POINTS.
         private const val MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS = 4
 
-        // Fixed budgets. Exceeding either drops the whole fuzzy level, never a part of it. The
-        // variant budget bounds classes #1+#2+#3 combined; it sits above the E3b offline reference
-        // (p95 33 variants, max 39) with headroom, so a correct implementation never trips it on the
-        // typo set — a fact the recovery test asserts. The visited budget sits far above the E3b
-        // reference (p95 133 entries, max 522).
+        // Fixed budgets. Exceeding either drops the whole typo-recovery level. The variant budget
+        // covers classes #1 to #3 combined plus class #4 survivors; both budgets sit well above
+        // what the recovery tests observe, so they only stop pathological input.
         private const val MAX_FUZZY_VARIANTS = 64
         private const val MAX_FUZZY_VISITED = 8192
 
-        // Phase C: the class #4 PROBE budget. Probe-first means MAX_FUZZY_VARIANTS caps only
-        // survivors (variants that start at least one dictionary word — measured: typically 0-3);
-        // the probes themselves are bounded separately. The count is prefix code points x
-        // (alphabet size - 1), at most MAX_PREFIX_BYTES x 38 ≈ 4 864 for the Tatar alphabet, so
-        // 8 192 can never trip on a real layout — it exists so a pathological future alphabet
-        // fails closed instead of scanning unbounded.
+        // Class #4 probe budget. MAX_FUZZY_VARIANTS caps only survivors (variants that start at
+        // least one dictionary word); probes are bounded here. The probe count is prefix code
+        // points x (alphabet size - 1), below this bound for the shipped layouts; it stops an
+        // unexpectedly large alphabet from scanning without limit.
         private const val MAX_FUZZY_PROBES = 8192
 
-        // scanBlockRange entry verdicts: not a candidate / candidate, report its frequency /
-        // abort the whole scan (the fuzzy budget trip). SCAN_TAKE_STEM is the P3 dual-track
-        // variant of SCAN_TAKE: candidate whose remainder is a known suffix of the injected table.
+        // scanBlockRange entry verdicts: not a candidate / candidate / abort the whole scan (budget
+        // trip). SCAN_TAKE_STEM: a candidate whose remainder is a known suffix of the table.
         private const val SCAN_SKIP = 0
         private const val SCAN_TAKE = 1
         private const val SCAN_ABORT = 2
         private const val SCAN_TAKE_STEM = 3
-        // TT-TYPO-NEXT Phase-B variant of SCAN_TAKE: a fuzzy candidate whose length equals the
-        // typed prefix length (only scanVariantBlock returns it, under the policy's bonus flag).
+        // A typo-recovery candidate as long as the typed prefix (only scanVariantBlock returns it,
+        // under the policy's bonus flag).
         private const val SCAN_TAKE_SAME_LENGTH = 4
         private val MAGIC = "TATDICT\u0000".toByteArray(Charsets.US_ASCII)
 
@@ -1712,10 +1591,9 @@ internal class TdictPrefixIndex private constructor(
             identity: DictionaryIdentity,
             expectedEntryCount: Long,
             expectedRawSize: Long,
-            // P3: the same-stem boost table; null keeps the frozen D1 behavior byte-identical.
+            // The same-stem boost table; null disables the boost.
             suffixTable: InflectedSuffixTable? = null,
-            // TT-TYPO-NEXT Phase B: the per-engine fuzzy policy; null is [FuzzyEditPolicy.DEFAULT],
-            // bit-identical to the pre-Phase-B shipped behavior (class #1 only, no bonus).
+            // The per-engine typo-recovery policy; null is [FuzzyEditPolicy.DEFAULT].
             fuzzyEditPolicy: FuzzyEditPolicy? = null,
         ): TdictPrefixIndex? = try {
             require(identity.generation > 0)

@@ -115,8 +115,8 @@ class TdictValidator {
             throw DictionaryValidationException("unexpected raw size")
         }
 
-        // The raw file is at most ~1.4 MB by the budget above, so validating from memory is
-        // both simpler and faster than the seek-per-word pass schema 1 needed for its offsets.
+        // The raw file is bounded by the size limit above, so validating from memory is simpler
+        // and faster than a seek per word.
         val bytes = FileInputStream(file).use { stream -> stream.readBytes() }
         val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val magic = ByteArray(8)

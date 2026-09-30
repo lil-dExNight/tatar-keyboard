@@ -20,9 +20,9 @@ import kotlin.math.sqrt
 
 /**
  * The per-dictionary glide index: a start/end key-pair index over the inventory's words, built
- * ONCE (lazily, on first decode — the engine worker is a background thread) and immutable
- * afterwards. This is what makes extremity pruning (the two nearest keys to the gesture's start
- * x the two nearest to its end) a range lookup instead of a dictionary scan.
+ * once (lazily, on the first decode, on the engine worker) and immutable afterwards. It makes
+ * extremity pruning (the two keys nearest the gesture's start x the two nearest its end) a
+ * range lookup instead of a dictionary scan.
  *
  * Layout (all flat arrays, no per-word objects):
  *  - [keySeqStarts]/[keySeqPool]: each indexed word's letter sequence as key indices, so a
@@ -35,10 +35,9 @@ import kotlin.math.sqrt
  *  - [pairOffsets]/[pairEntries]: CSR buckets keyed by firstKey x lastKey, entry indices in
  *    dictionary order.
  *
- * Words carrying a letter the layout has no key for (on the Tatar layout: the more-key-only
- * letters) are NOT indexed — they can never be a glide candidate (fail-closed; the skip count
- * is in [skippedWordCount]). The index publishes a retained-bytes estimate for the
- * "measure and document" requirement of the glide plan.
+ * Words with a letter the layout has no key for (on the Tatar layout: letters reachable only
+ * by long press) are not indexed and can never be glide candidates; [skippedWordCount] counts
+ * them. [retainedByteEstimate] reports the index's heap size.
  */
 class GlideWordIndex private constructor(
     val wordCount: Int,
@@ -157,9 +156,9 @@ class GlideWordIndex private constructor(
             // Fill the CSR table in entry order, so every bucket stays in dictionary order,
             // THEN sort each bucket by frequency descending (ties keep the dictionary order):
             // the decode visits candidates best-frequency-first, which lets the fail-fast
-            // frequency bound reject most of them unscored (a verdict-exact prune — the P7-4
-            // device profile showed per-candidate scoring dominates the decode cost). The visit
-            // order stays deterministic, and the top-N tie-break is by entry index regardless.
+            // frequency bound reject most of them unscored (the prune never changes the result;
+            // per-candidate scoring dominates the decode cost). The visit order stays
+            // deterministic, and the top-N tie-break is by entry index regardless.
             val pairEntries = IntArray(wordCount)
             val cursors = IntArray(keyCount * keyCount)
             for (pair in 0 until keyCount * keyCount) cursors[pair] = pairOffsets[pair]
@@ -226,8 +225,8 @@ class GlideWordIndex private constructor(
                     if (withLoops && key == previousKey) {
                         hasDouble = true
                         // The detour: previous point -> 4 loop corners (bottom-right, top-right,
-                        // top-left, bottom-left), replacing the doubled letter's center visit —
-                        // the reference implementation's "pool/poll trick". The path resumes
+                        // top-left, bottom-left), replacing the doubled letter's center visit, as
+                        // in the reference implementation. The path resumes
                         // from the last corner, so a following letter's segment starts there.
                         val dx = geometry.halfWidth(key) / 2
                         val dy = geometry.halfHeight(key) / 2

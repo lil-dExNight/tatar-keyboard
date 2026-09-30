@@ -21,7 +21,7 @@ import java.io.InputStream
 /**
  * The emoji-search index: an immutable, Android-free table of "sequence -> name + keywords" built
  * from `assets/emoji/emoji_search_v1.txt` (see `scripts/emoji_search_pack.py` and the NOTICE beside
- * the asset; the data is CLDR 44, Russian first and English after it).
+ * the asset; the data is CLDR annotations, Russian first and English after it).
  *
  * The asset is data, not code: UTF-8, LF line endings, one entry per line, three tab-separated
  * fields — the sequence exactly as it appears in `emoji_set_v1.txt`, the Russian short name, and
@@ -116,7 +116,7 @@ class EmojiSearchIndex private constructor(
     /**
      * The Russian short name of [sequence] itself, or null when the index does not hold it. A
      * linear scan, allocation-free; used off the keystroke path, when a strip cell that shows an
-     * emoji (mission 2 of `docs/EMOJI-SUGGEST-PLAN.md`) needs a spoken label for TalkBack.
+     * emoji needs a spoken label for TalkBack.
      */
     fun nameOf(sequence: String): String? {
         var index = 0
@@ -183,8 +183,8 @@ class EmojiSearchIndex private constructor(
         }
 
         /**
-         * Fail-closed parser. A malformed line is dropped, a duplicate sequence is dropped, and a
-         * fully unreadable input yields [EMPTY]; no exception ever escapes.
+         * A malformed line is dropped, a duplicate sequence is dropped, and a fully unreadable
+         * input yields [EMPTY]; no exception ever escapes.
          */
         @JvmStatic
         fun parse(text: String): EmojiSearchIndex =

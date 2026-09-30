@@ -26,17 +26,11 @@ import android.widget.Toast
 import rkr.simplekeyboard.inputmethod.R
 
 /**
- * The row builders of the settings screens (T2 part 3, docs/ROADMAP-P6.md): every iOS-style row
- * the screens are built from — link, text, action, switch, value — plus the card scaffolding that
- * lays them out ([addSectionHeader], [addCard]) and the two small shared predicates
- * ([setRowEnabled], [isRestricted], [dp]).
- *
- * They are `internal` extension functions on [SettingsHostActivity], moved verbatim out of the
- * activity, so every call site in the screen builders kept its exact text: the source-contract
- * tests pin that text to `SettingsHostActivity.kt` (e.g. `switchRow(Settings.PREF_SHOW_EMOJI_KEY,
- * true`), and a pure move may not touch it. What the moved functions reach — `prefs`,
- * `contentView`, `currentDialog`, `restrictionKeys`, the companion constants — is `internal` on
- * the activity for the same mechanical reason parts 1–2 record.
+ * Row builders of the settings screens: the iOS-style link, text, action, switch and value rows,
+ * the card scaffolding that lays them out ([addSectionHeader], [addCard]) and small shared
+ * helpers ([setRowEnabled], [isRestricted], [dp]). They are `internal` extensions on
+ * [SettingsHostActivity], which exposes the state they use (`prefs`, `contentView`,
+ * `currentDialog`, `restrictionKeys`, the companion constants) as `internal`.
  */
 internal fun SettingsHostActivity.inflateRow(
     layoutRes: Int,
@@ -142,8 +136,8 @@ internal fun SettingsHostActivity.switchRowRaw(title: CharSequence, summary: Cha
             info.className = Switch::class.java.name
             info.isCheckable = true
             info.isChecked = switchView.isChecked
-            // F15a: a soft-disabled row is still tappable (it explains itself), but TalkBack
-            // must call it what it is.
+            // A soft-disabled row is still tappable (it explains itself), but TalkBack
+            // reports it as disabled.
             if (rowIsSoftDisabled(host)) {
                 info.isEnabled = false
             }
@@ -191,7 +185,7 @@ internal fun SettingsHostActivity.addSectionHeader(text: CharSequence) {
 
 /**
  * Appends a card group to the content column: per-position rounded
- * backgrounds (wave D drawables) and a 1px inset hairline between rows,
+ * backgrounds (app_card_* drawables) and a 1px inset hairline between rows,
  * none after the last. [spacedFromPrevious] is turned off when a
  * section header directly above already provides the gap.
  */
@@ -219,13 +213,10 @@ internal fun SettingsHostActivity.addCard(rows: List<View>, spacedFromPrevious: 
 }
 
 /**
- * F15(a) of `docs/AUDIT-2026-09-24-FIXES.md`, closed in stage C of `docs/ROADMAP-P8-PLAN.md`:
- * a row that depends on a switch that is off used to swallow the tap in silence — the user got
- * no hint why nothing happened. A soft-disabled row now keeps its tap target and answers with a
- * short explanation; the SWITCH inside it stays disabled, so the tap can never toggle anything.
- *
- * [reasonRes] is the explanation. Zero keeps the old hard-disabled behaviour (used where the
- * reason is not a switch the user can flip, e.g. the last remaining language).
+ * Enables or disables a row. A disabled row with a [reasonRes] is soft-disabled: it keeps its tap
+ * target and answers with that short explanation, while the switch inside stays disabled so the
+ * tap never toggles anything. Zero means hard-disabled, for reasons that are not a switch the
+ * user can flip (e.g. the last remaining language).
  */
 internal fun SettingsHostActivity.setRowEnabled(row: View, enabled: Boolean, reasonRes: Int = 0) {
     val softDisabled = !enabled && reasonRes != 0
@@ -247,8 +238,8 @@ internal fun SettingsHostActivity.setRowEnabled(row: View, enabled: Boolean, rea
 }
 
 /**
- * Installs a row's tap action through the soft-disabled gate (F15a): while the row carries a
- * disabled reason, the tap shows that reason instead of running [action].
+ * Installs a row's tap action through the soft-disabled gate: while the row carries a disabled
+ * reason, the tap shows that reason instead of running [action].
  */
 internal fun SettingsHostActivity.rowClick(row: View, action: () -> Unit) {
     row.setOnClickListener {
@@ -262,8 +253,8 @@ internal fun SettingsHostActivity.rowClick(row: View, action: () -> Unit) {
 }
 
 /**
- * F15a: picks the explanation for a dimmed row. An MDM restriction is not something the user can
- * flip, so it gets its own wording; otherwise the reason is the switch the row depends on.
+ * Picks the explanation for a dimmed row. An MDM restriction is not something the user can flip,
+ * so it gets its own wording; otherwise the reason is the switch the row depends on.
  */
 internal fun disabledReason(restricted: Boolean, dependencyReasonRes: Int): Int =
         if (restricted) R.string.row_locked_by_admin else dependencyReasonRes

@@ -17,29 +17,27 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
 /**
- * The decode seam of the glide engine path (P7-3, docs/GLIDE-PLAN.md): one recorded path in,
- * ranked words out. Runs on the engine's serialized worker exactly like the prefix lookup —
- * the [GlideDecoder] behind it is worker-confined.
+ * The decode entry point of glide typing: one recorded path in, ranked words out. Runs on the
+ * engine's serialized worker like the prefix lookup; the [GlideDecoder] behind it is
+ * worker-confined.
  */
 fun interface GlideComputer {
     fun decodeGlide(path: GlidePath): List<String>
 }
 
 /**
- * Receives the current layout's key geometry. The same handoff shape as the fuzzy pass's
- * neighbor table: a `@Volatile` reference swap from the UI thread, read by the serialized
- * worker at decode time. A null or empty geometry fails closed (no candidates).
+ * Receives the current layout's key geometry: a `@Volatile` reference swap from the UI thread,
+ * read by the serialized worker at decode time (same pattern as the typo-recovery neighbor
+ * table). A null or empty geometry yields no candidates.
  */
 fun interface GlideGeometrySink {
     fun updateGlideGeometry(geometry: GlideKeyGeometry?)
 }
 
 /**
- * The idle memory-release seam (O2, docs/OPTIMIZE-2026-09-25.md): drops the lazily built glide
- * word index so a long-hidden keyboard does not hold ~6 MB of pure derivation. The index
- * rebuilds from the dictionary on the next decode. Runs on the engine's serialized worker —
- * the decoder behind it is worker-confined, so the engine posts this through its executor,
- * never onto the calling (UI) thread.
+ * Drops the lazily built glide word index so a long-hidden keyboard does not hold derived data;
+ * the index is rebuilt from the dictionary on the next decode. The decoder is worker-confined,
+ * so the engine posts this through its serialized executor, never on the calling (UI) thread.
  */
 fun interface GlideIndexReleaser {
     fun releaseGlideIndex()

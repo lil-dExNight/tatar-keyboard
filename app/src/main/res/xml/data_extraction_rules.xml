@@ -1,22 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-     E2b-3 — backup closed as a whitelist, API 31+ (android:dataExtractionRules).
+     Backup and device transfer closed as a whitelist, API 31+ (android:dataExtractionRules).
 
-     Whitelist, not blacklist: there is NOT ONE allowing (<include>) element in either
-     section. Every data domain of the app — regular AND device-protected: files,
-     SharedPreferences, databases, external storage — is excluded WHOLE, so any file a
-     future phase adds falls into an already-excluded domain by default and can never
-     leak by a rule someone forgot to write. Individual paths (personal/, dictionaries/,
-     the "recent emoji" medium) are deliberately NOT listed: a forgotten path is exactly
-     the class of error this shape makes impossible.
+     Neither section has an allowing <include> element. Every data domain of the app,
+     regular and device-protected (files, SharedPreferences, databases, external storage),
+     is excluded whole, with no path attribute, so any file added later falls into an
+     already-excluded domain. Individual paths (personal/, dictionaries/, recent emoji)
+     are deliberately not listed: a path list would miss new files.
 
-     BOTH sections are present on purpose. On Android 12+ android:allowBackup="false"
-     stops cloud backup but does NOT by itself stop device-to-device transfer, so
-     <device-transfer> must exclude the same domains as <cloud-backup>.
-
-     The exact XML shape (whole-domain <exclude> with no path attribute, and the domain
-     name set) is recorded and justified in docs/archive/emoji/DICTIONARY-E2.md (the
-     section "E2b-3 — backup closed as a whitelist").
+     Both sections are needed. On Android 12+ android:allowBackup="false" stops cloud
+     backup but not device-to-device transfer, so <device-transfer> excludes the same
+     domains as <cloud-backup>.
 -->
 <data-extraction-rules>
     <cloud-backup>

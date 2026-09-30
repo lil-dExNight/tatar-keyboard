@@ -59,18 +59,16 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     public static final String PREF_KEYPRESS_SOUND_VOLUME = "pref_keypress_sound_volume";
     public static final String PREF_KEY_LONGPRESS_TIMEOUT = "pref_key_longpress_timeout";
     /**
-     * Keyboard height as a float scale of the resource default (1.0f = today; U6 of Phase 5,
-     * docs/ROADMAP-P5.md). The settings row writes one of the three
-     * {@link KeyboardHeightPresets} values; floats outside them (the pre-U6 seek bar's 0.50–1.50
-     * steps, or an integer-percent managed restriction) keep applying verbatim.
+     * Keyboard height as a float scale of the resource default (1.0f = default). The settings row
+     * writes one of the three {@link KeyboardHeightPresets} values; other floats (older seek-bar
+     * values in 0.50–1.50, or an integer-percent managed restriction) keep applying as stored.
      */
     public static final String PREF_KEYBOARD_HEIGHT = "pref_keyboard_height";
     /**
-     * Emoji panel height as a float scale of the keyboard box (1.0f = the same-box invariant;
-     * docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B). The settings row writes one of the three
-     * {@link EmojiPanelHeightPresets} values; floats outside them (an integer-percent managed
-     * restriction divided by 100) keep applying verbatim, scaled and capped at the 46%p screen
-     * ceiling.
+     * Emoji panel height as a float scale of the keyboard box (1.0f = same size as the keyboard).
+     * The settings row writes one of the three {@link EmojiPanelHeightPresets} values; other floats
+     * (an integer-percent managed restriction divided by 100) keep applying as stored, capped at
+     * the 46%p screen ceiling.
      */
     public static final String PREF_EMOJI_PANEL_HEIGHT = "pref_emoji_panel_height";
     public static final String PREF_BOTTOM_OFFSET_PORTRAIT = "pref_bottom_offset_portrait";
@@ -81,48 +79,38 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     public static final String PREF_SPACE_SWIPE = "pref_space_swipe";
     public static final String PREF_DELETE_SWIPE = "pref_delete_swipe";
     /**
-     * Glide (swipe) typing, default ON, subordinate to the suggestions master switch — the glide
-     * candidates ARE suggestions (docs/GLIDE-PLAN.md). The settings UI row lands with P7-3; the
-     * read path exists from P7-2 so the touch side already honors the toggle.
+     * Glide typing, default ON. Independent of the suggestions switch; see
+     * {@link #readGlideTypingEnabled}.
      */
     public static final String PREF_GLIDE_TYPING = "pref_glide_typing";
     public static final String PREF_TATAR_SUGGESTIONS = "pref_tatar_suggestions";
     /**
-     * The personal dictionary: one toggle for both reading and writing, default OFF (E4b). A
-     * separate "remember typed words" switch is deliberately not introduced: two toggles give four
-     * states, only three of which mean anything, and would force the user to be told the difference
-     * between "do not remember" and "do not show".
+     * The personal dictionary: one toggle for both reading and writing, default OFF. There is no
+     * separate "remember typed words" switch: two toggles would give four states, only three of
+     * them meaningful.
      *
-     * <p>Turning it off does NOT erase what was already saved — that is what the "Personal
-     * dictionary" screen is for, and the settings text says so.
+     * <p>Turning it off does not erase what was already saved; the "Personal dictionary" screen
+     * does that, and the settings text says so.
      */
     public static final String PREF_PERSONAL_DICTIONARY = "pref_personal_dictionary";
     /**
-     * Autocorrection on a word separator (D3): its own toggle, default OFF, subordinate to
-     * {@link #PREF_TATAR_SUGGESTIONS}.
-     *
-     * <p>Deliberately NOT merged into the suggestions switch: a suggestion offers, an autocorrection
-     * changes what the user has already typed. The price of a mistake differs, and someone who
-     * accepts the first is not obliged to accept the second.
+     * Autocorrection on a word separator: its own toggle, default OFF, subordinate to
+     * {@link #PREF_TATAR_SUGGESTIONS}. Not merged into the suggestions switch: a suggestion only
+     * offers, while an autocorrection changes what the user has already typed.
      */
     public static final String PREF_TATAR_AUTOCORRECT = "pref_tatar_autocorrect";
     /**
-     * Emoji suggestions in the NEXT_WORD band (mission 2 of {@code docs/EMOJI-SUGGEST-PLAN.md}):
-     * their own toggle, default OFF, subordinate to {@link #PREF_TATAR_SUGGESTIONS} — the emoji
-     * cell lives in the suggestion band, so without suggestions there is nowhere for it to appear.
+     * Emoji suggestions in the NEXT_WORD strip: their own toggle, default ON, subordinate to
+     * {@link #PREF_TATAR_SUGGESTIONS}, because the emoji cell lives in the suggestion strip.
      */
     public static final String PREF_EMOJI_SUGGESTIONS = "pref_emoji_suggestions";
     /**
-     * Incognito mode (U8 of Phase 2, docs/ROADMAP-P2.md): while ON, nothing new is learned —
-     * no write reaches the personal words store, the personal bigrams store or their pending
-     * counters; what is already saved keeps appearing. Deliberately ONE toggle for both stores,
-     * exactly like {@link #PREF_PERSONAL_DICTIONARY} governs both: two pause switches give four
-     * states, only three of which mean anything. Turning it off resumes learning; nothing from
-     * the paused period is made up, because nothing was observed into any counter while it was
-     * on.
+     * Pause learning (incognito): while ON, nothing new is learned (no write reaches the personal
+     * word store, the learned-pairs store or their pending counters); what is already saved keeps
+     * appearing. One toggle for both stores, like {@link #PREF_PERSONAL_DICTIONARY}. Turning it
+     * off resumes learning; nothing from the paused period is learned afterwards.
      *
-     * <p>Deliberately NOT an enterprise restriction: it is a moment of the user's own privacy,
-     * not a policy an administrator sets.</p>
+     * <p>Not an enterprise restriction: it is the user's own privacy choice, not a policy.</p>
      */
     public static final String PREF_INCOGNITO_MODE = "pref_incognito_mode";
     /**
@@ -207,7 +195,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
             final SharedPreferences.Editor prefsEditor = prefs.edit();
             for (final String key : restrictionKeys) {
                 // The log line names the KEY only, never the value: a restriction value can carry
-                // user configuration, and a keyboard's log must not (2026-09-24 audit, finding 5).
+                // user configuration, and a keyboard's log must not.
                 switch (key) {
                     case PREF_ENABLED_SUBTYPES:
                         Log.i(TAG, "Loading restriction: " + key);
@@ -245,16 +233,16 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
                     case PREF_KEYBOARD_COLOR:
                         Log.i(TAG, "Loading restriction: " + key);
                         String color = appRestrictions.getString(key);
-                        // getString даёт null, если ограничение задано значением другого типа
-                        // (или отсутствует): без этой проверки загрузка политик падала с NPE.
+                        // getString returns null when the restriction holds a value of another
+                        // type (or is missing); without this check loading the policies throws NPE.
                         if (color != null && color.startsWith("#")) {
                             try {
                                 color = "FF" + color.substring(1);
                                 prefsEditor.putInt(key, Integer.parseUnsignedInt(color, 16));
                                 break;
                             } catch (NumberFormatException ignored) {
-                                // Значение не разбирается как цвет — падать на политике нельзя,
-                                // поэтому ключ просто снимается ниже и остаётся дефолт.
+                                // Not a parseable color. A policy must not crash the keyboard, so
+                                // the key is removed below and the default stays.
                             }
                         }
                         prefsEditor.remove(key);
@@ -278,7 +266,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
             }
 
             // A permissive personal-dictionary policy is dropped from the stored set, so the
-            // settings row it would otherwise grey out stays live for the user.
+            // settings row it would otherwise disable stays live for the user.
             final Set<String> activeKeys = PersonalDictionaryRestriction.effectiveRestrictionKeys(
                     restrictionKeys,
                     restrictionKeys.contains(PREF_PERSONAL_DICTIONARY)
@@ -366,9 +354,9 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     /**
-     * Incognito mode is a pause, not an opt-in: default OFF, and it governs WRITES only. Reading
-     * what is already saved never consults it — that is the documented U8 choice, pinned by
-     * IncognitoModeTest: learned words and pairs keep surfacing while the pause is on.
+     * Pause learning is a pause, not an opt-in: default OFF, and it governs writes only. Reading
+     * what is already saved never consults it: learned words and pairs keep appearing while the
+     * pause is on.
      */
     public static boolean readIncognitoModeEnabled(final SharedPreferences prefs) {
         return prefs.getBoolean(PREF_INCOGNITO_MODE, false);
@@ -385,10 +373,8 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     /**
-     * Emoji suggestions default ON but stay subordinate, exactly like autocorrection: they answer
-     * true only when Tatar suggestions are on as well (M4b — the opt-in default was never
-     * discovered in the field; the master suggestions switch remains the real gate and is itself
-     * opt-in). Reading both here rather than at the call sites is what makes the subordination a
+     * Emoji suggestions default ON but stay subordinate, like autocorrection: true only when Tatar
+     * suggestions (themselves opt-in) are on as well. Reading both here makes the subordination a
      * property of the setting instead of a rule every caller has to remember.
      */
     public static boolean readEmojiSuggestionsEnabled(final SharedPreferences prefs) {
@@ -397,10 +383,9 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     /**
-     * Glide typing is INDEPENDENT of the suggestions master (P7-6, docs/ROADMAP-P7.md — the
-     * 2026-09-24 field report: with the master off the gesture died on the gate, which is not
-     * what Gboard users expect). Its own toggle only. With suggestions off the lift still
-     * commits the word — that is typing, not a suggestion — and the strip shows nothing.
+     * Glide typing is independent of the suggestions switch: its own toggle only. With suggestions
+     * off the lift still commits the word (that is typing, not a suggestion) and the strip shows
+     * nothing.
      */
     public static boolean readGlideTypingEnabled(final SharedPreferences prefs) {
         return prefs.getBoolean(PREF_GLIDE_TYPING, true);

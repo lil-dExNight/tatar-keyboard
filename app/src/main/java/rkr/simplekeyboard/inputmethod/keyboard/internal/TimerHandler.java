@@ -31,8 +31,8 @@ public final class TimerHandler extends LeakGuardHandlerWrapper<DrawingProxy>
     // LatinIME.UIHandler: Handler#post(Runnable) enqueues a message whose {@code what} is 0, and
     // Handler#removeMessages(int) matches on {@code what} alone, so a zero id makes every
     // cancellation of this message silently delete any posted runnable of the same handler as
-    // well. Nothing posts a bare runnable on this handler today; the id is kept non-zero so that
-    // the first line to do so does not resurrect the defect (docs/SUGGEST-DIES.md).
+    // well. Nothing posts a bare runnable on this handler; the non-zero id keeps it safe if
+    // something ever does.
     private static final int MSG_TYPING_STATE_EXPIRED = 5;
     private static final int MSG_REPEAT_KEY = 1;
     private static final int MSG_LONGPRESS_KEY = 2;
@@ -192,7 +192,7 @@ public final class TimerHandler extends LeakGuardHandlerWrapper<DrawingProxy>
     public void cancelAllMessages() {
         cancelAllKeyTimers();
         removeMessages(MSG_DISMISS_KEY_PREVIEW);
-        // These two ids are never handled — they exist only as hasMessages() markers — so a
+        // These two ids are never handled (they exist only as hasMessages() markers), so a
         // message left behind here would keep isTypingState()/isInDoubleTapShiftKeyTimeout()
         // stale-true after the view's cancelAllOngoingEvents() until it expired on its own.
         removeMessages(MSG_TYPING_STATE_EXPIRED);

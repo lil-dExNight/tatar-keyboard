@@ -22,16 +22,16 @@ internal class SuggestionStripState {
     private var downCell = NO_CELL
     private var activePointerId = INVALID_POINTER_ID
     private var pointerInsideDownCell = false
-    // P2 of Phase 3 (docs/ROADMAP-P3.md): the autocorrect preview's emphasized cell — the
-    // correction the next separator would insert. [NO_CELL] on every ordinary band.
+    // The autocorrect preview's emphasized cell: the correction the next separator would insert.
+    // [NO_CELL] on every ordinary strip.
     private var emphasizedCell = NO_CELL
 
     fun setSuggestions(first: String?, second: String?, third: String?): Boolean {
         var changed = setSuggestion(0, first)
         changed = setSuggestion(1, second) || changed
         changed = setSuggestion(2, third) || changed
-        // A fresh publication describes the whole band, emphasis included: it is re-applied
-        // right after this, by the same owner call that publishes the words.
+        // A fresh publication describes the whole strip, emphasis included: the caller that
+        // publishes the words re-applies it right after this.
         changed = clearEmphasis() || changed
         return cancelGesture() || changed
     }
@@ -43,14 +43,14 @@ internal class SuggestionStripState {
 
     fun isCellPopulated(cell: Int): Boolean = suggestionAt(cell) != null
 
-    /** The emphasized cell, or [NO_CELL] when the band holds no correction to announce. */
+    /** The emphasized cell, or [NO_CELL] when the strip holds no correction to announce. */
     fun emphasizedCell(): Int = emphasizedCell
 
     fun isEmphasized(cell: Int): Boolean = cell == emphasizedCell && cell != NO_CELL
 
     /**
      * Marks [cell] emphasized (the preview's correction cell); [NO_CELL] clears. An empty or
-     * out-of-range cell is refused outright — emphasis on nothing would underline a blank.
+     * out-of-range cell is refused, since emphasis on nothing would underline a blank.
      * Returns true on a visual change.
      */
     fun setEmphasis(cell: Int): Boolean {
@@ -67,7 +67,7 @@ internal class SuggestionStripState {
         return true
     }
 
-    /** True while at least one cell holds a word, i.e. the strip is not an empty band. */
+    /** True while at least one cell holds a word, i.e. the strip is not empty. */
     fun hasAnySuggestion(): Boolean {
         var cell = 0
         while (cell < CELL_COUNT) {
@@ -78,9 +78,8 @@ internal class SuggestionStripState {
     }
 
     fun cellAt(x: Float, y: Float, width: Int, height: Int): Int {
-        // 2026-09-25 audit, F17: a NaN coordinate passes every comparison below (all false) and
-        // used to fall through to the LAST cell — a MotionEvent carrying NaN would click a cell
-        // the finger never touched. Non-finite input is no cell at all.
+        // A NaN coordinate fails every comparison below and would fall through to the last cell,
+        // clicking a cell the finger never touched. Non-finite input hits no cell.
         if (!x.isFinite() || !y.isFinite()) {
             return NO_CELL
         }
@@ -162,20 +161,16 @@ internal class SuggestionStripState {
 
     companion object {
         /**
-         * Three cells. Briefly four (T7 of docs/ROADMAP-P4.md reopened 2026-09-27, repacking the
-         * Tatar bigram table at K = 4 for +1.75 pp of next-word hits); reverted 2026-09-29 by an
-         * operator UX decision (docs/GLIDE-LIVE-STRIP4.md footnote). The K = 4 table stays
-         * shipped — its fourth successor is unread headroom (`TatBigrPrefixIndex.MAX_RESULTS`
-         * caps the read at three), free for any future four-cell revisit.
+         * Three cells. The Tatar bigram table stores four successors per word; the fourth is
+         * unread headroom (`TatBigrPrefixIndex.MAX_RESULTS` caps the read at three).
          */
         const val CELL_COUNT = 3
         const val NO_CELL = -1
         const val INVALID_POINTER_ID = -1
         /**
-         * W5 of docs/APPLE-UX-2026-09-25.md: 44dp — the iOS tap-target height, which the strip
-         * is (its cells are tappable). Was 40dp; the change raises the IME by 4dp and is
-         * mirrored by the ViewStub heights of input_view.xml (both layout folders) and by the
-         * coordinate calibration of scripts/emulator-smoke.sh.
+         * 44dp, the iOS tap-target height (the cells are tappable). Mirrored by the ViewStub
+         * heights of input_view.xml (both layout folders) and the coordinates in
+         * scripts/emulator-smoke.sh.
          */
         const val STRIP_HEIGHT_DP = 44
     }

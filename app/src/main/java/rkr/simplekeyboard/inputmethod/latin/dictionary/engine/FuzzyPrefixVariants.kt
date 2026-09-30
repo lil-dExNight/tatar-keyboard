@@ -34,13 +34,12 @@ internal fun countCodePointsByLeadBytes(bytes: ByteArray, length: Int): Int {
 }
 
 /**
- * Pure generator of fuzzy prefix variants. It works on Unicode CODE POINTS and re-encodes each
- * variant to UTF-8, because a byte-level edit of a two-byte Cyrillic letter would produce invalid
- * UTF-8 and a silently empty block scan.
+ * Pure generator of typo-recovery prefix variants. It works on Unicode code points and re-encodes
+ * each variant to UTF-8, because a byte-level edit of a two-byte Cyrillic letter would produce
+ * invalid UTF-8 and an empty block scan.
  *
  * Nothing is allocated per variant: the caller supplies reusable scratch buffers and receives each
- * variant through [VariantConsumer] as `(bytes, length)`. No `String`, no `ImmutableUtf8Prefix`
- * and no collection is ever created here.
+ * variant through [VariantConsumer] as `(bytes, length)`.
  */
 internal object FuzzyPrefixVariants {
     /** Receives each generated variant as UTF-8 bytes in a shared scratch buffer plus its length. */
@@ -49,9 +48,8 @@ internal object FuzzyPrefixVariants {
     }
 
     /**
-     * VariantConsumer that also learns WHICH position was substituted. Only the class #4
-     * generator uses it: the probe path narrows its search by the shared prefix of the typed word
-     * up to that position (TT-TYPO-NEXT Phase C2).
+     * VariantConsumer that also receives the substituted position. Only the class #4 generator
+     * uses it: the probe path narrows its search by the typed word's prefix up to that position.
      */
     fun interface PositionedVariantConsumer {
         fun onVariant(position: Int, variantUtf8: ByteArray, length: Int)
@@ -65,8 +63,8 @@ internal object FuzzyPrefixVariants {
      * the prefix with that single position replaced, re-encoded to UTF-8 into [variantScratch].
      *
      * Returns the number of variants emitted, or -1 when the prefix could not be decoded or when
-     * [maxVariants] would be exceeded. A -1 tells the caller to drop the whole fuzzy level rather
-     * than keep a partial set (fail-closed).
+     * [maxVariants] would be exceeded. On -1 the caller drops the whole typo-recovery level rather
+     * than keep a partial set.
      */
     fun generateLongPressVariants(
         prefixUtf8: ByteArray,
@@ -82,14 +80,9 @@ internal object FuzzyPrefixVariants {
     )
 
     /**
-     * Edit class #2: replace one letter with a geometric keyboard neighbour, in every position that
-     * has one. Same contract as [generateLongPressVariants] — one variant per neighbour of every
-     * position, exactly one letter differing per variant, re-encoded to UTF-8, nothing allocated
-     * per variant — but drawing on [KeyNeighborTable.geometricNeighborsOf] instead of the long-press
-     * partners.
-     *
-     * Returns the number of variants emitted, or -1 when the prefix could not be decoded or when
-     * [maxVariants] would be exceeded (fail-closed: the caller drops the whole fuzzy level).
+     * Edit class #2: replace one letter with a geometric keyboard neighbor, in every position that
+     * has one. Same contract as [generateLongPressVariants], drawing on
+     * [KeyNeighborTable.geometricNeighborsOf] instead of the long-press partners.
      */
     fun generateGeometricVariants(
         prefixUtf8: ByteArray,
@@ -106,12 +99,8 @@ internal object FuzzyPrefixVariants {
 
     /**
      * Edit class #3: swap two adjacent letters, in every adjacent pair of the prefix. Swaps of two
-     * identical code points are skipped (they reproduce the prefix), so exactly one distinct variant
-     * is emitted per distinct adjacent pair. Works on code points and re-encodes to UTF-8; nothing
-     * is allocated per variant.
-     *
-     * Returns the number of variants emitted, or -1 when the prefix could not be decoded or when
-     * [maxVariants] would be exceeded (fail-closed).
+     * identical code points are skipped (they reproduce the prefix). Returns the variant count, or
+     * -1 on undecodable input or when [maxVariants] would be exceeded.
      */
     fun generateTranspositionVariants(
         prefixUtf8: ByteArray,
@@ -142,20 +131,18 @@ internal object FuzzyPrefixVariants {
     }
 
     /**
-     * Edit class #4 (TT-TYPO-NEXT Phase C): replace one letter with EVERY letter of the layout's
-     * typeable alphabet, in every position — the full single-substitution class. The alphabet is
-     * [alphabet] — the layout-derived node set of the keyboard (`KeyNeighborTable.nodes`), never a
-     * hard-coded letter list. Emission order is position ascending, then alphabet (code-point)
-     * ascending; the position's own letter is skipped (it would reproduce the prefix).
+     * Edit class #4: replace one letter with every letter of the layout's alphabet, in every
+     * position (full single substitution). [alphabet] is the layout-derived node set
+     * (`KeyNeighborTable.nodes`), never a hard-coded list. Order: position ascending, then code
+     * point ascending; the position's own letter is skipped.
      *
-     * This generator is PROBE-FIRST by contract: it emits n×alphabet candidates and the consumer
-     * is expected to answer each with a cheap existence probe (binary search, no range scan) and to
-     * full-scan only survivors. [maxVariants] therefore bounds the PROBES, not the survivors — the
-     * survivor cap lives in the caller's budget (TdictPrefixIndex.MAX_FUZZY_VARIANTS), and the
-     * probe count itself is bounded by MAX_PREFIX_BYTES x alphabet size (see MAX_FUZZY_PROBES).
+     * Probe-first: it emits n × alphabet candidates, and the consumer answers each with a cheap
+     * existence probe (binary search, no range scan) and range-scans only the survivors. So
+     * [maxVariants] bounds the probes, not the survivors; the survivor cap is the caller's
+     * (TdictPrefixIndex.MAX_FUZZY_VARIANTS).
      *
      * Returns the number of variants emitted, or -1 when the prefix could not be decoded or when
-     * [maxVariants] would be exceeded (fail-closed: the caller drops the whole fuzzy level).
+     * [maxVariants] would be exceeded (the caller then drops the whole typo-recovery level).
      */
     fun generateFullSubstitutionVariants(
         prefixUtf8: ByteArray,
@@ -188,7 +175,7 @@ internal object FuzzyPrefixVariants {
         return emitted
     }
 
-    /** Shared body of the two substitution classes; [geometric] picks the neighbour source. */
+    /** Shared body of the two substitution classes; [geometric] picks the neighbor source. */
     private fun generateSubstitutionVariants(
         prefixUtf8: ByteArray,
         prefixLength: Int,

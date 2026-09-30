@@ -20,24 +20,20 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
- * The glide-vs-tap decision state machine (P7-2 of docs/GLIDE-PLAN.md): from the touch-down
- * point and the stream of move samples, decide whether the gesture is a glide over letter keys.
+ * The glide-vs-tap decision state machine: from the touch-down point and the stream of move
+ * samples, decide whether the gesture is a glide over letter keys.
  *
  * The thresholds follow FlorisBoard's `GlideTypingGesture.Detector` (Apache-2.0, (C) the
  * FlorisBoard contributors): the gesture is a glide once it has travelled more than one key
  * width from the touch-down point at a velocity above 0.10 dp/ms, decided within a 500 ms
- * window. Constants here are already in pixels — the caller (PointerTracker) converts the
- * density-dependent values; this class stays unit-pure and JVM-testable.
+ * window. Constants here are already in pixels (the caller, PointerTracker, converts the
+ * density-dependent values), so this class stays unit-pure and JVM-testable.
  *
- * One deliberate improvement over the reference (the 2026-09-24 field report, see
- * docs/ROADMAP-P7.md): the window and the velocity anchor at the FIRST sample that leaves a
- * small slop around the touch-down point, not at the touch-down itself. The reference measures
- * both from the down event, so a user who rests a finger on the first key for even ~300-500 ms
- * before moving is rejected forever — "зажимаю букву и начинаю вести её в сторону второй — не
- * работает". While no sample exceeds the slop the machine stays TRACKING regardless of elapsed
- * time: a still finger is a long-press candidate, not a rejected glide. The distance threshold
- * is unchanged (one key width from down). An immediately-swiped gesture anchors on its first
- * move sample and behaves as before.
+ * Unlike the reference, the window and the velocity are measured from the first sample that
+ * leaves a small slop around the touch-down point, not from the touch-down itself. Otherwise a
+ * finger that rests on the first key before moving is rejected forever. While no sample leaves
+ * the slop the machine stays TRACKING regardless of elapsed time. The distance threshold is
+ * still measured from the touch-down point.
  *
  * States: IDLE (no touch) → TRACKING (eligible letter-key down) → ARMED | REJECTED.
  * ARMED and REJECTED are sticky until [onUpOrCancel]; [cancelGlide] (a second finger's
@@ -123,9 +119,9 @@ class GlideGestureDecider(
 
         /**
          * The first-move anchor slop as a fraction of the key width (the caller passes the px).
-         * Sized just above the platform's 8 dp touch slop — a resting finger's tremor never
-         * crosses it — and far below the half-width of a key, so the anchor still lands on the
-         * first key: 0.25 x 98 px ≈ 8.9 dp on the reference 440 dpi phone.
+         * Just above the platform's 8 dp touch slop (a resting finger's tremor never crosses it)
+         * and far below half a key width, so the anchor still lands on the first key (for example,
+         * 0.25 x 98 px ≈ 8.9 dp on a 440 dpi phone).
          */
         const val DEFAULT_SLOP_KEY_WIDTH_FRACTION = 0.25f
     }

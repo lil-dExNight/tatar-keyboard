@@ -27,8 +27,8 @@
         <item name="moreKeysKeyboardStyle">@style/MoreKeysKeyboard.Tatar</item>
         <item name="moreKeysKeyboardViewStyle">@style/MoreKeysKeyboardView.Tatar</item>
         <item name="functionalTextColor">@color/ios_key_functional_text_color</item>
-        <!-- M3 (docs/APPLE-UX-2026-09-25.md): iOS draws the more-keys panel on the KEY
-             surface (white in light, key grey in dark), not on a second keyboard grey. -->
+        <!-- As on iOS, the more-keys panel is drawn on the key surface (white in light,
+             key gray in dark), not on a second keyboard gray. -->
         <item name="popupPanelBackgroundColor">@color/ios_key_normal</item>
         <item name="keyPressedBackgroundColor">@color/ios_key_normal_pressed</item>
         <item name="keyNormalBackgroundColor">@color/ios_key_normal</item>

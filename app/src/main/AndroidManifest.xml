@@ -27,11 +27,10 @@
         android:label="@string/english_ime_name"
         android:supportsRtl="true">
 
-        <!-- O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): lets the shell (Perfetto,
-             Macrobenchmark) record this process's trace sections on release builds.
-             Framework-side attribute (API 29+, ignored by older platforms); zero runtime
-             effect — it grants no capability to the app itself. UnusedAttribute is the
-             same false positive as the baselined enableOnBackInvokedCallback one. -->
+        <!-- Lets the shell (Perfetto, Macrobenchmark) record this process's trace sections
+             on release builds. Framework-side attribute (API 29+, ignored by older platforms);
+             no runtime effect and no capability granted to the app. UnusedAttribute is the same
+             lint false positive as the baselined one for enableOnBackInvokedCallback. -->
         <profileable android:shell="true" tools:ignore="UnusedAttribute" />
 
         <service

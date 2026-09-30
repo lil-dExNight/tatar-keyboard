@@ -52,12 +52,12 @@ class CommitPathConnectionContractTest {
 
     /** Paths one and two — an accepted suggestion and an autocorrection — share this one method. */
     private val replaceTrailingWord by lazy {
-        bodyOf("private boolean replaceTrailingWord(", "* Undoes the autocorrection")
+        bodyOf("private boolean replaceTrailingWord(", "public boolean revertTatarAutocorrection(")
     }
 
     /** Path three — a predicted next word. Deletes nothing, but commits through the same cache. */
     private val commitPredictedWord by lazy {
-        bodyOf("public boolean commitPredictedWord(", "/** Allocation-free suffix test")
+        bodyOf("public boolean commitPredictedWord(", "private static boolean endsWith(final CharSequence text, final String suffix)")
     }
 
     /**
@@ -66,7 +66,7 @@ class CommitPathConnectionContractTest {
      * contract.
      */
     private val revertTatarAutocorrection by lazy {
-        bodyOf("public boolean revertTatarAutocorrection(", "/**\n     * Commits a predicted next word")
+        bodyOf("public boolean revertTatarAutocorrection(", "public boolean commitPredictedWord(")
     }
 
     @Test

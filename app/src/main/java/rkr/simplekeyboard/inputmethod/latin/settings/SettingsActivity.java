@@ -28,8 +28,8 @@ import android.os.Bundle;
  * LatinIME#launchSettings and any launcher shortcuts saved by users all
  * point at this component name, so the class must stay.
  *
- * The legacy PreferenceActivity stack was removed in S2 (IOS-REDESIGN.md).
- * Some OEM settings apps still launch this activity with an
+ * The former PreferenceActivity stack is gone. Some OEM settings apps
+ * still launch this activity with an
  * EXTRA_SHOW_FRAGMENT ("_:show_fragment") extra naming one of the old
  * fragments; those extras are intentionally ignored — every request simply
  * opens the root of the View-based settings UI.

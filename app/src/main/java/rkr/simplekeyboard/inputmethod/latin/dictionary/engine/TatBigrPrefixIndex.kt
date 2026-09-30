@@ -12,27 +12,24 @@ data class BigramTableIdentity(
 )
 
 /**
- * Predicts up to three successor words for an exact, already-normalized context word — the E5c
- * read side of the TATBIGR table (`docs/DICTIONARY-E5B.md`; schema 3 since SIZE-2,
- * `docs/SIZE-SCHEMA3.md`).
+ * Predicts up to three next words for an exact, already-normalized context word (the read side of
+ * the TATBIGR bigram table).
  *
- * Kept as a SEPARATE interface from [PrefixComputer] rather than widening its `lookup` signature:
- * PROPOSALS.md ("E5c. Вид запроса") says the owner of state must know which kind of result it
- * holds so it can choose the right commit path, and a bare `List<String>` cannot carry that on
- * its own — the same reasoning [ClassifiedPrefixComputer] and [KeyNeighborSink] already apply by
- * staying separate interfaces instead of reshaping the frozen one.
+ * A separate interface from [PrefixComputer] rather than a wider `lookup` signature: the state
+ * owner must know which kind of result it holds to choose the right commit path, and a bare
+ * `List<String>` cannot carry that. [ClassifiedPrefixComputer] and [KeyNeighborSink] stay
+ * separate for the same reason.
  */
 internal fun interface NextWordComputer {
     fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String>
 }
 
 /**
- * The slice of the shipped dictionary a TATBIGR schema-3 table needs: exact-word index lookup and
- * word-by-index resolution (SIZE-2, `docs/SIZE-SCHEMA3.md`). Schema 3 stores NO words of its own —
- * heads and successes are indices into the linked dictionary, valid only against the dictionary
- * whose raw SHA-256 the table header names. [TdictPrefixIndex] is the only production
- * implementation; both methods are worker-confined exactly like the rest of that class (a bigram
- * predict runs on the same serialized engine worker as prefix lookup).
+ * The part of the bundled dictionary a TATBIGR schema-3 table needs: exact-word index lookup and
+ * word-by-index resolution. Schema 3 stores no words of its own: heads and successors are indices
+ * into the linked dictionary, valid only against the dictionary whose raw SHA-256 the table header
+ * names. [TdictPrefixIndex] is the only production implementation; both methods are
+ * worker-confined like the rest of that class.
  */
 internal interface BigramDictionary {
     val entryCount: Int
@@ -45,20 +42,17 @@ internal interface BigramDictionary {
 }
 
 /**
- * Zero-allocation reader for one mapped TATBIGR schema-3 file, mirroring [TdictPrefixIndex] in
- * every way that matters: [open] re-validates the structural invariants a lookup depends on
- * (canonical section arithmetic, strictly increasing head indices, minimal varints, stream
- * boundaries, the dictionary link) instead of trusting that `TatBigrValidator` was the only
- * thing ever standing between this buffer and disk; [predict] allocates nothing except the
- * decoded result strings themselves.
+ * Zero-allocation reader for one mapped TATBIGR schema-3 file, like [TdictPrefixIndex]: [open]
+ * re-validates the structural invariants a lookup depends on (section arithmetic, strictly
+ * increasing head indices, minimal varints, stream boundaries, the dictionary link) instead of
+ * trusting `TatBigrValidator`; [predict] allocates only the result strings.
  *
- * The read is: resolve the context word to its dictionary index (one exact binary search in the
- * dictionary), binary search the head-block index for the last block whose first dictionary index
- * is ≤ the query's, stream-decode the block's delta-varint head indices (≤ [HEAD_BLOCK_SIZE] - 1
- * varints) to find the head, then skip/decode u8-counted varint success ids inside the same block
- * and resolve them through the dictionary — at most `min(3, count)` strings, in the packing order
- * the generator already fixed (count descending, tie code-point ascending). No re-ranking happens
- * here.
+ * The read: resolve the context word to its dictionary index (one binary search), binary search
+ * the head-block index for the last block whose first index is ≤ the query's, stream-decode the
+ * block's delta-varint head indices (≤ [HEAD_BLOCK_SIZE] - 1 varints) to find the head, then
+ * skip/decode the u8-counted varint successor ids in the same block and resolve them through the
+ * dictionary: at most `min(3, count)` strings, in packing order (count descending, ties by code
+ * point ascending). No re-ranking happens here.
  */
 internal class TatBigrPrefixIndex private constructor(
     private val bytes: ByteBuffer,
@@ -180,9 +174,8 @@ internal class TatBigrPrefixIndex private constructor(
         private const val U32_BYTES = 4
         private const val BLOCK_RECORD_BYTES = 12
         private const val HEAD_BLOCK_SIZE = 64
-        // Three strip cells again (2026-09-29 revert, SuggestionStripState.CELL_COUNT): the read
-        // caps at three even though the shipped Tatar table is packed at K = 4 — its fourth
-        // successor is unread headroom, free for a future four-cell revisit.
+        // One per strip cell (SuggestionStripState.CELL_COUNT). The Tatar table is packed with up
+        // to four successors per head; the fourth is not read.
         internal const val MAX_RESULTS = 3
         internal const val MAX_WORD_BYTES = 128
         private const val MAX_U32 = 0xffff_ffffL
@@ -261,10 +254,9 @@ internal class TatBigrPrefixIndex private constructor(
                 successIdsOffset.toInt(),
             )
 
-            // Re-validate every invariant the reads above depend on for correctness (not merely
-            // for memory safety) — the same defensive posture as TdictPrefixIndex.open, applied
-            // to the cross-referenced layout: block records, the whole head delta stream, the
-            // counts and every success id, checked against the real dictionary's entry count.
+            // Re-validate every invariant the reads above depend on for correctness, as
+            // TdictPrefixIndex.open does: block records, the whole head delta stream, the counts
+            // and every successor id, checked against the dictionary's entry count.
             var previousFirstIndex = -1L
             var previousDeltaOffset = 0L
             var previousSuccessOffset = 0L

@@ -28,33 +28,26 @@ import android.graphics.drawable.Drawable;
 import rkr.simplekeyboard.inputmethod.R;
 
 /**
- * S1 of {@code docs/APPLE-UX-2026-09-25.md}: the key preview balloon as an iOS DROPLET instead
- * of a rectangle.
+ * The key preview balloon as an iOS-style droplet instead of a rectangle.
  *
- * <p>What it replaces and why. The previous background was {@code ios_key_preview_background},
- * a layer-list of two rounded rectangles. A shape in a layer-list fills the WHOLE bounds, and
- * the bounds of a key preview are {@code keyPreviewHeight} = 122dp tall, while the framework
- * contract (see {@link KeyPreviewDrawParams#setGeometry}) says the background's bottom PADDING
- * marks the part that must stay invisible — the 60dp that hangs over the parent key. The old
- * drawable ignored that contract and painted a 122dp white bar across two key rows; verified on
- * the emulator before this change.</p>
+ * <p>The preview bounds are {@code keyPreviewHeight} tall, and the background's bottom padding
+ * marks the part that must stay invisible, the part that hangs over the parent key (see
+ * {@link KeyPreviewDrawParams#setGeometry}). A layer-list shape would fill the whole bounds and
+ * paint across two key rows. Here a rounded body fills the visible height
+ * ({@code height − bottomPadding}), a short neck of {@link #NECK_HEIGHT_DP} runs from the body's
+ * bottom edge down to the parent key's top edge, and everything below is transparent.</p>
  *
- * <p>The geometry here honours the contract: a rounded body fills the visible height
- * ({@code height − bottomPadding}), a short neck of {@link #NECK_HEIGHT_DP} flows out of the
- * body's bottom edge down to the parent key's top edge, and everything below is transparent.
- * The neck is centred because the preview itself is centred on the key — {@code
- * KeyPreviewChoreographer.placeKeyPreview} computes {@code key.getX() − (previewWidth −
- * keyWidth) / 2} and never clamps at the screen edges, so the key's centre and the balloon's
- * centre coincide for every key including the outermost ones. (iOS mirrors the neck at the edges
- * because iOS clamps the balloon inside the screen; this keyboard does not.)</p>
+ * <p>The neck is centered because {@code KeyPreviewChoreographer.placeKeyPreview} centers the
+ * preview on the key and never clamps it at the screen edges. (iOS mirrors the neck at the edges
+ * because it clamps the balloon inside the screen; this keyboard does not.)</p>
  *
- * <p>Allocation discipline: the path is rebuilt only in {@link #onBoundsChange} — once per
- * preview size — and {@link #draw} touches nothing but the cached path and two paints.</p>
+ * <p>The path is rebuilt only in {@link #onBoundsChange}, once per preview size; {@link #draw}
+ * touches nothing but the cached path and two paints.</p>
  */
 public final class KeyPreviewBalloonDrawable extends Drawable {
-    /** Intrinsic width of the balloon, as in the drawable it replaces. */
+    /** Intrinsic width of the balloon. */
     private static final float WIDTH_DP = 45f;
-    /** The invisible part that hangs over the parent key; was the old drawable's padding. */
+    /** The invisible part that hangs over the parent key. */
     private static final float BOTTOM_PADDING_DP = 60f;
     /** Corner radius of the body: iOS balloons are rounder than the 5dp keys. */
     private static final float BODY_RADIUS_DP = 10f;
@@ -173,7 +166,7 @@ public final class KeyPreviewBalloonDrawable extends Drawable {
 
     @Override
     public void setColorFilter(final ColorFilter colorFilter) {
-        // Honours KeyPreviewView.setColor, which tints the balloon for the custom-colour theme.
+        // Honors KeyPreviewView.setColor, which tints the balloon for the custom-color theme.
         mFillPaint.setColorFilter(colorFilter);
         invalidateSelf();
     }

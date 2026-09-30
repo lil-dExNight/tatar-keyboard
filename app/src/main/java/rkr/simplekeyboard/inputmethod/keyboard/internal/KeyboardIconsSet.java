@@ -35,7 +35,7 @@ public final class KeyboardIconsSet {
 
     private static final String NAME_UNDEFINED = "undefined";
     public static final String NAME_SHIFT_KEY = "shift_key";
-    /** M1 (docs/APPLE-UX-2026-09-25.md): one-shot shift — filled arrow, no caps bar. */
+    /** One-shot shift: filled arrow, no caps bar. */
     public static final String NAME_SHIFT_KEY_ON = "shift_key_on";
     public static final String NAME_SHIFT_KEY_SHIFTED = "shift_key_shifted";
     public static final String NAME_DELETE_KEY = "delete_key";

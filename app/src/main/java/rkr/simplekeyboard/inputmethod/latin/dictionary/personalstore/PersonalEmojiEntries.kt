@@ -25,9 +25,8 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 /**
- * The immutable in-memory model of one subtype's personal (word, emoji) entries, holding the PURE
- * mutation and LRU-eviction logic kept deliberately apart from all I/O so it is covered by plain
- * JVM tests — the exact role [PersonalBigramEntries] has for the pairs store.
+ * The immutable in-memory model of one subtype's learned (word, emoji) entries; the emoji
+ * counterpart of [PersonalEntries].
  *
  * Parallel arrays plus a parallel serial array, all ordered by the entry key ascending — the
  * normalized word first, then the emoji cluster, both compared as unsigned UTF-8 bytes (the order
@@ -38,14 +37,8 @@ import java.security.MessageDigest
  * - [frequencyCountAt] — clean co-usage observation counters, u16, >= 1;
  * - [lastUseSerialAt] — monotonic last-use serials (u32) driving LRU.
  *
- * Every mutation returns a NEW instance; nothing is changed in place. NOT a Kotlin `data class`:
- * it carries the user's words, and a synthesised `toString` would print them at the first
- * interpolation.
- *
- * LRU is keyed by the monotonic file serial ([nextSerial]), never the system clock: eviction
- * removes the entry with the smallest last-use serial. The entry cap [maxEntries] is injectable so
- * the eviction rule is testable at small sizes; production uses
- * [TpersemFormat.MAX_PERSONAL_EMOJI_ENTRIES].
+ * Immutability, privacy and LRU rules are those of [PersonalEntries]; the cap [maxEntries]
+ * defaults to [TpersemFormat.MAX_PERSONAL_EMOJI_ENTRIES] in production.
  */
 internal class PersonalEmojiEntries private constructor(
     private val words: Array<String>,
@@ -72,11 +65,8 @@ internal class PersonalEmojiEntries private constructor(
         indexOfEntry(normalizedWord, emoji) >= 0
 
     /**
-     * Adds the entry or, if it is already present, adds [frequencyDelta] to its observation counter
-     * and touches its LRU serial. A fresh entry starts with usage 0 and frequency [frequencyDelta]
-     * — graduation passes the learn threshold itself, because the co-usage really was observed that
-     * many times. When the result exceeds [maxEntries] the entry with the smallest last-use serial
-     * is evicted. Returns a new instance.
+     * Adds the entry or, if present, adds [frequencyDelta] to its observation counter and touches
+     * its LRU serial. See [PersonalBigramEntries.upsert].
      */
     fun upsert(
         normalizedWord: String,
@@ -133,8 +123,7 @@ internal class PersonalEmojiEntries private constructor(
 
     /**
      * Records an accepted learned emoji as a use: bumps the usage counter and the LRU serial.
-     * Returns a new instance, or null when the entry is absent — a tapped static emoji-suggest
-     * cell, a panel pick or a recent emoji takes exactly this branch and nothing happens.
+     * Returns a new instance, or null when the entry is absent (the tapped emoji was not learned).
      */
     fun noteUse(normalizedWord: String, emoji: String): PersonalEmojiEntries? {
         val index = indexOfEntry(normalizedWord, emoji)
@@ -217,7 +206,7 @@ internal class PersonalEmojiEntries private constructor(
         )
     }
 
-    /** Estimated on-disk size (header + records), for the pre-write free-space check. */
+    /** Estimated on-disk size (header + records). */
     fun estimatedFileSize(): Int =
         TpersemFormat.HEADER_SIZE + (0 until size).sumOf {
             TpersemFormat.RECORD_HEADER_SIZE +
@@ -306,13 +295,10 @@ internal class PersonalEmojiEntries private constructor(
         }
 
         /**
-         * Compares two entry keys member by member — word first, emoji on a tie — each by its UTF-8
-         * bytes unsigned, the exact order the validator requires on disk. The byte boundary between
-         * the halves is part of the key: («аб», «вг»)-style splits that concatenate to the same
-         * bytes are different entries that a concatenation compare would call equal. The emoji half
-         * is compared BYTES, not as a String: a variation selector (BMP) and a supplementary
-         * modifier order differently in UTF-16 units than in UTF-8 bytes, and the disk order is the
-         * byte order.
+         * Compares two entry keys member by member (word first, emoji on a tie), each by its
+         * UTF-8 bytes unsigned, the order the validator requires on disk. The emoji is compared as
+         * bytes, not as a String: variation selectors and supplementary code points order
+         * differently in UTF-16 units.
          */
         private fun compareEntry(
             firstWord: String,

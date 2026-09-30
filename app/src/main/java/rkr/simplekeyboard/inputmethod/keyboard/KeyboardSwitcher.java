@@ -59,8 +59,9 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
     /**
      * The user's "Bottom offset" in px, as last handed to the keyboard geometry. The letter
      * keyboard lifts its rows by it; the emoji panel has to reserve the same strip, or it fills
-     * the space the user deliberately freed and the surface jumps when the two swap. Kept here because {@link #showEmojiPanel} runs long
-     * after {@link #loadKeyboard} and has no SettingsValues of its own.
+     * the space the user deliberately freed and the surface jumps when the two swap. Kept here
+     * because {@link #showEmojiPanel} runs long after {@link #loadKeyboard} and has no
+     * SettingsValues of its own.
      */
     private int mKeyboardBottomOffset;
     private InputView mCurrentInputView;
@@ -132,9 +133,8 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
 
     public void loadKeyboard(final EditorInfo editorInfo, final SettingsValues settingsValues,
             final int currentAutoCapsState, final int currentRecapitalizeState) {
-        // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the per-layout build. A Trace begin/end
-        // pair costs ~10 µs, so markers wrap only coarse spans — never sub-200 µs methods or
-        // anything running per frame.
+        // Trace span for the per-layout build. A Trace begin/end pair costs about 10 µs, so
+        // markers wrap only coarse spans, never short methods or anything that runs per frame.
         Trace.beginSection("TT#loadKeyboard");
         try {
             final KeyboardLayoutSet.Builder builder = new KeyboardLayoutSet.Builder(
@@ -416,11 +416,11 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
      * event; it never edits the editor. Under the default "same" panel-height setting the panel is
      * sized to the current keyboard height so the content top inset is unchanged; a "larger"/"max"
      * setting scales that box up to the 46%p-of-screen ceiling inside
-     * {@link InputView#showEmojiPanel} (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B).
+     * {@link InputView#showEmojiPanel}.
      * MainKeyboardView goes {@code GONE} so the two surfaces are never visible at once.
      */
     public void showEmojiPanel(final EmojiSetSnapshot snapshot) {
-        // O5: the panel-open span; same ~10 µs marker-pair discipline as loadKeyboard.
+        // Trace span for opening the panel; coarse, like the one in loadKeyboard.
         Trace.beginSection("TT#emojiPanel");
         try {
             if (mKeyboardView == null || mCurrentInputView == null) {
@@ -541,7 +541,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
     }
 
     // Implements {@link EmojiPanelView.Listener}. Delete routes through the ordinary code-input
-    // path, so the emoji-cluster-aware backspace from E2a applies here too.
+    // path, so the emoji-cluster-aware backspace applies here too.
     @Override
     public void onEmojiPanelDelete() {
         if (mLatinIME != null) {

@@ -17,11 +17,10 @@
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 /**
- * The D3 autocorrect undo window of [SuggestionsController]: at most one replacement is armed
- * (made, its separator still on its way to the editor) and at most one is revertable (a backspace
- * may still undo it). Pure move from `SuggestionsController.kt` (ROADMAP Phase 6, T2), state and
- * transitions verbatim; the editor calls that perform the replacement and its undo stay with the
- * controller — a source-contract test pins their exact call sites to that file.
+ * The undo-autocorrect window of [SuggestionsController]: at most one replacement is armed (made,
+ * its separator still on its way to the editor) and at most one is revertable (a backspace may
+ * still undo it). The editor calls that perform the replacement and its undo stay in the
+ * controller; a source-contract test pins their call sites there.
  */
 internal class RevertWindow {
 
@@ -76,9 +75,8 @@ internal class RevertWindow {
      * Moves the undo window forward by one text change.
      *
      * A replacement is armed while its own separator is still on its way to the editor; that one
-     * change completes it. Any other text change — a typed character, an accepted suggestion, a
-     * deletion — closes the window instead, which is what makes «любое другое событие делает revert
-     * невозможным» true for the two of the six events that arrive as text.
+     * change completes it. Any other text change (a typed character, an accepted suggestion, a
+     * deletion) closes the window.
      */
     fun advance(sessionId: Long) {
         val armed = armedReplacement

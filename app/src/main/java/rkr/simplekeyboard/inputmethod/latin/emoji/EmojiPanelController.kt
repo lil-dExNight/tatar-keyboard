@@ -38,7 +38,7 @@ interface EmojiSurface {
 
     /**
      * Enter the emoji search with [index] bound: the panel steps aside, the letter keyboard comes
-     * back and the search bands take the suggestion strip's place. Defaulted so existing fakes need
+     * back and the search view takes the suggestion strip's place. Defaulted so existing fakes need
      * not implement it.
      */
     fun showEmojiSearch(index: EmojiSearchIndex) {}
@@ -52,10 +52,9 @@ interface EmojiSurface {
     /**
      * The search cell was tapped and no search can be opened, now or later in this process.
      *
-     * The cell is painted whether or not the index can be read, and the verdict "unusable" is
-     * cached for the life of the process — so without this the cell is a button that stays on the
-     * screen and does nothing, forever, without a word. Defaulted so existing fakes need not
-     * implement it.
+     * The cell is painted whether or not the index can be read, and the "unusable" verdict is
+     * cached for the process, so the surface must tell the user instead of silently ignoring the
+     * tap. Defaulted so existing fakes need not implement it.
      */
     fun onEmojiSearchUnavailable() {}
 }
@@ -142,10 +141,10 @@ class EmojiPanelController internal constructor(
             val appContext = context.applicationContext
             RecentEmojiStore(
                 // The recents live in a plain file under the base (credential-protected)
-                // noBackupFilesDir — not device-protected, and not a preferences store. The provider is
-                // built lazily on first panel show, so IME start never touches the path and stays
-                // directBootAware. noBackupFilesDir is not a subdirectory of files/, so the medium
-                // is excluded from every backup domain by construction.
+                // noBackupFilesDir, not device-protected and not a preferences store. The
+                // provider is built lazily on first panel show, so IME start never touches the
+                // path and stays directBootAware. noBackupFilesDir is not a subdirectory of
+                // files/, so the medium is outside every backup domain.
                 RecentEmojiFileProvider { File(appContext.noBackupFilesDir, RECENT_EMOJI_FILE_NAME) },
                 AtomicRecentEmojiFileOps,
                 gate,
@@ -182,16 +181,15 @@ class EmojiPanelController internal constructor(
      * The search index, loaded at most once per process and only when the user first opens the
      * search — never on the cold-start path and never on the UI thread. `null` means "not loaded
      * yet"; [EmojiSearchIndex.EMPTY] means "loaded and unusable", which is not retried.
-     * (O2: the idle memory release drops a LIVE index via [releaseSearchIndex]; the EMPTY
-     * verdict is deliberately kept — a release must not resurrect a load that proved unusable.)
+     * [releaseSearchIndex] drops a usable index but keeps the EMPTY verdict.
      */
     private var searchIndex: EmojiSearchIndex? = null
 
     private var searchLoading = false
 
     /**
-     * The skin-tone table, read on the same one-shot background preparation as the snapshot. It is
-     * 1.5 KB, so it costs nothing to read alongside; it is never re-read.
+     * The skin-tone table, read once in the same background preparation as the snapshot (it is
+     * small) and never re-read.
      */
     private var skinTones: EmojiSkinTones = EmojiSkinTones.EMPTY
 
@@ -243,8 +241,8 @@ class EmojiPanelController internal constructor(
         if (destroyed) return
         val loaded = searchIndex
         if (loaded != null) {
-            // The verdict is cached for the life of the process, so this is the branch a real
-            // finger reaches on every tap after the first — nobody taps a dead button only once.
+            // The verdict is cached for the process, so every tap after the first lands here and
+            // must be answered too.
             if (loaded.isEmpty) surface.onEmojiSearchUnavailable() else surface.showEmojiSearch(loaded)
             return
         }
@@ -288,8 +286,7 @@ class EmojiPanelController internal constructor(
         searchIndex = loaded
         if (pendingSearch) {
             pendingSearch = false
-            // Answered either way: the tap that armed this is the one being served, and an index
-            // that came back unusable is the whole reason the pill would otherwise go quiet.
+            // Answer the tap that armed this either way, including when the index is unusable.
             if (loaded.isEmpty) surface.onEmojiSearchUnavailable() else surface.showEmojiSearch(loaded)
         }
     }
@@ -298,13 +295,9 @@ class EmojiPanelController internal constructor(
     fun searchIndexOrNull(): EmojiSearchIndex? = searchIndex
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release (LatinIME MSG_DEALLOCATE_MEMORY)
-     * drops the filtered search index; the next search request re-derives it through the same
-     * lazy background path that served the first one (the shared parse may itself have been
-     * released on the same pass — it reloads too). The terminal EMPTY verdict survives: a
-     * release must not resurrect a load that proved unusable. UI thread, like every method here;
-     * a load already in flight is left to land — it re-caches, which is only a wasted release,
-     * never a wrong one.
+     * Idle memory release (LatinIME MSG_DEALLOCATE_MEMORY): drops the filtered search index; the
+     * next search request rebuilds it on the lazy background path. The EMPTY verdict is kept, so a
+     * release never retries an unusable load. A load already in flight still lands and re-caches.
      */
     fun releaseSearchIndex() {
         val loaded = searchIndex ?: return
@@ -460,8 +453,8 @@ class EmojiPanelController internal constructor(
     }
 
     /**
-     * Publishes the panel. With no recents store (JVM tests) the base snapshot shows synchronously,
-     * exactly as before. In production the recents are read on the background executor — which
+     * Publishes the panel. With no recents store (JVM tests) the base snapshot shows synchronously.
+     * In production the recents are read on the background executor — which
      * re-reads the unlock gate, so a process started before unlock reads the file only after it —
      * and the combined snapshot (recents first, only when non-empty) is shown on the UI thread. The
      * recents read never runs on the UI thread, and the base snapshot is shown if the recents path
@@ -604,12 +597,10 @@ private class AssetSkinToneSource(private val context: Context) : EmojiSkinToneS
 }
 
 /**
- * Production [EmojiSearchIndexSource]: hands out the process-wide shared index
- * ([SharedEmojiSearchIndex], audit 2026-09-02 C7) — the emoji-suggest source reads the same asset
- * for its spoken names, and one parse serves both. Constructed cheaply on the UI thread (it only
- * keeps the application context); the AssetManager is touched only inside [load], which runs on
- * the controller's background executor the first time the user opens the search — never on the
- * cold-start path. The result is returned to the caller and never written to any persistent store.
+ * Production [EmojiSearchIndexSource]: returns the process-wide [SharedEmojiSearchIndex], which
+ * the emoji-suggest source also reads for spoken names. Cheap to construct on the UI thread; the
+ * AssetManager is touched only inside [load], on the controller's background executor the first
+ * time the user opens the search. The result is never written to any persistent store.
  */
 private class AssetSearchIndexSource(private val context: Context) : EmojiSearchIndexSource {
     override fun load(): EmojiSearchIndex = SharedEmojiSearchIndex.of(context).get()

@@ -49,16 +49,11 @@ import rkr.simplekeyboard.inputmethod.latin.utils.CapsModeUtils;
  * all the time to find out what text is in the buffer, when we need it to determine caps mode
  * for example.
  *
- * 2026-09-29 audit wave, S8 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): the host app on the
- * other side of the InputConnection can be malicious or buggy, so every call into it may throw
- * a RuntimeException across the binder (a died host surfaces as DeadObjectException at the
- * proxy; a hostile one rethrows its own). Uncaught, that exception rides the UI thread up and
- * kills the IME process. Every editor call in this class therefore sits inside
- * {@code catch (RuntimeException)} and degrades silently — the same shape as the F6 dead-editor
- * guards, which also return silently. The local cache keeps following the INTENDED edit (the
- * cache-first order the commit paths always used); the next cursor-move reload re-syncs it to
- * the editor's ground truth (F8/F10), and a transient failure lets the very next keystroke land.
- * InputLogic needs no catch of its own: it reaches the editor only through this wrapper.
+ * Editor calls: the host app can be buggy or hostile, so any call into the InputConnection may
+ * throw a RuntimeException across the binder (a dead host surfaces as DeadObjectException), which
+ * would kill the IME process. Every editor call here therefore catches RuntimeException and
+ * degrades silently. The local cache keeps following the intended edit, and the next reload
+ * re-syncs it with the editor. InputLogic reaches the editor only through this class.
  */
 public final class RichInputConnection {
     private static final String TAG = "RichInputConnection";
@@ -87,26 +82,15 @@ public final class RichInputConnection {
     private String mTextSelection = "";
 
     /**
-     * Audit 2026-09-02, C6: whether the before-cursor cache PROVABLY starts at the very start of
-     * the editor's text. {@link #getCachedTextBeforeCursor} alone cannot say: the D1 fix
-     * (docs/NEXTWORD-RACE.md) inferred it from the length — a full reload asks for exactly
-     * {@link Constants#EDITOR_CONTENTS_CACHE_SIZE} chars, so a shorter answer reached the start —
-     * but that inference breaks the moment a LOCAL mutation changes the length: a cursor swipe
-     * re-slices the cached window to a few chars ({@link #setSelection}), a long backspace run
-     * truncates it ({@link #deleteTextBeforeCursor}), and both leave a short cache that does NOT
-     * start at the text start. A truncated word at index 0 would then be accepted as a whole
-     * NEXT_WORD context.
+     * Whether the before-cursor cache provably starts at the start of the editor's text. The cache
+     * length alone cannot tell: local edits ({@link #setSelection}, {@link #deleteTextBeforeCursor})
+     * shorten it without reaching the start, and a cut-off word at index 0 would then pass as a
+     * whole next-word context.
      *
-     * So this flag carries the knowledge from the one place that actually has it: the full
-     * re-read, written only by {@link #onBeforeCursorCacheReloaded} (and cleared by
-     * {@link #clearCaches}). Every local mutation PRESERVES it on purpose — they all move only the
-     * CURSOR-side edge of the cached window (append/truncate at the cursor, re-slice inside the
-     * window), so the window's start edge, the very thing the flag describes, is untouched by
-     * them. Clearing it on a mutation would be wrong in both directions: it would un-prove the
-     * empty field the user is typing their first word into (commitText), and it would re-"prove"
-     * nothing. The ONE exception is the F3 truncation ({@link #appendToTextBeforeCursor},
-     * 2026-09-25 audit): it cuts the window's HEAD to keep the cache bounded, which destroys the
-     * start edge — and the flag clears at exactly that moment.
+     * <p>Only a full reload knows, so the flag is written by {@link #onBeforeCursorCacheReloaded}
+     * and cleared by {@link #clearCaches}. Local edits keep it: they move only the cursor-side edge
+     * of the window. The exception is {@link #appendToTextBeforeCursor}, which clears it when it
+     * cuts the head of the window.
      */
     private boolean mCacheReachedTextStart = false;
 
@@ -133,9 +117,7 @@ public final class RichInputConnection {
                 try {
                     mIC.beginBatchEdit();
                 } catch (final RuntimeException e) {
-                    // S8 (see the class javadoc): the editor threw across the binder. The nest
-                    // level is ours and stays exact; the matching endBatchEdit degrades the same
-                    // way if the editor never opened its side of the batch.
+                    // See the class javadoc. The nest level is ours and stays exact.
                 }
             }
         } else {
@@ -149,28 +131,24 @@ public final class RichInputConnection {
             try {
                 mIC.endBatchEdit();
             } catch (final RuntimeException e) {
-                // S8 (see the class javadoc): the batch-close of a dying or hostile editor. The
-                // nest level is already balanced above — this failure must not escape and crash
-                // the IME over a host-side bookkeeping problem.
+                // See the class javadoc. The nest level is already balanced above.
             }
         }
     }
 
     public void updateSelection(final int newSelStart, final int newSelEnd) {
         if (newSelStart < 0 || newSelEnd < 0) {
-            // 2026-09-29 audit wave, S8: a host may report negative indexes (EditorInfo's own
-            // "unknown" is -1, and a hostile host can send anything). The F7 swap alone turned
-            // (5, -1) into (-1, 5) — hasSelection() TRUE for a span no host ever reported, and
-            // deleteSelectedText would have computed a 6-char selection length from it. Any
-            // negative component fails closed to the documented INVALID_CURSOR_POSITION state.
+            // A host may report negative indexes (EditorInfo uses -1 for "unknown"). Swapping
+            // (5, -1) below would invent a selection, so any negative value resets both ends to
+            // INVALID_CURSOR_POSITION.
             mExpectedSelStart = INVALID_CURSOR_POSITION;
             mExpectedSelEnd = INVALID_CURSOR_POSITION;
             return;
         }
         if (newSelStart > newSelEnd) {
-            // 2026-09-25 audit, F7: a host may report an inverted selection (start > end). Kept
-            // as-is it makes performRecapitalization substring a negative range. Normalize at
-            // this choke point — every selection report funnels through here.
+            // A host may report an inverted selection (start > end), which would make
+            // performRecapitalization take a negative substring. Every selection report passes
+            // through here, so normalize it here.
             mExpectedSelStart = newSelEnd;
             mExpectedSelEnd = newSelStart;
             return;
@@ -193,12 +171,9 @@ public final class RichInputConnection {
     }
 
     /**
-     * 2026-09-25 audit, F4: the index arithmetic of {@link #setTextAroundCursor}, split out and
-     * fail-closed. A host that reports a selection outside its own text (negative, inverted, or
-     * past the end) used to crash the IME with a StringIndexOutOfBoundsException from the
-     * subSequence calls; such a report now gets the same empty-cache treatment as a null
-     * SurroundingText and the method answers false (the caller logs — this method stays
-     * Android-free so the JVM tests can drive it). Package-private for those tests.
+     * The index arithmetic of {@link #setTextAroundCursor}. A selection outside the reported text
+     * (negative, inverted or past the end) empties the cache, as a null SurroundingText does, and
+     * returns false. Android-free and package-private for the JVM tests.
      */
     /* package */ boolean applyTextAroundCursor(final CharSequence text, final int selectionStart,
             final int selectionEnd) {
@@ -209,10 +184,9 @@ public final class RichInputConnection {
             mTextAfterCursor = "";
             return false;
         }
-        // S8: both cursor sides are bounded to the window (see keepWindowTail/keepWindowHead).
-        // The selection is kept VERBATIM on purpose: it must stay consistent with the
-        // host-reported selection span (mExpectedSelStart/End drive deleteSelectedText's length),
-        // and it is replaced wholesale by every reload, so it cannot grow without bound.
+        // Both cursor sides are bounded to the window (see keepWindowTail). The selection is kept
+        // as is: it must match the host-reported span that deleteSelectedText relies on, and each
+        // reload replaces it, so it cannot grow without bound.
         onBeforeCursorCacheReloaded(text.subSequence(0, selectionStart).toString());
         mTextSelection = text.subSequence(selectionStart, selectionEnd).toString();
         mTextAfterCursor = keepWindowHead(text.subSequence(selectionEnd, text.length()).toString());
@@ -220,14 +194,9 @@ public final class RichInputConnection {
     }
 
     /**
-     * 2026-09-29 audit wave, S8: the reload ASKS the host for
-     * {@link Constants#EDITOR_CONTENTS_CACHE_SIZE} chars around the cursor, but the count is only
-     * a hint — a hostile or buggy host can answer getTextBeforeCursor/getSurroundingText (or fill
-     * the EditorInfo parcel) with a payload far past the window, and the F3 bound covers only the
-     * LOCAL appends. Stored verbatim, such a payload re-inflates the cache to binder-parcel size
-     * and turns every later append into a full-length copy. The before-cursor side keeps the
-     * window's TAIL (the cursor end is the live end); the after-cursor side keeps its HEAD.
-     * Android-free and package-private so the JVM tests drive exactly what the reload paths run.
+     * Bounds a host answer to {@link Constants#EDITOR_CONTENTS_CACHE_SIZE} chars. The requested
+     * length is only a hint, and a host can return far more. The before-cursor side keeps the
+     * tail (next to the cursor), the after-cursor side the head. Package-private for the JVM tests.
      */
     /* package */ static String keepWindowTail(final String text) {
         return text.length() <= Constants.EDITOR_CONTENTS_CACHE_SIZE
@@ -243,19 +212,14 @@ public final class RichInputConnection {
     }
 
     /**
-     * The single writer of the before-cursor cache together with its provenance (C6): called on
-     * every FULL re-read of the cache — from {@link #setTextAroundCursor} and from the pre-S
-     * branch of {@link #reloadTextCache()} — and never from a local mutation, which is the whole
-     * invariant (see the field). Package-private so the JVM tests can drive the same bookkeeping
-     * the Android reload paths run; the window-size rule itself lives here, exactly once.
+     * Writes the before-cursor cache and {@link #mCacheReachedTextStart} after a full re-read
+     * ({@link #setTextAroundCursor} and the pre-S branch of {@link #reloadTextCache()}); never
+     * called for local edits. Package-private for the JVM tests.
      */
     void onBeforeCursorCacheReloaded(final String textBeforeCursor) {
-        // S8: the host's answer is bounded here, at the single writer (see keepWindowTail).
         mTextBeforeCursor = keepWindowTail(textBeforeCursor);
-        // The reload asks for exactly EDITOR_CONTENTS_CACHE_SIZE chars before the cursor, so a
-        // shorter answer provably reached the start of the text; an answer of exactly the window
-        // size may or may not have — fail closed. Measured on the HOST's answer, not the kept
-        // tail: an oversized answer definitely has text above the window.
+        // The reload asks for EDITOR_CONTENTS_CACHE_SIZE chars, so only a shorter answer proves it
+        // reached the start of the text. Measured on the host's answer, not on the kept tail.
         mCacheReachedTextStart = textBeforeCursor.length() < Constants.EDITOR_CONTENTS_CACHE_SIZE;
     }
 
@@ -284,12 +248,10 @@ public final class RichInputConnection {
     }
 
     /**
-     * 2026-09-25 audit, F10: a reload costs IPC, and {@code onUpdateSelection} asks for one on
-     * every cursor move. At most one reload is ever in flight; a request that arrives while one
-     * runs folds into {@link #mReloadRequestedWhileInFlight} and produces exactly one follow-up
-     * ({@link #finishReloadTextCache}) — bursts coalesce without ever leaving the cache stale.
-     * Both flags are UI-thread confined ({@link #reloadTextCache} itself and the completion
-     * posted back to the IME handler run there).
+     * Reload coalescing: {@code onUpdateSelection} asks for a reload (IPC) on every cursor move.
+     * At most one reload is in flight; requests arriving meanwhile set
+     * {@link #mReloadRequestedWhileInFlight} and produce one follow-up in
+     * {@link #finishReloadTextCache}. Both flags are confined to the UI thread.
      */
     private boolean mReloadInFlight = false;
     private boolean mReloadRequestedWhileInFlight = false;
@@ -317,9 +279,8 @@ public final class RichInputConnection {
                 if (!isConnected()) {
                     return;
                 }
-                // F10: the staleness check BEFORE the IPC — a reload the selection has already
-                // moved past never touches the editor. (S+ pays a binder round trip for
-                // getSurroundingText, and the pre-fix order paid it before checking anything.)
+                // Check for staleness before the IPC: a reload the selection has already moved
+                // past never touches the editor.
                 if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
                     Log.w(TAG, "Selection range modified before the reload reached the editor.");
                     return;
@@ -327,10 +288,8 @@ public final class RichInputConnection {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     final SurroundingText textAroundCursor =
                             mIC.getSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE, Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
-                    // F8: the result is APPLIED on the UI thread, where every mutation of the
-                    // expected selection happens — the re-check there serializes with those
-                    // mutations, so a stale read can no longer win the race and overwrite fresh
-                    // state (the pre-fix code checked and wrote on this background thread).
+                    // Apply on the UI thread, where the expected selection is mutated, so the
+                    // re-check there cannot race with those mutations.
                     mLatinIME.mHandler.post(() -> {
                         if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
                             Log.w(TAG, "Selection range modified before thread completion.");
@@ -391,13 +350,10 @@ public final class RichInputConnection {
                         selection = "";
                     }
 
-                    // F8: ONE atomic apply on the UI thread. The pre-fix code wrote the
-                    // before-cache first and the rest after two more IPCs, so a staleness
-                    // detection mid-way left a half-applied cache behind — the lost update the
-                    // audit describes. The suggestion band is re-derived only at the end because
-                    // it is decided by the text on BOTH sides of the cursor (a letter right
-                    // after it means no candidates at all); every dropped apply above leaves the
-                    // cache untouched on purpose and deliberately asks for no re-derivation.
+                    // One atomic apply on the UI thread, so a stale read never leaves a
+                    // half-applied cache. The suggestion strip is refreshed only here because it
+                    // depends on the text on both sides of the cursor; a dropped apply above
+                    // leaves the cache and the strip untouched.
                     mLatinIME.mHandler.post(() -> {
                         if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
                             Log.w(TAG, "Selection range modified before thread completion.");
@@ -415,11 +371,7 @@ public final class RichInputConnection {
                     applyPosted = true;
                 }
             } catch (final RuntimeException e) {
-                // S8 (see the class javadoc): an editor read threw across the binder mid-reload.
-                // Degrade to the bare completion below — the in-flight flag still clears and a
-                // folded request still gets its one follow-up, which retries against whatever
-                // connection the framework hands us then. Without this catch the exception killed
-                // the executor's worker thread; recoverable, but needlessly loud.
+                // See the class javadoc. The finally below still completes the reload.
             } finally {
                 if (!applyPosted) {
                     // The reload ends without applying (stale, disconnected, or a dying editor's
@@ -432,8 +384,8 @@ public final class RichInputConnection {
     }
 
     /**
-     * UI-thread completion of every background reload, applied or not (F8/F10): clears the
-     * in-flight flag and runs the single follow-up reload that coalesced requests folded into.
+     * UI-thread completion of every background reload, applied or not: clears the in-flight flag
+     * and runs the single follow-up reload that coalesced requests folded into.
      */
     private void finishReloadTextCache() {
         mReloadInFlight = false;
@@ -450,7 +402,7 @@ public final class RichInputConnection {
         mTextBeforeCursor = "";
         mTextSelection = "";
         mTextAfterCursor = "";
-        // No cache at all proves nothing about the text start (C6).
+        // An empty cache proves nothing about the text start.
         mCacheReachedTextStart = false;
     }
 
@@ -474,21 +426,15 @@ public final class RichInputConnection {
             try {
                 mIC.commitText(text, newCursorPosition);
             } catch (final RuntimeException e) {
-                // S8 (see the class javadoc): the editor died or threw mid-commit. The cache
-                // above already follows the intended edit; the next reload re-syncs it, and the
-                // next keystroke retries against the connection of that moment.
+                // See the class javadoc.
             }
         }
     }
 
     /**
-     * 2026-09-25 audit, F3: every append to the before-cursor cache funnels here so the window
-     * stays bounded — without this the cache grew with every committed char and every
-     * sendKeyEvent append forever (a megabyte-long paste stayed resident in full). The cache
-     * keeps the TAIL of {@link Constants#EDITOR_CONTENTS_CACHE_SIZE} chars, the size a full
-     * reload asks for; cutting the head destroys the text-start edge, so the C6 provenance flag
-     * clears at exactly that moment. Package-private for the JVM tests; touches only plain
-     * fields, never the editor.
+     * Appends to the before-cursor cache, keeping only the last
+     * {@link Constants#EDITOR_CONTENTS_CACHE_SIZE} chars. Cutting the head clears
+     * {@link #mCacheReachedTextStart}. Package-private for the JVM tests; never calls the editor.
      */
     /* package */ void appendToTextBeforeCursor(final CharSequence text) {
         final String combined = mTextBeforeCursor + text;
@@ -551,10 +497,8 @@ public final class RichInputConnection {
     }
 
     /**
-     * Whether the before-cursor cache provably starts at the very start of the editor's text —
-     * the knowledge a full reload had when it filled the cache (C6, see the field). Reads no
-     * editor state and never initiates IPC, exactly like {@link #getCachedTextBeforeCursor}; the
-     * two are meant to be consumed together.
+     * Whether the before-cursor cache provably starts at the start of the editor's text (see the
+     * field). No IPC; meant to be read together with {@link #getCachedTextBeforeCursor}.
      */
     public boolean cacheReachedTextStart() {
         return mCacheReachedTextStart;
@@ -614,9 +558,8 @@ public final class RichInputConnection {
             return;
         }
 
-        // 2026-09-25 audit, F6: refresh and check the connection BEFORE mutating the cache —
-        // with a dead editor this used to NPE on a stale mIC after the cache had already been
-        // changed, reporting an edit no editor received.
+        // Refresh and check the connection before changing the cache, so a dead editor does not
+        // leave the cache describing an edit that never happened.
         mIC = mLatinIME.getCurrentInputConnection();
         if (!isConnected()) {
             return;
@@ -633,10 +576,7 @@ public final class RichInputConnection {
                 mIC.commitText(text, 0);
             }
         } catch (final RuntimeException e) {
-            // S8 (see the class javadoc): the editor died or threw mid-replace. If the pre-34
-            // fallback's delete landed but its commit did not, the editor holds a half-edit the
-            // cache cannot know about — the next cursor-move reload re-syncs from the editor's
-            // ground truth (F8/F10).
+            // See the class javadoc. A half-applied pre-34 fallback is fixed by the next reload.
         }
     }
 
@@ -660,8 +600,7 @@ public final class RichInputConnection {
             try {
                 mIC.deleteSurroundingText(numChars, 0);
             } catch (final RuntimeException e) {
-                // S8 (see the class javadoc): the editor died or threw mid-delete. The cache
-                // above already follows the intended edit; the next reload re-syncs it.
+                // See the class javadoc.
             }
         }
     }
@@ -673,13 +612,10 @@ public final class RichInputConnection {
         }
 
         beginBatchEdit();
-        // 2026-09-25 audit, F5: the batch closes in finally even when the editor dies mid-edit
-        // — a skipped endBatchEdit would stick the nest level forever. Nothing is caught: the
-        // exception propagates exactly as before.
+        // The batch closes in finally, so an editor failure cannot leave the nest level stuck.
         try {
-            // F6: beginBatchEdit() is what refreshes the connection from the framework; a dead
-            // editor gets no edit at all rather than a cache-only mutation (the same doctrine
-            // the commit paths follow).
+            // Opening the batch refreshed the connection; a dead editor gets no edit at all
+            // rather than a cache-only change.
             if (!isConnected()) {
                 return;
             }
@@ -688,9 +624,7 @@ public final class RichInputConnection {
             setSelection(mExpectedSelStart, mExpectedSelStart);
             mIC.deleteSurroundingText(0, selectionLength);
         } catch (final RuntimeException e) {
-            // S8 (see the class javadoc): the editor died or threw mid-edit. The batch still
-            // closes in the finally below — the nest level must not stick — and the next reload
-            // re-syncs the cache to the editor's ground truth.
+            // See the class javadoc. The batch still closes below.
         } finally {
             endBatchEdit();
         }
@@ -702,26 +636,21 @@ public final class RichInputConnection {
             try {
                 mIC.performEditorAction(actionId);
             } catch (final RuntimeException e) {
-                // S8 (see the class javadoc): the editor died or threw — the action is lost,
-                // the IME is not.
+                // See the class javadoc.
             }
         }
     }
 
     /**
-     * 2026-09-25 audit, F1: below this length the clipboard text is committed through the normal
-     * text-input path; at or above it the commit would parcel the whole string into the editor
-     * process, and a large enough clip (~0.5 MB and up) kills the IME with a
-     * TransactionTooLargeException. Large pastes fall through to the editor's own context-menu
-     * paste instead — the editor pulls the clipboard itself and no parcel copy crosses the
-     * binder. 64 Ki chars is an order of magnitude under the binder's ~1 MB transaction cap.
+     * Clips shorter than this are committed as text input. Committing a large clip parcels the
+     * whole string across the binder and can kill the IME with TransactionTooLargeException, so
+     * larger clips use the editor's own context-menu paste. Well under the ~1 MB binder limit.
      */
     private static final int MAX_DIRECT_PASTE_CHARS = 64 * 1024;
 
     /**
-     * The F1 threshold decision, package-private and Android-free so the JVM tests can pin the
-     * boundary: only a non-empty clip strictly below {@link #MAX_DIRECT_PASTE_CHARS} is committed
-     * by the IME itself.
+     * Whether the IME commits the clip itself: only a non-empty clip shorter than
+     * {@link #MAX_DIRECT_PASTE_CHARS}. Package-private and Android-free for the JVM tests.
      */
     /* package */ static boolean shouldCommitPasteDirectly(final CharSequence pasteData) {
         return pasteData != null && pasteData.length() > 0
@@ -744,8 +673,8 @@ public final class RichInputConnection {
             }
         }
 
-        // 2026-09-25 audit, F6: refresh the connection before talking to the editor — the field
-        // can hold a stale (or null) connection from an earlier batch.
+        // Refresh the connection first: the field can hold a stale or null one from an earlier
+        // batch.
         mIC = mLatinIME.getCurrentInputConnection();
         if (!isConnected()) {
             return;
@@ -753,8 +682,7 @@ public final class RichInputConnection {
         try {
             mIC.performContextMenuAction(android.R.id.paste);
         } catch (final RuntimeException e) {
-            // S8 (see the class javadoc): the editor died or threw — the paste is lost, the
-            // IME is not.
+            // See the class javadoc.
         }
     }
 
@@ -800,7 +728,7 @@ public final class RichInputConnection {
             try {
                 mIC.sendKeyEvent(keyEvent);
             } catch (final RuntimeException e) {
-                // S8 (see the class javadoc): the editor died or threw on the key event.
+                // See the class javadoc.
             }
         }
     }
@@ -841,8 +769,7 @@ public final class RichInputConnection {
             try {
                 mIC.setSelection(start, end);
             } catch (final RuntimeException e) {
-                // S8 (see the class javadoc): the editor died or threw — the expected selection
-                // above already tracks the intent, and the next onUpdateSelection re-syncs it.
+                // See the class javadoc. The next onUpdateSelection re-syncs the selection.
             }
         }
     }
@@ -878,18 +805,13 @@ public final class RichInputConnection {
             CharSequence charsBeforeCursor = rightSidePointer && hasSelection() ?
                     getSelectedText() :
                     mTextBeforeCursor;
-            // 2026-09-25 audit, F11: this was a `== ""` reference comparison. Not `.isEmpty()`:
-            // CharSequence.isEmpty() is a default method that exists only from API 35 (checked
-            // against the API-34 android.jar) and this app ships minSdk 24 with no core
-            // desugaring — length() == 0 is the equivalent that runs everywhere.
+            // length() == 0, not isEmpty(): CharSequence.isEmpty() exists only from API 35 and
+            // minSdk is 24.
             if (charsBeforeCursor == null || charsBeforeCursor.length() == 0) {
                 return chars;
             }
             for (int i = charsBeforeCursor.length() - 1; i >= 0 && chars < 0; i--, steps--) {
-                // F11: the boundary is i >= 1 — charAt(i - 1) is valid there. The old i > 1
-                // skipped the ZWJ check at index 1, so a cached window that starts mid-cluster
-                // (a ZWJ at index 0) was split: the step stopped short and left the dangling
-                // joiner behind the cursor.
+                // i >= 1 so a window that starts with a ZWJ at index 0 is not split mid-cluster.
                 if (i >= 1 && charsBeforeCursor.charAt(i - 1) == '\u200d') {
                     continue;
                 }

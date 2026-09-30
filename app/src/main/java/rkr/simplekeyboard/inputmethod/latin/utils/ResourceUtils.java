@@ -62,11 +62,9 @@ public final class ResourceUtils {
     }
 
     /**
-     * The ceiling the keyboard's own default height is clamped to: the 46%p-of-screen
-     * {@code config_max_keyboard_height} fraction, in px. The emoji-panel "larger"/"max" height
-     * presets cap the panel's box at the same value (docs/EMOJI-PANEL-SPACE-2026-09-28.md,
-     * item B). In landscape this is 46%p of the SHORT screen dimension — the deliberate clamp that
-     * keeps a "max" panel (and the fullscreen-extract field above it) on screen.
+     * The ceiling of the keyboard's default height ({@code config_max_keyboard_height}), in px.
+     * The larger emoji-panel height presets cap the panel at the same value. In landscape it is a
+     * fraction of the short screen side, which keeps a maximum-height panel on screen.
      */
     public static int getMaxKeyboardHeight(final Resources res) {
         final DisplayMetrics dm = res.getDisplayMetrics();

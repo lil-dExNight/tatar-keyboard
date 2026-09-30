@@ -31,10 +31,8 @@ import rkr.simplekeyboard.inputmethod.latin.utils.ResourceUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.ViewLayoutUtils;
 
 /**
- * The soft-input window's layout and appearance helpers of {@link LatinIME} (T2 split, part 2
- * of 3): the input-area height/gravity bookkeeping, the insets-changed relayout, and the
- * navigation-bar colour that follows the keyboard theme. Static methods taking the service, so
- * the bodies moved here verbatim.
+ * Soft-input window layout helpers of {@link LatinIME}: the input-area height and gravity, the
+ * relayout after an insets change, and the navigation-bar color that follows the keyboard theme.
  */
 final class LatinImeSoftInputWindow {
     private LatinImeSoftInputWindow() {

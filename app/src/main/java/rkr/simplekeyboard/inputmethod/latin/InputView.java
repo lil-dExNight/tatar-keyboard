@@ -41,13 +41,9 @@ public final class InputView extends FrameLayout {
     private Runnable mInsetsChangedListener;
 
     /**
-     * Set while the emoji panel hid a visible suggestion strip, so {@link #hideEmojiPanel()} puts
-     * back exactly what was there. The strip has nothing to show while the panel is open and its
-     * reserved band was simply empty; the height it frees is handed to the panel instead, so the
-     * total keyboard height — and the content top inset — does not change when the panel opens
-     * under the default "same as keyboard" panel-height setting (the "larger"/"max" settings of
-     * docs/EMOJI-PANEL-SPACE-2026-09-28.md grow the panel past it on purpose, window resize
-     * included).
+     * Set while the emoji panel hid a visible suggestion strip, so {@link #hideEmojiPanel()} can
+     * restore it. The strip's height goes to the panel, so with the default panel-height setting
+     * the keyboard height and the content top inset do not change.
      */
     private boolean mStripHiddenByEmojiPanel;
 
@@ -100,7 +96,7 @@ public final class InputView extends FrameLayout {
         return mEmojiPanelView;
     }
 
-    /** Creates the emoji search bands on first use. Merely inflating the keyboard never creates them. */
+    /** Creates the emoji search rows on first use. Merely inflating the keyboard never creates them. */
     public EmojiSearchView getOrCreateEmojiSearchView() {
         if (mEmojiSearchView != null) {
             return mEmojiSearchView;
@@ -122,7 +118,7 @@ public final class InputView extends FrameLayout {
     }
 
     /**
-     * Enters the emoji search: the panel steps aside and the two search bands take the suggestion
+     * Enters the emoji search: the panel steps aside and the two search rows take the suggestion
      * strip's place above the letter keyboard, which the caller makes visible again. The panel keeps
      * its bound snapshot and its scroll position, so {@link #leaveEmojiSearch()} puts back exactly
      * the grid the user left.
@@ -169,7 +165,7 @@ public final class InputView extends FrameLayout {
         }
     }
 
-    /** Hides the search bands without showing the panel; used when the search is abandoned. */
+    /** Hides the search rows without showing the panel; used when the search is abandoned. */
     public void hideEmojiSearch() {
         if (mEmojiSearchView != null && mEmojiSearchView.getVisibility() != GONE) {
             mEmojiSearchView.setVisibility(GONE);
@@ -187,23 +183,14 @@ public final class InputView extends FrameLayout {
      * {@link rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView}; the two are never visible
      * at once.
      *
-     * The strip-height bonus lands first (a visible strip's height is handed to the panel), then
-     * the emoji-panel-height setting applies to the final value
-     * (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B): {@code panelHeightScale} 1.0 is exactly the
-     * same-box invariant above; above it the box is scaled and capped at {@code panelMaxHeightPx}
-     * (the 46%p-of-screen ceiling of {@code config_max_keyboard_height}). The window resize on a
-     * keyboard↔panel swap under a non-default setting is accepted — Gboard behaves the same — and
-     * {@link #getVisibleInputBounds} already unions the panel's bounds, so the taller box stays
-     * touchable. In landscape (and fullscreen-extract) the ceiling is 46%p of the SHORT screen
-     * dimension, so even "max" leaves the extract field above the window rather than overlapped by
-     * an unbounded panel.
+     * <p>A visible strip's height is added first; then {@code panelHeightScale} applies (1.0 keeps
+     * the same box) and the result is capped at {@code panelMaxHeightPx}. A larger setting resizes
+     * the window on a keyboard/panel swap; {@link #getVisibleInputBounds} covers the taller panel.
      */
     public EmojiPanelView showEmojiPanel(final int keyboardHeightPx,
             final EmojiSetSnapshot snapshot, final float panelHeightScale,
             final int panelMaxHeightPx) {
-        // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): view-side half of the panel-open span —
-        // the first show inflates EmojiPanelView here. A Trace begin/end pair costs ~10 µs;
-        // coarse spans only, never sub-200 µs methods or per-frame paths.
+        // Trace section for the panel-open path; the first show inflates EmojiPanelView here.
         Trace.beginSection("TT#emojiPanelView");
         try {
             final EmojiPanelView panel = getOrCreateEmojiPanelView();
@@ -270,8 +257,8 @@ public final class InputView extends FrameLayout {
         if (isEmojiPanelShowing()) {
             // The panel owns the surface: keep the strip down and remember that it wanted to be
             // up, so hideEmojiPanel() restores it. Without this a new input session started while
-            // the panel is open (a different field, a selection change) puts the empty band back
-            // over the panel.
+            // the panel is open (a different field, a selection change) puts the empty
+            // strip back over the panel.
             mStripHiddenByEmojiPanel = true;
             return strip;
         }
@@ -283,7 +270,7 @@ public final class InputView extends FrameLayout {
     }
 
     /**
-     * Reserves the fixed-height strip: makes it VISIBLE with no words (empty band) so the keyboard
+     * Reserves the fixed-height strip: makes it VISIBLE with no words (empty strip) so the keyboard
      * keeps a stable height across an eligible input session. Mirrors {@link #showSuggestionStrip}
      * but with no suggestions.
      */
@@ -319,7 +306,7 @@ public final class InputView extends FrameLayout {
     /**
      * Forwards the autocorrect preview's emphasis marker to the strip if it exists; never
      * creates it — the same discipline as [setSuggestionStripSpokenLabels], and the marker is
-     * always republished with the next band anyway.
+     * always republished with the next strip update anyway.
      */
     public void setSuggestionStripEmphasis(final int cell) {
         if (mSuggestionStripView != null) {

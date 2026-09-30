@@ -44,15 +44,13 @@
     <integer name="config_keyboard_grid_width">32</integer>
     <integer name="config_keyboard_grid_height">16</integer>
     <!-- Key detection hysteresis distance while sliding input from a modifier key is active.
-         AOSP LatinIME and HeliBoard both ship 8.0dp; the value was dropped when Simple Keyboard
-         was forked, so the attribute defaulted to 0.0f and every pixel of movement changed the
-         key mid-slide. -->
+         AOSP LatinIME and HeliBoard both use 8.0dp; without it the attribute defaults to 0.0f
+         and every pixel of movement changes the key mid-slide. -->
     <dimen name="config_key_hysteresis_distance_for_sliding_modifier">8.0dp</dimen>
     <!-- How far a pointer that went down on a modifier key (?123, shift) must travel from its
          touch-down point before it may leave that key. Below this it is a tap with finger tremor,
-         not sliding input. Chosen above the platform's 8dp touch slop and well below the ~21dp of
-         the shortest deliberate slide measured on a 440dpi phone; see
-         docs/SYMBOL-KEY-EDGE-FIX.md. -->
+         not sliding input. Chosen above the platform's 8dp touch slop and well below the
+         shortest deliberate slide (about 21dp on a 440dpi phone). -->
     <dimen name="config_sliding_modifier_slop">10.0dp</dimen>
     <dimen name="config_touch_noise_threshold_distance">12.6dp</dimen>
     <integer name="config_touch_noise_threshold_time">40</integer>

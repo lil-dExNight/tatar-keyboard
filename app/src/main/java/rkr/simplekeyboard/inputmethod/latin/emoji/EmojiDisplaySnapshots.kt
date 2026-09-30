@@ -19,7 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 /**
  * Builds the snapshot the panel actually draws: the immutable asset snapshot, optionally with the
  * "recent" category prepended as category 0. It uses only [EmojiSetSnapshot]'s public read surface
- * and its module-internal constructor, so the frozen [EmojiSet] sources are not modified.
+ * and its module-internal constructor, so [EmojiSet] itself needs no recents awareness.
  *
  * The Recent tab appears first and only when the list is non-empty: [withRecents] returns the base
  * snapshot unchanged for an empty list, so "shown only when non-empty" is a consequence of the

@@ -5,31 +5,14 @@ import java.io.Closeable
 import java.util.Locale
 
 /**
- * E5b: the shipped bigram-table asset, schema 3 (`TATBIGR\0`, cross-referenced into the linked
- * dictionary since SIZE-2, `docs/SIZE-SCHEMA3.md`) — a SEPARATE artifact kind from
- * [DictionaryArtifactSpec]'s schema 1, per PROPOSALS.md ("E5b. Отдельный файл и отдельная
- * схема"). [fileLanguageTag] parameterized storage "with language from the start" (contract
- * wording) back when only the Tatar table shipped; the second language duly added a second spec
- * rather than a second class.
+ * One shipped bigram table (`TATBIGR\0`, schema 3), an artifact kind separate from
+ * [DictionaryArtifactSpec].
  *
- * [fileLanguageTag] and [subtypeId] are NOT the same string and must not be merged. The first is
- * the short tag baked into the on-disk file name and FROZEN at `tt` for the Tatar table, which
- * devices inflated under that name in 1.6.0; the second is the IME subtype the table serves, and
- * for Tatar that identifier is `tt_RU`. Only [subtypeId] takes part in choosing a table, and
- * [DictionaryArtifactSpec] requires it to equal the language's own.
- *
- * [family] and [storageDirectoryName] complete that parameterization and carry exactly the
- * meaning they carry on [DictionaryArtifactSpec]: literals of the spec, never derived from
- * [fileLanguageTag], because the Tatar table shipped in 1.6.0 as `tatar_bigrams-tt-…` inside
- * `<device-protected>/bigrams` and a device updating to a build with a second language must find
- * that file where it left it. Each family owns its OWN directory for the same reason the
- * dictionaries do: `ProcessBigramStorageOwner` keys its lease bookkeeping by the canonical
- * directory path, so two families in one directory would share one lease counter and the second
- * language could never be activated while the first held a lease.
- *
- * Which subtype gets which table is NOT answered here. It is answered once, for both artifact
- * kinds together, by [DictionaryArtifactSpec.forSubtype] — see the note on
- * [DictionaryArtifactSpec.bigrams].
+ * [fileLanguageTag] is the short tag in the on-disk file name, frozen at `tt` for the Tatar table;
+ * [subtypeId] is the IME subtype the table serves (`tt_RU`). Only [subtypeId] selects a table.
+ * [family] and [storageDirectoryName] are literals with the same meaning as on
+ * [DictionaryArtifactSpec]: each family owns its own directory. Which subtype gets which table is
+ * decided by [DictionaryArtifactSpec.forSubtype].
  */
 data class BigramArtifactSpec(
     val family: String,
@@ -43,10 +26,8 @@ data class BigramArtifactSpec(
     val expectedRawSize: Long,
     val expectedRawSha256: String,
     /**
-     * Raw SHA-256 of the TATDICT schema-2 dictionary this schema-3 table cross-references
-     * (SIZE-2, `docs/SIZE-SCHEMA3.md`): heads and successes are indices into exactly that
-     * dictionary, the table header names it, and both the validator and the runtime reader
-     * refuse a table paired with any other dictionary.
+     * Raw SHA-256 of the TATDICT dictionary this table indexes into. Heads and successors are
+     * indices into exactly that dictionary; the validator and the reader refuse any other pairing.
      */
     val expectedDictionaryRawSha256: String,
     val expectedHeadCount: Long,
@@ -98,51 +79,7 @@ data class BigramArtifactSpec(
         /** Exactly what [finalFilePattern] accepts in the file name's language position. */
         private val FILE_LANGUAGE_TAG_PATTERN = Regex("[a-z]{2,3}")
 
-        /**
-         * The tt table packed by `scripts/bigram_asset_pack.py pack` at **H = 10 132**, K = 4,
-         * with `--extra-heads scripts/bigram_extra_heads_tat.txt`. H and K are unchanged since
-         * 2026-08-25 (docs/archive/bigrams/IMPERATIVE-HEADS.md: the cutoff keeps the 78 heads a
-         * 10 000-cutoff repack would have dropped, the list promotes imperatives regardless of
-         * rank).
-         *
-         * Repacked 2026-08-31 with the conversational admixture (`docs/CORPUS-CONVERSATIONAL-TT.md`,
-         * corpus-conversational part B): training is the two Leipzig corpora plus a deduplicated
-         * Tatar Tatoeba + OpenSubtitles input (lines with `id % 10 != 1`; the rest is the
-         * conversational held-out). No thinning — the conversational mass is 3,7 % of the written
-         * one. The extra-heads rule was extended the same day, before the run, from ranks
-         * [10 000, 15 000) to [10 000, 40 000) with pairs required in the new mixed training:
-         * 13 → **75** named words, and all six dossier imperatives beyond rank 15 000
-         * (`шалтырат`, `сөйлә`, `утыр`, `җибәр`, `эшлә`, `укы`) are heads now.
-         *
-         * 10 204 heads = 10 129 (cutoff) + 75 (list): three frequency-selected `-гәнчә` converbs
-         * still never head an in-vocabulary pair and are dropped rather than stored with an empty
-         * range (docs/archive/bigrams/DICTIONARY-E5B.md, "Dropped heads"; recorded in
-         * scripts/known_asset_drift.json). 594 of the 10 142 retained heads change the displayed
-         * triple — genre permutation among live dictionary words, measured head-by-head in the
-         * part-B report; the conversational data follows the terms recorded in
-         * assets/bigrams/NOTICE.txt.
-         *
-         * Repacked 2026-09-01 to TATBIGR schema 3 (SIZE-2, `docs/SIZE-SCHEMA3.md`) from the
-         * schema-2 asset, corpus-free and verified word-for-word identical (all 10 204 heads,
-         * 40 734 pairs): word blobs are gone, heads and successes are varint indices into the
-         * dictionary pinned by [expectedDictionaryRawSha256].
-         *
-         * Repacked 2026-09-20 (TT-SUGGESTIONS P2, `docs/TT-SUGGESTIONS.md`) against the
-         * 110 000-entry dictionary: the head set is identical (admitted word forms enter far
-         * below the H = 10 132 cutoff), the same three `-гәнчә` converbs stay pairless
-         * (`scripts/known_asset_drift.json` keeps 3/0), and ten pairs whose successor was outside
-         * the old dictionary now count — 40 734 → 40 735 pairs.
-         *
-         * Repacked 2026-09-23 (ROADMAP-P4 batch A, `docs/ROADMAP-P4.md`): T7 — successes per
-         * head 4 → 3 (the rank-4 share measured at 2.08 % of covered eval pairs is latent for a
-         * future 4-cell strip, not worth the bytes today), and P5a option (b) — the extra-heads
-         * list expanded by the EXPAND-1 rule (+3 102 conversationally established words below the
-         * frequency cutoff, `scripts/bigram_extra_heads_tat.txt` + `scripts/bigram_extra_heads_conv.py`).
-         * Heads 10 204 → 13 154, pairs 40 735 → 38 874, compressed 81 476 → 79 574 B; eval
-         * next-word coverage 75.3623 % → 84.1730 %, top-3 9.5468 % → 10.8351 %. 152 of the 3 177
-         * address candidates stay pairless (their mates are out-of-dictionary) — the known-drift
-         * record moves to 155/0 with the same three converbs inside.
-         */
+        /** The Tatar bigram table; its pinned sizes, SHA-256 values and head count follow. */
         @JvmField
         val TATAR_BIGRAMS_V1 = BigramArtifactSpec(
             family = "tatar_bigrams",
@@ -162,33 +99,7 @@ data class BigramArtifactSpec(
             expectedHeadCount = 13_154,
         )
 
-        /**
-         * The ru table packed by `scripts/bigram_asset_pack.py pack --language rus` at
-         * H = 10 000 / **K = 4** — `docs/archive/bigrams/RUSSIAN-BIGRAMS.md` records the matrix
-         * that chose H and the original K = 6; docs/archive/bigrams/BIGRAM-ADJACENCY.md records
-         * the drop to K = 4.
-         *
-         * Repacked 2026-08-31 against the current shipped dictionary (4 195-head drift closed,
-         * `docs/RUSSIAN-BIGRAMS-REPACK.md`) and **repacked again the same day with the
-         * conversational admixture** (`docs/CORPUS-CONVERSATIONAL-RU.md`, corpus-conversational
-         * part A): training is the three Leipzig corpora plus a deduplicated, 1/60-thinned
-         * Tatoeba + OpenSubtitles input of exactly one Leipzig corpus mass. 57 of the 59
-         * previously silent conversational top-10 000 words (`погоди`, `волнуйся`, …) are heads
-         * now; `окей` and `берегись` still have no in-vocabulary pair in the thinned input and
-         * are dropped rather than stored with an empty range — the same generator rule as the
-         * Tatar `-гәнчә` converbs. The conversational data follows the terms recorded in
-         * `assets/dictionaries/NOTICE.txt` (Tatoeba CC BY 2.0 FR; OpenSubtitles has NO license
-         * grant — operator decision of 2026-08-24, `docs/archive/dictionary/CORPUS-OS.md`).
-         *
-         * Its own family and its own directory, so the Tatar table already inflated on a device
-         * updating from 1.7.0 is neither renamed, re-inflated, nor sharing this language's lease
-         * counter.
-         *
-         * Repacked 2026-09-01 to TATBIGR schema 3 (SIZE-2, `docs/SIZE-SCHEMA3.md`) from the
-         * schema-2 asset, corpus-free and verified word-for-word identical (all 9 998 heads,
-         * 39 949 pairs): word blobs are gone, heads and successes are varint indices into the
-         * dictionary pinned by [expectedDictionaryRawSha256].
-         */
+        /** The Russian bigram table, in its own family and directory; pins follow. */
         @JvmField
         val RUSSIAN_BIGRAMS_V1 = BigramArtifactSpec(
             family = "russian_bigrams",
@@ -214,10 +125,8 @@ private fun String.isBigramSha256(): Boolean =
     length == 64 && all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
 
 /**
- * What a validated bigram table looks like once published — deliberately NOT [PublishedDictionary]:
- * a flat word list and a head/success table are different shapes, and E5c's own contract
- * ("владелец состояния обязан знать вид результата") is exactly why this project does not fold
- * structurally different artifacts into one type just because both are files on disk.
+ * A validated, published bigram table. Separate from [PublishedDictionary] because a word list and
+ * a head/successor table have different shapes, and the state owner must know which one it holds.
  */
 data class PublishedBigramTable(
     val generation: Int,
@@ -262,11 +171,8 @@ class BigramTableLease internal constructor(
 }
 
 /**
- * One lifecycle surface for background bigram-table preparation and safe activation — the exact
- * pair [DictionaryStorageController]/[BackgroundDictionaryPreparer] form for the main dictionary,
- * mirrored here rather than generalized: the two artifact kinds already deliberately don't share
- * a spec, validator, or store type (`docs/DICTIONARY-E5B.md`), and this is the last layer of that
- * same shape.
+ * One lifecycle surface for background bigram-table preparation and safe activation; the bigram
+ * counterpart of [DictionaryStorageController].
  */
 class BigramStorageController internal constructor(
     private val preparer: BackgroundBigramPreparer,

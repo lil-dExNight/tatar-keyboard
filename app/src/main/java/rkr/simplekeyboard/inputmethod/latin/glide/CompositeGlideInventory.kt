@@ -19,32 +19,26 @@ package rkr.simplekeyboard.inputmethod.latin.glide
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 
 /**
- * The glide inventory of one engine WITH the user's personal dictionary appended
- * (docs/GLIDE-PERSONAL.md): every base entry first, in base order, then the personal entries
- * that are not already dictionary words, in the personal order (usage count descending,
- * normalized form ascending). The decoder and the word index need no personal awareness —
- * this is a plain [GlideWordInventory].
+ * The glide inventory of one engine with the user's personal dictionary appended: all base
+ * entries in base order, then the personal words that are not dictionary words (usage count
+ * descending, normalized form ascending). The decoder and the word index see a plain
+ * [GlideWordInventory].
  *
- * Ranking invariants:
- *  - Personal words never change the RELATIVE order of dictionary words: they append after the
- *    base entries, and their synthetic frequencies are capped at the base maximum (learned
- *    during the base walk), so [GlideWordIndex]'s `maxFrequency` is unchanged and the frequency
- *    channel keeps its shipped normalizer. A personal word's frequency is
- *    `max(1, baseMax * usageCount / maxUsageCount)`: the user's most-used word ties the
- *    dictionary's strongest prior, and a word seen once still outranks nothing on frequency
- *    alone — the shape channel decides, exactly as the prefix path's three-class merge intends.
- *  - A personal entry whose normalized form IS a dictionary word ([baseMembership]) is not
- *    indexed twice; when the saved raw form differs from it (the user's own casing), the pair
- *    lands in the casing-override map and [wordAt] of the DICTIONARY entry returns the saved
- *    form — one candidate cell, the user's spelling, mirroring the E4b merge's rule.
+ * Ranking:
+ *  - Personal words never reorder dictionary words. A personal word's frequency is
+ *    `max(1, baseMax * usageCount / maxUsageCount)`, so it never exceeds the base maximum and
+ *    [GlideWordIndex]'s `maxFrequency` (the frequency normalizer) is unchanged. The user's
+ *    most-used word ties the strongest dictionary prior; between weaker words the shape
+ *    channel decides.
+ *  - A personal word that is already a dictionary word ([baseMembership]) is not indexed twice.
+ *    If its saved raw form differs (the user's casing), [wordAt] of the dictionary entry
+ *    returns the saved form: one cell with the user's spelling, as in word completion.
  *
- * [forEachWord] feeds the index the NORMALIZED form (the decoder lowercases letters against
- * the geometry anyway); [wordAt] serves the RAW saved spelling, so the strip's display-time
- * casing pass sees exactly what a prefix suggestion would show.
+ * [forEachWord] yields normalized forms (the decoder lowercases letters anyway); [wordAt]
+ * returns the raw saved spelling, so the strip's casing pass sees what a word completion shows.
  *
- * NOT a data class and deliberately without a [toString]: the arrays carry the user's words,
- * which must never reach a log. Words with a letter the layout has no key for are still served
- * here — [GlideWordIndex.build] skips them fail-closed, like any unmappable dictionary word.
+ * Not a data class and without [toString]: the arrays hold the user's words, which must never
+ * reach a log. Words with a letter the layout has no key for are skipped by [GlideWordIndex.build].
  */
 class CompositeGlideInventory(
     private val base: GlideWordInventory,

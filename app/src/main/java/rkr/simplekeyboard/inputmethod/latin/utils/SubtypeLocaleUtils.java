@@ -42,9 +42,7 @@ public final class SubtypeLocaleUtils {
         // This utility class is not publicly instantiable.
     }
 
-    // Phase 3b (2026-08-30): the app ships three keyboard locales only — Tatar, Russian,
-    // English (US). The ~70 layouts inherited from Simple Keyboard upstream were cut together
-    // with their layout XML and texts tables.
+    // The app ships three keyboard locales: Tatar, Russian and English (US).
     private static final String LOCALE_RUSSIAN = "ru";
     private static final String LOCALE_ENGLISH_UNITED_STATES = "en_US";
     private static final String LOCALE_TATAR = "tt_RU";
@@ -64,15 +62,13 @@ public final class SubtypeLocaleUtils {
         return Arrays.asList(sSupportedLocales);
     }
 
-    // Active layouts: Tatar, Russian, QWERTY (plus the remaining predefined generic layouts
-    // — QWERTZ, ABC — offered for English via addGenericLayouts, named in
-    // R.array.predefined_layouts). Roadmap phase 1 (T4, 2026-09-22) cut the six legacy
-    // families bepo/azerty/dvorak/colemak/workman/pcqwerty from the array and their XML.
+    // Active layouts: Tatar, Russian, QWERTY, plus the predefined generic layouts (QWERTZ, ABC)
+    // offered for English via addGenericLayouts and named in R.array.predefined_layouts.
     public static final String LAYOUT_QWERTY = "qwerty";
     public static final String LAYOUT_RUSSIAN = "russian";
     public static final String LAYOUT_TATAR = "tatar";
-    // Kept only because InputLogic still switches on these complex-script layout names and
-    // SubtypePreferenceUtils migrates legacy east_slavic prefs; unreachable since phase 3b.
+    // Unused layouts, kept only because InputLogic still switches on these names and
+    // SubtypePreferenceUtils migrates legacy east_slavic prefs.
     public static final String LAYOUT_ARABIC = "arabic";
     public static final String LAYOUT_BENGALI = "bengali";
     public static final String LAYOUT_BENGALI_AKKHOR = "bengali_akkhor";
@@ -136,11 +132,9 @@ public final class SubtypeLocaleUtils {
      * @return the default list of subtypes: Tatar (active), Russian, English (US).
      */
     public static List<Subtype> getDefaultSubtypes(final Resources resources) {
-        // Default for a fresh install: Tatar active, Russian and English enabled
-        // (SWITCH-01). Deliberately independent of system locales — the app's
-        // audience is Tatar speakers whose system language is usually ru or en.
-        // Only applied when the subtype prefs are empty or invalid, so a user's
-        // own selection is never overwritten.
+        // Default for a fresh install: Tatar active, Russian and English enabled,
+        // independent of the system locale (Tatar speakers usually run a ru or en
+        // system). Only applied when the subtype prefs are empty or invalid.
         final ArrayList<Subtype> subtypes = new ArrayList<>(3);
         subtypes.add(getDefaultSubtype(LOCALE_TATAR, resources));
         subtypes.add(getDefaultSubtype(LOCALE_RUSSIAN, resources));

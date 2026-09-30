@@ -15,7 +15,7 @@
 -->
 
 <!-- iOS-style toggle track for android.widget.Switch: 51x31dp capsule.
-     Colour jumps on toggle (no fill cross-fade); accepted per plan D3. -->
+     The color jumps on toggle (no fill cross-fade). -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_checked="true">
         <shape android:shape="rectangle">

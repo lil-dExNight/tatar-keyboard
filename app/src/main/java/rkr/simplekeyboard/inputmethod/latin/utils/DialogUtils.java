@@ -37,16 +37,13 @@ public final class DialogUtils {
     }
 
     /**
-     * Audit 2026-09-02, C5: makes the dialog drop touches delivered while another window obscures
-     * it. The IME-attached dialogs float over OTHER apps' screens, where a tapjacking overlay is
-     * possible at all, and the settings dialogs keep the gesture consistent with the app's
-     * layouts, which already set {@code android:filterTouchesWhenObscured} in XML.
+     * Makes the dialog drop touches delivered while another window obscures it (tapjacking
+     * protection: IME-attached dialogs float over other apps; the app's own layouts already set
+     * {@code android:filterTouchesWhenObscured}).
      *
-     * <p>The flag lives on views, not windows, so it is set on the decor view — the one ViewGroup
-     * every touch into the dialog passes through — and the decor view only exists once the dialog
-     * is shown, hence the show listener. Must be installed before {@code show()} and must not be
-     * combined with another OnShowListener on the same dialog (none of the app's dialogs has
-     * one).</p>
+     * <p>The flag lives on views, so it is set on the decor view, which exists only once the dialog
+     * is shown, hence the show listener. Install before {@code show()}; do not combine with another
+     * OnShowListener on the same dialog.</p>
      */
     public static void filterObscuredTouches(final Dialog dialog) {
         dialog.setOnShowListener(d -> {
@@ -58,16 +55,12 @@ public final class DialogUtils {
     }
 
     /**
-     * Audit 2026-09-25: marks the dialog's own window secure (no screenshots, no screen
-     * recording, no recents thumbnail) — the dialog pendant of the activity-wide
-     * {@code FLAG_SECURE} the settings host sets in onCreate. That flag does NOT extend to
-     * dialog windows: each dialog is a window of its own, so the ones rendering personal
-     * content (the saved word or pair they name, or the field that takes a new one) must set
-     * it themselves.
+     * Sets {@code FLAG_SECURE} on the dialog's own window (no screenshots, screen recording or
+     * recents thumbnail). The settings host's activity-wide flag does not extend to dialog
+     * windows, so dialogs that show personal content (a saved word or pair) set it themselves.
      *
-     * <p>Unlike {@link #filterObscuredTouches} this needs no show listener: the dialog's window
-     * exists from construction, and window flags applied before {@code show()} are honored when
-     * the window is added — so the two helpers compose on the same dialog.</p>
+     * <p>No show listener is needed: the window exists from construction and flags set before
+     * {@code show()} apply, so this composes with {@link #filterObscuredTouches}.</p>
      */
     public static void securePersonalContent(final Dialog dialog) {
         final Window window = dialog.getWindow();

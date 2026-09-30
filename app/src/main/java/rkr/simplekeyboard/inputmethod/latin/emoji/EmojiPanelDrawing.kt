@@ -18,21 +18,13 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 import android.graphics.Canvas
 
 /**
- * The painters of [EmojiPanelView] (T2 part 3, docs/ROADMAP-P6.md): the tab row (category tabs
- * plus the search cell at its right end), the floating "АБВ"/delete keys, the skin-tone popup and
- * the recents clock — every one a
- * pure read of [EmojiPanelState] geometry onto the canvas, moved verbatim out of the view.
- * (The search pill painter was retired on 2026-09-28 — docs/EMOJI-PANEL-SPACE-2026-09-28.md,
- * item A — when the pill's 50dp band collapsed into the tab row's search cell.)
+ * Painters of [EmojiPanelView] as `internal` extension functions: the tab row (category tabs plus
+ * the search cell at its right end), the floating "АБВ"/delete keys, the skin-tone popup and the
+ * recents clock. Each one only reads [EmojiPanelState] geometry onto the canvas.
  *
- * They are `internal` extension functions on the view, so `onDraw` kept its exact call text — the
- * source contracts slice `EmojiPanelView.kt` between `override fun onDraw` and the touch handler
- * and pin what that region paints. The one painter that must stay in the view is `drawContent`:
- * the "only the visible rows are drawn" tokens the contracts pin live in its loop.
- *
- * The paints, metrics and pixel sizes these functions read went `private` → `internal` on the
- * view — the mechanical minimum, since an extension in another file cannot see a private member
- * (parts 1–2 record the same move).
+ * `drawContent` stays in the view: source-contract tests check that its loop draws only the
+ * visible rows. The paints, metrics and pixel sizes read here are `internal` on the view, because
+ * an extension in another file cannot see private members.
  */
 
 /** The skin-tone popup, drawn over everything: a rounded card of the neutral cell plus five tones. */
@@ -70,7 +62,7 @@ internal fun EmojiPanelView.drawSkinTonePopup(canvas: Canvas) {
     }
 }
 
-/** The top row of category tabs plus the search cell at its right end; the active tab sits under a round pill, as in the reference. */
+/** The tab row plus the search cell at its right end; the active tab sits under a round pill. */
 internal fun EmojiPanelView.drawTabRow(canvas: Canvas, pressed: Int) {
     if (tabBarPx <= 0) return
     val tabs = state.tabCount()
@@ -104,8 +96,8 @@ internal fun EmojiPanelView.drawTabRow(canvas: Canvas, pressed: Int) {
         }
         tab++
     }
-    // The search cell: the magnifier that used to sit in its own 50dp band under this row. It is
-    // drawn even with zero tabs (the row is then its alone), exactly as the hit-test resolves it.
+    // The search cell's magnifier. It is drawn even with zero tabs (the cell is then the whole
+    // row), exactly as the hit-test resolves it.
     val searchLeft = state.searchCellLeft().toFloat()
     val searchRight = state.searchCellRight().toFloat()
     if (searchRight > searchLeft) {
@@ -147,7 +139,7 @@ internal fun EmojiPanelView.drawSearchIcon(canvas: Canvas, centerX: Float, cente
     )
 }
 
-/** "АБВ" and delete, floating over the content in the bottom corners as in the reference. */
+/** "АБВ" and delete, floating over the content in the bottom corners. */
 internal fun EmojiPanelView.drawFloatingKeys(canvas: Canvas, pressed: Int) {
     if (floatingKeyPx <= 0) return
     val top = state.floatingTop().toFloat()

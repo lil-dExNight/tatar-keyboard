@@ -21,20 +21,14 @@ import java.util.Arrays
 
 /**
  * Letter -> key geometry table of one keyboard layout, in the keyboard's pixel (or grid-unit)
- * coordinate space. The glide analogue of the dictionary engine's `KeyNeighborTable`: built by a
- * pure function from plain [RawKey] records so it carries no Android type and runs in ordinary
- * JVM tests; the live `Keyboard` is adapted into [RawKey]s on the Android side
- * (`rkr.simplekeyboard.inputmethod.latin.suggestions.GlideKeyGeometryBuilder`), and not a single
- * letter or coordinate is hard-coded here.
+ * coordinates. Built by a pure function from plain [RawKey] records, so it holds no Android type
+ * and runs in JVM tests; `latin.suggestions.GlideKeyGeometryBuilder` adapts the live `Keyboard`.
+ * Letters are sorted by code point with parallel center/half-size arrays: a lookup is one
+ * binary search and the nearest-key scan reads flat arrays, with no boxing or allocation.
  *
- * Letters are stored sorted by code point with parallel center/half-size arrays, so a lookup is
- * one primitive binary search and the extremity pruner's nearest-key scan reads flat arrays —
- * nothing boxes and nothing allocates per query.
- *
- * [keyRadius] is the minimum over all letter keys of min(width, height): the scale reference of
- * the location channel's standard deviation and of the length-pruning threshold. The minimum
- * (rather than the first key, as the reference implementation does) keeps the scale honest on
- * layouts whose rows mix key widths.
+ * [keyRadius] is the minimum of min(width, height) over all letter keys: the scale of the
+ * location channel's sigma and of the length-pruning threshold. The reference implementation
+ * uses the first key; the minimum stays correct on layouts whose rows mix key widths.
  */
 class GlideKeyGeometry private constructor(
     private val letters: IntArray,
@@ -105,9 +99,9 @@ class GlideKeyGeometry private constructor(
         /**
          * Builds the table from the keys of a single keyboard element. Every code is folded to
          * its NFC lower-case form; non-code-point and non-letter keys (shift, delete, space) are
-         * dropped. A letter carried by two keys keeps the first rectangle — a defensive choice no
-         * shipped layout exercises. An empty input yields an empty geometry (radius 0), which the
-         * decoder treats fail-closed (no candidates).
+         * dropped. A letter carried by two keys keeps the first rectangle (no shipped layout has
+         * one). An empty input yields an empty geometry (radius 0), for which the decoder returns
+         * no candidates.
          */
         fun build(keys: List<RawKey>): GlideKeyGeometry {
             val order = ArrayList<Int>(keys.size)

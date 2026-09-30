@@ -72,9 +72,9 @@ public final class KeyPreviewChoreographer {
         }
         final Context context = placerView.getContext();
         keyPreviewView = new KeyPreviewView(context, null /* attrs */);
-        // S1 (docs/APPLE-UX-2026-09-25.md): the Tatar theme's rectangular preview background is
-        // replaced by the path-drawn droplet. Once per pooled view (a handful of views for the
-        // lifetime of the keyboard), never per frame.
+        // The Tatar theme's rectangular preview background is replaced by the path-drawn
+        // droplet. Once per pooled view (a handful of views for the lifetime of the keyboard),
+        // never per frame.
         if (mParams.mPreviewBackgroundResId == R.drawable.ios_key_preview_background) {
             keyPreviewView.setBackground(new KeyPreviewBalloonDrawable(context));
         } else {

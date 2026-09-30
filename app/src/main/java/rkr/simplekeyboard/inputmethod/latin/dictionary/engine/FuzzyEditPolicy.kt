@@ -17,32 +17,18 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 /**
- * TT-TYPO-NEXT Phases B/C (docs/TT-TYPO-NEXT.md): the per-engine configuration of the fuzzy
- * suggestion pass — WHICH edit classes run and whether the same-length bonus applies. Before
- * Phase B this was a single global constant ([TdictPrefixIndex]-era SHIPPED_FUZZY_EDIT_CLASSES,
- * class #1 only); the choice is now injected per engine through the same seam as the P3 suffix
- * rules ([MappedDictionaryEngine.start]).
+ * Per-engine configuration of the typo-recovery pass: which edit classes run and whether the
+ * same-length bonus applies. Injected per engine through [MappedDictionaryEngine.start]; the Tatar
+ * engine runs [TATAR], every other engine runs [DEFAULT].
  *
- * Calibration history (docs/TT-TYPO-NEXT.md): the Phase-B candidate (classes #1+#2, geometric
- * neighbour) failed gate G1 (2026-09-20) and was never wired. The Phase-C candidate [TATAR] —
- * class #1 always plus the probe-first full single substitution (class #4) gated on an EMPTY
- * exact pass at >= 4 code points — failed its first measurement round the same day (G3-C: the
- * naive probe path cost 31.6 ms p95 on the reference device), and after the Phase-C2 probe
- * engineering (no-cache probe search + per-position range narrowing, device p95 3.3 ms) PASSED
- * the corrected gates G1-C2 (+27.2 pp same-set lift), G2-C2 (21.1 % activation, structurally
- * capped) and G3-C2. It is wired to the Tatar engine by LatinIME; every other engine runs
- * [DEFAULT].
+ * [editClasses] holds EDIT_CLASS_* values; their order is irrelevant, because
+ * [TdictPrefixIndex.collectFuzzy] always runs and ranks the classes in numeric order.
+ * [sameLengthBonus] ranks a candidate exactly as long as the typed prefix before its own
+ * continuations within its edit class, so the corrected word itself comes before longer words
+ * that start with it.
  *
- * [editClasses] carries the EDIT_CLASS_* values of the classes the pass runs; their order inside
- * the array is irrelevant — [TdictPrefixIndex.collectFuzzy] always runs and ranks the classes in
- * their fixed numeric order. [sameLengthBonus] makes a fuzzy candidate that is exactly as long as
- * the typed prefix rank before its own continuations within its edit class (frequency order is
- * preserved otherwise); it is what puts the correction itself — "сәләм" — above "сәләмәтлек".
- *
- * [autocorrectClasses] is the D3 side of the policy (ROADMAP-P3 P7, docs/ROADMAP-P3.md): the
- * edit classes the autocorrect verdict may draw from. It defaults to class #1 alone — the frozen
- * D3 contract — so any policy constructed without it keeps the exact pre-P7 autocorrect behavior,
- * and the DISPLAY classes never change it implicitly.
+ * [autocorrectClasses] are the edit classes autocorrect may draw from. The default is class #1
+ * alone, and the display classes never change it implicitly.
  */
 class FuzzyEditPolicy(
     val editClasses: IntArray,
@@ -64,19 +50,16 @@ class FuzzyEditPolicy(
 
     companion object {
         /**
-         * Exactly the pre-Phase-B shipped behavior: edit class #1 (long-press partner) only, no
-         * same-length bonus. Every engine without an explicit policy — the Russian one included —
-         * runs this, so its behavior is bit-identical to what shipped before Phase B.
+         * Edit class #1 (long-press partner) only, no same-length bonus. Every engine without an
+         * explicit policy, the Russian one included, runs this.
          */
         @JvmField
         val DEFAULT = FuzzyEditPolicy(intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS), false)
 
         /**
-         * The shipped Tatar configuration (since Phase C2, 2026-09-20): class #1 (long-press
-         * partner, always) plus class #4 (probe-first full single substitution — fires only on an
-         * empty exact pass at >= 4 code points, see [TdictPrefixIndex.collectFuzzy]) and the
-         * same-length bonus. Class #2 stays out per the Phase-B G1 verdict; class #3 was never
-         * re-calibrated.
+         * The Tatar configuration: class #1 always, class #4 (probe-first full single substitution,
+         * only on an empty exact pass at >= 4 code points, see [TdictPrefixIndex.collectFuzzy]) and
+         * the same-length bonus. Classes #2 and #3 are not used.
          */
         @JvmField
         val TATAR = FuzzyEditPolicy(

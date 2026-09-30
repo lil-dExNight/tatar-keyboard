@@ -156,17 +156,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Owns the emoji panel's single-per-process snapshot. Null until set up in onCreate().
     private EmojiPanelController mEmojiPanelController;
 
-    // The ONE shared personal word→emoji learning sink (feature C): built once in
-    // setUpSuggestionsController(), shared by the two event sources — a panel/search pick
-    // (onEmojiInserted) and the strip's emoji tail cell (the controller's PersonalEmojiSink seam).
+    // The single learned-emoji sink, built in setUpSuggestionsController() and shared by both
+    // event sources: a panel/search pick (onEmojiInserted) and the strip's emoji cell.
     private PersonalEmojiEventSink mPersonalEmojiLearningSink;
 
     /**
      * The emoji-search query while the search is open, and null otherwise. It holds every key press
      * made during the search; not one of them reaches {@link InputLogic} or the editor.
      *
-     * <p>Package-visible because the extracted routing code ({@link LatinImeEmojiSearch}) reads it,
-     * while the pinned lifecycle bodies of this class keep reading it in place.</p>
+     * <p>Package-visible for {@link LatinImeEmojiSearch}.</p>
      */
     EmojiSearchQuery mEmojiSearchQuery;
 
@@ -189,9 +187,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     private boolean mLastKnownTatarSuggestionsEnabled;
 
     /**
-     * Held in a field on purpose, and not registered as an anonymous lambda: SharedPreferencesImpl
-     * keeps its listeners in a WeakHashMap, so a listener without a strong reference is collected
-     * by the GC at an arbitrary later moment and this channel dies without a single symptom.
+     * Held in a field, not registered as an anonymous lambda: SharedPreferencesImpl keeps
+     * listeners in a WeakHashMap, so an unreferenced listener would be silently collected.
      */
     private final SharedPreferences.OnSharedPreferenceChangeListener mSuggestionsSettingListener =
             this::onSuggestionsSettingMaybeChanged;
@@ -199,18 +196,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     public final UIHandler mHandler = new UIHandler(this);
 
     public static final class UIHandler extends LeakGuardHandlerWrapper<LatinIME> {
-        // NO MESSAGE ID HERE MAY BE ZERO, and MSG_UPDATE_SHIFT_STATE is 3 rather than 0 for
-        // exactly that reason.
-        //
-        // {@link Handler#post(Runnable)} enqueues an ordinary Message whose {@code what} is 0 and
-        // whose {@code callback} is the runnable. {@link Handler#removeMessages(int)} matches on
-        // {@code what} ALONE and ignores the callback, so the {@code removeMessages(0)} inside
-        // postUpdateShiftState() used to delete every pending posted Runnable of this handler along
-        // with its own message. Six places post such runnables — among them the suggestion engine's
-        // result delivery (SuggestionsController's UiPoster), the emoji panel's poster and four
-        // dialogs — and postUpdateShiftState() runs at the end of every editor text-cache reload,
-        // i.e. after practically every keystroke. The result was a suggestion band that went blank
-        // and stayed blank for as long as the reload kept winning the race: see docs/SUGGEST-DIES.md.
+        // No message id may be 0: Handler.post(Runnable) enqueues a message with what == 0, and
+        // removeMessages(int) matches on what alone, so removing id 0 would also drop every posted
+        // Runnable (suggestion results, emoji panel, dialogs).
         private static final int MSG_UPDATE_SHIFT_STATE = 3;
         private static final int MSG_PENDING_IMS_CALLBACK = 1;
         private static final int MSG_REFRESH_SUGGESTION_BAND = 2;
@@ -247,16 +235,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
 
         /**
-         * Asks the suggestion band to re-derive itself once the cursor has settled and the editor
-         * text cache behind it is current again.
-         *
-         * Posted rather than called inline, from the two places that know the cache is (or is about
-         * to be) correct: the keyboard's own cursor gestures, whose
-         * {@link RichInputConnection#setSelection} keeps the cache in step as it moves, and the
-         * completion of the asynchronous cache reload that an EXTERNAL cursor move triggers. Both
-         * may fire for one and the same move, so the message coalesces: the band is re-derived at
-         * most once per looper turn, and {@link SuggestionsController#onCursorMoveSettled} is itself
-         * a no-op unless the band is genuinely left unbound.
+         * Asks the suggestion strip to refresh once the cursor has settled and the text cache is
+         * current. Posted from the keyboard's cursor gestures and from the completion of the cache
+         * reload after an external cursor move; both may fire for one move, so the message
+         * coalesces. {@link SuggestionsController#onCursorMoveSettled} is a no-op unless needed.
          */
         public void postRefreshSuggestionBand() {
             removeMessages(MSG_REFRESH_SUGGESTION_BAND);
@@ -383,9 +365,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onCreate() {
-        // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): Perfetto spine for process/IME init.
-        // A Trace begin/end pair costs ~10 µs, so markers wrap only coarse spans — never
-        // sub-200 µs methods or anything running per frame.
+        // Trace section for IME initialization. Trace sections wrap only coarse spans, never
+        // per-frame code.
         Trace.beginSection("TT#onCreate");
         try {
             Settings.init(this);
@@ -488,13 +469,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 }
                 strip.setOnSuggestionClickListener(
                         (cellId, suggestion) -> listener.onTap(suggestion));
-                // E4d: the long press is wired next to the tap, on the same strip instance, so a
-                // strip created later (the band appears lazily) gets both or neither.
+                // The long press is wired next to the tap, on the same strip instance, so a
+                // lazily created strip gets both or neither.
                 strip.setOnSuggestionLongPressListener(
                         (cellId, suggestion) -> {
-                            // An emoji-suggest cell holds no word, so there is nothing to forget:
-                            // the long press is answered with silence rather than with a
-                            // "not a saved word" dialog about a picture.
+                            // An emoji cell holds no word, so there is nothing to forget and
+                            // no "not a saved word" dialog is shown.
                             if (!containsAnyLetter(suggestion)) {
                                 return;
                             }
@@ -516,11 +496,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 final boolean committed =
                         mInputLogic.commitChosenSuggestion(expectedPrefix, suggestion);
                 if (committed) {
-                    // A tap does not go through an InputTransaction, so nothing would recompute
-                    // the auto-caps state the way updateStateAfterInputTransaction() does after a
-                    // typed character. The committed word (and its trailing space) can change it —
-                    // ". " right before the cursor means the next letter is a sentence start — so
-                    // refresh it here with the very same call.
+                    // A tap does not go through an InputTransaction, so the auto-caps state is
+                    // refreshed here: the committed word and its space can change it. The other
+                    // editor-surface commits below do the same.
                     mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
                             getCurrentRecapitalizeState());
                 }
@@ -544,10 +522,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 final boolean replaced =
                         mInputLogic.commitTatarAutocorrection(expectedPrefix, replacement);
                 if (replaced) {
-                    // Same reason as the accepted suggestion above: the replacement happens outside
-                    // an InputTransaction, so the auto-caps state is refreshed with the very same
-                    // call. The separator that follows requests its own update a moment later;
-                    // doing it here too keeps the two insertion paths identical.
+                    // Refresh auto-caps, as for commitSuggestion. The separator that follows
+                    // requests its own update too.
                     mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
                             getCurrentRecapitalizeState());
                 }
@@ -567,8 +543,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                         mInputLogic.replaceGlideLiftedWord(committedWord, alternative,
                                 prependedSpace);
                 if (replaced) {
-                    // Same reason as the other insertion paths: the replacement happens outside an
-                    // InputTransaction, so the auto-caps state is refreshed with the very same call.
+                    // Refresh auto-caps, as for commitSuggestion.
                     mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
                             getCurrentRecapitalizeState());
                 }
@@ -589,11 +564,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
             @Override
             public String cachedNextWordContext() {
-                // docs/NEXTWORD-RACE.md + audit 2026-09-02 C6: whether the cache starts at the
-                // start of the text is PROVENANCE, carried by the connection from the moment of
-                // the full reload — not re-derived from the length, which local mutations (a
-                // cursor swipe re-slicing the window, a long backspace run) make lie. A word
-                // sitting at index 0 of a cache that reached the text start is whole.
+                // Whether the cache starts at the start of the text comes from the connection's
+                // flag, not from the cache length (see RichInputConnection#cacheReachedTextStart).
                 return TatarWordUtils.INSTANCE.extractNextWordContext(
                         mInputLogic.mConnection.getCachedTextBeforeCursor(),
                         mInputLogic.mConnection.cacheReachedTextStart());
@@ -601,10 +573,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
             @Override
             public String cachedWordBeforeTrailingWord() {
-                // P1 (docs/ROADMAP-P2.md): the same cache and the same cache-start provenance as
-                // cachedNextWordContext above — read live at the completion moment, so the context
-                // a pair is learned against is what the editor actually holds, never a remembered
-                // string that could have gone stale.
+                // Same cache and cache-start flag as cachedNextWordContext, read at the moment of
+                // completion, so a learned word pair uses the text the editor holds now.
                 return TatarWordUtils.INSTANCE.extractWordBeforeTrailingWord(
                         mInputLogic.mConnection.getCachedTextBeforeCursor(),
                         mInputLogic.mConnection.cacheReachedTextStart());
@@ -612,8 +582,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
             @Override
             public boolean isAtSentenceStart() {
-                // P4 (docs/TT-SUGGESTIONS.md): the same cache and the same cache-start provenance
-                // as cachedNextWordContext above — the detector, not a re-derivation, decides.
+                // Same cache and cache-start flag as cachedNextWordContext.
                 return TatarWordUtils.INSTANCE.isSentenceStartContext(
                         mInputLogic.mConnection.getCachedTextBeforeCursor(),
                         mInputLogic.mConnection.cacheReachedTextStart());
@@ -625,9 +594,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 final boolean committed =
                         mInputLogic.commitPredictedWord(expectedContextWord, suggestion);
                 if (committed) {
-                    // Same reason as the other two insertion paths above: commitPredictedWord runs
-                    // outside an InputTransaction, so the auto-caps state is refreshed with the very
-                    // same call used everywhere else.
+                    // Refresh auto-caps, as for commitSuggestion.
                     mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
                             getCurrentRecapitalizeState());
                 }
@@ -640,7 +607,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 final int result =
                         mInputLogic.commitGlideWord(expectedContextWord, suggestion, chainedAfter);
                 if (result != GLIDE_COMMIT_REFUSED) {
-                    // The same out-of-transaction shift refresh as commitPredictedWord above.
+                    // Refresh auto-caps, as for commitSuggestion.
                     mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
                             getCurrentRecapitalizeState());
                 }
@@ -648,13 +615,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
         };
 
-        // Runs on the controller's background executor. The catalog is the one the controller
-        // already owns: no second store and no throwaway executor are built per engine start. It is
-        // null until a preparation request has actually created the storage, and a null catalog
-        // simply yields no engine — the strip stays GONE and plain typing is untouched.
-        // subtypeId names the language the controller is starting an engine for; every language
-        // has its own catalog and its own personal store, so both are resolved from it and never
-        // from a constant.
+        // Runs on the controller's background executor and uses the controller's own catalog. A
+        // null catalog (storage not prepared yet) yields no engine: the strip stays GONE. Each
+        // language (subtypeId) has its own catalog and personal dictionary.
         final Function2<String, ResultCallback, EngineHandle> engineFactory =
                 (subtypeId, resultCallback) -> {
             final SuggestionsController controller = mSuggestionsController;
@@ -665,40 +628,29 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             if (catalog == null) {
                 return null;
             }
-            // The personal side of the merge (E4b). The gate is read on every lookup rather than
-            // baked in here, so turning the setting off stops personal candidates on the next
-            // keystroke without restarting the engine, its lease or its mapping. Reading is bound to
-            // the active subtype: personal words of one language can never surface in another.
+            // Personal dictionary words. The setting is read on every lookup, so turning it off
+            // takes effect on the next keystroke without restarting the engine. Personal sources
+            // are bound to their language and never surface in another.
             final PersonalCandidateSource personalCandidates =
                     PersonalDictionaries.sourceFor(this, subtypeId,
                             () -> Settings.readPersonalDictionaryEnabled(mDevicePrefs));
-            // P1 (docs/ROADMAP-P2.md): the personal side of the NEXT_WORD merge — the learned
-            // pairs of THIS subtype, under the same live gate and the same per-language binding as
-            // the words above. The pairs of one language can never surface in the other.
+            // Learned word pairs for next-word prediction, with the same live setting and
+            // per-language binding as the words above.
             final PersonalBigramSource personalBigrams =
                     PersonalBigramDictionaries.sourceFor(this, subtypeId,
                             () -> Settings.readPersonalDictionaryEnabled(mDevicePrefs));
-            // P3 (docs/TT-SUGGESTIONS.md): the Tatar word-form rules ride the same per-language
-            // seam as the personal source — the artifact registry, not a call-site string,
-            // decides, and the rule follows the family's language tag across repacks. The Russian
-            // engine is started with null and never applies Tatar rules.
+            // Tatar word-form rules, only for the engine whose dictionary is tagged Tatar in the
+            // artifact registry. The Russian engine gets null.
             final DictionaryArtifactSpec dictionaryArtifact = DictionaryArtifactSpec.forSubtype(subtypeId);
             final boolean tatarEngine = dictionaryArtifact != null
                     && PersonalSubtypes.TATAR_RU.equals(dictionaryArtifact.getLanguageTag());
             final TatarSuffixRules suffixRules = tatarEngine ? TatarSuffixRules.INSTANCE : null;
-            // TT-TYPO-NEXT Phases B/C/C2 (docs/TT-TYPO-NEXT.md): the fuzzy pass is per-engine via
-            // FuzzyEditPolicy. The Tatar engine ships TATAR — class #1 (long-press) plus class #4
-            // (probe-first full single substitution, gated on an empty exact pass at >= 4 code
-            // points) with the same-length bonus — the configuration the corrected C2 gates
-            // measured and passed (2026-09-20). The Russian engine is started with null —
-            // FuzzyEditPolicy.DEFAULT, bit-identical to the pre-Phase-B behavior.
+            // Typo recovery policy: the Tatar engine uses FuzzyEditPolicy.TATAR; the Russian
+            // engine gets null, which means FuzzyEditPolicy.DEFAULT.
             final FuzzyEditPolicy fuzzyEditPolicy = tatarEngine ? FuzzyEditPolicy.TATAR : null;
-            // TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): every shipped-language engine (the
-            // artifact registry decides) gets the global top-frequency fallback for its NEXT_WORD
-            // slot — the factory builds the pool from the engine's OWN dictionary, so the Tatar
-            // engine falls back to Tatar top words and the Russian one to Russian top words. A
-            // fill-only change: the fallback never displaces bigram successors, word forms or the
-            // emoji tail, and it never fires before the bigram source is attached.
+            // Every shipped-language engine gets a top-frequency fallback for next-word
+            // prediction, built from its own dictionary. It only fills empty cells and never
+            // displaces pair successors, word forms or the emoji cell.
             final FallbackWordsFactory fallbackWordsFactory = dictionaryArtifact != null
                     ? GlobalTopFrequencyFallbackFactory.INSTANCE : null;
             return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules,
@@ -707,55 +659,36 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
         mSuggestionsController = new SuggestionsController(
                 this, stripSurface, editorSurface, mHandler, engineFactory);
-        // E4c: clean completions become writes ONLY through this sink, and only when all five
-        // factors hold at the moment of the event. isSuggestionsEligible() already carries
-        // three of them — the field allows suggestions, it does not ask us not to personalize, and
-        // an absent editorInfo is not eligible at all — so what is added here is the personal
-        // dictionary setting, the unlock state and the postal-address exclusion.
-        // The sink resolves the subtype at the moment of the event, not at construction: a word
-        // completed on the Russian layout belongs in the Russian personal store, and the sink is
-        // built once for the service's whole lifetime.
+        // Learning sinks: completed words, word pairs and emoji are written only through these
+        // sinks, only when mayLearnPersonalWords() holds at the moment of the event. Each sink
+        // resolves the language per event, so a word typed on the Russian layout goes to the
+        // Russian personal dictionary.
         mSuggestionsController.setCompletionSink(PersonalLearning.sinkFor(
                 this, this::activeDictionarySubtype, this::mayLearnPersonalWords));
-        // P1 (docs/ROADMAP-P2.md): clean PAIR completions become writes through this sink, under
-        // the very same five factors as the word sink beside it — the subtype is likewise resolved
-        // at the moment of the event, so a pair completed on the Russian layout reaches the Russian
-        // store and nothing else.
+        // Word pairs, under the same predicate.
         mSuggestionsController.setPairCompletionSink(PersonalBigramLearning.sinkFor(
                 this, this::activeDictionarySubtype, this::mayLearnPersonalWords));
-        // P1: the dictionary half of the context gate the bigram store consults at graduation, on
-        // its own worker. The personal half (the user's own saved words) is composed inside
-        // PersonalBigramDictionaries itself; what is added here is the shipped dictionary's
-        // answer, which only the live engine can give. A dead controller answers false — the pair
-        // simply does not graduate.
+        // Whether a pair's context word is in the bundled dictionary, asked by the pair store
+        // on its worker before a pair is kept (the personal-dictionary check lives in
+        // PersonalBigramDictionaries). Without a controller the answer is false.
         PersonalBigramDictionaries.setContextMembershipProbe((subtypeId, normalizedContext) -> {
             final SuggestionsController controller = mSuggestionsController;
             return controller != null && controller.engineContainsWord(subtypeId, normalizedContext);
         });
-        // D3: read live off the already-rebuilt SettingsValues, which carries the subordination to
-        // the suggestions switch, so flipping either setting takes effect on the next separator
-        // without restarting the engine or touching its lease.
+        // Read live from SettingsValues, which already requires suggestions to be on, so either
+        // setting takes effect on the next separator without restarting the engine.
         mSuggestionsController.setAutocorrectGate(
                 () -> mSettings.getCurrent().mTatarAutocorrectEnabled);
-        // Emoji suggestions (mission 2 of docs/EMOJI-SUGGEST-PLAN.md): same live-read seam, same
-        // subordination to the suggestions switch, carried by SettingsValues.
+        // Emoji suggestions: read live the same way.
         mSuggestionsController.setEmojiSuggestGate(
                 () -> mSettings.getCurrent().mEmojiSuggestEnabled);
-        // B2: a tap on the strip's emoji tail cell records the sequence in the recent-emoji list
-        // through the exact funnel a panel or search pick uses. Wired to a recents-only method
-        // rather than to onEmojiInserted itself: that method additionally reports the pick to the
-        // personal co-usage sink with a context EXTRACTED from the editor text, while the strip
-        // tap reaches the same sink through the controller's PersonalEmojiSink seam with the
-        // band's bound context word — routing one tap through both would count it twice whenever
-        // the commit appended no auto-space and the cache therefore still ended with the emoji.
-        // The method reference still carries the null guard every panel-controller access needs
-        // (setUpEmojiPanelController() has not run yet at this point).
+        // A tap on the strip's emoji cell updates the recent emoji. Wired to the recents-only
+        // onStripEmojiInserted, not onEmojiInserted: the controller already reports the tap to the
+        // learned-emoji sink (see onStripEmojiInserted).
         mSuggestionsController.setEmojiInsertionSink(this::onStripEmojiInserted);
-        // Feature C (personal word→emoji co-usage): the ONE shared learning sink, built once for
-        // the service's lifetime under the very same six-factor predicate and per-event subtype
-        // resolution as the word and pair sinks beside it. The controller is handed an adapter
-        // onto it (the controller knows only its own seam), and onEmojiInserted() calls the same
-        // sink directly for panel and search picks.
+        // Learned emoji: one sink for the service's lifetime, under the same predicate. The
+        // controller gets an adapter; onEmojiInserted() calls the sink directly for panel and
+        // search picks.
         final PersonalEmojiEventSink personalEmojiLearning = PersonalEmojiLearning.sinkFor(
                 this, this::activeDictionarySubtype, this::mayLearnPersonalWords);
         mPersonalEmojiLearningSink = personalEmojiLearning;
@@ -775,10 +708,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 personalEmojiLearning.onInputFinished();
             }
         });
-        // Feature C, the read side: the learned emoji outranks the static table for the strip's
-        // tail cell. The subtype is resolved per QUERY — the resolver outlives any layout switch —
-        // and the gate is read live off the setting on every lookup, exactly like the bigram
-        // source wired into the engines above. Reads are never gated by incognito.
+        // Learned emoji outrank the bundled table for the strip's emoji cell. The language is
+        // resolved per query and the setting is read on every lookup. Pause learning does not
+        // affect reads.
         mSuggestionsController.setPersonalEmojiSource(new PersonalEmojiSource() {
             @Override
             public String emojiFor(final String normalizedWord) {
@@ -797,10 +729,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 return false;
             }
         });
-        // P7-3 (docs/GLIDE-PLAN.md): the glide gate — same live-read seam (since P7-6 INDEPENDENT
-        // of the suggestions master, docs/ROADMAP-P7.md) — and the shift-state gate for the glide
-        // commit's casing rule (shifted element of the alphabet keyboard = the word is committed
-        // capitalized, exactly as typed letters would be).
+        // Glide typing: the setting is read live and does not depend on the suggestions setting.
+        // The shift-state gate capitalizes a glide word when the alphabet keyboard is shifted,
+        // as typed letters would be.
         mSuggestionsController.setGlideGate(
                 () -> mSettings.getCurrent().mGlideTypingEnabled);
         mSuggestionsController.setGlideShiftStateGate(() -> {
@@ -813,41 +744,36 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                     || elementId == KeyboardId.ELEMENT_ALPHABET_AUTOMATIC_SHIFTED;
         });
         mSuggestionsController.onCreate();
-        // Erasing words on the settings screen must unbind whatever the band is showing right now:
-        // the screen and the IME live in the same process, so the store notifies us directly. The
-        // callback arrives on the store's worker, hence the hop to the UI thread.
+        // Erasing words on the settings screen must unbind what the strip shows: the screen and
+        // the IME share the process, so the store notifies us directly, on its worker thread.
         PersonalDictionaries.setErasureListener(() -> mHandler.post(() -> {
             final SuggestionsController controller = mSuggestionsController;
             if (controller != null) {
                 controller.onPersonalDictionaryErased();
             }
         }));
-        // P1: erasing pairs on the settings screen unbinds the band through the same path — a
-        // deleted pair that is still painted could otherwise be committed with a tap.
+        // The same for erased word pairs: a deleted pair still shown could otherwise be tapped.
         PersonalBigramDictionaries.setErasureListener(() -> mHandler.post(() -> {
             final SuggestionsController controller = mSuggestionsController;
             if (controller != null) {
                 controller.onPersonalDictionaryErased();
             }
         }));
-        // Feature C: erasing personal emoji on the settings screen unbinds the band through the
-        // very same path — a learned emoji that is still painted could otherwise be committed.
+        // The same for erased learned emoji.
         PersonalEmojiDictionaries.setErasureListener(() -> mHandler.post(() -> {
             final SuggestionsController controller = mSuggestionsController;
             if (controller != null) {
                 controller.onPersonalDictionaryErased();
             }
         }));
-        // B2. The saved words could not be read, so the store set the file aside and the list the
-        // user sees is empty through no act of theirs. Same hop for the same reason: the notice comes
-        // from the store's worker.
+        // The saved words could not be read and the store quarantined the file, so the user is
+        // told why the list is empty. The notice comes from the store's worker thread.
         PersonalDictionaries.setQuarantineListener(
                 () -> mHandler.post(this::showPersonalDictionaryUnreadableDialog));
-        // P1: the same notice for the pairs file, with its own message — the user is told which
-        // list is empty, never left to guess.
+        // The same notice for the word-pairs file, with its own message.
         PersonalBigramDictionaries.setQuarantineListener(
                 () -> mHandler.post(this::showPersonalBigramsUnreadableDialog));
-        // Feature C: the same notice for the learned-emoji file, with its own message.
+        // The same notice for the learned-emoji file, with its own message.
         PersonalEmojiDictionaries.setQuarantineListener(
                 () -> mHandler.post(this::showPersonalEmojiUnreadableDialog));
     }
@@ -863,9 +789,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             @Override
             public void showPanel(final EmojiSetSnapshot snapshot) {
                 // Empty the suggestion strip through the idempotent path when the panel appears;
-                // its reserved height and visibility are unchanged and the D1 auto-space contract
-                // is untouched (the panel inserts only through onTextInput and the strip is inert
-                // while the panel is shown).
+                // its reserved height and visibility stay unchanged, and the panel inserts only
+                // through onTextInput.
                 if (mSuggestionsController != null) {
                     mSuggestionsController.onSelectionChanged();
                 }
@@ -903,10 +828,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 }
             }
         };
-        // The three-factor gate for updating the recent-emoji list, re-read on every store attempt:
-        //   mShouldShowSuggestions (already covers password, visible password, e-mail, URI, filter,
+        // The gate for updating the recent emoji, re-read on every store attempt:
+        //   mShouldShowSuggestions (covers password, visible password, e-mail, URI, filter,
         //   NO_SUGGESTIONS and autocomplete) AND UserManager.isUserUnlocked() AND
-        //   NOT mNoPersonalizedLearning (the field reused from E1, IME_FLAG_NO_PERSONALIZED_LEARNING).
+        //   NOT mNoPersonalizedLearning (IME_FLAG_NO_PERSONALIZED_LEARNING).
         final RecentEmojiGate recentGate = () -> {
             final SettingsValues settingsValues = mSettings.getCurrent();
             final boolean shouldShowSuggestions = settingsValues != null
@@ -961,12 +886,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 final SettingsValues settingsValues = mSettings.getCurrent();
                 return settingsValues != null
                         && settingsValues.mInputAttributes.mShouldShowSuggestions
-                        // An editor that set IME_FLAG_NO_PERSONALIZED_LEARNING gets no offer at
-                        // all. Incognito fields usually carry an ordinary text inputType, so
-                        // mShouldShowSuggestions is true for them and this is the only condition
-                        // that stops the dialog. Because the controller checks the environment
-                        // before it reads anything, the one-shot flag is not spent and the text of
-                        // such a field is never looked at either.
+                        // No offer in an IME_FLAG_NO_PERSONALIZED_LEARNING field (incognito
+                        // fields often have an ordinary text inputType). The environment is
+                        // checked first, so the one-shot flag is not spent and the text is not read.
                         && !settingsValues.mInputAttributes.mNoPersonalizedLearning;
             }
 
@@ -1034,13 +956,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Shows the one-shot offer to turn Tatar suggestions on.
-     *
-     * The durable flag has already been spent by {@link SuggestionsOfferController} before this
-     * method was called, so neither answer writes it: cancelling by touching outside the dialog or
-     * with the back button is allowed and means exactly what "Not now" means. Nothing here touches
-     * the user's text, and the suggestion strip is not involved at all — with the setting off it
-     * stays GONE before, during and after the dialog.
+     * Shows the one-shot offer to turn Tatar suggestions on. {@link SuggestionsOfferController}
+     * has already spent the one-shot flag, so neither answer writes it; cancelling means "Not now".
+     * The user's text and the suggestion strip are not touched.
      */
     private void showSuggestionsOfferDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1069,9 +987,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * True when [text] holds at least one letter. Used to tell an emoji-suggest cell apart from a
-     * word cell: every word the band can show is BMP Cyrillic, and a supplementary letter would
-     * simply read as two non-letters — "emoji", the safe direction for a forget-word gesture.
+     * True when [text] holds at least one letter; tells an emoji cell from a word cell. Strip
+     * words are BMP Cyrillic; a supplementary letter would read as an emoji, the safe side.
      */
     private static boolean containsAnyLetter(final String text) {
         for (int index = 0; index < text.length(); index++) {
@@ -1083,34 +1000,29 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * "Forget «X»?" for a word the personal dictionary holds (E4d).
+     * "Forget «X»?" for a word the personal dictionary holds.
      *
-     * <p>Long-pressing a cell that shows an ordinary dictionary word does nothing at all: the lookup
-     * below simply finds no personal entry. The word is looked up by its NORMALIZED form against the
-     * published snapshot, never by the string on screen — the shown string has already been through
-     * applyCasing for an INITIAL_CAPS or ALL_CAPS prefix, and a search by it would silently miss the
-     * saved spelling exactly when the user typed in capitals.</p>
+     * <p>The word is looked up by its normalized form, not by the shown string, which may have
+     * been capitalized to match the typed prefix. Dialog rules: see
+     * {@link #showSuggestionsUnavailableDialog()}.</p>
      */
     private void showForgetPersonalWordDialog(final String shownWord) {
         if (!Settings.readPersonalDictionaryEnabled(mDevicePrefs)) {
-            // The DEFAULT state of the keyboard: the personal dictionary ships off, so without this
-            // the long press is silent for every user who never turned it on — which is everyone,
-            // until they do. Answered with the one thing they can act on.
+            // The personal dictionary is off by default, so tell the user how to turn it on
+            // instead of ignoring the long press.
             showPersonalDictionaryOffDialog();
             return;
         }
         final String subtypeId = activeDictionarySubtype();
         if (subtypeId == null) {
-            // The active layout keeps no personal dictionary, so nothing here was ever the user's.
+            // The active layout has no personal dictionary.
             showNotASavedWordDialog();
             return;
         }
         final String savedForm = PersonalForget.savedFormOf(this, subtypeId, shownWord);
         if (savedForm == null) {
-            // An ordinary dictionary word. Nothing can be forgotten here, but the gesture still gets
-            // an answer: the user cannot tell their own saved words apart from the dictionary's by
-            // looking at the band, so a silent long press reads as "long press is broken" rather
-            // than "this word is not yours".
+            // A bundled dictionary word. Saved words look the same in the strip, so answer
+            // instead of ignoring the long press.
             showNotASavedWordDialog();
             return;
         }
@@ -1140,12 +1052,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     /**
      * Shows the one-shot message saying that Tatar suggestions could not be turned on.
      *
-     * A modal dialog rather than a Toast: it does not depend on the platform's limits on toasts from
-     * a background process, and it is dismissed by the same {@link #hideWindow()} as every other
-     * dialog here. The single acknowledging button is labelled by the platform, because this phase's
-     * string set is fixed and a plain acknowledgement needs no wording of its own. The body names no
-     * file, no failure code, no size and no cause: none of that is anything the user could act on,
-     * and all of it would be alarming inside someone else's app.
+     * <p>Rules for all notices below: a modal dialog attached to the input window, not a Toast
+     * (toasts from a background process are at the platform's discretion; {@link #hideWindow()}
+     * dismisses dialogs), with the platform's OK button. The body names no word, file or cause:
+     * it can appear over any app.</p>
      */
     private void showSuggestionsUnavailableDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1169,11 +1079,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Says that saved words are switched off, so a long press has nothing it could forget.
-     *
-     * The personal dictionary ships OFF, so this is the answer almost every long press gets until
-     * the person turns it on — and the switch is the one action they can take, so the message names
-     * it. Same shape and the same window attachment as the other notices here.
+     * Says that saved words are turned off, so a long press has nothing to forget, and names the
+     * setting that turns them on. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
      */
     private void showPersonalDictionaryOffDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1197,13 +1104,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Says that the long-pressed word is not one of the user's own saved words.
-     *
-     * Same shape and same reasoning as {@link #showSuggestionsUnavailableDialog()}: a dialog rather
-     * than a Toast, because a toast from a background process is at the platform's discretion and
-     * this is the only answer the gesture will ever get. The body names no word — the message can
-     * be shown over any app, and what the person typed must not appear on top of someone else's
-     * screen.
+     * Says that the long-pressed word is not one of the user's saved words. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
      */
     private void showNotASavedWordDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1227,12 +1128,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Says that emoji are not available in this process, so the key that was just pressed — or the
-     * search cell that was just tapped — has nothing to open.
-     *
-     * Answered on EVERY press rather than once: the key stays on the keyboard and the person will
-     * press it again, and a one-shot notice would put the silence straight back. Same shape and the
-     * same window attachment as the other notices here; the body names no file and no cause.
+     * Says that emoji are not available, so the emoji key or search cell has nothing to open.
+     * Shown on every press, not once, since the key stays on the keyboard. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
      */
     private void showEmojiUnavailableDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1256,17 +1153,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Says that a word the user asked to forget is still saved.
-     *
-     * Same shape and same reasoning as {@link #showSuggestionsUnavailableDialog()}: a dialog rather
-     * than a Toast, because a toast from a background process is at the platform's discretion and
-     * this is the only notice the user will ever get — the personal-dictionary subsystem may not
-     * log, and nothing else waits for the result of the write. The body names no word, no file and
-     * no cause; the word is the one thing that must not appear here, since the message can be shown
-     * over any app.
-     *
-     * <p>Arrives from the store's worker through the handler, so by the time it runs the keyboard
-     * window may be gone; both null checks below are the ordinary answer to that.</p>
+     * Says that a word the user asked to forget is still saved. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
+     * Posted from the store's worker, so the keyboard window may be gone by then.
      */
     private void showPersonalForgetFailedDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1290,17 +1178,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Tells the user, once, that the saved words could not be read — so the empty list is explained
-     * rather than merely appearing. Same shape and the same window attachment as
-     * {@link #showPersonalForgetFailedDialog()}, and a dialog for the same reason.
+     * Tells the user, once, that the saved words could not be read, so the empty list is explained.
+     * Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
      *
-     * <p>The notice is CONSUMED here, after both window checks pass and immediately before the
-     * dialog is shown, not when it was raised: the store opens from a background executor and from
-     * the settings screen, so it can be raised with no keyboard window up. Clearing it any earlier
-     * would spend the one message on nobody, which is the silence this whole register is about. It is
-     * consumed exactly once, so a second input view start does not repeat it.</p>
-     *
-     * <p>The body names no word, no file and no cause. It may be shown over any app.</p>
+     * <p>The notice is consumed only after both window checks pass: it can be raised while no
+     * keyboard window is up (background open, settings screen), and consuming it earlier would
+     * lose it. Consumed once, so it is not repeated on the next input view start.</p>
      */
     private void showPersonalDictionaryUnreadableDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1327,10 +1210,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * The personal-bigram sibling of {@link #showPersonalDictionaryUnreadableDialog()} (P1,
-     * docs/ROADMAP-P2.md): the pairs file could not be read, the store set it aside, and the user
-     * is told which list is empty. Same rules: the body names no word, no file and no cause, and
-     * the notice is spent only when the window token exists to show it over.
+     * The word-pairs version of {@link #showPersonalDictionaryUnreadableDialog()}, with the same
+     * rules.
      */
     private void showPersonalBigramsUnreadableDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1357,10 +1238,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * The learned-emoji sibling of {@link #showPersonalDictionaryUnreadableDialog()} (Feature C):
-     * the emoji file could not be read, the store set it aside, and the user is told which list
-     * is empty. Same rules: the body names no word, no file and no cause, and the notice is spent
-     * only when the window token exists to show it over.
+     * The learned-emoji version of {@link #showPersonalDictionaryUnreadableDialog()}, with the same
+     * rules.
      */
     private void showPersonalEmojiUnreadableDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
@@ -1401,20 +1280,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         lp.type = WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG;
         window.setAttributes(lp);
         window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
-        // Audit 2026-09-02, C5: these dialogs float over OTHER apps' windows, so they must not
-        // accept a touch delivered while something obscures them.
+        // These dialogs float over other apps, so they drop touches while something obscures
+        // them.
         DialogUtils.filterObscuredTouches(dialog);
     }
 
     /**
-     * Device-protected preferences changed.
-     *
-     * Tolerates a null key, which is how {@link Settings#onReceive} notifies its own listener, and
-     * reacts only to an actual transition of the one value this service watches — writing the
-     * one-shot offer flag, or any unrelated setting, must not be mistaken for the user flipping the
-     * suggestions switch. Nothing expensive happens here: the controller closes or reopens
-     * eligibility immediately and leaves the blocking engine teardown to the next lifecycle
-     * boundary.
+     * Device-protected preferences changed. Accepts a null key (how {@link Settings#onReceive}
+     * notifies) and reacts only to a real change of the suggestions setting. Cheap: the engine
+     * teardown waits for the next lifecycle boundary.
      */
     private void onSuggestionsSettingMaybeChanged(final SharedPreferences prefs, final String key) {
         if (key != null && !Settings.PREF_TATAR_SUGGESTIONS.equals(key)) {
@@ -1446,12 +1320,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * The subtype whose dictionary should answer right now, or null when the active layout ships
-     * none.
-     *
-     * This is the ONE place the app decides which language it is suggesting in. It reads the live
-     * subtype and asks {@link DictionaryArtifactSpec#forSubtype} whether a dictionary exists for it,
-     * so adding a third language is adding a spec — never another branch here.
+     * The subtype whose dictionary should answer right now, or null when the active layout has
+     * none. The only place that decides the suggestion language: a new language needs only a new
+     * {@link DictionaryArtifactSpec}.
      */
     private String activeDictionarySubtype() {
         final String locale = mRichImm.getCurrentSubtype().getLocale();
@@ -1459,10 +1330,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * 2026-09-25 audit, privacy: whether [editorInfo] describes a password-type field — the very
-     * check {@link InputAttributes#mIsPasswordField} makes, but computed straight from the
-     * EditorInfo so it can run inside onStartInputViewInternal BEFORE loadSettings(): at that
-     * point the current {@link SettingsValues} still describe the previous field.
+     * Whether [editorInfo] is a password-type field. Same check as
+     * {@link InputAttributes#mIsPasswordField}, computed from the EditorInfo so it can run before
+     * loadSettings(), while {@link SettingsValues} still describe the previous field.
      */
     private static boolean isPasswordField(final EditorInfo editorInfo) {
         final int inputType = editorInfo.inputType;
@@ -1487,29 +1357,22 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Same computation with the setting value supplied by the caller.
-     *
-     * The preference listener needs this overload: it and {@link Settings} are two listeners on the
-     * same SharedPreferences instance, the platform does not order them, so {@link SettingsValues}
-     * may still carry the previous value at the moment the change reaches this service.
+     * Same computation with the setting value supplied by the caller: in the preference listener
+     * {@link SettingsValues} may still hold the previous value (listeners are not ordered).
      */
     private boolean isSuggestionsEligible(final boolean suggestionsEnabled) {
         final SettingsValues settingsValues = mSettings.getCurrent();
         return suggestionsEnabled
                 && activeDictionarySubtype() != null
                 && settingsValues.mInputAttributes.mShouldShowSuggestions
-                // IME_FLAG_NO_PERSONALIZED_LEARNING closes eligibility outright: the strip reserves
-                // no band and not a single prefix reaches the engine in such a field, even for a
-                // user who has turned Tatar suggestions on everywhere else.
+                // IME_FLAG_NO_PERSONALIZED_LEARNING: no strip and no engine queries in the field.
                 && !settingsValues.mInputAttributes.mNoPersonalizedLearning
                 && mInputLogic.mConnection.hasCursorPosition();
     }
 
     /**
-     * The glide's field-level gate (P7-6, docs/ROADMAP-P7.md): the same field checks as
-     * {@link #isSuggestionsEligible} — a dictionary-bearing subtype, no password-type field, no
-     * NO_PERSONALIZED_LEARNING flag, a known cursor — but answering the glide toggle only. Glide
-     * is independent of the suggestions master (the 2026-09-24 field report: Gboard parity).
+     * Whether glide typing may run: the field checks of {@link #isSuggestionsEligible}, but with
+     * the glide setting instead of the suggestions setting (glide works with suggestions off).
      */
     private boolean isGlideEligible() {
         final SettingsValues settingsValues = mSettings.getCurrent();
@@ -1521,25 +1384,13 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * The E4c learning predicate — one predicate, six factors, shared by every write path
-     * (noteCompletion, the eventual learn, the accepted-suggestion counter and the pending flush)
-     * of BOTH sinks: the words sink and the P1 pairs sink consult this very instance.
+     * The single learning predicate, used by every write path of the word, word-pair and emoji
+     * sinks. The conjunction itself is {@link PersonalLearningGates#mayLearn}.
      *
-     * <p>Two of them deserve a note. {@code isUserUnlocked()} is not about an extra record: before
-     * the first unlock the snapshot is empty by construction, and writing is whole-file, so the
-     * first write to fire would build a file out of "empty plus one word" and atomically replace the
-     * user's real dictionary with it. The window is real — a directBootAware app has input fields
-     * before the unlock. The postal-address exclusion is local to this predicate on purpose: such a
-     * field is NOT part of shouldSuppressSuggestions, so suggestions there behave exactly as before,
-     * and only learning is blocked. TYPE_TEXT_VARIATION_PERSON_NAME is deliberately NOT excluded —
-     * names are precisely what this feature is for.</p>
-     *
-     * <p>U8 (docs/ROADMAP-P2.md) adds the incognito factor: while the pause is on, nothing new is
-     * learned — no completion, no acceptance counter, no flush, and no pending hash, because the
-     * pending counters are written only from the completion event this predicate gates. The READ
-     * side never consults it: the learned words and pairs already saved keep surfacing. The
-     * conjunction itself is the pure {@link PersonalLearningGates#mayLearn} — the inputs are
-     * computed here, the decision is arithmetic, and the arithmetic is covered by JVM tests.</p>
+     * <p>Unlocked: before the first unlock the store is empty and writes replace the whole file,
+     * so a write would replace the real dictionary with one word. Postal address: blocks learning
+     * only; suggestions stay on. TYPE_TEXT_VARIATION_PERSON_NAME is deliberately NOT excluded:
+     * names are what the feature is for. Pause learning (incognito) blocks writes, never reads.</p>
      */
     private boolean mayLearnPersonalWords() {
         final UserManager userManager = getSystemService(UserManager.class);
@@ -1553,22 +1404,20 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 Settings.readIncognitoModeEnabled(mDevicePrefs));
     }
 
-    // The key-neighbor table for the fuzzy suggestion pass is derived from the live keyboard and
-    // cached by KeyboardId: rebuilding it on every onStartInput would repeat the same work for the
-    // same layout. This is the first time layout data crosses into the dictionary engine.
+    // The key-neighbor table for typo recovery, derived from the live keyboard and cached by
+    // KeyboardId so the same layout is not rebuilt on every onStartInput.
     private KeyboardId mNeighborTableKeyboardId;
     private KeyNeighborTable mNeighborTable;
 
-    // P7-2/P7-3 (docs/GLIDE-PLAN.md): the glide geometry of the current layout, memoized by
-    // KeyboardId exactly like the neighbor table above.
+    // The glide typing key geometry of the current layout, cached by KeyboardId like the
+    // neighbor table above.
     private KeyboardId mGlideGeometryKeyboardId;
     private GlideKeyGeometry mGlideGeometry;
 
     /**
      * Rebuilds (or reuses) the key-neighbor table from the current keyboard and hands it to the
-     * suggestion controller. A null table — non-alphabet layout, ineligible field, or no built
-     * keyboard yet — disables the fuzzy pass without touching the exact suggestions. Cheap enough
-     * to call on every lifecycle boundary because it is memoized by KeyboardId.
+     * suggestion controller. A null table (non-alphabet layout, ineligible field, no keyboard yet)
+     * disables typo recovery only. Cheap on every lifecycle boundary thanks to the KeyboardId cache.
      */
     private void updateKeyNeighbors() {
         if (mSuggestionsController == null) {
@@ -1579,9 +1428,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         KeyNeighborTable table = null;
         if (keyboard != null && keyboard.mId.isAlphabetKeyboard() && subtypeId != null
                 && isSuggestionsEligible()) {
-            // KeyboardId carries the subtype in its equals/hashCode, so this memo is per layout AND
-            // per language: switching layouts rebuilds the table instead of handing the engine the
-            // neighbours of the layout the user just left.
+            // KeyboardId includes the subtype in equals/hashCode, so the cache is per layout and
+            // per language.
             if (keyboard.mId.equals(mNeighborTableKeyboardId) && mNeighborTable != null) {
                 table = mNeighborTable;
             } else {
@@ -1592,11 +1440,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
         mSuggestionsController.updateKeyNeighbors(table);
 
-        // P7-3/P7-6: the glide geometry rides the same moment, but its gate is the glide's OWN
-        // field rule (independent of the suggestions master since P7-6 — the 2026-09-24 field
-        // report: with the master off the geometry went null and every gesture decoded to
-        // nothing). A null geometry — non-alphabet layout or a glide-ineligible field — disables
-        // glide decoding, fail-closed.
+        // The glide geometry is updated at the same time but gated by isGlideEligible(), which
+        // does not depend on the suggestions setting. A null geometry disables glide decoding.
         GlideKeyGeometry geometry = null;
         if (keyboard != null && keyboard.mId.isAlphabetKeyboard() && subtypeId != null
                 && isGlideEligible()) {
@@ -1670,8 +1515,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public View onCreateInputView() {
-        // O5 (docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md): input-view construction, including the
-        // first keyboard load underneath it. Same ~10 µs marker-pair discipline as onCreate.
+        // Trace section for input-view construction, including the first keyboard load.
         Trace.beginSection("TT#createInputView");
         try {
             // The input view is being (re)created (rotation, theme or height change): a deferred
@@ -1738,9 +1582,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         mInputLogic.onSubtypeChanged();
         loadKeyboard();
         if (mSuggestionsController != null) {
-            // The geometry goes first (2026-09-24 audit, finding 6): onSubtypeChanged may
-            // re-derive the band immediately for a warm engine, and that lookup must already see
-            // the NEW layout's neighbor table — not the one of the layout the user just left.
+            // The geometry goes first: onSubtypeChanged may refresh the strip at once for a
+            // warm engine, and that lookup must already see the new layout's neighbor table.
             updateKeyNeighbors();
             mSuggestionsController.onSubtypeChanged(
                     isSuggestionsEligible(), activeDictionarySubtype(), isGlideEligible());
@@ -1797,8 +1640,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             Log.e(TAG, "Null EditorInfo in onStartInputView()");
             return;
         }
-        // Gated like the trace below: this line prints cursor metadata on every field focus, and
-        // a keyboard's log must carry no user-text adjacency (2026-09-24 audit, finding 5).
+        // Gated like the trace below: cursor positions of the user's text are not logged.
         if (TRACE) Log.i(TAG, "Starting input. Cursor position = "
                 + editorInfo.initialSelStart + "," + editorInfo.initialSelEnd +
                 " Restarting = " + restarting);
@@ -1830,12 +1672,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             mInputLogic.startInput();
 
             if (isPasswordField(editorInfo)) {
-                // 2026-09-25 audit, privacy: a password field's surrounding text is never read
-                // into the cache — the reload would copy the password itself into IME-process
-                // memory. Clearing instead of reloading also evicts the PREVIOUS field's text
-                // (a field switch does not pass through onFinishInputView). What the user types
-                // from here still reaches the cache through the local mutations of each commit,
-                // so auto-caps keeps working — getCursorCapsMode reads only that local state.
+                // Privacy: a password field's text is never read into the cache. Clearing also
+                // evicts the previous field's text (a field switch skips onFinishInputView).
+                // Typed text still reaches the cache through local edits, so auto-caps works.
                 mInputLogic.clearCaches();
             } else {
                 // Some applications call onStartInputView without updating EditorInfo. In these
@@ -1867,28 +1706,26 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             updateKeyNeighbors();
         }
         if (mEmojiPanelController != null) {
-            // A new editor session: a deferred emoji-panel show armed for the previous one must not
+            // A new editor session: a deferred emoji-panel show for the previous one must not
             // fire now.
             mEmojiPanelController.onEditorSessionChanged();
             abandonEmojiSearch();
         }
         if (mSuggestionsOffer != null) {
-            // The boundary at which a deferred "could not turn suggestions on" message gets another
-            // chance. It is not a trigger for the offer itself: showing the keyboard proves nothing
-            // about wanting to type Tatar.
+            // A deferred "could not turn suggestions on" message gets another chance here. This
+            // does not trigger the offer itself.
             mSuggestionsOffer.onInputViewStarted();
         }
         if (PersonalDictionaries.hasPendingQuarantineNotice()) {
-            // The same boundary, for the same reason: a notice raised while no window was up would
-            // otherwise be dropped, and the user would be left with an empty list and no explanation.
+            // A quarantine notice raised while no window was up is shown now.
             mHandler.post(this::showPersonalDictionaryUnreadableDialog);
         }
         if (PersonalBigramDictionaries.hasPendingQuarantineNotice()) {
-            // P1: the pairs file has its own pending notice and its own message.
+            // The word-pairs file has its own pending notice and message.
             mHandler.post(this::showPersonalBigramsUnreadableDialog);
         }
         if (PersonalEmojiDictionaries.hasPendingQuarantineNotice()) {
-            // Feature C: the learned-emoji file has its own pending notice and its own message.
+            // The learned-emoji file has its own pending notice and message.
             mHandler.post(this::showPersonalEmojiUnreadableDialog);
         }
 
@@ -1905,17 +1742,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onWindowHidden() {
         super.onWindowHidden();
-        // A hidden window must not resurrect a dead emoji search on the next show: without this
-        // reset the switcher still flags the search as open while the query is already dropped,
-        // leaving a visible but dead search band (M4c). Both calls are no-ops when the panel
-        // never opened.
+        // Close the emoji search and panel, or the next show would bring back a search whose
+        // query is already dropped. Both calls are no-ops when the panel never opened.
         abandonEmojiSearch();
         mKeyboardSwitcher.hideEmojiPanel();
-        // 2026-09-25 audit, privacy: the surrounding-text cache holds a window of the text of
-        // the field the user just left; onFinishInputView already clears it, but a hide without
-        // finishInputView (lock screen, home gesture over an unchanged field) used to keep that
-        // text in memory until the next field. A hidden keyboard has no use for the cache — the
-        // next show re-reads or re-derives it.
+        // Privacy: clear the editor text cache. A hide without onFinishInputView (lock screen,
+        // home gesture) would otherwise keep the field's text in memory until the next field.
         mInputLogic.clearCaches();
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView != null) {
@@ -1926,9 +1758,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     void onFinishInputInternal() {
         super.onFinishInput();
 
-        // Same 2026-09-25 privacy fix as onWindowHidden: finishing input detaches the editor,
-        // so its text must not linger in the cache past this boundary (finishInputView is not
-        // guaranteed to accompany it — e.g. the window may stay up while the target changes).
+        // Privacy, as in onWindowHidden: the detached editor's text must not stay in the cache
+        // (onFinishInputView does not always accompany this call).
         mInputLogic.clearCaches();
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView != null) {
@@ -1952,10 +1783,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     protected void deallocateMemory() {
         mKeyboardSwitcher.deallocateMemory();
-        // O2 (docs/OPTIMIZE-2026-09-25.md): the glide word indexes and the emoji indexes ride the
-        // same idle release. Each engine posts the drop onto its serialized worker (the decoder
-        // is worker-confined), so this UI-thread call only enqueues; the emoji indexes reload
-        // lazily on their next use. All of it is pure derivation and rebuilds on demand.
+        // The glide word indexes and the emoji indexes are released on the same idle timer. Each
+        // engine drops them on its own worker, so this UI-thread call only enqueues; everything
+        // is rebuilt on next use.
         if (mSuggestionsController != null) {
             mSuggestionsController.releaseGlideIndexes();
             mSuggestionsController.releaseEmojiSuggest();
@@ -1977,8 +1807,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             return;
         }
 
-        // Same gate as above: cursor positions are metadata a keyboard must not log by default
-        // (2026-09-24 audit, finding 5).
+        // Gated like the trace in onStartInputViewInternal: cursor positions are not logged.
         if (TRACE) Log.i(TAG, "Update Selection. Cursor position = " + newSelStart + "," + newSelEnd);
 
         final boolean externalMove =
@@ -1990,9 +1819,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             mSuggestionsController.onSelectionChanged();
         }
         if (isInputViewShown()) {
-            // 2026-09-25 audit, privacy: a password field's text is never re-read (see
-            // onStartInputViewInternal) — the shift update below derives from the local cache,
-            // which the user's own typing keeps current, so it runs either way.
+            // Privacy: a password field's text is never re-read (see onStartInputViewInternal).
+            // The shift update below uses the local cache, so it runs either way.
             if (!isCurrentFieldPasswordField()) {
                 mInputLogic.reloadTextCache();
             }
@@ -2100,11 +1928,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     int getCurrentAutoCapsState() {
         if (mEmojiSearchQuery != null) {
-            // While the emoji search is open the keys type into the query, not into the editor, so
-            // auto-caps has nothing to derive from: the editor's text never changes and shift would
-            // be re-armed after every letter, turning the whole query into capitals. Reporting no
-            // CAP_MODE bit here covers every path that asks — a key press, a layout switch, a
-            // keyboard reload — with one answer.
+            // While the emoji search is open keys type into the query, so auto-caps derived from
+            // the editor text would capitalize every letter. Every caller gets no CAP_MODE bit.
             return NO_AUTO_CAPS;
         }
         return mInputLogic.getCurrentAutoCapsState(mSettings.getCurrent(),
@@ -2198,8 +2023,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onUpWithSpacePointerActive() {
-        // 2026-09-25 audit, privacy: a password field's text is never re-read (see
-        // onStartInputViewInternal); the cursor slide only moves within it.
+        // Privacy: a password field's text is never re-read (see onStartInputViewInternal).
         if (!isCurrentFieldPasswordField()) {
             mInputLogic.reloadTextCache();
         }
@@ -2209,33 +2033,23 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Invalidates the suggestion strip after the keyboard itself moved the cursor or the
-     * selection (space slide, delete swipe). Those gestures go through
-     * {@link RichInputConnection}, which updates the expected selection as it goes, so
-     * {@link #onUpdateSelection} sees no external move, and it returns early anyway while a
-     * cursor-move gesture is running. Without this direct notification the strip would keep
-     * showing (and accepting taps on) words computed for the position the cursor has left.
-     * Cheap and idempotent: it only bumps the session and clears the band.
+     * Invalidates the suggestion strip after the keyboard itself moved the cursor or selection
+     * (space slide, delete swipe). {@link #onUpdateSelection} does not see these as external
+     * moves, so without this the strip would keep words for the old position. Idempotent.
      */
     private void onSuggestionsAffectingCursorMove() {
         if (mSuggestionsController != null) {
             mSuggestionsController.onSelectionChanged();
-            // Clearing the band is only half of what a cursor move needs: the cursor has stopped
-            // somewhere, and wherever that is the band must describe it. Without this the strip
-            // stays blank until the next keystroke even though the cursor sits at the end of a word
-            // the dictionary answers.
+            // Then refresh the strip for the new position, or it stays blank until the next
+            // keystroke.
             mHandler.postRefreshSuggestionBand();
         }
     }
 
     /**
-     * Re-derives the suggestion band after a cursor move has settled. Posted by
-     * {@link UIHandler#postRefreshSuggestionBand}, never called directly.
-     *
-     * The emoji panel and the emoji search route through
-     * {@link SuggestionsController#onSelectionChanged} to get a band that stays empty for as long as
-     * they are up, so neither may be re-derived out from under: while either is shown the band is
-     * left exactly as they left it.
+     * Refreshes the suggestion strip after a cursor move has settled. Posted by
+     * {@link UIHandler#postRefreshSuggestionBand}, never called directly. Skipped while the emoji
+     * panel or search is shown: they keep the strip empty.
      */
     private void refreshSuggestionBandAfterCursorMove() {
         if (mSuggestionsController == null) {
@@ -2300,13 +2114,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     /**
      * Offers Tatar suggestions once, right after the user has finished their first real word.
      *
-     * The first check is the offer's own in-memory mirror of its one-shot flag, so once the offer has
-     * been made a keypress costs a single field read: no text is read, no preference is touched and
-     * the code point is not even classified. Which key presses count as finishing a word is decided
-     * by {@link SuggestionsOfferController#isWordFinishingKeyPress}: being a word separator is
-     * necessary but not sufficient, because Enter and Tab arrive as ordinary code points ('\n' and
-     * '\t') and both are listed in symbols_word_separators. Delete and the language key are the
-     * events that really do carry {@link Event#NOT_A_CODE_POINT}, which is never a separator.
+     * Once the offer has been made, a key press costs one field read (the in-memory copy of the
+     * one-shot flag). {@link SuggestionsOfferController#isWordFinishingKeyPress} decides which key
+     * presses finish a word: a word separator is required but not enough, since Enter and Tab are
+     * separators too.
      */
     private void maybeOfferTatarSuggestions(final Event event) {
         if (mSuggestionsOffer == null || !mSuggestionsOffer.isOfferPending()) {
@@ -2352,12 +2163,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * A glide gesture completed on the letter keys (P7-2/P7-3, docs/GLIDE-PLAN.md). The path is
-     * handed to the suggestions controller, which runs the decode on the engine worker and binds
-     * the result as the glide band; the PointerTracker's buffer is snapshotted inside the
-     * engine's request before this call returns. With the glide pref off the controller's own
-     * gates answer nothing, so this is a no-op there (P7-6: suggestions-off no longer closes it —
-     * the lift-commit still lands and only the band stays out).
+     * A glide gesture completed on the letter keys. The controller decodes the path on the engine
+     * worker and commits the result; the path is copied before this call returns. A no-op with
+     * glide typing off; with suggestions off the word is still committed without the strip.
      */
     @Override
     public void onGlideInput(
@@ -2379,9 +2187,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (mEmojiPanelController == null) {
             return;
         }
-        // False means the panel will not show in THIS process: the snapshot could not be built and
-        // the preparation is never retried. Discarding that answer left a key that is drawn on the
-        // keyboard, takes the press and does nothing, for as long as the process lives.
+        // False means the panel cannot show in this process (the snapshot failed and is never
+        // retried), so tell the user instead of ignoring the press.
         if (!mEmojiPanelController.onEmojiKeyPressed()) {
             showEmojiUnavailableDialog();
         }
@@ -2390,9 +2197,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     /**
      * The search cell in the emoji panel's tab row was tapped and no search can be opened.
      *
-     * Same register as {@link #showEmojiUnavailableDialog()} and for the same reason: the verdict
-     * "the index is unusable" is cached for the life of the process, so without this the cell stays
-     * painted and stays dead.
+     * Shows {@link #showEmojiUnavailableDialog()}: an unusable index is cached for the life of
+     * the process, so the cell would otherwise do nothing.
      */
     public void onEmojiSearchUnavailable() {
         showEmojiUnavailableDialog();
@@ -2401,21 +2207,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     /**
      * An emoji was inserted from the panel (a grid tap, including a tap inside the Recent tab) or
      * from the emoji search. The text was already committed; this records the use of the sequence
-     * in the recent-emoji list. Recording is gated and serialized inside the controller. The
-     * strip's emoji tail cell arrives at {@link #onStripEmojiInserted} instead — see it for why.
+     * in the recent emoji (gated inside the controller) and in the learned emoji. The strip's
+     * emoji cell uses {@link #onStripEmojiInserted} instead.
      */
     public void onEmojiInserted(final String sequence) {
         if (mEmojiPanelController != null) {
             mEmojiPanelController.onEmojiInserted(sequence);
         }
-        // Feature C: a panel or search pick also teaches the personal (word, emoji) co-usage. The
-        // word is read from the live editor cache — the committed emoji is its tail by now, so the
-        // word before it is the co-usage context ("сәләм ☀️" → сәләм; "☀️" alone or a pick with
-        // no word before it teaches nothing). The strip's tail cell deliberately does NOT come
-        // through here: it reaches the same sink through the controller's PersonalEmojiSink seam
-        // (see setEmojiInsertionSink in setUpSuggestionsController), with the band's own context
-        // word — routing it through both would count one tap twice. The sink's own predicate
-        // decides whether anything may be learned at all (incognito included), so no gate here.
+        // Learned emoji: the word before the just-committed emoji is the context
+        // ("сәләм ☀️" → сәләм; no word, nothing learned). The sink's own predicate decides whether
+        // anything may be learned (pause learning included).
         final PersonalEmojiEventSink sink = mPersonalEmojiLearningSink;
         if (sink != null) {
             final String word = EmojiTextUtils.extractContextBeforeEmoji(
@@ -2427,11 +2228,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * The strip's emoji tail cell was tapped and committed (B2): records the sequence in the
-     * recent-emoji list exactly like a panel or search pick — and does NOTHING else. The personal
-     * co-usage half of that same tap arrives through the controller's own PersonalEmojiSink seam,
-     * which knows the band's bound context word; counting it here as well (the committed text can
-     * still end with the emoji when no auto-space was appended) would count one pick twice.
+     * The strip's emoji cell was tapped and committed: records the recent emoji only. The
+     * controller reports the tap to the learned-emoji sink itself, with the strip's context word;
+     * doing it here too would count one tap twice.
      */
     private void onStripEmojiInserted(final String sequence) {
         if (mEmojiPanelController != null) {

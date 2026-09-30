@@ -93,7 +93,7 @@ class PersonalLearningGatesTest {
     @Test
     fun thePredicateIsOnePlaceAndCarriesEveryFactor() {
         val predicate = ime.substringAfter("private boolean mayLearnPersonalWords()")
-            .substringBefore("// The key-neighbor table")
+            .substringBefore("private void updateKeyNeighbors()")
         assertTrue("eligibility — which already carries the field, the subtype, " +
             "IME_FLAG_NO_PERSONALIZED_LEARNING and the null-editorInfo case",
             predicate.contains("isSuggestionsEligible()"))
@@ -144,7 +144,7 @@ class PersonalLearningGatesTest {
         // contract requires that reason to be written down. So the constant may appear in prose;
         // what must not exist is an actual exclusion of it, in either place a gate could live.
         val predicateBody = ime.substringAfter("private boolean mayLearnPersonalWords()")
-            .substringBefore("// The key-neighbor table")
+            .substringBefore("private void updateKeyNeighbors()")
         assertFalse("no person-name gate in the predicate",
             predicateBody.contains("PERSON_NAME"))
         assertFalse("nor a field for it in InputAttributes",

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- O2 (2026-09-25): traced from the 324x324 WebP master (potrace over a per-color
-     mask), replacing the five per-density WebP densities of this layer. Colors are
-     the master's exact fills. -->
+<!-- Traced from the 324x324 WebP master (potrace over a per-color mask).
+     Colors are the master's exact fills. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"

@@ -14,8 +14,8 @@
      limitations under the License.
 -->
 
-<!-- iOS-style typography for app screens. Definitions only; screens apply these
-     in later waves. Uses platform sans-serif (Roboto), never SF Pro. -->
+<!-- iOS-style typography for the app screens. Uses platform sans-serif (Roboto),
+     never SF Pro. -->
 <resources>
     <!-- List-row / cell text: 17sp. -->
     <style name="AppText.Cell" parent="">

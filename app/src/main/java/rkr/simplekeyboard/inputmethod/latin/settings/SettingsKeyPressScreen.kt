@@ -21,16 +21,10 @@ import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
 
 /**
- * The "Key press" settings screen and the three seek-bar value proxies (T2 part 3,
- * docs/ROADMAP-P6.md), moved verbatim out of [SettingsHostActivity]. The proxies were ported 1:1
- * from KeyPressSettingsFragment and AppearanceSettingsFragment in the wave-S2 redesign and are
- * unchanged here; [bottomOffsetProxy] lives with them even though the Appearance screen (pinned to
- * the activity by KeyboardHeightPreferenceTest's neighbours) is its caller.
- *
- * They are `internal` extension functions on the activity, so every call site kept its exact text.
- * The one mechanical qualification the move required: the companion's percentage constant is
- * referenced as `SettingsHostActivity.PERCENTAGE_FLOAT` from here (companion members do not
- * resolve unqualified through an extension receiver).
+ * The "Key press" settings screen and the three seek-bar value proxies, as `internal` extensions
+ * on [SettingsHostActivity]. [bottomOffsetProxy] lives here too, although the Appearance screen
+ * is its caller. The companion constant is referenced as `SettingsHostActivity.PERCENTAGE_FLOAT`
+ * because companion members do not resolve unqualified through an extension receiver.
  */
 
 internal fun SettingsHostActivity.buildKeyPressScreen() {
@@ -64,8 +58,8 @@ internal fun SettingsHostActivity.buildKeyPressScreen() {
             resources.getInteger(R.integer.config_longpress_timeout_step),
             keyLongpressTimeoutProxy()))
     addCard(rows)
-    // android:dependency="sound_on" from the legacy screen. A managed
-    // restriction on the volume key must win over the dependency.
+    // The volume row depends on sound_on. A managed restriction on the
+    // volume key wins over the dependency.
     setRowEnabled(volume, prefs.getBoolean(Settings.PREF_SOUND_ON, soundDefault)
             && !isRestricted(Settings.PREF_KEYPRESS_SOUND_VOLUME))
 }

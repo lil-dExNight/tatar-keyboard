@@ -22,10 +22,9 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchQuery;
 import rkr.simplekeyboard.inputmethod.latin.inputlogic.InputLogic;
 
 /**
- * The emoji-search event routing of {@link LatinIME#onEvent} (T2 split, part 2 of 3): while
- * the search is open, key presses grow the query instead of reaching the editor. Static
- * methods taking the service, so the bodies moved here verbatim; the query itself lives on the
- * service ({@code LatinIME#mEmojiSearchQuery}) because pinned lifecycle code reads it there.
+ * The emoji-search event routing of {@link LatinIME#onEvent}: while the search is open, key
+ * presses grow the query instead of reaching the editor. The query itself lives on the service
+ * ({@code LatinIME#mEmojiSearchQuery}) because the lifecycle code reads it there.
  */
 final class LatinImeEmojiSearch {
     private LatinImeEmojiSearch() {
@@ -34,16 +33,13 @@ final class LatinImeEmojiSearch {
 
     /**
      * Routes one key press into the emoji-search query instead of into the editor, and returns true
-     * when it did. This is the single seam that makes the keyboard type "into itself": while the
-     * search is open the query grows here and {@link InputLogic} is never called, so no character
-     * the user types while searching can reach the application's text field and no marked region is
-     * ever started there. A backspace on an already-empty query means "leave the search".
+     * when it did. While the search is open {@link InputLogic} is never called, so nothing typed in
+     * the search reaches the application's text field. A backspace on an empty query closes the
+     * search.
      *
-     * <p>The keyboard's own state machine still sees the event, so shift and the symbols/letters
-     * switch behave exactly as they do while typing. Auto-caps is deliberately reported as OFF
-     * ({@code 0}, no {@code TextUtils.CAP_MODE_*} bit): it is derived from the editor's text, which
-     * the search never changes, so leaving it on would re-arm shift after every letter and turn the
-     * whole query into capitals.
+     * <p>The keyboard state machine still sees the event, so shift and the symbols/letters switch
+     * work as usual. Auto-caps is reported as off ({@code 0}, no {@code TextUtils.CAP_MODE_*} bit):
+     * it is derived from the editor's text, so leaving it on would capitalize every query letter.
      */
     static boolean maybeRouteToEmojiSearch(final LatinIME ime, final Event event) {
         final EmojiSearchQuery query = ime.mEmojiSearchQuery;
@@ -74,7 +70,7 @@ final class LatinImeEmojiSearch {
         return true;
     }
 
-    /** Hands the current query text to the search bands, which re-run the match and redraw. */
+    /** Hands the current query text to the search rows, which re-run the match and redraw. */
     static void updateEmojiSearchView(final LatinIME ime) {
         final EmojiSearchQuery query = ime.mEmojiSearchQuery;
         if (query != null) {

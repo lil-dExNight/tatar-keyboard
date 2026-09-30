@@ -25,19 +25,14 @@ import java.security.MessageDigest
  * The progress a word has made towards being learned, WITHOUT storing the word.
  *
  * A key is the first 8 bytes of `SHA-256(salt ‖ normalized word)`; the value is a count and a
- * monotonic serial. Counting is on the NORMALIZED form, or «Гүзәл» and «гүзәл» would race each
- * other in separate counters and neither would reach the threshold.
+ * monotonic serial. Counting uses the normalized form, so «Гүзәл» and «гүзәл» share one counter.
  *
- * What the truncated salted hash IS: protection against a file that is extracted by accident — a
- * backup that should not exist, a forensic dump, a curious file manager. What it is NOT: protection
- * against someone who has both the file and the salt, because they can hash a candidate word list
- * and compare. That is stated plainly here and in docs/DICTIONARY-E4.md rather than implied by the
- * word "hash".
+ * The truncated salted hash protects a file extracted by accident (a stray backup, a dump, a file
+ * manager). It does not protect against someone with both the file and the salt, who can hash a
+ * candidate word list and compare.
  *
  * Entries expire: at every flush, anything whose serial lags the current one by more than
- * [LIFETIME_SERIALS] is dropped. Without that rule a word typed once and never again would sit in
- * the file as a salted hash until the 256th entry evicted it or the user erased everything — and
- * "the threshold bounds how long pending entries live" would be a claim with no mechanism behind it.
+ * [LIFETIME_SERIALS] is dropped, so a word typed once does not stay until eviction.
  *
  * Pure logic, no I/O and no Android: the store owns the file, this owns the arithmetic.
  */
@@ -160,12 +155,9 @@ internal class PendingCounters private constructor(
         private const val MAX_COUNT = 0xFFFF
 
         /**
-         * The largest byte count [parse] can ever accept: one header plus [MAX_PENDING] records.
-         * The store checks `File.length()` against this BEFORE reading (S2 of
-         * docs/AUDIT-2026-08-31.md), so an oversized file — anything past this can never parse,
-         * because [parse] itself bounds the record count by [MAX_PENDING] — is rejected without
-         * allocating a byte array for it (a file over 2 GiB would not even fit one, and the
-         * resulting `OutOfMemoryError` is an `Error` the store's `catch (Exception)` cannot stop).
+         * The largest byte count [parse] can accept: one header plus [MAX_PENDING] records. The
+         * store checks `File.length()` against this before reading, so an oversized file is
+         * rejected without allocating for it (past 2 GiB that would throw `OutOfMemoryError`).
          */
         const val MAX_SERIALIZED_BYTES: Int = HEADER_SIZE + MAX_PENDING * RECORD_SIZE
 
@@ -183,10 +175,9 @@ internal class PendingCounters private constructor(
         }
 
         /**
-         * The key of the personal-bigram pair ([normalizedContext], [normalizedSuccessor]) under
-         * [salt] (P1 of Phase 2, docs/ROADMAP-P2.md). Both halves are NORMALIZED, and a zero byte
-         * separates them inside the digest so that («аб», «вг») and («абв», «г») — the same
-         * concatenation — are different keys, exactly as they are different pairs on disk.
+         * The key of the pair ([normalizedContext], [normalizedSuccessor]) under [salt]. Both
+         * halves are normalized, and a zero byte separates them in the digest, so («аб», «вг») and
+         * («абв», «г») get different keys.
          */
         fun keyOfPair(salt: ByteArray, normalizedContext: String, normalizedSuccessor: String): Long {
             val digest = MessageDigest.getInstance("SHA-256")

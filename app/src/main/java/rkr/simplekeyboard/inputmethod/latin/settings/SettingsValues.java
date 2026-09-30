@@ -50,13 +50,16 @@ public class SettingsValues {
     public final boolean mShowEmojiKey;
     public final boolean mSpaceSwipeEnabled;
     public final boolean mDeleteSwipeEnabled;
-    /** Already includes the subordination to {@link #mTatarSuggestionsEnabled} (P7-2). */
+    /**
+     * Independent of {@link #mTatarSuggestionsEnabled}; see
+     * {@link Settings#readGlideTypingEnabled}.
+     */
     public final boolean mGlideTypingEnabled;
     public final boolean mTatarSuggestionsEnabled;
     public final boolean mPersonalDictionaryEnabled;
-    /** Already includes the subordination to {@link #mTatarSuggestionsEnabled} (D3). */
+    /** Already includes the subordination to {@link #mTatarSuggestionsEnabled}. */
     public final boolean mTatarAutocorrectEnabled;
-    /** Already includes the subordination to {@link #mTatarSuggestionsEnabled} (emoji-suggest). */
+    /** Already includes the subordination to {@link #mTatarSuggestionsEnabled}. */
     public final boolean mEmojiSuggestEnabled;
 
     // From the input box
@@ -67,13 +70,12 @@ public class SettingsValues {
     public final int mKeyPreviewPopupDismissDelay;
 
     // Keyboard geometry, from preferences (the Appearance screen's height presets and the
-    // bottom-offset slider; U6 of Phase 5, docs/ROADMAP-P5.md):
+    // bottom-offset slider):
     public final float mKeyboardHeightScale;
 
     /**
-     * The emoji panel's own height setting (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B): a scale
-     * of the keyboard box, where 1.0f is the same-box invariant. Consumed at the panel's show path
-     * only — never in the keyboard geometry above.
+     * The emoji panel's own height setting: a scale of the keyboard box (1.0f = same size). Used
+     * only when the panel is shown, never in the keyboard geometry above.
      */
     public final float mEmojiPanelHeightScale;
 

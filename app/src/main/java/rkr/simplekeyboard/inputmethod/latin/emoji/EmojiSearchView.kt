@@ -36,24 +36,15 @@ import kotlin.math.abs
 import rkr.simplekeyboard.inputmethod.R
 
 /**
- * The emoji-search surface: two bands that take the place of the suggestion strip while the search
- * is open, with the ordinary letter keyboard visible underneath them.
+ * The emoji-search surface: a query row and a result band that take the suggestion strip's place
+ * while the search is open, with the letter keyboard underneath. The emoji grid and a letter
+ * layout do not fit on screen together, so the grid gives way and results come back as a
+ * horizontally scrolling strip. The panel opens it from the search cell in its tab row.
  *
- * Why this shape. In the Telegram client the search field summons the system keyboard; here the
- * keyboard IS this application, so the emoji grid cannot stay on screen while the user types — the
- * grid and a letter layout do not fit together. The same trade is what Gboard makes: the grid gives
- * way to the letters and the results come back as a scrolling strip. The panel's search affordance
- * survives the switch, now holding the typed query, so the transition reads as the search being
- * focused rather than as a different screen.
- *
- * The query itself lives in the pure [EmojiSearchQuery] and never reaches the editor; matching is
- * the pure [EmojiSearchIndex]. This view owns only the Android surface: paints built once, no
- * allocations in [onDraw] or [onTouchEvent], and only the visible results drawn. Picking a result
- * goes through the listener to `LatinIME.onTextInput(String)`, exactly like a panel cell.
- *
- * Since 2026-09-28 (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item A) the panel opens this search from
- * a cell inside its tab row instead of from a 50dp pill band of its own; the row below is what the
- * cell expands into, so the transition still reads as the search being focused in place.
+ * The query lives in the pure [EmojiSearchQuery] and never reaches the editor; matching is the
+ * pure [EmojiSearchIndex]. This view owns only the Android surface: paints built once, no
+ * allocations in [onDraw] or [onTouchEvent], only visible results drawn. A picked result goes
+ * through the listener to `LatinIME.onTextInput(String)`, like a panel cell.
  */
 class EmojiSearchView @JvmOverloads constructor(
     context: Context,
@@ -90,13 +81,8 @@ class EmojiSearchView @JvmOverloads constructor(
         private const val CARET_STROKE_DP = 1.5f
         /** Air between the caret's right edge and the first letter of the hint. */
         private const val HINT_GAP_DP = 3f
-        // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
-        // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
-        // 44dp, вкладки 44dp, строка запроса 46dp, заголовок секции 30dp), а системный
-        // масштаб шрифта растит только текст. При font_scale 2.0 полоса подсказок
-        // вырождалась в «Мини… · Минем · Мини…» — две ячейки из трёх неразличимы ровно для
-        // тех, кому крупный шрифт и нужен (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-3).
-        // Клавиши раскладки всегда считались в dp; здесь то же правило.
+        // Text sizes are in dp, not sp: the query row has a fixed dp height (see the companion
+        // of EmojiPanelView).
 
         private const val QUERY_TEXT_SIZE_DP = 16f
         private const val MESSAGE_TEXT_SIZE_DP = 14f
@@ -109,8 +95,8 @@ class EmojiSearchView @JvmOverloads constructor(
         private const val NO_TARGET = -1
         private const val CLOSE_TARGET = -2
 
-        // Accessibility virtual-view ids. Result ids are the result position (0 until 60), so the
-        // pill and the close key sit far above any of them.
+        // Accessibility virtual-view ids. Result ids are the result position (0 until
+        // EmojiSearchIndex.MAX_RESULTS), so the query pill and the close key sit far above them.
         private const val QUERY_ID = 1_000_000
         private const val CLOSE_ID = 1_000_001
     }
@@ -259,9 +245,8 @@ class EmojiSearchView @JvmOverloads constructor(
     }
 
     /**
-     * The query row always; the result band only while there is a query for it to report on. An
-     * empty query therefore measures 46dp instead of 100dp and the freed height goes back to what
-     * sits below in the stack, rather than holding an empty band open.
+     * The query row always; the result band only while there is a query. An empty query measures
+     * only the query row, and the rest of the height goes to the views below.
      */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = resolveSize(suggestedMinimumWidth, widthMeasureSpec)
@@ -300,9 +285,8 @@ class EmojiSearchView @JvmOverloads constructor(
         val textLeft = pillInsetXPx + textInsetPx
         val baseline = centerY - (queryFontMetrics.ascent + queryFontMetrics.descent) / 2f
         if (!EmojiSearchLayout.hasQuery(queryText)) {
-            // Spaces alone are not a query: the field reads as untouched, hint and all. The caret
-            // keeps the text's own origin and the hint steps aside for it, the way an empty focused
-            // EditText reads on the platform; drawing both from textLeft put the caret on the "П".
+            // Spaces alone are not a query: the field shows the hint. The caret stays at the text
+            // origin and the hint is drawn after it, as in an empty focused EditText.
             canvas.drawText(
                 hintText,
                 EmojiSearchLayout.hintLeft(

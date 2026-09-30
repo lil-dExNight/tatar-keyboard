@@ -21,16 +21,13 @@ import kotlin.math.sqrt
 /**
  * A recorded glide path: fixed-capacity parallel point buffers (x, y, t) that never allocate
  * after construction. `x`/`y` are pixel (or grid-unit) coordinates in the keyboard's coordinate
- * space; `t` is the sample timestamp in milliseconds — carried through for the touch-side
- * recorder and the offline generator, unused by the current scoring channels.
+ * space; `t` is the sample timestamp in milliseconds, recorded but unused by the scoring.
  *
- * Points past the capacity are dropped ([addPoint] reports false): a gesture longer than the
- * buffer is still decodable from its leading [MAX_POINTS] samples, which at the expected
- * sampling density covers several meters of finger travel — far beyond any real word. This is
- * the fail-closed choice: a truncated path decodes worse, never wrong-er than its data.
+ * Points past the capacity are dropped ([addPoint] returns false); the leading [MAX_POINTS]
+ * samples cover far more finger travel than any real word.
  *
- * The decoder is worker-confined (like the dictionary index it reads): one instance serves one
- * engine worker thread, so the buffers need no synchronization.
+ * An instance is confined to one thread (the decoder's is the engine worker), so the buffers
+ * need no synchronization.
  */
 class GlidePath(val capacity: Int = MAX_POINTS) {
     val xs = FloatArray(capacity)
@@ -41,9 +38,9 @@ class GlidePath(val capacity: Int = MAX_POINTS) {
         private set
 
     /**
-     * Appends one sample; false (and the point dropped) when the buffer is full or the sample is
-     * not finite — 2026-09-25 audit, F14: a NaN/Infinity coordinate would poison every distance
-     * the decoder measures from this path, so it is refused at the gate (fail-closed).
+     * Appends one sample; returns false and drops the point when the buffer is full or the
+     * sample is not finite (a NaN/Infinity coordinate would corrupt every distance the decoder
+     * measures on this path).
      */
     fun addPoint(x: Float, y: Float, t: Float): Boolean {
         if (!x.isFinite() || !y.isFinite() || !t.isFinite()) return false
@@ -61,9 +58,8 @@ class GlidePath(val capacity: Int = MAX_POINTS) {
 
     /**
      * Copies the recorded points into [target] (its previous content is discarded) and returns
-     * the number of points copied (capped at the target's capacity). The handoff used when a
-     * glide path crosses a thread boundary: the tracker's buffer is live, so the receiver
-     * snapshots it.
+     * the number of points copied (capped at the target's capacity). Used when a glide path
+     * crosses a thread boundary: the tracker's buffer is live, so the receiver snapshots it.
      */
     fun copyInto(target: GlidePath): Int {
         target.clear()

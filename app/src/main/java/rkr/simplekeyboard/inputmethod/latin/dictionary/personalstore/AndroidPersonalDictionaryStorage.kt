@@ -26,20 +26,12 @@ import java.util.concurrent.Executor
 /**
  * Wires a [PersonalDictionaryStore] to the base (credential-protected) `noBackupFilesDir`.
  *
- * The personal dictionary is the list of what the user typed, so it lives in the storage that is
- * decrypted only after the PIN/password — never in the device-protected storage the OS opens at
- * boot. This factory therefore never opens a device-protected storage context: the base
- * application context is already credential-protected. The claim "a device-protected context is
- * created in exactly two seams (AndroidDictionaryStorageFactory and PreferenceManagerCompat)" stays
- * true. `directBootAware` startup is the IME's own concern, served by the packaged asset and
- * device-protected settings; the personal dictionary by its own gate is neither read nor written
- * before the first unlock, so device-protected placement would only lose protection on a lost
- * locked device while gaining nothing.
+ * The personal dictionary holds what the user typed, so it lives in storage decrypted only after
+ * the PIN or password, not in device-protected storage; this factory never opens a device-protected
+ * context. The store is not used before the first unlock, so direct boot gains nothing from it.
  *
- * The directory `personal/` is not a subdirectory of `files/`, so it is excluded from every backup
- * domain by construction — no rule enumerates it (the whitelist from E2b-3 already closes backup by
- * default). The `UserManager.isUserUnlocked()` gate is mandatory: before the first unlock the path
- * does not exist, and the store survives that as "empty", never as an exception.
+ * `personal/` is outside `files/`, so the backup whitelist excludes it. The unlock gate is
+ * mandatory: before the first unlock the path does not exist, and the store treats that as empty.
  */
 internal object AndroidPersonalDictionaryStorage {
     /** The single directory this seam owns, inside the base context's `noBackupFilesDir`. */
@@ -67,9 +59,8 @@ internal object AndroidPersonalDictionaryStorage {
     }
 
     /**
-     * The personal-bigram sibling of [create] (P1 of Phase 2, docs/ROADMAP-P2.md): the SAME
-     * directory, the same durable ops, the same unlock gate — only the store, its format and its
-     * files differ, plus the [contextMembership] gate the words store does not have.
+     * The learned-pairs counterpart of [create]: the same directory, durable ops and unlock gate,
+     * plus the [contextMembership] gate.
      */
     fun createBigrams(
         context: Context,

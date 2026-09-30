@@ -17,30 +17,28 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
 /**
- * Where a CLEAN completion of a word is reported (E4c).
+ * Where a clean completion of a word is reported.
  *
  * "Clean" is defined by the producer, `SuggestionsController`: the word grew one character at a
  * time and ended by the trailing word becoming empty, with no backspace, no shortening, no selection
  * change, no cursor gesture, no field or subtype change and no accepted suggestion in between.
  *
- * The seam exists so the controller — the class that sees every keystroke — never references the
- * store package at all: it announces an event, and whether anything is written, and under which
- * gates, is decided on the other side. [NONE] is the default, and with it typing writes nothing.
+ * The seam keeps the controller, which sees every keystroke, from referencing the store package: it
+ * announces an event, and the other side decides whether and under which gates anything is written.
+ * [NONE] is the default, and with it typing writes nothing.
  */
 fun interface WordCompletionSink {
     fun onCleanCompletion(word: String)
 
     /**
-     * The user accepted a suggestion cell showing [word] (2026-09-24 audit, finding 2). Whether
-     * [word] is a saved personal word — and therefore whether any usage counter moves — is decided
-     * on the other side, like everything else behind this seam. Default no-op, so a sink written
-     * before the event existed keeps compiling and simply never counts acceptances.
+     * The user accepted a suggestion cell showing [word]. The other side decides whether [word] is a
+     * saved personal word and a usage counter moves. Default no-op.
      */
     fun onAcceptedSuggestion(word: String) {}
 
     /**
-     * The editor session ended. This is the ONE boundary where the other side may put what it has
-     * accumulated on disk — never per keystroke and never per completed word.
+     * The editor session ended. This is the only point where the other side may write what it has
+     * accumulated to disk; never per keystroke or per completed word.
      */
     fun onInputFinished() {}
 

@@ -26,41 +26,27 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * The ONE process-wide owner of the personal-emoji stores — one store per subtype, serialized on
- * the SAME single background executor as the words and pairs stores (see
- * [PersonalDictionaries.sharedStoreExecutor]), so the three features can never race each other's
- * in-flight temp files in the shared `personal/` directory.
+ * The process-wide owner of the learned-emoji stores, one per subtype, on
+ * [PersonalDictionaries.sharedStoreExecutor]. See [PersonalDictionaries]. There is no
+ * context-membership probe (see [PersonalEmojiStore]).
  *
- * Everything else mirrors [PersonalBigramDictionaries]: the settings screen and the IME share the
- * one process, so the screen can forget an entry or erase all of them through the same serialized
- * owner the engine reads from; and reading is gated live through [PersonalDictionaryGate], so
- * turning the personal-dictionary setting off stops personal emoji on the very next lookup.
- *
- * Unlike the pairs facade there is no context-membership probe to install: the emoji store's word
- * half is real committed editor text and needs no dictionary gate (see the store's class doc).
- *
- * The store construction is wired HERE rather than added to [AndroidPersonalDictionaryStorage]
- * because this feature layer was built without touching the existing factory: the seams are the
- * factory's own, field for field — the base (credential-protected) `noBackupFilesDir`, the shared
- * durable ops, the `isUserUnlocked` gate.
+ * The store is built here ([createStore]) with the same seams as [AndroidPersonalDictionaryStorage]:
+ * the credential-protected `noBackupFilesDir`, the shared durable ops and the `isUserUnlocked` gate.
  */
 object PersonalEmojiDictionaries {
 
     private val lock = Any()
     private val stores = HashMap<String, PersonalEmojiStore>()
 
-    /**
-     * Notified after entries are erased ("Erase all" / "Forget"), so the IME can unbind whatever is
-     * still displayed — the "erased means erased" guarantee of the words store, for emoji.
-     */
+    /** Notified after entries are erased. See `PersonalDictionaries.erasureListener`. */
     @Volatile
     private var erasureListener: Runnable? = null
 
-    /** Notified when an unreadable emoji file has been set aside on a store's first open. */
+    /** Notified when a store quarantines an unreadable file. See `PersonalDictionaries.quarantineListener`. */
     @Volatile
     private var quarantineListener: Runnable? = null
 
-    /** Guarded by [lock]; one entry per language that lost something (2026-09-24 audit, F13). */
+    /** Guarded by [lock]; one entry per language that lost something. */
     private val pendingQuarantineNotices = LinkedHashSet<String>()
 
     /** The store for [subtypeId], created on first use. Safe to call from any thread. */
@@ -74,13 +60,8 @@ object PersonalEmojiDictionaries {
         }
 
     /**
-     * The engine's read side for [subtypeId]. Returns [PersonalEmojiSource.EMPTY] semantics
-     * whenever the setting is off, so a disabled personal dictionary costs the suggestion path
-     * nothing beyond one boolean read.
-     *
-     * Performs no I/O — the store's lazy open stays on its worker — so the learned-emoji read
-     * path may call this per emoji-candidate query from the band fill; the map lookup and the
-     * small wrapper allocation are the only cost.
+     * The engine's read side for [subtypeId]; see [PersonalDictionaries.sourceFor]. Performs no I/O
+     * (the store opens lazily on its worker), so it may be called for every emoji-cell query.
      */
     @JvmStatic
     fun sourceFor(
@@ -90,10 +71,7 @@ object PersonalEmojiDictionaries {
     ): PersonalEmojiSource {
         val store = storeFor(context, subtypeId)
         if (gate.isOn()) store.prime()
-        // The source itself is built in the `personal` package, which owns the read model: this
-        // package hands it nothing but a supplier of the published snapshot. That is also what
-        // keeps the frozen privacy rule of the store package true — no method name here names
-        // typed text.
+        // Built in the `personal` package from a snapshot supplier; see PersonalDictionaries.sourceFor.
         return SnapshotPersonalEmojiSource {
             if (gate.isOn()) store.snapshot else PersonalEmojiDictionary.EMPTY
         }
@@ -123,12 +101,7 @@ object PersonalEmojiDictionaries {
     fun hasPendingQuarantineNotice(): Boolean =
         synchronized(lock) { pendingQuarantineNotices.isNotEmpty() }
 
-    /**
-     * Takes ONE waiting notice — the earliest-raised language's — if there is one; see
-     * [PersonalDictionaries.consumeQuarantineNotice] for the contract this mirrors, including
-     * spending the durable mark of THAT language's store only, so a second language that lost
-     * something keeps its own notice (2026-09-24 audit, finding 13).
-     */
+    /** Takes one waiting notice. See [PersonalDictionaries.consumeQuarantineNotice]. */
     @JvmStatic
     fun consumeQuarantineNotice(): Boolean {
         val subtypeId = synchronized(lock) {
@@ -141,9 +114,8 @@ object PersonalEmojiDictionaries {
     }
 
     /**
-     * The factory wiring, field for field what [AndroidPersonalDictionaryStorage.createBigrams]
-     * assembles minus the membership gate the emoji store does not have (see the class doc for why
-     * this lives here).
+     * The factory wiring: what [AndroidPersonalDictionaryStorage.createBigrams] assembles, without
+     * the membership gate.
      */
     private fun createStore(
         context: Context,
@@ -167,7 +139,7 @@ object PersonalEmojiDictionaries {
         )
     }
 
-    /** Called on the store's worker when it set an unreadable file aside. */
+    /** Called on the store's worker when it quarantined an unreadable file. */
     private fun notifyQuarantined(subtypeId: String) {
         synchronized(lock) { pendingQuarantineNotices.add(subtypeId) }
         quarantineListener?.run()

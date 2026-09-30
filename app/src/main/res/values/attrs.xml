@@ -36,21 +36,20 @@
         <attr name="keyPressedBackgroundColor" format="color" />
         <attr name="keyNormalBackgroundColor" format="color" />
         <!-- Emoji panel: the sheet behind the grid. This is the keyboard background, not a key
-             colour, so the panel reads as the same surface the keys sit on. -->
+             color, so the panel reads as the same surface the keys sit on. -->
         <attr name="emojiPanelBackgroundColor" format="color" />
         <!-- Emoji panel: fill of the two functional keys ("АБВ" and delete) on the bottom bar,
              matching the functional keys of the letter keyboard. -->
         <attr name="emojiPanelFunctionalKeyColor" format="color" />
-        <!-- Autocorrect preview (docs/ROADMAP-P3.md): text and underline colour of the
-             emphasized correction cell — the theme accent. -->
+        <!-- Autocorrect preview: text and underline color of the emphasized correction
+             cell (the theme accent). -->
         <attr name="suggestionEmphasisColor" format="color" />
     </declare-styleable>
 
-    <!-- DEV-4: theme colours for the emoji panel grid. All attrs are already declared above
+    <!-- Theme colors for the emoji panel grid. All attrs are declared above
          (KeyboardTheme / SuggestionStripView); the styleable only groups them so the view can
-         read them via R.styleable instead of a hand-built int[] of attr ids. Order matches the
-         previous manual array: panel background, functional text, pressed, key text,
-         functional key, normal key. -->
+         read them via R.styleable. Order: panel background, functional text, pressed,
+         key text, functional key, normal key. -->
     <declare-styleable name="EmojiPanelView">
         <attr name="emojiPanelBackgroundColor" />
         <attr name="functionalTextColor" />
@@ -60,7 +59,7 @@
         <attr name="keyNormalBackgroundColor" />
     </declare-styleable>
 
-    <!-- Same theme colours as EmojiPanelView; separate styleable keeps the lint convention
+    <!-- Same theme colors as EmojiPanelView; separate styleable keeps the lint convention
          "custom view name == styleable name". -->
     <declare-styleable name="EmojiSearchView">
         <attr name="emojiPanelBackgroundColor" />
@@ -141,7 +140,7 @@
         <attr name="backgroundDimAlpha" format="integer" />
         <!-- More keys keyboard will shown at touched point. -->
         <attr name="showMoreKeysKeyboardAtTouchedPoint" format="boolean" />
-        <!-- Color of the fading glide trail drawn under the fingertip (P7-5). -->
+        <!-- Color of the fading glide trail drawn under the fingertip. -->
         <attr name="glideTrailColor" format="color" />
     </declare-styleable>
 
@@ -325,9 +324,9 @@
         <attr name="keyTextInactivatedColor" format="color" />
         <!-- Color to use for the label in a key that has followFunctionalTextColor keyLabelFlags. -->
         <attr name="functionalTextColor" format="color" />
-        <!-- M4 (docs/APPLE-UX-2026-09-25.md): label and icon colour of an ACTION key (Go,
-             Search, Send, Done, Next, Previous, a custom action label). iOS paints such a key
-             in the accent colour, so its glyph flips to white. -->
+        <!-- Label and icon color of an action key (Go, Search, Send, Done, Next, Previous,
+             a custom action label). As on iOS, such a key is painted in the accent color,
+             so its glyph is white. -->
         <attr name="actionKeyTextColor" format="color" />
         <!-- Key hint letter (= one character hint label) color -->
         <attr name="keyHintLetterColor" format="color" />

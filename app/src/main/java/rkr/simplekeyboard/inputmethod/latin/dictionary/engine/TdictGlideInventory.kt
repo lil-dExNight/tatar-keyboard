@@ -20,12 +20,10 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlideWordInventory
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideWordVisitor
 
 /**
- * A shipped dictionary's prefix index as a [GlideWordInventory] — the decode-side dictionary
- * integration of P7-1 (docs/GLIDE-PLAN.md). The word-frequency content comes from
- * [TdictPrefixIndex.forEachWordCold], a cold sequential walk with its own local state, so the
- * glide index build never touches the per-keystroke lookup path or its budgets; [wordAt] shares
- * the index's worker confinement (it serves the decode's result materialization, which runs on
- * the same engine worker).
+ * A bundled dictionary's prefix index as a [GlideWordInventory]. Words and frequencies come from
+ * [TdictPrefixIndex.forEachWordCold], a cold sequential walk with its own local state, so building
+ * the glide index never touches the per-keystroke lookup path. [wordAt] shares the index's worker
+ * confinement: it serves result materialization, which runs on the same engine worker.
  */
 internal class TdictGlideInventory(
     private val index: TdictPrefixIndex,

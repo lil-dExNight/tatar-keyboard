@@ -20,10 +20,9 @@ import rkr.simplekeyboard.inputmethod.event.Event;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 
 /**
- * The glide lift-commit's whole-word undo (the UX amendment, docs/ROADMAP-P7.md): a backspace
- * pressed immediately after a glide lift-commit deletes the whole committed word (and its
- * auto-space) instead of one character — the Gboard gesture-undo. Mirrors
- * {@link LatinImeAutocorrect#maybeRevertTatarAutocorrection} in shape and in follow-ups.
+ * Whole-word undo for glide typing: a backspace pressed immediately after a glide commit deletes
+ * the whole committed word (and a prepended chain space) instead of one character, as Gboard
+ * does. Same shape and follow-ups as {@link LatinImeAutocorrect#maybeRevertTatarAutocorrection}.
  */
 final class LatinImeGlide {
 
@@ -35,9 +34,8 @@ final class LatinImeGlide {
      * Routes the gesture-undo before the ordinary backspace. Returns true when it fired, in which
      * case the key press is fully handled and the ordinary backspace path never runs.
      *
-     * <p>What follows a successful undo is exactly what a backspace does apart from the deletion:
-     * the shift state is recomputed, the band is re-derived from the new text, and the keyboard's
-     * own state machine still sees the key press.
+     * <p>After a successful undo the follow-ups of a backspace still run: the shift state is
+     * recomputed, the suggestion strip is rebuilt, and the keyboard state machine sees the key press.
      */
     static boolean maybeUndoGlideCommit(final LatinIME ime, final Event event) {
         if (ime.mSuggestionsController == null || event.mKeyCode != Constants.CODE_DELETE) {

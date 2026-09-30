@@ -19,61 +19,41 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 import android.content.Context
 
 /**
- * The write-side events of the personal word→emoji feature, as the IME announces them — the emoji
- * sibling of [rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink] and its
- * exact shape: ONE abstract method (the co-usage observation) plus two defaulted ones, so a caller
- * that only observes stays a lambda.
- *
- * Both content halves travel RAW, exactly as they stand in the editor: normalization, the alphabet
- * filter, the cluster check and the learn threshold are all the store's business
- * ([PersonalEmojiStore]), never the announcer's.
+ * The write-side events of learned emoji, as the IME announces them; the same shape as
+ * [rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink]. Both halves are
+ * raw; normalization, filters and the learn threshold belong to [PersonalEmojiStore].
  */
 fun interface PersonalEmojiEventSink {
     /**
      * One clean co-usage: [rawWord] is the committed word the emoji was picked right after,
-     * [rawEmoji] the raw emoji cluster itself. The store graduates the pair only after it has seen
-     * the threshold's worth of such observations.
+     * [rawEmoji] the raw emoji cluster. The store saves the pair after enough observations.
      */
     fun noteObservation(rawWord: String, rawEmoji: String)
 
     /**
-     * The user accepted the LEARNED emoji from the strip's tail cell — the usage half of the pinned
-     * ranking (usage descending, then frequency). A pick that is not a learned entry changes
-     * nothing; the store decides.
+     * The user accepted a learned emoji from the strip's emoji cell. A pick that is not a learned
+     * entry changes nothing; the store decides.
      */
     fun noteUse(rawWord: String, rawEmoji: String) {}
 
     /**
-     * The editor session ended: the ONE boundary where the store may put what it accumulated on
-     * disk — usage counters and pending hashes, once, and only if something changed. Never per
-     * keystroke, never per pick.
+     * The editor session ended: the only point where the store writes usage counters and pending
+     * hashes, and only if something changed.
      */
     fun onInputFinished() {}
 }
 
 /**
- * Turns personal-emoji events into store mutations, under [PersonalLearningPredicate] — the emoji
- * analogue of [PersonalBigramLearning], gated by the very same six factors: suggestions eligible
- * for this field and subtype, the personal dictionary setting ON, the device unlocked at least once
- * since boot, the field not a postal address, and incognito mode OFF. The pause gates EVERY method
- * of this sink, flush included: with incognito on, not even a pending hash is written.
- *
- * This is the ONE place where an emoji pick can cause a personal-store write, and it is
- * deliberately not in `LatinIME` and not in `SuggestionsController`: those classes announce events,
- * and the decision to persist anything lives here, inside the package that owns the file. All
- * content checks are the store's; what lives here is only the wiring: predicate first, subtype
- * second, then the event.
+ * Turns learned-emoji events into store mutations, under [PersonalLearningPredicate]; the emoji
+ * counterpart of [PersonalLearning], with the same factors and the same reasons. The predicate
+ * gates every method, flush included. This is only the wiring: predicate first, subtype second,
+ * then the event.
  */
 object PersonalEmojiLearning {
 
     /**
-     * The sink for whatever language is active at the moment of the event.
-     *
-     * The subtype is resolved per event, not per sink: the sink is built once for the IME's whole
-     * lifetime, while the user switches layouts inside a single editor session. A co-usage picked
-     * on the Russian layout must reach the Russian store and nothing else — there is no shared
-     * "default" store, and writing it to the Tatar one would put Russian emoji into Tatar
-     * suggestions for good. A null subtype (a layout with no dictionary) writes nothing.
+     * The sink for whatever language is active at the moment of the event. See
+     * [PersonalLearning.sinkFor].
      */
     @JvmStatic
     fun sinkFor(
@@ -100,16 +80,14 @@ object PersonalEmojiLearning {
         }
 
         override fun noteUse(rawWord: String, rawEmoji: String) {
-            // The acceptance bump is a write-adjacent event: the same six factors decide whether
-            // it may happen, exactly like the flush below.
+            // The acceptance bump is gated by the same predicate, like the flush below.
             if (!predicate.mayLearn()) return
             val subtypeId = activeSubtype.get() ?: return
             storeFor(subtypeId).noteUse(rawWord, rawEmoji)
         }
 
         override fun onInputFinished() {
-            // The flush is gated too: without the predicate a session that became ineligible could
-            // still put what it accumulated on disk.
+            // The flush is gated too, so a session that became ineligible writes nothing.
             if (!predicate.mayLearn()) return
             val subtypeId = activeSubtype.get() ?: return
             storeFor(subtypeId).flush()

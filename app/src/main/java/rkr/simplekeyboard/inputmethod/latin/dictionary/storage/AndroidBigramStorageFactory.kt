@@ -6,15 +6,9 @@ import java.io.File
 import java.util.concurrent.Executor
 
 /**
- * Production wiring for the bigram-table store — the E5c counterpart of
- * [AndroidDictionaryStorageFactory], pointed at [artifact]'s own device-protected subdirectory
- * (never `filesDir/dictionaries`) with its own artifact, own regex/retention
- * (`AtomicBigramStore`), and the same production [DurableFileOps] ([AndroidDurableFileOps]) the
- * dictionary store already uses — the fsync/rename semantics are format-agnostic.
- *
- * [artifact] is passed in rather than chosen here, exactly like [AndroidDictionaryStorageFactory]:
- * the choice of language is made once, in [DictionaryArtifactSpec.forSubtype], and this factory
- * only wires up whatever that choice produced.
+ * Production wiring for the bigram-table store, the counterpart of
+ * [AndroidDictionaryStorageFactory]. It points at [artifact]'s own device-protected subdirectory and
+ * reuses [AndroidDurableFileOps]. The caller picks [artifact] via [DictionaryArtifactSpec.forSubtype].
  */
 object AndroidBigramStorageFactory {
     @JvmStatic

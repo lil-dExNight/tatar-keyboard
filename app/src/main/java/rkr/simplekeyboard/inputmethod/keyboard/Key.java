@@ -139,7 +139,7 @@ public class Key implements Comparable<Key> {
     private final int mBackgroundType;
     public static final int BACKGROUND_TYPE_NORMAL = 1;
     public static final int BACKGROUND_TYPE_FUNCTIONAL = 2;
-    /** Aligned with the `action` value of the backgroundType enum in attrs.xml (M4). */
+    /** Aligned with the `action` value of the backgroundType enum in attrs.xml. */
     public static final int BACKGROUND_TYPE_ACTION = 5;
     public static final int BACKGROUND_TYPE_SPACEBAR = 6;
 
@@ -571,25 +571,25 @@ public class Key implements Comparable<Key> {
         }
     }
 
-    /** M2: a letter-style key — the only kind whose press feedback iOS leaves to the balloon. */
+    /** A letter-style key: the only kind whose press feedback is left to the preview balloon. */
     public final boolean isNormalBackground() {
         return mBackgroundType == BACKGROUND_TYPE_NORMAL;
     }
 
-    /** M3: the drawing side needs the press state to invert a SELECTED alternative's glyph. */
+    /** The drawing side needs the press state to invert a selected alternative's glyph. */
     public final boolean isPressed() {
         return mPressed;
     }
 
-    /** M4: the drawing side needs to know an ACTION key to tint its icon. */
+    /** The drawing side needs to know an ACTION key to tint its icon. */
     public final boolean isActionKey() {
         return mBackgroundType == BACKGROUND_TYPE_ACTION;
     }
 
     public final int selectTextColor(final KeyDrawParams params) {
-        // M4 (docs/APPLE-UX-2026-09-25.md): an ACTION key is filled with the accent colour, so
-        // its glyph flips to the action colour — checked BEFORE the functional colour, because
-        // every action key also carries followFunctionalTextColor from defaultEnterKeyStyle.
+        // An ACTION key is filled with the accent color, so its glyph uses the action color.
+        // Checked before the functional color, because every action key also carries
+        // followFunctionalTextColor from defaultEnterKeyStyle.
         if (mBackgroundType == BACKGROUND_TYPE_ACTION && params.mActionKeyTextColor != 0) {
             return params.mActionKeyTextColor;
         }

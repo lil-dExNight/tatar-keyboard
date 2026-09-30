@@ -34,8 +34,8 @@
              emoji key (see key_space_5kw.xml), so the emoji panel lives on this key's long press.
              It goes first in additionalMoreKeys because the first more key is the one laid out
              under the finger: a long press and release opens the panel with no sliding, and paste
-             and settings stay one slide away. The hint glyph is what makes it discoverable — a
-             long press nobody can see is worse than the key it replaced. -->
+             and settings stay one slide away. The hint glyph makes the long press
+             discoverable. -->
         <case
             latin:languageSwitchKeyEnabled="true"
             latin:showEmojiKey="true"

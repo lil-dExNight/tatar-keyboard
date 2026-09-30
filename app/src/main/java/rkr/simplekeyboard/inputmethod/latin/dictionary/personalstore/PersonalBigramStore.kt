@@ -29,31 +29,12 @@ import java.security.SecureRandom
 import java.util.concurrent.Executor
 
 /**
- * The serialized owner of one subtype's personal-bigram `.tpersb` file (P1 of Phase 2,
- * docs/ROADMAP-P2.md) — the deliberate mirror of [PersonalDictionaryStore] for word PAIRS, and
- * every structural guarantee of that class holds here unchanged:
+ * The serialized owner of one subtype's learned-pairs `.tpersb` file. See [PersonalDictionaryStore]
+ * for the threading, write-sequence, quarantine and fail-closed rules, which apply unchanged.
  *
- * Every mutation is an event on the single background [executor], so all in-memory state lives on
- * one worker and never on the UI thread. After each SUCCESSFUL mutation a fresh immutable
- * [PersonalBigramDictionary] snapshot is published through the `@Volatile` [snapshot] reference;
- * the engine's worker thread reads it. The UI thread does no I/O, no checksum, no read and no
- * write.
- *
- * Whole-file write only, in the frozen sequence: exclusive temp in the same directory → write →
- * flush → fsync file → RE-VALIDATE the written bytes → atomic replace → fsync directory. A partial
- * temp never becomes the main file; any failure leaves the previous valid file untouched; temp
- * garbage is removed when the store next opens the directory.
- *
- * A pair is never written in plaintext before it has survived [LEARN_THRESHOLD] clean
- * observations: until then only a salted truncated hash of it exists (see [PendingCounters]), and
- * only in memory between flushes. The threshold is 2 — one lower than the words store's 3, because
- * the context half of a pair is independently gated ([contextMembership]: a context the keyboard
- * does not know is dropped at graduation), so the accidental-pair risk the third observation
- * guards against in the words design is already closed here by the dictionary.
- *
- * Fail-closed everywhere: a caught exception (including the unlock gate closing the
- * credential-protected path before the first unlock) drops the mutation and leaves the feature
- * empty rather than throwing. Nothing here logs, and no message carries a user's word or a path.
+ * A pair is written in plaintext only after [LEARN_THRESHOLD] clean observations; until then only a
+ * salted truncated hash exists (see [PendingCounters]). The threshold is 2, one lower than for
+ * words, because the context word must also be known to the keyboard ([contextMembership]).
  */
 internal class PersonalBigramStore(
     private val subtypeId: String,
@@ -76,12 +57,10 @@ internal class PersonalBigramStore(
     private var loaded = false
     private var counterFlushPending = false
 
-    // Set when THIS session set a file aside, and kept only until the notice has been raised: the
-    // durable half of the same mark is the file [quarantineNoticeFileName] names.
+    // See PersonalDictionaryStore.justQuarantined.
     private var justQuarantined = false
 
-    // Progress towards learning, as salted truncated hashes. Held in memory and written on the
-    // same boundary as the usage counters — never once per completed pair.
+    // Progress towards learning, as salted truncated hashes; see PersonalDictionaryStore.pending.
     private var pending: PendingCounters = PendingCounters.EMPTY
     private var pendingDirty = false
     private var salt: ByteArray? = null
@@ -97,21 +76,12 @@ internal class PersonalBigramStore(
         private set
 
     /**
-     * Records ONE clean completion of the pair ([rawContext], [rawWord]): [rawWord] is the word
-     * whose clean run just ended, [rawContext] the committed word immediately before it. Nothing
-     * is written to the file until the pair has survived [LEARN_THRESHOLD] such observations; until
-     * then only a salted truncated hash exists, and only in memory between flushes.
+     * Records one clean completion of the pair ([rawContext], [rawWord]); the pair is saved after
+     * [LEARN_THRESHOLD] of them. At that point the context must be a word of this subtype's bundled
+     * or personal dictionary ([contextMembership]); checking then keeps the dictionary read off the
+     * UI thread and counts words learned in between.
      *
-     * At graduation the context must additionally prove itself through [contextMembership]: a word
-     * of the shipped dictionary of this subtype or of its personal dictionary. That is what makes
-     * the lower threshold safe (see the class doc), and it is checked at graduation rather than at
-     * observation for two reasons: the check reads the dictionary mapping and belongs off the UI
-     * thread, and a word learned into the personal dictionary BETWEEN two observations still counts
-     * as known.
-     *
-     * An already-learned pair skips the counters entirely: the observation bumps its frequency and
-     * LRU serial IN MEMORY only (flushed at the session boundary, like an accepted tap), never
-     * rewriting the file per completed word.
+     * For an already learned pair the observation bumps frequency and LRU serial in memory only.
      */
     fun notePair(rawContext: String, rawWord: String) = onWorker {
         if (!open()) return@onWorker
@@ -133,9 +103,8 @@ internal class PersonalBigramStore(
         val noted = pending.note(key)
         if (noted.countOf(key) >= LEARN_THRESHOLD) {
             if (!isKnownContext(normalizedContext)) {
-                // The context is no word of this language that the keyboard knows: the pair is not
-                // a candidate and never was. Drop its progress so a repeated typo does not keep
-                // paying the membership check.
+                // The keyboard does not know the context word: drop the progress so a repeated
+                // typo does not keep paying the membership check.
                 pending = noted.without(key)
                 pendingDirty = true
                 return@onWorker
@@ -156,12 +125,8 @@ internal class PersonalBigramStore(
     }
 
     /**
-     * Records an accepted personal prediction as a use: bumps the usage counter and LRU serial IN
-     * MEMORY only, publishing the updated snapshot. It never rewrites the file — flushing whole for
-     * every tap would be up to 64 KiB plus two fsyncs per tap. A tap on anything that is NOT a
-     * learned pair (a static successor, a word form, a fallback word) finds no pair and changes
-     * nothing. Runs as an executor event, not inline on the UI thread, so it can never race
-     * [clearAll].
+     * Records an accepted prediction as a use; see [PersonalDictionaryStore.noteAcceptedSuggestion].
+     * A tap on a prediction that is not a learned pair changes nothing.
      */
     fun noteAcceptedPrediction(rawContext: String, rawWord: String) = onWorker {
         if (!open()) return@onWorker
@@ -175,17 +140,7 @@ internal class PersonalBigramStore(
         counterFlushPending = true
     }
 
-    /**
-     * Removes one pair and rewrites (or deletes, when it was the last) the file. The guarantees of
-     * the words store hold verbatim: [outcome] is told whether the pair is really gone, and the
-     * removal is published to READERS before the write, not after it — "erased means erased" — with
-     * the previous snapshot restored if the write fails.
-     *
-     * The pair is ALSO purged from the quarantine copy, if one exists: a copy that still holds a
-     * pair the user deleted would resurrect it on the next restore, and "forgotten" must not have
-     * a back door. A copy that cannot be rewritten without the pair is deleted outright — losing
-     * the salvage of other pairs is the smaller lie than keeping a deleted one.
-     */
+    /** Removes one pair. See [PersonalDictionaryStore.forget]. */
     fun forget(rawContext: String, rawWord: String, outcome: PersonalMutationOutcome? = null) = onWorker {
         val removed = try {
             removeOnWorker(rawContext, rawWord)
@@ -201,8 +156,7 @@ internal class PersonalBigramStore(
         if (alphabet == null) return false
         val normalizedContext = PersonalBigramWordFilter.normalize(rawContext)
         val normalizedWord = PersonalBigramWordFilter.normalize(rawWord)
-        // The pending hash goes with the pair: forgetting it must not leave progress behind that
-        // would re-learn it after two more observations.
+        // The pending hash goes with the pair, so it is not learned again.
         salt?.let { existing ->
             val key = PendingCounters.keyOfPair(existing, normalizedContext, normalizedWord)
             if (pending.countOf(key) > 0) {
@@ -212,9 +166,7 @@ internal class PersonalBigramStore(
         }
         val candidate = entries.remove(normalizedContext, normalizedWord)
         if (candidate === entries) {
-            // The pair was not in this store at all: nothing to remove, and from where the user
-            // stands it is gone, which is what they asked for. The quarantine purge still runs —
-            // a pair can sit in the copy without ever having been restored.
+            // Not saved, so already gone; the quarantine purge still runs.
             purgeFromQuarantine(normalizedContext, normalizedWord)
             return true
         }
@@ -241,12 +193,7 @@ internal class PersonalBigramStore(
         return true
     }
 
-    /**
-     * Erases this subtype's personal bigrams: empties memory and deletes the file, the pending
-     * counters, the salt and any quarantined copy of an unreadable file. The salt goes too, so the
-     * hashes of a future session cannot be compared with those of the erased one; a new one is
-     * created on demand.
-     */
+    /** Erases this subtype's learned pairs. See [PersonalDictionaryStore.clearAll]. */
     fun clearAll(outcome: PersonalMutationOutcome? = null) = onWorker {
         entries = PersonalBigramEntries.empty(maxPairs)
         counterFlushPending = false
@@ -256,15 +203,11 @@ internal class PersonalBigramStore(
         snapshot = PersonalBigramDictionary.EMPTY
         loaded = true
         if (!unlockGate()) {
-            // Memory is empty, the files are untouched and the next process start reads them all
-            // back. The screen shows an empty list either way, so this is exactly the case that must
-            // not pass for success.
+            // The files are untouched, so this is a failure.
             report(outcome, false)
             return@onWorker
         }
-        // Independent deletions, exactly like the words store: a failure on one must not skip the
-        // others — the same salt would otherwise keep the erased session's hashes comparable, and
-        // a quarantine copy left behind would resurrect pairs on the next restore.
+        // Independent deletions, as in PersonalDictionaryStore.clearAll.
         val storeGone = deleted { deleteFile() }
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
         val countersGone = directory != null &&
@@ -273,27 +216,21 @@ internal class PersonalBigramStore(
             deleted { deleteFile(directory, File(directory, SALT_FILE_NAME)) }
         val quarantineGone = directory != null &&
             deleted { deleteFile(directory, File(directory, quarantineFileName())) }
-        // The "not told yet" mark goes as well, but DELIBERATELY outside the answer below: it is not
-        // one of the user's pairs. Its only cost when it survives is one pointless notice about a
-        // list the user emptied by hand.
+        // The notice mark goes too, outside the answer below: it holds none of the user's pairs.
         if (directory != null) {
             deleted { deleteFile(directory, File(directory, quarantineNoticeFileName())) }
         }
         report(outcome, storeGone && countersGone && saltGone && quarantineGone)
     }
 
-    /** Clears the "not told yet" mark, on the worker, once the notice has actually reached the user. */
+    /** Clears the notice mark. See [PersonalDictionaryStore.noticeDelivered]. */
     fun noticeDelivered() = onWorker {
         justQuarantined = false
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return@onWorker
         deleted { deleteFile(directory, File(directory, quarantineNoticeFileName())) }
     }
 
-    /**
-     * Reads what is still readable in the quarantine copy and hands back TWO NUMBERS — how many
-     * pairs came out, and whether the copy was read to its end. No word and no path leaves here;
-     * `null` means there is no copy at all.
-     */
+    /** Reports what is readable in the quarantined file. See [PersonalDictionaryStore.inspectQuarantine]. */
     fun inspectQuarantine(sink: PersonalQuarantineReportSink) = onWorker {
         val salvage = try {
             readQuarantine()
@@ -307,17 +244,7 @@ internal class PersonalBigramStore(
         }
     }
 
-    /**
-     * Puts the salvaged pairs back into the store, at the user's explicit request and never on its
-     * own. Pairs already in the list are SKIPPED rather than upserted: a restore must not quietly
-     * promote them up the usage order, and skipping is what makes running it twice harmless.
-     * Pairs the user deleted since the copy was made are NOT in the copy any more ([forget] purges
-     * them there too), so a restore cannot resurrect them.
-     *
-     * The copy is deliberately NOT removed on success — restoring and discarding are two separate
-     * actions, and the damaged tail survives a restore for a later, better reader. "Erase all"
-     * still takes it with everything else (see [clearAll]).
-     */
+    /** Restores the salvaged pairs. See [PersonalDictionaryStore.restoreQuarantine]. */
     fun restoreQuarantine(outcome: PersonalMutationOutcome? = null) = onWorker {
         val restored = try {
             restoreOnWorker()
@@ -327,7 +254,7 @@ internal class PersonalBigramStore(
         report(outcome, restored)
     }
 
-    /** Removes the quarantine copy and nothing else. */
+    /** Removes the quarantined file and nothing else. */
     fun discardQuarantine(outcome: PersonalMutationOutcome? = null) = onWorker {
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
         val gone = directory != null &&
@@ -350,18 +277,12 @@ internal class PersonalBigramStore(
             candidate = candidate.upsert(context, salvage.successorRawForms[index], successor, 1)
             added++
         }
-        // Every salvaged pair was already there. Nothing to write, and from where the user stands
-        // the pairs they asked for are in the list, which is what they asked for.
+        // Every salvaged pair was already saved: nothing to write.
         if (added == 0) return true
         return commitWrite(candidate)
     }
 
-    /**
-     * The quarantine half of [forget]: drops the pair from the copy too, so a later restore cannot
-     * resurrect what the user deleted. A copy that becomes empty is removed; a copy that cannot be
-     * rewritten is removed as well — fail-closed toward NOT resurrecting, at the price of losing
-     * the salvage of the other pairs.
-     */
+    /** The quarantine half of [forget]. See `PersonalDictionaryStore.purgeFromQuarantine`. */
     private fun purgeFromQuarantine(normalizedContext: String, normalizedWord: String) {
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return
         val copy = File(directory, quarantineFileName())
@@ -397,14 +318,12 @@ internal class PersonalBigramStore(
             false
         }
         if (!rewritten) {
-            // The copy could not be rewritten without the deleted pair. Deleting it outright loses
-            // the salvage of the other pairs — and keeping it would resurrect a pair the user was
-            // told is gone. Erased means erased.
+            // Could not rewrite without the deleted pair: delete the file rather than keep it.
             deleted { deleteFile(directory, copy) }
         }
     }
 
-    /** Reads the copy behind the unlock gate. `null` when there is no readable copy to speak of. */
+    /** Reads the quarantined file behind the unlock gate; `null` when there is none to read. */
     private fun readQuarantine(): PersonalBigramQuarantineSalvage? {
         if (!unlockGate()) return null
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return null
@@ -412,11 +331,7 @@ internal class PersonalBigramStore(
         return PersonalBigramQuarantineSalvage.read(File(directory, quarantineFileName()), subtypeId)
     }
 
-    /**
-     * Flushes in-memory counter/serial changes to disk once, only when something changed — the one
-     * boundary (`SuggestionsController.onFinishInput`) where both the usage counters and the pending
-     * hashes are written, never per keystroke and never per completed pair.
-     */
+    /** Writes changed counters and serials to disk. See [PersonalDictionaryStore.flush]. */
     fun flush() = onWorker {
         if (!open()) return@onWorker
         if (counterFlushPending && writeWhole(entries)) counterFlushPending = false
@@ -426,11 +341,7 @@ internal class PersonalBigramStore(
         }
     }
 
-    /**
-     * Opens the store on its worker if it is not open yet, publishing the snapshot the engine will
-     * read. A no-op afterwards. Safe to call from any thread — like every other mutation it is an
-     * event on the executor, so the file read never lands on the caller's thread.
-     */
+    /** Opens the store on its worker. See [PersonalDictionaryStore.prime]. */
     fun prime() = onWorker { open() }
 
     /** Test hook: runs [block] on the store's executor (so tests can drive the serialized owner). */
@@ -441,8 +352,7 @@ internal class PersonalBigramStore(
     private fun isKnownContext(normalizedContext: String): Boolean = try {
         contextMembership.isKnownContext(subtypeId, normalizedContext)
     } catch (_: Exception) {
-        // A broken oracle vetoes the learn: fail-closed toward writing LESS, exactly like every
-        // other check in this class. The pair's pending progress is dropped by the caller.
+        // A throwing membership check vetoes the learn; the caller drops the pending progress.
         false
     }
 
@@ -453,11 +363,7 @@ internal class PersonalBigramStore(
         return true
     }
 
-    /**
-     * Runs ONE erasure step so that its failure can neither skip the next step nor escape: returns
-     * whether it went through. Nothing is logged — not the path, not the reason — which is why the
-     * boolean has to travel back to the caller instead.
-     */
+    /** Runs one erasure step. See `PersonalDictionaryStore.deleted`. */
     private inline fun deleted(step: () -> Unit): Boolean = try {
         step()
         true
@@ -465,12 +371,7 @@ internal class PersonalBigramStore(
         false
     }
 
-    /**
-     * The one way a mutation answers its caller. The callback belongs to an Activity and posts to
-     * the UI thread; a throw out of it on this bare single-thread executor — created with no
-     * `UncaughtExceptionHandler` — would reach `KillApplicationHandler`, so the answer travels
-     * inside its own `try`. And because [succeeded] is an ARGUMENT it is always evaluated.
-     */
+    /** The one way a mutation answers its caller. See `PersonalDictionaryStore.report`. */
     private fun report(outcome: PersonalMutationOutcome?, succeeded: Boolean) {
         if (outcome == null) return
         try {
@@ -479,12 +380,7 @@ internal class PersonalBigramStore(
         }
     }
 
-    /**
-     * Opens the directory once: honours the unlock gate (before the first unlock the path is
-     * physically inaccessible, so the feature stays empty and untouched), removes stale temps, reads
-     * the file into the model, and sets an unreadable file ASIDE (see [quarantine]), publishing an
-     * empty snapshot in the same step. Returns true once the store is loaded.
-     */
+    /** Opens the directory once. See `PersonalDictionaryStore.open`. */
     private fun open(): Boolean {
         if (loaded) return true
         if (!unlockGate()) return false
@@ -495,8 +391,7 @@ internal class PersonalBigramStore(
             entries = PersonalBigramEntries.empty(maxPairs)
             snapshot = PersonalBigramDictionary.EMPTY
         }
-        // The single place the notice is raised: every open passes here — the one that quarantined
-        // the file just now AND the one that merely found the mark a previous process left behind.
+        // The only place the notice is raised; see PersonalDictionaryStore.open.
         if (justQuarantined || quarantineNoticeIsMarked()) {
             try {
                 quarantineNotice?.onQuarantined()
@@ -535,11 +430,7 @@ internal class PersonalBigramStore(
         snapshot = entries.toSnapshot(subtypeId)
     }
 
-    /**
-     * The whole-file write sequence. Returns true only when every step succeeded. On any caught
-     * failure the temp is removed and false is returned, leaving the previous file untouched. An
-     * uncaught [Error] (a simulated process death) leaves the temp for the next open to discard.
-     */
+    /** The whole-file write sequence. See `PersonalDictionaryStore.writeWhole`. */
     private fun writeWhole(candidate: PersonalBigramEntries): Boolean {
         val directory = directoryProvider.personalDirectory()
         return try {
@@ -571,11 +462,8 @@ internal class PersonalBigramStore(
     }
 
     /**
-     * The salt for the pending hashes: 16 random bytes in the store's OWN `salt-bigrams.bin`,
-     * created on first use and destroyed by [clearAll]. The bigram store does not share the words
-     * store's `salt.bin`: erasing one feature's data must not silently invalidate the other
-     * feature's pending progress. Returns null when the salt can neither be read nor created — in
-     * which case nothing is counted at all, the fail-closed direction.
+     * The salt for the pending hashes, in this store's own `salt-bigrams.bin`, so erasing one
+     * feature does not invalidate another's progress. See `PersonalDictionaryStore.saltOrCreate`.
      */
     private fun saltOrCreate(): ByteArray? {
         salt?.let { return it }
@@ -602,10 +490,7 @@ internal class PersonalBigramStore(
     private fun readPending(directory: File) {
         pending = try {
             val file = File(directory, pendingFileName())
-            // The size cap comes BEFORE the read: a file past MAX_SERIALIZED_BYTES can never parse
-            // (parse bounds the record count by MAX_PENDING), so reading it would only allocate for
-            // garbage — and past 2 GiB readBytes() throws an OutOfMemoryError, an Error that the
-            // catch below cannot stop (S2 of docs/AUDIT-2026-08-31.md).
+            // Size check before the read; see PersonalDictionaryStore.readPending.
             if (file.isFile && file.length() <= PendingCounters.MAX_SERIALIZED_BYTES) {
                 PendingCounters.parse(file.readBytes())
             } else {
@@ -625,12 +510,7 @@ internal class PersonalBigramStore(
         false
     }
 
-    /**
-     * Writes one small fixed-size file through the same temp → fsync → atomic replace → directory
-     * fsync sequence the store itself uses. The pending file and the salt are not user text, but a
-     * half-written one would be read as garbage, and fail-closed parsing would then silently drop a
-     * user's progress.
-     */
+    /** Writes one small file durably. See `PersonalDictionaryStore.writeBytesDurably`. */
     private fun writeBytesDurably(directory: File, destination: File, bytes: ByteArray) {
         val temporary = createExclusiveTemp(directory)
         try {
@@ -647,14 +527,7 @@ internal class PersonalBigramStore(
         }
     }
 
-    /**
-     * Moves an unreadable file into this subtype's single quarantine slot instead of deleting it,
-     * and tells [quarantineNotice] that the list the user will see is empty for a reason — the
-     * same discipline as the words store: ONE slot per language, replaced by the next corruption,
-     * named so that nothing validates, reads or cleans it up by accident, and removed by
-     * [clearAll]. If the move itself cannot happen the unreadable file is removed after all:
-     * leaving it where the reader looks would fail validation again on every single start.
-     */
+    /** Quarantines an unreadable file. See `PersonalDictionaryStore.quarantine`. */
     private fun quarantine(directory: File, file: File) {
         val moved = try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
@@ -664,9 +537,7 @@ internal class PersonalBigramStore(
             false
         }
         if (!moved) runCatching { deleteFile(directory, file) }
-        // Said in both cases: what the user is told is that the list is empty and that they did not
-        // do it, which is equally true whether the copy was kept or could not be made. The mark is
-        // one byte whose EXISTENCE is the whole message: no word, no path, no reason — a flag.
+        // Marked in both cases; see PersonalDictionaryStore.quarantine.
         justQuarantined = true
         runCatching {
             writeBytesDurably(directory, File(directory, quarantineNoticeFileName()), ByteArray(1))
@@ -678,7 +549,7 @@ internal class PersonalBigramStore(
 
     private fun quarantineNoticeFileName(): String = "quarantine-notice-bigrams-$subtypeId-s1-f1.flag"
 
-    /** Whether the on-disk "not told yet" mark is there. Fail-closed to "already told". */
+    /** Whether the on-disk notice mark exists; false on error. */
     private fun quarantineNoticeIsMarked(): Boolean = try {
         File(directoryProvider.personalDirectory(), quarantineNoticeFileName()).isFile
     } catch (_: Exception) {
@@ -687,10 +558,7 @@ internal class PersonalBigramStore(
 
     private fun pendingFileName(): String = "pending-bigrams-$subtypeId-s1-f1.bin"
 
-    /**
-     * Removes this subtype's `.tpersb` file. Returns nothing ON PURPOSE, like the words store's:
-     * a throw is the single failure signal, and the callers' `try`/[deleted] is what answers for it.
-     */
+    /** Removes this subtype's `.tpersb` file. Fails only by throwing. */
     private fun deleteFile() {
         val directory = directoryProvider.personalDirectory()
         val file = File(directory, TpersbFormat.personalBigramsFileName(subtypeId))
@@ -731,12 +599,7 @@ internal class PersonalBigramStore(
     }
 
     companion object {
-        /**
-         * Clean observations of one pair before it is written into the store itself (P1 pin).
-         * Lower than the words store's 3 on purpose: the context half is independently gated by
-         * the dictionary-membership check at graduation, which is the filter the third observation
-         * provides for single words.
-         */
+        /** Clean observations of one pair before it is saved; see the class doc. */
         const val LEARN_THRESHOLD = 2
 
         private const val TEMP_PREFIX = ".personal-bigrams-"
@@ -746,10 +609,7 @@ internal class PersonalBigramStore(
         private const val SALT_FILE_NAME = "salt-bigrams.bin"
         private const val SALT_SIZE = 16
 
-        /**
-         * Appended to the ordinary file name for the one quarantine slot. Deliberately not a
-         * `.tpersb` name and not a temp name: nothing reads it, nothing cleans it up by accident.
-         */
+        /** Appended to the ordinary file name for the quarantine slot. See [PersonalDictionaryStore]. */
         private const val QUARANTINE_SUFFIX = ".quarantine"
     }
 }

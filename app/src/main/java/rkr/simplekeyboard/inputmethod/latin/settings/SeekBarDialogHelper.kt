@@ -24,16 +24,13 @@ import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 
 /**
- * Seek-bar value dialog for the View-based settings screens: the dialog
- * half of the legacy SeekBarDialogPreference (removed in S2) extracted
- * into a plain AlertDialog over the same layout/seek_bar_dialog.xml.
- *
- * Value semantics (progress↔value mapping, step clipping, the
- * OK/Cancel/Default button contract) are ported 1:1.
+ * Seek-bar value dialog for the View-based settings screens: a plain AlertDialog over
+ * layout/seek_bar_dialog.xml with the value semantics of the former SeekBarDialogPreference
+ * (progress↔value mapping, step clipping, OK/Cancel/Default buttons).
  */
 object SeekBarDialogHelper {
 
-    /** Mirror of the legacy SeekBarDialogPreference.ValueProxy. */
+    /** Reads, writes and formats the value behind one seek-bar row. */
     interface ValueProxy {
         fun readValue(key: String): Int
         fun readDefaultValue(key: String): Int
@@ -91,9 +88,9 @@ object SeekBarDialogHelper {
                 onValueChanged()
             }
             .create()
-        // Same rule as the rest of the app's dialogs (audit 2026-09-02, C5): the layout's own
-        // rows already carry android:filterTouchesWhenObscured, the window's decor view covers
-        // the platform's button panel.
+        // Same rule as the rest of the app's dialogs: the layout's own rows already carry
+        // android:filterTouchesWhenObscured, the window's decor view covers the platform's
+        // button panel.
         DialogUtils.filterObscuredTouches(dialog)
         dialog.show()
         return dialog

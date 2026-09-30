@@ -26,7 +26,7 @@ import kotlin.math.sqrt
  * The algorithmic ideas (arc-length resampling, bounding-box normalization by the longest side)
  * follow the SHARK2-style statistical classifier as implemented by FlorisBoard's
  * `StatisticalGlideTypingClassifier` (Apache-2.0, (C) the FlorisBoard contributors); the code is
- * written fresh for this engine's scratch-buffer discipline. One deliberate deviation: the
+ * written new around caller-provided scratch buffers. One deliberate deviation: the
  * reference resampler targets approximately N points and reads past the end as zeros, while this
  * one always produces EXACTLY [numPoints] points — the pointwise distance sums of the two
  * channels then compare aligned samples on both sides, including both endpoints.
@@ -37,7 +37,7 @@ object GlideResampler {
      * Resamples the polyline ([xs], [ys], [size]) into exactly [numPoints] equidistant points
      * along the path's arc length (both endpoints included), writing them into
      * ([outX], [outY]) which must hold at least [numPoints] entries. Returns [numPoints], or 0
-     * for an empty input (fail-closed: nothing is written).
+     * (nothing written) for an empty input.
      *
      * A zero-length path (all points coincident) degenerates to the single point repeated, so a
      * tap-like input resamples cleanly instead of dividing by zero. Zero-length interior segments
@@ -100,9 +100,9 @@ object GlideResampler {
     /**
      * Bounding-box normalization against a GIVEN bbox: translates the bbox center to the origin
      * and scales by the longest side (guarded against a zero side), so the shape channel compares
-     * gesture SHAPES independent of where on the keyboard and at what size they were drawn. The
-     * decoder passes the RAW path's bbox (computed from the recorded points) — the resampled
-     * samples' own bbox could miss an unsampled extremal vertex (P7-4).
+     * gesture shapes independent of where on the keyboard and at what size they were drawn. The
+     * decoder passes the raw path's bbox, because the resampled points can miss an extremal
+     * vertex.
      */
     fun normalizeByBoxSide(
         xs: FloatArray,

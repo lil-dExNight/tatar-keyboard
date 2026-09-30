@@ -25,8 +25,8 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 /**
- * The immutable in-memory model of one subtype's personal dictionary, holding the PURE mutation and
- * LRU-eviction logic kept deliberately apart from all I/O so it is covered by plain JVM tests.
+ * The immutable in-memory model of one subtype's personal dictionary: the mutation and LRU-eviction
+ * logic, kept apart from all I/O so plain JVM tests cover it.
  *
  * Three parallel arrays plus a parallel serial array, all ordered by the NORMALIZED form ascending
  * (byte-unsigned order of the UTF-8 encoding — the same order `TpersValidator` enforces on disk):
@@ -35,9 +35,8 @@ import java.security.MessageDigest
  * - [usageCountAt] — per-word usage counters (u16, >= 1);
  * - [lastUseSerialAt] — per-word monotonic last-use serials (u32) driving LRU.
  *
- * Every mutation returns a NEW instance; nothing is changed in place. NOT a Kotlin `data class`: it
- * carries the user's words, and a synthesised `toString` would print them at the first
- * interpolation.
+ * Every mutation returns a new instance; nothing is changed in place. A plain class without a
+ * generated `toString`, because it carries the user's words.
  *
  * LRU is keyed by a monotonic file serial ([nextSerial]), never the system clock: eviction removes
  * the entry with the smallest last-use serial. The record cap [maxEntries] is injectable so the
@@ -69,8 +68,8 @@ internal class PersonalEntries private constructor(
      * its usage counter and touches its LRU serial. When the result exceeds [maxEntries] the entry
      * with the smallest last-use serial is evicted. Returns a new instance.
      *
-     * An existing entry keeps its already-stored raw form (its casing is not overwritten by a later
-     * add of a differently-cased spelling); the casing chosen for display is E4b's concern.
+     * An existing entry keeps its stored raw form: a later add with different casing does not
+     * overwrite it.
      */
     fun upsert(rawWord: String, normalized: String): PersonalEntries {
         val existing = indexOfNormalized(normalized)
@@ -175,7 +174,7 @@ internal class PersonalEntries private constructor(
         )
     }
 
-    /** Estimated on-disk size (header + records), for the pre-write free-space check. */
+    /** Estimated on-disk size (header + records). */
     fun estimatedFileSize(): Int =
         TpersFormat.HEADER_SIZE +
             rawForms.sumOf { TpersFormat.RECORD_HEADER_SIZE + it.toByteArray(StandardCharsets.UTF_8).size }

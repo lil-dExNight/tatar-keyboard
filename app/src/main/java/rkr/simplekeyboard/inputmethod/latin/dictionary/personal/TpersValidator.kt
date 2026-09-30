@@ -27,16 +27,15 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Thrown by [TpersValidator] on any violation. The message is ALWAYS a constant: it never
- * interpolates the offending word, the file path or any other user text (privacy contract of the
- * personal package). Not a Kotlin `data class`, so no synthesised `toString` can leak a field.
+ * Thrown by [TpersValidator] on any violation. The message is always a constant: it never contains
+ * the offending word, the file path or any other user text.
  */
 class PersonalDictionaryValidationException internal constructor(message: String) :
     Exception(message)
 
 /**
- * A validated `.tpers` file, ready to become an immutable snapshot. Not a `data class`: it carries
- * the user's words and an auto-generated `toString` would print them on the first interpolation.
+ * A validated `.tpers` file, ready to become an immutable snapshot. A plain class without a
+ * generated `toString`, because it carries the user's words.
  */
 class ValidatedPersonalDictionary internal constructor(
     /** Words in their ORIGINAL on-disk form, in normalized-ascending order. */
@@ -54,11 +53,11 @@ class ValidatedPersonalDictionary internal constructor(
 }
 
 /**
- * Fail-closed validator for the `.tpers` format, modelled on `TdictValidator`.
+ * Strict validator for the `.tpers` format, modelled on `TdictValidator`.
  *
- * Every check is explicitly attributed to the RAW or the NORMALIZED form of a record, mirroring the
- * frozen contract. Any violation throws [PersonalDictionaryValidationException]; the reader turns
- * that into an empty personal dictionary. Nothing here logs, and no message carries user text.
+ * Every check applies to either the raw or the normalized form of a record. Any violation throws
+ * [PersonalDictionaryValidationException]; the reader turns that into an empty personal dictionary.
+ * Nothing here logs, and no message carries user text.
  */
 class TpersValidator {
     /**

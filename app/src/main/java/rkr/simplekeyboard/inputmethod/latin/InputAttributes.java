@@ -36,25 +36,15 @@ public final class InputAttributes {
     final public boolean mApplicationSpecifiedCompletionOn;
     final public boolean mShouldInsertSpacesAutomatically;
     /**
-     * Whether the editor asked the IME not to learn from, or personalize for, what is typed in it
-     * ({@link EditorInfo#IME_FLAG_NO_PERSONALIZED_LEARNING}). Incognito browser tabs and the
-     * "incognito keyboard" switch of messengers set it, usually on a field whose inputType is an
-     * ordinary text one, so this is the only signal that distinguishes them.
-     *
-     * <p>Unlike every other attribute here it comes from {@code imeOptions} rather than from
-     * {@code inputType}, and it is computed for every input class rather than for text fields
-     * only.</p>
-     *
-     * <p>The constant was added in API 26 while this app supports API 24 upwards, but it is a
-     * compile-time {@code static final int}, so its value is inlined at build time and nothing is
-     * resolved at runtime; on API 24-25 no platform sets the bit and this is simply false.</p>
+     * {@link EditorInfo#IME_FLAG_NO_PERSONALIZED_LEARNING}, set by incognito browser tabs and
+     * messenger "incognito keyboard" switches. Read from {@code imeOptions}, not {@code inputType},
+     * for every input class. The API 26 constant is inlined at compile time; on API 24-25 it is
+     * never set.
      */
     final public boolean mNoPersonalizedLearning;
     /**
-     * True for {@link InputType#TYPE_TEXT_VARIATION_POSTAL_ADDRESS}. Used ONLY as a factor of the
-     * E4c learning predicate: a street or a village name in Cyrillic passes every content filter
-     * the personal dictionary has, so the field type itself is the only thing that can tell it
-     * apart. Suggestions in such a field are unaffected.
+     * True for {@link InputType#TYPE_TEXT_VARIATION_POSTAL_ADDRESS}. Only stops personal
+     * dictionary learning (a street name passes every content filter); suggestions are unaffected.
      */
     final public boolean mIsPostalAddressField;
     final private int mInputType;
@@ -64,15 +54,12 @@ public final class InputAttributes {
         final int inputType = null != editorInfo ? editorInfo.inputType : 0;
         final int inputClass = inputType & InputType.TYPE_MASK_CLASS;
         mInputType = inputType;
-        // Deliberately computed before the early return of the non-text branch below: a field that
-        // forbids personalized learning has to be recognised whatever its input class is.
+        // Computed before the non-text early return: the flag applies to every input class.
         mNoPersonalizedLearning = readNoPersonalizedLearning(editorInfo);
         mIsPasswordField = InputTypeUtils.isPasswordInputType(inputType)
                 || InputTypeUtils.isVisiblePasswordInputType(inputType);
-        // E4c, LOCAL to the personal dictionary: a postal-address field is NOT part of
-        // shouldSuppressSuggestions below, so suggestions stay on there exactly as before — only
-        // LEARNING is blocked. Computed here, before the non-text early return, for the same reason
-        // mNoPersonalizedLearning is: the answer must not depend on the input class.
+        // Not part of shouldSuppressSuggestions below: an address field keeps suggestions and only
+        // blocks learning. Computed before the non-text early return, like the flag above.
         mIsPostalAddressField = InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS
                 == (inputType & InputType.TYPE_MASK_VARIATION);
         if (inputClass != InputType.TYPE_CLASS_TEXT) {
@@ -137,11 +124,8 @@ public final class InputAttributes {
     }
 
     public boolean isSameInputType(final EditorInfo editorInfo) {
-        // The personalized-learning flag takes part in the comparison because the caller uses this
-        // to decide whether the settings may be reused as they are. An app that flips its own
-        // "incognito keyboard" switch calls restartInput() on the same view with the same inputType
-        // and only imeOptions changed; comparing inputType alone would keep the previous, permissive
-        // attributes for a field that has just asked not to be personalized for.
+        // The learning flag is compared too: an app that toggles its "incognito keyboard" switch
+        // restarts input with the same inputType and only imeOptions changed.
         return editorInfo.inputType == mInputType
                 && readNoPersonalizedLearning(editorInfo) == mNoPersonalizedLearning;
     }
@@ -149,9 +133,8 @@ public final class InputAttributes {
     // Pretty print
     @Override
     public String toString() {
-        // The target app's package name is deliberately NOT printed (2026-09-24 audit, finding
-        // 10): this string is for debugging, and which app the user typed in is not the
-        // keyboard's business to log.
+        // The target app's package name is not printed: which app the user types in is not
+        // something the keyboard logs.
         return String.format(
                 "%s: inputType=0x%08x%s%s%s%s%s%s\n", getClass().getSimpleName(),
                 mInputType,

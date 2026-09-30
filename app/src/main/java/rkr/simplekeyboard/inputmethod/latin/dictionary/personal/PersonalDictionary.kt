@@ -24,9 +24,8 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
  * - [normalizedForms] — the NFC lowercase forms used for search, dedup and equality;
  * - [usageCounts] — per-word usage counters.
  *
- * NOT a Kotlin `data class`: it carries the user's words, and a synthesised `toString` would print
- * them at the first interpolation. This class writes nothing to disk — E4a-1 is a read-only path;
- * atomic writing and LRU eviction are E4a-2.
+ * A plain class without a generated `toString`, because it carries the user's words. Read-only:
+ * writing and LRU eviction live in the store package.
  */
 class PersonalDictionary private constructor(
     private val rawForms: Array<String>,
@@ -47,31 +46,22 @@ class PersonalDictionary private constructor(
     fun normalizedFormAt(index: Int): String = normalizedForms[index]
 
     /**
-     * The usage counter at [index] — how often the word earned its place (learned observations
-     * plus accepted suggestions). The "Personal dictionary" screen shows it beside the word (U7
-     * of Phase 2, docs/ROADMAP-P2.md); the lookup path orders by it and never needs to read it
-     * one at a time.
+     * The usage counter at [index] (learned observations plus accepted suggestions), shown beside
+     * the word on the personal dictionary screen.
      */
     fun usageCountAt(index: Int): Int = usageCounts[index]
 
     /**
-     * Returns the raw forms whose NORMALIZED form starts with [normalizedPrefix], EXCLUDING any
-     * record whose normalized form is exactly equal to the prefix. Equality is on the normalized
-     * form, never on raw bytes ("Контракт текста" edit 3): a personal "Гүзәл" is excluded when the
-     * user has already typed "гүзәл", but "гүзәллек" is kept.
-     *
-     * Ordered by usage count descending, then by normalized form ascending (the personal order).
-     * The final three-class merge with the dictionary asset and the exact-vs-fuzzy ranking are
-     * E4b; this is the read-only building block only.
+     * Returns the raw forms whose normalized form starts with [normalizedPrefix], excluding a record
+     * equal to the prefix: a personal "Гүзәл" is excluded when "гүзәл" is typed, "гүзәллек" is kept.
+     * Ordered by usage count descending, then normalized form ascending (the personal order).
      */
     fun lookupRawForms(normalizedPrefix: String): List<String> =
         lookupCandidates(normalizedPrefix).map(PersonalCandidate::rawForm)
 
     /**
-     * The same search as [lookupRawForms], but each match carries BOTH forms: the raw one to show
-     * and the normalized one to compare by. The three-class merge (E4b) needs both — duplicate
-     * detection against dictionary candidates is defined on the normalized form, while the cell
-     * shows the form the user saved.
+     * The same search as [lookupRawForms], but each match carries both forms: the raw one to show
+     * and the normalized one to compare by (see [PersonalCandidate]).
      */
     fun lookupCandidates(normalizedPrefix: String): List<PersonalCandidate> {
         if (isEmpty || normalizedPrefix.isEmpty()) return emptyList()
@@ -91,9 +81,8 @@ class PersonalDictionary private constructor(
     }
 
     /**
-     * The index of [normalized] in the parallel array of normalized forms, or -1. A BINARY search,
-     * as the E4d contract requires — the array is sorted by that very form, and a linear scan over
-     * up to 2 000 entries would run on the UI thread's long-press timer.
+     * The index of [normalized] in the normalized forms, or -1. A binary search: it runs on the UI
+     * thread's long-press timer, where a linear scan over all entries is too slow.
      */
     fun indexOfNormalized(normalized: String): Int {
         val index = lowerBound(normalized)

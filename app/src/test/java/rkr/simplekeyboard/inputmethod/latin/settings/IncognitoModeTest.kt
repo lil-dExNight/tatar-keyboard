@@ -105,7 +105,7 @@ class IncognitoModeTest {
         // There is ONE place that computes "may we learn", and the pause is computed there — not
         // sprinkled over the sinks, the stores or the controller, where a second check could drift.
         val predicate = ime.substringAfter("private boolean mayLearnPersonalWords()")
-            .substringBefore("// The key-neighbor table")
+            .substringBefore("private void updateKeyNeighbors()")
         assertTrue("the predicate delegates the conjunction to the pure gates object",
             predicate.contains("PersonalLearningGates.mayLearn("))
         assertTrue("and hands it the live incognito read",

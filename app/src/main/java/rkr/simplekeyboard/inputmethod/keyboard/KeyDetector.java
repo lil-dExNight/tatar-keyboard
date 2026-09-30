@@ -80,7 +80,7 @@ public class KeyDetector {
      * {@code keyHysteresisDistance} alone (5dp here, less than the platform's own 8dp touch slop),
      * which arms the momentary layout switch that springs back on release. This slop is measured
      * from the <em>touch-down point</em> instead, so it does not depend on where inside the key the
-     * press landed. See {@code docs/SYMBOL-KEY-EDGE-FIX.md}.</p>
+     * press landed.</p>
      *
      * @param downX x-coordinate of the touch-down point
      * @param downY y-coordinate of the touch-down point

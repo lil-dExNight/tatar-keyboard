@@ -29,9 +29,7 @@
              bottom row already spends one key on the globe, and a second one would leave the space
              bar at 30%p (111dp here) and push its centre 6mm right of the screen centre. In that
              configuration the emoji key is dropped and the emoji panel moves onto the comma key's
-             long press instead (see key_styles_settings.xml) — the same trade Gboard makes.
-
-             The showEmojiKey="false" cases are byte-for-byte identical to the pre-emoji layout. -->
+             long press instead (see key_styles_settings.xml), as Gboard does. -->
         <case
             latin:keyboardLayoutSet="bengali_akkhor|farsi|kannada|nepali_romanized|nepali_traditional|urdu|telugu"
             latin:languageSwitchKeyEnabled="true"

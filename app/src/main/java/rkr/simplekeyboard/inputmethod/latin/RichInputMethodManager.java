@@ -682,7 +682,8 @@ public class RichInputMethodManager {
         lp.type = WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG;
         window.setAttributes(lp);
         window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
-        // Audit 2026-09-02, C5: attached to the IME window, the picker floats over other apps.
+        // Attached to the IME window, the picker floats over other apps, so it drops touches
+        // while something obscures it.
         DialogUtils.filterObscuredTouches(dialog);
 
         dialog.show();

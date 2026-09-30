@@ -30,9 +30,7 @@ import java.util.concurrent.ExecutorService
 
 /**
  * The storage-preparation seams of [SuggestionsController]: background unpacking/validation of the
- * dictionary and of the bigram table, plus the catalogs the engines are started from. Pure move
- * from `SuggestionsController.kt` (ROADMAP Phase 6, T2); the production implementations stopped
- * being file-private and became `internal` for that reason alone.
+ * dictionary and of the bigram table, plus the catalogs the engines are started from.
  */
 
 /**
@@ -61,8 +59,8 @@ interface DictionaryPreparation {
  * Production [DictionaryPreparation] over the device-protected dictionary store.
  *
  * Built on the first preparation request only: constructing the store resolves the
- * device-protected context and the supported-artifact list, which is exactly the work that must not
- * happen for a user who leaves suggestions off.
+ * device-protected context and the supported-artifact list, work that must not happen for a user
+ * who leaves suggestions off.
  */
 internal class DeviceProtectedDictionaryPreparation(
     private val storage: DictionaryStorageController,
@@ -76,8 +74,8 @@ internal class DeviceProtectedDictionaryPreparation(
     companion object {
         /**
          * Storage for the dictionary of [subtypeId], or null when that subtype ships none (every
-         * layout but the two that do) or the store cannot be built at all — both leave the caller
-         * fail-closed with no engine and a hidden strip.
+         * layout but the two that do) or the store cannot be built at all; both leave the caller
+         * with no engine and a hidden strip.
          */
         fun create(
             context: Context,
@@ -99,12 +97,9 @@ internal class DeviceProtectedDictionaryPreparation(
 }
 
 /**
- * E5c two-stage readiness: lazily created bigram-table storage, the exact same shape as
- * [DictionaryPreparation] for the exact same reason (a user who never turns suggestions on never
- * pays disk space or background work for the bigram table either) — kept a SEPARATE interface
- * rather than folding into [DictionaryPreparation] because the two artifacts already don't share
- * a spec, validator or store (`docs/DICTIONARY-E5B.md`), and merging their controller seams here
- * would just recreate that coupling one layer up.
+ * Lazily created bigram-table storage, shaped like [DictionaryPreparation] for the same reason
+ * (no disk space or background work until suggestions are turned on). A separate interface because
+ * the two artifacts share no spec, validator or store.
  */
 interface BigramPreparation {
     fun prepare(onResult: (BigramPreparationResult) -> Unit)
@@ -121,12 +116,10 @@ internal class DeviceProtectedBigramPreparation(
 
     companion object {
         /**
-         * Storage for the next-word table of [subtypeId], or null when that subtype ships none —
-         * asked of the SAME registry [DeviceProtectedDictionaryPreparation.create] asks for the
-         * dictionary, so the two can never end up on different languages. A language present in
-         * the registry with no table, and a subtype absent from it entirely, both land here as
-         * null and leave NEXT_WORD answering an empty list: the exact fail-closed shape a missing
-         * table already had, with no effect on prefix suggestions or ordinary input.
+         * Storage for the next-word table of [subtypeId], or null when that subtype ships none.
+         * Asks the same registry as [DeviceProtectedDictionaryPreparation.create], so the two never
+         * end up on different languages. Null leaves NEXT_WORD answering an empty list, with no
+         * effect on word completion or ordinary input.
          */
         fun create(
             context: Context,

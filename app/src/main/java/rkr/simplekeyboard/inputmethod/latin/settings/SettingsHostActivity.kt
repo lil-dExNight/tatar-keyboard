@@ -50,51 +50,21 @@ import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
 
 /**
- * View-based settings screens (IOS-REDESIGN.md S1 + S2): every screen of
- * the app (root, Preferences, Key press, Appearance, Languages and the
- * per-language layouts screen) rendered as iOS-style grouped cards built
- * from the row_link / row_switch / row_value layouts — no
- * android.preference, no new dependencies.
- *
- * Navigation is a single Activity swapping pages inside one scaffold
- * ([R.layout.settings_screen]) with a manual back stack, so system back
- * and the back chevron pop pages exactly like separate activities would,
- * without six manifest entries. The item composition of every screen is
- * 1:1 with the legacy screen it replaces.
- *
- * The pieces of the legacy harness this class carries over
- * (SubScreenFragment / the settings fragments / InputMethodSettingsImpl /
- * LanguagesSettingsFragment / SingleLanguageSettingsFragment):
- *  - device-protected SharedPreferences via [PreferenceManagerCompat]
- *  - the legacy harness scheduled a backup after every preference change;
- *    that is deliberately NOT carried over. E2b-3 turns backup off
- *    (android:allowBackup="false") and excludes every app data domain in
- *    res/xml/data_extraction_rules.xml (API 31+; its device-transfer section
- *    is what closes D2D transfer, which allowBackup=false does not), so a
- *    per-change backup request would have nothing to back up and is gone
- *  - enterprise restrictions ([Settings.ACTIVE_RESTRICTIONS]) disable rows
- *  - dependency chains: sound volume ⇢ sound_on, IME switch ⇢ language key
- *  - [KeyboardLayoutSet.onKeyboardThemeChanged] for the number-row and
- *    special-chars toggles so the open keyboard rebuilds its layout live
- *  - vibrate row hidden without a vibrator; on-screen-keyboard row only
- *    on API 36+ (as in the legacy fragments)
- *  - [RichInputMethodManager.init] before any subtype access, and content
- *    rebuilt on every [onStart] (the legacy fragments' buildContent)
- *
- * [Screen.LANGUAGE_DETAIL] is the one parameterized screen: its locale
- * lives in [detailLocale] and rides along in the saved instance state.
- *
- * T2 part 3 (docs/ROADMAP-P6.md) split the file without touching a call
- * site: the row builders live in `SettingsRows.kt`, the two languages
- * screens in `SettingsLanguagesScreens.kt`, the key-press screen and the
- * seek-bar proxies in `SettingsKeyPressScreen.kt` — all `internal`
- * extension functions on this activity, because sixteen source-contract
- * tests pin their exact call text to this file.
+ * View-based settings screens, built as iOS-style grouped cards from the row_link / row_switch /
+ * row_value layouts without android.preference. One activity swaps pages inside one scaffold
+ * ([R.layout.settings_screen]) with a manual back stack, so system back and the back chevron
+ * behave like separate activities. Prefs are device-protected ([PreferenceManagerCompat]);
+ * enterprise restrictions ([Settings.ACTIVE_RESTRICTIONS]) disable rows; theme-affecting toggles
+ * rebuild the open keyboard live; content is rebuilt on every [onStart]. Backup is off for the
+ * whole app (res/xml/data_extraction_rules.xml), so no backup is requested on changes.
+ * [Screen.LANGUAGE_DETAIL] is the one parameterized screen: its locale lives in [detailLocale].
+ * Row builders and some screens are `internal` extensions in `SettingsRows.kt`,
+ * `SettingsLanguagesScreens.kt` and `SettingsKeyPressScreen.kt`.
  */
 class SettingsHostActivity : Activity() {
 
-    // internal, not private: the languages screens live in SettingsLanguagesScreens.kt since the
-    // T2 split (docs/ROADMAP-P6.md, part 3) and navigate by these constants from there.
+    // internal, not private: the languages screens in SettingsLanguagesScreens.kt navigate by
+    // these constants.
     internal enum class Screen(val titleRes: Int) {
         ROOT(R.string.english_ime_name),
         PREFERENCES(R.string.settings_screen_preferences),
@@ -110,15 +80,14 @@ class SettingsHostActivity : Activity() {
         private const val TRANSITION_NONE = 0
         private const val TRANSITION_FORWARD = 1
         private const val TRANSITION_BACKWARD = -1
-        /** M5: iOS pushes a screen in over a short distance; 24dp reads as motion, not travel. */
+        /** Slide distance of a screen push/pop; 24dp reads as motion, not travel. */
         private const val SCREEN_TRANSITION_OFFSET_DP = 24f
         private const val SCREEN_TRANSITION_MS = 200L
         private val TAG = SettingsHostActivity::class.java.simpleName
         private const val STATE_SCREEN = "screen"
         private const val STATE_BACK_STACK = "back_stack"
         private const val STATE_DETAIL_LOCALE = "detail_locale"
-        // internal, not private: the row builders live in SettingsRows.kt since the T2 split
-        // (docs/ROADMAP-P6.md, part 3) and read them from there.
+        // internal, not private: read by the row builders in SettingsRows.kt.
         internal const val DISABLED_ALPHA = 0.4f
         internal const val PERCENTAGE_FLOAT = 100.0f
     }
@@ -131,10 +100,9 @@ class SettingsHostActivity : Activity() {
 
     private val backStack = ArrayDeque<Screen>()
     /**
-     * M5: the direction of the navigation that triggered the next [showScreen] — set by
-     * [navigateTo] and [onBackPressed], consumed (and reset) by [playScreenTransition]. A
-     * rebuild with no navigation behind it (create, restore, a refresh after an edit) leaves it
-     * at [TRANSITION_NONE] and animates nothing.
+     * Direction of the navigation behind the next [showScreen]: set by [navigateTo] and
+     * [onBackPressed], consumed by [playScreenTransition]. A rebuild without navigation (create,
+     * restore, refresh after an edit) stays at [TRANSITION_NONE] and does not animate.
      */
     private var pendingTransition = TRANSITION_NONE
     internal var currentDialog: AlertDialog? = null
@@ -151,40 +119,25 @@ class SettingsHostActivity : Activity() {
     private var personalSearchQuery: String = ""
 
     /**
-     * The quarantine copies found for each language, or null while the answer is still being read.
-     *
-     * Null is "not asked yet", not "none": the read happens on the personal-store worker like every
-     * other read in that subsystem, so the screen paints once without the card and repaints when the
-     * answers arrive. Every finished mutation puts it back to null, because a restore, a discard and
-     * an erasure all change what the answer is.
-     *
-     * It holds two numbers per language and no word — see `PersonalQuarantineReport`.
+     * The quarantined copies found for each language, or null while not read yet (not "none").
+     * The read runs on the personal-store worker, so the screen paints once without the card and
+     * repaints when the answer arrives. Every finished mutation resets it to null. Holds two
+     * numbers per language and no word (see `PersonalQuarantineReport`).
      */
     private var personalQuarantines: Map<String, PersonalQuarantineReport>? = null
 
     /**
-     * The pairs half of [personalQuarantines] (U7 of Phase 2, docs/ROADMAP-P2.md): the same
-     * not-asked/asking/answered lifecycle, the same invalidation rule — every finished pair
-     * mutation puts it back to null. The two maps are separate because the two stores quarantine
-     * independently; a language can hold a copy of its words, of its pairs, of both or of neither.
+     * The learned-pairs counterpart of [personalQuarantines], with the same lifecycle and reset
+     * rule. The maps are separate because each store quarantines its file independently.
      */
     private var personalPairQuarantines: Map<String, PersonalQuarantineReport>? = null
 
-    /**
-     * The emoji third of [personalQuarantines]: the same not-asked/asking/answered lifecycle, the
-     * same invalidation rule — every finished emoji mutation puts it back to null. The three maps
-     * are separate because the three stores quarantine independently; a language can hold a copy of
-     * its words, of its pairs, of its learned emoji, of any combination or of none.
-     */
+    /** The learned-emoji counterpart of [personalQuarantines]; see [personalPairQuarantines]. */
     private var personalEmojiQuarantines: Map<String, PersonalQuarantineReport>? = null
 
     /**
-     * Registered on the device-protected prefs exactly like
-     * SubScreenFragment.onCreate, minus its backup request: E2b-3 disables
-     * backup entirely, so the only job left here is to clear the keyboard
-     * layout cache for the keys whose legacy fragments did so. Everything
-     * else reaches the live keyboard through the Settings singleton's own
-     * listener on the same prefs file.
+     * Clears the keyboard layout cache when a layout-affecting pref changes. Everything else
+     * reaches the live keyboard through the Settings singleton's own listener on the same file.
      */
     private val prefChangeListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -203,18 +156,15 @@ class SettingsHostActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // FLAG_SECURE once, for the WHOLE activity, not per "screen": the screens here are not
-        // separate activities but swapped content in one ScrollView, and adding/clearing the flag
-        // during navigation is a known source of flicker, surface recreation and races with the
-        // recent-apps snapshot on OEM builds. Without it the list of what the user typed lands in
-        // the recent-apps thumbnail and can be screenshotted. Nobody suffers from a permanent flag
-        // on a keyboard settings screen.
+        // FLAG_SECURE for the whole activity, not per screen: the screens are swapped content in
+        // one ScrollView, and toggling the flag during navigation causes flicker, surface
+        // recreation and races with the recent-apps snapshot on OEM builds. Without it the saved
+        // words would appear in the recent-apps thumbnail and in screenshots.
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE,
                 WindowManager.LayoutParams.FLAG_SECURE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Content capture is switched off for the whole window by the API that actually exists
-            // publicly for it (added in R). Without it the platform's content-capture pipeline may
-            // see the saved words rendered on the screen.
+            // Turn off content capture for the whole window (public API since R), so the
+            // platform's content-capture pipeline does not see the saved words on screen.
             window.decorView.importantForContentCapture = View.IMPORTANT_FOR_CONTENT_CAPTURE_NO
         }
         setContentView(R.layout.settings_screen)
@@ -252,18 +202,16 @@ class SettingsHostActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
-        // Rebuild the visible screen every time the activity comes back to
-        // the foreground — the legacy fragments' buildContent-in-onStart.
-        // The language list, enabled-layout summaries and restriction state
-        // are all re-read, so external changes are picked up.
+        // Rebuild the visible screen every time the activity returns to the
+        // foreground: the language list, enabled-layout summaries and restriction
+        // state are re-read, so external changes are picked up.
         showScreen(currentScreen)
     }
 
     override fun onDestroy() {
         // Dismiss any open slider dialog: AlertDialog is not lifecycle-aware,
         // and leaving it attached across a configuration change leaks the
-        // window (WindowLeaked). The uncommitted slider value is discarded,
-        // matching the legacy DialogPreference behavior closely enough.
+        // window (WindowLeaked). An unsaved slider value is discarded.
         currentDialog?.dismiss()
         currentDialog = null
         prefs.unregisterOnSharedPreferenceChangeListener(prefChangeListener)
@@ -326,15 +274,10 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * M5 of `docs/APPLE-UX-2026-09-25.md`: iOS slides a pushed settings screen in from the right
-     * and a popped one back from the left. [showScreen] rebuilds the content column in place, so
-     * the motion is a short slide + fade on the rebuilt column — no fragments, no new views.
-     *
-     * Respects the system animation scale: with animations switched off
-     * (`Settings.Global.ANIMATOR_DURATION_SCALE` = 0, the accessibility/battery setting and what
-     * developer options set) the screen simply appears, as before this item. A restore or a
-     * programmatic [showScreen] without a navigation direction also stays still — only a real
-     * push or pop animates.
+     * As on iOS, a pushed screen slides in from the right and a popped one from the left: a short
+     * slide + fade of the rebuilt content column. With system animations off
+     * (`Settings.Global.ANIMATOR_DURATION_SCALE` = 0) the screen just appears; a rebuild without
+     * a navigation direction never animates.
      */
     private fun playScreenTransition() {
         val direction = pendingTransition
@@ -364,12 +307,11 @@ class SettingsHostActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Screens (item composition 1:1 with prefs.xml / prefs_screen_*.xml)
+    // Screens
     // ---------------------------------------------------------------------
 
     private fun buildRootScreen() {
-        // The languages entry InputMethodSettingsImpl used to add in code:
-        // same title/summary, same PREF_ENABLED_SUBTYPES restriction.
+        // Languages entry, disabled by the PREF_ENABLED_SUBTYPES restriction.
         addCard(listOf(
             linkRow(R.string.keyboard_languages, R.string.keyboard_languages_summary,
                     Settings.PREF_ENABLED_SUBTYPES) { navigateTo(Screen.LANGUAGES) }))
@@ -385,20 +327,11 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * "Data sources": where the words in this keyboard come from, one row per collection.
-     *
-     * It exists because the collections ask for it. Leipzig and Tatoeba are CC BY, and the BY is
-     * the whole condition — naming the source is what buys the right to ship a word list derived
-     * from it. OpenSubtitles asks for one thing only, a link back to opensubtitles.org, and that
-     * link is this screen's [R.string.data_sources_opensubtitles_url] row. `NOTICE.txt` next to
-     * the assets carries the same names in full; this screen is the half a person can actually
-     * reach without unpacking an APK.
-     *
-     * One section header, one card, three rows: since 1.9.0/1.9.1 the conversational frequencies
-     * from Tatoeba and OpenSubtitles are accepted and packed into the shipped dictionaries and
-     * bigram tables (`docs/DICT-ACCEPT.md`, `docs/DICT-WIDEN.md`), so all three collections sit
-     * under the single "In this version" header — a second section would claim a split the assets
-     * no longer have.
+     * "Data sources": one row per collection the word lists come from, as their terms require.
+     * Leipzig and Tatoeba are CC BY (attribution); OpenSubtitles asks for a link back to
+     * opensubtitles.org ([R.string.data_sources_opensubtitles_url]). `NOTICE.txt` next to the
+     * assets carries the same names in full. All three collections are in the shipped
+     * dictionaries and bigram tables, so they share one "In this version" section.
      */
     private fun buildDataSourcesScreen() {
         addCard(listOf(textRow(getString(R.string.data_sources_intro))))
@@ -452,8 +385,8 @@ class SettingsHostActivity : Activity() {
         var glideRow: View? = null
         rows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, false,
                 R.string.tatar_suggestions, R.string.tatar_suggestions_summary) { checked ->
-            // Deferred (docs/AUDIT-2026-09-24.md, L4): rows disabled while this switch is off
-            // swallow taps silently; they should answer with a short toast instead.
+            // Rows disabled here get no disabledReason, so until the screen is rebuilt they
+            // ignore taps instead of explaining why they are dimmed.
             personalDictionaryRow?.let {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY))
             }
@@ -467,54 +400,51 @@ class SettingsHostActivity : Activity() {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS))
             }
             glideRow?.let {
-                // P7-6: glide is independent of the master switch — only the MDM restriction
+                // Glide typing does not depend on the master switch; only the MDM restriction
                 // disables the row.
                 setRowEnabled(it, !isRestricted(Settings.PREF_GLIDE_TYPING))
             }
         }.apply { id = R.id.row_switch_tatar_suggestions })
-        // The personal dictionary rides on the suggestion band: without suggestions there is
-        // nowhere for a remembered word to appear, so the row follows the switch above it.
+        // The personal dictionary depends on the suggestion strip: without suggestions a saved
+        // word has nowhere to appear, so the row follows the switch above it.
         val personalRow = switchRow(Settings.PREF_PERSONAL_DICTIONARY, false,
                 R.string.personal_dictionary, R.string.personal_dictionary_summary)
         personalDictionaryRow = personalRow
         rows.add(personalRow)
-        // U8 (docs/ROADMAP-P2.md): incognito pauses the very learning that only exists while
-        // suggestions run, so the row follows the same switch. It pauses BOTH stores at once —
-        // two pause switches would give four states, only three of which mean anything. The
-        // key is never declared in app_restrictions.xml, so isRestricted below never fires; the
-        // check keeps the row's shape identical to its siblings if that ever changes.
+        // Pause learning (incognito) pauses learning that only runs while suggestions are on, so
+        // the row follows the same switch. One switch pauses all personal learning at once. The
+        // key is not declared in app_restrictions.xml, so isRestricted below never fires; the
+        // check keeps the row consistent with its siblings.
         val incognitoSwitch = switchRow(Settings.PREF_INCOGNITO_MODE, false,
                 R.string.incognito_mode, R.string.incognito_mode_summary)
         incognitoRow = incognitoSwitch
         rows.add(incognitoSwitch)
-        // Autocorrection (D3) is subordinate to suggestions for a different reason than the personal
-        // dictionary: it draws its candidate from the very same lookup that feeds the band, so with
-        // suggestions off there is nothing to correct from. Its own switch stays separate because a
-        // suggestion offers while a correction changes what is already typed.
+        // Autocorrection depends on suggestions for a different reason: it takes its candidate from
+        // the same lookup that feeds the strip, so with suggestions off there is nothing to correct
+        // from. It has its own switch because a suggestion only offers, while a correction changes
+        // what is already typed.
         val autocorrectSwitch = switchRow(Settings.PREF_TATAR_AUTOCORRECT, false,
                 R.string.tatar_autocorrect, R.string.tatar_autocorrect_summary)
         autocorrectRow = autocorrectSwitch
         rows.add(autocorrectSwitch)
-        // Emoji suggestions (mission 2 of docs/EMOJI-SUGGEST-PLAN.md) are subordinate to the
-        // suggestions switch because the emoji cell lives in the very same band; separate because
-        // a picture among the words is a taste, not a feature of the words themselves. The default
-        // matches Settings.readEmojiSuggestionsEnabled (on, M4b); a user-set value always wins.
+        // Emoji suggestions depend on the suggestions switch because the emoji cell lives in the
+        // same strip; they have their own switch because emoji among the words are a matter of
+        // taste. The default matches Settings.readEmojiSuggestionsEnabled (on); a user-set value
+        // always wins.
         val emojiSuggestSwitch = switchRow(Settings.PREF_EMOJI_SUGGESTIONS, true,
                 R.string.emoji_suggestions, R.string.emoji_suggestions_summary)
         emojiSuggestRow = emojiSuggestSwitch
         rows.add(emojiSuggestSwitch)
-        // Glide typing (P7-3, docs/GLIDE-PLAN.md) got its own row because how a word is entered
-        // (taps or one slide) is the user's habit, not a property of the words. Since P7-6
-        // (docs/ROADMAP-P7.md, the 2026-09-24 field report) it is NOT subordinate to the
-        // suggestions master: the lift-commit is typing, not a suggestion, and with the master
-        // off the strip simply shows nothing. The default matches Settings.readGlideTypingEnabled
-        // (on); a user-set value always wins.
+        // Glide typing has its own row because tapping or sliding is the user's habit, not a
+        // property of the words. It does not depend on the suggestions switch: the lift-commit is
+        // typing, not a suggestion, and with suggestions off the strip just shows nothing. The
+        // default matches Settings.readGlideTypingEnabled (on); a user-set value always wins.
         val glideSwitch = switchRow(Settings.PREF_GLIDE_TYPING, true,
                 R.string.glide_typing, R.string.glide_typing_summary)
         glideRow = glideSwitch
         rows.add(glideSwitch)
         addCard(rows)
-        // android:dependency="pref_show_language_switch_key" from the legacy screen.
+        // The IME-switch row depends on the language switch key.
         setRowEnabled(imeRow,
                 prefs.getBoolean(Settings.PREF_SHOW_LANGUAGE_SWITCH_KEY, true)
                         && !isRestricted(Settings.PREF_ENABLE_IME_SWITCH),
@@ -556,26 +486,16 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * The "Personal dictionary" screen (E4b, extended by U7 of Phase 2 — docs/ROADMAP-P2.md): the
-     * words, the learned word pairs AND the learned emoji of EVERY language, grouped by language,
-     * with a search field,
-     * an "Add word…" row, a usage count on every row, a "Delete" action on each shown row, a
-     * per-language "Clear all" for each store and a global "Erase all" that covers all three stores.
+     * The "Personal dictionary" screen: saved words, learned word pairs and learned emoji of every
+     * language, grouped by language, with a search field, an "Add word…" row, usage counts, a
+     * delete action per row, a per-language "Clear all" per store and a global "Erase all".
      *
-     * Fully usable with the setting off — erasing what was already saved must always be possible.
-     * Only ADDING follows the setting, because the acceptance says that with the personal dictionary
-     * off not a single file is created.
-     *
-     * The search text deliberately does NOT survive rotation: `onSaveInstanceState` carries the
-     * screen, the back stack and the detail locale, and a Bundle travels through Binder into
-     * `system_server` — putting a fragment of a personal word there for the convenience of a rotation
-     * is not a trade worth making. Documented in docs/DICTIONARY-E4.md as expected behaviour.
-     *
-     * The stores are never read directly: every read is the published snapshot of the process-wide
-     * owner (priming and file work happen on the shared personal-store worker, never on this
-     * thread), and a store that cannot be read — the device still locked, a file set aside — simply
-     * publishes an empty snapshot, so the screen shows the empty state and the quarantine card says
-     * why. Fail-closed, no crash.
+     * Fully usable with the setting off, so saved content can always be erased; only adding
+     * follows the setting (with the personal dictionary off no file is created). The search text
+     * is not saved on rotation (see [personalSearchQuery]). Stores are read only through the
+     * published snapshot of their process-wide owner (file work runs on the personal-store
+     * worker); an unreadable store (device locked, file quarantined) publishes an empty snapshot,
+     * so the screen shows the empty state and the quarantine card explains why.
      */
     private fun buildPersonalDictionaryScreen() {
         val controller = PersonalDictionaryScreenController(this)
@@ -586,8 +506,8 @@ class SettingsHostActivity : Activity() {
                 controller.sections(subtypeIds), pairController.sections(subtypeIds),
                 personalSearchQuery, emojiController.sections(subtypeIds))
 
-        // U8: the pause is visible exactly where the learned content is managed — a small note,
-        // not a dialog: the state is not an emergency, it is something the user asked for.
+        // The learning pause is shown where the learned content is managed: a small note, not a
+        // dialog, because the user asked for this state.
         if (Settings.readIncognitoModeEnabled(prefs)) {
             addCard(listOf(textRow(getString(R.string.personal_dictionary_learning_paused))))
         }
@@ -612,9 +532,8 @@ class SettingsHostActivity : Activity() {
         addPersonalEmojiQuarantineCards(emojiController, subtypeIds)
 
         if (content.totalCount == 0) {
-            // Three states, not two. "Nothing saved yet" while the personal dictionary is ALREADY on
-            // used to end with "…once the personal dictionary is on", sending the person to look for
-            // a switch that is not off. The hint belongs only to the state it describes.
+            // Three states: no search matches, nothing saved with the personal dictionary on, and
+            // nothing saved with it off. Only the last one points to the switch.
             val emptyMessage = when {
                 personalSearchQuery.isNotEmpty() -> R.string.personal_dictionary_no_matches
                 Settings.readPersonalDictionaryEnabled(prefs) ->
@@ -629,9 +548,8 @@ class SettingsHostActivity : Activity() {
         for (section in content.sections) {
             addSectionHeader(
                     LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(section.subtypeId))
-            // Two cards per language, one per store, each opened by its true saved count and
-            // closed by its own "clear all": a count the list does not visibly reach (the cap)
-            // and an erasure the list does not cover would both be lies the user cannot detect.
+            // Cards per language, one per store, each headed by its true saved count (even when
+            // the list is capped) and closed by its own "clear all".
             if (section.wordRows.isNotEmpty()) {
                 val rows = ArrayList<View>()
                 rows.add(textRow(resources.getQuantityString(
@@ -680,8 +598,7 @@ class SettingsHostActivity : Activity() {
         }
 
         if (content.isTruncated) {
-            // Never silently truncated: a capped list that does not say so reads as "this is
-            // everything you saved", which would be a lie the user cannot detect.
+            // A capped list says so; otherwise it would read as everything that was saved.
             addCard(listOf(inflateRow(R.layout.row_link,
                     getString(R.string.personal_dictionary_shown_of_total,
                             content.shownCount, content.totalCount), null).also {
@@ -699,8 +616,8 @@ class SettingsHostActivity : Activity() {
 
     /**
      * One saved-content row of the personal screen: the word or the pair as the title, the usage
-     * count and the delete affordance as the summary. The summary carries both on purpose — the
-     * count is information (U7), the word "Delete" is what tells the user the row is tappable.
+     * count and the delete affordance as the summary. The word "Delete" tells the user the row is
+     * tappable.
      */
     private fun usageRow(title: String, usageCount: Int, onClick: () -> Unit): View =
         inflateRow(R.layout.row_link, title,
@@ -712,29 +629,19 @@ class SettingsHostActivity : Activity() {
         }
 
     /**
-     * The card that finishes what 1.8.2 started: a personal dictionary that could not be read is
-     * kept as a copy, and until this card existed no screen showed it and no code could read it.
-     *
-     * One card per language that has a copy, with the two numbers the user needs and nothing else:
-     * how many words came out of it, and — when part of it is damaged — that the rest is lost. That
-     * second sentence is not decoration. Handing back two thirds of someone's words under the word
-     * "restored" is the one outcome this feature must never produce, so the count and the damage are
-     * printed in the same breath.
-     *
-     * Two actions, both started by the person and neither by the keyboard: put the readable words
-     * back, and delete the copy. They are separate on purpose — restoring does not destroy the part
-     * no parser could read, so a better reader later still has something to read.
-     *
-     * A copy that yielded NOTHING still gets a card. There is nothing to restore, but the bytes are
-     * the user's own words sitting on their device, and the only way to ask for them to go must not
-     * be hidden behind a word count greater than zero.
+     * Cards for personal-dictionary files that could not be read and were kept as a quarantined
+     * copy. One card per language: how many words could be read and, if part of the copy is
+     * damaged, that the rest is lost, so a partial restore never looks complete. Two actions, both
+     * started by the user: restore the readable words and delete the copy. They are separate
+     * because restoring does not delete the unreadable part. A copy that yielded no words still
+     * gets a card, so the user can delete it.
      */
     private fun addPersonalQuarantineCards(
             controller: PersonalDictionaryScreenController, subtypeIds: List<String>) {
         val reports = personalQuarantines
         if (reports == null) {
-            // Not asked yet. The read is file work and belongs on the store's worker; the screen
-            // repaints when it answers, which is the same shape every mutation on it already uses.
+            // Not read yet. The read is file work and runs on the store's worker; the screen
+            // repaints when it answers, like after every mutation.
             controller.quarantines(subtypeIds) { found ->
                 if (isFinishing || isDestroyed) return@quarantines
                 personalQuarantines = found
@@ -747,9 +654,7 @@ class SettingsHostActivity : Activity() {
         // In the order the languages are listed, not the order the worker happened to answer in.
         for (subtypeId in subtypeIds) {
             val report = reports[subtypeId] ?: continue
-            // Plurals, not a bare %d: "1 words" in English and "1 слов" in Russian are the kind of
-            // sloppiness that makes a person doubt the sentence beside it, and the sentence beside it
-            // is the one that says part of their words is gone.
+            // Plurals, not a bare %d, so the count agrees with its noun in every language.
             val summary = when {
                 report.wordCount == 0 -> getString(R.string.personal_dictionary_quarantine_none)
                 report.readToEnd -> resources.getQuantityString(
@@ -803,12 +708,9 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * The pairs half of [addPersonalQuarantineCards] (U7 of Phase 2, docs/ROADMAP-P2.md): one card
-     * per language whose learned PAIRS file could not be read and was set aside. Same rules: the
-     * count and the damage are printed in the same breath, restoring and discarding are two
-     * separate actions the user starts, and a copy that yielded nothing keeps its card because the
-     * bytes are still on the device. The read runs on the store's worker; the screen repaints when
-     * the answer arrives.
+     * The learned-pairs counterpart of [addPersonalQuarantineCards], with the same rules: count and
+     * damage stated together, restore and delete as separate user actions, and a card even for a
+     * copy that yielded nothing. The read runs on the store's worker.
      */
     private fun addPersonalPairQuarantineCards(
             controller: PersonalBigramScreenController, subtypeIds: List<String>) {
@@ -879,11 +781,8 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * The emoji third of [addPersonalQuarantineCards]: one card per language whose learned-emoji
-     * file could not be read and was set aside. Same rules: the count and the damage are printed in
-     * the same breath, restoring and discarding are two separate actions the user starts, and a
-     * copy that yielded nothing keeps its card because the bytes are still on the device. The read
-     * runs on the store's worker; the screen repaints when the answer arrives.
+     * The learned-emoji counterpart of [addPersonalQuarantineCards], with the same rules as
+     * [addPersonalPairQuarantineCards].
      */
     private fun addPersonalEmojiQuarantineCards(
             controller: PersonalEmojiScreenController, subtypeIds: List<String>) {
@@ -958,14 +857,9 @@ class SettingsHostActivity : Activity() {
             richImm.getEnabledSubtypes(true).map { it.locale }.distinct()
 
     /**
-     * The store a hand-added word goes into: the language the keyboard is currently set to, when it
-     * has a personal dictionary, and otherwise the first enabled subtype that does.
-     *
-     * With two languages "the first enabled one" is no longer good enough — it would file a Russian
-     * word under Tatar for a user whose Tatar layout simply sits earlier in the system's list. The
-     * live subtype is the closest thing this screen has to "the language the user means"; the
-     * screen shows every language's words in separate sections either way, so a wrong guess stays
-     * visible and fixable rather than silent.
+     * The store a hand-added word goes into: the current keyboard language if it has a personal
+     * dictionary, otherwise the first enabled subtype that does. The screen lists every language
+     * separately, so a wrong guess stays visible and fixable.
      */
     private fun targetSubtypeForAddedWord(subtypeIds: List<String>): String? {
         val current = richImm.currentSubtype?.locale
@@ -1005,8 +899,7 @@ class SettingsHostActivity : Activity() {
                 .also { dialog ->
                     DialogUtils.filterObscuredTouches(dialog)
                     // The field takes a personal word by hand: the dialog's own window needs
-                    // FLAG_SECURE — the activity-wide one does not cover dialog windows
-                    // (2026-09-25 audit).
+                    // FLAG_SECURE, because the activity-wide one does not cover dialog windows.
                     DialogUtils.securePersonalContent(dialog)
                     dialog.show()
                 }
@@ -1027,18 +920,17 @@ class SettingsHostActivity : Activity() {
                 .create()
                 .also { dialog ->
                     DialogUtils.filterObscuredTouches(dialog)
-                    // The title names the saved word itself: the dialog window is secured
-                    // (2026-09-25 audit).
+                    // The title names the saved word itself, so the dialog window is secured.
                     DialogUtils.securePersonalContent(dialog)
                     dialog.show()
                 }
     }
 
     /**
-     * The pair half of [showForgetPersonalWordDialog] (U7 of Phase 2, docs/ROADMAP-P2.md): the
-     * title shows the pair the way the row does — "A → B" — so the confirmation names exactly
-     * what is about to be gone. The deletion goes through the store's `forget`, which purges the
-     * quarantine copy with it: a forgotten pair is never resurrected by a later restore.
+     * The learned-pairs counterpart of [showForgetPersonalWordDialog]: the title shows the pair the
+     * way the row does ("A → B"), so the confirmation names exactly what is removed. The deletion
+     * goes through the store's `forget`, which purges the quarantine copy with it: a forgotten
+     * pair is never resurrected by a later restore.
      */
     private fun showForgetPersonalPairDialog(
             controller: PersonalBigramScreenController, row: PersonalPairRow) {
@@ -1057,16 +949,15 @@ class SettingsHostActivity : Activity() {
                 .create()
                 .also { dialog ->
                     DialogUtils.filterObscuredTouches(dialog)
-                    // The title names the saved pair itself: the dialog window is secured
-                    // (2026-09-25 audit).
+                    // The title names the saved pair itself, so the dialog window is secured.
                     DialogUtils.securePersonalContent(dialog)
                     dialog.show()
                 }
     }
 
     /**
-     * The emoji third of [showForgetPersonalWordDialog]: the title shows the entry the way the row
-     * does — "word → emoji" — so the confirmation names exactly what is about to be gone. The
+     * The learned-emoji counterpart of [showForgetPersonalWordDialog]: the title shows the entry the
+     * way the row does ("word → emoji"), so the confirmation names exactly what is removed. The
      * deletion goes through the store's `forget`, which purges the quarantine copy with it: a
      * forgotten entry is never resurrected by a later restore.
      */
@@ -1086,15 +977,14 @@ class SettingsHostActivity : Activity() {
                 .create()
                 .also { dialog ->
                     DialogUtils.filterObscuredTouches(dialog)
-                    // The title names the saved word and emoji: the dialog window is secured
-                    // (2026-09-25 audit).
+                    // The title names the saved word and emoji, so the dialog window is secured.
                     DialogUtils.securePersonalContent(dialog)
                     dialog.show()
                 }
     }
 
     /**
-     * Per-language "Clear all words" (U7): confirmed, then routed through the store's `clearAll`,
+     * Per-language "Clear all words": confirmed, then routed through the store's `clearAll`,
      * which also takes the pending counters, the salt and the quarantine copy of that language —
      * so the card above is re-read rather than repainted from an answer that is now out of date.
      */
@@ -1120,7 +1010,7 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
-    /** The pairs half of [showClearPersonalWordsDialog]. */
+    /** The learned-pairs counterpart of [showClearPersonalWordsDialog]. */
     private fun showClearPersonalPairsDialog(
             controller: PersonalBigramScreenController, subtypeId: String) {
         currentDialog?.dismiss()
@@ -1143,7 +1033,7 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
-    /** The emoji third of [showClearPersonalWordsDialog]. */
+    /** The learned-emoji counterpart of [showClearPersonalWordsDialog]. */
     private fun showClearPersonalEmojiDialog(
             controller: PersonalEmojiScreenController, subtypeId: String) {
         currentDialog?.dismiss()
@@ -1175,11 +1065,9 @@ class SettingsHostActivity : Activity() {
                 .setTitle(R.string.personal_dictionary_erase_all)
                 .setMessage(R.string.personal_dictionary_erase_confirm)
                 .setPositiveButton(R.string.personal_dictionary_erase_action) { _, _ ->
-                    // U7: "erase all" covers ALL THREE stores — a global erasure that left the
-                    // learned pairs or the learned emoji behind would read as "everything is gone"
-                    // while the suggestions kept coming. The three halves answer independently and
-                    // the screen reports success only when every file of every language is really
-                    // gone.
+                    // "Erase all" covers all three stores, so no learned pair or emoji keeps
+                    // appearing afterwards. The stores answer independently; success is reported
+                    // only when every file of every language is gone.
                     controller.eraseAll(subtypeIds) { wordsErased ->
                         pairController.eraseAll(subtypeIds) { pairsErased ->
                             emojiController.eraseAll(subtypeIds) { emojiErased ->
@@ -1203,13 +1091,9 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * The one place the personal-dictionary screen reacts to a mutation that has actually finished.
-     *
-     * Both halves matter and neither used to happen. The list is repainted only NOW, because the
-     * published snapshot is what it reads and the snapshot did not exist yet at the moment the
-     * dialog closed — the added word was simply missing from the list, which reads as "the button
-     * did nothing". And a mutation that failed says so: the subsystem may not log, so a message on
-     * screen is the only channel it has, and it names no word, no file and no cause.
+     * Reacts to a finished personal-store mutation. The list is repainted only now, because it
+     * reads the published snapshot, which does not exist yet when the dialog closes. A failed
+     * mutation shows a message (the subsystem does not log); it names no word, file or cause.
      */
     private fun afterPersonalMutation(succeeded: Boolean, failureMessageRes: Int) {
         if (isFinishing || isDestroyed) return
@@ -1222,11 +1106,9 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * The three flags both text fields of this screen carry — the search field and the "Add word…"
-     * field. Without them the name or the village a user puts into OUR private dictionary would be
-     * learned and synced to the cloud by whichever third-party keyboard is typing it (people
-     * normally have two installed), or picked up by an autofill service. The search field takes the
-     * very same personal words as the add field, so there is no exception here.
+     * The three flags both text fields of this screen carry (search and "Add word…"). Without them
+     * the words the user puts into the personal dictionary could be learned or synced by another
+     * keyboard, or picked up by an autofill service.
      */
     private fun applyPrivateInputFlags(field: EditText) {
         field.imeOptions = field.imeOptions or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
@@ -1250,8 +1132,8 @@ class SettingsHostActivity : Activity() {
         return field
     }
 
-    // "Key press" screen — moved verbatim to SettingsKeyPressScreen.kt (T2 part 3,
-    // docs/ROADMAP-P6.md), together with the three seek-bar value proxies.
+    // The "Key press" screen and the three seek-bar value proxies live in
+    // SettingsKeyPressScreen.kt.
 
     private fun buildAppearanceScreen() {
         addCard(listOf(
@@ -1270,21 +1152,15 @@ class SettingsHostActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // The languages screens moved verbatim to SettingsLanguagesScreens.kt
-    // (T2 part 3, docs/ROADMAP-P6.md). The emoji-recents dialog below stays
-    // here: EmojiRecentAndFlingSourceContractTest pins its body to this file.
+    // The languages screens live in SettingsLanguagesScreens.kt.
     // ---------------------------------------------------------------------
 
     /**
-     * Confirmation dialog for "Clear recent emoji", built like [showLocalePickerDialog]: the
-     * previous dialog is dismissed, the reference is kept in [currentDialog] and torn down in
-     * [onDestroy] so a rotation with the dialog open never leaks the window (WindowLeaked). The
-     * buttons are the platform strings; only the row title and the dialog body are our own.
-     *
-     * The erase goes to [EmojiPanelController.clearRecents], which routes to the live keyboard when
-     * one exists in this process (updating its in-memory list and any open panel) and otherwise
-     * replaces the medium directly. It runs off the UI thread inside the controller. This screen
-     * never reads the recents content — it only asks for the erase.
+     * Confirmation dialog for "Clear recent emoji", kept in [currentDialog] and torn down in
+     * [onDestroy] like the other dialogs, so a rotation never leaks the window. The erase goes to
+     * [EmojiPanelController.clearRecents], which updates the live keyboard when one exists in this
+     * process and otherwise replaces the medium directly, off the UI thread. This screen never
+     * reads the recents content.
      */
     private fun showClearRecentEmojiDialog() {
         currentDialog?.dismiss()
@@ -1302,18 +1178,13 @@ class SettingsHostActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // The row builders moved verbatim to SettingsRows.kt (T2 part 3,
-    // docs/ROADMAP-P6.md). The keyboard-height row below stays here:
-    // KeyboardHeightPreferenceTest pins its text to this file.
+    // The generic row builders live in SettingsRows.kt.
     // ---------------------------------------------------------------------
 
     /**
-     * U6 of Phase 5 (docs/ROADMAP-P5.md): "Keyboard height" as three named presets instead of
-     * the inherited 21-step seek bar. The row reuses row_value; the tap target opens a
-     * one-tap picker that writes the preset's float into the very same
-     * [Settings.PREF_KEYBOARD_HEIGHT] the seek bar wrote, so the live-apply path (Settings
-     * rebuild → next loadKeyboard → new mHeight in the KeyboardId, hence a fresh build) is the
-     * one the slider already used. A float from the seek-bar era matches no preset: it keeps
+     * "Keyboard height" as three named presets in a row_value row. The one-tap picker writes the
+     * preset's float into [Settings.PREF_KEYBOARD_HEIGHT], the pref the older seek bar wrote, so
+     * the keyboard applies it on its next rebuild. A stored value that matches no preset keeps
      * applying and is shown as a plain percent until the user picks a preset.
      */
     private fun keyboardHeightRow(): View {
@@ -1332,11 +1203,9 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * "Emoji panel height" (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item B): three named presets
-     * stored as one float scale of the keyboard box in [Settings.PREF_EMOJI_PANEL_HEIGHT], the
-     * exact mirror of [keyboardHeightRow] — same row layout, same one-tap picker, same restricted
-     * row behavior. The live-apply path needs no cache clear of its own: the scale is read at the
-     * panel's show path, so the next panel open after the tap already uses it.
+     * "Emoji panel height": three named presets stored as one float scale of the keyboard box in
+     * [Settings.PREF_EMOJI_PANEL_HEIGHT], mirroring [keyboardHeightRow]. The scale is read when the
+     * panel is shown, so the next panel open uses it; no cache needs clearing.
      */
     private fun emojiPanelHeightRow(): View {
         val row = inflateRow(R.layout.row_value, R.string.emoji_panel_height, 0)
@@ -1396,7 +1265,7 @@ class SettingsHostActivity : Activity() {
         R.string.keyboard_height_tall,
     )
 
-    /** The preset's localized name, or the seek-bar era value rendered as a plain percent. */
+    /** The preset's localized name, or a value that matches no preset rendered as a plain percent. */
     private fun keyboardHeightValueText(): String {
         val scale = Settings.readKeyboardHeight(prefs, KeyboardHeightPresets.DEFAULT_SCALE)
         val index = KeyboardHeightPresets.indexForScale(scale)
@@ -1411,8 +1280,7 @@ class SettingsHostActivity : Activity() {
         currentDialog = AlertDialog.Builder(this)
                 .setTitle(R.string.prefs_keyboard_height_settings)
                 // setItems on purpose: the choice applies on the tap itself and the dialog
-                // closes — a one-tap picker with no buttons. (An unnamed OK would also break
-                // the file-wide contract of EmojiRecentAndFlingSourceContractTest.)
+                // closes, a one-tap picker with no buttons.
                 .setItems(labels) { _, which ->
                     val scale = KeyboardHeightPresets.SCALES[which]
                     if (scale != Settings.readKeyboardHeight(prefs,
@@ -1433,13 +1301,8 @@ class SettingsHostActivity : Activity() {
     // ---------------------------------------------------------------------
 
     /**
-     * Opens a link, or says that nothing on this device can.
-     *
-     * The log line alone was the whole answer before: the row took the tap, the screen did not
-     * change, and only `adb logcat` knew why. On a keyboard whose one claim is privacy, "Privacy
-     * Policy" being a row that does nothing is the worst row to lose quietly. The log line stays for
-     * a developer; the Toast is for the person holding the phone, and it names no package and no
-     * intent — neither is anything they could act on.
+     * Opens a link, or shows a Toast when no app on the device can open it. The log line is for
+     * developers; the Toast names no package or intent.
      */
     private fun openUrl(uri: String) {
         try {

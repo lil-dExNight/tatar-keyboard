@@ -45,22 +45,14 @@ import rkr.simplekeyboard.inputmethod.R
  * the running device cannot render were already dropped by the glyph probe when the snapshot was
  * built, so no "tofu" box ever reaches a cell.
  *
- * The arrangement is the one the operator asked for, copied from the Telegram client: a row of
- * category tabs across the top with the active one under a round pill and a search cell at its
- * right end, and then one continuous scroll through every section, each introduced by its own
- * header. The search has no band of its own since 2026-09-28
- * (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item A): the cell's tap hands over to [EmojiSearchView],
- * which takes the strip's place over the letter keyboard, and closing that search brings this row
- * back — so the grid keeps the 50dp the pill row used to cost. The two
- * functional keys — "АБВ" (back to the letters) and delete — float over the content in the bottom
- * corners instead of sitting in a bar of their own. No space, no Enter.
+ * Layout: see [EmojiPanelState]. The search cell opens [EmojiSearchView], which takes the strip's
+ * place over the letter keyboard. The "АБВ" (back to letters) and delete keys float over the
+ * content in the bottom corners; there is no space or Enter key.
  *
- * All geometry, hit testing and scrolling live in the pure [EmojiPanelState]; the auto-repeat of
- * delete lives in the pure [DeleteRepeatState]. This view owns only the Android surface: paints
- * built once, no allocations in [onDraw] or [onTouchEvent], and only the visible rows drawn. The
- * painters (tab row with its search cell, floating keys, clock, skin-tone popup) live in
- * `EmojiPanelDrawing.kt` and the three small gesture helpers in `EmojiPanelGestures.kt` —
- * internal extensions on this view, moved verbatim in the T2 split (docs/ROADMAP-P6.md, part 3).
+ * Geometry, hit testing and scrolling live in the pure [EmojiPanelState], delete auto-repeat in
+ * [DeleteRepeatState]. This view owns only the Android surface: paints built once, no allocations
+ * in [onDraw] or [onTouchEvent], and only the visible rows drawn. Painters live in
+ * `EmojiPanelDrawing.kt` and gesture helpers in `EmojiPanelGestures.kt`, as internal extensions.
  *
  * Insertion goes solely through the listener, which routes to `LatinIME.onTextInput(String)`;
  * delete routes through `LatinIME.onCodeInput(CODE_DELETE)`. This view never commits or deletes
@@ -86,23 +78,17 @@ class EmojiPanelView @JvmOverloads constructor(
         fun onEmojiPanelSearch()
     }
 
-    // internal, not private: the extracted painters (EmojiPanelDrawing.kt) and gesture helpers
-    // (EmojiPanelGestures.kt) read three of these constants through the companion from their own
-    // files (T2 part 3, docs/ROADMAP-P6.md). The rest stay private.
+    // internal, not private: the painters (EmojiPanelDrawing.kt) and gesture helpers
+    // (EmojiPanelGestures.kt) read some of these constants from their own files.
     internal companion object {
-        // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
-        // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
-        // 44dp, вкладки 44dp, заголовок секции 30dp), а системный
-        // масштаб шрифта растит только текст. При font_scale 2.0 полоса подсказок
-        // вырождалась в «Мини… · Минем · Мини…» — две ячейки из трёх неразличимы ровно для
-        // тех, кому крупный шрифт и нужен (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-3).
-        // Клавиши раскладки всегда считались в dp; здесь то же правило.
+        // Keyboard-surface text sizes are in dp, not sp. Each text sits in a row of fixed dp
+        // height (strip 44dp, tabs 44dp, section header 30dp), and the system font scale would grow
+        // only the text: at font scale 2.0 the strip's cells truncate into indistinguishable
+        // fragments. Layout keys have always been sized in dp; the same rule applies here.
         private const val LABEL_TEXT_SIZE_DP = 16f
         private const val HEADER_TEXT_SIZE_DP = 14f
 
-        // Glyph size as a fraction of the cell. The old panel squeezed the cell to fit whole rows
-        // and drew at 0.62 of the squeezed height, which is what made the emoji look small next to
-        // the reference; the cell is square again and the glyph fills more of it.
+        // Glyph size as a fraction of the (square) cell.
         private const val EMOJI_TEXT_SCALE = 0.66f
         private const val TAB_TEXT_SCALE = 0.46f
 
@@ -114,17 +100,15 @@ class EmojiPanelView @JvmOverloads constructor(
         private const val MIN_CELL_DP = EmojiPanelState.MIN_CELL_DP.toFloat()
         private const val MAX_CELL_DP = EmojiPanelState.MAX_CELL_DP.toFloat()
 
-        // The fixed band and the floating keys, in dp. The floating key is 40dp since 2026-09-28
-        // (docs/EMOJI-PANEL-SPACE-2026-09-28.md, item C); the trailing scroll air is the key plus
-        // its two insets (40 + 2×8 = 56dp), so the last row still scrolls fully clear of the keys.
+        // The tab row and the floating keys, in dp. The trailing scroll space is the key plus its
+        // two insets, so the last row scrolls fully clear of the keys.
         private const val TAB_BAR_DP = 44f
         private const val SECTION_HEADER_DP = 30f
         private const val FLOATING_KEY_DP = 40f
         private const val FLOATING_INSET_DP = 8f
 
-        // A halo of the sheet colour around each floating key, so the key never blurs into the
-        // emoji it is drawn over. The reference gets that separation for free from a dark button on
-        // a dark sheet; a light theme needs it drawn.
+        // A halo of the sheet color around each floating key, so the key never blurs into the
+        // emoji it is drawn over (needed mainly in the light theme).
         private const val FLOATING_HALO_DP = 3f
 
         // A sideways drag becomes a jump between sections once it travels this far. Four times the
@@ -149,8 +133,8 @@ class EmojiPanelView @JvmOverloads constructor(
         private const val SEARCH_ICON_STROKE_DP = 1.6f
         private const val SEARCH_ICON_HANDLE_DP = 5f
 
-        // The recents tab carries a clock, as in the reference, rather than whichever emoji happens
-        // to be most recent. It is drawn from primitives too, so still no icon font ships.
+        // The recents tab carries a clock rather than whichever emoji happens to be most recent.
+        // It is drawn from primitives too, so no icon font ships.
         private const val CLOCK_ICON_RADIUS_DP = 9f
         private const val CLOCK_ICON_STROKE_DP = 1.8f
 
@@ -166,8 +150,8 @@ class EmojiPanelView @JvmOverloads constructor(
         private const val VELOCITY_UNITS = 1000
 
         // Accessibility virtual-view id space. Cell ids are the compact global cell index (0 until
-        // entryCount, at most ~1389), so the tab and functional-key ids sit far above any cell id
-        // and can never collide with one.
+        // entryCount), so the tab and functional-key ids sit far above any cell id and can never
+        // collide with one.
         private const val TAB_ID_BASE = 1_000_000
         private const val BACK_ID = 2_000_000
         private const val DELETE_ID = 2_000_001
@@ -187,8 +171,8 @@ class EmojiPanelView @JvmOverloads constructor(
     private var velocityTracker: VelocityTracker? = null
 
     private val backgroundPaint = Paint()
-    // The paints the extracted painters read (EmojiPanelDrawing.kt) are internal — the mechanical
-    // minimum of the T2 split, since an extension function cannot see a private member.
+    // Paints read by the painters in EmojiPanelDrawing.kt are internal, because an extension
+    // function cannot see a private member.
     internal val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     internal val activeTabPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     internal val functionalKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -249,10 +233,9 @@ class EmojiPanelView @JvmOverloads constructor(
     private val locationScratch = IntArray(2)
 
     /**
-     * The user's "Bottom offset" in px, handed over by the switcher when the panel is shown. The
-     * letter keyboard lifts its rows by it; without the same reservation here the panel filled the
-     * strip the user freed and the two surfaces jumped apart when swapped
-     * (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-1).
+     * The user's "Bottom offset" in px, passed by the switcher when the panel is shown. The letter
+     * keyboard lifts its rows by it; the panel reserves the same space, so the two surfaces line up
+     * when swapped.
      */
     private var keyboardBottomOffsetPx = 0
 
@@ -365,8 +348,8 @@ class EmojiPanelView @JvmOverloads constructor(
 
     init {
         val themeColors = context.theme.obtainStyledAttributes(R.styleable.EmojiPanelView)
-        // The sheet is the keyboard background, not the key colour: filling it with the key colour
-        // made the whole panel read as one unpainted rectangle instead of as the keyboard surface.
+        // The sheet uses the keyboard background, not the key color, so the panel reads as the
+        // keyboard surface rather than one flat rectangle.
         val keyColor = themeColors.getColor(R.styleable.EmojiPanelView_keyNormalBackgroundColor, Color.LTGRAY)
         val functionalColor = themeColors.getColor(R.styleable.EmojiPanelView_emojiPanelFunctionalKeyColor, keyColor)
         backgroundPaint.color = themeColors.getColor(R.styleable.EmojiPanelView_emojiPanelBackgroundColor, keyColor)
@@ -457,12 +440,10 @@ class EmojiPanelView @JvmOverloads constructor(
     }
 
     /**
-     * Frees the bound snapshot and per-layout caches under memory pressure
-     * ([rkr.simplekeyboard.inputmethod.latin.LatinIME] `MSG_DEALLOCATE_MEMORY`, 10 s) or when input
-     * finishes. The panel allocates no offscreen buffer, so there is nothing else to free; the
-     * reusable paints and the single [scroller] stay. The controller keeps the one prepared snapshot
-     * for the whole process (it is never re-prepared), so the next show simply re-binds it through
-     * [setSnapshot]. A no-op while the panel is visible, so it never blanks a shown grid.
+     * Frees the bound snapshot and per-layout caches on the idle memory release
+     * ([rkr.simplekeyboard.inputmethod.latin.LatinIME] `MSG_DEALLOCATE_MEMORY`) or when input
+     * finishes; the paints and the [scroller] stay. The controller keeps the prepared snapshot for
+     * the process, so the next show re-binds it through [setSnapshot]. A no-op while visible.
      */
     fun releaseSnapshotCaches() {
         if (visibility == VISIBLE) {
@@ -494,11 +475,10 @@ class EmojiPanelView @JvmOverloads constructor(
      * because that is where both terms are final: the panel's own position on screen and the
      * frame the system bars leave free.
      *
-     * [getWindowVisibleDisplayFrame] is the seam that makes this work without asking which Android
-     * version is running. It reports the same bottom — the top edge of the navigation bar — on
-     * every platform; what differs is how far the IME window itself reaches past it. Subtracting
-     * one from the other gives the real overlap: zero through Android 14, where the framework lays
-     * the input view out above the bar, and the bar's height from Android 15, where it does not.
+     * [getWindowVisibleDisplayFrame] reports the top edge of the navigation bar on every platform;
+     * what differs is how far the IME window reaches past it. The difference is the real overlap:
+     * zero through Android 14, where the framework lays the input view out above the bar, and the
+     * bar's height from Android 15, where it does not. No SDK version check is needed.
      */
     private fun updateBottomInset() {
         getWindowVisibleDisplayFrame(visibleFrameScratch)
@@ -637,10 +617,8 @@ class EmojiPanelView @JvmOverloads constructor(
         canvas.restore()
     }
 
-    // The tab row (with its search cell), the floating keys, the clock and the skin-tone popup are
-    // painted by EmojiPanelDrawing.kt (T2 part 3, docs/ROADMAP-P6.md): internal extensions on
-    // this view, so the call sites above kept their exact text. drawContent stays here: the
-    // "only the visible rows" tokens the source contracts pin live in its loop.
+    // The tab row, floating keys, clock and skin-tone popup are painted by EmojiPanelDrawing.kt.
+    // drawContent stays here: source-contract tests check its visible-rows-only loop.
 
     @Suppress("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -790,8 +768,7 @@ class EmojiPanelView @JvmOverloads constructor(
         }
     }
 
-    // The long-press arming/cancel and the section jump moved verbatim to EmojiPanelGestures.kt
-    // (T2 part 3, docs/ROADMAP-P6.md): internal extensions on this view.
+    // The long-press arming/cancel and the section jump are in EmojiPanelGestures.kt.
 
     /** Obtains the per-gesture [VelocityTracker] at most once; DOWN calls this, UP/CANCEL recycle. */
     private fun obtainVelocityTracker() {
@@ -844,11 +821,9 @@ class EmojiPanelView @JvmOverloads constructor(
     // --- Accessibility ------------------------------------------------------------------------
 
     /**
-     * Refreshes the ExploreByTouchHelper virtual-node tree, but only while touch exploration is on
-     * — the single gate behind every panel invalidateRoot, exactly as the suggestion strip keeps
-     * its rare announcements behind the same check. The panel calls this on a category change and
-     * once a scroll settles; it never fires during an in-progress scroll or when no screen reader
-     * is exploring.
+     * Refreshes the ExploreByTouchHelper virtual-node tree, only while touch exploration is on. The
+     * single gate for every panel invalidateRoot; called on a category change and once a scroll
+     * settles, never during a scroll.
      */
     private fun invalidateAccessibilityRootIfExploring() {
         if (accessibilityManager.isTouchExplorationEnabled) {

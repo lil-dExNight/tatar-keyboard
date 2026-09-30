@@ -28,8 +28,7 @@ import java.util.Locale
 
 /**
  * A validated `.tpersem` file, ready to become an immutable snapshot. Parallel arrays in the
- * on-disk (entry-key ascending) order. Not a `data class`: it carries the user's words and an
- * auto-generated `toString` would print them on the first interpolation.
+ * on-disk (entry-key ascending) order. See [ValidatedPersonalDictionary].
  */
 class ValidatedPersonalEmoji internal constructor(
     /** Words in the NORMALIZED form (the only form the format stores for them). */
@@ -49,22 +48,12 @@ class ValidatedPersonalEmoji internal constructor(
 }
 
 /**
- * Fail-closed validator for the `.tpersem` format, modelled on [TpersbValidator].
+ * Strict validator for the `.tpersem` format; see [TpersbValidator].
  *
- * Every check is explicitly attributed to the WORD or the EMOJI half of a record. The word half is
- * the pairs store's context half verbatim: stored normalized, so it must BE its own NFC lowercase
- * form, within the same 1..24 code-point window, free of combining marks after NFC, and spelled
- * from the subtype alphabet. The emoji half is the raw cluster: non-empty, at most
- * [TpersemFormat.MAX_EMOJI_CLUSTER_CHARS] UTF-16 units, and the WHOLE string must measure as ONE
- * emoji cluster by [EmojiTextUtils.trailingEmojiClusterLength] — the same pure, Android-free ruler
- * the editor's backspace deletes by, so anything it accepts (BMP emoji, surrogate pairs, VS15/VS16,
- * skin tones, ZWJ chains, keycaps, regional indicators, tag sequences) is a learnable cluster and
- * anything else (plain text, two clusters, a lone joiner) is not.
- *
- * Any violation throws [PersonalDictionaryValidationException] — shared with the words and pairs
- * stores on purpose: it carries a constant message and no user text, which is the whole contract of
- * the type. The reader turns a violation into an empty personal-emoji store. Nothing here logs, and
- * no message carries user text.
+ * The word half gets the same checks as a pair context. The emoji half is the raw cluster: at most
+ * [TpersemFormat.MAX_EMOJI_CLUSTER_CHARS] UTF-16 units, and the whole string must be one cluster by
+ * [EmojiTextUtils.trailingEmojiClusterLength], the ruler backspace deletes by. Violations throw the
+ * shared [PersonalDictionaryValidationException]; the reader turns them into an empty emoji store.
  */
 class TpersemValidator {
     /**
@@ -156,8 +145,8 @@ class TpersemValidator {
             val emojiBytes = ByteArray(emojiByteLength)
             cursor.get(emojiBytes)
 
-            // WORD half: stored normalized, so it must BE its own NFC lowercase form — the exact
-            // checks the pairs store applies to its context half.
+            // WORD half: stored normalized, so it must BE its own NFC lowercase form; the same
+            // checks as a pair context.
             val word = decodeStrictUtf8(wordBytes, "word is not valid UTF-8")
             checkNormalizedWord(word, alphabet)
 
@@ -165,10 +154,8 @@ class TpersemValidator {
             val emoji = decodeStrictUtf8(emojiBytes, "emoji is not valid UTF-8")
             checkEmojiCluster(emoji)
 
-            // The order key is the (word, emoji) PAIR, compared member by member — word first,
-            // emoji on a tie — each as unsigned UTF-8 bytes. Comparing the concatenation instead
-            // would call («аб», «☀️») and («аб☀️»-shaped splits) equal: the byte boundary between
-            // the halves is part of the key.
+            // The order key is the (word, emoji) pair, compared member by member (word first,
+            // emoji on a tie), each as unsigned UTF-8 bytes; see TpersbValidator.
             val previousWord = previousWordBytes
             if (previousWord != null && previousEmojiBytes != null) {
                 val wordOrder = compareUnsigned(previousWord, wordBytes)
@@ -201,12 +188,7 @@ class TpersemValidator {
         )
     }
 
-    /**
-     * The content checks the NORMALIZED word of an entry passes — verbatim the pairs store's
-     * context-half checks: it is its own NFC lowercase form, its length is within the frozen
-     * bounds, no combining mark is left after NFC, and every code point belongs to the subtype
-     * alphabet.
-     */
+    /** Content checks for the normalized word; the same as [TpersbValidator]'s word checks. */
     private fun checkNormalizedWord(normalized: String, alphabet: Set<Int>) {
         if (Normalizer.normalize(normalized, Normalizer.Form.NFC) != normalized ||
             normalized.lowercase(Locale.ROOT) != normalized
@@ -230,10 +212,7 @@ class TpersemValidator {
 
     /**
      * The emoji half of a record: at most [TpersemFormat.MAX_EMOJI_CLUSTER_CHARS] UTF-16 units, and
-     * the WHOLE string one emoji cluster by [EmojiTextUtils.trailingEmojiClusterLength]. A string
-     * measures as one cluster exactly when the ruler consumes all of it (non-empty is guaranteed by
-     * the record's byte length); a larger cluster can never arrive, because the ruler itself
-     * refuses to measure past the same cap.
+     * one cluster, i.e. [EmojiTextUtils.trailingEmojiClusterLength] consumes the whole string.
      */
     private fun checkEmojiCluster(emoji: String) {
         if (emoji.length > TpersemFormat.MAX_EMOJI_CLUSTER_CHARS) {

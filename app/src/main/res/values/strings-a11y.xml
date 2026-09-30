@@ -73,7 +73,7 @@
     <string name="spoken_suggestions_available">Suggestions available: %s</string>
 
     <!-- Emoji-panel category tab names (TalkBack). The emoji cells themselves carry the sequence
-         as their contentDescription (the phase ships no emoji-name database); only the tabs and the
+         as their contentDescription (there is no emoji-name database); only the tabs and the
          two functional keys ("АБВ" reuses spoken_description_to_alpha, delete reuses
          spoken_description_delete) are named. -->
     <string name="spoken_emoji_category_recent">Recently used</string>

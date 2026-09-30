@@ -17,27 +17,24 @@
 package rkr.simplekeyboard.inputmethod.keyboard.internal
 
 /**
- * The visual tail of an armed glide (docs/ROADMAP-P7.md, P7-5): a fixed-capacity ring of the
- * most recent finger positions that the main keyboard view draws as a fading polyline under
- * the fingertip. Pure data — no android imports — so the ring semantics and the fade math are
- * JVM-testable; the view owns the Paint and the Canvas calls.
+ * The visual tail of an armed glide: a fixed-capacity ring of the most recent finger positions
+ * that the main keyboard view draws as a fading polyline under the fingertip. Pure data (no
+ * android imports), so the ring semantics and the fade math are JVM-testable; the view owns the
+ * Paint and the Canvas calls.
  *
  * Unlike [rkr.simplekeyboard.inputmethod.latin.glide.GlidePath] (the decoder's input, which
- * drops points past its capacity — a truncated path still decodes), the trail OVERWRITES the
- * oldest point when full: a stale tail pixel is strictly worse than a dropped one, and the
- * decoder's fail-closed argument does not apply to a cosmetic layer.
+ * drops points past its capacity because a truncated path still decodes), the trail overwrites
+ * the oldest point when full: for a cosmetic layer a stale tail pixel is worse than a dropped one.
  *
- * The fade is age-relative to the NEWEST recorded point, not to a wall clock: the view redraws
- * only when a new point arrives, so "now" and the newest sample are the same instant, and the
- * JVM tests need no clock injection. A finger that stops moving freezes its tail (no new
- * points, no invalidates) — the same behavior as the reference keyboards.
+ * The tail fades by age relative to the newest recorded point, not to a wall clock: the view
+ * redraws only when a new point arrives, so "now" and the newest sample are the same instant,
+ * and the JVM tests need no clock injection. A finger that stops moving freezes its tail (no
+ * new points, no invalidates), as in the reference keyboards.
  *
- * P7-7 (2026-09-25): the tail grew (300 ms / 96 points — it reads as a trail, not a stub), and
- * the lift no longer erases it instantly: [startFadeOut] freezes the ring and the draw alpha
- * then decays to zero over [FADE_OUT_MS] of wall time (the view passes SystemClock in — the one
- * wall-clock read of the class, confined to the fade). A new gesture's first point clears the
- * fading ring ([addPoint] resets the fade); [isFadeDone] tells the view when to stop
- * re-invalidating.
+ * After the lift, [startFadeOut] freezes the ring and the draw alpha decays to zero over
+ * [FADE_OUT_MS] of wall time (the view passes SystemClock in; this is the class's only
+ * wall-clock input). A new gesture's first point clears the fading ring ([addPoint] resets the
+ * fade); [isFadeDone] tells the view when to stop re-invalidating.
  *
  * Zero-allocation after construction: parallel primitive arrays, index arithmetic only.
  */
@@ -52,7 +49,7 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY) {
     var size = 0
         private set
 
-    /** P7-7: the lift started the post-gesture fade; the ring is frozen meanwhile. */
+    /** The lift started the post-gesture fade; the ring is frozen meanwhile. */
     var fadingOut = false
         private set
 
@@ -150,10 +147,10 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY) {
         /** ~300 ms of a 60 fps gesture at the usual 5–10 ms sampling cadence, with margin. */
         const val DEFAULT_CAPACITY = 96
 
-        /** How far behind the fingertip the visible tail reaches (P7-7: doubled to 300 ms). */
+        /** How far behind the fingertip the visible tail reaches. */
         const val TAIL_MS = 300f
 
-        /** P7-7: the post-lift fade-out duration. */
+        /** The post-lift fade-out duration. */
         const val FADE_OUT_MS = 250f
 
         /** Peak opacity at the fingertip; the base color comes from the theme. */

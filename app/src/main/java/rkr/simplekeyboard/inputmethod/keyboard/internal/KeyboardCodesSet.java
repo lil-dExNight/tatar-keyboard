@@ -59,12 +59,9 @@ public final class KeyboardCodesSet {
     };
 
     // Must stay index-for-index parallel to ID_TO_NAME: getCode() looks a name up in ID_TO_NAME
-    // and reads DEFAULT at the same index. Before "key_emoji" was inserted the two arrays had
-    // diverged in length (17 names, 15 codes), so "key_right" and "key_unspecified" indexed past
-    // the end of DEFAULT and threw ArrayIndexOutOfBoundsException. The codes of every name that is
-    // actually referenced from res/xml (indices 0..13) are unchanged; "key_left"/"key_right" have
-    // no dedicated code in this fork and resolve to CODE_UNSPECIFIED, the value "key_left" already
-    // resolved to before this change.
+    // and reads DEFAULT at the same index, so a shorter array throws
+    // ArrayIndexOutOfBoundsException. "key_left"/"key_right" have no dedicated code in this fork
+    // and resolve to CODE_UNSPECIFIED.
     private static final int[] DEFAULT = {
         Constants.CODE_TAB,
         Constants.CODE_ENTER,

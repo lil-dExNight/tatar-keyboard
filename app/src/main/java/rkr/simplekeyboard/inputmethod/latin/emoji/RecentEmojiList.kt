@@ -19,7 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 /**
  * Pure, Android-free MRU model of the "recent emoji" list, together with its fail-closed codec.
  *
- * Semantics (E2b-3):
+ * Rules:
  *  - most-recently used first: the last inserted sequence is always at index 0;
  *  - re-inserting a sequence already in the list moves it to the front and never duplicates it;
  *  - the list holds at most [MAX_ENTRIES] entries; a 25th insertion evicts the last (oldest) one;
@@ -74,7 +74,7 @@ internal class RecentEmojiList private constructor(val entries: List<String>) {
         return if (kept.isEmpty()) EMPTY else RecentEmojiList(kept)
     }
 
-    /** Serialises to the on-disk form: entries joined by [SEPARATOR]. */
+    /** Serializes to the on-disk form: entries joined by [SEPARATOR]. */
     fun serialize(): String = entries.joinToString(SEPARATOR.toString())
 
     override fun equals(other: Any?): Boolean = other is RecentEmojiList && other.entries == entries

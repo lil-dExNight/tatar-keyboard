@@ -146,7 +146,7 @@ class EmojiPanelAccessibilitySourceContractTest {
     @Test
     fun nodeClickRunsTheSameActionAsATapThroughTheSameListenerPath() {
         val activate = panel.substringAfter("private fun activateForAccessibility(")
-            .substringBefore("/** Scrolls one grid viewport")
+            .substringBefore("private fun scrollOneViewport(")
         // The exact same listener calls the touch path uses — no second insertion/deletion route.
         assertTrue(activate.contains("onEmojiPanelPick(state.entryAt(target))"))
         assertTrue(activate.contains("onEmojiPanelBackToKeyboard()"))

@@ -23,18 +23,14 @@ data class ValidatedBigramTable(
 )
 
 /**
- * Strict validator for the TATBIGR schema-3 format (SIZE-2, `docs/SIZE-SCHEMA3.md` — the
- * cross-referenced layout that replaced schema 2's six sections on 2026-09-01). Mirrors
- * [TdictValidator]'s two-phase shape (inflate-with-digest, then validate-the-decompressed
- * structure). The structural half reads the whole raw file into memory — bounded by
- * [TatBigrFormat.MAX_RAW_SIZE] — because the varint streams of schema 3 walk far more naturally
- * over a byte array than over a seeking file.
+ * Strict validator for the TATBIGR schema-3 format. Like [TdictValidator] it has two phases:
+ * inflate with digest, then validate the decompressed structure. The structural phase reads the
+ * whole raw file into memory, bounded by [TatBigrFormat.MAX_RAW_SIZE], because the varint streams
+ * are easier to walk over a byte array.
  *
- * What this layer CANNOT check is the one thing schema 2 checked in-file: that an id is below
- * the vocabulary size. Schema 3's vocabulary is the linked dictionary, named by raw SHA-256 in
- * the header; the validator checks the header names exactly the dictionary
- * [BigramArtifactSpec.expectedDictionaryRawSha256] pins, and the index-range checks against the
- * real dictionary's entry count happen in `TatBigrPrefixIndex.open`, which has the dictionary.
+ * It cannot check that an index is below the vocabulary size: the vocabulary is the linked
+ * dictionary. It checks that the header names the dictionary pinned by
+ * [BigramArtifactSpec.expectedDictionaryRawSha256]; `TatBigrPrefixIndex.open` checks index ranges.
  */
 class TatBigrValidator {
     fun inflateAsset(

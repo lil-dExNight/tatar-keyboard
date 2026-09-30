@@ -23,13 +23,12 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Pure input filter for a word about to enter the personal dictionary. It applies exactly the
- * per-record checks that `TpersValidator` enforces when reading a `.tpers` file, so a word this
- * filter accepts round-trips through the writer and back through the validator without surprise.
+ * Pure input filter for a word about to enter the personal dictionary. It applies the per-record
+ * checks `TpersValidator` enforces, so an accepted word round-trips through the writer and the
+ * validator.
  *
- * Filters and dedup run on the NORMALIZED (NFC lowercase) form; the ORIGINAL (as-entered) form is
- * what the store persists. All checks are content checks — no I/O, no logging, no user text in any
- * message (there are none here). Not a `data class`; there is nothing to carry.
+ * Filters and dedup use the normalized (NFC lowercase) form; the store saves the original
+ * (as-entered) form. Content checks only: no I/O, no logging, no messages.
  */
 internal object PersonalWordFilter {
     /** The NFC lowercase form used for sorting, dedup and search. */
@@ -37,12 +36,10 @@ internal object PersonalWordFilter {
         Normalizer.normalize(word, Normalizer.Form.NFC).lowercase(Locale.ROOT)
 
     /**
-     * Returns the normalized form of [rawWord] if it is eligible for the personal dictionary of a
-     * subtype whose [alphabet] is given, or null otherwise. Rejects (fail-closed toward NOT
-     * storing): MIXED casing of the raw form, a normalized length outside 3..24 code points, a
-     * leftover combining mark after NFC, any code point outside the alphabet (which rules out
-     * digits, Latin, `@`, dots, dashes and every other symbol), and a raw form that would not fit
-     * the on-disk `wordByteLength` u8 field.
+     * Returns the normalized form of [rawWord] if it is eligible for a subtype with [alphabet], or
+     * null. Rejects mixed casing, a normalized length outside 3..24 code points, a combining mark
+     * left after NFC, any code point outside the alphabet, and a raw form too long for the u8
+     * `wordByteLength` field.
      */
     fun acceptedNormalizedForm(rawWord: String, alphabet: Set<Int>): String? {
         if (rawWord.isEmpty()) return null

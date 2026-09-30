@@ -49,9 +49,8 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
     private int mActivePointerId;
 
     /**
-     * M3 (docs/APPLE-UX-2026-09-25.md): the glyph colour of the SELECTED alternative. The
-     * selection fill is the accent colour, so the label must invert; read once from resources,
-     * like every other colour of this view.
+     * The glyph color of the selected alternative. The selection fill is the accent color, so
+     * the label must invert; read once from resources, like every other color of this view.
      */
     private final int mSelectedLabelColor;
 
@@ -200,8 +199,8 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
 
     @Override
     protected int selectLabelColor(final Key key, final KeyDrawParams params) {
-        // M3: the alternative under the finger is filled with the accent colour, so its glyph
-        // flips to white; every other cell keeps the ordinary key label colour.
+        // The alternative under the finger is filled with the accent color, so its glyph
+        // flips to white; every other cell keeps the ordinary key label color.
         if (key.isPressed()) {
             return mSelectedLabelColor;
         }

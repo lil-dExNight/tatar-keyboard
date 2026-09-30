@@ -35,7 +35,7 @@ import rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity
 import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
 
 /**
- * Two-step onboarding screen (SETUP-01), following the AOSP LatinIME
+ * Two-step onboarding screen, following the AOSP LatinIME
  * SetupWizardActivity pattern in a minimal single-Activity form: step 1
  * enables the IME via the system input-method settings screen, step 2
  * selects it as the current keyboard via the system input-method picker.

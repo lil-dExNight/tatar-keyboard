@@ -17,14 +17,10 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
 /**
- * The frozen `.tpersem` personal-emoji binary format: one learned (word, emoji) co-occurrence per
- * record — the word the user committed, the emoji cluster they keep inserting after it («хәйерле
- * иртә» → ☀️). This is a deliberate sibling of `.tpersb` ([TpersbFormat]) rather than an extension
- * of it: the pairs file is keyed by an ORDERED PAIR OF WORDS, the emoji file by a (word, emoji
- * cluster) pair, and a reader written for one must never even open the other — which is why the
- * magic, the extension and the file name all differ while the header layout, the checksum
- * convention (SHA-256 over the whole file with the checksum field zeroed) and the subtype tag stay
- * identical.
+ * The frozen `.tpersem` learned-emoji binary format: one (word, emoji cluster) pair per record,
+ * the word the user committed and the emoji they keep inserting after it («хәйерле иртә» → ☀️). A
+ * sibling of [TpersbFormat]: the magic, extension and file name differ so a reader never opens the other
+ * kind, while the header layout, checksum convention and subtype tag are the same.
  *
  * Header layout (little-endian, [HEADER_SIZE] = 72 bytes):
  *
@@ -54,16 +50,12 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
  * |    N | word bytes, UTF-8, stored in the NORMALIZED form                    |
  * |    M | emoji bytes, UTF-8, stored as the RAW cluster (its only form)       |
  *
- * The word is stored in its normalized form only, exactly like the pairs store's context half: it
- * is a lookup key — the suggestion is looked up by the normalized form of the committed word — and
- * the settings list shows it in that same form, so keeping the user's casing of it would cost
- * bytes and buy nothing. The emoji has no casing to lose: a cluster is stored exactly as it was
- * picked.
+ * The word is stored normalized only, like the pair context: it is a lookup key and the settings
+ * list shows it that way. The emoji cluster is stored exactly as it was picked.
  *
- * The two counters are the two halves of the pinned ranking (usage descending, then frequency
- * descending, then the key's own ascending order): [usageCount] grows only when the user ACCEPTS
- * the learned emoji from the strip, [frequencyCount] only when the co-usage is observed again.
- * Both are u16 and saturate.
+ * Ranking is usage descending, frequency descending, then key ascending. usageCount grows when the
+ * user accepts the learned emoji from the strip, frequencyCount when the co-usage is observed
+ * again. Both are u16 and saturate.
  */
 internal object TpersemFormat {
     const val MAGIC = "TATPERSE"
@@ -91,24 +83,22 @@ internal object TpersemFormat {
      */
     const val RECORD_HEADER_SIZE = 10
 
-    /** Cap on (word, emoji) entries per subtype; enforced fail-closed by the reader from day one. */
+    /** Cap on (word, emoji) entries per subtype; the reader rejects a file over it. */
     const val MAX_PERSONAL_EMOJI_ENTRIES = 500L
 
-    /** Cap on the whole file, 64 KiB; enforced by the reader from day one. */
+    /** Cap on the whole file; the reader rejects a larger file. */
     const val MAX_FILE_SIZE = 65_536L
 
     /**
-     * Inclusive code-point length bounds for the normalized form of the word — the same window the
-     * pairs store pins ([TpersbFormat.MIN_WORD_CODE_POINTS]/[TpersbFormat.MAX_WORD_CODE_POINTS]):
-     * a one-letter word («а») is a legitimate thing to attach an emoji to.
+     * Inclusive code-point length bounds for the normalized word, the same window as
+     * [TpersbFormat.MIN_WORD_CODE_POINTS]..[TpersbFormat.MAX_WORD_CODE_POINTS].
      */
     const val MIN_WORD_CODE_POINTS = 1
     const val MAX_WORD_CODE_POINTS = 24
 
     /**
-     * Cap on the emoji cluster in UTF-16 units (`String.length`), mirroring the 32 of
-     * `EmojiTextUtils.MAX_CLUSTER_CHARS`: the largest cluster the keyboard ever handles as one
-     * unit (the editor's backspace) is the largest one worth learning.
+     * Cap on the emoji cluster in UTF-16 units (`String.length`), equal to
+     * `EmojiTextUtils.MAX_CLUSTER_CHARS`, the largest cluster the keyboard handles as one unit.
      */
     const val MAX_EMOJI_CLUSTER_CHARS = 32
 
@@ -116,10 +106,8 @@ internal object TpersemFormat {
     const val MAX_U32 = 0xffff_ffffL
 
     /**
-     * The on-disk file name for a subtype, e.g. `personal-emoji-tt_RU-s1-f1.tpersem`. A sibling of
-     * the words and pairs files in the same `personal/` directory; the schema and format version
-     * are woven into the name so a file written by an incompatible build is never even opened for
-     * the wrong reader.
+     * The on-disk file name for a subtype, e.g. `personal-emoji-tt_RU-s1-f1.tpersem`, next to the
+     * word and pair files. See [TpersFormat.personalFileName].
      */
     fun personalEmojiFileName(subtypeTag: String): String =
         "personal-emoji-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tpersem"

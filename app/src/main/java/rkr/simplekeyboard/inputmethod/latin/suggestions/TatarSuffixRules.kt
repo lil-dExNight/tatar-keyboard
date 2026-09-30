@@ -25,34 +25,32 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.WordFrequencySourc
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.isValidUtf8Scalar
 
 /**
- * P3 runtime Tatar suffix machinery (docs/TT-SUGGESTIONS.md): a fixed table of concrete inflectional
- * and frequent derivational suffix forms, a zero-allocation membership test over it, and a bounded
- * harmony-aware form generator.
+ * Runtime Tatar suffix rules: a fixed table of concrete inflectional and frequent derivational
+ * suffix forms, a zero-allocation membership test over it, and a bounded harmony-aware form
+ * generator.
  *
- * Consistency with the build-time generator (`scripts/wordform_gen.py`, P1): the table is the set of
- * SINGLE-suffix remainders the P1 paradigms can attach to a stem — plural, the five oblique cases,
- * the possessives, the verb tenses with their person composites, the gerunds and participles, the
- * masdar, and the seven derivational suffixes. Where the two deliberately differ:
+ * Consistency with the build-time generator (`scripts/wordform_gen.py`): the table is the set of
+ * single-suffix remainders its paradigms can attach to a stem (plural, the five oblique cases, the
+ * possessives, the verb tenses with their person composites, the gerunds and participles, the
+ * masdar, and the seven derivational suffixes). Where the two differ on purpose:
  *
- *  - the runtime table is a fixed explicit list while P1 renders patterns; suffix CHAINS are not
- *    listed here (татарларның reaches the boost through its own steps: татарлар is boosted by «лар»
- *    at prefix татар, and татарларның by «ның» at prefix татарлар). The two chain shapes P1 emits
- *    directly — plural+case and 3sg-possessive+case from the bare stem — are covered the same way,
- *    since the plural and the 3sg forms are dictionary words of their own;
- *  - the past-tense 1pl -к composites (яздык) are listed although P1 emits no 1pl persons — the
- *    brief's person-ending set names -к explicitly, and the surface forms are ordinary words;
+ *  - the runtime table is a fixed explicit list while the generator renders patterns; suffix
+ *    chains are not listed here (татарларның reaches the boost in steps: татарлар is boosted by
+ *    «лар» at prefix татар, and татарларның by «ның» at prefix татарлар). The generator's two
+ *    direct chain shapes, plural+case and 3sg-possessive+case, are covered the same way, since the
+ *    plural and the 3sg forms are dictionary words of their own;
+ *  - the past-tense 1pl -к composites (яздык) are listed although the generator emits no 1pl
+ *    persons: -к is a standard person ending and the surface forms are ordinary words;
  *  - the post-3sg case forms (-н, -на/-нә, -нда/-ндә, -ннан/-ннән) attach to the 3sg-possessive
  *    word (баласы+н), which is why they are single suffixes here but chains from the bare stem;
  *  - the present-tense person endings -сың/-сең ride the identity-contracted present base of
  *    и-final vowel stems (ди+сең), the one place a bare person ending follows a stem directly.
  *
- * The membership test runs on the lookup hot path (the P3 same-stem boost in `TdictPrefixIndex`),
- * so it is strictly allocation-free: a binary search over the sorted table comparing against the
- * one- or two-piece byte ranges a front-coded schema-2 word is stored as. The lookup path hands a
- * heap view of the index's block scratch — a verbatim bulk-fetched copy of the mapped block (O7
- * follow-up, 2026-09-29) — so the reads run at array speed while the mapping stays the source of
- * truth. The generator runs once per committed word on the engine worker (the P3 after-word
- * forms), where bounded allocation is acceptable — see [generateForms].
+ * The membership test runs on the lookup hot path (the same-stem boost in `TdictPrefixIndex`), so
+ * it is allocation-free: a binary search over the sorted table against the one- or two-piece byte
+ * ranges a front-coded schema-2 word is stored as. The lookup path passes a heap copy of the
+ * mapped block (see `TdictPrefixIndex`). The generator runs once per committed word on the engine
+ * worker (the after-word forms), where bounded allocation is acceptable; see [generateForms].
  *
  * No regex anywhere: harmony and assimilation are decided by explicit letter sets.
  */
@@ -73,9 +71,9 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
 
     // --- The suffix table -----------------------------------------------------------------------
     //
-    // Semantic groups, exactly the inventory of the P3 brief; the binary-search array is sorted
-    // once at class init and verified distinct, so the groups below stay in review order rather
-    // than collation order. Every entry is a concrete surface form (no archiphonemes left).
+    // Semantic groups. The binary-search array is sorted once at class init and verified
+    // distinct, so the groups below stay in review order rather than collation order. Every entry
+    // is a concrete surface form (no archiphonemes left).
 
     private val GROUPS: Array<Pair<String, Array<String>>> = arrayOf(
         // plural -LAr (н after nasals: урманнар)
@@ -128,7 +126,7 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
         ),
         // -GAn participle / recent past (к after voiceless), plus the negated -мA+GAn
         "participle -GAн" to arrayOf("ган", "гән", "кан", "кән", "маган", "мәгән"),
-        // simple future (P1's lexical split): -ар/-әр monosyllabic consonant stems, -ыр/-ер longer
+        // simple future (lexical split): -ар/-әр monosyllabic consonant stems, -ыр/-ер longer
         // ones, -р vowel stems, -яр monosyllabic vowel stems (дияр); negative -мAс
         "future -Ap/-Ip/-р/-яр" to arrayOf("ар", "әр", "ыр", "ер", "р", "яр"),
         "negative future -мAс" to arrayOf("мас", "мәс"),
@@ -182,7 +180,7 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
         return first.size - second.size
     }
 
-    // --- Membership (zero-allocation; the P3 same-stem boost calls this per candidate) ---------
+    // --- Membership (zero-allocation; the same-stem boost calls this per candidate) ------------
 
     /**
      * True when [remainder] is one of the table's suffix forms. Convenience string form of the
@@ -200,10 +198,8 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
      *
      * A schema-2 word is a shared prefix of its block's first word plus a suffix of its own, so the
      * bytes after a typed prefix come in at most two pieces; the lookup path passes them as ranges
-     * of its fetched block scratch (a verbatim copy of the mapped block) and nothing is copied or
-     * allocated. Binary search, so a candidate costs ~8 piecewise comparisons. Empty pieces are
-     * allowed; an empty remainder (the typed word itself) is never a suffix and never reaches here
-     * (the exact scan excludes it first).
+     * of its block copy, and nothing is copied or allocated. Empty pieces are allowed; an empty
+     * remainder (the typed word itself) is never a suffix and is excluded before this call.
      */
     override fun isInflectedContinuation(
         bytes: ByteBuffer,
@@ -243,22 +239,21 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
     // --- Generation (bounded; runs once per committed word, off the lookup hot path) -----------
 
     /**
-     * Appends the bounded P0 candidate inflections of a committed [stem] to [out], at most
-     * [maxOut] of them: plural, the five oblique cases, the 3sg possessive with its four special
-     * case forms, present/past/future 3sg, the -ып gerund, the -GAn participle, the masdar and
-     * -чA. That is 18 forms per harmony variant; mixed-harmony and Russian-marker stems generate
-     * BOTH variants (exactly like P1 — the caller's dictionary-presence filter keeps the attested
-     * one), so [maxOut] caps the total at well under 40. Duplicates (the vowel-stem -р future is
-     * harmony-blind) and the bare stem itself are never emitted.
+     * Appends candidate inflections of a committed [stem] to [out], at most [maxOut]: plural, the
+     * five oblique cases, the 3sg possessive with its four special case forms, present/past/future
+     * 3sg, the -ып gerund, the -GAn participle, the masdar and -чA. That is 18 forms per harmony
+     * variant; mixed-harmony and Russian-marker stems generate both variants, like the build-time
+     * generator, and the caller's dictionary filter keeps the attested one. Duplicates (the
+     * vowel-stem -р future is harmony-blind) and the bare stem are never emitted.
      *
-     * Runs once per committed word on the engine worker, NOT on the per-keystroke lookup path; the
-     * small bounded allocations it makes (the form strings themselves) are deliberate. Returns the
-     * number of forms appended. A stem with no harmony vowel adds nothing.
+     * Runs once per committed word on the engine worker, not on the per-keystroke lookup path, so
+     * the small allocations (the form strings) are acceptable. Returns the number of forms
+     * appended. A stem with no harmony vowel adds nothing.
      *
-     * Known deliberate simplifications versus P1 (the dictionary filter absorbs both): the
-     * п→б/к→г possessive voicing of the exceptions table is not replicated (китап generates
-     * китапы, which is not a dictionary word, while the real китабы simply does not get offered),
-     * and neither are the suppletive pronouns and the per-stem verb overrides.
+     * Simplifications versus the build-time generator (the dictionary filter absorbs them): the
+     * п→б/к→г possessive voicing of the exceptions table is not replicated (китап generates китапы,
+     * which is not a dictionary word, and the real китабы is not offered), nor are the suppletive
+     * pronouns and the per-stem verb overrides.
      */
     fun generateForms(stem: String, out: MutableList<String>, maxOut: Int): Int {
         var added = 0
@@ -297,7 +292,7 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
             added += emit(out, maxOut - added, stem, possessive3 + "нн" + pa + 'н')
 
             // Present 3sg: -а/-ә after consonants; vowel-final stems contract the final vowel to
-            // ый/и (укы→укый, эшлә→эшли) — P1's Y rule.
+            // ый/и (укы→укый, эшлә→эшли), as in the build-time generator.
             val present = if (vowelFinal) {
                 stem.substring(0, stem.length - 1) + (if (harmony == BACK) "ый" else "и")
             } else {
@@ -317,7 +312,7 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
         return added
     }
 
-    /** P1's lexically split simple future: -р/-яр on vowel stems, -ар/-әр vs -ыр/-ер by syllables. */
+    /** Lexically split simple future: -р/-яр on vowel stems, -ар/-әр vs -ыр/-ер by syllables. */
     private fun futureForm(stem: String, harmony: Int, vowelFinal: Boolean): String {
         if (vowelFinal) {
             return if (syllableCount(stem) == 1) stem + "яр" else stem + 'р'
@@ -363,8 +358,8 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
 
     /**
      * The harmony variants to generate: one for unambiguous stems, both (primary first) for
-     * mixed-harmony and Russian-marker stems — surface rules cannot tell совет from исем, so the
-     * overgeneration is deliberate and left for the dictionary filter, exactly as in P1.
+     * mixed-harmony and Russian-marker stems. Surface rules cannot tell совет from исем, so the
+     * overgeneration is left for the dictionary filter, as in the build-time generator.
      */
     private fun harmonyVariants(word: String): IntArray {
         val primary = harmonyOf(word) ?: return IntArray(0)
@@ -383,7 +378,7 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
         }
     }
 
-    // --- AfterWordFormsFactory: the P3 after-word forms of the Tatar NEXT_WORD slot -------------
+    // --- AfterWordFormsFactory: the after-word forms of the Tatar NEXT_WORD lookup --------------
 
     override fun createAfterWordForms(dictionary: WordFrequencySource): AfterWordForms =
         TatarAfterWordForms(this, dictionary)
@@ -394,9 +389,9 @@ object TatarSuffixRules : InflectedSuffixTable, AfterWordFormsFactory {
  * themselves dictionary entries, frequency-ranked.
  *
  * Bounded and allocation-light, not allocation-free: it runs once per NEXT_WORD request on the
- * engine worker (never on the prefix-scan hot path), generates at most a few dozen candidates and
- * materializes up to [maxOut] result strings — the same class of cost the bigram predict already
- * pays per request. Every early exit fails toward the bigram-only list.
+ * engine worker (never on the prefix-scan hot path), generates at most `GENERATION_CAP`
+ * candidates and materializes up to [maxOut] strings. Every early exit falls back to the
+ * bigram-only list.
  */
 internal class TatarAfterWordForms(
     private val rules: TatarSuffixRules,
@@ -419,9 +414,8 @@ internal class TatarAfterWordForms(
         if (generated.isEmpty()) return emptyList()
 
         // Keep dictionary words only, never the word itself or anything the bigrams already show;
-        // rank by frequency descending, code-point ascending on ties — the exact frozen tie-break
-        // of the prefix pass. The list is bounded by GENERATION_CAP, so this insertion sort is
-        // bounded too.
+        // rank by frequency descending, code-point ascending on ties (the tie-break of the prefix
+        // pass). The list is bounded by GENERATION_CAP, so this insertion sort is bounded too.
         val forms = ArrayList<String>(generated.size)
         val frequencies = LongArray(generated.size)
         for (form in generated) {
@@ -451,7 +445,7 @@ internal class TatarAfterWordForms(
 
         /**
          * Hard cap on generated candidates before the dictionary filter: 18 forms times two
-         * harmony variants, rounded up — generation can never produce more by construction.
+         * harmony variants, rounded up. Generation cannot produce more.
          */
         private const val GENERATION_CAP = 40
     }

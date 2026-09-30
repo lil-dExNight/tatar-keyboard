@@ -6,25 +6,17 @@ import java.io.FileOutputStream
 import java.io.IOException
 
 /**
- * Coordinates the bigram-table asset the same way [AtomicDictionaryStore] coordinates the main
- * dictionary — same seams ([DeviceProtectedDirectoryProvider], [DurableFileOps], [StorageClock],
- * [SpaceProbe], the temp -> fsync -> validate -> atomicRename -> syncDirectory pattern), a
- * DIFFERENT concrete class (PROPOSALS.md, "E5b. Хранение"): [BigramArtifactSpec.finalFileName]
- * has its own naming, [BigramArtifactSpec.finalFilePattern] its own regex, [MAX_FINAL_ARTIFACTS]
- * its own limit,
- * and — the reason a separate class exists rather than a parameterized shared one —
- * [ProcessBigramStorageOwner] is a SEPARATE process-wide registry from
- * [ProcessDictionaryStorageOwner]. Both key their shared state by the canonical path of the
- * directory a store instance was built with; as long as the bigram directory and the dictionary
- * directory are different paths (they are — [directoryProvider] here points at a bigram-only
- * subdirectory), a live lease on one can never observe or block a lease on the other. The two
- * catalogs simply never share a lock.
+ * Coordinates the bigram-table asset the way [AtomicDictionaryStore] coordinates the dictionary:
+ * the same seams and the same temp -> fsync -> validate -> atomicRename -> syncDirectory sequence,
+ * with its own file naming, pattern and [MAX_FINAL_ARTIFACTS] limit.
+ *
+ * It is a separate class because [ProcessBigramStorageOwner] is a separate process-wide registry
+ * from [ProcessDictionaryStorageOwner]. Both are keyed by directory, and [directoryProvider] points
+ * at a bigram-only subdirectory, so a dictionary lease and a bigram lease never share a lock.
  */
 class AtomicBigramStore(
-    // Reused as-is per PROPOSALS.md ("Переиспользуются швы DeviceProtectedDirectoryProvider..."):
-    // the single method keeps its schema-1-flavoured name, but nothing in its contract ties it to
-    // dictionaries — the instance wired in here returns the bigrams subdirectory, not
-    // filesDir/dictionaries.
+    // The seam's method is named for dictionaries, but the instance wired in here returns the
+    // bigrams subdirectory.
     private val directoryProvider: DeviceProtectedDirectoryProvider,
     private val assetInputProvider: BigramAssetInputProvider,
     private val clock: StorageClock,
@@ -37,10 +29,8 @@ class AtomicBigramStore(
         require(supportedArtifacts.isNotEmpty())
         require(supportedArtifacts.map { it.generation }.distinct().size == supportedArtifacts.size)
         require(supportedArtifacts.map { it.finalFileName }.distinct().size == supportedArtifacts.size)
-        // One store instance serves ONE family in ONE directory: retention and temp cleanup scan by
-        // [BigramArtifactSpec.finalFilePattern] and the process-wide lease map is keyed by
-        // directory, so a second family here would share this one's lease counter and could never
-        // be activated while it held a lease — the same rule [AtomicDictionaryStore] enforces.
+        // One store serves one family in one directory: retention scans by the family's file
+        // pattern and the lease map is keyed by directory. Same rule as [AtomicDictionaryStore].
         require(supportedArtifacts.map { it.family }.distinct().size == 1)
         require(supportedArtifacts.map { it.storageDirectoryName }.distinct().size == 1)
     }
@@ -345,10 +335,8 @@ fun interface BigramAssetInputProvider {
 }
 
 /**
- * Process-wide owner for every bigram store instance addressing the same canonical directory —
- * deliberately a SEPARATE registry from [ProcessDictionaryStorageOwner] (see the class doc on
- * [AtomicBigramStore]): different map, different lock, keyed by a different directory, so a live
- * dictionary lease and a live bigram lease can never contend for the same lock.
+ * Process-wide owner for every bigram store instance addressing the same canonical directory; a
+ * separate registry from [ProcessDictionaryStorageOwner] (see [AtomicBigramStore]).
  */
 private object ProcessBigramStorageOwner {
     private val registryLock = Any()

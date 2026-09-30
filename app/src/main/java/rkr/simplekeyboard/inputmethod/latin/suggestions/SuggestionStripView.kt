@@ -47,7 +47,7 @@ class SuggestionStripView @JvmOverloads constructor(
     }
 
     /**
-     * A long press on a filled cell (E4d). The word shown there is passed as it is displayed;
+     * A long press on a filled cell. The word shown there is passed as it is displayed;
      * whether it belongs to the personal dictionary — and therefore whether anything happens at all
      * — is decided on the other side, never here.
      */
@@ -57,7 +57,7 @@ class SuggestionStripView @JvmOverloads constructor(
 
     private val state = SuggestionStripState()
     /**
-     * Optional spoken label per cell, set right after [setSuggestions] by the owner of the band
+     * Optional spoken label per cell, set right after [setSuggestions] by the owner of the strip
      * for cells whose text does not read well aloud (an emoji). A null entry means "speak the
      * cell's text". Reset by every [setSuggestions]/[clearSuggestions], so a label can never
      * outlive the content it described.
@@ -72,15 +72,15 @@ class SuggestionStripView @JvmOverloads constructor(
         )
     }
     /**
-     * The autocorrect preview's correction cell (P2 of Phase 3, docs/ROADMAP-P3.md): the same
-     * text, bold and in the theme's emphasis colour, with an underline drawn in [onDraw]. Created
-     * once from [textPaint]; the colour lands in [init], next to the other theme reads.
+     * Paint of the autocorrect preview's correction cell: bold, in the theme's emphasis color,
+     * with an underline drawn in [onDraw]. Created once from [textPaint]; the color is set in
+     * [init] with the other theme reads.
      */
     private val emphasisTextPaint = TextPaint(textPaint)
     private val decorationPaint = Paint()
     /**
-     * W4 (docs/APPLE-UX-2026-09-25.md): the pressed-cell highlight is an inset rounded rect, so
-     * [onDraw] needs a rectangle. Allocated once here — the draw loop must stay allocation-free.
+     * The pressed-cell highlight is an inset rounded rect. Allocated once here, because the draw
+     * loop must stay allocation-free.
      */
     private val pressedCellRect = RectF()
     private val pressedCellInsetPx = TypedValue.applyDimension(
@@ -97,16 +97,14 @@ class SuggestionStripView @JvmOverloads constructor(
     private val displaySuggestions = arrayOfNulls<String>(SuggestionStripState.CELL_COUNT)
     /**
      * Width of the emphasized cell's ellipsized text, measured in [rebuildDisplaySuggestions]
-     * against the same paint the cell draws with, so [onDraw] never measures text per frame
-     * (O4, docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md). Zero when no cell is emphasized.
+     * against the paint the cell draws with, so [onDraw] never measures text per frame. Zero when
+     * no cell is emphasized.
      */
     private var emphasisTextWidthPx = 0f
     /**
-     * Set by [setSuggestions], consumed by [setEmphasis]: the two halves of one publication
-     * (the controller always publishes the emphasis marker with the words) share a single
-     * [rebuildDisplaySuggestions] — the marker decides which paint the cells ellipsize against,
-     * so rebuilding on the words alone would redo all three cells a microsecond later whenever
-     * a preview band lands. Read only on the UI thread, like everything else here.
+     * Set by [setSuggestions], consumed by [setEmphasis]: the two halves of one publication share
+     * a single [rebuildDisplaySuggestions], because the emphasis decides which paint the cells
+     * ellipsize against. UI thread only.
      */
     private var displayRebuildPending = false
     private val stripHeightPx = TypedValue.applyDimension(
@@ -163,8 +161,8 @@ class SuggestionStripView @JvmOverloads constructor(
             ),
             SEPARATOR_ALPHA,
         )
-        // The preview's correction cell: theme accent when the theme says one, the plain text
-        // colour otherwise — even then bold + the underline still mark the cell.
+        // The preview's correction cell: the theme accent if defined, else the plain text color;
+        // bold and the underline still mark the cell.
         emphasisColor = stripAttributes.getColor(
             R.styleable.SuggestionStripView_suggestionEmphasisColor,
             textPaint.color,
@@ -216,11 +214,10 @@ class SuggestionStripView @JvmOverloads constructor(
         displayRebuildPending = true
         accessibilityHelper.invalidateRoot()
         invalidate()
-        // Announce ONLY the empty band -> words transition, and only while touch exploration is
-        // actually on. The triple changes on every keystroke; announcing each one would bury the
-        // key echo TalkBack users type by, exactly like the shift-mode announcements deliberately
-        // stay silent on the frequent auto-caps transitions (KeyboardAccessibilityDelegate). The
-        // words themselves stay reachable at any time through the virtual cell nodes.
+        // Announce only the empty -> words transition, and only while touch exploration is on.
+        // The words change on every keystroke; announcing each change would bury the key echo
+        // TalkBack users rely on (the shift announcements skip auto-caps for the same reason, see
+        // KeyboardAccessibilityDelegate). The words stay reachable through the virtual cell nodes.
         if (hadSuggestions || !accessibilityManager.isTouchExplorationEnabled) return
         val available = listOfNotNull(
             state.suggestionAt(0),
@@ -247,7 +244,7 @@ class SuggestionStripView @JvmOverloads constructor(
 
     /**
      * Sets the spoken labels of the three cells; see the field comment. Called by the owner of the
-     * band in the same publication as [setSuggestions], after the words and their emphasis; never
+     * strip in the same publication as [setSuggestions], after the words and their emphasis; never
      * creates content of its own.
      */
     fun setSpokenLabels(first: String?, second: String?, third: String?) {
@@ -267,18 +264,15 @@ class SuggestionStripView @JvmOverloads constructor(
     }
 
     /**
-     * Marks one cell — the autocorrect preview's correction — emphasized (P2 of Phase 3,
-     * docs/ROADMAP-P3.md), or [SuggestionStripState.NO_CELL] to return to the plain band. Called
-     * by the owner of the band immediately after [setSuggestions], before the spoken labels
-     * (2026-09-25 audit: the rebuild below must be in place before a label lookup that can
-     * fail); the next publication resets it.
+     * Marks the autocorrect preview's correction cell emphasized, or [SuggestionStripState.NO_CELL]
+     * for a plain strip. Called right after [setSuggestions] and before the spoken labels, so the
+     * rebuild below is in place even if a label lookup fails; the next publication resets it.
      */
     fun setEmphasis(cell: Int) {
         val emphasisChanged = state.setEmphasis(cell)
         if (!emphasisChanged && !displayRebuildPending) return
-        // The bold face is wider: re-ellipsize against the paint the cell will actually draw
-        // with. This is the one rebuild of the publication — the words arrived in the paired
-        // setSuggestions() just before.
+        // The bold face is wider: re-ellipsize against the paint the cell will draw with. This
+        // is the one rebuild of the publication; the words arrived just before.
         rebuildDisplaySuggestions()
         invalidate()
     }
@@ -321,9 +315,8 @@ class SuggestionStripView @JvmOverloads constructor(
         val pressedCell = state.pressedCell()
         if (pressedCell != SuggestionStripState.NO_CELL) {
             decorationPaint.color = pressedColor
-            // W4 (docs/APPLE-UX-2026-09-25.md): iOS highlights a pressed strip cell with an
-            // INSET ROUNDED rect, not a full-bleed square one. The RectF is a field, so the
-            // draw loop still allocates nothing.
+            // A pressed cell is highlighted with an inset rounded rect, as on iOS. The rect is
+            // a field, so the draw loop allocates nothing.
             pressedCellRect.set(
                 state.cellLeft(pressedCell, width) + pressedCellInsetPx,
                 pressedCellInsetPx,
@@ -342,7 +335,7 @@ class SuggestionStripView @JvmOverloads constructor(
         // Explicit hairline: the same paint draws the preview underline with a real width, and
         // stroke width survives across frames.
         decorationPaint.strokeWidth = 0f
-        // W4: the iOS hairlines are vertically inset — they do not touch the strip's edges.
+        // The separators are inset vertically and do not touch the strip's edges.
         val separatorTop = height * SEPARATOR_INSET_FRACTION
         val separatorBottom = height - separatorTop
         var separator = 1
@@ -359,8 +352,7 @@ class SuggestionStripView @JvmOverloads constructor(
                 val center = (state.cellLeft(cell, width) + state.cellRight(cell, width)) / 2f
                 if (state.isEmphasized(cell)) {
                     // The preview's correction cell: bold accent text plus an underline under
-                    // exactly the drawn (ellipsized) text — allocation-free, like the rest of
-                    // this method. The underline width was measured at content-set time.
+                    // the drawn (ellipsized) text, whose width was measured at content-set time.
                     canvas.drawText(suggestion, center, textBaseline, emphasisTextPaint)
                     val halfText = emphasisTextWidthPx / 2f
                     decorationPaint.color = emphasisColor
@@ -560,11 +552,10 @@ class SuggestionStripView @JvmOverloads constructor(
             val actionable = isVirtualCellActionable(virtualViewId)
             if (actionable) {
                 node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
-                // Exposed on EVERY filled cell, not only on personal words. An action present only
-                // on personal ones would make the contents of a private list observable to any
-                // enabled accessibility service and to automated tree dumps — one could see which
-                // of the three words came from it. For a dictionary word the action is a no-op,
-                // which is what the contract requires of a long press there anyway.
+                // Exposed on every filled cell, not only on personal words: an action present only
+                // on personal ones would reveal to any accessibility service or tree dump which
+                // words come from the private list. For a dictionary word the action is a no-op,
+                // like a long press.
                 node.addAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
                 node.isLongClickable = true
             }
@@ -600,17 +591,13 @@ class SuggestionStripView @JvmOverloads constructor(
         const val VIRTUAL_ID_LEFT = 0
         const val VIRTUAL_ID_CENTER = 1
         const val VIRTUAL_ID_RIGHT = 2
-        // Р-3: размеры текста клавиатурных поверхностей считаются в dp, а НЕ в sp.
-        // Каждый из этих текстов живёт в полосе фиксированной dp-высоты (полоса подсказок
-        // 44dp с W5 стадии B, вкладки 44dp, строка поиска 50dp, заголовок секции 30dp), а системный
-        // масштаб шрифта растит только текст. При font_scale 2.0 полоса подсказок
-        // вырождалась в «Мини… · Минем · Мини…» — две ячейки из трёх неразличимы ровно для
-        // тех, кому крупный шрифт и нужен (docs/DEVICE-RESEARCH-GEOMETRY.md, Р-3).
-        // Клавиши раскладки всегда считались в dp; здесь то же правило.
+        // Text sizes of keyboard surfaces are in dp, not sp: each text lives in a band of fixed
+        // dp height, and the system font scale grows only the text. At a large font scale the
+        // cells would ellipsize into indistinguishable stubs. Layout keys use dp for the same
+        // reason.
         private const val TEXT_SIZE_DP = 18f
         private const val HORIZONTAL_TEXT_PADDING_DP = 8f
-        // W4 (docs/APPLE-UX-2026-09-25.md): the pressed cell is inset and rounded, and the
-        // separators are inset vertically — iOS hairlines never touch the strip's edges.
+        // The pressed cell is inset and rounded, and the separators are inset vertically.
         private const val PRESSED_CELL_INSET_DP = 3f
         private const val PRESSED_CELL_RADIUS_DP = 5f
         private const val SEPARATOR_INSET_FRACTION = 0.22f

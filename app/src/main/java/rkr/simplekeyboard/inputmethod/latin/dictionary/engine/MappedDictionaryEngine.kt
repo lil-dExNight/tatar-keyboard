@@ -48,14 +48,14 @@ class MappedDictionaryEngine private constructor(
         normalizedPrefixUtf8: ByteArray,
     ): LookupToken? = engine.request(editorSessionId, subtypeId, normalizedPrefixUtf8)
 
-    /** E5c NEXT_WORD sibling of [request] — same engine, same token/executor, different kind. */
+    /** NEXT_WORD counterpart of [request]: same engine, token and executor, different kind. */
     fun requestNextWord(
         editorSessionId: Long,
         subtypeId: String,
         normalizedContextWordUtf8: ByteArray,
     ): LookupToken? = engine.requestNextWord(editorSessionId, subtypeId, normalizedContextWordUtf8)
 
-    /** P7-3 (docs/GLIDE-PLAN.md): the GLIDE sibling of [request] — same engine, same discipline. */
+    /** GLIDE counterpart of [request]: same engine, same rules. */
     fun requestGlide(
         editorSessionId: Long,
         subtypeId: String,
@@ -63,23 +63,19 @@ class MappedDictionaryEngine private constructor(
     ): LookupToken? = engine.requestGlide(editorSessionId, subtypeId, path)
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of the glide word index —
-     * forwarded to the engine, which posts the drop onto its serialized worker (the decoder is
-     * worker-confined). Safe from any thread, no-op once the engine is gone.
+     * Idle memory release of the glide word index. The engine posts the drop onto its serialized
+     * worker (the decoder is worker-confined). Safe from any thread; no-op once destroyed.
      */
     fun releaseGlideIndex() = engine.releaseGlideIndex()
 
     /**
-     * E5c two-stage readiness (PROPOSALS.md, "E5c. Готовность вычислителя двухступенчатая"):
-     * acquires, maps and opens the bigram table, then wires it into the ALREADY-published
-     * composite computer. Call off the UI thread — this performs the same class of I/O
-     * [start] does. Returns false without side effects on this engine if the table is
-     * unavailable, corrupted, or the engine was destroyed in the meantime (racing
-     * [destroy] loses cleanly: whichever of the two reaches [Resources] first wins, and the
-     * loser's lease is closed without ever being exposed to a lookup). A failure here leaves
-     * [CompositePrefixComputer.predict] returning an empty list — 0 predictions, no effect on
-     * prefix suggestions or ordinary input, exactly the fail-closed shape the contract requires
-     * for a missing or invalid bigram file.
+     * Second stage of readiness: acquires, maps and opens the bigram table, then wires it into the
+     * already-published composite computer. Call off the UI thread (file I/O, like [start]).
+     *
+     * Returns false, with no effect on this engine, if the table is missing or corrupt or the
+     * engine was destroyed meanwhile (whichever of this and [destroy] reaches [Resources] first
+     * wins; the loser's lease is closed unused). On failure [CompositePrefixComputer.predict] keeps
+     * returning an empty list; word completion and typing are unaffected.
      */
     fun attachBigramSource(
         catalog: PublishedBigramTableCatalog,
@@ -97,18 +93,17 @@ class MappedDictionaryEngine private constructor(
                 table.generation, table.fileLanguageTag, table.schemaId, table.formatVersion, table.rawSha256,
             )
             mapped = mapper.mapReadOnly(table.file, table.rawSize)
-            // Schema 3 resolves its head/success indices through the linked dictionary and
-            // refuses to open against any other (the header names the dictionary's raw SHA-256);
-            // a missing dictionary index therefore fails closed, like any invalid table.
+            // Schema 3 resolves its head/successor indices through the linked dictionary and
+            // refuses to open against any other (the header names the dictionary's raw SHA-256),
+            // so a missing dictionary index is treated like an invalid table.
             val dictionaryIndex = resources.index
                 ?: throw IllegalArgumentException("bigram attach before the dictionary is open")
             val index = TatBigrPrefixIndex.open(
                 mapped, bigramIdentity, dictionaryIndex, table.headCount, table.rawSize,
             ) ?: throw IllegalArgumentException("validated bigram layout mismatch")
             if (!resources.attachBigram(lease, catalog, mapped, index)) {
-                // The engine was destroyed while this was in flight: attachBigram left the lease
-                // for us to close, exactly like the failure path below — do not publish a source
-                // into a computer whose engine will never look anything up again.
+                // The engine was destroyed meanwhile: attachBigram left the lease for us to
+                // close, as in the failure path below; do not publish into a dead computer.
                 throw AttachRacedDestroy()
             }
             computer.attachBigramSource(index)
@@ -123,7 +118,7 @@ class MappedDictionaryEngine private constructor(
                 try {
                     catalog.cleanupReleasedVersions()
                 } catch (_: Throwable) {
-                    // Fail closed without logging paths or typed text.
+                    // Best-effort; never log paths or typed text.
                 }
             }
             false
@@ -131,12 +126,9 @@ class MappedDictionaryEngine private constructor(
     }
 
     /**
-     * The D3 verdict of the newest completed lookup, or null when nothing may be replaced.
-     *
-     * A plain read of an immutable object behind a `@Volatile` reference: the UI thread never
-     * touches the mapped buffer, the index scratch, or the engine lock through this. The reader must
-     * still check [AutocorrectAdvice.typedWord] against the live word — that, not this getter, is
-     * what makes a verdict left over from an older lookup harmless.
+     * Autocorrect verdict of the newest completed lookup, or null when nothing may be replaced.
+     * A `@Volatile` read of an immutable object; the UI thread touches no mapped buffer or lock.
+     * The reader must still check [AutocorrectAdvice.typedWord] against the live word.
      */
     val autocorrectAdvice: AutocorrectAdvice?
         get() = computer.lastAutocorrectAdvice
@@ -148,14 +140,13 @@ class MappedDictionaryEngine private constructor(
     }
 
     /**
-     * P1 of Phase 2 (docs/ROADMAP-P2.md): exact whole-word membership of [normalizedWord] in this
-     * engine's dictionary, for the personal-bigram context gate. Safe to call from ANY thread —
-     * the answer comes from a cache-free read of the read-only mapping that never touches the
-     * lookup path's scratch (see [TdictPrefixIndex.containsWordCold]) — and deliberately answered
-     * without checking engine liveness: a released mapping stays valid until the garbage collector
-     * reclaims it (closing the channel does not unmap on the HotSpot VM), so the worst answer a
-     * racing [destroy] can produce is membership in the PREVIOUS dictionary generation — a
-     * fail-open-in-the-small answer a learn threshold and a personal dictionary both survive.
+     * Exact whole-word membership of [normalizedWord] in this engine's dictionary, used to decide
+     * whether a word pair may be learned. Safe from any thread: a cache-free read of the mapping
+     * that never touches the lookup scratch (see [TdictPrefixIndex.containsWordCold]).
+     *
+     * Engine liveness is not checked: a released mapping stays valid until GC (closing the channel
+     * does not unmap it), so a racing [destroy] can at worst answer for the previous dictionary
+     * generation, which is harmless for learning.
      */
     fun containsWord(normalizedWord: String): Boolean {
         val index = resources.index ?: return false
@@ -168,7 +159,7 @@ class MappedDictionaryEngine private constructor(
 
     fun updateKeyNeighbors(table: KeyNeighborTable?) = engine.updateKeyNeighbors(table)
 
-    /** P7-3: pushes the live layout geometry into the glide decode side (null disables it). */
+    /** Pushes the live layout geometry into the glide decode side (null disables glide typing). */
     fun updateGlideGeometry(geometry: GlideKeyGeometry?) = engine.updateGlideGeometry(geometry)
 
     fun isCurrent(token: LookupToken): Boolean = engine.isCurrent(token)
@@ -181,14 +172,14 @@ class MappedDictionaryEngine private constructor(
     val suppressedStaleResultCount: Long
         get() = engine.suppressedStaleResultCount
 
-    /** Internal-only control-flow signal — never surfaces past [attachBigramSource]'s own catch. */
+    /** Internal control-flow signal; never escapes [attachBigramSource]. */
     private class AttachRacedDestroy : Exception()
 
     /**
-     * Owns the dictionary lease/mapping from construction, and — after a successful
-     * [attachBigram] — the bigram lease/mapping too. Both are released together, exactly once,
-     * by [release]; [attachBigram] and [release] share [lock] so a racing [attachBigramSource]
-     * and [destroy] resolve cleanly instead of leaking a lease or double-closing one.
+     * Owns the dictionary lease and mapping from construction and, after a successful
+     * [attachBigram], the bigram lease and mapping too. [release] frees both exactly once;
+     * [attachBigram] and [release] share [lock], so a racing [attachBigramSource] and [destroy]
+     * neither leak nor double-close a lease.
      */
     private class Resources(
         private var lease: DictionaryFileLease?,
@@ -197,10 +188,8 @@ class MappedDictionaryEngine private constructor(
         index: TdictPrefixIndex?,
     ) {
         /**
-         * Read by [MappedDictionaryEngine.containsWord] from ANY thread (the personal-bigram
-         * store's worker), hence `@Volatile`; a stale read after [release] is benign there — the
-         * released mapping stays valid until GC, so the answer is membership in the previous
-         * dictionary generation at worst.
+         * Read by [MappedDictionaryEngine.containsWord] from any thread, hence `@Volatile`. A
+         * stale read after [release] is harmless (see [MappedDictionaryEngine.containsWord]).
          */
         @Volatile
         var index: TdictPrefixIndex? = index
@@ -214,7 +203,7 @@ class MappedDictionaryEngine private constructor(
         var bigramIndex: TatBigrPrefixIndex? = null
             private set
 
-        /** False (and the passed-in [lease] is left for the CALLER to close) once already released. */
+        /** False once released; the caller then still owns [lease] and must close it. */
         fun attachBigram(
             lease: BigramTableLease,
             catalog: PublishedBigramTableCatalog,
@@ -222,8 +211,8 @@ class MappedDictionaryEngine private constructor(
             index: TatBigrPrefixIndex,
         ): Boolean = synchronized(lock) {
             if (released) return@synchronized false
-            // Attach happens once per engine lifetime in E5c; replacing rather than accumulating
-            // keeps that true even if a future phase calls this more than once.
+            // Attach happens once per engine lifetime; replacing rather than accumulating keeps
+            // a repeated call safe.
             bigramLease?.let { stale -> try { stale.close() } catch (_: Throwable) {} }
             bigramLease = lease
             bigramCatalog = catalog
@@ -262,7 +251,7 @@ class MappedDictionaryEngine private constructor(
                 try {
                     heldBigramLease?.close()
                 } catch (_: Throwable) {
-                    // Same fail-closed posture as the dictionary lease above.
+                    // Best-effort, as for the dictionary lease above.
                 } finally {
                     try {
                         heldBigramCatalog?.cleanupReleasedVersions()
@@ -288,18 +277,13 @@ class MappedDictionaryEngine private constructor(
          * mmap both perform file I/O. On success the lease is owned exclusively by the returned
          * engine until destroy; on every failure it is closed here exactly once.
          *
-         * [suffixTable]/[afterWordFormsFactory] are the P3 word-form wiring (docs/TT-SUGGESTIONS.md):
-         * the Tatar engine is started with both, every other engine with nulls — a null table keeps
-         * the exact pass byte-identical to the frozen D1 behavior and a null factory keeps
-         * NEXT_WORD the pure bigram list. [fuzzyEditPolicy] is the TT-TYPO-NEXT Phase-B wiring of
-         * the same kind (docs/TT-TYPO-NEXT.md): null is [FuzzyEditPolicy.DEFAULT] — class #1 only,
-         * no same-length bonus, exactly the pre-Phase-B shipped behavior. [fallbackWordsFactory] is
-         * the TT-NEXTWORD-FILL wiring (docs/TT-NEXTWORD-FILL.md): built per engine from that
-         * engine's own dictionary, so both shipped languages fill their still-empty NEXT_WORD cells
-         * with their own top-frequency words; null keeps the pre-fill behavior byte-identical.
-         * [personalBigrams] is the P1 wiring (docs/ROADMAP-P2.md): the user's learned pairs of the
-         * NEXT_WORD slot, ranked after the static successors and before the forms;
-         * [PersonalBigramSource.EMPTY] keeps the pre-P1 behavior byte-identical.
+         * Optional per-language wiring; the Tatar engine gets all of it:
+         *  - [suffixTable], [afterWordFormsFactory]: word forms in the exact pass and in NEXT_WORD
+         *    answers; null means none;
+         *  - [fuzzyEditPolicy]: typo-recovery classes; null is [FuzzyEditPolicy.DEFAULT];
+         *  - [fallbackWordsFactory]: top-frequency fill of empty NEXT_WORD cells; null means none;
+         *  - [personalBigrams]: learned word pairs, ranked after the bigram successors and before
+         *    the forms; [PersonalBigramSource.EMPTY] means none.
          */
         fun start(
             catalog: PublishedDictionaryCatalog,
@@ -361,28 +345,25 @@ class MappedDictionaryEngine private constructor(
                 val executor = executorFactory()
                 createdExecutor = executor
                 val resources = Resources(lease, catalog, mapped, index)
-                // The three-class merge of E4b lives in the same computer as the E3 fuzzy pass,
-                // because only there are both the candidate classes and the frequencies known. The
-                // engine's public surface does not widen: what goes out through PrefixComputer.lookup
-                // is still a List<String>, and there is no second request, token or isCurrent.
+                // The personal merge lives in the same computer as the typo-recovery pass,
+                // because only there are both the candidate classes and the frequencies known.
+                // PrefixComputer.lookup still returns a plain List<String>.
                 //
-                // The after-word forms are created against THIS engine's index: a schema-3 bigram
-                // table links itself to one dictionary by raw SHA-256, and the forms must rank by
-                // the frequencies of that same dictionary.
-                // P7-3 (docs/GLIDE-PLAN.md): the glide decode side — the decoder's word inventory
-                // is THIS engine's dictionary, extended with the personal one by the host
-                // (docs/GLIDE-PERSONAL.md): the same [personalCandidates] seam the prefix merge
-                // already reads, with the dictionary's cold exact-membership read as the
-                // duplicate check. The geometry arrives later, pushed from the live layout
-                // through updateGlideGeometry; until then decodeGlide answers empty.
+                // The after-word forms are created against this engine's index: a schema-3 bigram
+                // table is linked to one dictionary by raw SHA-256, and the forms must rank by the
+                // frequencies of that same dictionary.
+                //
+                // Glide: the decoder's word inventory is this engine's dictionary, extended by the
+                // host with the same [personalCandidates] the prefix merge reads, with the
+                // dictionary's cold exact-membership read as the duplicate check. Geometry arrives
+                // later through updateGlideGeometry; until then decodeGlide returns nothing.
                 val computer = CompositePrefixComputer(
                     index, personalCandidates, afterWordFormsFactory?.createAfterWordForms(index),
-                    // TT-NEXTWORD-FILL: the factory computes the top-frequency pool HERE — one
-                    // linear scan of the freshly opened dictionary on this background startup
-                    // thread, at most once per engine, before the engine's lookup worker exists.
+                    // The factory computes the top-frequency pool here: one linear scan of the
+                    // dictionary on this background startup thread, once per engine.
                     fallbackWordsFactory?.createFallbackWords(index),
-                    // P1: the learned pairs ride the same per-language seam as the personal source
-                    // above — resolved by the caller from the subtype, never from a constant.
+                    // Learned pairs are resolved per language by the caller, like the personal
+                    // source above.
                     personalBigrams,
                     GlideDecoderHost(TdictGlideInventory(index), personalCandidates, index::containsWordCold),
                 )
@@ -409,7 +390,7 @@ class MappedDictionaryEngine private constructor(
                     try {
                         catalog.cleanupReleasedVersions()
                     } catch (_: Throwable) {
-                        // Fail closed without logging dictionary paths or typed text.
+                        // Best-effort; never log dictionary paths or typed text.
                     }
                 }
                 return null

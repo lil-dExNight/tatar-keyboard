@@ -23,9 +23,9 @@
 >
     <key-style
         latin:styleName="navigateMoreKeysStyle" />
-    <!-- Enter key style. M4 (docs/APPLE-UX-2026-09-25.md): a plain Return is grey like every
-         other functional key; the imeAction variants below re-declare backgroundType="action"
-         and are painted in the accent colour. -->
+    <!-- Enter key style. A plain Return is gray like every other functional key; the
+         imeAction variants below re-declare backgroundType="action" and are painted in the
+         accent color. -->
     <key-style
         latin:styleName="defaultEnterKeyStyle"
         latin:keySpec="!icon/enter_key|!code/key_enter"

@@ -287,7 +287,7 @@ class GlideTouchIntegrationContractTest {
         assertFalse("the glide commit must NOT require a sentence start for an empty context",
             glideCommit.contains("isSentenceStartContext"))
         val predictedCommit = inputLogic.substringAfter("public boolean commitPredictedWord(")
-            .substringBefore("/** Allocation-free suffix test")
+            .substringBefore("private static boolean endsWith(final CharSequence text, final String suffix)")
         assertTrue("the prediction commit keeps its P4 sentence-start guard",
             predictedCommit.contains("isSentenceStartContext"))
         assertTrue("the prediction path keeps its auto-space (typed suggestions unchanged)",

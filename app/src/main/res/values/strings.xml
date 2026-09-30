@@ -83,11 +83,11 @@
     <string translatable="false" name="abbreviation_unit_dp"><xliff:g id="DENSITY_INDEPENDENT_PIXELS">%d</xliff:g> dp</string>
 
     <string name="prefs_keyboard_height_settings">Keyboard height</string>
-    <!-- U6: the three named height presets of the "Keyboard height" row [CHAR LIMIT=20] -->
+    <!-- The three named height presets of the "Keyboard height" row [CHAR LIMIT=20] -->
     <string name="keyboard_height_compact">Compact</string>
     <string name="keyboard_height_default">Default</string>
     <string name="keyboard_height_tall">Tall</string>
-    <!-- The "Emoji panel height" row and its three presets (docs/EMOJI-PANEL-SPACE-2026-09-28.md) -->
+    <!-- The "Emoji panel height" row and its three presets -->
     <string name="emoji_panel_height">Emoji panel height</string>
     <string name="emoji_panel_height_same">Same as keyboard</string>
     <string name="emoji_panel_height_larger">Larger</string>
@@ -126,7 +126,7 @@
     <!-- Description for the word suggestions option -->
     <string name="tatar_suggestions_summary">Show suggested and predicted words above the keyboard as you type, in Tatar and in Russian</string>
     <!-- Title of the one-time dialog offering to turn word suggestions on -->
-    <!-- F15a: shown when the user taps a row that is dimmed because the switch it depends on
+    <!-- Shown when the user taps a row that is dimmed because the switch it depends on
          is off. Names the switch, so the next tap goes to the right place. -->
     <string name="row_needs_suggestions">Turn on "Word suggestions" first</string>
     <string name="row_needs_language_switch">Turn on the globe key first</string>
@@ -158,7 +158,7 @@
     <string name="personal_dictionary_summary">Remember words you type and suggest them later. Saved on this device only. Turning this off keeps what is already saved — erase it on the Personal dictionary screen.</string>
     <!-- Option to pause learning of personal words and word pairs. ON means nothing new is learned; what is already saved keeps appearing. -->
     <string name="incognito_mode">Incognito mode</string>
-    <!-- Description for the incognito option. Says both halves of the contract: learning pauses completely, saved content stays visible. -->
+    <!-- Description for the incognito option. Says that learning pauses completely and that saved content stays visible. -->
     <string name="incognito_mode_summary">Pause learning new words and word pairs. What is already saved keeps appearing. Turning this off resumes learning.</string>
     <!-- Entry row leading to the screen with the words the keyboard has saved -->
     <string name="personal_dictionary_screen">Saved words</string>
@@ -188,12 +188,12 @@
         <item quantity="one">%1$d word pair</item>
         <item quantity="other">%1$d word pairs</item>
     </plurals>
-    <!-- How often a saved word or pair earned its place, beside its row. Every form carries the number so the translations agree on the arguments. -->
+    <!-- How often a saved word or pair was used, shown beside its row. Every form carries the number so the translations agree on the arguments. -->
     <plurals name="personal_dictionary_usage_count">
         <item quantity="one">%1$d use</item>
         <item quantity="other">%1$d uses</item>
     </plurals>
-    <!-- Small note atop the personal dictionary screen while incognito mode is on. Says the pause out loud where the learned content is managed. -->
+    <!-- Small note atop the personal dictionary screen while learning is paused (incognito). -->
     <string name="personal_dictionary_learning_paused">Learning is paused while incognito mode is on. What is already saved still appears.</string>
     <!-- Action inside one language's words card: erase every saved word of that language -->
     <string name="personal_dictionary_clear_words">Clear all words</string>
@@ -211,7 +211,7 @@
     <string name="personal_dictionary_erase_all">Erase everything saved</string>
     <!-- Body of the erase-everything dialog. Names both stores: the learned pairs go with the words. -->
     <string name="personal_dictionary_erase_confirm">Remove every word, word pair and learned emoji saved on this device, in all languages? This cannot be undone.</string>
-    <!-- Affirmative button of the erase-everything dialog. Names the action rather than saying OK: it is destructive and irreversible. -->
+    <!-- Affirmative button of the erase-everything dialog. Names the action instead of OK because it is destructive and irreversible. -->
     <string name="personal_dictionary_erase_action">Erase</string>
     <!-- Shown when nothing has been saved yet -->
     <string name="personal_dictionary_empty">No saved words yet. Words you type are saved here once the personal dictionary is on.</string>
@@ -219,7 +219,7 @@
     <string name="personal_dictionary_no_matches">No words match your search.</string>
     <!-- Says how many of the matching words are actually listed. %1$d is shown, %2$d is the total. -->
     <string name="personal_dictionary_shown_of_total">Showing %1$d of %2$d. Use search to narrow the list.</string>
-    <!-- Shown when a word the user asked to save did not reach the device. Names no file, no code and no cause: none of that is anything the user could act on. -->
+    <!-- Shown when a word the user asked to save was not written. Names no file, code or cause. -->
     <string name="personal_dictionary_save_failed">Could not save the word. Try again.</string>
     <!-- Shown when a word the user asked to remove is still saved -->
     <string name="personal_dictionary_delete_failed">Could not remove the word. It is still saved.</string>
@@ -233,7 +233,7 @@
     <string name="personal_emoji_unreadable">Learned emoji could not be read, so suggestions from them stop. A copy was kept on this device.</string>
     <!-- Title of the card offering the kept copy of words that could not be read. Says what happened, not why. -->
     <string name="personal_dictionary_quarantine_title">Words that could not be read</string>
-    <!-- Beside the title when part of the copy is damaged. The count is what was READ, and the damage must be said in the same breath: a partial recovery presented as a whole one is the outcome this feature must never produce. -->
+    <!-- Beside the title when part of the copy is damaged. The count is what was read; the text also says that the rest is damaged, so a partial recovery never looks complete. -->
     <plurals name="personal_dictionary_quarantine_partial">
         <item quantity="one">%1$d word can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
         <item quantity="other">%1$d words can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
@@ -243,7 +243,7 @@
         <item quantity="one">%1$d word can be brought back.</item>
         <item quantity="other">%1$d words can be brought back.</item>
     </plurals>
-    <!-- Beside the title when nothing at all could be read out of the copy. It is still offered, because the copy is still on the device and the user is entitled to remove it. -->
+    <!-- Beside the title when nothing at all could be read out of the copy. The card is still shown so the user can delete the copy. -->
     <string name="personal_dictionary_quarantine_none">None of these words can be brought back. The copy is still on this device.</string>
     <!-- Action that puts the readable words back into the saved list -->
     <string name="personal_dictionary_quarantine_restore">Bring the words back</string>
@@ -257,7 +257,7 @@
     <string name="personal_dictionary_quarantine_discard_failed">Could not delete the copy. It is still on this device.</string>
     <!-- Title of the card offering the kept copy of word pairs that could not be read. Says what happened, not why. -->
     <string name="personal_bigrams_quarantine_title">Word pairs that could not be read</string>
-    <!-- Beside the title when part of the pairs copy is damaged. The count and the damage are said in the same breath, exactly like the words card. -->
+    <!-- Beside the title when part of the pairs copy is damaged. Says the count and the damage together, like the words card. -->
     <plurals name="personal_bigrams_quarantine_partial">
         <item quantity="one">%1$d pair can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
         <item quantity="other">%1$d pairs can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
@@ -267,7 +267,7 @@
         <item quantity="one">%1$d pair can be brought back.</item>
         <item quantity="other">%1$d pairs can be brought back.</item>
     </plurals>
-    <!-- Beside the title when nothing at all could be read out of the pairs copy. It is still offered, because the copy is still on the device and the user is entitled to remove it. -->
+    <!-- Beside the title when nothing at all could be read out of the pairs copy. The card is still shown so the user can delete the copy. -->
     <string name="personal_bigrams_quarantine_none">None of these pairs can be brought back. The copy is still on this device.</string>
     <!-- Action that puts the readable pairs back into the learned list -->
     <string name="personal_bigrams_quarantine_restore">Bring the pairs back</string>
@@ -294,7 +294,7 @@
     <string name="personal_emoji_delete_failed">Could not remove the emoji entry. It is still saved.</string>
     <!-- Title of the card offering the kept copy of learned emoji that could not be read. Says what happened, not why. -->
     <string name="personal_emoji_quarantine_title">Learned emoji that could not be read</string>
-    <!-- Beside the title when part of the emoji copy is damaged. The count and the damage are said in the same breath, exactly like the words card. -->
+    <!-- Beside the title when part of the emoji copy is damaged. Says the count and the damage together, like the words card. -->
     <plurals name="personal_emoji_quarantine_partial">
         <item quantity="one">%1$d emoji can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
         <item quantity="other">%1$d emoji can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
@@ -304,7 +304,7 @@
         <item quantity="one">%1$d emoji can be brought back.</item>
         <item quantity="other">%1$d emoji can be brought back.</item>
     </plurals>
-    <!-- Beside the title when nothing at all could be read out of the emoji copy. It is still offered, because the copy is still on the device and the user is entitled to remove it. -->
+    <!-- Beside the title when nothing at all could be read out of the emoji copy. The card is still shown so the user can delete the copy. -->
     <string name="personal_emoji_quarantine_none">None of these emoji can be brought back. The copy is still on this device.</string>
     <!-- Action that puts the readable emoji back into the learned list -->
     <string name="personal_emoji_quarantine_restore">Bring the emoji back</string>
@@ -320,7 +320,7 @@
     <string name="clear_recent_emoji">Clear recent emoji</string>
     <!-- Body of the confirmation dialog that erases recently used emoji -->
     <string name="clear_recent_emoji_confirm">Remove all recently used emoji stored on this device? This cannot be undone.</string>
-    <!-- Affirmative button of the clear-recent-emoji dialog. Names the action rather than saying OK: the action is destructive and irreversible. -->
+    <!-- Affirmative button of the clear-recent-emoji dialog. Names the action instead of OK because it is destructive and irreversible. -->
     <string name="clear_recent_emoji_action">Clear</string>
     <!-- Title of the preference item that opens the keyboard languages screen -->
     <string name="keyboard_languages">Keyboard languages</string>
@@ -345,7 +345,7 @@
     <string name="personal_dictionary_off_nothing_to_forget">Saved words are off, so there is nothing to forget. Turn on Personal dictionary in the keyboard settings to have the words you type remembered.</string>
     <!-- Title of the settings row and screen that lists where the keyboard's language data comes from. -->
     <string name="settings_screen_data_sources">Data sources</string>
-    <!-- Opening line of the Data sources screen. Says the two things a person actually wants to know: nothing leaves the phone, and the words came from somewhere nameable. -->
+    <!-- Opening line of the Data sources screen. Says that nothing leaves the phone and that the words come from named sources. -->
     <string name="data_sources_intro">The keyboard works offline and sends nothing anywhere. Its word lists and next-word suggestions are built from open collections of text. These are the collections.</string>
     <!-- Section header above the sources whose data is inside this version of the app. -->
     <string name="data_sources_in_app">In this version</string>

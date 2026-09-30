@@ -16,12 +16,9 @@
 package rkr.simplekeyboard.inputmethod.latin.emoji
 
 /**
- * The three small gesture helpers of [EmojiPanelView] (T2 part 3, docs/ROADMAP-P6.md): the
- * skin-tone long-press arming (and its cancel) and the sideways-flick section jump — moved
- * verbatim out of the view as `internal` extension functions, so the touch handler's call sites
- * kept their exact text. The long-press timeout, the runnable, the skin-tone table, the scroller
- * and the jump-duration constant are `internal` on the view for the same mechanical reason the
- * painters' paints are (parts 1–2 record the pattern).
+ * Gesture helpers of [EmojiPanelView] as `internal` extension functions: the skin-tone long-press
+ * arming and its cancel, and the sideways-flick section jump. The long-press timeout, runnable,
+ * skin-tone table, scroller and jump duration are `internal` on the view so these can reach them.
  */
 
 /** Arms the skin-tone long press, but only over a cell whose emoji actually has tones. */
@@ -41,7 +38,7 @@ internal fun EmojiPanelView.cancelSkinTonePopupTimer() {
 }
 
 /**
- * Animates a sideways flick into a jump to the neighbouring section. The same single scroller
+ * Animates a sideways flick into a jump to the neighboring section. The same single scroller
  * that carries a fling carries this, so there is still no second animator and no allocation.
  */
 internal fun EmojiPanelView.maybeJumpSection(direction: Int) {

@@ -366,9 +366,8 @@ public final class InputLogic {
                 && mConnection.getCodePointBeforeCursor() == Constants.CODE_SPACE
                 && Character.isLetterOrDigit(mConnection.getCodePointBeforeCursor(1))) {
             mConnection.beginBatchEdit();
-            // 2026-09-25 audit, F5: the batch closes in finally — a RuntimeException from a
-            // dying editor mid-edit must not stick the batch nest level forever. Nothing is
-            // caught: the exception propagates exactly as before.
+            // The batch closes in finally, so an exception from a dying editor cannot leave the
+            // nest level stuck. The exception itself still propagates.
             try {
                 mConnection.deleteTextBeforeCursor(1);
                 mConnection.commitText(". ", 1);
@@ -459,9 +458,8 @@ public final class InputLogic {
         final int selectionStart = mConnection.getExpectedSelectionStart();
         final int selectionEnd = mConnection.getExpectedSelectionEnd();
         final int numCharsSelected = selectionEnd - selectionStart;
-        // 2026-09-25 audit, F7: an inverted selection (start > end, accepted before
-        // RichInputConnection.updateSelection learned to normalize it) would substring a
-        // negative range below. Bail out — defense in depth behind the normalization.
+        // An inverted selection would take a negative substring below. updateSelection already
+        // normalizes it; this is a second check.
         if (numCharsSelected < 0) {
             return;
         }
@@ -538,13 +536,11 @@ public final class InputLogic {
     }
 
     /**
-     * Commits an autocorrection (D3): the SECOND insertion path of the frozen text contract, and
-     * the same mechanism as the first one — this method exists only to say "no auto-space" and
-     * delegates the edit itself to {@link #replaceTrailingWord}.
+     * Commits an autocorrection through {@link #replaceTrailingWord}, without the auto-space.
      *
      * <p>The separator that triggered the correction has not been committed yet; it follows through
-     * the ordinary input path a moment later and supplies the separation an accepted suggestion has
-     * to bring with it. Adding a space here would produce "сүз  ,".
+     * the ordinary input path and supplies the separation. Adding a space here would produce
+     * "сүз  ,".
      *
      * @param expectedPrefix the trailing word the verdict was computed for.
      * @param replacement the dictionary word to put in its place.
@@ -556,16 +552,12 @@ public final class InputLogic {
     }
 
     /**
-     * THE single place where a Tatar word is replaced in the editor: both insertion paths of the
-     * frozen text contract — the accepted suggestion and the autocorrection — go through this one
-     * explicit delete-by-code-points plus {@code commitText} inside ONE batch edit. No composing
-     * text is ever set, on either path.
+     * Replaces the trailing word for both an accepted suggestion and an autocorrection: one delete
+     * plus {@code commitText} inside one batch edit, never composing text.
      *
-     * <p>The re-checks below belong to both paths verbatim, which is the point of sharing them:
-     * a collapsed selection, a cursor that is not inside a word, and a live trailing word that still
-     * equals {@code expectedPrefix}. The deletion length is taken from that verified word, so it can
-     * only ever cover whole code points; a mismatch cancels the action entirely rather than editing
-     * part of it.
+     * <p>Re-checks against the cache: a collapsed selection, a cursor not inside a word, and a
+     * trailing word still equal to {@code expectedPrefix}. The delete length comes from that
+     * verified word; any mismatch cancels the edit.
      */
     private boolean replaceTrailingWord(final String expectedPrefix, final String replacement,
             final boolean withAutoSpace) {
@@ -576,10 +568,8 @@ public final class InputLogic {
             return false;
         }
         if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
-            // Cursor inside a word. The controller already refuses to show candidates in this
-            // state; this is the second, fail-closed line of defense against a desynchronized
-            // strip, because replacing the trailing word here would splice the suggestion into
-            // the middle of the user's text.
+            // Cursor inside a word. The controller already shows no candidates here; this second
+            // check stops an out-of-sync strip from splicing a word into the user's text.
             return false;
         }
         final String currentWord =
@@ -588,22 +578,17 @@ public final class InputLogic {
             // Stale tap: the trailing word no longer matches. Do not edit.
             return false;
         }
-        // The space rides along inside the SAME commitText: a second commit would show the word
-        // without its space for one frame and would cost another IPC round trip for nothing.
+        // The space goes into the same commitText: a second commit would show the word without
+        // its space for one frame and cost another IPC round trip.
         final String textToCommit =
                 withAutoSpace
                         && TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor())
                         ? replacement + AUTO_SPACE : replacement;
         mConnection.beginBatchEdit();
-        // beginBatchEdit() is what refreshes the connection from the framework, so this is the
-        // earliest the question can be asked. "No connection" means the editor went away between
-        // the band being painted and the tap. The edit below would still RUN in that state —
-        // RichInputConnection updates its own text cache before it checks the connection — and this
-        // method would then return true over an edit that reached no editor at all: the caller
-        // unbinds the candidates and clears the band for text that does not exist, and every later
-        // decision taken from the cache (the trailing word, the letter after the cursor, the suffix
-        // an undo matches) is taken from fiction. Nothing is touched instead, and false is the
-        // truth. The batch is still closed on this path, exactly once, like on the other one.
+        // Opening the batch refreshes the connection, so the connection is checked only now. If
+        // the editor went away since the strip was drawn, nothing is edited and false is returned:
+        // RichInputConnection would otherwise update its cache for an edit no editor received.
+        // The batch is closed on both paths. The other edit paths below follow the same rule.
         final boolean connected = mConnection.isConnected();
         try {
             if (connected) {
@@ -616,28 +601,21 @@ public final class InputLogic {
         if (!connected) {
             return false;
         }
-        // A space this code inserted must not arm the double-space-to-period gesture: the next
-        // real space press has to behave like a first one, exactly as it does after a typed
-        // letter. Leaving mLastSpaceDownTime armed would turn "сүзләр " + space into "сүзләр. "
-        // whenever the user had pressed space less than DOUBLE_SPACE_PERIOD_TIMEOUT ago. This is
-        // also an edit, so a pending revert no longer describes the text before the cursor. It
-        // holds for the autocorrection path too, which commits no space of its own: the space the
-        // user is about to press must still behave like a first one.
+        // An inserted space must not arm double-space-to-period: the next space press behaves
+        // like a first one (otherwise "сүзләр " + space would become "сүзләр. "). The edit also
+        // invalidates a pending double-space revert. Both hold for the autocorrection path too.
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         return true;
     }
 
     /**
-     * Undoes the autocorrection that was made immediately before this backspace (D3), through the
-     * same explicit delete + {@code commitText} in one batch edit, and without composing text.
+     * Undoes the autocorrection that was made immediately before this backspace, with the same
+     * delete + {@code commitText} in one batch edit and no composing text.
      *
-     * <p>What must stand right before the cursor is {@code insertedForm + separator} — the exact
-     * text the replacement and the separator behind it left there. That suffix match IS the position
-     * check the contract asks for and a stronger one than an offset: an offset can coincide again
-     * after unrelated edits, this text cannot. If anything else changed the text, nothing is edited
-     * and {@code false} is returned; the caller has already dropped the undo state by then, so the
-     * backspace simply deletes a character like any other.
+     * <p>The text right before the cursor must be {@code insertedForm + separator}. This suffix
+     * match is the position check (an offset could match again after unrelated edits). Otherwise
+     * nothing is edited and {@code false} is returned; the backspace then deletes a character.
      *
      * @param insertedForm the word this keyboard put there.
      * @param separator the separator committed right after it.
@@ -653,7 +631,7 @@ public final class InputLogic {
             return false;
         }
         if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
-            // Same list as the replacement path: the contract adds checks to it, it removes none.
+            // Same checks as replaceTrailingWord.
             return false;
         }
         final String inserted = insertedForm + separator;
@@ -661,12 +639,7 @@ public final class InputLogic {
             return false;
         }
         mConnection.beginBatchEdit();
-        // The same guard the two commit paths above carry (25c1ae28): beginBatchEdit() is what
-        // refreshes the connection from the framework, so this is the earliest the question can
-        // be asked. An editor that went away between the replacement and this backspace gets no
-        // edit and a false answer — the cache-only mutation would otherwise be reported as a
-        // success and the caller would treat fiction as the text before the cursor. The batch is
-        // still closed on this path, exactly once, like on the other one.
+        // Connection check after opening the batch; see replaceTrailingWord.
         final boolean connected = mConnection.isConnected();
         try {
             if (connected) {
@@ -685,31 +658,19 @@ public final class InputLogic {
     }
 
     /**
-     * Commits a predicted next word (E5d): the THIRD insertion path of the frozen text contract, and
-     * a SEPARATE method rather than a branch inside {@link #replaceTrailingWord} — NEXT_WORD deletes
-     * NOTHING (PROPOSALS.md, "Контракт текста" amendment, 2026-08-17, "Отдельный путь коммита"),
-     * while every path through {@link #replaceTrailingWord} always deletes {@code expectedPrefix}
-     * first; a shared method conditioned on "delete or not" would be one method doing two different
-     * jobs behind one signature, exactly the shape the frozen contract's "one commit path per kind of
-     * result" rule exists to prevent.
+     * Commits a next-word prediction. A separate method from {@link #replaceTrailingWord} because
+     * it deletes nothing: each kind of result has its own commit path.
      *
-     * <p>Re-checks, all against the LIVE cache: collapsed selection, no letter right after the cursor
-     * (the same two checks {@link #replaceTrailingWord} makes), an EMPTY trailing word (NEXT_WORD is
-     * only ever requested when the prefix is empty, so a non-empty one here means the user typed
-     * something after the request was built, and the tap is stale), and the live context word —
-     * re-extracted by the exact algorithm that built the request — matching {@code
-     * expectedContextWord}. Deletes zero characters; inserts {@code suggestion} with the same
-     * auto-space rule an accepted suggestion uses.
+     * <p>Re-checks against the cache: collapsed selection, no letter after the cursor, an empty
+     * trailing word (otherwise the user typed after the request and the tap is stale), and the
+     * context word, re-extracted the same way, equal to {@code expectedContextWord}. The word is
+     * inserted with the auto-space rule of an accepted suggestion.
      *
-     * <p>P4 (docs/TT-SUGGESTIONS.md) adds one case to the context check: at a sentence start the
-     * bound context is EMPTY — the sentence-start table answers where there is no previous word —
-     * and the equality check then passes only if the live context is empty too, with one
-     * additional requirement: the live position must still be a sentence start by the exact
-     * detector the request was built with. Without it an empty expected context would match any
-     * context-free position (after ", " just as after ". "), and a stale tap would edit there.
+     * <p>An empty context word means a sentence-start prediction; the position must then still be a
+     * sentence start, or an empty context would also match after ", ".
      *
      * @param expectedContextWord the context word the prediction was computed for; empty only for
-     *        a sentence-start prediction (P4).
+     *        a sentence-start prediction.
      * @param suggestion the predicted word to insert.
      * @return {@code true} if the word was committed, {@code false} otherwise (no edit).
      */
@@ -721,18 +682,16 @@ public final class InputLogic {
             return false;
         }
         if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
-            // Same list as replaceTrailingWord: the contract adds checks to it, it removes none.
+            // Same checks as replaceTrailingWord.
             return false;
         }
         if (!TatarWordUtils.extractTrailingWord(mConnection.getCachedTextBeforeCursor()).isEmpty()) {
-            // The prefix is no longer empty: the user typed something after the request was built,
-            // and NEXT_WORD only ever applies to an empty prefix. Stale tap; do not edit.
+            // The prefix is no longer empty: the user typed after the request was built. Stale
+            // tap; do not edit.
             return false;
         }
-        // The same extraction the request was built with, cache-boundary knowledge included
-        // (docs/NEXTWORD-RACE.md): a tap on a first-word-of-field prediction must re-derive the
-        // same context the controller saw, or it would be refused as stale. The knowledge is the
-        // connection's provenance flag (audit 2026-09-02, C6), never a length re-derivation.
+        // The same extraction the request was built with, including whether the cache reaches
+        // the start of the text, so a prediction for the first word of a field is not refused.
         final String liveContext =
                 TatarWordUtils.extractNextWordContext(mConnection.getCachedTextBeforeCursor(),
                         mConnection.cacheReachedTextStart());
@@ -743,25 +702,16 @@ public final class InputLogic {
         if (expectedContextWord.isEmpty()
                 && !TatarWordUtils.isSentenceStartContext(mConnection.getCachedTextBeforeCursor(),
                         mConnection.cacheReachedTextStart())) {
-            // An empty context binds only at a sentence start (P4); the position no longer being
-            // one (or never having been one — a context-free mid-sentence position matches the
-            // equality check too) means the tap is stale. Do not edit.
+            // An empty context is valid only at a sentence start; anywhere else the tap is
+            // stale. Do not edit.
             return false;
         }
-        // The space rides along inside the SAME commitText, exactly like the other two paths.
+        // The space goes into the same commitText, as in replaceTrailingWord.
         final String textToCommit =
                 TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor())
                         ? suggestion + AUTO_SPACE : suggestion;
         mConnection.beginBatchEdit();
-        // beginBatchEdit() is what refreshes the connection from the framework, so this is the
-        // earliest the question can be asked. "No connection" means the editor went away between
-        // the band being painted and the tap. The edit below would still RUN in that state —
-        // RichInputConnection updates its own text cache before it checks the connection — and this
-        // method would then return true over an edit that reached no editor at all: the caller
-        // unbinds the candidates and clears the band for text that does not exist, and every later
-        // decision taken from the cache (the trailing word, the letter after the cursor, the suffix
-        // an undo matches) is taken from fiction. Nothing is touched instead, and false is the
-        // truth. The batch is still closed on this path, exactly once, like on the other one.
+        // Connection check after opening the batch; see replaceTrailingWord.
         final boolean connected = mConnection.isConnected();
         try {
             if (connected) {
@@ -773,9 +723,7 @@ public final class InputLogic {
         if (!connected) {
             return false;
         }
-        // Same reasoning as replaceTrailingWord: a space this code inserted must not arm the
-        // double-space-to-period gesture, and a pending revert no longer describes the text before
-        // the cursor after this edit.
+        // No double-space arming and no stale revert; see replaceTrailingWord.
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         return true;
@@ -800,22 +748,13 @@ public final class InputLogic {
     }
 
     /**
-     * The glide lift-commit's commit path (P7-6, docs/ROADMAP-P7.md — the 2026-09-24 field
-     * report): identical re-checks to {@link #commitPredictedWord} EXCEPT the P4 sentence-start
-     * requirement for an empty context. A prediction tap is a stale-band guard — the band may
-     * describe text the user has already left — while a glide gesture ends at the cursor the
-     * user is looking at a decode-millisecond ago, so the context-EQUALITY re-check below is the
-     * whole staleness story. Without this split a glide after "сүз ? " (the space-before-
-     * punctuation habit: the position is context-free and NOT a sentence start) committed
-     * nothing — the gesture looked dead.
+     * Commits a glide-typed word. Same re-checks as {@link #commitPredictedWord} except the
+     * sentence-start requirement for an empty context: a glide ends at the current cursor, so the
+     * context equality check is enough (and a glide after "сүз ? " must still commit).
      *
-     * <p>P7-7 (the 2026-09-25 contract change): a glide commits NO auto-space — the gesture is
-     * typing, not a suggestion acceptance. The one separator rule is chaining: when the cursor
-     * stands right after a word character, the commit prepends ONE space (gliding word after
-     * word produces "сәләм дөнья"); after whitespace, punctuation or at a field start nothing is
-     * prepended. {@code chainedAfter} is the only trailing word tolerated — the word the previous
-     * glide of the chain committed (still inside its undo window); any other trailing word is a
-     * half-typed prefix and refuses the commit, exactly as before P7-7.
+     * <p>A glide adds no auto-space. When the cursor follows a word character, one space is
+     * prepended, so consecutive glides give "сәләм дөнья". {@code chainedAfter}, the word the
+     * previous glide committed, is the only trailing word allowed; any other refuses the commit.
      *
      * @param expectedContextWord the context word captured when the gesture was delivered.
      * @param suggestion the decoded word to insert.
@@ -848,13 +787,11 @@ public final class InputLogic {
             // The text moved between the lift and the decode's completion. Do not edit.
             return 0;
         }
-        // P7-7: the only space a glide ever inserts is the chain separator, and it rides along
-        // inside the SAME commitText, exactly like the other paths' auto-space did.
+        // The only space a glide inserts is the chain separator, in the same commitText.
         final boolean prepend = !trailingWord.isEmpty();
         final String textToCommit = prepend ? AUTO_SPACE + suggestion : suggestion;
         mConnection.beginBatchEdit();
-        // See commitPredictedWord for why the connection check waits for the batch: a refresh is
-        // the earliest honest answer, and a dead connection turns the whole edit into fiction.
+        // Connection check after opening the batch; see replaceTrailingWord.
         final boolean connected = mConnection.isConnected();
         try {
             if (connected) {
@@ -866,20 +803,17 @@ public final class InputLogic {
         if (!connected) {
             return 0;
         }
-        // Same reasoning as commitPredictedWord: no double-space arming, no stale revert.
+        // No double-space arming and no stale revert; see replaceTrailingWord.
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         return prepend ? 2 : 1; // GLIDE_COMMIT_PREPENDED : GLIDE_COMMIT_BARE
     }
 
     /**
-     * The glide lift-commit's alternative replacement (the UX amendment, docs/ROADMAP-P7.md):
-     * replaces the word a glide just committed with the tapped alternative, IN PLACE — P7-7:
-     * no space is added or removed; {@code prependedSpace} says whether the committed text
-     * carried the chain space (the replacement keeps it). The position check: the trailing word
-     * right before the cursor must BE {@code committedWord} (the same word-boundary algorithm
-     * every path agrees on), plus the exact suffix when the chain space is expected. A stale tap
-     * edits nothing.
+     * Replaces the word a glide just committed with the tapped alternative, in place: no space is
+     * added or removed, and a prepended chain space ({@code prependedSpace}) is kept. The trailing
+     * word must be {@code committedWord}, with the chain space before it if expected; otherwise
+     * nothing is edited.
      *
      * @param committedWord the word the glide lift committed.
      * @param alternative the alternative shown in the strip and tapped.
@@ -895,7 +829,7 @@ public final class InputLogic {
             return false;
         }
         if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
-            // Same fail-closed rule as the other edit paths: never splice into the user's word.
+            // As in the other edit paths: never splice into the user's word.
             return false;
         }
         final CharSequence beforeCursor = mConnection.getCachedTextBeforeCursor();
@@ -908,8 +842,7 @@ public final class InputLogic {
         }
         final String textToCommit = (prependedSpace ? AUTO_SPACE : "") + alternative;
         mConnection.beginBatchEdit();
-        // beginBatchEdit() refreshes the connection from the framework — the earliest the question
-        // can be asked; see the other edit paths for the full reasoning.
+        // Connection check after opening the batch; see replaceTrailingWord.
         final boolean connected = mConnection.isConnected();
         try {
             if (connected) {
@@ -928,11 +861,9 @@ public final class InputLogic {
     }
 
     /**
-     * The glide lift-commit's whole-word undo (the Gboard gesture-undo): one backspace right after
-     * the lift deletes the committed word from before the cursor — INCLUDING the chain space when
-     * {@code prependedSpace} says the commit prepended one, so undoing the second glide of a chain
-     * returns to exactly the first word's state ("сәләм дөнья" → "сәләм") — and commits nothing
-     * back. Same position check as the replacement above.
+     * Whole-word undo of a glide commit: one backspace right after it deletes the committed word,
+     * including a prepended chain space ("сәләм дөнья" → "сәләм"), and commits nothing back. Same
+     * position check as {@link #replaceGlideLiftedWord}.
      *
      * @param committedWord the word the glide lift committed (or its current replacement).
      * @param prependedSpace whether the commit prepended the chain space.

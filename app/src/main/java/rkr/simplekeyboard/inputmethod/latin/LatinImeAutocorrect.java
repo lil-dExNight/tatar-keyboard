@@ -21,11 +21,9 @@ import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils;
 
 /**
- * The D3 autocorrect interception seam of {@link LatinIME#onEvent} (T2 split, part 2 of 3):
- * the two probes that run BEFORE the input logic sees the event — a separator about to finish
- * a word may replace it first, and a backspace right after a replacement undoes it. Both are
- * static and take the service, so the bodies moved here verbatim; the decision itself lives in
- * {@code SuggestionsController}.
+ * The autocorrect hooks of {@link LatinIME#onEvent}, which run before the input logic sees the
+ * event: a separator about to finish a word may correct it first, and a backspace right after an
+ * autocorrection undoes it. The decision itself lives in {@code SuggestionsController}.
  */
 final class LatinImeAutocorrect {
     private LatinImeAutocorrect() {
@@ -33,19 +31,16 @@ final class LatinImeAutocorrect {
     }
 
     /**
-     * Corrects the word a separator is about to finish (D3), BEFORE that separator reaches the input
+     * Corrects the word a separator is about to finish, before that separator reaches the input
      * logic.
      *
-     * <p>Before, not after, on purpose: at this instant the editor is in exactly the state an
-     * accepted suggestion needs — a trailing word with a collapsed cursor right behind it — so the
-     * correction is the same single delete + commit, and the separator then travels the ordinary
-     * path with the auto-space rule, the double-space gesture and the shift update all untouched.
+     * <p>Before, not after: at this point the editor has a trailing word with a collapsed cursor
+     * behind it, which is what an accepted suggestion needs, so the correction is the same delete +
+     * commit, and the separator then takes the ordinary path (auto-space, double-space, shift).
      *
-     * <p>The two conditions are a conjunction: the code point must be a word separator of the live
-     * layout AND one of the separators D3 fires on at all
-     * ({@link TatarWordUtils#isAutocorrectSeparator}, i.e. «пробел или пунктуация»). Everything else
-     * — including Enter and Tab, which are word separators too — is left alone. The controller
-     * decides whether anything is actually replaced; this method only recognizes the moment.
+     * <p>The code point must be a word separator of the current layout and an autocorrect
+     * separator ({@link TatarWordUtils#isAutocorrectSeparator}: space or punctuation). Enter and Tab
+     * are left alone. The controller decides whether anything is actually replaced.
      */
     static void maybeAutocorrectTatarWord(final LatinIME ime, final Event event) {
         if (ime.mSuggestionsController == null) {
@@ -62,14 +57,12 @@ final class LatinImeAutocorrect {
 
     /**
      * A backspace pressed immediately after an autocorrection restores what the user typed instead
-     * of deleting a character (D3). Returns true when it did, in which case the key press is fully
-     * handled and the ordinary backspace path never runs.
+     * of deleting a character. Returns true when it did; the ordinary backspace path then never runs.
      *
-     * <p>What follows a successful revert is exactly what a backspace does apart from the deletion:
-     * the shift state is recomputed (the restored word can change auto-caps), the band is re-derived
-     * from the new text, and the keyboard's own state machine still sees the key press. The
-     * suggestions offer is deliberately skipped — a delete carries
-     * {@link Event#NOT_A_CODE_POINT}, which is never a word separator, so the call would be a no-op.
+     * <p>After a successful undo the follow-ups of a backspace still run: the shift state is
+     * recomputed, the suggestion strip is rebuilt from the new text, and the keyboard state machine
+     * sees the key press. The suggestions offer is skipped: a delete carries
+     * {@link Event#NOT_A_CODE_POINT}, which is never a word separator, so it would be a no-op.
      */
     static boolean maybeRevertTatarAutocorrection(final LatinIME ime, final Event event) {
         if (ime.mSuggestionsController == null || event.mKeyCode != Constants.CODE_DELETE) {

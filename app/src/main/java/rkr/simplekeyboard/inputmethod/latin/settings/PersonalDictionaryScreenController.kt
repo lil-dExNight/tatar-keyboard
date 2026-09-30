@@ -29,20 +29,14 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQua
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalWordFilter
 
 /**
- * Everything the "Personal dictionary" screen does to the data, in one place away from the view
- * code: read the snapshots, add a word, remove a word, erase everything.
+ * Everything the "Personal dictionary" screen does to the saved words, away from the view code:
+ * read snapshots, add, remove, clear and erase words, and inspect/restore/discard quarantined copies.
  *
- * Every mutation goes to the process-wide [PersonalDictionaries] owner, which turns it into an event
- * on the single personal-store worker — the settings screen performs no file I/O itself and holds no
- * second writer. Erasure additionally notifies the IME so a word that is gone stops being tappable
- * in the band that is open right now.
- *
- * Every mutation here takes a completion callback and delivers it on the UI thread through
- * [uiPoster]. That is not a convenience: queueing an event and repainting the screen in the next
- * statement made the screen report an outcome it could not know yet. It read the published snapshot
- * before the worker had finished two fsyncs, so a word the user had just added was routinely missing
- * from the list, and a write that genuinely failed said nothing at all. The screen now repaints when
- * the mutation is over, and says so when it did not happen.
+ * Every mutation goes to the process-wide [PersonalDictionaries] owner, which runs it on the single
+ * personal-store worker; the screen does no file I/O and holds no second writer. Erasure also
+ * notifies the IME, so a removed word stops being tappable in the open suggestion strip. Every
+ * mutation takes a completion callback delivered on the UI thread through [uiPoster], and the
+ * screen repaints only then: right after queueing, the published snapshot is not updated yet.
  */
 internal class PersonalDictionaryScreenController(
     private val context: Context,
@@ -59,13 +53,9 @@ internal class PersonalDictionaryScreenController(
             .map { it to PersonalDictionaries.snapshotFor(context, it) }
 
     /**
-     * Adds one word typed by the user on the screen. Returns false when the word is not eligible —
-     * the SAME content filter learning will use, so what the screen accepts and what typing would
-     * save can never drift apart. That answer is immediate and is about the word itself.
-     *
-     * Whether the accepted word actually reached the disk is a different and later answer, and it
-     * arrives through [onSaved] on the UI thread. `true` from this method therefore means "worth
-     * saving", never "saved".
+     * Adds one word typed on the screen. Returns false at once when the word is not eligible under
+     * the same content filter learning uses. `true` means "worth saving", not "saved": whether the
+     * word reached the disk arrives later through [onSaved] on the UI thread.
      */
     fun addWord(subtypeId: String, word: String, onSaved: (Boolean) -> Unit): Boolean {
         val alphabet = PersonalSubtypes.alphabetFor(subtypeId) ?: return false
@@ -77,9 +67,9 @@ internal class PersonalDictionaryScreenController(
     }
 
     /**
-     * Removes one word. Erasure semantics: the band unbinds whatever it is showing, immediately —
-     * that part cannot wait for the disk. [onRemoved] arrives on the UI thread once the store knows
-     * whether the word is really gone.
+     * Removes one word. The suggestion strip unbinds whatever it shows immediately, without waiting
+     * for the disk. [onRemoved] arrives on the UI thread once the store knows whether the word is
+     * really gone.
      */
     fun removeWord(subtypeId: String, word: String, onRemoved: (Boolean) -> Unit) {
         PersonalDictionaries.storeFor(context, subtypeId)
@@ -88,17 +78,10 @@ internal class PersonalDictionaryScreenController(
     }
 
     /**
-     * Asks every language whether it has a quarantine copy, and answers ONCE, on the UI thread, with
-     * the languages that do.
-     *
-     * The screen cannot ask this synchronously: reading the copy is file work and belongs on the
-     * store's worker, like every other read in this subsystem. So the screen paints without the card
-     * and repaints when the answers arrive — the same shape the mutations already use, for the same
-     * reason.
-     *
-     * A language absent from the map has no copy. A language present with a count of zero HAS one
-     * that yielded nothing, and still deserves its card: those bytes are on the device and the user
-     * is the only one who can decide to remove them.
+     * Asks every language whether it has a quarantined copy and answers once, on the UI thread, with
+     * the languages that do. Reading a copy is file work on the store's worker, so the screen paints
+     * without the card and repaints when the answer arrives. A language present with a count of zero
+     * has a copy that yielded nothing; it still gets a card so the user can remove it.
      */
     fun quarantines(
         subtypeIds: List<String>,
@@ -138,9 +121,9 @@ internal class PersonalDictionaryScreenController(
     }
 
     /**
-     * Erases the personal dictionary of ONE language — the section-level "Clear all words" (U7 of
-     * Phase 2, docs/ROADMAP-P2.md). [onCleared] arrives on the UI thread with whether the files
-     * are really gone; the band is unbound immediately, exactly like a single removal.
+     * Erases the personal dictionary of one language (the section-level "Clear all words").
+     * [onCleared] arrives on the UI thread with whether the files are really gone; the suggestion
+     * strip is unbound immediately, like after a single removal.
      */
     fun clearWords(subtypeId: String, onCleared: (Boolean) -> Unit) {
         PersonalDictionaries.storeFor(context, subtypeId)
@@ -149,10 +132,9 @@ internal class PersonalDictionaryScreenController(
     }
 
     /**
-     * Erases the personal dictionaries of ALL languages, not only the one in view. [onErased] gets
-     * `true` only when EVERY language's files went away: a partial erasure that reported success
-     * would be the worst of the three, because the screen shows an empty list while the words come
-     * back at the next process start.
+     * Erases the personal dictionaries of all languages, not only the one in view. [onErased] gets
+     * `true` only when every language's files went away; a partial erasure reported as success
+     * would show an empty list while the words come back at the next process start.
      */
     fun eraseAll(subtypeIds: List<String>, onErased: (Boolean) -> Unit) {
         val targets = subtypeIds.filter { PersonalSubtypes.alphabetFor(it) != null }

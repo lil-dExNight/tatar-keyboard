@@ -17,19 +17,13 @@
 package rkr.simplekeyboard.inputmethod.latin.settings
 
 /**
- * U6 of Phase 5 (docs/ROADMAP-P5.md): the "Keyboard height" row offers three named presets
- * instead of the inherited twenty-one-step seek bar. The preset is still stored as the same
- * `pref_keyboard_height` float the seek bar wrote, so the whole downstream pipeline
- * (SettingsValues.mKeyboardHeightScale → ResourceUtils.getKeyboardHeight →
- * KeyboardLayoutSet geometry → KeyboardBuilder row fractions) is untouched: every key height,
- * hit box, popup preview and the emoji panel's height derive from the occupied keyboard
- * height and scale on their own.
+ * The three named presets of the "Keyboard height" row, stored as the `pref_keyboard_height`
+ * float (SettingsValues.mKeyboardHeightScale → ResourceUtils.getKeyboardHeight → keyboard
+ * geometry). Key heights, hit boxes, popup previews and the emoji panel height all derive from
+ * the resulting keyboard height. A float that matches no preset (e.g. 1.30 from the older seek
+ * bar) keeps applying and is shown as a plain percent until a preset is picked.
  *
- * A float written by the old seek bar (say 1.30) keeps applying — nothing the user had is
- * re-interpreted. The row shows such a value as a plain percent until a preset is picked,
- * from which moment the stored float is one of these exact constants again.
- *
- * Pure value holder with no Android imports: the mapping is unit-tested on the JVM.
+ * Pure value holder with no Android imports, so the mapping is unit-tested on the JVM.
  */
 object KeyboardHeightPresets {
     const val COMPACT_SCALE = 0.85f
@@ -42,7 +36,7 @@ object KeyboardHeightPresets {
     /** Index of the factory state in [SCALES] — must sit on [DEFAULT_SCALE]. */
     const val DEFAULT_INDEX = 1
 
-    /** The preset a stored scale falls on, or -1 for a value no preset owns (a seek-bar era one). */
+    /** The preset a stored scale falls on, or -1 for a value no preset owns (an older seek-bar one). */
     fun indexForScale(scale: Float): Int {
         for (index in SCALES.indices) {
             if (kotlin.math.abs(SCALES[index] - scale) < EPSILON) {

@@ -17,26 +17,16 @@
 package rkr.simplekeyboard.inputmethod.latin.settings
 
 /**
- * The ONE-DIRECTIONAL enterprise restriction of the personal dictionary (E4b).
+ * The one-directional enterprise restriction of the personal dictionary. The generic branch of
+ * `Settings.loadRestrictions` writes a policy value in either direction and `SettingsHostActivity`
+ * disables the row of every active key; here that would let an administrator force the keyboard to
+ * save typed words and lock the user out of turning it off. So the policy applies only when it
+ * restricts:
+ *  - policy `false` → `false` is written into preferences and the settings row is disabled;
+ *  - policy `true`  → nothing is written and the row stays live; the choice stays with the user.
  *
- * The generic branch of `Settings.loadRestrictions` writes the policy value in EITHER direction
- * (`prefsEditor.putBoolean(key, appRestrictions.getBoolean(key))`) and `SettingsHostActivity`
- * then greys the row out for every active key. For every other setting that is fine. For this one
- * it would mean a device administrator or work-profile owner could force the keyboard to SAVE the
- * words their user types to disk and lock the user out of turning it off — the exact opposite of a
- * feature whose whole promise is opt-in with default OFF.
- *
- * So the policy is applied only when it RESTRICTS:
- *  - policy `false` → `false` is written into preferences and the settings row is greyed out;
- *  - policy `true`  → nothing is written and the row stays live, leaving the choice where it was:
- *    with the user.
- *
- * The stated goal of the restriction ("a 'do not remember typed words' policy must be
- * expressible") is one-directional by definition, so it is met in full.
- *
- * The logic lives here, apart from `Settings`, precisely so both directions are covered by plain
- * JVM tests: `Settings.loadRestrictions` needs a `RestrictionsManager` and real `SharedPreferences`
- * and cannot run off-device.
+ * Kept apart from `Settings` so both directions are covered by plain JVM tests
+ * (`Settings.loadRestrictions` needs a `RestrictionsManager` and real `SharedPreferences`).
  */
 object PersonalDictionaryRestriction {
 
@@ -55,9 +45,9 @@ object PersonalDictionaryRestriction {
     fun valueToWrite(): Boolean = false
 
     /**
-     * The set stored in `Settings.ACTIVE_RESTRICTIONS`, which is what greys settings rows out.
+     * The set stored in `Settings.ACTIVE_RESTRICTIONS`, which is what disables settings rows.
      *
-     * Identical to [policyKeys] except for one case: a PERMISSIVE personal-dictionary policy is
+     * Identical to [policyKeys] except for one case: a permissive personal-dictionary policy is
      * dropped, so the row stays enabled. [personalDictionaryPolicy] is null when the policy bundle
      * does not carry the key at all (an absent key must not be read as `false`).
      */

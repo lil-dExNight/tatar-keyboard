@@ -18,26 +18,21 @@ package rkr.simplekeyboard.inputmethod.latin.glide
 
 /**
  * The word inventory a glide decoder scores against: the dictionary's entries in dictionary
- * order with their frequencies. This is the decode-side seam of the dictionary integration —
- * the decoder never touches the per-keystroke prefix lookup path.
+ * order with their frequencies. The decoder never touches the per-keystroke prefix lookup.
+ * Implementations serve NFC lowercase words with strictly positive frequencies and are
+ * immutable for the lifetime of a decoder.
  *
- * Implementations must serve NFC lower-case words (the shipped dictionaries' pipeline
- * normalization) with strictly positive frequencies; the inventory is read-only and immutable
- * for the lifetime of a decoder.
- *
- * [forEachWord] is the INDEX-BUILD entry point: it runs once per decoder (lazily, off the
- * UI thread), so it may walk cold storage; [wordAt] is the RESULT-MATERIALIZATION entry point:
- * it runs on the engine worker at the end of a decode, for the handful of winning entries only.
+ * [forEachWord] builds the index: it runs once per decoder, lazily and off the UI thread, so it
+ * may walk cold storage. [wordAt] materializes results on the engine worker, for the few
+ * winning entries of a decode.
  */
 interface GlideWordInventory {
     val entryCount: Int
 
     /**
-     * The word of dictionary entry [index] (materializes a String; result-path use only). A
-     * composite inventory may answer with the user's SAVED casing here — for a personal entry
-     * always, and for a dictionary entry the user's saved spelling when it overrides one
-     * (docs/GLIDE-PERSONAL.md); the display-time casing pass treats the answer like any
-     * dictionary word.
+     * The word of entry [index] (materializes a String; result path only). A composite
+     * inventory may return the user's saved casing: always for a personal entry, and for a
+     * dictionary entry the user has saved in another casing. See [CompositeGlideInventory].
      */
     fun wordAt(index: Int): String
 

@@ -17,10 +17,10 @@
  */
 -->
 
-<!-- Русские spoken-описания для TalkBack (оверлей strings-a11y.xml).
-     Формулировки — по образцу AOSP values-ru/strings-talkback-descriptions.xml. -->
+<!-- Russian spoken descriptions for TalkBack (overlay of strings-a11y.xml).
+     Wording follows AOSP values-ru/strings-talkback-descriptions.xml. -->
 <resources>
-    <!-- Татарские буквы (строчные); заглавные — через spoken_description_upper_case. -->
+    <!-- Tatar letters (lowercase); uppercase is built via spoken_description_upper_case. -->
     <string name="spoken_letter_04d9">татарская э</string>
     <string name="spoken_letter_04e9">татарская о</string>
     <string name="spoken_letter_04af">татарская у</string>
@@ -28,20 +28,20 @@
     <string name="spoken_letter_04a3">татарская н</string>
     <string name="spoken_letter_04bb">татарская х</string>
 
-    <!-- Шаблон заглавной буквы: «Заглавная <описание строчной>». -->
+    <!-- Template for uppercase letters: "Заглавная <lowercase description>". -->
     <string name="spoken_description_upper_case">Заглавная %s</string>
 
-    <!-- Shift по состояниям раскладки. -->
+    <!-- Shift key, per keyboard element state. -->
     <string name="spoken_description_shift">Клавиша верхнего регистра</string>
     <string name="spoken_description_shift_shifted">Верхний регистр включён</string>
     <string name="spoken_description_caps_lock">Caps Lock включён</string>
     <string name="spoken_description_symbols_shift">Дополнительные символы</string>
     <string name="spoken_description_symbols_shift_shifted">Символы</string>
 
-    <!-- Остальные служебные клавиши. -->
+    <!-- Other functional keys. -->
     <string name="spoken_description_tab">Табуляция</string>
     <string name="spoken_description_delete">Удалить</string>
-    <!-- Пробел: описание всегда включает текущий язык ввода («Пробел, Татарча»). -->
+    <!-- Spacebar: always includes the current input language ("Пробел, Татарча"). -->
     <string name="spoken_description_space_language">Пробел, %s</string>
     <string name="spoken_description_return">Ввод</string>
     <string name="spoken_description_search">Поиск</string>
@@ -57,22 +57,22 @@
     <string name="spoken_description_settings">Настройки</string>
     <string name="spoken_description_unknown">Неизвестный символ</string>
 
-    <!-- Открытие/закрытие панели долгого нажатия (moreKeys). -->
+    <!-- Long-press (moreKeys) panel open/close announcements. -->
     <string name="spoken_open_more_keys_keyboard">Доступны дополнительные символы</string>
     <string name="spoken_close_more_keys_keyboard">Дополнительные символы скрыты</string>
 
-    <!-- Озвучка смены шифт-режима (AOSP-нейминг). -->
+    <!-- Shift-mode change announcements (AOSP naming). -->
     <string name="spoken_description_shiftmode_on">Верхний регистр включён</string>
     <string name="spoken_description_shiftmode_locked">Caps Lock включён</string>
     <string name="spoken_description_shiftmode_off">Верхний регистр выключен</string>
 
-    <!-- Озвучивается, когда появляются подсказки; %s — перечень подсказок. -->
+    <!-- Announced when word suggestions become available; %s is the joined suggestion list. -->
     <string name="spoken_suggestions_available">Доступны подсказки: %s</string>
 
-    <!-- Названия вкладок панели эмодзи (TalkBack). Сами ячейки озвучиваются последовательностью
-         (собственной базы названий эмодзи нет); локализуются только вкладки и две функциональные
-         клавиши («АБВ» переиспользует spoken_description_to_alpha, удаление —
-         spoken_description_delete). -->
+    <!-- Emoji-panel category tab names (TalkBack). The emoji cells are announced as their
+         sequence (there is no emoji-name database); only the tabs and the two functional keys
+         ("АБВ" reuses spoken_description_to_alpha, delete reuses spoken_description_delete)
+         are localized. -->
     <string name="spoken_emoji_category_recent">Недавние</string>
     <string name="spoken_emoji_category_smileys">Смайлы и эмоции</string>
     <string name="spoken_emoji_category_people">Люди и жесты</string>

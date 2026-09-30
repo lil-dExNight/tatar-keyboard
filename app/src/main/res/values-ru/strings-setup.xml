@@ -14,7 +14,7 @@
      limitations under the License.
 -->
 
-<!-- Русский оверлей онбординг-строк (SETUP-01). -->
+<!-- Russian overlay of the onboarding strings. -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="setup_subtitle">Два быстрых шага — и можно печатать по-татарски</string>
 

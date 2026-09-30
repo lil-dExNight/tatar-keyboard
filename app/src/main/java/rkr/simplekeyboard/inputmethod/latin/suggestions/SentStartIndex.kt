@@ -19,20 +19,16 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 import java.io.InputStream
 
 /**
- * The sentence-start table (TT-SUGGESTIONS phase P4, docs/TT-SUGGESTIONS.md): an immutable,
- * Android-free, frequency-ordered list of the words Tatar sentences most often start with, built
- * from `assets/dictionaries/tatar_sentstart_v1.txt` (see `scripts/sentstart_pack.py` and the
- * NOTICE beside the asset; the data is Leipzig-derived, CC BY 4.0).
+ * The sentence-start table: an immutable, Android-free, frequency-ordered list of the words Tatar
+ * sentences most often start with, read from `assets/dictionaries/tatar_sentstart_v1.txt` (built
+ * by `scripts/sentstart_pack.py`; Leipzig-derived data, CC BY 4.0, see the NOTICE beside it).
  *
- * The asset is data, not code: UTF-8, LF line endings, a `#` comment header, then one
- * `word<TAB>freq` row per record, sorted by frequency descending then word ascending — so the
- * file order IS the ranking and a lookup is just "the first [maxOut] rows". Every word is
- * guaranteed by the packer to be in the shipped Tatar dictionary in its exact normalized form
- * (NFC lowercase), the same form the dictionary and the bigram table are keyed by.
- *
- * There is no per-word lookup: the strip asks for the top of the list, never for a specific word.
- * A miss is impossible by construction; a broken asset is [EMPTY] and the strip simply shows what
- * it showed before the feature existed (nothing, at a sentence start).
+ * Format: UTF-8, LF line endings, a `#` comment header, then one `word<TAB>freq` row per record,
+ * sorted by frequency descending, then word ascending. The file order is the ranking, so a lookup
+ * is "the first [maxOut] rows". The packer guarantees every word is in the bundled Tatar
+ * dictionary in its normalized form (NFC lowercase), the key form of the dictionary and bigram
+ * table. There is no per-word lookup. A broken asset is [EMPTY], and the strip shows nothing at a
+ * sentence start.
  */
 class SentStartIndex private constructor(
     private val words: List<String>,
@@ -42,8 +38,8 @@ class SentStartIndex private constructor(
     val isEmpty: Boolean get() = words.isEmpty()
 
     /**
-     * The top [maxOut] sentence-start words in ranking order. Called at band-paint time only,
-     * never in a lookup loop; the one small list view it may allocate is deliberate.
+     * The top [maxOut] sentence-start words in ranking order. Called only when the strip is
+     * painted, never in a lookup loop, so the small list view it may allocate is acceptable.
      */
     override fun topWords(maxOut: Int): List<String> =
         if (maxOut >= words.size) words else words.subList(0, maxOut)

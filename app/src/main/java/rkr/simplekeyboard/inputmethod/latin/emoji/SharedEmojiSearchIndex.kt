@@ -20,22 +20,16 @@ import android.content.Context
 import java.io.InputStream
 
 /**
- * Audit 2026-09-02, C7: the ONE parsed copy of `assets/emoji/emoji_search_v1.txt` per process.
- * Before this, the suggestion strip (emoji names for TalkBack) and the panel search each parsed
- * the ~545 KiB asset independently and kept their own instance alive.
+ * The one parsed copy of `assets/emoji/emoji_search_v1.txt` per process, shared by the
+ * suggestion strip (emoji names for TalkBack) and the panel search.
  *
- * Both consumers are lazy and load off the UI thread, each on its own executor, so two first
- * calls may race: [get] is synchronized, parses at most once, and caches a failure
- * ([EmojiSearchIndex.EMPTY]) too — both consumers already treat an unusable asset as terminal
- * for the process, so a retry would only re-read an asset that cannot get better. (O2: the idle
- * memory release — [releaseProcessWide] — softens that terminality to one retry per idle cycle;
- * it only ever re-reads an asset that could not be read, a bounded silent cost on an
- * already-dead feature.)
+ * Both consumers load lazily off the UI thread on their own executors, so first calls may race:
+ * [get] is synchronized, parses at most once, and also caches a failure ([EmojiSearchIndex.EMPTY]),
+ * which both consumers treat as terminal. [releaseProcessWide] allows one retry per idle release.
  *
- * Threading note: [EmojiSearchIndex.search] reuses rank buckets and stays single-threaded — the
- * panel is the only searcher and drives it from the UI thread, exactly as before; the suggest
- * side only ever calls the read-only [EmojiSearchIndex.nameOf]. Sharing the instance changes
- * neither.
+ * Threading: [EmojiSearchIndex.search] reuses rank buckets and is single-threaded; only the panel
+ * searches, on the UI thread. The suggestion side calls only the read-only
+ * [EmojiSearchIndex.nameOf].
  */
 class SharedEmojiSearchIndex internal constructor(
     private val openAsset: () -> InputStream?,
@@ -55,10 +49,9 @@ class SharedEmojiSearchIndex internal constructor(
     }
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): drops the parsed copy on the idle memory release; the
-     * next [get] reparses lazily on the caller's background thread, exactly like the first load.
-     * The same synchronized discipline as [get] makes a release racing a load resolve to one
-     * valid state either way.
+     * Drops the parsed copy on the idle memory release; the next [get] reparses lazily on the
+     * caller's background thread. Synchronized like [get], so a release racing a load ends in
+     * one valid state.
      */
     fun release() {
         synchronized(this) {
@@ -103,11 +96,9 @@ class SharedEmojiSearchIndex internal constructor(
         }
 
         /**
-         * O2 (docs/OPTIMIZE-2026-09-25.md): the process-wide idle release — drops the parsed
-         * index so a long-hidden keyboard does not hold it. No-op when nothing was ever loaded;
-         * the next consumer's [get] reparses lazily. Callers that kept their own reference (the
-         * filtered panel copy, the suggest source) are released by their own owners on the same
-         * deallocate pass. `@JvmStatic` because the caller is LatinIME (Java).
+         * Idle release: drops the parsed index so a long-hidden keyboard does not hold it (no-op
+         * when nothing was loaded). Holders of their own reference (the filtered panel copy, the
+         * suggest source) are released by their owners in the same pass. Called from LatinIME.
          */
         @JvmStatic
         fun releaseProcessWide() {

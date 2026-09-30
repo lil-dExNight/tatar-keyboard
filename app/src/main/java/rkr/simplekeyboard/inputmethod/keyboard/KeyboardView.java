@@ -116,7 +116,7 @@ public class KeyboardView extends View {
     private final ArrayList<Key> mInvalidatedKeys = new ArrayList<>();
     /** The working rectangle for clipping */
     private final Rect mClipRect = new Rect();
-    /** M4: cached icon tint for ACTION keys, see {@link #actionIconFilter(int)}. */
+    /** Cached icon tint for ACTION keys, see {@link #actionIconFilter(int)}. */
     private PorterDuffColorFilter mActionIconFilter;
     private int mActionIconFilterColor;
     /** The keyboard bitmap buffer for faster updates */
@@ -224,19 +224,15 @@ public class KeyboardView extends View {
         super.onDraw(canvas);
         // A zero-sized view gets no offscreen buffer (maybeAllocateOffscreenBuffer refuses), so
         // without this early return the drawBitmap below would dereference the null
-        // mOffscreenBuffer (2026-09-25 audit). At 0×0 there is nothing to draw anyway.
+        // mOffscreenBuffer. At 0×0 there is nothing to draw anyway.
         if (getWidth() == 0 || getHeight() == 0) {
             return;
         }
-        // O2 (docs/OPTIMIZE-2026-09-25.md): the offscreen buffer now serves the
-        // hardware-accelerated path too. The HW branch used to re-record every key of the
-        // board into the frame's display list on each invalidation (the old TODO asked whether
-        // that was required — the answer is yes: a partial draw straight onto the frame canvas
-        // would drop every non-invalidated key from the display list). With the buffer model an
-        // invalidation redraws only the invalidated keys into the persistent bitmap, and the
-        // frame itself is one drawBitmap. The buffer's own canvas reports
-        // !isHardwareAccelerated(), so onDrawKeyboard's software-path logic — including its
-        // per-key CLEAR steps, which the persistent bitmap genuinely needs — applies verbatim.
+        // The offscreen buffer serves the hardware-accelerated path too. An invalidation
+        // redraws only the invalidated keys into the persistent bitmap, and the frame itself is
+        // one drawBitmap. A partial draw straight onto the frame canvas would drop every other
+        // key from the display list. The buffer's canvas reports !isHardwareAccelerated(), so
+        // onDrawKeyboard's software path, including its per-key CLEAR steps, applies as is.
         final boolean bufferNeedsUpdates = mInvalidateAllKeys || !mInvalidatedKeys.isEmpty();
         if (bufferNeedsUpdates || mOffscreenBuffer == null) {
             if (maybeAllocateOffscreenBuffer()) {
@@ -289,9 +285,8 @@ public class KeyboardView extends View {
         }
         // Calculate clip region and set.
         final boolean drawAllKeys = mInvalidateAllKeys || mInvalidatedKeys.isEmpty();
-        // The canvas here is always the offscreen bitmap's (see onDraw): the old
-        // "draw all keys when hardware acceleration is on" branch is dead — a bitmap
-        // canvas never reports hardware acceleration — and its TODO is resolved by it.
+        // The canvas here is always the offscreen bitmap's (see onDraw), which never reports
+        // hardware acceleration, so the partial redraw below always applies.
         if (drawAllKeys) {
             if (background != null) {
                 // Need to draw keyboard background on {@link #mOffscreenBuffer}.
@@ -486,10 +481,10 @@ public class KeyboardView extends View {
                 iconY = (keyHeight - iconHeight) / 2; // Align vertically center.
             }
             final int iconX = (keyWidth - iconWidth) / 2; // Align horizontally center.
-            // M4 (docs/APPLE-UX-2026-09-25.md): an ACTION key is accent-filled, so its icon —
-            // baked with the functional text colour — is tinted to the action colour for this
-            // draw only. The icons are shared instances, so the filter is cleared right after;
-            // the filter itself is cached, keeping the draw loop allocation-free.
+            // An ACTION key is accent-filled, so its icon (baked with the functional text color)
+            // is tinted to the action color for this draw only. The icons are shared instances,
+            // so the filter is cleared right after; the filter itself is cached, keeping the
+            // draw loop allocation-free.
             final boolean tintAction = key.isActionKey() && params.mActionKeyTextColor != 0;
             if (tintAction) {
                 icon.setColorFilter(actionIconFilter(params.mActionKeyTextColor));
@@ -502,16 +497,16 @@ public class KeyboardView extends View {
     }
 
     /**
-     * The colour of a key's label. Overridable so the more-keys panel can invert the SELECTED
-     * alternative's glyph (M3, docs/APPLE-UX-2026-09-25.md); everything else follows the key.
+     * The color of a key's label. Overridable so the more-keys panel can invert the selected
+     * alternative's glyph; everything else follows the key.
      */
     protected int selectLabelColor(final Key key, final KeyDrawParams params) {
         return key.selectTextColor(params);
     }
 
     /**
-     * M4: cached tint for ACTION key icons. One filter per colour value; the colour only ever
-     * changes with the theme, so this allocates once per palette and never inside a frame.
+     * Cached tint for ACTION key icons. One filter per color value; the color only changes
+     * with the theme, so this allocates once per palette and never inside a frame.
      */
     private PorterDuffColorFilter actionIconFilter(final int color) {
         if (mActionIconFilter == null || mActionIconFilterColor != color) {

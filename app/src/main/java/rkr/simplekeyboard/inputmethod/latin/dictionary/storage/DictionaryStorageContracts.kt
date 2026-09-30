@@ -11,20 +11,13 @@ import java.util.Locale
 /**
  * One shipped dictionary asset.
  *
- * [family] and [storageDirectoryName] are what make the artifact multilingual. Both are literals
- * of the spec rather than values derived from [languageTag], and deliberately so: the Tatar
- * artifact shipped in 1.6.1 under the name `tatar_top100k-v…` in `<device-protected>/dictionaries`,
- * and a device that updates to a build with a second language must find that exact file where it
- * left it. A tidier scheme (one directory, one `<lang>_top100k` name for everyone) would rename a
- * file the user already has and pay for it with a needless 2.5 MB re-inflation — or, if the
- * rename were only partial, with a store that cannot find its own dictionary. Backward
- * compatibility wins; the family is the seam that lets a new language pick its own name without
- * touching the old one.
+ * [family] and [storageDirectoryName] are literals, not derived from [languageTag]: after an
+ * update a device must find an already inflated file under the same name and directory, or it
+ * inflates the dictionary again.
  *
- * Each family owns its OWN directory. The store's retention, temp-cleanup and lease bookkeeping
- * are all keyed by the canonical directory path
- * ([ProcessDictionaryStorageOwner]), so two families sharing one directory would share one lease
- * counter and the second language could never be activated while the first held a lease.
+ * Each family owns its own directory. Retention, temp cleanup and leases are keyed by the canonical
+ * directory path ([ProcessDictionaryStorageOwner]), so two families in one directory would share
+ * one lease counter.
  */
 data class DictionaryArtifactSpec(
     val family: String,
@@ -38,43 +31,21 @@ data class DictionaryArtifactSpec(
     val expectedRawSha256: String,
     val expectedEntryCount: Long,
     /**
-     * The next-word table of this language, or null when the language ships none.
-     *
-     * This field is what makes "which language is active" a question with ONE answer. A bigram
-     * table is a separate artifact with a separate schema, validator and store — none of that
-     * changes — but it is not a separate *language*, and giving it its own subtype-to-artifact
-     * resolver would make two independent copies of one rule, which is exactly how a fix ends up
-     * landing in one copy and silently not in the other. So the language registry stays single:
-     * [ALL] lists the languages, [forSubtype] answers for both artifact kinds, and a language
-     * whose table is missing says so here, in the open, instead of through a factory that returns
-     * null for reasons the reader has to reconstruct.
-     *
-     * A table can therefore never exist for a language that has no dictionary, and the two can
-     * never disagree about which language they belong to: the [init] block below requires the
-     * language tags to match.
+     * The next-word table of this language, or null when the language ships none. Keeping it here
+     * leaves one language registry for both artifact kinds; [init] requires the language tags to
+     * match.
      */
     val bigrams: BigramArtifactSpec? = null,
     /**
-     * The sentence-start table of this language (ROADMAP Phase 1, P3b), or null when the
-     * language ships none.
-     *
-     * Same ownership rule as [bigrams]: "which language has a sentence-start table" is a
-     * property of the language, so it lives in the ONE registry instead of being re-derived
-     * from subtype strings at call sites. The table is a plain text asset (no storage
-     * contract, no pins here — its pins live in `tests/sentstart_pack/` and the
-     * `*SentStartAssetTest` JVM contracts, the emoji-asset discipline), so a path is all
-     * the registry carries.
+     * The sentence-start table asset of this language, or null when it ships none. It is a plain
+     * text asset without a storage contract; its pins live in `tests/sentstart_pack/` and the
+     * `*SentStartAssetTest` JVM tests.
      */
     val sentStartAssetPath: String? = null,
     /**
      * The lowercase alphabet the personal dictionary filters this language's words by, or null
-     * when the language has no personal dictionary.
-     *
-     * T5 (docs/ROADMAP-P1.md): this field is what makes the registry the single source for
-     * "which subtype gets a personal dictionary" — `PersonalSubtypes.alphabetFor` is a pure
-     * lookup of it, and the settings screens and personal stores inherit the answer through
-     * that one call. The sets themselves stay defined in `PersonalSubtypes` (they are language
-     * data, defined once); the LIST of languages lives here, once.
+     * when the language has no personal dictionary. `PersonalSubtypes.alphabetFor` reads this
+     * field, so the language list lives only here; the alphabets are defined in `PersonalSubtypes`.
      */
     val personalAlphabet: Set<Int>? = null,
     val schemaId: Int = TdictFormat.SCHEMA_ID,
@@ -120,24 +91,8 @@ data class DictionaryArtifactSpec(
         private val FAMILY_PATTERN = Regex("[a-z][a-z0-9_]*")
 
         /**
-         * D1a, shipped since 1.1.0. The family name and the directory are FROZEN: changing either
+         * The Tatar dictionary. The family name and the directory are frozen: changing either
          * makes every device that already inflated this file inflate it again.
-         *
-         * Repacked 2026-08-24 for 1.9.1: 303 conversational forms displaced 303 of the least
-         * frequent Leipzig forms. 1.9.0 took 226 of them under the machine rule of
-         * `docs/DICT-ACCEPT.md`; the operator then read a sample of what that rule had turned
-         * away, judged it ordinary Tatar and lifted the bar, so 1.9.1 takes the whole queue bar
-         * five vowelless fragments — `docs/DICT-WIDEN.md`. The 100 000 entries and the family
-         * are unchanged, so the file NAME still changes — it carries the raw SHA-256 — and a
-         * device updating from 1.8.4 or 1.9.0 inflates the new file once and drops the old one
-         * through the ordinary retention path.
-         *
-         * Repacked 2026-09-20 (TT-SUGGESTIONS P2, `docs/TT-SUGGESTIONS.md`): the entry cap moved
-         * 100 000 → 110 000 — the largest measured size that keeps the compressed budget — so the
-         * dictionary now also carries 9 052 corpus-attested word forms generated at build time by
-         * the project's own paradigm generator (`scripts/wordform_gen.py`, frequency = corpus
-         * count) plus 645 further conversational words that the old cap had cut. No 1.8.4 word
-         * is displaced. The family, the schema and the file-name rule are unchanged.
          */
         @JvmField
         val TATAR_TOP100K_V1 = DictionaryArtifactSpec(
@@ -159,30 +114,11 @@ data class DictionaryArtifactSpec(
         )
 
         /**
-         * The Russian top-100k, packed 2026-08-21 by `scripts/dictionary_pack.py build
-         * --language rus` from three Leipzig corpora — `docs/RUSSIAN-DICTIONARY.md` records the
-         * sources, the alphabet decisions and every number below.
+         * The Russian dictionary, in its own family and directory so the Tatar file is neither
+         * renamed nor counted against this language's retention.
          *
-         * Repacked 2026-08-24 for 1.9.1 by `scripts/dict_accept.py pack --write`: 32 833
-         * conversational forms displaced 32 833 of the least frequent Leipzig forms. 1.9.0 took
-         * 27 134 of them under the machine rule of `docs/DICT-ACCEPT.md`; the operator then read
-         * a sample of what that rule had turned away, judged it ordinary Russian and lifted the
-         * bar, so 1.9.1 takes the whole queue bar 417 formal fragments and one word the operator
-         * named — `docs/DICT-WIDEN.md`. Leipzig is still the source of the other 67 167 and of
-         * every frequency in them; the accepted forms carry their conversational counts.
-         * `app/src/main/assets/dictionaries/NOTICE.txt` names the two collections those counts
-         * come from.
-         *
-         * Its own family and its own directory, so the Tatar file already inflated on a device
-         * updating from 1.6.1 is neither renamed, re-inflated, nor counted against this
-         * language's retention budget.
-         *
-         * The words are checked against `TdictValidator`'s Tatar alphabet, which is a strict
-         * SUPERSET of the Russian one — every Russian letter is a Tatar letter. That check is
-         * therefore weaker for this artifact than for the Tatar one, and deliberately left as it
-         * is: for a SHIPPED asset the exact-SHA-256 match below is the real guard, and the
-         * alphabet check only ever backs it up against corruption that the checksum, the UTF-8
-         * decode and the sort-order check would all have caught first.
+         * `TdictValidator` checks the words against the Tatar alphabet, a superset of the Russian
+         * one; for a shipped asset the exact SHA-256 match is the real guard.
          */
         @JvmField
         val RUSSIAN_TOP100K_V1 = DictionaryArtifactSpec(
@@ -204,10 +140,8 @@ data class DictionaryArtifactSpec(
         )
 
         /**
-         * Every language the app ships, newest last. This list IS the answer to "which languages
-         * have a dictionary" AND to "which of them also predict the next word": the suggestion
-         * controller, both storage factories and the settings screen all resolve through
-         * [forSubtype] rather than testing subtype identifiers of their own.
+         * Every language the app ships, newest last. Callers resolve dictionaries and next-word
+         * tables through [forSubtype] instead of testing subtype identifiers themselves.
          */
         @JvmField
         val ALL: List<DictionaryArtifactSpec> = listOf(TATAR_TOP100K_V1, RUSSIAN_TOP100K_V1)
@@ -218,23 +152,16 @@ data class DictionaryArtifactSpec(
             ALL.firstOrNull { it.languageTag == subtypeId }
 
         /**
-         * The next-word table of [subtypeId], or null when that subtype ships no table — either
-         * because it ships no dictionary at all, or because its language has no table yet.
-         *
-         * Both cases leave NEXT_WORD answering an empty list, which is the fail-closed behaviour a
-         * missing table has always had: silence, never another language's predictions. Which of
-         * the two cases holds is readable off [ALL] — a language present with `bigrams == null`
-         * has no table; a subtype absent from [ALL] has no dictionary either.
+         * The next-word table of [subtypeId], or null when the subtype ships no dictionary or its
+         * language has no table. Then NEXT_WORD answers an empty list, never another language's.
          */
         @JvmStatic
         fun bigramsForSubtype(subtypeId: String): BigramArtifactSpec? =
             forSubtype(subtypeId)?.bigrams
 
         /**
-         * The sentence-start table asset path of [subtypeId], or null when that subtype ships
-         * none — either because it ships no dictionary at all, or because its language has no
-         * table. A null answer means the sentence-start slot simply never fills, the exact
-         * fail-closed shape a missing table has; no caller tests language strings of its own.
+         * The sentence-start table asset path of [subtypeId], or null when there is none; then the
+         * sentence-start cell stays empty.
          */
         @JvmStatic
         fun sentStartAssetForSubtype(subtypeId: String): String? =
@@ -269,16 +196,11 @@ interface DurableFileOps {
     fun delete(file: File): Boolean
 
     /**
-     * Atomically replaces [destination] with [source], REPLACING an existing destination.
+     * Atomically replaces [destination] with [source], replacing an existing destination.
      *
-     * This is deliberately distinct from [atomicRename], which throws when the destination already
-     * exists: D1b's staged-publication retention depends on that throwing behaviour, so its
-     * semantics must not change. The personal store's whole-file write (E4a-2) needs the replacing
-     * variant instead, because it rewrites the same file across a session.
-     *
-     * The production override in `AndroidDurableFileOps` uses POSIX `rename(2)`, which is atomic and
-     * replaces in place. This default is only a JVM fallback for test doubles that do not override
-     * it; it is never reached by the dictionary-asset store.
+     * Unlike [atomicRename], which throws when the destination exists (staged publication relies on
+     * that), this serves the personal store, which rewrites the same file. `AndroidDurableFileOps`
+     * uses POSIX `rename(2)`; this default is a JVM fallback for test doubles.
      */
     fun atomicReplace(source: File, destination: File) {
         if (!source.renameTo(destination)) {
@@ -317,8 +239,9 @@ sealed class PreparationResult {
 }
 
 /**
- * Catalog consumed by D1d. acquireLatestForActivation performs validation I/O and must run off
- * the UI thread. D1d may call it only after its executor is stopped and its reader count is zero.
+ * Catalog consumed by the dictionary engine. acquireLatestForActivation performs validation I/O and
+ * must run off the UI thread. The engine may call it only after its executor is stopped and its
+ * reader count is zero.
  * The returned lease must remain open for the complete mapping/executor lifetime. There is no
  * live hot-swap operation: close an old lease only after that version has no readers.
  */
@@ -377,14 +300,13 @@ internal object TdictFormat {
     const val CHECKSUM_OFFSET = 40
     const val CHECKSUM_SIZE = 32
     const val CHECKSUM_ALGORITHM_SHA256 = 1
-    // Schema 2 (SIZE-1, docs/SIZE-SCHEMA2.md): блоки front-coding по BLOCK_SIZE слов —
-    // первое слово целиком (u8 длина), остальные как varint общего префикса с первым
-    // словом блока + u8 суффикс; затем по varint-частоте на слово. K = 8 выбрано замером
-    // 2026-09-01: минимум и по zlib-размеру, и по работе декода (≤ 7 слов на доступ).
+    // Schema 2: front-coded blocks of BLOCK_SIZE words. The first word of a block is stored whole
+    // (u8 length); every other word as a varint prefix length shared with the block's first word
+    // plus a u8-length suffix; then one varint frequency per word. K = 8 gives the smallest zlib
+    // size and bounded decode work (at most 7 words per access).
     const val BLOCK_SIZE = 8
     const val MAX_WORD_BYTES = 128
-    // Бюджеты пересмотрены под измеренное (татарский 501 683/1 162 870, русский
-    // 539 948/1 151 323) с запасом, соразмерным schema 1.
+    // Size limits: the shipped assets plus headroom comparable to schema 1.
     const val MAX_COMPRESSED_SIZE = 600_000L
     const val MAX_RAW_SIZE = 1_400_000L
     const val MAX_U32 = 0xffff_ffffL

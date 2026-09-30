@@ -14,11 +14,10 @@
      limitations under the License.
 -->
 
-<!-- The one text-input row of the app (E4b): the personal-dictionary search field and
-     the "Add word…" dialog field. The three privacy flags are NOT set here but in code
-     (SettingsHostActivity), where a source-contract test can pin them for both fields at
-     once: a name or a village the user puts into OUR private dictionary must not be
-     learned and synced to the cloud by a third-party keyboard or picked up by autofill. -->
+<!-- The only text-input row of the app: the personal-dictionary search field and the
+     "Add word…" dialog field. The three privacy flags are set in code
+     (SettingsHostActivity) for both fields, not here: words the user puts into the
+     personal dictionary must not be learned by another keyboard or picked up by autofill. -->
 <EditText xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/row_text_input"
     android:layout_width="match_parent"

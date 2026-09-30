@@ -28,21 +28,17 @@ import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.SubtypeLocaleUtils
 
 /**
- * The two languages screens of [SettingsHostActivity] (T2 part 3, docs/ROADMAP-P6.md): "Keyboard
- * languages" and the per-language layouts screen, ported 1:1 from LanguagesSettingsFragment and
- * SingleLanguageSettingsFragment in the wave-S2 redesign, moved here verbatim from the activity.
- *
- * They are `internal` extension functions on the activity, so the `showScreen` dispatch and every
- * row-builder call kept its exact text. What they reach — `richImm`, `detailLocale`,
- * `currentDialog`, `navigateTo`, `showScreen`, the [SettingsHostActivity.Screen] enum — is
- * `internal` on the activity for the same mechanical reason parts 1–2 record.
+ * The two languages screens of [SettingsHostActivity]: "Keyboard languages" and the per-language
+ * layouts screen, as `internal` extensions on the activity. The activity exposes what they use
+ * (`richImm`, `detailLocale`, `currentDialog`, `navigateTo`, `showScreen`, the
+ * [SettingsHostActivity.Screen] enum) as `internal`.
  */
 
 /**
  * "Keyboard languages": a card with one row per enabled language
  * (summary lists its enabled layouts), then an actions card with
  * "Add language" and — with more than one language — "Remove language",
- * both opening the same multi-choice dialogs the legacy screen used.
+ * both opening a multi-choice dialog ([showLocalePickerDialog]).
  */
 internal fun SettingsHostActivity.buildLanguagesScreen() {
     val comparator = LocaleUtils.LocaleComparator()
@@ -73,8 +69,8 @@ internal fun SettingsHostActivity.buildLanguagesScreen() {
     }, spacedFromPrevious = false)
 
     val actions = ArrayList<View>()
-    // The row hides when there is nothing to add (2026-09-24 audit, finding 15b): the picker
-    // would otherwise open on an empty list — a dialog with no items and a dead OK.
+    // The row hides when there is nothing to add: the picker would otherwise open on an empty
+    // list, a dialog with no items and a dead OK.
     if (unusedValues.isNotEmpty()) {
         actions.add(actionRow(R.string.add_language) {
             showLocalePickerDialog(unusedValues, R.string.add_language, R.string.add,
@@ -106,8 +102,7 @@ internal fun SettingsHostActivity.buildLanguagesScreen() {
 }
 
 /**
- * Multi-choice language dialog shared by add/remove, ported from
- * LanguagesSettingsFragment.showMultiChoiceDialog: the positive button
+ * Multi-choice language dialog shared by add/remove: the positive button
  * is only enabled while at least one item is checked and — unless
  * [allowAllChecked] — at least one is unchecked (removing every
  * language at once must stay impossible). On accept the checked locale
@@ -134,7 +129,7 @@ internal fun SettingsHostActivity.showLocalePickerDialog(localeValues: List<Stri
             }
             .setPositiveButton(positiveButtonRes) { _, _ ->
                 onAccept(localeValues.filterIndexed { index, _ -> checkedItems[index] })
-                // Refresh the list of enabled languages (legacy buildContent).
+                // Refresh the list of enabled languages.
                 showScreen(Screen.LANGUAGES)
             }
             .setNegativeButton(android.R.string.cancel, null)
@@ -149,7 +144,7 @@ internal fun SettingsHostActivity.showLocalePickerDialog(localeValues: List<Stri
 /**
  * Layouts of one language: a switch row per available layout. The last
  * enabled layout's row is locked so a language can never lose all of
- * its layouts — SingleLanguageSettingsFragment's invariant.
+ * its layouts.
  */
 internal fun SettingsHostActivity.buildLanguageDetailScreen(locale: String) {
     addSectionHeader(getString(R.string.generic_language_layouts,

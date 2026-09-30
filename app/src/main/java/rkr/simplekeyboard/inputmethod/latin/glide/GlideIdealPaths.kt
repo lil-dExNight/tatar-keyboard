@@ -33,12 +33,11 @@ internal object GlideIdealPaths {
     /**
      * Writes the ideal polyline of [entry] into ([outX], [outY]) and returns the point count.
      * The caller's scratch must hold [MAX_POINTS] entries; a word whose ideal path would exceed
-     * it returns -1 (fail-closed: the word is skipped, never truncated mid-shape).
+     * it returns -1 (the word is skipped, never truncated mid-shape).
      *
-     * [stats] (when non-null) receives the polyline's bounding box during the same walk —
-     * [minX, maxX, minY, maxY] — and [segLenOut] (when non-null) the segment lengths (one sqrt
-     * per segment, reused by the scoring walk instead of recomputed per output point), so the
-     * decoder's fused scoring pass needs no second read.
+     * [stats] (when non-null) receives the polyline's bounding box [minX, maxX, minY, maxY];
+     * [segLenOut] and [invSegLenOut] receive the segment lengths and their reciprocals, so the
+     * decoder's fused scoring pass needs no second walk and no per-point sqrt.
      */
     fun write(
         index: GlideWordIndex,

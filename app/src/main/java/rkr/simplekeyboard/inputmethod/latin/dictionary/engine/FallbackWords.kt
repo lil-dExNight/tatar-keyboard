@@ -17,25 +17,21 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 /**
- * TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the read side of the global top-frequency
- * fallback — the N most frequent words of an engine's own dictionary, in the frozen ranking order
- * (frequency descending, then code-point ascending). [TdictPrefixIndex] is the implementation.
+ * The N most frequent words of an engine's own dictionary, in ranking order (frequency
+ * descending, then code point ascending). [TdictPrefixIndex] is the implementation.
  */
 fun interface TopFrequencySource {
     fun topFrequentWords(count: Int): List<String>
 }
 
 /**
- * TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the global top-frequency words of the engine's
- * language that fill the strip cells a committed word's NEXT_WORD answer leaves empty — after the
- * bigram successors, the after-word forms and the emoji tail took theirs. The seam mirrors the P3
- * after-word forms: a per-engine [FallbackWords] built by a [FallbackWordsFactory] against that
- * engine's own dictionary (the index exists only inside engine startup), so the Tatar engine fills
- * with Tatar top words and the Russian one with Russian top words without a call-site language
- * check.
+ * Top-frequency words of the engine's language that fill the strip cells a committed word's
+ * NEXT_WORD answer leaves empty, after the bigram successors, the after-word forms and the emoji.
+ * Built per engine by a [FallbackWordsFactory] against that engine's dictionary, so each language
+ * fills with its own words without a language check at the call site.
  *
- * Implementations must exclude the committed word itself and everything in [alreadyShown], return
- * at most [maxOut] words in their own (frequency-descending) order, and never displace anything.
+ * Implementations must exclude the committed word and everything in [alreadyShown], return at
+ * most [maxOut] words in frequency-descending order, and never displace anything.
  */
 fun interface FallbackWords {
     fun fallbackWords(
@@ -56,8 +52,7 @@ fun interface FallbackWordsFactory {
 
 /**
  * The production [FallbackWords]: a fixed pool of the dictionary's top-frequency words, computed
- * ONCE at engine start (off the per-keystroke path), serving every later NEXT_WORD answer by
- * exclusion and truncation only.
+ * once at engine start, served by exclusion and truncation only.
  */
 internal class GlobalTopFrequencyFallback(
     private val topWords: List<String>,
@@ -72,7 +67,7 @@ internal class GlobalTopFrequencyFallback(
         val out = ArrayList<String>(maxOut)
         for (word in topWords) {
             if (out.size >= maxOut) break
-            // Never offer the committed word itself or a word already on the band.
+            // Never offer the committed word itself or a word already on the strip.
             if (word == committed || alreadyShown.contains(word)) continue
             out.add(word)
         }
@@ -81,11 +76,9 @@ internal class GlobalTopFrequencyFallback(
 }
 
 /**
- * The production [FallbackWordsFactory], language-agnostic by construction: it builds the pool
- * from the engine's OWN dictionary, so wiring it for every shipped language keeps each engine's
- * fallback in its own language. The pool is 8: three cells to fill plus slack for the excluded
- * committed word and the already-shown candidates (at most two of those when a cell is free —
- * 8 − 3 ≥ 3 always).
+ * The production [FallbackWordsFactory]. It builds the pool from the engine's own dictionary, so
+ * each engine's fallback stays in its own language. The pool is 8: three cells to fill plus room
+ * for the excluded committed word and the already-shown candidates.
  */
 object GlobalTopFrequencyFallbackFactory : FallbackWordsFactory {
     private const val TOP_WORD_POOL = 8

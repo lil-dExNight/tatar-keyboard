@@ -14,7 +14,7 @@
      limitations under the License.
 -->
 
-<!-- iOS filled primary button (IOS-REDESIGN.md D6): system-blue fill,
+<!-- iOS-style filled primary button: system-blue fill,
      12dp corners, darkened while pressed. Colors come from the shared
      app_* design tokens. Disabled state dims to convey the locked
      step 2 (the Kotlin toggles isEnabled; semantics stay on the button).

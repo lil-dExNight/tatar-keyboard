@@ -34,10 +34,9 @@ class ImmutableUtf8Prefix private constructor(private val value: ByteArray) {
 }
 
 /**
- * PROPOSALS.md, "E5c. Вид запроса": the owner of state must know which kind of result it holds
- * before it may commit it — NEXT_WORD can never be committed through the PREFIX path or vice
- * versa. NOT introduced to make tokens of different requests unequal (`requestSerial` already
- * does that on every `request`/`requestNextWord` call).
+ * The kind of result a token belongs to. The state owner must know it before committing, so a
+ * NEXT_WORD result is never committed through the PREFIX path or vice versa. Token inequality
+ * between requests comes from `requestSerial`, not from this.
  */
 enum class LookupKind { PREFIX, NEXT_WORD, GLIDE }
 
@@ -46,7 +45,7 @@ data class LookupToken(
     val requestSerial: Long,
     val editorSessionId: Long,
     val subtypeId: String,
-    /** Prefix bytes for [LookupKind.PREFIX], normalized context-word bytes for [LookupKind.NEXT_WORD]. */
+    /** Prefix bytes for [LookupKind.PREFIX], context-word bytes for [LookupKind.NEXT_WORD]. */
     val normalizedQuery: ImmutableUtf8Prefix,
     val dictionary: DictionaryIdentity,
     val kind: LookupKind = LookupKind.PREFIX,
@@ -59,11 +58,11 @@ data class LookupResult(
 )
 
 /**
- * Non-applying worker-thread result handoff.
+ * Delivers worker-thread results without applying them.
  *
- * Implementations must dispatch to the serialized state owner (the UI thread in D1e). That owner
- * must call [LatestOnlyPrefixEngine.isCurrent] with the complete token immediately before it
- * applies suggestions. Receiving this callback is never permission to update UI directly.
+ * Implementations must dispatch to the serialized state owner (the UI thread). That owner must
+ * call [LatestOnlyPrefixEngine.isCurrent] with the complete token immediately before it applies
+ * suggestions. Receiving this callback is never permission to update UI directly.
  */
 fun interface ResultHandoff {
     fun handOff(result: LookupResult)
@@ -120,11 +119,8 @@ class LatestOnlyPrefixEngine internal constructor(
     )
 
     /**
-     * PROPOSALS.md, "E5c. Вид запроса": the NEXT_WORD sibling of [request]. Existing PREFIX
-     * behaviour is untouched by this method's existence — empty input is still rejected and still
-     * invalidates the generation for PREFIX, exactly as before; here an empty
-     * [normalizedContextWordUtf8] is rejected the same way, because "no context" and "no prefix"
-     * are the same kind of nothing to look up.
+     * NEXT_WORD counterpart of [request]. An empty [normalizedContextWordUtf8] is rejected and
+     * invalidates the generation, exactly like an empty prefix.
      */
     fun requestNextWord(
         editorSessionId: Long,
@@ -136,17 +132,13 @@ class LatestOnlyPrefixEngine internal constructor(
     )
 
     /**
-     * P7-3 (docs/GLIDE-PLAN.md): the GLIDE sibling of [request] — same token, serial and
-     * staleness discipline, a different payload: the recorded path, snapshotted HERE because the
-     * caller's [GlidePath] is the PointerTracker's live buffer. The token's [normalizedQuery]
-     * carries an empty sentinel — identity lives in the serial, and the worker reads the payload
-     * off the request, never the token. A degenerate path (fewer than two points — the decider
-     * never arms on those, so this is a defensive guard) is rejected WITHOUT invalidating the
-     * generation: unlike an empty prefix ("the user cleared the word"), a junk gesture says
-     * nothing about the text.
+     * GLIDE counterpart of [request]: same token, serial and staleness rules, but the payload is
+     * the recorded path, copied here because the caller's [GlidePath] is PointerTracker's live
+     * buffer. The token's query is an empty sentinel; the worker reads the path off the request.
      *
-     * The glide decode never touches the per-keystroke lookup budgets: it is a separate call the
-     * computer answers through its own seam ([GlideComputer]).
+     * A path with fewer than two points is rejected without invalidating the generation: unlike
+     * an empty prefix (the user cleared the word), a junk gesture says nothing about the text.
+     * The decode goes through [GlideComputer], separate from the per-keystroke lookup.
      */
     fun requestGlide(
         editorSessionId: Long,
@@ -226,9 +218,9 @@ class LatestOnlyPrefixEngine internal constructor(
     }
 
     /**
-     * Pushes the key-neighbor table into the underlying computer, if it runs a fuzzy pass. Only a
-     * @Volatile reference is swapped; the fuzzy scratch is still touched solely by the serialized
-     * worker inside [PrefixComputer.lookup].
+     * Pushes the key-neighbor table into the computer, if it runs a typo-recovery pass. Only a
+     * @Volatile reference is swapped; the scratch is touched solely by the serialized worker inside
+     * [PrefixComputer.lookup].
      */
     fun updateKeyNeighbors(table: KeyNeighborTable?) {
         synchronized(lock) {
@@ -237,9 +229,8 @@ class LatestOnlyPrefixEngine internal constructor(
     }
 
     /**
-     * P7-3: pushes the current layout's key geometry into the computer, if it decodes glides.
-     * Same handoff shape as [updateKeyNeighbors]: a `@Volatile` reference is swapped; the
-     * decoder's scratch is touched solely by the serialized worker inside [GlideComputer].
+     * Pushes the current layout's key geometry into the computer, if it decodes glides. As in
+     * [updateKeyNeighbors], only a `@Volatile` reference is swapped.
      */
     fun updateGlideGeometry(geometry: GlideKeyGeometry?) {
         synchronized(lock) {
@@ -248,11 +239,9 @@ class LatestOnlyPrefixEngine internal constructor(
     }
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle memory release of the glide word index. The
-     * decoder state is worker-confined, so the drop is POSTED to the serialized executor and
-     * runs between submissions, never mid-decode; the caller's thread (the UI thread, from
-     * LatinIME's MSG_DEALLOCATE_MEMORY) only enqueues. A gone engine skips quietly — its
-     * teardown frees the index anyway.
+     * Idle memory release of the glide word index. The decoder is worker-confined, so the drop is
+     * posted to the serialized executor and runs between submissions, never mid-decode; the caller
+     * (UI thread, LatinIME's MSG_DEALLOCATE_MEMORY) only enqueues. A destroyed engine skips it.
      */
     fun releaseGlideIndex() {
         val target = synchronized(lock) {
@@ -261,7 +250,7 @@ class LatestOnlyPrefixEngine internal constructor(
         try {
             executor.execute { target.releaseGlideIndex() }
         } catch (_: Throwable) {
-            // The executor went away with the engine: the drop is best-effort by design.
+            // The executor went away with the engine; the drop is best-effort.
         }
     }
 
@@ -368,7 +357,7 @@ class LatestOnlyPrefixEngine internal constructor(
         try {
             resultHandoff.handOff(result)
         } catch (_: Throwable) {
-            // Suggestions fail closed and never affect ordinary input.
+            // A failing callback drops the suggestions; ordinary input is unaffected.
         }
     }
 

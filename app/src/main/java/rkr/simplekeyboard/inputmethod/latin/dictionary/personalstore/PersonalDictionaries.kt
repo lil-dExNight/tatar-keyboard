@@ -29,17 +29,15 @@ fun interface PersonalDictionaryGate {
 }
 
 /**
- * The ONE process-wide owner of the personal dictionaries — one store per subtype, one background
+ * The process-wide owner of the personal dictionaries: one store per subtype, one background
  * executor for all of them.
  *
- * There is exactly one process to own: `SettingsHostActivity` is declared without
- * `android:process`, so the settings screen and the IME share it. That is what lets the screen add,
- * remove and erase words through the same serialized owner the engine reads from, with no IPC and
- * no second writer.
+ * `SettingsHostActivity` runs in the IME process, so the settings screen edits words through the
+ * same serialized owner the engine reads from, with no IPC and no second writer. Reading is gated
+ * live: [PersonalDictionaryGate] is checked on every lookup, so turning the setting off takes
+ * effect on the next keystroke without restarting the engine.
  *
- * Reading is gated live rather than by restarting the engine: [PersonalDictionaryGate] is consulted
- * on every lookup, so turning the setting off stops personal candidates on the very next keystroke
- * while the engine, its lease and its mapping stay exactly as they were.
+ * [PersonalBigramDictionaries] and [PersonalEmojiDictionaries] follow the same design.
  */
 object PersonalDictionaries {
 
@@ -48,31 +46,23 @@ object PersonalDictionaries {
     private var sharedExecutor: ExecutorService? = null
 
     /**
-     * Notified after words are erased ("Erase all" / "Forget"), so the IME can unbind whatever is
-     * still displayed. Erasure must not merely change the NEXT lookup: without this the user who
-     * just confirmed the dialog would keep seeing the erased word in the band and could insert it
-     * with a tap.
+     * Notified after words are erased ("Erase all" / "Forget"), so the IME clears whatever is still
+     * displayed and an erased word cannot be inserted with a tap.
      */
     @Volatile
     private var erasureListener: Runnable? = null
 
     /**
-     * Notified when an unreadable personal file has been set aside on a store's first open, so the
-     * user can be told why the list is empty.
+     * Notified when a store quarantines an unreadable file on its first open, so the user can be
+     * told why the list is empty.
      *
-     * The set beside it exists because the event does not respect the keyboard's lifecycle: the
-     * store opens from the engine's background executor, and from the settings screen, both of which
-     * can happen with no input window up and no listener installed. Dropping the notice then would
-     * put the subsystem straight back to losing data silently, so it waits instead, and the IME picks
-     * it up at the next input start.
-     *
-     * The set is per LANGUAGE (2026-09-24 audit, finding 13): every language that lost something is
-     * owed its own notice, so each pending entry is one subtype, taken and spent one at a time.
+     * A store can open with no input window and no listener, so notices wait in the set beside it
+     * until the next input start. The set holds one entry per language that lost something.
      */
     @Volatile
     private var quarantineListener: Runnable? = null
 
-    /** Guarded by [lock]; see the field above for why it is a set of subtypes, not a flag. */
+    /** Guarded by [lock]; see [quarantineListener]. */
     private val pendingQuarantineNotices = LinkedHashSet<String>()
 
     /** The store for [subtypeId], created on first use. Safe to call from any thread. */
@@ -86,12 +76,9 @@ object PersonalDictionaries {
         }
 
     /**
-     * The engine's read side for [subtypeId]. Returns [PersonalCandidateSource.EMPTY] semantics
-     * whenever the setting is off, so a disabled personal dictionary costs a lookup nothing beyond
-     * one boolean read.
-     *
-     * Called from the controller's background executor at engine start (the store's first open
-     * reads a file), never from the UI thread.
+     * The engine's read side for [subtypeId]. Behaves like [PersonalCandidateSource.EMPTY] while the
+     * setting is off. Called from the controller's background executor at engine start, because the
+     * store's first open reads a file.
      */
     @JvmStatic
     fun sourceFor(
@@ -101,9 +88,8 @@ object PersonalDictionaries {
     ): PersonalCandidateSource {
         val store = storeFor(context, subtypeId)
         if (gate.isOn()) store.prime()
-        // The source itself is built in the `personal` package, which owns the read model: this
-        // package hands it nothing but a supplier of the published snapshot. That is also what keeps
-        // the frozen privacy rule of the store package true — no method name here names typed text.
+        // The source is built in the `personal` package, which owns the read model; this package
+        // passes only a snapshot supplier, so no method here names typed text.
         return SnapshotPersonalCandidateSource {
             if (gate.isOn()) store.snapshot else PersonalDictionary.EMPTY
         }
@@ -134,17 +120,11 @@ object PersonalDictionaries {
         synchronized(lock) { pendingQuarantineNotices.isNotEmpty() }
 
     /**
-     * Takes ONE waiting notice — the earliest-raised language's — if there is one. The caller clears
-     * it only when it is really about to be shown, so a notice raised while the window was down is
-     * not spent on nobody. A second pending language keeps waiting and is taken at the next input
-     * start: one notice per language that lost something, which is the number of things that
-     * actually happened.
+     * Takes one waiting notice, the earliest-raised language's, if there is one. The caller takes it
+     * only when it is about to be shown; another pending language waits for the next input start.
      *
-     * B5. Spending a notice also clears the DURABLE half of the mark — of THAT language's store and
-     * no other (2026-09-24 audit, finding 13: spending used to clear every open store's mark for one
-     * dialog, and the other language's loss went unmentioned for ever after). The store queues its
-     * own deletion on the shared worker, so no file is touched on the caller's thread. A language
-     * whose store has not been opened in this process keeps its own mark and raises its own notice
+     * Taking a notice also clears the durable mark of that language's store only, queued on the
+     * shared worker. A language whose store is not open keeps its mark and raises its own notice
      * when it opens.
      */
     @JvmStatic
@@ -158,7 +138,7 @@ object PersonalDictionaries {
         return true
     }
 
-    /** Called on the store's worker when it set an unreadable file aside. */
+    /** Called on the store's worker when it quarantined an unreadable file. */
     private fun notifyQuarantined(subtypeId: String) {
         synchronized(lock) { pendingQuarantineNotices.add(subtypeId) }
         quarantineListener?.run()
@@ -170,9 +150,8 @@ object PersonalDictionaries {
         }.also { sharedExecutor = it }
 
     /**
-     * The one worker every personal store in this process is serialized on — words and bigrams
-     * alike (P1 of Phase 2, docs/ROADMAP-P2.md). Sharing it is what lets the two stores sweep the
-     * same `personal/` directory without ever racing each other's in-flight temp files.
+     * The one worker every personal store in this process is serialized on (words, pairs, emoji),
+     * so the stores sweep the shared `personal/` directory without racing each other's temp files.
      */
     internal fun sharedStoreExecutor(): ExecutorService = synchronized(lock) { executorLocked() }
 

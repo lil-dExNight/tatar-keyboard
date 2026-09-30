@@ -13,8 +13,8 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<!-- Machine-assisted translation; awaiting native-speaker proofread (T5) -->
-<!-- Татарча онбординг-строкалар (SETUP-01). -->
+<!-- Machine-assisted translation; review by a native speaker welcome. -->
+<!-- Tatar overlay of the onboarding strings. -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="setup_subtitle">Ике генә адым — һәм татарча яза аласыз</string>
 

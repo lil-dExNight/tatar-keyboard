@@ -151,9 +151,9 @@ class KeyboardAccessibilityDelegate(
         // text entry key that is part of a keyboard or keypad", i.e. any key of an IME.
         // TalkBack uses it to enable lift-to-type across the whole keyboard (including
         // delete/shift); restricting it to letters would break lift-to-type on delete.
-        // Matches Gboard/LatinIME. Do not "fix" to letters-only.
-        // The gate is the androidx compat's own semantics: AccessibilityNodeInfoCompat
-        // setTextEntryKey is a no-op below API 29, so gating keeps the port byte-identical.
+        // Gboard and LatinIME do the same.
+        // The API 29 gate matches the androidx compat, whose setTextEntryKey is a no-op below
+        // API 29.
         if (Build.VERSION.SDK_INT >= 29) node.isTextEntryKey = true
     }
 

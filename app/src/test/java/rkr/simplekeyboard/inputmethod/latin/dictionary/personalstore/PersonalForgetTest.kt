@@ -139,7 +139,7 @@ class PersonalForgetTest {
     @Test
     fun theDialogNeverCommitsTextAndIsGatedBySetting() {
         val dialog = ime.substringAfter("private void showForgetPersonalWordDialog(")
-            .substringBefore("/**\n     * Shows the one-shot message")
+            .substringBefore("private void showSuggestionsUnavailableDialog()")
         assertTrue("gated by the personal-dictionary setting",
             dialog.contains("Settings.readPersonalDictionaryEnabled(mDevicePrefs)"))
         assertTrue("attached to the IME window like the subtype picker",

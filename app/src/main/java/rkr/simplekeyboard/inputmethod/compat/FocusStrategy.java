@@ -13,8 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * O2 (2026-09-25, docs/OPTIMIZE-2026-09-25.md): forked from
- * androidx.customview:customview:1.1.0 (AOSP, sources jar); the androidx annotations
+ * Forked from androidx.customview:customview:1.1.0 (AOSP); the androidx annotations
  * (@NonNull/@Nullable and the focus-direction typedefs) are dropped with the dependency. The
  * framework's own android.view.FocusStrategy would need API 26; the app's minSdk is 24.
  */

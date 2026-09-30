@@ -21,10 +21,10 @@ import android.graphics.Paint
 import java.util.concurrent.ExecutorService
 
 /**
- * What the suggestion strip needs from the emoji-suggest feature (mission 2 of
- * `docs/EMOJI-SUGGEST-PLAN.md`): the emoji mapped to a finished word, and a spoken name for the
- * emoji cell so TalkBack reads the name instead of the glyph. Implementations must be immutable
- * and safe to call on the UI thread; both methods are allocation-free lookups.
+ * What the suggestion strip needs from emoji suggestions: the emoji mapped to a finished word,
+ * and a spoken name for the emoji cell so TalkBack reads the name instead of the glyph.
+ * Implementations must be immutable and safe to call on the UI thread; both methods are
+ * allocation-free lookups.
  */
 interface EmojiSuggestSource {
     /** The emoji for ([language], [normalizedWord]), or null — a miss is silent by design. */
@@ -35,9 +35,9 @@ interface EmojiSuggestSource {
 }
 
 /**
- * Lazily loads the one [EmojiSuggestSource] of the process off the UI thread — the exact shape of
- * the controller's `DictionaryPreparation` seam, so a user who leaves the toggle off never reads
- * the asset at all. [onResult] may arrive on any thread and is called exactly once; a null source
+ * Lazily loads the one [EmojiSuggestSource] of the process off the UI thread (same shape as the
+ * controller's `DictionaryPreparation`), so a user who leaves the setting off never reads the
+ * asset. [onResult] may arrive on any thread and is called exactly once; a null source
  * means "unusable" (missing/corrupt asset) and is terminal for the process.
  */
 fun interface EmojiSuggestPreparation {
@@ -70,10 +70,9 @@ class AssetEmojiSuggestPreparation(
     }
 
     private fun load(): EmojiSuggestSource? {
-        // C2 (docs/ROADMAP-P8-PLAN.md): the glyph probe runs DURING the parse, so the load holds
-        // one table instead of two (the unfiltered one used to stay alive until the filtered copy
-        // was finished). Same verdicts, same probe, same number of probe calls — one per distinct
-        // emoji sequence, memoized inside parse.
+        // The glyph probe runs during the parse, so the load never holds an unfiltered and a
+        // filtered table at once. The probe is called once per distinct emoji sequence (memoized
+        // inside parse).
         val probe = PaintGlyphProbe(Paint())
         val filtered = try {
             appContext.assets.open(SUGGEST_ASSET_PATH).use { stream ->
@@ -91,7 +90,7 @@ class AssetEmojiSuggestPreparation(
         if (filtered.isEmpty) return null
         // Names ride along on the same background pass; an unreadable search asset only costs the
         // spoken labels (TalkBack then reads the glyph itself), never the feature. The index is
-        // the process-wide shared one (audit C7): the panel search reads the same asset.
+        // the process-wide [SharedEmojiSearchIndex]: the panel search reads the same asset.
         val names = SharedEmojiSearchIndex.of(appContext).get()
         return LoadedEmojiSuggestSource(filtered, names)
     }

@@ -25,10 +25,8 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 /**
- * The immutable in-memory model of one subtype's personal bigrams (P1 of Phase 2,
- * docs/ROADMAP-P2.md), holding the PURE mutation and LRU-eviction logic kept deliberately apart
- * from all I/O so it is covered by plain JVM tests — the exact role [PersonalEntries] has for the
- * words store.
+ * The immutable in-memory model of one subtype's learned word pairs; the pair counterpart of
+ * [PersonalEntries].
  *
  * Parallel arrays plus a parallel serial array, all ordered by the pair key ascending — the
  * normalized context first, then the normalized successor, both compared as unsigned UTF-8 bytes
@@ -41,14 +39,8 @@ import java.security.MessageDigest
  * - [frequencyCountAt] — clean typed-observation counters, u16, >= 1;
  * - [lastUseSerialAt] — monotonic last-use serials (u32) driving LRU.
  *
- * Every mutation returns a NEW instance; nothing is changed in place. NOT a Kotlin `data class`:
- * it carries the user's words, and a synthesised `toString` would print them at the first
- * interpolation.
- *
- * LRU is keyed by the monotonic file serial ([nextSerial]), never the system clock: eviction
- * removes the pair with the smallest last-use serial. The pair cap [maxPairs] is injectable so the
- * eviction rule is testable at small sizes; production uses
- * [TpersbFormat.MAX_PERSONAL_BIGRAM_PAIRS].
+ * Immutability, privacy and LRU rules are those of [PersonalEntries]; the cap [maxPairs] defaults
+ * to [TpersbFormat.MAX_PERSONAL_BIGRAM_PAIRS] in production.
  */
 internal class PersonalBigramEntries private constructor(
     private val contexts: Array<String>,
@@ -77,14 +69,10 @@ internal class PersonalBigramEntries private constructor(
         indexOfPair(normalizedContext, normalizedSuccessor) >= 0
 
     /**
-     * Adds the pair (storing [successorRaw] as its on-disk form) or, if it is already present,
-     * adds [frequencyDelta] to its observation counter and touches its LRU serial. A fresh pair
-     * starts with usage 0 and frequency [frequencyDelta] — graduation passes the learn threshold
-     * itself, because the pair really was observed that many times. When the result exceeds
-     * [maxPairs] the pair with the smallest last-use serial is evicted. Returns a new instance.
-     *
-     * An existing pair keeps its already-stored successor raw form (its casing is not overwritten
-     * by a later observation of a differently-cased spelling), exactly like the words store.
+     * Adds the pair (storing [successorRaw] as its on-disk form) or, if present, adds
+     * [frequencyDelta] to its observation counter and touches its LRU serial. A new pair starts
+     * with usage 0 and frequency [frequencyDelta] (at graduation, the learn threshold). Evicts the
+     * least recently used pair beyond [maxPairs]. An existing pair keeps its stored raw form.
      */
     fun upsert(
         normalizedContext: String,
@@ -145,9 +133,8 @@ internal class PersonalBigramEntries private constructor(
     }
 
     /**
-     * Records an accepted personal prediction as a use: bumps the usage counter and the LRU
-     * serial. Returns a new instance, or null when the pair is absent — a tapped static successor,
-     * word form or fallback word takes exactly this branch and nothing happens.
+     * Records an accepted prediction as a use: bumps the usage counter and the LRU serial. Returns
+     * a new instance, or null when the pair is absent (the tapped prediction was not learned).
      */
     fun noteUse(normalizedContext: String, normalizedSuccessor: String): PersonalBigramEntries? {
         val index = indexOfPair(normalizedContext, normalizedSuccessor)
@@ -232,7 +219,7 @@ internal class PersonalBigramEntries private constructor(
         )
     }
 
-    /** Estimated on-disk size (header + records), for the pre-write free-space check. */
+    /** Estimated on-disk size (header + records). */
     fun estimatedFileSize(): Int =
         TpersbFormat.HEADER_SIZE + (0 until size).sumOf {
             TpersbFormat.RECORD_HEADER_SIZE +
@@ -331,10 +318,9 @@ internal class PersonalBigramEntries private constructor(
         }
 
         /**
-         * Compares two pair keys member by member — context first, successor on a tie — each by
-         * its UTF-8 bytes unsigned, the exact order the validator requires on disk. The byte
-         * boundary between the words is part of the key: («аб», «вг») and («абв», «г») are
-         * different pairs that a concatenation compare would call equal.
+         * Compares two pair keys member by member (context first, successor on a tie), each by
+         * its UTF-8 bytes unsigned, the order the validator requires on disk. («аб», «вг») and
+         * («абв», «г») are different pairs, which a concatenation compare would call equal.
          */
         private fun comparePair(
             firstContext: String,

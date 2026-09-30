@@ -20,19 +20,14 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
 
 /**
  * Pure, Android-free text helper that measures the trailing emoji grapheme cluster so a single
- * backspace can delete it whole.
+ * backspace deletes it whole: no lone variation selector, half flag or base without its skin-tone
+ * modifier is left behind. It covers composite classes (skin tone, ZWJ, flags, tags) the panel
+ * grid does not show, because such text also arrives from other keyboards and from pasted content.
  *
- * The keyboard's own emoji set deliberately excludes the composite classes (skin tone, ZWJ, flags,
- * tags) — but deletion still has to cover them, because such text arrives from other keyboards and
- * from pasted content. Leaving a lone variation selector, half of a flag, or a base stripped of its
- * skin-tone modifier behind is exactly the "emoji fragment" defect this function exists to prevent.
- *
- * The cluster measurement runs on the keystroke path, including 50 ms backspace auto-repeat,
- * so it allocates nothing: it walks the [CharSequence] by index with [Character.codePointBefore],
- * never taking a substring, a regex, or a collection. It reads only the text it is handed, never
- * logs it, and keeps no copy of it. The second public entry point, [extractContextBeforeEmoji],
- * runs once per emoji PICK — a user-paced event off the keystroke path — and borrows the same
- * measurement.
+ * The measurement runs on the keystroke path, including backspace auto-repeat, so it allocates
+ * nothing: it walks the [CharSequence] by index with [Character.codePointBefore]. It reads only the
+ * text it is handed, never logs it and keeps no copy. [extractContextBeforeEmoji] runs once per
+ * emoji pick, off the keystroke path, and reuses the same measurement.
  */
 object EmojiTextUtils {
 
@@ -63,10 +58,9 @@ object EmojiTextUtils {
      * Returns how many java-`char` a single backspace should delete so that a trailing emoji
      * grapheme cluster disappears in one press, or `0` when the text does not end in an emoji.
      *
-     * A `0` result means "not an emoji": the caller keeps its previous, byte-for-byte identical
-     * behaviour (delete one code point). Ordinary text — letters (Tatar, Russian, Latin), digits,
-     * spaces, a bare combining mark, an unpaired surrogate — therefore always returns `0`, so the
-     * frozen non-emoji deletion is untouched.
+     * A `0` result means "not an emoji", and the caller deletes one code point as usual. Ordinary
+     * text (letters of any script, digits, spaces, a bare combining mark, an unpaired surrogate)
+     * always returns `0`.
      *
      * Covered cluster classes: a lone BMP emoji; a surrogate pair; a base plus VS15/VS16; a base
      * plus a skin-tone modifier (U+1F3FB–U+1F3FF); a ZWJ sequence of two or three base emoji; a
@@ -102,24 +96,20 @@ object EmojiTextUtils {
     }
 
     /**
-     * The word an emoji pick was co-used with, read from the text before the cursor (feature C —
-     * personal word→emoji learning), or null when there is none. The trailing emoji RUN is peeled
-     * first: a pick made right after another emoji still belongs to the same word, so consecutive
-     * clusters count as one boundary by design ("сәләм ☀️😊" → сәләм), and a text holding nothing
-     * but emoji yields null.
+     * The word an emoji pick was used with (for learned emoji), read from the text before the
+     * cursor, or null when there is none. The trailing emoji run is peeled first, so a pick right
+     * after another emoji belongs to the same word ("сәләм ☀️😊" → сәләм); emoji-only text
+     * yields null.
      *
-     * The word itself is read by the two rules the suggestion engine uses, chosen by what the
-     * remainder ends with: whitespace means the NEXT_WORD context rule
-     * ([TatarWordUtils.extractNextWordContext] — a run of U+0020, a non-final punctuation run
-     * transparent, anything else silent), anything else means the emoji hugs its word and the plain
-     * trailing-word rule applies ([TatarWordUtils.extractTrailingWord], "сәләм☀️" → сәләм).
+     * The word is read by one of two suggestion-engine rules, chosen by what the remainder ends
+     * with: whitespace uses the next-word context rule ([TatarWordUtils.extractNextWordContext]),
+     * anything else the trailing-word rule ([TatarWordUtils.extractTrailingWord],
+     * "сәләм☀️" → сәләм).
      *
-     * Unlike the lookup path there is no cache provenance to consult — the helper sees only the
-     * text it is handed — so a word at the very start of the text is taken as whole (the same
-     * stance [TatarWordUtils.extractTrailingWord] has always taken). A word the editor cache
-     * truncated could at worst enter the pending counters, and two IDENTICAL truncated observations
-     * of one (word, emoji) pair cannot recur from a window that slides with every keystroke, so
-     * such a fragment can never graduate into the store.
+     * The helper cannot know whether the editor cache was truncated, so a word at the start of the
+     * text is taken as whole. A truncated word can at worst enter the pending counters: the same
+     * truncated (word, emoji) pair does not recur from a window that slides with every keystroke,
+     * so it never reaches the store.
      */
     @JvmStatic
     fun extractContextBeforeEmoji(text: CharSequence): String? {
@@ -141,7 +131,7 @@ object EmojiTextUtils {
 
     /**
      * Reads a single emoji element backward from [end] (exclusive) and returns its start index, or
-     * `-1` when the code point ending at [end] does not begin a recognisable emoji element.
+     * `-1` when the code point ending at [end] does not begin a recognizable emoji element.
      *
      * An "element" is one base plus the modifiers that bind to it: a tag sequence, a keycap, a
      * variation selector, a skin-tone modifier, a regional-indicator pair, or a bare emoji base.

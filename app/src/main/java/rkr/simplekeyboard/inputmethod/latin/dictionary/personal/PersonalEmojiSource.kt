@@ -17,10 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
 /**
- * The personal-emoji side of the strip's word lookup, as seen by the engine — the emoji sibling of
- * [PersonalBigramSource]. Kept as a seam so the strip logic is testable without a file, a snapshot
- * or Android — the exact shape [PersonalCandidateSource] has on the prefix path, for the emoji
- * tail cell.
+ * The learned-emoji side of the strip's word lookup, as seen by the engine. A seam so the strip
+ * logic is testable without a file, a snapshot or Android; see [PersonalCandidateSource].
  */
 fun interface PersonalEmojiSource {
     /**
@@ -30,11 +28,7 @@ fun interface PersonalEmojiSource {
      */
     fun emojiFor(normalizedWord: String): String?
 
-    /**
-     * True when this source cannot produce anything at all (feature off, locked device, empty
-     * store). The lookup checks it FIRST so a disabled personal-emoji store costs the suggestion
-     * path nothing — not even decoding the word bytes into a String.
-     */
+    /** True when this source cannot produce anything. See [PersonalCandidateSource.isEmpty]. */
     fun isEmpty(): Boolean = false
 
     companion object {
@@ -48,11 +42,7 @@ fun interface PersonalEmojiSource {
     }
 }
 
-/**
- * The production source: reads whatever immutable snapshot [snapshot] currently returns. The
- * snapshot itself is published by the personal-emoji store on its own worker, so this only ever
- * reads a `@Volatile` reference — no I/O, no lock, no checksum on the engine thread.
- */
+/** The production source. See [SnapshotPersonalCandidateSource]. */
 class SnapshotPersonalEmojiSource(
     private val snapshot: () -> PersonalEmojiDictionary,
 ) : PersonalEmojiSource {

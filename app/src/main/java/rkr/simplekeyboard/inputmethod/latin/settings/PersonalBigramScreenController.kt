@@ -27,19 +27,11 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBig
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
 
 /**
- * The pair half of what the "Personal dictionary" screen does to the data (U7 of Phase 2,
- * docs/ROADMAP-P2.md) — the deliberate mirror of [PersonalDictionaryScreenController] for the
- * learned word pairs the P1 store owns: read the snapshots, remove one pair, erase one language
- * or all of them, and inspect/restore/discard the quarantine copy of an unreadable pairs file.
- *
- * Every mutation goes to the process-wide [PersonalBigramDictionaries] owner, which turns it into
- * an event on the single personal-store worker — the same worker the words stores are serialized
- * on, so a screen mutation can never race an in-flight write of the other feature in the shared
- * directory. The settings screen performs no file I/O itself and holds no second writer.
- *
- * Every mutation here takes a completion callback and delivers it on the UI thread through
- * [uiPoster], for the reason the words controller's class doc writes down: queueing an event and
- * repainting in the next statement made the screen report an outcome it could not know yet.
+ * The learned-pairs counterpart of [PersonalDictionaryScreenController]: read snapshots, remove one
+ * pair, clear one language or all, and inspect/restore/discard the quarantined copy of an
+ * unreadable pairs file. Mutations go to the process-wide [PersonalBigramDictionaries] owner on the
+ * same personal-store worker as the word stores, so they never race a write of another store in
+ * the shared directory. Callbacks arrive on the UI thread, as in the words controller.
  */
 internal class PersonalBigramScreenController(
     private val context: Context,
@@ -48,17 +40,16 @@ internal class PersonalBigramScreenController(
 
     /**
      * The languages shown, in the order given, each with its current pairs snapshot. Only subtypes
-     * that can have a personal store at all are listed — the same filter the words half applies.
+     * that can have a personal store at all are listed, with the same filter as for words.
      */
     fun sections(subtypeIds: List<String>): List<Pair<String, PersonalBigramDictionary>> =
         subtypeIds.filter { PersonalSubtypes.alphabetFor(it) != null }
             .map { it to PersonalBigramDictionaries.snapshotFor(context, it) }
 
     /**
-     * Removes one pair. Erasure semantics: the band unbinds whatever it is showing, immediately —
-     * that part cannot wait for the disk. [onRemoved] arrives on the UI thread once the store knows
-     * whether the pair is really gone; the quarantine copy is purged with it, so a later restore
-     * cannot resurrect what was forgotten (the P1 no-resurrection rule).
+     * Removes one pair. The suggestion strip unbinds whatever it shows immediately. [onRemoved]
+     * arrives on the UI thread once the store knows whether the pair is really gone; the
+     * quarantined copy is purged with it, so a later restore cannot bring the pair back.
      */
     fun removePair(
         subtypeId: String,
@@ -72,7 +63,7 @@ internal class PersonalBigramScreenController(
     }
 
     /**
-     * Erases the learned pairs of ONE language — the section-level "Clear all word pairs".
+     * Erases the learned pairs of one language (the section-level "Clear all word pairs").
      * [onCleared] arrives on the UI thread with whether the files are really gone.
      */
     fun clearPairs(subtypeId: String, onCleared: (Boolean) -> Unit) {
@@ -82,9 +73,8 @@ internal class PersonalBigramScreenController(
     }
 
     /**
-     * Erases the learned pairs of ALL languages — the pairs half of the screen's global "erase
-     * all", which the Activity composes with the words half. [onErased] gets `true` only when
-     * EVERY language's files went away, exactly like the words erasure.
+     * Erases the learned pairs of all languages, as part of the screen's global "Erase all".
+     * [onErased] gets `true` only when every language's files went away, like the words erasure.
      */
     fun eraseAll(subtypeIds: List<String>, onErased: (Boolean) -> Unit) {
         val targets = subtypeIds.filter { PersonalSubtypes.alphabetFor(it) != null }
@@ -93,8 +83,7 @@ internal class PersonalBigramScreenController(
             uiPoster { onErased(true) }
             return
         }
-        // All outcomes arrive on the one store worker, in sequence; the counter is atomic anyway so
-        // the invariant does not depend on that staying true.
+        // Atomic counter, as in PersonalDictionaryScreenController.eraseAll.
         val remaining = AtomicInteger(targets.size)
         val everythingGone = AtomicBoolean(true)
         for (subtypeId in targets) {
@@ -109,14 +98,8 @@ internal class PersonalBigramScreenController(
     }
 
     /**
-     * Asks every language whether it has a pairs quarantine copy, and answers ONCE, on the UI
-     * thread, with the languages that do. The read is file work and belongs on the store's worker,
-     * like every other read in this subsystem — the screen paints without the card and repaints
-     * when the answers arrive, the same shape the words half uses, for the same reason.
-     *
-     * A language present with a count of zero HAS a copy that yielded nothing, and still deserves
-     * its card: those bytes are on the device and the user is the only one who can decide to
-     * remove them.
+     * Asks every language whether it has a quarantined pairs copy and answers once, on the UI
+     * thread; see [PersonalDictionaryScreenController.quarantines].
      */
     fun quarantines(
         subtypeIds: List<String>,
@@ -140,9 +123,8 @@ internal class PersonalBigramScreenController(
     }
 
     /**
-     * Puts the readable pairs of one language's copy back into its store, at the user's request.
-     * The copy is left where it is: what could not be read this time is still there for a later
-     * reader, and removing it is the user's own separate decision ([discardQuarantine]).
+     * Puts the readable pairs of one language's copy back into its store. The copy stays until the
+     * user removes it ([discardQuarantine]).
      */
     fun restoreQuarantine(subtypeId: String, onRestored: (Boolean) -> Unit) {
         PersonalBigramDictionaries.storeFor(context, subtypeId)

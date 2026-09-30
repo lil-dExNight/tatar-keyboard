@@ -36,19 +36,18 @@ import java.util.concurrent.Executor
  * [PersonalDictionary] snapshot is published through the `@Volatile` [snapshot] reference; the
  * engine's worker thread reads it. The UI thread does no I/O, no checksum, no read and no write.
  *
- * Whole-file write only, in the frozen sequence (E4a-2): exclusive temp in the same directory →
+ * Whole-file write only, in a fixed sequence: exclusive temp in the same directory →
  * write → flush → fsync file → RE-VALIDATE the written bytes → atomic replace → fsync directory.
  * A partial temp never becomes the main file; any failure leaves the previous valid file untouched;
  * temp garbage is removed when the store next opens the directory.
  *
- * Fail-closed everywhere: a caught exception (including the `UserManager.isUserUnlocked() == false`
- * gate closing the credential-protected path before the first unlock) drops the mutation and leaves
- * the feature empty rather than throwing. Nothing here logs, and no message carries the user's word
- * or the file path.
+ * Fail-closed everywhere: a caught exception (including the unlock gate closing the
+ * credential-protected path before the first unlock) drops the mutation and leaves the feature
+ * empty rather than throwing. Nothing here logs, and no message carries the user's word or the
+ * file path.
  *
- * E4a-2 wires none of this into the live IME — it is exercised only from tests via the explicit API
- * below. The settings toggle, the merge with dictionary candidates and clean-run learning are E4b
- * and E4c.
+ * [PersonalBigramStore] and [PersonalEmojiStore] follow the same design; the shared explanations
+ * live here.
  */
 internal class PersonalDictionaryStore(
     private val subtypeId: String,
@@ -70,12 +69,12 @@ internal class PersonalDictionaryStore(
     private var loaded = false
     private var pendingCounterFlush = false
 
-    // B5. Set when THIS session set a file aside, and kept only until the notice has been raised: the
-    // durable half of the same mark is the file [quarantineNoticeFileName] names.
+    // Set when this session quarantined a file, until the notice has been raised. The durable half
+    // of the same mark is the file [quarantineNoticeFileName] names.
     private var justQuarantined = false
 
-    // E4c: progress towards learning, as salted truncated hashes. Held in memory and written on the
-    // same boundary as the usage counters — never once per completed word.
+    // Progress towards learning, as salted truncated hashes. Held in memory and written on the
+    // same boundary as the usage counters, never once per completed word.
     private var pending: PendingCounters = PendingCounters.EMPTY
     private var pendingDirty = false
     private var salt: ByteArray? = null
@@ -91,12 +90,9 @@ internal class PersonalDictionaryStore(
         private set
 
     /**
-     * Manually adds one word (E4b's "Add word…" path); a no-op if the word is not eligible.
-     *
-     * [outcome] is told what actually happened, on the worker, once the whole-file write has either
-     * succeeded or failed — never at the moment the event was queued. Without it the screen could
-     * only report that it had asked, and a write that ran out of space or failed re-validation would
-     * be invisible: no list entry, no message, no retry.
+     * Manually adds one word (the settings screen's "Add word" action); a no-op if the word is not
+     * eligible. [outcome] is told on the worker whether the whole-file write succeeded, so a failed
+     * write is visible to the screen.
      */
     fun addManually(word: String, outcome: PersonalMutationOutcome? = null) = onWorker {
         val normalized = eligibleNormalizedForm(word)
@@ -104,21 +100,16 @@ internal class PersonalDictionaryStore(
             report(outcome, false)
             return@onWorker
         }
-        // Evaluated first and reported second, deliberately: inside `outcome?.onFinished(...)` a
-        // null outcome would short-circuit the argument too, and the write itself would vanish.
-        // [report] cannot repeat that mistake — the value is an argument, so it is always computed.
+        // Evaluated before reporting: a safe call on a null outcome would skip evaluating its
+        // argument, and the write with it.
         val saved = commitWrite(entries.upsert(word, normalized))
         report(outcome, saved)
     }
 
     /**
-     * Records ONE clean completion of [word] (E4c). Nothing is written to the dictionary until the
-     * word has survived [PendingCounters.LEARN_THRESHOLD] of them; until then only a salted
-     * truncated hash exists, and only in memory between flushes.
-     *
-     * The threshold is 3 for a reason worth keeping written down: 1 would learn any typo, 2 would
-     * learn a typo repeated twice — and the same slip is exactly what a person repeats — while 3
-     * demands that the spelling survive three independent completions without a single correction.
+     * Records one clean completion of [word]. The word enters the dictionary only after
+     * [PendingCounters.LEARN_THRESHOLD] of them; until then only a salted truncated hash exists, in
+     * memory between flushes. The threshold is 3 because the same typo is often made twice.
      */
     fun noteCompletion(word: String) = onWorker {
         val normalized = eligibleNormalizedForm(word) ?: return@onWorker
@@ -142,37 +133,19 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * Removes one word and rewrites (or deletes, when it was the last) the file.
+     * Removes one word and rewrites the file, or deletes it when the word was the last one.
      *
-     * Two things the caller is entitled to and did not use to get:
+     * [outcome] is told whether the word is really gone. The removal is published to readers before
+     * the write, so a keystroke during the write cannot show the word again; if the write fails, the
+     * previous snapshot is restored, because the word is still saved.
      *
-     * * [outcome] is told whether the word is really gone. A failed rewrite leaves the word both in
-     *   memory and on disk, and the user had already been told the opposite — the dialog closed and
-     *   the band was cleared — so the word came back on the next keystroke with nothing said.
-     * * The removal is published to READERS before the write, not after it. "Erased means erased" is
-     *   the whole value of this feature, and the engine reads [snapshot] from its own thread: while
-     *   the write was in flight — two fsyncs, tens to hundreds of milliseconds on the cheap devices
-     *   this project targets — a keystroke could still bring the erased word back onto the band. If
-     *   the write then fails, the previous snapshot is restored, because at that point the word IS
-     *   still saved and pretending otherwise would be the same lie in the other direction.
-     *
-     * The word is ALSO purged from the quarantine copy, if one exists: a copy that still holds a
-     * word the user deleted would resurrect it on the next restore, and "forgotten" must not have
-     * a back door. A copy that cannot be rewritten without the word is deleted outright — losing
-     * the salvage of other words is the smaller lie than keeping a deleted one. (U7 of Phase 2,
-     * docs/ROADMAP-P2.md — the P1 pairs store pinned this rule first; the words store had the hole.)
+     * The word is also purged from the quarantined file, so a later restore cannot bring it back. A
+     * quarantined file that cannot be rewritten without the word is deleted.
      */
     fun forget(word: String, outcome: PersonalMutationOutcome? = null) = onWorker {
-        // B3. This was the one mutation whose body ran outside a `try`, and the exception did not
-        // stay inside it: the worker is a bare single-thread executor created without an
-        // `UncaughtExceptionHandler`, so `deleteFile()` throwing on the removal of the LAST saved
-        // word reached the default handler — `KillApplicationHandler`. The keyboard died in the
-        // middle of typing in someone else's app.
-        //
-        // Falling over protected nothing here. The usual argument for a loud crash assumes data is
-        // being lost; a delete that did not happen loses nothing — the word simply stays saved. The
-        // cost was a dead IME and there was no gain, so the refusal travels the channel instead, and
-        // [outcome] hears exactly one answer whatever happens below.
+        // The body runs inside a try: the worker has no UncaughtExceptionHandler, so a throw here
+        // would kill the IME. A failed delete loses nothing (the word stays saved), so the failure
+        // goes to [outcome], which gets exactly one answer.
         val removed = try {
             removeOnWorker(word)
         } catch (_: Exception) {
@@ -186,8 +159,7 @@ internal class PersonalDictionaryStore(
         if (!open()) return false
         if (alphabet == null) return false
         val normalized = PersonalWordFilter.normalize(word)
-        // The pending hash goes with the word: forgetting it must not leave progress behind that
-        // would re-learn it after three more completions.
+        // The pending hash goes with the word, so three more completions do not learn it again.
         salt?.let { existing ->
             val key = PendingCounters.keyOf(existing, normalized)
             if (pending.countOf(key) > 0) {
@@ -197,23 +169,18 @@ internal class PersonalDictionaryStore(
         }
         val candidate = entries.remove(normalized)
         if (candidate === entries) {
-            // The word was not in this dictionary at all: nothing to remove, and from where the
-            // user stands it is gone, which is what they asked for. The quarantine purge still
-            // runs — a word can sit in the copy without ever having been restored.
+            // The word was not saved, so it is gone as asked. The quarantine purge still runs: a
+            // word can sit in the quarantined file without ever having been restored.
             purgeFromQuarantine(normalized)
             return true
         }
         val previousSnapshot = snapshot
         snapshot = if (candidate.isEmpty) PersonalDictionary.EMPTY else candidate.toSnapshot(subtypeId)
-        // B3, the part that makes the refusal true rather than merely quiet: a throw here becomes
-        // `false` HERE, inside the mutation, so the restore below still runs. The word is still on
-        // disk at this point, and a snapshot that hides it would turn one lie into a permanent one.
+        // A throw here becomes `false` inside the mutation, so the snapshot restore below still
+        // runs: the word is still on disk.
         val removed = try {
             if (candidate.isEmpty) {
-                // `deleteFile()` used to return a Boolean that could only ever be `true`, and this
-                // read `if (candidate.isEmpty) deleteFile()` — a branch shaped like a check on a
-                // value that did not exist. A throw is the only way the deletion can fail, and the
-                // `catch` below is what handles it; saying so out loud is the honest shape.
+                // Deletion fails only by throwing; the catch below handles it.
                 deleteFile()
                 true
             } else {
@@ -233,11 +200,9 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * The quarantine half of [forget]: drops the word from the copy too, so a later restore cannot
-     * resurrect what the user deleted. A copy that becomes empty is removed; a copy that cannot be
-     * rewritten is removed as well — fail-closed toward NOT resurrecting, at the price of losing
-     * the salvage of the other words. The exact mirror of the pairs store's purge (P1 pinned the
-     * rule there first).
+     * The quarantine half of [forget]: drops the word from the quarantined file, so a later restore
+     * cannot bring it back. A file that becomes empty or cannot be rewritten is deleted, losing the
+     * other salvaged words rather than keeping a deleted one.
      */
     private fun purgeFromQuarantine(normalizedWord: String) {
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return
@@ -268,9 +233,7 @@ internal class PersonalDictionaryStore(
             false
         }
         if (!rewritten) {
-            // The copy could not be rewritten without the deleted word. Deleting it outright loses
-            // the salvage of the other words — and keeping it would resurrect a word the user was
-            // told is gone. Erased means erased.
+            // Could not rewrite without the deleted word: delete the file rather than keep it.
             deleted { deleteFile(directory, copy) }
         }
     }
@@ -290,31 +253,26 @@ internal class PersonalDictionaryStore(
         snapshot = PersonalDictionary.EMPTY
         loaded = true
         if (!unlockGate()) {
-            // Memory is empty, the files are untouched and the next process start reads them all
-            // back. The screen shows an empty list either way, so this is exactly the case that must
-            // not pass for success.
+            // Memory is empty but the files are untouched and come back on the next start, so this
+            // is reported as a failure.
             report(outcome, false)
             return@onWorker
         }
-        // Three INDEPENDENT deletions. They used to share one try, so a failure on the first one
-        // skipped the other two and left the salt and the pending counters behind: the same salt
-        // means the same hashes, so words two-thirds of the way to being learned kept their
-        // progress and re-appeared after three more completions, with the screen showing nothing.
+        // Independent deletions: a failure on one must not skip the others. A surviving salt would
+        // keep the pending hashes valid, and half-learned words would come back.
         val dictionaryGone = deleted { deleteFile() }
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
         val countersGone = directory != null &&
             deleted { deleteFile(directory, File(directory, pendingFileName())) }
         val saltGone = directory != null &&
             deleted { deleteFile(directory, File(directory, SALT_FILE_NAME)) }
-        // B2 keeps a copy of an unreadable file (see [quarantine]), and that copy is the user's own
-        // words, which no screen shows. "Erase all" is the only way they can ask for those bytes to
-        // go, so a copy left behind is a failed erasure — not a detail.
+        // The quarantined file (see [quarantine]) holds the user's words, so a copy left behind is
+        // a failed erasure.
         val quarantineGone = directory != null &&
             deleted { deleteFile(directory, File(directory, quarantineFileName())) }
-        // The "not told yet" mark goes as well, but DELIBERATELY outside the answer below: it is not
-        // one of the user's words. A mark that would not delete must not turn "your words are gone"
-        // into "the erasure failed" — that would be the same class of lie in the other direction. Its
-        // only cost when it survives is one pointless notice about a list the user emptied by hand.
+        // The notice mark goes too, but outside the answer below: it holds none of the user's
+        // words, so failing to delete it must not turn "your words are gone" into "the erasure
+        // failed".
         if (directory != null) {
             deleted { deleteFile(directory, File(directory, quarantineNoticeFileName())) }
         }
@@ -322,9 +280,8 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * B5. Clears the "not told yet" mark, on the worker, once the notice has actually reached the
-     * user. Called by the layer that shows it — never by the layer that raises it, or the mark would
-     * be gone before anyone had seen anything.
+     * Clears the notice mark on the worker once the notice has reached the user. Called by the
+     * layer that shows the notice, not the one that raises it.
      */
     fun noticeDelivered() = onWorker {
         justQuarantined = false
@@ -333,14 +290,10 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * B4. Reads what is still readable in the quarantine copy and hands back TWO NUMBERS — how many
-     * words came out, and whether the copy was read to its end. No word and no path leaves here.
-     *
-     * `null` means there is no copy at all; a report with a count of zero means there IS one and it
-     * yielded nothing — a different answer, because the second still leaves the user something to
-     * delete. When [PersonalQuarantineReport.readToEnd] is false part of the copy is damaged and lost,
-     * and the screen is obliged to say so: a partial recovery presented as a whole one is the one
-     * outcome this feature must never produce.
+     * Reads what is still readable in the quarantined file and reports two numbers: how many words
+     * came out, and whether the file was read to its end. No word and no path leaves here. `null`
+     * means there is no file; a zero count means there is one but nothing was readable. When
+     * [PersonalQuarantineReport.readToEnd] is false, the screen must say that part of it was lost.
      */
     fun inspectQuarantine(sink: PersonalQuarantineReportSink) = onWorker {
         val salvage = try {
@@ -349,7 +302,7 @@ internal class PersonalDictionaryStore(
             null
         }
         val report = salvage?.let { PersonalQuarantineReport(it.wordCount, it.readToEnd) }
-        // Same seam, same reason as [report]: a screen that has gone away must not kill the keyboard.
+        // As in [report]: a screen that has gone away must not kill the keyboard.
         try {
             sink.onInspected(report)
         } catch (_: Exception) {
@@ -357,14 +310,10 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * B4. Puts the salvaged words back into the dictionary, at the user's explicit request and never
-     * on its own. Words already in the list are SKIPPED rather than upserted: a restore must not
-     * quietly promote them up the usage order, and skipping is what makes running it twice harmless.
-     *
-     * The copy is deliberately NOT removed on success. Restoring and discarding are two separate
-     * actions, so the damaged tail — the part no parser could read this time — survives a restore and
-     * stays available to a later, better reader. Deleting it is the user's own second decision, and
-     * "erase all words" still takes it with everything else (see [clearAll]).
+     * Puts the salvaged words back into the dictionary, only at the user's request. Words already in
+     * the list are skipped, not upserted, so their usage order is unchanged and a second run is
+     * harmless. The quarantined file is kept: discarding it is a separate action, and [clearAll]
+     * removes it.
      */
     fun restoreQuarantine(outcome: PersonalMutationOutcome? = null) = onWorker {
         val restored = try {
@@ -375,7 +324,7 @@ internal class PersonalDictionaryStore(
         report(outcome, restored)
     }
 
-    /** B4. Removes the quarantine copy and nothing else. */
+    /** Removes the quarantined file and nothing else. */
     fun discardQuarantine(outcome: PersonalMutationOutcome? = null) = onWorker {
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
         val gone = directory != null &&
@@ -397,13 +346,12 @@ internal class PersonalDictionaryStore(
             candidate = candidate.upsert(salvage.rawForms[index], normalized)
             added++
         }
-        // Every salvaged word was already there. Nothing to write, and from where the user stands the
-        // words they asked for are in the list, which is what they asked for.
+        // Every salvaged word was already saved: nothing to write, and the request is fulfilled.
         if (added == 0) return true
         return commitWrite(candidate)
     }
 
-    /** Reads the copy behind the unlock gate. `null` when there is no readable copy to speak of. */
+    /** Reads the quarantined file behind the unlock gate; `null` when there is none to read. */
     private fun readQuarantine(): PersonalQuarantineSalvage? {
         if (!unlockGate()) return null
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return null
@@ -412,10 +360,9 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * Records an accepted personal suggestion as a use: bumps the counter and LRU serial IN MEMORY
-     * only, publishing the updated snapshot. It never rewrites the file — flushing whole for every
-     * tap would be up to 128 KiB plus two fsyncs per tap. Runs as an executor event, not inline on
-     * the UI thread, so it can never race [clearAll].
+     * Records an accepted personal suggestion as a use: bumps the counter and LRU serial in memory
+     * and publishes the snapshot, without rewriting the file (see [flush]). Runs on the executor, so
+     * it cannot race [clearAll].
      */
     fun noteAcceptedSuggestion(word: String) = onWorker {
         if (!open()) return@onWorker
@@ -427,9 +374,9 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * Flushes in-memory counter/serial changes to disk once, only when something changed — the one
-     * boundary (`SuggestionsController.onFinishInput`) where both the usage counters and the pending
-     * hashes are written, never per keystroke and never per completed word.
+     * Writes changed counters and serials to disk. Called at the end of an input session
+     * (`SuggestionsController.onFinishInput`), the only point where usage counters and pending
+     * hashes are written.
      */
     fun flush() = onWorker {
         if (!open()) return@onWorker
@@ -442,8 +389,7 @@ internal class PersonalDictionaryStore(
 
     /**
      * Opens the store on its worker if it is not open yet, publishing the snapshot the engine will
-     * read. A no-op afterwards. Safe to call from any thread — like every other mutation it is an
-     * event on the executor, so the file read never lands on the caller's thread.
+     * read. Safe to call from any thread: the file read runs on the executor.
      */
     fun prime() = onWorker { open() }
 
@@ -466,9 +412,8 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * Runs ONE erasure step so that its failure can neither skip the next step nor escape: returns
-     * whether it went through. Nothing is logged — not the path, not the reason — which is why the
-     * boolean has to travel back to the caller instead.
+     * Runs one erasure step so that its failure neither skips the next step nor escapes. Returns
+     * whether it succeeded; nothing is logged, so the result is the only signal.
      */
     private inline fun deleted(step: () -> Unit): Boolean = try {
         step()
@@ -478,20 +423,10 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * The one way a mutation answers its caller. Two problems, one shape.
-     *
-     * B3 closed the throw INSIDE each mutation, but every `outcome?.onFinished(...)` still sat outside
-     * the `try` that guarded it. The callback belongs to an Activity and posts to the UI thread; a
-     * dead Handler, a detached screen or a listener the settings code replaced mid-flight throws from
-     * `post` itself, and on this bare single-thread executor — created with no `UncaughtExceptionHandler`
-     * — that throw reaches `KillApplicationHandler`. The keyboard died for having said what it did.
-     *
-     * And because [succeeded] is an ARGUMENT it is always evaluated, unlike `outcome?.onFinished(work())`
-     * where a null outcome swallows the work as well. The bug that shape once caused cannot be written
-     * here at all.
-     *
-     * Silent by necessity, not by preference: nothing in this subsystem may log, so a callback that
-     * throws leaves no trace anywhere. What it must not do is take the process with it.
+     * The one way a mutation answers its caller. The callback posts to an Activity's UI thread and
+     * can throw (dead Handler, detached screen); the worker has no UncaughtExceptionHandler, so the
+     * call is wrapped in a try. [succeeded] is an argument, so it is always evaluated, even for a
+     * null outcome. A throwing callback is silently ignored, since nothing here may log.
      */
     private fun report(outcome: PersonalMutationOutcome?, succeeded: Boolean) {
         if (outcome == null) return
@@ -502,10 +437,9 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * Opens the directory once: honours the unlock gate (before the first unlock the path is
-     * physically inaccessible, so the feature stays empty and untouched), removes stale temps, reads
-     * the file into the model, and sets an unreadable file ASIDE (see [quarantine]), publishing an
-     * empty snapshot in the same step. Returns true once the store is loaded.
+     * Opens the directory once: honors the unlock gate (before the first unlock the path is
+     * inaccessible, so the feature stays empty), removes stale temps, reads the file, and quarantines
+     * an unreadable file (see [quarantine]) with an empty snapshot. Returns true once loaded.
      */
     private fun open(): Boolean {
         if (loaded) return true
@@ -517,15 +451,11 @@ internal class PersonalDictionaryStore(
             entries = PersonalEntries.empty(maxEntries)
             snapshot = PersonalDictionary.EMPTY
         }
-        // B5, the single place the notice is raised. Every open passes here — the one that quarantined
-        // the file just now AND the one that merely found the mark a previous process left behind — so
-        // a loss the user was never told about is told about at the next chance there is, however many
-        // process deaths later. `justQuarantined` keeps the promise even when the mark itself could not
-        // be written: this session at least still says it out loud.
+        // The only place the notice is raised. Every open passes here, both after a quarantine now
+        // and when a previous process left the mark, so an unannounced loss is announced at the next
+        // open. `justQuarantined` covers the case where the mark could not be written.
         if (justQuarantined || quarantineNoticeIsMarked()) {
-            // The seam leads to an Activity through a UI-thread post. A throw on the way out would
-            // reach the worker's default handler and kill the keyboard, and it would do it while
-            // reporting that the dictionary is empty — the least deserving moment there is.
+            // The seam posts to an Activity on the UI thread; a throw must not kill the worker.
             try {
                 quarantineNotice?.onQuarantined()
             } catch (_: Exception) {
@@ -599,10 +529,9 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * The salt for the pending hashes: 16 random bytes in `salt.bin`, created on first use and
-     * destroyed by [clearAll]. Returns null when it can neither be read nor created — in which case
-     * nothing is counted at all, which is the fail-closed direction (no learning rather than
-     * unsalted keys).
+     * The salt for the pending hashes: random bytes in `salt.bin`, created on first use and deleted
+     * by [clearAll]. Returns null when it can be neither read nor created; then nothing is counted
+     * (no learning rather than unsalted keys).
      */
     private fun saltOrCreate(): ByteArray? {
         salt?.let { return it }
@@ -629,10 +558,8 @@ internal class PersonalDictionaryStore(
     private fun readPending(directory: File) {
         pending = try {
             val file = File(directory, pendingFileName())
-            // The size cap comes BEFORE the read: a file past MAX_SERIALIZED_BYTES can never parse
-            // (parse bounds the record count by MAX_PENDING), so reading it would only allocate for
-            // garbage — and past 2 GiB readBytes() throws an OutOfMemoryError, an Error that the
-            // catch below cannot stop (S2 of docs/AUDIT-2026-08-31.md).
+            // Size check before the read: a file past MAX_SERIALIZED_BYTES cannot parse, and past
+            // 2 GiB readBytes() throws an OutOfMemoryError, which the catch below does not stop.
             if (file.isFile && file.length() <= PendingCounters.MAX_SERIALIZED_BYTES) {
                 PendingCounters.parse(file.readBytes())
             } else {
@@ -653,10 +580,9 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * Writes one small fixed-size file through the same temp → fsync → atomic replace → directory
-     * fsync sequence the dictionary uses. The pending file and the salt are not user text, but a
-     * half-written one would be read as garbage, and fail-closed parsing would then silently drop a
-     * user's progress.
+     * Writes one small file through the same temp → fsync → atomic replace → directory fsync
+     * sequence as the dictionary, so a half-written pending file or salt cannot drop learning
+     * progress.
      */
     private fun writeBytesDurably(directory: File, destination: File, bytes: ByteArray) {
         val temporary = createExclusiveTemp(directory)
@@ -675,23 +601,13 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * B2. Moves an unreadable file into this subtype's single quarantine slot instead of deleting
-     * it, and tells [quarantineNotice] that the list the user will see is empty for a reason.
+     * Moves an unreadable file into this subtype's single quarantine slot instead of deleting it,
+     * and marks that the user is owed a notice. An interrupted write or checksum mismatch usually
+     * leaves most words readable, so they are kept for a restore.
      *
-     * Validation fails for an interrupted write (a power cut mid-replace), a checksum that no longer
-     * matches, or a format a later version changes — and what usually survives such a failure is
-     * most of the words. Deleting destroyed the only data this keyboard keeps about its user, with
-     * no copy and nothing said; a repair path added later can only read those words if they still
-     * exist. Between losing the data and keeping one extra file, the file wins.
-     *
-     * ONE slot per language, replaced by the next corruption, so the copy cannot accumulate: the
-     * ceiling on disk is one file, not one per failure. Its name is not the name the reader looks
-     * for, so nothing ever validates, reads or publishes it, and it is not a temp either, so
-     * [cleanupTemps] leaves it alone. "Erase all" removes it — see [clearAll].
-     *
-     * If the move itself cannot happen the unreadable file is removed after all: leaving it where
-     * the reader looks would fail validation again on every single start, and the copy is worth
-     * strictly less than a feature that works.
+     * One slot per language, replaced by the next failure. Its name is neither a `.tpers` nor a temp
+     * name, so nothing validates it and [cleanupTemps] leaves it alone; [clearAll] removes it. If the
+     * move fails, the unreadable file is deleted so it does not fail validation on every start.
      */
     private fun quarantine(directory: File, file: File) {
         val moved = try {
@@ -702,14 +618,9 @@ internal class PersonalDictionaryStore(
             false
         }
         if (!moved) runCatching { deleteFile(directory, file) }
-        // Said in both cases: what the user is told is that the list is empty and that they did not
-        // do it, which is equally true whether the copy was kept or could not be made.
-        //
-        // B5. The mark used to be a field on a process that was usually about to end: the quarantine
-        // happens while the store opens, which on a keyboard is the moment the input field appears,
-        // and the notice waited for a screen nobody had opened yet. The next process start began with
-        // a fresh `false` and the loss was never mentioned again. It goes to disk instead, one byte
-        // whose EXISTENCE is the whole message: no word, no path, no reason — a flag, not text.
+        // Marked in both cases: the list is empty and the user did not empty it. The mark is kept
+        // on disk, since the process may end before any screen shows the notice. It is one byte
+        // whose existence is the message: no word, no path, no reason.
         justQuarantined = true
         runCatching {
             writeBytesDurably(directory, File(directory, quarantineNoticeFileName()), ByteArray(1))
@@ -721,7 +632,7 @@ internal class PersonalDictionaryStore(
 
     private fun quarantineNoticeFileName(): String = "quarantine-notice-$subtypeId-s1-f1.flag"
 
-    /** Whether the on-disk "not told yet" mark is there. Fail-closed to "already told". */
+    /** Whether the on-disk notice mark exists; false on error. */
     private fun quarantineNoticeIsMarked(): Boolean = try {
         File(directoryProvider.personalDirectory(), quarantineNoticeFileName()).isFile
     } catch (_: Exception) {
@@ -731,10 +642,8 @@ internal class PersonalDictionaryStore(
     private fun pendingFileName(): String = "pending-$subtypeId-s1-f1.bin"
 
     /**
-     * Removes this subtype's `.tpers` file. Returns nothing ON PURPOSE: it used to return a `Boolean`
-     * whose only two outcomes were `true` and a throw, and every caller that read it was written as a
-     * check on a value that did not exist. A throw is the single failure signal, and the callers'
-     * `try`/[deleted] is what answers for it.
+     * Removes this subtype's `.tpers` file. Fails only by throwing; callers handle it with `try` or
+     * [deleted].
      */
     private fun deleteFile() {
         val directory = directoryProvider.personalDirectory()
@@ -784,8 +693,8 @@ internal class PersonalDictionaryStore(
         private const val SALT_SIZE = 16
 
         /**
-         * Appended to the ordinary file name for the one quarantine slot (B2). Deliberately not a
-         * `.tpers` name and not a temp name: nothing reads it, nothing cleans it up by accident.
+         * Appended to the ordinary file name for the quarantine slot. Neither a `.tpers` nor a temp
+         * name, so nothing reads it or cleans it up by accident.
          */
         private const val QUARANTINE_SUFFIX = ".quarantine"
     }

@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * O2 (2026-09-25, docs/OPTIMIZE-2026-09-25.md): forked from
- * androidx.customview:customview:1.1.0 (AOSP, sources jar) and ported to framework APIs,
- * dropping the androidx.customview dependency. The mapping, every entry available at the app's
+ * Forked from androidx.customview:customview:1.1.0 (AOSP) and ported to framework APIs, so the
+ * app does not depend on androidx.customview. The mapping, every entry available at the app's
  * minSdk 24: SparseArrayCompat -> android.util.SparseArray, AccessibilityDelegateCompat ->
  * android.view.View.AccessibilityDelegate, AccessibilityNodeProviderCompat ->
  * android.view.accessibility.AccessibilityNodeProvider, AccessibilityNodeInfoCompat ->
@@ -842,12 +841,11 @@ public abstract class ExploreByTouchHelper extends View.AccessibilityDelegate {
         if (mTempScreenRect.equals(INVALID_PARENT_BOUNDS)) {
             node.getBoundsInParent(mTempScreenRect);
 
-            // PORT NOTE (O2): the androidx original walked the virtual-parent chain here via
-            // AccessibilityNodeInfoCompat.mParentVirtualDescendantId — a field the framework
-            // AccessibilityNodeInfo does not expose. The walk was dead in the 1.1.0 shape this
-            // fork ports: this class only ever parents virtual children straight to the host
-            // (the single-argument setParent below), so the id was always HOST_ID and the loop
-            // never ran. Nothing is lost with it.
+            // PORT NOTE: the androidx original walked the virtual-parent chain here via
+            // AccessibilityNodeInfoCompat.mParentVirtualDescendantId, a field the framework
+            // AccessibilityNodeInfo does not expose. This class only parents virtual children
+            // straight to the host (the single-argument setParent below), so that id was always
+            // HOST_ID and the loop never ran; dropping it changes nothing.
 
             // Adjust the rect for the host view's location.
             mTempScreenRect.offset(mTempGlobalRect[0] - mHost.getScrollX(),

@@ -26,16 +26,14 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 
 /**
- * P3 after-word forms (docs/TT-SUGGESTIONS.md): the inflections of the just-committed context
- * word that fill the strip cells the bigram successors leave free in the NEXT_WORD slot. The
- * Tatar engine is constructed with `TatarSuffixRules`-backed forms; the Russian engine carries
- * null and its NEXT_WORD answers are byte-identical to before.
+ * After-word forms: word forms of the just-committed context word that fill the strip cells the
+ * bigram successors leave free in a NEXT_WORD answer. The Tatar engine uses
+ * `TatarSuffixRules`-backed forms; the Russian engine has none.
  */
 fun interface AfterWordForms {
     /**
-     * The forms of [contextWord] to append after the bigram successors, disjoint from
-     * [alreadyShown], at most [maxOut], in their own (frequency-descending) order. Empty when the
-     * word has no attested inflections to offer.
+     * Forms of [contextWord] to append after the bigram successors: disjoint from [alreadyShown],
+     * at most [maxOut], frequency descending. Empty when the word has no attested forms.
      */
     fun formsOf(
         contextWord: ImmutableUtf8Prefix,
@@ -46,64 +44,50 @@ fun interface AfterWordForms {
 
 /**
  * Builds the [AfterWordForms] of one engine against that engine's own dictionary. A factory
- * because the dictionary index exists only inside engine startup — the rules themselves are
- * language-level and stateless.
+ * because the dictionary index exists only inside engine startup; the rules are stateless.
  */
 fun interface AfterWordFormsFactory {
     fun createAfterWordForms(dictionary: WordFrequencySource): AfterWordForms
 }
 
 /**
- * The single ranking of E4b: dictionary candidates and one personal word merged into the three
- * cells of the band, in the order frozen by «Контракт текста»:
+ * Merges dictionary candidates and one personal-dictionary word into the three strip cells:
  *
- *  1. exact dictionary candidates, in their existing order (frequency desc, then code point asc);
- *  2. at most ONE personal-only word — index 0 when there are no exact dictionary candidates,
- *     index 1 otherwise;
- *  3. fuzzy (E3) candidates, in the order of their own level.
+ *  1. exact dictionary candidates, in their order (frequency descending, then code point);
+ *  2. at most one personal-only word: index 0 when there are no exact candidates, index 1
+ *     otherwise (it pushes the third exact candidate out of the strip);
+ *  3. typo-recovery candidates, in their own order.
  *
- * Two consequences are stated in the contract and implemented literally here:
+ * A word in both the dictionary and the personal list takes one cell; when its saved spelling
+ * differs from the normalized form (for example, capitalized), the personal spelling is shown.
  *
- *  - the band is three cells, so a personal word at index 1 does not "push the exact candidates
- *    down" — it pushes the THIRD exact candidate out of the band entirely;
- *  - a word present both in the dictionary and in the personal list occupies exactly ONE cell, and
- *    when the saved casing differs from the normalized form the PERSONAL spelling wins («словарное
- *    гүзәл» + «личное Гүзәл» → one cell «Гүзәл»). Otherwise the dictionary candidate stands as it is.
+ * With the personal source empty (feature off, device locked, nothing saved) this returns the
+ * primary's list itself, not a copy; the empty check comes before the prefix is decoded.
  *
- * With the personal source empty — the feature off, the device still locked, or simply nothing
- * saved — this returns the primary's list ITSELF, unchanged and not even copied, so the result stays
- * byte-for-byte the E3 result. That is the property the acceptance names, and it is why the empty
- * check comes before the prefix is even decoded.
- *
- * Casing is NOT applied here: display casing is applied after ranking, by the controller, exactly as
- * before. That is what makes the four E4a-1 casing rules hold for personal words for free — the
- * LOWER branch of `applyCasing` returns the candidate unchanged, so a saved «Гүзәл» reaches the cell
- * with its own casing, while INITIAL_CAPS and ALL_CAPS re-case it like any dictionary word.
+ * Casing is not applied here: the controller applies display casing after ranking. In lower-case
+ * mode `applyCasing` keeps a saved spelling as is; the capitalized modes re-case it like any word.
  */
 internal class CompositePrefixComputer(
     private val primary: ClassifiedPrefixComputer,
     private val personal: PersonalCandidateSource,
-    // P3: after-word forms of the NEXT_WORD slot (docs/TT-SUGGESTIONS.md). Null for an engine
-    // without word-form rules (the Russian one) — its NEXT_WORD answers stay the pure bigram list.
+    // After-word forms for NEXT_WORD answers. Null for an engine without word-form rules (the
+    // Russian one).
     private val afterWordForms: AfterWordForms? = null,
-    // TT-NEXTWORD-FILL (docs/TT-NEXTWORD-FILL.md): the global top-frequency fill of the NEXT_WORD
-    // cells still empty after bigrams and forms. Null keeps the pre-fill behavior byte-identical.
+    // Top-frequency fill of the NEXT_WORD cells still empty after bigrams and forms. Null: no
+    // fill.
     private val fallbackWords: FallbackWords? = null,
-    // P1 of Phase 2 (docs/ROADMAP-P2.md): the user's own learned pairs of the NEXT_WORD slot.
-    // A seam of its own — NOT the prefix path's PersonalCandidateSource, which predict still never
-    // touches; EMPTY keeps the pre-P1 behavior byte-identical.
+    // Learned word pairs for NEXT_WORD answers. Separate from the prefix path's
+    // PersonalCandidateSource, which predict never reads. EMPTY: no learned pairs.
     private val personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
-    // P7-3 (docs/GLIDE-PLAN.md): the glide decode side. Null keeps the engine answering empty
-    // (fail-closed). Glide candidates come from the MAIN dictionary only — the personal
-    // dictionary is deliberately never consulted on this path (documented MVP decision).
+    // The glide decode side. Null: glide typing returns no candidates. The host wraps the
+    // personal dictionary itself (see GlideDecoderHost).
     private val glideHost: GlideDecoderHost? = null,
 ) : PrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer, GlideGeometrySink,
     GlideIndexReleaser {
 
     /**
-     * The D3 verdict as it leaves the engine: the primary's, minus every word the user has saved
-     * themselves. Written by the worker at the end of each lookup, read on the UI thread, hence
-     * `@Volatile`.
+     * The autocorrect verdict as it leaves the engine: the primary's, unless the typed word is in
+     * the personal dictionary. Written by the worker after each lookup, read on the UI thread.
      */
     @Volatile
     var lastAutocorrectAdvice: AutocorrectAdvice? = null
@@ -115,14 +99,10 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * E5c two-stage readiness (PROPOSALS.md, "E5c. Готовность вычислителя двухступенчатая"): the
-     * bigram table is not open yet when this computer is constructed and handed to
-     * [LatestOnlyPrefixEngine] — publishing the engine must not wait for it. [attachBigramSource]
-     * lets a LATER, independent background step wire it in without ever constructing a second
-     * request, token, executor, or computer. Written from whatever thread finishes that later
-     * preparation, read from the engine's single serialized worker thread inside [predict] — the
-     * same cross-thread handoff shape as [lastAutocorrectAdvice], `@Volatile` in the other
-     * direction.
+     * Two-stage readiness: the bigram table is not open yet when this computer is handed to
+     * [LatestOnlyPrefixEngine], and publishing the engine must not wait for it.
+     * [attachBigramSource] wires it in later without a second request, executor or computer.
+     * Written by the thread that finishes the bigram preparation, read on the engine worker.
      */
     @Volatile
     private var bigramSource: NextWordComputer? = null
@@ -132,28 +112,21 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * NEXT_WORD read side. The PREFIX-path personal source ([personal]) is never consulted here —
-     * E5's "one computer, one token" rule — but since P1 of Phase 2 (docs/ROADMAP-P2.md) the
-     * user's own learned pairs join through their OWN seam ([personalBigrams]). The pinned chain
-     * is: static bigram successors > personal pairs > word forms > fallback. A later source never
-     * displaces, never duplicates, and never pushes the list past the three strip cells:
+     * Next-word prediction. The prefix-path personal source ([personal]) is never read here;
+     * learned word pairs come through [personalBigrams]. The chain is: bigram successors >
+     * learned pairs > word forms > fallback. A later source never displaces or duplicates an
+     * earlier one and never goes past the three strip cells:
      *
-     *  - the static successors come first and are never displaced, however the personal pair
-     *    ranks;
-     *  - personal pairs fill the cells the successors leave free, at most
-     *    [MAX_PERSONAL_BIGRAM_CELLS] of them (the leave-room pin: with all three cells free the
-     *    personal half takes two and the forms/fallback half keeps its chance), in their own order
-     *    (usage desc, then frequency desc), a pair whose normalized form a static successor already
-     *    shows is skipped — the duplicate is shown once and the STATIC spelling wins;
-     *  - word forms and the fallback then fill what is still free, already excluding everything
-     *    shown, exactly as before.
+     *  - bigram successors come first and are never displaced;
+     *  - learned pairs fill free cells, at most [MAX_PERSONAL_BIGRAM_CELLS], in their own order
+     *    (usage, then frequency, descending); a pair already shown as a successor is skipped, so
+     *    the bundled spelling wins;
+     *  - word forms and the fallback fill what is still free, excluding everything shown.
      *
-     * Before a bigram source is attached (or after a corrupted/missing table failed to open) this
-     * returns an empty list WITHOUT offering personal pairs, forms OR the fallback — the exact
-     * "0 predictions, no effect on prefix suggestions or ordinary input" shape the contract
-     * requires, and the NEXTWORD-RACE rule personal pairs live by too: the re-request on attach
-     * fires only while the active language has put no word on the band, and a personal-only band
-     * painted from "not attached yet" would suppress it.
+     * Before a bigram source is attached (or when the table failed to open) this returns an empty
+     * list, with no learned pairs, forms or fallback. The controller re-requests on attach only
+     * while the active language has no word on the strip, and a strip filled before attach would
+     * suppress that re-request.
      */
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
         val source = bigramSource ?: return emptyList()
@@ -164,9 +137,7 @@ internal class CompositePrefixComputer(
         if (result.size < CELL_COUNT) {
             val forms = afterWordForms
             if (forms != null) {
-                // Fail closed toward the bigram-only list, the exact posture the personal source has
-                // on the prefix path: broken forms must never take the bigram successors down with
-                // them.
+                // Broken forms leave the bigram successors intact.
                 val extras = try {
                     forms.formsOf(normalizedContextWordUtf8, result, CELL_COUNT - result.size)
                 } catch (_: RuntimeException) {
@@ -178,8 +149,7 @@ internal class CompositePrefixComputer(
         if (result.size < CELL_COUNT) {
             val fallback = fallbackWords
             if (fallback != null) {
-                // Same fail-closed posture as the forms: a broken fallback leaves everything the
-                // earlier sources produced exactly as it was.
+                // A broken fallback leaves the earlier results intact.
                 val extras = try {
                     fallback.fallbackWords(normalizedContextWordUtf8, result, CELL_COUNT - result.size)
                 } catch (_: RuntimeException) {
@@ -192,10 +162,8 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * The P1 step of the NEXT_WORD chain: the personal pairs of the context word in the cells the
-     * static successors left free. Returns [result] ITSELF — unchanged, not even copied — when the
-     * feature is off, the source throws, or no pair qualifies, the same byte-for-byte posture the
-     * prefix merge has for an empty personal source.
+     * Adds the context word's learned pairs to the cells the bigram successors left free. Returns
+     * [result] itself, not a copy, when the feature is off, the source throws, or no pair fits.
      */
     private fun withPersonalPairs(
         result: List<String>,
@@ -207,16 +175,15 @@ internal class CompositePrefixComputer(
         val matches = try {
             personalBigrams.successorsFor(normalizedContextWordUtf8.decodeUtf8())
         } catch (_: RuntimeException) {
-            // Fail closed toward the static list: a broken personal source must never take the
-            // bigram successors down with it.
+            // A broken personal source leaves the bigram successors intact.
             return result
         }
         if (matches.isEmpty()) return result
         val extras = ArrayList<String>(room)
         for (match in matches) {
             if (extras.size >= room) break
-            // Shown once, and the static spelling wins: the duplicate rule is defined on the
-            // normalized form, exactly like the prefix merge of E4b.
+            // Shown once, and the bundled spelling wins: duplicates are compared on the
+            // normalized form, as in the prefix merge.
             if (result.contains(match.normalizedForm)) continue
             if (extras.contains(match.normalizedForm) || extras.contains(match.rawForm)) continue
             extras.add(match.rawForm)
@@ -236,9 +203,8 @@ internal class CompositePrefixComputer(
         glideHost?.decodeGlide(path) ?: emptyList()
 
     /**
-     * O2 (docs/OPTIMIZE-2026-09-25.md): the idle-release seam of the glide side — forwarded to
-     * the host, which drops the lazily built word index; the next decode rebuilds it. Runs on
-     * the engine worker (the engine posts it there), like [decodeGlide] itself.
+     * Idle memory release: the host drops the lazily built glide word index; the next decode
+     * rebuilds it. Runs on the engine worker, like [decodeGlide].
      */
     override fun releaseGlideIndex() {
         glideHost?.releaseIndex()
@@ -251,8 +217,7 @@ internal class CompositePrefixComputer(
         val matches = try {
             personal.candidatesFor(normalizedPrefixUtf8.decodeUtf8())
         } catch (_: RuntimeException) {
-            // Fail closed toward the frozen behaviour: a broken personal source must never take
-            // dictionary suggestions down with it.
+            // A broken personal source leaves the dictionary suggestions intact.
             return dictionary
         }
         if (matches.isEmpty()) return dictionary
@@ -261,19 +226,12 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * A word of the personal dictionary is never autocorrected — whatever the shipped asset thinks
-     * of it. The user has already said this is their word, and replacing it would overrule their own
-     * decision. Membership is decided on the NORMALIZED form by the same binary search E4d uses
-     * (`PersonalDictionary.indexOfNormalized`), never on the displayed spelling.
+     * A word in the personal dictionary is never autocorrected: the user has saved it as theirs.
+     * Membership is checked on the normalized form (`PersonalDictionary.indexOfNormalized`).
      *
-     * The check follows the same live gate as the band itself: with the personal dictionary switched
-     * off the source publishes an empty snapshot, so nothing is looked up and no file is touched.
-     * That boundary is deliberate — making autocorrect the one feature that still reads the personal
-     * file while the setting is off would break the E4 rule that a disabled personal dictionary costs
-     * the lookup path nothing.
-     *
-     * A source that throws vetoes nothing but also advises nothing: fail-closed towards NOT editing
-     * the user's text.
+     * With the personal dictionary off the source publishes an empty snapshot, so nothing is read;
+     * a disabled personal dictionary costs the lookup path nothing. If the source throws, no advice
+     * is returned, so the user's text is not edited.
      */
     private fun withoutPersonalWords(advice: AutocorrectAdvice?): AutocorrectAdvice? {
         if (advice == null) return null
@@ -315,9 +273,8 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * The one personal word that earns a cell of its own: the first match, in personal order, whose
-     * normalized form is not already among the dictionary candidates. A duplicate never becomes a
-     * personal-only word — it only changes how its single shared cell is spelled.
+     * The personal word that gets a cell of its own: the first match whose normalized form is not
+     * among the dictionary candidates. A duplicate only changes how its shared cell is spelled.
      */
     private fun firstPersonalOnly(
         dictionary: List<String>,
@@ -330,8 +287,8 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * The display form of one dictionary candidate: its own text, unless a personal record has the
-     * same normalized form AND a different saved spelling, in which case the personal one wins.
+     * Display form of one dictionary candidate: its own text, unless a personal record has the same
+     * normalized form and a different saved spelling, which then wins.
      */
     private fun displayFormOf(dictionaryWord: String, matches: List<PersonalCandidate>): String {
         for (match in matches) {
@@ -356,18 +313,14 @@ internal class CompositePrefixComputer(
 
     companion object {
         /**
-         * The band is three cells (`SuggestionStripState.CELL_COUNT`) and the index returns at most
-         * three candidates (`TdictPrefixIndex.MAX_RESULTS`), so the merge can only ever hand back
-         * three. Pinned against both by `CompositePrefixComputerTest`.
+         * The strip has three cells (`SuggestionStripState.CELL_COUNT`) and the index returns at
+         * most three candidates (`TdictPrefixIndex.MAX_RESULTS`).
          */
         internal const val CELL_COUNT = 3
 
         /**
-         * The most cells personal pairs may take in one NEXT_WORD band (P1 of Phase 2,
-         * docs/ROADMAP-P2.md — the "leave room" pin): two. With all three cells free the personal
-         * half still leaves one for the word forms and the fallback, so a user who learns a couple
-         * of pairs never loses the engine's other predictions to them. Pinned by
-         * `CompositePrefixComputerTest`.
+         * Most cells learned pairs may take in one NEXT_WORD answer. With all three cells free one
+         * is always left for word forms and the fallback.
          */
         internal const val MAX_PERSONAL_BIGRAM_CELLS = 2
     }

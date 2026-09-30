@@ -26,16 +26,8 @@ import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 
 /**
- * What could be read out of a quarantined `.tpersb` copy (P1 of Phase 2, docs/ROADMAP-P2.md): the
- * pairs, and whether the file ran out before it said it would. The bigram analogue of
- * [PersonalQuarantineSalvage].
- *
- * NOT a Kotlin `data class`: it carries the user's own words, and a synthesised `toString` would
- * print them at the first interpolation. Nothing here is ever logged.
- *
- * [readToEnd] is the honesty flag, exactly as in the words salvage: it is true only when every
- * record the header declared was read, nothing was left over and no cap cut the read short, and
- * whenever it is false the user must be told that the rest of the copy is damaged and lost.
+ * What could be read out of a quarantined `.tpersb` file: the pairs, and whether the file was read
+ * to its end. See [PersonalQuarantineSalvage].
  */
 internal class PersonalBigramQuarantineSalvage internal constructor(
     /** Context words in the NORMALIZED form (the only form the format stores for them), as read. */
@@ -51,20 +43,8 @@ internal class PersonalBigramQuarantineSalvage internal constructor(
 
     companion object {
         /**
-         * Reads as much of [file] as parses, for the personal bigrams of [requestedSubtypeId].
-         * Returns null when there is no copy at all; an empty salvage with [readToEnd] false when a
-         * copy exists but nothing in it can be trusted.
-         *
-         * The stored checksum is deliberately NOT consulted — a truncated write is the ordinary way
-         * this file breaks, and the checksum is the first thing truncation destroys. What stands in
-         * its place is the per-record contract: the header must identify this exact schema, format
-         * and LANGUAGE, and every record must pass the same content checks the validator enforces,
-         * including the pair-key ascending order, which earns its keep here as a resync detector.
-         *
-         * Parsing stops at the FIRST record that violates anything; everything before it is kept.
-         * Nothing in here throws on bad input — a broken file has no right to end a process — but
-         * callers still run it inside their own `try`, because `File` I/O can fail for its own
-         * reasons.
+         * Reads as much of [file] as parses, for the learned pairs of [requestedSubtypeId]. See
+         * [PersonalQuarantineSalvage.read].
          */
         fun read(file: File, requestedSubtypeId: String): PersonalBigramQuarantineSalvage? {
             val length = try {
@@ -78,8 +58,7 @@ internal class PersonalBigramQuarantineSalvage internal constructor(
             val cap = TpersbFormat.MAX_FILE_SIZE
             val bytes = readAtMost(file, minOf(length, cap).toInt()) ?: return NOTHING
             if (bytes.size < TpersbFormat.HEADER_SIZE) return NOTHING
-            // A file longer than the writer could ever produce is already not whole, but its head
-            // may still hold pairs, so it is read up to the cap rather than refused.
+            // Read up to the cap; see PersonalQuarantineSalvage.
             var readToEnd = length <= cap && bytes.size.toLong() == length
 
             val header = ByteBuffer.wrap(bytes, 0, TpersbFormat.HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
@@ -99,8 +78,7 @@ internal class PersonalBigramQuarantineSalvage internal constructor(
             if (formatVersion != TpersbFormat.FORMAT_VERSION) return NOTHING
             if (headerSize != TpersbFormat.HEADER_SIZE) return NOTHING
             if (checksumAlgorithm != TpersbFormat.CHECKSUM_ALGORITHM_SHA256) return NOTHING
-            // The language tag is not negotiable: pairs saved while writing another language have
-            // no business appearing in this one's predictions, however readable they are.
+            // Pairs saved in another language never appear in this one's predictions.
             if (decodeSubtypeTag(subtypeTagBytes) != requestedSubtypeId) return NOTHING
 
             if (payloadSize != length - TpersbFormat.HEADER_SIZE) readToEnd = false
@@ -166,14 +144,10 @@ internal class PersonalBigramQuarantineSalvage internal constructor(
             )
         }
 
-        /** A copy that exists and yields nothing: no pairs, and certainly not read to the end. */
+        /** A file that exists and yields nothing: no pairs, not read to the end. */
         private val NOTHING = PersonalBigramQuarantineSalvage(emptyList(), emptyList(), emptyList(), false)
 
-        /**
-         * Reads at most [limit] bytes. Deliberately capped rather than [File.readBytes]: a corrupt
-         * length field is exactly the kind of thing that would otherwise ask for a several-hundred-
-         * megabyte array on a phone that has none.
-         */
+        /** Reads at most [limit] bytes. See [PersonalQuarantineSalvage]. */
         private fun readAtMost(file: File, limit: Int): ByteArray? = try {
             FileInputStream(file).use { input ->
                 val buffer = ByteArray(limit)

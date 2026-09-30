@@ -48,8 +48,8 @@
         <case
             latin:keyboardLayoutSetElement="alphabetManualShifted|alphabetAutomaticShifted"
         >
-            <!-- M1 (docs/APPLE-UX-2026-09-25.md): one-shot shift = filled arrow without
-                 the caps bar, on an INVERTED (letter-coloured) key. Caps lock keeps the
+            <!-- One-shot shift = filled arrow without the caps bar, on an inverted
+                 (letter-colored) key. Caps lock keeps the
                  barred icon below; shift-off keeps the outline in <default>. -->
             <key-style
                 latin:styleName="shiftKeyStyle"
