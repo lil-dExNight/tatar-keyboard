@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Version:** 1.8 — 2026-09-30
+**Version:** 1.9 — 2026-09-30
 
 Tatar Keyboard keeps what you type **on your device**.
 
@@ -17,6 +17,8 @@ So the emoji panel can show them first, the keyboard remembers **up to 24 recent
 
 - **Where.** They are stored in an internal app folder that is **decrypted only after you enter your device's lock code** (PIN, pattern or password).
 - **Before the device is unlocked** for the first time after a restart, this list is **not read and not added to**; there is no “Recent” tab until you unlock.
+- **On the lock screen** (for example a quick reply to a notification), also after the first unlock, the “Recent” tab is not shown and nothing is added to the list.
+- **Incognito mode** (below) pauses it too: emoji you insert while it is on are not added, and the list you already have stays.
 - **Excluded from backup.** The list lives in an internal “no-backup” folder that Android does **not** include in a cloud backup or in a transfer to a new device.
 - **Not everywhere.** Nothing is remembered in **password fields or other private fields**: e-mail, URL, and any field that asks the keyboard not to show suggestions or not to personalize (for example an incognito browser tab or a banking app).
 - **How to erase it.** Open the keyboard settings and tap **“Clear recent emoji.”** To remove it together with everything else, delete the app's data in the system settings. That also removes the unpacked dictionaries and next-word prediction tables, which the app unpacks again on next use.
@@ -26,7 +28,7 @@ So the emoji panel can show them first, the keyboard remembers **up to 24 recent
 The word-completion dictionaries, the next-word prediction tables and the “word → emoji” table are **bundled inside the app** and unpacked to an internal app folder on first use.
 
 - **Size.** Two unpacked dictionaries (1,276,289 and 1,151,323 bytes) and two next-word prediction tables (170,471 and 131,662 bytes), about 2.7 MB in total. The emoji lookup tables add a few hundred KB packed and store nothing about you.
-- **What they record about you: nothing.** Word completions, next-word predictions and emoji suggestions are read-only lookups in these bundled tables. They keep no history, no counters and no copy of what you type. The emoji suggestion in the strip reads only the word you just finished, on the device, and is dropped from memory with it. In password and other private fields, neither word suggestions nor emoji suggestions appear.
+- **What they record about you: nothing.** Word completions, next-word predictions and emoji suggestions are read-only lookups in these bundled tables. They keep no history, no counters and no copy of what you type. The emoji suggestion in the strip reads only the word you just finished, on the device, and is dropped from memory with it. In password and other private fields, and on the lock screen, neither word suggestions nor emoji suggestions appear.
 - **Two versions kept after an update.** When a new app version brings a new dictionary or table, the previous unpacked copy is kept next to the new one for a while, so the update can be rolled back; the old version is removed on a later launch. At most two versions of each file are on the device at any time.
 - **Excluded from backup**, like everything else.
 
@@ -35,9 +37,10 @@ The word-completion dictionaries, the next-word prediction tables and the “wor
 If you turn the **personal dictionary** on (it is **off** by default), the keyboard saves words you type so it can suggest them later. It exists for Tatar and Russian; each language has its own store.
 
 - **What is saved.** The word itself, spelled the way you typed it, plus two numbers: how often it has been used, and when it was last used, as a counter rather than a clock time. **Nothing else**: not the sentence around it, not the app you typed it in, not the field, not the date.
-- **A word is stored in plaintext only after its third clean completion.** A clean completion means the word was typed letter by letter, with no backspace, cursor move or accepted suggestion in between. The first and second clean completions write only a salted, truncated SHA-256 hash of the word (`pending-<subtype>-s1-f1.bin` next to the store; the salt is the store's own `salt.bin`, 16 random bytes created on first use and destroyed by “Erase everything saved”). The third clean completion writes the word itself to `personal-<subtype>-s1-f1.tpers`. Each language holds at most 2,000 words; the least-used word is evicted silently when the store is full.
+- **A word is stored in plaintext only after its third clean completion.** A clean completion means the word was typed letter by letter, with no backspace, cursor move, paste or accepted suggestion in between. The first and second clean completions write only a salted, truncated SHA-256 hash of the word (`pending-<subtype>-s1-f1.bin` next to the store; the salt is the store's own `salt.bin`, 16 random bytes created on first use and destroyed by “Erase everything saved”). The third clean completion writes the word itself to `personal-<subtype>-s1-f1.tpers`. Each language holds at most 2,000 words; the least-used word is evicted silently when the store is full.
 - **Words you add yourself.** On the **“Saved words”** screen, **“Add word…”** saves a word right away, without the three-completion step.
 - **Where.** In an internal app folder that is **decrypted only after you enter your device's lock code** (PIN, pattern or password). **Before the first unlock** after a restart, nothing there is read or written.
+- **Not on the lock screen.** While the lock screen is shown (a quick reply to a notification, for example), also after the first unlock, the keyboard shows no suggestion strip, glide typing is off and nothing is learned, so no saved word can be seen or added there.
 - **It never leaves your device.** It is excluded from cloud backup and from the transfer to a new device. There is no export, no import and no sync, in this version or any planned one.
 - **Not everywhere.** Nothing is saved in **password fields or other private fields**: e-mail, URL, postal address, and any field that asks the keyboard not to show suggestions or not to personalize (an incognito tab, a banking app).
 - **How to see and erase it.** Keyboard settings → **“Saved words”**: every saved word of every language, with **“Delete”** on each one and **“Erase everything saved.”** The same screen lists the learned **word pairs** and the learned **word → emoji** entries (see the next sections), and “Erase everything saved” covers all three. Turning the personal dictionary off does **not** erase what was already saved; erase it on this screen. Deleting the app, or clearing its data in the system settings, destroys everything saved, and no backup brings it back.
@@ -74,8 +77,8 @@ If the personal dictionary is on **and** emoji suggestions are on, the keyboard 
 
 A single switch (keyboard settings → Preferences → **“Incognito mode”**, off by default) pauses **all** personal learning.
 
-- **What pauses.** No new word, pair or learned emoji is written to any of the three stores, and the pending-hash counters of all three are left untouched: nothing is hashed, nothing expires, the counters wait.
-- **What does not pause.** What you already saved keeps working: saved words, learned pairs and learned emoji still appear in suggestions. This is a pause, not a wipe; the personal dictionary switch is the one that hides them.
+- **What pauses.** No new word, pair or learned emoji is written to any of the three stores, and the pending-hash counters of all three are left untouched: nothing is hashed, nothing expires, the counters wait. The recently used emoji list is not added to either.
+- **What does not pause.** What you already saved keeps working: saved words, learned pairs and learned emoji still appear in suggestions, and the “Recent” tab still shows your recent emoji. This is a pause, not a wipe; the personal dictionary switch is the one that hides them.
 - **Turning it off** resumes learning where it stopped. Nothing typed while it was on is learned afterwards; for the stores, those observations never happened.
 
 ## Contact

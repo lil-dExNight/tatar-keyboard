@@ -26,6 +26,16 @@ These hold for every release and are not repeated in the entries below:
 - The personal dictionary learns new Tatar words that are close to dictionary words.
 - Learned word pairs are no longer formed across sentences, line breaks, numbers or emoji.
 - After you turn the number row on or off, glide typing reads the new key positions instead of typing wrong words until the keyboard restarts.
+- Glide typing works again after you cycle through the languages with the globe key (for example Tatar → Russian → English → Tatar); before, it typed nothing or wrong words until you left the field.
+- A space typed right after a tapped suggestion no longer gives two spaces; two quick spaces there still give a period.
+- After you move the cursor with a slide on the space bar or the delete key, backspace no longer turns a ". " at the new position back into two spaces, and the next space or punctuation mark no longer acts as if the cursor had not moved.
+- A slide that starts on a letter of the symbols pages (such as π) types that key instead of starting a glide.
+
+### Security
+
+- On the lock screen (for example a quick reply to a notification) the keyboard shows no suggestions, no glide typing and no recent emoji, and learns nothing, also after the device was unlocked once since the restart.
+- Incognito mode also stops adding emoji to the recently used list.
+- A word you start typing and complete with the paste key is no longer learned by the personal dictionary.
 
 ## [3.6.0] — 2026-09-29
 
