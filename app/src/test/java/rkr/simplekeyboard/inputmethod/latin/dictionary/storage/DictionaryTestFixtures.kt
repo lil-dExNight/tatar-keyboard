@@ -30,8 +30,12 @@ internal object DictionaryTestFixtures {
     }
 
     /** Writes a schema-2 (front-coding, K = [TdictFormat.BLOCK_SIZE]) raw dictionary. */
-    fun raw(entries: List<Pair<String, Long>>): ByteArray {
-        val encoded = entries.map { it.first.toByteArray(Charsets.UTF_8) }
+    fun raw(entries: List<Pair<String, Long>>): ByteArray =
+        rawFromBytes(entries.map { it.first.toByteArray(Charsets.UTF_8) to it.second })
+
+    /** Same as [raw], but takes the stored word bytes as given, valid UTF-8 or not. */
+    fun rawFromBytes(entries: List<Pair<ByteArray, Long>>): ByteArray {
+        val encoded = entries.map { it.first }
         val entryCount = entries.size
         val blockCount = (entryCount + TdictFormat.BLOCK_SIZE - 1) / TdictFormat.BLOCK_SIZE
         val blockIndexOffset = 72

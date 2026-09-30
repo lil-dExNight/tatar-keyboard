@@ -7,10 +7,8 @@ import java.io.FileInputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.text.Normalizer
 import java.util.Locale
 import java.util.zip.DataFormatException
 import java.util.zip.Inflater
@@ -117,7 +115,8 @@ class TdictValidator {
 
         // The raw file is bounded by the size limit above, so validating from memory is simpler
         // and faster than a seek per word.
-        val bytes = FileInputStream(file).use { stream -> stream.readBytes() }
+        val bytes = readExactly(file, length)
+            ?: throw DictionaryValidationException("raw dictionary changed while reading")
         val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val magic = ByteArray(8)
         buffer.get(magic)
@@ -178,13 +177,11 @@ class TdictValidator {
             throw DictionaryValidationException("noncanonical section layout")
         }
 
-        val zeroed = bytes.copyOf()
-        zeroed.fill(
-            0,
+        val zeroedChecksum = zeroedWindowDigest(
+            bytes,
             TdictFormat.CHECKSUM_OFFSET,
-            TdictFormat.CHECKSUM_OFFSET + TdictFormat.CHECKSUM_SIZE,
+            TdictFormat.CHECKSUM_SIZE,
         )
-        val zeroedChecksum = MessageDigest.getInstance("SHA-256").digest(zeroed)
         if (!MessageDigest.isEqual(storedChecksum, zeroedChecksum)) {
             throw DictionaryValidationException("SHA-256 checksum mismatch")
         }
@@ -196,13 +193,7 @@ class TdictValidator {
         val blockCountInt = blockCount.toInt()
         val entryCountInt = entryCount.toInt()
         val fileSize = declaredFileSize.toInt()
-        val blockOffsets = IntArray(blockCountInt) {
-            ByteBuffer.wrap(
-                bytes,
-                TdictFormat.HEADER_SIZE + it * 4,
-                4,
-            ).order(ByteOrder.LITTLE_ENDIAN).int
-        }
+        val blockOffsets = IntArray(blockCountInt) { buffer.getInt(TdictFormat.HEADER_SIZE + it * 4) }
         if (blockOffsets[0] != blocksOffset.toInt()) {
             throw DictionaryValidationException("first block offset must equal the blocks offset")
         }
@@ -214,7 +205,10 @@ class TdictValidator {
             }
         }
 
-        var previousWordBytes: ByteArray? = null
+        // Two scratch words, swapped after each entry, instead of an array per word.
+        var word = ByteArray(TdictFormat.MAX_WORD_BYTES)
+        var previousWord = ByteArray(TdictFormat.MAX_WORD_BYTES)
+        var previousLength = -1
         var wordIndex = 0
         for (block in 0 until blockCountInt) {
             val blockStart = blockOffsets[block]
@@ -233,11 +227,11 @@ class TdictValidator {
             val firstStart = cursor
             cursor += firstLength
 
-            val blockWords = ArrayList<ByteArray>(inBlock)
             for (entry in 0 until inBlock) {
-                val word: ByteArray
+                val wordLength: Int
                 if (entry == 0) {
-                    word = bytes.copyOfRange(firstStart, firstStart + firstLength)
+                    bytes.copyInto(word, 0, firstStart, firstStart + firstLength)
+                    wordLength = firstLength
                 } else {
                     val prefixLength = readCanonicalVarint(bytes, cursor, blockEnd)
                         .also { cursor = varintEnd }
@@ -254,14 +248,14 @@ class TdictValidator {
                     ) {
                         throw DictionaryValidationException("invalid block entry")
                     }
-                    word = ByteArray(prefixLength + suffixLength)
                     bytes.copyInto(word, 0, firstStart, firstStart + prefixLength)
                     bytes.copyInto(word, prefixLength, cursor, cursor + suffixLength)
+                    wordLength = prefixLength + suffixLength
                     cursor += suffixLength
                 }
-                validateStoredWord(word, wordIndex)
-                previousWordBytes?.let { previous ->
-                    val order = compareUnsigned(previous, word)
+                validateStoredWord(word, wordLength, wordIndex)
+                if (previousLength >= 0) {
+                    val order = compareUnsigned(previousWord, previousLength, word, wordLength)
                     if (order == 0) {
                         throw DictionaryValidationException("duplicate dictionary word")
                     }
@@ -269,8 +263,10 @@ class TdictValidator {
                         throw DictionaryValidationException("dictionary words are not sorted")
                     }
                 }
-                previousWordBytes = word
-                blockWords.add(word)
+                val swap = previousWord
+                previousWord = word
+                word = swap
+                previousLength = wordLength
                 wordIndex++
             }
             repeat(inBlock) {
@@ -331,54 +327,47 @@ class TdictValidator {
 
     private fun unsignedByte(bytes: ByteArray, offset: Int): Int = bytes[offset].toInt() and 0xff
 
-    private fun validateStoredWord(encoded: ByteArray, index: Int) {
-        if (encoded.isEmpty() || encoded.size > MAX_CANONICAL_WORD_BYTES) {
-            throw DictionaryValidationException("invalid word byte length")
-        }
-        val word = decodeStrictUtf8(encoded)
-        try {
-            validateCanonicalWord(word)
-        } catch (error: DictionaryValidationException) {
-            throw DictionaryValidationException("word $index: ${error.message}", error)
-        }
-    }
-
-    private fun validateCanonicalWord(word: String) {
-        if (word.isEmpty() || word.codePointCount(0, word.length) > 64) {
-            throw DictionaryValidationException("invalid word length")
+    /**
+     * Every alphabet letter is a precomposed lowercase code point below [ALPHABET_TABLE_SIZE], so
+     * a word is canonical (strict UTF-8, NFC, lowercase, in the alphabet) exactly when it is a
+     * sequence of 2-byte UTF-8 letters found in [ALPHABET]; NFC and case mapping leave such a word
+     * unchanged, which `TdictValidatorTest` checks for every letter and letter pair.
+     */
+    private fun validateStoredWord(word: ByteArray, length: Int, index: Int) {
+        if (length == 0 || length > MAX_CANONICAL_WORD_BYTES) {
+            throw DictionaryValidationException("word $index: invalid word byte length")
         }
         var offset = 0
-        while (offset < word.length) {
-            val codePoint = word.codePointAt(offset)
-            if (codePoint !in TATAR_ALPHABET) {
-                throw DictionaryValidationException("word is outside the Tatar alphabet")
+        while (offset < length) {
+            val lead = word[offset].toInt() and 0xff
+            if (lead < 0xc2 || lead > 0xdf || offset + 1 >= length) {
+                throw DictionaryValidationException("word $index: not a Tatar alphabet letter")
             }
-            offset += Character.charCount(codePoint)
-        }
-        val canonical = Normalizer.normalize(word, Normalizer.Form.NFC).lowercase(Locale.ROOT)
-        if (canonical != word) {
-            throw DictionaryValidationException("word is not NFC lowercase")
+            val continuation = word[offset + 1].toInt() and 0xff
+            if (continuation and 0xc0 != 0x80) {
+                throw DictionaryValidationException("word $index: not valid UTF-8")
+            }
+            val codePoint = ((lead and 0x1f) shl 6) or (continuation and 0x3f)
+            if (codePoint >= ALPHABET_TABLE_SIZE || !ALPHABET_TABLE[codePoint]) {
+                throw DictionaryValidationException("word $index: outside the Tatar alphabet")
+            }
+            offset += 2
         }
     }
 
-    private fun decodeStrictUtf8(bytes: ByteArray): String = try {
-        StandardCharsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(bytes))
-            .toString()
-    } catch (error: Exception) {
-        throw DictionaryValidationException("word is not valid UTF-8", error)
-    }
-
-    private fun compareUnsigned(first: ByteArray, second: ByteArray): Int {
-        val count = minOf(first.size, second.size)
+    private fun compareUnsigned(
+        first: ByteArray,
+        firstLength: Int,
+        second: ByteArray,
+        secondLength: Int,
+    ): Int {
+        val count = minOf(firstLength, secondLength)
         for (index in 0 until count) {
             val difference = (first[index].toInt() and 0xff) -
                 (second[index].toInt() and 0xff)
             if (difference != 0) return difference
         }
-        return first.size - second.size
+        return firstLength - secondLength
     }
 
     private fun checkedAdd(first: Long, second: Long): Long = try {
@@ -395,10 +384,40 @@ class TdictValidator {
 
     companion object {
         private const val BUFFER_SIZE = 8 * 1024
-        private const val MAX_CANONICAL_WORD_BYTES = 64L * 2L
-        private val TATAR_ALPHABET =
-            "аәбвгдеёжҗзийклмнңоөпрстуүфхһцчшщъыьэюя".codePoints().toArray().toSet()
+        private const val MAX_CANONICAL_WORD_BYTES = 64 * 2
+        private const val ALPHABET = "аәбвгдеёжҗзийклмнңоөпрстуүфхһцчшщъыьэюя"
+        private const val ALPHABET_TABLE_SIZE = 0x500
+        private val ALPHABET_TABLE = BooleanArray(ALPHABET_TABLE_SIZE).also { table ->
+            ALPHABET.forEach { letter -> table[letter.code] = true }
+        }
     }
+}
+
+/**
+ * Reads exactly [length] bytes of [file]; null when the file is shorter or longer, that is, when
+ * it changed after its length was checked.
+ */
+internal fun readExactly(file: File, length: Long): ByteArray? {
+    val bytes = ByteArray(length.toInt())
+    FileInputStream(file).use { stream ->
+        var offset = 0
+        while (offset < bytes.size) {
+            val count = stream.read(bytes, offset, bytes.size - offset)
+            if (count < 0) return null
+            offset += count
+        }
+        if (stream.read() != -1) return null
+    }
+    return bytes
+}
+
+/** SHA-256 of [bytes] with the [size]-byte window at [offset] read as zeros, without a copy. */
+internal fun zeroedWindowDigest(bytes: ByteArray, offset: Int, size: Int): ByteArray {
+    val digest = MessageDigest.getInstance("SHA-256")
+    digest.update(bytes, 0, offset)
+    digest.update(ByteArray(size))
+    digest.update(bytes, offset + size, bytes.size - offset - size)
+    return digest.digest()
 }
 
 internal fun ByteArray.toHex(): String {

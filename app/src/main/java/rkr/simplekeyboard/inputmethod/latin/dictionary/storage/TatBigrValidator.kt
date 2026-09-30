@@ -3,7 +3,6 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.zip.DataFormatException
@@ -114,7 +113,8 @@ class TatBigrValidator {
         if (length != spec.expectedRawSize) {
             throw BigramValidationException("unexpected raw size")
         }
-        val raw = FileInputStream(file).use { it.readBytes() }
+        val raw = readExactly(file, length)
+            ?: throw BigramValidationException("raw table changed while reading")
 
         val magic = raw.copyOfRange(0, 8)
         if (!magic.contentEquals(TatBigrFormat.MAGIC.toByteArray(Charsets.US_ASCII))) {
@@ -175,16 +175,25 @@ class TatBigrValidator {
         ) {
             throw BigramValidationException("noncanonical section layout")
         }
+        // Every success id takes at least one byte, so a larger pairCount can never add up; the
+        // bound also caps the distinct-success scratch below.
+        if (pairCount > successIdsSize) {
+            throw BigramValidationException("success counts do not add up to pairCount")
+        }
 
-        val digests = calculateDigests(file)
+        val zeroedChecksum = zeroedWindowDigest(
+            raw,
+            TatBigrFormat.CHECKSUM_OFFSET,
+            TatBigrFormat.CHECKSUM_SIZE,
+        )
         if (!MessageDigest.isEqual(
                 raw.copyOfRange(TatBigrFormat.CHECKSUM_OFFSET, TatBigrFormat.CHECKSUM_OFFSET + 32),
-                digests.zeroedChecksum,
+                zeroedChecksum,
             )
         ) {
             throw BigramValidationException("SHA-256 checksum mismatch")
         }
-        val rawSha = digests.fullChecksum.toHex()
+        val rawSha = MessageDigest.getInstance("SHA-256").digest(raw).toHex()
         if (!constantTimeHexEquals(rawSha, spec.expectedRawSha256)) {
             throw BigramValidationException("unexpected raw SHA-256")
         }
@@ -219,7 +228,8 @@ class TatBigrValidator {
         var successCursor = successIdsOffset.toInt()
         var pairTotal = 0L
         var previousHeadIndex = -1L
-        val distinctSuccesses = HashSet<Long>()
+        // Success ids as u32 bits in an Int, kept for the distinct count.
+        val successes = IntArray(pairCount.toInt())
         for (block in 0 until blockCount.toInt()) {
             val first = block * TatBigrFormat.HEAD_BLOCK_SIZE
             val blockHeads = minOf(TatBigrFormat.HEAD_BLOCK_SIZE.toLong(), headCount - first).toInt()
@@ -256,14 +266,17 @@ class TatBigrValidator {
                 if (count < 1) {
                     throw BigramValidationException("a head has an empty success range")
                 }
-                pairTotal += count
+                if (pairTotal + count > pairCount) {
+                    throw BigramValidationException("success counts do not add up to pairCount")
+                }
                 repeat(count) {
                     val packed = decodeVarint(
                         raw, successCursor, (successIdsOffset + successIdsSize).toInt(),
                     )
                     successCursor = (packed and 0xffff_ffffL).toInt()
-                    distinctSuccesses.add(packed ushr 32)
+                    successes[(pairTotal + it).toInt()] = (packed ushr 32).toInt()
                 }
+                pairTotal += count
             }
             if (cursor != deltaEnd) {
                 throw BigramValidationException("block head delta stream does not end on its boundary")
@@ -276,15 +289,45 @@ class TatBigrValidator {
             throw BigramValidationException("success id stream does not end exactly at its section end")
         }
 
+        val distinctSuccesses = countDistinct(successes)
+
         return ValidatedBigramTable(
             rawSize = length,
             headCount = headCount,
             pairCount = pairCount,
-            successVocabularyCount = distinctSuccesses.size.toLong(),
+            successVocabularyCount = distinctSuccesses,
             schemaId = schemaId,
             formatVersion = formatVersion,
             rawSha256 = rawSha,
         )
+    }
+
+    /**
+     * Distinct u32 values in [ids]: a bit set over 0..max when it takes at most as many bytes as
+     * [ids] (the case for dictionary word indices), otherwise a sort. Reorders [ids].
+     */
+    private fun countDistinct(ids: IntArray): Long {
+        var max = 0L
+        for (id in ids) max = maxOf(max, id.toLong() and 0xffff_ffffL)
+        if (max < 32L * ids.size) {
+            val bits = LongArray((max / 64 + 1).toInt())
+            var distinct = 0L
+            for (id in ids) {
+                val word = id ushr 6
+                val mask = 1L shl id
+                if (bits[word] and mask == 0L) {
+                    bits[word] = bits[word] or mask
+                    distinct++
+                }
+            }
+            return distinct
+        }
+        ids.sort()
+        var distinct = 0L
+        for (index in ids.indices) {
+            if (index == 0 || ids[index] != ids[index - 1]) distinct++
+        }
+        return distinct
     }
 
     /** Canonical minimal-form u32 varint; returns (value shl 32) or nextOffset. */
@@ -314,32 +357,6 @@ class TatBigrValidator {
         (raw[offset.toInt()].toLong() and 0xff) or ((raw[offset.toInt() + 1].toLong() and 0xff) shl 8) or
             ((raw[offset.toInt() + 2].toLong() and 0xff) shl 16) or
             ((raw[offset.toInt() + 3].toLong() and 0xff) shl 24)
-
-    private fun calculateDigests(file: File): Digests {
-        val full = MessageDigest.getInstance("SHA-256")
-        val zeroed = MessageDigest.getInstance("SHA-256")
-        val bytes = ByteArray(BUFFER_SIZE)
-        var absoluteOffset = 0L
-        FileInputStream(file).use { stream ->
-            while (true) {
-                val count = stream.read(bytes)
-                if (count < 0) break
-                full.update(bytes, 0, count)
-                val copy = bytes.copyOf(count)
-                val zeroStart = maxOf(0L, TatBigrFormat.CHECKSUM_OFFSET - absoluteOffset).toInt()
-                val zeroEnd = minOf(
-                    count.toLong(),
-                    TatBigrFormat.CHECKSUM_OFFSET + TatBigrFormat.CHECKSUM_SIZE - absoluteOffset,
-                ).toInt()
-                if (zeroStart < zeroEnd) copy.fill(0, zeroStart, zeroEnd)
-                zeroed.update(copy)
-                absoluteOffset += count
-            }
-        }
-        return Digests(full.digest(), zeroed.digest())
-    }
-
-    private data class Digests(val fullChecksum: ByteArray, val zeroedChecksum: ByteArray)
 
     companion object {
         private const val BUFFER_SIZE = 8 * 1024

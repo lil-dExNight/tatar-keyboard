@@ -40,6 +40,21 @@ class TatBigrValidatorTest {
     }
 
     @Test
+    fun countsDistinctSuccessesWhenIndicesAreSparse() {
+        val heads = listOf("аб" to listOf("аба", "яя"), "аба" to listOf("яя"))
+        val filler = (0 until 400).map { "в" + "а".repeat(it % 20) + "б".repeat(it / 20) }
+        val dictionaryWords = listOf("аб", "аба") + filler + "яя"
+        val raw = BigramTestFixtures.raw(heads, dictionaryWords)
+        val spec = BigramTestFixtures.spec(90, "tt", raw)
+        val file = temporaryFolder.newFile("sparse.tatbigr").also { it.writeBytes(raw) }
+
+        val validated = validator.validateRaw(file, spec)
+
+        assertEquals(3, validated.pairCount)
+        assertEquals(2, validated.successVocabularyCount)
+    }
+
+    @Test
     fun acceptsCommittedTatarBigramAssetWithFrozenProvenance() {
         val validated = validateCommitted(
             "tatar_bigrams_v1.tatbigr.zlib",
@@ -51,6 +66,7 @@ class TatBigrValidatorTest {
         assertEquals(13_154, validated.headCount)
         assertEquals(170_471, validated.rawSize)
         assertEquals(51_484, validated.pairCount)
+        assertEquals(8_087, validated.successVocabularyCount)
     }
 
     /** The committed Russian table validates against its spec; its counts are pinned too. */
@@ -64,6 +80,7 @@ class TatBigrValidatorTest {
         assertEquals(9_998, validated.headCount)
         assertEquals(131_662, validated.rawSize)
         assertEquals(39_949, validated.pairCount)
+        assertEquals(4_712, validated.successVocabularyCount)
     }
 
     @Test

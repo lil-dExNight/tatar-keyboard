@@ -33,6 +33,7 @@ Enforcement kinds:
 | Request → hand-off to the UI thread p95 on the host | ≤ 16 ms | JVM test | `RealDictionaryPrefixIndexTest.requestToNonApplyingHandoffP95IsAtMostSixteenMilliseconds` |
 | Next-word prediction p95 on the host, real assets | ≤ 5 ms | JVM test | `TtNextWordPredictP95Test` |
 | Glide decode p95 on the host | ≤ 2 ms | JVM test, asserted only when `CI` is unset | `GlideRecoveryCalibrationTest` (`G2_P95_MS`); the device row above covers CI |
+| Bundled file validation allocation | ≤ one raw copy plus a fixed margin (a bigram table also gets 4 B per pair) | JVM test | `ValidatorAllocationTest` |
 | Resident glide word indexes | At most one across languages | JVM tests | `GlideIndexResidencySourceContractTest`; `MappedDictionaryEngineGlideTest.anIdleReleaseDropsTheIndexAndTheNextGlideRebuildsIt` |
 | Idle memory release | Glide indexes, emoji search index and emoji suggestion table dropped 10 s after the keyboard hides, reloaded lazily | JVM tests; reload cost logged by a device test (not asserted) | `LatinIME.DELAY_DEALLOCATE_MEMORY_MILLIS`; `EmojiPanelAccessibilitySourceContractTest`; `EmojiIndexReloadInstrumentationTest` |
 
