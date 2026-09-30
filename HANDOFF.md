@@ -34,6 +34,18 @@ unchanged, apart from removing code that no shipped path used.
   `app/src/test/resources/tt_eval_sentences.txt`, whose SHA-256 is pinned) still name removed
   documents; they change only when that data is regenerated.
 
+Cleanup metrics (before → after; raw grep counts, so the remaining Cyrillic is quoted language
+data and the remaining dates and doc paths are data or pinned file headers):
+
+| Metric | Before | After |
+|---|---|---|
+| `docs/*.md` references in `app/src/main` | 312 | 0 |
+| Dated notes in `app/src/main` | 202 | 0 |
+| Tracked files under `docs/` | 651 | 9 |
+| `*.md` files other than `README.md` with Cyrillic | 153 | 5 (language data) |
+| "fail-closed" occurrences | 436 | 35 |
+| `HANDOFF.md` / `CHANGELOG.md` / `docs/PUBLISH-CHECKLIST.md` lines | 2254 / 915 / 1939 | 75 / 428 / 120 |
+
 Typo recovery as shipped: the Tatar engine runs edit classes #1 (long-press partner) and #4
 (single substitution); the Russian engine runs class #1 only.
 

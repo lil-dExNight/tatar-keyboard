@@ -209,3 +209,11 @@ Recover any of them with `git show <commit>:<path>`.
 |---|---|---|
 | `docs/CLEANUP.md` | Removal of a dead tablet config and stale references | `c7f6c50b` |
 | `docs/SIZE-CAMPAIGN.md` | Summary of the lossless APK size campaign, 1.9.9 | `e07f6a9e` |
+
+## Cleanup working files
+
+| Path | What it was | Last commit |
+|---|---|---|
+| cleaning/CLEANUP-PLAN.md | The 2026-09-30 text and repository cleanup plan, decisions D1–D8 | 81b3e3c4 |
+| cleaning/00-SUMMARY.md … cleaning/21-build-ci-repo.md | Per-area review reports that fed the cleanup plan | 81b3e3c4 |
+| cleaning/baseline.txt, cleaning/after-phase7.txt, cleaning/metrics.sh | Before/after text metrics of the cleanup | 81b3e3c4 |
