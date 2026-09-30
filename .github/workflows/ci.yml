@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       # Fast-fail: level 1 (source manifest) runs before any toolchain setup;
       # without an APK the script skips level 2 and still exits non-zero on INTERNET.
@@ -67,8 +69,8 @@ jobs:
       - name: Build release APK (unsigned)
         run: ./gradlew assembleRelease
 
-      # Hard budget: 3 MB = 3145728 bytes, byte-exact via stat.
-      - name: Check release APK size (PERF-01 ≤ 3 MB)
+      # Hard budget: 3 MiB = 3145728 bytes, byte-exact via stat.
+      - name: Check release APK size (≤ 3 MiB)
         run: test $(stat -c%s app/build/outputs/apk/release/app-release-unsigned.apk) -le 3145728
 
       # Both levels: source manifest + aapt2 dump permissions on the built APK. Checked on
@@ -95,6 +97,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
