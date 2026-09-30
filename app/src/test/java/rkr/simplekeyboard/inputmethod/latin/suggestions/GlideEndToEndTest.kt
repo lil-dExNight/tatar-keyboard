@@ -422,6 +422,39 @@ class GlideEndToEndTest {
         assertTrue(h.strip.shown.isNotEmpty())
     }
 
+    /**
+     * One globe-key step in LatinIME's order: the new layout's geometry is published while the
+     * language being left is still active, then the controller switches language.
+     */
+    private fun Harness.switchTo(subtypeId: String, geometry: GlideKeyGeometry?) {
+        controller.updateGlideGeometry(geometry)
+        controller.onSubtypeChanged(true, subtypeId, true)
+    }
+
+    @Test
+    fun aTatarGlideCommitsAfterACycleThroughRussianAndEnglish() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.switchTo(PersonalSubtypes.RUSSIAN, GlideTestFixtures.russianGeometry())
+        h.controller.signalDictionaryReadyForTest()
+        h.switchTo("en_US", null)
+        h.switchTo(PersonalSubtypes.TATAR_RU, GlideTestFixtures.tatarGeometry())
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәләм", h.editor.text)
+    }
+
+    @Test
+    fun aRussianGlideCommitsAfterACycleThroughEnglish() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.russianGeometry())
+        h.start(PersonalSubtypes.RUSSIAN)
+        h.switchTo("en_US", null)
+        h.switchTo(PersonalSubtypes.RUSSIAN, GlideTestFixtures.russianGeometry())
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("работа", GlideTestFixtures.russianGeometry())!!)
+        assertEquals("работа", h.editor.text)
+    }
+
     @Test
     fun theGlideToggleOffCommitsAndShowsNothing() {
         val h = Harness()

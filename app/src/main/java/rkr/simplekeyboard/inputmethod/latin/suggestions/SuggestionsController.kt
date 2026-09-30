@@ -255,6 +255,12 @@ class SuggestionsController internal constructor(
         // language's lookup is traced) is invalidated with it: no result will arrive.
         endLookupTrace()
         activeLanguage = resolved
+        // LatinIME publishes the new layout before the switch, so the stored table and geometry
+        // are already the new language's; a warm engine still holds the layout it last saw.
+        activeSlot()?.engine?.let {
+            it.updateKeyNeighbors(keyNeighbors)
+            it.updateGlideGeometry(glideGeometry)
+        }
     }
 
     // Monotonic edit-session counter. Bumped on every lifecycle boundary so results computed for an
@@ -474,9 +480,8 @@ class SuggestionsController internal constructor(
      */
     fun updateKeyNeighbors(table: KeyNeighborTable?) {
         keyNeighbors = table
-        // Only the active language's engine is ever asked anything, and LatinIME rebuilds the table
-        // from the live layout on every subtype change, so a warm engine of another language keeps
-        // the table of its own layout until it becomes active again and is handed a fresh one.
+        // Only the active language's engine is ever asked anything. A warm engine of another
+        // language is handed the stored table when it becomes active again (setActiveLanguage).
         activeSlot()?.engine?.updateKeyNeighbors(table)
     }
 
@@ -1160,8 +1165,9 @@ class SuggestionsController internal constructor(
         if (slot !== activeSlot()) {
             // The user switched language while this engine was starting. Keep it — warm and idle —
             // for the moment they switch back, and leave the strip to whatever the language they
-            // are actually typing in is doing. Its key-neighbor table is pushed when it becomes
-            // active, because the live layout is the other language's right now.
+            // are actually typing in is doing. Its key-neighbor table and glide geometry are pushed
+            // by setActiveLanguage when it becomes active, because the live layout is the other
+            // language's right now.
             handle.finishInput()
             return
         }
