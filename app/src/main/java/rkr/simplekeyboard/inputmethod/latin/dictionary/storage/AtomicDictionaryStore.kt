@@ -31,6 +31,10 @@ class AtomicDictionaryStore(
     private val temporaryPrefix: String = supportedArtifacts.first().temporaryFilePrefix
     private val finalFilePattern: Regex = supportedArtifacts.first().finalFilePattern
 
+    /** Full raw validations run by this store instance. */
+    internal var validationCount: Int = 0
+        private set
+
     fun ensurePublished(spec: DictionaryArtifactSpec): PreparationResult {
         if (supportedArtifacts.none { it == spec }) {
             return PreparationResult.Unavailable(StorageFailure.INVALID_ASSET)
@@ -73,8 +77,8 @@ class AtomicDictionaryStore(
         for (spec in supportedArtifacts.sortedByDescending { it.generation }) {
             val file = File(directory, spec.finalFileName)
             if (!file.isFile) continue
-            val validated = try {
-                validator.validateRaw(file, spec)
+            val validated = takeRecordedValidation(sharedState, file, spec) ?: try {
+                validate(file, spec)
             } catch (error: Exception) {
                 continue
             }
@@ -87,6 +91,7 @@ class AtomicDictionaryStore(
             val previousCount = sharedState.leaseCounts[file.name] ?: 0
             if (previousCount == Int.MAX_VALUE) return null
             sharedState.leaseCounts[file.name] = previousCount + 1
+            sharedState.validations.remove(file.name)
             return DictionaryFileLease(published) {
                 synchronized(sharedState.lock) {
                     val remaining = (sharedState.leaseCounts[file.name] ?: 1) - 1
@@ -124,7 +129,7 @@ class AtomicDictionaryStore(
         supportedArtifacts.sortedByDescending { it.generation }
             .firstOrNull { File(directory, it.finalFileName).isFile }
             ?.let { keep += it.finalFileName }
-        deleteUnprotectedUntil(directory, finals, keep, MAX_FINAL_ARTIFACTS)
+        deleteUnprotectedUntil(directory, finals, keep, MAX_FINAL_ARTIFACTS, sharedState)
     }
 
     private fun ensurePublishedLocked(
@@ -138,15 +143,17 @@ class AtomicDictionaryStore(
         val destination = File(directory, spec.finalFileName)
         if (destination.isFile) {
             try {
-                val validated = validator.validateRaw(destination, spec)
+                val validated = validate(destination, spec)
+                recordValidation(sharedState, destination, spec, validated)
                 enforceStableRetention(directory, destination.name, sharedState)
                 return PreparationResult.Published(
                     validated.toPublished(spec, destination),
                     alreadyPresent = true,
                 )
             } catch (error: DictionaryValidationException) {
+                sharedState.validations.remove(destination.name)
                 if (isLeased(destination, sharedState)) throw error
-                deleteAndSync(directory, destination)
+                deleteAndSync(directory, destination, sharedState)
             }
         }
 
@@ -173,12 +180,14 @@ class AtomicDictionaryStore(
                 buffered.flush()
                 fileOps.syncFile(fileStream.fd)
             }
-            val validated = validator.validateRaw(temporary, spec)
+            val validated = validate(temporary, spec)
             if (destination.exists()) {
                 throw IOException("versioned destination appeared during publication")
             }
             fileOps.atomicRename(temporary, destination)
             fileOps.syncDirectory(directory)
+            // The rename keeps the temp's length and modification time.
+            recordValidation(sharedState, destination, spec, validated)
             return PreparationResult.Published(
                 validated.toPublished(spec, destination),
                 alreadyPresent = false,
@@ -231,6 +240,7 @@ class AtomicDictionaryStore(
             managedFinals(directory),
             keep,
             MAX_FINAL_ARTIFACTS,
+            sharedState,
         )
     }
 
@@ -247,7 +257,7 @@ class AtomicDictionaryStore(
                 .firstOrNull { candidate -> finals.any { it.name == candidate.finalFileName } }
                 ?.let { keep += it.finalFileName }
         }
-        deleteUnprotectedUntil(directory, finals, keep, MAX_FINALS_BEFORE_STAGING)
+        deleteUnprotectedUntil(directory, finals, keep, MAX_FINALS_BEFORE_STAGING, sharedState)
         if (managedFinals(directory).size > MAX_FINALS_BEFORE_STAGING) {
             throw RetentionBlockedException()
         }
@@ -258,6 +268,7 @@ class AtomicDictionaryStore(
         initialFiles: List<File>,
         protectedNames: Set<String>,
         limit: Int,
+        sharedState: SharedDictionaryStorageState,
     ) {
         val remaining = initialFiles.toMutableList()
         val candidates = remaining
@@ -266,6 +277,7 @@ class AtomicDictionaryStore(
         var changed = false
         for (candidate in candidates) {
             if (remaining.size <= limit) break
+            sharedState.validations.remove(candidate.name)
             if (!fileOps.delete(candidate) && candidate.exists()) {
                 throw IOException("cannot remove retired dictionary")
             }
@@ -276,11 +288,53 @@ class AtomicDictionaryStore(
         if (remaining.size > limit) throw RetentionBlockedException()
     }
 
-    private fun deleteAndSync(directory: File, file: File) {
+    private fun deleteAndSync(
+        directory: File,
+        file: File,
+        sharedState: SharedDictionaryStorageState,
+    ) {
+        sharedState.validations.remove(file.name)
         if (!fileOps.delete(file) && file.exists()) {
             throw IOException("cannot remove invalid dictionary")
         }
         fileOps.syncDirectory(directory)
+    }
+
+    private fun validate(file: File, spec: DictionaryArtifactSpec): ValidatedDictionary {
+        validationCount++
+        return validator.validateRaw(file, spec)
+    }
+
+    private fun recordValidation(
+        sharedState: SharedDictionaryStorageState,
+        file: File,
+        spec: DictionaryArtifactSpec,
+        validated: ValidatedDictionary,
+    ) {
+        val lastModified = file.lastModified()
+        if (lastModified == 0L) {
+            sharedState.validations.remove(file.name)
+            return
+        }
+        sharedState.validations[file.name] =
+            RecordedValidation(file.length(), lastModified, spec, validated)
+    }
+
+    /** The recorded validation of [file] if the file still has the recorded length and time. */
+    private fun takeRecordedValidation(
+        sharedState: SharedDictionaryStorageState,
+        file: File,
+        spec: DictionaryArtifactSpec,
+    ): ValidatedDictionary? {
+        val recorded = sharedState.validations[file.name] ?: return null
+        val lastModified = file.lastModified()
+        if (recorded.spec == spec && lastModified != 0L &&
+            recorded.lastModified == lastModified && recorded.length == file.length()
+        ) {
+            return recorded.validated
+        }
+        sharedState.validations.remove(file.name)
+        return null
     }
 
     private fun managedFinals(directory: File): List<File> =
@@ -381,4 +435,17 @@ private object ProcessDictionaryStorageOwner {
 private class SharedDictionaryStorageState {
     val lock = Any()
     val leaseCounts = mutableMapOf<String, Int>()
+
+    /**
+     * Publication-time validations by file name, reused once by the next activation of an
+     * unchanged file. A lease, a deletion or a failed validation drops the entry.
+     */
+    val validations = mutableMapOf<String, RecordedValidation>()
 }
+
+private class RecordedValidation(
+    val length: Long,
+    val lastModified: Long,
+    val spec: DictionaryArtifactSpec,
+    val validated: ValidatedDictionary,
+)

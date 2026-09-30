@@ -36,6 +36,77 @@ class AtomicDictionaryStoreTest {
     }
 
     @Test
+    fun activationRightAfterPublicationReusesThePublicationValidation() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("reuse-new")
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, false)
+        assertEquals(1, harness.store.validationCount)
+
+        val lease = requireNotNull(harness.store.acquireLatestForActivation())
+
+        assertEquals(1, harness.store.validationCount)
+        assertEquals(artifact.raw.size.toLong(), lease.dictionary.rawSize)
+        assertEquals(DictionaryTestFixtures.sha256(artifact.raw), lease.dictionary.rawSha256)
+        lease.close()
+    }
+
+    @Test
+    fun activationAfterAnExistingFileCheckReusesThatValidation() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("reuse-existing")
+        assertPublished(harness(directory, listOf(artifact)).store.ensurePublished(artifact.spec), 1, false)
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, true)
+
+        requireNotNull(harness.store.acquireLatestForActivation()).close()
+
+        assertEquals(1, harness.store.validationCount)
+    }
+
+    @Test
+    fun everyLaterActivationValidatesAgain() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("reuse-once")
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, false)
+        requireNotNull(harness.store.acquireLatestForActivation()).close()
+
+        requireNotNull(harness.store.acquireLatestForActivation()).close()
+
+        assertEquals(2, harness.store.validationCount)
+    }
+
+    @Test
+    fun aFileWithAnotherLengthAfterPublicationIsValidatedAndRejected() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("reuse-length")
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, false)
+        val final = File(directory, artifact.spec.finalFileName)
+        final.writeBytes(artifact.raw + byteArrayOf(0))
+
+        assertEquals(null, harness.store.acquireLatestForActivation())
+        assertEquals(2, harness.store.validationCount)
+    }
+
+    @Test
+    fun aSameLengthRewriteWithANewTimeIsValidatedAndRejected() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("reuse-time")
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, false)
+        val final = File(directory, artifact.spec.finalFileName)
+        val published = final.lastModified()
+        val corrupt = artifact.raw.copyOf().also { it[it.lastIndex] = (it.last().toInt() xor 1).toByte() }
+        final.writeBytes(corrupt)
+        assertTrue(final.setLastModified(published + 2_000))
+
+        assertEquals(null, harness.store.acquireLatestForActivation())
+        assertEquals(2, harness.store.validationCount)
+    }
+
+    @Test
     fun rerunValidatesExistingFinalWithoutOpeningOrRewritingAsset() {
         val artifact = DictionaryTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("rerun")

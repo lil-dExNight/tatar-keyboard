@@ -123,7 +123,10 @@ dictionary. Formats: [ASSET-FORMATS.md](ASSET-FORMATS.md); build: [ASSET-PIPELIN
 
 On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, validate it
 (`TdictValidator`, `TatBigrValidator`) and publish it to device-protected storage: temp file,
-fsync, validate, atomic rename, directory fsync. `MappedDictionaryEngine` maps the file read-only
+fsync, validate, atomic rename, directory fsync. Every process start validates the published file
+again before activating it; the first activation after that check or a publication reuses its
+result while the file keeps the recorded length and modification time, and every later activation
+validates again. `MappedDictionaryEngine` maps the file read-only
 (`FileChannel.map`) and reads it in place. Pinned sizes and SHA-256 values are in
 `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. Without a usable dictionary a
 language has no suggestions; without its bigram table only next-word prediction is empty.

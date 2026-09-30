@@ -38,6 +38,10 @@ class AtomicBigramStore(
     private val temporaryPrefix: String = supportedArtifacts.first().temporaryFilePrefix
     private val finalFilePattern: Regex = supportedArtifacts.first().finalFilePattern
 
+    /** Full raw validations run by this store instance. */
+    internal var validationCount: Int = 0
+        private set
+
     fun ensurePublished(spec: BigramArtifactSpec): BigramPreparationResult {
         if (supportedArtifacts.none { it == spec }) {
             return BigramPreparationResult.Unavailable(StorageFailure.INVALID_ASSET)
@@ -80,8 +84,8 @@ class AtomicBigramStore(
         for (spec in supportedArtifacts.sortedByDescending { it.generation }) {
             val file = File(directory, spec.finalFileName)
             if (!file.isFile) continue
-            val validated = try {
-                validator.validateRaw(file, spec)
+            val validated = takeRecordedValidation(sharedState, file, spec) ?: try {
+                validate(file, spec)
             } catch (error: Exception) {
                 continue
             }
@@ -92,6 +96,7 @@ class AtomicBigramStore(
             val previousCount = sharedState.leaseCounts[file.name] ?: 0
             if (previousCount == Int.MAX_VALUE) return null
             sharedState.leaseCounts[file.name] = previousCount + 1
+            sharedState.validations.remove(file.name)
             return BigramTableLease(published) {
                 synchronized(sharedState.lock) {
                     val remaining = (sharedState.leaseCounts[file.name] ?: 1) - 1
@@ -126,7 +131,7 @@ class AtomicBigramStore(
         supportedArtifacts.sortedByDescending { it.generation }
             .firstOrNull { File(directory, it.finalFileName).isFile }
             ?.let { keep += it.finalFileName }
-        deleteUnprotectedUntil(directory, finals, keep, MAX_FINAL_ARTIFACTS)
+        deleteUnprotectedUntil(directory, finals, keep, MAX_FINAL_ARTIFACTS, sharedState)
     }
 
     private fun ensurePublishedLocked(
@@ -140,15 +145,17 @@ class AtomicBigramStore(
         val destination = File(directory, spec.finalFileName)
         if (destination.isFile) {
             try {
-                val validated = validator.validateRaw(destination, spec)
+                val validated = validate(destination, spec)
+                recordValidation(sharedState, destination, spec, validated)
                 enforceStableRetention(directory, destination.name, sharedState)
                 return BigramPreparationResult.Published(
                     validated.toPublished(spec, destination),
                     alreadyPresent = true,
                 )
             } catch (error: BigramValidationException) {
+                sharedState.validations.remove(destination.name)
                 if (isLeased(destination, sharedState)) throw error
-                deleteAndSync(directory, destination)
+                deleteAndSync(directory, destination, sharedState)
             }
         }
 
@@ -173,12 +180,14 @@ class AtomicBigramStore(
                 buffered.flush()
                 fileOps.syncFile(fileStream.fd)
             }
-            val validated = validator.validateRaw(temporary, spec)
+            val validated = validate(temporary, spec)
             if (destination.exists()) {
                 throw IOException("versioned destination appeared during publication")
             }
             fileOps.atomicRename(temporary, destination)
             fileOps.syncDirectory(directory)
+            // The rename keeps the temp's length and modification time.
+            recordValidation(sharedState, destination, spec, validated)
             return BigramPreparationResult.Published(
                 validated.toPublished(spec, destination),
                 alreadyPresent = false,
@@ -222,7 +231,13 @@ class AtomicBigramStore(
     ) {
         val keep = sharedState.leaseCounts.filterValues { it > 0 }.keys.toMutableSet()
         keep += currentName
-        deleteUnprotectedUntil(directory, managedFinals(directory), keep, MAX_FINAL_ARTIFACTS)
+        deleteUnprotectedUntil(
+            directory,
+            managedFinals(directory),
+            keep,
+            MAX_FINAL_ARTIFACTS,
+            sharedState,
+        )
     }
 
     private fun reservePublicationSlot(directory: File, sharedState: SharedBigramStorageState) {
@@ -235,7 +250,7 @@ class AtomicBigramStore(
                 .firstOrNull { candidate -> finals.any { it.name == candidate.finalFileName } }
                 ?.let { keep += it.finalFileName }
         }
-        deleteUnprotectedUntil(directory, finals, keep, MAX_FINALS_BEFORE_STAGING)
+        deleteUnprotectedUntil(directory, finals, keep, MAX_FINALS_BEFORE_STAGING, sharedState)
         if (managedFinals(directory).size > MAX_FINALS_BEFORE_STAGING) {
             throw RetentionBlockedException()
         }
@@ -246,6 +261,7 @@ class AtomicBigramStore(
         initialFiles: List<File>,
         protectedNames: Set<String>,
         limit: Int,
+        sharedState: SharedBigramStorageState,
     ) {
         val remaining = initialFiles.toMutableList()
         val candidates = remaining
@@ -254,6 +270,7 @@ class AtomicBigramStore(
         var changed = false
         for (candidate in candidates) {
             if (remaining.size <= limit) break
+            sharedState.validations.remove(candidate.name)
             if (!fileOps.delete(candidate) && candidate.exists()) {
                 throw IOException("cannot remove retired bigram table")
             }
@@ -264,11 +281,53 @@ class AtomicBigramStore(
         if (remaining.size > limit) throw RetentionBlockedException()
     }
 
-    private fun deleteAndSync(directory: File, file: File) {
+    private fun deleteAndSync(
+        directory: File,
+        file: File,
+        sharedState: SharedBigramStorageState,
+    ) {
+        sharedState.validations.remove(file.name)
         if (!fileOps.delete(file) && file.exists()) {
             throw IOException("cannot remove invalid bigram table")
         }
         fileOps.syncDirectory(directory)
+    }
+
+    private fun validate(file: File, spec: BigramArtifactSpec): ValidatedBigramTable {
+        validationCount++
+        return validator.validateRaw(file, spec)
+    }
+
+    private fun recordValidation(
+        sharedState: SharedBigramStorageState,
+        file: File,
+        spec: BigramArtifactSpec,
+        validated: ValidatedBigramTable,
+    ) {
+        val lastModified = file.lastModified()
+        if (lastModified == 0L) {
+            sharedState.validations.remove(file.name)
+            return
+        }
+        sharedState.validations[file.name] =
+            RecordedBigramValidation(file.length(), lastModified, spec, validated)
+    }
+
+    /** The recorded validation of [file] if the file still has the recorded length and time. */
+    private fun takeRecordedValidation(
+        sharedState: SharedBigramStorageState,
+        file: File,
+        spec: BigramArtifactSpec,
+    ): ValidatedBigramTable? {
+        val recorded = sharedState.validations[file.name] ?: return null
+        val lastModified = file.lastModified()
+        if (recorded.spec == spec && lastModified != 0L &&
+            recorded.lastModified == lastModified && recorded.length == file.length()
+        ) {
+            return recorded.validated
+        }
+        sharedState.validations.remove(file.name)
+        return null
     }
 
     private fun managedFinals(directory: File): List<File> =
@@ -353,4 +412,14 @@ private object ProcessBigramStorageOwner {
 private class SharedBigramStorageState {
     val lock = Any()
     val leaseCounts = mutableMapOf<String, Int>()
+
+    /** Publication-time validations by file name; same rules as in [AtomicDictionaryStore]. */
+    val validations = mutableMapOf<String, RecordedBigramValidation>()
 }
+
+private class RecordedBigramValidation(
+    val length: Long,
+    val lastModified: Long,
+    val spec: BigramArtifactSpec,
+    val validated: ValidatedBigramTable,
+)
