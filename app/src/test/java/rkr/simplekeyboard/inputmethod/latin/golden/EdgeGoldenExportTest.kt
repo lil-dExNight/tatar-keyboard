@@ -176,7 +176,7 @@ class EdgeGoldenExportTest {
         val keys = file.readLines(Charsets.UTF_8).filter { it.isNotBlank() }.map { line ->
             val f = line.split('\t')
             val more = if (f.size > 5 && f[5].isNotEmpty()) f[5].split(',').map { it.toInt(16) }.toIntArray() else IntArray(0)
-            KeyNeighborTable.RawKey(f[0].toInt(16), f[1].toInt(), f[2].toInt(), f[3].toInt(), f[4].toInt(), more)
+            KeyNeighborTable.RawKey(f[0].toInt(16), more)
         }
         return KeyNeighborTable.build(if (lang == "tt") "tt_RU" else "ru", true, keys)
     }

@@ -166,13 +166,4 @@ class PersonalBigramEntriesTest {
         assertTrue(snapshot.indexOfPair("мин", "гүзәл") >= 0)
         assertTrue(snapshot.indexOfPair("мин", "Гүзәл") < 0) // membership is by the normalized form
     }
-
-    @Test
-    fun estimatedFileSizeTracksTheSerializedForm() {
-        val model = entries()
-            .upsert("сәләм", "дөнья", "дөнья", 2)
-            .upsert("бәйрәм", "котлы", "котлы", 2)
-        assertEquals(model.serialize("tt_RU").size.toLong(), model.estimatedFileSize().toLong())
-        assertTrue(model.estimatedFileSize().toLong() <= TpersbFormat.MAX_FILE_SIZE)
-    }
 }

@@ -7,71 +7,31 @@ import org.junit.Test
 import java.io.File
 
 /**
- * The fuzzy-class contract as an executable policy pin. Before TT-TYPO-NEXT Phase B the shipped
- * set lived in one global constant (`TdictPrefixIndex.SHIPPED_FUZZY_EDIT_CLASSES`, class #1 only —
- * the E3b verdict); Phase B turned it into the per-engine [FuzzyEditPolicy] injected through
- * [TdictPrefixIndex.open] (docs/TT-TYPO-NEXT.md):
+ * The shipped fuzzy policies as executable pins:
  *
- *  - [FuzzyEditPolicy.DEFAULT] — class #1 (long-press partner) only, no same-length bonus — is
- *    bit-identical to the pre-Phase-B shipped behavior. Every engine opened without an explicit
- *    policy runs it (the Russian engine ships exactly this).
- *  - [FuzzyEditPolicy.TATAR] — the SHIPPED Tatar configuration since Phase C2 (2026-09-20):
- *    class #1 (always) + class #4 (probe-first full single substitution, gated on an EMPTY exact
- *    pass at >= 4 code points) + the same-length bonus. (The Phase-B candidate {1,2} failed gate
- *    G1 and was never wired; class #3 was never re-calibrated.)
- *
- * The generators of the unwired classes remain in the tree as infrastructure (exercised directly
- * by [FuzzyPrefixVariantsE3bTest] / [FuzzyPrefixVariantsPhaseCTest]).
+ *  - [FuzzyEditPolicy.DEFAULT]: class #1 (long-press partner) only, no same-length bonus. Every
+ *    engine opened without an explicit policy runs it, the Russian engine included.
+ *  - [FuzzyEditPolicy.TATAR]: class #1 always, class #4 (probe-first full single substitution,
+ *    gated on an empty exact pass at >= 4 code points) and the same-length bonus.
  */
 class TdictPrefixIndexShippedFuzzyClassesTest {
-    private val geometricTable = E3bTestFixtures.tatarNeighborTable()
-    private val codePointScratch = IntArray(64)
-    private val variantScratch = ByteArray(256)
+    private val table = E3bTestFixtures.tatarNeighborTable()
 
     private fun index(
         entries: List<Pair<String, Long>>,
         policy: FuzzyEditPolicy? = null,
     ): TdictPrefixIndex {
         val index = EngineTestFixtures.index(entries, fuzzyEditPolicy = policy)
-        index.updateKeyNeighbors(geometricTable)
+        index.updateKeyNeighbors(table)
         return index
     }
 
     private fun lookup(index: TdictPrefixIndex, prefix: String): List<String> =
         index.lookup(ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8)))
 
-    private fun longPressVariantsOf(prefix: String): List<String> {
-        val collected = ArrayList<String>()
-        val bytes = prefix.toByteArray(Charsets.UTF_8)
-        FuzzyPrefixVariants.generateLongPressVariants(
-            bytes, bytes.size, geometricTable, codePointScratch, variantScratch, 100,
-        ) { v, len -> collected.add(String(v, 0, len, Charsets.UTF_8)) }
-        return collected
-    }
-
-    private fun geometricVariantsOf(prefix: String): List<String> {
-        val collected = ArrayList<String>()
-        val bytes = prefix.toByteArray(Charsets.UTF_8)
-        FuzzyPrefixVariants.generateGeometricVariants(
-            bytes, bytes.size, geometricTable, codePointScratch, variantScratch, 100,
-        ) { v, len -> collected.add(String(v, 0, len, Charsets.UTF_8)) }
-        return collected
-    }
-
-    private fun transpositionVariantsOf(prefix: String): List<String> {
-        val collected = ArrayList<String>()
-        val bytes = prefix.toByteArray(Charsets.UTF_8)
-        FuzzyPrefixVariants.generateTranspositionVariants(
-            bytes, bytes.size, codePointScratch, variantScratch, 100,
-        ) { v, len -> collected.add(String(v, 0, len, Charsets.UTF_8)) }
-        return collected
-    }
-
     /**
-     * Source contract, part 1: the DEFAULT policy — every engine without an explicit one, the
-     * Russian engine included — is exactly the pre-Phase-B shipped configuration: class #1 only,
-     * no same-length bonus. This is the one place the default live path consults, so classes #2
-     * and #3 are provably absent from it.
+     * Source contract, part 1: the DEFAULT policy (every engine without an explicit one, the
+     * Russian engine included) is class #1 only, with no same-length bonus.
      */
     @Test
     fun theDefaultPolicyIsExactlyThePrePhaseBShippedConfiguration() {
@@ -83,9 +43,9 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
     }
 
     /**
-     * Source contract, part 2: the TATAR policy (Phase C) runs class #1 always plus class #4
-     * (probe-first full single substitution, itself gated on an empty exact pass at >= 4 code
-     * points), with the same-length bonus — and neither class #2 nor class #3.
+     * Source contract, part 2: the TATAR policy runs class #1 always plus class #4 (probe-first
+     * full single substitution, itself gated on an empty exact pass at >= 4 code points), with the
+     * same-length bonus.
      */
     @Test
     fun theTatarPolicyRunsClassesOneAndFourWithTheSameLengthBonus() {
@@ -94,37 +54,12 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
             FuzzyEditPolicy.TATAR.editClasses.toList(),
         )
         assertTrue(FuzzyEditPolicy.TATAR.sameLengthBonus)
-        assertFalse(FuzzyEditPolicy.TATAR.editClasses.contains(TdictPrefixIndex.EDIT_CLASS_GEOMETRIC))
-        assertFalse(FuzzyEditPolicy.TATAR.editClasses.contains(TdictPrefixIndex.EDIT_CLASS_TRANSPOSITION))
-    }
-
-    /** An engine opened without a policy gets the default one — the pre-Phase-B behavior. */
-    @Test
-    fun anEngineOpenedWithoutAPolicyKeepsClass2OffTheLivePath() {
-        // Premise: class #2 turns "аит" into "кит" (а→к geometric), which the block of "китап"
-        // begins with, while class #1 produces no matching variant.
-        assertTrue("premise: class #2 would match", geometricVariantsOf("аит").contains("кит"))
-        assertFalse("premise: class #1 would not match", longPressVariantsOf("аит").contains("кит"))
-        val index = index(listOf("китап" to 10L))
-        assertEquals(emptyList<String>(), lookup(index, "аит"))
-    }
-
-    /** Under the default policy a class #3 transposition likewise stays off the live path. */
-    @Test
-    fun anEngineOpenedWithoutAPolicyKeepsClass3OffTheLivePath() {
-        // Premise: class #3 turns "икт" into "кит" (adjacent swap), matching "китап"; class #1
-        // produces no matching variant.
-        assertTrue("premise: class #3 would match", transpositionVariantsOf("икт").contains("кит"))
-        assertFalse("premise: class #1 would not match", longPressVariantsOf("икт").contains("кит"))
-        val index = index(listOf("китап" to 10L))
-        assertEquals(emptyList<String>(), lookup(index, "икт"))
     }
 
     /**
-     * Under the default policy class #4 never fires either — even where its activation gate
+     * Under the default policy class #4 never fires — even where its activation gate
      * (empty exact pass, >= 4 code points) would be met. "аита" corrects to "китап" only through
-     * a full-substitution variant (а→к at position 0: no long-press partner and, at 4 code
-     * points, no class-#2 policy is wired here either).
+     * a full-substitution variant (а→к at position 0, which has no long-press partner).
      */
     @Test
     fun anEngineOpenedWithoutAPolicyKeepsClass4OffTheLivePath() {
@@ -166,9 +101,9 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
         assertEquals(listOf("күмеш", "көмеш"), lookup(index, "кумеш"))
     }
 
-    /** The TATAR policy keeps class #3 off the live path as well. */
+    /** The TATAR policy does not recover a transposition: a swap is not a substitution. */
     @Test
-    fun theTatarPolicyKeepsClass3OffTheLivePath() {
+    fun theTatarPolicyDoesNotRecoverATransposition() {
         // A 4-code-point transposition "икта" -> "кита" meets the class-#4 activation gate, but a
         // swap is not a substitution, so nothing is recovered.
         val index = index(listOf("китап" to 10L), FuzzyEditPolicy.TATAR)

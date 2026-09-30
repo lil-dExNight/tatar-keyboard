@@ -38,7 +38,6 @@ import rkr.simplekeyboard.inputmethod.latin.settings.SettingsValues;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.RecapitalizeStatus;
-import rkr.simplekeyboard.inputmethod.latin.utils.SubtypeLocaleUtils;
 
 /**
  * This class manages the input logic.
@@ -497,12 +496,10 @@ public final class InputLogic {
      * needs to know auto caps state to display the right layout.
      *
      * @param settingsValues the relevant settings values
-     * @param layoutSetName the name of the current keyboard layout set
      * @return a caps mode from TextUtils.CAP_MODE_* or Constants.TextUtils.CAP_MODE_OFF.
      */
-    public int getCurrentAutoCapsState(final SettingsValues settingsValues,
-                                       final String layoutSetName) {
-        if (!settingsValues.mAutoCap || !layoutUsesAutoCaps(layoutSetName)) {
+    public int getCurrentAutoCapsState(final SettingsValues settingsValues) {
+        if (!settingsValues.mAutoCap) {
             return Constants.TextUtils.CAP_MODE_OFF;
         }
 
@@ -902,35 +899,6 @@ public final class InputLogic {
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         return true;
-    }
-
-
-    private boolean layoutUsesAutoCaps(final String layoutSetName) {
-        switch (layoutSetName) {
-            case SubtypeLocaleUtils.LAYOUT_ARABIC:
-            case SubtypeLocaleUtils.LAYOUT_BENGALI:
-            case SubtypeLocaleUtils.LAYOUT_BENGALI_AKKHOR:
-            case SubtypeLocaleUtils.LAYOUT_BENGALI_UNIJOY:
-            case SubtypeLocaleUtils.LAYOUT_FARSI:
-            case SubtypeLocaleUtils.LAYOUT_GEORGIAN:
-            case SubtypeLocaleUtils.LAYOUT_HEBREW:
-            case SubtypeLocaleUtils.LAYOUT_HINDI:
-            case SubtypeLocaleUtils.LAYOUT_HINDI_COMPACT:
-            case SubtypeLocaleUtils.LAYOUT_KANNADA:
-            case SubtypeLocaleUtils.LAYOUT_KHMER:
-            case SubtypeLocaleUtils.LAYOUT_LAO:
-            case SubtypeLocaleUtils.LAYOUT_MALAYALAM:
-            case SubtypeLocaleUtils.LAYOUT_MARATHI:
-            case SubtypeLocaleUtils.LAYOUT_NEPALI_ROMANIZED:
-            case SubtypeLocaleUtils.LAYOUT_NEPALI_TRADITIONAL:
-            case SubtypeLocaleUtils.LAYOUT_TAMIL:
-            case SubtypeLocaleUtils.LAYOUT_TELUGU:
-            case SubtypeLocaleUtils.LAYOUT_THAI:
-            case SubtypeLocaleUtils.LAYOUT_URDU:
-                return false;
-            default:
-                return true;
-        }
     }
 
     public int getCurrentRecapitalizeState() {

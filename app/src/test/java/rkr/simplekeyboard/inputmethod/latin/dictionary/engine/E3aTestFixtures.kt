@@ -33,8 +33,8 @@ internal object E3aTestFixtures {
         )
 
     fun rawKey(base: Char, vararg partners: Char): KeyNeighborTable.RawKey =
-        KeyNeighborTable.RawKey(base.code, 0, 0, 10, 10, IntArray(partners.size) { partners[it].code })
+        KeyNeighborTable.RawKey(base.code, IntArray(partners.size) { partners[it].code })
 
     fun rawKey(baseCodePoint: Int, vararg partnerCodePoints: Int): KeyNeighborTable.RawKey =
-        KeyNeighborTable.RawKey(baseCodePoint, 0, 0, 10, 10, partnerCodePoints)
+        KeyNeighborTable.RawKey(baseCodePoint, partnerCodePoints)
 }

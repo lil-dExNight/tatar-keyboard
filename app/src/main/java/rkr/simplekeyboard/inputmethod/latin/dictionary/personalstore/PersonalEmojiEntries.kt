@@ -206,14 +206,6 @@ internal class PersonalEmojiEntries private constructor(
         )
     }
 
-    /** Estimated on-disk size (header + records). */
-    fun estimatedFileSize(): Int =
-        TpersemFormat.HEADER_SIZE + (0 until size).sumOf {
-            TpersemFormat.RECORD_HEADER_SIZE +
-                words[it].toByteArray(StandardCharsets.UTF_8).size +
-                emojiClusters[it].toByteArray(StandardCharsets.UTF_8).size
-        }
-
     private fun indexOfEntry(normalizedWord: String, emoji: String): Int {
         var low = 0
         var high = words.size - 1

@@ -23,7 +23,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
  * Adapts a live [Keyboard] into a [KeyNeighborTable]. This is the single place the layout data
  * crosses the package boundary into the dictionary engine.
  *
- * It reads the code, geometry and long-press partners of each key straight off the built keyboard —
+ * It reads the code and long-press partners of each key straight off the built keyboard —
  * no letter and no key pair is hard-coded. Only the alphabet element is a valid source
  * (`KeyboardId.isAlphabetKeyboard()`); the pure builder returns an empty table for anything else.
  * Nothing here logs a key code: this crossing carries numbers only.
@@ -40,16 +40,7 @@ object KeyNeighborTableBuilder {
             val moreKeys = key.moreKeys
             val partnerCodePoints =
                 if (moreKeys == null) IntArray(0) else IntArray(moreKeys.size) { moreKeys[it].mCode }
-            raw.add(
-                KeyNeighborTable.RawKey(
-                    key.code,
-                    key.x,
-                    key.y,
-                    key.x + key.width,
-                    key.y + key.height,
-                    partnerCodePoints,
-                ),
-            )
+            raw.add(KeyNeighborTable.RawKey(key.code, partnerCodePoints))
         }
         return KeyNeighborTable.build(subtypeId, true, raw)
     }

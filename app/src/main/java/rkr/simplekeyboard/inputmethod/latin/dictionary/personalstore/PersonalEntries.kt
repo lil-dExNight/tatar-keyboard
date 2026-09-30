@@ -174,11 +174,6 @@ internal class PersonalEntries private constructor(
         )
     }
 
-    /** Estimated on-disk size (header + records). */
-    fun estimatedFileSize(): Int =
-        TpersFormat.HEADER_SIZE +
-            rawForms.sumOf { TpersFormat.RECORD_HEADER_SIZE + it.toByteArray(StandardCharsets.UTF_8).size }
-
     private fun indexOfNormalized(normalized: String): Int {
         var low = 0
         var high = normalizedForms.size - 1

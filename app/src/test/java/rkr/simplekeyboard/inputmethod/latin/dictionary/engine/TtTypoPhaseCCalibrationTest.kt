@@ -370,11 +370,9 @@ class TtTypoPhaseCCalibrationTest {
     }
 
     /**
-     * The mission target case under the Phase-C2 SHIPPED Tatar wiring (suffix rules + TATAR {1,4}
-     * + bonus + the layout-derived table — exactly what LatinIME wires for the Tatar engine since
-     * the C2 gates passed): "сцләм" offers "сәләм" in cell 1 by the 5th letter. The default
-     * policy's empty strip for the same input is pinned in
-     * [TtTypoPhaseBCalibrationTest.theDefaultPolicyKeepsThePrePhaseBBehavior] (the Russian shape).
+     * The target case under the shipped Tatar wiring (suffix rules + TATAR {1,4} + bonus + the
+     * layout-derived table, exactly what LatinIME wires for the Tatar engine): "сцләм" offers
+     * "сәләм" in cell 1 by the 5th letter.
      */
     @Test
     fun theSclamTypoOffersSyalamInCellOneByTheFifthLetter() {

@@ -30,10 +30,8 @@ public final class InputAttributes {
     private final String TAG = InputAttributes.class.getSimpleName();
 
     final public String mTargetApplicationPackageName;
-    final public boolean mInputTypeNoAutoCorrect;
     final public boolean mIsPasswordField;
     final public boolean mShouldShowSuggestions;
-    final public boolean mApplicationSpecifiedCompletionOn;
     final public boolean mShouldInsertSpacesAutomatically;
     /**
      * {@link EditorInfo#IME_FLAG_NO_PERSONALIZED_LEARNING}, set by incognito browser tabs and
@@ -49,7 +47,7 @@ public final class InputAttributes {
     final public boolean mIsPostalAddressField;
     final private int mInputType;
 
-    public InputAttributes(final EditorInfo editorInfo, final boolean isFullscreenMode) {
+    public InputAttributes(final EditorInfo editorInfo) {
         mTargetApplicationPackageName = null != editorInfo ? editorInfo.packageName : null;
         final int inputType = null != editorInfo ? editorInfo.inputType : 0;
         final int inputClass = inputType & InputType.TYPE_MASK_CLASS;
@@ -78,8 +76,6 @@ public final class InputAttributes {
                         + " imeOptions=0x%08x", inputType, editorInfo.imeOptions));
             }
             mShouldShowSuggestions = false;
-            mInputTypeNoAutoCorrect = false;
-            mApplicationSpecifiedCompletionOn = false;
             mShouldInsertSpacesAutomatically = false;
             return;
         }
@@ -87,10 +83,6 @@ public final class InputAttributes {
         final int variation = inputType & InputType.TYPE_MASK_VARIATION;
         final boolean flagNoSuggestions =
                 0 != (inputType & InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        final boolean flagMultiLine =
-                0 != (inputType & InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        final boolean flagAutoCorrect =
-                0 != (inputType & InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
         final boolean flagAutoComplete =
                 0 != (inputType & InputType.TYPE_TEXT_FLAG_AUTO_COMPLETE);
 
@@ -105,17 +97,6 @@ public final class InputAttributes {
         mShouldShowSuggestions = !shouldSuppressSuggestions;
 
         mShouldInsertSpacesAutomatically = InputTypeUtils.isAutoSpaceFriendlyType(inputType);
-
-        // If it's a browser edit field and auto correct is not ON explicitly, then
-        // disable auto correction, but keep suggestions on.
-        // If NO_SUGGESTIONS is set, don't do prediction.
-        // If it's not multiline and the autoCorrect flag is not set, then don't correct
-        mInputTypeNoAutoCorrect =
-                (variation == InputType.TYPE_TEXT_VARIATION_WEB_EDIT_TEXT && !flagAutoCorrect)
-                || flagNoSuggestions
-                || (!flagAutoCorrect && !flagMultiLine);
-
-        mApplicationSpecifiedCompletionOn = flagAutoComplete && isFullscreenMode;
     }
 
     private static boolean readNoPersonalizedLearning(final EditorInfo editorInfo) {
@@ -136,13 +117,11 @@ public final class InputAttributes {
         // The target app's package name is not printed: which app the user types in is not
         // something the keyboard logs.
         return String.format(
-                "%s: inputType=0x%08x%s%s%s%s%s%s\n", getClass().getSimpleName(),
+                "%s: inputType=0x%08x%s%s%s%s\n", getClass().getSimpleName(),
                 mInputType,
-                (mInputTypeNoAutoCorrect ? " noAutoCorrect" : ""),
                 (mIsPasswordField ? " password" : ""),
                 (mShouldShowSuggestions ? " shouldShowSuggestions" : ""),
                 (mNoPersonalizedLearning ? " noPersonalizedLearning" : ""),
-                (mApplicationSpecifiedCompletionOn ? " appSpecified" : ""),
                 (mShouldInsertSpacesAutomatically ? " insertSpaces" : ""));
     }
 }

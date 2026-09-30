@@ -142,9 +142,8 @@ class ShippedIndexPrefixCoverageTest {
             paths.map(::File).firstOrNull(File::isFile) ?: error("cannot locate ${paths.toList()}")
 
         /**
-         * Rows and long-press partners of the shipped Cyrillic layouts, mirroring the layout XML.
-         * Only the partners matter to the passes under test; the geometry is there because
-         * [KeyNeighborTable.build] wants a rectangle per key.
+         * Letter keys and long-press partners of the shipped Cyrillic layouts, mirroring the
+         * layout XML.
          */
         private fun neighbourTable(language: String): KeyNeighborTable {
             val keys = ArrayList<KeyNeighborTable.RawKey>()
@@ -152,22 +151,21 @@ class ShippedIndexPrefixCoverageTest {
                 'у' to "ү", 'е' to "ё", 'н' to "ң", 'г' to "һ", 'х' to "һ",
                 'а' to "ә", 'о' to "ө", 'ж' to "җ", 'э' to "ә", 'ь' to "ъ",
             )
-            fun row(index: Int, letters: String, width: Int, offset: Int) {
-                letters.forEachIndexed { column, letter ->
-                    val left = offset + column * width
+            fun row(letters: String) {
+                for (letter in letters) {
                     val partnerChars = partners[letter].orEmpty()
                     keys.add(
                         KeyNeighborTable.RawKey(
-                            letter.code, left, index, left + width, index + 1,
+                            letter.code,
                             IntArray(partnerChars.length) { partnerChars[it].code },
                         ),
                     )
                 }
             }
-            if (language == "tt") row(0, "әөүҗңһ", 16667, 0)
-            row(1, "йцукенгшщзх", 9091, 0)
-            row(2, "фывапролджэ", 9091, 0)
-            row(3, "ячсмитьбю", 8711, 10800)
+            if (language == "tt") row("әөүҗңһ")
+            row("йцукенгшщзх")
+            row("фывапролджэ")
+            row("ячсмитьбю")
             return KeyNeighborTable.build(language, true, keys)
         }
     }

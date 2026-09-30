@@ -41,8 +41,6 @@ class FuzzyEditPolicy(
         for (editClass in editClasses + autocorrectClasses) {
             require(
                 editClass == TdictPrefixIndex.EDIT_CLASS_LONG_PRESS ||
-                    editClass == TdictPrefixIndex.EDIT_CLASS_GEOMETRIC ||
-                    editClass == TdictPrefixIndex.EDIT_CLASS_TRANSPOSITION ||
                     editClass == TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
             ) { "unknown edit class $editClass" }
         }
@@ -59,7 +57,7 @@ class FuzzyEditPolicy(
         /**
          * The Tatar configuration: class #1 always, class #4 (probe-first full single substitution,
          * only on an empty exact pass at >= 4 code points, see [TdictPrefixIndex.collectFuzzy]) and
-         * the same-length bonus. Classes #2 and #3 are not used.
+         * the same-length bonus.
          */
         @JvmField
         val TATAR = FuzzyEditPolicy(

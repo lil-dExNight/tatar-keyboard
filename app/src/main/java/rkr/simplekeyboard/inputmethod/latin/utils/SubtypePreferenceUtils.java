@@ -43,6 +43,7 @@ public final class SubtypePreferenceUtils {
     private static final String LEGACY_LOCALE_TATAR = "tt";
     private static final String LOCALE_TATAR = "tt_RU";
     private static final String LOCALE_RUSSIAN = "ru";
+    private static final String LEGACY_LAYOUT_EAST_SLAVIC = "east_slavic";
 
     public static String getPrefString(final Subtype subtype) {
         final String localeString = subtype.getLocale();
@@ -75,7 +76,7 @@ public final class SubtypePreferenceUtils {
                 migratedLocaleString = localeString;
             }
             if (LOCALE_RUSSIAN.equals(migratedLocaleString)
-                    && SubtypeLocaleUtils.LAYOUT_EAST_SLAVIC.equals(keyboardLayoutSetName)) {
+                    && LEGACY_LAYOUT_EAST_SLAVIC.equals(keyboardLayoutSetName)) {
                 keyboardLayoutSetName = SubtypeLocaleUtils.LAYOUT_RUSSIAN;
             }
             final Subtype subtype = SubtypeLocaleUtils.getSubtype(migratedLocaleString,

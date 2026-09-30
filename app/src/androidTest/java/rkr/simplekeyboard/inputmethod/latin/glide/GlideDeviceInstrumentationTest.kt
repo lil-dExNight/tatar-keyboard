@@ -39,8 +39,7 @@ import kotlin.math.ceil
 /**
  * P7-4 device-side glide harness (docs/GLIDE-PLAN.md): the decode latency gate (p95 ≤ 5 ms on
  * the POCO C71) can only be measured on real hardware, and the сәләм decode is proven against
- * the LIVE Tatar keyboard geometry (built through the production KeyboardLayoutSet path, the
- * same construction E3bComputeInstrumentationTest uses for the neighbour table).
+ * the LIVE Tatar keyboard geometry (built through the production KeyboardLayoutSet path).
  *
  * Same JUnit3/legacy-runner shape as the E3b harness — resolves offline, never packaged into
  * the release APK.

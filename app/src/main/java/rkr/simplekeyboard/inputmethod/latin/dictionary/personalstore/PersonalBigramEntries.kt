@@ -219,14 +219,6 @@ internal class PersonalBigramEntries private constructor(
         )
     }
 
-    /** Estimated on-disk size (header + records). */
-    fun estimatedFileSize(): Int =
-        TpersbFormat.HEADER_SIZE + (0 until size).sumOf {
-            TpersbFormat.RECORD_HEADER_SIZE +
-                contexts[it].toByteArray(StandardCharsets.UTF_8).size +
-                successorRawForms[it].toByteArray(StandardCharsets.UTF_8).size
-        }
-
     private fun indexOfPair(normalizedContext: String, normalizedSuccessor: String): Int {
         var low = 0
         var high = contexts.size - 1

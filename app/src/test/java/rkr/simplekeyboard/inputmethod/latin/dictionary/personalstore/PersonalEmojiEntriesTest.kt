@@ -199,13 +199,4 @@ class PersonalEmojiEntriesTest {
         assertEquals(listOf("☀️", "☀️", "🌙"), validated.emojiClusters)
         assertEquals(listOf(3, 4, 2), validated.frequencyCounts.toList())
     }
-
-    @Test
-    fun estimatedFileSizeTracksTheSerializedForm() {
-        val model = entries()
-            .upsert("сәләм", "☀️", 2)
-            .upsert("бәйрәм", "🎉", 2)
-        assertEquals(model.serialize("tt_RU").size.toLong(), model.estimatedFileSize().toLong())
-        assertTrue(model.estimatedFileSize().toLong() <= TpersemFormat.MAX_FILE_SIZE)
-    }
 }

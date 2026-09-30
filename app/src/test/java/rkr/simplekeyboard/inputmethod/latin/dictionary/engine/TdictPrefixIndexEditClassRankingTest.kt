@@ -20,20 +20,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Named tests for the contract amendment (2026-07-27, вторая к этому пункту): "внутри нечёткого
- * уровня вводится порядок по классу правки". Inside the fuzzy level the order is edit class first
- * (#1 long-press partner, then #2 geometric neighbour, then #3 transposition) and only inside one
+ * Ranking inside the fuzzy level under the default policy: edit class first, and only inside one
  * class the frozen tie-break (frequency descending, then Unicode code-point ascending). The exact
  * level stays above every fuzzy candidate and its rule is unchanged.
- *
- * The four tests are condition (3) of the frozen-contract edit procedure, one per clause of the
- * amendment.
  */
 class TdictPrefixIndexEditClassRankingTest {
-    // With geometry, so edit class #2 (geometric neighbour) is derived and can compete with #1.
-    private val geometricTable = E3bTestFixtures.tatarNeighborTable()
+    // The full Tatar alphabet keyboard.
+    private val tatarTable = E3bTestFixtures.tatarNeighborTable()
 
-    // Degenerate geometry: no geometric neighbour, so class #2 never contributes — the E3a source.
+    // The reduced letter set of the E3a fixture, with the same long-press partners.
     private val longPressOnlyTable = E3aTestFixtures.tatarNeighborTable()
 
     private fun index(entries: List<Pair<String, Long>>, table: KeyNeighborTable): TdictPrefixIndex {
@@ -46,15 +41,9 @@ class TdictPrefixIndexEditClassRankingTest {
         index.lookup(ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8)))
 
     /**
-     * Clause 1, brought to the E3b verdict (2026-07-27; PROPOSALS.md "Контракт текста", "Итог") and
-     * read through the TT-TYPO-NEXT Phase-B policy seam: this engine is opened WITHOUT an explicit
-     * fuzzy policy, i.e. [FuzzyEditPolicy.DEFAULT] — class #1 only, exactly the pre-Phase-B shipped
-     * behavior (and the Russian engine's configuration). The original clause asserted "class #1
-     * always outranks class #2 at any frequency" via the live path; with class #2 off this path,
-     * the class #2 candidate "көмеш" (frequency 9 999, reached only by the у→ө geometric neighbour)
-     * never appears at all, and only the class #1 candidate "күмеш" (у→ү long-press) does. The
-     * class-first order in [ranksBefore] is retained as infrastructure, so this stronger default
-     * guarantee replaces the multi-class assertion.
+     * This engine is opened without an explicit fuzzy policy, i.e. [FuzzyEditPolicy.DEFAULT]
+     * (class #1 only). "көмеш" (frequency 9 999) is not a long-press variant of "кум", so it never
+     * appears; only the class #1 candidate "күмеш" (у→ү) does.
      */
     @Test
     fun theClass2CandidateNeverAppearsBecauseClass2IsOffTheShippedPath() {
@@ -62,9 +51,9 @@ class TdictPrefixIndexEditClassRankingTest {
             // Code-point sorted: ү (U+04AF) precedes ө (U+04E9) at the second position.
             listOf(
                 "күмеш" to 1L,        // class #1 (у→ү), lowest possible frequency
-                "көмеш" to 9_999L,    // class #2 (у→ө), far higher frequency — excluded from ship
+                "көмеш" to 9_999L,    // not a long-press variant, far higher frequency
             ),
-            geometricTable,
+            tatarTable,
         )
         assertEquals(listOf("күмеш"), lookup(index, "кум"))
     }
@@ -85,7 +74,7 @@ class TdictPrefixIndexEditClassRankingTest {
                 "бәрен" to 50L,
                 "бәрәч" to 100L,
             ),
-            geometricTable,
+            tatarTable,
         )
         assertEquals(listOf("бәрәч", "бәре", "бәрен"), lookup(index, "бар"))
     }
@@ -104,7 +93,7 @@ class TdictPrefixIndexEditClassRankingTest {
                 "катык" to 1L,        // exact continuation of "кат"
                 "кәтү" to 9_999L,     // class #1 (а→ә), far higher frequency
             ),
-            geometricTable,
+            tatarTable,
         )
         assertEquals(listOf("катык", "кәтү"), lookup(index, "кат"))
     }
@@ -113,9 +102,7 @@ class TdictPrefixIndexEditClassRankingTest {
      * Clause 4 (characterization): "при единственном классе правок порядок совпадает с порядком
      * E3a."
      *
-     * With the long-press-only table no geometric neighbour exists (class #2 empty), and no word is
-     * reachable by a transposition of "кул" (class #3 empty), so only class #1 (у→ү) contributes.
-     * When a single class contributes, the class key is a constant tie and the order collapses to
+     * Only class #1 (у→ү) contributes. When a single class contributes, the class key is a constant tie and the order collapses to
      * the E3a rule (frequency descending, then code point): identical to
      * TdictPrefixIndexFuzzyTest.withinTheFuzzyLevelOrderIsFrequencyDescendingThenCodePointAscending.
      */

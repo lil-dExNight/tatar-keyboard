@@ -1038,7 +1038,7 @@ Lrkr/simplekeyboard/inputmethod/latin/AudioAndHapticFeedbackManager$$ExternalSyn
 HSPLrkr/simplekeyboard/inputmethod/latin/AudioAndHapticFeedbackManager$$ExternalSyntheticLambda1;-><init>(Lrkr/simplekeyboard/inputmethod/latin/AudioAndHapticFeedbackManager;Landroid/view/View;)V
 HSPLrkr/simplekeyboard/inputmethod/latin/AudioAndHapticFeedbackManager$$ExternalSyntheticLambda1;->run()V
 Lrkr/simplekeyboard/inputmethod/latin/InputAttributes;
-HSPLrkr/simplekeyboard/inputmethod/latin/InputAttributes;-><init>(Landroid/view/inputmethod/EditorInfo;Z)V
+HSPLrkr/simplekeyboard/inputmethod/latin/InputAttributes;-><init>(Landroid/view/inputmethod/EditorInfo;)V
 HSPLrkr/simplekeyboard/inputmethod/latin/InputAttributes;->isSameInputType(Landroid/view/inputmethod/EditorInfo;)Z
 HSPLrkr/simplekeyboard/inputmethod/latin/InputAttributes;->readNoPersonalizedLearning(Landroid/view/inputmethod/EditorInfo;)Z
 Lrkr/simplekeyboard/inputmethod/latin/InputView;
@@ -1418,7 +1418,6 @@ HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants;-
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants;->encodeCodePoints([II[B)I
 PLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants;->generateFullSubstitutionVariants([BI[I[I[BILrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants$PositionedVariantConsumer;)I
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants;->generateLongPressVariants([BILrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;[I[BILrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants$VariantConsumer;)I
-HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants;->generateSubstitutionVariants([BILrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;[I[BILrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants$VariantConsumer;Z)I
 Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants$PositionedVariantConsumer;
 Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariants$VariantConsumer;
 Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/FuzzyPrefixVariantsKt;
@@ -1449,8 +1448,8 @@ Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/InflectedSuffixTable;
 Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborSink;
 Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;-><clinit>()V
-HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;-><init>(Ljava/lang/String;[I[[I[I[[I[II)V
-HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;-><init>(Ljava/lang/String;[I[[I[I[[I[IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;-><init>(Ljava/lang/String;[I[[I[II)V
+HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;-><init>(Ljava/lang/String;[I[[I[IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 PLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;->getNodes()[I
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;->isEmpty()Z
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;->longPressPartnersOf(I)[I
@@ -1458,15 +1457,11 @@ Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$Compani
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$Companion;-><init>()V
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$Companion;-><init>(Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$Companion;->build(Ljava/lang/String;ZLjava/util/List;)Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable;
-HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$Companion;->computeGeometricPairs(Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)Ljava/util/HashMap;
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$Companion;->normalizeLetterCodePoint(I)Ljava/lang/Integer;
 Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$RawKey;
-HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$RawKey;-><init>(IIIII[I)V
+HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$RawKey;-><init>(I[I)V
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$RawKey;->getCodePoint()I
-HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$RawKey;->getLeft()I
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$RawKey;->getMoreKeyCodePoints()[I
-HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$RawKey;->getRight()I
-HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/KeyNeighborTable$RawKey;->getTop()I
 Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/LatestOnlyPrefixEngine;
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/LatestOnlyPrefixEngine;-><clinit>()V
 HSPLrkr/simplekeyboard/inputmethod/latin/dictionary/engine/LatestOnlyPrefixEngine;-><init>(Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/DictionaryIdentity;Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/PrefixComputer;Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/EngineExecutor;Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/ResultHandoff;Lkotlin/jvm/functions/Function0;)V
@@ -2733,7 +2728,7 @@ PLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->commitChosenSugge
 PLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->commitGlideWord(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I
 PLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->commitPredictedWord(Ljava/lang/String;Ljava/lang/String;)Z
 PLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->endsWith(Ljava/lang/CharSequence;Ljava/lang/String;)Z
-HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->getCurrentAutoCapsState(Lrkr/simplekeyboard/inputmethod/latin/settings/SettingsValues;Ljava/lang/String;)I
+HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->getCurrentAutoCapsState(Lrkr/simplekeyboard/inputmethod/latin/settings/SettingsValues;)I
 HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->getCurrentInputEditorInfo()Landroid/view/inputmethod/EditorInfo;
 HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->getCurrentRecapitalizeState()I
 PLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->handleFunctionalEvent(Lrkr/simplekeyboard/inputmethod/event/Event;Lrkr/simplekeyboard/inputmethod/event/InputTransaction;)V
@@ -2741,7 +2736,6 @@ HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->handleNonFuncti
 HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->handleNonSeparatorEvent(Lrkr/simplekeyboard/inputmethod/event/Event;)V
 HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->handleNonSpecialCharacterEvent(Lrkr/simplekeyboard/inputmethod/event/Event;Lrkr/simplekeyboard/inputmethod/event/InputTransaction;)V
 PLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->handleSeparatorEvent(Lrkr/simplekeyboard/inputmethod/event/Event;Lrkr/simplekeyboard/inputmethod/event/InputTransaction;)V
-HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->layoutUsesAutoCaps(Ljava/lang/String;)Z
 HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->onCodeInput(Lrkr/simplekeyboard/inputmethod/latin/settings/SettingsValues;Lrkr/simplekeyboard/inputmethod/event/Event;)Lrkr/simplekeyboard/inputmethod/event/InputTransaction;
 PLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->onTextInput(Lrkr/simplekeyboard/inputmethod/latin/settings/SettingsValues;Lrkr/simplekeyboard/inputmethod/event/Event;)Lrkr/simplekeyboard/inputmethod/event/InputTransaction;
 HSPLrkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic;->onUpdateSelection(II)V

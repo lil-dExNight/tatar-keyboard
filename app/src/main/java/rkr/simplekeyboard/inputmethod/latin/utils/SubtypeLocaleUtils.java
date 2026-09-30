@@ -67,29 +67,6 @@ public final class SubtypeLocaleUtils {
     public static final String LAYOUT_QWERTY = "qwerty";
     public static final String LAYOUT_RUSSIAN = "russian";
     public static final String LAYOUT_TATAR = "tatar";
-    // Unused layouts, kept only because InputLogic still switches on these names and
-    // SubtypePreferenceUtils migrates legacy east_slavic prefs.
-    public static final String LAYOUT_ARABIC = "arabic";
-    public static final String LAYOUT_BENGALI = "bengali";
-    public static final String LAYOUT_BENGALI_AKKHOR = "bengali_akkhor";
-    public static final String LAYOUT_BENGALI_UNIJOY = "bengali_unijoy";
-    public static final String LAYOUT_EAST_SLAVIC = "east_slavic";
-    public static final String LAYOUT_FARSI = "farsi";
-    public static final String LAYOUT_GEORGIAN = "georgian";
-    public static final String LAYOUT_HEBREW = "hebrew";
-    public static final String LAYOUT_HINDI = "hindi";
-    public static final String LAYOUT_HINDI_COMPACT = "hindi_compact";
-    public static final String LAYOUT_KANNADA = "kannada";
-    public static final String LAYOUT_KHMER = "khmer";
-    public static final String LAYOUT_LAO = "lao";
-    public static final String LAYOUT_MALAYALAM = "malayalam";
-    public static final String LAYOUT_MARATHI = "marathi";
-    public static final String LAYOUT_NEPALI_ROMANIZED = "nepali_romanized";
-    public static final String LAYOUT_NEPALI_TRADITIONAL = "nepali_traditional";
-    public static final String LAYOUT_TAMIL = "tamil";
-    public static final String LAYOUT_TELUGU = "telugu";
-    public static final String LAYOUT_THAI = "thai";
-    public static final String LAYOUT_URDU = "urdu";
 
     /**
      * Get a list of all of the supported subtypes for a locale.

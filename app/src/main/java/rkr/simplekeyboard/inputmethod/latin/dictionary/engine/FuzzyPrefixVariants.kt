@@ -74,58 +74,25 @@ internal object FuzzyPrefixVariants {
         variantScratch: ByteArray,
         maxVariants: Int,
         consumer: VariantConsumer,
-    ): Int = generateSubstitutionVariants(
-        prefixUtf8, prefixLength, table, codePointScratch, variantScratch, maxVariants, consumer,
-        geometric = false,
-    )
-
-    /**
-     * Edit class #2: replace one letter with a geometric keyboard neighbor, in every position that
-     * has one. Same contract as [generateLongPressVariants], drawing on
-     * [KeyNeighborTable.geometricNeighborsOf] instead of the long-press partners.
-     */
-    fun generateGeometricVariants(
-        prefixUtf8: ByteArray,
-        prefixLength: Int,
-        table: KeyNeighborTable,
-        codePointScratch: IntArray,
-        variantScratch: ByteArray,
-        maxVariants: Int,
-        consumer: VariantConsumer,
-    ): Int = generateSubstitutionVariants(
-        prefixUtf8, prefixLength, table, codePointScratch, variantScratch, maxVariants, consumer,
-        geometric = true,
-    )
-
-    /**
-     * Edit class #3: swap two adjacent letters, in every adjacent pair of the prefix. Swaps of two
-     * identical code points are skipped (they reproduce the prefix). Returns the variant count, or
-     * -1 on undecodable input or when [maxVariants] would be exceeded.
-     */
-    fun generateTranspositionVariants(
-        prefixUtf8: ByteArray,
-        prefixLength: Int,
-        codePointScratch: IntArray,
-        variantScratch: ByteArray,
-        maxVariants: Int,
-        consumer: VariantConsumer,
     ): Int {
         val codePointCount = decodeCodePoints(prefixUtf8, prefixLength, codePointScratch)
         if (codePointCount < 0) return -1
         var emitted = 0
-        for (position in 0 until codePointCount - 1) {
-            val first = codePointScratch[position]
-            val second = codePointScratch[position + 1]
-            if (first == second) continue
-            if (emitted >= maxVariants) return -1
-            codePointScratch[position] = second
-            codePointScratch[position + 1] = first
-            val length = encodeCodePoints(codePointScratch, codePointCount, variantScratch)
-            consumer.onVariant(variantScratch, length)
-            // Restore the pair before moving on, so exactly one adjacent swap differs per variant.
-            codePointScratch[position] = first
-            codePointScratch[position + 1] = second
-            emitted++
+        for (position in 0 until codePointCount) {
+            val original = codePointScratch[position]
+            val partners = table.longPressPartnersOf(original) ?: continue
+            for (partner in partners) {
+                if (emitted >= maxVariants) {
+                    codePointScratch[position] = original
+                    return -1
+                }
+                codePointScratch[position] = partner
+                val length = encodeCodePoints(codePointScratch, codePointCount, variantScratch)
+                consumer.onVariant(variantScratch, length)
+                emitted++
+            }
+            // Restore this position before moving on, so exactly one letter differs per variant.
+            codePointScratch[position] = original
         }
         return emitted
     }
@@ -167,41 +134,6 @@ internal object FuzzyPrefixVariants {
                 codePointScratch[position] = letter
                 val length = encodeCodePoints(codePointScratch, codePointCount, variantScratch)
                 consumer.onVariant(position, variantScratch, length)
-                emitted++
-            }
-            // Restore this position before moving on, so exactly one letter differs per variant.
-            codePointScratch[position] = original
-        }
-        return emitted
-    }
-
-    /** Shared body of the two substitution classes; [geometric] picks the neighbor source. */
-    private fun generateSubstitutionVariants(
-        prefixUtf8: ByteArray,
-        prefixLength: Int,
-        table: KeyNeighborTable,
-        codePointScratch: IntArray,
-        variantScratch: ByteArray,
-        maxVariants: Int,
-        consumer: VariantConsumer,
-        geometric: Boolean,
-    ): Int {
-        val codePointCount = decodeCodePoints(prefixUtf8, prefixLength, codePointScratch)
-        if (codePointCount < 0) return -1
-        var emitted = 0
-        for (position in 0 until codePointCount) {
-            val original = codePointScratch[position]
-            val partners =
-                if (geometric) table.geometricNeighborsOf(original) else table.longPressPartnersOf(original)
-            if (partners == null) continue
-            for (partner in partners) {
-                if (emitted >= maxVariants) {
-                    codePointScratch[position] = original
-                    return -1
-                }
-                codePointScratch[position] = partner
-                val length = encodeCodePoints(codePointScratch, codePointCount, variantScratch)
-                consumer.onVariant(variantScratch, length)
                 emitted++
             }
             // Restore this position before moving on, so exactly one letter differs per variant.

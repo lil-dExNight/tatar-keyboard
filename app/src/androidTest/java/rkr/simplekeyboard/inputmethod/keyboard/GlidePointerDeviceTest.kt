@@ -104,7 +104,7 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
             .putBoolean("pref_glide_typing", true)
             .commit()
         Settings.init(context)
-        Settings.getInstance().loadSettings(InputAttributes(EditorInfo(), false))
+        Settings.getInstance().loadSettings(InputAttributes(EditorInfo()))
         PointerTracker.init(
             context.theme.obtainStyledAttributes(R.styleable.MainKeyboardView),
             timerProxy, drawingProxy,

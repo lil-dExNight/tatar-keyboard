@@ -5,10 +5,10 @@ import org.junit.Test
 import java.io.File
 
 /**
- * E3b keeps the keyboard layout as data: neither the letters, the key pairs, nor the geometry are
- * hard-coded in the engine. The adjacency (long-press and geometric) is derived by a pure function
- * of numbers supplied by the live layout through `KeyNeighborTableBuilder`, which is the single
- * place layout data crosses into the engine.
+ * The engine keeps the keyboard layout as data: neither the letters nor the key pairs are
+ * hard-coded in it. The long-press adjacency is derived by a pure function of numbers supplied by
+ * the live layout through `KeyNeighborTableBuilder`, which is the single place layout data crosses
+ * into the engine.
  *
  * This test asserts the engine sources — and that single crossing — carry no Cyrillic literal at
  * all, so a hard-coded letter or key pair cannot slip in unseen.
@@ -40,7 +40,7 @@ class E3bEngineSourceContractTest {
 
     @Test
     fun theEngineDoesNotLogKeyCodesOrText() {
-        // The geometry crossing carries numbers only. Reaffirmed for the E3b sources specifically.
+        // The layout crossing carries numbers only.
         val sources = engineSources().joinToString("\n") { it.readText() }
         for (forbidden in listOf("android.util.Log", "println(", "System.out", "System.err")) {
             assertTrue("found $forbidden in engine sources", !sources.contains(forbidden))

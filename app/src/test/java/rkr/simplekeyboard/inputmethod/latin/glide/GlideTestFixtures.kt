@@ -7,7 +7,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersona
  * Shared fixture for the glide tests: the device-true Tatar letter-key geometry in the
  * 100 000-unit reference grid, mirroring `scripts/glide_pack.py` bit-for-bit.
  *
- * The x model is the E3bTestFixtures/typo_pack device formula (KeyboardBuilder/KeyboardRow/Key
+ * The x model is the device formula (KeyboardBuilder/KeyboardRow/Key
  * with the horizontal gap, one round-half-up per edge). The vertical model is the documented
  * reference: the default 5-row Tatar keyboard (kbd_tatar.xml rowHeight 20%p, vertical gap
  * config_key_vertical_gap_5row 2.814%p, top padding config_keyboard_top_padding 2.335%p) at the
@@ -36,7 +36,7 @@ internal object GlideTestFixtures {
     val KEY_HEIGHT = toGrid(ROW_PITCH_PX - VERTICAL_GAP_PX)
     val TOP_PADDING = toGrid(TOP_PADDING_PX)
 
-    // Key widths in percent points, mirroring rows_tatar.xml (same values as E3bTestFixtures).
+    // Key widths in percent points, mirroring rows_tatar.xml.
     private val ROW_WIDTHS = listOf(
         listOf(16.667, 16.667, 16.667, 16.667, 16.667, 16.667),
         listOf(9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091),

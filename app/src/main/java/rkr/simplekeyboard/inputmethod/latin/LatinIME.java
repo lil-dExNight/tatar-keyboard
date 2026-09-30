@@ -402,7 +402,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     private void loadSettings() {
         mLocale = mRichImm.getCurrentSubtype().getLocaleObject();
         final EditorInfo editorInfo = getCurrentInputEditorInfo();
-        final InputAttributes inputAttributes = new InputAttributes(editorInfo, isFullscreenMode());
+        final InputAttributes inputAttributes = new InputAttributes(editorInfo);
         mSettings.loadSettings(inputAttributes);
         final SettingsValues currentSettingsValues = mSettings.getCurrent();
         AudioAndHapticFeedbackManager.getInstance().onSettingsChanged(currentSettingsValues);
@@ -1932,8 +1932,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // the editor text would capitalize every letter. Every caller gets no CAP_MODE bit.
             return NO_AUTO_CAPS;
         }
-        return mInputLogic.getCurrentAutoCapsState(mSettings.getCurrent(),
-                mRichImm.getCurrentSubtype().getKeyboardLayoutSet());
+        return mInputLogic.getCurrentAutoCapsState(mSettings.getCurrent());
     }
 
     int getCurrentRecapitalizeState() {

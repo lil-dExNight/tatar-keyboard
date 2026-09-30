@@ -86,18 +86,13 @@ class TdictPrefixIndexPhaseCTest {
         // A synthetic layout whose alphabet overflows MAX_FUZZY_PROBES (8 192): the fixture
         // dictionary is a shared-prefix chain so every position of "кумеш" has a non-empty probe
         // range, and 38 + 4 x (N - 1) probes with N ≈ 3 000 exceed the budget. The level is
-        // dropped whole — including the class #1 candidate already found. Every synthetic key sits
-        // in its own row (two apart), so the geometric relation stays empty and only the alphabet
-        // size matters.
+        // dropped whole — including the class #1 candidate already found. Only the alphabet size
+        // matters.
         val letters = ArrayList<KeyNeighborTable.RawKey>()
         var codePoint = 0x41
         while (letters.size < 3_000 && codePoint < 0x2_FFFF) {
             if (Character.isLetter(codePoint)) {
-                letters.add(
-                    KeyNeighborTable.RawKey(
-                        codePoint, 0, letters.size * 2, 10, letters.size * 2 + 1, IntArray(0),
-                    ),
-                )
+                letters.add(KeyNeighborTable.RawKey(codePoint, IntArray(0)))
             }
             codePoint++
         }

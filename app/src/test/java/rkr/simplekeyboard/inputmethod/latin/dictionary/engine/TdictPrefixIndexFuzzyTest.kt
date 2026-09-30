@@ -191,12 +191,12 @@ class TdictPrefixIndexFuzzyTest {
         threadBean.isThreadAllocatedMemoryEnabled = true
         val threadId = Thread.currentThread().id
 
-        val geometricTable = E3bTestFixtures.tatarNeighborTable()
+        val tatarTable = E3bTestFixtures.tatarNeighborTable()
         val index = EngineTestFixtures.index(
             listOf("мин" to 5L, "син" to 5L),
             fuzzyEditPolicy = FuzzyEditPolicy.TATAR,
         )
-        index.updateKeyNeighbors(geometricTable)
+        index.updateKeyNeighbors(tatarTable)
         // "abc": no letter is in the table at all -> 0 variants, 0 probes. "мсмә": 4 code points
         // with an empty exact pass -> the class #4 gate fires; with the Phase-C2 range narrowing
         // only positions 0 ("*смә", whole dictionary) and 1 ("м*мә", the "мин" range) are probed —

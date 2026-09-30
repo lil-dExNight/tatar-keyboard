@@ -131,7 +131,7 @@ class GoldenExportTest {
         val keys = file.readLines(Charsets.UTF_8).filter { it.isNotBlank() }.map { line ->
             val f = line.split('\t')
             val more = if (f.size > 5 && f[5].isNotEmpty()) f[5].split(',').map { it.toInt(16) }.toIntArray() else IntArray(0)
-            KeyNeighborTable.RawKey(f[0].toInt(16), f[1].toInt(), f[2].toInt(), f[3].toInt(), f[4].toInt(), more)
+            KeyNeighborTable.RawKey(f[0].toInt(16), more)
         }
         return KeyNeighborTable.build(if (lang == "tt") "tt_RU" else "ru", true, keys)
     }
@@ -224,7 +224,7 @@ class GoldenExportTest {
             val cps = word.codePoints().toArray()
             for (n in 1..cps.size) out.add(String(cps, 0, n))
             // Deterministic one-letter typos to exercise the fuzzy classes: long-press partners
-            // (class #1) and a neighbour substitution in the middle (class #2/#4 geometry).
+            // (class #1) and a neighbour substitution in the middle (class #4).
             for (pos in cps.indices) {
                 val swapped = TYPO[cps[pos]] ?: continue
                 val t = cps.copyOf(); t[pos] = swapped

@@ -264,8 +264,8 @@ internal class TdictPrefixIndex private constructor(
     private var fuzzyVisited = 0
     private var fuzzyOverBudget = false
     private var fuzzyPrefixLength = 0
-    // Variants that consumed the shared MAX_FUZZY_VARIANTS budget so far (every class #1/#2/#3
-    // variant and each class #4 survivor; class #4 probes count against MAX_FUZZY_PROBES).
+    // Variants that consumed the shared MAX_FUZZY_VARIANTS budget so far (every class #1 variant
+    // and each class #4 survivor; class #4 probes count against MAX_FUZZY_PROBES).
     private var fuzzyVariantsUsed = 0
     private var fuzzyProbesUsed = 0
 
@@ -548,13 +548,12 @@ internal class TdictPrefixIndex private constructor(
 
     /**
      * Fills the cells the exact pass left empty with the best typo-recovery candidates. Order:
-     * edit class first (#1 long-press partner, #2 geometric neighbor, #3 transposition, #4 full
-     * single substitution); within a class, the same-length bonus if the policy enables it; then
-     * frequency descending, then code point ascending. Exact candidates always rank first and are
-     * never touched. Returns the total candidate count.
+     * edit class first (#1 long-press partner, then #4 full single substitution); within a class,
+     * the same-length bonus if the policy enables it; then frequency descending, then code point
+     * ascending. Exact candidates always rank first and are never touched. Returns the total
+     * candidate count.
      *
-     * The classes that run come from the engine's [FuzzyEditPolicy], set through [open]. No
-     * shipped policy enables classes #2 and #3; their generators have direct tests.
+     * The classes that run come from the engine's [FuzzyEditPolicy], set through [open].
      *
      * Class #4 has an extra condition: it runs only when the exact pass returned nothing and the
      * prefix has at least [MIN_SUBSTITUTION_PREFIX_CODE_POINTS] code points. The strip is empty
@@ -587,34 +586,6 @@ internal class TdictPrefixIndex private constructor(
             fuzzyCurrentClass = EDIT_CLASS_LONG_PRESS
             val emitted = FuzzyPrefixVariants.generateLongPressVariants(
                 exactScratch, prefixLength, table, codePointScratch, variantScratch,
-                MAX_FUZZY_VARIANTS - fuzzyVariantsUsed, fuzzyConsumer,
-            )
-            if (emitted < 0 || fuzzyOverBudget) {
-                lastFuzzyOverBudget = true
-                lastFuzzyVisitedCount = fuzzyVisited
-                return exactCount
-            }
-            fuzzyVariantsUsed += emitted
-        }
-
-        if (EDIT_CLASS_GEOMETRIC in fuzzyPolicy.editClasses) {
-            fuzzyCurrentClass = EDIT_CLASS_GEOMETRIC
-            val emitted = FuzzyPrefixVariants.generateGeometricVariants(
-                exactScratch, prefixLength, table, codePointScratch, variantScratch,
-                MAX_FUZZY_VARIANTS - fuzzyVariantsUsed, fuzzyConsumer,
-            )
-            if (emitted < 0 || fuzzyOverBudget) {
-                lastFuzzyOverBudget = true
-                lastFuzzyVisitedCount = fuzzyVisited
-                return exactCount
-            }
-            fuzzyVariantsUsed += emitted
-        }
-
-        if (EDIT_CLASS_TRANSPOSITION in fuzzyPolicy.editClasses) {
-            fuzzyCurrentClass = EDIT_CLASS_TRANSPOSITION
-            val emitted = FuzzyPrefixVariants.generateTranspositionVariants(
-                exactScratch, prefixLength, codePointScratch, variantScratch,
                 MAX_FUZZY_VARIANTS - fuzzyVariantsUsed, fuzzyConsumer,
             )
             if (emitted < 0 || fuzzyOverBudget) {
@@ -1535,20 +1506,18 @@ internal class TdictPrefixIndex private constructor(
         private const val NO_ENTRY = -1
 
         // Edit-class ranking keys. Exact candidates all sort as EDIT_CLASS_EXACT. For typo
-        // recovery the ascending order is #1 long-press partner < #2 geometric neighbor < #3
-        // transposition < #4 full single substitution, applied ahead of frequency by [ranksBefore]
-        // through the packed key of [fuzzyRankKey]. Exact candidates always rank first because
-        // they live in separate arrays and are merged first.
+        // recovery #1 long-press partner ranks before #4 full single substitution, ahead of
+        // frequency, through the packed key of [fuzzyRankKey] (see [ranksBefore]). Exact
+        // candidates always rank first because they live in separate arrays and are merged first.
+        // The numbering keeps the typo classes of the offline typo-set generator.
         private const val EDIT_CLASS_EXACT = 0
         internal const val EDIT_CLASS_LONG_PRESS = 1
-        internal const val EDIT_CLASS_GEOMETRIC = 2
-        internal const val EDIT_CLASS_TRANSPOSITION = 3
         internal const val EDIT_CLASS_SUBSTITUTION = 4
 
         // Which edit classes run is the per-engine [FuzzyEditPolicy] passed to [open].
 
         // Extra headroom on the variant buffer covers a re-encode a few bytes longer than the
-        // prefix; all edit classes keep the code-point length.
+        // prefix; both edit classes keep the code-point length.
         private const val VARIANT_HEADROOM = 8
 
         // Typo recovery needs at least three code points; the count is taken off the UTF-8 lead
@@ -1564,7 +1533,7 @@ internal class TdictPrefixIndex private constructor(
         private const val MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS = 4
 
         // Fixed budgets. Exceeding either drops the whole typo-recovery level. The variant budget
-        // covers classes #1 to #3 combined plus class #4 survivors; both budgets sit well above
+        // covers class #1 variants plus class #4 survivors; both budgets sit well above
         // what the recovery tests observe, so they only stop pathological input.
         private const val MAX_FUZZY_VARIANTS = 64
         private const val MAX_FUZZY_VISITED = 8192

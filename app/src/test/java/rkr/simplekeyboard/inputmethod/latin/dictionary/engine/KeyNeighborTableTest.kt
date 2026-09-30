@@ -60,6 +60,15 @@ class KeyNeighborTableTest {
     }
 
     @Test
+    fun theTatarLayoutHasThirtySevenLetterKeysAndThirtyNineNodes() {
+        // 37 = 6 + 11 + 11 + 9 letter keys; the node set also carries the two more-key-only
+        // letters ё and ъ, which are not keys of their own.
+        val table = E3bTestFixtures.tatarNeighborTable()
+        assertEquals(37, table.letterKeyCount)
+        assertEquals(39, table.nodes.size)
+    }
+
+    @Test
     fun tableCarriesItsSubtypeId() {
         assertEquals("tt_RU", E3aTestFixtures.tatarNeighborTable().subtypeId)
     }

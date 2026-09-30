@@ -84,8 +84,7 @@ class RealDictionaryPrefixIndexTest {
      * prefixes, but with the calibrated Tatar fuzzy policy (Phase C: classes #1 + #4 +
      * same-length bonus) and the layout-derived neighbour table engaged. Most of these prefixes
      * fill all three cells from the exact pass, so this measures the COMMON typing path with the
-     * fuzzy pass armed — the typo-set p95 lives in [TtTypoPhaseBCalibrationTest] (Phase B) and
-     * [TtTypoPhaseCCalibrationTest] (Phase C).
+     * fuzzy pass armed — the typo-set p95 lives in [TtTypoPhaseCCalibrationTest].
      */
     @Test
     fun computeP95WithTheTatarFuzzyPolicyOverReviewPrefixesIsAtMostFiveMilliseconds() {

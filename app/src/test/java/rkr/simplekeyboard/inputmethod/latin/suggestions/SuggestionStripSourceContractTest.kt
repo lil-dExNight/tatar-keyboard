@@ -285,7 +285,7 @@ class SuggestionStripSourceContractTest {
         val inputLogic = File(javaRoot, "inputlogic/InputLogic.java").readText()
         val connection = File(javaRoot, "RichInputConnection.java").readText()
         val commitBody = inputLogic.substringAfter("public boolean commitChosenSuggestion")
-            .substringBefore("private boolean layoutUsesAutoCaps")
+            .substringBefore("public int getCurrentRecapitalizeState()")
 
         // Fail-closed second line of defense, before any edit reaches the editor.
         assertTrue(
