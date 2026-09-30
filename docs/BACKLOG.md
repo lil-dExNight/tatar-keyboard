@@ -31,6 +31,33 @@ Open work only. When an item is done, delete it; the change itself is the record
 - **Full gesture navigation:** HyperOS ignores the adb toggle, so the mode has to be switched by
   hand and tested.
 
+## Known bugs
+
+- **Tatar glide dead after a language cycle.** After tt → ru → en → tt with the globe key, a
+  Tatar glide arms but commits nothing until the field is refocused. Suspected cause:
+  `LatinIME.updateKeyNeighbors` in `onCurrentSubtypeChanged` builds the glide geometry from the
+  previous keyboard.
+- **Double space after an auto-space.** A space typed right where an auto-space was appended
+  (a tapped suggestion, or the space moved after a punctuation mark) gives two spaces; it should
+  be swallowed.
+
+## Researched, not done
+
+- **Glide aliases for ъ and ё.** Let a glide over ь or е also decode words with ъ or ё; touches
+  the glide goldens, the calibration pins and `scripts/glide_pack.py`.
+- **Glide spacing.** A space before a glide that follows punctuation or a typed word, and a
+  phantom space after it; must keep the one-backspace undo and autocorrect consistent.
+- **Doubled letters without a twin.** Score a doubled letter on a glide path when the dictionary
+  has no single-letter twin; needs a calibration run and a latency check.
+- **Glide context rerank.** Rerank glide candidates by the previous word's bigram successors;
+  calibration-heavy.
+- **Digits on long-press** of the top letter row (tt, ru); needs a visual check of the popup and
+  the `RowkeysSyncTest` parity.
+- **Double-space period only in general text fields**, not in phone, number, email or URL fields.
+- **Haptics without per-press allocation.** `AudioAndHapticFeedbackManager` allocates a lambda
+  and a `VibrationEffect` per press and calls `View.performHapticFeedback` off the UI thread below
+  API 29; the feel needs a physical device to check.
+
 ## Parked decisions
 
 - **Emoji suggestion under the cursor without a trailing space.** Deferred; weigh against user
