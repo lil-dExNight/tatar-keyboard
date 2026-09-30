@@ -331,6 +331,17 @@ object TatarWordUtils {
     }
 
     /**
+     * True when a typed space lands right after an auto-space that is still in place, so it is
+     * swallowed instead of doubling the space. [codePointBefore] is the code point before the cursor.
+     */
+    @JvmStatic
+    fun swallowsSpaceAtAutoSpace(
+        afterAutoSpace: Boolean,
+        hasSelection: Boolean,
+        codePointBefore: Int,
+    ): Boolean = afterAutoSpace && !hasSelection && codePointBefore == ' '.code
+
+    /**
      * True for the separators autocorrect may fire on: a space or punctuation.
      *
      * [Character.isSpaceChar] covers the plain and the non-breaking space; the punctuation

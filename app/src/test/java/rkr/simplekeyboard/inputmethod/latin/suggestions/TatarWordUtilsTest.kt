@@ -636,4 +636,20 @@ class TatarWordUtilsTest {
                 TatarWordUtils.swapsWithAutoSpace(text.codePointAt(0)))
         }
     }
+
+    // --- swallowsSpaceAtAutoSpace ----------------------------------------------------------------
+
+    @Test
+    fun aSpaceIsSwallowedOnlyRightAtAnIntactAutoSpace() {
+        val space = ' '.code
+        assertTrue(TatarWordUtils.swallowsSpaceAtAutoSpace(true, false, space))
+        assertFalse("no auto-space at the cursor",
+            TatarWordUtils.swallowsSpaceAtAutoSpace(false, false, space))
+        assertFalse("a selection is replaced, not swallowed",
+            TatarWordUtils.swallowsSpaceAtAutoSpace(true, true, space))
+        assertFalse("the auto-space was edited away",
+            TatarWordUtils.swallowsSpaceAtAutoSpace(true, false, 'з'.code))
+        assertFalse("nothing before the cursor",
+            TatarWordUtils.swallowsSpaceAtAutoSpace(true, false, -1))
+    }
 }

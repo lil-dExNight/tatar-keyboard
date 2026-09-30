@@ -351,6 +351,15 @@ public final class InputLogic {
                 && mAutoSpaceCursor == mConnection.getExpectedSelectionStart();
         mAutoSpaceCursor = NO_AUTO_SPACE;
         if (event.mCodePoint == Constants.CODE_SPACE) {
+            if (TatarWordUtils.swallowsSpaceAtAutoSpace(afterAutoSpace,
+                    mConnection.hasSelection(), mConnection.getCodePointBeforeCursor())) {
+                // "сүз " + " " stays "сүз ": the auto-space already is the space. It counts as a
+                // typed space, so a quick second one still gives "сүз. ".
+                mJustDoubleSpaced = false;
+                mLastSpaceDownTime = SystemClock.uptimeMillis();
+                inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
+                return;
+            }
             if (tryDoubleSpacePeriod(inputTransaction.mSettingsValues)) {
                 inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
                 return;

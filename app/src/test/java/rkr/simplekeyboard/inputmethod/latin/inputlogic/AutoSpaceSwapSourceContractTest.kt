@@ -114,6 +114,19 @@ class AutoSpaceSwapSourceContractTest {
     }
 
     @Test
+    fun aSpaceAtTheAutoSpaceIsSwallowedBeforeTheDoubleSpaceCheck() {
+        val separator = body("private void handleSeparatorEvent(")
+        val swallow = separator.indexOf("TatarWordUtils.swallowsSpaceAtAutoSpace(afterAutoSpace")
+        val period = separator.indexOf("tryDoubleSpacePeriod(")
+        assertTrue("the swallow check precedes the double-space period", swallow in 0 until period)
+        // The swallowed space arms the double-space period like a typed one.
+        val branch = separator.substring(swallow, period)
+        assertTrue(branch.contains("mLastSpaceDownTime = SystemClock.uptimeMillis();"))
+        assertTrue(branch.contains("mJustDoubleSpaced = false;"))
+        assertTrue(branch.contains("return;"))
+    }
+
+    @Test
     fun theOnlyOtherArmingIsTheSwapItself() {
         val arms = Regex("mAutoSpaceCursor = mConnection\\.getExpectedSelectionStart\\(\\);")
         assertEquals(1, arms.findAll(source).count())
