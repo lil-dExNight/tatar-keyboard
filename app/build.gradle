@@ -21,8 +21,8 @@ android {
         applicationId "org.tatarkeyboard.ime"
         minSdkVersion 24
         targetSdkVersion 37
-        versionCode 43
-        versionName "3.6.0"
+        versionCode 44
+        versionName "3.7.0"
         // The app ships three locales only: Tatar, Russian, English.
         resConfigs "tt", "ru", "en"
         // Instrumentation tests (androidTest only). The legacy platform runner needs no external

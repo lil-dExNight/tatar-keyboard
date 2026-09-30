@@ -1,0 +1,5 @@
+• Punctuation after a tapped suggestion replaces the added space; a new line starts a sentence
+• An undone autocorrection is not repeated in the same field
+• Glide typing: capitals under Caps Lock, right words after a language or number row switch; sliding in English types letters again
+• On the lock screen: no suggestions, glide typing, recent emoji or learning
+• The personal dictionary learns more new Tatar words and no word pairs across sentences

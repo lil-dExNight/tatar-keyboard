@@ -47,6 +47,18 @@ It must run after step 2, because `--full` cleans `app/build/`.
 - [ ] Keep the `RESULT|zopfli+signed|…` (size) and `RESULT|sha256|…` lines for the release record.
 - [ ] Optional: pack again to `dist/.repro.apk`, `cmp` both files, delete the copy (CI job
       `reproducible` does the same on unsigned builds).
+- [ ] `app/src/release/generated/baselineProfiles/` is empty. It is git-ignored, and a startup
+      profile there changes the dex layout, so the APK would differ from a build of the tag.
+
+### Reproducing a published APK
+
+AGP writes the commit checked out at build time into `META-INF/version-control-info.textproto`.
+The pack runs before the release commit, so that file names the release commit's parent. To
+rebuild a published APK byte for byte, clone the repository (a `git worktree` has a `.git` file
+instead of a directory, so AGP records no commit), check out the commit named in that file,
+`git checkout vX.Y.Z -- .` to lay the tag's tree over it, add the untracked
+`gradle/wrapper/gradle-wrapper.jar`, `local.properties` and `keystore.properties`, and run
+`scripts/release_pack.sh`. Remove the copied secrets afterwards.
 
 ## 4. Verify the signed APK
 

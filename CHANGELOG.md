@@ -11,13 +11,14 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
-## [Unreleased]
+## [3.7.0] — 2026-09-30
 
 ### Changed
 
 - A comma, period or other punctuation typed right after a tapped suggestion replaces the added space, so you get "сүз, " instead of "сүз ,".
 - Sentence-start suggestions also appear at the start of a new line.
 - After you undo an autocorrection, the same word is not corrected again in that field.
+- The keyboard does less work when it starts: each bundled dictionary is checked once instead of twice.
 
 ### Fixed
 
@@ -33,8 +34,8 @@ These hold for every release and are not repeated in the entries below:
 
 ### Security
 
-- On the lock screen (for example a quick reply to a notification) the keyboard shows no suggestions, no glide typing and no recent emoji, and learns nothing, also after the device was unlocked once since the restart.
-- Incognito mode also stops adding emoji to the recently used list.
+- On the lock screen (for example in a quick reply to a notification) the keyboard shows no suggestions, no glide typing and no recent emoji, and learns nothing, even if the device has been unlocked since it was restarted.
+- "Incognito mode" also stops adding emoji to the recently used list.
 - A word you start typing and complete with the paste key is no longer learned by the personal dictionary.
 
 ## [3.6.0] — 2026-09-29
