@@ -74,7 +74,13 @@ class EmojiPanelControllerRecentsTest {
     private val beam = "\uD83D\uDE01"
     private val base = EmojiSet.parse("#smileys\n$grin\n$beam\n\uD83D\uDE02")
     private val openGate = RecentEmojiGate {
-        RecentEmojiGateState(shouldShowSuggestions = true, userUnlocked = true, noPersonalizedLearning = false)
+        RecentEmojiGateState(
+            shouldShowSuggestions = true,
+            userUnlocked = true,
+            noPersonalizedLearning = false,
+            keyguardLocked = false,
+            incognito = false,
+        )
     }
 
     private fun controllerWith(

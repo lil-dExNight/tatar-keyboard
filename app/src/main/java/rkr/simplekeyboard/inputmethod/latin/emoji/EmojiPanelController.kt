@@ -330,8 +330,8 @@ class EmojiPanelController internal constructor(
 
     /**
      * An emoji was inserted from the panel — a grid tap, including a tap inside the Recent tab. The
-     * three-factor gate is re-read on the background executor before the in-memory list is touched,
-     * so a forbidden field, a locked device or a no-personalized-learning field records nothing.
+     * recording gate is re-read on the background executor before the in-memory list is touched,
+     * so a closed gate records nothing.
      */
     fun onEmojiInserted(sequence: String) {
         val store = recentStore ?: return
@@ -536,10 +536,13 @@ class EmojiPanelController internal constructor(
                 standaloneExecutor.execute {
                     val gate = RecentEmojiGate {
                         val userManager = appContext.getSystemService(Context.USER_SERVICE) as? UserManager
+                        // Clearing records nothing, so only the path gate matters here.
                         RecentEmojiGateState(
                             shouldShowSuggestions = false,
                             userUnlocked = userManager == null || userManager.isUserUnlocked,
                             noPersonalizedLearning = false,
+                            keyguardLocked = false,
+                            incognito = false,
                         )
                     }
                     RecentEmojiStore(

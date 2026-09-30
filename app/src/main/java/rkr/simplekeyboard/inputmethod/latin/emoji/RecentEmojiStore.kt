@@ -43,31 +43,40 @@ fun interface RecentEmojiGate {
 }
 
 /**
- * A single evaluation of the three gate factors.
+ * A single evaluation of the gate factors. No factor has a default, so a caller cannot leave one
+ * open by omission.
  *
- * [allowsRecording] is the list-update gate: all three of `mShouldShowSuggestions` (already covering
- * password, visible password, e-mail, URI, filter, NO_SUGGESTIONS and autocomplete),
- * `UserManager.isUserUnlocked()` and NOT `IME_FLAG_NO_PERSONALIZED_LEARNING` must hold.
- * [allowsPathAccess] is the read/write gate: touching the path requires the device to be unlocked,
- * because before the first unlock the credential-protected path does not exist yet.
+ * [allowsRecording] is the list-update gate: `mShouldShowSuggestions` (already covering password,
+ * visible password, e-mail, URI, filter, NO_SUGGESTIONS and autocomplete), unlocked user, NOT
+ * `IME_FLAG_NO_PERSONALIZED_LEARNING`, no keyguard shown and learning not paused (incognito).
+ * [allowsDisplay] hides the list while the keyguard is shown. [allowsPathAccess] is the read/write
+ * gate: before the first unlock the credential-protected path does not exist yet.
  */
 data class RecentEmojiGateState(
     val shouldShowSuggestions: Boolean,
     val userUnlocked: Boolean,
     val noPersonalizedLearning: Boolean,
+    val keyguardLocked: Boolean,
+    val incognito: Boolean,
 ) {
     val allowsRecording: Boolean
-        get() = shouldShowSuggestions && userUnlocked && !noPersonalizedLearning
+        get() = shouldShowSuggestions && userUnlocked && !noPersonalizedLearning &&
+            !keyguardLocked && !incognito
+
+    val allowsDisplay: Boolean
+        get() = !keyguardLocked
 
     val allowsPathAccess: Boolean
         get() = userUnlocked
 
     companion object {
-        /** Fail-closed default: nothing is recorded and the path is not touched. */
+        /** Fail-closed default: nothing is recorded or shown and the path is not touched. */
         val BLOCKED = RecentEmojiGateState(
             shouldShowSuggestions = false,
             userUnlocked = false,
             noPersonalizedLearning = true,
+            keyguardLocked = true,
+            incognito = true,
         )
     }
 }
@@ -78,7 +87,7 @@ data class RecentEmojiGateState(
  * Every method is meant to run on the single background executor that the [EmojiPanelController]
  * owns, so all mutation of the in-memory list happens on one serialized owner and never on the UI
  * thread. Kept injectable — file access, the gate and the medium behind seams — so the MRU rules,
- * the three gates, the "write once per hide only when changed" rule, the fail-closed reads and the
+ * the gate factors, the "write once per hide only when changed" rule, the fail-closed reads and the
  * "erased never resurrects" rule are all verified on the plain JVM.
  *
  * The gate is re-read on every attempt: the record path checks [RecentEmojiGateState.allowsRecording]
@@ -99,8 +108,12 @@ internal class RecentEmojiStore(
     var saveCount = 0
         private set
 
-    /** The current in-memory recents, honouring the unlock gate for the first read. */
+    /**
+     * The current recents, honouring the unlock gate for the first read. Empty while the keyguard
+     * is shown; the list itself is kept for the moment the device is unlocked.
+     */
     fun currentRecents(available: Set<String>): List<String> {
+        if (!gate.current().allowsDisplay) return emptyList()
         ensureLoaded(available)
         return recents.entries
     }
@@ -119,9 +132,9 @@ internal class RecentEmojiStore(
     }
 
     /**
-     * Records a use of [sequence]. Gated by all three factors, re-read here before any mutation of
-     * the in-memory list, so a field forbidding suggestions, a locked device or a
-     * no-personalized-learning field never grows the list by even one entry.
+     * Records a use of [sequence]. Gated by [RecentEmojiGateState.allowsRecording], re-read here
+     * before any mutation of the in-memory list, so a closed gate never grows the list by even one
+     * entry.
      */
     fun recordUse(sequence: String, available: Set<String>) {
         if (!gate.current().allowsRecording) return

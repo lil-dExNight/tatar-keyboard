@@ -56,6 +56,8 @@ class RecentEmojiStoreTest {
         shouldShowSuggestions = true,
         userUnlocked = true,
         noPersonalizedLearning = false,
+        keyguardLocked = false,
+        incognito = false,
     )
 
     private val dummyFile = File("recent_emoji_store_test")
@@ -63,10 +65,10 @@ class RecentEmojiStoreTest {
     private fun storeWith(ops: FakeFileOps, gate: FakeGate): RecentEmojiStore =
         RecentEmojiStore(RecentEmojiFileProvider { dummyFile }, ops, gate)
 
-    // --- The three-factor gate, each factor alone blocks; all three open records ---------------
+    // --- The gate factors: each one alone blocks recording; all open records -------------------
 
     @Test
-    fun allThreeGatesOpenAllowsRecording() {
+    fun allGatesOpenAllowsRecording() {
         val ops = FakeFileOps()
         val store = storeWith(ops, FakeGate(open))
         store.recordUse("A", setOf("A"))
@@ -101,6 +103,48 @@ class RecentEmojiStoreTest {
         store.recordUse("A", setOf("A"))
         assertTrue(store.currentRecents(setOf("A")).isEmpty())
         assertFalse(store.isDirty())
+    }
+
+    @Test
+    fun aLockedKeyguardHidesTheListAndBlocksRecording() {
+        val ops = FakeFileOps().apply { content = "A" }
+        val gate = FakeGate(open)
+        val store = storeWith(ops, gate)
+        assertEquals(listOf("A"), store.currentRecents(setOf("A", "B")))
+        gate.state = open.copy(keyguardLocked = true)
+        store.recordUse("B", setOf("A", "B"))
+        assertFalse(store.isDirty())
+        assertTrue(store.currentRecents(setOf("A", "B")).isEmpty())
+        // Unlocking shows the same list again; nothing was dropped or added.
+        gate.state = open
+        assertEquals(listOf("A"), store.currentRecents(setOf("A", "B")))
+    }
+
+    @Test
+    fun aLockedKeyguardShowsNothingEvenBeforeTheFirstRead() {
+        val ops = FakeFileOps().apply { content = "A" }
+        val store = storeWith(ops, FakeGate(open.copy(keyguardLocked = true)))
+        assertTrue(store.currentRecents(setOf("A")).isEmpty())
+        assertEquals(0, ops.readCount)
+    }
+
+    @Test
+    fun incognitoBlocksRecordingButKeepsTheList() {
+        val ops = FakeFileOps().apply { content = "A" }
+        val store = storeWith(ops, FakeGate(open.copy(incognito = true)))
+        store.recordUse("B", setOf("A", "B"))
+        assertFalse(store.isDirty())
+        assertEquals(listOf("A"), store.currentRecents(setOf("A", "B")))
+        store.flushOnHide()
+        assertEquals(0, ops.writeCount)
+    }
+
+    @Test
+    fun theBlockedStateClosesEveryFactor() {
+        val blocked = RecentEmojiGateState.BLOCKED
+        assertFalse(blocked.allowsRecording)
+        assertFalse(blocked.allowsDisplay)
+        assertFalse(blocked.allowsPathAccess)
     }
 
     @Test

@@ -173,11 +173,13 @@ class EditorInfoPrivacyMatrixTest {
             incognito = false,
         )
 
-        /** The REAL recent-emoji gate state, the unlock factor permissive. */
+        /** The REAL recent-emoji gate state, the non-field factors permissive. */
         val recentsAllowed: Boolean = RecentEmojiGateState(
             shouldShowSuggestions = fieldAllowsSuggestions,
             userUnlocked = true,
             noPersonalizedLearning = noPersonalizedLearning,
+            keyguardLocked = false,
+            incognito = false,
         ).allowsRecording
 
         /** The cache reload runs unless the field is password-classified (`LatinIME.isPasswordField`). */
@@ -518,6 +520,8 @@ class EditorInfoPrivacyMatrixTest {
         assertTrue("the personalized-learning flag",
             gate.contains("settingsValues.mInputAttributes.mNoPersonalizedLearning"))
         assertTrue("the unlock state", gate.contains("userManager.isUserUnlocked()"))
+        assertTrue("the keyguard state", gate.contains("isKeyguardLocked()"))
+        assertTrue("pause learning", gate.contains("Settings.readIncognitoModeEnabled(mDevicePrefs)"))
         assertTrue(gate.contains("new RecentEmojiGateState("))
         assertTrue("missing settings mean forbidden, not permitted",
             gate.contains("settingsValues == null"))

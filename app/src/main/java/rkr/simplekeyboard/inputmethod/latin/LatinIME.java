@@ -22,6 +22,7 @@
 package rkr.simplekeyboard.inputmethod.latin;
 
 import android.app.AlertDialog;
+import android.app.KeyguardManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -835,10 +836,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 }
             }
         };
-        // The gate for updating the recent emoji, re-read on every store attempt:
+        // The gate for the recent emoji, re-read on every store attempt:
         //   mShouldShowSuggestions (covers password, visible password, e-mail, URI, filter,
         //   NO_SUGGESTIONS and autocomplete) AND UserManager.isUserUnlocked() AND
-        //   NOT mNoPersonalizedLearning (IME_FLAG_NO_PERSONALIZED_LEARNING).
+        //   NOT mNoPersonalizedLearning (IME_FLAG_NO_PERSONALIZED_LEARNING) AND no keyguard
+        //   AND NOT pause learning (incognito). The keyguard also hides the Recent tab.
         final RecentEmojiGate recentGate = () -> {
             final SettingsValues settingsValues = mSettings.getCurrent();
             final boolean shouldShowSuggestions = settingsValues != null
@@ -850,7 +852,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                     (UserManager) getSystemService(Context.USER_SERVICE);
             final boolean userUnlocked = userManager != null && userManager.isUserUnlocked();
             return new RecentEmojiGateState(
-                    shouldShowSuggestions, userUnlocked, noPersonalizedLearning);
+                    shouldShowSuggestions, userUnlocked, noPersonalizedLearning,
+                    isKeyguardLocked(), Settings.readIncognitoModeEnabled(mDevicePrefs));
         };
         mEmojiPanelController = new EmojiPanelController(this, emojiSurface, mHandler, recentGate);
     }
@@ -1357,6 +1360,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
+     * Whether the keyguard is shown (lock screen quick reply, PIN entry), also after the first
+     * unlock. Nothing learned is shown or learned there. A missing KeyguardManager counts as locked.
+     */
+    private boolean isKeyguardLocked() {
+        final KeyguardManager keyguardManager = getSystemService(KeyguardManager.class);
+        return keyguardManager == null || keyguardManager.isKeyguardLocked();
+    }
+
+    /**
      * Computes whether opt-in word suggestions may run for the current field and subtype.
      */
     private boolean isSuggestionsEligible() {
@@ -1374,7 +1386,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 && settingsValues.mInputAttributes.mShouldShowSuggestions
                 // IME_FLAG_NO_PERSONALIZED_LEARNING: no strip and no engine queries in the field.
                 && !settingsValues.mInputAttributes.mNoPersonalizedLearning
-                && mInputLogic.mConnection.hasCursorPosition();
+                && mInputLogic.mConnection.hasCursorPosition()
+                // The strip would offer learned words on the lock screen.
+                && !isKeyguardLocked();
     }
 
     /**
@@ -1387,7 +1401,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 && activeDictionarySubtype() != null
                 && settingsValues.mInputAttributes.mShouldShowSuggestions
                 && !settingsValues.mInputAttributes.mNoPersonalizedLearning
-                && mInputLogic.mConnection.hasCursorPosition();
+                && mInputLogic.mConnection.hasCursorPosition()
+                && !isKeyguardLocked();
     }
 
     /**

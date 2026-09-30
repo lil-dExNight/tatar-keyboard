@@ -1079,6 +1079,7 @@ PLrkr/simplekeyboard/inputmethod/latin/LatinIME;->hideWindow()V
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME;->isCurrentFieldPasswordField()Z
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME;->isGlideEligible()Z
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME;->isImeSuppressedByHardwareKeyboard()Z
+HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME;->isKeyguardLocked()Z
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME;->isPasswordField(Landroid/view/inputmethod/EditorInfo;)Z
 PLrkr/simplekeyboard/inputmethod/latin/LatinIME;->isShowingOptionDialog()Z
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME;->isSuggestionsEligible()Z
@@ -2596,7 +2597,8 @@ Lrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiFileOps;
 Lrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiFileProvider;
 Lrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiGate;
 PLrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiGateState;-><clinit>()V
-PLrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiGateState;-><init>(ZZZ)V
+PLrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiGateState;-><init>(ZZZZZ)V
+PLrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiGateState;->getAllowsDisplay()Z
 PLrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiGateState;->getAllowsPathAccess()Z
 PLrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiGateState;->getAllowsRecording()Z
 PLrkr/simplekeyboard/inputmethod/latin/emoji/RecentEmojiGateState$Companion;-><init>()V
