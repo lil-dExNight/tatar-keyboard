@@ -20,6 +20,7 @@ bilingual.
 - [ASSET-PIPELINE.md](ASSET-PIPELINE.md) — how `scripts/rebuild_assets.py` builds the bundled data, pinned sizes and SHA-256, known drift.
 - [THREAT-MODEL.md](THREAT-MODEL.md) — assets, trust boundaries, controls and the residual-risk register.
 - [PERF-BUDGETS.md](PERF-BUDGETS.md) — performance budgets and the test or script that enforces each.
+- [DEVICE-TEST-PLAN.md](DEVICE-TEST-PLAN.md) — end-to-end test of the keyboard on a connected phone.
 - [PUBLISH-CHECKLIST.md](PUBLISH-CHECKLIST.md) — release procedure, from preflight to store upload.
 - [BACKLOG.md](BACKLOG.md) — open work only.
 - [HISTORY.md](HISTORY.md) — removed documents, with the last commit that contains each.

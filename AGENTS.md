@@ -16,7 +16,7 @@ grep first in `PATH` (they use `stat -c`, `sha256sum` and `grep -P`):
 |---|---|
 | JVM tests | `./gradlew test` (`--rerun-tasks` forces a full rerun); JUnit 4, no Robolectric. |
 | Python tests | `for f in tests/*/test_*.py; do python3 "$f" \|\| exit 1; done`; plain `unittest` modules, pytest is not used. |
-| Device tests | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, `adb install -r` both APKs, then `adb shell am instrument -w -e class <test class> org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner`; timing assertions need an idle device with the screen on, and `GlideUiDeviceTest` is calibrated for a 720x1640 screen and fails fast on any other. |
+| Device tests | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, `adb install -r` both APKs, then `adb shell am instrument -w -e class <test class> org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner`; timing assertions need an idle device with the screen on, and `GlideUiDeviceTest` is calibrated for a 720x1640 screen and fails fast on any other. Full procedure: `docs/DEVICE-TEST-PLAN.md`. |
 | Emulator smoke test | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk <path>] [--no-boot] [--outdir build/emulator-smoke/]`; installs and selects the IME, runs the typing, suggestion and emoji probes and prints `RESULT\|…` lines. |
 | Device performance check | `bash scripts/device-perf-ritual.sh [--serial <id>] [--pkg org.tatarkeyboard.ime.debug] [--outdir build/device-perf-ritual]`; measures cold start, PSS and frame times on a 720x1640 device and restores the device state on exit. |
 | Lint | `./gradlew lintRelease`; `abortOnError` is on, baseline `app/lint-baseline.xml`, rule classification `app/lint.xml`. |
