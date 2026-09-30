@@ -87,8 +87,9 @@ dictionary identity, `LookupKind`). The worker passes the result to `ResultHando
 posts it to the UI thread and applies it only if `isCurrent(token)` still holds.
 
 **Lookup kinds** (`LookupKind`): `PREFIX` (word completion), `NEXT_WORD` (next-word prediction
-after a committed word), `GLIDE` (glide decoding). At a sentence start the strip is filled
-synchronously from a static table (`SentStartIndex`, `assets/dictionaries/*_sentstart_v1.txt`).
+after a committed word), `GLIDE` (glide decoding). At a sentence start (the field start, a line
+start, or '.', '!', '?', '…' followed by a space) the strip is filled synchronously from a static
+table (`SentStartIndex`, `assets/dictionaries/*_sentstart_v1.txt`).
 
 **Strip.** `SuggestionStripView` is one Canvas view with three cells
 (`SuggestionStripState.CELL_COUNT`). A tap commits the word with a space.

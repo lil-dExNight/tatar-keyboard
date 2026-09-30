@@ -225,7 +225,18 @@ class TatarWordUtilsTest {
         // The prediction moment is the space after the sentence end, not the period itself.
         assertFalse(TatarWordUtils.isSentenceStartContext("сүз."))
         assertFalse(TatarWordUtils.isSentenceStartContext("сүз"))
-        assertFalse(TatarWordUtils.isSentenceStartContext("сүз.\n")) // a newline is not U+0020
+    }
+
+    @Test
+    fun aLineBreakIsASentenceStart() {
+        // The line break is in the cache, so it needs no provenance, with or without spaces after.
+        assertTrue(TatarWordUtils.isSentenceStartContext("сүз.\n"))
+        assertTrue(TatarWordUtils.isSentenceStartContext("сүз\n"))
+        assertTrue(TatarWordUtils.isSentenceStartContext("сүз\n  "))
+        assertTrue(TatarWordUtils.isSentenceStartContext("\n"))
+        // A word typed on the new line, or a word after the line break, is not.
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз\nбү"))
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз \n сүз "))
     }
 
     @Test

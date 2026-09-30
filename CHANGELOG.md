@@ -13,6 +13,10 @@ These hold for every release and are not repeated in the entries below:
 
 ## [Unreleased]
 
+### Changed
+
+- Sentence-start suggestions also appear at the start of a new line.
+
 ### Fixed
 
 - Glide typing under Caps Lock types the word in capitals.

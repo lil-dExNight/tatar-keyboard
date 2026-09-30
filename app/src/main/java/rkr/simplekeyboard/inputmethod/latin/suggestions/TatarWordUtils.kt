@@ -207,6 +207,8 @@ object TatarWordUtils {
             // provably reached the start of the text.
             return cacheReachedTextStart
         }
+        // A line start: the line break itself is in the cache, so no provenance is needed.
+        if (textBeforeCursor[separatorStart - 1] == '\n') return true
         if (separatorStart == length) return false // no trailing U+0020 run at all
         var punctStart = separatorStart
         while (punctStart > 0 && isSentenceEndingPunctuation(textBeforeCursor[punctStart - 1])) {

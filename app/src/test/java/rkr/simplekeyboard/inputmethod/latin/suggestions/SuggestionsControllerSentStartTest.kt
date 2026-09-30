@@ -560,6 +560,19 @@ class SuggestionsControllerSentStartTest {
     }
 
     @Test
+    fun aLineBreakPaintsTheSentenceStartTable() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true, subtypeId = tatar)
+
+        h.editor.rawText = "Сәлам\n"
+        h.controller.onTextChanged()
+
+        // The REAL detector: a new line starts a sentence, so the table answers, not the engine.
+        assertEquals(CAPITALIZED_TABLE.take(3), h.strip.lastCells())
+        assertTrue(h.engine(tatar).nextWordRequests.isEmpty())
+    }
+
+    @Test
     fun aCommaWithNothingBeforeItPredictsNothing() {
         val h = Harness()
         h.controller.onStartInput(eligible = true, subtypeId = tatar)
