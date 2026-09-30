@@ -51,6 +51,9 @@ public final class InputLogic {
     // Appended to an accepted suggestion so the next word can be typed straight away.
     private static final String AUTO_SPACE = " ";
 
+    // The value of mAutoSpaceCursor when no auto-space can be replaced.
+    private static final int NO_AUTO_SPACE = -1;
+
     // TODO : Remove this member when we can.
     final LatinIME mLatinIME;
 
@@ -62,6 +65,9 @@ public final class InputLogic {
     private long mLastSpaceDownTime;
     // Whether the last input was a double-space-to-period, for revert on backspace.
     private boolean mJustDoubleSpaced;
+    // Cursor position right after an auto-space this class appended, or NO_AUTO_SPACE. A
+    // punctuation mark typed exactly there replaces the space.
+    private int mAutoSpaceCursor = NO_AUTO_SPACE;
 
     /**
      * Create a new instance of the input logic.
@@ -80,9 +86,10 @@ public final class InputLogic {
      */
     public void startInput() {
         mRecapitalizeStatus.disable(); // Do not perform recapitalize until the cursor is moved once
-        // Double-space state must not leak between editors.
+        // Double-space and auto-space state must not leak between editors.
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
     }
 
     public void clearCaches() {
@@ -114,6 +121,7 @@ public final class InputLogic {
         // The committed text (".com" key, paste) may itself end in ". " — a pending
         // double-space revert would corrupt it, so the state must be dropped.
         mJustDoubleSpaced = false;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
         // Space state must be updated before calling updateShiftState
         inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
         return inputTransaction;
@@ -135,6 +143,7 @@ public final class InputLogic {
             // does in resetEntireInputState() on unexpected cursor moves.
             mJustDoubleSpaced = false;
             mLastSpaceDownTime = 0;
+            mAutoSpaceCursor = NO_AUTO_SPACE;
         }
         mConnection.updateSelection(newSelStart, newSelEnd);
     }
@@ -189,8 +198,9 @@ public final class InputLogic {
         final CharSequence textToCommit = event.getTextToCommit();
         if (!TextUtils.isEmpty(textToCommit)) {
             mConnection.commitText(textToCommit, 1);
-            // Committed combiner text invalidates a pending double-space revert.
+            // Committed combiner text invalidates a pending double-space revert and auto-space.
             mJustDoubleSpaced = false;
+            mAutoSpaceCursor = NO_AUTO_SPACE;
         }
     }
 
@@ -326,6 +336,7 @@ public final class InputLogic {
      */
     private void handleNonSeparatorEvent(final Event event) {
         mJustDoubleSpaced = false;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
         sendKeyCodePoint(event.mCodePoint);
     }
 
@@ -335,6 +346,10 @@ public final class InputLogic {
      * @param inputTransaction The transaction in progress.
      */
     private void handleSeparatorEvent(final Event event, final InputTransaction inputTransaction) {
+        // The auto-space can be replaced only by the very next key, typed at the same position.
+        final boolean afterAutoSpace = mAutoSpaceCursor != NO_AUTO_SPACE
+                && mAutoSpaceCursor == mConnection.getExpectedSelectionStart();
+        mAutoSpaceCursor = NO_AUTO_SPACE;
         if (event.mCodePoint == Constants.CODE_SPACE) {
             if (tryDoubleSpacePeriod(inputTransaction.mSettingsValues)) {
                 inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
@@ -342,6 +357,24 @@ public final class InputLogic {
             }
         } else {
             mJustDoubleSpaced = false;
+            if (afterAutoSpace && TatarWordUtils.swapsWithAutoSpace(event.mCodePoint)
+                    && !mConnection.hasSelection()
+                    && mConnection.getCodePointBeforeCursor() == Constants.CODE_SPACE) {
+                // "сүз " + "," gives "сүз, ": the mark takes the space's place and the space
+                // moves after it, in one batch. The moved space stays replaceable, so "?!" or
+                // "..." typed in a row stay together.
+                mConnection.beginBatchEdit();
+                try {
+                    mConnection.deleteTextBeforeCursor(1);
+                    mConnection.commitText(new StringBuilder(2).appendCodePoint(event.mCodePoint)
+                            .append(' '), 1);
+                } finally {
+                    mConnection.endBatchEdit();
+                }
+                mAutoSpaceCursor = mConnection.getExpectedSelectionStart();
+                inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
+                return;
+            }
         }
         sendKeyCodePoint(event.mCodePoint);
 
@@ -399,6 +432,7 @@ public final class InputLogic {
                 event.isKeyRepeat() && mConnection.getExpectedSelectionStart() > 0
                 ? InputTransaction.SHIFT_UPDATE_LATER : InputTransaction.SHIFT_UPDATE_NOW;
         inputTransaction.requireShiftUpdate(shiftUpdateKind);
+        mAutoSpaceCursor = NO_AUTO_SPACE;
 
         if (mConnection.hasSelection()) {
             mJustDoubleSpaced = false;
@@ -577,10 +611,9 @@ public final class InputLogic {
         }
         // The space goes into the same commitText: a second commit would show the word without
         // its space for one frame and cost another IPC round trip.
-        final String textToCommit =
-                withAutoSpace
-                        && TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor())
-                        ? replacement + AUTO_SPACE : replacement;
+        final boolean appendsAutoSpace = withAutoSpace
+                && TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor());
+        final String textToCommit = appendsAutoSpace ? replacement + AUTO_SPACE : replacement;
         mConnection.beginBatchEdit();
         // Opening the batch refreshes the connection, so the connection is checked only now. If
         // the editor went away since the strip was drawn, nothing is edited and false is returned:
@@ -603,6 +636,8 @@ public final class InputLogic {
         // invalidates a pending double-space revert. Both hold for the autocorrection path too.
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = appendsAutoSpace
+                ? mConnection.getExpectedSelectionStart() : NO_AUTO_SPACE;
         return true;
     }
 
@@ -651,6 +686,7 @@ public final class InputLogic {
         }
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
         return true;
     }
 
@@ -704,9 +740,9 @@ public final class InputLogic {
             return false;
         }
         // The space goes into the same commitText, as in replaceTrailingWord.
-        final String textToCommit =
-                TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor())
-                        ? suggestion + AUTO_SPACE : suggestion;
+        final boolean appendsAutoSpace =
+                TatarWordUtils.needsAutoSpace(mConnection.getCachedTextAfterCursor());
+        final String textToCommit = appendsAutoSpace ? suggestion + AUTO_SPACE : suggestion;
         mConnection.beginBatchEdit();
         // Connection check after opening the batch; see replaceTrailingWord.
         final boolean connected = mConnection.isConnected();
@@ -723,6 +759,8 @@ public final class InputLogic {
         // No double-space arming and no stale revert; see replaceTrailingWord.
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = appendsAutoSpace
+                ? mConnection.getExpectedSelectionStart() : NO_AUTO_SPACE;
         return true;
     }
 
@@ -803,6 +841,7 @@ public final class InputLogic {
         // No double-space arming and no stale revert; see replaceTrailingWord.
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
         return prepend ? 2 : 1; // GLIDE_COMMIT_PREPENDED : GLIDE_COMMIT_BARE
     }
 
@@ -854,6 +893,7 @@ public final class InputLogic {
         }
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
         return true;
     }
 
@@ -898,6 +938,7 @@ public final class InputLogic {
         }
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
         return true;
     }
 

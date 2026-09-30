@@ -623,4 +623,17 @@ class TatarWordUtilsTest {
         assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord(null, true))
         assertEquals("", TatarWordUtils.extractWordBeforeTrailingWord("  ", true))
     }
+
+    // --- swapsWithAutoSpace ----------------------------------------------------------------------
+
+    @Test
+    fun punctuationThatAttachesToTheWordSwapsWithTheAutoSpace() {
+        for (ch in ".,;:!?)]}") {
+            assertTrue("'$ch' swaps", TatarWordUtils.swapsWithAutoSpace(ch.code))
+        }
+        for (text in listOf(" ", "\n", "\"", "(", "«", "-", "/", "@", "а", "🙂")) {
+            assertFalse("'$text' keeps the space",
+                TatarWordUtils.swapsWithAutoSpace(text.codePointAt(0)))
+        }
+    }
 }

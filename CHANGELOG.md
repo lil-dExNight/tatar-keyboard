@@ -15,6 +15,7 @@ These hold for every release and are not repeated in the entries below:
 
 ### Changed
 
+- A comma, period or other punctuation typed right after a tapped suggestion replaces the added space, so you get "сүз, " instead of "сүз ,".
 - Sentence-start suggestions also appear at the start of a new line.
 
 ### Fixed

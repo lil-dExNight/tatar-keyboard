@@ -320,6 +320,17 @@ object TatarWordUtils {
     }
 
     /**
+     * True for the punctuation that attaches to the preceding word and so takes the place of an
+     * auto-space typed right before it: `. , ; : ! ? ) ] }`. Quotes, opening brackets and symbols
+     * keep the space.
+     */
+    @JvmStatic
+    fun swapsWithAutoSpace(codePoint: Int): Boolean = when (codePoint) {
+        '.'.code, ','.code, ';'.code, ':'.code, '!'.code, '?'.code, ')'.code, ']'.code, '}'.code -> true
+        else -> false
+    }
+
+    /**
      * True for the separators autocorrect may fire on: a space or punctuation.
      *
      * [Character.isSpaceChar] covers the plain and the non-breaking space; the punctuation
