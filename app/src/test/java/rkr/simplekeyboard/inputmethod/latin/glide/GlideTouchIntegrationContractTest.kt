@@ -121,6 +121,8 @@ class GlideTouchIntegrationContractTest {
         assertTrue(down.contains("mGlideDecider.onDown(x, y, eventTime, glideEligible);"))
         val gate = down.substringAfter("final boolean glideEligible").substringBefore(";")
         assertTrue("a glide arms only where it can be decoded", gate.contains("sGlideAvailable"))
+        assertTrue("a glide never starts on the symbols pages",
+            gate.contains("mKeyboard != null && mKeyboard.mId.isAlphabetKeyboard()"))
     }
 
     @Test

@@ -610,13 +610,15 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             mStartTime = System.currentTimeMillis();
         }
         // Start the glide decision for this touch. Eligible means the field and layout can decode
-        // a glide, the preference is on and the down key is a letter key (space/delete/shift/enter
-        // and the digit row never start a glide; their swipe and long-press behaviors keep
-        // priority). The down point opens the path. Otherwise the decider sits in REJECTED and no
-        // glide branch in this class runs.
+        // a glide, the preference is on, the keyboard is an alphabet page (a symbols page may hold
+        // letters such as π) and the down key is a letter key (space/delete/shift/enter and the
+        // digit row never start a glide; their swipe and long-press behaviors keep priority). The
+        // down point opens the path. Otherwise the decider sits in REJECTED and no glide branch in
+        // this class runs.
         final boolean glideEligible = key != null
                 && sGlideAvailable
                 && Settings.getInstance().getCurrent().mGlideTypingEnabled
+                && mKeyboard != null && mKeyboard.mId.isAlphabetKeyboard()
                 && Character.isLetter(key.getCode());
         mGlideDecider.onDown(x, y, eventTime, glideEligible);
         if (glideEligible) {
