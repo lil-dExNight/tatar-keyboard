@@ -30,6 +30,9 @@ of input fixes not yet released. They are listed under `[Unreleased]` in `CHANGE
 - A line break is a sentence start for the suggestion strip.
 - An undone autocorrection is not repeated for that word in the same field session
   (`SuggestionsController.refusedCorrections`).
+- Glide typing follows the number row setting: `LatinIME.updateKeyNeighbors` keeps the glide
+  geometry only while a rebuilt one has the same content (`GlideKeyGeometry.sameLayoutAs`), instead
+  of caching it by `KeyboardId`, whose equality ignores the number row.
 
 Verified: JVM tests, python tests, `lintRelease`, `check-no-internet.sh` on source and APKs,
 release APK size and `text_hygiene_check.py`. On the `tt_suggest_a14` emulator: the smoke test
@@ -40,6 +43,29 @@ Tatar glide still commits a word. The golden vectors exported by the exporter in
 `app/src/test/.../golden/` (run with `GOLDEN_OUT` set) change for the context `"ул китте\n"`, now a
 sentence start; re-export them when the parity suite on the other platform is next synced. Two
 known bugs found on the emulator are listed in `docs/BACKLOG.md`.
+
+Performance and build changes on the same `main`, with no change in behavior:
+
+- Bundled file validation reads each file once into one array and walks it without per-word
+  objects (`TdictValidator`, `TatBigrValidator`); `ValidatorAllocationTest` holds the ceiling.
+- The activation right after a publication check reuses that validation while the file keeps its
+  length and modification time (`AtomicDictionaryStore`, `AtomicBigramStore`), so a cold start
+  validates each bundled file once instead of twice.
+- The glide word index survives keyboard id changes that do not move keys (shift state, editor
+  action), since the kept geometry instance keeps the decoder.
+- An idle reload of the emoji suggestion table reuses the process's glyph verdicts
+  (`EmojiGlyphVerdicts`) instead of probing the font again.
+- Gradle: local build cache and a larger daemon heap; release builds pass `--no-build-cache`.
+  JVM tests run in two forks on hosts with at least 8 CPUs.
+- The baseline and startup profiles were edited by hand for the changed method signatures; they
+  were not regenerated.
+
+Verified for these and for the number row fix above: JVM tests (repeated full runs, host timing
+tests inside their budgets), python tests, `lintRelease`, `check-no-internet.sh` on source and
+APKs, release APK size, `text_hygiene_check.py`, two byte-identical
+`clean assembleRelease --no-build-cache` builds (and the same bytes from the build cache). On the
+emulator: the smoke test gives the same result as above, and a Tatar glide typed right after
+turning the number row on decodes correctly.
 
 Earlier cleanup of the same `main`:
 
