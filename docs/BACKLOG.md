@@ -43,22 +43,11 @@ Open work only. When an item is done, delete it; the change itself is the record
   `scripts/release_check.sh`; CI would need them to run on the unsigned release APK without the
   keystore.
 
-## Researched, not done
+## Planned for the next release
 
-- **Glide aliases for ъ and ё.** Let a glide over ь or е also decode words with ъ or ё; touches
-  the glide goldens, the calibration pins and `scripts/glide_pack.py`.
-- **Glide spacing.** A space before a glide that follows punctuation or a typed word, and a
-  phantom space after it; must keep the one-backspace undo and autocorrect consistent.
-- **Doubled letters without a twin.** Score a doubled letter on a glide path when the dictionary
-  has no single-letter twin; needs a calibration run and a latency check.
-- **Glide context rerank.** Rerank glide candidates by the previous word's bigram successors;
-  calibration-heavy.
-- **Digits on long-press** of the top letter row (tt, ru); needs a visual check of the popup and
-  the `RowkeysSyncTest` parity.
-- **Double-space period only in general text fields**, not in phone, number, email or URL fields.
-- **Haptics without per-press allocation.** `AudioAndHapticFeedbackManager` allocates a lambda
-  and a `VibrationEffect` per press and calls `View.performHapticFeedback` off the UI thread below
-  API 29; the feel needs a physical device to check.
+- Glide spacing, the double-space period field rule, digits on long press, glide aliases for `ъ`
+  and `ё`, doubled letters without a twin, glide context rerank and haptics without per-press
+  allocation are planned in `docs/NEXT-RELEASE-PLAN.md`, which owns them until the release ships.
 
 ## Parked decisions
 

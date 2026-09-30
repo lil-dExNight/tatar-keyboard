@@ -98,5 +98,6 @@ layout part of the tracked build would make every build match.
 ## Where to look next
 
 - `docs/README.md` — index of all documents.
+- `docs/NEXT-RELEASE-PLAN.md` — work plan for the next release, in priority order.
 - `docs/ARCHITECTURE.md` — input path, suggestion engine, threads and stores.
 - `AGENTS.md` — build, test and release commands, hard constraints.

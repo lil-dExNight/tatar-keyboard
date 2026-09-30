@@ -23,6 +23,7 @@ bilingual.
 - [DEVICE-TEST-PLAN.md](DEVICE-TEST-PLAN.md) — end-to-end test of the keyboard on a connected phone.
 - [PUBLISH-CHECKLIST.md](PUBLISH-CHECKLIST.md) — release procedure, from preflight to store upload.
 - [BACKLOG.md](BACKLOG.md) — open work only.
+- [NEXT-RELEASE-PLAN.md](NEXT-RELEASE-PLAN.md) — work plan for the next release; deleted when it ships.
 - [HISTORY.md](HISTORY.md) — removed documents, with the last commit that contains each.
 
 ## Other locations
