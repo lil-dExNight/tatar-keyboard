@@ -29,6 +29,8 @@ out/
 # whose parent directory is excluded, and the files re-included below must be tracked.
 gradle/*
 release/
+# The release source set (release-only manifest overlay) is source, not build output.
+!/app/src/release/
 !/gradle/wrapper
 gradle/wrapper/*
 !/gradle/wrapper/gradle-wrapper.properties
