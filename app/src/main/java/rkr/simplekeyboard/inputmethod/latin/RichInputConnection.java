@@ -233,6 +233,11 @@ public final class RichInputConnection {
             && !restarting) {
             // Updated by onUpdateSelection, don't override as editorInfo might be invalid
             // If restarting, onStartInputView was called instead of onUpdateSelection
+            // The text is still re-read from the connection: every finish and hide of the input
+            // clears the cache, and an onUpdateSelection that arrives while the keyboard is hidden
+            // sets the selection without a reload, which would leave the cache empty in a field
+            // that holds text.
+            reloadTextCache();
             return;
         }
         updateSelection(editorInfo.initialSelStart, editorInfo.initialSelEnd);
@@ -396,9 +401,18 @@ public final class RichInputConnection {
     }
 
     public void clearCaches() {
-        Log.i(TAG, "Clearing text caches.");
         mExpectedSelStart = INVALID_CURSOR_POSITION;
         mExpectedSelEnd = INVALID_CURSOR_POSITION;
+        clearTextCaches();
+    }
+
+    /**
+     * Clears the cached text but keeps the expected selection, for a hide that keeps the input
+     * session: onUpdateSelection keeps the selection current while hidden, so the next show
+     * re-reads the text from the editor instead of the stale EditorInfo of the session start.
+     */
+    public void clearTextCaches() {
+        Log.i(TAG, "Clearing text caches.");
         mTextBeforeCursor = "";
         mTextSelection = "";
         mTextAfterCursor = "";

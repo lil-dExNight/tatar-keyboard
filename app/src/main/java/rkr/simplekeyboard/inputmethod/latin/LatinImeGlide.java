@@ -21,8 +21,9 @@ import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 
 /**
  * Whole-word undo for glide typing: a backspace pressed immediately after a glide commit deletes
- * the whole committed word (and a prepended chain space) instead of one character, as Gboard
- * does. Same shape and follow-ups as {@link LatinImeAutocorrect#maybeRevertTatarAutocorrection}.
+ * the whole committed word (and the leading space the commit prepended) instead of one character,
+ * as Gboard does. Same shape and follow-ups as
+ * {@link LatinImeAutocorrect#maybeRevertTatarAutocorrection}.
  */
 final class LatinImeGlide {
 

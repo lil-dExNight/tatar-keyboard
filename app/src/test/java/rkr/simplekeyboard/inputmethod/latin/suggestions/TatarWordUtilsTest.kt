@@ -637,6 +637,52 @@ class TatarWordUtilsTest {
         }
     }
 
+    // --- glideNeedsLeadingSpace ------------------------------------------------------------------
+
+    @Test
+    fun aGlideNeedsALeadingSpaceAfterAWordADigitOrASwapMark() {
+        val needs = listOf(
+            "сүз", "Сүз", "word", "ә", "и\u0306", // a word character, NFD mark included
+            "5", "сүз 12", // a digit
+            "сүз.", "сүз,", "сүз;", "сүз:", "сүз!", "сүз?", "(сүз)", "[сүз]", "{сүз}",
+            "\uD801\uDC00", // a supplementary letter, read as one code point
+            "«сүз»", "сүз\u201D", "\"сүз\"", "сүз.\"", "5\"", "сүз)\"", // closing quotes
+        )
+        for (text in needs) {
+            assertTrue("'$text' needs the space", TatarWordUtils.glideNeedsLeadingSpace(text))
+        }
+    }
+
+    @Test
+    fun aGlideNeedsNoLeadingSpaceAnywhereElse() {
+        val none = listOf(
+            null, "", " ", "сүз ", "сүз\n", "сүз\t", "сүз\u00A0", // empty text, whitespace
+            "(", "[", "{", "«", "\"", "'", // opening brackets and quotes
+            "сүз «", "\u201C", "сүз \u201E", "сүз \"", "сүз\n\"", "(\"", "«\"", "\"\"", // opening quotes
+            "сүз-", "сүз —", "сүз –", // hyphen and dashes
+            "сүз…", "сүз/", "сүз@", "сүз 🙂", "сүз ❤\uFE0F", "1\uFE0F\u20E3", // symbols, emoji
+        )
+        for (text in none) {
+            assertFalse("'$text' needs no space", TatarWordUtils.glideNeedsLeadingSpace(text))
+        }
+    }
+
+    @Test
+    fun aGlideStartsASentenceOnlyAfterSentenceEndingMarksThatGetTheSpace() {
+        assertTrue(TatarWordUtils.glideStartsSentence("сүз.", false))
+        assertTrue(TatarWordUtils.glideStartsSentence("сүз?!", false))
+        assertFalse("a comma is not a sentence end", TatarWordUtils.glideStartsSentence("сүз,", true))
+        assertFalse("a word gets the space but starts no sentence",
+            TatarWordUtils.glideStartsSentence("сүз", true))
+        assertFalse("a number with a period is not a sentence end",
+            TatarWordUtils.glideStartsSentence("5.", false))
+        assertFalse("a typed space already stands there; the keyboard shift covers it",
+            TatarWordUtils.glideStartsSentence("сүз. ", true))
+        assertFalse("no space is prepended at a field start",
+            TatarWordUtils.glideStartsSentence("", true))
+        assertFalse(TatarWordUtils.glideStartsSentence(null, true))
+    }
+
     // --- swallowsSpaceAtAutoSpace ----------------------------------------------------------------
 
     @Test

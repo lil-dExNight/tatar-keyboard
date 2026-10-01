@@ -604,10 +604,29 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
+            public int cursorPosition() {
+                return mInputLogic.mConnection.getExpectedSelectionStart();
+            }
+
+            @Override
+            public boolean glideStartsSentence() {
+                // Same cache and cache-start flag as isAtSentenceStart. The setting and the
+                // field's sentence-caps flag are what the shift state's auto-caps reads, so the
+                // word is capitalized exactly where a typed space would have shifted the keyboard.
+                final EditorInfo editorInfo = getCurrentInputEditorInfo();
+                return mSettings.getCurrent().mAutoCap && editorInfo != null
+                        && (editorInfo.inputType & InputType.TYPE_TEXT_FLAG_CAP_SENTENCES) != 0
+                        && TatarWordUtils.INSTANCE.glideStartsSentence(
+                                mInputLogic.mConnection.getCachedTextBeforeCursor(),
+                                mInputLogic.mConnection.cacheReachedTextStart());
+            }
+
+            @Override
             public int commitGlideWord(final String expectedContextWord,
-                    final String suggestion, final String chainedAfter) {
-                final int result =
-                        mInputLogic.commitGlideWord(expectedContextWord, suggestion, chainedAfter);
+                    final String suggestion, final String expectedTrailingWord,
+                    final int expectedCursor) {
+                final int result = mInputLogic.commitGlideWord(expectedContextWord, suggestion,
+                        expectedTrailingWord, expectedCursor);
                 if (result != GLIDE_COMMIT_REFUSED) {
                     // Refresh auto-caps, as for commitSuggestion.
                     mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
@@ -751,6 +770,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
             return TatarWordUtils.PrefixCasing.LOWER;
         });
+        // A refused glide gives the cursor gestures' tick: one pulse, none with vibration off.
+        mSuggestionsController.setGlideRefusalFeedback(LatinImeKeyFeedback::hapticTickFeedback);
         mSuggestionsController.onCreate();
         // Erasing words on the settings screen must unbind what the strip shows: the screen and
         // the IME share the process, so the store notifies us directly, on its worker thread.
@@ -1591,7 +1612,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onFinishInputView(final boolean finishingInput) {
-        mInputLogic.clearCaches();
+        // A hide that keeps the session keeps the selection (see clearTextCaches).
+        if (finishingInput) {
+            mInputLogic.clearCaches();
+        } else {
+            mInputLogic.clearTextCaches();
+        }
         mRichImm.resetSubtypeCycleOrder();
         mHandler.onFinishInputView(finishingInput);
     }
@@ -1772,7 +1798,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         mKeyboardSwitcher.hideEmojiPanel();
         // Privacy: clear the editor text cache. A hide without onFinishInputView (lock screen,
         // home gesture) would otherwise keep the field's text in memory until the next field.
-        mInputLogic.clearCaches();
+        // The session outlives the window, so the selection is kept (see clearTextCaches).
+        mInputLogic.clearTextCaches();
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView != null) {
             mainKeyboardView.closing();

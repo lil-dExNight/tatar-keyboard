@@ -68,6 +68,9 @@ public final class InputLogic {
     // Cursor position right after an auto-space this class appended, or NO_AUTO_SPACE. A
     // punctuation mark typed exactly there replaces the space.
     private int mAutoSpaceCursor = NO_AUTO_SPACE;
+    // Cursor position right after a glide commit, or NO_AUTO_SPACE. A letter or digit typed
+    // exactly there gets a space before it, so typing on after a glide starts a new word.
+    private int mPhantomSpaceCursor = NO_AUTO_SPACE;
 
     /**
      * Create a new instance of the input logic.
@@ -90,10 +93,16 @@ public final class InputLogic {
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
     }
 
     public void clearCaches() {
         mConnection.clearCaches();
+    }
+
+    /** See {@link RichInputConnection#clearTextCaches}. */
+    public void clearTextCaches() {
+        mConnection.clearTextCaches();
     }
 
     /**
@@ -122,6 +131,7 @@ public final class InputLogic {
         // double-space revert would corrupt it, so the state must be dropped.
         mJustDoubleSpaced = false;
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
         // Space state must be updated before calling updateShiftState
         inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
         return inputTransaction;
@@ -144,6 +154,7 @@ public final class InputLogic {
             mJustDoubleSpaced = false;
             mLastSpaceDownTime = 0;
             mAutoSpaceCursor = NO_AUTO_SPACE;
+            mPhantomSpaceCursor = NO_AUTO_SPACE;
         }
         mConnection.updateSelection(newSelStart, newSelEnd);
     }
@@ -156,6 +167,7 @@ public final class InputLogic {
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
     }
 
     public void reloadTextCache() {
@@ -211,6 +223,7 @@ public final class InputLogic {
             // Committed combiner text invalidates a pending double-space revert and auto-space.
             mJustDoubleSpaced = false;
             mAutoSpaceCursor = NO_AUTO_SPACE;
+            mPhantomSpaceCursor = NO_AUTO_SPACE;
         }
     }
 
@@ -343,12 +356,29 @@ public final class InputLogic {
     }
 
     /**
-     * Handle a non-separator.
+     * Handle a non-separator. A letter or digit typed right where a glide commit left the cursor
+     * gets a space before it ("дөнья" + "а" gives "дөнья а"), in one batch edit.
      * @param event The event to handle.
      */
     private void handleNonSeparatorEvent(final Event event) {
+        final boolean afterGlide = mPhantomSpaceCursor != NO_AUTO_SPACE
+                && mPhantomSpaceCursor == mConnection.getExpectedSelectionStart();
         mJustDoubleSpaced = false;
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
+        if (afterGlide && Character.isLetterOrDigit(event.mCodePoint)
+                && !mConnection.hasSelection()) {
+            // A digit goes through commitText here, not as a key event: key events ignore the
+            // batch, and the space and the digit must land together.
+            mConnection.beginBatchEdit();
+            try {
+                mConnection.commitText(new StringBuilder(3).append(' ')
+                        .appendCodePoint(event.mCodePoint), 1);
+            } finally {
+                mConnection.endBatchEdit();
+            }
+            return;
+        }
         sendKeyCodePoint(event.mCodePoint);
     }
 
@@ -362,6 +392,7 @@ public final class InputLogic {
         final boolean afterAutoSpace = mAutoSpaceCursor != NO_AUTO_SPACE
                 && mAutoSpaceCursor == mConnection.getExpectedSelectionStart();
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
         if (event.mCodePoint == Constants.CODE_SPACE) {
             if (TatarWordUtils.swallowsSpaceAtAutoSpace(afterAutoSpace,
                     mConnection.hasSelection(), mConnection.getCodePointBeforeCursor())) {
@@ -415,7 +446,7 @@ public final class InputLogic {
     private boolean tryDoubleSpacePeriod(final SettingsValues settingsValues) {
         final long now = SystemClock.uptimeMillis();
         if (now - mLastSpaceDownTime < DOUBLE_SPACE_PERIOD_TIMEOUT
-                && !settingsValues.mInputAttributes.mIsPasswordField
+                && settingsValues.mInputAttributes.mIsGeneralTextInput
                 && mConnection.getCodePointBeforeCursor() == Constants.CODE_SPACE
                 && Character.isLetterOrDigit(mConnection.getCodePointBeforeCursor(1))) {
             mConnection.beginBatchEdit();
@@ -454,6 +485,7 @@ public final class InputLogic {
                 ? InputTransaction.SHIFT_UPDATE_LATER : InputTransaction.SHIFT_UPDATE_NOW;
         inputTransaction.requireShiftUpdate(shiftUpdateKind);
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
 
         if (mConnection.hasSelection()) {
             mJustDoubleSpaced = false;
@@ -659,6 +691,7 @@ public final class InputLogic {
         mLastSpaceDownTime = 0;
         mAutoSpaceCursor = appendsAutoSpace
                 ? mConnection.getExpectedSelectionStart() : NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
         return true;
     }
 
@@ -708,6 +741,7 @@ public final class InputLogic {
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
         return true;
     }
 
@@ -782,6 +816,7 @@ public final class InputLogic {
         mLastSpaceDownTime = 0;
         mAutoSpaceCursor = appendsAutoSpace
                 ? mConnection.getExpectedSelectionStart() : NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
         return true;
     }
 
@@ -808,19 +843,28 @@ public final class InputLogic {
      * sentence-start requirement for an empty context: a glide ends at the current cursor, so the
      * context equality check is enough (and a glide after "сүз ? " must still commit).
      *
-     * <p>A glide adds no auto-space. When the cursor follows a word character, one space is
-     * prepended, so consecutive glides give "сәләм дөнья". {@code chainedAfter}, the word the
-     * previous glide committed, is the only trailing word allowed; any other refuses the commit.
+     * <p>The gesture is stale, and nothing is edited, when the live trailing word differs from
+     * {@code expectedTrailingWord} or the cursor from {@code expectedCursor}: a letter or a mark
+     * typed between the lift and the decode result. A cache that is empty although the cursor is
+     * past the text start cannot tell whether a space is needed, so the commit is refused and the
+     * cache reloaded; the gesture can be redone.
+     *
+     * <p>A glide adds no trailing space. One space is prepended when
+     * {@link TatarWordUtils#glideNeedsLeadingSpace} holds (after a word, a digit, a mark such as
+     * "," or a closing quote), so "сүз," gives "сүз, дөнья" and consecutive glides "сәләм дөнья". The new cursor arms
+     * the phantom space ({@link #handleNonSeparatorEvent}).
      *
      * @param expectedContextWord the context word captured when the gesture was delivered.
      * @param suggestion the decoded word to insert.
-     * @param chainedAfter the previous glide's committed word, or null.
-     * @return {@code GLIDE_COMMIT_*} — refused (no edit), bare, or committed with the chain
-     *         space prepended; the undo needs the distinction.
+     * @param expectedTrailingWord the trailing word captured at the gesture, "" when none.
+     * @param expectedCursor the cursor captured at the gesture, or -1 to skip that check.
+     * @return {@code GLIDE_COMMIT_*}: refused (no edit), bare, or committed with a space
+     *         prepended; the undo needs the distinction.
      */
     public int commitGlideWord(final String expectedContextWord, final String suggestion,
-            final String chainedAfter) {
-        if (expectedContextWord == null || TextUtils.isEmpty(suggestion)) {
+            final String expectedTrailingWord, final int expectedCursor) {
+        if (expectedContextWord == null || expectedTrailingWord == null
+                || TextUtils.isEmpty(suggestion)) {
             return 0; // GLIDE_COMMIT_REFUSED
         }
         if (mConnection.hasSelection()) {
@@ -829,22 +873,30 @@ public final class InputLogic {
         if (TatarWordUtils.startsWithWordCharacter(mConnection.getCachedTextAfterCursor())) {
             return 0;
         }
-        final String trailingWord =
-                TatarWordUtils.extractTrailingWord(mConnection.getCachedTextBeforeCursor());
-        if (!trailingWord.isEmpty() && !trailingWord.equals(chainedAfter)) {
-            // The user typed something after the gesture was delivered (or the trailing word is
-            // simply not the chain's previous commit): the commit is stale. Do not edit.
+        final CharSequence beforeCursor = mConnection.getCachedTextBeforeCursor();
+        final int cursor = mConnection.getExpectedSelectionStart();
+        if (cursor > 0 && beforeCursor.length() == 0 && !mConnection.cacheReachedTextStart()) {
+            // Text stands before the cursor but the cache does not hold it (a reload in flight or
+            // not yet run after a refocus): committing now could glue the word to it.
+            mConnection.reloadTextCache();
             return 0;
         }
-        final String liveContext =
-                TatarWordUtils.extractNextWordContext(mConnection.getCachedTextBeforeCursor(),
-                        mConnection.cacheReachedTextStart());
+        if (expectedCursor != -1 && expectedCursor != cursor) {
+            // An edit between the lift and the decode result moved the cursor. Do not edit.
+            return 0;
+        }
+        if (!expectedTrailingWord.equals(TatarWordUtils.extractTrailingWord(beforeCursor))) {
+            // A letter typed after the lift changed the trailing word. Do not edit.
+            return 0;
+        }
+        final String liveContext = TatarWordUtils.extractNextWordContext(beforeCursor,
+                mConnection.cacheReachedTextStart());
         if (!expectedContextWord.equals(liveContext)) {
             // The text moved between the lift and the decode's completion. Do not edit.
             return 0;
         }
-        // The only space a glide inserts is the chain separator, in the same commitText.
-        final boolean prepend = !trailingWord.isEmpty();
+        // The leading space goes into the same commitText.
+        final boolean prepend = TatarWordUtils.glideNeedsLeadingSpace(beforeCursor);
         final String textToCommit = prepend ? AUTO_SPACE + suggestion : suggestion;
         mConnection.beginBatchEdit();
         // Connection check after opening the batch; see replaceTrailingWord.
@@ -863,18 +915,19 @@ public final class InputLogic {
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = mConnection.getExpectedSelectionStart();
         return prepend ? 2 : 1; // GLIDE_COMMIT_PREPENDED : GLIDE_COMMIT_BARE
     }
 
     /**
      * Replaces the word a glide just committed with the tapped alternative, in place: no space is
-     * added or removed, and a prepended chain space ({@code prependedSpace}) is kept. The trailing
-     * word must be {@code committedWord}, with the chain space before it if expected; otherwise
-     * nothing is edited.
+     * added or removed, and a leading space the commit prepended ({@code prependedSpace}) is kept.
+     * The trailing word must be {@code committedWord}, with that space before it if expected;
+     * otherwise nothing is edited. The new cursor arms the phantom space, as the commit does.
      *
      * @param committedWord the word the glide lift committed.
      * @param alternative the alternative shown in the strip and tapped.
-     * @param prependedSpace whether the commit prepended the chain space.
+     * @param prependedSpace whether the commit prepended a leading space.
      * @return {@code true} if the replacement happened, {@code false} otherwise (no edit).
      */
     public boolean replaceGlideLiftedWord(final String committedWord, final String alternative,
@@ -915,16 +968,17 @@ public final class InputLogic {
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = mConnection.getExpectedSelectionStart();
         return true;
     }
 
     /**
      * Whole-word undo of a glide commit: one backspace right after it deletes the committed word,
-     * including a prepended chain space ("сәләм дөнья" → "сәләм"), and commits nothing back. Same
-     * position check as {@link #replaceGlideLiftedWord}.
+     * including a leading space the commit prepended ("сүз, дөнья" → "сүз,"), and commits nothing
+     * back. Same position check as {@link #replaceGlideLiftedWord}.
      *
      * @param committedWord the word the glide lift committed (or its current replacement).
-     * @param prependedSpace whether the commit prepended the chain space.
+     * @param prependedSpace whether the commit prepended a leading space.
      * @return {@code true} if the word was deleted, {@code false} otherwise (no edit).
      */
     public boolean deleteGlideLiftedWord(final String committedWord, final boolean prependedSpace) {
@@ -960,6 +1014,7 @@ public final class InputLogic {
         mJustDoubleSpaced = false;
         mLastSpaceDownTime = 0;
         mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
         return true;
     }
 

@@ -242,19 +242,45 @@ class GlideTouchIntegrationContractTest {
         )
         // The commit goes through the glide's OWN commit path (the predicted-word re-checks minus
         // the sentence-start requirement for an empty context, so a glide after "сүз ? " still
-        // commits); the chain's previous commit is the one tolerated trailing word.
+        // commits), with the trailing word and the cursor captured at the gesture.
         val apply = controller.substringAfter("private fun applyGlideResult")
-        assertTrue(apply.contains("editor.commitGlideWord(pendingGlideContext, committed, glideCommittedWord)"))
+        assertTrue(apply.contains("editor.commitGlideWord(\n" +
+            "            pendingGlideContext, committed, pendingGlideTrailingWord, pendingGlideCursor)"))
         assertTrue(apply.contains("glideCommittedWord = committed"))
         assertTrue(apply.contains("displayedGlideAlternativesFor = committed"))
-        // The undo needs to know whether a chain space was prepended.
+        // The undo needs to know whether a leading space was prepended.
         assertTrue(apply.contains("glideCommitPrependedSpace = commitResult == EditorSurface.GLIDE_COMMIT_PREPENDED"))
-        // The chain gate: a trailing word blocks the gesture unless it IS the previous commit.
+        // A trailing word no longer blocks the gesture; it is captured with the cursor instead.
         val onGlide = controller.substringAfter("fun onGlideInput(path: GlidePath)")
-        assertTrue(onGlide.contains("if (trailingWord.isNotEmpty() && trailingWord != glideCommittedWord) return"))
-        // The alternatives tap replaces in-editor, keeping the chain space exactly as committed.
+            .substringBefore("private fun releaseGlideIndexesExcept")
+        assertFalse("a typed trailing word must not block the gesture",
+            onGlide.contains("trailingWord != glideCommittedWord"))
+        // An unknown cursor or a letter after the cursor refuses the gesture with the tick and
+        // decodes nothing, so no candidate is shown that a tap could not commit.
+        assertTrue(onGlide.contains(
+            "if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) {\n" +
+                "            glideRefusalFeedback.onGlideRefused()\n" +
+                "            return"))
+        val refused = apply.substringAfter("if (commitResult == EditorSurface.GLIDE_COMMIT_REFUSED) {")
+            .substringBefore("runMachine.markRunDirty()")
+        assertTrue("a refused commit ticks", refused.contains("glideRefusalFeedback.onGlideRefused()"))
+        val noCandidates = refused.indexOf("if (!eligible || editor.hasLetterAfterCursor()) return")
+        assertTrue("a letter after the cursor at the result shows no candidates", noCandidates >= 0)
+        assertTrue("a stale or unknown cache binds its candidates",
+            refused.indexOf("displayedGlideAlternativesFor = REFUSED_GLIDE") > noCandidates)
+        assertTrue("the tap on a refused candidate is a fresh glide commit against the live text",
+            controller.contains("editor.commitGlideWord(editor.cachedNextWordContext(), suggestion,\n" +
+                "                editor.cachedWordBeforeCursor(), editor.cursorPosition())"))
+        assertTrue(onGlide.contains("pendingGlideTrailingWord = trailingWord"))
+        assertTrue(onGlide.contains("pendingGlideCursor = cursor"))
+        assertTrue(onGlide.contains("val trailingWord = editor.cachedWordBeforeCursor()"))
+        assertTrue(onGlide.contains("val cursor = editor.cursorPosition()"))
+        // A lower-case gesture whose leading space starts a sentence is capitalized.
+        assertTrue(apply.contains(
+            "if (casing == TatarWordUtils.PrefixCasing.LOWER && editor.glideStartsSentence()) {"))
+        // The alternatives tap replaces in-editor, keeping the leading space exactly as committed.
         assertTrue(controller.contains("editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion,"))
-        // The undo carries the chain-space flag.
+        // The undo carries the leading-space flag.
         assertTrue(controller.contains("fun maybeUndoGlideCommit()"))
         assertTrue(controller.contains("editor.deleteGlideLiftedWord(word, prependedSpace)"))
 
@@ -265,7 +291,15 @@ class GlideTouchIntegrationContractTest {
         // The seams default to refuse: an editor surface that predates them never edits.
         assertTrue(surfaces.contains("fun replaceGlideLiftedWord(committedWord: String, alternative: String, prependedSpace: Boolean): Boolean = false"))
         assertTrue(surfaces.contains("fun deleteGlideLiftedWord(committedWord: String, prependedSpace: Boolean): Boolean = false"))
-        assertTrue(surfaces.contains("fun commitGlideWord(expectedContextWord: String, suggestion: String, chainedAfter: String?): Int ="))
+        val glideSeam = surfaces.substringAfter("fun commitGlideWord(").substringBefore("= GLIDE_COMMIT_REFUSED")
+        assertTrue(glideSeam.contains("expectedContextWord: String,"))
+        assertTrue(glideSeam.contains("suggestion: String,"))
+        assertTrue(glideSeam.contains("expectedTrailingWord: String,"))
+        assertTrue(glideSeam.contains("expectedCursor: Int,"))
+        assertFalse("the commit takes the trailing word captured at the gesture",
+            surfaces.contains("chainedAfter"))
+        assertTrue(surfaces.contains("fun cursorPosition(): Int = -1"))
+        assertTrue(surfaces.contains("fun glideStartsSentence(): Boolean = false"))
         assertTrue(surfaces.contains("const val GLIDE_COMMIT_REFUSED = 0"))
         assertTrue(surfaces.contains("const val GLIDE_COMMIT_PREPENDED = 2"))
 
@@ -287,25 +321,37 @@ class GlideTouchIntegrationContractTest {
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java",
         )
         // The trailing word at the cursor must BE the committed word, and the deletion is sized by
-        // the chain-space flag; both paths refuse a mid-word cursor.
+        // the leading-space flag; both paths refuse a mid-word cursor.
         for (method in listOf("replaceGlideLiftedWord", "deleteGlideLiftedWord")) {
             val body = inputLogic.substringAfter("public boolean $method(")
             assertTrue("$method checks the trailing word IS the committed word",
                 body.contains("extractTrailingWord(beforeCursor).equals(committedWord)"))
-            assertTrue("$method sizes by the chain-space flag",
+            assertTrue("$method sizes by the leading-space flag",
                 body.contains("(prependedSpace ? AUTO_SPACE : \"\") + committedWord"))
             assertTrue("$method refuses a mid-word cursor", body.contains("startsWithWordCharacter(mConnection.getCachedTextAfterCursor())"))
         }
         // The glide commit keeps every live re-check of the prediction commit EXCEPT the
-        // sentence-start requirement, and inserts NO trailing auto-space (the chain space
+        // sentence-start requirement, and inserts NO trailing auto-space (the leading space
         // prepends). Both differences are intended.
         val glideCommit = inputLogic.substringAfter("public int commitGlideWord(")
             .substringBefore("public boolean")
         assertTrue("the glide commit re-derives the live context",
             glideCommit.contains("extractNextWordContext"))
-        assertTrue("the glide commit refuses a half-typed word outside the chain",
-            glideCommit.contains("!trailingWord.equals(chainedAfter)"))
-        assertTrue("the chain space prepends", glideCommit.contains("AUTO_SPACE + suggestion"))
+        assertTrue("the glide commit refuses a trailing word that changed since the gesture",
+            glideCommit.contains(
+                "!expectedTrailingWord.equals(TatarWordUtils.extractTrailingWord(beforeCursor))"))
+        assertTrue("the glide commit refuses a cursor that moved since the gesture",
+            glideCommit.contains("expectedCursor != -1 && expectedCursor != cursor"))
+        assertTrue("the cursor is the connection's expected selection start",
+            glideCommit.contains("final int cursor = mConnection.getExpectedSelectionStart();"))
+        val unknownCache = glideCommit.indexOf(
+            "cursor > 0 && beforeCursor.length() == 0 && !mConnection.cacheReachedTextStart()")
+        assertTrue("an unknown cache refuses the commit", unknownCache >= 0)
+        assertTrue("and requests a reload",
+            glideCommit.indexOf("mConnection.reloadTextCache();") > unknownCache)
+        assertTrue("the leading-space rule decides the prepend",
+            glideCommit.contains("TatarWordUtils.glideNeedsLeadingSpace(beforeCursor)"))
+        assertTrue("the leading space prepends", glideCommit.contains("AUTO_SPACE + suggestion"))
         assertFalse("the P7-5 auto-space is gone from the glide commit",
             glideCommit.contains("suggestion + AUTO_SPACE"))
         assertFalse("the glide commit must NOT require a sentence start for an empty context",
@@ -316,6 +362,48 @@ class GlideTouchIntegrationContractTest {
             predictedCommit.contains("isSentenceStartContext"))
         assertTrue("the prediction path keeps its auto-space (typed suggestions unchanged)",
             predictedCommit.contains("suggestion + AUTO_SPACE"))
+    }
+
+    @Test
+    fun aRestartWithAKnownSelectionStillReReadsTheText() {
+        // The refocus case: the cache was cleared when the input finished or hid, and a selection
+        // update that arrived while the keyboard was hidden set the selection without a reload.
+        // The early branch must re-read the text, or a glide commits into an empty cache.
+        val connection = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java",
+        )
+        val method = connection
+            .substringAfter("public void reloadTextCache(final EditorInfo editorInfo, final boolean restarting) {")
+            .substringBefore("updateSelection(editorInfo.initialSelStart, editorInfo.initialSelEnd);")
+        val early = method.substringAfter("&& !restarting) {")
+        assertTrue("the known-selection branch reloads from the connection",
+            early.indexOf("reloadTextCache();") in 0 until early.indexOf("return;"))
+    }
+
+    @Test
+    fun aRefusedGlideTicksThroughTheKeyFeedbackTick() {
+        // The vibrator cannot run in a JVM test: pin that the controller's seam is wired to the
+        // cursor gestures' tick, created once as a method reference, and that the tick honors
+        // the vibrate setting.
+        val latinIme = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
+        )
+        assertTrue(latinIme.contains(
+            "mSuggestionsController.setGlideRefusalFeedback(LatinImeKeyFeedback::hapticTickFeedback);"))
+        val keyFeedback = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinImeKeyFeedback.java",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinImeKeyFeedback.java",
+        )
+        assertTrue(keyFeedback.substringAfter("static void hapticTickFeedback() {")
+            .substringBefore("}").contains("feedbackManager.performTickFeedback();"))
+        val manager = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/AudioAndHapticFeedbackManager.java",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/AudioAndHapticFeedbackManager.java",
+        )
+        assertTrue(manager.substringAfter("public void performTickFeedback() {")
+            .substringBefore("mVibrator.vibrate(").contains("if (!mSettingsValues.mVibrateOn"))
     }
 
     /** The body of one method, from its declaration to the next one (good enough for pins). */

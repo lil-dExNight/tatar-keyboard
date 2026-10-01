@@ -73,13 +73,39 @@ class GlideEndToEndTest {
         var textAfterCursor: String = ""
         val predictedCommits = mutableListOf<Pair<String, String>>()
 
-        override fun cachedWordBeforeCursor(): String = TatarWordUtils.extractTrailingWord(text)
-        override fun hasKnownCursor(): Boolean = true
+        /**
+         * True while the before-cursor cache is empty although the field holds [text]: a reload
+         * still in flight, or one that never ran after the field was focused again.
+         */
+        var cacheLost: Boolean = false
+
+        /** What the before-cursor cache holds. */
+        private val cache: String get() = if (cacheLost) "" else text
+
+        /** The auto-capitalization setting. */
+        var autoCap: Boolean = false
+
+        /** Whether the field asks for sentence caps (`TYPE_TEXT_FLAG_CAP_SENTENCES`). */
+        var capSentencesField: Boolean = true
+
+        /** Whether the editor knows the cursor position. */
+        var knownCursor: Boolean = true
+
+        /** How often a refused commit asked for a cache reload. */
+        var reloadRequests = 0
+
+        override fun cursorPosition(): Int = text.length
+
+        override fun glideStartsSentence(): Boolean =
+            autoCap && capSentencesField && TatarWordUtils.glideStartsSentence(cache, !cacheLost)
+
+        override fun cachedWordBeforeCursor(): String = TatarWordUtils.extractTrailingWord(cache)
+        override fun hasKnownCursor(): Boolean = knownCursor
         override fun hasLetterAfterCursor(): Boolean =
             TatarWordUtils.startsWithWordCharacter(textAfterCursor)
 
         override fun cachedNextWordContext(): String =
-            TatarWordUtils.extractNextWordContext(text, true)
+            TatarWordUtils.extractNextWordContext(cache, !cacheLost)
 
         override fun commitSuggestion(expectedPrefix: String, suggestion: String): Boolean = false
 
@@ -98,21 +124,32 @@ class GlideEndToEndTest {
             return true
         }
 
-        override fun commitGlideWord(expectedContextWord: String, suggestion: String, chainedAfter: String?): Int {
-            // The glide path, modeled: the prediction re-checks minus the sentence-start
-            // requirement; NO auto-space — the chain space is the only separator, and only after
-            // the chain's own previous word.
-            val trailing = TatarWordUtils.extractTrailingWord(text)
-            if (trailing.isNotEmpty() && trailing != chainedAfter) return EditorSurface.GLIDE_COMMIT_REFUSED
-            if (TatarWordUtils.extractNextWordContext(text, true) != expectedContextWord) return EditorSurface.GLIDE_COMMIT_REFUSED
-            val prepend = trailing.isNotEmpty()
+        override fun commitGlideWord(
+            expectedContextWord: String,
+            suggestion: String,
+            expectedTrailingWord: String,
+            expectedCursor: Int,
+        ): Int {
+            // The glide path, modeled: an unknown cache refuses and asks for a reload; a trailing
+            // word, cursor or context that changed since the gesture refuses; NO trailing space,
+            // and one leading space where glideNeedsLeadingSpace holds. A letter right after the
+            // cursor refuses as well.
+            if (TatarWordUtils.startsWithWordCharacter(textAfterCursor)) return EditorSurface.GLIDE_COMMIT_REFUSED
+            if (cacheLost && text.isNotEmpty()) {
+                reloadRequests++
+                return EditorSurface.GLIDE_COMMIT_REFUSED
+            }
+            if (expectedCursor != -1 && expectedCursor != text.length) return EditorSurface.GLIDE_COMMIT_REFUSED
+            if (TatarWordUtils.extractTrailingWord(cache) != expectedTrailingWord) return EditorSurface.GLIDE_COMMIT_REFUSED
+            if (TatarWordUtils.extractNextWordContext(cache, !cacheLost) != expectedContextWord) return EditorSurface.GLIDE_COMMIT_REFUSED
+            val prepend = TatarWordUtils.glideNeedsLeadingSpace(cache)
             predictedCommits.add(expectedContextWord to suggestion)
             text += (if (prepend) " " else "") + suggestion
             return if (prepend) EditorSurface.GLIDE_COMMIT_PREPENDED else EditorSurface.GLIDE_COMMIT_BARE
         }
 
         override fun replaceGlideLiftedWord(committedWord: String, alternative: String, prependedSpace: Boolean): Boolean {
-            // In place: the chain space is kept exactly as committed; the trailing word must BE
+            // In place: the leading space is kept exactly as committed; the trailing word must BE
             // the committed word.
             if (TatarWordUtils.extractTrailingWord(text) != committedWord) return false
             val suffix = (if (prependedSpace) " " else "") + committedWord
@@ -166,11 +203,30 @@ class GlideEndToEndTest {
             return token
         }
 
+        /** When true, [requestGlide] decodes but holds the result until [deliverHeldGlide]. */
+        var holdGlide = false
+        private var heldGlide: (() -> Unit)? = null
+
+        /** How many glide decodes the controller requested. */
+        var glideRequests = 0
+
         override fun requestGlide(editorSessionId: Long, subtypeId: String, path: GlidePath): Any? {
+            glideRequests++
             val token = Any().also { latest = it }
             val results = host.decodeGlide(path)
-            callback!!.onResult(token, results, LookupKind.GLIDE)
+            if (holdGlide) {
+                heldGlide = { callback!!.onResult(token, results, LookupKind.GLIDE) }
+            } else {
+                callback!!.onResult(token, results, LookupKind.GLIDE)
+            }
             return token
+        }
+
+        /** Delivers the result [holdGlide] kept back, as a late decode would arrive. */
+        fun deliverHeldGlide() {
+            val deliver = requireNotNull(heldGlide) { "no glide result is held" }
+            heldGlide = null
+            deliver()
         }
 
         override fun updateGlideGeometry(geometry: GlideKeyGeometry?) {
@@ -204,6 +260,8 @@ class GlideEndToEndTest {
         val strip = FakeStrip()
         val editor = FakeEditor()
         val engines = LinkedHashMap<String, RealBackedEngine>()
+        /** How often the controller asked for the refused-glide tick. */
+        var ticks = 0
         /** Set BEFORE [start]: the personal source the Tatar engine's glide host is built with. */
         var tatarPersonal: PersonalCandidateSource = PersonalCandidateSource.EMPTY
         val controller = SuggestionsController(
@@ -229,6 +287,7 @@ class GlideEndToEndTest {
 
         init {
             controller.setGlideGate(GlideGate { true })
+            controller.setGlideRefusalFeedback(GlideRefusalFeedback { ticks++ })
         }
 
         fun start(
@@ -422,6 +481,27 @@ class GlideEndToEndTest {
         assertTrue(h.strip.shown.isNotEmpty())
     }
 
+    @Test
+    fun aTatarWordWithTheHardSignDecodesFromAGestureOverTheSoftSignKey() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        // The ideal path visits the ь key for ъ: the word has no key of its own for that letter.
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("вәгъдә", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("вәгъдә", h.editor.text)
+    }
+
+    @Test
+    fun aRussianWordWithYoDecodesFromAGestureOverTheIeKey() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.russianGeometry())
+        h.start(PersonalSubtypes.RUSSIAN)
+        h.controller.onGlideInput(
+            GlideTestFixtures.idealPath("одноимённый", GlideTestFixtures.russianGeometry())!!,
+        )
+        assertEquals("одноимённый", h.editor.text)
+    }
+
     /**
      * One globe-key step in LatinIME's order: the new layout's geometry is published while the
      * language being left is still active, then the controller switches language.
@@ -469,16 +549,14 @@ class GlideEndToEndTest {
     }
 
     @Test
-    fun aGlideWithAHalfTypedWordInFrontDoesNothing() {
+    fun aGlideAfterAHalfTypedWordStartsANewWord() {
+        // The typed prefix is not completed: the glide word follows it after one space.
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         h.editor.text = "та"
-        val shownBefore = h.strip.shown.size
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals(shownBefore, h.strip.shown.size)
-        assertTrue(h.editor.predictedCommits.isEmpty())
-        assertEquals("та", h.editor.text)
+        assertEquals("та сәләм", h.editor.text)
     }
 
     @Test
@@ -531,8 +609,8 @@ class GlideEndToEndTest {
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         // A typed letter: the alternatives are unbound — a tap on a stale alternative is inert.
-        // (The typed letter glues onto the space-free committed word, and the new prefix "сәлләмб"
-        // has no band of its own — so the pin is the tap's inertness, not a repaint.)
+        // (The fake appends the letter as is; the phantom space before it is InputLogic's. The
+        // new prefix "сәләмб" has no band of its own, so the pin is the tap's inertness.)
         h.editor.text += "б"
         h.controller.onTextChanged()
         h.strip.listener!!.onTap("сәлләм")
@@ -613,11 +691,14 @@ class GlideEndToEndTest {
         h.controller.setCompletionSink(sink)
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
-        // A non-glide trailing word makes the commit path refuse: nothing committed, nothing
-        // announced.
+        // A letter typed between the lift and the result makes the commit path refuse: nothing
+        // committed, nothing announced.
         h.editor.text = "та"
+        h.engines.getValue(PersonalSubtypes.TATAR_RU).holdGlide = true
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
-        assertEquals("та", h.editor.text)
+        h.editor.text += "б"
+        h.engines.getValue(PersonalSubtypes.TATAR_RU).deliverHeldGlide()
+        assertEquals("таб", h.editor.text)
         assertTrue(sink.accepted.isEmpty())
     }
 
@@ -650,7 +731,7 @@ class GlideEndToEndTest {
         assertEquals(listOf("сәләм"), sink.accepted)
     }
 
-    // --- No auto-space: the chain space is the only separator -----------------------------------
+    // --- No trailing space: the leading space is the only separator ----------------------------
 
     @Test
     fun aSecondGlideChainsWithExactlyOnePrependedSpace() {
@@ -674,7 +755,7 @@ class GlideEndToEndTest {
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertEquals("сәләм сәләм", h.editor.text)
-        // The undo takes the prepended chain space along with the word.
+        // The undo takes the prepended leading space along with the word.
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("сәләм", h.editor.text)
     }
@@ -694,7 +775,7 @@ class GlideEndToEndTest {
     }
 
     @Test
-    fun aChainThroughAnAlternativeKeepsTheChainSpace() {
+    fun aChainThroughAnAlternativeKeepsTheLeadingSpace() {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
@@ -706,6 +787,389 @@ class GlideEndToEndTest {
         assertEquals("сәлләм сәләм", h.editor.text)
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("сәлләм", h.editor.text)
+    }
+
+    // --- The leading space: after punctuation, a typed word, a digit --------------------------
+
+    /** A started Tatar harness whose field already holds [text]. */
+    private fun tatarHarnessWith(text: String): Harness {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.editor.text = text
+        return h
+    }
+
+    private fun Harness.glideSalam() {
+        controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+    }
+
+    private fun Harness.tatarEngine(): RealBackedEngine = engines.getValue(PersonalSubtypes.TATAR_RU)
+
+    @Test
+    fun aGlideAfterACommaGetsOneLeadingSpace() {
+        val h = tatarHarnessWith("сүз,")
+        h.glideSalam()
+        assertEquals("сүз, сәләм", h.editor.text)
+    }
+
+    @Test
+    fun aGlideAfterEveryMarkThatSwapsWithTheAutoSpaceGetsOneLeadingSpace() {
+        for (mark in listOf(".", ",", ";", ":", "!", "?", ")", "]", "}")) {
+            val h = tatarHarnessWith("сүз$mark")
+            h.glideSalam()
+            assertEquals("after '$mark'", "сүз$mark сәләм", h.editor.text)
+        }
+    }
+
+    @Test
+    fun aGlideAfterATypedWordGetsOneLeadingSpace() {
+        val h = tatarHarnessWith("сүз")
+        h.glideSalam()
+        assertEquals("сүз сәләм", h.editor.text)
+    }
+
+    @Test
+    fun aGlideIntoAFieldWhoseCacheWasNotReloadedNeverGlues() {
+        // The field ends in a word, but the before-cursor cache is empty (the reload after the
+        // field was focused again has not landed). The commit must not guess: nothing is edited,
+        // and a reload is requested so the next gesture sees the text.
+        val h = tatarHarnessWith("сүз")
+        h.editor.cacheLost = true
+        h.glideSalam()
+        assertEquals("сүз", h.editor.text)
+        assertTrue(h.editor.predictedCommits.isEmpty())
+        assertEquals(1, h.editor.reloadRequests)
+        // The reload lands; the redone gesture gets its space.
+        h.editor.cacheLost = false
+        h.glideSalam()
+        assertEquals("сүз сәләм", h.editor.text)
+    }
+
+    @Test
+    fun aCacheThatFillsBetweenTheGestureAndTheResultRefusesTheCommit() {
+        val h = tatarHarnessWith("сүз")
+        h.editor.cacheLost = true
+        h.tatarEngine().holdGlide = true
+        h.glideSalam()
+        // The reload lands before the decode result: the trailing word differs from the one the
+        // gesture saw, so the commit is refused rather than glued.
+        h.editor.cacheLost = false
+        h.tatarEngine().deliverHeldGlide()
+        assertEquals("сүз", h.editor.text)
+        assertTrue(h.editor.predictedCommits.isEmpty())
+    }
+
+    @Test
+    fun aLetterTypedAfterACommaBeforeTheResultRefusesTheCommit() {
+        val h = tatarHarnessWith("сүз,")
+        h.tatarEngine().holdGlide = true
+        h.glideSalam()
+        h.editor.text += "а"
+        h.tatarEngine().deliverHeldGlide()
+        assertEquals("сүз,а", h.editor.text)
+        assertTrue(h.editor.predictedCommits.isEmpty())
+    }
+
+    @Test
+    fun aMarkTypedAfterACommaBeforeTheResultRefusesTheCommit() {
+        // The trailing word stays "" and the context stays "": only the cursor shows the edit.
+        val h = tatarHarnessWith("сүз,")
+        h.tatarEngine().holdGlide = true
+        h.glideSalam()
+        h.editor.text += ","
+        h.tatarEngine().deliverHeldGlide()
+        assertEquals("сүз,,", h.editor.text)
+        assertTrue(h.editor.predictedCommits.isEmpty())
+    }
+
+    @Test
+    fun aLetterTypedAfterAChainedGlideBeforeTheResultRefusesTheCommit() {
+        val h = tatarHarnessWith("")
+        h.glideSalam()
+        assertEquals("сәләм", h.editor.text)
+        h.tatarEngine().holdGlide = true
+        h.glideSalam()
+        h.editor.text += "б"
+        h.tatarEngine().deliverHeldGlide()
+        assertEquals("сәләмб", h.editor.text)
+        assertEquals(1, h.editor.predictedCommits.size)
+    }
+
+    @Test
+    fun aGlideAfterADigitGetsOneLeadingSpace() {
+        val h = tatarHarnessWith("5")
+        h.glideSalam()
+        assertEquals("5 сәләм", h.editor.text)
+    }
+
+    @Test
+    fun noLeadingSpaceAfterWhitespaceBracketsOpeningQuotesDashesOrEmoji() {
+        for (before in listOf(
+            "сүз\n", "сүз\t", "(", "[", "«", "\"", "сүз «", "\u201C", "сүз \u201E", "сүз \"", "(\"",
+            "сүз-", "сүз —", "сүз 🙂",
+        )) {
+            val h = tatarHarnessWith(before)
+            h.glideSalam()
+            assertEquals("after '$before'", before + "сәләм", h.editor.text)
+        }
+    }
+
+    @Test
+    fun aGlideAfterAClosingQuoteGetsOneLeadingSpace() {
+        // A closing quote ends the quoted text like a word: », ” and a straight quote that
+        // follows a non-space. Consecutive glides keep exactly one space each.
+        for (before in listOf("«сүз»", "сүз\u201D", "\"сүз\"", "сүз.\"")) {
+            val h = tatarHarnessWith(before)
+            h.glideSalam()
+            assertEquals("after '$before'", "$before сәләм", h.editor.text)
+            h.glideSalam()
+            assertEquals("chained after '$before'", "$before сәләм сәләм", h.editor.text)
+        }
+    }
+
+    @Test
+    fun oneBackspaceAfterAGlideAfterAClosingQuoteRemovesTheWordAndItsSpace() {
+        val h = tatarHarnessWith("«сүз»")
+        h.glideSalam()
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("«сүз»", h.editor.text)
+    }
+
+    @Test
+    fun aGlideBeforePunctuationAfterTheCursorStillCommits() {
+        val h = tatarHarnessWith("сүз")
+        h.editor.textAfterCursor = ", дус"
+        h.glideSalam()
+        assertEquals("сүз сәләм", h.editor.text)
+    }
+
+    @Test
+    fun oneBackspaceAfterAGlideAfterACommaRemovesTheWordAndItsSpace() {
+        val h = tatarHarnessWith("сүз,")
+        h.glideSalam()
+        assertEquals("сүз, сәләм", h.editor.text)
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("сүз,", h.editor.text)
+    }
+
+    @Test
+    fun oneBackspaceAfterAGlideAfterATypedWordRemovesTheWordAndItsSpace() {
+        val h = tatarHarnessWith("сүз")
+        h.glideSalam()
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("сүз", h.editor.text)
+    }
+
+    @Test
+    fun anAlternativeAfterACommaKeepsTheLeadingSpace() {
+        val h = tatarHarnessWith("сүз,")
+        h.glideSalam()
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сүз, сәлләм", h.editor.text)
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("сүз,", h.editor.text)
+    }
+
+    // --- Sentence capitalization of the leading space ------------------------------------------
+
+    @Test
+    fun aGlideAfterAPeriodIsCapitalizedWithAutoCapOn() {
+        for (mark in listOf(".", "!", "?")) {
+            val h = tatarHarnessWith("сүз$mark")
+            h.editor.autoCap = true
+            h.glideSalam()
+            assertEquals("after '$mark'", "сүз$mark Сәләм", h.editor.text)
+            // The alternatives carry the same casing.
+            for (cell in h.strip.shown.last().filterNotNull()) {
+                assertTrue("an alternative is capitalized too, was $cell", cell[0].isUpperCase())
+            }
+        }
+    }
+
+    @Test
+    fun aGlideAfterAPeriodStaysLowerCaseWithAutoCapOff() {
+        val h = tatarHarnessWith("сүз.")
+        h.glideSalam()
+        assertEquals("сүз. сәләм", h.editor.text)
+    }
+
+    @Test
+    fun aGlideAfterACommaStaysLowerCaseWithAutoCapOn() {
+        val h = tatarHarnessWith("сүз,")
+        h.editor.autoCap = true
+        h.glideSalam()
+        assertEquals("сүз, сәләм", h.editor.text)
+    }
+
+    @Test
+    fun aGlideAfterAPeriodStaysLowerCaseInAFieldWithoutSentenceCaps() {
+        // The field flags win, as for typed letters: without TYPE_TEXT_FLAG_CAP_SENTENCES the
+        // keyboard does not shift after ". ", so the glided word stays lower case too.
+        val h = tatarHarnessWith("сүз.")
+        h.editor.autoCap = true
+        h.editor.capSentencesField = false
+        h.glideSalam()
+        assertEquals("сүз. сәләм", h.editor.text)
+        for (cell in h.strip.shown.last().filterNotNull()) {
+            assertFalse("an alternative stays lower case too, was $cell", cell[0].isUpperCase())
+        }
+    }
+
+    @Test
+    fun capsLockKeepsItsMeaningAfterAPeriod() {
+        val h = tatarHarnessWith("сүз.")
+        h.editor.autoCap = true
+        h.controller.setGlideShiftStateGate(ShiftStateGate { TatarWordUtils.PrefixCasing.ALL_CAPS })
+        h.glideSalam()
+        assertEquals("сүз. СӘЛӘМ", h.editor.text)
+    }
+
+    // --- Feedback for a refused glide ---------------------------------------------------------
+
+    @Test
+    fun aCommittedGlideGivesNoTick() {
+        val h = tatarHarnessWith("сүз")
+        h.glideSalam()
+        assertEquals("сүз сәләм", h.editor.text)
+        assertEquals(0, h.ticks)
+    }
+
+    @Test
+    fun aGlideBeforeALetterOnlyTicksAndKeepsTheStrip() {
+        val h = tatarHarnessWith("сүз ")
+        h.editor.textAfterCursor = "дус"
+        h.controller.onTextChanged()
+        val shown = h.strip.shown.size
+        val reserves = h.strip.reserveCount
+        val hides = h.strip.hideCount
+        h.glideSalam()
+        assertEquals("сүз ", h.editor.text)
+        assertTrue(h.editor.predictedCommits.isEmpty())
+        assertEquals(1, h.ticks)
+        // Nothing is decoded and the strip is left as it was: a candidate shown here could not
+        // be inserted by a tap, since the same letter refuses the commit.
+        assertEquals(0, h.tatarEngine().glideRequests)
+        assertEquals(shown, h.strip.shown.size)
+        assertEquals(reserves, h.strip.reserveCount)
+        assertEquals(hides, h.strip.hideCount)
+        h.strip.listener!!.onTap("сәләм")
+        assertEquals("сүз ", h.editor.text)
+        assertEquals(1, h.ticks)
+    }
+
+    @Test
+    fun aLetterAfterTheCursorByTheResultTicksAndShowsNoCandidates() {
+        val h = tatarHarnessWith("сүз ")
+        h.tatarEngine().holdGlide = true
+        h.glideSalam()
+        val shown = h.strip.shown.size
+        h.editor.textAfterCursor = "дус"
+        h.tatarEngine().deliverHeldGlide()
+        assertEquals("сүз ", h.editor.text)
+        assertEquals(1, h.ticks)
+        assertEquals("no refused candidates may paint, was ${h.strip.shown}", shown, h.strip.shown.size)
+        // Nothing is bound, so a tap is inert even once the letter is gone.
+        h.editor.textAfterCursor = ""
+        h.strip.listener!!.onTap("сәләм")
+        assertEquals("сүз ", h.editor.text)
+        assertEquals(1, h.ticks)
+    }
+
+    @Test
+    fun aStaleGlideIsRefusedWithATickAndATapInsertsWithTheGlideSpacing() {
+        val h = tatarHarnessWith("сүз,")
+        h.tatarEngine().holdGlide = true
+        h.glideSalam()
+        h.editor.text += "а"
+        h.tatarEngine().deliverHeldGlide()
+        assertEquals("сүз,а", h.editor.text)
+        assertEquals(1, h.ticks)
+        val cells = h.strip.shown.last()
+        assertEquals("сәләм", cells[0])
+        // The tap commits at the live cursor, with the glide's leading space and no trailing one.
+        h.strip.listener!!.onTap(cells[1]!!)
+        assertEquals("сүз,а ${cells[1]}", h.editor.text)
+        // The whole-word undo covers the tapped word and its space.
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("сүз,а", h.editor.text)
+    }
+
+    @Test
+    fun aGlideIntoAnUnknownCacheShowsItsCandidatesAndATapAfterTheReloadInsertsWithTheGlideSpacing() {
+        for ((field, inserted) in listOf(
+            "сүз" to "сүз сәләм",
+            "сүз," to "сүз, сәләм",
+            "сүз " to "сүз сәләм",
+            "(" to "(сәләм",
+        )) {
+            val h = tatarHarnessWith(field)
+            h.editor.cacheLost = true
+            h.glideSalam()
+            assertEquals(field, h.editor.text)
+            assertEquals(1, h.ticks)
+            assertEquals(1, h.editor.reloadRequests)
+            assertEquals("сәләм", h.strip.shown.last()[0])
+            // A tap before the reload lands is refused the same way: no edit, one more tick and
+            // reload request, and the candidates stay.
+            h.strip.listener!!.onTap("сәләм")
+            assertEquals(field, h.editor.text)
+            assertEquals(2, h.ticks)
+            assertEquals(2, h.editor.reloadRequests)
+            // The reload lands and asks the strip to refresh; the bound candidates stay.
+            h.editor.cacheLost = false
+            h.controller.onCursorMoveSettled()
+            assertEquals("сәләм", h.strip.shown.last()[0])
+            // The tap inserts with the glide's spacing for the reloaded text: one leading space
+            // where one is needed, none after a space or an opening bracket, no trailing space.
+            h.strip.listener!!.onTap("сәләм")
+            assertEquals("after '$field'", inserted, h.editor.text)
+            assertEquals(2, h.ticks)
+            // The whole-word undo covers the tapped word and the space it added.
+            assertTrue(h.controller.maybeUndoGlideCommit())
+            assertEquals(field, h.editor.text)
+        }
+    }
+
+    @Test
+    fun aRefusedCandidateIsInertAfterTheSessionMoves() {
+        val h = tatarHarnessWith("сүз")
+        h.editor.cacheLost = true
+        h.glideSalam()
+        h.controller.onSelectionChanged()
+        h.editor.cacheLost = false
+        h.strip.listener!!.onTap("сәләм")
+        assertEquals("сүз", h.editor.text)
+    }
+
+    @Test
+    fun aRefusedGlideWithSuggestionsOffTicksAndShowsNothing() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        h.editor.text = "сүз "
+        h.editor.textAfterCursor = "дус"
+        h.glideSalam()
+        assertEquals("сүз ", h.editor.text)
+        assertEquals(1, h.ticks)
+        // The stale case reaches the commit path and ticks there.
+        h.editor.textAfterCursor = ""
+        h.tatarEngine().holdGlide = true
+        h.glideSalam()
+        h.editor.text += "а"
+        h.tatarEngine().deliverHeldGlide()
+        assertEquals("сүз а", h.editor.text)
+        assertEquals(2, h.ticks)
+        assertTrue("no strip with suggestions off, was ${h.strip.shown}", h.strip.shown.isEmpty())
+    }
+
+    @Test
+    fun aGlideWithAnUnknownCursorTicks() {
+        val h = tatarHarnessWith("сүз")
+        h.editor.knownCursor = false
+        h.glideSalam()
+        assertEquals("сүз", h.editor.text)
+        assertEquals(1, h.ticks)
     }
 
     // --- Real assets -----------------------------------------------------------------------------

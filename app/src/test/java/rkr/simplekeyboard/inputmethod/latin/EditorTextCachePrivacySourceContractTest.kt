@@ -27,9 +27,9 @@ import org.junit.Test
  *
  * Two rules:
  *
- * 1. The cache dies with the input session on EVERY boundary: `onFinishInputView`,
- *    `onFinishInputInternal` and `onWindowHidden` all clear it, so a lock screen or a home
- *    gesture over an unchanged field does not leave text in memory until the next field.
+ * 1. The cached text dies on EVERY boundary: `onFinishInputView`, `onFinishInputInternal` and
+ *    `onWindowHidden` all clear it, so a lock screen or a home gesture over an unchanged field
+ *    does not leave text in memory until the next field. A hide keeps the cursor position.
  *
  * 2. Password fields are never re-read into the cache at all: every `reloadTextCache` call site
  *    in `LatinIME` is gated by the password check. Auto-caps is unaffected:
@@ -50,9 +50,26 @@ class EditorTextCachePrivacySourceContractTest {
         )) {
             assertTrue(
                 "${signature.trim()} must clear the editor text cache",
-                javaBody(ime, signature).contains("mInputLogic.clearCaches()"),
+                javaBody(ime, signature).contains("mInputLogic.clearCaches()") ||
+                    javaBody(ime, signature).contains("mInputLogic.clearTextCaches()"),
             )
         }
+        // The session end drops the selection too; a hide keeps it, so the next show re-reads
+        // the text from the editor instead of the stale EditorInfo.
+        assertTrue(javaBody(ime, "\n    void onFinishInputInternal()").contains("mInputLogic.clearCaches()"))
+        val finishView = javaBody(ime, "\n    public void onFinishInputView(final boolean finishingInput)")
+        assertTrue(finishView.contains("if (finishingInput) {\n            mInputLogic.clearCaches();"))
+        assertTrue(javaBody(ime, "\n    public void onWindowHidden()").contains("mInputLogic.clearTextCaches()"))
+
+        val connection = read(RICH_INPUT_CONNECTION)
+        val clearText = javaBody(connection, "public void clearTextCaches()")
+        assertTrue(clearText.contains("mTextBeforeCursor = \"\";"))
+        assertTrue(clearText.contains("mTextAfterCursor = \"\";"))
+        assertTrue(clearText.contains("mCacheReachedTextStart = false;"))
+        assertFalse("a hide keeps the selection", clearText.contains("mExpectedSelStart"))
+        val clearAll = javaBody(connection, "public void clearCaches()")
+        assertTrue(clearAll.contains("mExpectedSelStart = INVALID_CURSOR_POSITION;"))
+        assertTrue(clearAll.contains("clearTextCaches();"))
     }
 
     @Test

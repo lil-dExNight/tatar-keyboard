@@ -300,12 +300,19 @@ class SuggestionsController internal constructor(
     // ([displayedGlideAlternativesFor]), and one backspace right after the lift deletes the whole
     // committed word ([glideCommittedWord]).
     private var pendingGlideContext: String = ""
-    /** The word the currently shown glide alternatives belong to (null when none are shown). */
+    /** The trailing word at the gesture ("" when none); the commit refuses if it changed. */
+    private var pendingGlideTrailingWord: String = ""
+    /** The cursor at the gesture (-1 when unknown); the commit refuses if it moved. */
+    private var pendingGlideCursor: Int = -1
+    /**
+     * The word the currently shown glide alternatives belong to (null when none are shown), or
+     * [REFUSED_GLIDE] when the strip shows the candidates of a glide whose commit was refused.
+     */
     private var displayedGlideAlternativesFor: String? = null
     /** The word a backspace right now would delete whole (the lift-committed or its replacement). */
     private var glideCommittedWord: String? = null
 
-    /** Whether [glideCommittedWord]'s commit prepended the chain space; the undo deletes the
+    /** Whether [glideCommittedWord]'s commit prepended a leading space; the undo deletes the
      * space with the word exactly when the commit added it. */
     private var glideCommitPrependedSpace: Boolean = false
 
@@ -314,6 +321,9 @@ class SuggestionsController internal constructor(
 
     /** The keyboard's shift state for the glide commit's casing rule; OFF until wired. */
     private var glideShiftGate: ShiftStateGate = ShiftStateGate { TatarWordUtils.PrefixCasing.LOWER }
+
+    /** The haptic tick of a refused glide; silent until wired. */
+    private var glideRefusalFeedback: GlideRefusalFeedback = GlideRefusalFeedback {}
 
     // The current layout's key geometry for the glide decoder, built by LatinIME from the live
     // keyboard. Remembered and re-pushed like [keyNeighbors]. Null disables glide.
@@ -461,6 +471,11 @@ class SuggestionsController internal constructor(
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
     fun setGlideShiftStateGate(gate: ShiftStateGate) {
         glideShiftGate = gate
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setGlideRefusalFeedback(feedback: GlideRefusalFeedback) {
+        glideRefusalFeedback = feedback
     }
 
     /**
@@ -1701,27 +1716,29 @@ class SuggestionsController internal constructor(
     /**
      * A glide gesture completed on the letter keys (PointerTracker via LatinIME, UI thread).
      * Requests the decode on the engine worker; nothing is shown during the gesture (one decode at
-     * ACTION_UP). Every early exit is silent and leaves the strip as it is:
+     * ACTION_UP). The early exits leave the strip as it is:
      *  - glide off (its own setting, independent of suggestions; [glideEligible] is the field
-     *    gate), a destroyed controller, no usable engine;
-     *  - an editor state the commit path could not honor: an unknown cursor, a letter right after
-     *    the cursor, or a half-typed trailing word (the decoder decodes whole words). The one
-     *    tolerated trailing word is the chain's previous glide commit, which gets the chain space.
+     *    gate), a destroyed controller, no usable engine: silent;
+     *  - an unknown cursor, or a letter right after the cursor: the commit path could not honor
+     *    the gesture, nor a tap on any of its candidates, so it is refused with the tick of
+     *    [GlideRefusalFeedback] and nothing is decoded.
      *
-     * The glide strip is bound to the NEXT_WORD context of the moment (the word before the cursor,
-     * "" at a field start), which [EditorSurface.commitGlideWord] re-derives live before editing.
+     * A trailing word (typed, or the previous glide's) stays: the commit puts a space before the
+     * new word. The glide strip is bound to the NEXT_WORD context of the moment (the word before
+     * the cursor, "" at a field start); the trailing word and the cursor are captured with it, and
+     * [EditorSurface.commitGlideWord] refuses the commit if any of them changed before the result.
      * One binding at a time: the other two are dropped here.
      */
     fun onGlideInput(path: GlidePath) {
         if (destroyed || !glideEligible) return
         if (!glideGate.isOn()) return
         val activeEngine = usableEngine() ?: return
-        if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
-        // The one tolerated trailing word is the chain's previous glide commit (still in its undo
-        // window); a second glide extends it ("сәләм" → "сәләм дөнья"). Any other trailing word is
-        // a half-typed prefix, which glide does not complete.
+        if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) {
+            glideRefusalFeedback.onGlideRefused()
+            return
+        }
         val trailingWord = editor.cachedWordBeforeCursor()
-        if (trailingWord.isNotEmpty() && trailingWord != glideCommittedWord) return
+        val cursor = editor.cursorPosition()
         val context = editor.cachedNextWordContext()
         // A glide gesture ends any autocorrect preview: no stale typed-word cell may stay on the
         // glide strip (the tap path's refusal check would swallow the tap).
@@ -1734,6 +1751,8 @@ class SuggestionsController internal constructor(
         // arrival will end its slice). The decode itself is not traced.
         endLookupTrace()
         pendingGlideContext = context
+        pendingGlideTrailingWord = trailingWord
+        pendingGlideCursor = cursor
         requestSessionId = sessionId
         // Only one glide word index may be resident. Warm slots stay alive on purpose (see
         // LanguageSlot), so before this language builds its index the others drop theirs. Each
@@ -1766,9 +1785,16 @@ class SuggestionsController internal constructor(
      * commit still lands (it is typing) and the strip shows nothing.
      *
      * Casing follows the prefix path's display rule, taken from the shift gate (a gesture types
-     * no letters to read casing from); the committed and the shown forms both carry it. With zero
+     * no letters to read casing from); the committed and the shown forms both carry it. A lower-case
+     * gesture whose leading space starts a sentence ([EditorSurface.glideStartsSentence]) gets an
+     * initial capital, as a typed space would have shifted the keyboard. With zero
      * candidates nothing is committed. With exactly one there are no alternatives, and the strip
      * is derived afresh as if the word had been typed (the committed word is the trailing word).
+     *
+     * A refused commit (see [EditorSurface.commitGlideWord]) gives the [GlideRefusalFeedback] tick.
+     * With suggestions on and no letter after the cursor (a stale or unknown cache), the strip
+     * shows the top candidates bound to [REFUSED_GLIDE]; a tap on one goes through the glide
+     * commit path again against the live text ([onTap]).
      *
      * Learning: a lift-committed word behaves like a tapped suggestion. The run is marked dirty,
      * the new boundary is trusted for pairs, and the word is reported as an accepted suggestion
@@ -1784,15 +1810,31 @@ class SuggestionsController internal constructor(
             if (eligible) strip.reserve()
             return
         }
-        val casing = glideShiftGate.glideCasing()
+        var casing = glideShiftGate.glideCasing()
+        if (casing == TatarWordUtils.PrefixCasing.LOWER && editor.glideStartsSentence()) {
+            casing = TatarWordUtils.PrefixCasing.INITIAL_CAPS
+        }
         val committed = TatarWordUtils.applyCasing(suggestions[0], casing)
         // The glide commit path re-derives the live context and refuses a stale gesture itself
         // (see [EditorSurface.commitGlideWord]); a refusal commits nothing.
-        val commitResult = editor.commitGlideWord(pendingGlideContext, committed, glideCommittedWord)
+        val commitResult = editor.commitGlideWord(
+            pendingGlideContext, committed, pendingGlideTrailingWord, pendingGlideCursor)
         if (commitResult == EditorSurface.GLIDE_COMMIT_REFUSED) {
+            glideRefusalFeedback.onGlideRefused()
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
-            if (eligible) strip.reserve()
+            // A letter after the cursor would refuse a tap on every candidate too, so none are
+            // shown; a stale or unknown cache can clear before the tap.
+            if (!eligible || editor.hasLetterAfterCursor()) return
+            // The gesture is not lost: its candidates stay on the strip, in the commit's casing.
+            val candidates = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+            for (suggestion in suggestions) {
+                candidates.add(TatarWordUtils.applyCasing(suggestion, casing))
+                if (candidates.size >= SuggestionStripState.CELL_COUNT) break
+            }
+            displayedGlideAlternativesFor = REFUSED_GLIDE
+            displayedSessionId = sessionId
+            showBand(candidates)
             return
         }
         // Not the user spelling the word out: the run stops counting, and the new boundary is
@@ -1804,7 +1846,7 @@ class SuggestionsController internal constructor(
         // predicate, so this also runs with suggestions off.
         runMachine.noteAcceptedSuggestion(committed)
         // One backspace right after the lift deletes the whole committed word. The undo word
-        // tracks the editor (it moves to an alternative if one replaces it), and the chain space
+        // tracks the editor (it moves to an alternative if one replaces it), and the leading space
         // goes with the word exactly when the commit added it.
         glideCommittedWord = committed
         glideCommitPrependedSpace = commitResult == EditorSurface.GLIDE_COMMIT_PREPENDED
@@ -2258,6 +2300,9 @@ class SuggestionsController internal constructor(
             requestCurrentPrefix()
             return
         }
+        // Read before clearRevertState drops it: a glide alternative keeps the leading space the
+        // lift-commit prepended, and its undo must delete that space too.
+        val glidePrependedSpace = glideCommitPrependedSpace
         // An accepted suggestion is not the user spelling the word out: the run stops counting.
         runMachine.markRunDirty()
         clearRevertState()
@@ -2342,17 +2387,38 @@ class SuggestionsController internal constructor(
                 // committed are requested from here, or they never are.
                 requestCurrentPrefix()
             }
+        } else if (glideAlternativesFor == REFUSED_GLIDE) {
+            // A candidate of a refused glide: nothing was committed, so the tap commits it as a
+            // fresh glide at the live cursor, with the glide's spacing and its whole-word undo.
+            // Where the commit path still refuses (the cache reload has not landed yet) nothing
+            // is edited, the tick repeats and the strip stays.
+            val result = editor.commitGlideWord(editor.cachedNextWordContext(), suggestion,
+                editor.cachedWordBeforeCursor(), editor.cursorPosition())
+            if (result == EditorSurface.GLIDE_COMMIT_REFUSED) {
+                glideRefusalFeedback.onGlideRefused()
+                return
+            }
+            glideCommittedWord = suggestion
+            glideCommitPrependedSpace = result == EditorSurface.GLIDE_COMMIT_PREPENDED
+            displayedGlideAlternativesFor = null
+            bandBaseCells = emptyList()
+            clearCompanionRequest()
+            strip.reserve()
+            runMachine.noteAcceptedSuggestion(suggestion)
+            runMachine.trustPairBoundary()
+            requestCurrentPrefix()
         } else if (glideAlternativesFor != null) {
             // A tap on a glide alternative replaces the just-committed glide word in the editor,
             // which re-checks that the committed word still stands right before the cursor. The
-            // chain space stays as committed. The run stays dirty (markRunDirty above), the
+            // leading space stays as committed. The run stays dirty (markRunDirty above), the
             // alternative counts as the accepted suggestion, the trusted pair boundary moves to
             // it, and the strip refreshes for it.
             if (editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion,
-                    glideCommitPrependedSpace)) {
+                    glidePrependedSpace)) {
                 // The undo window tracks the text: a backspace now deletes the alternative whole
-                // (with the same chain-space treatment).
+                // (with the same leading-space treatment).
                 glideCommittedWord = suggestion
+                glideCommitPrependedSpace = glidePrependedSpace
                 displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
@@ -2366,8 +2432,8 @@ class SuggestionsController internal constructor(
 
     /**
      * One backspace right after a glide lift-commit deletes the whole committed word instead of
-     * one character, including the chain space when the commit prepended it, so undoing the second
-     * glide of a chain returns to the first word's state. Returns true when it did.
+     * one character, including the leading space when the commit prepended it, so undoing a glide
+     * after "сүз," or after a previous glide returns to exactly that text. Returns true when it did.
      *
      * The window holds one word and closes when the text changes for any other reason, like the
      * autocorrect undo: the state is dropped before the editor is asked, so a refused undo cannot
@@ -2416,5 +2482,11 @@ class SuggestionsController internal constructor(
          * [requestSentenceStart].
          */
         private const val SENTENCE_START_CONTEXT = ""
+
+        /**
+         * The [displayedGlideAlternativesFor] binding of a refused glide's candidates: the empty
+         * string, never a committed word, so every path that drops the glide binding drops it too.
+         */
+        private const val REFUSED_GLIDE = ""
     }
 }

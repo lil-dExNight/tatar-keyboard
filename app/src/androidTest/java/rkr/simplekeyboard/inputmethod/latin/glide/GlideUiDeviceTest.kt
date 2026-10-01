@@ -206,7 +206,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         val chained = field.text.toString()
         Log.i(TAG, "field after the chained glide: '$chained'")
         // The synthetic straight-segment path decodes to донья/дөнья depending on the ranking —
-        // the CONTRACT under test is the spacing: the first word, exactly one chain space, one
+        // the CONTRACT under test is the spacing: the first word, exactly one leading space, one
         // decoded word, nothing trailing.
         assertTrue(
             "the chained glide prepends exactly one space and no trailing one, was '$chained'",
@@ -218,7 +218,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         Thread.sleep(800)
         val undone = field.text.toString()
         Log.i(TAG, "field after the chain undo: '$undone'")
-        assertTrue("undo must delete the word WITH the chain space, was '$undone'",
+        assertTrue("undo must delete the word WITH its leading space, was '$undone'",
             undone == "сәлләм")
     }
 

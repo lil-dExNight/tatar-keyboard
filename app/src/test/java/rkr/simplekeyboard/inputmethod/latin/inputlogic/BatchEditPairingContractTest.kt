@@ -124,8 +124,8 @@ class BatchEditPairingContractTest {
     /** The scan is meaningful only while it sees the batches it claims to pair. */
     @Test
     fun theScanAnchorsToTheKnownBatchCounts() {
-        assertEquals(10, batchCall("beginBatchEdit").findAll(files.getValue("InputLogic")).count())
-        assertEquals(10, batchCall("endBatchEdit").findAll(files.getValue("InputLogic")).count())
+        assertEquals(11, batchCall("beginBatchEdit").findAll(files.getValue("InputLogic")).count())
+        assertEquals(11, batchCall("endBatchEdit").findAll(files.getValue("InputLogic")).count())
         assertEquals(
             1,
             batchCall("beginBatchEdit").findAll(files.getValue("RichInputConnection")).count(),

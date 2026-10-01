@@ -331,6 +331,63 @@ object TatarWordUtils {
     }
 
     /**
+     * True when a glide word committed at the cursor needs one space before it: the text before the
+     * cursor ends in a letter (possibly followed by combining marks), a digit, a
+     * [swapsWithAutoSpace] mark or a closing quote ([isClosingQuoteAt]). Whitespace, a line break,
+     * opening brackets, opening quotes, hyphens, dashes, emoji (also with a variation selector or
+     * keycap mark) and an empty text give false. Allocation-free; reads at most [MAX_TAIL_SCAN]
+     * code points.
+     */
+    @JvmStatic
+    fun glideNeedsLeadingSpace(textBeforeCursor: CharSequence?): Boolean {
+        if (textBeforeCursor == null || textBeforeCursor.isEmpty()) return false
+        var index = textBeforeCursor.length
+        val last = Character.codePointBefore(textBeforeCursor, index)
+        if (Character.isLetter(last) || Character.isDigit(last) || swapsWithAutoSpace(last)) return true
+        if (isClosingQuoteAt(textBeforeCursor, index)) return true
+        // Trailing marks count only when they sit on a letter: U+FE0F after an emoji is a mark too.
+        var scanned = 0
+        while (index > 0 && scanned < MAX_TAIL_SCAN) {
+            val codePoint = Character.codePointBefore(textBeforeCursor, index)
+            if (!isWordCharacter(codePoint)) return false
+            if (Character.isLetter(codePoint)) return true
+            index -= Character.charCount(codePoint)
+            scanned++
+        }
+        return false
+    }
+
+    /**
+     * True when the code point before [end] closes a quotation: `»` and `”` always; a straight `"`
+     * only after a character that is neither whitespace nor an opening bracket or quote
+     * (`сүз"` closes, `сүз "` and `("` open). `«`, `“` and `„` open and give false.
+     */
+    private fun isClosingQuoteAt(text: CharSequence, end: Int): Boolean {
+        val codePoint = Character.codePointBefore(text, end)
+        if (codePoint == '\u00BB'.code || codePoint == '\u201D'.code) return true
+        if (codePoint != '"'.code) return false
+        val quoteStart = end - 1
+        if (quoteStart == 0) return false
+        val before = Character.codePointBefore(text, quoteStart)
+        if (Character.isWhitespace(before) || Character.isSpaceChar(before)) return false
+        val type = Character.getType(before)
+        return type != Character.START_PUNCTUATION.toInt() &&
+            type != Character.INITIAL_QUOTE_PUNCTUATION.toInt() &&
+            before != '"'.code
+    }
+
+    /**
+     * True when a glide committed now gets its leading space ([glideNeedsLeadingSpace]) and the
+     * text plus that space is a sentence start ([isSentenceStartContext]), so the word is
+     * capitalized as if the user had typed the space ("сүз." gives "сүз. Дөнья").
+     */
+    @JvmStatic
+    fun glideStartsSentence(textBeforeCursor: CharSequence?, cacheReachedTextStart: Boolean): Boolean {
+        if (textBeforeCursor == null || !glideNeedsLeadingSpace(textBeforeCursor)) return false
+        return isSentenceStartContext(StringBuilder(textBeforeCursor).append(' '), cacheReachedTextStart)
+    }
+
+    /**
      * True when a typed space lands right after an auto-space that is still in place, so it is
      * swallowed instead of doubling the space. [codePointBefore] is the code point before the cursor.
      */

@@ -95,27 +95,48 @@ interface EditorSurface {
     fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean = false
 
     /**
+     * The cursor position in the editor (the expected selection start), or -1 when unknown.
+     * Defaults to -1, which makes [commitGlideWord] skip its cursor check.
+     */
+    fun cursorPosition(): Int = -1
+
+    /**
+     * True when auto-capitalization is on and a glide committed now gets its leading space into a
+     * sentence start ([TatarWordUtils.glideStartsSentence]), so a lower-case gesture is committed
+     * with an initial capital. Defaults to false.
+     */
+    fun glideStartsSentence(): Boolean = false
+
+    /**
      * Commit path of a glide lift: [commitPredictedWord]'s live re-checks without the
      * sentence-start requirement for an empty context. A gesture ends at the cursor the user is
      * looking at, so there is no stale strip to guard against, and an empty-context position that
      * is not a sentence start ("сүз ? ") is a valid glide target.
      *
-     * A glide commits no auto-space: the gesture is typing, not accepting a suggestion. When the
-     * cursor stands right after a word character, one space is prepended (gliding word after word
-     * produces "сәләм дөнья"); after whitespace, punctuation or at a field start nothing is.
-     * [chainedAfter] is the only trailing word tolerated: the word the previous glide of the chain
-     * committed (still in its undo window). Any other trailing word is a half-typed prefix and
-     * refuses the commit.
+     * [expectedTrailingWord] and [expectedCursor] are what [cachedWordBeforeCursor] and
+     * [cursorPosition] returned at the gesture; a different live value means the user typed after
+     * the lift, and the commit is refused (-1 skips the cursor check). So is a commit whose
+     * before-cursor text is unknown (an empty cache with the cursor past the text start).
+     *
+     * A glide commits no trailing space: the gesture is typing, not accepting a suggestion. One
+     * space is prepended when [TatarWordUtils.glideNeedsLeadingSpace] holds: after a word, a digit,
+     * a closing quote or a mark such as "," ("сүз," gives "сүз, дөнья", consecutive glides
+     * "сәләм дөнья"); after whitespace, an opening bracket or quote, a dash or at a field start
+     * nothing is.
      *
      * Returns [GLIDE_COMMIT_REFUSED] (no edit, the default), [GLIDE_COMMIT_BARE] or
-     * [GLIDE_COMMIT_PREPENDED]; the undo needs to know whether the chain space was inserted.
+     * [GLIDE_COMMIT_PREPENDED]; the undo needs to know whether the leading space was inserted.
      */
-    fun commitGlideWord(expectedContextWord: String, suggestion: String, chainedAfter: String?): Int =
-        GLIDE_COMMIT_REFUSED
+    fun commitGlideWord(
+        expectedContextWord: String,
+        suggestion: String,
+        expectedTrailingWord: String,
+        expectedCursor: Int,
+    ): Int = GLIDE_COMMIT_REFUSED
 
     /**
      * Replaces the word a glide just committed with the tapped alternative, in place: no space is
-     * added or removed, and [prependedSpace] says whether the committed text carried the chain
+     * added or removed, and [prependedSpace] says whether the committed text carried a leading
      * space. The suffix match ([committedWord] right before the cursor) is the position check, as
      * in [revertTypedWord]; a stale tap edits nothing. Returns false without editing (default).
      */
@@ -123,7 +144,7 @@ interface EditorSurface {
 
     /**
      * Whole-word undo of a glide lift: one backspace right after the lift deletes the committed
-     * word, including the chain space when [prependedSpace] is set, and commits nothing back.
+     * word, including the leading space when [prependedSpace] is set, and commits nothing back.
      * Same position check as [replaceGlideLiftedWord]; false without an edit on failure (default).
      */
     fun deleteGlideLiftedWord(committedWord: String, prependedSpace: Boolean): Boolean = false
@@ -132,10 +153,10 @@ interface EditorSurface {
         /** [commitGlideWord] refused: nothing was edited. */
         const val GLIDE_COMMIT_REFUSED = 0
 
-        /** [commitGlideWord] committed the bare word (no chain space needed). */
+        /** [commitGlideWord] committed the bare word (no leading space needed). */
         const val GLIDE_COMMIT_BARE = 1
 
-        /** [commitGlideWord] committed " " + word (the cursor stood right after a word). */
+        /** [commitGlideWord] committed " " + word (after a word, a digit or a mark such as ","). */
         const val GLIDE_COMMIT_PREPENDED = 2
     }
 }
@@ -164,6 +185,15 @@ fun interface GlideGate {
  */
 fun interface ShiftStateGate {
     fun glideCasing(): TatarWordUtils.PrefixCasing
+}
+
+/**
+ * The short haptic tick of a glide whose commit was refused, so the gesture does not look lost.
+ * Production calls the tick of the key feedback, which honors the vibrate setting; JVM tests
+ * count the calls.
+ */
+fun interface GlideRefusalFeedback {
+    fun onGlideRefused()
 }
 
 /**
