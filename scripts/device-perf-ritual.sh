@@ -2,32 +2,62 @@
 # device-perf-ritual.sh: per-release performance check on a real device
 # (calibrated for the POCO C71, 720x1640, Android 15 HyperOS).
 #
-# Three legs, one machine-readable RESULT|... line per measurement (stdout and
-# $OUTDIR/result.txt; raw evidence such as meminfo dumps, framestats and
-# screencaps goes to $OUTDIR):
-#   a) cold start x5: process start (field 22 of /proc/<pid>/stat, CLK_TCK=100)
-#      -> first FrameCompleted of the InputMethod window (gfxinfo framestats).
-#      The process is killed with `run-as <pkg> kill -9`, NOT am force-stop:
-#      kill -9 keeps the selected IME untouched (HyperOS resets the default IME
-#      when the SELECTED package is force-stopped, and `ime set` starts the IME
-#      process immediately, which would contaminate the process-start timestamp).
-#      kill -9 is also the realistic cold-start trigger (LMK reaping). The host
-#      field is Chrome's omnibox (foreign package: the process provably starts
-#      as the IME, not as our own setup activity).
-#   b) PSS via dumpsys meminfo after four scenarios on our own SetupActivity
+# Legs, one machine-readable RESULT|... line per measurement (stdout and
+# $OUTDIR/result.txt; raw evidence such as meminfo dumps, framestats, traces and
+# screencaps goes to $OUTDIR). Every budgeted line carries budget_* and
+# over_budget=true|false:
+#   cold) cold start: process start (field 22 of /proc/<pid>/stat, CLK_TCK=100,
+#      CLOCK_BOOTTIME, corrected to CLOCK_MONOTONIC) -> first FrameCompleted of
+#      the InputMethod window (gfxinfo framestats). Host field: Chrome's omnibox
+#      (foreign package, so the process starts as the IME). Two triggers:
+#      - tap (debuggable package): `run-as <pkg> kill -9`, then a tap on the
+#        omnibox starts the process. kill -9 keeps the IME selection and matches
+#        how the system reclaims memory.
+#      - switch (non-debuggable package, where run-as is refused and shell may
+#        not signal the app uid): select the neutral IME, `am kill <pkg>` (it
+#        only kills processes the system no longer binds, so it works once ours
+#        is deselected), raise the neutral keyboard on the omnibox, then
+#        `ime set <ours>`. The bind starts our process with the show request
+#        already pending, so process start -> first frame is the same path as
+#        after a tap. `am crash` is not used: a second crash inside a minute
+#        shows the "keeps stopping" dialog and writes a crash report. No path
+#        force-stops the package (HyperOS resets the default IME when the
+#        package of the selected IME is force-stopped); the selection is put
+#        back after every run and restored on exit.
+#      The first --cold-warmup runs after an install are discarded (one-time
+#      first-start work).
+#   pss) PSS via dumpsys meminfo after four scenarios on our own SetupActivity
 #      try-it field: keyboard open idle; after 50 scripted words (25 tt + 25 ru);
 #      emoji panel open (the expected peak) and after close; after 30 s hidden
-#      (the idle-release path fires at 10 s: glide + emoji indexes drop).
-#   c) frame stats: gfxinfo reset -> fixed 32-event Tatar typing
+#      (the idle-release path fires at 10 s: glide + emoji indexes drop). The
+#      ceiling depends on the build: debuggable builds run on the debug scale.
+#   frames) frame stats: gfxinfo reset -> fixed 32-event Tatar typing
 #      script ("сәләм дөнья мин сине яратам дус ": 27 letters + 5 spaces,
 #      0.35 s between taps) -> the InputMethod window's last <=120 PROFILEDATA
 #      rows; frame duration = FrameCompleted - IntendedVsync; p50/p90/p95 per
-#      run, 3 runs.
+#      run, 3 runs, p95 against the 16.7 ms deadline. The same dump gives the
+#      janky frames line: "Janky frames" of the InputMethod window section
+#      (frames that missed their FrameTimeline deadline) over the same script.
+#   warm) warm show x5: process alive, keyboard hidden for 2 s (before the 10 s
+#      idle release) -> tap on Chrome's omnibox -> first FrameCompleted of the
+#      InputMethod window after a gfxinfo reset. The tap time is the
+#      eventTimeNano of the ACTION_UP in the atrace `input view` capture (the
+#      framework's deliverInputEvent slice of the receiving app). Both clocks
+#      are CLOCK_MONOTONIC, and the time of `input tap` itself is not counted.
+#   touch) touch handling: atrace `input view` capture over the 32-event script;
+#      duration of every deliverInputEvent slice on the IME main thread. That
+#      slice wraps the view's onTouchEvent, PointerTracker and the synchronous
+#      commit to the editor, so it is an upper bound of the time spent in our
+#      code per event; p95 is held to the budget. Event -> end of handling
+#      (eventTimeNano to the slice end, trace clock aligned with the
+#      trace_event_clock_sync marker) is printed without a budget.
 #
-# Force-stop rule: safe_force_stop() NEVER force-stops the package while its IME
-# is the selected one; it reads `settings get secure default_input_method` first
-# and switches to a neutral IME (Gboard) when needed. The primary kill path is
-# run-as kill -9, which needs no switch at all.
+# Release (non-debuggable) builds: --enable-suggestions-ui turns word
+# suggestions on by driving the app's own settings screen with uiautomator
+# (SettingsActivity -> Preferences row -> the suggestions switch, found by
+# resource-id), and turns them off again on exit if they were off. The layout
+# is then checked by typing a probe key and reading the try-it field back,
+# because the current-language pref is readable only through run-as.
 #
 # Columns of the framestats CSV are located BY HEADER NAME: on Android 15
 # FrameCompleted is column 17, not 14 as in the pre-FrameTimeline format, and a
@@ -42,14 +72,22 @@
 # Flags:
 #   --serial <id>     device serial (default: $ANDROID_SERIAL, else the single
 #                     online device, else the POCO C71 serial)
-#   --pkg <package>   package under test (default org.tatarkeyboard.ime.debug;
-#                     a non-debuggable package degrades cold start to SKIP)
+#   --pkg <package>   package under test (default org.tatarkeyboard.ime.debug)
 #   --outdir <path>   evidence directory (default build/device-perf-ritual)
-#   --cold-runs <n>   cold-start iterations (default 5)
+#   --legs <list>     comma-separated subset of cold,pss,frames,warm,touch
+#                     (default: all)
+#   --cold-runs <n>   recorded cold-start iterations (default 5)
+#   --cold-warmup <n> discarded cold-start iterations before them (default 1)
+#   --cold-trigger <tap|switch>  cold-start trigger (default: tap for a
+#                     debuggable package, switch otherwise)
 #   --frame-runs <n>  frame-stat runs (default 3)
+#   --warm-runs <n>   warm-show iterations (default 5)
+#   --enable-suggestions-ui  turn suggestions on through the settings screen
+#                     instead of the run-as pref write
 #
 # Exit code: 0 with no FAIL line, 1 otherwise. The script is idempotent: the
-# pre-run state (default IME, stay-on-while-plugged, screen awake/asleep) is
+# pre-run state (default IME, enabled IMEs, stay-on-while-plugged, screen
+# awake/asleep, the suggestions switch when set through the UI, atrace) is
 # restored by an EXIT trap.
 
 set -uo pipefail
@@ -57,8 +95,13 @@ set -uo pipefail
 SERIAL="${ANDROID_SERIAL:-}"
 PKG="org.tatarkeyboard.ime.debug"
 OUTDIR=""
+LEGS="cold,pss,frames,warm,touch"
 COLD_RUNS=5
+COLD_WARMUP=1
+COLD_TRIGGER=""
 FRAME_RUNS=3
+WARM_RUNS=5
+SUGGESTIONS_UI=0
 ADB="${ADB:-$HOME/Android/Sdk/platform-tools/adb}"
 
 while [ $# -gt 0 ]; do
@@ -66,11 +109,28 @@ while [ $# -gt 0 ]; do
         --serial) SERIAL="$2"; shift 2 ;;
         --pkg) PKG="$2"; shift 2 ;;
         --outdir) OUTDIR="$2"; shift 2 ;;
+        --legs) LEGS="$2"; shift 2 ;;
         --cold-runs) COLD_RUNS="$2"; shift 2 ;;
+        --cold-warmup) COLD_WARMUP="$2"; shift 2 ;;
+        --cold-trigger) COLD_TRIGGER="$2"; shift 2 ;;
         --frame-runs) FRAME_RUNS="$2"; shift 2 ;;
+        --warm-runs) WARM_RUNS="$2"; shift 2 ;;
+        --enable-suggestions-ui) SUGGESTIONS_UI=1; shift ;;
         *) echo "unknown flag: $1" >&2; exit 2 ;;
     esac
 done
+case "$COLD_TRIGGER" in ''|tap|switch) : ;; *) echo "bad --cold-trigger: $COLD_TRIGGER" >&2; exit 2 ;; esac
+leg_on() { case ",$LEGS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+
+# Budgets printed with the RESULT lines. The PSS ceiling of a debuggable build is
+# on the debug scale (a debug build holds far more memory than a release build).
+COLD_BUDGET_MS=400
+WARM_BUDGET_MS=150
+TOUCH_BUDGET_MS=5
+FRAME_BUDGET_MS=16.7
+JANK_BUDGET_PCT=1.0
+PSS_BUDGET_DEBUG_KB=114000
+PSS_BUDGET_RELEASE_KB=69000
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUTDIR="${OUTDIR:-$ROOT/build/device-perf-ritual}"
@@ -106,14 +166,28 @@ log() { echo "ritual: $*" >&2; }
 # ── state capture + restore ───────────────────────────────────────────────────
 
 PREV_IME=$(SHELL settings get secure default_input_method 2>/dev/null | tr -d '\r')
+PREV_ENABLED=$(SHELL settings get secure enabled_input_methods 2>/dev/null | tr -d '\r')
 PREV_STAYON=$(SHELL settings get global stay_on_while_plugged_in 2>/dev/null | tr -d '\r')
 PREV_AWAKE=$(SHELL dumpsys power 2>/dev/null | grep -oP 'mWakefulness=\K\w+' | head -1)
 log "state on entry: ime=$PREV_IME stayon=$PREV_STAYON wakefulness=$PREV_AWAKE"
 
 WOKEN=0
+IME_ID=""
+IME_WAS_ENABLED=1
+SUGG_UI_RESTORE=""     # "false" when the UI switch was turned on by this run
+ATRACE_ON=0
 restore() {
     log "restoring device state"
+    [ "$ATRACE_ON" = 1 ] && SHELL atrace --async_stop >/dev/null 2>&1 || true
+    if [ -n "$SUGG_UI_RESTORE" ]; then
+        set_suggestions_ui "$SUGG_UI_RESTORE" >/dev/null \
+            && log "suggestions switch restored to $SUGG_UI_RESTORE" \
+            || log "WARNING: could not restore the suggestions switch to $SUGG_UI_RESTORE"
+    fi
     [ -n "$PREV_IME" ] && SHELL ime set "$PREV_IME" >/dev/null 2>&1 || true
+    if [ "$IME_WAS_ENABLED" = 0 ] && [ -n "$IME_ID" ]; then
+        SHELL ime disable "$IME_ID" >/dev/null 2>&1 || true
+    fi
     case "$PREV_STAYON" in
         ''|null|0) : ;;                       # was off; we never turned it off
         *) SHELL settings put global stay_on_while_plugged_in "$PREV_STAYON" >/dev/null 2>&1 || true ;;
@@ -143,6 +217,7 @@ WH=$(SHELL wm size 2>/dev/null | grep -oP '\d+x\d+' | head -1)
 SHELL pm path "$PKG" >/dev/null 2>&1 || { result FAIL package "$PKG not installed"; exit 1; }
 IME_ID=$(SHELL ime list -a -s 2>/dev/null | tr -d '\r' | grep "^$PKG/" | head -1)
 [ -n "$IME_ID" ] || { result FAIL ime-id "ime list shows no IME of $PKG"; exit 1; }
+case ":$PREV_ENABLED:" in *":$IME_ID:"*|*":$IME_ID;"*) : ;; *) IME_WAS_ENABLED=0 ;; esac
 SHELL ime enable "$IME_ID" >/dev/null 2>&1 || true
 if ! SHELL ime list -s 2>/dev/null | tr -d '\r' | grep -qx "$NEUTRAL_IME"; then
     NEUTRAL_IME=$(SHELL ime list -s 2>/dev/null | tr -d '\r' | grep -v "^$PKG/" | head -1)
@@ -150,12 +225,20 @@ fi
 [ -n "$NEUTRAL_IME" ] || { result FAIL neutral-ime "no second IME to dance through"; exit 1; }
 RUN_AS_OK=0
 A shell "run-as $PKG true" >/dev/null 2>&1 && RUN_AS_OK=1
+if [ "$RUN_AS_OK" = 1 ]; then
+    BUILD=debug; PSS_BUDGET_KB=$PSS_BUDGET_DEBUG_KB
+    [ -n "$COLD_TRIGGER" ] || COLD_TRIGGER=tap
+else
+    BUILD=release; PSS_BUDGET_KB=$PSS_BUDGET_RELEASE_KB
+    [ -n "$COLD_TRIGGER" ] || COLD_TRIGGER=switch
+fi
 VER=$(SHELL dumpsys package "$PKG" 2>/dev/null | grep -m1 versionName | grep -oP '= *\K\S+')
 {
     echo "date: $(date -Iseconds)"
     echo "serial: $SERIAL  model: $MODEL  android: $ANDROID_REL  screen: $WH"
     echo "package: $PKG  versionName: $VER  battery: ${BATTERY}%"
-    echo "ime: $IME_ID  neutral: $NEUTRAL_IME  run-as: $RUN_AS_OK"
+    echo "ime: $IME_ID  neutral: $NEUTRAL_IME  run-as: $RUN_AS_OK  build: $BUILD"
+    echo "legs: $LEGS  cold trigger: $COLD_TRIGGER  suggestions via UI: $SUGGESTIONS_UI"
     echo "prev ime: $PREV_IME  prev stayon: $PREV_STAYON  prev wakefulness: $PREV_AWAKE"
     if [ -d "$ROOT/.git" ]; then
         dirty=clean; [ -n "$(git -C "$ROOT" status --porcelain)" ] && dirty=dirty
@@ -171,9 +254,12 @@ fi
 
 # Suggestions must be on for the frame leg (frames are measured with the strip
 # updating). The debuggable package gets the same targeted run-as pref write as
-# the emulator smoke; a non-debuggable package keeps whatever state it has.
+# the emulator smoke unless --enable-suggestions-ui is given; the UI path runs
+# after the helpers below. Without either, the package keeps its state.
 PREFS_PATH="/data/user_de/0/$PKG/shared_prefs/${PKG}_preferences.xml"
-if [ "$RUN_AS_OK" = 1 ]; then
+if [ "$SUGGESTIONS_UI" = 1 ]; then
+    :
+elif [ "$RUN_AS_OK" = 1 ]; then
     pref=$(SHELL "run-as $PKG cat $PREFS_PATH" 2>/dev/null | tr -d '\r' \
         | grep -oP 'name="pref_tatar_suggestions" value="\K[^"]*' | head -1 || true)
     if [ "$pref" != "true" ]; then
@@ -208,7 +294,7 @@ PYEOF
         result INFO suggestions-pref "pref_tatar_suggestions already true"
     fi
 else
-    result INFO suggestions-pref "package not debuggable; suggestions state untouched"
+    result INFO suggestions-pref "package not debuggable and no --enable-suggestions-ui; suggestions state untouched"
 fi
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -227,40 +313,30 @@ wait_keyboard() { # wait_keyboard <seconds> -> 0 if mInputShown=true in time
     return 1
 }
 
-# Never force-stop the package while its IME is selected: HyperOS silently
-# resets the default IME. Switch to the neutral IME first and select ours again
-# after. (The cold leg uses run-as kill -9 instead; this is the fallback and the
-# rule for any other force-stop in this script.)
-safe_force_stop() {
-    local cur
-    cur=$(current_ime)
-    if [ "$cur" = "$IME_ID" ]; then
-        SHELL ime set "$NEUTRAL_IME" >/dev/null 2>&1
-        sleep 0.5
-        SHELL am force-stop "$PKG" >/dev/null 2>&1
-        sleep 0.5
-        SHELL ime set "$IME_ID" >/dev/null 2>&1
-    else
-        SHELL am force-stop "$PKG" >/dev/null 2>&1
-    fi
-}
-
-# kill_app: kill the process without touching the IME selection. run-as kill -9
-# keeps default_input_method intact and leaves the process start to the next
-# field focus, which is a realistic cold-start trigger.
+# kill_app: kill the process without a force-stop (HyperOS resets the default IME
+# when the package of the selected IME is force-stopped).
+# - debuggable: run-as kill -9; the IME selection stays and the next field focus
+#   starts the process.
+# - otherwise: select the neutral IME, then `am kill`, which only reaches a
+#   process the system no longer binds. The neutral IME stays selected; callers
+#   select ours again when they need it (`ime set` starts the process at once).
+# `kill_app deselect` takes the second path for any package.
 kill_app() {
     local pid
-    pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
-    [ -z "$pid" ] && return 0
-    if [ "$RUN_AS_OK" = 1 ]; then
+    if [ "$RUN_AS_OK" = 1 ] && [ "${1:-}" != deselect ]; then
+        pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+        [ -z "$pid" ] && return 0
         SHELL "run-as $PKG kill -9 $pid" >/dev/null 2>&1
     else
-        safe_force_stop
+        [ "$(current_ime)" = "$IME_ID" ] && SHELL ime set "$NEUTRAL_IME" >/dev/null 2>&1
+        sleep 1
+        SHELL am kill "$PKG" >/dev/null 2>&1
     fi
     sleep 1
     pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
     [ -z "$pid" ]
 }
+select_ours() { [ "$(current_ime)" = "$IME_ID" ] || SHELL ime set "$IME_ID" >/dev/null 2>&1; }
 
 dump_ui() {
     SHELL uiautomator dump /data/local/tmp/ritual-ui.xml >/dev/null 2>&1
@@ -286,6 +362,83 @@ raise_keyboard_over_setup() {
     sleep 3
     tap_node setup_test_field || return 1
     wait_keyboard 10
+}
+
+# Text of the try-it field. uiautomator leaves out views covered by the IME
+# window, so this works only while the keyboard is hidden.
+field_text() {
+    dump_ui | grep -oP '<node[^>]*setup_test_field[^>]*' | grep -oP ' text="\K[^"]*' | head -1
+}
+
+SETTINGS_ACTIVITY="rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity"
+# node_attr <dump> <resource-id> <attr> -> value of the attribute on the first node with that id
+node_attr() {
+    echo "$1" | grep -oP "<node[^>]*resource-id=\"$PKG:id/$2\"[^>]*" | head -1 \
+        | grep -oP " $3=\"\K[^\"]*"
+}
+# set_suggestions_ui true|false: open the app's settings, go to Preferences and
+# set the word-suggestions switch (resource-id row_switch_tatar_suggestions)
+# with a real tap. Prints the state found before the change; returns 0 when the
+# switch ends in the wanted state.
+set_suggestions_ui() {
+    local want="$1" dump state bounds x y i
+    SHELL am start --activity-clear-task -n "$PKG/$SETTINGS_ACTIVITY" >/dev/null 2>&1
+    sleep 3
+    tap_node "$PKG:id/row_link_preferences" || { SHELL input keyevent KEYCODE_HOME >/dev/null 2>&1; return 1; }
+    sleep 2
+    for i in 1 2 3; do
+        dump=$(dump_ui)
+        bounds=$(node_attr "$dump" row_switch_tatar_suggestions bounds)
+        if [ -n "$bounds" ]; then
+            read -r x y <<<"$(python3 -c "
+import re
+m = [int(v) for v in re.findall(r'\d+', '$bounds')]
+print((m[0] + m[2]) // 2, (m[1] + m[3]) // 2 if m[3] - m[1] >= 80 else -1)")"
+            [ "$y" -gt 0 ] && break
+        fi
+        # row missing or clipped by the screen edge: scroll the list up and look again
+        SHELL input swipe 360 1300 360 800 400 >/dev/null 2>&1
+        sleep 1.5
+        bounds=""
+    done
+    [ -n "$bounds" ] || { SHELL input keyevent KEYCODE_HOME >/dev/null 2>&1; return 1; }
+    state=$(node_attr "$dump" row_switch_tatar_suggestions checked)
+    echo "$state"
+    if [ "$state" != "$want" ]; then
+        SHELL input tap "$x" "$y" >/dev/null 2>&1
+        sleep 1.5
+        state=$(node_attr "$(dump_ui)" row_switch_tatar_suggestions checked)
+    fi
+    SHELL input keyevent KEYCODE_HOME >/dev/null 2>&1
+    sleep 1
+    [ "$state" = "$want" ]
+}
+
+# probe_layout: with the keyboard up over the try-it field, tap the top-left key
+# (x=60, y=1110: "ә" on tt, "й" on ru, "q" on en), hide the keyboard, read the
+# field back, show the keyboard again and delete the probe letter. Prints
+# tt|ru|en|unknown. Showing the keyboard by a tap on the field moves the cursor
+# to the tap point, so Ctrl+End puts it back at the end before each edit.
+cursor_to_end() { SHELL input keycombination KEYCODE_CTRL_LEFT KEYCODE_MOVE_END </dev/null >/dev/null 2>&1; sleep 0.3; }
+probe_layout() {
+    local after last lay
+    cursor_to_end
+    SHELL input tap 60 1110 </dev/null >/dev/null 2>&1
+    sleep 0.8
+    SHELL input keyevent KEYCODE_BACK </dev/null >/dev/null 2>&1
+    sleep 1.2
+    after=$(field_text)
+    last=$(python3 -c 'import sys; t = sys.argv[1]; print(t[-1].lower() if t else "")' "$after")
+    case "$last" in ә) lay=tt ;; й) lay=ru ;; q) lay=en ;; *) lay=unknown; log "probe read '${after: -20}'" ;; esac
+    tap_node setup_test_field </dev/null && wait_keyboard 5 </dev/null
+    sleep 0.5
+    cursor_to_end
+    case "$lay" in
+        tt) SHELL input tap 687 1396 </dev/null >/dev/null 2>&1 ;;   # tt backspace
+        ru|en) SHELL input tap 687 1363 </dev/null >/dev/null 2>&1 ;;  # ru/en backspace
+    esac
+    sleep 0.5
+    echo "$lay"
 }
 
 # Key coordinates via python (no host-locale dependence for the Cyrillic
@@ -343,9 +496,21 @@ type_text() { # type_text tt|ru "text" <gap-seconds>
 # Switch the language via the globe key with pref feedback (the cycle order is
 # MRU-rotated, so blind tap counts are meaningless; see emulator-smoke.sh).
 # The pref value looks like "tt_RU:tatar", so match a bare prefix, not "<code>:".
-globe_to() { # globe_to tt|ru|en -> 0 when pref_current_subtype starts with the code
+# Without run-as the feedback comes from probe_layout instead of the pref.
+globe_to() { # globe_to tt|ru|en -> 0 when the wanted layout is active
     local want="$1" i poll pref=""
-    [ "$RUN_AS_OK" = 1 ] || return 2
+    if [ "$RUN_AS_OK" != 1 ]; then
+        for i in 1 2 3 4; do
+            pref=$(probe_layout)
+            # a probe tap that lands during the show animation reads back nothing: probe again
+            [ "$pref" = unknown ] && { sleep 1; pref=$(probe_layout); }
+            log "layout probe: $pref (want $want)"
+            [ "$pref" = "$want" ] && return 0
+            SHELL input tap 216 1490 </dev/null >/dev/null 2>&1   # globe
+            sleep 1.2
+        done
+        return 1
+    fi
     for i in 1 2 3 4 5; do
         for poll in 1 2 3; do
             pref=$(SHELL "run-as $PKG cat $PREFS_PATH" 2>/dev/null | tr -d '\r' \
@@ -364,17 +529,20 @@ meminfo_total() { # meminfo_total <label> -> echoes "total_kb swap_kb"; dumps th
     awk '/TOTAL PSS:/ {print $3, $NF; exit}' "$OUTDIR/meminfo-$1.txt"
 }
 pss_point() { # pss_point <scenario>
-    local kb sw
+    local kb sw over
     read -r kb sw <<<"$(meminfo_total "$1")"
     if [ -z "${kb:-}" ]; then
         result FAIL pss "scenario=$1 unreadable (process dead?)"
     else
-        result INFO pss "scenario=$1 total_kb=$kb swap_kb=$sw"
+        over=$( [ "$kb" -gt "$PSS_BUDGET_KB" ] && echo true || echo false )
+        result INFO pss "scenario=$1 total_kb=$kb swap_kb=$sw budget_kb=$PSS_BUDGET_KB over_budget=$over build=$BUILD"
     fi
 }
 
 # framestats parser: window section by name, columns by header name.
-framestats() { # framestats <file> <window-regex> durations|firstframe
+# Modes: durations -> "n p50 p90 p95"; firstframe -> FrameCompleted of the first
+# row; jank -> "total janky percent" from the section's "Janky frames" line.
+framestats() { # framestats <file> <window-regex> durations|firstframe|jank
     python3 - "$1" "$2" "$3" <<'PYEOF'
 import re
 import sys
@@ -387,6 +555,13 @@ section = text[match.end():]
 nxt = section.find("\nWindow: ")
 if nxt >= 0:
     section = section[:nxt]
+if mode == "jank":
+    total = re.search(r"^Total frames rendered: (\d+)", section, re.M)
+    janky = re.search(r"^Janky frames: (\d+) \(([\d.]+)%\)", section, re.M)
+    if not total or not janky:
+        sys.exit("no Janky frames line")
+    print(total.group(1), janky.group(1), janky.group(2))
+    sys.exit(0)
 blocks = section.split("---PROFILEDATA---")
 rows, header = [], None
 for block in blocks:
@@ -410,149 +585,368 @@ else:
 PYEOF
 }
 
-# ── leg A: cold start xN ─────────────────────────────────────────────────────
-# Ours must NOT be force-stopped while selected. kill -9 needs no IME switch; the
-# IME selection is only touched once, up front, to make ours the default.
-
-if [ "$RUN_AS_OK" != 1 ]; then
-    result SKIP cold-start "package $PKG not debuggable; run-as kill -9 unavailable (force-stop would contaminate the start timestamp via ime set)"
-else
-    cur=$(current_ime)
-    [ "$cur" = "$IME_ID" ] || SHELL ime set "$IME_ID" >/dev/null 2>&1
-    # Chrome to the front once; dismiss a possible first-run dialog (BACK).
-    SHELL am start -n "$CHROME" >/dev/null 2>&1
-    sleep 4
-    dump_ui | grep -q "url_bar" || { SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1; sleep 2; }
-    colds=()
-    cold_skips=0
-    for i in $(seq 1 "$COLD_RUNS"); do
-        # defocus: hide the keyboard / leave the omnibox editor of the last round
-        SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1
-        sleep 1
-        kill_app || { cold_skips=$((cold_skips + 1)); log "cold $i: kill failed"; continue; }
-        SHELL am start -n "$CHROME" >/dev/null 2>&1
-        sleep 2
-        tap_node url_bar || { cold_skips=$((cold_skips + 1)); log "cold $i: url_bar not found"; continue; }
-        if ! wait_keyboard 10; then
-            # the field may have kept focus: defocus once and re-tap
-            SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1
-            sleep 1
-            tap_node url_bar
-            wait_keyboard 10 || { cold_skips=$((cold_skips + 1)); log "cold $i: keyboard never shown"; continue; }
-        fi
-        sleep 1
-        pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
-        start=$(SHELL cat "/proc/$pid/stat" 2>/dev/null | awk '{print $22}' | tr -d '\r')
-        SHELL dumpsys gfxinfo "$PKG" framestats > "$OUTDIR/cold-framestats-$i.txt" 2>/dev/null
-        frame=$(framestats "$OUTDIR/cold-framestats-$i.txt" "InputMethod" firstframe 2>/dev/null || true)
-        if [ -z "${start:-}" ] || [ -z "${frame:-}" ] || [ "$frame" = "0" ]; then
-            cold_skips=$((cold_skips + 1)); log "cold $i: no data (pid='$pid' start='${start:-}' frame='${frame:-}')"; continue
-        fi
-        ms=$(python3 -c "print(f'{int($frame)/1e6 - int($start)*10.0:.1f}')")
-        colds+=("$ms")
-        log "cold $i: ${ms} ms (pid $pid)"
-    done
-    if [ ${#colds[@]} -ge 3 ]; then
-        stats=$(printf '%s\n' "${colds[@]}" | python3 -c "
+# atrace text parser for the framework input slices.
+# Line shape: "<task>-<tid> (<tgid>) [cpu] flags <ts>: tracing_mark_write: B|<pid>|<name>"
+# or "...: E|<pid>". Per thread, the last "dispatchInputEvent MotionEvent ACTION_x"
+# names the action of the next "deliverInputEvent src=.. eventTimeNano=N" slice.
+# Modes:
+#   tapup <before_ns>: eventTimeNano of the last ACTION_UP delivered to any process
+#     with eventTimeNano < before_ns (CLOCK_MONOTONIC).
+#   handling <pid>: "n p50 p95 max lat_p50 lat_p95" of deliverInputEvent slices on the
+#     main thread of <pid> (tid == pid); lat = slice end - eventTimeNano, with the trace
+#     clock aligned by the trace_event_clock_sync parent_ts marker.
+trace_input() { # trace_input <file> tapup|handling <arg>
+    python3 - "$1" "$2" "$3" <<'PYEOF'
+import re
 import sys
-v = sorted(float(x) for x in sys.stdin)
+path, mode, arg = sys.argv[1], sys.argv[2], int(sys.argv[3])
+line_re = re.compile(r"^\s*.*?-(\d+)\s+\(\s*[\d-]+\)\s+\[\d+\]\s+\S+\s+([\d.]+): "
+                     r"tracing_mark_write: (.*)$")
+offset = None
+stacks, last_action, slices, ups = {}, {}, [], []
+for line in open(path, encoding="utf-8", errors="replace"):
+    m = line_re.match(line)
+    if not m:
+        continue
+    tid, ts, body = int(m.group(1)), float(m.group(2)), m.group(3).strip()
+    if body.startswith("trace_event_clock_sync: parent_ts="):
+        offset = ts - float(body.split("=", 1)[1])
+        continue
+    parts = body.split("|", 2)
+    if parts[0] == "B" and len(parts) == 3:
+        pid, name = int(parts[1]), parts[2]
+        act = re.match(r"dispatchInputEvent MotionEvent (ACTION_\w+)", name)
+        if act:
+            last_action[tid] = act.group(1)
+        stacks.setdefault(tid, []).append((name, ts, pid, last_action.get(tid)))
+    elif parts[0] == "E":
+        if not stacks.get(tid):
+            continue
+        name, start, pid, action = stacks[tid].pop()
+        ev = re.match(r"deliverInputEvent src=\S+ eventTimeNano=(\d+)", name)
+        if not ev:
+            continue
+        ev_ns = int(ev.group(1))
+        if action == "ACTION_UP":
+            ups.append(ev_ns)
+        if pid == tid:
+            slices.append((pid, (ts - start) * 1e3, ts, ev_ns))
+if mode == "tapup":
+    cands = [u for u in ups if u < arg]
+    if not cands:
+        sys.exit("no ACTION_UP before the frame")
+    print(max(cands))
+else:
+    mine = [s for s in slices if s[0] == arg]
+    if not mine:
+        sys.exit("no deliverInputEvent slices on the main thread")
+    def pct(v, p):
+        v = sorted(v)
+        return v[min(len(v) - 1, int(p * len(v) / 100))]
+    durs = [s[1] for s in mine]
+    lats = [((s[2] - offset) * 1e9 - s[3]) / 1e6 for s in mine] if offset is not None else [0.0]
+    print(f"{len(durs)} {pct(durs, 50):.3f} {pct(durs, 95):.3f} {max(durs):.3f} "
+          f"{pct(lats, 50):.2f} {pct(lats, 95):.2f}")
+PYEOF
+}
+
+# median / p95 / min / max of the numbers on stdin: "n med p95 min max"
+stats() {
+    python3 -c "
+import sys
+v = sorted(float(x) for x in sys.stdin.read().split())
 n = len(v)
 med = v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
-print(f'{med:.1f} {v[0]:.1f} {v[-1]:.1f}')")
-        read -r med mn mx <<<"$stats"
-        over=$(python3 -c "print('true' if float('$med') >= 400 else 'false')")
-        result INFO cold-start "runs=${#colds[@]} skips=$cold_skips median_ms=$med min_ms=$mn max_ms=$mx values_ms=$(IFS=,; echo "${colds[*]}") budget_ms=400 over_budget=$over build=debug"
+p95 = v[min(n - 1, int(0.95 * n))]
+print(f'{n} {med:.1f} {p95:.1f} {v[0]:.1f} {v[-1]:.1f}')"
+}
+# gt / ge <value> <budget> -> true|false (a "< budget" row is over at ge, a "<= budget" row at gt)
+gt() { python3 -c "import sys; print('true' if float(sys.argv[1]) > float(sys.argv[2]) else 'false')" "$1" "$2"; }
+ge() { python3 -c "import sys; print('true' if float(sys.argv[1]) >= float(sys.argv[2]) else 'false')" "$1" "$2"; }
+
+trace_start() {
+    SHELL atrace --async_start -b 4096 input view >/dev/null 2>&1 && ATRACE_ON=1
+}
+trace_stop() { # trace_stop <file>
+    SHELL atrace --async_stop > "$1" 2>/dev/null
+    ATRACE_ON=0
+}
+
+# Field 22 of /proc/<pid>/stat counts CLOCK_BOOTTIME ticks (suspend included), while the
+# framestats timestamps are CLOCK_MONOTONIC (suspend excluded). Their difference is the total
+# suspend time since boot; `dumpsys alarm` prints both clocks, so it is read here in ms.
+suspend_offset_ms() {
+    SHELL dumpsys alarm 2>/dev/null | python3 -c '
+import re, sys
+units = {"d": 86400000, "h": 3600000, "m": 60000, "s": 1000, "ms": 1}
+def ms(text):
+    return sum(int(n) * units[u] for n, u in re.findall(r"(\d+)(ms|d|h|m|s)", text))
+clocks = dict(re.findall(r"Runtime uptime \((elapsed|uptime)\): \+(\S+)", sys.stdin.read()))
+if set(clocks) != {"elapsed", "uptime"}:
+    sys.exit(1)
+print(ms(clocks["elapsed"]) - ms(clocks["uptime"]))
+'
+}
+
+# Chrome to the front with the omnibox ready; dismiss a possible first-run dialog (BACK).
+chrome_front() {
+    SHELL am start -n "$CHROME" >/dev/null 2>&1
+    sleep 3
+    dump_ui | grep -q "url_bar" || { SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1; sleep 2; }
+}
+# Hide the keyboard (at most two BACKs, so Chrome itself is never left).
+hide_keyboard() {
+    local i
+    for i in 1 2; do
+        keyboard_shown || return 0
+        SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1
+        sleep 1
+    done
+    ! keyboard_shown
+}
+
+# ── suggestions through the settings UI ──────────────────────────────────────
+
+if [ "$SUGGESTIONS_UI" = 1 ]; then
+    before=$(set_suggestions_ui true)
+    rc=$?
+    if [ $rc = 0 ]; then
+        [ "$before" = "false" ] && SUGG_UI_RESTORE=false
+        result INFO suggestions-pref "suggestions switch on via the settings UI (was '${before:-unknown}')"
     else
-        result FAIL cold-start "only ${#colds[@]} valid runs of $COLD_RUNS"
+        [ "$before" = "false" ] && SUGG_UI_RESTORE=false
+        result FAIL suggestions-pref "settings UI: switch not on (found '${before:-no row}')"
     fi
 fi
 
-# ── leg B: PSS across four scenarios ─────────────────────────────────────────
+# ── leg: cold start ──────────────────────────────────────────────────────────
 
-kill_app || true
-cur=$(current_ime)
-[ "$cur" = "$IME_ID" ] || SHELL ime set "$IME_ID" >/dev/null 2>&1
-if raise_keyboard_over_setup; then
-    sleep 3
-    pss_point keyboard-idle
-    SHOT pss-keyboard-idle.png
-
-    globe_to tt || result INFO pss "tt layout unconfirmed before the tt typing half"
-    log "typing 25 tt words"
-    type_text tt "сәләм дөнья мин сине яратам дус һәм белән татар теле дәүләт китап укытучы мәктәп иртә кич бүген әти әни бала су юл өй кеше якты " 0.12
-    if globe_to ru; then
-        log "typing 25 ru words"
-        type_text ru "привет время дом работа город улица книга школа друг семья день ночь утро вечер вода хлеб мир свет язык река море поле лес гора человек " 0.12
+if leg_on cold; then
+    if [ "$COLD_TRIGGER" = tap ] && [ "$RUN_AS_OK" != 1 ]; then
+        result FAIL cold-start "trigger tap needs a debuggable package (run-as kill -9)"
     else
-        result INFO pss "ru half of the typing leg skipped: globe switch unconfirmed"
+        select_ours
+        chrome_front
+        colds=()
+        cold_skips=0
+        total=$((COLD_WARMUP + COLD_RUNS))
+        for i in $(seq 1 "$total"); do
+            hide_keyboard
+            SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1   # leave the omnibox editor
+            sleep 1
+            kill_app "$( [ "$COLD_TRIGGER" = switch ] && echo deselect )" || { cold_skips=$((cold_skips + 1)); log "cold $i: kill failed"; select_ours; continue; }
+            chrome_front
+            if [ "$COLD_TRIGGER" = tap ]; then
+                tap_node url_bar || { cold_skips=$((cold_skips + 1)); log "cold $i: url_bar not found"; continue; }
+                if ! wait_keyboard 10; then
+                    # the field may have kept focus: defocus once and re-tap
+                    SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1
+                    sleep 1
+                    tap_node url_bar
+                    wait_keyboard 10 || { cold_skips=$((cold_skips + 1)); log "cold $i: keyboard never shown"; continue; }
+                fi
+            else
+                # neutral keyboard up on the omnibox, then select ours: the bind starts the process
+                tap_node url_bar
+                wait_keyboard 10 || { cold_skips=$((cold_skips + 1)); log "cold $i: neutral keyboard never shown"; select_ours; continue; }
+                sleep 1
+                SHELL ime set "$IME_ID" >/dev/null 2>&1
+                deadline=$((SECONDS + 10))
+                while [ $SECONDS -lt $deadline ] && [ -z "$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')" ]; do
+                    sleep 0.3
+                done
+            fi
+            sleep 2
+            pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+            start=$(SHELL cat "/proc/$pid/stat" 2>/dev/null | awk '{print $22}' | tr -d '\r')
+            SHELL dumpsys gfxinfo "$PKG" framestats > "$OUTDIR/cold-framestats-$i.txt" 2>/dev/null
+            frame=$(framestats "$OUTDIR/cold-framestats-$i.txt" "InputMethod" firstframe 2>/dev/null || true)
+            offset=$(suspend_offset_ms || true)
+            if [ -z "${start:-}" ] || [ -z "${frame:-}" ] || [ "$frame" = "0" ] || [ -z "${offset:-}" ]; then
+                cold_skips=$((cold_skips + 1)); log "cold $i: no data (pid='$pid' start='${start:-}' frame='${frame:-}' offset='${offset:-}')"; continue
+            fi
+            ms=$(python3 -c "print(f'{int($frame)/1e6 - (int($start)*10.0 - int($offset)):.1f}')")
+            if [ "$i" -le "$COLD_WARMUP" ]; then
+                log "cold $i: ${ms} ms (warm-up, discarded; pid $pid)"
+                continue
+            fi
+            colds+=("$ms")
+            log "cold $i: ${ms} ms (pid $pid)"
+        done
+        select_ours
+        if [ ${#colds[@]} -ge 3 ]; then
+            read -r n med p95 mn mx <<<"$(printf '%s\n' "${colds[@]}" | stats)"
+            result INFO cold-start "runs=$n skips=$cold_skips median_ms=$med p95_ms=$p95 min_ms=$mn max_ms=$mx values_ms=$(IFS=,; echo "${colds[*]}") budget_ms=$COLD_BUDGET_MS over_budget=$(ge "$med" "$COLD_BUDGET_MS") build=$BUILD trigger=$COLD_TRIGGER"
+        else
+            result FAIL cold-start "only ${#colds[@]} valid runs of $COLD_RUNS"
+        fi
     fi
-    sleep 2
-    pss_point after-50-words
-    SHOT pss-after-50-words.png
-
-    # emoji panel: long-press the comma key (bottom row), settle, measure peak
-    SHELL input swipe 144 1490 144 1490 900 >/dev/null 2>&1
-    sleep 3
-    pss_point emoji-panel-open
-    SHOT pss-emoji-panel-open.png
-    SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1   # panel -> letters
-    sleep 2
-    pss_point emoji-panel-closed
-
-    keyboard_shown && SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1   # hide the IME window
-    sleep 1
-    log "idle 30 s (the deallocate pass fires at 10 s)"
-    sleep 30
-    pss_point idle-30s
-    SHOT pss-idle-30s.png
-else
-    result FAIL pss "keyboard did not raise over SetupActivity"
 fi
 
-# ── leg C: frame stats (32-event tt script, <=120 frames x3) ──
+# ── leg: PSS across four scenarios ───────────────────────────────────────────
+
+if leg_on pss; then
+    kill_app || true
+    select_ours
+    if raise_keyboard_over_setup; then
+        sleep 3
+        pss_point keyboard-idle
+        SHOT pss-keyboard-idle.png
+
+        globe_to tt || result INFO pss "tt layout unconfirmed before the tt typing half"
+        log "typing 25 tt words"
+        type_text tt "сәләм дөнья мин сине яратам дус һәм белән татар теле дәүләт китап укытучы мәктәп иртә кич бүген әти әни бала су юл өй кеше якты " 0.12
+        if globe_to ru; then
+            log "typing 25 ru words"
+            type_text ru "привет время дом работа город улица книга школа друг семья день ночь утро вечер вода хлеб мир свет язык река море поле лес гора человек " 0.12
+        else
+            result INFO pss "ru half of the typing leg skipped: globe switch unconfirmed"
+        fi
+        sleep 2
+        pss_point after-50-words
+        SHOT pss-after-50-words.png
+
+        # emoji panel: long-press the comma key (bottom row), settle, measure peak
+        SHELL input swipe 144 1490 144 1490 900 >/dev/null 2>&1
+        sleep 3
+        pss_point emoji-panel-open
+        SHOT pss-emoji-panel-open.png
+        SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1   # panel -> letters
+        sleep 2
+        pss_point emoji-panel-closed
+
+        keyboard_shown && SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1   # hide the IME window
+        sleep 1
+        log "idle 30 s (the deallocate pass fires at 10 s)"
+        sleep 30
+        pss_point idle-30s
+        SHOT pss-idle-30s.png
+    else
+        result FAIL pss "keyboard did not raise over SetupActivity"
+    fi
+fi
+
+# ── leg: frame stats and janky frames (32-event tt script, <=120 frames xN) ─
 
 FRAME_SCRIPT="сәләм дөнья мин сине яратам дус "   # 27 letters + 5 spaces = 32 events
 n_events=$(python3 -c "print(len('$FRAME_SCRIPT'))")
-log "frame script: '$FRAME_SCRIPT' ($n_events events)"
-if [ "$n_events" != "32" ]; then
-    result FAIL frames "script must be exactly 32 events, got $n_events"
-else
-    for run in $(seq 1 "$FRAME_RUNS"); do
-        if ! raise_keyboard_over_setup; then
-            result FAIL "frames-run-$run" "keyboard did not raise"
-            continue
+if leg_on frames; then
+    log "frame script: '$FRAME_SCRIPT' ($n_events events)"
+    select_ours
+    if [ "$n_events" != "32" ]; then
+        result FAIL frames "script must be exactly 32 events, got $n_events"
+    else
+        for run in $(seq 1 "$FRAME_RUNS"); do
+            if ! raise_keyboard_over_setup; then
+                result FAIL "frames-run-$run" "keyboard did not raise"
+                continue
+            fi
+            if ! globe_to tt; then
+                result FAIL "frames-run-$run" "tt layout unconfirmed (globe_to tt failed)"
+                continue
+            fi
+            sleep 9        # let the suggestion engine publish (slow on this class of device)
+            SHELL dumpsys gfxinfo "$PKG" reset >/dev/null 2>&1
+            sleep 0.5
+            type_text tt "$FRAME_SCRIPT" 0.35
+            sleep 1.5
+            SHELL dumpsys gfxinfo "$PKG" framestats > "$OUTDIR/frames-run$run.txt" 2>/dev/null
+            out=$(framestats "$OUTDIR/frames-run$run.txt" "InputMethod" durations 2>/dev/null || true)
+            if [ -z "$out" ]; then
+                result FAIL "frames-run-$run" "no InputMethod PROFILEDATA rows"
+            else
+                read -r n p50 p90 p95 <<<"$out"
+                if [ "$n" -lt 32 ]; then
+                    result FAIL "frames-run-$run" "only n=$n frames for a 32-event script — taps not landing"
+                else
+                    result INFO frames "run=$run n=$n p50_ms=$p50 p90_ms=$p90 p95_ms=$p95 budget_ms=$FRAME_BUDGET_MS over_budget=$(gt "$p95" "$FRAME_BUDGET_MS") build=$BUILD protocol=O2-2 script=32-event-tt window=InputMethod"
+                fi
+            fi
+            jank=$(framestats "$OUTDIR/frames-run$run.txt" "InputMethod" jank 2>/dev/null || true)
+            if [ -z "$jank" ]; then
+                result FAIL "jank-run-$run" "no Janky frames line in the InputMethod section"
+            else
+                read -r total janky pct <<<"$jank"
+                result INFO jank "run=$run frames=$total janky=$janky janky_pct=$pct budget_pct=$JANK_BUDGET_PCT over_budget=$(gt "$pct" "$JANK_BUDGET_PCT") build=$BUILD script=32-event-tt window=InputMethod"
+            fi
+        done
+        # functional proof that the frame leg typed the Tatar script on the tt
+        # layout: hide the keyboard and read the try-it field back
+        SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1
+        sleep 1.5
+        field=$(field_text || true)
+        case "$field" in
+            *"яратам"*) result INFO frames-proof "try-it field holds the tt script tail as typed" ;;
+            *) result FAIL frames-proof "unexpected field content: '${field: -60}'" ;;
+        esac
+    fi
+fi
+
+# ── leg: warm show (process alive, keyboard hidden 2 s -> first IME frame) ───
+
+if leg_on warm; then
+    select_ours
+    chrome_front
+    tap_node url_bar && wait_keyboard 10 || log "warm: first show over Chrome failed"
+    warms=()
+    warm_skips=0
+    for i in $(seq 1 "$WARM_RUNS"); do
+        hide_keyboard || { warm_skips=$((warm_skips + 1)); log "warm $i: keyboard did not hide"; continue; }
+        sleep 2
+        if [ -z "$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')" ]; then
+            warm_skips=$((warm_skips + 1)); log "warm $i: process not alive"; continue
         fi
-        if ! globe_to tt; then
-            result FAIL "frames-run-$run" "tt layout unconfirmed (globe_to tt failed)"
-            continue
-        fi
-        sleep 9        # let the suggestion engine publish (slow on this class of device)
         SHELL dumpsys gfxinfo "$PKG" reset >/dev/null 2>&1
+        trace_start
+        sleep 0.5
+        tap_node url_bar
+        wait_keyboard 5
+        sleep 1.5
+        trace_stop "$OUTDIR/warm-trace-$i.txt"
+        SHELL dumpsys gfxinfo "$PKG" framestats > "$OUTDIR/warm-framestats-$i.txt" 2>/dev/null
+        frame=$(framestats "$OUTDIR/warm-framestats-$i.txt" "InputMethod" firstframe 2>/dev/null || true)
+        up=""
+        [ -n "$frame" ] && up=$(trace_input "$OUTDIR/warm-trace-$i.txt" tapup "$frame" 2>/dev/null || true)
+        if [ -z "$frame" ] || [ -z "$up" ]; then
+            warm_skips=$((warm_skips + 1)); log "warm $i: no data (frame='$frame' tap_up='$up')"; continue
+        fi
+        ms=$(python3 -c "print(f'{($frame - $up) / 1e6:.1f}')")
+        warms+=("$ms")
+        log "warm $i: ${ms} ms"
+    done
+    hide_keyboard || true
+    if [ ${#warms[@]} -ge 3 ]; then
+        read -r n med p95 mn mx <<<"$(printf '%s\n' "${warms[@]}" | stats)"
+        result INFO warm-show "runs=$n skips=$warm_skips median_ms=$med p95_ms=$p95 min_ms=$mn max_ms=$mx values_ms=$(IFS=,; echo "${warms[*]}") budget_ms=$WARM_BUDGET_MS over_budget=$(ge "$med" "$WARM_BUDGET_MS") build=$BUILD host=chrome-omnibox"
+    else
+        result FAIL warm-show "only ${#warms[@]} valid runs of $WARM_RUNS"
+    fi
+fi
+
+# ── leg: touch handling in our code (deliverInputEvent on the IME main thread) ─
+
+if leg_on touch; then
+    select_ours
+    if raise_keyboard_over_setup && globe_to tt; then
+        sleep 9
+        pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+        trace_start
         sleep 0.5
         type_text tt "$FRAME_SCRIPT" 0.35
-        sleep 1.5
-        SHELL dumpsys gfxinfo "$PKG" framestats > "$OUTDIR/frames-run$run.txt" 2>/dev/null
-        out=$(framestats "$OUTDIR/frames-run$run.txt" "InputMethod" durations 2>/dev/null || true)
+        sleep 1
+        trace_stop "$OUTDIR/touch-trace.txt"
+        out=$(trace_input "$OUTDIR/touch-trace.txt" handling "$pid" 2>/dev/null || true)
         if [ -z "$out" ]; then
-            result FAIL "frames-run-$run" "no InputMethod PROFILEDATA rows"
+            result FAIL touch "no deliverInputEvent slices for pid $pid"
         else
-            read -r n p50 p90 p95 <<<"$out"
-            if [ "$n" -lt 32 ]; then
-                result FAIL "frames-run-$run" "only n=$n frames for a 32-event script — taps not landing"
-            else
-                result INFO frames "run=$run n=$n p50_ms=$p50 p90_ms=$p90 p95_ms=$p95 protocol=O2-2 script=32-event-tt window=InputMethod"
-            fi
+            read -r n p50 p95 mx lat50 lat95 <<<"$out"
+            [ "$n" -ge 64 ] || result FAIL touch "only n=$n input events for a 32-tap script (64 expected)"
+            result INFO touch "events=$n p50_ms=$p50 p95_ms=$p95 max_ms=$mx event_to_handled_p50_ms=$lat50 event_to_handled_p95_ms=$lat95 budget_ms=$TOUCH_BUDGET_MS over_budget=$(ge "$p95" "$TOUCH_BUDGET_MS") build=$BUILD script=32-event-tt"
         fi
-    done
-    # functional proof that the frame leg typed the Tatar script on the tt
-    # layout: hide the keyboard and read the try-it field back
-    SHELL input keyevent KEYCODE_BACK >/dev/null 2>&1
-    sleep 1.5
-    field=$(dump_ui | grep -oP '<node[^>]*setup_test_field[^>]*' | grep -oP 'text="\K[^"]*' | head -1 || true)
-    case "$field" in
-        *"яратам"*) result INFO frames-proof "try-it field holds the tt script tail as typed" ;;
-        *) result FAIL frames-proof "unexpected field content: '${field: -60}'" ;;
-    esac
+        hide_keyboard || true
+    else
+        result FAIL touch "keyboard or tt layout not ready over SetupActivity"
+    fi
 fi
 
 log "done; failures: $FAILURES"

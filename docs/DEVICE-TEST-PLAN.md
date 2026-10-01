@@ -8,7 +8,7 @@ How to test the keyboard end to end on a connected phone. The reference device i
 Run the stages in order. Stages 1–5 are required after changes that touch the input path, the
 suggestion engine, drawing or storage; stage 6 is optional. Results go to
 `build/device-test-<date>/`; summarize them in `HANDOFF.md` and turn failures into fixes or
-`docs/BACKLOG.md` entries.
+`docs/ROADMAP.md` items.
 
 ## 0. Prerequisites
 
@@ -40,6 +40,8 @@ Safety rules for every stage:
   personal dictionary) is not touched.
 - Never `am force-stop` the package whose keyboard is selected: HyperOS then switches the system
   keyboard. Use `adb shell run-as <pkg> kill -9 <pid>` instead; the device scripts already do.
+  A release package refuses `run-as`; select another keyboard first and use `adb shell am kill
+  <pkg>`, which only kills a process the system no longer binds.
 - Record the current keyboard first and restore it at the end (stage 7).
 
 ## 1. Connect and record the device state
@@ -88,13 +90,17 @@ bash scripts/device-perf-ritual.sh --outdir build/device-test-<date>/perf
 ```
 
 It kills the process with `run-as kill -9`, turns suggestions on through `run-as` (debuggable
-package only), measures cold start ×5, PSS in five scenarios and frame times over a fixed Tatar
-typing script, and restores the device state on exit. Pass criteria (see `docs/PERF-BUDGETS.md`):
+package only), and runs five legs: cold start ×5, PSS in five scenarios, frame times and janky
+frames over a fixed Tatar typing script, warm show ×5 and touch handling (both from an `atrace`
+capture). It restores the device state on exit. `--legs` selects a subset. Every budgeted
+`RESULT` line carries `over_budget=true|false`; the budgets are in `docs/PERF-BUDGETS.md`.
+Pass criteria:
 
-- PSS ≤ 114 000 kB in every scenario (debug-build ceiling).
-- Frame p50 well under the 16.7 ms deadline; compare p90/p95 with the previous run.
-- Cold start is informational on the debug build (about 2× the release build); the < 400 ms
-  budget applies to release builds (stage 6).
+- No `FAIL` line and no `over_budget=true` on the PSS lines (debug-build ceiling).
+- Frame p50 well under the 16.7 ms deadline; compare p90/p95 and janky frames with the previous
+  run.
+- Cold start, warm show and touch handling are informational on the debug build; their budgets
+  apply to release builds (stage 6).
 
 ## 4. No network traffic
 
@@ -129,6 +135,8 @@ Turn on suggestions, autocorrect and the personal dictionary in the keyboard set
 | Autocorrect | Type a word with a single long-press typo, then space | replaced; the typed-word cell shows the original; backspace right after restores it |
 | Suggestions | Start of field, and after `. ` | sentence-start suggestions, strip not empty |
 | Glide | Swipe `сәләм` (tt) and a Russian word | word committed on lift; alternatives in the strip; nothing repaints while the finger moves |
+| Glide | `«сүз»` then a swipe; `«` then a swipe | `«сүз» сәләм`; `«сәләм` with no space |
+| Glide | Cursor right before a letter, then a swipe (vibration on; suggestions on, then off) | nothing inserted; one short tick (API 29+); with suggestions on, the decoded words in the strip |
 | Glide | Glide typing off in settings | swipes act as taps; space swipe still moves the cursor |
 | Emoji | Emoji key / long press on comma (with the globe key shown) | panel opens; tabs, recents, 🔍 search (Tatar and Russian queries), skin-tone popup |
 | Emoji | Emoji panel height: Same / Larger / Max | panel height changes; BACK closes the panel, the keyboard reopens normally |
@@ -142,11 +150,15 @@ Turn on suggestions, autocorrect and the personal dictionary in the keyboard set
 
 ## 6. Optional stages
 
-- **Release build performance** (open item in `docs/BACKLOG.md`). Sign with
-  `scripts/release_pack.sh`, install over the release package only with the owner's consent
-  (it replaces the everyday keyboard; data stays because the signature matches), enable
-  suggestions in the app's settings by hand, then run stage 3 with `--pkg org.tatarkeyboard.ime`.
-  Reinstall the published APK afterwards.
+- **Release build performance.** Build with `./gradlew assembleRelease -PskipReleaseSigning`
+  and sign with the debug key (`apksigner sign --ks ~/.android/debug.keystore`). If the
+  published release is installed, it has another signature: uninstalling it erases the owner's
+  personal dictionary, so ask first, and reinstall the published APK afterwards. Then run stage 3
+  with `--pkg org.tatarkeyboard.ime --enable-suggestions-ui`: the script turns suggestions on
+  through the app's settings screen and back off on exit, and the cold-start leg uses the
+  keyboard-switch trigger, because a release package refuses `run-as`. For a comparison of two
+  builds, alternate `--legs cold` runs between the two installs (`adb install -r -d`, same
+  key) with the same number of runs each.
 - **Baseline profile.** Generate it on the emulator, as `AGENTS.md` describes. The generator
   refuses a physical device unless the instrumentation argument `ttAllowPhysicalDevice=true` is
   passed; profiles recorded on the phone are not comparable with the committed ones.

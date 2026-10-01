@@ -109,6 +109,9 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
             timerProxy, drawingProxy,
         )
         PointerTracker.setKeyboardActionListener(recorder)
+        // The IME sets this once the glide geometry of the live field is built; no IME runs
+        // here, so the test opens the gate itself.
+        PointerTracker.setGlideAvailable(true)
         recordedGlides.clear()
         longPressTimerArms = 0
         longPressCancels = 0
@@ -120,6 +123,7 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
     override fun tearDown() {
         PointerTracker.setKeyboardActionListener(KeyboardActionListener.EMPTY_LISTENER)
         PointerTracker.cancelAllPointerTrackers()
+        PointerTracker.setGlideAvailable(false)
         val prefs = rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
             .getDeviceSharedPreferences(instrumentation.targetContext)
         prefs.edit()

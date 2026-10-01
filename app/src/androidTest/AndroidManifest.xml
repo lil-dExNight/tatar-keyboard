@@ -7,6 +7,19 @@
   "Unable to find instrumentation info". Applies to the debug test APK only.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- LockScreenQuickReplyHelper posts its notification from the test package. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- The build injects the regular runner into the first instrumentation element; the second
+         runs the quick reply helper in the test package's own process (QuickReplySelfRunner). -->
+    <instrumentation
+        android:name="android.test.InstrumentationTestRunner"
+        android:targetPackage="org.tatarkeyboard.ime.debug" />
+    <instrumentation
+        android:name="rkr.simplekeyboard.inputmethod.latin.QuickReplySelfRunner"
+        android:targetPackage="${applicationId}"
+        android:label="quick reply self runner" />
+
     <application>
         <uses-library
             android:name="android.test.runner"
