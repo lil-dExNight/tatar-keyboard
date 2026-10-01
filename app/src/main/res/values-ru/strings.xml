@@ -87,7 +87,7 @@
     <string name="personal_dictionary">Личный словарь</string>
     <string name="personal_dictionary_summary">Запоминать набранные вами слова и предлагать их позже. Сохраняются только на этом устройстве. Выключение не удаляет накопленное — стереть можно на экране «Личный словарь».</string>
     <string name="incognito_mode">Режим инкогнито</string>
-    <string name="incognito_mode_summary">Приостановить запоминание новых слов и пар слов. Уже сохранённое продолжает появляться. Выключение возобновляет запоминание.</string>
+    <string name="incognito_mode_summary">Приостановить запоминание новых слов, пар слов и эмодзи, а также пополнение недавних эмодзи. Уже сохранённое продолжает появляться. Выключение возобновляет запоминание.</string>
     <string name="personal_dictionary_screen">Сохранённые слова</string>
     <string name="personal_dictionary_search_hint">Поиск по сохранённым словам</string>
     <string name="personal_dictionary_add">Добавить слово\u2026</string>

@@ -156,10 +156,10 @@
     <string name="personal_dictionary">Personal dictionary</string>
     <!-- Description for the personal dictionary option. Says plainly that words are saved on the device and that turning the option off keeps what was already saved. -->
     <string name="personal_dictionary_summary">Remember words you type and suggest them later. Saved on this device only. Turning this off keeps what is already saved — erase it on the Personal dictionary screen.</string>
-    <!-- Option to pause learning of personal words and word pairs. ON means nothing new is learned; what is already saved keeps appearing. -->
+    <!-- Option to pause learning of personal words, word pairs and emoji and the recording of recent emoji. ON means nothing new is learned or recorded; what is already saved keeps appearing. -->
     <string name="incognito_mode">Incognito mode</string>
-    <!-- Description for the incognito option. Says that learning pauses completely and that saved content stays visible. -->
-    <string name="incognito_mode_summary">Pause learning new words and word pairs. What is already saved keeps appearing. Turning this off resumes learning.</string>
+    <!-- Description for the incognito option. Says that learning of words, word pairs and emoji and the recording of recent emoji pause, and that saved content stays visible. -->
+    <string name="incognito_mode_summary">Pause learning new words, word pairs and emoji, and stop adding to recent emoji. What is already saved keeps appearing. Turning this off resumes learning.</string>
     <!-- Entry row leading to the screen with the words the keyboard has saved -->
     <string name="personal_dictionary_screen">Saved words</string>
     <!-- Hint of the search field on the personal dictionary screen -->

@@ -87,7 +87,7 @@
     <string name="personal_dictionary">Шәхси сүзлек</string>
     <string name="personal_dictionary_summary">Сез язган сүзләрне исендә калдырып, соңыннан тәкъдим итә. Алар бары тик шушы җиһазда саклана. Сүндерү тупланганны бетерми — аларны «Шәхси сүзлек» экранында бетерергә мөмкин.</string>
     <string name="incognito_mode">Инкогнито режимы</string>
-    <string name="incognito_mode_summary">Яңа сүзләрне һәм сүз парларын өйрәнүне вакытлыча туктата. Сакланганы һаман күрсәтелә. Сүндергәч, өйрәнү дәвам итә.</string>
+    <string name="incognito_mode_summary">Яңа сүзләрне, сүз парларын һәм эмодзиларны өйрәнүне, шулай ук соңгы эмодзилар исемлеген тулыландыруны вакытлыча туктата. Сакланганы һаман күрсәтелә. Сүндергәч, өйрәнү дәвам итә.</string>
     <string name="personal_dictionary_screen">Сакланган сүзләр</string>
     <string name="personal_dictionary_search_hint">Сакланган сүзләр буенча эзләү</string>
     <string name="personal_dictionary_add">Сүз өстәү\u2026</string>
