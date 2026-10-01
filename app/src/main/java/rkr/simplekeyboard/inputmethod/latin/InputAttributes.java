@@ -33,6 +33,8 @@ public final class InputAttributes {
     final public boolean mIsPasswordField;
     final public boolean mShouldShowSuggestions;
     final public boolean mShouldInsertSpacesAutomatically;
+    /** A field for prose, see {@link InputTypeUtils#isGeneralTextInputType}. */
+    final public boolean mIsGeneralTextInput;
     /**
      * {@link EditorInfo#IME_FLAG_NO_PERSONALIZED_LEARNING}, set by incognito browser tabs and
      * messenger "incognito keyboard" switches. Read from {@code imeOptions}, not {@code inputType},
@@ -77,6 +79,7 @@ public final class InputAttributes {
             }
             mShouldShowSuggestions = false;
             mShouldInsertSpacesAutomatically = false;
+            mIsGeneralTextInput = false;
             return;
         }
         // inputClass == InputType.TYPE_CLASS_TEXT
@@ -97,6 +100,7 @@ public final class InputAttributes {
         mShouldShowSuggestions = !shouldSuppressSuggestions;
 
         mShouldInsertSpacesAutomatically = InputTypeUtils.isAutoSpaceFriendlyType(inputType);
+        mIsGeneralTextInput = InputTypeUtils.isGeneralTextInputType(inputType);
     }
 
     private static boolean readNoPersonalizedLearning(final EditorInfo editorInfo) {

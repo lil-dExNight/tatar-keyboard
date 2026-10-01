@@ -87,6 +87,22 @@ public final class InputTypeUtils implements InputType {
         return true;
     }
 
+    /**
+     * True for a text field meant for prose: class text, variation none of email, web email, URI,
+     * the password ones, phonetic and filter (a list filter is a query). Flags do not matter.
+     */
+    public static boolean isGeneralTextInputType(final int inputType) {
+        if (TYPE_CLASS_TEXT != (TYPE_MASK_CLASS & inputType)) return false;
+        final int variation = TYPE_MASK_VARIATION & inputType;
+        return !isEmailVariation(variation)
+                && variation != TYPE_TEXT_VARIATION_URI
+                && variation != TYPE_TEXT_VARIATION_PASSWORD
+                && variation != TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                && variation != TYPE_TEXT_VARIATION_WEB_PASSWORD
+                && variation != TYPE_TEXT_VARIATION_PHONETIC
+                && variation != TYPE_TEXT_VARIATION_FILTER;
+    }
+
     public static int getImeOptionsActionIdFromEditorInfo(final EditorInfo editorInfo) {
         if ((editorInfo.imeOptions & EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0) {
             return EditorInfo.IME_ACTION_NONE;
