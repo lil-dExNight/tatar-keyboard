@@ -201,7 +201,7 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
     protected int selectLabelColor(final Key key, final KeyDrawParams params) {
         // The alternative under the finger is filled with the accent color, so its glyph
         // flips to white; every other cell keeps the ordinary key label color.
-        if (key.isPressed()) {
+        if (isDrawingPressedKey()) {
             return mSelectedLabelColor;
         }
         return super.selectLabelColor(key, params);
@@ -216,23 +216,21 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
         // A new key is detected.
         if (oldKey != null) {
             updateReleaseKeyGraphics(oldKey);
-            invalidateKey(oldKey);
         }
         if (newKey != null) {
             updatePressKeyGraphics(newKey);
-            invalidateKey(newKey);
         }
         return newKey;
     }
 
     private void updateReleaseKeyGraphics(final Key key) {
         key.onReleased();
-        invalidateKey(key);
+        invalidatePressState(key);
     }
 
     private void updatePressKeyGraphics(final Key key) {
         key.onPressed();
-        invalidateKey(key);
+        invalidatePressState(key);
     }
 
     @Override

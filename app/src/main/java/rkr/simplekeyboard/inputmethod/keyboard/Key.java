@@ -576,7 +576,7 @@ public class Key implements Comparable<Key> {
         return mBackgroundType == BACKGROUND_TYPE_NORMAL;
     }
 
-    /** The drawing side needs the press state to invert a selected alternative's glyph. */
+    /** The drawing side paints pressed keys over the board's offscreen buffer. */
     public final boolean isPressed() {
         return mPressed;
     }
@@ -906,7 +906,7 @@ public class Key implements Comparable<Key> {
      */
     public final Drawable selectBackgroundDrawable(final Drawable keyBackground,
             final Drawable functionalKeyBackground,
-            final Drawable spacebarBackground) {
+            final Drawable spacebarBackground, final boolean pressed) {
         final Drawable background;
         if (mBackgroundType == BACKGROUND_TYPE_FUNCTIONAL) {
             background = functionalKeyBackground;
@@ -915,7 +915,7 @@ public class Key implements Comparable<Key> {
         } else {
             background = keyBackground;
         }
-        final int[] state = KeyBackgroundState.STATES[mBackgroundType].getState(mPressed);
+        final int[] state = KeyBackgroundState.STATES[mBackgroundType].getState(pressed);
         background.setState(state);
         return background;
     }

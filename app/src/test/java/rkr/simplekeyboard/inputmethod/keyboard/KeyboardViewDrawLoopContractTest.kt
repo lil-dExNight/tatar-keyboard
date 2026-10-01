@@ -24,10 +24,10 @@ import org.junit.Test
 /**
  * Pins the keyboard's draw loop, checked from source (there is no Robolectric in this project):
  * - a key press invalidates the touched key's RECT, never the whole board, and the press/release
- *   plumbing routes through `invalidateKey(Key)`;
- * - the offscreen buffer is redrawn only for invalidated keys, one indexed loop, no collection
- *   iterator allocation on a key-press frame;
- * - the frame itself is a single `drawBitmap` blit (the dirty rect clips it);
+ *   plumbing routes through `invalidatePressState(Key)`, which leaves the offscreen buffer alone;
+ * - the buffer holds released keys only and is redrawn only for invalidated keys, one indexed
+ *   loop, no collection iterator allocation on a key-press frame;
+ * - the frame is one `drawBitmap` blit plus the pressed keys painted over it;
  * - no raw text measurement lives in this file: reference glyph geometry comes from
  *   `TypefaceUtils`' cached helpers, and the one uncached width read (`getStringWidth`) is gated
  *   behind the auto-x-scale flag of the few keys that carry it.
@@ -67,13 +67,57 @@ class KeyboardViewDrawLoopContractTest {
     }
 
     @Test
-    fun pressAndReleaseRouteThroughTheRectInvalidation() {
+    fun pressAndReleaseRouteThroughThePressStateInvalidation() {
         val pressed = mainKeyboardView.substringAfter("public void onKeyPressed(final Key key")
             .substringBefore("private void showKeyPreview")
-        assertTrue(pressed.contains("invalidateKey(key)"))
-        val released = mainKeyboardView.substringAfter("public void onKeyReleased(final Key key")
+        assertTrue(pressed.contains("invalidatePressState(key)"))
+        assertFalse(pressed.contains("invalidateKey("))
+        val released = mainKeyboardView.substringAfter("private void dismissKeyPreviewWithoutDelay(")
             .substringBefore("private void dismissKeyPreview(final Key key)")
-        assertTrue(released.contains("invalidateKey(key)"))
+        assertTrue(released.contains("invalidatePressState(key)"))
+        assertFalse(
+            "a release does not redraw the key into the offscreen buffer",
+            released.contains("invalidateKey("),
+        )
+    }
+
+    @Test
+    fun aPressStateChangeLeavesTheBufferAlone() {
+        // A redrawn buffer is uploaded to the GPU again as a whole board texture.
+        val body = keyboardView.substringAfter("public void invalidatePressState(final Key key)")
+            .substringBefore("@Override")
+        assertTrue(body.contains("invalidate(x, y, x + key.getWidth(), y + key.getHeight())"))
+        assertFalse(body.contains("mInvalidatedKeys"))
+        assertFalse(body.contains("mInvalidateAllKeys"))
+    }
+
+    @Test
+    fun theBufferHoldsReleasedKeysAndPressedKeysArePaintedOverTheBlit() {
+        val buffer = onDrawKeyboardBody(keyboardView)
+        assertTrue(buffer.contains("onDrawKey(sortedKeys.get(i), canvas, paint, false /* pressed */)"))
+        assertTrue(buffer.contains("onDrawKey(key, canvas, paint, false /* pressed */)"))
+        assertFalse(buffer.contains("true /* pressed */"))
+        val frame = onDrawBody(keyboardView)
+        assertTrue(
+            "the pressed keys follow the blit",
+            frame.substringAfter("canvas.drawBitmap(mOffscreenBuffer, 0.0f, 0.0f, null);")
+                .contains("onDrawPressedKeys(canvas);"),
+        )
+        val overlay = keyboardView.substringAfter("private void onDrawPressedKeys(final Canvas canvas)")
+            .substringBefore("private boolean maybeAllocateOffscreenBuffer")
+        assertTrue("indexed loop, no iterator", overlay.contains("final Key key = sortedKeys.get(i);"))
+        assertTrue(overlay.contains("if (!key.isPressed()) {"))
+        assertTrue(
+            "clipped to the key, keyboard background first, as in the partial redraw",
+            overlay.contains("canvas.clipRect(x, y, x + key.getWidth(), y + key.getHeight());") &&
+                overlay.indexOf("background.draw(canvas);") <
+                overlay.indexOf("onDrawKey(key, canvas, mPaint, true /* pressed */);"),
+        )
+        val key = projectFile("src/main/java/rkr/simplekeyboard/inputmethod/keyboard/Key.java")
+            .substringAfter("public final Drawable selectBackgroundDrawable(")
+            .substringBefore("public static class Spacer")
+        assertTrue("the drawn state, not the key's own flag, picks the drawable state",
+            key.contains(".getState(pressed);"))
     }
 
     @Test

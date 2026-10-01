@@ -242,7 +242,7 @@ class EmojiPanelView @JvmOverloads constructor(
     internal val floatingKeyPx = dp(FLOATING_KEY_DP)
     private val floatingInsetPx = dp(FLOATING_INSET_DP)
     internal val tabPillInsetPx = dp(TAB_PILL_INSET_DP).toFloat()
-    private val headerTextInsetPx = dp(HEADER_TEXT_INSET_DP).toFloat()
+    private val headerTextInsetPx = dp(HEADER_TEXT_INSET_DP)
     internal val searchIconRadiusPx = dp(SEARCH_ICON_RADIUS_DP).toFloat()
     internal val searchIconHandlePx = dp(SEARCH_ICON_HANDLE_DP).toFloat()
     internal val clockIconRadiusPx = dp(CLOCK_ICON_RADIUS_DP).toFloat()
@@ -575,7 +575,7 @@ class EmojiPanelView @JvmOverloads constructor(
             if (headerTop < gridBottom && headerTop + sectionHeaderPx > gridTop) {
                 canvas.drawText(
                     sectionTitles[section],
-                    headerTextInsetPx,
+                    state.headerTextLeft(headerTop.toInt(), headerTextInsetPx).toFloat(),
                     headerTop + headerBaselineOffset,
                     headerPaint,
                 )

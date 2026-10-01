@@ -123,6 +123,8 @@ public class KeyboardView extends View {
     private Bitmap mOffscreenBuffer;
     /** The canvas for the above mutable keyboard bitmap */
     private final Canvas mOffscreenCanvas = new Canvas();
+    /** True while {@link #onDrawKey} paints a key in its pressed state. */
+    private boolean mDrawingPressedKey;
     private final Paint mPaint = new Paint();
     private final Paint.FontMetrics mFontMetrics = new Paint.FontMetrics();
 
@@ -233,6 +235,8 @@ public class KeyboardView extends View {
         // one drawBitmap. A partial draw straight onto the frame canvas would drop every other
         // key from the display list. The buffer's canvas reports !isHardwareAccelerated(), so
         // onDrawKeyboard's software path, including its per-key CLEAR steps, applies as is.
+        // The buffer holds every key in its released state; pressed keys are painted over the
+        // blit (onDrawPressedKeys), so a press or release leaves the buffer untouched.
         final boolean bufferNeedsUpdates = mInvalidateAllKeys || !mInvalidatedKeys.isEmpty();
         if (bufferNeedsUpdates || mOffscreenBuffer == null) {
             if (maybeAllocateOffscreenBuffer()) {
@@ -242,6 +246,38 @@ public class KeyboardView extends View {
             onDrawKeyboard(mOffscreenCanvas);
         }
         canvas.drawBitmap(mOffscreenBuffer, 0.0f, 0.0f, null);
+        onDrawPressedKeys(canvas);
+    }
+
+    /**
+     * Paints the pressed keys over the buffer blit, each clipped to its rect: the keyboard
+     * background, then the key in its pressed state, the same steps the buffer's partial redraw
+     * takes. A changed buffer is uploaded to the GPU again as a whole board texture on the next
+     * frame, while these few draw operations are recorded with the frame and change no texture.
+     */
+    private void onDrawPressedKeys(final Canvas canvas) {
+        final Keyboard keyboard = getKeyboard();
+        if (keyboard == null) {
+            return;
+        }
+        final Drawable background = getBackground();
+        // Indexed loop: a collection iterator would allocate on every frame.
+        final List<Key> sortedKeys = keyboard.getSortedKeys();
+        for (int i = 0; i < sortedKeys.size(); i++) {
+            final Key key = sortedKeys.get(i);
+            if (!key.isPressed()) {
+                continue;
+            }
+            final int x = key.getX() + getPaddingLeft();
+            final int y = key.getY() + getPaddingTop();
+            canvas.save();
+            canvas.clipRect(x, y, x + key.getWidth(), y + key.getHeight());
+            if (background != null) {
+                background.draw(canvas);
+            }
+            onDrawKey(key, canvas, mPaint, true /* pressed */);
+            canvas.restore();
+        }
     }
 
     private boolean maybeAllocateOffscreenBuffer() {
@@ -296,7 +332,7 @@ public class KeyboardView extends View {
             // Draw all keys. Indexed loop to avoid iterator allocation on every frame.
             final List<Key> sortedKeys = keyboard.getSortedKeys();
             for (int i = 0; i < sortedKeys.size(); i++) {
-                onDrawKey(sortedKeys.get(i), canvas, paint);
+                onDrawKey(sortedKeys.get(i), canvas, paint, false /* pressed */);
             }
         } else {
             // Indexed loop, like the all-keys branch above: a collection iterator would
@@ -317,7 +353,7 @@ public class KeyboardView extends View {
                     background.draw(canvas);
                     canvas.restore();
                 }
-                onDrawKey(key, canvas, paint);
+                onDrawKey(key, canvas, paint, false /* pressed */);
             }
         }
 
@@ -326,7 +362,8 @@ public class KeyboardView extends View {
     }
 
     private void onDrawKey(final Key key, final Canvas canvas,
-            final Paint paint) {
+            final Paint paint, final boolean pressed) {
+        mDrawingPressedKey = pressed;
         final int keyDrawX = key.getX() + getPaddingLeft();
         final int keyDrawY = key.getY() + getPaddingTop();
         canvas.translate(keyDrawX, keyDrawY);
@@ -341,7 +378,7 @@ public class KeyboardView extends View {
 
         if (!key.isSpacer()) {
             final Drawable background = key.selectBackgroundDrawable(
-                    mKeyBackground, mFunctionalKeyBackground, mSpacebarBackground);
+                    mKeyBackground, mFunctionalKeyBackground, mSpacebarBackground, pressed);
             if (background != null) {
                 onDrawKeyBackground(key, canvas, background);
             }
@@ -349,6 +386,12 @@ public class KeyboardView extends View {
         onDrawKeyTopVisuals(key, canvas, paint, params);
 
         canvas.translate(-keyDrawX, -keyDrawY);
+        mDrawingPressedKey = false;
+    }
+
+    /** Whether the key being drawn is painted in its pressed state (see onDrawPressedKeys). */
+    protected final boolean isDrawingPressedKey() {
+        return mDrawingPressedKey;
     }
 
     // Draw key background.
@@ -563,6 +606,19 @@ public class KeyboardView extends View {
         }
         if (!mInvalidatedKeys.contains(key)) {
             mInvalidatedKeys.add(key);
+        }
+        final int x = key.getX() + getPaddingLeft();
+        final int y = key.getY() + getPaddingTop();
+        invalidate(x, y, x + key.getWidth(), y + key.getHeight());
+    }
+
+    /**
+     * Redraws a key whose press state changed. Pressed keys are painted over the offscreen
+     * buffer, so the buffer is not redrawn; only the key rect of the frame is invalidated.
+     */
+    public void invalidatePressState(final Key key) {
+        if (key == null) {
+            return;
         }
         final int x = key.getX() + getPaddingLeft();
         final int y = key.getY() + getPaddingTop();

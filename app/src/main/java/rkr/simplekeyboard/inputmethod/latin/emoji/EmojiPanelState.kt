@@ -414,6 +414,17 @@ internal class EmojiPanelState {
 
     fun deleteRight(): Int = (panelWidth - floatingInsetPx).coerceAtLeast(0)
 
+    /**
+     * Left edge of a section title whose header row starts at view y [headerTop]. While the row
+     * overlaps the floating keys the title starts [textInsetPx] past the "back to letters" key,
+     * which is drawn on top of it; otherwise it starts [textInsetPx] from the panel edge.
+     */
+    fun headerTextLeft(headerTop: Int, textInsetPx: Int): Int {
+        val overlapsKeys = floatingPx > 0 &&
+            headerTop < floatingBottom() && headerTop + headerPx > floatingTop()
+        return if (overlapsKeys) backRight() + textInsetPx else textInsetPx
+    }
+
     // --- Skin-tone popup ------------------------------------------------------------------------
 
     /**

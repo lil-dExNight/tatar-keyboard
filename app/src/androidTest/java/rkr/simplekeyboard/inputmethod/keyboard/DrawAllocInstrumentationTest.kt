@@ -43,8 +43,9 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView
  *  1. [testBoardAndStripDrawLoopsAllocateNothing] replays the press → invalidate → redraw
  *     sequence of a tap synchronously on the main thread under per-thread allocation counting.
  *     Nothing else can run on the main thread meanwhile, so a nonzero delta is a draw-path
- *     allocation. Windows: control (no draws), blit, same-state redraw, full board cycle, and
- *     strip redraws of three live cells. Blit, redraw and strip must be zero. The board cycle
+ *     allocation. Windows: control (no draws), blit, same-state redraw, a held key painted over
+ *     the blit, full board cycle, and strip redraws of three live cells. Blit, redraw, held key
+ *     and strip must be zero. The board cycle
  *     is bounded instead: each StateListDrawable state change on the shared key background
  *     costs the platform 2 allocations (a bare drawable pays the same, see
  *     [testDrawAllocStepBreakdown]), which is outside our code.
@@ -165,6 +166,28 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
         val redrawThread = lastWindowThreadDelta
         val redrawGlobal = lastWindowGlobalDelta
 
+        // Held: one key pressed, the frames of a held press. The key is painted over the blit and
+        // the buffer is not redrawn. The first draw (uncounted) moves the shared background
+        // drawable to the pressed state; the measured draws repeat that state. Strict zero.
+        onMain {
+            keys[0].onPressed()
+            view.invalidatePressState(keys[0])
+            view.onDraw(board)
+        }
+        measureWindow("held", HELD_DRAWS_PER_WINDOW) {
+            repeat(HELD_DRAWS_PER_WINDOW) {
+                view.invalidatePressState(keys[0])
+                view.onDraw(board)
+            }
+        }
+        val heldThread = lastWindowThreadDelta
+        val heldGlobal = lastWindowGlobalDelta
+        onMain {
+            keys[0].onReleased()
+            view.invalidatePressState(keys[0])
+            view.onDraw(board)
+        }
+
         // Board: the full press/release cycle per key plus a full-board redraw. This window
         // INCLUDES the press-state transitions of the shared key background drawable, and on this
         // platform each StateListDrawable state change costs the framework two allocations (see
@@ -187,11 +210,13 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
             TAG,
             "RESULT|drawalloc|gate keys=${keys.size} boardDraws=$BOARD_DRAWS_PER_WINDOW " +
                 "stripDraws=$STRIP_DRAWS_PER_WINDOW control=$controlThread blit=$blitThread " +
-                "redraw=$redrawThread board=$boardThread strip=$stripThread " +
+                "redraw=$redrawThread held=$heldThread board=$boardThread strip=$stripThread " +
                 "boardFloorBound=$BOARD_TOGGLE_FLOOR_BOUND controlGlobal=$controlGlobal " +
-                "blitGlobal=$blitGlobal redrawGlobal=$redrawGlobal boardGlobal=$boardGlobal " +
+                "blitGlobal=$blitGlobal redrawGlobal=$redrawGlobal heldGlobal=$heldGlobal " +
+                "boardGlobal=$boardGlobal " +
                 "stripGlobal=$stripGlobal " +
-                "verdict=${if (blitThread == 0L && redrawThread == 0L && stripThread == 0L &&
+                "verdict=${if (blitThread == 0L && redrawThread == 0L && heldThread == 0L &&
+                    stripThread == 0L &&
                     boardThread <= BOARD_TOGGLE_FLOOR_BOUND) "PASS" else "FAIL"}",
         )
         assertEquals(
@@ -205,6 +230,11 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
             0L, redrawThread,
         )
         assertEquals(
+            "a held key painted over the blit must stay allocation-free: " +
+                "$HELD_DRAWS_PER_WINDOW draws allocated $heldThread objects on the drawing thread",
+            0L, heldThread,
+        )
+        assertEquals(
             "the suggestion strip draw loop must stay allocation-free: " +
                 "$STRIP_DRAWS_PER_WINDOW redraws of a live three-cell band allocated " +
                 "$stripThread objects on the drawing thread",
@@ -212,10 +242,9 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
         )
         assertTrue(
             "the board press/release draw cycle allocated $boardThread objects on the drawing " +
-                "thread over $BOARD_DRAWS_PER_WINDOW draws; the documented platform floor is " +
-                "2 allocations per StateListDrawable state toggle (8 toggles per window = 16) " +
-                "plus the full redraw's functional-key states (~2), measured 18, bounded at " +
-                "$BOARD_TOGGLE_FLOOR_BOUND — anything above it is ours",
+                "thread over $BOARD_DRAWS_PER_WINDOW draws; the platform floor is 2 allocations " +
+                "per StateListDrawable state toggle, bounded at $BOARD_TOGGLE_FLOOR_BOUND " +
+                "(see the class KDoc) — anything above it is ours",
             boardThread <= BOARD_TOGGLE_FLOOR_BOUND,
         )
     }
@@ -453,7 +482,8 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
 
     /**
      * The exact redraw work one tap causes on the board, per probed key — press → invalidate →
-     * draw, release → invalidate → draw — plus one full-board redraw. The draw call is the
+     * draw, release → invalidate → draw, through the production press-state invalidation — plus
+     * one full-board redraw. The draw call is the
      * view's own onDraw: a plain invalidate() marks the view dirty-RECT only, and View.draw()
      * would then skip onDraw entirely (PFLAG_DIRTY_OPAQUE) — calling onDraw directly keeps the
      * measured path exactly the one a frame runs, with the framework's recording canvas replaced
@@ -463,10 +493,10 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
     private fun runBoardDrawSequence(view: MainKeyboardView, keys: Array<Key>, canvas: Canvas) {
         for (key in keys) {
             key.onPressed()
-            view.invalidateKey(key)
+            view.invalidatePressState(key)
             view.onDraw(canvas)
             key.onReleased()
-            view.invalidateKey(key)
+            view.invalidatePressState(key)
             view.onDraw(canvas)
         }
         view.invalidateAllKeys()
@@ -491,9 +521,9 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
     ) {
         for (key in keys) {
             key.onPressed()
-            view.invalidateKey(key)
+            view.invalidatePressState(key)
             key.onReleased()
-            view.invalidateKey(key)
+            view.invalidatePressState(key)
         }
         view.invalidateAllKeys()
         var i = 0
@@ -658,14 +688,16 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
         private const val STRIP_DRAWS_PER_WINDOW = 4
         // Same-state partial redraws: two passes over the probed keys, all released.
         private const val REDRAW_DRAWS_PER_WINDOW = 4 * 2
+        // Frames of one held key.
+        private const val HELD_DRAWS_PER_WINDOW = 8
         // The blit window draws the same number of frames as the board window, so a regression
         // in the per-frame shell is directly comparable against the board number.
         private const val BLIT_DRAWS_PER_WINDOW = BOARD_DRAWS_PER_WINDOW
 
-        // The board window's platform floor: every press/release cycle toggles the shared key
-        // background StateListDrawable twice, and each state change costs the framework 2
-        // allocations (isolated in testDrawAllocStepBreakdown), plus a few for the full redraw's
-        // functional/sticky key states. The bound leaves no room for one new object per draw.
+        // The board window's platform floor: press states toggle the shared key background
+        // StateListDrawable, and each state change costs the framework 2 allocations (isolated in
+        // testDrawAllocStepBreakdown), plus a few for the full redraw's functional/sticky key
+        // states. At most two toggles per press/release cycle. The bound leaves no room for one new object per draw.
         // Same-state redraws, blits and the strip stay asserted at zero.
         private const val BOARD_TOGGLE_FLOOR_BOUND = 24L
 

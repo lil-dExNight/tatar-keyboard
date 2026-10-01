@@ -353,7 +353,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
                 showPreview && key.isNormalBackground() && mKeyPreviewDrawParams.isPopupEnabled();
         if (!balloonCarriesTheFeedback) {
             key.onPressed();
-            invalidateKey(key);
+            invalidatePressState(key);
         }
         if (showPreview) {
             showKeyPreview(key);
@@ -380,14 +380,17 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
 
     private void dismissKeyPreviewWithoutDelay(final Key key) {
         mKeyPreviewChoreographer.dismissKeyPreview(key, false /* withAnimation */);
-        invalidateKey(key);
     }
 
     // Implements {@link DrawingProxy#onKeyReleased(Key,boolean)}.
     @Override
     public void onKeyReleased(final Key key, final boolean withAnimation) {
-        key.onReleased();
-        invalidateKey(key);
+        // A letter whose balloon carried the feedback was never drawn pressed, so its release
+        // has nothing to repaint on the board; the balloon is a separate view.
+        if (key.isPressed()) {
+            key.onReleased();
+            invalidatePressState(key);
+        }
         if (!key.noKeyPreview()) {
             if (withAnimation) {
                 dismissKeyPreview(key);

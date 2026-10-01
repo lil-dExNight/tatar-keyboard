@@ -257,6 +257,55 @@ class EmojiPanelStateTest {
         assertEquals(floatingBottom, state.floatingBottom())
     }
 
+    // --- Section titles beside the floating keys ----------------------------------------------
+
+    /**
+     * On a short panel the header of the section after a short recents section lands level with
+     * the floating keys; its title then starts past the back key, so neither hides the other.
+     */
+    @Test
+    fun headerLevelWithTheFloatingKeysStartsPastTheBackKey() {
+        val textInsetPx = 12
+        // 17 entries: three rows of 40px, so section 1's header sits at 44 + 30 + 120 = 194.
+        val state = configuredState(multiCategorySnapshot(17, 50), height = 210)
+        val headerTop = state.gridTop() + state.sectionTop(1) - state.scrollY()
+        assertEquals(194, headerTop)
+        assertTrue(headerTop < state.floatingBottom() && headerTop + headerPx > state.floatingTop())
+
+        val left = state.headerTextLeft(headerTop, textInsetPx)
+        assertEquals(state.backRight() + textInsetPx, left)
+        assertTrue("title at $left must clear the back key at ${state.backRight()}", left > state.backRight())
+    }
+
+    /** A header row above or below the floating keys keeps the plain inset from the panel edge. */
+    @Test
+    fun headerAwayFromTheFloatingKeysKeepsThePlainInset() {
+        val textInsetPx = 12
+        val state = configuredState(snapshotOf(50))
+        assertEquals(textInsetPx, state.headerTextLeft(state.gridTop(), textInsetPx))
+        assertEquals(textInsetPx, state.headerTextLeft(state.floatingTop() - headerPx, textInsetPx))
+        assertEquals(textInsetPx, state.headerTextLeft(state.floatingBottom(), textInsetPx))
+        assertEquals(
+            state.backRight() + textInsetPx,
+            state.headerTextLeft(state.floatingTop() - headerPx + 1, textInsetPx),
+        )
+        assertEquals(
+            state.backRight() + textInsetPx,
+            state.headerTextLeft(state.floatingBottom() - 1, textInsetPx),
+        )
+    }
+
+    /** The overlap test follows the floating keys when the navigation bar lifts them. */
+    @Test
+    fun headerInsetFollowsTheLiftedFloatingKeys() {
+        val textInsetPx = 12
+        val state = configuredState(snapshotOf(50))
+        val oldTop = state.floatingTop()
+        state.setBottomInset(96)
+        assertEquals(textInsetPx, state.headerTextLeft(oldTop, textInsetPx))
+        assertEquals(state.backRight() + textInsetPx, state.headerTextLeft(state.floatingTop(), textInsetPx))
+    }
+
     // --- Squeezing the fixed band when height runs short ---------------------------------------
 
     /** While everything fits, the band is exactly what the view asked for — nothing is scaled. */

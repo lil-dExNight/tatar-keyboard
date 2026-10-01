@@ -160,7 +160,7 @@ class AppleUxStageBContractTest {
             "the selected cell's label inverts",
             panel.substringAfter("protected int selectLabelColor(")
                 .substringBefore("private Key detectKey(")
-                .contains("key.isPressed()"),
+                .contains("isDrawingPressedKey()"),
         )
     }
 

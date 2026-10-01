@@ -83,6 +83,7 @@
         parent="KeyboardView.Tatar"
         >
         <item name="android:background">@drawable/ios_popup_panel_background</item>
+        <item name="android:foreground">@drawable/ios_popup_panel_border</item>
         <item name="keyBackground">@drawable/ios_popup_key_background</item>
         <item name="keyTypeface">normal</item>
         <item name="verticalCorrection">@dimen/config_more_keys_keyboard_vertical_correction</item>
