@@ -21,47 +21,114 @@
 <merge
     xmlns:latin="http://schemas.android.com/apk/res-auto"
 >
-    <!-- U+0439: "й" CYRILLIC SMALL LETTER SHORT I -->
-    <Key
-        latin:keySpec="&#x0439;" />
-    <!-- U+0446: "ц" CYRILLIC SMALL LETTER TSE -->
-    <Key
-        latin:keySpec="&#x0446;" />
-    <!-- U+0443: "у" CYRILLIC SMALL LETTER U; long-press U+04AF: "ү" -->
-    <Key
-        latin:keySpec="&#x0443;"
-        latin:keyHintLabel="&#x04AF;"
-        latin:moreKeys="&#x04AF;" />
-    <!-- U+043A: "к" CYRILLIC SMALL LETTER KA -->
-    <Key
-        latin:keySpec="&#x043A;" />
-    <!-- U+0435: "е" CYRILLIC SMALL LETTER IE; long-press U+0451: "ё" -->
-    <Key
-        latin:keySpec="&#x0435;"
-        latin:keyHintLabel="&#x0451;"
-        latin:moreKeys="&#x0451;" />
-    <!-- U+043D: "н" CYRILLIC SMALL LETTER EN; long-press U+04A3: "ң" -->
-    <Key
-        latin:keySpec="&#x043D;"
-        latin:keyHintLabel="&#x04A3;"
-        latin:moreKeys="&#x04A3;" />
-    <!-- U+0433: "г" CYRILLIC SMALL LETTER GHE; long-press U+04BB: "һ" -->
-    <Key
-        latin:keySpec="&#x0433;"
-        latin:keyHintLabel="&#x04BB;"
-        latin:moreKeys="&#x04BB;" />
-    <!-- U+0448: "ш" CYRILLIC SMALL LETTER SHA -->
-    <Key
-        latin:keySpec="&#x0448;" />
-    <!-- U+0449: "щ" CYRILLIC SMALL LETTER SHCHA -->
-    <Key
-        latin:keySpec="&#x0449;" />
-    <!-- U+0437: "з" CYRILLIC SMALL LETTER ZE -->
-    <Key
-        latin:keySpec="&#x0437;" />
-    <!-- U+0445: "х" CYRILLIC SMALL LETTER HA; long-press U+04BB: "һ" -->
-    <Key
-        latin:keySpec="&#x0445;"
-        latin:keyHintLabel="&#x04BB;"
-        latin:moreKeys="&#x04BB;" />
+    <!-- Without the number row, the first ten keys offer the digits 1 to 0 on long press. A key
+         with a letter partner keeps that letter first: the "%" marker puts the digit after it. -->
+    <switch>
+        <case latin:showNumberRow="true">
+            <!-- U+0439: "й" CYRILLIC SMALL LETTER SHORT I -->
+            <Key
+                latin:keySpec="&#x0439;" />
+            <!-- U+0446: "ц" CYRILLIC SMALL LETTER TSE -->
+            <Key
+                latin:keySpec="&#x0446;" />
+            <!-- U+0443: "у" CYRILLIC SMALL LETTER U; long-press U+04AF: "ү" -->
+            <Key
+                latin:keySpec="&#x0443;"
+                latin:keyHintLabel="&#x04AF;"
+                latin:moreKeys="&#x04AF;" />
+            <!-- U+043A: "к" CYRILLIC SMALL LETTER KA -->
+            <Key
+                latin:keySpec="&#x043A;" />
+            <!-- U+0435: "е" CYRILLIC SMALL LETTER IE; long-press U+0451: "ё" -->
+            <Key
+                latin:keySpec="&#x0435;"
+                latin:keyHintLabel="&#x0451;"
+                latin:moreKeys="&#x0451;" />
+            <!-- U+043D: "н" CYRILLIC SMALL LETTER EN; long-press U+04A3: "ң" -->
+            <Key
+                latin:keySpec="&#x043D;"
+                latin:keyHintLabel="&#x04A3;"
+                latin:moreKeys="&#x04A3;" />
+            <!-- U+0433: "г" CYRILLIC SMALL LETTER GHE; long-press U+04BB: "һ" -->
+            <Key
+                latin:keySpec="&#x0433;"
+                latin:keyHintLabel="&#x04BB;"
+                latin:moreKeys="&#x04BB;" />
+            <!-- U+0448: "ш" CYRILLIC SMALL LETTER SHA -->
+            <Key
+                latin:keySpec="&#x0448;" />
+            <!-- U+0449: "щ" CYRILLIC SMALL LETTER SHCHA -->
+            <Key
+                latin:keySpec="&#x0449;" />
+            <!-- U+0437: "з" CYRILLIC SMALL LETTER ZE -->
+            <Key
+                latin:keySpec="&#x0437;" />
+            <!-- U+0445: "х" CYRILLIC SMALL LETTER HA; long-press U+04BB: "һ" -->
+            <Key
+                latin:keySpec="&#x0445;"
+                latin:keyHintLabel="&#x04BB;"
+                latin:moreKeys="&#x04BB;" />
+        </case>
+        <default>
+            <!-- U+0439: "й" CYRILLIC SMALL LETTER SHORT I -->
+            <Key
+                latin:keySpec="&#x0439;"
+                latin:keyHintLabel="1"
+                latin:additionalMoreKeys="1" />
+            <!-- U+0446: "ц" CYRILLIC SMALL LETTER TSE -->
+            <Key
+                latin:keySpec="&#x0446;"
+                latin:keyHintLabel="2"
+                latin:additionalMoreKeys="2" />
+            <!-- U+0443: "у" CYRILLIC SMALL LETTER U; long-press U+04AF: "ү" -->
+            <Key
+                latin:keySpec="&#x0443;"
+                latin:keyHintLabel="&#x04AF;"
+                latin:moreKeys="&#x04AF;,%"
+                latin:additionalMoreKeys="3" />
+            <!-- U+043A: "к" CYRILLIC SMALL LETTER KA -->
+            <Key
+                latin:keySpec="&#x043A;"
+                latin:keyHintLabel="4"
+                latin:additionalMoreKeys="4" />
+            <!-- U+0435: "е" CYRILLIC SMALL LETTER IE; long-press U+0451: "ё" -->
+            <Key
+                latin:keySpec="&#x0435;"
+                latin:keyHintLabel="&#x0451;"
+                latin:moreKeys="&#x0451;,%"
+                latin:additionalMoreKeys="5" />
+            <!-- U+043D: "н" CYRILLIC SMALL LETTER EN; long-press U+04A3: "ң" -->
+            <Key
+                latin:keySpec="&#x043D;"
+                latin:keyHintLabel="&#x04A3;"
+                latin:moreKeys="&#x04A3;,%"
+                latin:additionalMoreKeys="6" />
+            <!-- U+0433: "г" CYRILLIC SMALL LETTER GHE; long-press U+04BB: "һ" -->
+            <Key
+                latin:keySpec="&#x0433;"
+                latin:keyHintLabel="&#x04BB;"
+                latin:moreKeys="&#x04BB;,%"
+                latin:additionalMoreKeys="7" />
+            <!-- U+0448: "ш" CYRILLIC SMALL LETTER SHA -->
+            <Key
+                latin:keySpec="&#x0448;"
+                latin:keyHintLabel="8"
+                latin:additionalMoreKeys="8" />
+            <!-- U+0449: "щ" CYRILLIC SMALL LETTER SHCHA -->
+            <Key
+                latin:keySpec="&#x0449;"
+                latin:keyHintLabel="9"
+                latin:additionalMoreKeys="9" />
+            <!-- U+0437: "з" CYRILLIC SMALL LETTER ZE -->
+            <Key
+                latin:keySpec="&#x0437;"
+                latin:keyHintLabel="0"
+                latin:additionalMoreKeys="0" />
+            <!-- U+0445: "х" CYRILLIC SMALL LETTER HA; long-press U+04BB: "һ" -->
+            <Key
+                latin:keySpec="&#x0445;"
+                latin:keyHintLabel="&#x04BB;"
+                latin:moreKeys="&#x04BB;" />
+        </default>
+    </switch>
 </merge>

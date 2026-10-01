@@ -184,6 +184,65 @@ class LayoutNeighborMapTest(unittest.TestCase):
             self.assertNotIn(ord(letter), self.neighbor_map)
 
 
+class RowSwitchTest(unittest.TestCase):
+    """A row file with a <switch> reads as its <default> branch, the keyboard without a number row."""
+
+    _SWITCHED_ROW = (
+        "<merge xmlns:latin='http://schemas.android.com/apk/res-auto'>"
+        "<switch>"
+        "<case latin:showNumberRow='true'>"
+        "<Key latin:keySpec='&#x0439;'/>"
+        "<Key latin:keySpec='&#x0443;' latin:keyHintLabel='&#x04AF;' latin:moreKeys='&#x04AF;'/>"
+        "<Key latin:keySpec='&#x0445;' latin:moreKeys='&#x04BB;'/>"
+        "</case>"
+        "<default>"
+        "<Key latin:keySpec='&#x0439;' latin:keyHintLabel='1' latin:additionalMoreKeys='1'/>"
+        "<Key latin:keySpec='&#x0443;' latin:keyHintLabel='&#x04AF;' latin:moreKeys='&#x04AF;,%'"
+        " latin:additionalMoreKeys='2'/>"
+        "<Key latin:keySpec='&#x0445;' latin:moreKeys='&#x04BB;'/>"
+        "</default>"
+        "</switch>"
+        "</merge>"
+    )
+
+    def _write(self, directory: str, content: str) -> Path:
+        path = Path(directory) / "rowkeys_test.xml"
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_key_specs_come_from_the_default_branch_once(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._write(directory, self._SWITCHED_ROW)
+            self.assertEqual(pack._read_row_key_specs(path), ["й", "у", "х"])
+
+    def test_pairs_come_from_the_default_branch_once(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._write(directory, self._SWITCHED_ROW)
+            pairs = pack._read_directed_pairs(path)
+            # The reader keeps single-character tokens; "%" is dropped later as a non-letter.
+            self.assertEqual(pairs, [(ord("у"), [ord("ү"), ord("%")]), (ord("х"), [ord("һ")])])
+            self.assertEqual(
+                pack.build_neighbor_map(pairs),
+                {ord("у"): (ord("ү"),), ord("ү"): (ord("у"),), ord("х"): (ord("һ"),), ord("һ"): (ord("х"),)},
+            )
+
+    def test_a_switch_without_a_default_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._write(
+                directory,
+                "<merge xmlns:latin='http://schemas.android.com/apk/res-auto'><switch>"
+                "<case latin:showNumberRow='true'><Key latin:keySpec='&#x0439;'/></case>"
+                "</switch></merge>",
+            )
+            with self.assertRaises(pack.TypoPackError):
+                pack._read_row_key_specs(path)
+
+    def test_the_shipped_top_row_reads_as_eleven_letters(self) -> None:
+        self.assertEqual(
+            "".join(pack._read_row_key_specs(LAYOUT_DIR / "rowkeys_tatar1.xml")), "йцукенгшщзх"
+        )
+
+
 class TypoSetMethodologyTest(unittest.TestCase):
     def setUp(self) -> None:
         self.neighbor_map = pack.read_layout_neighbor_map(LAYOUT_DIR)

@@ -130,6 +130,30 @@ def _normalize_letter(code_point: int) -> int | None:
     return normalized
 
 
+def _row_keys(root: ElementTree.Element, xml_path: Path) -> list[ElementTree.Element]:
+    """The ``<Key>`` elements of one rowkeys XML, taking only the ``<default>`` of a ``<switch>``.
+
+    The ``<default>`` branch is the keyboard without the number row, the one the geometry model
+    describes; the ``<case>`` branches hold the same letters and would count every key twice.
+    """
+    keys: list[ElementTree.Element] = []
+
+    def walk(element: ElementTree.Element) -> None:
+        for child in element:
+            if child.tag == "Key":
+                keys.append(child)
+            elif child.tag == "switch":
+                defaults = [branch for branch in child if branch.tag == "default"]
+                if len(defaults) != 1:
+                    raise TypoPackError(f"{xml_path.name}: a <switch> needs one <default> branch")
+                walk(defaults[0])
+            else:
+                walk(child)
+
+    walk(root)
+    return keys
+
+
 def _read_directed_pairs(xml_path: Path) -> list[tuple[int, list[int]]]:
     """Read (base, [partner, ...]) pairs from one rowkeys XML by its ``latin:moreKeys``."""
     try:
@@ -139,7 +163,7 @@ def _read_directed_pairs(xml_path: Path) -> list[tuple[int, list[int]]]:
     key_spec_attr = f"{{{_ANDROID_RES_AUTO}}}keySpec"
     more_keys_attr = f"{{{_ANDROID_RES_AUTO}}}moreKeys"
     pairs: list[tuple[int, list[int]]] = []
-    for key in root.iter("Key"):
+    for key in _row_keys(root, xml_path):
         more_keys = key.get(more_keys_attr)
         if more_keys is None:
             continue
@@ -251,7 +275,7 @@ def _read_row_key_specs(xml_path: Path) -> list[str]:
         raise TypoPackError(f"cannot parse layout resource {xml_path}: {error}") from error
     key_spec_attr = f"{{{_ANDROID_RES_AUTO}}}keySpec"
     specs: list[str] = []
-    for key in root.iter("Key"):
+    for key in _row_keys(root, xml_path):
         spec = key.get(key_spec_attr)
         if spec is None or len(spec) != 1:
             raise TypoPackError(f"{xml_path.name}: a row key has no single-character keySpec")
