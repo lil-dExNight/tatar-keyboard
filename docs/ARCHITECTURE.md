@@ -50,6 +50,9 @@ Protections (in `RichInputConnection` and `InputLogic` unless noted):
 - host answers are cut to `Constants.EDITOR_CONTENTS_CACHE_SIZE` characters; a `SurroundingText`
   with an out-of-range selection empties the cache; negative or inverted selections are normalized;
 - cache reloads are coalesced (at most one in flight) and applied on the UI thread;
+- the end of an input session drops the cached text and the selection; a hide that keeps the
+  session drops only the text, so the next show re-reads it from the editor instead of the
+  session's first `EditorInfo`;
 - clips of `MAX_DIRECT_PASTE_CHARS` or more are pasted through the editor's context menu, avoiding
   `TransactionTooLargeException`;
 - non-finite coordinates are rejected in `GlidePath` and in `SuggestionStripState` hit testing.
@@ -62,6 +65,9 @@ Layouts are XML in `app/src/main/res/xml/`: `keyboard_layout_set_<name>.xml` nam
 symbols, phone and number keyboards, `rows_<name>.xml` and `rowkeys_<name>*.xml` define the rows.
 The Tatar layout (`rows_tatar.xml`) is ЙЦУКЕН with an extra top row of ә ө ү җ ң һ
 (`rowkeys_tatar_extra.xml`). The Russian layout offers the same letters as long-press keys.
+With the number row off, the first ten keys of the `й`–`х` row of both layouts carry the digits
+1–0 on long press (a `<switch>` on `showNumberRow` in `rowkeys_tatar1.xml` and
+`rowkeys_russian1.xml`); a key with a letter partner keeps that letter first.
 
 Languages: Tatar (`tt_RU`, layout `tatar`), Russian (`ru`, layout `russian`) and English (`en_US`,
 `qwerty`, with `qwertz` and `abc` as alternatives). The system sees one generic subtype
@@ -98,7 +104,9 @@ table (`SentStartIndex`, `assets/dictionaries/*_sentstart_v1.txt`).
 (`SuggestionStripState.CELL_COUNT`). A tap commits the word with a space; a punctuation mark that
 attaches to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ",
 "сүз?! "), tracked by the cursor position in `InputLogic`. A space typed there is swallowed and
-counts as the first space of a double-space period. Cursor moves by the keyboard itself (space
+counts as the first space of a double-space period. Two quick spaces give a period only in a
+general text field (`InputTypeUtils.isGeneralTextInputType`: the text class without the email,
+URI, password, phonetic and filter variations). Cursor moves by the keyboard itself (space
 slide, delete swipe) drop this state (`InputLogic.onKeyboardCursorMove`).
 
 **Word completion** (`CompositePrefixComputer.lookup`): exact dictionary candidates by frequency,
@@ -174,9 +182,49 @@ decoded while the finger moves. `GlideDecoder` is a SHARK2-style statistical cla
 location channels plus a frequency weight), ported with attribution from FlorisBoard's
 `StatisticalGlideTypingClassifier`. Its word index is built lazily on the engine worker
 (`GlideDecoderHost`); only one language keeps an index in memory. The top word is committed on
-lift; with suggestions on, the other candidates appear in the strip and a tap replaces the word.
-The word takes the shift state: shift capitalizes it, Caps Lock types it in capitals. One
-backspace right after a glide deletes the whole word (`LatinImeGlide`).
+lift (`InputLogic.commitGlideWord`); with suggestions on, the other candidates appear in the strip
+and a tap replaces the word. The word takes the shift state: shift capitalizes it, Caps Lock types
+it in capitals.
+
+Letters and doubled letters: `GlideKeyGeometry` is built from the live keys and their long-press
+keys. A long-press letter without a key of its own is an alias of its base key, so a word with it
+is decoded from a gesture over that key and committed with the right letter: on the Tatar layout
+`ъ` on `ь` and `ё` on `е`; on the Russian layout the Tatar letters too. A letter that is the long
+press of two keys takes its base from `ALIAS_BASES` (`һ` on `х`, `ә` on `а`) or gets no alias;
+digits and other non-letters never become aliases. Words that share a key sequence (`все` and
+`всё`) compete by frequency. A word with two adjacent letters on one key (a doubled letter, or a
+letter and its alias) is scored against its looped ideal path, so the gesture needs a loop or a
+dwell there, because the plain path belongs to the undoubled twin. When no indexed word has the
+collapsed key sequence (the twin bit of `GlideWordIndex`, recomputed with the personal words),
+the doubled word is also scored against the plain path and keeps the better score.
+
+Spacing: a glide adds no space after the word. It prepends one space when the text before the
+cursor ends in a letter, a digit, a mark that attaches to a word (`. , ; : ! ? ) ] }`) or a
+closing quote: "сүз," plus a glide gives "сүз, дөнья", a typed or glided "сүз" gives
+"сүз дөнья", and "«сүз»" gives "«сүз» дөнья". Closing quotes are `»`, `”` and a straight `"`
+after a character that is not whitespace, an opening bracket or an opening quote. After
+whitespace, an opening bracket, an opening quote (`«`, `“`, `„`, a straight `"` after a space or
+at the field start), a dash, an emoji or at the field start it prepends nothing.
+A letter or digit typed right after the commit gets a space before it; punctuation attaches to the
+word. One backspace right after a glide deletes the whole word with the space it added
+(`LatinImeGlide`).
+
+Capitals: with auto-capitalization on and a field that asks for sentence caps
+(`TYPE_TEXT_FLAG_CAP_SENTENCES`), a word whose prepended space follows '.', '!' or '?' starts
+with a capital. In a field without that flag the word stays lower case, as typed letters do there:
+the field flags decide for both.
+
+Refused glide: the commit is refused when a letter follows the cursor, when the trailing word or
+the cursor changed between the gesture and the decode result, or when the before-cursor cache is
+empty although the cursor is past the text start (it then requests a reload). A refusal gives one
+haptic tick (`GlideRefusalFeedback`, wired to `AudioAndHapticFeedbackManager.performTickFeedback`,
+which honors the vibrate setting and vibrates on API 29+ only). A letter after the cursor, like an
+unknown cursor, refuses before the decode and leaves the strip as it was; one that appears by the
+decode result shows no candidates either, since a tap on one would be refused the same way. For a
+stale or unknown cache with suggestions on, the strip shows the decoded candidates
+(`REFUSED_GLIDE` binding); a tap commits one through the same glide commit path against the live
+text, with the same spacing and undo, and is refused with another tick and reload request while the
+cache is still unknown. With suggestions off, the tick is the only signal.
 
 ## Emoji panel
 

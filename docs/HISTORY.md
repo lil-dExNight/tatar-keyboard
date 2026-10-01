@@ -72,6 +72,7 @@ Recover any of them with `git show <commit>:<path>`.
 | `docs/OPTIMIZE-SECURITY-PLAN-2026-09-29.md` | Optimization and security audit plan built from IME best-practice research | `cc3c1212` |
 | `docs/BACKLOG-2026-09-28.md` | Development backlog snapshot after 3.3.0 | `2b4e0fd6` |
 | `docs/LEFTOVERS-PLAN-2026-09-28.md` | Plan for three backlog leftovers: emulator IME wedge, dead code, dependency verification | `2b4e0fd6` |
+| `docs/NEXT-RELEASE-PLAN.md` | Work plan for 3.8.0: glide spacing, aliases and twinless doubled letters, long-press digits, double-space rule, startup dex layout | `400a2906` |
 
 ## Feature missions
 

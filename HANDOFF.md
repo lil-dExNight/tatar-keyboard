@@ -4,15 +4,25 @@ This file is rewritten, not appended to; history lives in git.
 
 ## Release
 
-The current release is **3.7.0** (versionCode 44), tagged `v3.7.0`. It ships the input fixes,
-performance changes and security fixes that followed 3.6.0: punctuation replaces the auto-space
-after a tapped suggestion, a line start is a sentence start, an undone autocorrection is not
-repeated, glide typing fixes (Caps Lock, number row, globe-key cycle, sliding where glide is not
-available), no suggestions, glide typing, recent emoji or learning on the lock screen, and a
-paste no longer teaches the personal dictionary. The bundled dictionaries, bigram tables and emoji
-data are unchanged from 3.6.0, so an update re-inflates nothing. User-facing notes are in
-`CHANGELOG.md` and `metadata/*/changelogs/44.txt`; the size and SHA-256 of the signed APK are in
-the release record on the GitHub Release.
+The current release is **3.8.0** (versionCode 45). It ships:
+
+- glide spacing: a leading space after punctuation, a closing quote or a typed word, a space
+  before a letter typed right after a glided word, and sentence caps after a period;
+- glide aliases for `ъ` and `ё`, and doubled letters without a loop when the word has no
+  single-letter twin;
+- refused-glide feedback (a tick);
+- long-press digits on the top row;
+- the double-space period only in general text fields;
+- the BACK-and-refocus glide fix;
+- haptics without per-press allocation;
+- the pressed key drawn over the cached board;
+- the startup dex layout from the tracked profiles;
+- a release-only `<memory-budget>`.
+
+The bundled dictionaries, bigram tables and emoji data are unchanged from 3.7.0, so an update
+re-inflates nothing. User-facing notes are in `CHANGELOG.md` and `metadata/*/changelogs/45.txt`.
+The English GitHub Release notes with the filled release record are in
+`dist/release-notes-3.8.0.md` on the packing machine.
 
 The signed APK was packed on the tree of the release commit before that commit existed, so its
 `META-INF/version-control-info.textproto` names the parent commit. To rebuild it byte for byte,
@@ -20,84 +30,82 @@ see "Reproducing a published APK" in `docs/PUBLISH-CHECKLIST.md`.
 
 ## State of `main`
 
-`main` is the 3.7.0 release; nothing is unreleased. Code-level notes on what 3.7.0 changed:
+`main` is the 3.8.0 release; nothing is unreleased. Code-level notes on what 3.8.0 changed:
 
-- Glide typing: `ShiftStateGate.glideCasing` (Caps Lock); `PointerTracker.setGlideAvailable`, set
-  from the glide geometry in `LatinIME.updateKeyNeighbors`, arms a glide only where it can be
-  decoded, and the down gate in `PointerTracker` only on an alphabet keyboard;
-  `GlideKeyGeometry.sameLayoutAs` keeps a geometry only while a rebuilt one has the same content
-  (the number row is not part of `KeyboardId` equality); `SuggestionsController.setActiveLanguage`
-  hands the stored key-neighbor table and glide geometry to the engine that becomes active,
-  because `LatinIME` publishes the new layout while the language being left is still active.
-- Spaces and punctuation: `InputLogic.mAutoSpaceCursor` with `TatarWordUtils.swapsWithAutoSpace`
-  (punctuation takes the auto-space's place) and `TatarWordUtils.swallowsSpaceAtAutoSpace` (a
-  space at an auto-space is swallowed and arms the double-space period);
-  `InputLogic.onKeyboardCursorMove` drops that state after a space slide or delete swipe.
-- Suggestions: a line break is a sentence start; `SuggestionsController.refusedCorrections` keeps
-  an undone autocorrection from repeating in the same field session.
-- Personal dictionary: learned word pairs use the next-word context rule
-  (`TatarWordUtils.extractWordBeforeTrailingWord`); the "unknown word" proof reads the empty
-  exact pass (`CompositePrefixComputer.lastExactMissPrefix`); `SuggestionsController.onClipboardPaste`
-  marks the clean run dirty, so a word completed by a paste is not learned.
-- Lock screen: while the keyguard is shown, also after the first unlock, there is no strip, glide,
-  learning or Recent tab (`LatinIME.isKeyguardLocked`, `RecentEmojiGateState.allowsDisplay`);
-  pause learning also stops recording recent emoji. The register is `docs/THREAT-MODEL.md`.
-- Performance: bundled file validation reads each file once into one array without per-word
-  objects (`TdictValidator`, `TatBigrValidator`, ceiling held by `ValidatorAllocationTest`); the
-  first activation reuses the publication check while the file keeps its length and modification
-  time (`AtomicDictionaryStore`, `AtomicBigramStore`); the glide word index survives keyboard id
-  changes that do not move keys; an idle reload of the emoji suggestion table reuses
-  `EmojiGlyphVerdicts`.
-- Build: local Gradle build cache and a larger daemon heap, release builds pass
-  `--no-build-cache`; JVM tests run in two forks on hosts with at least 8 CPUs; CI checkouts do not
-  persist the token.
+- Glide commit: `InputLogic.commitGlideWord` takes the trailing word and cursor captured at the
+  gesture, refuses a stale or unknown cache and prepends the space
+  (`TatarWordUtils.glideNeedsLeadingSpace`). The phantom space is `InputLogic.mPhantomSpaceCursor`.
+  A refusal ticks; the decoded words stay in the strip only when the text changed.
+- Cache: a hide that keeps the input session keeps the expected selection
+  (`RichInputConnection.clearTextCaches`), so the next show re-reads the text from the editor.
+- Glide geometry: `GlideKeyGeometry.ALIAS_BASES` and the alias tables;
+  `GlideWordIndex.isTwinlessAt`. The glide calibration set is re-pinned.
+- Layout: a `<switch>` on `showNumberRow` in `rowkeys_{tatar,russian}1.xml`;
+  `scripts/typo_pack.py` reads its `<default>` branch.
+- Double-space period: `InputAttributes.mIsGeneralTextInput`.
+- Feedback: one `HandlerThread` with prebuilt `Runnable`s in `AudioAndHapticFeedbackManager`.
+- Drawing: `KeyboardView` keeps released keys in the board bitmap and paints pressed keys on top
+  (`onDrawPressedKeys`, `invalidatePressState`).
+- Build:
+  - AGP 9.4.1, compileSdk on android-37.2;
+  - profiles in `app/src/main/generated/baselineProfiles/` (`mergeIntoMain`);
+  - `<memory-budget>` in `app/src/release/AndroidManifest.xml`, kept equal to the release PSS
+    ceiling by `MemoryBudgetManifestSourceContractTest`;
+  - `artifact.dex_layout` in `scripts/release_check.sh`;
+  - the exported-surface and no-secrets checks in CI;
+  - the corpus SHA-256 manifest `data/corpus-manifest.json`.
+- Device script: the release PSS ceiling and the `warm`, `touch` and janky-frame legs of
+  `scripts/device-perf-ritual.sh`; `--enable-suggestions-ui` turns suggestions on in a release
+  build through its settings screen.
 
 Also true of the current tree:
 
-- The baseline and startup profiles were edited by hand for the changed and new methods; they
-  were not regenerated.
-- The golden vectors exported by the exporter in `app/src/test/.../golden/` (run with `GOLDEN_OUT`
-  set) change for the context `"ул китте\n"`, now a sentence start; re-export them when the parity
-  suite on the other platform is next synced.
+- The golden vectors of `GlideGoldenExportTest` (geometry with aliases, word-index digests, set
+  identities, decodes) and the context `"ул китте\n"` of the suggestion exporter changed;
+  re-export them when the parity suite on the other platform is next synced.
 - A few data-file headers generated by pipeline templates (for example
   `app/src/test/resources/tt_eval_sentences.txt`, whose SHA-256 is pinned) still name removed
   documents; they change only when that data is regenerated.
 - Typo recovery as shipped: the Tatar engine runs edit classes #1 (long-press partner) and #4
   (single substitution); the Russian engine runs class #1 only.
 
-Verified for 3.7.0: `release_check.sh --full` and `--quick` on the signed APK, `check-no-internet.sh`
-on the signed APK, two byte-identical packs, and `text_hygiene_check.py`. The emulator smoke test
-on the signed APK passes its install, typing, language-cycle, emoji-panel and crash-log probes;
-its suggestion probes skip, because the release package is not debuggable. Not checked on a
-device: the lock-screen behavior (see `docs/BACKLOG.md`).
+Verified for 3.8.0:
 
-## Open release steps for 3.7.0
+- `release_check.sh --full` and `--quick` on the signed APK, `check-no-internet.sh` on the signed
+  APK, two byte-identical packs, and `text_hygiene_check.py`.
+- On the reference device:
+  - the instrumentation tests;
+  - stages 3–5 of `docs/DEVICE-TEST-PLAN.md` and zero network traffic;
+  - release cold start against 3.7.0 (the split dex layout is not slower);
+  - PSS, frame time, janky frames, warm show and touch handling within their budgets;
+  - one vibration per press;
+  - the lock-screen quick reply and gesture navigation.
+- On an API 28 emulator and an emulator tablet profile: the smoke test.
+
+Not checked on a device: the long-press popup border and the emoji-panel title inset (the device
+disconnected before their final screenshots).
+
+## Open release steps
 
 These are manual and have not been confirmed as done:
 
-- **GitHub Release** through the web UI (the `gh` CLI on the release machine is read-only): tag
-  `v3.7.0`, title `Tatar Keyboard 3.7.0`, notes = the `[3.7.0]` section of `CHANGELOG.md`
-  followed by the release record. Attach `dist/tatar-keyboard-3.7.0.apk` and
-  `dist/release-check-3.7.0.txt` from the release machine, not a rebuild.
-- **Store upload** with `metadata/{en-US,ru-RU,tt}/changelogs/44.txt`.
-- **IzzyOnDroid** inclusion request or update note (see `docs/PUBLISH-CHECKLIST.md`).
+- **3.7.0:** the GitHub Release, the store upload with `changelogs/44.txt` and the IzzyOnDroid
+  note, if still pending.
+- **3.8.0:**
+  - operator commits, then the tag `v3.8.0` (`docs/PUBLISH-CHECKLIST.md`, step 5);
+  - the **GitHub Release** through the web UI: tag `v3.8.0`, title `Tatar Keyboard 3.8.0`, notes
+    from `dist/release-notes-3.8.0.md`; attach `dist/tatar-keyboard-3.8.0.apk` and
+    `dist/release-check-3.8.0.txt` from the packing machine, not a rebuild;
+  - the **store upload** with `metadata/{en-US,ru-RU,tt}/changelogs/45.txt`.
 
 ## Known risks and open items
 
-See `docs/BACKLOG.md`. The main ones: release-build frame time and memory are unmeasured (the
-device script measures the debug build), several device tests wait on hardware or apps that are
-not available (tablet, Telegram, live Direct Boot, TalkBack by ear), and the manifest memory
-budget is blocked on the toolchain.
-
-The dex layout depends on an untracked directory. 3.6.0 was built with a startup profile in the
-git-ignored `app/src/release/generated/baselineProfiles/`, which splits the code into a startup
-`classes.dex` and a `classes2.dex`. 3.7.0 was built from the tracked tree only, as CI and F-Droid
-build it, so it has a single `classes.dex`. The effect on cold start is unmeasured. Making the dex
-layout part of the tracked build would make every build match.
+See `docs/ROADMAP.md`: the decision on the glide context rerank, and the device checks that need
+a person or hardware not at hand (live Direct Boot, Telegram, TalkBack by ear, tablet hardware).
 
 ## Where to look next
 
 - `docs/README.md` — index of all documents.
-- `docs/NEXT-RELEASE-PLAN.md` — work plan for the next release, in priority order.
+- `docs/ROADMAP.md` — mandatory development plan, in order.
 - `docs/ARCHITECTURE.md` — input path, suggestion engine, threads and stores.
 - `AGENTS.md` — build, test and release commands, hard constraints.

@@ -22,8 +22,8 @@ bilingual.
 - [PERF-BUDGETS.md](PERF-BUDGETS.md) — performance budgets and the test or script that enforces each.
 - [DEVICE-TEST-PLAN.md](DEVICE-TEST-PLAN.md) — end-to-end test of the keyboard on a connected phone.
 - [PUBLISH-CHECKLIST.md](PUBLISH-CHECKLIST.md) — release procedure, from preflight to store upload.
-- [BACKLOG.md](BACKLOG.md) — open work only.
-- [NEXT-RELEASE-PLAN.md](NEXT-RELEASE-PLAN.md) — work plan for the next release; deleted when it ships.
+- [ROADMAP.md](ROADMAP.md) — mandatory development plan: all open work, in order.
+- [BACKLOG.md](BACKLOG.md) — parked and rejected ideas.
 - [HISTORY.md](HISTORY.md) — removed documents, with the last commit that contains each.
 
 ## Other locations

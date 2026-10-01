@@ -1,53 +1,7 @@
 # Backlog
 
-Open work only. When an item is done, delete it; the change itself is the record.
-
-## Measurements
-
-- **Release-build frame time and memory.** The frame p50 and total PSS of the current release
-  APK have not been measured; the device script measures the debug build, and it can turn
-  suggestions on only in a debuggable package. Needs an automated way to enable suggestions in
-  the release build, then a release-scale PSS ceiling in `docs/PERF-BUDGETS.md`.
-- **Budgets never measured.** Warm show (< 150 ms), touch handling in our code (< 5 ms) and janky
-  frames while typing (~0 %) have no measurement or check yet.
-
-## Blocked on the toolchain
-
-- **Manifest memory budget.** Android 17 QPR2's `<memory-budget>` element (the IME is its
-  canonical perceptible-state example) is rejected by the aapt2 in the current AGP. It needs
-  AGP 9.3 or later and compileSdk on platform android-37.2; the numbers would come from the
-  release-build PSS measurement above.
-
-## Device tests blocked by external conditions
-
-- **Interactive check of the 3.1 visual refresh** on a real device (settings, keyboard theme,
-  suggestion strip, emoji panel in both themes).
-- **Direct Boot, live:** reboot, then type the PIN with this keyboard before the first unlock.
-- **Lock-screen quick reply:** after the first unlock, reply to a notification from the lock screen
-  and check that no suggestion strip, glide or Recent tab appears; needs an app that posts a
-  `RemoteInput` notification.
-- **Telegram:** typing, suggestions and emoji in Telegram's custom editor (not installed on the
-  test device).
-- **Tablet layout:** no tablet hardware available.
-- **TalkBack by ear:** the spoken output, including the Tatar letter descriptions, needs a person
-  listening on a device.
-- **Full gesture navigation:** HyperOS ignores the adb toggle, so the mode has to be switched by
-  hand and tested.
-
-## Build and release checks
-
-- **Corpus SHA-256 manifest.** The asset pipeline reads corpora that are not committed, so their
-  bytes are not pinned; a manifest of per-file SHA-256 values checked by `scripts/rebuild_assets.py`
-  would catch a changed corpus before the output pins do.
-- **`artifact.exported_surface` and `artifact.no_secrets` in CI.** Both run only in
-  `scripts/release_check.sh`; CI would need them to run on the unsigned release APK without the
-  keystore.
-
-## Planned for the next release
-
-- Glide spacing, the double-space period field rule, digits on long press, glide aliases for `ъ`
-  and `ё`, doubled letters without a twin, glide context rerank and haptics without per-press
-  allocation are planned in `docs/NEXT-RELEASE-PLAN.md`, which owns them until the release ships.
+Parked and rejected ideas only. Open work is in `docs/ROADMAP.md`. When an idea here is taken up,
+move it to the roadmap.
 
 ## Parked decisions
 
@@ -55,6 +9,9 @@ Open work only. When an item is done, delete it; the change itself is the record
   demand after publication.
 - **Lossy frequency compression in the dictionaries.** Not taken; reconsider only under APK size
   pressure.
+- **Glide context rerank by bigram successors.** Measured below the decision rule's held-out
+  gain; code not merged. The operator's decision on the threshold is item 1.2 of
+  `docs/ROADMAP.md`.
 - Rejected with measurements, do not reopen without new data: trigram prediction, two-edit typo
   recovery, geometric-neighbor typo recovery, extending autocorrect, sharding the emoji
   suggestion index.

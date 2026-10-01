@@ -1,0 +1,4 @@
+• Digits 1–0 on long press of the top letter row when the number row is off
+• Glide typing: a space before the word after punctuation, a closing quote or a typed word, before a letter typed after it, a capital after a period; words with ъ and ё; doubled letters without a loop; a short vibration if a word cannot be inserted
+• Two spaces give a period only in ordinary text fields
+• A glide after hiding and reopening the keyboard is no longer glued to the previous word

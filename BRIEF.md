@@ -22,7 +22,7 @@ Audience: Tatar speakers in Tatarstan and across Russia, mostly on budget Androi
   IME process, Flutter or React Native, new code on the deprecated `KeyboardView`. Compose is
   allowed only in the settings Activity.
 - **No NDK/C++, no third-party runtime dependencies, no INTERNET permission** (checked in CI).
-- **SDK:** minSdk 24, targetSdk and compileSdk 37.
+- **SDK:** minSdk 24, targetSdk 37, compileSdk 37 on platform android-37.2.
 - **IME:** `InputMethodService`, `directBootAware`, no fullscreen mode; three languages: tt_RU, ru,
   en_US, switched with the globe key. Locales and layouts are limited to these three.
 - **Input:** characters are committed immediately, without composing text. Backspace deletes one

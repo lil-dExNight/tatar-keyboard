@@ -11,6 +11,29 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [3.8.0] — 2026-10-01
+
+### Added
+
+- Long press on the top letter row of the Tatar and Russian layouts types the digits 1–0 when the number row is off. Keys with a Tatar or ё partner keep that letter first.
+- Glide typing covers words with ъ and ё: glide over ь or е.
+- When a glided word cannot be inserted (a letter right after the cursor, or the text changed before the word was recognized), the keyboard gives a short vibration (Android 10 and later) if key vibration is on. With suggestions on and the text changed, the recognized words stay in the suggestion strip and a tap inserts one; with a letter right after the cursor the strip stays as it was.
+
+### Changed
+
+- A glided word gets a space before it after punctuation or a typed word: "сүз, дөнья" instead of "сүз,дөнья". A letter typed right after a glided word gets a space too; punctuation still attaches to the word.
+- A glided word also gets a space before it after a closing quote (`»`, `”` or a closing `"`): «сүз» дөнья. After an opening quote it gets none.
+- After a period, with automatic capitalization on, a glided word starts with a capital letter.
+- Glide typing recognizes words with a doubled letter without a loop when the word has no single-letter twin.
+- Two spaces give a period only in ordinary text fields, not in phone, number, email or web address fields.
+- The pause-learning setting says that it also stops learning emoji and adding to recent emoji.
+- The code the keyboard runs at startup is packed separately, so the system can load it faster.
+
+### Fixed
+
+- A glide after hiding the keyboard and tapping the field again is no longer glued to the previous word.
+- The long-press popup has a thin border in the light and dark themes, so a one-row popup such as у → ү 3 no longer blends into the keys under it; in a short emoji panel a section title level with the АБВ key starts to the right of it instead of being hidden under it.
+
 ## [3.7.0] — 2026-09-30
 
 ### Changed
@@ -18,7 +41,7 @@ These hold for every release and are not repeated in the entries below:
 - A comma, period or other punctuation typed right after a tapped suggestion replaces the added space, so you get "сүз, " instead of "сүз ,".
 - Sentence-start suggestions also appear at the start of a new line.
 - After you undo an autocorrection, the same word is not corrected again in that field.
-- The keyboard does less work when it starts: each bundled dictionary is checked once instead of twice.
+- The keyboard does less work when it starts: each bundled dictionary and bigram table is checked once instead of twice.
 
 ### Fixed
 
