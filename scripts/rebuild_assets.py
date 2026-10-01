@@ -2,12 +2,14 @@
 """Rebuild the bundled assets in one step: dictionaries, bigram tables, pins, check.
 
 Inputs not in the repo: --baseline DIR (the two 1.8.4 dictionary assets, extracted from git)
-and --corpus-dir DIR (the Leipzig and conversational corpus files named in BIGRAMS). Steps:
+and --corpus-dir DIR (the corpus files named in BIGRAMS and WORDFORM_FREQUENCY_SOURCES, whose
+size and SHA-256 are pinned in data/corpus-manifest.json and verified before any step). Steps:
 Tatar word forms, dict_accept pack, bigram_asset_pack pack, pin rewrite in the Kotlin storage
 contracts, then --check. --only tatar|russian rebuilds one side; the other must stay identical.
---check compares assets with pins and bigram heads with dictionaries; head drift passes only
-with --allow-known-drift and an exact match in known_asset_drift.json. Exit: 0 ok, 1 mismatch,
-2 missing input, failed step or unparsable contract.
+--check compares assets with pins, bigram heads with dictionaries, and the corpus manifest with
+the registry (and with the files, if --corpus-dir is given); head drift passes only with
+--allow-known-drift and an exact match in known_asset_drift.json. Exit: 0 ok, 1 mismatch,
+2 missing input, failed step or unparsable contract or manifest.
 """
 
 from __future__ import annotations
@@ -140,6 +142,97 @@ WORDFORM_FREQUENCY_SOURCES = (
     "tat_mixed_2015_1M-words.txt",
     "tat_web_2018_1M-words.txt",
 )
+
+
+# --- corpus manifest --------------------------------------------------------------------------
+#
+# The corpora are not committed, so their bytes are pinned in a committed manifest: one entry per
+# corpus file the rebuild reads, keyed by file name, with "size", "sha256" and a free-text
+# "source". The entry set must equal corpus_names(); a rebuild verifies the files of the selected
+# languages before any step runs.
+CORPUS_MANIFEST = Path("data/corpus-manifest.json")
+
+
+class CorpusManifestError(ValueError):
+    """The corpus manifest is missing, malformed, or does not match the corpus registry."""
+
+
+def corpus_names(tags: frozenset[str] = frozenset({"tat", "rus"})) -> list[str]:
+    """Corpus file names the rebuild reads for the languages in `tags`, sorted."""
+    names = {name for bigram in BIGRAMS if bigram.tag in tags for name in bigram.train}
+    if "tat" in tags:
+        names.update(WORDFORM_FREQUENCY_SOURCES)
+    return sorted(names)
+
+
+def load_corpus_manifest(path: Path) -> dict[str, tuple[int, str]]:
+    """Read the manifest as {name: (size, sha256)}; raise CorpusManifestError if it is
+    unreadable, malformed, or its entry set differs from corpus_names()."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise CorpusManifestError(f"{path}: не читается: {error}") from error
+    if not isinstance(data, dict):
+        raise CorpusManifestError(f"{path}: ожидался JSON-объект наверху")
+    manifest: dict[str, tuple[int, str]] = {}
+    for name, entry in data.items():
+        if not (
+            isinstance(entry, dict)
+            and isinstance(entry.get("size"), int)
+            and not isinstance(entry.get("size"), bool)
+            and entry["size"] >= 0
+            and isinstance(entry.get("sha256"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])
+            and isinstance(entry.get("source"), str)
+        ):
+            raise CorpusManifestError(
+                f"{path}: запись {name!r} обязана содержать size (целое >= 0), "
+                "sha256 (64 hex) и source"
+            )
+        manifest[name] = (entry["size"], entry["sha256"])
+    expected = set(corpus_names())
+    absent = sorted(expected - set(manifest))
+    stale = sorted(set(manifest) - expected)
+    if absent or stale:
+        raise CorpusManifestError(
+            f"{path}: записи не совпадают с корпусами пересборки; "
+            f"нет записей: {absent or '-'}, лишние: {stale or '-'}"
+        )
+    return manifest
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_corpus(
+    corpus_dir: Path, manifest: dict[str, tuple[int, str]], names: Sequence[str]
+) -> dict[str, str]:
+    """Verdict per corpus file: "ok", "missing", or a size or SHA-256 mismatch description.
+
+    The size is compared first, so a truncated file is reported without hashing it.
+    """
+    verdicts: dict[str, str] = {}
+    for name in names:
+        path = corpus_dir / name
+        size, sha256 = manifest[name]
+        if not path.is_file():
+            verdicts[name] = "missing"
+            continue
+        actual_size = path.stat().st_size
+        if actual_size != size:
+            verdicts[name] = f"size: в манифесте {size}, у файла {actual_size}"
+            continue
+        actual_sha256 = _file_sha256(path)
+        verdicts[name] = (
+            "ok" if actual_sha256 == sha256
+            else f"sha256: в манифесте {sha256}, у файла {actual_sha256}"
+        )
+    return verdicts
 
 
 def build_admitted_wordforms(
@@ -484,10 +577,12 @@ def run_check(
     root: Path,
     known_drift_path: Path | None,
     stream: TextIO = sys.stdout,
+    corpus_dir: Path | None = None,
 ) -> int:
-    """Check assets against pins and dictionaries. Writes and rebuilds nothing.
+    """Check assets against pins and dictionaries, and the corpus manifest. Writes nothing.
 
-    Returns 1 on a mismatch and 2 on missing inputs or an unparsable contract (ContractError).
+    The manifest itself is always checked; the corpus files only when corpus_dir is given.
+    Returns 1 on a mismatch and 2 on missing inputs or an unparsable contract or manifest.
     """
     dict_contract = root / DICT_CONTRACT
     bigram_contract = root / BIGRAM_CONTRACT
@@ -495,6 +590,11 @@ def run_check(
         if not path.is_file():
             print(f"error: нет файла контракта {path}", file=sys.stderr)
             return 2
+    try:
+        corpus_manifest = load_corpus_manifest(root / CORPUS_MANIFEST)
+    except CorpusManifestError as error:
+        print(f"error: манифест корпусов: {error}", file=sys.stderr)
+        return 2
 
     known: dict[str, dict[str, object]] = {}
     if known_drift_path is not None:
@@ -631,6 +731,21 @@ def run_check(
               file=sys.stderr)
         failed = True
 
+    corpus_entry: dict[str, object] = {"manifest": str(CORPUS_MANIFEST)}
+    if corpus_dir is None:
+        corpus_entry["verdict"] = "not-checked"
+    else:
+        files = verify_corpus(corpus_dir, corpus_manifest, corpus_names())
+        corpus_entry["corpus_dir"] = str(corpus_dir)
+        corpus_entry["files"] = files
+        corpus_entry["verdict"] = (
+            "ok" if all(v == "ok" for v in files.values())
+            else "missing" if all(v in ("ok", "missing") for v in files.values())
+            else "mismatch"
+        )
+        failed = failed or corpus_entry["verdict"] != "ok"
+    report["corpus"] = corpus_entry
+
     report["ok"] = not failed
     report["known_drift_file"] = str(known_drift_path) if known_drift_path else None
     json.dump(report, stream, ensure_ascii=False, indent=2, sort_keys=True)
@@ -644,6 +759,14 @@ def run_check(
                 line += (f" (нет в таблице {drift['missing_top_heads']}, "
                          f"лишних {drift['unexpected_heads']})")
             print(line, file=sys.stderr)
+    if corpus_entry["verdict"] == "not-checked":
+        print("corpus: манифест в порядке, файлы не проверялись (нет --corpus-dir)",
+              file=sys.stderr)
+    else:
+        print(f"corpus: {corpus_entry['verdict']}", file=sys.stderr)
+        for name, verdict in sorted(corpus_entry["files"].items()):  # type: ignore[union-attr]
+            if verdict != "ok":
+                print(f"  {name}: {verdict}", file=sys.stderr)
     return 1 if failed else 0
 
 
@@ -794,6 +917,21 @@ def run_rebuild(
         print("происхождение входов — в docstring скрипта", file=sys.stderr)
         return 2
 
+    # The corpus bytes of the selected languages must match the committed manifest before
+    # anything is written.
+    try:
+        corpus_manifest = load_corpus_manifest(root / CORPUS_MANIFEST)
+    except CorpusManifestError as error:
+        print(f"error: манифест корпусов: {error}", file=sys.stderr)
+        return 2
+    corpus_verdicts = verify_corpus(corpus_dir, corpus_manifest, corpus_names(selected))
+    bad_corpora = {name: v for name, v in corpus_verdicts.items() if v != "ok"}
+    if bad_corpora:
+        print(f"error: корпуса не совпали с {CORPUS_MANIFEST}:", file=sys.stderr)
+        for name, verdict in sorted(bad_corpora.items()):
+            print(f"  {corpus_dir / name}: {verdict}", file=sys.stderr)
+        return 1
+
     work_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Dictionaries of the selected languages. dict_accept verifies the baseline SHA-256 and
@@ -902,8 +1040,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--corpus-dir",
         type=Path,
-        default=DEFAULT_CORPUS_DIR,
-        help="каталог с Leipzig *-sentences.txt (по умолчанию %(default)s)",
+        default=None,
+        help="каталог с корпусами, перечисленными в data/corpus-manifest.json (для "
+        f"пересборки по умолчанию {DEFAULT_CORPUS_DIR}); с --check сверяет их с манифестом",
     )
     parser.add_argument(
         "--work-dir",
@@ -935,15 +1074,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("error: --only относится к пересборке; --check всегда сверяет все "
                   "четыре ассета", file=sys.stderr)
             return 2
-        return run_check(root, known_drift)
+        return run_check(root, known_drift, corpus_dir=args.corpus_dir)
     if args.baseline is None:
         print("error: для пересборки нужен --baseline (или запустите --check)",
               file=sys.stderr)
         return 2
     work_dir = args.work_dir if args.work_dir is not None else root / DEFAULT_WORK_DIR
+    corpus_dir = args.corpus_dir if args.corpus_dir is not None else DEFAULT_CORPUS_DIR
     try:
         return run_rebuild(
-            root, args.baseline, args.corpus_dir, work_dir, known_drift, only=args.only
+            root, args.baseline, corpus_dir, work_dir, known_drift, only=args.only
         )
     except ContractError as error:
         print(f"error: контракт не разобрался: {error}", file=sys.stderr)

@@ -35,19 +35,24 @@ These inputs are not in the repository:
 - **Leipzig corpora** (CC BY 4.0), from https://wortschatz.uni-leipzig.de/en/download. The
   rebuild reads the `*-sentences.txt` files named in `BIGRAMS[].train` and the Tatar
   `*-words.txt` files named in `WORDFORM_FREQUENCY_SOURCES` (both are in `rebuild_assets.py`).
-  They are expected in `--corpus-dir`, which defaults to `~/corpora-leipzig`.
+  They are expected in `--corpus-dir`, which defaults to `~/corpora-leipzig` for a rebuild.
   `tat_news_2015_1M` is the held-out evaluation set and must not be used to build shipped data.
 - **Conversational training files** `tt_conv_train90-sentences.txt` and
   `rus_conv_thinned60-sentences.txt`. `research/corpus/dl.sh` downloads the OPUS Tatoeba and
   OpenSubtitles dumps, and `research/corpus/make_conv_train.py` turns them into deduplicated
   Leipzig-format files. The line-id filter is applied by hand (Tatar: `id % 10 != 1`, which
-  keeps the rest as held-out data; Russian: `id % 60 == 0`). Put the results in `--corpus-dir`.
+  keeps the rest as held-out data; Russian: `id % 60 == 0`) and keeps the original ids, for
+  example `awk -F'\t' '$1 % 60 == 0'`. Put the results in `--corpus-dir`.
 - **Emoji sources**: `emoji-test.txt` (Unicode Emoji 15.1) and the CLDR 44 ru/en annotation
   files, saved in one `--cldr-dir` as `ru.xml`, `en.xml`, `derived-ru.xml` and
   `derived-en.xml`. The packers pin their SHA-256.
 
 These inputs are in the repository:
 
+- `data/corpus-manifest.json`: the size and SHA-256 of every corpus file the rebuild reads
+  (the Leipzig and conversational files above), with a short `source` note. Its entry set must equal the files named in `BIGRAMS[].train` and
+  `WORDFORM_FREQUENCY_SOURCES`. When a corpus is replaced on purpose, update its entry in the
+  same change as the rebuilt assets.
 - `data/dictionary/`: the word review queues (`*-conv-review.tsv`, `*-query-review.tsv`) and
   `dict-accept/`, which holds the accepted and rejected words (`accepted-*.tsv`,
   `rejected-*.tsv`, written by `dict_accept.py select`) and the conversational frequencies
@@ -70,7 +75,9 @@ python3 scripts/rebuild_assets.py --baseline /tmp/baseline-1.8.4 \
     [--corpus-dir DIR] [--work-dir DIR] [--allow-known-drift]
 ```
 
-The script first lists every missing input and stops if there are any. Then it runs:
+The script first lists every missing input and stops if there are any. Then it compares the
+corpus files of the selected languages with `data/corpus-manifest.json` (size first, then
+SHA-256) and stops with exit code 1, before writing anything, if one differs. Then it runs:
 
 1. **Tatar word forms.** `wordform_gen.py` generates forms for every stem in the baseline plus
    the accepted words. A form is admitted when it occurs in the frequency sources (the two
@@ -108,6 +115,8 @@ python3 scripts/rebuild_assets.py --check --allow-known-drift
 
 This mode rebuilds and writes nothing, and needs no corpora. It checks that:
 
+- `data/corpus-manifest.json` is well formed and has exactly one entry per corpus file the
+  rebuild reads; with `--corpus-dir DIR`, the files in `DIR` also match their entries;
 - each asset's compressed and raw size, both SHA-256 values, the entry or head count, and the
   bigram table's link to its dictionary match the contract;
 - no bigram head is outside its dictionary;
@@ -115,8 +124,10 @@ This mode rebuilds and writes nothing, and needs no corpora. It checks that:
   (the top heads by frequency plus the extra heads).
 
 Each asset gets a verdict: `ok`, `mismatch`, `missing`, `drift`, `known-drift` or
-`stale-known-drift`. The JSON report goes to stdout and a one-line summary per asset to stderr.
-Exit codes: 0 consistent, 1 mismatch, 2 missing input or unparsable contract.
+`stale-known-drift`. The corpus section gets `not-checked` (no `--corpus-dir`), `ok`, `missing`
+or `mismatch`, with a verdict per file. The JSON report goes to stdout and a one-line summary
+per asset to stderr.
+Exit codes: 0 consistent, 1 mismatch, 2 missing input or unparsable contract or manifest.
 
 The check runs as part of the python suite (`tests/rebuild_assets` runs it against the real
 tree) and in `scripts/release_check.sh` unless `--quick` is given.

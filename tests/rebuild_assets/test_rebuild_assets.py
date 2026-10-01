@@ -139,6 +139,26 @@ def pin_everything(root: Path, dictionary: rebuild_assets.DictionaryAsset,
     )
 
 
+def write_corpus_manifest(root: Path, contents=None) -> Path:
+    """Manifest for the current registry: entries for `contents` ({name: bytes}) pin those
+    bytes, every other registry name gets a dummy entry."""
+    import hashlib
+
+    contents = contents or {}
+    data = {}
+    for name in rebuild_assets.corpus_names():
+        body = contents.get(name)
+        data[name] = {
+            "size": len(body) if body is not None else 1,
+            "sha256": hashlib.sha256(body).hexdigest() if body is not None else SHA0,
+            "source": "тест",
+        }
+    path = root / rebuild_assets.CORPUS_MANIFEST
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 class FakeTreeTest(unittest.TestCase):
     """A fake repository root: one Tatar dictionary, one bigram table, both contracts."""
 
@@ -170,6 +190,7 @@ class FakeTreeTest(unittest.TestCase):
         rebuild_assets.DICTIONARIES = (self.dictionary,)
         rebuild_assets.BIGRAMS = (self.bigram,)
         self.addCleanup(self._restore)
+        write_corpus_manifest(self.root)
 
     def _restore(self):
         rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS = self._saved
@@ -399,8 +420,8 @@ class DictAcceptArgvTest(unittest.TestCase):
         self.assertNotIn("--extra-entries", text)
 
 
-class OnlyModeTest(unittest.TestCase):
-    """`--only`: one side rebuilds, the other must stay byte-identical."""
+class TwoSideTreeTest(unittest.TestCase):
+    """A fake tree with both languages: dictionaries, tables, baseline and corpus directory."""
 
     def setUp(self):
         self.tmp = TemporaryDirectory()
@@ -448,6 +469,9 @@ class OnlyModeTest(unittest.TestCase):
         (self.baseline / "russian_top100k_v1.tdict.zlib").write_bytes(b"ru")
         self.corpora = self.root / "corpora"
         self.corpora.mkdir()
+        # The tests below write every corpus file empty, so the manifest pins empty files.
+        write_corpus_manifest(
+            self.root, {name: b"" for name in rebuild_assets.corpus_names()})
 
     def _restore(self):
         rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS = self._saved
@@ -455,6 +479,10 @@ class OnlyModeTest(unittest.TestCase):
     def run_rebuild(self, only):
         return rebuild_assets.run_rebuild(
             self.root, self.baseline, self.corpora, self.root / "work", None, only=only)
+
+
+class OnlyModeTest(TwoSideTreeTest):
+    """`--only`: one side rebuilds, the other must stay byte-identical."""
 
     def test_only_tatar_needs_no_russian_inputs(self):
         # The tatar inputs are complete (train + words files); the russian corpus is
@@ -499,6 +527,170 @@ class OnlyModeTest(unittest.TestCase):
     def test_check_rejects_only(self):
         code = rebuild_assets.main(["--check", "--only", "tatar", "--root", str(self.root)])
         self.assertEqual(2, code)
+
+
+class CorpusManifestRebuildTest(TwoSideTreeTest):
+    """The rebuild verifies the corpus bytes against the manifest before writing anything."""
+
+    def write_corpora(self, contents):
+        for name in rebuild_assets.corpus_names():
+            (self.corpora / name).write_bytes(contents.get(name, b""))
+
+    def tree_state(self):
+        return {
+            str(path.relative_to(self.root)): path.read_bytes()
+            for path in sorted(self.root.rglob("*"))
+            if path.is_file()
+        }
+
+    def assert_stops_without_writing(self, only, expected_code, message):
+        before = self.tree_state()
+        stderr = io.StringIO()
+        saved, sys.stderr = sys.stderr, stderr
+        try:
+            code = self.run_rebuild(only)
+        finally:
+            sys.stderr = saved
+        self.assertEqual(expected_code, code, stderr.getvalue())
+        self.assertIn(message, stderr.getvalue())
+        self.assertFalse((self.root / "work").exists())
+        self.assertEqual(before, self.tree_state())
+
+    def test_a_size_change_stops_the_rebuild(self):
+        self.write_corpora({"rus_corpus-sentences.txt": "1\tновая строка\n".encode("utf-8")})
+        self.assert_stops_without_writing("russian", 1, "rus_corpus-sentences.txt: size")
+
+    def test_a_same_size_content_change_stops_the_rebuild(self):
+        write_corpus_manifest(
+            self.root,
+            {**{name: b"" for name in rebuild_assets.corpus_names()},
+             "rus_corpus-sentences.txt": b"1\ta\n"})
+        self.write_corpora({"rus_corpus-sentences.txt": b"1\tb\n"})
+        self.assert_stops_without_writing("russian", 1, "rus_corpus-sentences.txt: sha256")
+
+    def test_a_full_rebuild_checks_both_languages(self):
+        (self.root / "scripts").mkdir()
+        (self.root / rebuild_assets.WORDFORM_EXCEPTIONS).write_text("# empty\n", encoding="utf-8")
+        self.write_corpora({rebuild_assets.WORDFORM_FREQUENCY_SOURCES[0]: "1\tсу\t1\n".encode("utf-8")})
+        self.assert_stops_without_writing(None, 1, rebuild_assets.WORDFORM_FREQUENCY_SOURCES[0])
+
+    def test_only_checks_the_selected_language(self):
+        # A changed Tatar corpus does not block a Russian rebuild: the run passes the corpus
+        # check and dies at the pack step (the fake root has no scripts/dict_accept.py).
+        self.write_corpora({"tt_corpus-sentences.txt": "1\tсу\n".encode("utf-8")})
+        with self.assertRaises(SystemExit) as caught:
+            self.run_rebuild("russian")
+        self.assertIn("шаг пересборки упал", str(caught.exception))
+
+    def test_a_missing_manifest_stops_the_rebuild(self):
+        self.write_corpora({})
+        (self.root / rebuild_assets.CORPUS_MANIFEST).unlink()
+        self.assert_stops_without_writing("russian", 2, "манифест корпусов")
+
+
+class CorpusManifestFormatTest(unittest.TestCase):
+    """The manifest entry set must equal the corpus registry, and every entry is well formed."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.path = write_corpus_manifest(self.root)
+
+    def rewrite(self, change):
+        data = json.loads(self.path.read_text(encoding="utf-8"))
+        change(data)
+        self.path.write_text(json.dumps(data), encoding="utf-8")
+
+    def test_the_generated_manifest_loads(self):
+        manifest = rebuild_assets.load_corpus_manifest(self.path)
+        self.assertEqual(rebuild_assets.corpus_names(), sorted(manifest))
+
+    def test_a_missing_entry_is_rejected(self):
+        self.rewrite(lambda data: data.pop(rebuild_assets.corpus_names()[0]))
+        with self.assertRaises(rebuild_assets.CorpusManifestError):
+            rebuild_assets.load_corpus_manifest(self.path)
+
+    def test_a_stale_entry_is_rejected(self):
+        self.rewrite(lambda data: data.update(
+            {"old-sentences.txt": {"size": 1, "sha256": SHA0, "source": "тест"}}))
+        with self.assertRaises(rebuild_assets.CorpusManifestError):
+            rebuild_assets.load_corpus_manifest(self.path)
+
+    def test_malformed_entries_are_rejected(self):
+        name = rebuild_assets.corpus_names()[0]
+        for entry in (
+            {"size": 1, "sha256": "0" * 63, "source": "тест"},
+            {"size": 1, "sha256": "A" * 64, "source": "тест"},
+            {"size": -1, "sha256": SHA0, "source": "тест"},
+            {"size": True, "sha256": SHA0, "source": "тест"},
+            {"size": "1", "sha256": SHA0, "source": "тест"},
+            {"size": 1, "sha256": SHA0},
+        ):
+            with self.subTest(entry=entry):
+                self.rewrite(lambda data: data.update({name: entry}))
+                with self.assertRaises(rebuild_assets.CorpusManifestError):
+                    rebuild_assets.load_corpus_manifest(self.path)
+
+    def test_the_registry_lists_every_corpus_the_rebuild_reads(self):
+        names = set(rebuild_assets.corpus_names())
+        for bigram in rebuild_assets.BIGRAMS:
+            self.assertLessEqual(set(bigram.train), names)
+        self.assertLessEqual(set(rebuild_assets.WORDFORM_FREQUENCY_SOURCES), names)
+        self.assertEqual(
+            set(rebuild_assets.BIGRAMS[1].train), set(rebuild_assets.corpus_names({"rus"})))
+
+
+class CorpusManifestCheckTest(FakeTreeTest):
+    """--check always validates the manifest and verifies the files only with a corpus dir."""
+
+    def setUp(self):
+        super().setUp()
+        pin_everything(self.root, self.dictionary, self.bigram)
+        self.corpora = self.root / "corpora"
+        self.corpora.mkdir()
+        self.contents = {name: f"1\t{name}\t1\n".encode("utf-8")
+                         for name in rebuild_assets.corpus_names()}
+        for name, body in self.contents.items():
+            (self.corpora / name).write_bytes(body)
+        write_corpus_manifest(self.root, self.contents)
+
+    def run_check(self, corpus_dir=None) -> tuple[int, dict]:
+        stream = io.StringIO()
+        code = rebuild_assets.run_check(self.root, None, stream, corpus_dir=corpus_dir)
+        return code, json.loads(stream.getvalue())
+
+    def test_without_a_corpus_dir_the_files_are_not_checked(self):
+        code, report = self.run_check()
+        self.assertEqual(0, code, report)
+        self.assertEqual("not-checked", report["corpus"]["verdict"])
+
+    def test_matching_files_pass(self):
+        code, report = self.run_check(self.corpora)
+        self.assertEqual(0, code, report)
+        self.assertEqual("ok", report["corpus"]["verdict"])
+        self.assertEqual({"ok"}, set(report["corpus"]["files"].values()))
+
+    def test_a_changed_file_fails(self):
+        name = rebuild_assets.corpus_names()[0]
+        (self.corpora / name).write_bytes(self.contents[name].upper())
+        code, report = self.run_check(self.corpora)
+        self.assertEqual(1, code)
+        self.assertEqual("mismatch", report["corpus"]["verdict"])
+        self.assertTrue(report["corpus"]["files"][name].startswith("sha256:"))
+
+    def test_a_missing_file_fails(self):
+        name = rebuild_assets.corpus_names()[0]
+        (self.corpora / name).unlink()
+        code, report = self.run_check(self.corpora)
+        self.assertEqual(1, code)
+        self.assertEqual("missing", report["corpus"]["verdict"])
+        self.assertEqual("missing", report["corpus"]["files"][name])
+
+    def test_a_broken_manifest_is_an_input_error(self):
+        (self.root / rebuild_assets.CORPUS_MANIFEST).write_text("{", encoding="utf-8")
+        stream = io.StringIO()
+        self.assertEqual(2, rebuild_assets.run_check(self.root, None, stream))
 
 
 class WordformStageTest(unittest.TestCase):

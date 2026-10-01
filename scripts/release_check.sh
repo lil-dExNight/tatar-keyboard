@@ -3,17 +3,19 @@
 # candidate in one command. Each check prints PASS/FAIL/SKIP; the summary is a
 # machine-readable RESULT block, and any FAIL gives a non-zero exit code. Any
 # unexpected error (no aapt2, broken APK, missing contract) also exits non-zero.
-# Artifact checks: size, asset pins, bundled asset sets, permissions, signature,
-# version, store changelog and the delta against dist/.
+# Artifact checks: size, asset pins, bundled asset sets, dex layout, permissions,
+# signature, version, store changelog and the delta against dist/.
 #
 # Run from the repository root:
-#   bash scripts/release_check.sh [--quick|--full] [path/to.apk]
+#   bash scripts/release_check.sh [--quick|--full|--checks LIST] [path/to.apk]
 #
 # Modes:
 #   (default)  the APK is already built; gates run, nothing is rebuilt;
 #   --quick    artifact checks only (gradle/python gates are reported as SKIP);
 #   --full     ./gradlew clean assembleRelease --no-build-cache first, then everything else
-#              (checks the freshly built app/build/outputs/apk/release/*.apk).
+#              (checks the freshly built app/build/outputs/apk/release/*.apk);
+#   --checks   only the listed artifact checks, comma-separated names without the "artifact."
+#              prefix (CI: exported_surface,no_secrets); selectable: size up to signature.
 #
 # Default APK: the newest (by mtime) app/build/outputs/apk/release/*.apk.
 # The script writes only build output: logs go to build/release_check/, and --full
@@ -39,17 +41,28 @@ mkdir -p "$LOG_DIR"
 
 QUICK=0
 FULL=0
+CHECKS=""
 APK=""
+# Artifact checks that --checks can select; each runs on the APK alone. Version, changelog and
+# delta depend on each other and run only without --checks.
+SELECTABLE_CHECKS="size asset_pins emoji_assets tree_assets critical_resources arsc_stored dex_layout permissions exported_surface no_secrets signature"
 
-# Prints the header comment (lines 2-20); keep the header exactly that long.
+# Prints the header comment (lines 2-22); keep the header exactly that long.
 usage() {
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
 }
 
-for arg in "$@"; do
+while [ "$#" -gt 0 ]; do
+    arg="$1"; shift
     case "$arg" in
         --quick) QUICK=1 ;;
         --full)  FULL=1 ;;
+        --checks)
+            if [ "$#" -eq 0 ] || [ -z "$1" ]; then
+                echo "ERROR: --checks требует список проверок" >&2; exit 2
+            fi
+            CHECKS="$1"; shift
+            ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "ERROR: неизвестный флаг: $arg" >&2; usage >&2; exit 2 ;;
         *)
@@ -64,6 +77,26 @@ done
 if [ "$QUICK" -eq 1 ] && [ "$FULL" -eq 1 ]; then
     echo "ERROR: --quick и --full несовместимы" >&2; exit 2
 fi
+if [ -n "$CHECKS" ] && { [ "$QUICK" -eq 1 ] || [ "$FULL" -eq 1 ]; }; then
+    echo "ERROR: --checks несовместим с --quick и --full" >&2; exit 2
+fi
+if [ -n "$CHECKS" ] && [ -z "${CHECKS//,/}" ]; then
+    echo "ERROR: --checks требует хотя бы одну проверку" >&2; exit 2
+fi
+for check in ${CHECKS//,/ }; do
+    case " $SELECTABLE_CHECKS " in
+        *" $check "*) ;;
+        *) echo "ERROR: --checks: неизвестная проверка $check (доступны: $SELECTABLE_CHECKS)" >&2
+           exit 2 ;;
+    esac
+done
+
+# want <check>: true when the artifact check runs (no --checks, or listed in it). The check
+# sections below are wrapped in `if want ...; then` without extra indentation, because their
+# Python heredocs cannot be indented.
+want() {
+    [ -z "$CHECKS" ] || [[ ",$CHECKS," == *",$1,"* ]]
+}
 
 # --- result bookkeeping ----------------------------------------------------------------------
 
@@ -156,7 +189,9 @@ echo "Кандидат: $APK"
 
 # --- 1. gates ---------------------------------------------------------------------------------
 
-if [ "$QUICK" -eq 1 ]; then
+if [ -n "$CHECKS" ]; then
+    : # --checks runs the listed artifact checks only
+elif [ "$QUICK" -eq 1 ]; then
     report SKIP gates.gradle_test "--quick"
     report SKIP gates.lint_release "--quick"
     report SKIP gates.python_tests "--quick"
@@ -232,10 +267,10 @@ else
     fi
 fi
 
-# --- 2. APK size against the ceiling -----------------------------------------------------------
-
 echo "== артефактные проверки =="
 
+# --- 2. APK size against the ceiling -----------------------------------------------------------
+if want size; then
 APK_SIZE=$(stat -c %s "$APK")
 if [ "$APK_SIZE" -le "$APK_SIZE_LIMIT" ]; then
     headroom=$(awk -v s="$APK_SIZE" -v lim="$APK_SIZE_LIMIT" 'BEGIN{printf "%.1f", (lim - s) / lim * 100}')
@@ -243,13 +278,14 @@ if [ "$APK_SIZE" -le "$APK_SIZE_LIMIT" ]; then
 else
     report FAIL artifact.size "$APK_SIZE Б превышает потолок $APK_SIZE_LIMIT Б"
 fi
+fi
 
 # --- 3. asset pins against the constants in code ----------------------------------------------
 # Extracts *.tdict.zlib / *.tatbigr.zlib from the APK and compares size and SHA-256 (compressed
 # and raw) with the constants in DictionaryStorageContracts.kt / BigramStorageContracts.kt.
 # The pins are read with the same regex approach as read_pins in scripts/rebuild_assets.py,
 # but self-contained, so this check does not depend on the pipeline being importable.
-
+if want asset_pins; then
 PINS_LOG="$LOG_DIR/asset-pins.log"
 if python3 - "$APK" >"$PINS_LOG" 2>&1 <<'PYEOF'
 import hashlib
@@ -327,12 +363,13 @@ else
     report FAIL artifact.asset_pins "пины не сошлись, лог $PINS_LOG"
     cat "$PINS_LOG" >&2
 fi
+fi
 
 # --- 3b. emoji assets: APK against the tree ------------------------------------------------------
 # Emoji assets are plain text (no zlib wrapper), so their pin is the file in the tree: the APK
 # content must be byte-identical to what is committed. The file SET is compared, not a
 # hard-coded list, so a file present only in the tree or only in the APK also fails.
-
+if want emoji_assets; then
 EMOJI_LOG="$LOG_DIR/emoji-assets.log"
 if python3 - "$APK" >"$EMOJI_LOG" 2>&1 <<'PYEOF'
 import hashlib
@@ -378,13 +415,14 @@ else
     report FAIL artifact.emoji_assets "эмодзи-ассеты расходятся, лог $EMOJI_LOG"
     cat "$EMOJI_LOG" >&2
 fi
+fi
 
 # --- 3c. dictionaries and bigrams: APK against the tree ------------------------------------------
 # Same rules as for emoji: the file SET under assets/dictionaries/ and assets/bigrams/ in both
 # directions (including NOTICE.txt and the sentence-start tables) plus byte-identical content,
 # because the engine reads these directories as a whole. artifact.asset_pins above stays a
 # separate check: it also compares the decompressed content with the constants in code.
-
+if want tree_assets; then
 TREE_ASSETS_LOG="$LOG_DIR/tree-assets.log"
 if python3 - "$APK" >"$TREE_ASSETS_LOG" 2>&1 <<'PYEOF'
 import hashlib
@@ -437,6 +475,7 @@ else
     report FAIL artifact.tree_assets "ассеты расходятся с деревом, лог $TREE_ASSETS_LOG"
     cat "$TREE_ASSETS_LOG" >&2
 fi
+fi
 
 # --- 3d. critical resources: keep.xml really covers the live names in the APK -------------------
 # shrinkResources relies on app/src/main/res/raw/keep.xml, because the resource families
@@ -449,7 +488,7 @@ fi
 # the TREE and requires each one in `aapt2 dump resources` of the candidate. There is no reverse
 # direction (dump -> tree) on purpose: the dump includes framework android:* entries.
 # A missing keep.xml also fails.
-
+if want critical_resources; then
 CRIT_RES_LOG="$LOG_DIR/critical-resources.log"
 if python3 - "$APK" "$AAPT2" >"$CRIT_RES_LOG" 2>&1 <<'PYEOF'
 import re
@@ -544,6 +583,7 @@ else
     report FAIL artifact.critical_resources "критические ресурсы отсутствуют в APK, лог $CRIT_RES_LOG"
     cat "$CRIT_RES_LOG" >&2
 fi
+fi
 
 # --- 3.9. resources.arsc must be STORED (otherwise Android 11+ will not install the APK) -------
 # An app targeting SDK 30+ with a compressed arsc fails to install:
@@ -551,6 +591,7 @@ fi
 #   installed APKs to be stored uncompressed and aligned on a 4-byte boundary]
 # `zipalign -c 4` does not catch it (prints "OK - compressed" and exits 0), so the artifact is
 # checked directly: STORED only, with a data offset that is a multiple of 4.
+if want arsc_stored; then
 ARSC_LOG="$LOG_DIR/arsc-stored.log"
 if python3 - "$APK" >"$ARSC_LOG" 2>&1 <<'PYEOF'
 import sys
@@ -577,9 +618,37 @@ then
 else
     report FAIL artifact.arsc_stored "$(tail -2 "$ARSC_LOG")"
 fi
+fi
+
+# --- 3.10. dex layout: startup classes.dex plus classes2.dex, and the baseline profile ----------
+# The code fits one dex, so a second dex appears only when AGP applied the startup profile from
+# app/src/main/generated/baselineProfiles/. A single classes.dex means the profile was not read.
+if want dex_layout; then
+DEX_LOG="$LOG_DIR/dex-layout.log"
+if python3 - "$APK" >"$DEX_LOG" 2>&1 <<'PYEOF'
+import re
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as zf:
+    names = set(zf.namelist())
+dexes = sorted(n for n in names if re.fullmatch(r'classes\d*\.dex', n))
+if 'classes.dex' not in dexes or 'classes2.dex' not in dexes:
+    raise SystemExit('ожидались classes.dex и classes2.dex (стартовый профиль), в APK: %s'
+                     % (', '.join(dexes) or 'нет dex'))
+if 'assets/dexopt/baseline.prof' not in names:
+    raise SystemExit('нет assets/dexopt/baseline.prof')
+print('%s + assets/dexopt/baseline.prof' % ', '.join(dexes))
+PYEOF
+then
+    report PASS artifact.dex_layout "$(tail -1 "$DEX_LOG")"
+else
+    report FAIL artifact.dex_layout "$(tail -1 "$DEX_LOG")"
+fi
+fi
 
 # --- 4. permissions: exactly VIBRATE -----------------------------------------------------------
-
+if want permissions; then
 if PERMS=$("$AAPT2" dump permissions "$APK" 2>&1); then
     perm_count=$(grep -c '^uses-permission:' <<<"$PERMS" || true)
     if [ "$perm_count" -eq 1 ] \
@@ -592,6 +661,7 @@ if PERMS=$("$AAPT2" dump permissions "$APK" 2>&1); then
 else
     report FAIL artifact.permissions "aapt2 dump permissions упал: $PERMS"
 fi
+fi
 
 # --- 4b. exported surface: exact match with the golden set -------------------------------------
 # The APK manifest is the merged+built one, so drift can enter through build config, not only
@@ -599,7 +669,7 @@ fi
 # guard, intent-filter actions/categories) and require the EXPORTED set to equal the embedded
 # golden set in both directions. The IME service's exported=false + BIND_INPUT_METHOD pair is
 # checked separately: an IME service exported without that guard is the main risk here.
-
+if want exported_surface; then
 EXPORTED_LOG="$LOG_DIR/exported-surface.log"
 if python3 - "$APK" "$AAPT2" >"$EXPORTED_LOG" 2>&1 <<'PYEOF'
 import re
@@ -760,6 +830,7 @@ else
     report FAIL artifact.exported_surface "экспонированная поверхность отличается от золотого набора, лог $EXPORTED_LOG"
     cat "$EXPORTED_LOG" >&2
 fi
+fi
 
 # --- 4c. secrets scan: tracked repository files + APK entries ------------------------------------
 # Two halves, each listing offenders:
@@ -771,7 +842,7 @@ fi
 # The content regexes are written so this script's own text never matches them (the literal
 # prefix is followed by '[', outside the accepted class). The check scans this tracked file
 # on every run, so a self-match would fail permanently.
-
+if want no_secrets; then
 NO_SECRETS_LOG="$LOG_DIR/no-secrets.log"
 if python3 - "$APK" >"$NO_SECRETS_LOG" 2>&1 <<'PYEOF'
 import re
@@ -847,9 +918,10 @@ else
     report FAIL artifact.no_secrets "найдены секретоподобные файлы/строки, лог $NO_SECRETS_LOG"
     cat "$NO_SECRETS_LOG" >&2
 fi
+fi
 
 # --- 5. signature: release key certificate, exactly one signer -----------------------------------
-
+if want signature; then
 if SIG=$("$APKSIGNER" verify --print-certs "$APK" 2>&1); then
     # There must be exactly one signer. Each signer prints a
     # "... certificate SHA-256 digest: <hash>" line (with several signers: "V2 Signer #1/#2: ...");
@@ -871,9 +943,10 @@ if SIG=$("$APKSIGNER" verify --print-certs "$APK" 2>&1); then
 else
     report FAIL artifact.signature "APK не подписан или подпись не верифицируется: $(tail -1 <<<"$SIG")"
 fi
+fi
 
 # --- 6. version: aapt2 badging against app/build.gradle ----------------------------------------
-
+if [ -z "$CHECKS" ]; then
 EXPECTED_VC=$(grep -oE 'versionCode [0-9]+' app/build.gradle | awk '{print $2}' | head -1 || true)
 EXPECTED_VN=$(grep -oE 'versionName "[^"]+"' app/build.gradle | head -1 | cut -d'"' -f2 || true)
 if [ -z "$EXPECTED_VC" ] || [ -z "$EXPECTED_VN" ]; then
@@ -957,6 +1030,7 @@ else
     done
     printf '       %-8s %12d %12d %+12d (%s %%)\n' "APK" "$PREV_SIZE" "$APK_SIZE" "$delta" "$delta_pct"
     report PASS artifact.delta "предыдущий — $(basename "$PREV") (vc $PREV_VC), APK $delta Б ($delta_pct %)"
+fi
 fi
 
 # --- 9. summary --------------------------------------------------------------------------------

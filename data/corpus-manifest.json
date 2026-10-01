@@ -1,0 +1,47 @@
+{
+  "rus_conv_thinned60-sentences.txt": {
+    "sha256": "71fa9427b9460246e6a8f99af1bca31e77bd15b46d849c68d0be961066972603",
+    "size": 76470144,
+    "source": "research/corpus/make_conv_train.py over OPUS Tatoeba v2026-07-08 ru + OpenSubtitles v2024 ru, lines with id % 60 == 0"
+  },
+  "rus_news_2019_1M-sentences.txt": {
+    "sha256": "5d42ab9b1428ea59b5eeba14275a272678a4c28f3702db4f27ddea5c1304b5da",
+    "size": 192090252,
+    "source": "Leipzig rus_news_2019_1M"
+  },
+  "rus_news_2022_1M-sentences.txt": {
+    "sha256": "dedbacd2e06de46afba5561f5e8d528a2d73898288ce8759ede002f00ed8248a",
+    "size": 197281873,
+    "source": "Leipzig rus_news_2022_1M"
+  },
+  "rus_wikipedia_2021_1M-sentences.txt": {
+    "sha256": "0427676fc54a18afd3b80e0fb7650d8b59a2fa9be5b9d2c77cb50a3a0a5b5f8e",
+    "size": 189049129,
+    "source": "Leipzig rus_wikipedia_2021_1M"
+  },
+  "tat_mixed_2015_1M-sentences.txt": {
+    "sha256": "838a10f02ddfeddb1fa7bb01a472b47d1cfdfb2e72c0cd41e1c7ed5a4c1b6cf9",
+    "size": 200299914,
+    "source": "Leipzig tat_mixed_2015_1M"
+  },
+  "tat_mixed_2015_1M-words.txt": {
+    "sha256": "b4577bcc838eb64114b337a009a45bcf1e0a74e870c97cb6589eeeeecb3554d7",
+    "size": 13457721,
+    "source": "Leipzig tat_mixed_2015_1M"
+  },
+  "tat_web_2018_1M-sentences.txt": {
+    "sha256": "24318543c3b036b735a2d59c505083e4a3bad57d64384a8c074bbd30f5e7a066",
+    "size": 178027132,
+    "source": "Leipzig tat_web_2018_1M"
+  },
+  "tat_web_2018_1M-words.txt": {
+    "sha256": "3caac1a7a81b376cf6b590fb92cccd2264d1fdaae728f433b53a028c1aafee3f",
+    "size": 15027846,
+    "source": "Leipzig tat_web_2018_1M"
+  },
+  "tt_conv_train90-sentences.txt": {
+    "sha256": "21c0ee66d0f4fb77d00070e240339e2d57dcd57c67893c6a306c59422c38a405",
+    "size": 11361696,
+    "source": "research/corpus/make_conv_train.py over OPUS Tatoeba v2026-07-08 tt + OpenSubtitles v2024 tt, lines with id % 10 != 1"
+  }
+}

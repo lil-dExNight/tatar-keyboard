@@ -73,6 +73,11 @@ jobs:
       - name: Check release APK size (≤ 3 MiB)
         run: test $(stat -c%s app/build/outputs/apk/release/app-release-unsigned.apk) -le 3145728
 
+      # The release checks that need no keystore: the exported components against the golden
+      # set, and no keystore, private key or token in the tracked tree or the APK.
+      - name: Check exported surface and secrets (release APK)
+        run: bash scripts/release_check.sh --checks exported_surface,no_secrets app/build/outputs/apk/release/app-release-unsigned.apk
+
       # Both levels: source manifest + aapt2 dump permissions on the built APK. Checked on
       # debug and release, since the release merged manifest could differ if a
       # buildType-specific library or manifest overlay were ever added.
