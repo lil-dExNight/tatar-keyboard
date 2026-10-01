@@ -10,7 +10,7 @@ buildscript {
         google()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:9.2.1'
+        classpath 'com.android.tools.build:gradle:9.4.1'
         // Baseline Profile Gradle plugin (build-time only; applied to :app
         // for profile packaging and to :baselineprofile for generation).
         classpath 'androidx.benchmark:benchmark-baseline-profile-gradle-plugin:1.4.1'
