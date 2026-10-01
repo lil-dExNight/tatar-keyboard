@@ -86,7 +86,7 @@ class AppleUxBatchOneContractTest {
         )
         assertTrue(
             "the KEYBOARD_TAP call stays, single-argument",
-            source.contains("performHapticFeedback(\n                        HapticFeedbackConstants.KEYBOARD_TAP)"),
+            source.contains("performHapticFeedback(\n                    HapticFeedbackConstants.KEYBOARD_TAP)"),
         )
     }
 
