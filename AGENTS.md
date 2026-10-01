@@ -18,21 +18,22 @@ grep first in `PATH` (they use `stat -c`, `sha256sum` and `grep -P`):
 | Python tests | `for f in tests/*/test_*.py; do python3 "$f" \|\| exit 1; done`; plain `unittest` modules, pytest is not used. |
 | Device tests | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, `adb install -r` both APKs, then `adb shell am instrument -w -e class <test class> org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner`; timing assertions need an idle device with the screen on, and `GlideUiDeviceTest` is calibrated for a 720x1640 screen and fails fast on any other. Full procedure: `docs/DEVICE-TEST-PLAN.md`. |
 | Emulator smoke test | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk <path>] [--no-boot] [--outdir build/emulator-smoke/]`; installs and selects the IME, runs the typing, suggestion and emoji probes and prints `RESULT\|…` lines. |
-| Device performance check | `bash scripts/device-perf-ritual.sh [--serial <id>] [--pkg org.tatarkeyboard.ime.debug] [--outdir build/device-perf-ritual]`; measures cold start, PSS and frame times on a 720x1640 device and restores the device state on exit. |
+| Device performance check | `bash scripts/device-perf-ritual.sh [--serial <id>] [--pkg org.tatarkeyboard.ime.debug] [--legs cold,pss,frames,warm,touch] [--enable-suggestions-ui] [--outdir build/device-perf-ritual]`; measures cold start, PSS, frame times, janky frames, warm show and touch handling on a 720x1640 device, prints `over_budget=` on each budgeted line and restores the device state on exit; `--enable-suggestions-ui` turns suggestions on in a release build through its settings screen. |
 | Lint | `./gradlew lintRelease`; `abortOnError` is on, baseline `app/lint-baseline.xml`, rule classification `app/lint.xml`. |
 | Error Prone | Runs inside Java compilation (`compile*JavaWithJavac`, plugin `net.ltgt.errorprone`); all findings are warnings, so review new ones in the compiler output. |
 | Release APK | `bash scripts/release_pack.sh [--no-sign] [<output.apk>]`; unsigned build, zopfli `zipalign` before signing, then v2 signing with the key from `keystore.properties` (plain `./gradlew assembleRelease` skips the zopfli step). |
 | No-INTERNET and backup check | `bash scripts/check-no-internet.sh [<apk>]`; checks the source manifest, then the built APK (default: debug) with aapt2 for no INTERNET permission and no backup or device transfer. |
-| Release checker | `bash scripts/release_check.sh [--quick\|--full] [<apk>]`; runs the repository gates plus artifact checks (size, pinned assets, permissions, single signer, version, store changelog, delta to `dist/`) and prints a `RESULT\|…` block. |
+| Release checker | `bash scripts/release_check.sh [--quick\|--full\|--checks <list>] [<apk>]`; runs the repository gates plus artifact checks (size, pinned assets, permissions, single signer, version, store changelog, delta to `dist/`) and prints a `RESULT\|…` block; `--checks exported_surface,no_secrets` runs only those, as CI does on the unsigned release APK. |
 | Asset consistency | `python3 scripts/rebuild_assets.py --check --allow-known-drift`; compares the bundled dictionaries and bigram tables with their pins without rebuilding. |
 | Reproducible build | Two `./gradlew clean assembleRelease --no-build-cache` runs must give byte-identical APKs (CI job `reproducible`), so keep `dependenciesInfo { includeInApk = false }` in `app/build.gradle`. Other builds use the local build cache (`org.gradle.caching` in `gradle.properties`); the release scripts bypass it. |
 | Dependency verification | When a key expires or rotates, or dependencies change: `GRADLE_USER_HOME=/tmp/<clean> ./gradlew --write-verification-metadata pgp,sha256 clean test lintRelease assembleRelease -PskipReleaseSigning`, then `./gradlew --export-keys` with the same home, and commit `gradle/verification-metadata.xml` with `gradle/verification-keyring.{gpg,keys}`; a failure on a cold cache means the artifact must be investigated, not re-pinned. |
-| Baseline profile | `./gradlew :app:generateReleaseBaselineProfile` with a running emulator (`ANDROID_SERIAL` pins one); the run writes both the baseline and the startup profile to `app/src/release/generated/baselineProfiles/`, to be copied to `app/src/main/baseline-prof.txt` and `app/src/main/startup-prof.txt`. |
+| Baseline profile | `./gradlew :app:generateBaselineProfile` with a running emulator (`ANDROID_SERIAL` pins one); the run writes the baseline and the startup profile to the tracked `app/src/main/generated/baselineProfiles/` (`mergeIntoMain` in `app/build.gradle`), which every build reads; the startup profile gives the startup `classes.dex` plus `classes2.dex`. |
 
 Device quirks:
 
 - HyperOS silently switches the system keyboard when the package that owns the default IME is
-  force-stopped. Do not force-stop it in test loops; the scripts use `run-as <pkg> kill -9`.
+  force-stopped. Do not force-stop it in test loops; the scripts use `run-as <pkg> kill -9`, or,
+  for a release package, select another keyboard and then `am kill <pkg>`.
 - The baseline profile generator refuses physical devices unless the instrumentation argument
   `ttAllowPhysicalDevice=true` is set.
 - Emulator: `<sdk>/emulator/emulator -avd tt_suggest_a14 -no-window &`, `adb` in

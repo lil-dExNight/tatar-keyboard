@@ -10,5 +10,5 @@ plugins {
 }
 include ':app'
 // Dev-only profile generator module (Macrobenchmark). Never packaged into the APK;
-// its only output that ships is app/src/main/baseline-prof.txt.
+// its only outputs that ship are the profiles in app/src/main/generated/baselineProfiles/.
 include ':baselineprofile'

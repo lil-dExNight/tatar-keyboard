@@ -1,7 +1,7 @@
 // Baseline Profile generator module (dev-only).
 // Runs BaselineProfileRule against :app on a connected emulator and writes the baseline and
-// startup profiles under app/src/release/generated/baselineProfiles/; they are then copied to
-// app/src/main/{baseline,startup}-prof.txt (packaged by AGP into assets/dexopt/).
+// startup profiles to app/src/main/generated/baselineProfiles/ (mergeIntoMain in
+// app/build.gradle), which AGP reads for every variant.
 // Nothing from this module is compiled into or packaged with the app.
 plugins {
     id 'com.android.test'
@@ -33,7 +33,7 @@ baselineProfile {
 
 // useConnectedDevices picks one attached device nondeterministically, so run generation
 // with only the emulator attached or pin it explicitly:
-//     ANDROID_SERIAL=<emulator-serial> ./gradlew :app:generateReleaseBaselineProfile
+//     ANDROID_SERIAL=<emulator-serial> ./gradlew :app:generateBaselineProfile
 // The generator also fails fast on a device that does not look like an emulator
 // (ro.kernel.qemu=1 or a generic/sdk/emulator fingerprint); the only override is the
 // instrumentation argument `-e ttAllowPhysicalDevice true`.

@@ -47,8 +47,11 @@ It must run after step 2, because `--full` cleans `app/build/`.
 - [ ] Keep the `RESULT|zopfli+signed|…` (size) and `RESULT|sha256|…` lines for the release record.
 - [ ] Optional: pack again to `dist/.repro.apk`, `cmp` both files, delete the copy (CI job
       `reproducible` does the same on unsigned builds).
-- [ ] `app/src/release/generated/baselineProfiles/` is empty. It is git-ignored, and a startup
-      profile there changes the dex layout, so the APK would differ from a build of the tag.
+- [ ] The APK has `classes.dex` and `classes2.dex` (the startup layout from the tracked
+      `app/src/main/generated/baselineProfiles/startup-prof.txt`; `release_check.sh` checks it as
+      `artifact.dex_layout`).
+- [ ] `app/src/release/generated/` is absent. It is git-ignored, and a profile there would still
+      be merged in, so the APK would differ from a build of the tag.
 
 ### Reproducing a published APK
 

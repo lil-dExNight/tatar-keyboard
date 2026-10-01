@@ -52,7 +52,7 @@ import kotlin.Unit;
  * settings UI (the release APK is not debuggable, so prefs cannot be seeded via run-as).
  * Emoji suggestions and glide typing are on by default.
  *
- * Run: ./gradlew :app:generateReleaseBaselineProfile on a connected API 34 emulator (device
+ * Run: ./gradlew :app:generateBaselineProfile on a connected API 34 emulator (device
  * pinning: see baselineprofile/build.gradle).
  */
 @RunWith(AndroidJUnit4.class)
