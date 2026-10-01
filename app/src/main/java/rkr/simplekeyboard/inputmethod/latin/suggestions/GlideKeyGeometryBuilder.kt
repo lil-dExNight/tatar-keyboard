@@ -36,8 +36,14 @@ object GlideKeyGeometryBuilder {
         }
         val raw = ArrayList<GlideKeyGeometry.RawKey>(keyboard.sortedKeys.size)
         for (key in keyboard.sortedKeys) {
+            val moreKeys = key.moreKeys
+            val moreKeyCodePoints =
+                if (moreKeys == null) IntArray(0) else IntArray(moreKeys.size) { moreKeys[it].mCode }
             raw.add(
-                GlideKeyGeometry.RawKey(key.code, key.x, key.y, key.x + key.width, key.y + key.height),
+                GlideKeyGeometry.RawKey(
+                    key.code, key.x, key.y, key.x + key.width, key.y + key.height,
+                    moreKeyCodePoints,
+                ),
             )
         }
         return GlideKeyGeometry.build(raw)

@@ -1,6 +1,7 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -55,6 +56,16 @@ class GlideWordIndexTest {
     }
 
     @Test
+    fun wordsWithAnAliasLetterAreIndexedOnTheBaseKey() {
+        val index = index(listOf("игътибар" to 10L, "ёлка" to 5L))
+        assertEquals(2, index.wordCount)
+        assertEquals(0, index.skippedWordCount)
+        val hardSign = index.keySeqStart(0) + 2
+        assertEquals(geometry.keyIndexOfLetter('ь'.code), index.keySeqAt(hardSign))
+        assertEquals(geometry.keyIndexOfLetter('е'.code), index.keySeqAt(index.keySeqStart(1)))
+    }
+
+    @Test
     fun frequenciesAreKeptPerEntry() {
         val index = index(listOf("сәләм" to 36L, "салым" to 7466L))
         assertEquals(36L, index.frequencyAt(0))
@@ -67,6 +78,40 @@ class GlideWordIndexTest {
         val index = index(listOf("сәләм" to 1L, "алла" to 1L))
         assertEquals(-1f, index.loopLengthAt(0), 0f)
         assertTrue(index.loopLengthAt(1) > index.plainLengthAt(1))
+    }
+
+    @Test
+    fun theTwinBitMarksDoubledWordsWhoseCollapsedSequenceIsNoOtherWord() {
+        val index = index(
+            listOf(
+                "алла" to 1L, // twin ала present
+                "ала" to 1L,
+                "сәлләм" to 1L, // no сәләм: twinless
+                "ааллаа" to 1L, // every run collapsed: twin ала
+                "ммаммм" to 1L, // collapsed мам is absent: twinless
+                "ееш" to 1L, // collapsed еш equals ёш on the same keys: alias twin
+                "ёш" to 1L,
+                "её" to 1L, // е and its alias on one key: a doubled key, twin е absent
+                "китап" to 1L, // no doubled key: never twinless
+            ),
+        )
+        assertFalse(index.isTwinlessAt(0))
+        assertFalse(index.isTwinlessAt(1))
+        assertTrue(index.isTwinlessAt(2))
+        assertFalse(index.isTwinlessAt(3))
+        assertTrue(index.isTwinlessAt(4))
+        assertFalse(index.isTwinlessAt(5))
+        assertFalse(index.isTwinlessAt(6))
+        assertTrue(index.isTwinlessAt(7))
+        assertTrue(index.loopLengthAt(7) >= 0f)
+        assertFalse(index.isTwinlessAt(8))
+    }
+
+    @Test
+    fun theTwinBitFollowsATwinAddedByAPersonalWord() {
+        val base = listOf("сәлләм" to 5L)
+        assertTrue(index(base).isTwinlessAt(0))
+        assertFalse(index(base + ("сәләм" to 1L)).isTwinlessAt(0))
     }
 
     @Test

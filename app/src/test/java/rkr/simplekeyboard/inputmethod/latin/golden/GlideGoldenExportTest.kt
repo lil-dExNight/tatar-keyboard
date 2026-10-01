@@ -55,9 +55,11 @@ class GlideGoldenExportTest {
 
         File(out, "glide.jsonl").bufferedWriter(Charsets.UTF_8).use { w ->
             val fixtureTt = Geo("fixture-tt", "tt", GlideTestFixtures.tatarRawKeys())
-            val keysTt = Geo("keys-tt", "tt", readKeys(File(out, "keys-tt.tsv")))
-            val keysRu = Geo("keys-ru", "ru", readKeys(File(out, "keys-ru.tsv")))
             val fixtureRu = Geo("fixture-ru", "ru", GlideTestFixtures.russianRawKeys())
+            // The key files carry rectangles only; the long-press keys come from the fixture of
+            // the same layout, so the aliases match the built keyboard.
+            val keysTt = Geo("keys-tt", "tt", withMoreKeys(readKeys(File(out, "keys-tt.tsv")), fixtureTt.raw))
+            val keysRu = Geo("keys-ru", "ru", withMoreKeys(readKeys(File(out, "keys-ru.tsv")), fixtureRu.raw))
 
             val ttWords = selectWords(tatar.second, fixtureTt.raw, evalLines, true)
             val ruWords = selectWords(russian.second, keysRu.raw, emptyList(), false)
@@ -100,7 +102,11 @@ class GlideGoldenExportTest {
             .append(",\"hw\":").append(hw).append(",\"hh\":").append(hh)
         // Letter per key index: every raw letter's lookup.
         val lookups = geo.raw.map { g.keyIndexOfLetter(Character.toLowerCase(it.codePoint)) }
-        sb.append(",\"lookups\":").append(lookups).append('}')
+        sb.append(",\"lookups\":").append(lookups)
+        // Long-press codes per raw key and the resulting alias table (letter, key index).
+        sb.append(",\"more\":").append(geo.raw.map { it.moreKeyCodePoints.toList() })
+        sb.append(",\"aliases\":").append((0 until g.aliasCount).map { listOf(g.aliasLetterAt(it), g.aliasKeyAt(it)) })
+        sb.append('}')
         w.write(sb.toString()); w.write("\n")
 
         val inventory = TdictGlideInventory(index)
@@ -112,9 +118,9 @@ class GlideGoldenExportTest {
         val sha = sha256(bytes)
         if (geo.id == "fixture-tt") {
             // The generator mirror must reproduce the pinned calibration set byte for byte.
-            assertEquals(4498, words.size)
-            assertEquals(10113092, bytes.size)
-            assertEquals("d5a729e68453d6d6c6373f2c44e58a5f61c26dc90f9629ab388c1595a9d27fe0", sha)
+            assertEquals(4531, words.size)
+            assertEquals(10195627, bytes.size)
+            assertEquals("7c497d92be0e1a31741254de827b37004b13f79f1335a6d6f8a3e71916606a6b", sha)
         }
         w.write("{\"kind\":\"set\",\"id\":${json(geo.id)},\"words\":${words.size},\"rows\":${paths.size}," +
             "\"bytes\":${bytes.size},\"sha256\":${json(sha)}}\n")
@@ -408,8 +414,7 @@ class GlideGoldenExportTest {
 
     private fun selectWords(vocabulary: List<String>, raw: List<GlideKeyGeometry.RawKey>,
                             evalLines: List<String>, withEval: Boolean): List<String> {
-        val letters = HashSet<Int>()
-        for (key in raw) letters.add(key.codePoint)
+        val letters = rectsByLetter(raw).keys
         val dictionary = HashSet(vocabulary)
         val selected = sortedSetOf<String>()
         for (word in vocabulary) {
@@ -443,17 +448,49 @@ class GlideGoldenExportTest {
         var rowWord: String = ""
     }
 
+    /**
+     * Letter -> rectangle, every long-press letter without a key of its own on its base key's
+     * rectangle; a letter on several keys takes the key [GlideKeyGeometry] resolves it to.
+     */
+    private fun rectsByLetter(raw: List<GlideKeyGeometry.RawKey>): Map<Int, Rect> {
+        val rects = HashMap<Int, Rect>()
+        for (key in raw) rects[key.codePoint] = Rect(key.left, key.top, key.right, key.bottom)
+        val geometry = GlideKeyGeometry.build(raw)
+        val byKeyIndex = HashMap<Int, Rect>()
+        for (key in raw) byKeyIndex[geometry.keyIndexOfLetter(key.codePoint)] = rects.getValue(key.codePoint)
+        for (slot in 0 until geometry.aliasCount) {
+            rects[geometry.aliasLetterAt(slot)] = byKeyIndex.getValue(geometry.aliasKeyAt(slot))
+        }
+        return rects
+    }
+
+    private fun hasDoubledKey(word: String, byLetter: Map<Int, Rect>): Boolean {
+        var previous: Rect? = null
+        for (codePoint in word.codePoints().toArray()) {
+            val rect = byLetter.getValue(Character.toLowerCase(codePoint))
+            if (rect === previous) return true
+            previous = rect
+        }
+        return false
+    }
+
+    private fun withMoreKeys(
+        keys: List<GlideKeyGeometry.RawKey>,
+        fixture: List<GlideKeyGeometry.RawKey>,
+    ): List<GlideKeyGeometry.RawKey> {
+        val more = fixture.associate { it.codePoint to it.moreKeyCodePoints }
+        return keys.map {
+            GlideKeyGeometry.RawKey(it.codePoint, it.left, it.top, it.right, it.bottom, more[it.codePoint] ?: IntArray(0))
+        }
+    }
+
     private fun generateGesture(word: String, drawLoop: Boolean, raw: List<GlideKeyGeometry.RawKey>): GeneratedPath {
-        val byLetter = HashMap<Int, Rect>()
-        for (key in raw) byLetter[key.codePoint] = Rect(key.left, key.top, key.right, key.bottom)
+        val byLetter = rectsByLetter(raw)
         val minWidth = raw.minOf { it.right - it.left }
         val radius = raw.minOf { minOf(it.right - it.left, it.bottom - it.top) }
 
         val codePoints = word.codePoints().toArray()
-        var hasDouble = false
-        for (i in 1 until codePoints.size) {
-            if (codePoints[i] == codePoints[i - 1]) hasDouble = true
-        }
+        val hasDouble = hasDoubledKey(word, byLetter)
         var stream = splitmix64(GLIDE_SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
         val loop = drawLoop && hasDouble
         val stepMin = minWidth / STEP_DIVISOR
@@ -466,10 +503,10 @@ class GlideGoldenExportTest {
         val vertexY = IntArray(5 * codePoints.size)
         val vertexIsLoop = BooleanArray(5 * codePoints.size)
         var vertexCount = 0
-        var previous = -1
+        var previous: Rect? = null
         for (codePoint in codePoints) {
             val rect = byLetter.getValue(Character.toLowerCase(codePoint))
-            if (loop && codePoint == previous) {
+            if (loop && rect === previous) {
                 val dx = (rect.right - rect.left) / 4
                 val dy = (rect.bottom - rect.top) / 4
                 vertexX[vertexCount] = rect.centerX + dx
@@ -487,7 +524,7 @@ class GlideGoldenExportTest {
                 vertexY[vertexCount] = rect.centerY
                 vertexCount++
             }
-            previous = codePoint
+            previous = rect
         }
 
         val cut = BooleanArray(vertexCount)
@@ -568,24 +605,13 @@ class GlideGoldenExportTest {
         return GeneratedPath(xs, ys, ts, loop)
     }
 
-    private fun hasDoubledLetter(word: String): Boolean {
-        var previous = -1
-        var offset = 0
-        while (offset < word.length) {
-            val codePoint = word.codePointAt(offset)
-            if (codePoint == previous) return true
-            previous = codePoint
-            offset += Character.charCount(codePoint)
-        }
-        return false
-    }
-
     private fun renderSet(words: List<String>, raw: List<GlideKeyGeometry.RawKey>): Pair<StringBuilder, List<GeneratedPath>> {
         val rendered = StringBuilder()
         val paths = ArrayList<GeneratedPath>(words.size)
+        val byLetter = rectsByLetter(raw)
         for (word in words) {
             appendRow(word, generateGesture(word, false, raw), rendered, paths)
-            if (hasDoubledLetter(word)) appendRow(word, generateGesture(word, true, raw), rendered, paths)
+            if (hasDoubledKey(word, byLetter)) appendRow(word, generateGesture(word, true, raw), rendered, paths)
         }
         return rendered to paths
     }

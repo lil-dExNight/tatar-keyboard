@@ -44,12 +44,16 @@ internal object GlideTestFixtures {
         listOf(10.8, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711),
     )
 
-    /** The key at index [col] of [row] with the device-modeled edges and the reference y. */
+    /**
+     * The key at index [col] of [row] with the device-modeled edges and the reference y; [more]
+     * are its long-press keys as the built keyboard carries them (letter partner, then digit).
+     */
     private fun geoKey(
         base: Char,
         row: Int,
         col: Int,
         rowWidths: List<List<Double>> = ROW_WIDTHS,
+        more: String = "",
     ): GlideKeyGeometry.RawKey {
         val widths = rowWidths[row]
         var x = PADDING
@@ -60,6 +64,7 @@ internal object GlideTestFixtures {
         return GlideKeyGeometry.RawKey(
             base.code, Math.round(x).toInt(), top,
             Math.round(x + width).toInt(), top + KEY_HEIGHT,
+            more.codePoints().toArray(),
         )
     }
 
@@ -70,25 +75,30 @@ internal object GlideTestFixtures {
         listOf(10.8, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711),
     )
 
-    /** The Tatar alphabet keyboard's letter keys, mirroring the layout XML's key order. */
+    /**
+     * The Tatar alphabet keyboard's letter keys, mirroring the layout XML's key order and the
+     * long-press keys of the keyboard without the number row.
+     */
     fun tatarRawKeys(): List<GlideKeyGeometry.RawKey> = listOf(
         // Row 0 — the extra Tatar row.
         geoKey('ә', 0, 0), geoKey('ө', 0, 1), geoKey('ү', 0, 2),
         geoKey('җ', 0, 3), geoKey('ң', 0, 4), geoKey('һ', 0, 5),
         // Row 1.
-        geoKey('й', 1, 0), geoKey('ц', 1, 1), geoKey('у', 1, 2),
-        geoKey('к', 1, 3), geoKey('е', 1, 4), geoKey('н', 1, 5),
-        geoKey('г', 1, 6), geoKey('ш', 1, 7), geoKey('щ', 1, 8),
-        geoKey('з', 1, 9), geoKey('х', 1, 10),
+        geoKey('й', 1, 0, more = "1"), geoKey('ц', 1, 1, more = "2"),
+        geoKey('у', 1, 2, more = "ү3"), geoKey('к', 1, 3, more = "4"),
+        geoKey('е', 1, 4, more = "ё5"), geoKey('н', 1, 5, more = "ң6"),
+        geoKey('г', 1, 6, more = "һ7"), geoKey('ш', 1, 7, more = "8"),
+        geoKey('щ', 1, 8, more = "9"), geoKey('з', 1, 9, more = "0"),
+        geoKey('х', 1, 10, more = "һ"),
         // Row 2.
         geoKey('ф', 2, 0), geoKey('ы', 2, 1), geoKey('в', 2, 2),
-        geoKey('а', 2, 3), geoKey('п', 2, 4), geoKey('р', 2, 5),
-        geoKey('о', 2, 6), geoKey('л', 2, 7), geoKey('д', 2, 8),
-        geoKey('ж', 2, 9), geoKey('э', 2, 10),
+        geoKey('а', 2, 3, more = "ә"), geoKey('п', 2, 4), geoKey('р', 2, 5),
+        geoKey('о', 2, 6, more = "ө"), geoKey('л', 2, 7), geoKey('д', 2, 8),
+        geoKey('ж', 2, 9, more = "җ"), geoKey('э', 2, 10, more = "ә"),
         // Row 3 (behind the shift key).
         geoKey('я', 3, 1), geoKey('ч', 3, 2), geoKey('с', 3, 3),
         geoKey('м', 3, 4), geoKey('и', 3, 5), geoKey('т', 3, 6),
-        geoKey('ь', 3, 7), geoKey('б', 3, 8), geoKey('ю', 3, 9),
+        geoKey('ь', 3, 7, more = "ъ"), geoKey('б', 3, 8), geoKey('ю', 3, 9),
     )
 
     /**
@@ -97,22 +107,22 @@ internal object GlideTestFixtures {
      * same percent values (9.091/9.091/10.8+8.711).
      */
     fun russianRawKeys(): List<GlideKeyGeometry.RawKey> = listOf(
-        geoKey('й', 0, 0, RUSSIAN_ROW_WIDTHS), geoKey('ц', 0, 1, RUSSIAN_ROW_WIDTHS),
-        geoKey('у', 0, 2, RUSSIAN_ROW_WIDTHS), geoKey('к', 0, 3, RUSSIAN_ROW_WIDTHS),
-        geoKey('е', 0, 4, RUSSIAN_ROW_WIDTHS), geoKey('н', 0, 5, RUSSIAN_ROW_WIDTHS),
-        geoKey('г', 0, 6, RUSSIAN_ROW_WIDTHS), geoKey('ш', 0, 7, RUSSIAN_ROW_WIDTHS),
-        geoKey('щ', 0, 8, RUSSIAN_ROW_WIDTHS), geoKey('з', 0, 9, RUSSIAN_ROW_WIDTHS),
-        geoKey('х', 0, 10, RUSSIAN_ROW_WIDTHS),
+        geoKey('й', 0, 0, RUSSIAN_ROW_WIDTHS, "1"), geoKey('ц', 0, 1, RUSSIAN_ROW_WIDTHS, "2"),
+        geoKey('у', 0, 2, RUSSIAN_ROW_WIDTHS, "ү3"), geoKey('к', 0, 3, RUSSIAN_ROW_WIDTHS, "4"),
+        geoKey('е', 0, 4, RUSSIAN_ROW_WIDTHS, "ё5"), geoKey('н', 0, 5, RUSSIAN_ROW_WIDTHS, "ң6"),
+        geoKey('г', 0, 6, RUSSIAN_ROW_WIDTHS, "һ7"), geoKey('ш', 0, 7, RUSSIAN_ROW_WIDTHS, "8"),
+        geoKey('щ', 0, 8, RUSSIAN_ROW_WIDTHS, "9"), geoKey('з', 0, 9, RUSSIAN_ROW_WIDTHS, "0"),
+        geoKey('х', 0, 10, RUSSIAN_ROW_WIDTHS, "һ"),
         geoKey('ф', 1, 0, RUSSIAN_ROW_WIDTHS), geoKey('ы', 1, 1, RUSSIAN_ROW_WIDTHS),
-        geoKey('в', 1, 2, RUSSIAN_ROW_WIDTHS), geoKey('а', 1, 3, RUSSIAN_ROW_WIDTHS),
+        geoKey('в', 1, 2, RUSSIAN_ROW_WIDTHS), geoKey('а', 1, 3, RUSSIAN_ROW_WIDTHS, "ә"),
         geoKey('п', 1, 4, RUSSIAN_ROW_WIDTHS), geoKey('р', 1, 5, RUSSIAN_ROW_WIDTHS),
-        geoKey('о', 1, 6, RUSSIAN_ROW_WIDTHS), geoKey('л', 1, 7, RUSSIAN_ROW_WIDTHS),
-        geoKey('д', 1, 8, RUSSIAN_ROW_WIDTHS), geoKey('ж', 1, 9, RUSSIAN_ROW_WIDTHS),
-        geoKey('э', 1, 10, RUSSIAN_ROW_WIDTHS),
+        geoKey('о', 1, 6, RUSSIAN_ROW_WIDTHS, "ө"), geoKey('л', 1, 7, RUSSIAN_ROW_WIDTHS),
+        geoKey('д', 1, 8, RUSSIAN_ROW_WIDTHS), geoKey('ж', 1, 9, RUSSIAN_ROW_WIDTHS, "җ"),
+        geoKey('э', 1, 10, RUSSIAN_ROW_WIDTHS, "ә"),
         geoKey('я', 2, 1, RUSSIAN_ROW_WIDTHS), geoKey('ч', 2, 2, RUSSIAN_ROW_WIDTHS),
         geoKey('с', 2, 3, RUSSIAN_ROW_WIDTHS), geoKey('м', 2, 4, RUSSIAN_ROW_WIDTHS),
         geoKey('и', 2, 5, RUSSIAN_ROW_WIDTHS), geoKey('т', 2, 6, RUSSIAN_ROW_WIDTHS),
-        geoKey('ь', 2, 7, RUSSIAN_ROW_WIDTHS), geoKey('б', 2, 8, RUSSIAN_ROW_WIDTHS),
+        geoKey('ь', 2, 7, RUSSIAN_ROW_WIDTHS, "ъ"), geoKey('б', 2, 8, RUSSIAN_ROW_WIDTHS),
         geoKey('ю', 2, 9, RUSSIAN_ROW_WIDTHS),
     )
 

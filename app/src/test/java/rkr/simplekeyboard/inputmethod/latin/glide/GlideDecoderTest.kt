@@ -109,6 +109,39 @@ class GlideDecoderTest {
     }
 
     @Test
+    fun aTwinlessDoubledWordDecodesFromALoopFreePath() {
+        // Without сәләм in the inventory, the loop-free path over с-ә-л-ә-м belongs to сәлләм
+        // alone, so it wins over a same-bucket word with another shape.
+        val decoder = decoderOf(
+            listOf(
+                "сәлләм" to 36L,
+                "салым" to 7466L,
+            ),
+        )
+        assertEquals("сәлләм", decodeWords(decoder, idealPath("сәлләм"))[0])
+        assertEquals("сәлләм", decodeWords(decoder, idealPath("сәлләм", withLoop = true))[0])
+        // The loop-free path scores exactly as the undoubled word would on it.
+        val doubled = GlideResult()
+        decoder.decode(idealPath("сәләм"), doubled)
+        assertEquals("сәлләм", doubled.words[0])
+        val plain = GlideResult()
+        decoderOf(listOf("сәләм" to 36L, "салым" to 7466L)).decode(idealPath("сәләм"), plain)
+        assertEquals(plain.scores[0], doubled.scores[0], 0f)
+    }
+
+    @Test
+    fun aDoubledWordWithATwinStillLosesTheLoopFreePathToIt() {
+        // The twin is the rarer word here, so frequency alone would pick the doubled one.
+        val decoder = decoderOf(
+            listOf(
+                "алла" to 7466L,
+                "ала" to 36L,
+            ),
+        )
+        assertEquals("ала", decodeWords(decoder, idealPath("алла"))[0])
+    }
+
+    @Test
     fun emptyDegenerateAndPrunedInputsYieldNoCandidates() {
         val decoder = decoderOf(listOf("сәләм" to 36L, "салым" to 7466L))
         // Empty path.

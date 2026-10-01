@@ -73,8 +73,7 @@ class GlideRecoveryCalibrationTest {
     }
 
     private fun selectWords(): List<String> {
-        val letters = HashSet<Int>()
-        for (key in GlideTestFixtures.tatarRawKeys()) letters.add(key.codePoint)
+        val letters = byLetter.keys
         val dictionary = HashSet(vocabulary)
         val selected = sortedSetOf<String>()
         for (word in vocabulary) {
@@ -104,6 +103,44 @@ class GlideRecoveryCalibrationTest {
         val centerY: Int get() = (top + bottom) / 2
     }
 
+    /**
+     * Letter -> key rectangle of the fixture, every long-press letter without a key of its own on
+     * its base key's rectangle (mirror of `alias_bases` and `letters_by_code_point`).
+     */
+    private val byLetter: Map<Int, Rect> by lazy {
+        val keys = GlideTestFixtures.tatarRawKeys()
+        val rects = HashMap<Int, Rect>()
+        for (key in keys) rects[key.codePoint] = Rect(key.left, key.top, key.right, key.bottom)
+        val bases = HashMap<Int, MutableSet<Int>>()
+        for (key in keys) {
+            for (moreKey in key.moreKeyCodePoints) {
+                val partner = Character.toLowerCase(moreKey)
+                if (!Character.isLetter(partner) || partner in rects) continue
+                bases.getOrPut(partner) { HashSet() }.add(key.codePoint)
+            }
+        }
+        val result = HashMap(rects)
+        for ((alias, candidates) in bases) {
+            check(candidates.size == 1) { "an alias on several keys fails the generator" }
+            result[alias] = rects.getValue(candidates.first())
+        }
+        result
+    }
+
+    /** Two adjacent letters on one key: a doubled letter, or a letter and its alias. */
+    private fun hasDoubledKey(word: String): Boolean {
+        var previous: Rect? = null
+        var offset = 0
+        while (offset < word.length) {
+            val codePoint = word.codePointAt(offset)
+            val rect = byLetter.getValue(Character.toLowerCase(codePoint))
+            if (rect === previous) return true
+            previous = rect
+            offset += Character.charCount(codePoint)
+        }
+        return false
+    }
+
     private class GeneratedPath(val xs: IntArray, val ys: IntArray, val ts: IntArray, val drewLoop: Boolean) {
         /** The word of the set row this path was generated for (rows outnumber words). */
         var rowWord: String = ""
@@ -116,18 +153,11 @@ class GlideRecoveryCalibrationTest {
         cutModulus: Long = CUT_MODULUS,
         wanderDivisor: Int = WANDER_DIVISOR,
     ): GeneratedPath {
-        val byLetter = HashMap<Int, Rect>()
-        for (key in GlideTestFixtures.tatarRawKeys()) {
-            byLetter[key.codePoint] = Rect(key.left, key.top, key.right, key.bottom)
-        }
         val minWidth = GlideTestFixtures.tatarRawKeys().minOf { it.right - it.left }
         val radius = GlideTestFixtures.tatarKeyRadius()
 
         val codePoints = word.codePoints().toArray()
-        var hasDouble = false
-        for (i in 1 until codePoints.size) {
-            if (codePoints[i] == codePoints[i - 1]) hasDouble = true
-        }
+        val hasDouble = hasDoubledKey(word)
         var stream = splitmix64(GLIDE_SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
         // The loop is the CALLER's decision (the set carries both variants of a doubled word), so
         // the stream feeds the step draw at once.
@@ -143,10 +173,10 @@ class GlideRecoveryCalibrationTest {
         val vertexY = IntArray(5 * codePoints.size)
         val vertexIsLoop = BooleanArray(5 * codePoints.size)
         var vertexCount = 0
-        var previous = -1
+        var previous: Rect? = null
         for (codePoint in codePoints) {
             val rect = byLetter.getValue(Character.toLowerCase(codePoint))
-            if (loop && codePoint == previous) {
+            if (loop && rect === previous) {
                 val dx = (rect.right - rect.left) / 4
                 val dy = (rect.bottom - rect.top) / 4
                 vertexX[vertexCount] = rect.centerX + dx
@@ -164,7 +194,7 @@ class GlideRecoveryCalibrationTest {
                 vertexY[vertexCount] = rect.centerY
                 vertexCount++
             }
-            previous = codePoint
+            previous = rect
         }
 
         // Corner cutting: decided on the original vertices, applied to copies.
@@ -260,7 +290,7 @@ class GlideRecoveryCalibrationTest {
             // A doubled word contributes BOTH variants — the no-jog row first, then the jog row —
             // drawn from the same word stream (mirror of glide_pack.generate_set).
             appendRow(word, generateGesture(word, false, jitterPercent, cutModulus, wanderDivisor), rendered, paths)
-            if (hasDoubledLetter(word)) {
+            if (hasDoubledKey(word)) {
                 appendRow(word, generateGesture(word, true, jitterPercent, cutModulus, wanderDivisor), rendered, paths)
             }
         }
@@ -332,7 +362,7 @@ class GlideRecoveryCalibrationTest {
                 "buildMs=${"%.1f".format(java.util.Locale.ROOT, buildMs)}",
         )
         assertTrue(index.wordCount > 100_000)
-        assertTrue("skipped words are the more-key-only-letter minority", index.skippedWordCount < 5_000)
+        assertTrue("skipped words are the minority with a letter neither on a key nor aliased", index.skippedWordCount < 5_000)
         assertTrue(index.maxFrequency > 0)
     }
 
@@ -350,10 +380,14 @@ class GlideRecoveryCalibrationTest {
         // Per-class split (the doubled-letter evidence rule): plain words, doubled words whose
         // gesture drew the loop, and doubled words whose gesture did not — the no-jog class split
         // again by whether the undoubled twin exists in the dictionary (a twinless doubled word is
-        // the only shape candidate on its path and keeps winning, which is correct).
-        val classNames = arrayOf("plain", "doubled_jog", "doubled_nojog_twinless", "doubled_nojog_twin")
-        val classHeldCount = IntArray(4)
-        val classHeldTop = Array(4) { IntArray(2) }
+        // the only shape candidate on its path and keeps winning, which is correct). Words with an
+        // alias letter (a long-press letter decoded on its base key) form a fifth class, so the
+        // other four keep their membership.
+        val classNames = arrayOf(
+            "plain", "doubled_jog", "doubled_nojog_twinless", "doubled_nojog_twin", "alias",
+        )
+        val classHeldCount = IntArray(CLASS_COUNT)
+        val classHeldTop = Array(CLASS_COUNT) { IntArray(2) }
         val timings = ArrayList<Long>()
         val candidates = ArrayList<Int>()
         val scored = ArrayList<Int>()
@@ -377,6 +411,7 @@ class GlideRecoveryCalibrationTest {
                 if (top1) heldTop[0]++
                 if (top3) heldTop[1]++
                 val clazz = when {
+                    hasAliasLetter(word) -> 4
                     !hasDoubledLetter(word) -> 0
                     path.drewLoop -> 1
                     twinInDictionary(word) -> 3
@@ -417,9 +452,9 @@ class GlideRecoveryCalibrationTest {
                 "candidates_p95=$candidateP95 candidates_max=$candidateMax scored_p95=$scoredP95",
         )
         // The per-class printout of the doubled-letter evidence rule.
-        val classTop1 = DoubleArray(4)
-        val classTop3 = DoubleArray(4)
-        for (clazz in 0 until 4) {
+        val classTop1 = DoubleArray(CLASS_COUNT)
+        val classTop3 = DoubleArray(CLASS_COUNT)
+        for (clazz in 0 until CLASS_COUNT) {
             if (classHeldCount[clazz] == 0) continue
             classTop1[clazz] = classHeldTop[clazz][0].toDouble() / classHeldCount[clazz] * 100.0
             classTop3[clazz] = classHeldTop[clazz][1].toDouble() / classHeldCount[clazz] * 100.0
@@ -458,6 +493,15 @@ class GlideRecoveryCalibrationTest {
         assertTrue(
             "doubled words must still decode when the path jogs (floor 70%)",
             classTop1[1] >= 70.0,
+        )
+        // A twinless doubled word also scores against its loop-free path, which no other word owns.
+        assertTrue(
+            "twinless no-jog top-1 regressed past the 1.0 pp tolerance (first run 77.6119)",
+            classTop1[2] >= 77.6119 - 1.0,
+        )
+        assertTrue(
+            "twinless no-jog top-3 regressed past the 1.0 pp tolerance (first run 83.5821)",
+            classTop3[2] >= 83.5821 - 1.0,
         )
     }
 
@@ -597,6 +641,18 @@ class GlideRecoveryCalibrationTest {
             splitmix64(SPLIT_SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8))), 2L,
         ) == 1L
 
+    /** Class split: the word carries a letter that has no key of its own on the fixture. */
+    private fun hasAliasLetter(word: String): Boolean {
+        val keyLetters = GlideTestFixtures.tatarRawKeys().mapTo(HashSet()) { it.codePoint }
+        var offset = 0
+        while (offset < word.length) {
+            val codePoint = word.codePointAt(offset)
+            if (Character.toLowerCase(codePoint) !in keyLetters) return true
+            offset += Character.charCount(codePoint)
+        }
+        return false
+    }
+
     /** Class split: the word carries a doubled letter (adjacent equal code points). */
     private fun hasDoubledLetter(word: String): Boolean {
         var previous = -1
@@ -654,10 +710,13 @@ class GlideRecoveryCalibrationTest {
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts). The
         // set carries both variants of every doubled word (rows outnumber words).
-        private const val SET_SIZE = 4498
-        private const val SET_BYTES = 10113092
+        private const val SET_SIZE = 4531
+        private const val SET_BYTES = 10195627
         private const val SET_SHA256 =
-            "d5a729e68453d6d6c6373f2c44e58a5f61c26dc90f9629ab388c1595a9d27fe0"
+            "7c497d92be0e1a31741254de827b37004b13f79f1335a6d6f8a3e71916606a6b"
+
+        // The per-class split of gatesG1AndG2OnTheRealDictionary.
+        private const val CLASS_COUNT = 5
 
         // Recovery and host-latency gates.
         private const val G1_TOP3_MIN = 60.0

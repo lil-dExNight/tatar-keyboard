@@ -45,8 +45,8 @@ EXPECTED_ENTRY_COUNT = typo_pack.EXPECTED_ENTRY_COUNT
 GLIDE_SEED = 20260924
 # Word selection (mirrored bit-for-bit by the JVM calibration test): every eval-file token and
 # every dictionary word with ``splitmix64(GLIDE_SEED ^ fnv1a64(word)) % DICT_MODULUS == 0``
-# (about 1/40), each of >= 5 code points, all letters on keys, present in the dictionary; the
-# union is sorted by code point, one gesture per word.
+# (about 1/40), each of >= 5 code points, all letters on keys or aliases of a key, present in the
+# dictionary; the union is sorted by code point, one gesture per word.
 MIN_WORD_CODE_POINTS = 5
 DICT_MODULUS = 40
 # Vertical model (the x model is typo_pack's): the default 5-row Tatar keyboard (kbd_tatar.xml)
@@ -153,6 +153,61 @@ def read_glide_geometry(layout_dir: Path) -> list[_Rect]:
     return rects
 
 
+def alias_bases(
+    directed_pairs: Sequence[tuple[int, Sequence[int]]], letters: frozenset[int]
+) -> dict[int, int]:
+    """Alias letter -> base letter: every long-press letter without a key of its own.
+
+    Base and partners are folded through ``typo_pack._normalize_letter``, so the ``%`` marker of
+    ``moreKeys="<letter>,%"`` and any non-letter drop out, as in ``build_neighbor_map``. A letter
+    that is the long press of two keys raises, so a layout change cannot pick a base silently.
+    """
+    bases: dict[int, set[int]] = {}
+    for base_raw, partners_raw in directed_pairs:
+        base = typo_pack._normalize_letter(base_raw)
+        if base is None or base not in letters:
+            continue
+        for partner_raw in partners_raw:
+            partner = typo_pack._normalize_letter(partner_raw)
+            if partner is None or partner in letters:
+                continue
+            bases.setdefault(partner, set()).add(base)
+    aliases: dict[int, int] = {}
+    for alias, candidates in sorted(bases.items()):
+        if len(candidates) != 1:
+            names = ", ".join(sorted(chr(base) for base in candidates))
+            raise GlidePackError(f"alias {chr(alias)} is the long press of several keys: {names}")
+        aliases[alias] = next(iter(candidates))
+    return aliases
+
+
+def read_layout_aliases(layout_dir: Path, rects: Sequence[_Rect]) -> dict[int, int]:
+    """Alias letter -> base letter of the Tatar layout, read from its long-press pairs."""
+    directed: list[tuple[int, list[int]]] = []
+    for name in typo_pack._TATAR_ROWKEY_FILES:
+        path = layout_dir / name
+        if not path.is_file():
+            raise GlidePackError(f"layout resource is missing: {path}")
+        directed.extend(typo_pack._read_directed_pairs(path))
+    return alias_bases(directed, frozenset(rect.code_point for rect in rects))
+
+
+def letters_by_code_point(
+    rects: Sequence[_Rect], aliases: dict[int, int] | None = None
+) -> dict[int, _Rect]:
+    """Letter -> key rectangle, with every alias letter on its base key's rectangle."""
+    by_letter = {rect.code_point: rect for rect in rects}
+    for alias, base in (aliases or {}).items():
+        by_letter[alias] = by_letter[base]
+    return by_letter
+
+
+def _has_double_key(word: str, by_letter: dict[int, _Rect]) -> bool:
+    """True when two adjacent letters sit on one key (a doubled letter, or a letter and its alias)."""
+    keys = [by_letter[ord(char.lower())].code_point for char in word]
+    return any(keys[i] == keys[i - 1] for i in range(1, len(keys)))
+
+
 def key_radius(rects: Sequence[_Rect]) -> int:
     """min over keys of min(width, height) -- the location channel's scale reference."""
     return min(min(rect.right - rect.left, rect.bottom - rect.top) for rect in rects)
@@ -252,7 +307,7 @@ def generate_gesture(
     ``draw_loop`` is the caller's choice, not a draw: the set carries both variants of a doubled
     word, and the stream feeds the step draw first.
     """
-    has_double = any(word[i] == word[i - 1] for i in range(1, len(word)))
+    has_double = _has_double_key(word, by_letter)
     stream = splitmix64(seed ^ fnv1a64(word.encode("utf-8")))
     draw_loop = draw_loop and has_double
     # The sampling step references the narrowest letter-key width (the bottom row's 8.711%p
@@ -344,8 +399,9 @@ def generate_set(
     rects: Sequence[_Rect],
     *,
     seed: int = GLIDE_SEED,
+    aliases: dict[int, int] | None = None,
 ) -> tuple[str, bytes]:
-    by_letter = {rect.code_point: rect for rect in rects}
+    by_letter = letters_by_code_point(rects, aliases)
     radius = key_radius(rects)
     rows: list[str] = []
     for word in words:
@@ -353,7 +409,7 @@ def generate_set(
         # looped path): the no-jog row first, then the jog row, from the same word stream, so
         # the pair differs only in the detour.
         rows.append(render_gesture(word, generate_gesture(word, by_letter, radius, seed=seed)))
-        if any(word[i] == word[i - 1] for i in range(1, len(word))):
+        if _has_double_key(word, by_letter):
             rows.append(
                 render_gesture(
                     word, generate_gesture(word, by_letter, radius, seed=seed, draw_loop=True),
@@ -412,12 +468,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 expected_entry_count=EXPECTED_ENTRY_COUNT,
             )
             rects = read_glide_geometry(args.layout_dir)
-            letters = frozenset(rect.code_point for rect in rects)
+            aliases = read_layout_aliases(args.layout_dir, rects)
+            letters = frozenset(letters_by_code_point(rects, aliases))
             selected = select_words(words, args.eval_words, letters)
-            _, data = generate_set(selected, rects)
+            _, data = generate_set(selected, rects, aliases=aliases)
             write_atomic(args.output, data)
             _print_json(
                 {
+                    "aliases": "".join(chr(alias) for alias in sorted(aliases)),
                     "dict_modulus": DICT_MODULUS,
                     "key_radius": key_radius(rects),
                     "letter_keys": len(rects),

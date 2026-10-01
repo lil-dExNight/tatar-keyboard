@@ -36,8 +36,11 @@ class GlideDecoderHostGeometryReuseTest {
     /** Shifted, unshifted and search-action keyboards of one layout: three separate builds. */
     private fun sameLayoutBuilds(): List<GlideKeyGeometry> {
         val keys = GlideTestFixtures.tatarRawKeys()
-        val shifted = keys.map {
-            GlideKeyGeometry.RawKey(Character.toUpperCase(it.codePoint), it.left, it.top, it.right, it.bottom)
+        val shifted = keys.map { key ->
+            GlideKeyGeometry.RawKey(
+                Character.toUpperCase(key.codePoint), key.left, key.top, key.right, key.bottom,
+                IntArray(key.moreKeyCodePoints.size) { Character.toUpperCase(key.moreKeyCodePoints[it]) },
+            )
         }
         return listOf(
             GlideKeyGeometry.build(shifted),

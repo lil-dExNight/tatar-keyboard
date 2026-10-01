@@ -160,6 +160,69 @@ class WordSelectionTest(unittest.TestCase):
                 )
 
 
+class AliasTest(unittest.TestCase):
+    """Long-press letters without a key of their own resolve to their base key."""
+
+    def _row_file(self, directory: Path, keys: str) -> Path:
+        path = directory / "rowkeys_fixture.xml"
+        path.write_text(
+            '<merge xmlns:latin="http://schemas.android.com/apk/res-auto">'
+            f"{keys}</merge>",
+            encoding="utf-8",
+        )
+        return path
+
+    def test_marker_and_digit_are_not_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._row_file(
+                Path(directory),
+                '<switch><case latin:showNumberRow="true">'
+                '<Key latin:keySpec="е" latin:moreKeys="ё" /></case><default>'
+                '<Key latin:keySpec="е" latin:moreKeys="ё,%" latin:additionalMoreKeys="5" />'
+                '<Key latin:keySpec="д" latin:moreKeys="7,%" />'
+                "</default></switch>",
+            )
+            pairs = typo_pack._read_directed_pairs(path)
+        self.assertIn((ord("е"), [ord("ё"), ord("%")]), pairs)
+        aliases = pack.alias_bases(pairs, FIXTURE_LETTERS)
+        self.assertEqual(aliases, {ord("ё"): ord("е")})
+
+    def test_a_letter_with_its_own_key_is_never_an_alias(self) -> None:
+        aliases = pack.alias_bases([(ord("а"), [ord("б"), ord("ә")])], FIXTURE_LETTERS)
+        self.assertEqual(aliases, {ord("ә"): ord("а")})
+
+    def test_an_alias_on_two_keys_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._row_file(
+                Path(directory),
+                '<Key latin:keySpec="а" latin:moreKeys="ә" />'
+                '<Key latin:keySpec="д" latin:moreKeys="ә" />',
+            )
+            pairs = typo_pack._read_directed_pairs(path)
+        with self.assertRaises(pack.GlidePackError):
+            pack.alias_bases(pairs, FIXTURE_LETTERS)
+
+    def test_alias_words_map_onto_the_base_key(self) -> None:
+        aliases = {ord("ё"): ord("е")}
+        by_letter = pack.letters_by_code_point(FIXTURE_RECTS, aliases)
+        self.assertIs(by_letter[ord("ё")], FIXTURE_BY_LETTER[ord("е")])
+        with tempfile.TemporaryDirectory() as directory:
+            eval_path = Path(directory) / "eval.txt"
+            eval_path.write_text("\n", encoding="utf-8")
+            selected = pack.select_words(
+                ["абвёг", "абвъг"], eval_path, frozenset(by_letter), dict_modulus=1
+            )
+        self.assertEqual(selected, ["абвёг"])
+        # A letter followed by its alias is the same key twice: the set carries both variants.
+        rendered, _ = pack.generate_set(["вгдеёа"], FIXTURE_RECTS, aliases=aliases)
+        self.assertEqual(len(rendered.splitlines()), 2)
+        # The alias gesture is the base-letter gesture's geometry (only the word stream differs).
+        self.assertEqual(
+            pack._ideal_vertices("абвёг", by_letter, False),
+            pack._ideal_vertices("абвег", by_letter, False),
+        )
+
+
 class NoiseModelTest(unittest.TestCase):
     def test_gesture_is_deterministic(self) -> None:
         first = pack.generate_gesture("абвагд", FIXTURE_BY_LETTER, FIXTURE_RADIUS)
@@ -245,17 +308,24 @@ class CommittedInputsSmokeTest(unittest.TestCase):
     def test_real_build_matches_recorded_set_identity(self) -> None:
         words = typo_pack.read_dictionary_words(DICTIONARY)
         rects = pack.read_glide_geometry(LAYOUT_DIR)
-        letters = frozenset(rect.code_point for rect in rects)
+        aliases = pack.read_layout_aliases(LAYOUT_DIR, rects)
+        letters = frozenset(pack.letters_by_code_point(rects, aliases))
         selected = pack.select_words(words, EVAL_WORDS, letters)
-        _, data = pack.generate_set(selected, rects)
+        _, data = pack.generate_set(selected, rects, aliases=aliases)
         # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values.
         # The set carries both variants of every doubled word, so there are more rows than words.
-        self.assertEqual(len(selected), 4498)
-        self.assertEqual(len(data), 10113092)
+        self.assertEqual(len(selected), 4531)
+        self.assertEqual(len(data), 10195627)
         self.assertEqual(
             sha256_bytes(data),
-            "d5a729e68453d6d6c6373f2c44e58a5f61c26dc90f9629ab388c1595a9d27fe0",
+            "7c497d92be0e1a31741254de827b37004b13f79f1335a6d6f8a3e71916606a6b",
         )
+
+    @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
+    def test_tatar_layout_aliases_are_the_hard_sign_and_yo(self) -> None:
+        rects = pack.read_glide_geometry(LAYOUT_DIR)
+        aliases = pack.read_layout_aliases(LAYOUT_DIR, rects)
+        self.assertEqual(aliases, {ord("ъ"): ord("ь"), ord("ё"): ord("е")})
 
 
 class CliTest(unittest.TestCase):

@@ -33,11 +33,13 @@ import kotlin.math.sqrt
  *    doubled-letter loop detour (-1 when the word has no doubled letter) — the length channel
  *    of the pruner is then two float reads per candidate;
  *  - [pairOffsets]/[pairEntries]: CSR buckets keyed by firstKey x lastKey, entry indices in
- *    dictionary order.
+ *    dictionary order;
+ *  - [twinless]: a bit per entry, set on a word with a doubled key whose collapsed key sequence
+ *    is no other indexed word, so its plain path belongs to nobody else.
  *
- * Words with a letter the layout has no key for (on the Tatar layout: letters reachable only
- * by long press) are not indexed and can never be glide candidates; [skippedWordCount] counts
- * them. [retainedByteEstimate] reports the index's heap size.
+ * Words with a letter that has neither a key nor an alias on the layout (see
+ * [GlideKeyGeometry.build]) are not indexed and can never be glide candidates; [skippedWordCount]
+ * counts them. [retainedByteEstimate] reports the index's heap size.
  */
 class GlideWordIndex private constructor(
     val wordCount: Int,
@@ -51,12 +53,13 @@ class GlideWordIndex private constructor(
     private val loopLengths: FloatArray,
     private val pairOffsets: IntArray,
     private val pairEntries: IntArray,
+    private val twinless: LongArray,
 ) {
     /** Estimated retained heap of the index, in bytes (array headers excluded). */
     val retainedByteEstimate: Long
         get() = keySeqStarts.size * 4L + keySeqPool.size + frequencies.size * 4L +
             plainLengths.size * 4L + loopLengths.size * 4L + pairOffsets.size * 4L +
-            pairEntries.size * 4L
+            pairEntries.size * 4L + twinless.size * 8L
 
     /** Start (inclusive) of the pair bucket's entry range in the CSR table. */
     fun pairRangeStart(startKeyIndex: Int, endKeyIndex: Int): Int =
@@ -86,6 +89,13 @@ class GlideWordIndex private constructor(
 
     /** Looped ideal-path length of [entry], or -1 when the word has no doubled letter. */
     fun loopLengthAt(entry: Int): Float = loopLengths[entry]
+
+    /**
+     * True when [entry] has a doubled key and no indexed word has its key sequence with every run
+     * of one key collapsed to a single visit.
+     */
+    fun isTwinlessAt(entry: Int): Boolean =
+        (twinless[entry ushr 6] ushr (entry and 63)) and 1L != 0L
 
     companion object {
         /**
@@ -194,10 +204,100 @@ class GlideWordIndex private constructor(
                     pairEntries[j + 1] = entry
                 }
             }
+            val twinless = twinlessBits(keySeqStarts, keySeqPool, loopLengths, entryCount)
             return GlideWordIndex(
                 wordCount, skipped, maxFrequency, keyCount, keySeqStarts, keySeqPool,
-                frequencies, plainLengths, loopLengths, pairOffsets, pairEntries,
+                frequencies, plainLengths, loopLengths, pairOffsets, pairEntries, twinless,
             )
+        }
+
+        /**
+         * The twin bit set. Every indexed entry without a doubled key goes into an
+         * open-addressing table keyed by the hash of its key sequence (linear probing, load
+         * <= 1/2); every doubled entry then probes with the hash of its collapsed sequence, and a
+         * hit counts only after a full comparison. Key sequences rather than strings, so alias
+         * twins and personal words count too.
+         */
+        private fun twinlessBits(
+            keySeqStarts: IntArray,
+            keySeqPool: ByteArray,
+            loopLengths: FloatArray,
+            entryCount: Int,
+        ): LongArray {
+            val bits = LongArray((entryCount + 63) ushr 6)
+            var plainCount = 0
+            var doubledCount = 0
+            for (entry in 0 until entryCount) {
+                if (keySeqStarts[entry + 1] <= keySeqStarts[entry]) continue
+                if (loopLengths[entry] >= 0f) doubledCount++ else plainCount++
+            }
+            if (doubledCount == 0) return bits
+            var capacity = 16
+            while (capacity < plainCount * 2) capacity = capacity shl 1
+            val mask = capacity - 1
+            val table = IntArray(capacity) { -1 }
+            for (entry in 0 until entryCount) {
+                val start = keySeqStarts[entry]
+                val end = keySeqStarts[entry + 1]
+                if (end <= start || loopLengths[entry] >= 0f) continue
+                var slot = collapsedHash(keySeqPool, start, end) and mask
+                while (table[slot] >= 0) slot = (slot + 1) and mask
+                table[slot] = entry
+            }
+            for (entry in 0 until entryCount) {
+                val start = keySeqStarts[entry]
+                val end = keySeqStarts[entry + 1]
+                if (end <= start || loopLengths[entry] < 0f) continue
+                var slot = collapsedHash(keySeqPool, start, end) and mask
+                var twin = false
+                while (table[slot] >= 0) {
+                    val candidate = table[slot]
+                    if (collapsedEquals(
+                            keySeqPool, start, end,
+                            keySeqStarts[candidate], keySeqStarts[candidate + 1],
+                        )
+                    ) {
+                        twin = true
+                        break
+                    }
+                    slot = (slot + 1) and mask
+                }
+                if (!twin) bits[entry ushr 6] = bits[entry ushr 6] or (1L shl (entry and 63))
+            }
+            return bits
+        }
+
+        /** FNV-1a over the key sequence with every run of one key visited once. */
+        private fun collapsedHash(keySeq: ByteArray, start: Int, end: Int): Int {
+            var hash = -0x7ee3623b // 0x811C9DC5
+            var previous = -1
+            for (position in start until end) {
+                val key = keySeq[position].toInt() and 0xff
+                if (key == previous) continue
+                hash = (hash xor key) * 0x01000193
+                previous = key
+            }
+            return hash xor (hash ushr 16)
+        }
+
+        /** True when [start, end) collapsed equals the run-free sequence [twinStart, twinEnd). */
+        private fun collapsedEquals(
+            keySeq: ByteArray,
+            start: Int,
+            end: Int,
+            twinStart: Int,
+            twinEnd: Int,
+        ): Boolean {
+            var twin = twinStart
+            var previous = -1
+            for (position in start until end) {
+                val key = keySeq[position].toInt()
+                if (key == previous) continue
+                if (twin >= twinEnd || keySeq[twin].toInt() != key) return false
+                twin++
+                previous = key
+            }
+            return twin == twinEnd
         }
 
         /**

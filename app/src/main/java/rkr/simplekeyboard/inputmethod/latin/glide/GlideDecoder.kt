@@ -33,8 +33,9 @@ import kotlin.math.sqrt
  *     select up to four buckets of the [GlideWordIndex].
  *  2. Length pruning: a candidate stays only when its plain or looped ideal-path length lies
  *     within [GlideConstants.lengthThreshold] x key radius of the gesture's length.
- *  3. Scoring against the candidate's single ideal path (the looped variant when the word has
- *     a doubled letter, the plain one otherwise): shape distance (bbox-normalized pointwise L1
+ *  3. Scoring against the candidate's ideal path (the looped variant when the word has a
+ *     doubled letter, the plain one otherwise; a twinless doubled word keeps the better of
+ *     both, see [scoreCandidate]): shape distance (bbox-normalized pointwise L1
  *     over the resampled paths, Gaussian with [GlideConstants.shapeStd]) x location distance
  *     (absolute pointwise L1/2, Gaussian with [GlideConstants.locationStdFactor] x key radius)
  *     x a frequency weight. The confidence competes for the top-N; cheap fail-fast checks
@@ -267,15 +268,22 @@ class GlideDecoder(
         ) {
             return topCount
         }
-        var best = Float.POSITIVE_INFINITY
-        // A word with a doubled letter scores against its looped ideal path only, so the doubled
-        // letter needs a loop or dwell in the user path. Its plain variant equals the undoubled
-        // twin's path, and frequency alone would pick between the two words.
-        val loopedOnly = index.loopLengthAt(entry) >= 0f
-        best = scoreVariant(
-            index, entry, topCount, loopedOnly, shapeFactor, locationFactor,
+        // A word with a doubled letter scores against its looped ideal path, so the doubled letter
+        // needs a loop or dwell in the user path: its plain variant equals the undoubled twin's
+        // path, and frequency alone would pick between the two words. When no indexed word owns
+        // that plain path (the twin bit), the word also scores against it and keeps the better.
+        val doubled = index.loopLengthAt(entry) >= 0f
+        var best = scoreVariant(
+            index, entry, topCount, doubled, shapeFactor, locationFactor,
             shapeInvTwoSigmaSq, locationInvTwoSigmaSq, frequencyWeight, samples,
         )
+        if (doubled && index.isTwinlessAt(entry)) {
+            val plain = scoreVariant(
+                index, entry, topCount, false, shapeFactor, locationFactor,
+                shapeInvTwoSigmaSq, locationInvTwoSigmaSq, frequencyWeight, samples,
+            )
+            if (plain < best) best = plain
+        }
         lastScoredCount++
         if (best == Float.POSITIVE_INFINITY) return topCount
         if (topCount == TOP_N && best >= topScores[TOP_N - 1]) return topCount
@@ -300,8 +308,8 @@ class GlideDecoder(
     }
 
     /**
-     * Scores one candidate against its single ideal path ([loopedOnly] selects the doubled-letter
-     * loop) and returns its confidence, or POSITIVE_INFINITY when a fail-fast check rejects it.
+     * Scores one candidate against one ideal path ([loopedOnly] selects the doubled-letter loop)
+     * and returns its confidence, or POSITIVE_INFINITY when a fail-fast check rejects it.
      */
     private fun scoreVariant(
         index: GlideWordIndex,

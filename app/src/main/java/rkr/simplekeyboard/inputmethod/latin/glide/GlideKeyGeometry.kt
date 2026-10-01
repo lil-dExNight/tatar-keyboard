@@ -36,13 +36,29 @@ class GlideKeyGeometry private constructor(
     private val centerYs: FloatArray,
     private val halfWidths: FloatArray,
     private val halfHeights: FloatArray,
+    private val aliasLetters: IntArray,
+    private val aliasKeys: IntArray,
     val keyRadius: Float,
 ) {
     val keyCount: Int get() = letters.size
     val isEmpty: Boolean get() = letters.isEmpty()
 
-    /** Key index of [codePoint] (already-normalized letter), or -1 when the layout has no such key. */
-    fun keyIndexOfLetter(codePoint: Int): Int = Arrays.binarySearch(letters, codePoint)
+    /** Number of alias letters; alias [slot]'s letter and key are [aliasLetterAt] and [aliasKeyAt]. */
+    val aliasCount: Int get() = aliasLetters.size
+
+    fun aliasLetterAt(slot: Int): Int = aliasLetters[slot]
+    fun aliasKeyAt(slot: Int): Int = aliasKeys[slot]
+
+    /**
+     * Key index of [codePoint] (already-normalized letter): its own key, else the base key of an
+     * alias, else -1.
+     */
+    fun keyIndexOfLetter(codePoint: Int): Int {
+        val own = Arrays.binarySearch(letters, codePoint)
+        if (own >= 0) return own
+        val alias = Arrays.binarySearch(aliasLetters, codePoint)
+        return if (alias >= 0) aliasKeys[alias] else -1
+    }
 
     fun centerX(keyIndex: Int): Float = centerXs[keyIndex]
     fun centerY(keyIndex: Int): Float = centerYs[keyIndex]
@@ -50,13 +66,15 @@ class GlideKeyGeometry private constructor(
     fun halfHeight(keyIndex: Int): Float = halfHeights[keyIndex]
 
     /**
-     * True when [other] has the same letters at the same rectangles, so a decoder built for one
-     * decodes identically with the other.
+     * True when [other] has the same letters at the same rectangles and the same aliases, so a
+     * decoder built for one decodes identically with the other.
      */
     fun sameLayoutAs(other: GlideKeyGeometry): Boolean =
         this === other || (
             keyRadius == other.keyRadius &&
                 letters.contentEquals(other.letters) &&
+                aliasLetters.contentEquals(other.aliasLetters) &&
+                aliasKeys.contentEquals(other.aliasKeys) &&
                 centerXs.contentEquals(other.centerXs) &&
                 centerYs.contentEquals(other.centerYs) &&
                 halfWidths.contentEquals(other.halfWidths) &&
@@ -100,22 +118,37 @@ class GlideKeyGeometry private constructor(
         return count
     }
 
-    /** One letter key as read from the live layout: the key's code and its visible rectangle. */
+    /**
+     * One letter key as read from the live layout: the key's code, its visible rectangle and the
+     * codes of its long-press keys (digits and markers included; [build] keeps letters only).
+     */
     class RawKey(
         val codePoint: Int,
         val left: Int,
         val top: Int,
         val right: Int,
         val bottom: Int,
+        val moreKeyCodePoints: IntArray = IntArray(0),
     )
 
     companion object {
         /**
+         * The base key of an alias letter that is the long press of more than one key: on the
+         * Russian layout `һ` sits on `г` and `х`, `ә` on `а` and `э`. A letter on several keys
+         * without an entry here, or whose entry names none of those keys, gets no alias.
+         */
+        internal val ALIAS_BASES: Map<Int, Int> = mapOf(
+            0x04BB to 0x0445, // һ on х
+            0x04D9 to 0x0430, // ә on а
+        )
+
+        /**
          * Builds the table from the keys of a single keyboard element. Every code is folded to
          * its NFC lower-case form; non-code-point and non-letter keys (shift, delete, space) are
          * dropped. A letter carried by two keys keeps the first rectangle (no shipped layout has
-         * one). An empty input yields an empty geometry (radius 0), for which the decoder returns
-         * no candidates.
+         * one). A normalized long-press letter without a key of its own becomes an alias of its
+         * base key; digits and other non-letters never do. An empty input yields an empty
+         * geometry (radius 0), for which the decoder returns no candidates.
          */
         fun build(keys: List<RawKey>): GlideKeyGeometry {
             val order = ArrayList<Int>(keys.size)
@@ -166,7 +199,45 @@ class GlideKeyGeometry private constructor(
                 radius = minOf(radius, minOf(width, height).toFloat())
             }
             if (count == 0) radius = 0f
-            return GlideKeyGeometry(letters, centerXs, centerYs, halfWidths, halfHeights, radius)
+            val (aliasLetters, aliasKeys) = buildAliases(keys, letters)
+            return GlideKeyGeometry(
+                letters, centerXs, centerYs, halfWidths, halfHeights, aliasLetters, aliasKeys,
+                radius,
+            )
+        }
+
+        /**
+         * The sorted alias table: every normalized long-press letter absent from [letters],
+         * mapped to the key index of the one key carrying it, or through [ALIAS_BASES] when
+         * several keys carry it. Build-time only, so plain collections are fine here.
+         */
+        private fun buildAliases(keys: List<RawKey>, letters: IntArray): Pair<IntArray, IntArray> {
+            val bases = java.util.TreeMap<Int, java.util.TreeSet<Int>>()
+            for (key in keys) {
+                val baseLetter = normalizeLetterCodePoint(key.codePoint) ?: continue
+                val baseKey = Arrays.binarySearch(letters, baseLetter)
+                if (baseKey < 0) continue
+                for (moreKey in key.moreKeyCodePoints) {
+                    val alias = normalizeLetterCodePoint(moreKey) ?: continue
+                    if (Arrays.binarySearch(letters, alias) >= 0) continue
+                    bases.getOrPut(alias) { java.util.TreeSet() }.add(baseKey)
+                }
+            }
+            val aliasLetters = ArrayList<Int>(bases.size)
+            val aliasKeys = ArrayList<Int>(bases.size)
+            for ((alias, candidates) in bases) {
+                val key = if (candidates.size == 1) {
+                    candidates.first()
+                } else {
+                    val named = ALIAS_BASES[alias] ?: continue
+                    val namedKey = Arrays.binarySearch(letters, named)
+                    if (namedKey < 0 || namedKey !in candidates) continue
+                    namedKey
+                }
+                aliasLetters.add(alias)
+                aliasKeys.add(key)
+            }
+            return aliasLetters.toIntArray() to aliasKeys.toIntArray()
         }
 
         /**
