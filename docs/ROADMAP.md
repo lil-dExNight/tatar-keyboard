@@ -19,28 +19,22 @@ The steps listed in `HANDOFF.md` ("Open release steps") for 3.7.0 and 3.8.0.
 The full program, its tiers and per-item gates live in `research/README.md`; the per-topic
 evidence is in the documents it indexes. Work goes in this order:
 
-1. **Measurement prerequisites** — the eval-harness upgrades (composite next-word hit
-   measurement, typo-mutated held-out set, Russian held-out set, decontamination, bootstrap
-   CIs, keystroke-savings simulator), the glide generator's recalibration against real
-   gesture corpora, the device observability legs (PSS split, suggestion round trip, battery,
-   uiMode/font-scale probes), and the dev-loop speedups. (`research/prediction-engine.md`,
-   `research/glide-typing.md`, `research/optimization.md`)
-2. **Quick wins** — default-config glide recovery (alternates and refusals visible with
+1. **Quick wins** — default-config glide recovery (alternates and refusals visible with
    suggestions off; undo returns the candidate list; trail contrast per theme), the three
    contrast fixes with a contract test, balloon clamping, reduced-motion gating, onboarding
    polish, word-delete gesture, shift-cycles-case, the text-editing menu.
    (`research/ux.md`, `research/ui.md`, `research/competitor-features.md`)
-3. **Prediction and glide quality** — wider typo classes (insertion/deletion/transposition),
+2. **Prediction and glide quality** — wider typo classes (insertion/deletion/transposition),
    the stem-keyed bigram backoff (offline simulation first), corpus ingestion (HPLT, MADLAD,
    Wikipedia, Taiga, the corpus.tatar frequency lists — see the licensing note below), glide
    decoder work (confidence-aware commit, speed-adaptive weighting, the bigram channel,
    endpoint pruning, per-language constants). (`research/prediction-engine.md`,
    `research/glide-typing.md`)
-4. **Features** — text shortcuts (abbreviation → expansion), the in-memory recent-clip cell
+3. **Features** — text shortcuts (abbreviation → expansion), the in-memory recent-clip cell
    (RAM only, never stored), dynamic-color theme variant, inline autofill, backup/export of
    learned data, one-handed mode, the inline autocorrect-revert cell, persistent refused
    corrections. (`research/competitor-features.md`, `research/ui.md`, `research/ux.md`)
-5. **The lab program** — the fifth-row A/B/C protocol and the standing lab instrument; needs
+4. **The lab program** — the fifth-row A/B/C protocol and the standing lab instrument; needs
    Tatar-speaking participants. (`research/ux.md`)
 
 Decisions recorded for this program:
@@ -61,6 +55,9 @@ Decisions recorded for this program:
 
 Checks that need a person or hardware not at hand:
 
+- the new perf-ritual legs on the reference device: `suggest` (first real round-trip numbers
+  against the 32 ms budget), `battery`, `uimode`, `fontscale` (`--legs`); the uimode probe
+  answers the palette-staleness question of `research/ui.md` (UI3);
 - live Direct Boot (needs a screen-lock PIN and a reboot: type the PIN with this keyboard
   before the first unlock);
 - Telegram (typing, suggestions, autocorrect undo, glide spacing, emoji panel; the app is not
