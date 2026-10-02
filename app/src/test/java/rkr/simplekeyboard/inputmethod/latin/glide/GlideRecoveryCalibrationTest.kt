@@ -710,10 +710,10 @@ class GlideRecoveryCalibrationTest {
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts). The
         // set carries both variants of every doubled word (rows outnumber words).
-        private const val SET_SIZE = 4531
-        private const val SET_BYTES = 10195627
+        private const val SET_SIZE = 4526
+        private const val SET_BYTES = 10192400
         private const val SET_SHA256 =
-            "7c497d92be0e1a31741254de827b37004b13f79f1335a6d6f8a3e71916606a6b"
+            "acbc6d5af7869cf4273820c04aa21e696be1c97f7a37cf8151381e23267e219b"
 
         // The per-class split of gatesG1AndG2OnTheRealDictionary.
         private const val CLASS_COUNT = 5

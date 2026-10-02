@@ -460,9 +460,9 @@ class TtTypoPhaseCCalibrationTest {
         private const val PIN_CAND_W5 = 29_057
         private const val PIN_BASE_W5_SUBSET = 97_318
         private const val PIN_CAND_W5_SUBSET = 101_445
-        private const val PIN_EVAL_PREFIXES_GE4 = 7_471
-        private const val PIN_EXACT_EMPTY = 1_579
-        private const val PIN_CLASS4_FILLED = 997
+        private const val PIN_EVAL_PREFIXES_GE4 = 7_451
+        private const val PIN_EXACT_EMPTY = 1_570
+        private const val PIN_CLASS4_FILLED = 990
 
         // Pins of the same-set lift measurement.
         private const val PIN_C2_BASE_W5_WHOLE = 470

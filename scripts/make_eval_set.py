@@ -2,11 +2,14 @@
 """Build the Tatar suggestion eval set: Tatoeba sentences held out of bigram training.
 
 Input: the Tatoeba and OpenSubtitles tt dumps in ``--corpus-dir``; the training mix is rebuilt
-with ``research/corpus/make_conv_train.py`` and checked against CONV_SENTENCES_SHA256.
+with ``research/corpus/make_conv_train.py`` and checked against CONV_SENTENCES_SHA256. The two
+Leipzig tt sentence corpora in ``--leipzig-dir`` are the other bigram training inputs; they are
+checked against ``data/corpus-manifest.json`` and their normalized sentences are excluded too,
+so no eval sentence appears in any training corpus.
 Output: ``app/src/test/resources/tt_eval_sentences.txt`` (UTF-8/LF, ``#`` attribution header,
 one normalized sentence per line, byte-identical on rebuild) and a JSON report on stdout.
 Only Tatoeba lines (CC BY 2.0 FR) are written. Exits nonzero without writing output if an
-input or the converter is missing or the rebuilt training mix does not match its digest.
+input or the converter is missing or a reconstruction does not match its digest.
 """
 from __future__ import annotations
 
@@ -27,12 +30,22 @@ import dictionary_coverage as coverage  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CORPUS_DIR = ROOT / "research" / "corpus"
+DEFAULT_LEIPZIG_DIR = Path.home() / "corpora-leipzig"
 DEFAULT_WORKDIR = ROOT / "build" / "tt-suggestions"
 DEFAULT_OUT = ROOT / "app" / "src" / "test" / "resources" / "tt_eval_sentences.txt"
+CORPUS_MANIFEST = ROOT / "data" / "corpus-manifest.json"
 
 TATOEBA_FILE = "Tatoeba-v2026-07-08.tt.txt.gz"
 OPENSUBTITLES_FILE = "OpenSubtitles-v2024.tt.txt.gz"
 CONVERTER = "make_conv_train.py"
+
+# The Leipzig tt sentence corpora are the bigram table's other training inputs
+# (rebuild_assets.py); the eval set must not overlap them either. Each lives in its own
+# subdirectory of the Leipzig corpus dir, as the release tarballs unpack.
+LEIPZIG_SENTENCE_FILES = (
+    "tat_mixed_2015_1M/tat_mixed_2015_1M-sentences.txt",
+    "tat_web_2018_1M/tat_web_2018_1M-sentences.txt",
+)
 
 # Digest, size and line count of the converted training stream. Verified on every build;
 # a mismatch means the local corpus files or the converter no longer reproduce it.
@@ -71,7 +84,9 @@ HEADER_LINES = (
     "# id % 10 == 1. Tokens are normalized to NFC lowercase Tatar-alphabet words",
     "# (scripts/dictionary_coverage.py normalize_word; hugging punctuation stripped per",
     "# the dict_tokens rule), sentences kept at 3..12 surviving words, deduplicated,",
-    "# excluding any sentence whose normalized form appears in normalized train90.",
+    "# excluding any sentence whose normalized form appears in normalized train90 or in",
+    "# the normalized Leipzig tat_mixed_2015_1M / tat_web_2018_1M training sentences",
+    "# (verified against data/corpus-manifest.json).",
     "# Sample: deterministic, hash-ordered by SHA-256 of seed 20260919 + line, at most",
     "# 1000 lines, sorted by code point. Lines starting with '#' are comments.",
     "#",
@@ -112,6 +127,7 @@ class EvalBuild:
 
     lines: tuple[str, ...]
     train90_normalized: frozenset[str]
+    leipzig_normalized: frozenset[str]
     stats: dict[str, object] = field(default_factory=dict)
 
 
@@ -192,9 +208,47 @@ def run_conv_recipe(corpus_dir: Path, workdir: Path) -> ConvRecipe:
     )
 
 
+def load_leipzig_normalized(leipzig_dir: Path, manifest_path: Path) -> frozenset[str]:
+    """Normalized sentence forms of the Leipzig tt training corpora, pin-verified.
+
+    Each file is checked against ``data/corpus-manifest.json`` (size and SHA-256) before it
+    is read, like every corpus file the asset rebuild reads. Leipzig sentence files are
+    ``id<TAB>sentence`` rows.
+    """
+    if not manifest_path.is_file():
+        raise EvalSetError(f"corpus manifest is missing: {manifest_path}")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise EvalSetError(f"corpus manifest does not parse: {error}") from error
+    normalized: set[str] = set()
+    for relative in LEIPZIG_SENTENCE_FILES:
+        path = leipzig_dir / relative
+        name = path.name
+        pin = manifest.get(name)
+        if pin is None:
+            raise EvalSetError(f"corpus manifest has no pin for {name}")
+        if not path.is_file():
+            raise EvalSetError(f"Leipzig corpus input is missing: {path}")
+        raw = path.read_bytes()
+        if len(raw) != pin["size"] or hashlib.sha256(raw).hexdigest() != pin["sha256"]:
+            raise EvalSetError(
+                f"Leipzig corpus input does not match its manifest pin: {path}"
+            )
+        for line in raw.decode("utf-8").split("\n"):
+            content = line.split("\t", 1)
+            if len(content) != 2:
+                continue
+            words = normalize_sentence(content[1])
+            if words:
+                normalized.add(" ".join(words))
+    return frozenset(normalized)
+
+
 def build_eval_set(
     corpus_dir: Path,
     workdir: Path,
+    leipzig_dir: Path = DEFAULT_LEIPZIG_DIR,
     limit: int = DEFAULT_LIMIT,
     min_words: int = DEFAULT_MIN_WORDS,
     max_words: int = DEFAULT_MAX_WORDS,
@@ -204,7 +258,8 @@ def build_eval_set(
     Candidates are Tatoeba rows (the first ``tatoeba_rows`` of the stream) with ``id % 10 == 1``;
     training keeps the rest. Each is tokenized by ``normalize_sentence``; sentences outside
     [min_words, max_words] are dropped, normalized duplicates collapse (first wins), and any
-    sentence whose normalized form occurs in normalized train90 is excluded. Candidates are
+    sentence whose normalized form occurs in normalized train90 or in the normalized Leipzig
+    training sentences is excluded. Candidates are
     ordered by SHA-256 of ``"<seed>\\t<line>"`` (stable across Python versions, unlike
     ``random.sample``), the first ``limit`` are kept and sorted by code point.
     """
@@ -214,6 +269,7 @@ def build_eval_set(
         raise EvalSetError("word bounds must satisfy 0 < min <= max")
 
     recipe = run_conv_recipe(corpus_dir, workdir)
+    leipzig_normalized = load_leipzig_normalized(leipzig_dir, CORPUS_MANIFEST)
 
     train90_normalized: set[str] = set()
     for content in recipe.train90_contents:
@@ -226,6 +282,7 @@ def build_eval_set(
     dropped_length = 0
     dropped_empty = 0
     dropped_collision = 0
+    dropped_leipzig = 0
     dropped_duplicate = 0
     for content in recipe.tatoeba_heldout():
         words = normalize_sentence(content)
@@ -238,6 +295,9 @@ def build_eval_set(
         normalized = " ".join(words)
         if normalized in train90_normalized:
             dropped_collision += 1
+            continue
+        if normalized in leipzig_normalized:
+            dropped_leipzig += 1
             continue
         if normalized in seen:
             dropped_duplicate += 1
@@ -266,7 +326,9 @@ def build_eval_set(
         "dropped_no_surviving_tokens": dropped_empty,
         "dropped_word_count_outside_bounds": dropped_length,
         "dropped_normalized_train90_collision": dropped_collision,
+        "dropped_normalized_leipzig_collision": dropped_leipzig,
         "dropped_normalized_duplicate": dropped_duplicate,
+        "leipzig_normalized_sentences": len(leipzig_normalized),
         "candidates": len(candidates),
         "sample_seed": SAMPLE_SEED,
         "limit": limit,
@@ -275,7 +337,10 @@ def build_eval_set(
         "selected": len(lines),
     }
     return EvalBuild(
-        lines=lines, train90_normalized=frozenset(train90_normalized), stats=stats
+        lines=lines,
+        train90_normalized=frozenset(train90_normalized),
+        leipzig_normalized=leipzig_normalized,
+        stats=stats,
     )
 
 
@@ -308,6 +373,7 @@ def write_atomic(path: Path, data: bytes) -> None:
 def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--corpus-dir", type=Path, default=DEFAULT_CORPUS_DIR)
+    parser.add_argument("--leipzig-dir", type=Path, default=DEFAULT_LEIPZIG_DIR)
     parser.add_argument("--workdir", type=Path, default=DEFAULT_WORKDIR)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
@@ -322,6 +388,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         build = build_eval_set(
             args.corpus_dir,
             args.workdir,
+            leipzig_dir=args.leipzig_dir,
             limit=args.limit,
             min_words=args.min_words,
             max_words=args.max_words,

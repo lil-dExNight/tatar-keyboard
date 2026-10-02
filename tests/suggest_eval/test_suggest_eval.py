@@ -14,10 +14,10 @@ What is pinned and why:
 * The held-out property is checked against the reconstructed train90: no eval line may
   appear in the normalized training mix.
 
-The last two groups need the licensed corpus inputs (``research/corpus/*.txt.gz``), which
-are gitignored and therefore absent on a clean CI checkout. Those tests SKIP with an
-explicit reason when the inputs are missing; the pin and format tests above never skip, so
-a corrupted committed file fails everywhere.
+The last two groups need the licensed corpus inputs (``research/corpus/*.txt.gz``) and the
+Leipzig tt corpora (``~/corpora-leipzig``), which are gitignored and therefore absent on a
+clean CI checkout. Those tests SKIP with an explicit reason when the inputs are missing; the
+pin and format tests above never skip, so a corrupted committed file fails everywhere.
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ COVERAGE_SCRIPT = ROOT / "scripts" / "dictionary_coverage.py"
 # Changing either means a new eval set, and every baseline number derived from it must be
 # re-measured in the same commit.
 EXPECTED_LINES = 1_000
-EXPECTED_SHA256 = "d2ff0db52983028d352bbad464006f8c9552fc16b95d4cb5bdc2f724c8c0f619"
+EXPECTED_SHA256 = "96688b4bb71838f5a99d0e9fbacae27e9b223cd41c8a1b16023220bd86040c35"
 
 
 def load_module(name: str, path: Path):
@@ -64,7 +64,7 @@ def eval_lines(data: bytes) -> list[str]:
 
 
 def corpus_available() -> bool:
-    return all(
+    conv_inputs = all(
         (CORPUS_DIR / name).is_file()
         for name in (
             make_eval_set.TATOEBA_FILE,
@@ -72,6 +72,11 @@ def corpus_available() -> bool:
             make_eval_set.CONVERTER,
         )
     )
+    leipzig_inputs = all(
+        (make_eval_set.DEFAULT_LEIPZIG_DIR / name).is_file()
+        for name in make_eval_set.LEIPZIG_SENTENCE_FILES
+    )
+    return conv_inputs and leipzig_inputs
 
 
 class CommittedEvalSetTest(unittest.TestCase):
@@ -156,17 +161,21 @@ class CorpusDependentTest(unittest.TestCase):
         )
         self.assertEqual(make_eval_set.CONV_SENTENCES_LINES, build.stats["conv_rows"])
 
-    def test_no_eval_line_appears_in_reconstructed_train90(self) -> None:
+    def test_no_eval_line_appears_in_any_training_corpus(self) -> None:
         with tempfile.TemporaryDirectory() as workdir:
             build = self.build(Path(workdir))
         lines = eval_lines(read_committed())
         self.assertEqual(tuple(lines), build.lines)
-        overlap = build.train90_normalized.intersection(lines)
-        self.assertEqual(
-            set(),
-            overlap,
-            f"eval lines must not appear in the training mix: {sorted(overlap)[:5]}",
-        )
+        for label, training in (
+            ("train90", build.train90_normalized),
+            ("leipzig", build.leipzig_normalized),
+        ):
+            overlap = training.intersection(lines)
+            self.assertEqual(
+                set(),
+                overlap,
+                f"eval lines must not appear in {label}: {sorted(overlap)[:5]}",
+            )
         # Sanity: the held-out slice must actually be held out -- a non-trivial number of
         # raw Tatoeba lines went to training and to the eval pool, not all to one side.
         self.assertGreater(build.stats["tatoeba_heldout_rows"], 0)

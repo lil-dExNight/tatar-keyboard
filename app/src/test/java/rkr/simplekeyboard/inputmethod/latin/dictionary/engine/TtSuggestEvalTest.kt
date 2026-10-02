@@ -167,9 +167,9 @@ class TtSuggestEvalTest {
         assertEquals(PIN_COVERED, covered)
         assertEquals(PIN_TOP3_HITS, hits)
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
-        assertEquals("84.1730", format(coveredPct))
-        assertEquals("10.8351", format(hitPct))
-        assertEquals("12.8724", format(hitCoveredPct))
+        assertEquals("84.3137", format(coveredPct))
+        assertEquals("10.8881", format(hitPct))
+        assertEquals("12.9138", format(hitCoveredPct))
     }
 
     /**
@@ -260,25 +260,25 @@ class TtSuggestEvalTest {
     companion object {
         // Pins over the committed assets and eval set; re-pin when either changes (see class KDoc).
         private const val PIN_EVAL_LINES = 1_000
-        private const val PIN_UNIQUE_WORDS = 2_670
-        private const val PIN_PAIRS = 4_347
-        private const val PIN_COVERED = 3_659
-        private const val PIN_TOP3_HITS = 471
-        private const val PIN_CP1_WORDS = 2_670
-        private const val PIN_CP2_WORDS = 2_668
-        private const val PIN_CP3_WORDS = 2_626
+        private const val PIN_UNIQUE_WORDS = 2_658
+        private const val PIN_PAIRS = 4_335
+        private const val PIN_COVERED = 3_655
+        private const val PIN_TOP3_HITS = 472
+        private const val PIN_CP1_WORDS = 2_658
+        private const val PIN_CP2_WORDS = 2_656
+        private const val PIN_CP3_WORDS = 2_614
         // The same-stem boost only engages at >= 4 code points, so these 1-3 code-point prefix
         // counters are unaffected by it.
         private const val PIN_CP1_HITS = 64
         private const val PIN_CP2_HITS = 301
-        private const val PIN_CP3_HITS = 741
-        private const val PIN_SAMESTEM_WORDS = 1_716
-        private const val PIN_SAMESTEM_HITS = 1_078
-        private const val PIN_SAMESTEM_HITS_BOOST_OFF = 988
-        private const val PIN_SENTSTART_TOP3_HITS = 123
+        private const val PIN_CP3_HITS = 736
+        private const val PIN_SAMESTEM_WORDS = 1_708
+        private const val PIN_SAMESTEM_HITS = 1_073
+        private const val PIN_SAMESTEM_HITS_BOOST_OFF = 983
+        private const val PIN_SENTSTART_TOP3_HITS = 124
         // Unique eval words whose committed-word strip is empty WITHOUT the top-frequency
         // fallback; with the fallback the count is asserted to be 0.
-        private const val PIN_NEXTWORD_EMPTY_BEFORE = 684
+        private const val PIN_NEXTWORD_EMPTY_BEFORE = 681
 
         private lateinit var evalLines: List<String>
         private lateinit var uniqueWords: List<String>

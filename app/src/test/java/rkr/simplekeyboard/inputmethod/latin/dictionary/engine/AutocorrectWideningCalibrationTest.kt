@@ -467,7 +467,7 @@ class AutocorrectWideningCalibrationTest {
         )
 
         // Pins over the committed assets and eval set; re-pin when an input changes.
-        private const val PIN_G1A_PRESENT = 2_373
+        private const val PIN_G1A_PRESENT = 2_364
         private const val PIN_G1A_CURRENT_FIRES = 1
         private const val PIN_G1A_WIDENED_FIRES = 5
         private const val PIN_G1B_CLASS1_FIRES = 151
