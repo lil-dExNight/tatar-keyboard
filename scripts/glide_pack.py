@@ -66,22 +66,38 @@ _GRID_WIDTH = typo_pack._GEOMETRY_REFERENCE_WIDTH  # 100 000
 #   1. sampling step: step_min + draw % step_min grid units, step_min = narrowest key width /
 #      STEP_DIVISOR (sampling density varies per word, like a digitizer's rate with finger speed);
 #   2. timestamp step: TSTEP_MIN + draw % TSTEP_VAR ms per sample (the scoring ignores t);
-#   3. corner cutting: each interior non-loop vertex, with probability 1/CUT_MODULUS, moves to
-#      (P + 2V + Q) / 4 (floor division), decided on the original vertices;
-#   4. the polyline is walked at the step with integer segment lengths round(sqrt(dx^2 + dy^2))
+#   3. corner cutting: each interior non-loop vertex, with probability 1/CUT_MODULUS, moves by
+#      (P + Q - 2V) / CUT_DIVISOR (floor division), decided on the original vertices;
+#   4. endpoint offsets: the first and last vertex each move by a per-axis uniform draw in
+#      +/-ENDPOINT_*_PERCENT % of the key radius, widened by ENDPOINT_WIDE_SCALE with probability
+#      1/ENDPOINT_WIDE_MODULUS (real gestures touch down beside the first key's center and lift
+#      off further from the last one's, with a heavy tail a single bounded draw cannot express);
+#   5. gesture shift: the whole path moves by a constant per-axis draw in
+#      +/-GESTURE_OFFSET_PERCENT % of the key radius (a real gesture follows its own shifted
+#      route: the per-gesture mean offset from the ideal path has a spread no zero-mean wander
+#      expresses);
+#   6. the polyline is walked at the step with integer segment lengths round(sqrt(dx^2 + dy^2))
 #      and floor-division interpolation;
-#   5. smooth wander: the per-point offset is a random walk clamped to +/-jitter (two initial
+#   7. smooth wander: the per-point offset is a random walk clamped to +/-jitter (two initial
 #      draws, then an x and a y increment in +/-wander per point). Independent per-sample jitter
 #      would inflate the path length beyond what the decoder's length channel accepts.
 # A doubled letter is not a draw: the set carries both variants (see generate_set). STEP/JITTER
 # are in grid units, TSTEP in ms. LOOP_MODULUS is unused here; kept for the golden vectors.
+# The percentages and moduli are fitted to the FUTO swipe corpus (the measurements live in
+# research/glide-typing.md, the measurement script in research/corpus/futo_glide_analysis.py).
 LOOP_MODULUS = 8
-CUT_MODULUS = 10
+CUT_MODULUS = 3  # measured: about a third of real interior vertices are materially cut
+CUT_DIVISOR = 20  # cut moves V by (P+Q-2V)/20; measured depth p90 = 0.48..0.71 radii by angle
 STEP_DIVISOR = 6  # step range = [narrowestKeyWidth/6, narrowestKeyWidth/3): ~12-25 device px
-TSTEP_MIN = 8
-TSTEP_VAR = 9
-JITTER_PERCENT = 18  # wander envelope = 18% of the key radius (a typical-glider deviation)
+TSTEP_MIN = 8  # measured inter-point dt p10 = 8 ms
+TSTEP_VAR = 11  # tstep in [8, 19) ms; measured dt p90 = 18 ms
+JITTER_PERCENT = 22  # local wander; fitted to the measured segment-middle offset p50 = 0.16 radii
 WANDER_DIVISOR = 6  # per-sample wander increment = envelope / 6
+GESTURE_OFFSET_PERCENT = 30  # per-gesture route shift; measured per-gesture mean offset p50 = 0.20 radii
+ENDPOINT_START_PERCENT = 18  # measured touch-down offset from the first key center: p50 = 0.28 radii
+ENDPOINT_END_PERCENT = 40  # measured lift-off offset from the last key center: p50 = 0.40 radii
+ENDPOINT_WIDE_MODULUS = 7  # measured endpoint offset p95/p50 ratio needs a heavy tail...
+ENDPOINT_WIDE_SCALE = 3  # ...start p95 = 0.68, end p95 = 1.14 radii
 
 _MASK64 = (1 << 64) - 1
 
@@ -300,7 +316,11 @@ def generate_gesture(
     seed: int = GLIDE_SEED,
     draw_loop: bool = False,
     cut_modulus: int = CUT_MODULUS,
+    cut_divisor: int = CUT_DIVISOR,
     jitter_percent: int = JITTER_PERCENT,
+    gesture_offset_percent: int = GESTURE_OFFSET_PERCENT,
+    endpoint_start_percent: int = ENDPOINT_START_PERCENT,
+    endpoint_end_percent: int = ENDPOINT_END_PERCENT,
 ) -> list[tuple[int, int, int]]:
     """One synthetic gesture for ``word`` as (x, y, t) integer samples; see the noise model.
 
@@ -335,8 +355,33 @@ def generate_gesture(
         px, py = vertices[v - 1]
         vx, vy = vertices[v]
         qx, qy = vertices[v + 1]
-        cut_vertices[v] = ((px + 2 * vx + qx) // 4, (py + 2 * vy + qy) // 4)
+        cut_vertices[v] = (
+            vx + (px + qx - 2 * vx) // cut_divisor,
+            vy + (py + qy - 2 * vy) // cut_divisor,
+        )
     vertices = cut_vertices
+
+    # Endpoint offsets (draw group 4 of the noise model): a per-axis uniform draw in a half-range
+    # of ENDPOINT_*_PERCENT % of the key radius, the half-range scaled by ENDPOINT_WIDE_SCALE when
+    # the branch draw fires (one branch draw per endpoint, then the x and y draws).
+    start_half = radius * endpoint_start_percent // 100
+    if stream % ENDPOINT_WIDE_MODULUS == 0:
+        start_half *= ENDPOINT_WIDE_SCALE
+    stream = splitmix64(stream)
+    start_dx = stream % (2 * start_half + 1) - start_half
+    stream = splitmix64(stream)
+    start_dy = stream % (2 * start_half + 1) - start_half
+    stream = splitmix64(stream)
+    end_half = radius * endpoint_end_percent // 100
+    if stream % ENDPOINT_WIDE_MODULUS == 0:
+        end_half *= ENDPOINT_WIDE_SCALE
+    stream = splitmix64(stream)
+    end_dx = stream % (2 * end_half + 1) - end_half
+    stream = splitmix64(stream)
+    end_dy = stream % (2 * end_half + 1) - end_half
+    stream = splitmix64(stream)
+    vertices[0] = (vertices[0][0] + start_dx, vertices[0][1] + start_dy)
+    vertices[-1] = (vertices[-1][0] + end_dx, vertices[-1][1] + end_dy)
 
     # The integer segment walk at the word's sampling step.
     seg_lengths: list[int] = []
@@ -370,6 +415,13 @@ def generate_gesture(
     wander = jitter // WANDER_DIVISOR
     span = 2 * jitter + 1
     step_span = 2 * wander + 1
+    # The gesture shift (draw group 5): one constant offset for the whole path.
+    shift = radius * gesture_offset_percent // 100
+    shift_span = 2 * shift + 1
+    shift_x = stream % shift_span - shift
+    stream = splitmix64(stream)
+    shift_y = stream % shift_span - shift
+    stream = splitmix64(stream)
     offset_x = stream % span - jitter
     stream = splitmix64(stream)
     offset_y = stream % span - jitter
@@ -381,7 +433,7 @@ def generate_gesture(
             stream = splitmix64(stream)
             offset_y = _clamp(offset_y + stream % step_span - wander, jitter)
             stream = splitmix64(stream)
-        sampled.append((x + offset_x, y + offset_y, index * tstep))
+        sampled.append((x + shift_x + offset_x, y + shift_y + offset_y, index * tstep))
     return sampled
 
 

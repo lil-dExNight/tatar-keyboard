@@ -152,6 +152,10 @@ class GlideRecoveryCalibrationTest {
         jitterPercent: Int = JITTER_PERCENT,
         cutModulus: Long = CUT_MODULUS,
         wanderDivisor: Int = WANDER_DIVISOR,
+        cutDivisor: Int = CUT_DIVISOR,
+        gestureOffsetPercent: Int = GESTURE_OFFSET_PERCENT,
+        endpointStartPercent: Int = ENDPOINT_START_PERCENT,
+        endpointEndPercent: Int = ENDPOINT_END_PERCENT,
     ): GeneratedPath {
         val minWidth = GlideTestFixtures.tatarRawKeys().minOf { it.right - it.left }
         val radius = GlideTestFixtures.tatarKeyRadius()
@@ -208,9 +212,36 @@ class GlideRecoveryCalibrationTest {
         val cutY = vertexY.copyOf(vertexCount)
         for (v in 1 until vertexCount - 1) {
             if (!cut[v]) continue
-            cutX[v] = (vertexX[v - 1] + 2 * vertexX[v] + vertexX[v + 1]) / 4
-            cutY[v] = (vertexY[v - 1] + 2 * vertexY[v] + vertexY[v + 1]) / 4
+            // floorDiv: the dividend goes negative (mirror of the python generator's //).
+            cutX[v] = vertexX[v] + Math.floorDiv(vertexX[v - 1] + vertexX[v + 1] - 2 * vertexX[v], cutDivisor)
+            cutY[v] = vertexY[v] + Math.floorDiv(vertexY[v - 1] + vertexY[v + 1] - 2 * vertexY[v], cutDivisor)
         }
+
+        // Endpoint offsets (draw group 4 of the noise model): a per-axis uniform draw in a
+        // half-range of ENDPOINT_*_PERCENT % of the key radius, scaled by ENDPOINT_WIDE_SCALE
+        // when the branch draw fires (branch, then x and y, per endpoint).
+        var startHalf = radius * endpointStartPercent / 100
+        if (java.lang.Long.remainderUnsigned(stream, ENDPOINT_WIDE_MODULUS) == 0L) {
+            startHalf *= ENDPOINT_WIDE_SCALE
+        }
+        stream = splitmix64(stream)
+        val startDx = java.lang.Long.remainderUnsigned(stream, 2L * startHalf + 1).toInt() - startHalf
+        stream = splitmix64(stream)
+        val startDy = java.lang.Long.remainderUnsigned(stream, 2L * startHalf + 1).toInt() - startHalf
+        stream = splitmix64(stream)
+        var endHalf = radius * endpointEndPercent / 100
+        if (java.lang.Long.remainderUnsigned(stream, ENDPOINT_WIDE_MODULUS) == 0L) {
+            endHalf *= ENDPOINT_WIDE_SCALE
+        }
+        stream = splitmix64(stream)
+        val endDx = java.lang.Long.remainderUnsigned(stream, 2L * endHalf + 1).toInt() - endHalf
+        stream = splitmix64(stream)
+        val endDy = java.lang.Long.remainderUnsigned(stream, 2L * endHalf + 1).toInt() - endHalf
+        stream = splitmix64(stream)
+        cutX[0] += startDx
+        cutY[0] += startDy
+        cutX[vertexCount - 1] += endDx
+        cutY[vertexCount - 1] += endDy
 
         // The integer segment walk at the word's sampling step.
         val segmentLengths = IntArray(vertexCount - 1)
@@ -254,6 +285,13 @@ class GlideRecoveryCalibrationTest {
         val wander = jitter / wanderDivisor
         val span = 2L * jitter + 1
         val stepSpan = 2L * wander + 1
+        // The gesture shift (draw group 5): one constant offset for the whole path.
+        val shift = radius * gestureOffsetPercent / 100
+        val shiftSpan = 2L * shift + 1
+        val shiftX = java.lang.Long.remainderUnsigned(stream, shiftSpan).toInt() - shift
+        stream = splitmix64(stream)
+        val shiftY = java.lang.Long.remainderUnsigned(stream, shiftSpan).toInt() - shift
+        stream = splitmix64(stream)
         var offsetX = java.lang.Long.remainderUnsigned(stream, span).toInt() - jitter
         stream = splitmix64(stream)
         var offsetY = java.lang.Long.remainderUnsigned(stream, span).toInt() - jitter
@@ -271,8 +309,8 @@ class GlideRecoveryCalibrationTest {
                 offsetY = offsetY.coerceIn(-jitter, jitter)
                 stream = splitmix64(stream)
             }
-            xs[index] = pointX[index] + offsetX
-            ys[index] = pointY[index] + offsetY
+            xs[index] = pointX[index] + shiftX + offsetX
+            ys[index] = pointY[index] + shiftY + offsetY
             ts[index] = index * tstep
         }
         return GeneratedPath(xs, ys, ts, loop)
@@ -476,19 +514,20 @@ class GlideRecoveryCalibrationTest {
         }
 
         // Per-class tolerances of the doubled-letter evidence rule: plain words may not regress
-        // more than 1.0 pp, a no-jog doubled word must lose to its dictionary twin, and a jog must
+        // more than 1.0 pp, a no-jog doubled word must usually lose to its dictionary twin (under
+        // the recalibrated noise the twin still wins about four rows out of five), and a jog must
         // still decode the doubled word.
         assertTrue(
-            "plain top-1 regressed past the 1.0 pp tolerance (pre-fix 69.2308)",
-            classTop1[0] >= 69.2308 - 1.0,
+            "plain top-1 regressed past the 1.0 pp tolerance (pinned 88.7446)",
+            classTop1[0] >= 88.7446 - 1.0,
         )
         assertTrue(
-            "plain top-3 regressed past the 1.0 pp tolerance (pre-fix 76.8750)",
-            classTop3[0] >= 76.8750 - 1.0,
+            "plain top-3 regressed past the 1.0 pp tolerance (pinned 95.0457)",
+            classTop3[0] >= 95.0457 - 1.0,
         )
         assertTrue(
-            "a doubled word must not win its no-jog row when the twin exists (ceiling 10%)",
-            classTop1[3] <= 10.0,
+            "a doubled word must not win its no-jog row when the twin exists (ceiling 25%)",
+            classTop1[3] <= 25.0,
         )
         assertTrue(
             "doubled words must still decode when the path jogs (floor 70%)",
@@ -496,12 +535,12 @@ class GlideRecoveryCalibrationTest {
         )
         // A twinless doubled word also scores against its loop-free path, which no other word owns.
         assertTrue(
-            "twinless no-jog top-1 regressed past the 1.0 pp tolerance (first run 77.6119)",
-            classTop1[2] >= 77.6119 - 1.0,
+            "twinless no-jog top-1 regressed past the 1.0 pp tolerance (pinned 89.5522)",
+            classTop1[2] >= 89.5522 - 1.0,
         )
         assertTrue(
-            "twinless no-jog top-3 regressed past the 1.0 pp tolerance (first run 83.5821)",
-            classTop3[2] >= 83.5821 - 1.0,
+            "twinless no-jog top-3 regressed past the 1.0 pp tolerance (pinned 96.5174)",
+            classTop3[2] >= 96.5174 - 1.0,
         )
     }
 
@@ -701,19 +740,25 @@ class GlideRecoveryCalibrationTest {
         private const val MIN_WORD_CODE_POINTS = 5
         private const val DICT_MODULUS = 40
         private const val LOOP_MODULUS = 8L
-        private const val CUT_MODULUS = 10L
+        private const val CUT_MODULUS = 3L
+        private const val CUT_DIVISOR = 20
         private const val STEP_DIVISOR = 6
         private const val TSTEP_MIN = 8
-        private const val TSTEP_VAR = 9L
-        private const val JITTER_PERCENT = 18
+        private const val TSTEP_VAR = 11L
+        private const val JITTER_PERCENT = 22
         private const val WANDER_DIVISOR = 6
+        private const val GESTURE_OFFSET_PERCENT = 30
+        private const val ENDPOINT_START_PERCENT = 18
+        private const val ENDPOINT_END_PERCENT = 40
+        private const val ENDPOINT_WIDE_MODULUS = 7L
+        private const val ENDPOINT_WIDE_SCALE = 3
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts). The
         // set carries both variants of every doubled word (rows outnumber words).
         private const val SET_SIZE = 4526
-        private const val SET_BYTES = 10192400
+        private const val SET_BYTES = 10407494
         private const val SET_SHA256 =
-            "acbc6d5af7869cf4273820c04aa21e696be1c97f7a37cf8151381e23267e219b"
+            "3846bee2982bae815927a3325aa8ce8aa3e774e2f7a536571d8548ee208aac9c"
 
         // The per-class split of gatesG1AndG2OnTheRealDictionary.
         private const val CLASS_COUNT = 5
