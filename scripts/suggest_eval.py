@@ -4,8 +4,12 @@
 Input: the eval set, the bundled Tatar dictionary and the schema-3 bigram table (decoded with
 the pipeline readers; the table is checked against the dictionary's raw SHA-256).
 Output: ``EVAL|metric|value`` lines: eval sizes, dictionary coverage of tokens and types, a
-lower-bound share of inflected tokens, bigram head coverage and next-word top-3 hit rate
-(over all pairs and over head-covered pairs). ``TtSuggestEvalTest`` measures the same on the
+lower-bound share of inflected tokens, bigram head coverage and plain-bigram next-word top-1
+and top-3 hit rates; then, through the production-chain mirror of ``suggest_chain.py``: the
+full-chain next-word top-1/top-3 hit rates with a sentence-level bootstrap CI95 and the
+minimum detectable effect, the lemma strata (seen form / new form of a seen stem / unseen
+stem) with per-stratum cp3 completion and chain hit rates, and the keystroke-savings
+simulation with its vocabulary-oracle bound. ``TtSuggestEvalTest`` measures the same on the
 JVM. Exit 2 on any missing or invalid input.
 """
 from __future__ import annotations
@@ -21,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bigram_asset_pack  # noqa: E402
 import dictionary_coverage as coverage  # noqa: E402
 import dictionary_pack  # noqa: E402
+import suggest_chain  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EVAL = ROOT / "app" / "src" / "test" / "resources" / "tt_eval_sentences.txt"
@@ -95,13 +100,13 @@ def load_eval_lines(path: Path) -> list[str]:
     return lines
 
 
-def load_dictionary_words(asset_path: Path) -> tuple[list[str], bytes]:
-    """Decode the bundled dictionary in memory; returns (words, raw bytes)."""
+def load_dictionary_words(asset_path: Path) -> tuple[list[str], list[int], bytes]:
+    """Decode the bundled dictionary in memory; returns (words, frequencies, raw bytes)."""
     if not asset_path.is_file():
         raise SuggestEvalError(f"dictionary asset is missing: {asset_path}")
     raw = dictionary_pack.decompress_asset(asset_path.read_bytes())
     parsed = dictionary_pack.validate_raw(raw)
-    return list(parsed.words), raw
+    return list(parsed.words), list(parsed.frequencies), raw
 
 
 def load_bigram_successes(
@@ -141,7 +146,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = create_argument_parser().parse_args(argv)
     try:
         lines = load_eval_lines(args.eval_path)
-        dictionary_words, dictionary_raw = load_dictionary_words(args.dict_asset)
+        dictionary_words, dictionary_frequencies, dictionary_raw = load_dictionary_words(
+            args.dict_asset
+        )
         successes_by_head = load_bigram_successes(
             args.bigram_asset, dictionary_words, dictionary_raw
         )
@@ -168,12 +175,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         words = line.split(" ")
         pairs.extend(zip(words, words[1:]))
     head_covered = 0
+    top1_hits = 0
     top3_hits = 0
     for head, successor in pairs:
         shown = successes_by_head.get(head)
         if not shown:
             continue
         head_covered += 1
+        if successor == shown[0]:
+            top1_hits += 1
         if successor in shown[:SHOWN_RESULTS]:
             top3_hits += 1
 
@@ -186,12 +196,130 @@ def main(argv: Sequence[str] | None = None) -> int:
         ("inflected_token_share_pct", f"{percent(inflected, len(tokens)):.4f}"),
         ("bigram_pairs_total", str(len(pairs))),
         ("bigram_head_coverage_pct", f"{percent(head_covered, len(pairs)):.4f}"),
+        ("nextword_top1_hits", str(top1_hits)),
+        ("nextword_top1_hit_pct", f"{percent(top1_hits, len(pairs)):.4f}"),
         ("nextword_top3_hit_pct", f"{percent(top3_hits, len(pairs)):.4f}"),
         ("nextword_top3_hit_covered_pct", f"{percent(top3_hits, head_covered):.4f}"),
     ]
+    metrics.extend(_chain_metrics(lines, pairs, dictionary_words, dictionary_frequencies,
+                                  successes_by_head, unique_words))
     for name, value in metrics:
         print(f"EVAL|{name}|{value}")
     return 0
+
+
+def _chain_metrics(
+    lines: list[str],
+    pairs: list[tuple[str, str]],
+    dictionary_words: list[str],
+    dictionary_frequencies: list[int],
+    successes_by_head: dict[str, list[str]],
+    unique_words: set[str],
+) -> list[tuple[str, str]]:
+    """The chain-hit, bootstrap, MDE, lemma-strata and keystroke-savings lines."""
+    chain = suggest_chain.ChainMirror(
+        dictionary_words, dictionary_frequencies, successes_by_head
+    )
+
+    chain_top1 = 0
+    chain_top3 = 0
+    # Per-sentence counters: the bootstrap resamples whole sentences, pairs included.
+    sentence_hits: list[int] = []
+    sentence_pairs: list[int] = []
+    for line in lines:
+        words = line.split(" ")
+        hits = 0
+        for head, successor in zip(words, words[1:]):
+            shown = chain.predict_top3(head)
+            if shown and successor == shown[0]:
+                chain_top1 += 1
+                hits += 1
+            elif successor in shown:
+                hits += 1
+        chain_top3 += hits
+        sentence_hits.append(hits)
+        sentence_pairs.append(len(words) - 1)
+
+    ci95_lo, ci95_hi = suggest_chain.bootstrap_rate_ci95(sentence_hits, sentence_pairs)
+    chain_rate = chain_top3 / len(pairs)
+    mde_pp = suggest_chain.minimum_detectable_effect_pp(chain_rate, len(pairs))
+
+    metrics: list[tuple[str, str]] = [
+        ("nextword_chain_pairs", str(len(pairs))),
+        ("nextword_chain_top1_hits", str(chain_top1)),
+        ("nextword_chain_top1_pct", f"{percent(chain_top1, len(pairs)):.4f}"),
+        ("nextword_chain_top3_hits", str(chain_top3)),
+        ("nextword_chain_top3_pct", f"{percent(chain_top3, len(pairs)):.4f}"),
+        ("nextword_chain_top3_ci95_lo", f"{ci95_lo:.4f}"),
+        ("nextword_chain_top3_ci95_hi", f"{ci95_hi:.4f}"),
+        ("nextword_chain_top3_mde_pp", f"{mde_pp:.4f}"),
+    ]
+    metrics.extend(
+        _strata_metrics(lines, unique_words, chain)
+    )
+    metrics.extend(_keystroke_metrics(lines, unique_words, chain))
+    return metrics
+
+
+def _strata_metrics(
+    lines: list[str], unique_words: set[str], chain: suggest_chain.ChainMirror
+) -> list[tuple[str, str]]:
+    """Per-stratum counts, cp3 completion top-3 rates and chain top-3 next-word rates."""
+    stratum_by_word = {
+        word: suggest_chain.lemma_stratum(word, chain.frequency_of)
+        for word in sorted(unique_words)
+    }
+    metrics: list[tuple[str, str]] = []
+    for stratum in suggest_chain.STRATA:
+        words = [word for word, label in stratum_by_word.items() if label == stratum]
+        cp3_words = 0
+        cp3_hits = 0
+        for word in words:
+            if len(word) < SHOWN_RESULTS:
+                continue
+            cp3_words += 1
+            if word in chain.prefix_top3(word[:SHOWN_RESULTS]):
+                cp3_hits += 1
+        stratum_pairs = 0
+        stratum_hits = 0
+        for line in lines:
+            line_words = line.split(" ")
+            for head, successor in zip(line_words, line_words[1:]):
+                if stratum_by_word[head] != stratum:
+                    continue
+                stratum_pairs += 1
+                if successor in chain.predict_top3(head):
+                    stratum_hits += 1
+        metrics.extend(
+            [
+                (f"stratum_{stratum}_words", str(len(words))),
+                (f"stratum_{stratum}_cp3_words", str(cp3_words)),
+                (f"stratum_{stratum}_cp3_hits", str(cp3_hits)),
+                (f"stratum_{stratum}_cp3_pct", f"{percent(cp3_hits, cp3_words):.4f}"),
+                (f"stratum_{stratum}_pairs", str(stratum_pairs)),
+                (f"stratum_{stratum}_top3_hits", str(stratum_hits)),
+                (f"stratum_{stratum}_top3_pct",
+                 f"{percent(stratum_hits, stratum_pairs):.4f}"),
+            ]
+        )
+    return metrics
+
+
+def _keystroke_metrics(
+    lines: list[str], unique_words: set[str], chain: suggest_chain.ChainMirror
+) -> list[tuple[str, str]]:
+    """The keystroke-savings simulation and its vocabulary-oracle bound."""
+    mdp_lengths = suggest_chain.minimal_distinguishing_prefix_lengths(sorted(unique_words))
+    baseline, simulated, oracle = suggest_chain.keystroke_costs(
+        lines, chain.predict_top3, chain.prefix_top3, mdp_lengths
+    )
+    return [
+        ("ks_baseline_keys", str(baseline)),
+        ("ks_simulated_keys", str(simulated)),
+        ("ks_pct", f"{percent(baseline - simulated, baseline):.4f}"),
+        ("ks_oracle_keys", str(oracle)),
+        ("ks_oracle_pct", f"{percent(baseline - oracle, baseline):.4f}"),
+    ]
 
 
 if __name__ == "__main__":

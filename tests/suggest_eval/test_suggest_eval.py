@@ -18,6 +18,11 @@ The last two groups need the licensed corpus inputs (``research/corpus/*.txt.gz`
 Leipzig tt corpora (``~/corpora-leipzig``), which are gitignored and therefore absent on a
 clean CI checkout. Those tests SKIP with an explicit reason when the inputs are missing; the
 pin and format tests above never skip, so a corrupted committed file fails everywhere.
+
+A second block covers the pure functions of ``scripts/suggest_chain.py`` (the production-chain
+mirror): the runtime suffix table port, the form generator, the chain composition, the
+bootstrap sampler against golden SplitMix64 vectors, the lemma-strata predicate and the
+keystroke simulator, all on tiny synthetic fixtures that need no assets.
 """
 from __future__ import annotations
 
@@ -52,6 +57,7 @@ def load_module(name: str, path: Path):
 
 make_eval_set = load_module("make_eval_set", MAKE_EVAL_SCRIPT)
 coverage = load_module("dictionary_coverage", COVERAGE_SCRIPT)
+suggest_chain = load_module("suggest_chain", ROOT / "scripts" / "suggest_chain.py")
 
 
 def read_committed() -> bytes:
@@ -182,6 +188,189 @@ class CorpusDependentTest(unittest.TestCase):
         self.assertGreater(
             build.stats["tatoeba_unique_rows"], build.stats["tatoeba_heldout_rows"]
         )
+
+
+class SuffixTableTest(unittest.TestCase):
+    """The ported runtime suffix table and the membership predicate."""
+
+    def test_table_matches_the_runtime_size(self) -> None:
+        # TatarSuffixRules.suffixCount pins the same number on the JVM side.
+        self.assertEqual(167, len(suggest_chain.RUNTIME_SUFFIXES))
+
+    def test_membership(self) -> None:
+        self.assertTrue(suggest_chain.is_inflected_continuation("лар"))
+        self.assertTrue(suggest_chain.is_inflected_continuation("мыйсыз"))
+        self.assertTrue(suggest_chain.is_inflected_continuation("ннан"))
+        self.assertFalse(suggest_chain.is_inflected_continuation(""))
+        self.assertFalse(suggest_chain.is_inflected_continuation("лара"))
+        self.assertFalse(suggest_chain.is_inflected_continuation("xyz"))
+
+
+class GenerateFormsTest(unittest.TestCase):
+    """The form generator port: order, harmony variants, dedup against the stem."""
+
+    def test_back_vowel_stem_full_list(self) -> None:
+        self.assertEqual(
+            [
+                "балалар", "баланың", "балага", "баланы", "балада", "баладан",
+                "баласы", "баласын", "баласына", "баласында", "баласыннан",
+                "балый", "балады", "балар", "балап", "балаган", "балау", "балача",
+            ],
+            suggest_chain.generate_forms("бала"),
+        )
+
+    def test_vowel_stem_contracts_present_and_drops_the_stem_itself(self) -> None:
+        forms = suggest_chain.generate_forms("ди")
+        self.assertNotIn("ди", forms)  # the contracted present equals the stem: skipped
+        self.assertIn("дияр", forms)  # monosyllabic vowel stem takes -яр
+        self.assertIn("дию", forms)  # и-final takes the й-glide masdar
+        self.assertIn("диде", forms)
+        self.assertEqual(17, len(forms))
+
+    def test_mixed_harmony_stem_generates_both_variants(self) -> None:
+        forms = suggest_chain.generate_forms("китап")
+        self.assertEqual(36, len(forms))
+        self.assertIn("китаплар", forms)
+        self.assertIn("китапләр", forms)
+        self.assertIn("китапка", forms)  # voiceless-final dative, back
+        self.assertIn("китапкә", forms)  # and front
+        self.assertIn("китапу", forms)
+        self.assertIn("китапү", forms)
+
+    def test_stem_without_harmony_vowel_generates_nothing(self) -> None:
+        self.assertEqual([], suggest_chain.generate_forms("ппп"))
+
+    def test_forms_of_filters_and_ranks_by_frequency(self) -> None:
+        frequencies = {"балалар": 5, "балага": 9, "баласы": 7}
+        forms = suggest_chain.forms_of(
+            "бала", ["балага"], 3, lambda word: frequencies.get(word, 0)
+        )
+        self.assertEqual(["баласы", "балалар"], forms)
+
+
+class ChainMirrorTest(unittest.TestCase):
+    """The chain composition and the completion mirror on a synthetic dictionary."""
+
+    WORDS = ["бала", "балалар", "дие", "дип", "китап", "мин", "син", "сәләм",
+             "эшлә", "эшләмәк", "эшләп", "эшләү"]
+    FREQUENCIES = [50, 5, 30, 10, 100, 200, 150, 80, 20, 7, 5, 9]
+    BIGRAMS = {"мин": ["син", "китап", "дие", "сәләм"], "дие": ["мин"]}
+
+    def mirror(self) -> "suggest_chain.ChainMirror":
+        return suggest_chain.ChainMirror(self.WORDS, self.FREQUENCIES, self.BIGRAMS)
+
+    def test_bigram_successes_come_first_and_truncate_to_three(self) -> None:
+        self.assertEqual(["син", "китап", "дие"], self.mirror().predict_top3("мин"))
+
+    def test_forms_fill_free_cells_before_the_fallback(self) -> None:
+        self.assertEqual(["балалар", "мин", "син"], self.mirror().predict_top3("бала"))
+
+    def test_fallback_excludes_the_committed_word_and_the_shown(self) -> None:
+        # No bigrams, no attested forms: the pool fills, minus the head itself.
+        self.assertEqual(["мин", "син", "сәләм"], self.mirror().predict_top3("китап"))
+        # One bigram successor; the pool fills the rest minus the successor.
+        self.assertEqual(["мин", "син", "китап"], self.mirror().predict_top3("дие"))
+
+    def test_unknown_head_still_gets_the_fallback(self) -> None:
+        shown = self.mirror().predict_top3("qqq")
+        self.assertEqual(["мин", "син", "китап"], shown)
+
+    def test_prefix_top3_plain_ranking(self) -> None:
+        mirror = self.mirror()
+        self.assertEqual(["бала", "балалар"], mirror.prefix_top3("б"))
+        self.assertEqual(["мин"], mirror.prefix_top3("м"))
+        # A short complete word does not engage the same-stem boost.
+        self.assertEqual([], mirror.prefix_top3("дип"))
+        self.assertEqual([], mirror.prefix_top3(""))
+
+    def test_prefix_top3_same_stem_boost(self) -> None:
+        mirror = self.mirror()
+        # No boost below four code points even for a complete word ("эшлә" continues "эш").
+        self.assertEqual(["эшлә", "эшләү", "эшләмәк"], mirror.prefix_top3("эш"))
+        # Boosted at the complete-word prefix: suffix continuations first, then the rest.
+        self.assertEqual(["эшләү", "эшләп", "эшләмәк"], mirror.prefix_top3("эшлә"))
+
+
+class BootstrapSamplerTest(unittest.TestCase):
+    """The resample stream against golden SplitMix64 vectors, and the CI index math."""
+
+    def test_golden_indices(self) -> None:
+        stream = suggest_chain.splitmix64_index_stream(1000, suggest_chain.BOOTSTRAP_SEED)
+        self.assertEqual([213, 52, 549, 310, 150, 359, 297, 323],
+                         [next(stream) for _ in range(8)])
+
+    def test_nearest_rank_index(self) -> None:
+        self.assertEqual(49, suggest_chain.nearest_rank_index(25, 2000))
+        self.assertEqual(1949, suggest_chain.nearest_rank_index(975, 2000))
+        self.assertEqual(2, suggest_chain.nearest_rank_index(25, 100))
+        self.assertEqual(97, suggest_chain.nearest_rank_index(975, 100))
+
+    def test_ci95_on_a_tiny_fixture(self) -> None:
+        lo, hi = suggest_chain.bootstrap_rate_ci95([1, 0, 1], [2, 2, 2], rounds=10,
+                                                   seed=suggest_chain.BOOTSTRAP_SEED)
+        self.assertAlmostEqual(16.666666666666668, lo)
+        self.assertAlmostEqual(50.0, hi)
+        again = suggest_chain.bootstrap_rate_ci95([1, 0, 1], [2, 2, 2], rounds=10,
+                                                  seed=suggest_chain.BOOTSTRAP_SEED)
+        self.assertEqual((lo, hi), again)
+
+
+class LemmaStratificationTest(unittest.TestCase):
+    """The three-way stratum predicate over a synthetic frequency map."""
+
+    def frequency_of(self, word: str) -> int:
+        return {"бала": 50, "балалар": 5}.get(word, 0)
+
+    def test_strata(self) -> None:
+        self.assertEqual(suggest_chain.STRATUM_SEEN_FORM,
+                         suggest_chain.lemma_stratum("бала", self.frequency_of))
+        self.assertEqual(suggest_chain.STRATUM_NEW_FORM,
+                         suggest_chain.lemma_stratum("балам", self.frequency_of))
+        self.assertEqual(suggest_chain.STRATUM_UNSEEN_STEM,
+                         suggest_chain.lemma_stratum("ббб", self.frequency_of))
+
+    def test_longest_stem_wins(self) -> None:
+        self.assertEqual(
+            "балалар",
+            suggest_chain.longest_stem_with_suffix_remainder("балаларның",
+                                                             self.frequency_of),
+        )
+
+    def test_no_split_without_a_dictionary_stem(self) -> None:
+        self.assertIsNone(
+            suggest_chain.longest_stem_with_suffix_remainder(
+                "балаларның", lambda word: {"бала": 50}.get(word, 0)
+            )
+        )
+
+
+class KeystrokeSimulatorTest(unittest.TestCase):
+    """The keystroke simulator on a two-sentence fixture."""
+
+    def test_minimal_distinguishing_prefixes(self) -> None:
+        lengths = suggest_chain.minimal_distinguishing_prefix_lengths(["аб", "б"])
+        self.assertEqual({"аб": 1, "б": 1}, lengths)
+        # A word that prefixes another has no distinguishing prefix.
+        lengths = suggest_chain.minimal_distinguishing_prefix_lengths(["аб", "аба"])
+        self.assertEqual({"аба": 3}, lengths)
+
+    def test_costs(self) -> None:
+        def next_word_top3(head: str) -> list[str]:
+            return {"аб": ["б"]}.get(head, [])
+
+        def completion_top3(prefix: str) -> list[str]:
+            return {"а": ["аб"]}.get(prefix, [])
+
+        mdp = suggest_chain.minimal_distinguishing_prefix_lengths(["аб", "б"])
+        baseline, simulated, oracle = suggest_chain.keystroke_costs(
+            ["аб б", "б аб"], next_word_top3, completion_top3, mdp
+        )
+        # Baseline: (2+1+1) + (1+2+1). Simulated: (tap after 1 key + next-word tap)
+        # + (1 key for the one-letter word + completion at 1 key + tap). Oracle:
+        # distinguishing prefix + tap for the first word, taps after.
+        self.assertEqual(8, baseline)
+        self.assertEqual(6, simulated)
+        self.assertEqual(5, oracle)
 
 
 if __name__ == "__main__":
