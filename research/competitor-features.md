@@ -99,8 +99,11 @@ Compatible shapes, in escalating order:
   clips from other apps — mitigations are behavioral).
 
 The real argument against: a single "the privacy keyboard stored my password" incident costs
-more than the feature adds. The operator's call, informed by the first feedback cycles
-(channel counts below).
+more than the feature adds.
+
+**Decision (operator)**: the staged shape up to the in-memory cell — text shortcuts and the
+in-memory recent-clip cell are in scope (see `docs/ROADMAP.md`); the persistent pane is
+declined and stays excluded in `BRIEF.md`.
 
 ## Distribution channels
 

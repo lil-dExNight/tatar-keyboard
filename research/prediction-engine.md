@@ -149,12 +149,12 @@ new edit classes alongside #1/#4, hard beam cap. Gate: top-3 on the typo-mutated
 top-3 gain — substitutions are a minority of real typos. Watch: candidate-count blowup needs
 fail-fast caps (ASK's `GestureTypingDetector` pattern).
 
-**P3 — corpus.tatar permission + HPLT/MADLAD ingestion.** Send the permission email
-(frequency lists over 500M edited words); meanwhile ingest HPLT v2 `tat_Cyrl` (CC0) with
-per-word Russian-bleed filtering and per-source merge weights. Gate: ≥ +0.5 pp held-out
-conversational coverage at fixed dictionary size; top-3 on the pinned harness must not
-regress (register skew is the risk — news/web frequencies can hurt a conversational metric if
-merged naively).
+**P3 — corpus.tatar + HPLT/MADLAD ingestion.** Ingest the corpus.tatar frequency lists
+(counted over 500M edited words) and HPLT v2 `tat_Cyrl` (CC0) with per-word Russian-bleed
+filtering and per-source merge weights. Licensing decision (operator): use all surveyed
+sources for now, review deferred. Gate: ≥ +0.5 pp held-out conversational coverage at fixed
+dictionary size; top-3 on the pinned harness must not regress (register skew is the risk —
+news/web frequencies can hurt a conversational metric if merged naively).
 
 **P4 — Pack-time Kneser-Ney successor re-ranking.** Rank each head's kept successors by the
 interpolated KN score (continuation counts from one extra pass; discount and λ fixed from
@@ -190,11 +190,10 @@ lifetime (each reorder re-incurs the attend-and-evaluate cost of a suggestion �
 CHI 2016).
 
 **P9 — Tap-completion context rerank (prefix path), python-first.** Never measured (A6 was
-glide-only). Simulate before touching app code: boost exact-pass candidates that are bigram
-successors of the previous word. Expected below the P1 bar — exact-prefix candidates are
-already constrained and successor mass is form-fragmented — but cheap to falsify. Close A6 in
-`docs/ROADMAP.md`/`docs/BACKLOG.md` at the same time: its parked measurement is consistent
-with the published evidence, and re-litigating it without new data is waste.
+glide-only, and A6 is now closed — the operator confirmed the threshold). Simulate before
+touching app code: boost exact-pass candidates that are bigram successors of the previous
+word. Expected below the P1 bar — exact-prefix candidates are already constrained and
+successor mass is form-fragmented — but cheap to falsify.
 
 **P10 — Abbreviation / quick-fix dictionary (product feature).** User-defined
 abbreviation→expansion candidates (AnySoftKeyboard precedent, Apache-2.0) over the existing
@@ -221,9 +220,11 @@ gate on feature tests, not eval.
 
 ## Risks and open questions
 
-- **License contamination is the top risk.** Every shipped asset must derive from clean
-  sources (Leipzig CC BY 4.0, OPUS, HPLT CC0, MADLAD CC BY 4.0, our own rules). CC BY-SA
-  (Wikipedia, Taiga) needs an explicit decision on derived frequency lists.
+- **License posture (decision recorded)**: the operator accepted use of all surveyed sources
+  for now, including CC BY-SA (Wikipedia, Taiga) and the terms-free corpus.tatar frequency
+  lists; the review is deferred and out of the work plan. Revisit before any store
+  publication. Shipped assets still must never carry GPL analyzer data (Apertium/GiellaLT) —
+  that stays dev-time only (the kaikki precedent).
 - **Eval domain**: the pinned Tatar set is Tatoeba-register; the conversational decile exists
   by construction but is not committed as an eval set. All absolute hit rates above are
   Tatoeba-domain numbers; OpenSubtitles held-out can be used privately, never committed

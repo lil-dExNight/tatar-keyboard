@@ -5,10 +5,10 @@ narrowing, or lifting that exclusion. Proof rules: `research/measurement-framewo
 
 ## Verdict up front
 
-**Delegate; never embed.** Ship an optional microphone key that hands off to an installed
-voice IME (with a `RecognizerIntent` fallback), or document-and-decline. Do not put
-recognition in our process. The BRIEF exclusion narrows from "voice input" to "in-app voice
-recognition" if the delegation key ships.
+**Delegate; never embed** — was the research recommendation. **The operator declined voice in
+any form**: no in-app recognition and no delegation key; the `BRIEF.md` exclusion stands
+unchanged. This document remains the evidence base; revisit only if a quality Tatar ASR model
+ever exists. The rest of the text keeps the analysis as researched.
 
 ## The decisive facts
 

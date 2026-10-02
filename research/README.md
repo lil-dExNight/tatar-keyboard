@@ -87,26 +87,23 @@ Harness-only work, zero product risk, mostly days:
 8. **The lab program**: the fifth-row A/B/C protocol (three arms — current, frequency,
    incumbent/desktop order; N=24; pre-registered gate) inside the standing lab instrument.
    [ux UX20, UX16]
-9. **Distribution**: F-Droid dry run (three reproducibility hazards to clear), IzzyOnDroid
-   (prepare the AI-policy answer), RuStore, then Play's 12×14 closed test recruited from the
-   community channels. [competitor-features]
-10. **Feedback channels**: issue forms + triage funnel, Discussions polls (first poll: the
-    fifth-row order), the mailto feedback row. [competitor-features]
+9. ~~Distribution~~ — descoped by the operator.
+10. ~~Feedback channels~~ — descoped with the distribution/community track.
 
-## Tier 3 — operator decisions (BRIEF-level, evidence enclosed)
+## Tier 3 — operator decisions (recorded)
 
-- **Clipboard**: keep the exclusion, or adopt the staged shape (text shortcuts regardless →
-  in-memory recent-clip cell → opt-in pane with 60-minute default retention). The broken-
-  promise risk is the real argument against. [competitor-features]
-- **Voice**: narrow the exclusion to in-app recognition and ship the delegation mic key
-  (pending the device probes), or document-and-decline. [voice-input]
-- **A6 glide context rerank**: close it — the parked measurement is consistent with the
-  published evidence; the pair-conditional variant may be tested under G5. [glide-typing]
+- **Clipboard**: decided — text shortcuts and the in-memory recent-clip cell are in scope
+  (Tier 2); the persistent history pane is declined. [competitor-features]
+- **Voice**: declined entirely — no in-app recognition, no delegation key; the BRIEF
+  exclusion stands unchanged. [voice-input]
+- **A6 glide context rerank**: closed — the threshold is confirmed, the patch stays parked;
+  the pair-conditional variant may be tested under G5. [glide-typing]
 - **Strip stays at 3 cells**: if final, the K=3 repack reclaims ~20–25 KB. [prediction-engine
   P-notes]
-- **CC BY-SA for corpus-derived frequency lists** (Wikipedia/Taiga): accept with attribution
-  or stay CC0/CC BY only. [prediction-engine]
-- **corpus.tatar**: send the permission letter. [prediction-engine P3]
+- **Corpus licensing**: all surveyed corpus and frequency-list sources (incl. CC BY-SA
+  Wikipedia/Taiga and the corpus.tatar lists) may be used for now; the legal review is
+  deferred and out of the plan. Personal-data scraping stays excluded — that is privacy, not
+  licensing. [prediction-engine]
 
 ## Conflicts and trade-offs found
 

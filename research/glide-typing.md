@@ -167,10 +167,11 @@ decode, timestamps already recorded.
 **G5 — Bigram channel on the glide N-best (SHARK2 Eq. 12–13).** Multiply each top-8
 candidate's confidence by the Gaussian-transformed bigram probability given the previous word
 (tables already mmap'd). Attacks the short-word and same-shape residue, which the confusion
-census says frequency alone cannot resolve. This is also the productive resolution of the
-parked A6 patch: test a *pair-conditional* rerank (fire only on mined confusion pairs) where
-the blanket rerank failed its gate. Harness: extend the calibration set with context rows
-from the eval sentences; gate on held-out top-1 with context vs without.
+census says frequency alone cannot resolve. This is also the productive continuation of the
+closed A6 question: the blanket rerank failed its gate and the threshold was confirmed; what
+remains testable is a *pair-conditional* rerank (fire only on mined confusion pairs).
+Harness: extend the calibration set with context rows from the eval sentences; gate on
+held-out top-1 with context vs without.
 
 **G6 — Endpoint pruning n=2→3.** Measured on real gestures (ASK study): +3 pp sensitivity,
 some p95 headroom spent. Cheap to A/B in the harness with an endpoint-noise gesture class;

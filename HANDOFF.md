@@ -100,8 +100,10 @@ These are manual and have not been confirmed as done:
 
 ## Known risks and open items
 
-See `docs/ROADMAP.md`: the decision on the glide context rerank, and the device checks that need
-a person or hardware not at hand (live Direct Boot, Telegram, TalkBack by ear, tablet hardware).
+See `docs/ROADMAP.md`: the improvement program built from `research/README.md`, and the
+device checks that need a person or hardware not at hand (live Direct Boot, Telegram,
+TalkBack by ear, tablet hardware). The glide context rerank decision is closed (threshold
+confirmed; see `docs/BACKLOG.md`).
 
 ## Where to look next
 
