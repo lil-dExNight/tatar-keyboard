@@ -11,8 +11,10 @@
 #   5. apksigner verify --print-certs                        -> signature is valid
 #
 # Run from the repository root:
-#   bash scripts/release_pack.sh [--no-sign] [output.apk]
+#   bash scripts/release_pack.sh [--no-sign] [--from-apk unsigned.apk] [output.apk]
 # Default output: app/build/outputs/apk/release/app-release-zopfli.apk.
+# --from-apk packs an existing unsigned release APK and skips step 1; CI uses it to prove
+# the packing is deterministic without extra clean builds.
 #
 # The output is reproducible: the unsigned AGP build, zopfli (with the pinned build-tools)
 # and apksigner v2 are all deterministic, so two runs on one tree give the same SHA-256.
@@ -29,9 +31,24 @@ mkdir -p "$LOG_DIR"
 # --no-sign stops after alignment and leaves an aligned unsigned APK. CI (no keystore)
 # uses it to pack twice and compare the bytes; local releases take the full signed path.
 NO_SIGN=0
-if [ "${1:-}" = "--no-sign" ]; then
-    NO_SIGN=1
-    shift
+FROM_APK=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --no-sign) NO_SIGN=1; shift ;;
+        --from-apk)
+            FROM_APK="${2:-}"
+            if [ -z "$FROM_APK" ]; then
+                echo "ERROR: --from-apk требует путь к unsigned APK" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
+        *) break ;;
+    esac
+done
+if [ -n "$FROM_APK" ] && [ ! -f "$FROM_APK" ]; then
+    echo "ERROR: --from-apk: файл не найден: $FROM_APK" >&2
+    exit 1
 fi
 
 OUT="${1:-app/build/outputs/apk/release/app-release-zopfli.apk}"
@@ -115,21 +132,26 @@ fi
 
 # --- 1. unsigned release ---------------------------------------------------------------------
 
-echo "== 1/5 clean assembleRelease -PskipReleaseSigning --no-build-cache =="
-mkdir -p "$LOG_DIR"
-./gradlew clean assembleRelease -PskipReleaseSigning --no-build-cache --console=plain \
-    >"$LOG_DIR/assemble.log" 2>&1 || {
-        echo "ERROR: сборка упала, лог $LOG_DIR/assemble.log" >&2
-        tail -20 "$LOG_DIR/assemble.log" >&2 || true
-        exit 1
-    }
-# gradle clean deletes the root build/ together with LOG_DIR; recreate it.
-mkdir -p "$LOG_DIR"
+if [ -n "$FROM_APK" ]; then
+    echo "== 1/5 пропущена: --from-apk $FROM_APK =="
+    UNSIGNED="$FROM_APK"
+else
+    echo "== 1/5 clean assembleRelease -PskipReleaseSigning --no-build-cache =="
+    mkdir -p "$LOG_DIR"
+    ./gradlew clean assembleRelease -PskipReleaseSigning --no-build-cache --console=plain \
+        >"$LOG_DIR/assemble.log" 2>&1 || {
+            echo "ERROR: сборка упала, лог $LOG_DIR/assemble.log" >&2
+            tail -20 "$LOG_DIR/assemble.log" >&2 || true
+            exit 1
+        }
+    # gradle clean deletes the root build/ together with LOG_DIR; recreate it.
+    mkdir -p "$LOG_DIR"
 
-UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
-if [ ! -f "$UNSIGNED" ]; then
-    echo "ERROR: $UNSIGNED не появился (skipReleaseSigning не сработал?)" >&2
-    exit 1
+    UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
+    if [ ! -f "$UNSIGNED" ]; then
+        echo "ERROR: $UNSIGNED не появился (skipReleaseSigning не сработал?)" >&2
+        exit 1
+    fi
 fi
 
 # --- 1.5. resources.arsc stays STORED ----------------------------------------------------------

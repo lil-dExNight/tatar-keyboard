@@ -42,7 +42,7 @@ jobs:
           echo "497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
 
       - name: Run JVM unit tests
-        run: ./gradlew test --console=plain
+        run: ./gradlew test calibrationTest --console=plain
 
       # Build-time Python packers: plain unittest, no pytest.
       # Pinned to 3.12 so 3.13+ APIs fail here, not on contributors' machines.
@@ -50,7 +50,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run python packer tests
-        run: for f in tests/*/test_*.py; do python3 "$f" || exit 1; done
+        run: bash scripts/run_python_tests.sh
 
       # Writing rules for comments and Markdown; exceptions in scripts/text_hygiene_allowlist.txt.
       - name: Check text hygiene
@@ -126,9 +126,11 @@ jobs:
           cmp /tmp/repro-1.apk app/build/outputs/apk/release/app-release-unsigned.apk
 
       # The release_pack.sh packing (zopfli zipalign) must be deterministic too:
-      # pack twice with --no-sign (CI has no keystore) and compare. The runner image does not
-      # carry the build-tools version pinned in scripts/build-tools-pin.sh, so this job uses
-      # the runner's newest build-tools via TT_BUILD_TOOLS_VERSION. Local releases use the pin.
+      # pack the run-2 APK twice with --no-sign (CI has no keystore) and compare, so the job
+      # proves pack determinism from identical bytes without a third and fourth clean build.
+      # The runner image does not carry the build-tools version pinned in
+      # scripts/build-tools-pin.sh, so this job uses the runner's newest build-tools via
+      # TT_BUILD_TOOLS_VERSION. Local releases use the pin.
       - name: Pack twice without signing
         env:
           TT_BUILD_TOOLS_VERSION: ''
@@ -136,7 +138,8 @@ jobs:
           set -e
           latest=$(ls -1 "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)
           echo "runner build-tools: $latest"
-          TT_BUILD_TOOLS_VERSION="$latest" bash scripts/release_pack.sh --no-sign /tmp/pack-1.apk
-          TT_BUILD_TOOLS_VERSION="$latest" bash scripts/release_pack.sh --no-sign /tmp/pack-2.apk
+          UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
+          TT_BUILD_TOOLS_VERSION="$latest" bash scripts/release_pack.sh --no-sign --from-apk "$UNSIGNED" /tmp/pack-1.apk
+          TT_BUILD_TOOLS_VERSION="$latest" bash scripts/release_pack.sh --no-sign --from-apk "$UNSIGNED" /tmp/pack-2.apk
           sha256sum /tmp/pack-1.apk /tmp/pack-2.apk
           cmp /tmp/pack-1.apk /tmp/pack-2.apk

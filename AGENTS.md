@@ -14,8 +14,8 @@ grep first in `PATH` (they use `stat -c`, `sha256sum` and `grep -P`):
 
 | Task | Command and note |
 |---|---|
-| JVM tests | `./gradlew test` (`--rerun-tasks` forces a full rerun); JUnit 4, no Robolectric. |
-| Python tests | `for f in tests/*/test_*.py; do python3 "$f" \|\| exit 1; done`; plain `unittest` modules, pytest is not used. |
+| JVM tests | `./gradlew test` (`--rerun-tasks` forces a full rerun); JUnit 4, no Robolectric. The `*CalibrationTest` suites are excluded from `test` and run in `./gradlew calibrationTest`; CI and `scripts/release_check.sh` run `test calibrationTest` together. |
+| Python tests | `bash scripts/run_python_tests.sh` (one `unittest` module per process, in parallel; `TT_PYTHON_TEST_JOBS` sets the width); pytest is not used. |
 | Device tests | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, `adb install -r` both APKs, then `adb shell am instrument -w -e class <test class> org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner`; timing assertions need an idle device with the screen on, and `GlideUiDeviceTest` is calibrated for a 720x1640 screen and fails fast on any other. Full procedure: `docs/DEVICE-TEST-PLAN.md`. |
 | Emulator smoke test | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk <path>] [--no-boot] [--outdir build/emulator-smoke/]`; installs and selects the IME, runs the typing, suggestion and emoji probes and prints `RESULT\|…` lines. |
 | Device performance check | `bash scripts/device-perf-ritual.sh [--serial <id>] [--pkg org.tatarkeyboard.ime.debug] [--legs cold,pss,frames,warm,touch] [--enable-suggestions-ui] [--outdir build/device-perf-ritual]`; measures cold start, PSS, frame times, janky frames, warm show and touch handling on a 720x1640 device, prints `over_budget=` on each budgeted line and restores the device state on exit; `--enable-suggestions-ui` turns suggestions on in a release build through its settings screen. |
@@ -43,8 +43,8 @@ Device quirks:
 
 After any change to code or resources, all of these must pass:
 
-- `./gradlew test`
-- the python test loop above
+- `./gradlew test calibrationTest`
+- `bash scripts/run_python_tests.sh`
 - `./gradlew lintRelease`
 - `bash scripts/check-no-internet.sh` on the source and on the built APK
 - release APK size ≤ 3 145 728 B (checked by `scripts/release_check.sh`)

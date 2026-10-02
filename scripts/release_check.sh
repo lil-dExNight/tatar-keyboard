@@ -199,8 +199,9 @@ elif [ "$QUICK" -eq 1 ]; then
     report SKIP gates.asset_rebuild_check "--quick"
 else
     # JVM tests; counts come from the JUnit XML reports (app/build/test-results/*/).
-    # --rerun-tasks forces a real run instead of an up-to-date skip.
-    if run_logged "$LOG_DIR/gradle-test.log" ./gradlew test --rerun-tasks --console=plain; then
+    # --rerun-tasks forces a real run instead of an up-to-date skip. calibrationTest carries
+    # the suites the default test tasks exclude (app/build.gradle).
+    if run_logged "$LOG_DIR/gradle-test.log" ./gradlew test calibrationTest --rerun-tasks --console=plain; then
         sum_attr() { # <attribute>
             grep -hoE "$1=\"[0-9]+\"" app/build/test-results/*/*.xml 2>/dev/null \
                 | awk -F'"' '{s+=$2} END{print s+0}'
@@ -229,23 +230,13 @@ else
         tail -20 "$LOG_DIR/lint-release.log" >&2 || true
     fi
 
-    # Pipeline Python tests: plain unittest, one file per run.
-    py_total=0
-    py_failed=0
-    : >"$LOG_DIR/python-tests.log"
-    for f in tests/*/test_*.py; do
-        if python3 "$f" >>"$LOG_DIR/python-tests.log" 2>&1; then
-            n=$(tail -5 "$LOG_DIR/python-tests.log" | grep -oE 'Ran [0-9]+ tests' | tail -1 | grep -oE '[0-9]+' || true)
-            py_total=$((py_total + ${n:-0}))
-        else
-            py_failed=$((py_failed + 1))
-            echo "FAILED: $f" >>"$LOG_DIR/python-tests.log"
-        fi
-    done
-    if [ "$py_failed" -eq 0 ]; then
+    # Pipeline Python tests through the shared runner (parallel, one unittest file per process).
+    if run_logged "$LOG_DIR/python-tests.log" bash scripts/run_python_tests.sh; then
+        py_total=$(grep -oE 'Ran [0-9]+ tests' "$LOG_DIR/python-tests.log" | grep -oE '[0-9]+' | awk '{s+=$1} END{print s+0}')
         report PASS gates.python_tests "$py_total тестов в $(ls tests/*/test_*.py | wc -l) файлах"
     else
-        report FAIL gates.python_tests "$py_failed файлов с падениями, лог $LOG_DIR/python-tests.log"
+        report FAIL gates.python_tests "падения, лог $LOG_DIR/python-tests.log"
+        tail -20 "$LOG_DIR/python-tests.log" >&2 || true
     fi
 
     # No INTERNET + backup whitelist on the APK under test (both levels of the check).

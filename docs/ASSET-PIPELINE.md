@@ -207,11 +207,11 @@ a sample of non-heads for tables. Exit codes: 0 equivalent, 1 mismatch, 2 missin
 ## Tests
 
 ```
-for f in tests/*/test_*.py; do python3 "$f" || exit 1; done
+bash scripts/run_python_tests.sh
 ```
 
 Tests are in `tests/<script>/test_<script>.py` and use plain `unittest`; pytest is not used. CI
-runs the same loop.
+runs the same runner.
 
 ## After a rebuild
 

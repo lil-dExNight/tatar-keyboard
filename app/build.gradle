@@ -109,6 +109,27 @@ tasks.withType(Test).configureEach {
     maxParallelForks = Math.max(1, Math.min(2, Runtime.runtime.availableProcessors().intdiv(4)))
 }
 
+// The *CalibrationTest suites are the slow pole of the JVM test leg, so the default `test`
+// tasks skip them and they run once in calibrationTest on the debug classes. CI and
+// scripts/release_check.sh invoke `test calibrationTest` together: the full set still gates
+// every push and release.
+tasks.withType(Test).configureEach {
+    if (name == 'testDebugUnitTest' || name == 'testReleaseUnitTest') {
+        exclude '**/*CalibrationTest*'
+    }
+}
+
+afterEvaluate {
+    tasks.register('calibrationTest', Test) {
+        group = 'verification'
+        description = 'Calibration suites excluded from the default test leg (see above).'
+        def debugTest = tasks.named('testDebugUnitTest').get()
+        testClassesDirs = debugTest.testClassesDirs
+        classpath = debugTest.classpath
+        include '**/*CalibrationTest*'
+    }
+}
+
 dependencies {
     // Build-time only. error_prone_core on the annotationProcessor configurations puts
     // it on the javac processor path (which also lifts AGP's -proc:none);
