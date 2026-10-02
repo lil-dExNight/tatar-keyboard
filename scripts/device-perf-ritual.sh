@@ -31,6 +31,9 @@
 #      emoji panel open (the expected peak) and after close; after 30 s hidden
 #      (the idle-release path fires at 10 s: glide + emoji indexes drop). The
 #      ceiling depends on the build: debuggable builds run on the debug scale.
+#      Each scenario also saves /proc/<pid>/smaps_rollup (its RssAnon/RssFile
+#      split joins the result line; skipped with an INFO note when the process
+#      or the file is unreadable) and an App-Summary per-category extract.
 #   frames) frame stats: gfxinfo reset -> fixed 32-event Tatar typing
 #      script ("сәләм дөнья мин сине яратам дус ": 27 letters + 5 spaces,
 #      0.35 s between taps) -> the InputMethod window's last <=120 PROFILEDATA
@@ -51,6 +54,31 @@
 #      code per event; p95 is held to the budget. Event -> end of handling
 #      (eventTimeNano to the slice end, trace clock aligned with the
 #      trace_event_clock_sync marker) is printed without a budget.
+#   suggest) suggestion round trip: atrace over the 32-event tt script with the
+#      app sections of $PKG enabled (`-a "$PKG"`; a debuggable package allows
+#      it, a release one does via its profileable-shell manifest flag). Every
+#      lookup is an async TT#suggestLookup slice; the parser pairs the S/F
+#      markers by cookie, writes the durations to suggest-lookup-ms.txt and
+#      holds p95 to SUGGEST_BUDGET_MS. Zero slices is a FAIL: the gate is the
+#      capture itself.
+#   battery) opt-in, never interleaved with the USB-power perf legs: it
+#      simulates the unplugged state (`dumpsys battery unplug`, restored on
+#      exit). Idle protocol: keyboard hidden, batterystats reset, then a
+#      --battery-seconds window; the utime+stime delta of /proc/<pid>/stat
+#      (format-stable, clock ticks converted with CLK_TCK) must stay under an
+#      observability ceiling and the wake lock, sensor and alarm counts of the
+#      per-package batterystats dump must be zero. Active protocol: reset, then
+#      the 32-event tt script, cpu_ms per event on the result line.
+#   uimode) opt-in probe: screencaps before and after `cmd uimode night yes`
+#      (flipped back right away), the byte-diff count of the two PNGs on the
+#      result line; 0 means the palette did not follow the night flip.
+#      Evidence only, never fails.
+#   fontscale) opt-in probe: screencaps at the current font_scale and at 1.3.
+#      Key labels are canvas-drawn in pixels and must ignore the system font
+#      scale, so the whole-screen byte compare must be empty. Without image
+#      tools there is no crop to the keyboard region, and a status-bar clock
+#      tick or a cursor blink also diffs: check a FAIL against the saved PNGs
+#      before acting on it.
 #
 # Release (non-debuggable) builds: --enable-suggestions-ui turns word
 # suggestions on by driving the app's own settings screen with uiautomator
@@ -74,33 +102,36 @@
 #                     online device, else the POCO C71 serial)
 #   --pkg <package>   package under test (default org.tatarkeyboard.ime.debug)
 #   --outdir <path>   evidence directory (default build/device-perf-ritual)
-#   --legs <list>     comma-separated subset of cold,pss,frames,warm,touch
-#                     (default: all)
+#   --legs <list>     comma-separated subset of cold,pss,frames,warm,touch,suggest
+#                     and the opt-in battery,uimode,fontscale (default: the six
+#                     non-opt-in legs)
 #   --cold-runs <n>   recorded cold-start iterations (default 5)
 #   --cold-warmup <n> discarded cold-start iterations before them (default 1)
 #   --cold-trigger <tap|switch>  cold-start trigger (default: tap for a
 #                     debuggable package, switch otherwise)
 #   --frame-runs <n>  frame-stat runs (default 3)
 #   --warm-runs <n>   warm-show iterations (default 5)
+#   --battery-seconds <n>  idle window of the battery leg (default 150)
 #   --enable-suggestions-ui  turn suggestions on through the settings screen
 #                     instead of the run-as pref write
 #
 # Exit code: 0 with no FAIL line, 1 otherwise. The script is idempotent: the
 # pre-run state (default IME, enabled IMEs, stay-on-while-plugged, screen
-# awake/asleep, the suggestions switch when set through the UI, atrace) is
-# restored by an EXIT trap.
+# awake/asleep, the suggestions switch when set through the UI, atrace, the
+# simulated unplug, night mode and the font scale) is restored by an EXIT trap.
 
 set -uo pipefail
 
 SERIAL="${ANDROID_SERIAL:-}"
 PKG="org.tatarkeyboard.ime.debug"
 OUTDIR=""
-LEGS="cold,pss,frames,warm,touch"
+LEGS="cold,pss,frames,warm,touch,suggest"
 COLD_RUNS=5
 COLD_WARMUP=1
 COLD_TRIGGER=""
 FRAME_RUNS=3
 WARM_RUNS=5
+BATTERY_SECONDS=150
 SUGGESTIONS_UI=0
 ADB="${ADB:-$HOME/Android/Sdk/platform-tools/adb}"
 
@@ -115,11 +146,13 @@ while [ $# -gt 0 ]; do
         --cold-trigger) COLD_TRIGGER="$2"; shift 2 ;;
         --frame-runs) FRAME_RUNS="$2"; shift 2 ;;
         --warm-runs) WARM_RUNS="$2"; shift 2 ;;
+        --battery-seconds) BATTERY_SECONDS="$2"; shift 2 ;;
         --enable-suggestions-ui) SUGGESTIONS_UI=1; shift ;;
         *) echo "unknown flag: $1" >&2; exit 2 ;;
     esac
 done
 case "$COLD_TRIGGER" in ''|tap|switch) : ;; *) echo "bad --cold-trigger: $COLD_TRIGGER" >&2; exit 2 ;; esac
+case "$BATTERY_SECONDS" in ''|*[!0-9]*) echo "bad --battery-seconds: $BATTERY_SECONDS" >&2; exit 2 ;; esac
 leg_on() { case ",$LEGS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
 # Budgets printed with the RESULT lines. The PSS ceiling of a debuggable build is
@@ -127,10 +160,15 @@ leg_on() { case ",$LEGS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 COLD_BUDGET_MS=400
 WARM_BUDGET_MS=150
 TOUCH_BUDGET_MS=5
+SUGGEST_BUDGET_MS=32
 FRAME_BUDGET_MS=16.7
 JANK_BUDGET_PCT=1.0
 PSS_BUDGET_DEBUG_KB=114000
 PSS_BUDGET_RELEASE_KB=69000
+# Idle-window CPU ceiling of the battery leg: an observability assertion (it
+# catches a stuck worker or a wake loop), not a tuned budget.
+BATTERY_IDLE_CPU_BUDGET_MS=1000
+CLK_TCK=$(getconf CLK_TCK 2>/dev/null || echo 100)
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUTDIR="${OUTDIR:-$ROOT/build/device-perf-ritual}"
@@ -169,16 +207,30 @@ PREV_IME=$(SHELL settings get secure default_input_method 2>/dev/null | tr -d '\
 PREV_ENABLED=$(SHELL settings get secure enabled_input_methods 2>/dev/null | tr -d '\r')
 PREV_STAYON=$(SHELL settings get global stay_on_while_plugged_in 2>/dev/null | tr -d '\r')
 PREV_AWAKE=$(SHELL dumpsys power 2>/dev/null | grep -oP 'mWakefulness=\K\w+' | head -1)
-log "state on entry: ime=$PREV_IME stayon=$PREV_STAYON wakefulness=$PREV_AWAKE"
+PREV_FONTSCALE=$(SHELL settings get system font_scale 2>/dev/null | tr -d '\r')
+log "state on entry: ime=$PREV_IME stayon=$PREV_STAYON wakefulness=$PREV_AWAKE font_scale=$PREV_FONTSCALE"
 
 WOKEN=0
 IME_ID=""
 IME_WAS_ENABLED=1
 SUGG_UI_RESTORE=""     # "false" when the UI switch was turned on by this run
 ATRACE_ON=0
+BATTERY_ON=0           # the battery leg simulated unplug; reset restores the real state
+UIMODE_ON=0            # the uimode probe flipped night mode
+FONTSCALE_ON=0         # the fontscale probe overrode font_scale
 restore() {
     log "restoring device state"
     [ "$ATRACE_ON" = 1 ] && SHELL atrace --async_stop >/dev/null 2>&1 || true
+    [ "$BATTERY_ON" = 1 ] && SHELL dumpsys battery reset >/dev/null 2>&1 || true
+    [ "$UIMODE_ON" = 1 ] && SHELL cmd uimode night no >/dev/null 2>&1 || true
+    if [ "$FONTSCALE_ON" = 1 ]; then
+        # a never-set font_scale reads back null; delete restores the default
+        # instead of pinning an explicit value
+        case "$PREV_FONTSCALE" in
+            ''|null) SHELL settings delete system font_scale >/dev/null 2>&1 || true ;;
+            *) SHELL settings put system font_scale "$PREV_FONTSCALE" >/dev/null 2>&1 || true ;;
+        esac
+    fi
     if [ -n "$SUGG_UI_RESTORE" ]; then
         set_suggestions_ui "$SUGG_UI_RESTORE" >/dev/null \
             && log "suggestions switch restored to $SUGG_UI_RESTORE" \
@@ -528,14 +580,41 @@ meminfo_total() { # meminfo_total <label> -> echoes "total_kb swap_kb"; dumps th
     SHELL dumpsys meminfo "$PKG" > "$OUTDIR/meminfo-$1.txt" 2>/dev/null
     awk '/TOTAL PSS:/ {print $3, $NF; exit}' "$OUTDIR/meminfo-$1.txt"
 }
+# meminfo_categories <dump> <out>: the per-category PSS lines of the App Summary
+# (evidence file; the plain per-category table has no colons, so these match
+# only the summary lines).
+meminfo_categories() {
+    grep -E '^[[:space:]]+(Java Heap|Native Heap|Code|Graphics|Private Other|System|TOTAL):' \
+        "$1" > "$2" 2>/dev/null || true
+}
+# smaps_rollup <pid> <out>: /proc/<pid>/smaps_rollup of the package process.
+# A shell read works where ptrace rules allow it; run-as is the fallback for a
+# debuggable package.
+smaps_rollup() {
+    SHELL cat "/proc/$1/smaps_rollup" > "$2" 2>/dev/null
+    grep -q '^RssAnon:' "$2" 2>/dev/null && return 0
+    [ "$RUN_AS_OK" = 1 ] || return 1
+    SHELL "run-as $PKG cat /proc/$1/smaps_rollup" > "$2" 2>/dev/null
+    grep -q '^RssAnon:' "$2" 2>/dev/null
+}
 pss_point() { # pss_point <scenario>
-    local kb sw over
+    local kb sw over pid anon file
     read -r kb sw <<<"$(meminfo_total "$1")"
+    meminfo_categories "$OUTDIR/meminfo-$1.txt" "$OUTDIR/meminfo-categories-$1.txt"
+    anon=""; file=""
+    pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+    if [ -z "$pid" ]; then
+        result INFO pss-smaps "scenario=$1 no pid for $PKG; anon/file split skipped"
+    elif smaps_rollup "$pid" "$OUTDIR/smaps-$1.txt"; then
+        read -r anon file <<<"$(awk '/^RssAnon:/ {a=$2} /^RssFile:/ {f=$2} END {print a+0, f+0}' "$OUTDIR/smaps-$1.txt")"
+    else
+        result INFO pss-smaps "scenario=$1 smaps_rollup unreadable for pid $pid; anon/file split skipped"
+    fi
     if [ -z "${kb:-}" ]; then
         result FAIL pss "scenario=$1 unreadable (process dead?)"
     else
         over=$( [ "$kb" -gt "$PSS_BUDGET_KB" ] && echo true || echo false )
-        result INFO pss "scenario=$1 total_kb=$kb swap_kb=$sw budget_kb=$PSS_BUDGET_KB over_budget=$over build=$BUILD"
+        result INFO pss "scenario=$1 total_kb=$kb swap_kb=$sw anon_kb=${anon:-unknown} file_kb=${file:-unknown} budget_kb=$PSS_BUDGET_KB over_budget=$over build=$BUILD"
     fi
 }
 
@@ -650,6 +729,46 @@ else:
 PYEOF
 }
 
+# Async-slice parser for app sections (atrace -a): pairs "S|<pid>|<name>|<cookie>"
+# with the matching "F|<pid>|<name>|<cookie>" and prints "n p50 p95" of the
+# durations in ms; one duration per line goes to <out-file>. Percentiles follow
+# the stats helper. Unmatched begins (a slice still open at trace stop) are
+# dropped. Exit 1 when no complete pair was found.
+trace_async() { # trace_async <trace-file> <section-name> <out-file>
+    python3 - "$1" "$2" "$3" <<'PYEOF'
+import re
+import sys
+path, section, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
+line_re = re.compile(r"^\s*\S+-(\d+)\s+(?:\(\s*[\d-]+\)\s+)?\[\d+\]\s+\S+\s+([\d.]+): "
+                     r"tracing_mark_write: (.*)$")
+open_slices = {}
+durations = []
+for line in open(path, encoding="utf-8", errors="replace"):
+    m = line_re.match(line)
+    if not m:
+        continue
+    ts, body = float(m.group(2)), m.group(3).strip()
+    parts = body.split("|")
+    if len(parts) != 4 or parts[2] != section:
+        continue
+    key = (parts[1], parts[3])
+    if parts[0] == "S":
+        open_slices[key] = ts
+    elif parts[0] == "F" and key in open_slices:
+        durations.append((ts - open_slices.pop(key)) * 1e3)
+with open(out_path, "w", encoding="utf-8") as out:
+    for d in durations:
+        out.write(f"{d:.3f}\n")
+if not durations:
+    sys.exit(f"no async slices named {section}")
+durations.sort()
+n = len(durations)
+p50 = durations[n // 2] if n % 2 else (durations[n // 2 - 1] + durations[n // 2]) / 2
+p95 = durations[min(n - 1, int(0.95 * n))]
+print(f"{n} {p50:.2f} {p95:.2f}")
+PYEOF
+}
+
 # median / p95 / min / max of the numbers on stdin: "n med p95 min max"
 stats() {
     python3 -c "
@@ -664,8 +783,11 @@ print(f'{n} {med:.1f} {p95:.1f} {v[0]:.1f} {v[-1]:.1f}')"
 gt() { python3 -c "import sys; print('true' if float(sys.argv[1]) > float(sys.argv[2]) else 'false')" "$1" "$2"; }
 ge() { python3 -c "import sys; print('true' if float(sys.argv[1]) >= float(sys.argv[2]) else 'false')" "$1" "$2"; }
 
+# trace_start [extra atrace flags...]: extra flags go after the categories; the
+# suggest leg passes `-a "$PKG"` to capture the app's async sections. The touch
+# and warm legs keep the bare `input view` capture their parsers expect.
 trace_start() {
-    SHELL atrace --async_start -b 4096 input view >/dev/null 2>&1 && ATRACE_ON=1
+    SHELL atrace --async_start -b 4096 input view "$@" >/dev/null 2>&1 && ATRACE_ON=1
 }
 trace_stop() { # trace_stop <file>
     SHELL atrace --async_stop > "$1" 2>/dev/null
@@ -686,6 +808,52 @@ if set(clocks) != {"elapsed", "uptime"}:
     sys.exit(1)
 print(ms(clocks["elapsed"]) - ms(clocks["uptime"]))
 '
+}
+
+# proc_cpu_ms <pid> -> utime+stime of the process in ms: fields 14+15 of
+# /proc/<pid>/stat are clock ticks, converted with CLK_TCK. Format-stable across
+# Android versions, so it is the independent counter of the battery leg.
+proc_cpu_ms() {
+    local ticks
+    ticks=$(SHELL cat "/proc/$1/stat" 2>/dev/null | tr -d '\r' | awk '{print $14 + $15}')
+    [ -n "$ticks" ] || return 1
+    python3 -c "print(int('$ticks') * 1000 // $CLK_TCK)"
+}
+
+# battery_counts <batterystats-dump> -> "wakelocks sensors alarms recognized".
+# The per-package batterystats layout varies by Android version, so the counts
+# are collected tolerantly: every "Wake lock" line (summary headers excluded)
+# contributes its "(Nx)" count, "Sensor <id>" lines likewise, and the "Alarms: N"
+# line its number. Headers count as "recognized" evidence even when empty;
+# "recognized" is no when no known shape was seen at all, in which case the zero
+# counts prove nothing and the caller reports INFO instead of PASS.
+battery_counts() {
+    python3 - "$1" <<'PYEOF'
+import re
+import sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+wl = sensor = alarm = 0
+seen = False
+for line in text.splitlines():
+    low = line.lower()
+    if "wake lock" in low:
+        seen = True
+        if "summary" in low or "all partial" in low:
+            continue    # section headers prove the format even when empty
+        m = re.search(r"\((\d+)x\)", line) or re.search(r"\b(\d+)x\b", line)
+        # a named wake lock without a count is one held lock
+        wl += int(m.group(1)) if m else 1
+    elif re.match(r"\s*Sensor\s+\d+", line):
+        seen = True
+        m = re.search(r"\((\d+)x\)", line) or re.search(r"\b(\d+)x\b", line)
+        sensor += int(m.group(1)) if m else 0
+    else:
+        m = re.search(r"\bAlarms?:\s*(\d+)", line)
+        if m:
+            seen = True
+            alarm += int(m.group(1))
+print(wl, sensor, alarm, "yes" if seen else "no")
+PYEOF
 }
 
 # Chrome to the front with the omnibox ready; dismiss a possible first-run dialog (BACK).
@@ -946,6 +1114,130 @@ if leg_on touch; then
         hide_keyboard || true
     else
         result FAIL touch "keyboard or tt layout not ready over SetupActivity"
+    fi
+fi
+
+# ── leg: suggestion round trip (TT#suggestLookup async slices) ───────────────
+
+if leg_on suggest; then
+    select_ours
+    if raise_keyboard_over_setup && globe_to tt; then
+        sleep 9        # let the suggestion engine publish, as in the touch leg
+        trace_start -a "$PKG"
+        sleep 0.5
+        type_text tt "$FRAME_SCRIPT" 0.35
+        sleep 1
+        trace_stop "$OUTDIR/suggest-trace.txt"
+        out=$(trace_async "$OUTDIR/suggest-trace.txt" "TT#suggestLookup" "$OUTDIR/suggest-lookup-ms.txt" 2>/dev/null || true)
+        if [ -z "$out" ]; then
+            result FAIL suggest "no TT#suggestLookup slices in trace (app sections not captured?)"
+        else
+            read -r n p50 p95 <<<"$out"
+            result INFO suggest "n=$n p50_ms=$p50 p95_ms=$p95 budget_ms=$SUGGEST_BUDGET_MS over_budget=$(gt "$p95" "$SUGGEST_BUDGET_MS") build=$BUILD protocol=32-event-tt"
+        fi
+        hide_keyboard || true
+    else
+        result FAIL suggest "keyboard or tt layout not ready over SetupActivity"
+    fi
+fi
+
+# ── leg: battery observability (opt-in; simulates the unplugged state) ───────
+
+if leg_on battery; then
+    BATTERY_ON=1
+    select_ours
+    if raise_keyboard_over_setup; then
+        hide_keyboard || true
+        SHELL dumpsys battery unplug >/dev/null 2>&1
+        SHELL dumpsys batterystats reset >/dev/null 2>&1
+        sleep 2        # let the reset settle out of the window
+        pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+        cpu_before=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+        if [ -z "$pid" ] || [ -z "${cpu_before:-}" ]; then
+            result FAIL battery.idle "process stat unreadable (pid='${pid:-}')"
+        else
+            log "battery idle window: ${BATTERY_SECONDS}s"
+            sleep "$BATTERY_SECONDS"
+            cpu_after=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+            SHELL dumpsys batterystats "$PKG" > "$OUTDIR/batterystats.txt" 2>/dev/null
+            if [ -z "${cpu_after:-}" ]; then
+                result FAIL battery.idle "process $pid gone after the idle window"
+            else
+                read -r wl sensor alarm recognized <<<"$(battery_counts "$OUTDIR/batterystats.txt")"
+                cpu_delta=$((cpu_after - cpu_before))
+                if [ "$recognized" = no ]; then
+                    result INFO battery.idle "batterystats format unrecognized; raw wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$cpu_delta window_s=$BATTERY_SECONDS build=$BUILD"
+                elif [ "$wl" = 0 ] && [ "$sensor" = 0 ] && [ "$alarm" = 0 ] && [ "$cpu_delta" -le "$BATTERY_IDLE_CPU_BUDGET_MS" ]; then
+                    result PASS battery.idle "wakelocks=0 sensors=0 alarms=0 cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_IDLE_CPU_BUDGET_MS window_s=$BATTERY_SECONDS build=$BUILD"
+                else
+                    result FAIL battery.idle "wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_IDLE_CPU_BUDGET_MS window_s=$BATTERY_SECONDS build=$BUILD"
+                fi
+            fi
+        fi
+        # active protocol: the 32-event tt script, CPU per event
+        SHELL dumpsys batterystats reset >/dev/null 2>&1
+        if raise_keyboard_over_setup && globe_to tt; then
+            sleep 2
+            pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+            cpu_before=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+            type_text tt "$FRAME_SCRIPT" 0.35
+            sleep 1
+            cpu_after=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+            if [ -n "${cpu_before:-}" ] && [ -n "${cpu_after:-}" ]; then
+                cpu_delta=$((cpu_after - cpu_before))
+                n_events=$(python3 -c "print(len('$FRAME_SCRIPT'))")
+                per=$(python3 -c "print(f'{$cpu_delta / $n_events:.1f}')")
+                result INFO battery.active "cpu_ms=$cpu_delta events=$n_events cpu_ms_per_event=$per build=$BUILD"
+            else
+                result FAIL battery.active "process stat unreadable (pid='${pid:-}')"
+            fi
+        else
+            result FAIL battery.active "keyboard or tt layout not ready over SetupActivity"
+        fi
+    else
+        result FAIL battery.idle "keyboard did not raise over SetupActivity"
+    fi
+fi
+
+# ── probe: night-mode palette flip (opt-in, evidence only) ───────────────────
+
+if leg_on uimode; then
+    select_ours
+    if raise_keyboard_over_setup; then
+        UIMODE_ON=1
+        SHOT uimode-light.png
+        SHELL cmd uimode night yes >/dev/null 2>&1
+        sleep 2
+        keyboard_shown || { tap_node setup_test_field >/dev/null 2>&1 && wait_keyboard 5 || true; }
+        SHOT uimode-night.png
+        SHELL cmd uimode night no >/dev/null 2>&1
+        sleep 2        # restore() sets night no again when this probe ran
+        diff_bytes=$(cmp -l "$OUTDIR/uimode-light.png" "$OUTDIR/uimode-night.png" 2>/dev/null | wc -l)
+        result INFO uimode "night_flip pixel_diff_bytes=$diff_bytes (0 means stale palette — investigate)"
+    else
+        result FAIL uimode "keyboard did not raise over SetupActivity"
+    fi
+fi
+
+# ── probe: key labels must ignore the system font scale (opt-in) ─────────────
+
+if leg_on fontscale; then
+    select_ours
+    if raise_keyboard_over_setup; then
+        FONTSCALE_ON=1
+        SHOT fontscale-normal.png
+        SHELL settings put system font_scale 1.3 >/dev/null 2>&1
+        sleep 2
+        keyboard_shown || { tap_node setup_test_field >/dev/null 2>&1 && wait_keyboard 5 || true; }
+        SHOT fontscale-large.png
+        if cmp -s "$OUTDIR/fontscale-normal.png" "$OUTDIR/fontscale-large.png"; then
+            result PASS fontscale "labels pixel-identical under font_scale 1.3"
+        else
+            diff_bytes=$(cmp -l "$OUTDIR/fontscale-normal.png" "$OUTDIR/fontscale-large.png" 2>/dev/null | wc -l)
+            result FAIL fontscale "screen changed under font_scale 1.3: pixel_diff_bytes=$diff_bytes"
+        fi
+    else
+        result FAIL fontscale "keyboard did not raise over SetupActivity"
     fi
 fi
 
