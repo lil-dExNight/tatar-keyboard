@@ -105,27 +105,28 @@ Open-source engines (license check: project is Apache-2.0, no GPL code, no NDK):
 | RNC, Lyashevskaya–Sharov lists | — | research-only | Excluded (incompatible with shipping) |
 | azatliq.org, tatar-inform, kitaphane, Telegram/VK dumps | — | all-rights-reserved / personal data | Excluded |
 
-## Harness prerequisites (build these first — they unblock all gates below)
+## Harness prerequisites (all landed)
 
-1. **Composite next-word hit measurement**: today the harness pins chain emptiness, not hit
-   rate; extend `suggest_eval.py` + `TtSuggestEvalTest` to measure top-3 of the full chain
-   (bigrams + pairs + forms + fallback).
-2. **Typo-mutated held-out set**: deterministic mutations (adjacent-key substitution,
-   deletion, insertion, transposition) of eval tokens; without it, wider typo classes cannot
-   be measured. Also gives the autocorrect false-trigger gate (run the autocorrect path over
-   correctly typed words; pin the rate).
-3. **Russian held-out set**: mirror `make_eval_set.py` for ru (untrained Tatoeba-ru rows,
-   `RUSSIAN_ALPHABET` normalization, dedup against all training corpora). Record the baseline;
-   future changes gate on its delta. Closes measurement-framework gap #3.
-4. **Decontamination**: extend the eval-set exclusion to normalized sentences of *all*
-   training corpora (today only the conv-train split is excluded; Leipzig overlap leaks).
-5. **Statistics**: sentence-level paired bootstrap CIs and top-1 recall pins in both
-   harnesses; minimum-detectable-effect table so sub-noise "wins" stop reopening measured
-   rejections.
-6. **Lemma stratification**: label every eval token seen-form / new-form-of-seen-stem /
-   unseen-stem; the same-stem boost must win on the middle stratum specifically.
-7. **Keystroke-savings simulator**: replay eval sentences with strip taps at cost 1; report
-   KS% with the vocabulary-oracle bound next to it.
+The harness now covers every prerequisite the memos below reference:
+
+- Composite next-word hit measurement: `scripts/suggest_eval.py` + `TtSuggestEvalTest` measure
+  top-1/top-3 of the full chain (bigrams + after-word forms + fallback); the python mirror of
+  the chain lives in `scripts/suggest_chain.py`.
+- Typo-mutated held-out set: `scripts/typo_eval_pack.py` generates deterministic
+  substitution/deletion/insertion/transposition mutations of the eval words, pinned in
+  `tests/typo_eval_pack/` and mirrored by `TypoMutatedEvalTest`, which also pins the
+  autocorrect false-trigger rate on correctly typed words.
+- Russian held-out set: `scripts/make_ru_eval_set.py` builds
+  `app/src/test/resources/ru_eval_sentences.txt` (decontaminated against all four Russian
+  training corpora); `RuSuggestEvalTest` pins the baseline.
+- Decontamination: the Tatar eval set excludes the normalized sentences of all training
+  corpora (conv train90 + both Leipzig tt sets, manifest-verified).
+- Statistics: sentence-level paired bootstrap CI95 and top-1 pins in both harnesses, plus a
+  minimum-detectable-effect line; a sub-noise delta is not a win.
+- Lemma stratification: every eval token is labeled seen-form / new-form-of-seen-stem /
+  unseen-stem with per-stratum rates.
+- Keystroke-savings simulator: both harnesses replay the eval set with strip taps at cost 1
+  and report KS% with the vocabulary-oracle bound next to it.
 
 ## Decision memos (ranked)
 
@@ -145,7 +146,7 @@ stem hit rate.
 **P2 — Wider typo classes (insertion/deletion/transposition) ranked by edit distance.**
 Re-implement AnySoftKeyboard's allocation-free Damerau–Levenshtein in Kotlin as the ranker;
 new edit classes alongside #1/#4, hard beam cap. Gate: top-3 on the typo-mutated held-out set
-(prerequisite 2), device p95 within the existing budget. Expected: the largest realistic
+(`TypoMutatedEvalTest`), device p95 within the existing budget. Expected: the largest realistic
 top-3 gain — substitutions are a minority of real typos. Watch: candidate-count blowup needs
 fail-fast caps (ASK's `GestureTypingDetector` pattern).
 
@@ -165,7 +166,7 @@ counts cover in-vocabulary pairs only or all token transitions, and record the c
 
 **P5 — Continuation-count fallback pool.** Replace the raw-frequency fallback pool with
 top-N by continuation count N₁₊(•,w) (a small shipped text asset). Gate: ≥ +0.3 pp
-unconditional top-3 on the extended harness (prerequisite 1). Risk: high-context particles
+unconditional top-3 on the composite chain metric. Risk: high-context particles
 crowding out rarer correct words — review the produced list as product, not only as metric.
 
 **P6 — Bigram head expansion at K=4, funded by successor singleton cutoffs.** The head
