@@ -76,9 +76,9 @@ API 37.1 — not on the reference device.
 
 Options, ranked:
 
-1. **Observability first**: the pss leg saves `/proc/<pid>/smaps_rollup` (the anon/file split
-   the budget cares about) and prints the meminfo category table it already dumps; a
-   mincore-based residency counter in the I/O-strategy instrumentation test.
+1. Landed: the pss leg saves `/proc/<pid>/smaps_rollup` per scenario (the anon/file split
+   joins the result line) plus an App-Summary category extract. Still open: a mincore-based
+   residency counter in the I/O-strategy instrumentation test.
 2. **Streamed structural validation**: run the `open()` walks over a sequential read window,
    keeping mmap purely for random-access lookups. Estimated −1.5…−2.4 MB PSS after mixed
    sessions; also removes speculative flash I/O at engine start.
@@ -99,14 +99,12 @@ garbage per keystroke, and ~3 binder transactions (commitText out, `updateSelect
 shown; coalescing caps it during fast typing, so the waste concentrates at normal pace. The
 largest single garbage source is the up-to-1024-char cache concat per keystroke. The glide
 decoder is at its algorithmic floor (fail-fast bounds; one decode per gesture). **The strip
-round trip (`TT#suggestLookup`) has no budget and no device leg — the largest unbudgeted
-latency surface.**
+round trip (`TT#suggestLookup`) is budgeted on device (p95 ≤ 32 ms, `suggest` leg).**
 
 Options, ranked:
 
-1. **Budget the suggestion round trip on device** (parse the existing atrace slices over the
-   32-tap script; a plausible pre-registered gate: p95 ≤ 32 ms on the reference device).
-   Lands before the rest so their effects are visible.
+1. Landed: the suggestion round trip is budgeted on device (p95 ≤ 32 ms over the 32-tap
+   script, async atrace slices, `suggest` leg of `scripts/device-perf-ritual.sh`).
 2. **Rate-limit self-caused reloads** (per-keystroke `getSurroundingText` → at most every
    ~250–500 ms when the update matches the expected selection; external moves keep per-event
    reload). Watch the correctness surface: the reload is the silent-drift detector.
@@ -131,10 +129,10 @@ measurement, not code.
 
 Options, ranked:
 
-1. **A battery leg** (sibling to `device-netstats-proof.sh`): Protocol A — hidden-idle drain
-   (raise once, hide, `battery unplug`, batterystats reset, ≥120 s, assert wake-lock/sensor/
-   alarm counts = 0 and CPU delta ≈ 0; `/proc/<pid>/stat` utime delta as the independent
-   counter); Protocol B — active-session CPU per scripted session. Never interleaved with the
+1. Landed: the opt-in `battery` leg of `scripts/device-perf-ritual.sh` runs both protocols —
+   hidden-idle (simulated unplug, batterystats reset, wake-lock/sensor/alarm counts must be 0,
+   `/proc/<pid>/stat` utime+stime delta as the independent counter) and active-session CPU per
+   scripted session. It restores the battery state on exit and is never interleaved with the
    USB-power perf legs.
 2. **Stuck-gesture assertion** (hold backspace, release, assert CPU delta ≈ 0 and the 10 s
    deallocate fired) — kills the "repeat never stops" class while healthy.
