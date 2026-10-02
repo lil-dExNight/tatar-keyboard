@@ -37,8 +37,9 @@ Quality:
 
 Performance and footprint:
 
-- `scripts/device-perf-ritual.sh` legs: cold, pss, frames, warm, touch. Budgets are constants
-  in the script; `docs/PERF-BUDGETS.md` defines the measurement rules.
+- `scripts/device-perf-ritual.sh` legs: cold, pss, frames, warm, touch, suggest (opt-in:
+  battery, uimode, fontscale). Budgets are constants in the script; `docs/PERF-BUDGETS.md`
+  defines the measurement rules.
 - Zero allocations in the draw loop: `DrawAllocInstrumentationTest`, backed by source
   contracts such as `KeyboardViewDrawLoopContractTest`.
 - APK size and asset budgets: `scripts/release_check.sh` (`artifact.size`) and the byte
