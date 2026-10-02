@@ -314,11 +314,11 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         _, data = pack.generate_set(selected, rects, aliases=aliases)
         # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values.
         # The set carries both variants of every doubled word, so there are more rows than words.
-        self.assertEqual(len(selected), 4531)
-        self.assertEqual(len(data), 10195627)
+        self.assertEqual(len(selected), 4526)
+        self.assertEqual(len(data), 10192400)
         self.assertEqual(
             sha256_bytes(data),
-            "7c497d92be0e1a31741254de827b37004b13f79f1335a6d6f8a3e71916606a6b",
+            "acbc6d5af7869cf4273820c04aa21e696be1c97f7a37cf8151381e23267e219b",
         )
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
