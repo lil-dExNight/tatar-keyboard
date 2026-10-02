@@ -67,12 +67,18 @@ class PrimitiveGoldenVectorTest(unittest.TestCase):
         self.assertEqual(pack.MIN_WORD_CODE_POINTS, 5)
         self.assertEqual(pack.DICT_MODULUS, 40)
         self.assertEqual(pack.LOOP_MODULUS, 8)
-        self.assertEqual(pack.CUT_MODULUS, 10)
+        self.assertEqual(pack.CUT_MODULUS, 3)
+        self.assertEqual(pack.CUT_DIVISOR, 20)
         self.assertEqual(pack.STEP_DIVISOR, 6)
         self.assertEqual(pack.TSTEP_MIN, 8)
-        self.assertEqual(pack.TSTEP_VAR, 9)
-        self.assertEqual(pack.JITTER_PERCENT, 18)
+        self.assertEqual(pack.TSTEP_VAR, 11)
+        self.assertEqual(pack.JITTER_PERCENT, 22)
         self.assertEqual(pack.WANDER_DIVISOR, 6)
+        self.assertEqual(pack.GESTURE_OFFSET_PERCENT, 30)
+        self.assertEqual(pack.ENDPOINT_START_PERCENT, 18)
+        self.assertEqual(pack.ENDPOINT_END_PERCENT, 40)
+        self.assertEqual(pack.ENDPOINT_WIDE_MODULUS, 7)
+        self.assertEqual(pack.ENDPOINT_WIDE_SCALE, 3)
 
 
 class VerticalModelTest(unittest.TestCase):
@@ -241,17 +247,21 @@ class NoiseModelTest(unittest.TestCase):
 
     def test_jitter_bounds_around_the_walked_path(self) -> None:
         # With jitter zeroed the samples walk the (cut) polyline exactly; with the pinned
-        # jitter every emitted point stays within JITTER of some walked point. The simplest
-        # exact pin: endpoints stay within jitter of the first/last vertex.
+        # knobs every emitted point stays within jitter + gesture shift of some walked point.
+        # The simplest exact pin: endpoints stay within jitter + shift + the widest endpoint
+        # offset of the first/last vertex.
         word = "агдабва"
         points = pack.generate_gesture(word, FIXTURE_BY_LETTER, FIXTURE_RADIUS)
         jitter = FIXTURE_RADIUS * pack.JITTER_PERCENT // 100
+        shift = FIXTURE_RADIUS * pack.GESTURE_OFFSET_PERCENT // 100
+        start_half = FIXTURE_RADIUS * pack.ENDPOINT_START_PERCENT // 100 * pack.ENDPOINT_WIDE_SCALE
+        end_half = FIXTURE_RADIUS * pack.ENDPOINT_END_PERCENT // 100 * pack.ENDPOINT_WIDE_SCALE
         first_rect = FIXTURE_BY_LETTER[ord(word[0])]
         last_rect = FIXTURE_BY_LETTER[ord(word[-1])]
-        self.assertLessEqual(abs(points[0][0] - first_rect.center_x), jitter)
-        self.assertLessEqual(abs(points[0][1] - first_rect.center_y), jitter)
-        self.assertLessEqual(abs(points[-1][0] - last_rect.center_x), jitter)
-        self.assertLessEqual(abs(points[-1][1] - last_rect.center_y), jitter)
+        self.assertLessEqual(abs(points[0][0] - first_rect.center_x), jitter + shift + start_half)
+        self.assertLessEqual(abs(points[0][1] - first_rect.center_y), jitter + shift + start_half)
+        self.assertLessEqual(abs(points[-1][0] - last_rect.center_x), jitter + shift + end_half)
+        self.assertLessEqual(abs(points[-1][1] - last_rect.center_y), jitter + shift + end_half)
 
     def test_doubled_letter_can_draw_the_loop(self) -> None:
         # The loop machinery: a doubled letter with draw_loop=True contributes the 4 corners
@@ -297,7 +307,7 @@ class DeterminismTest(unittest.TestCase):
         rendered = pack.render_gesture("абвагд", points)
         self.assertEqual(
             sha256_bytes(rendered.encode("utf-8")),
-            "a41c706ae8162136bceb2a9b99f0323292c7de861cb52225fe41eb7ccd85e5a0",
+            "bc43129d8a1253a274350121b169ede5333835306ba638ef1eba02faea676d56",
         )
 
 
@@ -315,10 +325,10 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values.
         # The set carries both variants of every doubled word, so there are more rows than words.
         self.assertEqual(len(selected), 4526)
-        self.assertEqual(len(data), 10192400)
+        self.assertEqual(len(data), 10407494)
         self.assertEqual(
             sha256_bytes(data),
-            "acbc6d5af7869cf4273820c04aa21e696be1c97f7a37cf8151381e23267e219b",
+            "3846bee2982bae815927a3325aa8ce8aa3e774e2f7a536571d8548ee208aac9c",
         )
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")

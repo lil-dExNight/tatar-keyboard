@@ -119,8 +119,8 @@ class GlideGoldenExportTest {
         if (geo.id == "fixture-tt") {
             // The generator mirror must reproduce the pinned calibration set byte for byte.
             assertEquals(4526, words.size)
-            assertEquals(10192400, bytes.size)
-            assertEquals("acbc6d5af7869cf4273820c04aa21e696be1c97f7a37cf8151381e23267e219b", sha)
+            assertEquals(10407494, bytes.size)
+            assertEquals("3846bee2982bae815927a3325aa8ce8aa3e774e2f7a536571d8548ee208aac9c", sha)
         }
         w.write("{\"kind\":\"set\",\"id\":${json(geo.id)},\"words\":${words.size},\"rows\":${paths.size}," +
             "\"bytes\":${bytes.size},\"sha256\":${json(sha)}}\n")
@@ -537,9 +537,34 @@ class GlideGoldenExportTest {
         val cutY = vertexY.copyOf(vertexCount)
         for (v in 1 until vertexCount - 1) {
             if (!cut[v]) continue
-            cutX[v] = (vertexX[v - 1] + 2 * vertexX[v] + vertexX[v + 1]) / 4
-            cutY[v] = (vertexY[v - 1] + 2 * vertexY[v] + vertexY[v + 1]) / 4
+            // floorDiv: the dividend goes negative (mirror of the python generator's //).
+            cutX[v] = vertexX[v] + Math.floorDiv(vertexX[v - 1] + vertexX[v + 1] - 2 * vertexX[v], CUT_DIVISOR)
+            cutY[v] = vertexY[v] + Math.floorDiv(vertexY[v - 1] + vertexY[v + 1] - 2 * vertexY[v], CUT_DIVISOR)
         }
+
+        // Endpoint offsets (mirror of glide_pack.generate_gesture, draw group 4).
+        var startHalf = radius * ENDPOINT_START_PERCENT / 100
+        if (java.lang.Long.remainderUnsigned(stream, ENDPOINT_WIDE_MODULUS) == 0L) {
+            startHalf *= ENDPOINT_WIDE_SCALE
+        }
+        stream = splitmix64(stream)
+        val startDx = java.lang.Long.remainderUnsigned(stream, 2L * startHalf + 1).toInt() - startHalf
+        stream = splitmix64(stream)
+        val startDy = java.lang.Long.remainderUnsigned(stream, 2L * startHalf + 1).toInt() - startHalf
+        stream = splitmix64(stream)
+        var endHalf = radius * ENDPOINT_END_PERCENT / 100
+        if (java.lang.Long.remainderUnsigned(stream, ENDPOINT_WIDE_MODULUS) == 0L) {
+            endHalf *= ENDPOINT_WIDE_SCALE
+        }
+        stream = splitmix64(stream)
+        val endDx = java.lang.Long.remainderUnsigned(stream, 2L * endHalf + 1).toInt() - endHalf
+        stream = splitmix64(stream)
+        val endDy = java.lang.Long.remainderUnsigned(stream, 2L * endHalf + 1).toInt() - endHalf
+        stream = splitmix64(stream)
+        cutX[0] += startDx
+        cutY[0] += startDy
+        cutX[vertexCount - 1] += endDx
+        cutY[vertexCount - 1] += endDy
 
         val segmentLengths = IntArray(vertexCount - 1)
         var total = 0
@@ -581,6 +606,13 @@ class GlideGoldenExportTest {
         val wander = jitter / WANDER_DIVISOR
         val span = 2L * jitter + 1
         val stepSpan = 2L * wander + 1
+        // The gesture shift (draw group 5): one constant offset for the whole path.
+        val shift = radius * GESTURE_OFFSET_PERCENT / 100
+        val shiftSpan = 2L * shift + 1
+        val shiftX = java.lang.Long.remainderUnsigned(stream, shiftSpan).toInt() - shift
+        stream = splitmix64(stream)
+        val shiftY = java.lang.Long.remainderUnsigned(stream, shiftSpan).toInt() - shift
+        stream = splitmix64(stream)
         var offsetX = java.lang.Long.remainderUnsigned(stream, span).toInt() - jitter
         stream = splitmix64(stream)
         var offsetY = java.lang.Long.remainderUnsigned(stream, span).toInt() - jitter
@@ -598,8 +630,8 @@ class GlideGoldenExportTest {
                 offsetY = offsetY.coerceIn(-jitter, jitter)
                 stream = splitmix64(stream)
             }
-            xs[index] = pointX[index] + offsetX
-            ys[index] = pointY[index] + offsetY
+            xs[index] = pointX[index] + shiftX + offsetX
+            ys[index] = pointY[index] + shiftY + offsetY
             ts[index] = index * tstep
         }
         return GeneratedPath(xs, ys, ts, loop)
@@ -706,11 +738,17 @@ class GlideGoldenExportTest {
         private const val GLIDE_SEED = 20260924L
         private const val MIN_WORD_CODE_POINTS = 5
         private const val DICT_MODULUS = 40
-        private const val CUT_MODULUS = 10L
+        private const val CUT_MODULUS = 3L
+        private const val CUT_DIVISOR = 20
         private const val STEP_DIVISOR = 6
         private const val TSTEP_MIN = 8
-        private const val TSTEP_VAR = 9L
-        private const val JITTER_PERCENT = 18
+        private const val TSTEP_VAR = 11L
+        private const val JITTER_PERCENT = 22
         private const val WANDER_DIVISOR = 6
+        private const val GESTURE_OFFSET_PERCENT = 30
+        private const val ENDPOINT_START_PERCENT = 18
+        private const val ENDPOINT_END_PERCENT = 40
+        private const val ENDPOINT_WIDE_MODULUS = 7L
+        private const val ENDPOINT_WIDE_SCALE = 3
     }
 }

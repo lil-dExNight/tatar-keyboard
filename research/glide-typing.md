@@ -146,11 +146,61 @@ model to Quinn–Zhai minimum jerk. Deliverable is a pinned synthetic-vs-real di
 report; existing gates must stay green under regenerated pins. This removes the largest known
 validity risk (σ tuned on guesses, plausibly 2× too tight). Harness-only; no app code.
 
+#### Recalibration evidence (G1, landed)
+
+Measured by `research/corpus/futo_glide_analysis.py` on the swipe-1 validation slice
+(`~/corpora-futo/dev.jsonl`, 54,269 rows, 44,436 kept after the documented caps; the same
+procedure measures the synthetic side on the same 9,286 target words over the same QWERTY
+layout). Distances in key radii (min key width/height of the record's own canvas). Real paths
+have a closest-approach floor around 0.2 radii at every turn angle and do not start on the key:
+the old model's "path starts on the true center" gap and 2× too tight wander were both real.
+
+| statistic | real | synthetic, before | synthetic, recalibrated |
+| --- | --- | --- | --- |
+| mid-segment offset, radii p50 / p90 / p95 | 0.16 / 0.50 / 0.67 | 0.09 / 0.20 / 0.37 | 0.14 / 0.37 / 0.46 |
+| touch-down offset, radii p50 / p95 | 0.28 / 0.68 | 0.15 / 0.23 | 0.32 / 0.65 |
+| lift-off offset, radii p50 / p95 | 0.40 / 1.14 | 0.15 / 0.23 | 0.43 / 1.12 |
+| corner closest approach, 150–180° turn, p50 / p90 | 0.23 / 0.71 | 0.15 / 0.36 | 0.29 / 0.74 |
+| path length / ideal length, p50 | 1.07 | 0.98 | 0.96 |
+| samples per radius, p10 / p50 / p90 | 2.7 / 4.7 / 8.8 | 3.8 / 4.8 / 6.7 | 3.8 / 4.8 / 6.7 |
+| inter-sample dt, ms p10 / p50 / p90 | 8 / 12 / 18 | 8 / 12 / 16 | 8 / 12 / 18 |
+
+Generator changes from the fit: wander envelope 18 → 22 % of the key radius; corner cutting
+1/10 of interior vertices at depth |P+Q−2V|/4 → 1/3 at |P+Q−2V|/20 (the old fixed depth could
+not express the measured p90 at any frequency); new per-gesture route shift ±30 % (real
+per-gesture mean offset p50 0.20 radii — no zero-mean wander expresses it); new endpoint
+offsets ±18 % touch-down / ±40 % lift-off, widened ×3 for 1/7 of gestures (the measured
+p95/p50 ratio needs a heavy tail a single bounded draw cannot express); timestamp step widened
+to the measured dt p10–p90 (still decoder-irrelevant). Held-out calibration after re-pinning:
+top-1 88.01 %, top-3 94.61 % (floors 35/60 hold), decode p95 1.37 ms (gate 2 ms). One pin
+moved the other way: with realistic noise the twin/no-jog confusion of doubled words rose
+(class ceiling re-pinned 10 % → 25 % of a small class) — loop discrimination now genuinely
+needs the dwell channel (G11).
+
+Not fitted (model limits, not knob values): the offset tail above p90 (real paths bow between
+keys and overshoot corners; a bounded shift+wander family tops out at p95 0.46 vs the real
+0.67) and the above-1 path-length ratio (1.07 vs 0.96 — the same route curvature). A
+per-segment bow is the smallest change that would close both; deferred — the shape channel is
+bbox-normalized and the length gate is wide, so the residual does not move calibration.
+
 **G2 — Real-gesture diagnostic harness (not a gate).** Private eval runner decoding the FUTO
 validation slice (and Yandex Cup data privately, license unstated — never committed). Compare
 against the published template-matcher anchor (~80/90 top-1/top-3 on real QWERTY). Produces
 the first honest external-validity number and detects sim-to-real regressions that G1 alone
 cannot see. G1 and G2 land together.
+
+#### Real-gesture evidence (G2, landed)
+
+`FutoRealGestureDiagnosticTest` (inert unless `FUTO_EVAL_FILE` names a local dev.jsonl) decodes
+the full validation slice with the production decoder and constants on the QWERTY geometry:
+**top-1 82.4 %, top-3 90.6 %** over 44,436 gestures (top-1 82.9 % for under-5-letter targets,
+81.7 % for longer ones). The published SHARK2-style template-matcher anchor on this corpus is
+80.1 / 90.5, measured with a 162k-word AOSP lexicon extended with the targets; the diagnostic's
+lexicon is the slice's own 13,414 target and sentence words with their occurrence counts —
+smaller, hence easier. Same accuracy class either way: the port and its synthetic-tuned
+constants transfer to real gestures, and there is no sim-to-real collapse to fix. What the
+number does not yet cover: a deployment-size lexicon (the anchor's protocol) and any
+Cyrillic-layout gesture (G13).
 
 **G3 — Confidence-aware commit with a refuse path.** Compute a frequency-free geometric score
 (today's fused score punishes rare words even on perfect gestures) and commit on lift only
@@ -243,8 +293,10 @@ calibrate trajectories anyway).
 
 ## Risks and open questions
 
-- **Synthetic-only calibration** remains the top risk until G1–G2 land: our σ values are
-  ~half the real-data-derived ones; per-class tolerances may be optimistic.
+- **Layout/language transfer**: calibration is now evidence-based on English QWERTY (the G1
+  generator fit and the G2 anchor-class result), but no public tt/ru gesture corpus exists, so
+  the Tatar-layout transfer of both the generator statistics and the scoring constants rests on
+  the key-radius normalization, not on measurement (G8, G13).
 - **Label quality in personalization**: learning from our own decoder's commits can entrench
   systematic errors; learn only from high-confidence commits (ties G12 to G3).
 - **Tatar morphology stress**: long agglutinative words stress the length gate and the
