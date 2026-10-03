@@ -42,8 +42,8 @@
     <color name="ios_popup_key_selected_text">#FFFFFF</color>
     <color name="ios_key_text_color">#000000</color>
     <color name="ios_key_functional_text_color">#3C3C43</color>
-    <!-- Action-key and selected-popup-cell fill: the iOS blue, one step darker than
-         app_accent so white labels keep WCAG AA on it. -->
+    <!-- Action-key and selected-popup-cell fill: an iOS blue dark enough that white
+         labels keep WCAG AA on it. -->
     <color name="ios_key_action_fill">#0A6CD9</color>
     <!-- An action key is accent-filled, so its label and icon are white. -->
     <color name="ios_key_action_text_color">#FFFFFF</color>
@@ -62,11 +62,18 @@
     <color name="app_screen_bg">#F2F2F7</color>
     <color name="app_card_bg">#FFFFFF</color>
     <color name="app_text_primary">#000000</color>
-    <color name="app_text_secondary">#8A8A8E</color>
+    <!-- Secondary text (summaries, values, hints, section headers): one step darker
+         than the iOS gray, so it keeps WCAG AA on the card and on the grouped field. -->
+    <color name="app_text_secondary">#69696E</color>
     <color name="app_separator">#C6C6C8</color>
-    <color name="app_accent">#007AFF</color>
-    <color name="app_accent_pressed">#0A6CD9</color>
-    <color name="app_accent_disabled">#66007AFF</color>
+    <!-- Accent family. app_accent colors text links, action-row titles, dialog buttons and
+         the back chevron; a white label on it keeps WCAG AA, so the light filled button
+         simply aliases it. The dark palette needs a separate fill: no single dark blue
+         holds white text at AA and stays readable on the dark card. -->
+    <color name="app_accent">#0066D6</color>
+    <color name="app_accent_fill">@color/app_accent</color>
+    <color name="app_accent_pressed">#0059C4</color>
+    <color name="app_accent_disabled">#660066D6</color>
     <color name="app_switch_on">#34C759</color>
     <color name="app_switch_off">#E9E9EA</color>
  </resources>

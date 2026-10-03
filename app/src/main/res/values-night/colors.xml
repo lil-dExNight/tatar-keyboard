@@ -39,8 +39,8 @@
     <color name="ios_popup_key_selected_text">#FFFFFF</color>
     <color name="ios_key_text_color">#FFFFFF</color>
     <color name="ios_key_functional_text_color">#FFFFFF</color>
-    <!-- Action-key and selected-popup-cell fill: the iOS dark blue, one step darker than
-         app_accent so white labels keep WCAG AA on it. -->
+    <!-- Action-key and selected-popup-cell fill: an iOS blue dark enough that white
+         labels keep WCAG AA on it. -->
     <color name="ios_key_action_fill">#0A72DC</color>
     <!-- Action key label: white reads on the accent fill in the dark palette too. -->
     <color name="ios_key_action_text_color">#FFFFFF</color>
@@ -61,9 +61,13 @@
     <color name="app_text_primary">#FFFFFF</color>
     <color name="app_text_secondary">#98989E</color>
     <color name="app_separator">#38383A</color>
+    <!-- Accent family. app_accent stays the iOS dark blue for text links, action-row
+         titles, dialog buttons and the back chevron; the filled button takes the darker
+         app_accent_fill so its white label keeps WCAG AA. See values/colors.xml. -->
     <color name="app_accent">#0A84FF</color>
-    <color name="app_accent_pressed">#0A76E6</color>
-    <color name="app_accent_disabled">#660A84FF</color>
+    <color name="app_accent_fill">#006DD9</color>
+    <color name="app_accent_pressed">#005FC2</color>
+    <color name="app_accent_disabled">#66006DD9</color>
     <color name="app_switch_on">#30D158</color>
     <color name="app_switch_off">#39393D</color>
 </resources>

@@ -83,9 +83,10 @@ screens already flip `isLightTheme` correctly, but the IME window declares no ex
 
 **UI1 — landed.** The action accents, dark hints and every other failing pair pass WCAG AA in
 both themes; `ThemeContrastContractTest` pins the pair list (13 text pairs at 4.5:1, 4 icon
-pairs at 3:1). The THREAT-MODEL accepted-risk row is resolved. Follow-up found by the same
-audit: the app-screen palette (setup link, filled-button labels, secondary text) still fails
-AA — tracked in `docs/ROADMAP.md`.
+pairs at 3:1). The THREAT-MODEL accepted-risk row is resolved. The same audit's app-screen
+findings (setup link, filled-button labels, secondary text) are fixed and pinned by
+`AppScreenContrastContractTest`: the light accent and secondary text stepped one notch darker,
+and the dark filled button takes its own fill color, darker than the dark link accent.
 
 **UI2 — Dynamic-color theme variant (zero-dep).** New theme entry reusing the iOS geometry,
 colors mapped from framework `system_*` resources on API 31+ with fixed, contrast-verified

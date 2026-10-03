@@ -27,8 +27,7 @@ evidence is in the documents it indexes. Work goes in this order:
 2. **Features** — text shortcuts (abbreviation → expansion), the in-memory recent-clip cell
    (RAM only, never stored), dynamic-color theme variant, inline autofill, backup/export of
    learned data, one-handed mode, the inline autocorrect-revert cell, persistent refused
-   corrections, and the app-screen contrast follow-up from the theme audit (setup link,
-   filled-button labels, secondary text fail AA in the app palette).
+   corrections.
    (`research/competitor-features.md`, `research/ui.md`, `research/ux.md`)
 3. **The lab program** — the fifth-row A/B/C protocol and the standing lab instrument; needs
    Tatar-speaking participants. (`research/ux.md`)
