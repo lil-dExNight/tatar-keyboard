@@ -5,8 +5,8 @@
     "reason": "Generator rule, not drift: the top heads «окей» and «берегись» have no in-dictionary pair in the thinned conversational training input, so the packer drops them (the validator forbids empty ranges)."
   },
   "bigrams/tatar_bigrams_v1.tatbigr.zlib": {
-    "missing_top_heads": 155,
+    "missing_top_heads": 137,
     "unexpected_heads": 0,
-    "reason": "Generator rule, not drift: heads with no in-dictionary pair are dropped by the packer (the validator forbids empty ranges). These are three gerunds in -гәнчә and 152 extra-head candidates, frequent conversational forms (such as questions with the particle -мы) whose partner words are outside the shipped dictionary. unexpected = 0: every table head is in the top H or in the extra-heads list."
+    "reason": "Generator rule, not drift: heads with no in-dictionary pair are dropped by the packer (the validator forbids empty ranges). These are 13 top-cutoff heads promoted by the extra-corpus merge whose partner words are outside the shipped dictionary, and 124 extra-head candidates, frequent conversational forms (such as questions with the particle -мы) with the same property. unexpected = 0: every table head is in the top H or in the extra-heads list."
   }
 }

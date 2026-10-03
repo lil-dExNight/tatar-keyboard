@@ -400,7 +400,7 @@ class AutocorrectWideningCalibrationTest {
         assertNotNull("WIDENED corrects the class-#4-only case", widenedAdvice)
         assertEquals("аашнең", widenedAdvice!!.typedWord)
         assertEquals("ааҗнең", widenedAdvice.replacement)
-        assertEquals(1_738L, widenedAdvice.frequency)
+        assertEquals(3_169L, widenedAdvice.frequency)
 
         assertNull("two class-#4 candidates: the single-candidate rule still refuses",
             advice(widened, "ааҗнңң"))
@@ -467,20 +467,20 @@ class AutocorrectWideningCalibrationTest {
         )
 
         // Pins over the committed assets and eval set; re-pin when an input changes.
-        private const val PIN_G1A_PRESENT = 2_364
-        private const val PIN_G1A_CURRENT_FIRES = 1
-        private const val PIN_G1A_WIDENED_FIRES = 5
-        private const val PIN_G1B_CLASS1_FIRES = 151
-        private const val PIN_G1B_CLASS4ONLY_FIRES = 199
-        private const val PIN_G2_ACTIVE1 = 99_863
-        private const val PIN_G2_RECOVERED1_CURRENT = 1_100
-        private const val PIN_G2_RECOVERED1_WIDENED = 574
-        private const val PIN_G2_ACTIVE4 = 103_488
-        private const val PIN_G2_RECOVERED4_CURRENT = 9
-        private const val PIN_G2_RECOVERED4_WIDENED = 598
-        private const val PIN_G3_ZERO = 42_505
-        private const val PIN_G3_SINGLE = 31_684
-        private const val PIN_G3_MULTI = 29_299
+        private const val PIN_G1A_PRESENT = 2_413
+        private const val PIN_G1A_CURRENT_FIRES = 5
+        private const val PIN_G1A_WIDENED_FIRES = 17
+        private const val PIN_G1B_CLASS1_FIRES = 234
+        private const val PIN_G1B_CLASS4ONLY_FIRES = 803
+        private const val PIN_G2_ACTIVE1 = 99_999
+        private const val PIN_G2_RECOVERED1_CURRENT = 3_859
+        private const val PIN_G2_RECOVERED1_WIDENED = 2_154
+        private const val PIN_G2_ACTIVE4 = 103_348
+        private const val PIN_G2_RECOVERED4_CURRENT = 40
+        private const val PIN_G2_RECOVERED4_WIDENED = 2_198
+        private const val PIN_G3_ZERO = 40_183
+        private const val PIN_G3_SINGLE = 31_888
+        private const val PIN_G3_MULTI = 31_277
 
         private val neighborTable = E3bTestFixtures.tatarNeighborTable()
         private lateinit var vocabulary: List<String>

@@ -36,8 +36,9 @@ import java.security.MessageDigest
  * production wiring (suffix rules, TATAR fuzzy policy, after-word forms and the global
  * top-frequency fallback).
  *
- * `сәләм` is no bigram head and has one attested form, so the strip is `[сәләмә, һәм, белән]`:
- * the fallback fills the cells the bigrams and forms leave free. After `сәләмә` (no successors,
+ * `сәләм` is no bigram head and has two attested forms, so the strip is
+ * `[сәләмә, сәләме, һәм]`: the fallback fills the cell the bigrams and forms leave free. After
+ * `сәләмә` (no successors,
  * no forms) it is `[һәм, белән, да]`, the global top words. A bigram head (сәлам) still shows only
  * its first three stored successors (`TatBigrPrefixIndex.MAX_RESULTS` = 3).
  */
@@ -48,16 +49,16 @@ class TtNextWordFillE2ETest {
         // Derived through [TdictPrefixIndex.topFrequentWords] and pinned as literals: the order
         // the fallback offers.
         assertEquals(
-            listOf("һәм", "белән", "да", "бу", "дә", "дип", "ул", "өчен"),
+            listOf("һәм", "белән", "да", "дә", "бу", "ул", "дип", "өчен"),
             requireNotNull(tatarIndex).topFrequentWords(8),
         )
     }
 
     @Test
     fun committingSyalamOffersItsFormThenTheTopWords() {
-        // сәләм: no bigram successors (not a head), one attested form (сәләмә) — then the fill.
+        // сәләм: no bigram successors (not a head), two attested forms — then the fill.
         assertEquals(
-            listOf("сәләмә", "һәм", "белән"),
+            listOf("сәләмә", "сәләме", "һәм"),
             tatarPredict("сәләм"),
         )
     }

@@ -63,10 +63,10 @@ class TatBigrValidatorTest {
 
         // Pins of the committed schema-3 table (packed at K = 4 successors per head); re-pin when
         // the asset is rebuilt.
-        assertEquals(13_154, validated.headCount)
-        assertEquals(170_471, validated.rawSize)
-        assertEquals(51_484, validated.pairCount)
-        assertEquals(8_087, validated.successVocabularyCount)
+        assertEquals(12_609, validated.headCount)
+        assertEquals(162_612, validated.rawSize)
+        assertEquals(49_249, validated.pairCount)
+        assertEquals(8_138, validated.successVocabularyCount)
     }
 
     /** The committed Russian table validates against its spec; its counts are pinned too. */

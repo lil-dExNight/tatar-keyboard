@@ -1,23 +1,23 @@
 prefix	candidates	classification	reviewer	review_date	note
-сә	сәнгать|сәламәтлек|сәүдә	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar words; no Russian-only or technical item.
-рәх	рәхмәт|рәхәтләнеп|рәхмәтен	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar forms built on the Tatar-specific prefix.
-исәнм	исәнме|исәнмесез	pass	automated (dictionary_pack.py query-audit)	2026-08-24	Оба — узнаваемые татарские приветствия; изменился только порядок внутри пары.
-хәерл	хәерле|хәерлерәк|хәерлесе	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar inflected or derived forms.
-безн	безнең|безне|безнекеләр	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar pronoun forms.
-татарч	татарча|татарчага|татарчаны	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar language-name forms.
-кеш	кеше|кешеләр|кешенең	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar noun forms.
-бал	балалар|бала|балаларны	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar noun forms, not technical tokens.
-мәкт	мәктәп|мәктәбе|мәктәптә	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar school-related forms.
-китап	китаплар|китапханә|китапны	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar book-related forms.
-эшл	эшләр|эшли|эшләре	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar work-related forms.
-йорт	йорты|йортында|йортлары	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar noun forms.
-авыл	авылында|авылы|авылда	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar village-related forms.
-шәһ	шәһәр|шәһәре|шәһәрендә	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar city-related forms.
-вак	вакытта|вакытында|вакыт	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar time-related forms.
-көн	көнне|көндә|көне	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar day-related forms.
-тел	теле|телен|телендә	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar language-related forms.
-гаил	гаилә|гаиләсе|гаиләдә	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar family-related forms.
-әни	әнисе|әнием|әниләр	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar mother-related forms.
-әти	әтисе|әтием|әтисенең	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar father-related forms.
-дус	дуслык|дуслары|дуслар	pass	automated (dictionary_pack.py query-audit)	2026-08-24	Все три — узнаваемые татарские формы слова «дус» (друг).
-яң	яңа|яңадан|яңгырады	pass	automated (dictionary_pack.py query-audit)	2026-08-24	All candidates are recognizable Tatar words with a Tatar-specific letter.
+сә	сәнгать|сәгать|сәбәпле	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar words; сәгать and сәбәпле entered on merged frequency, no Russian-only or technical item.
+рәх	рәхмәт|рәхәт|рәхәтләнеп	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar words; рәхәт entered on merged frequency, no Russian-only or technical item.
+исәнм	исәнмесез|исәнме	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar greetings; only the order changed.
+хәерл	хәерле|хәерлерәк|хәерлегә	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar forms of хәерле; the third cell changed to another form of the same paradigm.
+безн	безнең|безне|безнен	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar pronoun forms; the third cell is now the short form of the same word.
+татарч	татарча|татарчага|татарчаны	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar language-name forms.
+кеш	кеше|кешеләр|кешенең	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar noun forms.
+бал	балалар|бала|балалары	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar forms of бала; the third cell changed to another case form of the same paradigm.
+мәкт	мәктәп|мәктәбе|мәктәптә	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar school-related forms.
+китап	китаплар|китапханә|китаплары	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar forms of китап; the third cell changed to another plural form of the same paradigm.
+эшл	эшли|эшләр|эшләре	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar forms of эш; only the order changed.
+йорт	йорты|йортында|йортта	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar forms of йорт; the third cell changed to another case form of the same paradigm.
+авыл	авылында|авылы|авылда	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar village-related forms.
+шәһ	шәһәр|шәһәре|шәһәрендә	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar city-related forms.
+вак	вакытта|вакыт|вакытында	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar forms of вакыт; only the order changed.
+көн	көнне|көне|көндә	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar forms of көн; only the order changed.
+тел	теле|телен|телендә	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar language-related forms.
+гаил	гаилә|гаиләдә|гаиләсе	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar forms of гаилә; only the order changed.
+әни	әнисе|әнием|әниләр	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar mother-related forms.
+әти	әтисе|әтием|әтисенең	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar father-related forms.
+дус	дуслар|дуслык|дуслары	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar forms of дус; only the order changed.
+яң	яңа|яңадан|яңгыр	pass	automated (dictionary_pack.py query-audit)	2026-10-03	All candidates are recognizable Tatar words; яңгыр entered on merged frequency, no Russian-only or technical item.

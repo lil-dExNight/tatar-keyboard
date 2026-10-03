@@ -103,7 +103,7 @@ class TdictPrefixIndexTopFrequentWordsTest {
     @Test
     fun theRealTatarAssetTop8IsPinned() {
         assertEquals(
-            listOf("һәм", "белән", "да", "бу", "дә", "дип", "ул", "өчен"),
+            listOf("һәм", "белән", "да", "дә", "бу", "ул", "дип", "өчен"),
             requireNotNull(tatarIndex).topFrequentWords(8),
         )
     }

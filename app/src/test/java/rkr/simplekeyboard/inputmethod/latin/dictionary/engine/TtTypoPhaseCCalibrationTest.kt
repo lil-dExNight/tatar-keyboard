@@ -131,11 +131,11 @@ class TtTypoPhaseCCalibrationTest {
         // Identities of `python3 scripts/typo_pack.py build --edit-class 4 [--prefix-code-points 5]`
         // on the committed 110k asset.
         val class4w3 = buildSubstitutionSet(3)
-        assertEquals(109_649, class4w3.rows.size)
-        assertEquals("30897644f3bd5e6ade1f67df2d1498c3ea2676dcb6b635208a0ad510f46ba072", class4w3.sha256)
+        assertEquals(109_647, class4w3.rows.size)
+        assertEquals("6412d308bb4ec7990c659bc1166c01a6eeded62db60b77ed5e669ed26c911eb4", class4w3.sha256)
         val class4w5 = buildSubstitutionSet(5)
-        assertEquals(104_955, class4w5.rows.size)
-        assertEquals("c35c97701e8ab593f1010476877aff846005f66b92a0eac8e7549c9b87c0327b", class4w5.sha256)
+        assertEquals(104_989, class4w5.rows.size)
+        assertEquals("633de337791583cd5739e88ab7fddc7b9fd8cc56cc3fe348c3871e4023b56731", class4w5.sha256)
     }
 
     @Test
@@ -363,15 +363,15 @@ class TtTypoPhaseCCalibrationTest {
             index.lookup(ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8)))
 
         // 2 code points: fuzzy never fires; the exact "сц*" block.
-        assertEquals(listOf("сценарий", "сценарие", "сценарийлар"), strip("сц"))
+        assertEquals(listOf("сценарий", "сценарийлар", "сценарист"), strip("сц"))
         // 3 code points: exact==0, but the class-#4 gate needs >= 4 cp, so the strip stays empty.
         assertEquals(emptyList<String>(), strip("сцл"))
         // 4 code points: class #4 fires (exact==0); the "сәлә*" block's frequency leaders fill the
         // strip — no same-length candidate exists at 4 cp.
         assertEquals(listOf("сәләтле", "сәләт", "сәләтен"), strip("сцлә"))
-        // 5 code points: "сәләм" is the sole surviving variant; the same-length bonus puts the
-        // correction itself (freq 36) above "сәләмәтлек" (65).
-        assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмәт"), strip("сцләм"))
+        // 5 code points: the correction itself leads the strip; the same-length bonus keeps the
+        // exact-length "сәләм" above the longer "сәләмәтлек" and "сәләмә" follows it.
+        assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмә"), strip("сцләм"))
         // 10 code points: with the empty-range narrowing only positions 0-2 probe (the "сцл*"
         // range is empty, which skips positions >= 3) — 3 x 38 = 114 probes instead of 380; the
         // sole survivor's own word wins.
@@ -456,22 +456,22 @@ class TtTypoPhaseCCalibrationTest {
         private const val SEED = 20260727L
 
         // Pins over the committed dictionary and eval set; re-pin when an input changes.
-        private const val PIN_BASE_W5 = 38_689
-        private const val PIN_CAND_W5 = 29_057
-        private const val PIN_BASE_W5_SUBSET = 97_318
-        private const val PIN_CAND_W5_SUBSET = 101_445
+        private const val PIN_BASE_W5 = 37_599
+        private const val PIN_CAND_W5 = 27_825
+        private const val PIN_BASE_W5_SUBSET = 98_074
+        private const val PIN_CAND_W5_SUBSET = 101_446
         private const val PIN_EVAL_PREFIXES_GE4 = 7_451
-        private const val PIN_EXACT_EMPTY = 1_570
-        private const val PIN_CLASS4_FILLED = 990
+        private const val PIN_EXACT_EMPTY = 1_436
+        private const val PIN_CLASS4_FILLED = 894
 
         // Pins of the same-set lift measurement.
-        private const val PIN_C2_BASE_W5_WHOLE = 470
-        private const val PIN_C2_CAND_W5_WHOLE = 29_062
-        private const val PIN_C2_ACTIVE_ROWS = 101_445
-        private const val PIN_C2_BASE_W5_ACTIVE = 465
-        private const val PIN_C2_CAND_W5_ACTIVE = 29_057
-        private const val PIN_C2_BASE_W3_WHOLE = 100
-        private const val PIN_C2_CAND_W3_WHOLE = 100
+        private const val PIN_C2_BASE_W5_WHOLE = 458
+        private const val PIN_C2_CAND_W5_WHOLE = 27_831
+        private const val PIN_C2_ACTIVE_ROWS = 101_446
+        private const val PIN_C2_BASE_W5_ACTIVE = 452
+        private const val PIN_C2_CAND_W5_ACTIVE = 27_825
+        private const val PIN_C2_BASE_W3_WHOLE = 91
+        private const val PIN_C2_CAND_W3_WHOLE = 93
 
         private val neighborTable = E3bTestFixtures.tatarNeighborTable()
         private lateinit var vocabulary: List<String>

@@ -553,11 +553,15 @@ class ShippedExtraHeadListTest(unittest.TestCase):
             self.DICTIONARY, pack.coverage.language_for("tat")
         )
         words = pack.read_extra_heads(self.LISTING, vocabulary)
-        # The list has two parts: the imperative rule (frequency ranks [10 000, 40 000)) and
-        # the conversational rule (frequency rank >= 10 132 and >= 10 occurrences
-        # in the tt_conv_train90 training set; reproduced by scripts/bigram_extra_heads_conv.py).
-        self.assertEqual(3_177, len(words))
-        for expected in ("кил", "кит", "шалтырат", "сөйлә", "утыр", "җибәр", "эшлә", "укы"):
+        # The list has two parts: the imperative rule (frequency ranks [max(10 000, H), 40 000))
+        # and the conversational rule (frequency rank >= H and >= 10 occurrences
+        # in the tt_conv_train90 training set); scripts/bigram_extra_heads_regen.py
+        # regenerates the whole file.
+        self.assertEqual(2_614, len(words))
+        # Imperative-rule samples. The previous samples (кил, кит, сөйлә, утыр, укы) are gone
+        # not by rejection but by promotion: the merged ranking moved them inside the cutoff,
+        # where they are heads by frequency.
+        for expected in ("шалтырат", "җибәр", "эшлә", "сакла", "куш"):
             self.assertIn(expected, words)
         # Samples of the conversational rule (the first lines of its section in the file).
         for expected in ("абага", "абау", "абзар"):

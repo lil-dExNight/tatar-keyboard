@@ -5,7 +5,8 @@ confirms it (two-corpora: both OpenSubtitles and Tatoeba; shipped-word; shipped-
 only: the stem has other forms in the shipped dictionary) and cap_ratio is below MAX_CAP_RATIO.
 Words that fail it are accepted too, except formal fragments and EXCLUDED_WORDS; rejected words
 stay in rejected-*.tsv with the reason. `pack` builds the dictionary assets from the SHA-256
-checked 1.8.4 baseline plus accepted words, with written plus conversational frequencies.
+checked 1.8.4 baseline plus accepted words, with written plus conversational frequencies plus
+the per-word bonus of `bonus-freq-*.tsv` when that file exists.
 """
 from __future__ import annotations
 
@@ -420,6 +421,32 @@ def read_conv_freq(tag: str) -> dict[str, int]:
     return out
 
 
+def bonus_freq_path(tag: str) -> Path:
+    return OUT_DIR / f"bonus-freq-{SUFFIX[tag]}.tsv"
+
+
+def read_bonus_freq(tag: str) -> dict[str, int]:
+    """Per-word integer bonus frequencies from the extra corpora; {} when no file exists.
+
+    A missing file means "no bonuses", not an error: a rebuild without it is caught by the
+    contract pins, which the bonus changes. Bonus words outside the composition are ignored
+    (the file covers the pool of one build; the composition is recomputed every rebuild).
+    """
+    path = bonus_freq_path(tag)
+    if not path.is_file():
+        return {}
+    out = {}
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if fields[0] == "word" or not fields[0]:
+                continue
+            out[fields[0]] = int(fields[1])
+    return out
+
+
 # The 1.8.4 assets are the only valid rebuild base. The pin keeps `pack` from running on an
 # already rebuilt file, which would add the conversational frequencies a second time. The match
 # must be exact, and a mismatch stops the run. Extract the base with
@@ -490,17 +517,22 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
 
     Composition: shipped plus accepted words plus `extra`, nothing else. Frequency: written plus
     conversational for every word, shipped ones included; only the composition is filtered. An
-    `extra` entry for an existing word keeps the existing frequency. The result keeps the `top`
-    most frequent entries.
+    `extra` entry for an existing word keeps the existing frequency. The bonus file, when it
+    exists, adds its per-word integers on top without changing the composition. The result keeps
+    the `top` most frequent entries.
     """
     shipped, _asset = load_baseline(tag, baseline)
     accepted = read_accepted(tag)
     conv = read_conv_freq(tag)
+    bonus = read_bonus_freq(tag)
     composition = set(shipped) | set(accepted)
     merged = {word: shipped.get(word, 0) + conv.get(word, 0) for word in composition}
     for word, frequency in (extra or {}).items():
         if word not in merged:
             merged[word] = frequency
+    for word, extra_frequency in bonus.items():
+        if word in merged:
+            merged[word] += extra_frequency
     top_entries = sorted(merged.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
     return shipped, accepted, sorted(top_entries, key=lambda kv: kv[0])
 

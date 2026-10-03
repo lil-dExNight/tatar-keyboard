@@ -88,15 +88,15 @@ data class BigramArtifactSpec(
             subtypeId = PersonalSubtypes.TATAR_RU,
             storageDirectoryName = "bigrams",
             assetPath = "bigrams/tatar_bigrams_v1.tatbigr.zlib",
-            expectedCompressedSize = 104_028,
+            expectedCompressedSize = 100_234,
             expectedCompressedSha256 =
-                "2c892ce51129d28f13dc8b3ca32e37cef41a3f4e4ae0d1157cbbc8a3824544de",
-            expectedRawSize = 170_471,
+                "c98710555531619a68c58d3d2ed4e926fe100e2f9f2efa4be9bc3ca3c3fd04fd",
+            expectedRawSize = 162_612,
             expectedRawSha256 =
-                "2264136bdb1a9f8095c7efa364eb18e2e7eaa7b05986962956bbe890bacedbbe",
+                "0ca5e6e377b39ee4c1fbecba342a361c1ec190ec7bf71a28e5cdec40e0108cd4",
             expectedDictionaryRawSha256 =
-                "3634f021c056b90ab1eb042bf6bccfa1413d31af96993120e77bdcf843152518",
-            expectedHeadCount = 13_154,
+                "10337a8b073baaebd7baa530718dba55a360bf2be29d7e3aae17ddd31c615d00",
+            expectedHeadCount = 12_609,
         )
 
         /** The Russian bigram table, in its own family and directory; pins follow. */

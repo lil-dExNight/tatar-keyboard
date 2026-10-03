@@ -39,7 +39,7 @@ RUSSIAN_REVIEW = ROOT / "data" / "dictionary" / "ru-query-review.tsv"
 # so they live here instead of in dictionary_pack.AUTOMATED_REVIEW_DATE (the date of the
 # first build).
 RUSSIAN_REVIEW_DATE = "2026-08-24"
-TATAR_REVIEW_DATE = "2026-08-24"
+TATAR_REVIEW_DATE = "2026-10-03"
 
 
 def load_module(name: str, path: Path):

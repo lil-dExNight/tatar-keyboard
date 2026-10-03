@@ -101,12 +101,12 @@ data class DictionaryArtifactSpec(
             storageDirectoryName = "dictionaries",
             generation = 1,
             assetPath = "dictionaries/tatar_top100k_v1.tdict.zlib",
-            expectedCompressedSize = 542_493,
+            expectedCompressedSize = 597_293,
             expectedCompressedSha256 =
-                "e653ef6ee9d88fd25cd7802e59bb57b954be80d9b7ea897c849be66919fa96ed",
-            expectedRawSize = 1_276_289,
+                "1597715c5470fdd8175efbfbf2b2b7bb952330213d851230de95da43341fb7e9",
+            expectedRawSize = 1_311_438,
             expectedRawSha256 =
-                "3634f021c056b90ab1eb042bf6bccfa1413d31af96993120e77bdcf843152518",
+                "10337a8b073baaebd7baa530718dba55a360bf2be29d7e3aae17ddd31c615d00",
             expectedEntryCount = 110_000,
             bigrams = BigramArtifactSpec.TATAR_BIGRAMS_V1,
             sentStartAssetPath = "dictionaries/tatar_sentstart_v1.txt",
