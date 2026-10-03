@@ -21,6 +21,7 @@ package rkr.simplekeyboard.inputmethod.keyboard.internal;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.content.Context;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -132,8 +133,16 @@ public final class KeyPreviewChoreographer {
         // The key preview is horizontally aligned with the center of the visible part of the
         // parent key. If it doesn't fit in this {@link KeyboardView}, it is moved inward to fit and
         // the left/right background is used if such background is specified.
-        int previewX = key.getX() - (previewWidth - keyWidth) / 2
+        final int naturalX = key.getX() - (previewWidth - keyWidth) / 2
                 + CoordinateUtils.x(originCoords);
+        final int previewX = clampPreviewX(naturalX, previewWidth,
+                mParams.getBalloonClampLeft(), mParams.getBalloonClampRight());
+        final Drawable background = keyPreviewView.getBackground();
+        if (background instanceof KeyPreviewBalloonDrawable) {
+            // A clamped balloon keeps its neck over the parent key: the anchor moves against the
+            // clamp shift. Set before placement so a bounds change builds the path with it.
+            ((KeyPreviewBalloonDrawable)background).setNeckOffset(neckShift(naturalX, previewX));
+        }
         // The key preview is placed vertically above the top edge of the parent key with an
         // arbitrary offset.
         final int previewY = key.getY() - previewHeight + mParams.mPreviewOffset
@@ -143,6 +152,23 @@ public final class KeyPreviewChoreographer {
                 keyPreviewView, previewX, previewY, previewWidth, previewHeight);
         //keyPreviewView.setPivotX(previewWidth / 2.0f);
         //keyPreviewView.setPivotY(previewHeight);
+    }
+
+    // Package-private for JVM tests (Key and View are not available there). A balloon wider than
+    // the band is centered in the band instead of pinned to an edge.
+    static int clampPreviewX(final int naturalX, final int previewWidth,
+            final int clampLeft, final int clampRight) {
+        final int maxX = clampRight - previewWidth;
+        if (maxX <= clampLeft) {
+            return (clampLeft + maxX) / 2;
+        }
+        return Math.max(clampLeft, Math.min(maxX, naturalX));
+    }
+
+    // Package-private for JVM tests. The neck moves against the balloon's clamp shift, so it
+    // stays over the parent key; zero when the balloon is not clamped.
+    static int neckShift(final int naturalX, final int clampedX) {
+        return naturalX - clampedX;
     }
 
     void showKeyPreview(final Key key, final KeyPreviewView keyPreviewView,

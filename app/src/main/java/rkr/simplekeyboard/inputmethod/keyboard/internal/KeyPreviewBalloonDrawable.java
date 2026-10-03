@@ -37,12 +37,13 @@ import rkr.simplekeyboard.inputmethod.R;
  * ({@code height − bottomPadding}), a short neck of {@link #NECK_HEIGHT_DP} runs from the body's
  * bottom edge down to the parent key's top edge, and everything below is transparent.</p>
  *
- * <p>The neck is centered because {@code KeyPreviewChoreographer.placeKeyPreview} centers the
- * preview on the key and never clamps it at the screen edges. (iOS mirrors the neck at the edges
- * because it clamps the balloon inside the screen; this keyboard does not.)</p>
+ * <p>{@code KeyPreviewChoreographer.placeKeyPreview} clamps the balloon inside the key grid's
+ * side edges; when the body shifts, the neck mirrors the shift and stays centered on the parent
+ * key (the iOS edge behavior). The anchor offset arrives via {@link #setNeckOffset} before
+ * placement.</p>
  *
- * <p>The path is rebuilt only in {@link #onBoundsChange}, once per preview size; {@link #draw}
- * touches nothing but the cached path and two paints.</p>
+ * <p>The path is rebuilt only on a bounds change or a neck-offset change, never per frame;
+ * {@link #draw} touches nothing but the cached path and two paints.</p>
  */
 public final class KeyPreviewBalloonDrawable extends Drawable {
     /** Intrinsic width of the balloon. */
@@ -65,6 +66,14 @@ public final class KeyPreviewBalloonDrawable extends Drawable {
     private final Paint mFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path mPath = new Path();
+
+    // Horizontal offset of the neck's anchor from the balloon's center, in pixels: the clamp
+    // shift of the balloon body, negated, so the neck stays over the parent key.
+    private float mNeckOffsetPx;
+    // The bounds the cached path was built for, so an offset change can rebuild without a
+    // bounds change.
+    private int mPathWidth;
+    private int mPathHeight;
 
     private final float mWidthPx;
     private final float mBottomPaddingPx;
@@ -108,7 +117,25 @@ public final class KeyPreviewBalloonDrawable extends Drawable {
 
     @Override
     protected void onBoundsChange(final Rect bounds) {
-        buildPath(bounds.width(), bounds.height());
+        mPathWidth = bounds.width();
+        mPathHeight = bounds.height();
+        buildPath(mPathWidth, mPathHeight);
+    }
+
+    /**
+     * Moves the neck's anchor horizontally, keeping it centered on the parent key when the
+     * balloon is clamped at the key grid's edge. Rebuilds the path only when the offset actually
+     * changes; an offset change before the first layout is picked up by {@link #onBoundsChange}.
+     */
+    public void setNeckOffset(final float offsetPx) {
+        if (mNeckOffsetPx == offsetPx) {
+            return;
+        }
+        mNeckOffsetPx = offsetPx;
+        if (mPathWidth > 0 && mPathHeight > 0) {
+            buildPath(mPathWidth, mPathHeight);
+            invalidateSelf();
+        }
     }
 
     private void buildPath(final float width, final float height) {
@@ -119,15 +146,17 @@ public final class KeyPreviewBalloonDrawable extends Drawable {
         // The body occupies the VISIBLE height; the neck then reaches the parent key's top edge.
         final float bodyBottom = Math.max(mBodyRadiusPx * 2f, height - mBottomPaddingPx);
         final float neckBottom = bodyBottom + mNeckHeightPx;
-        final float centerX = width / 2f;
-        float neckLeft = centerX - mNeckWidthPx / 2f;
-        float neckRight = centerX + mNeckWidthPx / 2f;
-        // Keep the taper curves inside the body's bottom corners, however narrow the balloon is.
-        final float maxTaperRight = width - mBodyBottomRadiusPx;
-        if (neckRight + mNeckTaperPx > maxTaperRight) {
-            neckRight = Math.max(centerX, maxTaperRight - mNeckTaperPx);
-            neckLeft = width - neckRight;
-        }
+        // The anchor stays inside the body by at least a taper run, so the taper never crosses
+        // the balloon's edge however large the clamp shift is.
+        final float centerX = Math.max(mNeckTaperPx,
+                Math.min(width - mNeckTaperPx, width / 2f + mNeckOffsetPx));
+        // The neck narrows when the balloon is narrow, so both taper curves stay clear of the
+        // body's bottom corners; a slid neck may lean into the near corner.
+        final float neckHalf = Math.max(0f, Math.min(mNeckWidthPx / 2f,
+                Math.min(width / 2f - mBodyBottomRadiusPx - mNeckTaperPx,
+                        Math.min(centerX, width - centerX) - mNeckTaperPx)));
+        final float neckLeft = centerX - neckHalf;
+        final float neckRight = centerX + neckHalf;
         final float r = mBodyRadiusPx;
         final float rb = mBodyBottomRadiusPx;
         mPath.moveTo(r, 0f);

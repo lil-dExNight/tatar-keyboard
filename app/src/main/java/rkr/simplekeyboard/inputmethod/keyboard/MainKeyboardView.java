@@ -373,6 +373,12 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
 
         locatePreviewPlacerView();
         getLocationInWindow(mOriginCoords);
+        // The balloon clamp band is the key grid's side edges — the keyboard's side paddings, the
+        // margin the edge keys keep — in the placer view's coordinates.
+        previewParams.setBalloonClampBand(
+                CoordinateUtils.x(mOriginCoords) + Math.round(keyboard.mLeftPadding),
+                CoordinateUtils.x(mOriginCoords) + keyboard.mOccupiedWidth
+                        - Math.round(keyboard.mRightPadding));
         final int backgroundColor = mTheme.mCustomColorSupport ? mCustomColor : Color.TRANSPARENT;
         mKeyPreviewChoreographer.placeAndShowKeyPreview(key, keyboard.mIconsSet, getKeyDrawParams(),
                 mOriginCoords, mDrawingPreviewPlacerView, isHardwareAccelerated(), backgroundColor);

@@ -58,6 +58,24 @@ public final class KeyPreviewDrawParams {
     // offset between the top edge of parent key and the bottom of the visible part of key
     // preview background.
     private int mVisibleOffset;
+    // The horizontal band the balloon body must stay inside: the key grid's left and right edges
+    // in placer coordinates, refreshed by MainKeyboardView before every placement. Defaults to
+    // unclamped so a placement without a band keeps the key-centered position.
+    private int mBalloonClampLeft = Integer.MIN_VALUE / 2;
+    private int mBalloonClampRight = Integer.MAX_VALUE / 2;
+
+    public void setBalloonClampBand(final int clampLeft, final int clampRight) {
+        mBalloonClampLeft = clampLeft;
+        mBalloonClampRight = clampRight;
+    }
+
+    public int getBalloonClampLeft() {
+        return mBalloonClampLeft;
+    }
+
+    public int getBalloonClampRight() {
+        return mBalloonClampRight;
+    }
 
     public KeyPreviewDrawParams(final TypedArray mainKeyboardViewAttr) {
         mPreviewOffset = mainKeyboardViewAttr.getDimensionPixelOffset(

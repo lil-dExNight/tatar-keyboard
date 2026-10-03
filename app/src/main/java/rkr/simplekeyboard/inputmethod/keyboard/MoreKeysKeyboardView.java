@@ -129,12 +129,15 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
         parentView.getLocationInWindow(mCoordinates);
         // Ensure the horizontal position of the panel does not extend past the parentView edges.
         final int maxX = parentView.getMeasuredWidth() - container.getMeasuredWidth();
-        final int panelX = Math.max(0, Math.min(maxX, x)) + CoordinateUtils.x(mCoordinates);
+        final int clampedX = Math.max(0, Math.min(maxX, x));
+        final int panelX = clampedX + CoordinateUtils.x(mCoordinates);
         final int panelY = y + CoordinateUtils.y(mCoordinates);
         container.setX(panelX);
         container.setY(panelY);
 
-        mOriginX = x + container.getPaddingLeft();
+        // The touch origin follows the clamped position, so a panel pinned at the parent's edge
+        // maps the finger to the keys as drawn, not to the unclamped placement.
+        mOriginX = clampedX + container.getPaddingLeft();
         mOriginY = y + container.getPaddingTop();
         controller.onShowMoreKeysPanel(this);
         if (isTouchExplorationEnabled()) {
