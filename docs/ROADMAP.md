@@ -21,8 +21,9 @@ evidence is in the documents it indexes. Work goes in this order:
 
 1. **Prediction and glide quality, continued** — the follow-ups the first round's measurements
    opened: the shared DL-1 typo tier (the wider-typo-classes follow-up in `docs/BACKLOG.md`),
-   retraining the bigram tables on the newly ingested corpora, corpus.tatar frequency lists if
-   the host ever answers. (`research/prediction-engine.md`, `research/glide-typing.md`)
+   retraining the bigram tables on the newly ingested corpora, Taiga for conversational
+   Russian, corpus.tatar frequency lists if the host ever answers.
+   (`research/prediction-engine.md`, `research/glide-typing.md`)
 2. **Features** — text shortcuts (abbreviation → expansion), the in-memory recent-clip cell
    (RAM only, never stored), dynamic-color theme variant, inline autofill, backup/export of
    learned data, one-handed mode, the inline autocorrect-revert cell, persistent refused
