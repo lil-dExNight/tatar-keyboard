@@ -81,13 +81,15 @@ class EmojiKeySurfaceContractTest {
 
     @Test
     fun visibleInputBoundsUnionsThePanelWithTheSameUnionCall() {
-        // Exactly three union() calls now: the strip, the emoji panel, and the emoji search bands.
-        // Every surface that can be on screen joins the touchable region, so a touch on it never
-        // falls through to the application behind the keyboard.
+        // One union() call per surface that can be on screen: the word strip, the inline-autofill
+        // host, the emoji panel, and the emoji search bands. Every surface joins the touchable
+        // region, so a touch on it never falls through to the application behind the keyboard.
         assertEquals(
-            3,
+            4,
             "outBounds\\.union\\(mTemporaryBounds\\)".toRegex().findAll(inputView).count(),
         )
+        assertTrue(inputView.contains("mInlineAutofillStripView"))
+        assertTrue(inputView.contains("inlineHost.isShown()"))
         assertTrue(inputView.contains("mEmojiPanelView"))
         assertTrue(inputView.contains("panel.isShown()"))
         assertTrue(inputView.contains("mEmojiSearchView"))

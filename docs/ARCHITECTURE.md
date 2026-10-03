@@ -16,7 +16,7 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 | `event/` | `Event`, `InputTransaction` |
 | `latin/` | `LatinIME` (the `InputMethodService`) with helpers `LatinImeAutocorrect`, `LatinImeGlide`, `LatinImeEmojiSearch`; `RichInputConnection`, `RichInputMethodManager`, `Subtype` |
 | `latin/inputlogic/` | `InputLogic`: what a key press does to the text |
-| `latin/suggestions/` | `SuggestionsController`, `SuggestionStripView`, `SuggestionStripState`, the recent-clip cell (`RecentClipCell`), Tatar word utilities and suffix rules |
+| `latin/suggestions/` | `SuggestionsController`, `SuggestionStripView`, `SuggestionStripState`, the recent-clip cell (`RecentClipCell`), the inline-autofill host (`InlineAutofillStripView`, `InlineAutofillBinder`, `InlineStripSpecs`), Tatar word utilities and suffix rules |
 | `latin/dictionary/engine/` | `LatestOnlyPrefixEngine`, `MappedDictionaryEngine`, `CompositePrefixComputer`, `TdictPrefixIndex`, `TatBigrPrefixIndex`, typo recovery |
 | `latin/dictionary/storage/` | asset publishing (`AtomicDictionaryStore`, `AtomicBigramStore`), validators, artifact specs and pins |
 | `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TcutFormat`), validators, snapshots |
@@ -111,6 +111,17 @@ general text field (`InputTypeUtils.isGeneralTextInputType`: the text class with
 URI, password, phonetic and filter variations). Cursor moves by the keyboard itself (space
 slide, delete swipe, word-delete flick, the edit menu's arrows) drop this state
 (`InputLogic.onKeyboardCursorMove`).
+
+**Inline autofill** (API 30+, advertised in `method.xml`). A field that supports inline
+suggestions takes the strip over: `LatinIME.onCreateInlineSuggestionsRequest` answers with one
+presentation spec per cell (`InlineStripSpecs` — the cells' exact sizes, min equal to max), and
+`LatinIME.onInlineSuggestionsResponse` hosts the platform's content views in
+`InlineAutofillStripView`, a container inflated only then (`InlineAutofillBinder` keeps every
+autofill class behind the API gate). While a session is up the word strip is GONE but keeps
+updating, so the platform's session end — an empty response at the next field's startInput — puts
+current words back (`InputView.hideInlineAutofillStrip`). Password fields get no request at all
+(`InlineAutofillGate`; the platform's dropdown stays available there), and a response arriving
+while the emoji panel owns the surface is refused instead of hosted.
 
 **Word completion** (`CompositePrefixComputer.lookup`): exact dictionary candidates by frequency,
 then at most one personal-dictionary word not already shown, then typo-recovery candidates. Typo

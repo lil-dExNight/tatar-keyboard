@@ -31,11 +31,13 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchIndex;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchView;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSetSnapshot;
 import rkr.simplekeyboard.inputmethod.latin.settings.EmojiPanelHeightPresets;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.InlineAutofillStripView;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView;
 
 public final class InputView extends FrameLayout {
     private final Rect mTemporaryBounds = new Rect();
     private SuggestionStripView mSuggestionStripView;
+    private InlineAutofillStripView mInlineAutofillStripView;
     private EmojiPanelView mEmojiPanelView;
     private EmojiSearchView mEmojiSearchView;
     private Runnable mInsetsChangedListener;
@@ -46,6 +48,20 @@ public final class InputView extends FrameLayout {
      * the keyboard height and the content top inset do not change.
      */
     private boolean mStripHiddenByEmojiPanel;
+
+    /**
+     * Set while an inline-autofill session displaced the word strip: inline content replaces word
+     * suggestions for the field, and {@link #hideInlineAutofillStrip()} puts the words back. The
+     * strip's content keeps updating while it is down, so the restore never shows stale words.
+     */
+    private boolean mStripHiddenByInline;
+
+    /**
+     * Set while the emoji panel hid a visible inline host, mirroring {@link #mStripHiddenByEmojiPanel}.
+     * Cleared by {@link #hideInlineAutofillStrip()}: a session that ended is never brought back by
+     * the panel.
+     */
+    private boolean mInlineHiddenByEmojiPanel;
 
     public InputView(final Context context, final AttributeSet attrs) {
         super(context, attrs, 0);
@@ -73,6 +89,101 @@ public final class InputView extends FrameLayout {
 
     public SuggestionStripView getSuggestionStripView() {
         return mSuggestionStripView;
+    }
+
+    /**
+     * Creates the inline-autofill host on first use. The class carries no autofill framework
+     * types, but nothing inflates it before the first gated response actually hosts content.
+     */
+    public InlineAutofillStripView getOrCreateInlineAutofillStripView() {
+        if (mInlineAutofillStripView != null) {
+            return mInlineAutofillStripView;
+        }
+        final View stub = findViewById(R.id.inline_autofill_strip_stub);
+        if (!(stub instanceof ViewStub)) {
+            return null;
+        }
+        final View inflated = ((ViewStub) stub).inflate();
+        if (!(inflated instanceof InlineAutofillStripView)) {
+            return null;
+        }
+        mInlineAutofillStripView = (InlineAutofillStripView) inflated;
+        return mInlineAutofillStripView;
+    }
+
+    /**
+     * The strip's measured width for the inline presentation specs, or 0 when neither strip
+     * surface has been laid out yet; the caller falls back to the display width.
+     */
+    public int getStripWidthPx() {
+        if (mSuggestionStripView != null && mSuggestionStripView.getWidth() > 0) {
+            return mSuggestionStripView.getWidth();
+        }
+        if (mInlineAutofillStripView != null && mInlineAutofillStripView.getWidth() > 0) {
+            return mInlineAutofillStripView.getWidth();
+        }
+        return 0;
+    }
+
+    /**
+     * Gives the strip surface to an inline-autofill session: the host comes up and a visible word
+     * strip goes down (its content keeps updating underneath). Null while the emoji panel owns the
+     * surface — the caller then refuses the response and the content is not rendered inline.
+     */
+    public InlineAutofillStripView showInlineAutofillStrip() {
+        if (isEmojiPanelShowing()) {
+            return null;
+        }
+        final InlineAutofillStripView host = getOrCreateInlineAutofillStripView();
+        if (host == null) {
+            return null;
+        }
+        boolean changed = false;
+        if (mSuggestionStripView != null && mSuggestionStripView.getVisibility() == VISIBLE) {
+            mSuggestionStripView.setVisibility(GONE);
+            mStripHiddenByInline = true;
+            changed = true;
+        }
+        if (host.getVisibility() != VISIBLE) {
+            host.setVisibility(VISIBLE);
+            changed = true;
+        }
+        if (changed) {
+            notifyInsetsChanged();
+        }
+        return host;
+    }
+
+    /** Ends the inline session: the host empties and goes down, a displaced strip comes back. */
+    public void hideInlineAutofillStrip() {
+        // A session that ended must not be resurrected by the panel's hide path.
+        mInlineHiddenByEmojiPanel = false;
+        boolean changed = false;
+        if (mInlineAutofillStripView != null) {
+            mInlineAutofillStripView.endSession();
+            if (mInlineAutofillStripView.getVisibility() != GONE) {
+                mInlineAutofillStripView.setVisibility(GONE);
+                changed = true;
+            }
+        }
+        if (mStripHiddenByInline) {
+            mStripHiddenByInline = false;
+            // While the panel owns the surface nothing comes back here; its own hide path decides.
+            if (!isEmojiPanelShowing()
+                    && mSuggestionStripView != null
+                    && mSuggestionStripView.getVisibility() != VISIBLE) {
+                mSuggestionStripView.setVisibility(VISIBLE);
+                changed = true;
+            }
+        }
+        if (changed) {
+            notifyInsetsChanged();
+        }
+    }
+
+    private boolean isInlineAutofillShowing() {
+        return mInlineAutofillStripView != null
+                && mInlineAutofillStripView.getVisibility() == VISIBLE;
     }
 
     /** Creates the emoji panel on first use. Merely inflating the keyboard never creates it. */
@@ -208,6 +319,17 @@ public final class InputView extends FrameLayout {
                     panelHeightPx += stripHeight;
                 }
             }
+            if (isInlineAutofillShowing()) {
+                // The inline host is the strip's second surface: the panel displaces it with the
+                // same height transfer, and hideEmojiPanel() brings it back. Only one of the two
+                // surfaces can be visible, so at most one of the two blocks runs.
+                final int hostHeight = mInlineAutofillStripView.getHeight();
+                mInlineAutofillStripView.setVisibility(GONE);
+                mInlineHiddenByEmojiPanel = true;
+                if (hostHeight > 0) {
+                    panelHeightPx += hostHeight;
+                }
+            }
             panelHeightPx = EmojiPanelHeightPresets.applyTo(
                     panelHeightPx, panelMaxHeightPx, panelHeightScale);
             panel.setPanelHeightPx(panelHeightPx);
@@ -229,6 +351,13 @@ public final class InputView extends FrameLayout {
             mStripHiddenByEmojiPanel = false;
             if (mSuggestionStripView != null) {
                 mSuggestionStripView.setVisibility(VISIBLE);
+                changed = true;
+            }
+        }
+        if (mInlineHiddenByEmojiPanel) {
+            mInlineHiddenByEmojiPanel = false;
+            if (mInlineAutofillStripView != null) {
+                mInlineAutofillStripView.setVisibility(VISIBLE);
                 changed = true;
             }
         }
@@ -262,6 +391,12 @@ public final class InputView extends FrameLayout {
             mStripHiddenByEmojiPanel = true;
             return strip;
         }
+        if (isInlineAutofillShowing()) {
+            // The inline session owns the surface: the words stay current but the strip stays
+            // down, and hideInlineAutofillStrip() brings it back.
+            mStripHiddenByInline = true;
+            return strip;
+        }
         if (strip.getVisibility() != VISIBLE) {
             strip.setVisibility(VISIBLE);
             notifyInsetsChanged();
@@ -282,6 +417,11 @@ public final class InputView extends FrameLayout {
         strip.clearSuggestions();
         if (isEmojiPanelShowing()) {
             mStripHiddenByEmojiPanel = true;
+            return strip;
+        }
+        if (isInlineAutofillShowing()) {
+            // Same owner rule as in showSuggestionStrip: the reservation is remembered, not shown.
+            mStripHiddenByInline = true;
             return strip;
         }
         if (strip.getVisibility() != VISIBLE) {
@@ -320,6 +460,9 @@ public final class InputView extends FrameLayout {
             return;
         }
         mSuggestionStripView.clearSuggestions();
+        // A controller hide is authoritative: the inline host's end-of-session restore must not
+        // bring a strip back that its owner just cleared.
+        mStripHiddenByInline = false;
         if (mSuggestionStripView.getVisibility() != GONE) {
             mSuggestionStripView.setVisibility(GONE);
             notifyInsetsChanged();
@@ -334,6 +477,9 @@ public final class InputView extends FrameLayout {
     public void release() {
         if (mSuggestionStripView != null) {
             mSuggestionStripView.release();
+        }
+        if (mInlineAutofillStripView != null) {
+            mInlineAutofillStripView.endSession();
         }
         if (mEmojiPanelView != null) {
             mEmojiPanelView.release();
@@ -369,6 +515,16 @@ public final class InputView extends FrameLayout {
                 && strip.getWidth() > 0 && strip.getHeight() > 0) {
             mTemporaryBounds.set(0, 0, strip.getWidth(), strip.getHeight());
             offsetDescendantRectToMyCoords(strip, mTemporaryBounds);
+            outBounds.union(mTemporaryBounds);
+        }
+
+        // The inline-autofill host occupies the strip's slot while a session is up; its bounds
+        // join the touchable region the same way, so a tap on hosted content never falls through.
+        final InlineAutofillStripView inlineHost = mInlineAutofillStripView;
+        if (inlineHost != null && inlineHost.isShown() && inlineHost.isLaidOut()
+                && inlineHost.getWidth() > 0 && inlineHost.getHeight() > 0) {
+            mTemporaryBounds.set(0, 0, inlineHost.getWidth(), inlineHost.getHeight());
+            offsetDescendantRectToMyCoords(inlineHost, mTemporaryBounds);
             outBounds.union(mTemporaryBounds);
         }
 

@@ -38,6 +38,12 @@
             android:layout_width="match_parent"
             android:layout_height="44dp" />
         <ViewStub
+            android:id="@+id/inline_autofill_strip_stub"
+            android:inflatedId="@+id/inline_autofill_strip_view"
+            android:layout="@layout/inline_autofill_strip"
+            android:layout_width="match_parent"
+            android:layout_height="44dp" />
+        <ViewStub
             android:id="@+id/emoji_search_stub"
             android:inflatedId="@+id/emoji_search_view"
             android:layout="@layout/emoji_search"

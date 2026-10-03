@@ -37,6 +37,7 @@ import android.graphics.Rect;
 import android.inputmethodservice.InputMethodService;
 import android.media.AudioManager;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Debug;
 import android.os.IBinder;
 import android.os.Message;
@@ -52,6 +53,8 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InlineSuggestionsRequest;
+import android.view.inputmethod.InlineSuggestionsResponse;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -113,6 +116,8 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.GlideKeyGeometryBuilder;
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder;
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.InlineAutofillBinder;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.InlineAutofillGate;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.MappedEngineHandle;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferEnvironment;
@@ -1691,6 +1696,54 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         mHandler.onFinishInput();
     }
 
+    /**
+     * Inline autofill (API 30+): the platform asks for the strip's presentation specs when the
+     * focused field supports inline suggestions. The system never calls this below R, and the
+     * gate keeps the binder's API-30 classes from loading on older releases. The request is
+     * created after the field's startInput, so the EditorInfo here is the field's own; a password
+     * field gets no request from us, and its autofill stays with the platform's dropdown.
+     */
+    @Override
+    public InlineSuggestionsRequest onCreateInlineSuggestionsRequest(final Bundle uiExtras) {
+        final EditorInfo editorInfo = getCurrentInputEditorInfo();
+        final boolean fieldIsPassword = editorInfo == null || isPasswordField(editorInfo);
+        if (!InlineAutofillGate.mayHost(Build.VERSION.SDK_INT, fieldIsPassword)) {
+            return null;
+        }
+        final InputView inputView = getInputViewForSuggestions();
+        return InlineAutofillBinder.createRequest(this,
+                inputView == null ? 0 : inputView.getStripWidthPx(),
+                getResources().getDisplayMetrics().widthPixels);
+    }
+
+    /**
+     * The response half of inline autofill. An empty response is the platform's clear signal for
+     * the previous field's session (delivered at the next field's startInput), so it reaches the
+     * surface before any gate: the gate reads the new field and must not strand the old field's
+     * content. A non-empty response is fail-closed — a field that cannot be proven clean (no live
+     * EditorInfo, a password type) hosts nothing. The content itself is never read, only hosted.
+     */
+    @Override
+    public boolean onInlineSuggestionsResponse(final InlineSuggestionsResponse response) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return false;
+        }
+        final InputView inputView = getInputViewForSuggestions();
+        if (inputView == null) {
+            return false;
+        }
+        if (InlineAutofillBinder.isEmpty(response)) {
+            inputView.hideInlineAutofillStrip();
+            return false;
+        }
+        final EditorInfo editorInfo = getCurrentInputEditorInfo();
+        final boolean fieldIsPassword = editorInfo == null || isPasswordField(editorInfo);
+        if (!InlineAutofillGate.mayHost(Build.VERSION.SDK_INT, fieldIsPassword)) {
+            return false;
+        }
+        return InlineAutofillBinder.hostResponse(this, inputView, response);
+    }
+
     @Override
     public void onCurrentSubtypeChanged(final boolean userInitiated) {
         mInputLogic.onSubtypeChanged();
@@ -1973,6 +2026,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     void onFinishInputViewInternal(final boolean finishingInput) {
         super.onFinishInputView(finishingInput);
+        if (finishingInput) {
+            // The field is done: its inline-autofill session ends with it. A plain window hide
+            // (finishingInput false) keeps the session — the hosted views re-render when the
+            // window comes back, and the next field's startInput brings the platform's clear.
+            final InputView inputView = getInputViewForSuggestions();
+            if (inputView != null) {
+                inputView.hideInlineAutofillStrip();
+            }
+        }
         if (mSuggestionsController != null) {
             mSuggestionsController.onFinishInput();
         }
