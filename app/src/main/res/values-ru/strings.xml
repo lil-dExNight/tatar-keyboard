@@ -256,4 +256,17 @@
     <!-- Action row that deletes the recorded lab session log. -->
     <string name="clear_lab_log">Очистить журнал лабораторной сессии</string>
     <string name="clear_lab_log_confirm">Удалить записанный журнал лабораторной сессии с этого устройства? Это действие нельзя отменить.</string>
+    <string name="settings_screen_backup">Резервная копия и экспорт</string>
+    <string name="settings_screen_backup_summary">Сохранить настройки и изученные слова в файл или загрузить их обратно</string>
+    <string name="backup_contents_note">Файл резервной копии хранит ваши настройки и всё, чему научилась клавиатура: ваши сохранённые слова, изученные пары слов и изученные эмодзи. Файл не зашифрован: любой, кто может его открыть, может прочитать эти слова. Он записывается только туда, куда вы выберете, и клавиатура никуда его не отправляет.</string>
+    <string name="backup_export_action">Экспортировать в файл…</string>
+    <string name="backup_import_action">Импортировать из файла…</string>
+    <string name="backup_import_confirm_message">Заменить текущие настройки, сохранённые слова, изученные пары слов и изученные эмодзи содержимым файла? То, что есть на этом устройстве сейчас, будет потеряно. Это действие нельзя отменить.</string>
+    <string name="backup_import_confirm_action">Заменить</string>
+    <string name="backup_export_done">Файл резервной копии записан.</string>
+    <string name="backup_export_failed">Не удалось записать файл резервной копии.</string>
+    <string name="backup_import_done">Резервная копия импортирована.</string>
+    <string name="backup_import_failed_invalid">Этот файл — не резервная копия этой клавиатуры. Ничего не изменено.</string>
+    <string name="backup_import_failed_write">Не удалось завершить импорт. Часть данных могла быть уже заменена.</string>
+    <string name="backup_no_app">На устройстве нет приложения для выбора файлов.</string>
 </resources>

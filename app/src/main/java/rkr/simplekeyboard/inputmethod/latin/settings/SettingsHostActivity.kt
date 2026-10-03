@@ -47,6 +47,9 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
 import rkr.simplekeyboard.inputmethod.latin.lab.LabSessionLog
+import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupCoordinator
+import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupFormat
+import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupImportResult
 import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
 import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
@@ -57,8 +60,9 @@ import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
  * ([R.layout.settings_screen]) with a manual back stack, so system back and the back chevron
  * behave like separate activities. Prefs are device-protected ([PreferenceManagerCompat]);
  * enterprise restrictions ([Settings.ACTIVE_RESTRICTIONS]) disable rows; theme-affecting toggles
- * rebuild the open keyboard live; content is rebuilt on every [onStart]. Backup is off for the
- * whole app (res/xml/data_extraction_rules.xml), so no backup is requested on changes.
+ * rebuild the open keyboard live; content is rebuilt on every [onStart]. OS backup stays off for
+ * the whole app (res/xml/data_extraction_rules.xml), so no backup is requested on changes; the
+ * user-facing SAF export/import is its own screen ([Screen.BACKUP]).
  * [Screen.LANGUAGE_DETAIL] is the one parameterized screen: its locale lives in [detailLocale].
  * Row builders and some screens are `internal` extensions in `SettingsRows.kt`,
  * `SettingsLanguagesScreens.kt` and `SettingsKeyPressScreen.kt`.
@@ -77,8 +81,9 @@ class SettingsHostActivity : Activity() {
         LANGUAGE_DETAIL(0),
         PERSONAL_DICTIONARY(R.string.personal_dictionary),
         DATA_SOURCES(R.string.settings_screen_data_sources),
-        // Last on purpose: older saved states carry ordinals of the entries above.
-        DEVELOPER(R.string.settings_screen_developer)
+        // New entries go last on purpose: older saved states carry ordinals of the entries above.
+        DEVELOPER(R.string.settings_screen_developer),
+        BACKUP(R.string.settings_screen_backup)
     }
     companion object {
         private const val TRANSITION_NONE = 0
@@ -94,6 +99,9 @@ class SettingsHostActivity : Activity() {
         // internal, not private: read by the row builders in SettingsRows.kt.
         internal const val DISABLED_ALPHA = 0.4f
         internal const val PERCENTAGE_FLOAT = 100.0f
+        private const val REQUEST_BACKUP_EXPORT = 1
+        private const val REQUEST_BACKUP_IMPORT = 2
+        private const val BACKUP_MIME_TYPE = "application/zip"
     }
 
     internal lateinit var prefs: SharedPreferences
@@ -114,6 +122,9 @@ class SettingsHostActivity : Activity() {
     /** Locale string of the language shown by [Screen.LANGUAGE_DETAIL]. */
     internal var detailLocale: String? = null
     internal var restrictionKeys: Set<String> = emptySet()
+
+    /** The SAF backup runner, built on first use and shut down with the activity. */
+    private var backupCoordinatorInstance: BackupCoordinator? = null
 
     /**
      * The personal-dictionary search text. Deliberately transient: it is NOT written to
@@ -219,6 +230,8 @@ class SettingsHostActivity : Activity() {
         // window (WindowLeaked). An unsaved slider value is discarded.
         currentDialog?.dismiss()
         currentDialog = null
+        backupCoordinatorInstance?.shutdown()
+        backupCoordinatorInstance = null
         prefs.unregisterOnSharedPreferenceChangeListener(prefChangeListener)
         super.onDestroy()
     }
@@ -274,6 +287,7 @@ class SettingsHostActivity : Activity() {
             Screen.PERSONAL_DICTIONARY -> buildPersonalDictionaryScreen()
             Screen.DATA_SOURCES -> buildDataSourcesScreen()
             Screen.DEVELOPER -> buildDeveloperScreen()
+            Screen.BACKUP -> buildBackupScreen()
         }
         scrollView.scrollTo(0, 0)
         playScreenTransition()
@@ -328,9 +342,108 @@ class SettingsHostActivity : Activity() {
             linkRow(R.string.settings_screen_appearance) { navigateTo(Screen.APPEARANCE) },
             linkRow(R.string.settings_screen_developer) { navigateTo(Screen.DEVELOPER) }))
         addCard(listOf(
+            linkRow(R.string.settings_screen_backup, R.string.settings_screen_backup_summary) {
+                navigateTo(Screen.BACKUP)
+            }))
+        addCard(listOf(
             linkRow(R.string.privacy_policy) { openUrl(getString(R.string.privacy_policy_url)) },
             linkRow(R.string.license) { openUrl(getString(R.string.license_url)) },
             linkRow(R.string.settings_screen_data_sources) { navigateTo(Screen.DATA_SOURCES) }))
+    }
+
+    /**
+     * The "Backup and export" screen: one explanation row and the two actions. The explanation
+     * says plainly what the file holds — the learned words among them — and that it is not
+     * encrypted, because the file is the one artifact of this app the user carries around
+     * themselves. The actions launch the system file picker; everything else happens in
+     * [onActivityResult] and in [BackupCoordinator].
+     */
+    private fun buildBackupScreen() {
+        addCard(listOf(textRow(getString(R.string.backup_contents_note))))
+        addCard(listOf(
+            actionRow(R.string.backup_export_action) { startBackupExport() },
+            actionRow(R.string.backup_import_action) { showBackupImportDialog() }))
+    }
+
+    /** The create-document picker, pre-filled with the fixed file name. */
+    private fun startBackupExport() {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType(BACKUP_MIME_TYPE)
+            .putExtra(Intent.EXTRA_TITLE, BackupFormat.SUGGESTED_FILE_NAME)
+        try {
+            startActivityForResult(intent, REQUEST_BACKUP_EXPORT)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.backup_no_app, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * The import asks first, because a restore REPLACES the current settings and everything the
+     * keyboard learned on this device. The dialog shows no personal content, so it needs no
+     * FLAG_SECURE — only the obscured-touch filter every dialog gets.
+     */
+    private fun showBackupImportDialog() {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.backup_import_action)
+                .setMessage(R.string.backup_import_confirm_message)
+                .setPositiveButton(R.string.backup_import_confirm_action) { _, _ ->
+                    startBackupImport()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
+    /** The open-document picker; a zip MIME filter plus octet-stream for providers without one. */
+    private fun startBackupImport() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES,
+                    arrayOf(BACKUP_MIME_TYPE, "application/octet-stream"))
+        try {
+            startActivityForResult(intent, REQUEST_BACKUP_IMPORT)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.backup_no_app, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        when (requestCode) {
+            REQUEST_BACKUP_EXPORT -> backupCoordinator().exportTo(uri) { written ->
+                if (isFinishing || isDestroyed) return@exportTo
+                Toast.makeText(this,
+                        if (written) R.string.backup_export_done else R.string.backup_export_failed,
+                        Toast.LENGTH_LONG).show()
+            }
+            REQUEST_BACKUP_IMPORT -> backupCoordinator().importFrom(uri) { result ->
+                if (isFinishing || isDestroyed) return@importFrom
+                val messageRes = when (result) {
+                    BackupImportResult.IMPORTED -> R.string.backup_import_done
+                    BackupImportResult.INVALID_FILE -> R.string.backup_import_failed_invalid
+                    BackupImportResult.WRITE_FAILED -> R.string.backup_import_failed_write
+                }
+                Toast.makeText(this, messageRes, Toast.LENGTH_LONG).show()
+                // The imported settings may differ from what the open rows show; repaint.
+                showScreen(currentScreen)
+            }
+        }
+    }
+
+    /** Lazily built, so an activity that never opens the backup screen never starts the worker. */
+    private fun backupCoordinator(): BackupCoordinator {
+        backupCoordinatorInstance?.let { return it }
+        val created = BackupCoordinator(this, prefs)
+        backupCoordinatorInstance = created
+        return created
     }
 
     /**

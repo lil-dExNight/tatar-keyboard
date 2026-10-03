@@ -280,6 +280,51 @@ internal class PersonalDictionaryStore(
     }
 
     /**
+     * Replaces the whole store with [bytes] from a backup (null deletes the file), then re-reads
+     * the disk state and publishes it as the snapshot. Runs on the worker, so it cannot race a
+     * learning write. The bytes are validated again here even though the backup layer checks them
+     * before anything is written: nothing is written when validation fails.
+     *
+     * Pending learning progress is flushed first, so a restore does not lose completions that did
+     * not graduate yet; the salt stays, because the pending keys reference it. Usage-counter changes
+     * not yet written are discarded: the imported file replaces the entries whole. A quarantined
+     * copy, if one exists, is left alone — restoring it remains the user's separate decision.
+     */
+    fun replaceAll(bytes: ByteArray?, outcome: PersonalMutationOutcome? = null) = onWorker {
+        val replaced = try {
+            replaceOnWorker(bytes)
+        } catch (_: Exception) {
+            false
+        }
+        report(outcome, replaced)
+    }
+
+    /** The body of [replaceAll], on the worker: returns whether the disk now matches the request. */
+    private fun replaceOnWorker(bytes: ByteArray?): Boolean {
+        if (alphabet == null) return false
+        if (!unlockGate()) return false
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false
+        if (pendingDirty) {
+            pending = pending.prunedForFlush()
+            if (writePending(pending)) pendingDirty = false
+        }
+        if (bytes != null) {
+            validator.validate(bytes, subtypeId)
+            ensureDirectory(directory)
+            writeBytesDurably(directory, File(directory, TpersFormat.personalFileName(subtypeId)), bytes)
+        } else {
+            deleteFile()
+        }
+        // Re-read the disk state: the published snapshot now matches the imported file (or none).
+        entries = PersonalEntries.empty(maxEntries)
+        pendingCounterFlush = false
+        snapshot = PersonalDictionary.EMPTY
+        loaded = false
+        open()
+        return true
+    }
+
+    /**
      * Clears the notice mark on the worker once the notice has reached the user. Called by the
      * layer that shows the notice, not the one that raises it.
      */

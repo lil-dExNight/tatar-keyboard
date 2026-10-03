@@ -223,6 +223,41 @@ internal class PersonalBigramStore(
         report(outcome, storeGone && countersGone && saltGone && quarantineGone)
     }
 
+    /** Replaces the whole store from a backup. See [PersonalDictionaryStore.replaceAll]. */
+    fun replaceAll(bytes: ByteArray?, outcome: PersonalMutationOutcome? = null) = onWorker {
+        val replaced = try {
+            replaceOnWorker(bytes)
+        } catch (_: Exception) {
+            false
+        }
+        report(outcome, replaced)
+    }
+
+    /** The body of [replaceAll], on the worker. See `PersonalDictionaryStore.replaceOnWorker`. */
+    private fun replaceOnWorker(bytes: ByteArray?): Boolean {
+        if (alphabet == null) return false
+        if (!unlockGate()) return false
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false
+        if (pendingDirty) {
+            pending = pending.prunedForFlush()
+            if (writePending(pending)) pendingDirty = false
+        }
+        if (bytes != null) {
+            validator.validate(bytes, subtypeId)
+            ensureDirectory(directory)
+            writeBytesDurably(
+                directory, File(directory, TpersbFormat.personalBigramsFileName(subtypeId)), bytes)
+        } else {
+            deleteFile()
+        }
+        entries = PersonalBigramEntries.empty(maxPairs)
+        counterFlushPending = false
+        snapshot = PersonalBigramDictionary.EMPTY
+        loaded = false
+        open()
+        return true
+    }
+
     /** Clears the notice mark. See [PersonalDictionaryStore.noticeDelivered]. */
     fun noticeDelivered() = onWorker {
         justQuarantined = false

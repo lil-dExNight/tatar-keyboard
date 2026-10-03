@@ -62,15 +62,25 @@ class TpersbValidator {
      *   casing, alphabet, length, ordering or duplicate violation.
      */
     fun validate(file: File, requestedSubtypeId: String): ValidatedPersonalBigrams {
-        val alphabet = PersonalSubtypes.alphabetFor(requestedSubtypeId)
-            ?: fail("subtype has no declared alphabet")
-
         val length = file.length()
         if (length > TpersbFormat.MAX_FILE_SIZE) fail("file size limit exceeded")
         if (length < TpersbFormat.HEADER_SIZE) fail("file is shorter than its header")
 
         val bytes = file.readBytes()
         if (bytes.size.toLong() != length) fail("file length changed during read")
+        return validate(bytes, requestedSubtypeId)
+    }
+
+    /**
+     * The in-memory counterpart of [validate]: the same checks over bytes already read. See
+     * [TpersValidator.validate] (the ByteArray overload).
+     */
+    fun validate(bytes: ByteArray, requestedSubtypeId: String): ValidatedPersonalBigrams {
+        val alphabet = PersonalSubtypes.alphabetFor(requestedSubtypeId)
+            ?: fail("subtype has no declared alphabet")
+
+        if (bytes.size.toLong() > TpersbFormat.MAX_FILE_SIZE) fail("file size limit exceeded")
+        if (bytes.size < TpersbFormat.HEADER_SIZE) fail("file is shorter than its header")
 
         val header = ByteBuffer.wrap(bytes, 0, TpersbFormat.HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
         val magic = ByteArray(TpersbFormat.MAGIC_SIZE)
@@ -100,7 +110,9 @@ class TpersbValidator {
         val subtypeTag = decodeSubtypeTag(subtypeTagBytes)
         if (subtypeTag != requestedSubtypeId) fail("subtype tag does not match the requested subtype")
 
-        if (payloadSize != length - TpersbFormat.HEADER_SIZE) fail("payload size does not match file")
+        if (payloadSize != bytes.size.toLong() - TpersbFormat.HEADER_SIZE) {
+            fail("payload size does not match file")
+        }
 
         if (!MessageDigest.isEqual(storedChecksum, digestWithChecksumZeroed(bytes))) {
             fail("checksum mismatch")

@@ -24,6 +24,7 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 | `latin/glide/` | glide decoder, gesture detector, path and key geometry |
 | `latin/emoji/` | emoji panel, search, skin tones, recents, emoji suggestions |
 | `latin/settings/`, `latin/setup/` | settings screens, onboarding |
+| `latin/settings/backup/` | the SAF backup: zip layer, manifest, settings XML, transfer orchestration |
 | `accessibility/`, `compat/` | TalkBack delegates and key descriptions; platform shims (a forked `ExploreByTouchHelper`) |
 
 ## Input path
@@ -171,6 +172,10 @@ learned emoji). Files live in the credential-protected `noBackupFilesDir`.
 - **Quarantine.** A file that fails validation is moved aside, not deleted; the settings screen
   tells the user and can restore what is readable.
 - **Pause learning** (`PREF_INCOGNITO_MODE`) stops all writes; saved entries keep appearing.
+- **Backup restore.** `replaceAll` swaps a store's file for bytes from a backup archive (or deletes
+  it) on the store's worker, re-validating first, and re-publishes the snapshot, so an import takes
+  effect in the live process. Pending counters and the salt survive a restore; quarantined copies
+  are left to their own flow.
 
 Settings screens list, delete and erase entries.
 

@@ -389,4 +389,31 @@
     <!-- Action row that deletes the recorded lab session log. -->
     <string name="clear_lab_log">Clear lab session log</string>
     <string name="clear_lab_log_confirm">Delete the recorded lab session log from this device? This cannot be undone.</string>
+    <!-- Title of the settings row and screen for the user-run backup to a file. -->
+    <string name="settings_screen_backup">Backup and export</string>
+    <!-- Summary under the root-screen row. -->
+    <string name="settings_screen_backup_summary">Save settings and learned words to a file, or load them back</string>
+    <!-- The explanation at the top of the backup screen. Says plainly that the file carries the
+         learned words, that it is not encrypted, and that it goes only where the person puts it. -->
+    <string name="backup_contents_note">A backup file holds your settings and everything the keyboard has learned: your saved words, learned word pairs and learned emoji. The file is not encrypted: anyone who can open it can read those words. It is written only where you choose, and the keyboard never uploads it anywhere.</string>
+    <!-- Action that writes the backup file through the system file picker. -->
+    <string name="backup_export_action">Export to a file…</string>
+    <!-- Action that restores a backup file, and title of its confirmation dialog. -->
+    <string name="backup_import_action">Import from a file…</string>
+    <!-- Body of the import confirmation: a restore replaces what is on this device. -->
+    <string name="backup_import_confirm_message">Replace the current settings, saved words, learned word pairs and learned emoji with the contents of the file? What is on this device now will be lost. This cannot be undone.</string>
+    <!-- Affirmative button of the import dialog. Names the action because it is destructive. -->
+    <string name="backup_import_confirm_action">Replace</string>
+    <!-- Shown when the backup file was written. -->
+    <string name="backup_export_done">The backup file is written.</string>
+    <!-- Shown when the backup file could not be written. Names no path and no cause. -->
+    <string name="backup_export_failed">Could not write the backup file.</string>
+    <!-- Shown when the picked file was imported. -->
+    <string name="backup_import_done">The backup is imported.</string>
+    <!-- Shown when the picked file failed any check. Nothing was changed, and the message says so. -->
+    <string name="backup_import_failed_invalid">This file is not a backup of this keyboard. Nothing was changed.</string>
+    <!-- Shown when a valid file could not be stored completely. -->
+    <string name="backup_import_failed_write">Could not finish the import. Parts of the data may have been replaced already.</string>
+    <!-- Shown when no app on the device can pick or create a file. -->
+    <string name="backup_no_app">No app on this device can pick files.</string>
 </resources>

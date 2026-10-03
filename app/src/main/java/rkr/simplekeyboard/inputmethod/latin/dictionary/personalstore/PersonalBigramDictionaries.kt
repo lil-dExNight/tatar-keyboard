@@ -87,6 +87,14 @@ object PersonalBigramDictionaries {
     internal fun snapshotFor(context: Context, subtypeId: String): PersonalBigramDictionary =
         storeFor(context, subtypeId).also { it.prime() }.snapshot
 
+    /** The backup restore for one language. See [PersonalDictionaries.replaceAll]. */
+    internal fun replaceAll(
+        context: Context,
+        subtypeId: String,
+        bytes: ByteArray?,
+        outcome: PersonalMutationOutcome,
+    ) = storeFor(context, subtypeId).replaceAll(bytes, outcome)
+
     @JvmStatic
     fun setErasureListener(listener: Runnable?) {
         erasureListener = listener

@@ -81,6 +81,14 @@ object PersonalEmojiDictionaries {
     internal fun snapshotFor(context: Context, subtypeId: String): PersonalEmojiDictionary =
         storeFor(context, subtypeId).also { it.prime() }.snapshot
 
+    /** The backup restore for one language. See [PersonalDictionaries.replaceAll]. */
+    internal fun replaceAll(
+        context: Context,
+        subtypeId: String,
+        bytes: ByteArray?,
+        outcome: PersonalMutationOutcome,
+    ) = storeFor(context, subtypeId).replaceAll(bytes, outcome)
+
     @JvmStatic
     fun setErasureListener(listener: Runnable?) {
         erasureListener = listener
