@@ -43,6 +43,7 @@
             android:textSize="34sp" />
 
         <TextView
+            android:id="@+id/setup_subtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
@@ -88,6 +89,16 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+                <!-- Pre-arms the standard data-collection warning the system
+                     shows when the enable toggle is flipped. -->
+                <TextView
+                    android:id="@+id/setup_step1_note"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/setup_step1_note"
                     android:textAppearance="?android:attr/textAppearanceSmall" />
 
                 <Button
@@ -171,6 +182,7 @@
             android:visibility="gone">
 
             <TextView
+                android:id="@+id/setup_done_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/setup_done_title"

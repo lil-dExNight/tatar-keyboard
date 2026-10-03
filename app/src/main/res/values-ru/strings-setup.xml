@@ -20,6 +20,7 @@
 
     <string name="setup_step1_title">Включить клавиатуру</string>
     <string name="setup_step1_instruction">Включите „<xliff:g id="KEYBOARD_NAME" example="Tatar Keyboard">%s</xliff:g>“ в списке клавиатур системы</string>
+    <string name="setup_step1_note">Android показывает это предупреждение для любой сторонней клавиатуры. Эта клавиатура работает полностью без интернета: у неё нет разрешения INTERNET, поэтому напечатанное не покидает устройство.</string>
     <string name="setup_step1_button">Включить клавиатуру</string>
 
     <string name="setup_step2_title">Выбрать клавиатуру</string>
@@ -27,8 +28,9 @@
     <string name="setup_step2_button">Выбрать клавиатуру</string>
 
     <string name="setup_done_title">Готово!</string>
-    <string name="setup_done_hint">Печатайте ә в любом приложении</string>
-    <string name="setup_test_field_hint">Попробуйте: напишите „сәлам“</string>
+    <string name="setup_status_title">Клавиатура активна</string>
+    <string name="setup_done_hint">Работает и набор свайпом: ведите по буквам, не отрывая палец</string>
+    <string name="setup_test_field_hint">Попробуйте: проведите по буквам „сәләм“</string>
     <string name="setup_done_button">Открыть настройки</string>
 
     <string name="setup_step_status_done">Шаг выполнен</string>
