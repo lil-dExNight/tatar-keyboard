@@ -93,7 +93,8 @@ class AppleUxStageBContractTest {
         val normal = source("src/main/res/drawable/ios_key_normal.xml")
         val active = normal.substringAfter("<item android:state_active=\"true\">")
             .substringBefore("<item android:state_checkable=")
-        assertTrue("the active item fills with the accent", active.contains("@color/app_accent"))
+        assertTrue("the active item fills with the action accent",
+            active.contains("@color/ios_key_action_fill"))
         val key = source("src/main/java/rkr/simplekeyboard/inputmethod/keyboard/Key.java")
         val selectColor = key.substringAfter("public final int selectTextColor(")
             .substringBefore("public final int selectHintTextSize(")
@@ -145,8 +146,8 @@ class AppleUxStageBContractTest {
         for (palette in listOf("values", "values-night")) {
             val colors = source("src/main/res/$palette/colors.xml")
             assertTrue(
-                "$palette: the selection is the accent",
-                colors.contains("<color name=\"ios_popup_key_pressed\">@color/app_accent</color>"),
+                "$palette: the selection is the action accent",
+                colors.contains("<color name=\"ios_popup_key_pressed\">@color/ios_key_action_fill</color>"),
             )
             assertTrue(
                 "$palette: and its glyph is white",

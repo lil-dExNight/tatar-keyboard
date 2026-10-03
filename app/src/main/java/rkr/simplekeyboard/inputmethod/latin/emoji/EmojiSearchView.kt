@@ -89,7 +89,9 @@ class EmojiSearchView @JvmOverloads constructor(
         private const val RESULT_TEXT_SCALE = 0.62f
 
         private const val PILL_ALPHA = 0xE0
-        private const val HINT_ALPHA = 0xA0
+        // Matches the emoji panel headers: any dimmer and the hint text drops below WCAG AA
+        // on the light panel background.
+        private const val HINT_ALPHA = 0xE6
         private const val PRESSED_ALPHA = 90
 
         private const val NO_TARGET = -1

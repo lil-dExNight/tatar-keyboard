@@ -38,7 +38,7 @@ package rkr.simplekeyboard.inputmethod.keyboard.internal
  *
  * Zero-allocation after construction: parallel primitive arrays, index arithmetic only.
  */
-class GlideTrail(val capacity: Int = DEFAULT_CAPACITY) {
+class GlideTrail(val capacity: Int = DEFAULT_CAPACITY, val maxAlpha: Int = MAX_ALPHA) {
     private val xs = FloatArray(capacity)
     private val ys = FloatArray(capacity)
     private val ts = FloatArray(capacity)
@@ -131,14 +131,14 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY) {
     fun yAt(i: Int): Float = ys[ringIndex(i)]
 
     /**
-     * The draw alpha of the point at oldest-first index [i]: [MAX_ALPHA] at the fingertip
+     * The draw alpha of the point at oldest-first index [i]: [maxAlpha] at the fingertip
      * (the newest point), fading linearly to 0 at the [TAIL_MS] edge.
      */
     fun alphaAt(i: Int): Int {
         val newest = ts[ringIndex(size - 1)]
         val age = newest - ts[ringIndex(i)]
         if (age >= TAIL_MS) return 0
-        return (MAX_ALPHA * (1f - age / TAIL_MS)).toInt()
+        return (maxAlpha * (1f - age / TAIL_MS)).toInt()
     }
 
     private fun ringIndex(i: Int): Int = (start + i) % capacity
@@ -153,7 +153,8 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY) {
         /** The post-lift fade-out duration. */
         const val FADE_OUT_MS = 250f
 
-        /** Peak opacity at the fingertip; the base color comes from the theme. */
+        /** Default peak opacity at the fingertip; the view overrides it with the trail
+            color's own alpha. */
         const val MAX_ALPHA = 0x66
     }
 }

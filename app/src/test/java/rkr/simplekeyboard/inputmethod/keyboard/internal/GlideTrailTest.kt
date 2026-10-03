@@ -92,6 +92,17 @@ class GlideTrailTest {
     }
 
     @Test
+    fun theThemePeakAlphaScalesTheWholeRamp() {
+        val trail = GlideTrail(maxAlpha = 0xF2)
+        for (i in 0 until 21) {
+            trail.addPoint(i.toFloat(), 0f, i * 15f)
+        }
+        assertEquals("the fingertip reaches the theme's peak", 0xF2, trail.alphaAt(20))
+        assertEquals("the tail edge is transparent", 0, trail.alphaAt(0))
+        assertEquals("the midpoint sits at half the theme peak", 0xF2 / 2, trail.alphaAt(10))
+    }
+
+    @Test
     fun aSinglePointGestureHasNothingToDraw() {
         val trail = GlideTrail()
         trail.addPoint(1f, 2f, 3f)
