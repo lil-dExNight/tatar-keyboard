@@ -20,4 +20,6 @@ move it to the roadmap.
   recent-clip cell and text shortcuts are on the roadmap instead (`docs/ROADMAP.md`).
 - Rejected with measurements, do not reopen without new data: trigram prediction, two-edit typo
   recovery, geometric-neighbor typo recovery, extending autocorrect, sharding the emoji
-  suggestion index.
+  suggestion index, stem-keyed bigram backoff (simulated at +0.46 pp chain top-3 against the
+  +1.5 pp bar; the case-blind form expansion converts only 58% of stem hits —
+  `research/corpus/sim_stem_backoff.py`; a case-aware expansion is a different experiment).

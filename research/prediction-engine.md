@@ -132,16 +132,13 @@ The harness now covers every prerequisite the memos below reference:
 
 Gates below are proposals to pre-register before any experiment, per the framework.
 
-**P1 — Stem-keyed bigram backoff (morphology).** Pipeline: lemmatize the dictionary into
-stem clusters (`wordform_gen.py group` already computes form→stem maps offline), retrain
-bigrams keyed by (stem, stem) with counts summed over forms, pack as a second TATBIGR-schema
-table. Runtime: when the form-keyed pass fills fewer than 3 cells, query the stem table and
-expand each stem-successor to its most frequent attested form. Sits between bigrams and
-after-word forms. Gate: ≥ +1.5 pp overall next-word top-3 on the pinned harness (run the
-stem-table simulation offline first; touch the engine only if the simulated gate passes), no
-completion regression, asset delta within the table budget, next-word p95 unchanged. Risk:
-the stem does not carry the successor's case — measure the expansion's hit rate, not just the
-stem hit rate.
+**P1 — Stem-keyed bigram backoff (morphology).** Measured and rejected: the offline
+simulation (`research/corpus/sim_stem_backoff.py`, run over the training corpora and the
+pinned eval set) gained +0.46 pp chain top-3 (paired CI95 [+0.21, +0.73]) against the
+pre-registered +1.5 pp bar. The named risk materialized: the stage engages on 15.8% of pairs,
+the case-blind expansion converts only 58% of stem hits, and correct after-word forms lose
+hits to displacement. Recorded in `docs/BACKLOG.md`; a case-aware expansion is a different
+experiment, not a rerun.
 
 **P2 — Wider typo classes (insertion/deletion/transposition) ranked by edit distance.**
 Re-implement AnySoftKeyboard's allocation-free Damerau–Levenshtein in Kotlin as the ranker;
