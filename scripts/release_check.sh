@@ -3,7 +3,7 @@
 # candidate in one command. Each check prints PASS/FAIL/SKIP; the summary is a
 # machine-readable RESULT block, and any FAIL gives a non-zero exit code. Any
 # unexpected error (no aapt2, broken APK, missing contract) also exits non-zero.
-# Artifact checks: size, asset pins, bundled asset sets, dex layout, permissions,
+# Artifact checks: size, asset pins, bundled asset sets, dex layout, profile rules, permissions,
 # signature, version, store changelog and the delta against dist/.
 #
 # Run from the repository root:
@@ -15,7 +15,8 @@
 #   --full     ./gradlew clean assembleRelease --no-build-cache first, then everything else
 #              (checks the freshly built app/build/outputs/apk/release/*.apk);
 #   --checks   only the listed artifact checks, comma-separated names without the "artifact."
-#              prefix (CI: exported_surface,no_secrets); selectable: size up to signature.
+#              prefix (accepted too, it is stripped; CI: exported_surface,no_secrets);
+#              selectable: size up to signature.
 #
 # Default APK: the newest (by mtime) app/build/outputs/apk/release/*.apk.
 # The script writes only build output: logs go to build/release_check/, and --full
@@ -45,7 +46,7 @@ CHECKS=""
 APK=""
 # Artifact checks that --checks can select; each runs on the APK alone. Version, changelog and
 # delta depend on each other and run only without --checks.
-SELECTABLE_CHECKS="size asset_pins emoji_assets tree_assets critical_resources arsc_stored dex_layout permissions exported_surface no_secrets signature"
+SELECTABLE_CHECKS="size asset_pins emoji_assets tree_assets critical_resources arsc_stored dex_layout profiles permissions exported_surface no_secrets signature"
 
 # Prints the header comment (lines 2-22); keep the header exactly that long.
 usage() {
@@ -85,17 +86,18 @@ if [ -n "$CHECKS" ] && [ -z "${CHECKS//,/}" ]; then
 fi
 for check in ${CHECKS//,/ }; do
     case " $SELECTABLE_CHECKS " in
-        *" $check "*) ;;
+        *" ${check#artifact.} "*) ;;
         *) echo "ERROR: --checks: неизвестная проверка $check (доступны: $SELECTABLE_CHECKS)" >&2
            exit 2 ;;
     esac
 done
 
-# want <check>: true when the artifact check runs (no --checks, or listed in it). The check
-# sections below are wrapped in `if want ...; then` without extra indentation, because their
-# Python heredocs cannot be indented.
+# want <check>: true when the artifact check runs (no --checks, or listed in it; the
+# "artifact." prefix in a --checks name is optional). The check sections below are wrapped
+# in `if want ...; then` without extra indentation, because their Python heredocs cannot be
+# indented.
 want() {
-    [ -z "$CHECKS" ] || [[ ",$CHECKS," == *",$1,"* ]]
+    [ -z "$CHECKS" ] || [[ ",$CHECKS," == *",$1,"* || ",$CHECKS," == *",artifact.$1,"* ]]
 }
 
 # --- result bookkeeping ----------------------------------------------------------------------
@@ -635,6 +637,23 @@ then
     report PASS artifact.dex_layout "$(tail -1 "$DEX_LOG")"
 else
     report FAIL artifact.dex_layout "$(tail -1 "$DEX_LOG")"
+fi
+fi
+
+# --- 3.11. profile rules against the dex ---------------------------------------------------------
+# The tracked text profiles are hand-editable, and a typo'd rule silently becomes a dead rule.
+# scripts/check_profiles.py parses both profiles strictly, resolves the class rules through the
+# R8 mapping against the APK's dex and gates the resolved ratio against a pinned floor (the trend
+# is the staleness signal); with the SDK cmdline-tools present it also runs profgen validate.
+# The mapping and the APK must come from the same build: the default flow (newest built APK) and
+# --full guarantee it, a --quick run on an older APK may not.
+if want profiles; then
+PROFILES_LOG="$LOG_DIR/profiles.log"
+if run_logged "$PROFILES_LOG" python3 scripts/check_profiles.py --apk "$APK"; then
+    report PASS artifact.profiles "$(tail -1 "$PROFILES_LOG" | sed 's/^RESULT|[A-Z]*|[a-z]*|//')"
+else
+    report FAIL artifact.profiles "гейт профилей упал, лог $PROFILES_LOG"
+    cat "$PROFILES_LOG" >&2
 fi
 fi
 
