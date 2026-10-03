@@ -75,6 +75,9 @@ bash scripts/check-no-internet.sh dist/tatar-keyboard-X.Y.Z.apk
 - [ ] `check-no-internet.sh` exits 0 on both levels (manifest and `aapt2`).
 - [ ] Device tests are not a release gate. If the release touches input, suggestions, glide typing
       or performance, run `scripts/emulator-smoke.sh` or `scripts/device-perf-ritual.sh`.
+- [ ] Measure the cold start of the signed APK on the reference device and record the median in
+      the release record: `scripts/device-perf-ritual.sh --pkg org.tatarkeyboard.ime` with the
+      `cold` leg prints it on the `cold-start` RESULT line.
 
 ## 5. Commit and tag
 
@@ -115,6 +118,7 @@ Paste under the GitHub Release notes; it replaces a per-release audit document.
 Release record — X.Y.Z (versionCode N), YYYY-MM-DD
 APK: tatar-keyboard-X.Y.Z.apk, <size> B, SHA-256 <sha256>   (release_pack.sh RESULT lines)
 Gates: release_check.sh --full and --quick OVERALL PASS (release-check-X.Y.Z.txt)
+Cold start, release build: <median ms over N runs> (device-perf-ritual cold leg on the reference device)
 Changed archive entries vs <previous> (CRC-32; size delta from artifact.delta):
   <entry> — <why>
   ...
