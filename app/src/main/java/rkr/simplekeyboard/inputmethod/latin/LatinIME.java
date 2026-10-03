@@ -92,6 +92,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmo
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalForget;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearningGates;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionLearning;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStores;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.TextShortcutStores;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchIndex;
@@ -826,6 +828,21 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // published in-memory snapshot (a lookup, never I/O), so an edit on the settings screen
         // takes effect on the next keystroke.
         mSuggestionsController.setShortcutSource(TextShortcutStores.sourceFor(this));
+        // Refused corrections: a correction the user keeps undoing stops firing across sessions.
+        // The sink is a learning write under the same predicate as every other personal store; the
+        // source reads the published snapshot per query, gated live on the personal-dictionary
+        // setting like the other personal sources.
+        mSuggestionsController.setRefusedCorrectionSink(RefusedCorrectionLearning.sinkFor(
+                this, this::activeDictionarySubtype, this::mayLearnPersonalWords));
+        mSuggestionsController.setRefusedCorrectionSource((typedWord, replacement) -> {
+            final String subtypeId = activeDictionarySubtype();
+            if (subtypeId == null) {
+                return false;
+            }
+            return RefusedCorrectionStores.sourceFor(LatinIME.this, subtypeId,
+                    () -> Settings.readPersonalDictionaryEnabled(mDevicePrefs))
+                    .isRefused(typedWord, replacement);
+        });
         // The keep-typed cell of the undo window paints the typed word in the locale's quotes.
         mSuggestionsController.setRevertCellDecorator(
                 typedWord -> getString(R.string.autocorrect_revert_cell, typedWord));

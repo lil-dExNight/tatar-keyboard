@@ -23,6 +23,7 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
@@ -232,6 +233,9 @@ class AutocorrectPreviewControllerTest {
         val sink = RecordingSink()
         var autocorrectEnabled = autocorrectOn
 
+        /** The persisted suppressed pairs (normalized typed word to replacement), if any. */
+        var refusedPairs: Set<Pair<String, String>> = emptySet()
+
         val controller = SuggestionsController(
             strip,
             editor,
@@ -244,6 +248,9 @@ class AutocorrectPreviewControllerTest {
         init {
             controller.setCompletionSink(sink)
             controller.setAutocorrectGate { autocorrectEnabled }
+            controller.setRefusedCorrectionSource(RefusedCorrectionSource { typedWord, replacement ->
+                (typedWord to replacement) in refusedPairs
+            })
         }
 
         fun start() {
@@ -321,6 +328,43 @@ class AutocorrectPreviewControllerTest {
         val band = h.strip.lastBand()!!
         assertEquals(listOf("китәпләр", null, null), band.cells)
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
+    }
+
+    @Test
+    fun aPersistedRefusedPairShowsNoPreviewAndNoCorrection() {
+        // The pair was undone enough times to be remembered across sessions: the strip derives as
+        // if the engine had named no correction, and the separator leaves the word as typed.
+        val h = Harness()
+        h.refusedPairs = setOf("китәп" to "китап")
+        h.start()
+        h.advise("китәп", "китап")
+        h.engine.suggestionsByWord["китәп"] = listOf("китәпләр")
+
+        h.typeWord("китәп")
+
+        val band = h.strip.lastBand()!!
+        assertEquals(listOf("китәпләр", null, null), band.cells)
+        assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
+
+        h.separator(' ')
+        assertEquals("китәп ", h.editor.before)
+        assertTrue(h.editor.edits.isEmpty())
+    }
+
+    @Test
+    fun aPersistedRefusalOfAnotherPairKeepsThePreview() {
+        // Pair-scoped: a persisted refusal of a different replacement for the same word leaves the
+        // coming correction announced.
+        val h = Harness()
+        h.refusedPairs = setOf("китәп" to "китеб")
+        h.start()
+        h.advise("китәп", "китап")
+
+        h.typeWord("китәп")
+
+        val band = h.strip.lastBand()!!
+        assertEquals(PREVIEW_EMPHASIZED_CELL, band.emphasized)
+        assertEquals(listOf("китәп", "китап", null), band.cells)
     }
 
     @Test

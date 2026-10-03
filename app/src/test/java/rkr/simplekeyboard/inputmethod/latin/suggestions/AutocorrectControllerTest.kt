@@ -23,6 +23,9 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSource
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrections
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
@@ -195,7 +198,11 @@ class AutocorrectControllerTest {
         }
     }
 
-    private class Harness(autocorrectOn: Boolean = true, wireAutocorrect: Boolean = true) {
+    private class Harness(
+        autocorrectOn: Boolean = true,
+        wireAutocorrect: Boolean = true,
+        wireRefused: Boolean = false,
+    ) {
         val strip = FakeStrip()
         val editor = FakeEditor()
         val engine = FakeEngine()
@@ -205,6 +212,13 @@ class AutocorrectControllerTest {
 
         /** False reproduces a build that never calls the autocorrect entry points at all. */
         private val wired = wireAutocorrect
+
+        /**
+         * The persisted refusal counts, as the store would keep them: the normalized
+         * (typed, replacement) pair to how often its correction was undone. Wired only when the
+         * test asks for the cross-session memory.
+         */
+        val refusedCounts = mutableMapOf<Pair<String, String>, Int>()
 
         val controller = SuggestionsController(
             strip,
@@ -219,6 +233,15 @@ class AutocorrectControllerTest {
             controller.setCompletionSink(sink)
             controller.setPairCompletionSink(pairSink)
             controller.setAutocorrectGate { autocorrectEnabled }
+            if (wireRefused) {
+                controller.setRefusedCorrectionSink(RefusedCorrectionSink { typedWord, replacement ->
+                    refusedCounts.merge(typedWord to replacement, 1, Int::plus)
+                })
+                controller.setRefusedCorrectionSource(RefusedCorrectionSource { typedWord, replacement ->
+                    val count = refusedCounts[typedWord to replacement] ?: 0
+                    count >= RefusedCorrections.REFUSAL_THRESHOLD
+                })
+            }
         }
 
         fun start() {
@@ -590,6 +613,129 @@ class AutocorrectControllerTest {
         h.typeWord(words[1])
         h.separator(' ')
         assertTrue("the second one is still remembered", h.editor.before.endsWith(" ${words[1]} "))
+    }
+
+    // --- Persisted refusals: the cross-session memory ---------------------------------------------
+
+    /** One correct+undo cycle in its own field session; the session ends right after the undo. */
+    private fun Harness.correctUndoAndEndSession(word: String, replacement: String = "китап") {
+        advise(word, replacement)
+        typeWord(word)
+        separator(' ')
+        assertTrue(editor.before.endsWith("$replacement "))
+        backspace()
+        assertTrue(editor.before.endsWith("$word "))
+        controller.onFinishInput()
+    }
+
+    @Test
+    fun anUndoneCorrectionIsReportedInTheNormalizedForm() {
+        // The typed word carried a capital, the inserted replacement did too; the pair is counted
+        // in the lookup form, so the casing of the occurrence never splits the count.
+        val h = Harness(wireRefused = true)
+        h.start()
+        h.advise("китәп", "китап")
+        h.typeWord("Китәп")
+        h.separator(' ')
+        assertEquals("Китап ", h.editor.before)
+
+        h.backspace()
+
+        assertEquals(mapOf(("китәп" to "китап") to 1), h.refusedCounts)
+    }
+
+    @Test
+    fun aCorrectionUndoneOnceStillFiresInANewSession() {
+        val h = Harness(wireRefused = true)
+        h.start()
+        h.correctUndoAndEndSession("китәп")
+
+        h.start()
+        h.typeWord("китәп")
+        h.separator(' ')
+
+        assertEquals("one refusal is below the threshold", "китәп китап ", h.editor.before)
+        assertEquals(1, h.refusedCounts["китәп" to "китап"])
+    }
+
+    @Test
+    fun aCorrectionUndoneTwiceNeverFiresAgain() {
+        val h = Harness(wireRefused = true)
+        h.start()
+        h.correctUndoAndEndSession("китәп")
+        h.start()
+        h.correctUndoAndEndSession("китәп")
+        assertEquals(2, h.refusedCounts["китәп" to "китап"])
+
+        // A third session: the persisted pair suppresses the correction before any edit.
+        h.start()
+        h.typeWord("китәп")
+        h.separator(' ')
+
+        assertEquals("китәп китәп китәп ", h.editor.before)
+        assertEquals(2, h.refusedCounts["китәп" to "китап"])
+    }
+
+    @Test
+    fun thePersistedRefusalIsScopedToTheExactPair() {
+        val h = Harness(wireRefused = true)
+        h.start()
+        h.correctUndoAndEndSession("китәп")
+        h.start()
+        h.correctUndoAndEndSession("китәп")
+
+        // The engine now names a different correction for the same typed word: it still fires.
+        h.start()
+        h.advise("китәп", "китеб")
+        h.typeWord("китәп")
+        h.separator(' ')
+
+        assertTrue(h.editor.before.endsWith("китеб "))
+        // And the reverse direction of the pair was never a refusal: correcting "китап" would
+        // still fire, had the engine advised it.
+        h.advise("китап", "китәп")
+        h.typeWord("китап")
+        h.separator(' ')
+        assertTrue(h.editor.before.endsWith("китәп "))
+    }
+
+    @Test
+    fun aPersistedRefusalDoesNotLeakOntoAnotherWord() {
+        val h = Harness(wireRefused = true)
+        h.start()
+        h.correctUndoAndEndSession("китәп")
+        h.start()
+        h.correctUndoAndEndSession("китәп")
+
+        h.start()
+        h.advise("дәфтар", "дәфтәр")
+        h.typeWord("дәфтар")
+        h.separator(' ')
+
+        assertTrue(h.editor.before.endsWith("дәфтәр "))
+    }
+
+    @Test
+    fun thePersistedRefusalOnlyEverSuppresses() {
+        // Without the refusal history the same session corrects twice; with it the second session
+        // is suppressed and nothing else changes — the suppression adds no edit of its own.
+        val plain = Harness(wireRefused = true)
+        plain.start()
+        plain.correctUndoAndEndSession("китәп")
+        plain.start()
+        plain.correctUndoAndEndSession("китәп")
+
+        val h = Harness(wireRefused = true)
+        h.start()
+        h.correctUndoAndEndSession("китәп")
+        h.start()
+        h.correctUndoAndEndSession("китәп")
+        h.start()
+        h.typeWord("китәп")
+        h.separator(' ')
+
+        assertEquals(plain.editor.before + "китәп ", h.editor.before)
+        assertEquals(plain.editor.edits, h.editor.edits)
     }
 
     @Test

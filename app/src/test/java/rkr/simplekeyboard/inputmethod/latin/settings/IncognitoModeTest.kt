@@ -29,9 +29,9 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLea
  * The semantics, as pinned here:
  *
  * 1. **While ON, nothing new is learned.** No write reaches the personal words store, the personal
- *    bigrams store, or their pending counters — the pending hashes are written only from the
- *    completion event, and both sinks gate that event (and the acceptance bump, and the
- *    end-of-session flush) on the ONE predicate the incognito factor vetoes.
+ *    bigrams store, the refused-corrections store, or the pending counters — the pending hashes are
+ *    written only from the completion event, and every sink gates its event (and the acceptance
+ *    bump, and the end-of-session flush) on the ONE predicate the incognito factor vetoes.
  * 2. **What is already saved keeps surfacing.** The READ side never consults the pause: the gates
  *    the engines are constructed with read the personal-dictionary setting and nothing else. Hiding
  *    learned words would be a different feature; turning the personal dictionary off does that.
@@ -117,12 +117,14 @@ class IncognitoModeTest {
 
     @Test
     fun bothSinksAreGatedByTheSameIncognitoCarryingPredicate() {
-        // The words sink and the pairs sink are wired with the very same predicate instance, so
-        // the pause covers both stores — and their pending counters, whose only writer is the
-        // completion event the sinks gate.
+        // The words sink, the pairs sink and the refused-corrections sink are wired with the very
+        // same predicate instance, so the pause covers their stores — and the pending counters,
+        // whose only writer is the completion event the sinks gate.
         val wordWiring = ime.substringAfter("PersonalLearning.sinkFor(").substringBefore(");")
         val pairWiring = ime.substringAfter("PersonalBigramLearning.sinkFor(").substringBefore(");")
-        for ((name, wiring) in listOf("words" to wordWiring, "pairs" to pairWiring)) {
+        val refusalWiring = ime.substringAfter("RefusedCorrectionLearning.sinkFor(").substringBefore(");")
+        for ((name, wiring) in listOf("words" to wordWiring, "pairs" to pairWiring,
+                "refusals" to refusalWiring)) {
             assertTrue("the $name sink consults the ONE predicate",
                 wiring.contains("this::mayLearnPersonalWords"))
         }
@@ -136,8 +138,8 @@ class IncognitoModeTest {
         // nothing else: incognito is a pause on WRITES, never a hide on reads.
         val readGates = Regex("\\(\\) -> (Settings\\.\\w+\\(mDevicePrefs\\))")
             .findAll(ime).map { it.groupValues[1] }.toList()
-        assertEquals("all three personal sources are gated: words, pairs and emoji",
-            3, readGates.size)
+        assertEquals("all four personal sources are gated: words, pairs, emoji and refused corrections",
+            4, readGates.size)
         for (gate in readGates) {
             assertEquals("the read gate is the personal-dictionary setting",
                 "Settings.readPersonalDictionaryEnabled(mDevicePrefs)", gate)

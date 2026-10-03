@@ -19,10 +19,12 @@ package rkr.simplekeyboard.inputmethod.latin.settings.backup
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersemFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TrefFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramStore
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaryStore
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmojiStore
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalOutputOpener
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStore
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.SpaceProbe
 import java.io.File
@@ -32,9 +34,9 @@ import java.io.IOException
 import java.util.concurrent.Executor
 
 /**
- * Real personal stores over a temp directory, producing real `.tpers` / `.tpersb` / `.tpersem`
- * bytes for the backup tests. Learning goes through the stores' own APIs and thresholds, so the
- * fixture bytes are exactly what a device would hold.
+ * Real personal stores over a temp directory, producing real `.tpers` / `.tpersb` / `.tpersem` /
+ * `.tref` bytes for the backup tests. Learning goes through the stores' own APIs and thresholds, so
+ * the fixture bytes are exactly what a device would hold.
  */
 internal object BackupTestStores {
 
@@ -111,5 +113,23 @@ internal object BackupTestStores {
         val store = emojiStore(directory, subtypeId)
         repeat(2) { store.noteObservation(entry.first, entry.second) }
         return File(directory, TpersemFormat.personalEmojiFileName(subtypeId)).readBytes()
+    }
+
+    fun refusedStore(directory: File, subtypeId: String): RefusedCorrectionStore =
+        RefusedCorrectionStore(
+            subtypeId = subtypeId,
+            directoryProvider = { directory },
+            fileOps = realOps,
+            outputOpener = realOpener,
+            spaceProbe = SpaceProbe { Long.MAX_VALUE },
+            clock = { 1000L },
+            executor = directExecutor,
+        )
+
+    /** A refused-corrections file holding one suppressed pair, recorded through the store. */
+    fun writeRefused(directory: File, subtypeId: String, pair: Pair<String, String>): ByteArray {
+        val store = refusedStore(directory, subtypeId)
+        repeat(2) { store.noteRefusal(pair.first, pair.second) }
+        return File(directory, TrefFormat.refusedCorrectionsFileName(subtypeId)).readBytes()
     }
 }

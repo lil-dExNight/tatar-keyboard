@@ -1,14 +1,14 @@
 # Asset and store formats
 
 Reference for the binary files the keyboard reads: the bundled dictionaries (TATDICT schema 2),
-the bundled bigram tables (TATBIGR schema 3), and the three personal-dictionary files (TATPERS,
-TATPERSB, TATPERSE). The plain-text assets are summarized at the end. How the bundled files are
-built is described in [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
+the bundled bigram tables (TATBIGR schema 3), and the personal-dictionary files (TATPERS,
+TATPERSB, TATPERSE, TATREF). The plain-text assets are summarized at the end. How the bundled files
+are built is described in [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
 
 The code is the authority. The format constants are in `TdictFormat`
 (`DictionaryStorageContracts.kt`), `TatBigrFormat` (`BigramStorageContracts.kt`), and
-`TpersFormat`, `TpersbFormat`, `TpersemFormat` (`dictionary/personal/`). All code paths below are
-relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/latin/`.
+`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TrefFormat` (`dictionary/personal/`). All code
+paths below are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/latin/`.
 
 ## Common conventions
 
@@ -215,6 +215,23 @@ single quarantine slot, `<file name>.quarantine`, and the store starts empty. Th
 can later be restored or discarded. The same directory also holds the pending learning counters
 (salted, truncated word hashes), their salt and the quarantine notice flags. Those files belong to
 `personalstore/` and are not covered here.
+
+## Refused-correction files: TATREF
+
+`personal-refused-<tag>-s1-f1.tref` (magic `TATREF\0\0`) holds the corrections the user undid, one
+file per language in the same `noBackupFilesDir/personal/` directory, with the same 72-byte header
+(subtype tag included), at most 500 entries and 131 072 bytes. A record is `typedWordByteLength u8`,
+`replacementByteLength u8`, `refusalCount u8` (≥ 1, capped at the persistence threshold), then both
+words as UTF-8 in the normalized lookup form (NFC lowercase). A pair suppresses its correction once
+its count reaches the threshold.
+
+Unlike the other personal files the records are NOT sorted: the file order is the refusal order
+(oldest first), because that order is the eviction order — past the cap the front of the file goes
+first, and a repeated refusal moves its pair to the back. Validation (`personal/TrefValidator.kt`)
+runs the same header, checksum, subtype-tag and strict-UTF-8 checks, rejects duplicates, self-pairs
+and over-length words, but checks no alphabet (a refused typed word is off-dictionary by
+construction) and no ordering. The store has no pending counters and no salt, and its quarantine is
+silent: no screen lists the refused pairs.
 
 ## Plain-text assets
 

@@ -122,14 +122,18 @@ class PersonalEmojiScreenSourceContractTest {
                 && clearing.contains(".clearAll"))
         assertTrue("and the band is unbound at once",
             clearing.contains("PersonalEmojiDictionaries.notifyErased()"))
-        // The global erase covers ALL THREE stores — an "erase everything" that left the learned
-        // emoji behind would be contradicted by the suggestions.
+        // The global erase covers ALL FOUR stores — an "erase everything" that left the learned
+        // emoji or the refused corrections behind would be contradicted by the suggestions.
         val erase = bodyOf(host, "private fun showErasePersonalDictionaryDialog(", "\n    /**")
         assertTrue("the words half", erase.contains("controller.eraseAll(subtypeIds)"))
         assertTrue("the pairs half", erase.contains("pairController.eraseAll(subtypeIds)"))
         assertTrue("and the emoji third", erase.contains("emojiController.eraseAll(subtypeIds)"))
+        assertTrue("and the refused corrections fourth",
+            erase.contains("eraseRefusedCorrections(subtypeIds)"))
         assertTrue("reported as one honest answer",
-            erase.contains("afterPersonalMutation(wordsErased && pairsErased && emojiErased,"))
+            erase.contains("afterPersonalMutation(")
+                && erase.contains("wordsErased && pairsErased && emojiErased")
+                && erase.contains("&& refusalsErased"))
         assertTrue("with all three quarantine cards re-read",
             erase.contains("personalQuarantines = null")
                 && erase.contains("personalPairQuarantines = null")
@@ -196,9 +200,10 @@ class PersonalEmojiScreenSourceContractTest {
                 assertFalse("$name must not name '$word'", english.lowercase().contains(word))
             }
         }
-        assertTrue("the global erase now says all three kinds of content",
+        assertTrue("the global erase now says all four kinds of content",
             stringValue("values", "personal_dictionary_erase_confirm").let {
                 it.contains("word") && it.contains("pair") && it.contains("emoji")
+                    && it.contains("correction")
             })
         for (name in listOf("personal_emoji_count",
                 "personal_emoji_quarantine_partial", "personal_emoji_quarantine_whole")) {
