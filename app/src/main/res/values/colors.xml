@@ -34,22 +34,28 @@
     <color name="ios_key_spacebar">#FFFFFF</color>
     <color name="ios_key_spacebar_pressed">#C8CDD4</color>
     <color name="ios_key_shadow">#4D000000</color>
-    <!-- Slide-to-select highlight on the more-keys panel: the accent color, as on iOS,
-         so it clearly differs from ios_keyboard_background (the panel fill). -->
-    <color name="ios_popup_key_pressed">@color/app_accent</color>
+    <!-- Slide-to-select highlight on the more-keys panel: the action accent, so it clearly
+         differs from ios_keyboard_background (the panel fill) and keeps the white glyph of
+         the selected cell at WCAG AA. -->
+    <color name="ios_popup_key_pressed">@color/ios_key_action_fill</color>
     <!-- The glyph on that highlight is white in both palettes. -->
     <color name="ios_popup_key_selected_text">#FFFFFF</color>
     <color name="ios_key_text_color">#000000</color>
     <color name="ios_key_functional_text_color">#3C3C43</color>
+    <!-- Action-key and selected-popup-cell fill: the iOS blue, one step darker than
+         app_accent so white labels keep WCAG AA on it. -->
+    <color name="ios_key_action_fill">#0A6CD9</color>
     <!-- An action key is accent-filled, so its label and icon are white. -->
     <color name="ios_key_action_text_color">#FFFFFF</color>
-    <color name="ios_key_text_inactive_color">#70000000</color>
+    <color name="ios_key_text_inactive_color">#A0000000</color>
     <color name="ios_key_hint_color">#90000000</color>
-    <!-- Glide trail: near-white (iOS systemGray6), as in Gboard.
-         Drawn at ≤40 % alpha (GlideTrail.MAX_ALPHA), so over the white keys it is a soft
-         sheen and over the #D4D6DD background a lighter ribbon; in the dark theme the same
-         near-white reads clearly against #2C2C2C — one value serves both themes. -->
-    <color name="ios_glide_trail">#F2F2F7</color>
+    <!-- The autocorrect preview's correction cell: a deeper iOS blue than app_accent,
+         so the text keeps WCAG AA on the keyboard-gray strip. -->
+    <color name="ios_suggestion_emphasis">#0052BE</color>
+    <!-- Glide trail: the action-accent ink, opaque at the fingertip (the resource alpha is
+         the trail's peak, faded per point by GlideTrail) so the ribbon keeps WCAG AA over
+         the white keys; the dark palette carries its own value. -->
+    <color name="ios_glide_trail">#FF0A6CD9</color>
 
     <!-- Color resources for iOS-style app screens (light). App-screen palette,
          kept separate from the keyboard ios_* colors above. -->

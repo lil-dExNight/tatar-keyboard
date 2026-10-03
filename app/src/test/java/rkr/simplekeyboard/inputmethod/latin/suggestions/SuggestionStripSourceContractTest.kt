@@ -193,7 +193,7 @@ class SuggestionStripSourceContractTest {
             .substringBefore("</declare-styleable>")
         assertTrue(styleable.contains("suggestionEmphasisColor"))
         val theme = File(main, "res/values/themes-tatar.xml").readText()
-        assertTrue(theme.contains("name=\"suggestionEmphasisColor\">@color/app_accent"))
+        assertTrue(theme.contains("name=\"suggestionEmphasisColor\">@color/ios_suggestion_emphasis"))
     }
 
     @Test

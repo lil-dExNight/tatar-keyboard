@@ -26,22 +26,33 @@
     <color name="ios_key_normal_pressed">#7D7D7D</color>
     <color name="ios_key_functional">#474747</color>
     <color name="ios_key_functional_pressed">#8E8E8E</color>
-    <color name="ios_key_checked">#9A9A9A</color>
+    <color name="ios_key_checked">#8F8F8F</color>
     <!-- Sticky shift: dark mode inverts to the letter-key gray, not to white. -->
     <color name="ios_key_sticky_on">#6B6B6B</color>
     <color name="ios_key_spacebar">#6B6B6B</color>
     <color name="ios_key_spacebar_pressed">#7D7D7D</color>
     <color name="ios_key_shadow">#B3000000</color>
-    <!-- Slide-to-select highlight on the more-keys panel: the accent of the dark
-         palette, so it clearly differs from ios_keyboard_background (the panel fill). -->
-    <color name="ios_popup_key_pressed">@color/app_accent</color>
+    <!-- Slide-to-select highlight on the more-keys panel: the action accent, so it clearly
+         differs from ios_keyboard_background (the panel fill) and keeps the white glyph of
+         the selected cell at WCAG AA. -->
+    <color name="ios_popup_key_pressed">@color/ios_key_action_fill</color>
     <color name="ios_popup_key_selected_text">#FFFFFF</color>
     <color name="ios_key_text_color">#FFFFFF</color>
     <color name="ios_key_functional_text_color">#FFFFFF</color>
+    <!-- Action-key and selected-popup-cell fill: the iOS dark blue, one step darker than
+         app_accent so white labels keep WCAG AA on it. -->
+    <color name="ios_key_action_fill">#0A72DC</color>
     <!-- Action key label: white reads on the accent fill in the dark palette too. -->
     <color name="ios_key_action_text_color">#FFFFFF</color>
-    <color name="ios_key_text_inactive_color">#80FFFFFF</color>
-    <color name="ios_key_hint_color">#B2FFFFFF</color>
+    <color name="ios_key_text_inactive_color">#E6FFFFFF</color>
+    <color name="ios_key_hint_color">#E6FFFFFF</color>
+    <!-- The autocorrect preview's correction cell: a lighter iOS blue than app_accent,
+         so the text keeps WCAG AA on the dark strip. -->
+    <color name="ios_suggestion_emphasis">#409CFF</color>
+    <!-- Glide trail: near-white ink, 95 % at the fingertip (the resource alpha is the
+         trail's peak, faded per point by GlideTrail) so the ribbon keeps WCAG AA over
+         the letter-key gray. -->
+    <color name="ios_glide_trail">#F2FFFFFF</color>
 
     <!-- Color resources for iOS-style app screens (dark). App-screen palette,
          kept separate from the keyboard ios_* colors above. -->

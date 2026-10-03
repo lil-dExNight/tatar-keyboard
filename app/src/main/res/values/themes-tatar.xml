@@ -34,7 +34,7 @@
         <item name="keyNormalBackgroundColor">@color/ios_key_normal</item>
         <item name="emojiPanelBackgroundColor">@color/ios_keyboard_background</item>
         <item name="emojiPanelFunctionalKeyColor">@color/ios_key_functional</item>
-        <item name="suggestionEmphasisColor">@color/app_accent</item>
+        <item name="suggestionEmphasisColor">@color/ios_suggestion_emphasis</item>
     </style>
     <style
         name="Keyboard.Tatar"

@@ -107,7 +107,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
 
     // The glide trail: the fading polyline drawn under the fingertip of an armed glide.
     // Fed through {@link DrawingProxy#onGlideTrailPoint}; preallocated, zero-allocation draw.
-    private final GlideTrail mGlideTrail = new GlideTrail();
+    private final GlideTrail mGlideTrail;
     private final Paint mGlideTrailPaint = new Paint();
 
     private final KeyDetector mKeyDetector;
@@ -155,6 +155,9 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         mBackgroundDimAlphaPaint.setAlpha(backgroundDimAlpha);
         final int glideTrailColor = mainKeyboardViewAttr.getColor(
                 R.styleable.MainKeyboardView_glideTrailColor, Color.TRANSPARENT);
+        // The theme color carries the trail's peak alpha: per-point the draw fades down from
+        // it. Both are read once here, at theme load; the draw loop never touches resources.
+        mGlideTrail = new GlideTrail(GlideTrail.DEFAULT_CAPACITY, Color.alpha(glideTrailColor));
         mGlideTrailPaint.setColor(glideTrailColor);
         mGlideTrailPaint.setStyle(Paint.Style.STROKE);
         mGlideTrailPaint.setStrokeWidth(getResources().getDimension(

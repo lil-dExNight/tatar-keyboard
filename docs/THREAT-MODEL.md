@@ -150,7 +150,6 @@ are listed after the table with the control that keeps them closed.
 | Lossy frequency compression in the dictionaries not used | Separate product decision; the APK is well within its size budget | APK size pressure |
 | Android 7.0/7.1 cannot signal `IME_FLAG_NO_PERSONALIZED_LEARNING` | The flag exists from API 26; only the other `mayLearn` conditions protect those fields; disclosed in `PRIVACY.md` | `minSdk` 26: delete this row |
 | The "Saved words" screen has no in-app lock | Physical-access attacker accepted; `FLAG_SECURE` covers capture, not a person holding the phone; stated in `PRIVACY.md` | A decision to add an in-app lock |
-| Light-theme contrast is 4.0:1, below the WCAG AA 4.5:1 ratio | Deliberate palette decision | A design pass |
 | Static state in `PointerTracker` | Upstream AOSP code; a rewrite risks more regressions than it removes | Evidence of a regression caused by it |
 | TalkBack speech is checked by ear, manually | The mechanics are covered by tests; listening to the output needs a person and a device | Every release |
 | `SettingsActivity` is exported | Required by the system IME-settings entry point; reads no extras | Pinned by `artifact.exported_surface`; any drift fails CI and the release check |
@@ -165,6 +164,9 @@ are listed after the table with the control that keeps them closed.
 
 Resolved, with the control that keeps them closed:
 
+- **Keyboard-theme contrast below WCAG AA (the action-key labels and the dark hint text).**
+  Every informative glyph/background pair of both palettes holds AA for text and the non-text
+  floor for state icons; pinned by `ThemeContrastContractTest`.
 - **Two resident glide word indexes (one per warm engine).** At most one index is resident across
   languages, and it is released when the keyboard is idle; pinned by
   `GlideIndexResidencySourceContractTest` and `MappedDictionaryEngineGlideTest`.

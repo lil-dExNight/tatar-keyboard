@@ -130,8 +130,10 @@ class GlideTrailContractTest {
         assertTrue("detach clears the trail (no stale trail at the next show)",
             detach.contains("mGlideTrail.clear();"))
 
-        // Preallocated paint configured from the theme attr.
-        assertTrue(viewSource.contains("private final GlideTrail mGlideTrail = new GlideTrail();"))
+        // Preallocated paint configured from the theme attr; the trail's peak alpha is the
+        // theme color's own alpha, read once at theme load.
+        assertTrue(viewSource.contains(
+            "mGlideTrail = new GlideTrail(GlideTrail.DEFAULT_CAPACITY, Color.alpha(glideTrailColor));"))
         assertTrue(viewSource.contains("R.styleable.MainKeyboardView_glideTrailColor"))
         assertTrue(viewSource.contains("R.dimen.config_glide_trail_stroke_width"))
     }
@@ -151,20 +153,21 @@ class GlideTrailContractTest {
             "app/src/main/res/values/themes-tatar.xml",
         )
         assertTrue(tatar.contains("<item name=\"glideTrailColor\">@color/ios_glide_trail</item>"))
-        // Gboard-style near-white (iOS systemGray6) instead of the accent blue. The literal is
-        // pinned so a palette edit cannot silently recolor the trail; the color lives only in
-        // values/colors.xml — one near-white serves both themes.
+        // Per-theme trail inks: the accent blue in the light palette, near-white in the dark
+        // one, each carrying its peak alpha in the resource value. The literals are pinned so
+        // a palette edit cannot silently recolor the trail; the AA ratios of both pairs are
+        // pinned in ThemeContrastContractTest.
         val colors = read(
             "src/main/res/values/colors.xml",
             "app/src/main/res/values/colors.xml",
         )
-        assertTrue(colors.contains("<color name=\"ios_glide_trail\">#F2F2F7</color>"))
+        assertTrue(colors.contains("<color name=\"ios_glide_trail\">#FF0A6CD9</color>"))
         val nightColors = read(
             "src/main/res/values-night/colors.xml",
             "app/src/main/res/values-night/colors.xml",
         )
-        assertTrue("the trail color is deliberately shared between themes",
-            !nightColors.contains("ios_glide_trail"))
+        assertTrue("the dark palette carries its own trail ink",
+            nightColors.contains("<color name=\"ios_glide_trail\">#F2FFFFFF</color>"))
         val config = read(
             "src/main/res/values/config.xml",
             "app/src/main/res/values/config.xml",
