@@ -102,8 +102,11 @@ section 2), all gates green:
   validation slice at the published anchor's accuracy class.
 - Device observability: `scripts/device-perf-ritual.sh` gained the `suggest` leg (round-trip
   budget in `docs/PERF-BUDGETS.md`), the pss anon/file split, and the opt-in `battery`,
-  `uimode` and `fontscale` legs. None of them has run on hardware yet (`docs/ROADMAP.md`
-  section 3).
+  `uimode` and `fontscale` legs. Ran on the reference device: the suggest round trip is in
+  budget (p95 18.5 ms ≤ 32 ms on the debug build), the battery leg shows zero
+  wake-locks/sensors/alarms and CPU under the debug ceiling, the night flip re-themes the
+  keyboard live (the UI3 staleness hole does not reproduce on this device), and the labels are
+  pixel-identical under font_scale 1.3 (the only delta is the system nav-bar zone).
 - Dev loop: calibration suites run in `./gradlew calibrationTest` (CI and
   `scripts/release_check.sh` run `test calibrationTest` together); the python tests run in
   parallel via `scripts/run_python_tests.sh`; the CI reproducible job packs one unsigned build
@@ -166,6 +169,18 @@ The features sprint and the lab instrument landed after it:
   participants.
 
 The device pass for this sprint is listed in `docs/ROADMAP.md` section 3.
+
+The device pass on the reference device (POCO C71) verified the feature set and caught four
+real bugs, all fixed in the same pass: the autocorrect-revert cell was repainted away by the
+commit's own cursor-settle callback; the editing menu resolved its labels in the system locale
+(keyboard chrome now follows the app locale policy); the backup missed the text-shortcut store
+(it joins now); and a wrong-typed preference value crash-looped the service at startup (reads
+are tolerant now). The probes also verified the refused-correction persistence across
+sessions, the word-delete flick, the shift case cycle, the edit menu actions, one-handed
+docking in both directions, the dynamic theme across the night flip, the shortcut offer and
+expansion, the fresh-clip cell (which now outranks the sentence-start table), the lab arm
+switch, and the backup round trip through the real SAF picker.
+
 
 ## Open release steps
 

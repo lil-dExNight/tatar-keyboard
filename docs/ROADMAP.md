@@ -45,22 +45,15 @@ Decisions recorded for this program:
 
 Checks that need a person or hardware not at hand:
 
-- the new perf-ritual legs on the reference device: `suggest` (first real round-trip numbers
-  against the 32 ms budget), `battery`, `uimode`, `fontscale` (`--legs`); the uimode probe
-  answers the palette-staleness question of `research/ui.md` (UI3);
-- the quick-wins device pass: edge-key balloons and edge-clamped more-keys slide selection in
-  both themes; glide alternates/undo rescue in the default config; word-delete flick tuning
-  (`TRIGGER_KEY_WIDTHS`/`MAX_FLICK_MS` in `WordDeleteFlick.kt`) plus its password-field
-  refusal; the shift case-cycle editor matrix; the enter-key editing menu; animator-scale-0
-  behavior; emoji long-press haptic against the app toggle; the onboarding auto-return on
-  HyperOS;
-- the features device pass: the dynamic theme on an API 31+ device across a wallpaper change
-  (plus the HyperOS retoning look); one-handed mode in both hands and themes incl.
-  `GlideUiDeviceTest` with the mode on and the perf legs; inline autofill against a real
-  autofill service (none ships on a stock emulator — a password manager or the AOSP sample);
-  the SAF backup round-trip on device; the recent-clip cell's clipboard-read toast behavior on
-  Android 12+; the revert cell under TalkBack; a refused correction staying dead across
-  sessions;
+- the device pass landed on the reference device (its results are in `HANDOFF.md`): the new
+  perf-ritual legs ran (suggest round trip in budget, battery clean, palette flip live,
+  font-scale labels pixel-identical), the instrumentation suites pass per class, and the
+  feature probes verified the strip features, the gestures, the editing menu, one-handed mode,
+  the dynamic theme, the lab arm switch and the SAF backup round trip — four real bugs were
+  found and fixed by the pass. Still open on hardware: inline autofill against a real autofill
+  service (none on a stock device), the release-build perf legs (the release APK cannot
+  install next to the signed one), the revert cell under TalkBack, and the reduced-motion and
+  haptic feel checks;
 - the fifth-row lab sessions per `docs/LAB-FIFTH-ROW.md` (recruitment, scripted sessions, the
   analysis script);
 - live Direct Boot (needs a screen-lock PIN and a reboot: type the PIN with this keyboard
