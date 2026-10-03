@@ -404,11 +404,13 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
         self.assertGreater(self.report["rus"]["words_added"], 0)
         self.assertEqual(self.report["rus"]["words_added"],
                          self.report["rus"]["words_displaced"])
-        # tat: cutoff 110 000, so that the admitted word forms displace nothing; the added
-        # conversational words and word forms fill exactly the extra 10 000 entries.
+        # tat: cutoff 110 000. The added conversational words and word forms fill the extra
+        # 10 000 entries, and the bonus-frequency rerank (bonus-freq-tt.tsv) promotes more
+        # words above the old cutoff, displacing the same number from the tail:
+        # words_added == 10 000 + words_displaced.
         self.assertEqual(self.report["tat"]["entries_after"], 110_000)
-        self.assertEqual(self.report["tat"]["words_added"], 10_000)
-        self.assertEqual(self.report["tat"]["words_displaced"], 0)
+        self.assertEqual(self.report["tat"]["words_added"], 21_038)
+        self.assertEqual(self.report["tat"]["words_displaced"], 11_038)
 
     def test_mozhna_pair_shows_single_word_on_prefix(self) -> None:
         # On the prefix `можн` there is no `можно | можна` pair: the curator excluded
