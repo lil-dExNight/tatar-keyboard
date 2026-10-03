@@ -205,4 +205,19 @@
     <string name="edit_menu_paste">Күчереп кую</string>
     <string name="edit_menu_cursor_left">Курсор сулга</string>
     <string name="edit_menu_cursor_right">Курсор уңга</string>
+
+    <!-- Settings screen title and root row for the developer instruments. -->
+    <string name="settings_screen_developer">Эшләп килүчегә</string>
+    <!-- Opening line of the Developer screen. -->
+    <string name="developer_intro">Бишенче рәт тикшеренүенең кораллары. Көндәлек язу өчен алар кирәк түгел: стандарт тәртип — A төркеме, журнал сүндерелгән.</string>
+    <!-- Title of the study-arm row and of its picker dialog. -->
+    <string name="fifth_row_arm">Бишенче рәт төркеме</string>
+    <!-- The opt-in lab session log switch. -->
+    <string name="lab_session_log">Лаборатория сессиясе журналы</string>
+    <string name="lab_session_log_summary">Кабызылганда төймә кодлары белән басу вакытларын (текстны түгел) тикшеренү өчен бу җиһаздагы чикләнгән файлга язып бара</string>
+    <!-- Footer note of the Developer screen: how the log can leave the device. -->
+    <string name="lab_session_log_pull_note">Журнал җиһазда кала һәм резерв күчермәләргә эләкми. Аны adb (run-as) аша күчереп алырга мөмкин, бу исә тик debuggable җыелмада гына эшли; чыгарылыш җыелмасы журнал яза ала, ләкин аны кире кайтара алмый.</string>
+    <!-- Action row that deletes the recorded lab session log. -->
+    <string name="clear_lab_log">Лаборатория журналын чистарту</string>
+    <string name="clear_lab_log_confirm">Бу җиһазда язылган лаборатория журналы бетерелсәнме? Бу гамәлне кире кайтарып булмый.</string>
 </resources>

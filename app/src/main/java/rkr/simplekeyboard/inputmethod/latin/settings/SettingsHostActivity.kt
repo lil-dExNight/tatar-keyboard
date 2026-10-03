@@ -45,6 +45,7 @@ import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
+import rkr.simplekeyboard.inputmethod.latin.lab.LabSessionLog
 import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
 import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
@@ -74,7 +75,9 @@ class SettingsHostActivity : Activity() {
         // Title is the language display name, set dynamically in showScreen.
         LANGUAGE_DETAIL(0),
         PERSONAL_DICTIONARY(R.string.personal_dictionary),
-        DATA_SOURCES(R.string.settings_screen_data_sources)
+        DATA_SOURCES(R.string.settings_screen_data_sources),
+        // Last on purpose: older saved states carry ordinals of the entries above.
+        DEVELOPER(R.string.settings_screen_developer)
     }
     companion object {
         private const val TRANSITION_NONE = 0
@@ -143,7 +146,8 @@ class SettingsHostActivity : Activity() {
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (Settings.PREF_SHOW_NUMBER_ROW == key
                     || Settings.PREF_SHOW_EMOJI_KEY == key
-                    || Settings.PREF_SHOW_SPECIAL_CHARS == key) {
+                    || Settings.PREF_SHOW_SPECIAL_CHARS == key
+                    || Settings.PREF_FIFTH_ROW_ARM == key) {
                 KeyboardLayoutSet.onKeyboardThemeChanged()
             }
         }
@@ -268,6 +272,7 @@ class SettingsHostActivity : Activity() {
             Screen.LANGUAGE_DETAIL -> buildLanguageDetailScreen(detail!!)
             Screen.PERSONAL_DICTIONARY -> buildPersonalDictionaryScreen()
             Screen.DATA_SOURCES -> buildDataSourcesScreen()
+            Screen.DEVELOPER -> buildDeveloperScreen()
         }
         scrollView.scrollTo(0, 0)
         playScreenTransition()
@@ -319,7 +324,8 @@ class SettingsHostActivity : Activity() {
             linkRow(R.string.settings_screen_preferences) { navigateTo(Screen.PREFERENCES) }
                     .apply { id = R.id.row_link_preferences },
             linkRow(R.string.settings_screen_key_press) { navigateTo(Screen.KEY_PRESS) },
-            linkRow(R.string.settings_screen_appearance) { navigateTo(Screen.APPEARANCE) }))
+            linkRow(R.string.settings_screen_appearance) { navigateTo(Screen.APPEARANCE) },
+            linkRow(R.string.settings_screen_developer) { navigateTo(Screen.DEVELOPER) }))
         addCard(listOf(
             linkRow(R.string.privacy_policy) { openUrl(getString(R.string.privacy_policy_url)) },
             linkRow(R.string.license) { openUrl(getString(R.string.license_url)) },
@@ -350,6 +356,78 @@ class SettingsHostActivity : Activity() {
                     getString(R.string.data_sources_opensubtitles_summary)) {
                 openUrl(getString(R.string.data_sources_opensubtitles_url))
             }), spacedFromPrevious = false)
+    }
+
+    /**
+     * "Developer": the instruments of the fifth-row layout study — the arm picker, the opt-in
+     * lab session log and its clear action. The shipped layout is arm A and the log is off; the
+     * notes say what the log records and how it can leave the device.
+     */
+    private fun buildDeveloperScreen() {
+        addCard(listOf(textRow(getString(R.string.developer_intro))))
+        addCard(listOf(
+            fifthRowArmRow(),
+            switchRow(Settings.PREF_LAB_SESSION_LOG, false,
+                    R.string.lab_session_log, R.string.lab_session_log_summary)))
+        addCard(listOf(actionRow(R.string.clear_lab_log) { showClearLabLogDialog() }))
+        addCard(listOf(textRow(getString(R.string.lab_session_log_pull_note))))
+    }
+
+    private val fifthRowArmLabelRes = listOf(
+        R.string.fifth_row_arm_option_a,
+        R.string.fifth_row_arm_option_b,
+        R.string.fifth_row_arm_option_c,
+    )
+
+    /** The arm as a one-tap picker, like the keyboard-height row: the tap writes the pref. */
+    private fun fifthRowArmRow(): View {
+        val row = inflateRow(R.layout.row_value, R.string.fifth_row_arm, 0)
+        val valueView = row.findViewById<TextView>(R.id.row_value)
+        valueView.text = getString(fifthRowArmLabelRes[Settings.readFifthRowArm(prefs)])
+        row.setOnClickListener {
+            showFifthRowArmDialog {
+                valueView.text = getString(fifthRowArmLabelRes[Settings.readFifthRowArm(prefs)])
+            }
+        }
+        return row
+    }
+
+    private fun showFifthRowArmDialog(onValueChanged: () -> Unit) {
+        val labels = fifthRowArmLabelRes.map { getString(it) }.toTypedArray()
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.fifth_row_arm)
+                // setItems on purpose, exactly like the keyboard-height picker: the choice applies
+                // on the tap itself and the dialog closes. The pref listener clears the keyboard
+                // cache, so the next shown keyboard is built under the new arm.
+                .setItems(labels) { _, which ->
+                    if (which != Settings.readFifthRowArm(prefs)) {
+                        prefs.edit().putInt(Settings.PREF_FIFTH_ROW_ARM, which).apply()
+                    }
+                    onValueChanged()
+                }
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
+    /** Confirmation dialog for "Clear lab session log", kept in [currentDialog] like the others. */
+    private fun showClearLabLogDialog() {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.clear_lab_log)
+                .setMessage(R.string.clear_lab_log_confirm)
+                .setPositiveButton(R.string.clear_recent_emoji_action) { _, _ ->
+                    LabSessionLog.clear(this)
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
     }
 
     private fun buildPreferencesScreen() {
