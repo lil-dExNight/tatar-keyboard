@@ -31,9 +31,10 @@
 #      emoji panel open (the expected peak) and after close; after 30 s hidden
 #      (the idle-release path fires at 10 s: glide + emoji indexes drop). The
 #      ceiling depends on the build: debuggable builds run on the debug scale.
-#      Each scenario also saves /proc/<pid>/smaps_rollup (its RssAnon/RssFile
-#      split joins the result line; skipped with an INFO note when the process
-#      or the file is unreadable) and an App-Summary per-category extract.
+#      Each scenario also saves /proc/<pid>/smaps_rollup (its anon/file split
+#      — RssAnon/RssFile or Pss_Anon/Pss_File by kernel — joins the result
+#      line; skipped with an INFO note when the process or the file is
+#      unreadable) and an App-Summary per-category extract.
 #   frames) frame stats: gfxinfo reset -> fixed 32-event Tatar typing
 #      script ("сәләм дөнья мин сине яратам дус ": 27 letters + 5 spaces,
 #      0.35 s between taps) -> the InputMethod window's last <=120 PROFILEDATA
@@ -166,8 +167,11 @@ JANK_BUDGET_PCT=1.0
 PSS_BUDGET_DEBUG_KB=114000
 PSS_BUDGET_RELEASE_KB=69000
 # Idle-window CPU ceiling of the battery leg: an observability assertion (it
-# catches a stuck worker or a wake loop), not a tuned budget.
+# catches a stuck worker or a wake loop), not a tuned budget. The debug build
+# gets its own ceiling: it runs the JIT and more GC, and the 10 s deallocate
+# pass fires inside the window by design.
 BATTERY_IDLE_CPU_BUDGET_MS=1000
+BATTERY_IDLE_CPU_BUDGET_DEBUG_MS=2000
 CLK_TCK=$(getconf CLK_TCK 2>/dev/null || echo 100)
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -278,10 +282,10 @@ fi
 RUN_AS_OK=0
 A shell "run-as $PKG true" >/dev/null 2>&1 && RUN_AS_OK=1
 if [ "$RUN_AS_OK" = 1 ]; then
-    BUILD=debug; PSS_BUDGET_KB=$PSS_BUDGET_DEBUG_KB
+    BUILD=debug; PSS_BUDGET_KB=$PSS_BUDGET_DEBUG_KB; BATTERY_CPU_BUDGET=$BATTERY_IDLE_CPU_BUDGET_DEBUG_MS
     [ -n "$COLD_TRIGGER" ] || COLD_TRIGGER=tap
 else
-    BUILD=release; PSS_BUDGET_KB=$PSS_BUDGET_RELEASE_KB
+    BUILD=release; PSS_BUDGET_KB=$PSS_BUDGET_RELEASE_KB; BATTERY_CPU_BUDGET=$BATTERY_IDLE_CPU_BUDGET_MS
     [ -n "$COLD_TRIGGER" ] || COLD_TRIGGER=switch
 fi
 VER=$(SHELL dumpsys package "$PKG" 2>/dev/null | grep -m1 versionName | grep -oP '= *\K\S+')
@@ -589,13 +593,14 @@ meminfo_categories() {
 }
 # smaps_rollup <pid> <out>: /proc/<pid>/smaps_rollup of the package process.
 # A shell read works where ptrace rules allow it; run-as is the fallback for a
-# debuggable package.
+# debuggable package. The anon/file field names vary by kernel: RssAnon/RssFile
+# or Pss_Anon/Pss_File — accept either.
 smaps_rollup() {
     SHELL cat "/proc/$1/smaps_rollup" > "$2" 2>/dev/null
-    grep -q '^RssAnon:' "$2" 2>/dev/null && return 0
+    grep -qE '^(RssAnon|Pss_Anon):' "$2" 2>/dev/null && return 0
     [ "$RUN_AS_OK" = 1 ] || return 1
     SHELL "run-as $PKG cat /proc/$1/smaps_rollup" > "$2" 2>/dev/null
-    grep -q '^RssAnon:' "$2" 2>/dev/null
+    grep -qE '^(RssAnon|Pss_Anon):' "$2" 2>/dev/null
 }
 pss_point() { # pss_point <scenario>
     local kb sw over pid anon file
@@ -606,7 +611,7 @@ pss_point() { # pss_point <scenario>
     if [ -z "$pid" ]; then
         result INFO pss-smaps "scenario=$1 no pid for $PKG; anon/file split skipped"
     elif smaps_rollup "$pid" "$OUTDIR/smaps-$1.txt"; then
-        read -r anon file <<<"$(awk '/^RssAnon:/ {a=$2} /^RssFile:/ {f=$2} END {print a+0, f+0}' "$OUTDIR/smaps-$1.txt")"
+        read -r anon file <<<"$(awk '/^(RssAnon|Pss_Anon):/ {a=$2} /^(RssFile|Pss_File):/ {f=$2} END {print a+0, f+0}' "$OUTDIR/smaps-$1.txt")"
     else
         result INFO pss-smaps "scenario=$1 smaps_rollup unreadable for pid $pid; anon/file split skipped"
     fi
@@ -822,37 +827,48 @@ proc_cpu_ms() {
 
 # battery_counts <batterystats-dump> -> "wakelocks sensors alarms recognized".
 # The per-package batterystats layout varies by Android version, so the counts
-# are collected tolerantly: every "Wake lock" line (summary headers excluded)
-# contributes its "(Nx)" count, "Sensor <id>" lines likewise, and the "Alarms: N"
-# line its number. Headers count as "recognized" evidence even when empty;
-# "recognized" is no when no known shape was seen at all, in which case the zero
-# counts prove nothing and the caller reports INFO instead of PASS.
+# are collected tolerantly. The package filter argument is ignored by some
+# builds (HyperOS), so the caller passes the package's uid (u0a<appId-10000>)
+# and only the uid's own section is read: between the "  <uid>:" header and the
+# next same-indent header. Every "Wake lock" line contributes its "(Nx)" count,
+# "Sensor <id>" lines likewise, and the "Alarms: N" line its number; an uid
+# section that exists but lists none is the zero evidence. "recognized" is no
+# when the uid section was not found at all, in which case the zero counts
+# prove nothing and the caller reports INFO instead of PASS.
 battery_counts() {
-    python3 - "$1" <<'PYEOF'
+    python3 - "$1" "$2" <<'PYEOF'
 import re
 import sys
 text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-wl = sensor = alarm = 0
-seen = False
+uid = sys.argv[2]
+header = re.compile(r"^  (\S+):\s*$")
+section = None
 for line in text.splitlines():
+    m = header.match(line)
+    if m:
+        if section is not None:
+            break
+        section = [] if m.group(1) == uid else None
+        continue
+    if section is not None:
+        section.append(line)
+if section is None:
+    print(0, 0, 0, "no")
+    sys.exit(0)
+wl = sensor = alarm = 0
+for line in section:
     low = line.lower()
     if "wake lock" in low:
-        seen = True
-        if "summary" in low or "all partial" in low:
-            continue    # section headers prove the format even when empty
         m = re.search(r"\((\d+)x\)", line) or re.search(r"\b(\d+)x\b", line)
-        # a named wake lock without a count is one held lock
         wl += int(m.group(1)) if m else 1
     elif re.match(r"\s*Sensor\s+\d+", line):
-        seen = True
         m = re.search(r"\((\d+)x\)", line) or re.search(r"\b(\d+)x\b", line)
         sensor += int(m.group(1)) if m else 0
     else:
         m = re.search(r"\bAlarms?:\s*(\d+)", line)
         if m:
-            seen = True
             alarm += int(m.group(1))
-print(wl, sensor, alarm, "yes" if seen else "no")
+print(wl, sensor, alarm, "yes")
 PYEOF
 }
 
@@ -1146,6 +1162,10 @@ fi
 if leg_on battery; then
     BATTERY_ON=1
     select_ours
+    # The uid scopes the batterystats reading: some builds ignore the package
+    # filter and dump globally (HyperOS). u0a<N> holds appId = 10000 + N.
+    APPID=$(SHELL dumpsys package "$PKG" 2>/dev/null | grep -m1 -oP 'appId=\K[0-9]+' | tr -d '\r')
+    PKG_UID="u0a$(( ${APPID:-10000} - 10000 ))"
     if raise_keyboard_over_setup; then
         hide_keyboard || true
         SHELL dumpsys battery unplug >/dev/null 2>&1
@@ -1163,17 +1183,22 @@ if leg_on battery; then
             if [ -z "${cpu_after:-}" ]; then
                 result FAIL battery.idle "process $pid gone after the idle window"
             else
-                read -r wl sensor alarm recognized <<<"$(battery_counts "$OUTDIR/batterystats.txt")"
+                read -r wl sensor alarm recognized <<<"$(battery_counts "$OUTDIR/batterystats.txt" "$PKG_UID")"
                 cpu_delta=$((cpu_after - cpu_before))
                 if [ "$recognized" = no ]; then
-                    result INFO battery.idle "batterystats format unrecognized; raw wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$cpu_delta window_s=$BATTERY_SECONDS build=$BUILD"
-                elif [ "$wl" = 0 ] && [ "$sensor" = 0 ] && [ "$alarm" = 0 ] && [ "$cpu_delta" -le "$BATTERY_IDLE_CPU_BUDGET_MS" ]; then
-                    result PASS battery.idle "wakelocks=0 sensors=0 alarms=0 cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_IDLE_CPU_BUDGET_MS window_s=$BATTERY_SECONDS build=$BUILD"
+                    result INFO battery.idle "batterystats has no $PKG_UID section; raw wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$cpu_delta window_s=$BATTERY_SECONDS build=$BUILD"
+                elif [ "$wl" = 0 ] && [ "$sensor" = 0 ] && [ "$alarm" = 0 ] && [ "$cpu_delta" -le "$BATTERY_CPU_BUDGET" ]; then
+                    result PASS battery.idle "wakelocks=0 sensors=0 alarms=0 cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_CPU_BUDGET window_s=$BATTERY_SECONDS build=$BUILD"
                 else
-                    result FAIL battery.idle "wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_IDLE_CPU_BUDGET_MS window_s=$BATTERY_SECONDS build=$BUILD"
+                    result FAIL battery.idle "wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_CPU_BUDGET window_s=$BATTERY_SECONDS build=$BUILD"
                 fi
             fi
         fi
+        # The active protocol runs on real power with the screen back on: the idle
+        # window's simulated unplug let the device sleep.
+        SHELL dumpsys battery reset >/dev/null 2>&1; BATTERY_ON=0
+        SHELL "input keyevent KEYCODE_WAKEUP; input keyevent 82" >/dev/null 2>&1
+        sleep 1
         # active protocol: the 32-event tt script, CPU per event
         SHELL dumpsys batterystats reset >/dev/null 2>&1
         if raise_keyboard_over_setup && globe_to tt; then
@@ -1203,6 +1228,8 @@ fi
 
 if leg_on uimode; then
     select_ours
+    SHELL "input keyevent KEYCODE_WAKEUP; input keyevent 82" >/dev/null 2>&1
+    sleep 1        # an earlier leg's idle window may have slept the screen
     if raise_keyboard_over_setup; then
         UIMODE_ON=1
         SHOT uimode-light.png
@@ -1223,6 +1250,8 @@ fi
 
 if leg_on fontscale; then
     select_ours
+    SHELL "input keyevent KEYCODE_WAKEUP; input keyevent 82" >/dev/null 2>&1
+    sleep 1        # an earlier leg's idle window may have slept the screen
     if raise_keyboard_over_setup; then
         FONTSCALE_ON=1
         SHOT fontscale-normal.png

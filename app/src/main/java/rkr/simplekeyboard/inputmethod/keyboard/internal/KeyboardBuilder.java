@@ -42,6 +42,7 @@ import rkr.simplekeyboard.inputmethod.keyboard.KeyboardId;
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardTheme;
 import rkr.simplekeyboard.inputmethod.latin.common.StringUtils;
 import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode;
+import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale;
 import rkr.simplekeyboard.inputmethod.latin.utils.ResourceUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.XmlParseUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.XmlParseUtils.ParseException;
@@ -300,7 +301,9 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
                     R.styleable.Keyboard_Key_maxMoreKeysColumn, 5);
 
             params.mIconsSet.loadIcons(mResources, mContext.getTheme());
-            params.mTextsSet.setLocale(params.mId.getLocale(), mContext);
+            // Keyboard chrome text follows the app's locale policy (Tatar unless the system
+            // already speaks tt/ru), not the bare system locale.
+            params.mTextsSet.setLocale(params.mId.getLocale(), AppLocale.INSTANCE.wrap(mContext));
         } finally {
             keyAttr.recycle();
             keyboardAttr.recycle();

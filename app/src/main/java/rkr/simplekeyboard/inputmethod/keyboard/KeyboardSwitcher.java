@@ -45,6 +45,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSetSnapshot;
 import rkr.simplekeyboard.inputmethod.latin.settings.EmojiPanelHeightPresets;
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsValues;
+import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale;
 import rkr.simplekeyboard.inputmethod.latin.utils.CapsModeUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.LanguageOnSpacebarUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.RecapitalizeStatus;
@@ -204,7 +205,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
             try {
                 mState.onLoadKeyboard(currentAutoCapsState, currentRecapitalizeState);
                 mKeyboardTextsSet.setLocale(mRichImm.getCurrentSubtype().getLocaleObject(),
-                        mThemeContext);
+                        AppLocale.INSTANCE.wrap(mThemeContext));
             } catch (KeyboardLayoutSetException e) {
                 Log.w(TAG, "loading keyboard failed: " + e.mKeyboardId, e.getCause());
             }

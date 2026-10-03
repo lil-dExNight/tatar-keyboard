@@ -118,4 +118,21 @@ class EditMenuLayoutTest {
             }
         }
     }
+
+    @Test
+    fun theKeyboardTextsResolveThroughTheAppLocalePolicy() {
+        // The keyboard's !string/ texts (this menu's labels included) resolve against a context
+        // wrapped by AppLocale: Tatar unless the system already speaks tt/ru, like the app
+        // screens. Both KeyboardTextsSet feeds carry the wrap.
+        val builder = File(projectRoot(), "app/src/main/java/rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardBuilder.java").readText()
+        val switcher = File(projectRoot(), "app/src/main/java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardSwitcher.java").readText()
+        assertTrue(builder.contains("mTextsSet.setLocale(params.mId.getLocale(), AppLocale.INSTANCE.wrap(mContext))"))
+        assertTrue(switcher.contains("AppLocale.INSTANCE.wrap(mThemeContext)"))
+    }
+}
+
+private fun projectRoot(): File {
+    val candidates = listOf(File(""), File(".."))
+    return candidates.firstOrNull { File(it, "app/src/main/res").isDirectory }
+        ?: error("cannot locate the project root from ${File(".").absolutePath}")
 }
