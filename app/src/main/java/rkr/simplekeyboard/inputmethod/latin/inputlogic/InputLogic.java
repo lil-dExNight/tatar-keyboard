@@ -25,6 +25,7 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.inputmethod.EditorInfo;
 
 import rkr.simplekeyboard.inputmethod.event.Event;
@@ -246,7 +247,7 @@ public final class InputLogic {
                 // Backspace is a functional key, but it affects the contents of the editor.
                 break;
             case Constants.CODE_SHIFT:
-                performRecapitalization();
+                performRecapitalization(inputTransaction.mSettingsValues);
                 inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
                 break;
             case Constants.CODE_CAPSLOCK:
@@ -268,6 +269,24 @@ public final class InputLogic {
                 // Before the paste, so the text change it causes already sees a dirty run.
                 mLatinIME.onBeforeClipboardPaste();
                 mConnection.pasteClipboard();
+                break;
+            case Constants.CODE_SELECT_ALL:
+                mConnection.performContextMenuAction(android.R.id.selectAll);
+                break;
+            case Constants.CODE_CUT:
+                mConnection.performContextMenuAction(android.R.id.cut);
+                break;
+            case Constants.CODE_COPY:
+                mConnection.performContextMenuAction(android.R.id.copy);
+                break;
+            case Constants.CODE_PASTE_CONTEXT_MENU:
+                mConnection.performContextMenuAction(android.R.id.paste);
+                break;
+            case Constants.CODE_CURSOR_LEFT:
+                moveCursorFromEditMenu(-1);
+                break;
+            case Constants.CODE_CURSOR_RIGHT:
+                moveCursorFromEditMenu(1);
                 break;
             case Constants.CODE_ACTION_NEXT:
                 performEditorAction(EditorInfo.IME_ACTION_NEXT);
@@ -528,6 +547,83 @@ public final class InputLogic {
     }
 
     /**
+     * Deletes the last word before the cursor for the word-delete flick: the run of whitespace
+     * right before the cursor plus the word before it, in one batch edit. A selection opened by
+     * the swipe itself collapses back to its anchor end first — the flick deletes a word, never
+     * a selection.
+     *
+     * A plain deletion gets no RevertWindow entry: deleted text is retyped, not reverted, and the
+     * undo affordance stays specific to autocorrections.
+     *
+     * @return the number of chars deleted, or 0 when nothing was deleted (nothing deletable
+     *         before the cursor, or no live connection).
+     */
+    public int deleteWordBeforeCursor() {
+        if (mConnection.hasSelection()) {
+            final int end = mConnection.getExpectedSelectionEnd();
+            mConnection.setSelection(end, end);
+        }
+        final int deleteLength = TatarWordUtils.wordDeleteLengthBeforeCursor(
+                mConnection.getCachedTextBeforeCursor(), mConnection.cacheReachedTextStart());
+        if (deleteLength <= 0) {
+            return 0;
+        }
+        mConnection.beginBatchEdit();
+        // Connection check after opening the batch; see replaceTrailingWord.
+        final boolean connected = mConnection.isConnected();
+        try {
+            if (connected) {
+                mConnection.deleteTextBeforeCursor(deleteLength);
+            }
+        } finally {
+            mConnection.endBatchEdit();
+        }
+        if (!connected) {
+            return 0;
+        }
+        // Same housekeeping as a backspace: no double-space or auto-space state survives.
+        mJustDoubleSpaced = false;
+        mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
+        return deleteLength;
+    }
+
+    /**
+     * Moves the cursor one step for the edit menu's arrows. With a selection the cursor collapses
+     * to the edge in the arrow's direction, like a DPAD key; without one it steps one unicode
+     * character. setSelection is the primary path: it is synchronous and keeps the text caches in
+     * sync, unlike key events, which cross a different binder and ignore batch edits (see
+     * {@link #sendDownUpKeyEvent}). Only an editor that reports no cursor position gets key
+     * events.
+     */
+    private void moveCursorFromEditMenu(final int direction) {
+        int steps = direction;
+        if (TextUtils.getLayoutDirectionFromLocale(mLatinIME.getCurrentLayoutLocale())
+                == View.LAYOUT_DIRECTION_RTL) {
+            steps = -steps;
+        }
+        if (!mConnection.hasCursorPosition()) {
+            sendDownUpKeyEvent(steps < 0 ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT);
+            mLatinIME.onSuggestionsAffectingCursorMove();
+            return;
+        }
+        if (mConnection.hasSelection()) {
+            final int edge = steps < 0 ? mConnection.getExpectedSelectionStart()
+                    : mConnection.getExpectedSelectionEnd();
+            mConnection.setSelection(edge, edge);
+        } else {
+            steps = mConnection.getUnicodeSteps(steps, true);
+            if (steps == 0) {
+                return;
+            }
+            final int position = mConnection.getExpectedSelectionEnd() + steps;
+            mConnection.setSelection(position, position);
+        }
+        mLatinIME.onSuggestionsAffectingCursorMove();
+    }
+
+    /**
      * Handle a press on the language switch key (the "globe key")
      */
     private void handleLanguageSwitchKey() {
@@ -535,12 +631,24 @@ public final class InputLogic {
     }
 
     /**
-     * Performs a recapitalization event.
+     * Performs a recapitalization event: with a selection, the selection's case cycles; with no
+     * selection, the case of the word right before the cursor does.
      */
-    private void performRecapitalization() {
-        if (!mConnection.hasSelection() || !mRecapitalizeStatus.mIsEnabled()) {
-            return; // No selection or recapitalize is disabled for now
+    private void performRecapitalization(final SettingsValues settingsValues) {
+        if (!mRecapitalizeStatus.mIsEnabled()) {
+            return; // Recapitalize is disabled for now
         }
+        if (mConnection.hasSelection()) {
+            performSelectionRecapitalization();
+            return;
+        }
+        performTrailingWordCaseCycle(settingsValues);
+    }
+
+    /**
+     * Cycles the case of the current selection through the rotation in {@link RecapitalizeStatus}.
+     */
+    private void performSelectionRecapitalization() {
         final int selectionStart = mConnection.getExpectedSelectionStart();
         final int selectionEnd = mConnection.getExpectedSelectionEnd();
         final int numCharsSelected = selectionEnd - selectionStart;
@@ -572,6 +680,59 @@ public final class InputLogic {
         } finally {
             mConnection.endBatchEdit();
         }
+    }
+
+    /**
+     * No selection: cycles the case of the word right before the cursor (lowercase, Capitalized,
+     * ALL CAPS; states that would not change the word are skipped by the rotation). The cursor
+     * stays collapsed at the word end, so typing continues normally and the next shift press
+     * cycles the same word again. Never in password fields; when nothing usable stands before the
+     * cursor the press stays a plain shift.
+     */
+    private void performTrailingWordCaseCycle(final SettingsValues settingsValues) {
+        if (settingsValues.mInputAttributes.mIsPasswordField) {
+            return;
+        }
+        final CharSequence beforeCursor = mConnection.getCachedTextBeforeCursor();
+        final int wordLength = TatarWordUtils.caseCycleWordLength(beforeCursor,
+                mConnection.getCachedTextAfterCursor(), mConnection.cacheReachedTextStart());
+        final int cursor = mConnection.getExpectedSelectionStart();
+        if (wordLength <= 0 || cursor < wordLength) {
+            return;
+        }
+        final int wordStart = cursor - wordLength;
+        final String word = beforeCursor.subSequence(
+                beforeCursor.length() - wordLength, beforeCursor.length()).toString();
+        mRecapitalizeStatus.start(wordStart, cursor, word, mLatinIME.getCurrentLayoutLocale());
+        mRecapitalizeStatus.rotate();
+        final String cycled = mRecapitalizeStatus.getRecapitalizedString();
+        if (cycled.equals(word)) {
+            // A word without cased letters cannot change: the press stays a plain shift, and the
+            // status must not claim a rotation it never made.
+            mRecapitalizeStatus.stop();
+            return;
+        }
+        mConnection.beginBatchEdit();
+        // Connection check after opening the batch; see replaceTrailingWord.
+        final boolean connected = mConnection.isConnected();
+        try {
+            if (connected) {
+                // replaceText works on the range after the cursor, so the cursor first collapses
+                // to the word start; the cycled word then replaces it and the cursor lands back
+                // at the word end. One batch: the editor sees a single transaction.
+                mConnection.setSelection(wordStart, wordStart);
+                mConnection.replaceText(wordStart, cursor, cycled);
+                mConnection.setSelection(wordStart + cycled.length(), wordStart + cycled.length());
+            }
+        } finally {
+            mConnection.endBatchEdit();
+        }
+        if (!connected) {
+            mRecapitalizeStatus.stop();
+            return;
+        }
+        // The after-state follows the collapsed cursor: the shift visual still tracks the result.
+        mRecapitalizeStatus.collapseAfterRangeToEnd();
     }
 
     /**

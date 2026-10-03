@@ -197,4 +197,12 @@
     <string name="data_sources_leipzig_summary">Ике сүзлекнең күп өлеше һәм ике тәкъдим таблицасы да. CC BY 4.0.</string>
     <string name="data_sources_tatoeba_summary">Ике сүзлектәге сөйләм сүзләре һәм ике тәкъдим таблицасының да өлеше: мисал җөмләләрдән ешлык. CC BY 2.0 FR.</string>
     <string name="data_sources_opensubtitles_summary">Ике сүзлектәге сөйләм сүзләре һәм ике тәкъдим таблицасының да өлеше: фильм субтитрларыннан ешлык.</string>
+    <!-- The text-editing menu on a long press of the Enter key. The labels sit on keys in the
+         long-press panel, so they stay short. -->
+    <string name="edit_menu_select_all">Барысын сайлау</string>
+    <string name="edit_menu_cut">Кисеп алу</string>
+    <string name="edit_menu_copy">Күчереп алу</string>
+    <string name="edit_menu_paste">Күчереп кую</string>
+    <string name="edit_menu_cursor_left">Курсор сулга</string>
+    <string name="edit_menu_cursor_right">Курсор уңга</string>
 </resources>

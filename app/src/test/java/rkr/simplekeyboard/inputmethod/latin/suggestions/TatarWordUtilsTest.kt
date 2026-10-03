@@ -698,4 +698,79 @@ class TatarWordUtilsTest {
         assertFalse("nothing before the cursor",
             TatarWordUtils.swallowsSpaceAtAutoSpace(true, false, -1))
     }
+
+    // --- wordDeleteLengthBeforeCursor -------------------------------------------------------------
+
+    @Test
+    fun theWordDeleteEatsTheWordAndOneTrailingWhitespaceRun() {
+        assertEquals(3, TatarWordUtils.wordDeleteLengthBeforeCursor("сүз", true))
+        assertEquals("the word plus the two spaces before the cursor",
+            "bar  ".length, TatarWordUtils.wordDeleteLengthBeforeCursor("foo bar  ", true))
+        assertEquals("a newline or a non-breaking space is whitespace too",
+            "word\n\u00A0".length, TatarWordUtils.wordDeleteLengthBeforeCursor("word\n\u00A0", true))
+        assertEquals("a digit run is one word",
+            "112".length, TatarWordUtils.wordDeleteLengthBeforeCursor("call 112", true))
+    }
+
+    @Test
+    fun theWordDeleteSwallowsABareWhitespaceRun() {
+        assertEquals(2, TatarWordUtils.wordDeleteLengthBeforeCursor("  ", true))
+        assertEquals("but the word before the spaces goes with them",
+            6, TatarWordUtils.wordDeleteLengthBeforeCursor("word  ", true))
+    }
+
+    @Test
+    fun theWordDeleteIsBlockedByPunctuationAndEmptyText() {
+        assertEquals(0, TatarWordUtils.wordDeleteLengthBeforeCursor(null, true))
+        assertEquals(0, TatarWordUtils.wordDeleteLengthBeforeCursor("", true))
+        assertEquals("a comma before the cursor is never eaten silently",
+            0, TatarWordUtils.wordDeleteLengthBeforeCursor("word,", true))
+        assertEquals(0, TatarWordUtils.wordDeleteLengthBeforeCursor("word 🙂", true))
+    }
+
+    @Test
+    fun theWordDeleteRefusesARunThatMayBeCutByTheCache() {
+        assertEquals("the word fills the whole window and may continue unseen",
+            0, TatarWordUtils.wordDeleteLengthBeforeCursor("сүз", false))
+        assertEquals("with provenance the same word is whole",
+            3, TatarWordUtils.wordDeleteLengthBeforeCursor("сүз", true))
+        assertEquals("a run stopping before index 0 needs no provenance",
+            3, TatarWordUtils.wordDeleteLengthBeforeCursor("x сүз", false))
+    }
+
+    @Test
+    fun theWordDeleteCountsCharsNotCodePoints() {
+        // A supplementary letter is one code point but two chars; the deletion API counts chars.
+        assertEquals(2, TatarWordUtils.wordDeleteLengthBeforeCursor("\uD801\uDC00", true))
+    }
+
+    // --- caseCycleWordLength ----------------------------------------------------------------------
+
+    @Test
+    fun theCaseCycleFindsTheWordRightBeforeTheCursor() {
+        assertEquals(3, TatarWordUtils.caseCycleWordLength("сүз", "", true))
+        assertEquals("сүз".length, TatarWordUtils.caseCycleWordLength("бер сүз", " дә", true))
+        assertEquals(0, TatarWordUtils.caseCycleWordLength(null, "", true))
+        assertEquals(0, TatarWordUtils.caseCycleWordLength("", "", true))
+        assertEquals("a space before the cursor means no word",
+            0, TatarWordUtils.caseCycleWordLength("сүз ", "", true))
+        assertEquals("digits have no case to cycle",
+            0, TatarWordUtils.caseCycleWordLength("сүз 112", "", true))
+    }
+
+    @Test
+    fun theCaseCycleStaysOutOfTheMiddleOfAWord() {
+        assertEquals(0, TatarWordUtils.caseCycleWordLength("сү", "з", true))
+        assertEquals(0, TatarWordUtils.caseCycleWordLength("сү", "з ә", true))
+        assertEquals("punctuation after the cursor is not mid-word",
+            3, TatarWordUtils.caseCycleWordLength("сүз", ", дә", true))
+    }
+
+    @Test
+    fun theCaseCycleRefusesAWordThatMayBeCutByTheCache() {
+        assertEquals(0, TatarWordUtils.caseCycleWordLength("сүз", "", false))
+        assertEquals(3, TatarWordUtils.caseCycleWordLength("сүз", "", true))
+        assertEquals("a word not touching index 0 needs no provenance",
+            3, TatarWordUtils.caseCycleWordLength("x сүз", "", false))
+    }
 }

@@ -227,4 +227,12 @@
     <string name="data_sources_leipzig_summary">Большая часть обоих списков слов и обеих таблиц подсказок. CC BY 4.0.</string>
     <string name="data_sources_tatoeba_summary">Разговорные слова в обоих списках и части обеих таблиц подсказок: частоты из примеров предложений. CC BY 2.0 FR.</string>
     <string name="data_sources_opensubtitles_summary">Разговорные слова в обоих списках и части обеих таблиц подсказок: частоты из субтитров к фильмам.</string>
+    <!-- The text-editing menu on a long press of the Enter key. The labels sit on keys in the
+         long-press panel, so they stay short. -->
+    <string name="edit_menu_select_all">Выбрать все</string>
+    <string name="edit_menu_cut">Вырезать</string>
+    <string name="edit_menu_copy">Копировать</string>
+    <string name="edit_menu_paste">Вставить</string>
+    <string name="edit_menu_cursor_left">Курсор влево</string>
+    <string name="edit_menu_cursor_right">Курсор вправо</string>
 </resources>

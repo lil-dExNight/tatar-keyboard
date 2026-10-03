@@ -106,6 +106,16 @@ public final class Constants {
     public static final int CODE_UNSPECIFIED = -13;
     // Shows the emoji panel in place of the keyboard. Never edits the text.
     public static final int CODE_EMOJI = -14;
+    // The text-editing menu actions. The context-menu ones run on the editor itself; the
+    // keyboard never reads the clipboard for them.
+    public static final int CODE_SELECT_ALL = -15;
+    public static final int CODE_CUT = -16;
+    public static final int CODE_COPY = -17;
+    public static final int CODE_CURSOR_LEFT = -18;
+    public static final int CODE_CURSOR_RIGHT = -19;
+    // Paste through the editor's own context-menu action, unlike CODE_PASTE which measures the
+    // clip first: the keyboard never sees the clip data.
+    public static final int CODE_PASTE_CONTEXT_MENU = -20;
 
     public static boolean isLetterCode(final int code) {
         return code >= CODE_SPACE;
@@ -125,6 +135,12 @@ public final class Constants {
         case CODE_LANGUAGE_SWITCH: return "languageSwitch";
         case CODE_SHIFT_ENTER: return "shiftEnter";
         case CODE_EMOJI: return "emoji";
+        case CODE_SELECT_ALL: return "selectAll";
+        case CODE_CUT: return "cut";
+        case CODE_COPY: return "copy";
+        case CODE_CURSOR_LEFT: return "cursorLeft";
+        case CODE_CURSOR_RIGHT: return "cursorRight";
+        case CODE_PASTE_CONTEXT_MENU: return "pasteContextMenu";
         case CODE_UNSPECIFIED: return "unspec";
         case CODE_TAB: return "tab";
         case CODE_ENTER: return "enter";

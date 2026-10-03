@@ -232,6 +232,59 @@ object TatarWordUtils {
         ch == ',' || ch == ';' || ch == ':'
 
     /**
+     * The number of CHARS the word-delete flick removes from the end of [textBeforeCursor]: one
+     * run of whitespace right before the cursor plus the word before it, deleted as one action —
+     * "foo bar  |" becomes "foo |". Digits count as word characters here (unlike
+     * [extractTrailingWord]): a number is deleted as one word, like a Ctrl+Backspace does.
+     * Whitespace means [Character.isWhitespace] plus [Character.isSpaceChar], so a non-breaking
+     * space is swallowed too.
+     *
+     * 0 when there is nothing to delete: a non-word, non-whitespace character right before the
+     * cursor (punctuation, an emoji) blocks the gesture rather than being eaten silently; a
+     * whitespace run alone is still swallowed. A run that reaches index 0 of a cache that may be
+     * cut off ([cacheReachedTextStart] false) refuses too: deleting an unseen piece of a longer
+     * word is worse than asking for a second flick.
+     */
+    @JvmStatic
+    fun wordDeleteLengthBeforeCursor(textBeforeCursor: CharSequence?, cacheReachedTextStart: Boolean): Int {
+        if (textBeforeCursor == null) return 0
+        var index = textBeforeCursor.length
+        while (index > 0) {
+            val codePoint = Character.codePointBefore(textBeforeCursor, index)
+            if (!Character.isWhitespace(codePoint) && !Character.isSpaceChar(codePoint)) break
+            index -= Character.charCount(codePoint)
+        }
+        while (index > 0) {
+            val codePoint = Character.codePointBefore(textBeforeCursor, index)
+            if (!isWordDeleteCharacter(codePoint)) break
+            index -= Character.charCount(codePoint)
+        }
+        if (index == 0 && textBeforeCursor.isNotEmpty() && !cacheReachedTextStart) return 0
+        return textBeforeCursor.length - index
+    }
+
+    /**
+     * The length in CHARS of the word a shift press case-cycles: the [extractTrailingWord] of
+     * [textBeforeCursor], but only when the cursor sits right after the word — a word character
+     * starting [textAfterCursor] means mid-word, where the press stays a plain shift — and when
+     * the word does not fill the whole of a possibly cut-off cache ([cacheReachedTextStart]
+     * false and the word reaches index 0). 0 = nothing to cycle.
+     */
+    @JvmStatic
+    fun caseCycleWordLength(
+        textBeforeCursor: CharSequence?,
+        textAfterCursor: CharSequence?,
+        cacheReachedTextStart: Boolean,
+    ): Int {
+        if (startsWithWordCharacter(textAfterCursor)) return 0
+        val word = extractTrailingWord(textBeforeCursor)
+        if (word.isEmpty()) return 0
+        if (!cacheReachedTextStart && textBeforeCursor != null
+                && word.length == textBeforeCursor.length) return 0
+        return word.length
+    }
+
+    /**
      * True when the text before the cursor ends in a word that holds at least [minLetters] letters,
      * ignoring whatever non-word characters trail it.
      *
@@ -431,6 +484,10 @@ object TatarWordUtils {
 
     /** True for letters and for the non-standalone combining marks that attach to them. */
     private fun isWordCharacter(ch: Char): Boolean = isWordCharacter(ch.code)
+
+    /** Letters, digits and combining marks: what the word-delete flick eats as one word. */
+    private fun isWordDeleteCharacter(codePoint: Int): Boolean =
+        Character.isLetterOrDigit(codePoint) || isWordCharacter(codePoint)
 
     /** Code-point flavour of [isWordCharacter]; the char flavour delegates here. */
     private fun isWordCharacter(codePoint: Int): Boolean {

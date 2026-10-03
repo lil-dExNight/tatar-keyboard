@@ -21,10 +21,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * A cursor move made by the keyboard itself (space slide, delete swipe and the releases that end
- * them) drops the double-space and auto-space state, like an external move does. These moves go
- * through `setSelection`, so `InputLogic.onUpdateSelection` sees them as expected and never
- * resets anything.
+ * A cursor move made by the keyboard itself (space slide, delete swipe, the word-delete flick,
+ * the edit-menu arrows and the releases that end them) drops the double-space and auto-space
+ * state, like an external move does. These moves go through `setSelection`, so
+ * `InputLogic.onUpdateSelection` sees them as expected and never resets anything.
  *
  * Asserted by source for the reason given in [CommitPathConnectionContractTest].
  */
@@ -68,7 +68,7 @@ class KeyboardCursorMoveSourceContractTest {
 
     @Test
     fun theCursorMoveFunnelResetsBeforeAndWithoutTheSuggestionController() {
-        val funnel = body(latinIme, "private void onSuggestionsAffectingCursorMove(")
+        val funnel = body(latinIme, "public void onSuggestionsAffectingCursorMove(")
         val reset = funnel.indexOf("mInputLogic.onKeyboardCursorMove();")
         assertTrue("the reset must not depend on the suggestion controller",
             reset in 0 until funnel.indexOf("if (mSuggestionsController"))
@@ -81,9 +81,15 @@ class KeyboardCursorMoveSourceContractTest {
             "public void onMoveDeletePointer(",
             "public void onUpWithDeletePointerActive(",
             "public void onUpWithSpacePointerActive(",
+            "public void onWordDeleteGesture(",
         )) {
             assertTrue("$name must call the cursor-move funnel",
                 body(latinIme, name).contains("onSuggestionsAffectingCursorMove();"))
         }
+        // The edit menu's arrows live in InputLogic; both of their move paths call back into the
+        // funnel (the DPAD fallback for an editor without a cursor position, and setSelection).
+        val arrows = body(inputLogic, "private void moveCursorFromEditMenu(")
+        assertTrue("the edit-menu arrows must call the cursor-move funnel",
+            arrows.contains("mLatinIME.onSuggestionsAffectingCursorMove();"))
     }
 }

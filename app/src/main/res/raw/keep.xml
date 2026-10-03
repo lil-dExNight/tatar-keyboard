@@ -1,3 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@xml/keyboard_layout_set_*,@xml/kbd_*,@xml/rows_*,@xml/rowkeys_*,@xml/row_*,@string/locale_name_*,@string/label_*" />
+    tools:keep="@xml/keyboard_layout_set_*,@xml/kbd_*,@xml/rows_*,@xml/rowkeys_*,@xml/row_*,@string/locale_name_*,@string/label_*,@string/edit_menu_*" />

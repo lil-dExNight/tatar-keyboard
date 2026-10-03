@@ -62,7 +62,7 @@ class CursorMoveBandSourceContractTest {
         )
         // The keyboard's own cursor gestures — space slide, delete swipe, the release that ends
         // either — all funnel through this one method, and it now does both halves.
-        val funnel = javaBody(ime, "private void onSuggestionsAffectingCursorMove()")
+        val funnel = javaBody(ime, "public void onSuggestionsAffectingCursorMove()")
         assertEquals(1, funnel.occurrencesOf("mSuggestionsController.onSelectionChanged()"))
         assertEquals(1, funnel.occurrencesOf("mHandler.postRefreshSuggestionBand()"))
 

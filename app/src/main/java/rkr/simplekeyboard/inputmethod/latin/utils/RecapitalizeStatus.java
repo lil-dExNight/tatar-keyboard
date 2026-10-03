@@ -135,6 +135,14 @@ public class RecapitalizeStatus {
     }
 
     /**
+     * The last-word case cycle leaves a collapsed cursor at the word end, not a selection; the
+     * after-state follows it, so the shift visual still tracks the result while the cursor stays.
+     */
+    public void collapseAfterRangeToEnd() {
+        mCursorStartAfter = mCursorEndAfter;
+    }
+
+    /**
      * Rotate through the different possible capitalization modes.
      */
     public void rotate() {

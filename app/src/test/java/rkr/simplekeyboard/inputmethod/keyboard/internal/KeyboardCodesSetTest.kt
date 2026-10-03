@@ -23,14 +23,15 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.common.Constants
 
 /**
- * The emoji key resolves to CODE_EMOJI, every code name referenced from res/xml keeps its code,
- * and ID_TO_NAME and DEFAULT have matching lengths, so "key_right" and "key_unspecified" cannot
- * index past DEFAULT and throw ArrayIndexOutOfBoundsException.
+ * The emoji key resolves to CODE_EMOJI, the editing-menu names resolve to their codes, every code
+ * name referenced from res/xml keeps its code, and ID_TO_NAME and DEFAULT have matching lengths,
+ * so no name can index past DEFAULT and throw ArrayIndexOutOfBoundsException.
  */
 class KeyboardCodesSetTest {
 
     // The full expected mapping. Indices 0..13 are the original upstream codes; key_emoji follows
-    // key_language_switch; key_left/key_right/key_unspecified all resolve to CODE_UNSPECIFIED.
+    // key_language_switch; key_left/key_right fire the edit menu's cursor steps and
+    // key_unspecified stays CODE_UNSPECIFIED.
     private val expected = linkedMapOf(
         "key_tab" to Constants.CODE_TAB,
         "key_enter" to Constants.CODE_ENTER,
@@ -47,9 +48,13 @@ class KeyboardCodesSetTest {
         "key_shift_enter" to Constants.CODE_SHIFT_ENTER,
         "key_language_switch" to Constants.CODE_LANGUAGE_SWITCH,
         "key_emoji" to Constants.CODE_EMOJI,
-        "key_left" to Constants.CODE_UNSPECIFIED,
-        "key_right" to Constants.CODE_UNSPECIFIED,
+        "key_left" to Constants.CODE_CURSOR_LEFT,
+        "key_right" to Constants.CODE_CURSOR_RIGHT,
         "key_unspecified" to Constants.CODE_UNSPECIFIED,
+        "key_select_all" to Constants.CODE_SELECT_ALL,
+        "key_cut" to Constants.CODE_CUT,
+        "key_copy" to Constants.CODE_COPY,
+        "key_paste_context_menu" to Constants.CODE_PASTE_CONTEXT_MENU,
     )
 
     @Test
@@ -67,10 +72,10 @@ class KeyboardCodesSetTest {
 
     @Test
     fun previouslyOutOfBoundsNamesNoLongerThrow() {
-        // With mismatched array lengths these would read DEFAULT[15] / DEFAULT[16] of 15 elements.
-        assertEquals(Constants.CODE_UNSPECIFIED, KeyboardCodesSet.getCode("key_right"))
+        // With mismatched array lengths these would read past DEFAULT's end.
+        assertEquals(Constants.CODE_CURSOR_RIGHT, KeyboardCodesSet.getCode("key_right"))
         assertEquals(Constants.CODE_UNSPECIFIED, KeyboardCodesSet.getCode("key_unspecified"))
-        assertEquals(Constants.CODE_UNSPECIFIED, KeyboardCodesSet.getCode("key_left"))
+        assertEquals(Constants.CODE_CURSOR_LEFT, KeyboardCodesSet.getCode("key_left"))
     }
 
     @Test

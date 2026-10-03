@@ -35,6 +35,7 @@ import rkr.simplekeyboard.inputmethod.latin.common.CoordinateUtils;
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureDecider;
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath;
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
+import rkr.simplekeyboard.inputmethod.latin.utils.WordDeleteFlick;
 
 public final class PointerTracker implements PointerTrackerQueue.Element {
     private static final String TAG = PointerTracker.class.getSimpleName();
@@ -104,6 +105,10 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     //private int mStartY;
     private long mStartTime;
     private boolean mCursorMoved = false;
+
+    // True once this gesture's word-delete flick (a fast leftward swipe from the delete key) has
+    // fired; the rest of the gesture is then consumed so no character selection follows it.
+    private boolean mWordDeleteFired = false;
 
     // true if keyboard layout has been changed.
     private boolean mKeyboardLayoutHasBeenChanged;
@@ -582,6 +587,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         // (and at cancel), so a cancelled swipe cannot leak into the next touch and fire the
         // swipe callbacks for a gesture that never swiped.
         mCursorMoved = false;
+        mWordDeleteFired = false;
         resetKeySelectionByDraggingFinger();
         if (key != null) {
             // This onPress call may have changed keyboard layout. Those cases are detected at
@@ -818,6 +824,22 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         }
 
         if (oldKey != null && oldKey.getCode() == Constants.CODE_DELETE && Settings.getInstance().getCurrent().mDeleteSwipeEnabled) {
+            // Word-delete flick, checked before the per-step selection below: a fast leftward
+            // swipe from the delete key deletes the whole last word in one shot, while a slow
+            // drag keeps selecting characters. Once fired, the rest of the gesture is consumed.
+            if (mWordDeleteFired) {
+                return;
+            }
+            if (WordDeleteFlick.shouldFire(x - CoordinateUtils.x(mDownCoordinates),
+                    y - CoordinateUtils.y(mDownCoordinates),
+                    System.currentTimeMillis() - mStartTime, mKeyboard.mMostCommonKeyWidth)) {
+                mWordDeleteFired = true;
+                // The release must not commit a key or delete a selection: the flick already acted.
+                mCursorMoved = true;
+                sTimerProxy.cancelKeyTimersOf(this);
+                sListener.onWordDeleteGesture();
+                return;
+            }
             //Delete slider
             int steps = (x - mStartX) / sPointerStep;
             if (steps != 0) {
@@ -1036,6 +1058,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         dismissMoreKeysPanel();
         // A cancel ends the gesture, swipe state included: the same reset the down path does.
         mCursorMoved = false;
+        mWordDeleteFired = false;
         // A cancelled touch never delivers a glide.
         mGlideDecider.onUpOrCancel();
         // The buffer may never have been allocated (a cancel with the glide preference off, or
