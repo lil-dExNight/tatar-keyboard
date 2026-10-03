@@ -57,6 +57,10 @@ public class Keyboard {
 
     /** The padding below the keyboard */
     public final float mBottomPadding;
+    /** The padding at the left of the keyboard */
+    public final float mLeftPadding;
+    /** The padding at the right of the keyboard */
+    public final float mRightPadding;
     /** Default gap between rows */
     public final float mVerticalGap;
     /** Default gap between columns */
@@ -90,6 +94,8 @@ public class Keyboard {
         mMoreKeysTemplate = params.mMoreKeysTemplate;
         mKeyVisualAttributes = params.mKeyVisualAttributes;
         mBottomPadding = params.mBottomPadding;
+        mLeftPadding = params.mLeftPadding;
+        mRightPadding = params.mRightPadding;
         mVerticalGap = params.mVerticalGap;
         mHorizontalGap = params.mHorizontalGap;
 
