@@ -213,8 +213,9 @@ class SuggestionsController internal constructor(
     /**
      * The glide's own field-level gate: the field checks of [eligible] (a real cursor, no
      * password-type field, no NO_PERSONALIZED_LEARNING flag, a bundled dictionary) without the
-     * suggestions setting. A gesture may commit its word with suggestions off; the strip then
-     * shows nothing.
+     * suggestions setting. A gesture may commit its word with suggestions off, and the strip
+     * then shows the gesture's own candidates ([glideStripAllowed]): they are corrections of
+     * the gesture, not typed-text suggestions.
      */
     private var glideEligible: Boolean = false
     private var destroyed: Boolean = false
@@ -315,6 +316,22 @@ class SuggestionsController internal constructor(
     /** Whether [glideCommittedWord]'s commit prepended a leading space; the undo deletes the
      * space with the word exactly when the commit added it. */
     private var glideCommitPrependedSpace: Boolean = false
+
+    /**
+     * The revert window's record of the decode behind [glideCommittedWord]: the N-best in the
+     * committed casing, capped at the committed head plus one strip of cells (more can never be
+     * shown). The whole-word undo re-binds them, minus the deleted word, as the rescue strip.
+     * Lives and dies with [glideCommittedWord].
+     */
+    private var glideUndoCandidates: List<String> = emptyList()
+
+    // --- Glide undo rescue. A successful whole-word undo arms these; the next [onTextChanged]
+    // (the backspace path fires it right after the undo) binds the candidates to the position the
+    // undo emptied, but only while the editor still shows exactly that state — any other edit
+    // drops them and the strip derives as usual. Empty candidates mean "not armed".
+    private var glideRescueCandidates: List<String> = emptyList()
+    private var glideRescueTrailingWord: String = ""
+    private var glideRescueCursor: Int = -1
 
     /** The glide setting, read live; OFF until LatinIME wires the real one. */
     private var glideGate: GlideGate = GlideGate { false }
@@ -545,6 +562,11 @@ class SuggestionsController internal constructor(
             // Suggestions off: the strip stays hidden, but the engine still warms below because
             // the glide decoder reads it.
             strip.hideSuggestions()
+            // A glide paints its candidates on the strip even with suggestions off, so the taps
+            // must work. This branch only runs when glide is field-eligible; like the eligible
+            // branch, re-wire the listener because the lazily created strip view may postdate
+            // the registration from onCreate().
+            strip.setTapListener(SuggestionTapListener { suggestion -> onTap(suggestion) })
         } else {
             if (!engineWasReady) {
                 strip.hideSuggestions()
@@ -575,7 +597,40 @@ class SuggestionsController internal constructor(
         // the alternatives strip is re-derived below with the rest of the strip state.
         glideCommittedWord = null
         glideCommitPrependedSpace = false
+        glideUndoCandidates = emptyList()
         runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
+        // A glide undo armed its rescue candidates and this text change is the deletion itself
+        // (the backspace path fires onTextChanged right after the undo). They re-bind to the
+        // position the undo emptied — but only while the editor still shows exactly that state;
+        // any other edit drops them and the strip derives as usual. The binding is the
+        // refused-glide one: a tap commits at the live cursor through the glide commit path.
+        val rescue = glideRescueCandidates
+        glideRescueCandidates = emptyList()
+        if (rescue.isNotEmpty() && !destroyed && glideStripAllowed() && editor.hasKnownCursor()
+            && editor.cursorPosition() == glideRescueCursor
+            && editor.cachedWordBeforeCursor() == glideRescueTrailingWord
+        ) {
+            displayedPrefix = null
+            displayedContextWord = null
+            displayedGlideAlternativesFor = REFUSED_GLIDE
+            displayedSessionId = sessionId
+            bandBaseCells = emptyList()
+            clearCompanionRequest()
+            showBand(rescue)
+            return
+        }
+        if (!eligible
+            && (rescue.isNotEmpty() || displayedGlideAlternativesFor != null
+                || bandBaseCells.isNotEmpty())
+        ) {
+            // Suggestions off: the strip is not re-derived below, so a text change unbinds and
+            // hides whatever a glide painted, or it would go stale on screen.
+            displayedGlideAlternativesFor = null
+            bandBaseCells = emptyList()
+            clearCompanionRequest()
+            strip.hideSuggestions()
+            return
+        }
         requestCurrentPrefix()
     }
 
@@ -597,6 +652,10 @@ class SuggestionsController internal constructor(
         activeSlot()?.engine?.finishInput()
         // finishInput invalidates the in-flight generation, so no result will arrive for it.
         endLookupTrace()
+        // With suggestions off a painted strip is a glide band (nothing else paints there); an
+        // ineligible selection change otherwise leaves the strip untouched.
+        val glideBandWasUp = !eligible &&
+            (displayedGlideAlternativesFor != null || bandBaseCells.isNotEmpty())
         // Any in-flight request is invalidated and whatever was shown is no longer bound to the
         // live editor state, so drop the displayed binding immediately.
         displayedPrefix = null
@@ -612,6 +671,9 @@ class SuggestionsController internal constructor(
             } else {
                 strip.reserve()
             }
+        } else if (glideBandWasUp) {
+            // The glide band was unbound above; with suggestions off nothing re-derives it.
+            strip.hideSuggestions()
         }
     }
 
@@ -732,6 +794,9 @@ class SuggestionsController internal constructor(
             strip.hideSuggestions()
             if (this.glideEligible) {
                 // The strip stays hidden, but the new language's engine still warms for glide.
+                // The glide band paints with suggestions off, so its taps must work: re-wire the
+                // listener like the eligible branch (the strip view may postdate onCreate).
+                strip.setTapListener(SuggestionTapListener { suggestion -> onTap(suggestion) })
                 requestPreparationIfNeeded()
                 maybeStartEngine()
             }
@@ -1781,20 +1846,23 @@ class SuggestionsController internal constructor(
      * The glide counterpart of [applyPrefixResult]/[applyNextWordResult], and the lift-commit: the
      * top candidate is committed immediately through [EditorSurface.commitGlideWord], and the strip
      * then shows the remaining candidates as alternatives bound to the committed word; a tap on
-     * one replaces the committed word ([onTap]). With suggestions off ([eligible] false) the
-     * commit still lands (it is typing) and the strip shows nothing.
+     * one replaces the committed word ([onTap]). The commit is typing, so it lands with
+     * suggestions off too; the strip then still shows the alternatives while the glide gate is
+     * open ([glideStripAllowed]) — they are corrections of the gesture, not typed-text
+     * suggestions.
      *
      * Casing follows the prefix path's display rule, taken from the shift gate (a gesture types
      * no letters to read casing from); the committed and the shown forms both carry it. A lower-case
      * gesture whose leading space starts a sentence ([EditorSurface.glideStartsSentence]) gets an
      * initial capital, as a typed space would have shifted the keyboard. With zero
-     * candidates nothing is committed. With exactly one there are no alternatives, and the strip
-     * is derived afresh as if the word had been typed (the committed word is the trailing word).
+     * candidates nothing is committed. With exactly one there are no alternatives; with
+     * suggestions on the strip is then derived afresh as if the word had been typed (the
+     * committed word is the trailing word), with suggestions off it stays hidden.
      *
      * A refused commit (see [EditorSurface.commitGlideWord]) gives the [GlideRefusalFeedback] tick.
-     * With suggestions on and no letter after the cursor (a stale or unknown cache), the strip
-     * shows the top candidates bound to [REFUSED_GLIDE]; a tap on one goes through the glide
-     * commit path again against the live text ([onTap]).
+     * With the glide strip allowed ([glideStripAllowed]) and no letter after the cursor (a stale
+     * or unknown cache), the strip shows the top candidates bound to [REFUSED_GLIDE]; a tap on one
+     * goes through the glide commit path again against the live text ([onTap]).
      *
      * Learning: a lift-committed word behaves like a tapped suggestion. The run is marked dirty,
      * the new boundary is trusted for pairs, and the word is reported as an accepted suggestion
@@ -1807,14 +1875,23 @@ class SuggestionsController internal constructor(
         if (suggestions.isEmpty()) {
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
-            if (eligible) strip.reserve()
+            showEmptyBand()
             return
         }
         var casing = glideShiftGate.glideCasing()
         if (casing == TatarWordUtils.PrefixCasing.LOWER && editor.glideStartsSentence()) {
             casing = TatarWordUtils.PrefixCasing.INITIAL_CAPS
         }
-        val committed = TatarWordUtils.applyCasing(suggestions[0], casing)
+        // The decode's N-best in the committed casing, capped at the committed head plus one
+        // strip of cells: the strip never shows more, and the revert window of the commit
+        // retains exactly this list so the whole-word undo can re-bind the remaining candidates
+        // as the rescue strip ([maybeUndoGlideCommit]).
+        val nbest = ArrayList<String>(SuggestionStripState.CELL_COUNT + 1)
+        for (suggestion in suggestions) {
+            nbest.add(TatarWordUtils.applyCasing(suggestion, casing))
+            if (nbest.size > SuggestionStripState.CELL_COUNT) break
+        }
+        val committed = nbest[0]
         // The glide commit path re-derives the live context and refuses a stale gesture itself
         // (see [EditorSurface.commitGlideWord]); a refusal commits nothing.
         val commitResult = editor.commitGlideWord(
@@ -1825,16 +1902,14 @@ class SuggestionsController internal constructor(
             bandBaseCells = emptyList()
             // A letter after the cursor would refuse a tap on every candidate too, so none are
             // shown; a stale or unknown cache can clear before the tap.
-            if (!eligible || editor.hasLetterAfterCursor()) return
+            if (!glideStripAllowed() || editor.hasLetterAfterCursor()) return
             // The gesture is not lost: its candidates stay on the strip, in the commit's casing.
-            val candidates = ArrayList<String>(SuggestionStripState.CELL_COUNT)
-            for (suggestion in suggestions) {
-                candidates.add(TatarWordUtils.applyCasing(suggestion, casing))
-                if (candidates.size >= SuggestionStripState.CELL_COUNT) break
-            }
             displayedGlideAlternativesFor = REFUSED_GLIDE
             displayedSessionId = sessionId
-            showBand(candidates)
+            showBand(
+                if (nbest.size <= SuggestionStripState.CELL_COUNT) nbest
+                else nbest.subList(0, SuggestionStripState.CELL_COUNT),
+            )
             return
         }
         // Not the user spelling the word out: the run stops counting, and the new boundary is
@@ -1850,31 +1925,28 @@ class SuggestionsController internal constructor(
         // goes with the word exactly when the commit added it.
         glideCommittedWord = committed
         glideCommitPrependedSpace = commitResult == EditorSurface.GLIDE_COMMIT_PREPENDED
-        if (!eligible) {
-            // Suggestions off: the lift-commit stands on its own (it is typing), and the strip
-            // shows nothing: no alternatives, no NEXT_WORD request.
+        glideUndoCandidates = nbest
+        if (!glideStripAllowed()) {
+            // The lift-commit stands on its own (it is typing), and the strip shows nothing: no
+            // alternatives, no NEXT_WORD request.
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             return
         }
-        val alternatives = ArrayList<String>(SuggestionStripState.CELL_COUNT)
-        for (index in 1 until suggestions.size) {
-            alternatives.add(TatarWordUtils.applyCasing(suggestions[index], casing))
-            if (alternatives.size >= SuggestionStripState.CELL_COUNT) break
-        }
-        if (alternatives.isEmpty()) {
+        if (nbest.size == 1) {
             // No alternatives: derive the strip afresh for the committed word, which is the
             // trailing word, so the strip is what a typed word would get (the prefix path).
+            // With suggestions off there is nothing to derive: the strip goes back to hidden.
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
-            strip.reserve()
+            showEmptyBand()
             requestCurrentPrefix()
             return
         }
         displayedGlideAlternativesFor = committed
         displayedSessionId = sessionId
-        showBand(alternatives)
+        showBand(nbest.subList(1, nbest.size))
     }
 
     // --- Sentence start ------------------------------------------------------------------------
@@ -1982,8 +2054,28 @@ class SuggestionsController internal constructor(
     }
 
     /**
+     * Paints the empty strip: reserved (visible, no words) with the suggestions setting on,
+     * hidden with it off — with the setting off the strip exists only while glide candidates
+     * ride it ([glideStripAllowed]), so an empty strip is never shown there.
+     */
+    private fun showEmptyBand() {
+        if (eligible) strip.reserve() else strip.hideSuggestions()
+    }
+
+    /**
+     * Whether the strip may show glide candidates: always with the suggestions setting on, and
+     * with it off while glide typing is on and field-eligible — the alternates of a committed
+     * glide, the candidates of a refused one and the undo's rescue strip are corrections of the
+     * gesture, not typed-text suggestions, so the glide switch gates them, not the suggestions
+     * switch. Read live: a gesture starts under one configuration and its decode lands under
+     * another.
+     */
+    private fun glideStripAllowed(): Boolean = eligible || (glideEligible && glideGate.isOn())
+
+    /**
      * Takes off the strip whatever it is still painting, once the candidates behind it have been
-     * unbound. Keeps the reserved height, so the keyboard does not resize.
+     * unbound. With suggestions on it keeps the reserved height, so the keyboard does not resize;
+     * with suggestions off ([showEmptyBand]) it hides.
      *
      * Invariant: what the strip paints is tappable. Unbinding alone does not hold it: [onTap]
      * returns without committing when [displayedPrefix] and [displayedContextWord] are both null,
@@ -1999,7 +2091,7 @@ class SuggestionsController internal constructor(
     private fun unbindPaintedBand() {
         if (bandBaseCells.isEmpty()) return
         bandBaseCells = emptyList()
-        strip.reserve()
+        showEmptyBand()
     }
 
     /**
@@ -2017,7 +2109,7 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         requestSessionId = NO_SESSION
         // With suggestions off, a rejected glide request must not show an empty strip either.
-        if (eligible) strip.reserve() else strip.hideSuggestions()
+        showEmptyBand()
     }
 
 
@@ -2280,6 +2372,10 @@ class SuggestionsController internal constructor(
         // The lift-commit's whole-word undo dies at the same boundaries as the autocorrect undo.
         glideCommittedWord = null
         glideCommitPrependedSpace = false
+        glideUndoCandidates = emptyList()
+        // An armed rescue strip outlives the undo by one onTextChanged at most; these boundaries
+        // close it too.
+        glideRescueCandidates = emptyList()
     }
 
     private fun onTap(suggestion: String) {
@@ -2303,6 +2399,9 @@ class SuggestionsController internal constructor(
         // Read before clearRevertState drops it: a glide alternative keeps the leading space the
         // lift-commit prepended, and its undo must delete that space too.
         val glidePrependedSpace = glideCommitPrependedSpace
+        // Same for the revert window's N-best: a tap on a glide alternative keeps the gesture's
+        // candidates, so the undo of the replacement can still re-bind the rescue strip.
+        val glideUndoCandidatesBeforeTap = glideUndoCandidates
         // An accepted suggestion is not the user spelling the word out: the run stops counting.
         runMachine.markRunDirty()
         clearRevertState()
@@ -2400,10 +2499,13 @@ class SuggestionsController internal constructor(
             }
             glideCommittedWord = suggestion
             glideCommitPrependedSpace = result == EditorSurface.GLIDE_COMMIT_PREPENDED
+            // The refused strip's cells are this gesture's N-best; the undo's rescue strip
+            // re-binds them minus the tapped word.
+            glideUndoCandidates = bandBaseCells
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
-            strip.reserve()
+            showEmptyBand()
             runMachine.noteAcceptedSuggestion(suggestion)
             runMachine.trustPairBoundary()
             requestCurrentPrefix()
@@ -2419,10 +2521,11 @@ class SuggestionsController internal constructor(
                 // (with the same leading-space treatment).
                 glideCommittedWord = suggestion
                 glideCommitPrependedSpace = glidePrependedSpace
+                glideUndoCandidates = glideUndoCandidatesBeforeTap
                 displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
-                strip.reserve()
+                showEmptyBand()
                 runMachine.noteAcceptedSuggestion(suggestion)
                 runMachine.trustPairBoundary()
                 requestCurrentPrefix()
@@ -2438,13 +2541,27 @@ class SuggestionsController internal constructor(
      * The window holds one word and closes when the text changes for any other reason, like the
      * autocorrect undo: the state is dropped before the editor is asked, so a refused undo cannot
      * be retried. The editor re-checks that the committed word still stands before the cursor.
+     *
+     * A successful undo arms the rescue strip: the gesture's remaining candidates (the decode's
+     * retained N-best minus the deleted word) re-bind to the emptied position on the follow-up
+     * [onTextChanged], so one can be tapped instead of re-gliding. The binding is the
+     * refused-glide one: a tap commits at the live cursor through the glide commit path, with its
+     * spacing checks. The rescue rides the same glide-strip gate as the alternates
+     * ([glideStripAllowed]); with the strip not allowed, or no remaining candidates, the undo
+     * stands alone.
      */
     fun maybeUndoGlideCommit(): Boolean {
         val word = glideCommittedWord ?: return false
         val prependedSpace = glideCommitPrependedSpace
+        val candidates = glideUndoCandidates
         glideCommittedWord = null
         glideCommitPrependedSpace = false
-        // The alternatives (if any) described the word that no longer stands there.
+        glideUndoCandidates = emptyList()
+        // The strip described the word that no longer stands there: the glide alternatives, and
+        // the prefix binding of a strip re-derived after a tap on one of them (a late result for
+        // it is still guarded by its session and token).
+        displayedPrefix = null
+        displayedContextWord = null
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
@@ -2452,7 +2569,26 @@ class SuggestionsController internal constructor(
         // suggestions off.
         if (destroyed || !glideEligible) return false
         if (!editor.hasKnownCursor()) return false
-        return editor.deleteGlideLiftedWord(word, prependedSpace)
+        if (!editor.deleteGlideLiftedWord(word, prependedSpace)) return false
+        // The word the outstanding request (if any) was issued for is gone: invalidate the
+        // request generation so its late result cannot repaint over the rescue strip, exactly as
+        // in [clearToReservedBand].
+        requestSessionId = NO_SESSION
+        // Remaining candidates of the deleted word's gesture, capped at one strip of cells.
+        val rescue = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+        for (candidate in candidates) {
+            if (candidate == word) continue
+            rescue.add(candidate)
+            if (rescue.size >= SuggestionStripState.CELL_COUNT) break
+        }
+        if (rescue.isEmpty() || !glideStripAllowed()) {
+            showEmptyBand()
+            return true
+        }
+        glideRescueCandidates = rescue
+        glideRescueTrailingWord = editor.cachedWordBeforeCursor()
+        glideRescueCursor = editor.cursorPosition()
+        return true
     }
 
     companion object {

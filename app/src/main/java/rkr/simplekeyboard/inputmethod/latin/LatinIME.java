@@ -2217,7 +2217,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     /**
      * A glide gesture completed on the letter keys. The controller decodes the path on the engine
      * worker and commits the result; the path is copied before this call returns. A no-op with
-     * glide typing off; with suggestions off the word is still committed without the strip.
+     * glide typing off. With suggestions off the word is still committed, and the strip shows the
+     * gesture's own candidates (corrections of the gesture, gated on the glide switch).
      */
     @Override
     public void onGlideInput(

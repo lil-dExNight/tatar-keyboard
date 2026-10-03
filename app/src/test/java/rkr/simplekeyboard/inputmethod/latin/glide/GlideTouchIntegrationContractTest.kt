@@ -264,7 +264,12 @@ class GlideTouchIntegrationContractTest {
         val refused = apply.substringAfter("if (commitResult == EditorSurface.GLIDE_COMMIT_REFUSED) {")
             .substringBefore("runMachine.markRunDirty()")
         assertTrue("a refused commit ticks", refused.contains("glideRefusalFeedback.onGlideRefused()"))
-        val noCandidates = refused.indexOf("if (!eligible || editor.hasLetterAfterCursor()) return")
+        // The strip side of a glide result — the alternates, the refused gesture's candidates —
+        // rides the glide gate, not the suggestions switch.
+        assertTrue("the glide strip gate is the glide switch, not the suggestions switch",
+            controller.contains(
+                "private fun glideStripAllowed(): Boolean = eligible || (glideEligible && glideGate.isOn())"))
+        val noCandidates = refused.indexOf("if (!glideStripAllowed() || editor.hasLetterAfterCursor()) return")
         assertTrue("a letter after the cursor at the result shows no candidates", noCandidates >= 0)
         assertTrue("a stale or unknown cache binds its candidates",
             refused.indexOf("displayedGlideAlternativesFor = REFUSED_GLIDE") > noCandidates)
@@ -283,6 +288,11 @@ class GlideTouchIntegrationContractTest {
         // The undo carries the leading-space flag.
         assertTrue(controller.contains("fun maybeUndoGlideCommit()"))
         assertTrue(controller.contains("editor.deleteGlideLiftedWord(word, prependedSpace)"))
+        // The revert window retains the decode's N-best, and a successful undo arms the rescue
+        // strip: the remaining candidates re-bind to the emptied position on the follow-up
+        // onTextChanged (fired by LatinImeGlide right after the undo).
+        assertTrue(apply.contains("glideUndoCandidates = nbest"))
+        assertTrue(controller.contains("glideRescueCandidates = rescue"))
 
         val surfaces = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionSurfaces.kt",
