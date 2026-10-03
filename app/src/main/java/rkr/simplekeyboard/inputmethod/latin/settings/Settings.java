@@ -300,6 +300,49 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
         mSettingsValues = new SettingsValues(mPrefs, mRes, inputAttributes);
     }
 
+    // Reads tolerate a wrong-typed stored value: a hand-edited backup file could carry
+    // one, and a ClassCastException at startup would crash-loop the service until a data
+    // wipe. The bad key is dropped so the default wins and the next write re-types it.
+    static boolean readBooleanTolerant(final SharedPreferences prefs,
+            final String key, final boolean defaultValue) {
+        try {
+            return prefs.getBoolean(key, defaultValue);
+        } catch (ClassCastException e) {
+            prefs.edit().remove(key).apply();
+            return defaultValue;
+        }
+    }
+
+    static int readIntTolerant(final SharedPreferences prefs,
+            final String key, final int defaultValue) {
+        try {
+            return prefs.getInt(key, defaultValue);
+        } catch (ClassCastException e) {
+            prefs.edit().remove(key).apply();
+            return defaultValue;
+        }
+    }
+
+    static float readFloatTolerant(final SharedPreferences prefs,
+            final String key, final float defaultValue) {
+        try {
+            return prefs.getFloat(key, defaultValue);
+        } catch (ClassCastException e) {
+            prefs.edit().remove(key).apply();
+            return defaultValue;
+        }
+    }
+
+    static String readStringTolerant(final SharedPreferences prefs,
+            final String key, final String defaultValue) {
+        try {
+            return prefs.getString(key, defaultValue);
+        } catch (ClassCastException e) {
+            prefs.edit().remove(key).apply();
+            return defaultValue;
+        }
+    }
+
     // TODO: Remove this method and add proxy method to SettingsValues.
     public SettingsValues getCurrent() {
         return mSettingsValues;
@@ -309,14 +352,14 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     // Accessed from the settings interface, hence public
     public static boolean readKeypressSoundEnabled(final SharedPreferences prefs,
             final Resources res) {
-        return prefs.getBoolean(PREF_SOUND_ON,
+        return readBooleanTolerant(prefs, PREF_SOUND_ON,
                 res.getBoolean(R.bool.config_default_sound_enabled));
     }
 
     public static boolean readVibrationEnabled(final SharedPreferences prefs,
             final Resources res) {
         final boolean hasVibrator = AudioAndHapticFeedbackManager.getInstance().hasVibrator();
-        return hasVibrator && prefs.getBoolean(PREF_VIBRATE_ON,
+        return hasVibrator && readBooleanTolerant(prefs, PREF_VIBRATE_ON,
                 res.getBoolean(R.bool.config_default_vibration_enabled));
     }
 
@@ -324,43 +367,43 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
             final Resources res) {
         final boolean defaultKeyPreviewPopup = res.getBoolean(
                 R.bool.config_default_key_preview_popup);
-        return prefs.getBoolean(PREF_POPUP_ON, defaultKeyPreviewPopup);
+        return readBooleanTolerant(prefs, PREF_POPUP_ON, defaultKeyPreviewPopup);
     }
 
     public static boolean readShowLanguageSwitchKey(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_SHOW_LANGUAGE_SWITCH_KEY, true);
+        return readBooleanTolerant(prefs, PREF_SHOW_LANGUAGE_SWITCH_KEY, true);
     }
 
     public static boolean readUseOnScreenKeyboard(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_USE_ON_SCREEN, false);
+        return readBooleanTolerant(prefs, PREF_USE_ON_SCREEN, false);
     }
 
     public static boolean readEnableImeSwitch(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_ENABLE_IME_SWITCH, false);
+        return readBooleanTolerant(prefs, PREF_ENABLE_IME_SWITCH, false);
     }
 
     public static boolean readShowSpecialChars(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_SHOW_SPECIAL_CHARS, true);
+        return readBooleanTolerant(prefs, PREF_SHOW_SPECIAL_CHARS, true);
     }
 
     public static boolean readShowNumberRow(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_SHOW_NUMBER_ROW, false);
+        return readBooleanTolerant(prefs, PREF_SHOW_NUMBER_ROW, false);
     }
 
     public static boolean readShowEmojiKey(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_SHOW_EMOJI_KEY, true);
+        return readBooleanTolerant(prefs, PREF_SHOW_EMOJI_KEY, true);
     }
 
     public static boolean readSpaceSwipeEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_SPACE_SWIPE, true);
+        return readBooleanTolerant(prefs, PREF_SPACE_SWIPE, true);
     }
 
     public static boolean readDeleteSwipeEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_DELETE_SWIPE, false);
+        return readBooleanTolerant(prefs, PREF_DELETE_SWIPE, false);
     }
 
     public static boolean readTatarSuggestionsEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_TATAR_SUGGESTIONS, false);
+        return readBooleanTolerant(prefs, PREF_TATAR_SUGGESTIONS, false);
     }
 
     /**
@@ -368,7 +411,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      * reader governs both showing personal words and saving them.
      */
     public static boolean readPersonalDictionaryEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_PERSONAL_DICTIONARY, false);
+        return readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, false);
     }
 
     /**
@@ -377,7 +420,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      * pause is on.
      */
     public static boolean readIncognitoModeEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_INCOGNITO_MODE, false);
+        return readBooleanTolerant(prefs, PREF_INCOGNITO_MODE, false);
     }
 
     /**
@@ -386,7 +429,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      * property of the setting instead of a rule every caller has to remember.
      */
     public static boolean readTatarAutocorrectEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_TATAR_AUTOCORRECT, false)
+        return readBooleanTolerant(prefs, PREF_TATAR_AUTOCORRECT, false)
                 && readTatarSuggestionsEnabled(prefs);
     }
 
@@ -396,7 +439,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      * property of the setting instead of a rule every caller has to remember.
      */
     public static boolean readEmojiSuggestionsEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_EMOJI_SUGGESTIONS, true)
+        return readBooleanTolerant(prefs, PREF_EMOJI_SUGGESTIONS, true)
                 && readTatarSuggestionsEnabled(prefs);
     }
 
@@ -406,17 +449,17 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      * nothing.
      */
     public static boolean readGlideTypingEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_GLIDE_TYPING, true);
+        return readBooleanTolerant(prefs, PREF_GLIDE_TYPING, true);
     }
 
     /** The stored arm, normalized: an unknown value resolves to the shipped arm. */
     public static int readFifthRowArm(final SharedPreferences prefs) {
-        return FifthRowArm.normalize(prefs.getInt(PREF_FIFTH_ROW_ARM, FifthRowArm.DEFAULT));
+        return FifthRowArm.normalize(readIntTolerant(prefs, PREF_FIFTH_ROW_ARM, FifthRowArm.DEFAULT));
     }
 
     /** The lab session log is opt-in: default OFF. This one reader governs every write to it. */
     public static boolean readLabSessionLogEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_LAB_SESSION_LOG, false);
+        return readBooleanTolerant(prefs, PREF_LAB_SESSION_LOG, false);
     }
 
     /**
@@ -429,7 +472,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     public static boolean readTatarSuggestionsOfferSpent(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_TATAR_SUGGESTIONS_OFFER_SPENT, false);
+        return readBooleanTolerant(prefs, PREF_TATAR_SUGGESTIONS_OFFER_SPENT, false);
     }
 
     /**
@@ -444,7 +487,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     public static String readPrefSubtypes(final SharedPreferences prefs) {
-        return prefs.getString(PREF_ENABLED_SUBTYPES, "");
+        return readStringTolerant(prefs, PREF_ENABLED_SUBTYPES, "");
     }
 
     public static void writePrefSubtypes(final SharedPreferences prefs, final String prefSubtypes) {
@@ -452,7 +495,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     public static String readPrefCurrentSubtype(final SharedPreferences prefs) {
-        return prefs.getString(PREF_CURRENT_SUBTYPE, "");
+        return readStringTolerant(prefs, PREF_CURRENT_SUBTYPE, "");
     }
 
     public static void writePrefCurrentSubtype(final SharedPreferences prefs,
@@ -461,7 +504,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     public static float readKeypressSoundVolume(final SharedPreferences prefs) {
-        final float volume = prefs.getFloat(
+        final float volume = readFloatTolerant(prefs, 
                 PREF_KEYPRESS_SOUND_VOLUME, UNDEFINED_PREFERENCE_VALUE_FLOAT);
         return (volume != UNDEFINED_PREFERENCE_VALUE_FLOAT) ? volume
                 : readDefaultKeypressSoundVolume();
@@ -475,7 +518,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
 
     public static int readKeyLongpressTimeout(final SharedPreferences prefs,
             final Resources res) {
-        final int milliseconds = prefs.getInt(
+        final int milliseconds = readIntTolerant(prefs, 
                 PREF_KEY_LONGPRESS_TIMEOUT, UNDEFINED_PREFERENCE_VALUE_INT);
         return (milliseconds != UNDEFINED_PREFERENCE_VALUE_INT) ? milliseconds
                 : readDefaultKeyLongpressTimeout(res);
@@ -487,22 +530,22 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
 
     public static float readKeyboardHeight(final SharedPreferences prefs,
             final float defaultValue) {
-        return prefs.getFloat(PREF_KEYBOARD_HEIGHT, defaultValue);
+        return readFloatTolerant(prefs, PREF_KEYBOARD_HEIGHT, defaultValue);
     }
 
     public static float readEmojiPanelHeight(final SharedPreferences prefs,
             final float defaultValue) {
-        return prefs.getFloat(PREF_EMOJI_PANEL_HEIGHT, defaultValue);
+        return readFloatTolerant(prefs, PREF_EMOJI_PANEL_HEIGHT, defaultValue);
     }
 
     public static int readBottomOffsetPortrait(final SharedPreferences prefs) {
-        return prefs.getInt(PREF_BOTTOM_OFFSET_PORTRAIT, DEFAULT_BOTTOM_OFFSET);
+        return readIntTolerant(prefs, PREF_BOTTOM_OFFSET_PORTRAIT, DEFAULT_BOTTOM_OFFSET);
     }
 
     public static final int DEFAULT_BOTTOM_OFFSET = 0;
 
     public static int readOneHandedSide(final SharedPreferences prefs) {
-        final int side = prefs.getInt(PREF_ONE_HANDED_SIDE, OneHandedMode.SIDE_DEFAULT);
+        final int side = readIntTolerant(prefs, PREF_ONE_HANDED_SIDE, OneHandedMode.SIDE_DEFAULT);
         return OneHandedMode.isValidSide(side) ? side : OneHandedMode.SIDE_DEFAULT;
     }
 
@@ -527,7 +570,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
         // contains() first: the default walks the theme table and the resource arrays, and that
         // work is wasted whenever the preference holds a value (the common case once set).
         if (prefs.contains(PREF_KEYBOARD_COLOR)) {
-            return prefs.getInt(PREF_KEYBOARD_COLOR, 0);
+            return readIntTolerant(prefs, PREF_KEYBOARD_COLOR, 0);
         }
         return readKeyboardDefaultColor(context);
     }

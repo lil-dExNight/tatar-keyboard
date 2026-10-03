@@ -121,9 +121,9 @@ class PersonalDictionarySettingsTest {
         assertTrue("the single key",
             settingsSource.contains("PREF_PERSONAL_DICTIONARY = \"pref_personal_dictionary\""))
         assertTrue("default OFF, like Tatar suggestions",
-            settingsSource.contains("prefs.getBoolean(PREF_PERSONAL_DICTIONARY, false)"))
+            settingsSource.contains("readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, false)"))
         assertFalse("default must not be true", settingsSource
-            .contains("prefs.getBoolean(PREF_PERSONAL_DICTIONARY, true)"))
+            .contains("readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, true)"))
 
         // No second "remember typed words" switch anywhere: one toggle governs read AND write.
         val forbidden = listOf("pref_remember_typed_words", "pref_learn_words",

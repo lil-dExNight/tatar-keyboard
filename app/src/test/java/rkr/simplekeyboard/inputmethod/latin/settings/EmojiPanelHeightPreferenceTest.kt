@@ -133,7 +133,7 @@ class EmojiPanelHeightPreferenceTest {
     fun storageKeyAndReaderMirrorTheKeyboardHeightPref() {
         assertTrue(settings.contains("PREF_EMOJI_PANEL_HEIGHT = \"pref_emoji_panel_height\""))
         assertTrue(settings.contains("public static float readEmojiPanelHeight(final SharedPreferences prefs,"))
-        assertTrue(settings.contains("prefs.getFloat(PREF_EMOJI_PANEL_HEIGHT, defaultValue)"))
+        assertTrue(settings.contains("readFloatTolerant(prefs, PREF_EMOJI_PANEL_HEIGHT, defaultValue)"))
     }
 
     @Test

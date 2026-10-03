@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.settings.backup
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersemFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TcutFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TrefFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramStore
@@ -25,6 +26,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDic
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmojiStore
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalOutputOpener
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStore
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.TextShortcutStore
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.SpaceProbe
 import java.io.File
@@ -131,5 +133,22 @@ internal object BackupTestStores {
         val store = refusedStore(directory, subtypeId)
         repeat(2) { store.noteRefusal(pair.first, pair.second) }
         return File(directory, TrefFormat.refusedCorrectionsFileName(subtypeId)).readBytes()
+    }
+
+    fun shortcutStore(directory: File): TextShortcutStore =
+        TextShortcutStore(
+            directoryProvider = { directory },
+            fileOps = realOps,
+            outputOpener = realOpener,
+            spaceProbe = SpaceProbe { Long.MAX_VALUE },
+            clock = { 1000L },
+            executor = directExecutor,
+        )
+
+    /** A shortcuts file holding one pair, written through the store. */
+    fun writeShortcuts(directory: File, shortcut: String, expansion: String): ByteArray {
+        val store = shortcutStore(directory)
+        store.put(shortcut, expansion)
+        return File(directory, TcutFormat.shortcutsFileName()).readBytes()
     }
 }

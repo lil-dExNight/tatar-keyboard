@@ -86,6 +86,10 @@ object TextShortcutStores {
     internal fun snapshotFor(context: Context): TextShortcuts =
         storeFor(context).also { it.prime() }.snapshot
 
+    /** The backup restore. See [PersonalDictionaries.replaceAll]. */
+    internal fun replaceAll(context: Context, bytes: ByteArray?, outcome: PersonalMutationOutcome) =
+        storeFor(context).replaceAll(bytes, outcome)
+
     @JvmStatic
     fun setErasureListener(listener: Runnable?) {
         erasureListener = listener

@@ -41,7 +41,7 @@ class EmojiSuggestDefaultSourceContractTest {
         val settings = java("rkr/simplekeyboard/inputmethod/latin/settings/Settings.java")
         assertTrue(
             settings.contains(
-                "prefs.getBoolean(PREF_EMOJI_SUGGESTIONS, true)"
+                "readBooleanTolerant(prefs, PREF_EMOJI_SUGGESTIONS, true)"
             )
         )
     }

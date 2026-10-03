@@ -116,7 +116,7 @@ class KeyboardHeightPreferenceTest {
         // restriction, which divides an admin's percent by 100) keep meaning the same thing.
         assertTrue(settings.contains("PREF_KEYBOARD_HEIGHT = \"pref_keyboard_height\""))
         assertTrue(settings.contains("public static float readKeyboardHeight(final SharedPreferences prefs,"))
-        assertTrue(settings.contains("prefs.getFloat(PREF_KEYBOARD_HEIGHT, defaultValue)"))
+        assertTrue(settings.contains("readFloatTolerant(prefs, PREF_KEYBOARD_HEIGHT, defaultValue)"))
     }
 
     @Test

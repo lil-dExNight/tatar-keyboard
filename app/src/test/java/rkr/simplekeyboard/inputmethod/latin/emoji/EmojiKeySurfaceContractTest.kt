@@ -130,7 +130,7 @@ class EmojiKeySurfaceContractTest {
         // 0. Key + default true.
         val settings = java("rkr/simplekeyboard/inputmethod/latin/settings/Settings.java")
         assertTrue(settings.contains("PREF_SHOW_EMOJI_KEY = \"pref_show_emoji_key\""))
-        assertTrue(settings.contains("prefs.getBoolean(PREF_SHOW_EMOJI_KEY, true)"))
+        assertTrue(settings.contains("readBooleanTolerant(prefs, PREF_SHOW_EMOJI_KEY, true)"))
         // 1. SettingsValues field + read.
         val settingsValues = java("rkr/simplekeyboard/inputmethod/latin/settings/SettingsValues.java")
         assertTrue(settingsValues.contains("public final boolean mShowEmojiKey"))

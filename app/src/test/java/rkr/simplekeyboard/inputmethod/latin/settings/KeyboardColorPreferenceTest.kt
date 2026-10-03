@@ -53,10 +53,10 @@ class KeyboardColorPreferenceTest {
         )
         assertTrue(
             "a present preference yields the stored int",
-            body.contains("prefs.getInt(PREF_KEYBOARD_COLOR, 0)"),
+            body.contains("readIntTolerant(prefs, PREF_KEYBOARD_COLOR, 0)"),
         )
         val contains = body.indexOf("prefs.contains(PREF_KEYBOARD_COLOR)")
-        val get = body.indexOf("prefs.getInt(PREF_KEYBOARD_COLOR, 0)")
+        val get = body.indexOf("readIntTolerant(prefs, PREF_KEYBOARD_COLOR, 0)")
         val default = body.indexOf("return readKeyboardDefaultColor(context);")
         assertTrue("contains() must gate the getInt()", contains in 0 until get)
         assertTrue("the stored-value branch must precede the default walk", get in 0 until default)

@@ -148,6 +148,64 @@ internal class TextShortcutStore(
      */
     fun prime() = onWorker { open() }
 
+    /**
+     * The backup restore: replace the whole store from the archive's bytes (already validated by
+     * the importer, validated here again before writing), or delete it when [bytes] is null. The
+     * published snapshot re-reads from the disk afterwards, so the strip follows the restore.
+     */
+    fun replaceAll(bytes: ByteArray?, outcome: PersonalMutationOutcome? = null) = onWorker {
+        val replaced = try {
+            replaceOnWorker(bytes)
+        } catch (_: Exception) {
+            false
+        }
+        report(outcome, replaced)
+    }
+
+    /** The body of [replaceAll], on the worker: returns whether the disk now matches the request. */
+    private fun replaceOnWorker(bytes: ByteArray?): Boolean {
+        if (!unlockGate()) return false
+        if (bytes != null) {
+            validator.validate(bytes)
+            val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
+                ?: return false
+            if (!writeBytesDurably(directory, bytes)) return false
+        } else {
+            deleteFile()
+        }
+        // Re-read the disk state: the published snapshot now matches the imported file (or none).
+        loaded = false
+        open()
+        return true
+    }
+
+    /**
+     * The whole-file write of raw validated bytes — the same durable sequence as [writeWhole],
+     * without the serialize step: temp, fsync, re-validate, atomic replace, directory fsync.
+     */
+    private fun writeBytesDurably(directory: File, bytes: ByteArray): Boolean {
+        ensureDirectory(directory)
+        cleanupTemps(directory)
+        val required = bytes.size.toLong() + FREE_SPACE_RESERVE_BYTES
+        if (spaceProbe.usableBytes(directory) < required) return false
+        val temporary = createExclusiveTemp(directory)
+        return try {
+            outputOpener.open(temporary).use { output ->
+                output.write(bytes)
+                output.flush()
+                fileOps.syncFile(output.fd)
+            }
+            validator.validate(temporary)
+            fileOps.atomicReplace(temporary, File(directory, TcutFormat.shortcutsFileName()))
+            fileOps.syncDirectory(directory)
+            writeCount++
+            true
+        } catch (_: Exception) {
+            if (temporary.exists()) runCatching { fileOps.delete(temporary) }
+            false
+        }
+    }
+
     /** Test hook: runs [block] on the store's executor (so tests can drive the serialized owner). */
     fun runOnWorker(block: () -> Unit) = onWorker(block)
 

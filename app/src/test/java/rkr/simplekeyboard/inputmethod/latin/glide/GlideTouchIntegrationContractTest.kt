@@ -177,7 +177,7 @@ class GlideTouchIntegrationContractTest {
             .substringBefore("public static")
         assertTrue(
             "the reader defaults to ON",
-            reader.contains("prefs.getBoolean(PREF_GLIDE_TYPING, true)"),
+            reader.contains("readBooleanTolerant(prefs, PREF_GLIDE_TYPING, true)"),
         )
         assertFalse(
             "the reader must NOT consult the suggestions master",

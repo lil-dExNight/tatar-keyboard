@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.settings.backup
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TcutFormat
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TcutValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersemFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersemValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
@@ -95,6 +97,9 @@ object BackupFormat {
             TpersemFormat.MAX_FILE_SIZE),
         REFUSED("personal-refused-", ".tref", TrefFormat.SCHEMA_ID, TrefFormat.FORMAT_VERSION,
             TrefFormat.MAX_FILE_SIZE),
+        // The text-shortcut store is global (no per-language file): its name carries no subtype.
+        SHORTCUTS("shortcuts-", ".tcut", TcutFormat.SCHEMA_ID, TcutFormat.FORMAT_VERSION,
+            TcutFormat.MAX_FILE_SIZE),
     }
 
     /** What one archive entry path means. */
@@ -115,6 +120,7 @@ object BackupFormat {
         PersonalKind.PAIRS -> TpersbFormat.personalBigramsFileName(subtypeId)
         PersonalKind.EMOJI -> TpersemFormat.personalEmojiFileName(subtypeId)
         PersonalKind.REFUSED -> TrefFormat.refusedCorrectionsFileName(subtypeId)
+        PersonalKind.SHORTCUTS -> TcutFormat.shortcutsFileName()
     }
 
     /** The archive path of a personal store file. */
@@ -128,6 +134,7 @@ object BackupFormat {
      * tried first, because every kind's prefix starts with "personal-".
      */
     fun classifyPersonalFileName(name: String): Pair<PersonalKind, String>? {
+        if (name == TcutFormat.shortcutsFileName()) return PersonalKind.SHORTCUTS to ""
         for (kind in PersonalKind.entries.sortedByDescending { it.filePrefix.length }) {
             if (!name.startsWith(kind.filePrefix) || !name.endsWith(kind.fileExtension)) continue
             val middle = name.removePrefix(kind.filePrefix).removeSuffix(kind.fileExtension)
@@ -187,6 +194,7 @@ object BackupFormat {
             PersonalKind.PAIRS -> TpersbValidator().validate(bytes, subtypeId)
             PersonalKind.EMOJI -> TpersemValidator().validate(bytes, subtypeId)
             PersonalKind.REFUSED -> TrefValidator().validate(bytes, subtypeId)
+            PersonalKind.SHORTCUTS -> TcutValidator().validate(bytes)
         }
         true
     } catch (_: Exception) {

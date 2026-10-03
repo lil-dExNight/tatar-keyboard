@@ -114,7 +114,15 @@ public final class KeyboardTheme {
     }
 
     public static KeyboardTheme getKeyboardTheme(final SharedPreferences prefs) {
-        final String themeIdString = prefs.getString(KEYBOARD_THEME_KEY, null);
+        final String themeIdString;
+        try {
+            themeIdString = prefs.getString(KEYBOARD_THEME_KEY, null);
+        } catch (final ClassCastException e) {
+            // A wrong-typed stored value (a hand-edited backup file could carry one) must not
+            // crash the service at startup in a loop; drop it and take the default.
+            prefs.edit().remove(KEYBOARD_THEME_KEY).apply();
+            return getDefaultKeyboardTheme();
+        }
         if (themeIdString == null) {
             return searchKeyboardThemeById(DEFAULT_THEME_ID);
         }

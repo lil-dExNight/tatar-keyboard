@@ -24,6 +24,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
@@ -33,6 +34,11 @@ import java.util.concurrent.TimeUnit
  * and nothing about the clip is ever learned.
  */
 class RecentClipControllerTest {
+
+    companion object {
+        /** The fake sentence-start table's content; shown initial-caps by the controller. */
+        private val SENT_START = listOf("бу", "ул", "ә")
+    }
 
     // --- Fakes ---------------------------------------------------------------------------------
 
@@ -82,6 +88,9 @@ class RecentClipControllerTest {
         override fun hasKnownCursor(): Boolean = true
 
         override fun hasLetterAfterCursor(): Boolean = false
+
+        override fun isAtSentenceStart(): Boolean =
+            TatarWordUtils.isSentenceStartContext(before, cacheReachedTextStart = true)
 
         override fun commitSuggestion(expectedPrefix: String, suggestion: String): Boolean {
             if (cachedWordBeforeCursor() != expectedPrefix) return false
@@ -161,6 +170,9 @@ class RecentClipControllerTest {
 
     private class Harness {
         var now = 10_000_000L
+        /** When true, the sentence-start table answers (the production default); the clip's
+         * precedence over it is part of the contract under test. */
+        var withSentStart = false
         val strip = FakeStrip()
         val editor = FakeEditor()
         val engine = FakeEngine()
@@ -171,9 +183,19 @@ class RecentClipControllerTest {
             strip,
             editor,
             UiPoster { it.run() },
-            { resultCallback -> engine.apply { callback = resultCallback } },
-            DirectExecutorService(),
+            { _: String, resultCallback -> engine.apply { callback = resultCallback } },
+            { DirectExecutorService() },
+            { _: ExecutorService, _: String -> null },
             true,
+            // The sentence-start table is present in these tests: the clip's precedence over it
+            // is part of the contract under test.
+            sentStartPreparationFactory = { _, _ ->
+                if (withSentStart) {
+                    SentStartPreparation { onResult -> onResult(SentStartSource { SENT_START }) }
+                } else {
+                    null
+                }
+            },
         )
 
         init {
@@ -208,6 +230,31 @@ class RecentClipControllerTest {
         fun tap(suggestion: String) {
             strip.listener?.onTap(suggestion)
         }
+    }
+
+    @Test
+    fun theClipOutranksTheSentenceStartTableAtAnEmptyPosition() {
+        val h = Harness()
+        h.withSentStart = true
+        h.clip("сәләм дөнья")
+
+        h.start()
+
+        assertEquals(listOf("сәләм дөнья", null, null), h.strip.lastBand())
+    }
+
+    @Test
+    fun withoutAClipTheSentenceStartTableAnswers() {
+        val h = Harness()
+        h.withSentStart = true
+
+        h.start()
+        h.type(" ")  // a separator change drives the idle re-derivation
+
+        assertEquals(
+            listOf("Бу", "Ул", "Ә"),
+            h.strip.lastBand(),
+        )
     }
 
     // --- The offer --------------------------------------------------------------------------------

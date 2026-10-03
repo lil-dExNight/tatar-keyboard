@@ -66,7 +66,13 @@ class TcutValidator {
 
         val bytes = file.readBytes()
         if (bytes.size.toLong() != length) fail("file length changed during read")
+        return validate(bytes)
+    }
 
+    /** The in-memory twin of [validate] for a caller that already holds the bytes (backup). */
+    fun validate(bytes: ByteArray): ValidatedTextShortcuts {
+        if (bytes.size.toLong() > TcutFormat.MAX_FILE_SIZE) fail("file size limit exceeded")
+        if (bytes.size < TcutFormat.HEADER_SIZE) fail("file is shorter than its header")
         val header = ByteBuffer.wrap(bytes, 0, TcutFormat.HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
         val magic = ByteArray(TcutFormat.MAGIC_SIZE)
         header.get(magic)
@@ -93,7 +99,9 @@ class TcutValidator {
         if (entryCount > TcutFormat.MAX_SHORTCUT_ENTRIES) fail("entry count limit exceeded")
         if (reserved.any { it.toInt() != 0 }) fail("reserved header bytes must be zero")
 
-        if (payloadSize != length - TcutFormat.HEADER_SIZE) fail("payload size does not match file")
+        if (payloadSize != bytes.size.toLong() - TcutFormat.HEADER_SIZE) {
+            fail("payload size does not match file")
+        }
 
         if (!MessageDigest.isEqual(storedChecksum, digestWithChecksumZeroed(bytes))) {
             fail("checksum mismatch")

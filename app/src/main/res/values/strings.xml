@@ -425,13 +425,13 @@
     <string name="settings_screen_backup_summary">Save settings and learned words to a file, or load them back</string>
     <!-- The explanation at the top of the backup screen. Says plainly that the file carries the
          learned words, that it is not encrypted, and that it goes only where the person puts it. -->
-    <string name="backup_contents_note">A backup file holds your settings and everything the keyboard has learned: your saved words, learned word pairs and learned emoji. The file is not encrypted: anyone who can open it can read those words. It is written only where you choose, and the keyboard never uploads it anywhere.</string>
+    <string name="backup_contents_note">A backup file holds your settings and everything the keyboard has learned: your saved words, learned word pairs, learned emoji and your text shortcuts. The file is not encrypted: anyone who can open it can read those words. It is written only where you choose, and the keyboard never uploads it anywhere.</string>
     <!-- Action that writes the backup file through the system file picker. -->
     <string name="backup_export_action">Export to a file…</string>
     <!-- Action that restores a backup file, and title of its confirmation dialog. -->
     <string name="backup_import_action">Import from a file…</string>
     <!-- Body of the import confirmation: a restore replaces what is on this device. -->
-    <string name="backup_import_confirm_message">Replace the current settings, saved words, learned word pairs and learned emoji with the contents of the file? What is on this device now will be lost. This cannot be undone.</string>
+    <string name="backup_import_confirm_message">Replace the current settings, saved words, learned word pairs, learned emoji and text shortcuts with the contents of the file? What is on this device now will be lost. This cannot be undone.</string>
     <!-- Affirmative button of the import dialog. Names the action because it is destructive. -->
     <string name="backup_import_confirm_action">Replace</string>
     <!-- Shown when the backup file was written. -->

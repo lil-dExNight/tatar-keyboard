@@ -38,7 +38,7 @@ class FifthRowArmTest {
         assertEquals(FifthRowArm.ARM_C, FifthRowArm.normalize(2))
         val settings = read("java/rkr/simplekeyboard/inputmethod/latin/settings/Settings.java")
         assertTrue("the stored pref resolves through the shipped default",
-            settings.contains("prefs.getInt(PREF_FIFTH_ROW_ARM, FifthRowArm.DEFAULT)"))
+            settings.contains("readIntTolerant(prefs, PREF_FIFTH_ROW_ARM, FifthRowArm.DEFAULT)"))
     }
 
     @Test

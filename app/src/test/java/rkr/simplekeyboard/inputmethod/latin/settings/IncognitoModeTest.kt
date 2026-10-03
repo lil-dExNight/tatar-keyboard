@@ -158,8 +158,8 @@ class IncognitoModeTest {
     fun thereIsOneIncognitoKeyAndItDefaultsToOff() {
         assertTrue(settingsSource.contains("PREF_INCOGNITO_MODE = \"pref_incognito_mode\""))
         assertTrue("default OFF — the pause is the user's act, never the default",
-            settingsSource.contains("prefs.getBoolean(PREF_INCOGNITO_MODE, false)"))
-        assertFalse(settingsSource.contains("prefs.getBoolean(PREF_INCOGNITO_MODE, true)"))
+            settingsSource.contains("readBooleanTolerant(prefs, PREF_INCOGNITO_MODE, false)"))
+        assertFalse(settingsSource.contains("readBooleanTolerant(prefs, PREF_INCOGNITO_MODE, true)"))
         assertTrue("and it is read live, per event, like the personal-dictionary setting",
             settingsSource.contains("public static boolean readIncognitoModeEnabled"))
     }

@@ -83,11 +83,11 @@ Undo an autocorrection — one backspace right after it, or the quoted typed-wor
 
 ## Backup and export
 
-Keyboard settings → **“Backup and export”** can write **one backup file** with your settings and everything the keyboard learned — your saved words, learned word pairs, learned emoji and refused corrections — and read such a file back. Both directions start only from your tap, and the file goes only where you choose in the system file picker.
+Keyboard settings → **“Backup and export”** can write **one backup file** with your settings and everything the keyboard learned — your saved words, learned word pairs, learned emoji, text shortcuts and refused corrections — and read such a file back. Both directions start only from your tap, and the file goes only where you choose in the system file picker.
 
 - **The file is not encrypted.** Anyone who can open it can read your saved words. Keep it the way you would keep a note with those words.
 - **The app never uploads it.** The app has no INTERNET permission; the file moves only if you move it, with whatever app you trust for that — that choice is yours and happens outside the keyboard.
-- **Importing replaces.** Restoring a file replaces the current settings, saved words, learned pairs, learned emoji and refused corrections on this device with the file's contents; what was here before is lost. The screen asks for confirmation first. A file that fails any integrity check is rejected whole: nothing is changed.
+- **Importing replaces.** Restoring a file replaces the current settings, saved words, learned pairs, learned emoji, text shortcuts and refused corrections on this device with the file's contents; what was here before is lost. The screen asks for confirmation first. A file that fails any integrity check is rejected whole: nothing is changed.
 - **What is not in the file.** The recently used emoji list, the half-learned words and pairs that have not crossed the learning threshold yet, the quarantined copies, and your organization's device-policy values.
 - **Android's own backup stays off.** Cloud backup and device-to-device transfer keep excluding everything, as described above; this file is the only backup, and it exists only when you make it.
 

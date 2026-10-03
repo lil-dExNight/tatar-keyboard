@@ -31,6 +31,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDic
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmojiDictionaries
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalMutationOutcome
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStores
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.TextShortcutStores
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -170,6 +171,8 @@ internal class BackupCoordinator(
                     PersonalEmojiDictionaries.replaceAll(appContext, subtypeId, bytes, outcome)
                 BackupFormat.PersonalKind.REFUSED ->
                     RefusedCorrectionStores.replaceAll(appContext, subtypeId, bytes, outcome)
+                BackupFormat.PersonalKind.SHORTCUTS ->
+                    TextShortcutStores.replaceAll(appContext, bytes, outcome)
             }
             return try {
                 done.await()

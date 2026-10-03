@@ -1836,12 +1836,13 @@ class SuggestionsController internal constructor(
     private fun requestNextWordContext(activeEngine: EngineHandle) {
         val context = editor.cachedNextWordContext()
         if (context.isEmpty()) {
-            // An empty context at a sentence boundary is a sentence start, answered synchronously
-            // from the sentence-start table. No engine request is issued, so bigram successors and
-            // after-word forms do not appear. Failing that, an idle strip may offer the recent
-            // clip's cell. Anywhere else: no context word, no prediction.
-            if (requestSentenceStart()) return
+            // An empty context at a sentence boundary is a sentence start. A fresh clip the user
+            // has just copied is the stronger signal, so its cell outranks the generic sentence
+            // starters; without a clip the sentence-start table answers synchronously. No engine
+            // request is issued either way, so bigram successors and after-word forms do not
+            // appear. Anywhere else: no context word, no prediction.
             if (maybeShowRecentClip()) return
+            if (requestSentenceStart()) return
             clearToReservedBand()
             return
         }
