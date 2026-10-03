@@ -141,11 +141,13 @@ hits to displacement. Recorded in `docs/BACKLOG.md`; a case-aware expansion is a
 experiment, not a rerun.
 
 **P2 — Wider typo classes (insertion/deletion/transposition) ranked by edit distance.**
-Re-implement AnySoftKeyboard's allocation-free Damerau–Levenshtein in Kotlin as the ranker;
-new edit classes alongside #1/#4, hard beam cap. Gate: top-3 on the typo-mutated held-out set
-(`TypoMutatedEvalTest`), device p95 within the existing budget. Expected: the largest realistic
-top-3 gain — substitutions are a minority of real typos. Watch: candidate-count blowup needs
-fail-fast caps (ASK's `GestureTypingDetector` pattern).
+Measured and rejected under the pre-registered ranking (`docs/BACKLOG.md` carries the two
+configurations and their numbers): with the wide classes below #4 the deletion class cannot
+reach its bar (the empty-exact discipline plus the three-cell strip locks it out); with
+deletion between #1 and #4 the substitution class regresses, because DL-1 deletion and DL-1
+substitution candidates are rank-indistinguishable and class priority must pick a loser. The
+live follow-up is the shared DL-1 tier (classes #2/#4 candidates at distance 1 ranked among
+themselves by frequency, continuations after) — a new pre-registered experiment.
 
 **P3 — corpus.tatar + HPLT/MADLAD ingestion.** Ingest the corpus.tatar frequency lists
 (counted over 500M edited words) and HPLT v2 `tat_Cyrl` (CC0) with per-word Russian-bleed

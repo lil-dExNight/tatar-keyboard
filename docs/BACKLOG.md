@@ -23,3 +23,11 @@ move it to the roadmap.
   suggestion index, stem-keyed bigram backoff (simulated at +0.46 pp chain top-3 against the
   +1.5 pp bar; the case-blind form expansion converts only 58% of stem hits —
   `research/corpus/sim_stem_backoff.py`; a case-aware expansion is a different experiment).
+- **Wider typo classes ranked by (class, DL distance, frequency) below or between the existing
+  classes.** Measured rejection: on the typo-mutated held-out set, ranking the wide classes
+  below class #4 recovers deletion only to 51% (bar: 70%) — the empty-exact discipline and the
+  three-cell strip structurally lock deletion out; ranking deletion between #1 and #4 recovers
+  it to 77% but regresses substitution 91.2% → 88.1% (bar: no regression), because a DL-1
+  deletion candidate and a DL-1 substitution candidate are rank-indistinguishable. The open
+  follow-up (a different pre-registered experiment, not a rerun): a shared DL-1 tier for
+  classes #2/#4 candidates ranked among themselves by frequency, continuations after.
