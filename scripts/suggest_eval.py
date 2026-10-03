@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Corpus-statistics metrics of Tatar suggestions over the eval set ``tt_eval_sentences.txt``.
+"""Corpus-statistics metrics of suggestions over a pinned eval set (Tatar or Russian).
 
-Input: the eval set, the bundled Tatar dictionary and the schema-3 bigram table (decoded with
-the pipeline readers; the table is checked against the dictionary's raw SHA-256).
-Output: ``EVAL|metric|value`` lines: eval sizes, dictionary coverage of tokens and types, a
-lower-bound share of inflected tokens, bigram head coverage and plain-bigram next-word top-1
-and top-3 hit rates; then, through the production-chain mirror of ``suggest_chain.py``: the
-full-chain next-word top-1/top-3 hit rates with a sentence-level bootstrap CI95 and the
-minimum detectable effect, the lemma strata (seen form / new form of a seen stem / unseen
-stem) with per-stratum cp3 completion and chain hit rates, and the keystroke-savings
-simulation with its vocabulary-oracle bound. ``TtSuggestEvalTest`` measures the same on the
-JVM. Exit 2 on any missing or invalid input.
+Input: the eval set, the bundled dictionary and the schema-3 bigram table (decoded with
+the pipeline readers; the table is checked against the dictionary's raw SHA-256), by default
+the Tatar ones (``tt_eval_sentences.txt``); ``--language rus`` switches the defaults to the
+Russian assets and ``ru_eval_sentences.txt``.
+Output: ``EVAL|metric|value`` lines: eval sizes, dictionary coverage of tokens and types,
+bigram head coverage and plain-bigram next-word top-1 and top-3 hit rates; then, through the
+production-chain mirror of ``suggest_chain.py``: the full-chain next-word top-1/top-3 hit
+rates with a sentence-level bootstrap CI95 and the minimum detectable effect, and the
+keystroke-savings simulation with its vocabulary-oracle bound. The Tatar mode additionally
+reports a lower-bound share of inflected tokens and the lemma strata (seen form / new form
+of a seen stem / unseen stem) with per-stratum cp3 completion and chain hit rates; both are
+defined by the Tatar suffix tables and are absent from the Russian report. ``TtSuggestEvalTest``
+measures the Tatar side on the JVM. Exit 2 on any missing or invalid input.
 """
 from __future__ import annotations
 
@@ -34,6 +37,13 @@ DEFAULT_DICT_ASSET = (
 )
 DEFAULT_BIGRAM_ASSET = (
     ROOT / "app" / "src" / "main" / "assets" / "bigrams" / "tatar_bigrams_v1.tatbigr.zlib"
+)
+RU_EVAL = ROOT / "app" / "src" / "test" / "resources" / "ru_eval_sentences.txt"
+RU_DICT_ASSET = (
+    ROOT / "app" / "src" / "main" / "assets" / "dictionaries" / "russian_top100k_v1.tdict.zlib"
+)
+RU_BIGRAM_ASSET = (
+    ROOT / "app" / "src" / "main" / "assets" / "bigrams" / "russian_bigrams_v1.tatbigr.zlib"
 )
 
 SHOWN_RESULTS = 3
@@ -81,7 +91,9 @@ class SuggestEvalError(ValueError):
     """An eval error: missing or invalid input (exit 2)."""
 
 
-def load_eval_lines(path: Path) -> list[str]:
+def load_eval_lines(
+    path: Path, alphabet: frozenset[str] = coverage.TATAR_ALPHABET
+) -> list[str]:
     """Read the eval set, skipping ``#`` comment lines; raises on bad content."""
     if not path.is_file():
         raise SuggestEvalError(f"eval set is missing: {path}")
@@ -91,7 +103,7 @@ def load_eval_lines(path: Path) -> list[str]:
             continue
         words = raw.split(" ")
         for word in words:
-            normalized, reason = coverage.normalize_word(word)
+            normalized, reason = coverage.normalize_word(word, alphabet)
             if reason is not None or normalized != word:
                 raise SuggestEvalError(f"eval line carries a non-canonical word: {word!r}")
         lines.append(raw)
@@ -136,21 +148,34 @@ def percent(part: int, whole: int) -> float:
 
 def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--eval", dest="eval_path", type=Path, default=DEFAULT_EVAL)
-    parser.add_argument("--dict-asset", type=Path, default=DEFAULT_DICT_ASSET)
-    parser.add_argument("--bigram-asset", type=Path, default=DEFAULT_BIGRAM_ASSET)
+    parser.add_argument(
+        "--language", choices=("tat", "rus"), default="tat",
+        help="eval language: switches the default eval set and assets (default: %(default)s)",
+    )
+    parser.add_argument("--eval", dest="eval_path", type=Path, default=None)
+    parser.add_argument("--dict-asset", type=Path, default=None)
+    parser.add_argument("--bigram-asset", type=Path, default=None)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = create_argument_parser().parse_args(argv)
+    russian = args.language == "rus"
+    eval_path = args.eval_path or (RU_EVAL if russian else DEFAULT_EVAL)
+    dict_asset = args.dict_asset or (RU_DICT_ASSET if russian else DEFAULT_DICT_ASSET)
+    bigram_asset = args.bigram_asset or (
+        RU_BIGRAM_ASSET if russian else DEFAULT_BIGRAM_ASSET
+    )
     try:
-        lines = load_eval_lines(args.eval_path)
+        lines = load_eval_lines(
+            eval_path,
+            coverage.RUSSIAN.alphabet if russian else coverage.TATAR.alphabet,
+        )
         dictionary_words, dictionary_frequencies, dictionary_raw = load_dictionary_words(
-            args.dict_asset
+            dict_asset
         )
         successes_by_head = load_bigram_successes(
-            args.bigram_asset, dictionary_words, dictionary_raw
+            bigram_asset, dictionary_words, dictionary_raw
         )
     except (
         SuggestEvalError,
@@ -168,7 +193,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     covered_tokens = sum(1 for word in tokens if word in vocabulary)
     covered_types = sum(1 for word in unique_words if word in vocabulary)
-    inflected = sum(1 for word in tokens if has_inflectional_suffix(word))
 
     pairs: list[tuple[str, str]] = []
     for line in lines:
@@ -193,16 +217,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         ("eval_unique_words", str(len(unique_words))),
         ("dict_word_coverage_tokens_pct", f"{percent(covered_tokens, len(tokens)):.4f}"),
         ("dict_word_coverage_types_pct", f"{percent(covered_types, len(unique_words)):.4f}"),
-        ("inflected_token_share_pct", f"{percent(inflected, len(tokens)):.4f}"),
-        ("bigram_pairs_total", str(len(pairs))),
-        ("bigram_head_coverage_pct", f"{percent(head_covered, len(pairs)):.4f}"),
-        ("nextword_top1_hits", str(top1_hits)),
-        ("nextword_top1_hit_pct", f"{percent(top1_hits, len(pairs)):.4f}"),
-        ("nextword_top3_hit_pct", f"{percent(top3_hits, len(pairs)):.4f}"),
-        ("nextword_top3_hit_covered_pct", f"{percent(top3_hits, head_covered):.4f}"),
     ]
+    if not russian:
+        # The suffix heuristic is Tatar-only; a Russian number would be meaningless.
+        inflected = sum(1 for word in tokens if has_inflectional_suffix(word))
+        metrics.append(
+            ("inflected_token_share_pct", f"{percent(inflected, len(tokens)):.4f}")
+        )
+    metrics.extend(
+        [
+            ("bigram_pairs_total", str(len(pairs))),
+            ("bigram_head_coverage_pct", f"{percent(head_covered, len(pairs)):.4f}"),
+            ("nextword_top1_hits", str(top1_hits)),
+            ("nextword_top1_hit_pct", f"{percent(top1_hits, len(pairs)):.4f}"),
+            ("nextword_top3_hit_pct", f"{percent(top3_hits, len(pairs)):.4f}"),
+            ("nextword_top3_hit_covered_pct", f"{percent(top3_hits, head_covered):.4f}"),
+        ]
+    )
     metrics.extend(_chain_metrics(lines, pairs, dictionary_words, dictionary_frequencies,
-                                  successes_by_head, unique_words))
+                                  successes_by_head, unique_words, not russian))
     for name, value in metrics:
         print(f"EVAL|{name}|{value}")
     return 0
@@ -215,10 +248,12 @@ def _chain_metrics(
     dictionary_frequencies: list[int],
     successes_by_head: dict[str, list[str]],
     unique_words: set[str],
+    suffix_rules: bool,
 ) -> list[tuple[str, str]]:
     """The chain-hit, bootstrap, MDE, lemma-strata and keystroke-savings lines."""
     chain = suggest_chain.ChainMirror(
-        dictionary_words, dictionary_frequencies, successes_by_head
+        dictionary_words, dictionary_frequencies, successes_by_head,
+        suffix_rules=suffix_rules,
     )
 
     chain_top1 = 0
@@ -254,9 +289,9 @@ def _chain_metrics(
         ("nextword_chain_top3_ci95_hi", f"{ci95_hi:.4f}"),
         ("nextword_chain_top3_mde_pp", f"{mde_pp:.4f}"),
     ]
-    metrics.extend(
-        _strata_metrics(lines, unique_words, chain)
-    )
+    if suffix_rules:
+        # The strata are defined by the Tatar suffix table; Russian has no suffix rules.
+        metrics.extend(_strata_metrics(lines, unique_words, chain))
     metrics.extend(_keystroke_metrics(lines, unique_words, chain))
     return metrics
 
