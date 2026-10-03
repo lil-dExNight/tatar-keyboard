@@ -103,6 +103,19 @@ public final class InputTypeUtils implements InputType {
                 && variation != TYPE_TEXT_VARIATION_FILTER;
     }
 
+    /**
+     * True where the word-delete flick may edit: any field except the password variations and the
+     * number-family classes, where a last "word" is not a meaningful unit.
+     */
+    public static boolean isWordDeleteAllowedType(final int inputType) {
+        if (isPasswordInputType(inputType) || isVisiblePasswordInputType(inputType)) {
+            return false;
+        }
+        final int inputClass = inputType & TYPE_MASK_CLASS;
+        return inputClass != TYPE_CLASS_NUMBER && inputClass != TYPE_CLASS_PHONE
+                && inputClass != TYPE_CLASS_DATETIME;
+    }
+
     public static int getImeOptionsActionIdFromEditorInfo(final EditorInfo editorInfo) {
         if ((editorInfo.imeOptions & EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0) {
             return EditorInfo.IME_ACTION_NONE;

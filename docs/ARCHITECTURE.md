@@ -30,8 +30,9 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 
 1. `MainKeyboardView.onTouchEvent` passes each `MotionEvent` to the pointer's `PointerTracker`.
 2. `PointerTracker` asks `KeyDetector.detectHitKey(x, y)` for the key under the finger, handles
-   sliding, long press, key repeat, the space-bar cursor swipe and glide detection, and reports
-   through `KeyboardActionListener` (`onCodeInput`, `onTextInput`, `onGlideInput`, ...).
+   sliding, long press, key repeat, the space-bar cursor swipe, the delete-key swipes (a drag
+   selects text to delete, a fast left flick deletes the last word) and glide detection, and
+   reports through `KeyboardActionListener` (`onCodeInput`, `onTextInput`, `onGlideInput`, ...).
 3. `LatinIME` implements that interface. `onCodeInput` builds an `Event` for `LatinIME.onEvent`,
    which first runs its hooks: emoji search (keys grow the search query instead of the text), undo
    autocorrect, glide whole-word undo, and autocorrect before a separator. Then the event goes to
@@ -107,7 +108,8 @@ attaches to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's pl
 counts as the first space of a double-space period. Two quick spaces give a period only in a
 general text field (`InputTypeUtils.isGeneralTextInputType`: the text class without the email,
 URI, password, phonetic and filter variations). Cursor moves by the keyboard itself (space
-slide, delete swipe) drop this state (`InputLogic.onKeyboardCursorMove`).
+slide, delete swipe, word-delete flick, the edit menu's arrows) drop this state
+(`InputLogic.onKeyboardCursorMove`).
 
 **Word completion** (`CompositePrefixComputer.lookup`): exact dictionary candidates by frequency,
 then at most one personal-dictionary word not already shown, then typo-recovery candidates. Typo

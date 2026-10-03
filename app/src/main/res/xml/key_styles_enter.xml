@@ -21,8 +21,22 @@
 <merge
     xmlns:latin="http://schemas.android.com/apk/res-auto"
 >
-    <key-style
-        latin:styleName="navigateMoreKeysStyle" />
+    <!-- The text-editing menu lives on the Enter key's long press: cut, select all and copy on the
+         near row, paste and the two cursor steps above it. Select all sits under the finger, so a
+         long press released without a slide does nothing destructive. Fixed order keeps the menu
+         reading row by row. No menu in password fields: cut and copy are disabled there by
+         convention, so the whole menu stays out. -->
+    <switch>
+        <case latin:passwordInput="true">
+            <key-style
+                latin:styleName="navigateMoreKeysStyle" />
+        </case>
+        <default>
+            <key-style
+                latin:styleName="navigateMoreKeysStyle"
+                latin:moreKeys="!fixedColumnOrder!3,!hasLabels!,!string/edit_menu_cut|!code/key_cut,!string/edit_menu_select_all|!code/key_select_all,!string/edit_menu_copy|!code/key_copy,!string/edit_menu_paste|!code/key_paste_context_menu,!string/edit_menu_cursor_left|!code/key_left,!string/edit_menu_cursor_right|!code/key_right" />
+        </default>
+    </switch>
     <!-- Enter key style. A plain Return is gray like every other functional key; the
          imeAction variants below re-declare backgroundType="action" and are painted in the
          accent color. -->

@@ -656,6 +656,22 @@ public final class RichInputConnection {
     }
 
     /**
+     * Runs one of the editor's own context-menu actions (select all, cut, copy, paste) through
+     * {@link InputConnection#performContextMenuAction}. The keyboard never reads the clipboard:
+     * a paste lands straight from the editor.
+     */
+    public void performContextMenuAction(final int id) {
+        mIC = mLatinIME.getCurrentInputConnection();
+        if (isConnected()) {
+            try {
+                mIC.performContextMenuAction(id);
+            } catch (final RuntimeException e) {
+                // See the class javadoc.
+            }
+        }
+    }
+
+    /**
      * Clips shorter than this are committed as text input. Committing a large clip parcels the
      * whole string across the binder and can kill the IME with TransactionTooLargeException, so
      * larger clips use the editor's own context-menu paste. Well under the ~1 MB binder limit.

@@ -352,4 +352,12 @@
     <string name="data_sources_leipzig_summary">Most of both word lists and both next-word tables. CC BY 4.0.</string>
     <string name="data_sources_tatoeba_summary">Everyday words in both lists, and parts of both next-word tables: frequencies from example sentences. CC BY 2.0 FR.</string>
     <string name="data_sources_opensubtitles_summary">Everyday words in both lists, and parts of both next-word tables: frequencies from film subtitles.</string>
+    <!-- The text-editing menu on a long press of the Enter key. The labels sit on keys in the
+         long-press panel, so they stay short. -->
+    <string name="edit_menu_select_all">Select all</string>
+    <string name="edit_menu_cut">Cut</string>
+    <string name="edit_menu_copy">Copy</string>
+    <string name="edit_menu_paste">Paste</string>
+    <string name="edit_menu_cursor_left">Cursor left</string>
+    <string name="edit_menu_cursor_right">Cursor right</string>
 </resources>

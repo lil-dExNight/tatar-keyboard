@@ -78,6 +78,11 @@ public interface KeyboardActionListener {
     boolean onCustomRequest(int requestCode);
     void onMoveCursorPointer(int steps);
     void onMoveDeletePointer(int steps);
+    /**
+     * A word-delete flick fired: a fast leftward swipe from the delete key. The receiver deletes
+     * the last word before the cursor and collapses any selection the swipe opened.
+     */
+    void onWordDeleteGesture();
     void onUpWithDeletePointerActive();
     void onUpWithSpacePointerActive();
 
@@ -109,6 +114,8 @@ public interface KeyboardActionListener {
         public void onMoveCursorPointer(int steps) {}
         @Override
         public void onMoveDeletePointer(int steps) {}
+        @Override
+        public void onWordDeleteGesture() {}
         @Override
         public void onUpWithDeletePointerActive() {}
         @Override

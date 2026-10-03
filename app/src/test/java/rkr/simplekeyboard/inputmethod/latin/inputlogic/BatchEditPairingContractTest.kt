@@ -111,9 +111,10 @@ class BatchEditPairingContractTest {
         assertEquals(
             "RichInputConnection: one catch per editor-call site — begin/endBatchEdit, the " +
                 "reload body, commitText, replaceText, deleteTextBeforeCursor, " +
-                "deleteSelectedText, performEditorAction, pasteClipboard, sendKeyEvent, " +
+                "deleteSelectedText, performEditorAction, performContextMenuAction, " +
+                "pasteClipboard, sendKeyEvent, " +
                 "setSelection; a new editor call without one trips the O6 inventory first",
-            11, runtimeCatches,
+            12, runtimeCatches,
         )
         assertEquals(
             "every catch is RuntimeException-only — never Throwable, Error, or checked-only",
@@ -124,8 +125,8 @@ class BatchEditPairingContractTest {
     /** The scan is meaningful only while it sees the batches it claims to pair. */
     @Test
     fun theScanAnchorsToTheKnownBatchCounts() {
-        assertEquals(11, batchCall("beginBatchEdit").findAll(files.getValue("InputLogic")).count())
-        assertEquals(11, batchCall("endBatchEdit").findAll(files.getValue("InputLogic")).count())
+        assertEquals(13, batchCall("beginBatchEdit").findAll(files.getValue("InputLogic")).count())
+        assertEquals(13, batchCall("endBatchEdit").findAll(files.getValue("InputLogic")).count())
         assertEquals(
             1,
             batchCall("beginBatchEdit").findAll(files.getValue("RichInputConnection")).count(),
@@ -140,7 +141,7 @@ class BatchEditPairingContractTest {
     @Test
     fun performRecapitalizationRefusesANegativeSelectionLength() {
         val body = files.getValue("InputLogic")
-            .substringAfter("private void performRecapitalization()")
+            .substringAfter("private void performSelectionRecapitalization()")
             .substringBefore("public int getCurrentAutoCapsState(")
         val compute = body.indexOf("final int numCharsSelected = selectionEnd - selectionStart;")
         val guard = body.indexOf("if (numCharsSelected < 0) {")

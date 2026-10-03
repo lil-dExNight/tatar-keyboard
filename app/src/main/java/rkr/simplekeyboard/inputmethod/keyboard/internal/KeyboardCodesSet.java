@@ -56,12 +56,15 @@ public final class KeyboardCodesSet {
         "key_left",
         "key_right",
         "key_unspecified",
+        "key_select_all",
+        "key_cut",
+        "key_copy",
+        "key_paste_context_menu",
     };
 
     // Must stay index-for-index parallel to ID_TO_NAME: getCode() looks a name up in ID_TO_NAME
     // and reads DEFAULT at the same index, so a shorter array throws
-    // ArrayIndexOutOfBoundsException. "key_left"/"key_right" have no dedicated code in this fork
-    // and resolve to CODE_UNSPECIFIED.
+    // ArrayIndexOutOfBoundsException.
     private static final int[] DEFAULT = {
         Constants.CODE_TAB,
         Constants.CODE_ENTER,
@@ -78,9 +81,13 @@ public final class KeyboardCodesSet {
         Constants.CODE_SHIFT_ENTER,
         Constants.CODE_LANGUAGE_SWITCH,
         Constants.CODE_EMOJI,
+        Constants.CODE_CURSOR_LEFT,
+        Constants.CODE_CURSOR_RIGHT,
         Constants.CODE_UNSPECIFIED,
-        Constants.CODE_UNSPECIFIED,
-        Constants.CODE_UNSPECIFIED,
+        Constants.CODE_SELECT_ALL,
+        Constants.CODE_CUT,
+        Constants.CODE_COPY,
+        Constants.CODE_PASTE_CONTEXT_MENU,
     };
 
     static {

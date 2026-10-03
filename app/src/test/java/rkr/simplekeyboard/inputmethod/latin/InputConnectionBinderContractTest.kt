@@ -37,8 +37,8 @@ import org.junit.Test
  *    coalesced background reload, with the payload window bounded by
  *    `EDITOR_CONTENTS_CACHE_SIZE`.
  * 3. Key events stay deliberately unbatched (the platform ignores batch edits for them);
- *    `replaceText`'s two-call pre-34 fallback only ever runs inside `performRecapitalization`'s
- *    batch. The try/finally pairing of every batch is `BatchEditPairingContractTest`'s job and
+ *    `replaceText`'s two-call pre-34 fallback only ever runs inside the recapitalization
+ *    batches. The try/finally pairing of every batch is `BatchEditPairingContractTest`'s job and
  *    is not duplicated here.
  * 4. No View — neither the `keyboard/` package nor the latin-side canvas views — can reach the
  *    connection at all, which makes an IC call from a draw/layout/measure path unwritable.
@@ -149,8 +149,8 @@ class InputConnectionBinderContractTest {
             "mIC.setSelection(" to 1,
             "mIC.sendKeyEvent(" to 1,
             "mIC.performEditorAction(" to 1,
-            // The large-paste fallback — the editor pulls the clipboard itself.
-            "mIC.performContextMenuAction(" to 1,
+            // The large-paste fallback and the edit menu's actions — the editor runs them itself.
+            "mIC.performContextMenuAction(" to 2,
             "mIC.beginBatchEdit(" to 1,
             "mIC.endBatchEdit(" to 1,
         )
@@ -186,14 +186,14 @@ class InputConnectionBinderContractTest {
 
     @Test
     fun replaceTextsTwoCallFallbackOnlyEverRunsBatched() {
-        // replaceText issues TWO calls on pre-UPSIDE_DOWN_CAKE (delete + commit); its single
-        // caller is performRecapitalization, which wraps the whole rotation in one batch (the
-        // try/finally shape is BatchEditPairingContractTest's pin).
-        assertEquals("replaceText has exactly one caller", 1,
+        // replaceText issues TWO calls on pre-UPSIDE_DOWN_CAKE (delete + commit); its callers are
+        // the two recapitalize paths (the selection's and the trailing word's), and each wraps the
+        // whole rotation in one batch (the try/finally shape is BatchEditPairingContractTest's pin).
+        assertEquals("replaceText has exactly the two recapitalize callers", 2,
             occurrences(inputLogic, "mConnection.replaceText("))
         val body = bodyOf(
             inputLogic,
-            "private void performRecapitalization()",
+            "private void performSelectionRecapitalization()",
             "public int getCurrentAutoCapsState(",
         )
         val begin = body.indexOf("mConnection.beginBatchEdit();")

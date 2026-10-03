@@ -21,8 +21,19 @@
 <merge
     xmlns:latin="http://schemas.android.com/apk/res-auto"
 >
-    <key-style
-        latin:styleName="navigateMoreKeysStyle" />
+    <!-- Same text-editing menu on the Enter key's long press as in xml/key_styles_enter.xml;
+         kept in sync with it. No menu in password fields. -->
+    <switch>
+        <case latin:passwordInput="true">
+            <key-style
+                latin:styleName="navigateMoreKeysStyle" />
+        </case>
+        <default>
+            <key-style
+                latin:styleName="navigateMoreKeysStyle"
+                latin:moreKeys="!fixedColumnOrder!3,!hasLabels!,!string/edit_menu_cut|!code/key_cut,!string/edit_menu_select_all|!code/key_select_all,!string/edit_menu_copy|!code/key_copy,!string/edit_menu_paste|!code/key_paste_context_menu,!string/edit_menu_cursor_left|!code/key_left,!string/edit_menu_cursor_right|!code/key_right" />
+        </default>
+    </switch>
     <!-- Enter key style. A plain Return is gray like every other functional key; the
          imeAction variants below re-declare backgroundType="action" and are painted in the
          accent color. -->

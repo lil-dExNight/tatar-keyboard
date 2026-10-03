@@ -2090,6 +2090,21 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     @Override
+    public void onWordDeleteGesture() {
+        // The flick never edits a password or a number-family field: a last "word" is not a
+        // meaningful unit there (and a password field's text is not even read).
+        final EditorInfo editorInfo = getCurrentInputEditorInfo();
+        if (editorInfo == null || !InputTypeUtils.isWordDeleteAllowedType(editorInfo.inputType)
+                || !mInputLogic.mConnection.hasCursorPosition()) {
+            return;
+        }
+        if (mInputLogic.deleteWordBeforeCursor() > 0) {
+            LatinImeKeyFeedback.hapticTickFeedback();
+            onSuggestionsAffectingCursorMove();
+        }
+    }
+
+    @Override
     public void onUpWithSpacePointerActive() {
         // Privacy: a password field's text is never re-read (see onStartInputViewInternal).
         if (!isCurrentFieldPasswordField()) {
@@ -2101,12 +2116,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Handles a cursor or selection move made by the keyboard itself (space slide, delete swipe):
-     * drops the double-space and auto-space state and invalidates the suggestion strip.
-     * {@link #onUpdateSelection} does not see these as external moves, so without this both would
-     * keep state for the old position. Idempotent.
+     * Handles a cursor or selection move made by the keyboard itself (space slide, delete swipe,
+     * edit-menu arrow): drops the double-space and auto-space state and invalidates the suggestion
+     * strip. {@link #onUpdateSelection} does not see these as external moves, so without this both
+     * would keep state for the old position. Idempotent.
      */
-    private void onSuggestionsAffectingCursorMove() {
+    public void onSuggestionsAffectingCursorMove() {
         mInputLogic.onKeyboardCursorMove();
         if (mSuggestionsController != null) {
             mSuggestionsController.onSelectionChanged();
