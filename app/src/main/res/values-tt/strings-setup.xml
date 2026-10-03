@@ -20,6 +20,7 @@
 
     <string name="setup_step1_title">Төймәсарны кабызу</string>
     <string name="setup_step1_instruction">Системаның төймәсарлар исемлегендә „<xliff:g id="KEYBOARD_NAME" example="Tatar Keyboard">%s</xliff:g>“ төймәсарын кабызыгыз</string>
+    <string name="setup_step1_note">Android бу кисәтүне һәр чит төймәсарны кабызганда күрсәтә. Бу төймәсар тулысынча интернетсыз эшли: аның INTERNET рөхсәте юк, язганыгыз җиһаздан чыкмый.</string>
     <string name="setup_step1_button">Төймәсарны кабызу</string>
 
     <string name="setup_step2_title">Төймәсарны сайлау</string>
@@ -27,8 +28,9 @@
     <string name="setup_step2_button">Төймәсарны сайлау</string>
 
     <string name="setup_done_title">Әзер!</string>
-    <string name="setup_done_hint">Теләсә кайсы кушымтада ә хәрефен языгыз</string>
-    <string name="setup_test_field_hint">Сынап карагыз: „сәлам“ дип языгыз</string>
+    <string name="setup_status_title">Төймәсар актив</string>
+    <string name="setup_done_hint">Суйрып язу да эшли: бармагыгызны күтәрмәстән хәрефләр буйлап суйрыгыз</string>
+    <string name="setup_test_field_hint">Сынап карагыз: „сәләм“ сүзен суйрыгыз</string>
     <string name="setup_done_button">Көйләүләрне ачу</string>
 
     <string name="setup_step_status_done">Адым үтәлгән</string>

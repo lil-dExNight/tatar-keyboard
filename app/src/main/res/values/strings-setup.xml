@@ -33,6 +33,9 @@
 
     <string name="setup_step1_title">Enable the keyboard</string>
     <string name="setup_step1_instruction">Turn on “<xliff:g id="KEYBOARD_NAME" example="Tatar Keyboard">%s</xliff:g>” in the system keyboard list</string>
+    <!-- Pre-arms the standard data-collection warning Android shows when the
+         enable toggle is flipped; the offline promise is the core product fact. -->
+    <string name="setup_step1_note">Android shows this warning for every third-party keyboard. This one works fully offline: it has no INTERNET permission, so nothing you type ever leaves the device.</string>
     <string name="setup_step1_button">Enable keyboard</string>
 
     <string name="setup_step2_title">Select the keyboard</string>
@@ -40,8 +43,11 @@
     <string name="setup_step2_button">Select keyboard</string>
 
     <string name="setup_done_title">Done!</string>
-    <string name="setup_done_hint">Type ә in any app</string>
-    <!-- Hint doubles as the TalkBack label of the try-it field. -->
-    <string name="setup_test_field_hint">Try it: type “сәлам”</string>
+    <!-- Title of the same block when the app opens onto a completed setup. -->
+    <string name="setup_status_title">Keyboard is active</string>
+    <string name="setup_done_hint">Glide typing works too: slide across the letters without lifting your finger</string>
+    <!-- Hint doubles as the TalkBack label of the try-it field. The word is
+         Tatar on purpose in every locale — it is the product's point. -->
+    <string name="setup_test_field_hint">Try it: slide across “сәләм”</string>
     <string name="setup_done_button">Open settings</string>
 </resources>

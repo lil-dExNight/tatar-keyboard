@@ -22,6 +22,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.View
@@ -39,6 +41,8 @@ import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
  * SetupWizardActivity pattern in a minimal single-Activity form: step 1
  * enables the IME via the system input-method settings screen, step 2
  * selects it as the current keyboard via the system input-method picker.
+ * With setup complete, the same screen collapses into a status variant:
+ * step cards hidden, try-it field and settings link shown.
  *
  * Both step states are read live from the system on every appearance
  * (enabled input-method list and Settings.Secure.DEFAULT_INPUT_METHOD) —
@@ -55,6 +59,48 @@ class SetupActivity : Activity() {
 
     companion object {
         private val TAG = SetupActivity::class.java.simpleName
+
+        /** Cadence of the enable watcher, ms: one cheap binder read per tick. */
+        private const val ENABLE_WATCH_INTERVAL_MS = 500L
+
+        /** Bail-out for the enable watcher: ~5 minutes of background polling,
+         *  after which the next resume re-reads the state anyway. */
+        private const val ENABLE_WATCH_MAX_TICKS = 600
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private var watchingForEnable = false
+    private var enableWatchTicks = 0
+
+    // True once this instance has rendered an incomplete wizard: completing
+    // the steps in place then keeps the celebratory done title, while an
+    // instance that opens on a completed setup shows the neutral status one.
+    private var sawIncompleteSetup = false
+
+    /**
+     * Auto-return watcher, alive only while the user is away in the system
+     * input-method settings: once this IME shows up as enabled, the wizard
+     * relaunches on top of the settings at whichever step is now pending.
+     * Leak-safe by construction: [onResume] and [onDestroy] both remove the
+     * queued callback, so the main looper never holds this activity past its
+     * destruction, and the flag guards a callback already mid-dispatch.
+     */
+    private val enableWatcher = object : Runnable {
+        override fun run() {
+            if (!watchingForEnable) return
+            if (isImeEnabled()) {
+                watchingForEnable = false
+                startActivity(Intent(this@SetupActivity, SetupActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                return
+            }
+            if (++enableWatchTicks >= ENABLE_WATCH_MAX_TICKS) {
+                watchingForEnable = false
+                return
+            }
+            handler.postDelayed(this, ENABLE_WATCH_INTERVAL_MS)
+        }
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -107,7 +153,29 @@ class SetupActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        stopEnableWatcher()
         updateStepStates()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Auto-return: leaving with step 1 pending means the user headed for
+        // the system input-method settings — watch for the toggle there.
+        if (!watchingForEnable && !isImeEnabled()) {
+            watchingForEnable = true
+            enableWatchTicks = 0
+            handler.postDelayed(enableWatcher, ENABLE_WATCH_INTERVAL_MS)
+        }
+    }
+
+    override fun onDestroy() {
+        stopEnableWatcher()
+        super.onDestroy()
+    }
+
+    private fun stopEnableWatcher() {
+        watchingForEnable = false
+        handler.removeCallbacks(enableWatcher)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -124,31 +192,32 @@ class SetupActivity : Activity() {
     private fun isImeEnabled(): Boolean {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         return try {
-            imm.enabledInputMethodList.any { it.packageName == packageName }
+            SetupState.isImeEnabled(
+                    imm.enabledInputMethodList.map { it.packageName }, packageName)
         } catch (e: Exception) {
             Log.e(TAG, "Exception in check if input method is enabled", e)
             false
         }
     }
 
-    /**
-     * Step 2 — is this IME the current one? Prefix comparison by package
-     * keeps the check correct on debug builds where applicationId gets a
-     * ".debug" suffix while the IME class name stays unchanged.
-     */
+    /** Step 2 — is this IME the current one? See [SetupState.isImeCurrent]. */
     private fun isImeCurrent(): Boolean {
         val current = Settings.Secure.getString(
-                contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD) ?: return false
-        return current.startsWith("$packageName/")
+                contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+        return SetupState.isImeCurrent(current, packageName)
     }
 
     /**
-     * Idempotent render of the three onboarding states: nothing done,
-     * step 1 done (step 2 becomes active), both done (done block shown).
+     * Idempotent render of the four states: nothing done, step 1 done (step 2
+     * becomes active), both done in this instance (done block celebrates),
+     * and the status variant for a launch onto a completed setup (step cards
+     * and subtitle hidden, neutral title, try-it field and settings link).
      */
     private fun updateStepStates() {
         val enabled = isImeEnabled()
         val current = enabled && isImeCurrent()
+        val setupComplete = SetupState.isSetupComplete(enabled, current)
+        if (!setupComplete) sawIncompleteSetup = true
 
         // The visual marks ("1"/"2"/"✓") mean nothing to TalkBack — each
         // status mark carries a spoken done/pending description instead.
@@ -177,6 +246,19 @@ class SetupActivity : Activity() {
         // conveyed non-visually by the button's disabled semantics.
         findViewById<Button>(R.id.setup_step2_button).isEnabled = enabled && !current
         findViewById<View>(R.id.setup_step2_card).alpha = if (enabled) 1f else 0.4f
+
+        // A fully set-up keyboard needs no wizard: collapse the steps into
+        // the status variant. The done-block title stays celebratory when the
+        // steps were completed in front of this instance, neutral otherwise.
+        findViewById<View>(R.id.setup_step1_card).visibility =
+                if (setupComplete) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.setup_step2_card).visibility =
+                if (setupComplete) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.setup_subtitle).visibility =
+                if (setupComplete) View.GONE else View.VISIBLE
+        setTextIfChanged(findViewById(R.id.setup_done_title),
+                getString(if (sawIncompleteSetup) R.string.setup_done_title
+                          else R.string.setup_status_title))
 
         findViewById<View>(R.id.setup_done_block).visibility =
                 if (current) View.VISIBLE else View.GONE
