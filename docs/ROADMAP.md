@@ -24,13 +24,8 @@ evidence is in the documents it indexes. Work goes in this order:
    retraining the bigram tables on the newly ingested corpora, Taiga for conversational
    Russian, corpus.tatar frequency lists if the host ever answers.
    (`research/prediction-engine.md`, `research/glide-typing.md`)
-2. **Features** — text shortcuts (abbreviation → expansion), the in-memory recent-clip cell
-   (RAM only, never stored), dynamic-color theme variant, inline autofill, backup/export of
-   learned data, one-handed mode, the inline autocorrect-revert cell, persistent refused
-   corrections.
-   (`research/competitor-features.md`, `research/ui.md`, `research/ux.md`)
-3. **The lab program** — the fifth-row A/B/C protocol and the standing lab instrument; needs
-   Tatar-speaking participants. (`research/ux.md`)
+2. **The lab program** — the fifth-row A/B/C sessions per `docs/LAB-FIFTH-ROW.md` (the
+   instrument landed); needs Tatar-speaking participants. (`research/ux.md`)
 
 Decisions recorded for this program:
 
@@ -59,6 +54,15 @@ Checks that need a person or hardware not at hand:
   refusal; the shift case-cycle editor matrix; the enter-key editing menu; animator-scale-0
   behavior; emoji long-press haptic against the app toggle; the onboarding auto-return on
   HyperOS;
+- the features device pass: the dynamic theme on an API 31+ device across a wallpaper change
+  (plus the HyperOS retoning look); one-handed mode in both hands and themes incl.
+  `GlideUiDeviceTest` with the mode on and the perf legs; inline autofill against a real
+  autofill service (none ships on a stock emulator — a password manager or the AOSP sample);
+  the SAF backup round-trip on device; the recent-clip cell's clipboard-read toast behavior on
+  Android 12+; the revert cell under TalkBack; a refused correction staying dead across
+  sessions;
+- the fifth-row lab sessions per `docs/LAB-FIFTH-ROW.md` (recruitment, scripted sessions, the
+  analysis script);
 - live Direct Boot (needs a screen-lock PIN and a reboot: type the PIN with this keyboard
   before the first unlock);
 - Telegram (typing, suggestions, autocorrect undo, glide spacing, emoji panel; the app is not

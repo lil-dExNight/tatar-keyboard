@@ -88,13 +88,12 @@ findings (setup link, filled-button labels, secondary text) are fixed and pinned
 `AppScreenContrastContractTest`: the light accent and secondary text stepped one notch darker,
 and the dark filled button takes its own fill color, darker than the dark link accent.
 
-**UI2 — Dynamic-color theme variant (zero-dep).** New theme entry reusing the iOS geometry,
-colors mapped from framework `system_*` resources on API 31+ with fixed, contrast-verified
-tone pairs per uiMode (JVM contrast test gates the mapping); static palette below API 31;
-re-read on wallpaper change via `OnColorsChangedListener` and on input-view creation.
-Closes the largest competitive gap on ~79% of devices at a few KB. Watch: OEM palette
-variance (HyperOS unverified) — device-matrix probe before shipping; the default Tatar theme
-stays the default and must not degrade.
+**UI2 — landed.** The Dynamic (Material You) theme reuses the iOS geometry with colors routed
+through framework `system_*` roles on API 31+ (wholesale fallback to the Tatar palette below
+or when a role fails to resolve); `DynamicThemeContractTest` gates the per-uiMode pairs
+against the canonical framework tones; wallpaper changes re-resolve through
+`OnColorsChangedListener`. The OEM retoning variance probe stays on the device pass; the
+default Tatar theme is byte-untouched.
 
 **UI3 — Close the uiMode-flip staleness hole (probe first).** Device leg: `cmd uimode night
 yes/no` with the keyboard visible, screencap, assert the palette crossed. If stale on

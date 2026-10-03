@@ -21,7 +21,9 @@ These hold for every release and are not repeated in the entries below:
 - Text shortcuts: your own abbreviation → phrase pairs (Settings → Preferences), expanded as you type, with undo.
 - A fresh clipboard clip can appear in the suggestion strip while the keyboard is open — never stored, never in password fields.
 - After an autocorrect, the strip offers the word as you typed it for one-tap undo.
+- Undoing the same correction twice mutes it for good: the keyboard remembers refused corrections and never repeats them.
 - Backup and export: settings and learned words to a single file you choose (Settings → Backup and export).
+- Password managers can fill login fields from the suggestion strip on Android 11+ (inline autofill).
 - One-handed mode: the keyboard docks to the left or right at 85% width (Settings → Appearance).
 - A Dynamic (Material You) theme that follows the wallpaper colors on Android 12+.
 - With glide typing on and word suggestions off, a glided word still shows its alternates in the strip, a refused glide shows its candidates, and undoing a glide brings the remaining candidates back for one tap.

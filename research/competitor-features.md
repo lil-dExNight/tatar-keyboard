@@ -71,18 +71,22 @@ verifiable (CI checks the manifest; `release_check.sh` checks the size).
    reference device (`OneHandedMode.MIN_FIFTH_ROW_KEY_WIDTH_PX`), with the scale clamped up on
    screens too narrow for it. Floating and split stay parked (tablet-centric, highest draw-loop
    risk); the perf legs with the mode on stay on the device pass.
-4. **Inline autofill in the strip** (API 30+) — system-mediated, offline by construction;
-   the custom-drawn strip needs a small view-hosting path; cold-start delta measured on the
+4. **Inline autofill in the strip** (API 30+) — landed: the strip hosts the platform's inline
+   suggestions through a lazy ViewStub container, words resume on the platform's
+   empty-response signal; password fields host chips too (the content is the user's own
+   autofill service's, only hosted). Cold-start delta and the service-backed pass stay on the
    reference device.
-5. **Backup/export of settings + learned data via SAF** (one user-picked file, zip with
-   canonical-path validation — HeliBoard's zip-slip bug is the cautionary precedent). Your
-   words, your file: strengthens the privacy story. Round-trip tested (JVM + instrumentation).
+5. **Backup/export of settings + learned data via SAF** — landed: one user-picked zip with a
+   manifest and per-entry SHA-256; import is fail-closed with canonical-path classification
+   and strict validators, stores reload live. Round-trip tested on the JVM and on an emulator
+   through the real SAF picker.
 6. **Shift cycles case of the selection / last word** — landed: selection uses the existing
    recapitalize rotation, no selection cycles the word before the cursor; plain shift is
    untouched. The InputConnection manual matrix stays on the device pass.
-7. **Text shortcuts (abbreviation → expansion)** over the personal-store plumbing; covers the
-   pinned-clip use case *without touching the clipboard*; Tatar value: long suffixes and
-   fixed phrases. No tracker groundswell — honest weak signal, but near-zero cost.
+7. **Text shortcuts (abbreviation → expansion)** — landed: user-managed pairs in their own
+   checksummed store, offered while the shortcut is the typed word and expanded on the
+   separator through the shared commit path (the revert window covers it); a management screen
+   sits next to Saved words.
 8. **Undo/redo actions** built on existing commit tracking; gate to well-behaved editors.
 
 ## Clipboard: decision memo (BRIEF-level)
@@ -95,9 +99,9 @@ an at-rest dataset, and "never stores the clipboard" is a maximally simple promi
 
 Compatible shapes, in escalating order:
 
-- **Text shortcuts** (above) — no clipboard involvement; do regardless.
-- **In-memory recent-clip cell** — offer a fresh clip in the strip, RAM only, suppressed in
-  password/private fields and on the keyguard; "never stored" stays literally true.
+- **Text shortcuts** (above) — landed.
+- **In-memory recent-clip cell** — landed: a fresh clip is offered at an idle strip, RAM only,
+  TTL-bounded, never in password fields or on the keyguard, never stored or learned from.
 - **Opt-in clipboard pane** — toggled like the emoji panel; text-only (no images); default
   retention 60 min (the Gboard mental model), pin = keep until unpinned; listener active only
   while enabled and unlocked; `noBackupFilesDir`; insertions routed so clips are never

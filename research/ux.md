@@ -74,12 +74,9 @@ spoken Tatar letter names.
 
 ### Strip and autocorrect
 
-**UX1 — Inline revert cell while the autocorrect undo window is live.** Today undo is
-backspace-only and invisible. While `RevertWindow` holds a revertable replacement, the strip
-paints the typed word as a tappable "keep-typed" cell (the iOS 17 pattern adapted to an IME —
-we cannot underline host text). Gate: lab task "undo the planted wrong correction" — fraction
-reverting within 30 s, with vs without the cell (N≈12); JVM + device tests. The single
-angriest failure case made recoverable.
+**UX1 — landed.** While the revert window is live, the strip paints the typed word as a
+tappable keep-typed cell in the locale's quotes; a tap reverts through the shared undo path.
+The lab task ("undo the planted wrong correction") stays on the human pass.
 **UX2 — landed.** Refused corrections persist: undoing the same (typed word → replacement)
 correction twice, in any sessions, mutes it for good, per language (`RefusedCorrectionStore`,
 `.tref`, capped, evicted oldest-first, erased with the saved words, part of the backup). The

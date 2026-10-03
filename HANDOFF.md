@@ -150,6 +150,21 @@ The prediction/glide quality round followed, experiment-gated (every memo ran to
   geometric signal cannot separate garbage from noise at the pre-registered refusal rates),
   endpoint pruning n=2→3 (+1.3 pp top-1 but the host p95 doubles past the budget).
 
+The features sprint and the lab instrument landed after it:
+
+- Strip features: text shortcuts (own `.tcut` store, expansion covered by the revert window),
+  the in-memory recent-clip cell (RAM only, TTL-bounded, never in password fields), the
+  inline autocorrect-revert cell, and persistent refused corrections (`.tref` store, threshold
+  two undos of a pair, joins the backup).
+- Platform features: inline autofill in the strip (API 30+, hosted views, the word strip
+  untouched without a session), backup/export of settings and learned data through SAF
+  (fail-closed import, zip-slip-safe by construction), one-handed mode (85% docked grid, dead
+  side strip, fifth-row floor), the Dynamic (Material You) theme (API 31+, wholesale fallback
+  below), and the app-screen palette at WCAG AA.
+- The fifth-row lab instrument: developer section with the A/B/C arm switch and the opt-in
+  content-free session log; the protocol lives in `docs/LAB-FIFTH-ROW.md`; the sessions need
+  participants.
+
 The device pass for this sprint is listed in `docs/ROADMAP.md` section 3.
 
 ## Open release steps
