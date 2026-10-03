@@ -73,6 +73,12 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      */
     public static final String PREF_EMOJI_PANEL_HEIGHT = "pref_emoji_panel_height";
     public static final String PREF_BOTTOM_OFFSET_PORTRAIT = "pref_bottom_offset_portrait";
+    /**
+     * The one-handed dock side: one of the {@link OneHandedMode} SIDE_* values as an int
+     * (0 = off, the default). The settings row writes it; a managed restriction writes the same
+     * int. An out-of-range value reads as off — see {@link #readOneHandedSide}.
+     */
+    public static final String PREF_ONE_HANDED_SIDE = "pref_one_handed_side";
     public static final String PREF_KEYBOARD_COLOR = "pref_keyboard_color";
     public static final String PREF_SHOW_SPECIAL_CHARS = "pref_show_special_chars";
     public static final String PREF_SHOW_NUMBER_ROW = "pref_show_number_row";
@@ -238,6 +244,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
                         break;
                     case PREF_KEY_LONGPRESS_TIMEOUT:
                     case PREF_BOTTOM_OFFSET_PORTRAIT:
+                    case PREF_ONE_HANDED_SIDE:
                         Log.i(TAG, "Loading restriction: " + key);
                         prefsEditor.putInt(key, appRestrictions.getInt(key));
                         break;
@@ -493,6 +500,11 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     public static final int DEFAULT_BOTTOM_OFFSET = 0;
+
+    public static int readOneHandedSide(final SharedPreferences prefs) {
+        final int side = prefs.getInt(PREF_ONE_HANDED_SIDE, OneHandedMode.SIDE_DEFAULT);
+        return OneHandedMode.isValidSide(side) ? side : OneHandedMode.SIDE_DEFAULT;
+    }
 
     public static int readKeyboardDefaultColor(final Context context) {
         final int[] keyboardThemeColors = context.getResources().getIntArray(R.array.keyboard_theme_colors);

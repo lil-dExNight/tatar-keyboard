@@ -1224,6 +1224,7 @@ class SettingsHostActivity : Activity() {
                     R.string.show_emoji_key, R.string.show_emoji_key_summary),
             keyboardHeightRow(),
             emojiPanelHeightRow(),
+            oneHandedModeRow(),
             valueRow(Settings.PREF_BOTTOM_OFFSET_PORTRAIT,
                     R.string.prefs_bottom_offset_portrait_settings,
                     resources.getInteger(R.integer.config_min_bottom_offset_portrait),
@@ -1419,6 +1420,57 @@ class SettingsHostActivity : Activity() {
                     if (scale != Settings.readKeyboardHeight(prefs,
                             KeyboardHeightPresets.DEFAULT_SCALE)) {
                         prefs.edit().putFloat(Settings.PREF_KEYBOARD_HEIGHT, scale).apply()
+                    }
+                    onValueChanged()
+                }
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
+    /**
+     * "One-handed mode": off or docked left/right, stored as the [Settings.PREF_ONE_HANDED_SIDE]
+     * int, mirroring [keyboardHeightRow]. The keyboard applies it on its next rebuild — the side
+     * is part of KeyboardId, so no cache needs clearing.
+     */
+    private fun oneHandedModeRow(): View {
+        val row = inflateRow(R.layout.row_value, R.string.one_handed_mode, 0)
+        val valueView = row.findViewById<TextView>(R.id.row_value)
+        valueView.text = oneHandedModeValueText()
+        row.setOnClickListener {
+            showOneHandedModeDialog {
+                valueView.text = oneHandedModeValueText()
+            }
+        }
+        if (isRestricted(Settings.PREF_ONE_HANDED_SIDE)) {
+            setRowEnabled(row, false)
+        }
+        return row
+    }
+
+    private val oneHandedModeLabelRes = listOf(
+        R.string.one_handed_mode_off,
+        R.string.one_handed_mode_left,
+        R.string.one_handed_mode_right,
+    )
+
+    /** The docked side's localized name; the read is range-checked, so the index is always valid. */
+    private fun oneHandedModeValueText(): String =
+            getString(oneHandedModeLabelRes[Settings.readOneHandedSide(prefs)])
+
+    private fun showOneHandedModeDialog(onValueChanged: () -> Unit) {
+        val labels = oneHandedModeLabelRes.map { getString(it) }.toTypedArray()
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.one_handed_mode)
+                // setItems on purpose, exactly like the keyboard-height picker: the choice applies
+                // on the tap itself and the dialog closes — no unnamed OK button.
+                .setItems(labels) { _, which ->
+                    val side = OneHandedMode.SIDES[which]
+                    if (side != Settings.readOneHandedSide(prefs)) {
+                        prefs.edit().putInt(Settings.PREF_ONE_HANDED_SIDE, side).apply()
                     }
                     onValueChanged()
                 }

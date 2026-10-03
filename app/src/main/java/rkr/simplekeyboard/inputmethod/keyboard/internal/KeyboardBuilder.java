@@ -41,6 +41,7 @@ import rkr.simplekeyboard.inputmethod.keyboard.Keyboard;
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardId;
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardTheme;
 import rkr.simplekeyboard.inputmethod.latin.common.StringUtils;
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode;
 import rkr.simplekeyboard.inputmethod.latin.utils.ResourceUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.XmlParseUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.XmlParseUtils.ParseException;
@@ -257,13 +258,23 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
                     R.styleable.Keyboard_keyboardTopPadding, height, 0);
             params.mBottomPadding = ResourceUtils.getDimensionOrFraction(keyboardAttr,
                     R.styleable.Keyboard_keyboardBottomPadding, height, 0);
+            // The one-handed dock scales the key grid to OneHandedMode's share of the width and
+            // adds the freed strip to the side padding opposite the grid, so every key position
+            // and width follows from the unchanged formulas below. The view still spans the whole
+            // occupied width (the strip keeps the keyboard background), and the hitbox span keeps
+            // the strip touch-dead.
+            final int oneHandedSide = params.mId.mOneHandedSide;
+            final int gridWidth = OneHandedMode.gridWidthPx(width, oneHandedSide);
+            final int[] dockPaddings = OneHandedMode.dockPaddingsPx(width, oneHandedSide);
             params.mLeftPadding = ResourceUtils.getDimensionOrFraction(keyboardAttr,
-                    R.styleable.Keyboard_keyboardLeftPadding, width, 0);
+                    R.styleable.Keyboard_keyboardLeftPadding, gridWidth, 0) + dockPaddings[0];
             params.mRightPadding = ResourceUtils.getDimensionOrFraction(keyboardAttr,
-                    R.styleable.Keyboard_keyboardRightPadding, width, 0);
+                    R.styleable.Keyboard_keyboardRightPadding, gridWidth, 0) + dockPaddings[1];
+            params.mHitboxMinX = dockPaddings[0];
+            params.mHitboxMaxX = width - dockPaddings[1];
 
             params.mHorizontalGap = keyboardAttr.getFraction(
-                    R.styleable.Keyboard_horizontalGap, width, width, 0);
+                    R.styleable.Keyboard_horizontalGap, gridWidth, gridWidth, 0);
             final float baseWidth = params.mOccupiedWidth - params.mLeftPadding
                     - params.mRightPadding + params.mHorizontalGap;
             params.mBaseWidth = baseWidth;
@@ -734,7 +745,10 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
             throw new RuntimeException("orphan end row tag");
         }
         if (mPreviousKeyInRow != null && !mPreviousKeyInRow.isSpacer()) {
-            setKeyHitboxRightEdge(mPreviousKeyInRow, mParams.mOccupiedWidth);
+            // mHitboxMaxX, not mOccupiedWidth: past it lies the one-handed dock's dead strip,
+            // which must not join the last key's hitbox (it is the occupied edge itself when
+            // the mode is off).
+            setKeyHitboxRightEdge(mPreviousKeyInRow, mParams.mHitboxMaxX);
             mPreviousKeyInRow = null;
         }
         mCurrentY += row.getRowHeight();

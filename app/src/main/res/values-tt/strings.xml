@@ -49,6 +49,10 @@
     <string name="emoji_panel_height_same">Төймәсарныкыдай</string>
     <string name="emoji_panel_height_larger">Зуррак</string>
     <string name="emoji_panel_height_max">Иң зур</string>
+    <string name="one_handed_mode">Бер кул режимы</string>
+    <string name="one_handed_mode_off">Сүндерелгән</string>
+    <string name="one_handed_mode_left">Сулда</string>
+    <string name="one_handed_mode_right">Уңда</string>
     <string name="prefs_bottom_offset_portrait_settings">Астан чигенеш</string>
     <string name="keyboard_color">Төймәсарга үз төсен кую</string>
     <string name="show_special_chars">Махсус символларны күрсәтү</string>

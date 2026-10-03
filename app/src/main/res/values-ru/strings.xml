@@ -49,6 +49,10 @@
     <string name="emoji_panel_height_same">Как у клавиатуры</string>
     <string name="emoji_panel_height_larger">Больше</string>
     <string name="emoji_panel_height_max">Максимальная</string>
+    <string name="one_handed_mode">Режим одной руки</string>
+    <string name="one_handed_mode_off">Выкл</string>
+    <string name="one_handed_mode_left">Слева</string>
+    <string name="one_handed_mode_right">Справа</string>
     <string name="prefs_bottom_offset_portrait_settings">Сдвиг снизу</string>
     <string name="keyboard_color">Установить пользовательский цвет клавиатуры</string>
     <string name="show_special_chars">Показать специальные символы</string>

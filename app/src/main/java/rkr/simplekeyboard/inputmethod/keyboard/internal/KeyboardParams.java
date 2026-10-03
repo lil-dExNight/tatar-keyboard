@@ -47,6 +47,12 @@ public class KeyboardParams {
     public float mLeftPadding;
     public float mRightPadding;
 
+    /** The x span the key hitboxes may cover; the dead strip the one-handed dock frees lies
+     *  outside it, up to the occupied edges. The whole occupied width when the mode is off.
+     */
+    public int mHitboxMinX = 0;
+    public int mHitboxMaxX = Integer.MAX_VALUE;
+
     public KeyVisualAttributes mKeyVisualAttributes;
 
     public float mDefaultRowHeight;

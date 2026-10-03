@@ -17,7 +17,7 @@ What the majors ship and what users demonstrably care about:
 | Clipboard history | Headline Gboard feature (Google is extending retention); SwiftKey headline; HeliBoard/FlorisBoard ship it; **12+ issues — the most requested feature in Simple Keyboard, our own upstream** | Fits technically; **excluded in `BRIEF.md`** — see the decision memo below |
 | Text-editing mode | Gboard/SwiftKey/Samsung all ship | Fits (pure `InputConnection` work) |
 | Word-delete gesture | HeliBoard #1289/#535 (47 combined reactions) | Fits (same gesture family as our spacebar swipe) |
-| One-handed mode | Gboard since 2016, iOS since iOS 11; our audience types on 6.5"+ budget phones | Fits (layouts are data) |
+| One-handed mode | Gboard since 2016, iOS since iOS 11; our audience types on 6.5"+ budget phones | **Shipped** |
 | Themes | SwiftKey 100+, Samsung Keys Cafe is a whole product, Gboard dynamic color | Fits narrowly: the zero-dep dynamic-color path in `research/ui.md` (UI2), no theme store |
 | Voice typing | The current industry battleground (Pixel, SwiftKey "offline AI voice") | **Excluded in `BRIEF.md`** — feasibility study in `research/voice-input.md` |
 | Translation, GIF/sticker search, Emoji Kitchen, proofread AI, handwriting | Headline features of the majors | **Never fit** (network, size, IP, or model cost) — do not schedule |
@@ -62,9 +62,15 @@ verifiable (CI checks the manifest; `release_check.sh` checks the size).
    the cursor, gated on the existing delete-swipe preference and the field type; the
    auto-repeat and select-to-delete paths are unchanged. The distance/time constants need
    on-device tuning (the device-pass checklist is in the change).
-3. **One-handed (compact) mode** — width scale + left/right alignment; layouts are data.
-   Guard the fifth row's minimum key size; measure the perf legs with the mode on. Floating
-   and split stay parked (tablet-centric, highest draw-loop risk).
+3. **One-handed (compact) mode** — landed: an Appearance row (off / left / right) scales the key
+   grid to 85% of the keyboard width and docks it to the chosen side; the freed strip keeps the
+   keyboard background and answers no touch. The dock is geometry only — the freed width joins
+   the side padding opposite the grid in `KeyboardBuilder` — so hit boxes, preview balloons and
+   glide follow on their own, and the suggestion strip and the emoji panel keep the full width.
+   The fifth-row key pitch is floored at the narrowest key pitch the Tatar layout ships on the
+   reference device (`OneHandedMode.MIN_FIFTH_ROW_KEY_WIDTH_PX`), with the scale clamped up on
+   screens too narrow for it. Floating and split stay parked (tablet-centric, highest draw-loop
+   risk); the perf legs with the mode on stay on the device pass.
 4. **Inline autofill in the strip** (API 30+) — system-mediated, offline by construction;
    the custom-drawn strip needs a small view-hosting path; cold-start delta measured on the
    reference device.

@@ -107,6 +107,7 @@ public final class KeyboardLayoutSet {
         int mKeyboardWidth;
         int mKeyboardHeight;
         int mKeyboardBottomOffset;
+        int mOneHandedSide;
         boolean mShowMoreKeys;
         boolean mShowNumberRow;
         boolean mShowEmojiKey;
@@ -243,6 +244,12 @@ public final class KeyboardLayoutSet {
             mParams.mKeyboardWidth = keyboardWidth;
             mParams.mKeyboardHeight = keyboardHeight;
             mParams.mKeyboardBottomOffset = keyboardBottomOffset;
+            return this;
+        }
+
+        /** The one-handed dock side (a OneHandedMode SIDE_* value); off by default. */
+        public Builder setOneHandedSide(final int oneHandedSide) {
+            mParams.mOneHandedSide = oneHandedSide;
             return this;
         }
 
