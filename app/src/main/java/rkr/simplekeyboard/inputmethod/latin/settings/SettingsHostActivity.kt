@@ -437,8 +437,9 @@ class SettingsHostActivity : Activity() {
         rows.add(emojiSuggestSwitch)
         // Glide typing has its own row because tapping or sliding is the user's habit, not a
         // property of the words. It does not depend on the suggestions switch: the lift-commit is
-        // typing, not a suggestion, and with suggestions off the strip just shows nothing. The
-        // default matches Settings.readGlideTypingEnabled (on); a user-set value always wins.
+        // typing, not a suggestion, and the gesture's own strip (the alternates, the refused
+        // gesture's candidates) shows with suggestions off too. The default matches
+        // Settings.readGlideTypingEnabled (on); a user-set value always wins.
         val glideSwitch = switchRow(Settings.PREF_GLIDE_TYPING, true,
                 R.string.glide_typing, R.string.glide_typing_summary)
         glideRow = glideSwitch

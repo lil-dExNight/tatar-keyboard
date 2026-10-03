@@ -182,9 +182,11 @@ decoded while the finger moves. `GlideDecoder` is a SHARK2-style statistical cla
 location channels plus a frequency weight), ported with attribution from FlorisBoard's
 `StatisticalGlideTypingClassifier`. Its word index is built lazily on the engine worker
 (`GlideDecoderHost`); only one language keeps an index in memory. The top word is committed on
-lift (`InputLogic.commitGlideWord`); with suggestions on, the other candidates appear in the strip
-and a tap replaces the word. The word takes the shift state: shift capitalizes it, Caps Lock types
-it in capitals.
+lift (`InputLogic.commitGlideWord`); the other candidates appear in the strip and a tap replaces
+the word. The strip side is gated on the glide switch, not the suggestions switch — the
+candidates are corrections of the gesture — so they also appear with suggestions off, while
+typed-text suggestions stay off. The word takes the shift state: shift capitalizes it, Caps Lock
+types it in capitals.
 
 Letters and doubled letters: `GlideKeyGeometry` is built from the live keys and their long-press
 keys. A long-press letter without a key of its own is an alias of its base key, so a word with it
@@ -207,7 +209,8 @@ whitespace, an opening bracket, an opening quote (`«`, `“`, `„`, a straight
 at the field start), a dash, an emoji or at the field start it prepends nothing.
 A letter or digit typed right after the commit gets a space before it; punctuation attaches to the
 word. One backspace right after a glide deletes the whole word with the space it added
-(`LatinImeGlide`).
+(`LatinImeGlide`), and the gesture's remaining candidates re-bind to the emptied position, so a
+tap commits one of them instead of re-gliding.
 
 Capitals: with auto-capitalization on and a field that asks for sentence caps
 (`TYPE_TEXT_FLAG_CAP_SENTENCES`), a word whose prepended space follows '.', '!' or '?' starts
@@ -221,10 +224,10 @@ haptic tick (`GlideRefusalFeedback`, wired to `AudioAndHapticFeedbackManager.per
 which honors the vibrate setting and vibrates on API 29+ only). A letter after the cursor, like an
 unknown cursor, refuses before the decode and leaves the strip as it was; one that appears by the
 decode result shows no candidates either, since a tap on one would be refused the same way. For a
-stale or unknown cache with suggestions on, the strip shows the decoded candidates
-(`REFUSED_GLIDE` binding); a tap commits one through the same glide commit path against the live
-text, with the same spacing and undo, and is refused with another tick and reload request while the
-cache is still unknown. With suggestions off, the tick is the only signal.
+stale or unknown cache the strip shows the decoded candidates (`REFUSED_GLIDE` binding); a tap
+commits one through the same glide commit path against the live text, with the same spacing and
+undo, and is refused with another tick and reload request while the cache is still unknown. Like
+the alternates, this strip is gated on the glide switch and also appears with suggestions off.
 
 ## Emoji panel
 

@@ -377,22 +377,160 @@ class GlideEndToEndTest {
         assertEquals("", h.editor.text)
     }
 
+    // --- The undo returns the rescue path --------------------------------------------------------
+
+    @Test
+    fun anUndoRebindsTheGestureCandidatesAndATapCommitsOne() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәләм", h.editor.text)
+        val alternates = h.strip.shown.last()
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
+        // The backspace path (LatinImeGlide) fires onTextChanged right after the undo; the
+        // gesture's remaining candidates re-bind to the emptied position.
+        h.controller.onTextChanged()
+        assertEquals(alternates, h.strip.shown.last())
+        // A tap commits one at the live cursor instead of re-gliding — through the glide commit
+        // path, with the whole-word undo armed again.
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәлләм", h.editor.text)
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
+    }
+
+    @Test
+    fun anUndoWithSuggestionsOffRebindsTheCandidates() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәләм", h.editor.text)
+        val alternates = h.strip.shown.last()
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
+        // The rescue strip rides the glide switch, not the suggestions switch.
+        h.controller.onTextChanged()
+        assertEquals(alternates, h.strip.shown.last())
+        // The tap commits; typed-text suggestions stay off, so nothing new is painted after it.
+        val shownBefore = h.strip.shown.size
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәлләм", h.editor.text)
+        assertEquals(shownBefore, h.strip.shown.size)
+    }
+
+    @Test
+    fun anUndoAfterAnAlternativeReplacementOffersTheOriginalTop1Again() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәлләм", h.editor.text)
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
+        h.controller.onTextChanged()
+        val cells = h.strip.shown.last().filterNotNull()
+        assertFalse("the deleted alternative is not re-offered, was $cells", cells.contains("сәлләм"))
+        assertTrue("the gesture's other candidates survive, was $cells", cells.contains("сәләм"))
+    }
+
+    @Test
+    fun anUndoOfAChainedGlideRebindsAtThePositionAfterTheFirstWord() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәләм сәләм", h.editor.text)
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("сәләм", h.editor.text)
+        h.controller.onTextChanged()
+        val cells = h.strip.shown.last().filterNotNull()
+        assertTrue("the second gesture's candidates re-bind, was $cells", cells.contains("сәлләм"))
+        // The tap commits at the live position with the glide's leading space.
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәләм сәлләм", h.editor.text)
+    }
+
+    @Test
+    fun aTextChangeBeforeTheFollowUpDropsTheRescue() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("", h.editor.text)
+        // An edit that is not the undo's own deletion lands first: the armed rescue is stale and
+        // drops, and with suggestions off the strip hides instead of keeping the stale cells.
+        val hides = h.strip.hideCount
+        h.editor.text += "б"
+        h.controller.onTextChanged()
+        assertTrue("the stale band hides", h.strip.hideCount > hides)
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("б", h.editor.text)
+    }
+
     // --- Glide independent of the suggestions master switch ------------------------------------
 
     @Test
-    fun theLiftCommitsWithSuggestionsOffAndTheStripShowsNothing() {
+    fun theLiftCommitWithSuggestionsOffShowsTheAlternativesAndTheyAreTappable() {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start(eligible = false, glideEligible = true)
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         // The commit is typing, not a suggestion: the word lands (with NO auto-space)…
         assertEquals("сәләм", h.editor.text)
-        // …and the strip — the suggestions surface — shows NOTHING: no alternatives band…
-        assertTrue("no band may paint with the master off, was ${h.strip.shown}",
-            h.strip.shown.isEmpty())
+        // …and the strip shows the gesture's remaining candidates: corrections of the gesture,
+        // gated on the glide switch, not the suggestions switch.
+        val cells = h.strip.shown.last().filterNotNull()
+        assertTrue("сәлләм must ride the alternatives, was $cells", cells.contains("сәлләм"))
+        assertFalse("the committed word is not re-offered", cells.contains("сәләм"))
+        // A tap replaces the committed word in place, as with suggestions on. Typed-text
+        // suggestions stay off: the strip paints nothing new for the replaced word.
+        val shownBefore = h.strip.shown.size
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәлләм", h.editor.text)
+        assertEquals("no typed-text strip with the master off", shownBefore, h.strip.shown.size)
         // …and the undo still works: it is part of the gesture, not of the strip.
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("", h.editor.text)
+    }
+
+    @Test
+    fun typingAfterALiftCommitHidesTheAlternativesWithSuggestionsOff() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәләм", h.editor.text)
+        assertTrue(h.strip.shown.isNotEmpty())
+        // A typed letter unbinds and hides the glide band (nothing re-derives it with the master
+        // off), and a tap on a stale alternative is inert.
+        val hides = h.strip.hideCount
+        h.editor.text += "б"
+        h.controller.onTextChanged()
+        assertTrue("the glide band hides on the next keystroke", h.strip.hideCount > hides)
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәләмб", h.editor.text)
+    }
+
+    @Test
+    fun aSelectionChangeHidesTheGlideBandWithSuggestionsOff() {
+        val h = Harness()
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertEquals("сәләм", h.editor.text)
+        assertTrue(h.strip.shown.isNotEmpty())
+        // The move unbinds and hides the band; the session bump makes a stale tap inert.
+        val hides = h.strip.hideCount
+        h.controller.onSelectionChanged()
+        assertTrue("the glide band hides on a selection change", h.strip.hideCount > hides)
+        h.strip.listener!!.onTap("сәлләм")
+        assertEquals("сәләм", h.editor.text)
     }
 
     @Test
@@ -546,6 +684,19 @@ class GlideEndToEndTest {
         assertEquals(shownBefore, h.strip.shown.size)
         assertTrue(h.editor.predictedCommits.isEmpty())
         assertEquals("", h.editor.text)
+    }
+
+    @Test
+    fun theGlideToggleOffWithSuggestionsOffCommitsAndShowsNothing() {
+        val h = Harness()
+        h.controller.setGlideGate(GlideGate { false })
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start(eligible = false, glideEligible = true)
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertTrue(h.editor.predictedCommits.isEmpty())
+        assertEquals("", h.editor.text)
+        assertTrue(h.strip.shown.isEmpty())
+        assertEquals(0, h.ticks)
     }
 
     @Test
@@ -1143,16 +1294,20 @@ class GlideEndToEndTest {
     }
 
     @Test
-    fun aRefusedGlideWithSuggestionsOffTicksAndShowsNothing() {
+    fun aRefusedGlideWithSuggestionsOffTicksAndShowsItsCandidates() {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start(eligible = false, glideEligible = true)
+        // A letter after the cursor refuses before the decode: a tick, and no candidates (a tap
+        // on one would be refused the same way).
         h.editor.text = "сүз "
         h.editor.textAfterCursor = "дус"
         h.glideSalam()
         assertEquals("сүз ", h.editor.text)
         assertEquals(1, h.ticks)
-        // The stale case reaches the commit path and ticks there.
+        assertTrue("nothing decoded, nothing shown, was ${h.strip.shown}", h.strip.shown.isEmpty())
+        // The stale case reaches the commit path and ticks there — and with the glide switch on
+        // the candidates still paint, suggestions off or not.
         h.editor.textAfterCursor = ""
         h.tatarEngine().holdGlide = true
         h.glideSalam()
@@ -1160,7 +1315,14 @@ class GlideEndToEndTest {
         h.tatarEngine().deliverHeldGlide()
         assertEquals("сүз а", h.editor.text)
         assertEquals(2, h.ticks)
-        assertTrue("no strip with suggestions off, was ${h.strip.shown}", h.strip.shown.isEmpty())
+        assertEquals("сәләм", h.strip.shown.last()[0])
+        // A tap commits at the live cursor with the glide's spacing, as with suggestions on.
+        h.strip.listener!!.onTap("сәләм")
+        assertEquals("сүз а сәләм", h.editor.text)
+        assertEquals(2, h.ticks)
+        // The whole-word undo covers the tapped word and its space.
+        assertTrue(h.controller.maybeUndoGlideCommit())
+        assertEquals("сүз а", h.editor.text)
     }
 
     @Test
