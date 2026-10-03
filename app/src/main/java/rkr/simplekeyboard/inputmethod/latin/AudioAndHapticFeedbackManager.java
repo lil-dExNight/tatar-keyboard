@@ -155,6 +155,18 @@ public final class AudioAndHapticFeedbackManager {
         }
     }
 
+    /**
+     * A long-press haptic (the emoji skin-tone popup), gated on the same key-press vibration
+     * setting as a key press. Always goes through the view, so the LONG_PRESS feel survives on
+     * every API level and the system haptics switch wins as it does for key presses.
+     */
+    public void performLongPressHapticFeedback(final View viewToPerformHapticFeedbackOn) {
+        if (!mSettingsValues.mVibrateOn || viewToPerformHapticFeedbackOn == null) {
+            return;
+        }
+        viewToPerformHapticFeedbackOn.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+    }
+
     public void performTickFeedback() {
         if (!mSettingsValues.mVibrateOn
                 || mVibrator == null

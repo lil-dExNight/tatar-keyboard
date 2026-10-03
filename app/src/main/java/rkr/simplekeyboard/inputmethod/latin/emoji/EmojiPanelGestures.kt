@@ -18,7 +18,8 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 /**
  * Gesture helpers of [EmojiPanelView] as `internal` extension functions: the skin-tone long-press
  * arming and its cancel, and the sideways-flick section jump. The long-press timeout, runnable,
- * skin-tone table, scroller and jump duration are `internal` on the view so these can reach them.
+ * skin-tone table, scroller, jump duration and motion policy are `internal` on the view so these
+ * can reach them.
  */
 
 /** Arms the skin-tone long press, but only over a cell whose emoji actually has tones. */
@@ -40,6 +41,8 @@ internal fun EmojiPanelView.cancelSkinTonePopupTimer() {
 /**
  * Animates a sideways flick into a jump to the neighboring section. The same single scroller
  * that carries a fling carries this, so there is still no second animator and no allocation.
+ * With a zero system animator scale the jump gets a zero duration: the scroller then lands on
+ * the target in its first computeScroll pass, so the jump reads as a teleport (WCAG 2.3.3).
  */
 internal fun EmojiPanelView.maybeJumpSection(direction: Int) {
     if (direction == 0) return
@@ -50,6 +53,7 @@ internal fun EmojiPanelView.maybeJumpSection(direction: Int) {
     val to = state.sectionTop(target).coerceIn(0, state.maxScrollY())
     if (to == from) return
     scroller.forceFinished(true)
-    scroller.startScroll(0, from, 0, to - from, EmojiPanelView.SECTION_JUMP_MS)
+    val durationMs = if (motionPolicy?.animationsEnabled == false) 0 else EmojiPanelView.SECTION_JUMP_MS
+    scroller.startScroll(0, from, 0, to - from, durationMs)
     postInvalidateOnAnimation()
 }

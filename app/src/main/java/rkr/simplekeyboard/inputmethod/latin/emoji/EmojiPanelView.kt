@@ -35,6 +35,8 @@ import android.view.accessibility.AccessibilityManager
 import android.widget.OverScroller
 import android.view.accessibility.AccessibilityNodeInfo
 import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper
+import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
+import rkr.simplekeyboard.inputmethod.latin.utils.MotionPolicy
 import kotlin.math.abs
 import rkr.simplekeyboard.inputmethod.R
 
@@ -169,6 +171,13 @@ class EmojiPanelView @JvmOverloads constructor(
 
     /** Obtained at most once per gesture on ACTION_DOWN, recycled on ACTION_UP/ACTION_CANCEL. */
     private var velocityTracker: VelocityTracker? = null
+
+    /**
+     * The system animator scale of the current gesture, read once on ACTION_DOWN and dropped on
+     * ACTION_UP/ACTION_CANCEL, so the fling and section-jump gates never re-read it per frame.
+     * `internal` for the gesture helpers in EmojiPanelGestures.kt.
+     */
+    internal var motionPolicy: MotionPolicy? = null
 
     private val backgroundPaint = Paint()
     // Paints read by the painters in EmojiPanelDrawing.kt are internal, because an extension
@@ -331,7 +340,8 @@ class EmojiPanelView @JvmOverloads constructor(
         }
         if (state.openPopup(cell, EmojiSkinTones.VARIANT_COUNT)) {
             popupOpenedThisGesture = true
-            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            // The app's key-press vibration toggle gates this too: the manager checks it.
+            AudioAndHapticFeedbackManager.getInstance().performLongPressHapticFeedback(this)
             invalidate()
             invalidateAccessibilityRootIfExploring()
         }
@@ -432,6 +442,7 @@ class EmojiPanelView @JvmOverloads constructor(
         state.closePopup()
         scroller.forceFinished(true)
         flingActive = false
+        motionPolicy = null
         recycleVelocityTracker()
         state.cancelGesture()
         listener = null
@@ -629,6 +640,7 @@ class EmojiPanelView @JvmOverloads constructor(
                 }
                 obtainVelocityTracker()
                 velocityTracker?.addMovement(event)
+                motionPolicy = MotionPolicy.of(context)
                 val pointerIndex = event.actionIndex
                 val target = state.onDown(
                     event.getPointerId(pointerIndex),
@@ -693,6 +705,7 @@ class EmojiPanelView @JvmOverloads constructor(
                 }
                 dispatchTarget(target)
                 maybeJumpSection(state.consumeSwipe())
+                motionPolicy = null
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -700,6 +713,7 @@ class EmojiPanelView @JvmOverloads constructor(
                 cancelSkinTonePopupTimer()
                 state.closePopup()
                 scroller.forceFinished(true)
+                motionPolicy = null
                 recycleVelocityTracker()
                 state.cancelGesture()
                 invalidate()
@@ -787,6 +801,8 @@ class EmojiPanelView @JvmOverloads constructor(
      * On release of a gesture that was scrolling, starts a fling when the release speed clears the
      * platform minimum. The fling/tap decision and the scroll clamp are the pure [EmojiFling]
      * physics; the single reusable [scroller] carries the motion and [computeScroll] advances it.
+     * With a zero system animator scale the fling animation does not play: the panel lands on the
+     * fling's rest position in one step (the drag itself is direct feedback and is never gated).
      */
     private fun maybeFling(wasScrolling: Boolean) {
         val tracker = velocityTracker ?: return
@@ -798,6 +814,14 @@ class EmojiPanelView @JvmOverloads constructor(
         if (EmojiFling.shouldFling(true, velocityY, minFlingVelocity, state.maxScrollY())) {
             scroller.forceFinished(true)
             scroller.fling(0, state.scrollY(), 0, -velocityY.toInt(), 0, 0, 0, state.maxScrollY())
+            if (motionPolicy?.animationsEnabled == false) {
+                // The scroller has computed the rest position synchronously; jump to it instead of
+                // animating. isFinished stays true, so the ACTION_UP block fires the same
+                // scroll-settled accessibility refresh a drag release does.
+                state.setScrollY(EmojiFling.clampScroll(scroller.finalY, state.maxScrollY()))
+                scroller.forceFinished(true)
+                return
+            }
             postInvalidateOnAnimation()
         }
     }

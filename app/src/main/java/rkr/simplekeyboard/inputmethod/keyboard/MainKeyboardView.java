@@ -57,6 +57,7 @@ import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.common.CoordinateUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.LanguageOnSpacebarUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils;
+import rkr.simplekeyboard.inputmethod.latin.utils.MotionPolicy;
 import rkr.simplekeyboard.inputmethod.latin.utils.TypefaceUtils;
 
 /**
@@ -109,6 +110,9 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     // Fed through {@link DrawingProxy#onGlideTrailPoint}; preallocated, zero-allocation draw.
     private final GlideTrail mGlideTrail = new GlideTrail();
     private final Paint mGlideTrailPaint = new Paint();
+    // The system animator scale, read once with the gesture's first trail point and dropped at
+    // the lift; {@link #onGlideTrailEnd} consults it, so the draw pass never re-reads it.
+    private MotionPolicy mGlideMotionPolicy;
 
     private final KeyDetector mKeyDetector;
     private final NonDistinctMultitouchHelper mNonDistinctMultitouchHelper;
@@ -414,6 +418,10 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     public void onGlideTrailPoint(final float x, final float y, final long eventTime) {
         // Explicit narrowing: gesture deltas are milliseconds apart, so the float's 24-bit
         // mantissa is exact where the trail's fade math reads it (same argument as GlidePath).
+        if (mGlideMotionPolicy == null) {
+            // Once per gesture, never per frame: the lift consults this instance.
+            mGlideMotionPolicy = MotionPolicy.of(getContext());
+        }
         mGlideTrail.addPoint(x, y, (float) eventTime);
         invalidate();
     }
@@ -423,6 +431,15 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     public void onGlideTrailEnd() {
         // A no-op for touches that never armed a glide: no per-keystroke invalidate.
         if (mGlideTrail.isEmpty()) {
+            return;
+        }
+        final MotionPolicy motionPolicy = mGlideMotionPolicy;
+        mGlideMotionPolicy = null;
+        if (motionPolicy != null && !motionPolicy.getAnimationsEnabled()) {
+            // The live trail under the finger is feedback and stays; the post-lift fade is
+            // decoration, so a zero animator scale clears the trail at the lift (WCAG 2.3.3).
+            mGlideTrail.clear();
+            invalidate();
             return;
         }
         // The lift fades the trail out over GlideTrail.FADE_OUT_MS instead of erasing it
@@ -444,6 +461,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         // repaints of a detached view (a pending postInvalidateDelayed on a detached view is a
         // no-op, so there is nothing to cancel — the ring itself is what must not survive).
         mGlideTrail.clear();
+        mGlideMotionPolicy = null;
         mDrawingPreviewPlacerView.removeAllViews();
     }
 
