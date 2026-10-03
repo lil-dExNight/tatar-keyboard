@@ -205,4 +205,17 @@
     <string name="edit_menu_paste">Күчереп кую</string>
     <string name="edit_menu_cursor_left">Курсор сулга</string>
     <string name="edit_menu_cursor_right">Курсор уңга</string>
+    <string name="settings_screen_backup">Күчермә һәм экспорт</string>
+    <string name="settings_screen_backup_summary">Көйләүләрне һәм өйрәнелгән сүзләрне файлга саклау яки кире йөкләү</string>
+    <string name="backup_contents_note">Күчермә файлы сезнең көйләүләрне һәм клавиатураның өйрәнгән бар нәрсәсен саклый: сезнең сүзләрегезне, өйрәнелгән сүз парларын һәм өйрәнелгән эмодзиларны. Файл шифрланмаган: аны ача алган һәркем бу сүзләрне укый ала. Ул бары сез сайлаган урынга гына языла, һәм клавиатура аны беркая да җибәрми.</string>
+    <string name="backup_export_action">Файлга чыгару…</string>
+    <string name="backup_import_action">Файлдан йөкләү…</string>
+    <string name="backup_import_confirm_message">Хәзерге көйләүләрне, сакланган сүзләрне, өйрәнелгән сүз парларын һәм өйрәнелгән эмодзиларны файл эчтәлеге белән алыштырыргаме? Бу җиһаздагы хәзерге мәгълүмат югалачак. Моны кире кайтарып булмый.</string>
+    <string name="backup_import_confirm_action">Алыштыру</string>
+    <string name="backup_export_done">Күчермә файлы языылды.</string>
+    <string name="backup_export_failed">Күчермә файлын язып булмады.</string>
+    <string name="backup_import_done">Күчермә йөкләнде.</string>
+    <string name="backup_import_failed_invalid">Бу файл клавиатураның күчермәсе түгел. Бернәрсә дә үзгәртелмәде.</string>
+    <string name="backup_import_failed_write">Йөкләүне тәмамлап булмады. Мәгълүматның бер өлеше инде алыштырылган булырга мөмкин.</string>
+    <string name="backup_no_app">Бу җиһазда файл сайлый торган кушымта юк.</string>
 </resources>

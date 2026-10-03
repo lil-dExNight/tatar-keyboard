@@ -63,15 +63,25 @@ class TpersemValidator {
      *   alphabet, length, cluster-shape, ordering or duplicate violation.
      */
     fun validate(file: File, requestedSubtypeId: String): ValidatedPersonalEmoji {
-        val alphabet = PersonalSubtypes.alphabetFor(requestedSubtypeId)
-            ?: fail("subtype has no declared alphabet")
-
         val length = file.length()
         if (length > TpersemFormat.MAX_FILE_SIZE) fail("file size limit exceeded")
         if (length < TpersemFormat.HEADER_SIZE) fail("file is shorter than its header")
 
         val bytes = file.readBytes()
         if (bytes.size.toLong() != length) fail("file length changed during read")
+        return validate(bytes, requestedSubtypeId)
+    }
+
+    /**
+     * The in-memory counterpart of [validate]: the same checks over bytes already read. See
+     * [TpersValidator.validate] (the ByteArray overload).
+     */
+    fun validate(bytes: ByteArray, requestedSubtypeId: String): ValidatedPersonalEmoji {
+        val alphabet = PersonalSubtypes.alphabetFor(requestedSubtypeId)
+            ?: fail("subtype has no declared alphabet")
+
+        if (bytes.size.toLong() > TpersemFormat.MAX_FILE_SIZE) fail("file size limit exceeded")
+        if (bytes.size < TpersemFormat.HEADER_SIZE) fail("file is shorter than its header")
 
         val header = ByteBuffer.wrap(bytes, 0, TpersemFormat.HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
         val magic = ByteArray(TpersemFormat.MAGIC_SIZE)
@@ -101,7 +111,9 @@ class TpersemValidator {
         val subtypeTag = decodeSubtypeTag(subtypeTagBytes)
         if (subtypeTag != requestedSubtypeId) fail("subtype tag does not match the requested subtype")
 
-        if (payloadSize != length - TpersemFormat.HEADER_SIZE) fail("payload size does not match file")
+        if (payloadSize != bytes.size.toLong() - TpersemFormat.HEADER_SIZE) {
+            fail("payload size does not match file")
+        }
 
         if (!MessageDigest.isEqual(storedChecksum, digestWithChecksumZeroed(bytes))) {
             fail("checksum mismatch")

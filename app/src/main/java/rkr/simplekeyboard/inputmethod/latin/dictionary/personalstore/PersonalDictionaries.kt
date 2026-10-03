@@ -99,6 +99,17 @@ object PersonalDictionaries {
     internal fun snapshotFor(context: Context, subtypeId: String): PersonalDictionary =
         storeFor(context, subtypeId).also { it.prime() }.snapshot
 
+    /**
+     * The backup restore for one language: the store swaps its file for [bytes] (or deletes it on
+     * null) and re-reads itself, on its own worker. See [PersonalDictionaryStore.replaceAll].
+     */
+    internal fun replaceAll(
+        context: Context,
+        subtypeId: String,
+        bytes: ByteArray?,
+        outcome: PersonalMutationOutcome,
+    ) = storeFor(context, subtypeId).replaceAll(bytes, outcome)
+
     @JvmStatic
     fun setErasureListener(listener: Runnable?) {
         erasureListener = listener

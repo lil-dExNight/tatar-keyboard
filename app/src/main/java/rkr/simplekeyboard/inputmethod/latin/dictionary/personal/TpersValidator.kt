@@ -67,15 +67,25 @@ class TpersValidator {
      *   casing, alphabet, length, ordering or duplicate violation.
      */
     fun validate(file: File, requestedSubtypeId: String): ValidatedPersonalDictionary {
-        val alphabet = PersonalSubtypes.alphabetFor(requestedSubtypeId)
-            ?: fail("subtype has no declared alphabet")
-
         val length = file.length()
         if (length > TpersFormat.MAX_FILE_SIZE) fail("file size limit exceeded")
         if (length < TpersFormat.HEADER_SIZE) fail("file is shorter than its header")
 
         val bytes = file.readBytes()
         if (bytes.size.toLong() != length) fail("file length changed during read")
+        return validate(bytes, requestedSubtypeId)
+    }
+
+    /**
+     * The in-memory counterpart of [validate]: the same checks over bytes already read. The backup
+     * import validates an entry this way before it is allowed anywhere near the store.
+     */
+    fun validate(bytes: ByteArray, requestedSubtypeId: String): ValidatedPersonalDictionary {
+        val alphabet = PersonalSubtypes.alphabetFor(requestedSubtypeId)
+            ?: fail("subtype has no declared alphabet")
+
+        if (bytes.size.toLong() > TpersFormat.MAX_FILE_SIZE) fail("file size limit exceeded")
+        if (bytes.size < TpersFormat.HEADER_SIZE) fail("file is shorter than its header")
 
         val header = ByteBuffer.wrap(bytes, 0, TpersFormat.HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
         val magic = ByteArray(TpersFormat.MAGIC_SIZE)
@@ -105,7 +115,9 @@ class TpersValidator {
         val subtypeTag = decodeSubtypeTag(subtypeTagBytes)
         if (subtypeTag != requestedSubtypeId) fail("subtype tag does not match the requested subtype")
 
-        if (payloadSize != length - TpersFormat.HEADER_SIZE) fail("payload size does not match file")
+        if (payloadSize != bytes.size.toLong() - TpersFormat.HEADER_SIZE) {
+            fail("payload size does not match file")
+        }
 
         if (!MessageDigest.isEqual(storedChecksum, digestWithChecksumZeroed(bytes))) {
             fail("checksum mismatch")

@@ -28,8 +28,9 @@ import java.io.File
  *    package at all;
  *  - `LatinIME` may reach the process-wide owner for the read source and the erasure listener,
  *    but calls no mutation on it;
- *  - outside the store package, the only file allowed to call a mutation is the settings screen,
- *    where the user asks for it explicitly.
+ *  - outside the store package, a mutation may be called only from the settings screen, where the
+ *    user asks for it explicitly, and from the backup coordinator, where a restore the user picked
+ *    is applied.
  */
 class PersonalDictionaryNoLiveWriteSourceContractTest {
     private val latinIme by lazy {
@@ -42,6 +43,7 @@ class PersonalDictionaryNoLiveWriteSourceContractTest {
     /** Every mutation the store exposes. Learning would have to call one of these. */
     private val mutations = listOf(
         "addManually(", "forget(", "clearAll(", "noteAcceptedSuggestion(", "flush(", "writeWhole(",
+        "replaceAll(",
     )
 
     @Test
@@ -78,7 +80,12 @@ class PersonalDictionaryNoLiveWriteSourceContractTest {
         val javaRoot = File(sourceRoot(), "java")
         val separator = File.separator
         val packagePath = "dictionary${separator}personalstore$separator"
-        val allowedOutside = "settings${separator}PersonalDictionaryScreen"
+        // The screen carries the user's explicit mutations; the backup coordinator carries the
+        // restore the user picked in the file picker. Neither learns from typing.
+        val allowedOutside = listOf(
+            "settings${separator}PersonalDictionaryScreen",
+            "settings${separator}backup${separator}",
+        )
 
         // Only files that know about the personal dictionary at all: `clearAll(`/`flush(` are
         // ordinary verbs and also belong to unrelated stores (the recent-emoji one, for instance).
@@ -96,8 +103,8 @@ class PersonalDictionaryNoLiveWriteSourceContractTest {
         assertTrue("something mutates the store, so the API exists", mutatingFiles.isNotEmpty())
         for (path in mutatingFiles) {
             assertTrue(
-                "a mutation lives outside the store package and outside the screen: $path",
-                path.contains(packagePath) || path.contains(allowedOutside),
+                "a mutation lives outside the store package and outside the allowed writers: $path",
+                path.contains(packagePath) || allowedOutside.any { path.contains(it) },
             )
         }
     }
