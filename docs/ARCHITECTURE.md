@@ -16,11 +16,11 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 | `event/` | `Event`, `InputTransaction` |
 | `latin/` | `LatinIME` (the `InputMethodService`) with helpers `LatinImeAutocorrect`, `LatinImeGlide`, `LatinImeEmojiSearch`; `RichInputConnection`, `RichInputMethodManager`, `Subtype` |
 | `latin/inputlogic/` | `InputLogic`: what a key press does to the text |
-| `latin/suggestions/` | `SuggestionsController`, `SuggestionStripView`, `SuggestionStripState`, Tatar word utilities and suffix rules |
+| `latin/suggestions/` | `SuggestionsController`, `SuggestionStripView`, `SuggestionStripState`, the recent-clip cell (`RecentClipCell`), Tatar word utilities and suffix rules |
 | `latin/dictionary/engine/` | `LatestOnlyPrefixEngine`, `MappedDictionaryEngine`, `CompositePrefixComputer`, `TdictPrefixIndex`, `TatBigrPrefixIndex`, typo recovery |
 | `latin/dictionary/storage/` | asset publishing (`AtomicDictionaryStore`, `AtomicBigramStore`), validators, artifact specs and pins |
-| `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`), validators, snapshots |
-| `latin/dictionary/personalstore/` | stores that own the personal files, learning gates, pending counters, quarantine |
+| `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TcutFormat`), validators, snapshots |
+| `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, text shortcuts), learning gates, pending counters, quarantine |
 | `latin/glide/` | glide decoder, gesture detector, path and key geometry |
 | `latin/emoji/` | emoji panel, search, skin tones, recents, emoji suggestions |
 | `latin/settings/`, `latin/setup/` | settings screens, onboarding |
@@ -126,8 +126,23 @@ emoji for the context word: a learned emoji first, else the static table (`Emoji
 **Autocorrect** (opt-in `PREF_TATAR_AUTOCORRECT`, requires suggestions). The lookup that fills the
 strip also yields an `AutocorrectAdvice` from edit class #1. On a space or punctuation
 `LatinImeAutocorrect` has the controller replace the word before the separator reaches
-`InputLogic`; one backspace right after undoes it (`RevertWindow`). An undone correction is not
-repeated or previewed for that word again in the same field session.
+`InputLogic`; one backspace right after undoes it (`RevertWindow`). While the undo window is open,
+the strip's first cell offers the typed word back in quotes (a tap reverts, like the backspace).
+An undone correction is not repeated or previewed for that word again in the same field session.
+
+**Text shortcuts** (managed on the "Text shortcuts" settings screen; one list for all layouts,
+`TextShortcutStore`, `.tcut`). While the typed word is exactly a saved shortcut, the strip offers
+its expansion in the first cell; a space or punctuation replaces the word through the same
+separator-time commit path as autocorrect, so the same undo window covers it. A tap on the cell
+commits like an accepted suggestion. An expansion is never learned from, and an undone expansion
+is not offered again in the same field session.
+
+**Recent-clip cell.** While the strip is otherwise idle (an empty prefix and no next-word context)
+and the clipboard holds a fresh text clip, the strip's first cell offers the clip's first line,
+truncated; a tap commits the full clip text (`InputLogic.commitClipText`). The clip is held in
+memory only (`RecentClipCell`, freshness window), never written to disk, never learned from and
+never offered where suggestions may not run; the clipboard listener is registered only while the
+input view is shown (`LatinIME.onWindowShown`/`onWindowHidden`).
 
 ## Bundled dictionaries
 
@@ -153,7 +168,10 @@ language has no suggestions; without its bigram table only next-word prediction 
 Opt-in (`PREF_PERSONAL_DICTIONARY`). Three stores per language share one worker thread
 (`PersonalDictionaries.sharedStoreExecutor()`): `PersonalDictionaryStore` (`.tpers`, learned
 words), `PersonalBigramStore` (`.tpersb`, learned word pairs) and `PersonalEmojiStore` (`.tpersem`,
-learned emoji). Files live in the credential-protected `noBackupFilesDir`.
+learned emoji). Files live in the credential-protected `noBackupFilesDir`. The text-shortcut store
+(`TextShortcutStore`, `.tcut`, one list for all layouts, managed on its own settings screen) shares
+the same directory and worker but holds managed content: pairs enter only from the settings screen,
+with no counters, no pending hashes and no learning.
 
 - **Learning gates.** `PersonalLearningGates.mayLearn`: suggestions eligible for the field (which
   excludes `IME_FLAG_NO_PERSONALIZED_LEARNING`), personal dictionary on, user unlocked since boot,

@@ -125,8 +125,9 @@ class BatchEditPairingContractTest {
     /** The scan is meaningful only while it sees the batches it claims to pair. */
     @Test
     fun theScanAnchorsToTheKnownBatchCounts() {
-        assertEquals(13, batchCall("beginBatchEdit").findAll(files.getValue("InputLogic")).count())
-        assertEquals(13, batchCall("endBatchEdit").findAll(files.getValue("InputLogic")).count())
+        // The recent-clip commit (commitClipText) is one of the InputLogic pairs.
+        assertEquals(14, batchCall("beginBatchEdit").findAll(files.getValue("InputLogic")).count())
+        assertEquals(14, batchCall("endBatchEdit").findAll(files.getValue("InputLogic")).count())
         assertEquals(
             1,
             batchCall("beginBatchEdit").findAll(files.getValue("RichInputConnection")).count(),

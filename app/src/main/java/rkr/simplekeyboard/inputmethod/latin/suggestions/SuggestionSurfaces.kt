@@ -149,6 +149,14 @@ interface EditorSurface {
      */
     fun deleteGlideLiftedWord(committedWord: String, prependedSpace: Boolean): Boolean = false
 
+    /**
+     * Commits the recent-clip cell's full clip text at the cursor, with no auto-space and nothing
+     * deleted (the cell is offered only at an empty-prefix position). A selection, if any, is
+     * replaced by the commit, as a paste would. Returns false without editing when the editor is
+     * gone (default).
+     */
+    fun commitClipText(text: String): Boolean = false
+
     companion object {
         /** [commitGlideWord] refused: nothing was edited. */
         const val GLIDE_COMMIT_REFUSED = 0
@@ -202,6 +210,15 @@ fun interface GlideRefusalFeedback {
  */
 fun interface EmojiSuggestGate {
     fun isOn(): Boolean
+}
+
+/**
+ * Paints the revert window's keep-typed cell: the typed word wrapped in the locale's quotation
+ * marks. Production reads it from a string resource; JVM tests inject their own. Read at paint and
+ * at tap, so the two always agree on the cell's text.
+ */
+fun interface RevertCellDecorator {
+    fun decorate(typedWord: String): String
 }
 
 /**

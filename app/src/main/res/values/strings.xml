@@ -144,6 +144,36 @@
     <string name="tatar_autocorrect">Autocorrect words</string>
     <!-- Description for the autocorrection option. Says plainly that text already typed is changed and how to undo it. -->
     <string name="tatar_autocorrect_summary">Fix a misspelled word when you type a space or punctuation. Press backspace right after to get back what you typed.</string>
+    <!-- Display form of the strip's keep-typed cell: the word as typed, in quotes. %1$s is the word. Tapping the cell puts the typed word back. -->
+    <string name="autocorrect_revert_cell">\u201c%1$s\u201d</string>
+    <!-- Title of the text-shortcuts screen and of the row leading to it -->
+    <string name="text_shortcuts_screen">Text shortcuts</string>
+    <!-- Description beside the row leading to the text-shortcuts screen -->
+    <string name="text_shortcuts_summary">Replace a short word you type with a longer saved text, when you type a space or punctuation after it</string>
+    <!-- Opening note of the text-shortcuts screen. Says plainly when an expansion fires and that it can be undone. -->
+    <string name="text_shortcuts_intro">Type a shortcut and a space or punctuation, and it becomes the longer text — for example a long Tatar suffix or a fixed phrase. Press backspace right after to get the shortcut back.</string>
+    <!-- Row that opens the dialog for adding one shortcut pair -->
+    <string name="text_shortcuts_add">Add shortcut\u2026</string>
+    <!-- Title of the add-shortcut dialog -->
+    <string name="text_shortcuts_add_title">New shortcut</string>
+    <!-- Hint of the shortcut field in the add-shortcut dialog. Letters only, because the shortcut must be typeable as one word. -->
+    <string name="text_shortcuts_shortcut_hint">Shortcut (letters only)</string>
+    <!-- Hint of the expansion field in the add-shortcut dialog -->
+    <string name="text_shortcuts_expansion_hint">Text it expands to</string>
+    <!-- Affirmative button of the add-shortcut dialog -->
+    <string name="text_shortcuts_add_action">Save</string>
+    <!-- Shown when the typed pair cannot be saved. States both content rules. -->
+    <string name="text_shortcuts_add_rejected">This pair cannot be saved: the shortcut is 1 to 32 letters, and the text is 1 to 140 characters on one line.</string>
+    <!-- Action that removes one saved shortcut pair -->
+    <string name="text_shortcuts_delete">Delete</string>
+    <!-- Title of the dialog confirming removal of one pair. %1$s is the shortcut itself. -->
+    <string name="text_shortcuts_delete_title">Delete the shortcut \u201c%1$s\u201d?</string>
+    <!-- Shown on the text-shortcuts screen when no pair is saved yet -->
+    <string name="text_shortcuts_empty">No shortcuts yet.</string>
+    <!-- Shown when a pair the user asked to save was not written. Names no file, code or cause. -->
+    <string name="text_shortcuts_save_failed">Could not save the shortcut. Try again.</string>
+    <!-- Shown when a pair the user asked to remove is still saved -->
+    <string name="text_shortcuts_delete_failed">Could not delete the shortcut. It is still saved.</string>
     <!-- Option to show a matching emoji in the suggestion strip after a finished word -->
     <string name="emoji_suggestions">Emoji suggestions</string>
     <!-- Description for the emoji suggestions option. Says plainly that tapping the emoji only adds it and never changes the typed word. -->
