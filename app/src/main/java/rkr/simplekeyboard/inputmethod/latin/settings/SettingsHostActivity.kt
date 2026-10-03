@@ -82,6 +82,7 @@ class SettingsHostActivity : Activity() {
         PERSONAL_DICTIONARY(R.string.personal_dictionary),
         DATA_SOURCES(R.string.settings_screen_data_sources),
         // New entries go last on purpose: older saved states carry ordinals of the entries above.
+        TEXT_SHORTCUTS(R.string.text_shortcuts_screen),
         DEVELOPER(R.string.settings_screen_developer),
         BACKUP(R.string.settings_screen_backup)
     }
@@ -285,6 +286,7 @@ class SettingsHostActivity : Activity() {
             Screen.LANGUAGES -> buildLanguagesScreen()
             Screen.LANGUAGE_DETAIL -> buildLanguageDetailScreen(detail!!)
             Screen.PERSONAL_DICTIONARY -> buildPersonalDictionaryScreen()
+            Screen.TEXT_SHORTCUTS -> buildTextShortcutsScreen()
             Screen.DATA_SOURCES -> buildDataSourcesScreen()
             Screen.DEVELOPER -> buildDeveloperScreen()
             Screen.BACKUP -> buildBackupScreen()
@@ -666,9 +668,11 @@ class SettingsHostActivity : Activity() {
         setRowEnabled(glideSwitch,
                 !isRestricted(Settings.PREF_GLIDE_TYPING))
         // Reachable whatever the toggles say: erasing what was already saved must always be
-        // possible, so the entry never depends on the switch above it.
+        // possible, so these entries never depend on the switches above them.
         addCard(listOf(linkRow(R.string.personal_dictionary_screen) {
             navigateTo(Screen.PERSONAL_DICTIONARY)
+        }, linkRow(R.string.text_shortcuts_screen, R.string.text_shortcuts_summary) {
+            navigateTo(Screen.TEXT_SHORTCUTS)
         }))
         // A data action, not an appearance toggle: its own card at the end of Preferences, next to
         // the Tatar-suggestions switch. Erasing recent emoji is a confirmed, one-way action; it does
@@ -1295,6 +1299,115 @@ class SettingsHostActivity : Activity() {
         }
         if (currentScreen == Screen.PERSONAL_DICTIONARY) {
             showScreen(Screen.PERSONAL_DICTIONARY)
+        }
+    }
+
+    /**
+     * The "Text shortcuts" screen: the user's own (shortcut → expansion) pairs, one row each
+     * (expansion as the title, shortcut as the summary), an "Add shortcut…" row and a delete action
+     * per row. Fully usable with every learning switch off: the pairs are managed content, not
+     * learned content, and removing them must always be possible. The store is read only through
+     * the published snapshot of its process-wide owner (file work runs on the personal-store
+     * worker); an unreadable store (device locked, file moved aside) publishes an empty snapshot.
+     */
+    private fun buildTextShortcutsScreen() {
+        val controller = TextShortcutsScreenController(this)
+        val pairs = controller.pairs()
+
+        addCard(listOf(textRow(getString(R.string.text_shortcuts_intro))))
+        addCard(listOf(actionRow(R.string.text_shortcuts_add) {
+            showAddTextShortcutDialog(controller)
+        }))
+
+        if (pairs.isEmpty) {
+            addCard(listOf(textRow(getString(R.string.text_shortcuts_empty))))
+            return
+        }
+        val rows = ArrayList<View>()
+        for (index in 0 until pairs.size) {
+            val shortcut = pairs.shortcutAt(index)
+            rows.add(linkRow(pairs.expansionAt(index), shortcut) {
+                showDeleteTextShortcutDialog(controller, shortcut)
+            }.also { it.findViewById<View>(R.id.row_chevron).visibility = View.GONE })
+        }
+        addCard(rows)
+    }
+
+    /**
+     * The add dialog: one field for the shortcut, one for the expansion. Both carry the private
+     * input flags, like the personal-dictionary fields, and the dialog window is secured for the
+     * same reason.
+     */
+    private fun showAddTextShortcutDialog(controller: TextShortcutsScreenController) {
+        val column = LinearLayout(this)
+        column.orientation = LinearLayout.VERTICAL
+        val shortcutField =
+            layoutInflater.inflate(R.layout.row_text_input, contentView, false) as EditText
+        val expansionField =
+            layoutInflater.inflate(R.layout.row_text_input, contentView, false) as EditText
+        applyPrivateInputFlags(shortcutField)
+        applyPrivateInputFlags(expansionField)
+        shortcutField.setHint(R.string.text_shortcuts_shortcut_hint)
+        expansionField.setHint(R.string.text_shortcuts_expansion_hint)
+        column.addView(shortcutField)
+        column.addView(expansionField)
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.text_shortcuts_add_title)
+                .setView(column)
+                .setPositiveButton(R.string.text_shortcuts_add_action) { _, _ ->
+                    val accepted = controller.addPair(
+                            shortcutField.text.toString(), expansionField.text.toString()) { saved ->
+                        afterTextShortcutMutation(saved, R.string.text_shortcuts_save_failed)
+                    }
+                    if (!accepted) {
+                        Toast.makeText(this, R.string.text_shortcuts_add_rejected,
+                                Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    // The fields take the user's own texts by hand: the dialog's own window needs
+                    // FLAG_SECURE, because the activity-wide one does not cover dialog windows.
+                    DialogUtils.securePersonalContent(dialog)
+                    dialog.show()
+                }
+    }
+
+    private fun showDeleteTextShortcutDialog(
+            controller: TextShortcutsScreenController, shortcut: String) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(getString(R.string.text_shortcuts_delete_title, shortcut))
+                .setPositiveButton(R.string.text_shortcuts_delete) { _, _ ->
+                    controller.removePair(shortcut) { removed ->
+                        afterTextShortcutMutation(removed, R.string.text_shortcuts_delete_failed)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    // The title names the saved shortcut itself, so the dialog window is secured.
+                    DialogUtils.securePersonalContent(dialog)
+                    dialog.show()
+                }
+    }
+
+    /**
+     * Reacts to a finished shortcut-store mutation, mirroring [afterPersonalMutation]: the list is
+     * repainted only now, because it reads the published snapshot, which does not exist yet when
+     * the dialog closes.
+     */
+    private fun afterTextShortcutMutation(succeeded: Boolean, failureMessageRes: Int) {
+        if (isFinishing || isDestroyed) return
+        if (!succeeded) {
+            Toast.makeText(this, failureMessageRes, Toast.LENGTH_LONG).show()
+        }
+        if (currentScreen == Screen.TEXT_SHORTCUTS) {
+            showScreen(Screen.TEXT_SHORTCUTS)
         }
     }
 

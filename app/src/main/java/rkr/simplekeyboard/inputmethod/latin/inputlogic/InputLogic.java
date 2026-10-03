@@ -907,6 +907,42 @@ public final class InputLogic {
     }
 
     /**
+     * Commits the recent-clip cell's clip text at the cursor: one {@code commitText} inside one
+     * batch edit, nothing deleted, no auto-space (the cell is offered only at an empty-prefix
+     * position). A selection, if any, is replaced by the commit, as a paste would.
+     *
+     * <p>The clip is the user's own clipboard content, committed verbatim; it never goes through
+     * the learning paths (the controller marks the run dirty itself).
+     *
+     * @param text the full clip text, not the truncated cell text.
+     * @return {@code true} if the text was committed, {@code false} otherwise (no edit).
+     */
+    public boolean commitClipText(final String text) {
+        if (TextUtils.isEmpty(text)) {
+            return false;
+        }
+        mConnection.beginBatchEdit();
+        // Connection check after opening the batch; see replaceTrailingWord.
+        final boolean connected = mConnection.isConnected();
+        try {
+            if (connected) {
+                mConnection.commitText(text, 1);
+            }
+        } finally {
+            mConnection.endBatchEdit();
+        }
+        if (!connected) {
+            return false;
+        }
+        // The inserted text is not a typed space: the double-space gesture must not see it.
+        mJustDoubleSpaced = false;
+        mLastSpaceDownTime = 0;
+        mAutoSpaceCursor = NO_AUTO_SPACE;
+        mPhantomSpaceCursor = NO_AUTO_SPACE;
+        return true;
+    }
+
+    /**
      * Commits a next-word prediction. A separate method from {@link #replaceTrailingWord} because
      * it deletes nothing: each kind of result has its own commit path.
      *

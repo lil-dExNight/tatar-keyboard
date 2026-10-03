@@ -23,7 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The three insertion paths may not report an edit they did not make.
+ * The four insertion paths may not report an edit they did not make.
  *
  * `RichInputConnection` updates its own text cache BEFORE it checks whether a connection exists.
  * If the editor is gone between painting the suggestion strip and the tap, a commit path that
@@ -62,7 +62,15 @@ class CommitPathConnectionContractTest {
      * same contract.
      */
     private val revertTatarAutocorrection by lazy {
-        bodyOf("public boolean revertTatarAutocorrection(", "public boolean commitPredictedWord(")
+        bodyOf("public boolean revertTatarAutocorrection(", "public boolean commitClipText(")
+    }
+
+    /**
+     * Path four — the recent-clip cell. Deletes nothing (a selection is replaced by the commit
+     * itself), but commits through the same cache.
+     */
+    private val commitClipText by lazy {
+        bodyOf("public boolean commitClipText(", "public boolean commitPredictedWord(")
     }
 
     @Test
@@ -128,6 +136,7 @@ class CommitPathConnectionContractTest {
         "replaceTrailingWord" to replaceTrailingWord,
         "commitPredictedWord" to commitPredictedWord,
         "revertTatarAutocorrection" to revertTatarAutocorrection,
+        "commitClipText" to commitClipText,
     )
 
     /** The paths whose edit deletes first — both must guard the delete as well as the commit. */

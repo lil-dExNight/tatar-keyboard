@@ -27,12 +27,17 @@ internal class RevertWindow {
     /**
      * One replacement, as far as the undo is concerned. There is no history: at most one of these
      * exists at a time and it is dropped, never stacked.
+     *
+     * [requiresAutocorrectGate] is true for a statistical correction (the undo dies with the
+     * autocorrect switch) and false for a text-shortcut expansion (a user-managed pair has no
+     * switch; its undo works whenever the window is open).
      */
     internal class Replacement(
         val typedForm: String,
         val insertedForm: String,
         val separator: String,
         val sessionId: Long,
+        val requiresAutocorrectGate: Boolean,
     ) {
         /** Deliberately mute: this object carries the user's text. */
         override fun toString(): String = "Replacement"
@@ -52,12 +57,21 @@ internal class RevertWindow {
      * Arms a replacement that has just been committed; whatever was revertable before is dropped —
      * the window holds at most one undo.
      */
-    fun arm(typedForm: String, insertedForm: String, separatorCodePoint: Int, sessionId: Long) {
+    fun arm(typedForm: String, insertedForm: String, separatorCodePoint: Int, sessionId: Long,
+            requiresAutocorrectGate: Boolean) {
         armedReplacement = Replacement(
             typedForm, insertedForm, separatorString(separatorCodePoint), sessionId,
+            requiresAutocorrectGate,
         )
         revertable = null
     }
+
+    /**
+     * The revertable replacement without taking it, or null when the window is closed. The strip's
+     * keep-typed cell reads it to paint and to recognize its own tap; the undo itself still goes
+     * through [take].
+     */
+    fun peek(): Replacement? = revertable
 
     /**
      * Takes the revertable replacement out, closing the whole window: the state is dropped BEFORE

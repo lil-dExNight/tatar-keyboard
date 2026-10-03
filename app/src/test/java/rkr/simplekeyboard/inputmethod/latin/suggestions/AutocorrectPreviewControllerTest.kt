@@ -571,16 +571,16 @@ class AutocorrectPreviewControllerTest {
         )
         assertEquals(SuggestionStripState.NO_CELL, h.strip.currentEmphasis)
 
-        // Delete the space: the word is back under the cursor, and so is the coming
-        // correction — the verdict still names exactly this word.
+        // Delete the space: the word is back under the cursor. The correction is not announced
+        // again — it was undone this session — so no new preview band appears; the last painted
+        // band is the undo window's keep-typed cell, plain.
         h.backspace()
         assertEquals("китәп", h.editor.before)
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("китәп", "китап", null), band.cells)
-        assertEquals(1, band.emphasized)
+        assertEquals(listOf("китәп", null, null), band.cells)
+        assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
 
-        // The refusal path works from here: typed-word cell, then the separator commits as-is.
-        h.tap("китәп")
+        // The refusal holds for the separator too: the word commits as typed.
         h.separator('.')
         assertEquals("китәп.", h.editor.before)
         assertEquals(2, h.editor.edits.size)
@@ -596,7 +596,15 @@ class AutocorrectPreviewControllerTest {
 
         h.separator(' ')
 
-        // After the correction the band belongs to the NEXT_WORD slot again — plain, unmarked.
+        // While the undo window is open the band offers the typed word back (the keep-typed
+        // cell) — plain, unmarked; no preview marker rides it.
+        val revertBand = h.strip.lastBand()!!
+        assertEquals(listOf("китәп", null, null), revertBand.cells)
+        assertEquals(SuggestionStripState.NO_CELL, revertBand.emphasized)
+
+        // The next keystroke ends the window, and the band belongs to the NEXT_WORD slot again —
+        // plain, unmarked.
+        h.separator(' ')
         val band = h.strip.lastBand()!!
         assertEquals(listOf("дөнья", null, null), band.cells)
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)

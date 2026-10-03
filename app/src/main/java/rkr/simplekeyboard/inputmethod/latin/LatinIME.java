@@ -24,6 +24,9 @@ package rkr.simplekeyboard.inputmethod.latin;
 import android.app.AlertDialog;
 import android.app.KeyguardManager;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
 import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.content.Intent;
@@ -86,6 +89,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmo
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalForget;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearningGates;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.TextShortcutStores;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchIndex;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchQuery;
@@ -157,6 +161,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Optional opt-in Tatar suggestions controller. Null until set up in onCreate().
     // Package-visible for the extracted service helpers (LatinImeAutocorrect & co.).
     SuggestionsController mSuggestionsController;
+
+    // The recent-clip cell's clipboard ears. The listener is registered only while the input view
+    // is shown (see onWindowShown/onWindowHidden); the clip text itself lives in the controller's
+    // RAM-only holder and is never logged or stored.
+    private ClipboardManager mClipboardManager;
+    private boolean mRecentClipListenerRegistered;
+    private final ClipboardManager.OnPrimaryClipChangedListener mPrimaryClipChangedListener =
+            new ClipboardManager.OnPrimaryClipChangedListener() {
+        @Override
+        public void onPrimaryClipChanged() {
+            capturePrimaryClipForOffer();
+        }
+    };
 
     // Owns the emoji panel's single-per-process snapshot. Null until set up in onCreate().
     private EmojiPanelController mEmojiPanelController;
@@ -539,7 +556,26 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             @Override
             public boolean revertTypedWord(final String insertedForm, final String separator,
                     final String typedForm) {
-                return mInputLogic.revertTatarAutocorrection(insertedForm, separator, typedForm);
+                final boolean reverted =
+                        mInputLogic.revertTatarAutocorrection(insertedForm, separator, typedForm);
+                if (reverted) {
+                    // Refresh auto-caps, as for commitSuggestion: the restored word can carry a
+                    // different casing than the replacement did. The backspace path refreshes too.
+                    mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
+                            getCurrentRecapitalizeState());
+                }
+                return reverted;
+            }
+
+            @Override
+            public boolean commitClipText(final String text) {
+                final boolean committed = mInputLogic.commitClipText(text);
+                if (committed) {
+                    // Refresh auto-caps, as for commitSuggestion.
+                    mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
+                            getCurrentRecapitalizeState());
+                }
+                return committed;
             }
 
             @Override
@@ -781,6 +817,13 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         });
         // A refused glide gives the cursor gestures' tick: one pulse, none with vibration off.
         mSuggestionsController.setGlideRefusalFeedback(LatinImeKeyFeedback::hapticTickFeedback);
+        // Text shortcuts: the user's own (shortcut → expansion) pairs. The source reads the
+        // published in-memory snapshot (a lookup, never I/O), so an edit on the settings screen
+        // takes effect on the next keystroke.
+        mSuggestionsController.setShortcutSource(TextShortcutStores.sourceFor(this));
+        // The keep-typed cell of the undo window paints the typed word in the locale's quotes.
+        mSuggestionsController.setRevertCellDecorator(
+                typedWord -> getString(R.string.autocorrect_revert_cell, typedWord));
         mSuggestionsController.onCreate();
         // Erasing words on the settings screen must unbind what the strip shows: the screen and
         // the IME share the process, so the store notifies us directly, on its worker thread.
@@ -799,6 +842,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }));
         // The same for erased learned emoji.
         PersonalEmojiDictionaries.setErasureListener(() -> mHandler.post(() -> {
+            final SuggestionsController controller = mSuggestionsController;
+            if (controller != null) {
+                controller.onPersonalDictionaryErased();
+            }
+        }));
+        // The same for removed text shortcuts: the strip's unbind path is the shared one (an
+        // erased entry of any kind must stop being tappable).
+        TextShortcutStores.setErasureListener(() -> mHandler.post(() -> {
             final SuggestionsController controller = mSuggestionsController;
             if (controller != null) {
                 controller.onPersonalDictionaryErased();
@@ -1521,6 +1572,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         PersonalBigramDictionaries.setContextMembershipProbe(null);
         PersonalEmojiDictionaries.setErasureListener(null);
         PersonalEmojiDictionaries.setQuarantineListener(null);
+        TextShortcutStores.setErasureListener(null);
+        // The clipboard listener goes too: the clipboard is never listened to without a window.
+        unregisterRecentClipListener();
         if (mSuggestionsController != null) {
             mSuggestionsController.onDestroy();
         }
@@ -1792,10 +1846,96 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (TRACE) Debug.startMethodTracing("/data/trace/latinime");
     }
 
+    /**
+     * Registers the primary-clip listener for the recent-clip cell. Only while the input view is
+     * shown, and only when a controller exists: the clipboard is never listened to in the
+     * background. A clip copied moments ago in another app predates the listener, so the current
+     * clip is read once here — but only when the platform can prove its age
+     * (ClipDescription.getTimestamp, API 26+); on older releases only clips that change while the
+     * keyboard is shown are ever offered.
+     */
+    private void registerRecentClipListener() {
+        if (mRecentClipListenerRegistered || mSuggestionsController == null) {
+            return;
+        }
+        if (mClipboardManager == null) {
+            mClipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        }
+        if (mClipboardManager == null) {
+            return;
+        }
+        mClipboardManager.addPrimaryClipChangedListener(mPrimaryClipChangedListener);
+        mRecentClipListenerRegistered = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            capturePrimaryClipForOffer();
+        }
+    }
+
+    /**
+     * Unregisters the listener and drops the held clip. Hiding the window ends every offer: the
+     * next show re-reads the clipboard.
+     */
+    private void unregisterRecentClipListener() {
+        if (mRecentClipListenerRegistered && mClipboardManager != null) {
+            mClipboardManager.removePrimaryClipChangedListener(mPrimaryClipChangedListener);
+        }
+        mRecentClipListenerRegistered = false;
+        if (mSuggestionsController != null) {
+            mSuggestionsController.onInputViewHidden();
+        }
+    }
+
+    /**
+     * Mirrors the current primary clip into the controller's RAM-only holder: plain text only
+     * (a URI or an intent in the clip is not text and is never coerced into some), blank clears.
+     * The clip's own set-time travels with it, so the strip's freshness rule measures from the
+     * copy, not from the keyboard's show. Nothing is logged; the text is never named here.
+     */
+    private void capturePrimaryClipForOffer() {
+        final SuggestionsController controller = mSuggestionsController;
+        if (controller == null || mClipboardManager == null) {
+            return;
+        }
+        final ClipData clip;
+        try {
+            clip = mClipboardManager.getPrimaryClip();
+        } catch (final RuntimeException e) {
+            // A clipboard read can be refused (a background state race); fail to no offer.
+            controller.onPrimaryClipChanged(null, 0L);
+            return;
+        }
+        if (clip == null || clip.getItemCount() < 1
+                || !(clip.getDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN)
+                        || clip.getDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML))) {
+            controller.onPrimaryClipChanged(null, 0L);
+            return;
+        }
+        final CharSequence text = clip.getItemAt(0).getText();
+        if (text == null) {
+            controller.onPrimaryClipChanged(null, 0L);
+            return;
+        }
+        final long setAtMillis;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            final long timestamp = clip.getDescription().getTimestamp();
+            if (timestamp <= 0L) {
+                // The platform cannot prove the clip's age: fail to no offer.
+                controller.onPrimaryClipChanged(null, 0L);
+                return;
+            }
+            setAtMillis = timestamp;
+        } else {
+            // No clip timestamp before API 26: a change event means the clip was set just now.
+            setAtMillis = System.currentTimeMillis();
+        }
+        controller.onPrimaryClipChanged(text.toString(), setAtMillis);
+    }
+
     @Override
     public void onWindowShown() {
         super.onWindowShown();
         LabSessionLog.onKeyboardShown();
+        registerRecentClipListener();
         if (isInputViewShown())
             LatinImeSoftInputWindow.setNavigationBarColor(this);
     }
@@ -1804,6 +1944,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     public void onWindowHidden() {
         super.onWindowHidden();
         LabSessionLog.onKeyboardHidden();
+        unregisterRecentClipListener();
         // Close the emoji search and panel, or the next show would bring back a search whose
         // query is already dropped. Both calls are no-ops when the panel never opened.
         abandonEmojiSearch();

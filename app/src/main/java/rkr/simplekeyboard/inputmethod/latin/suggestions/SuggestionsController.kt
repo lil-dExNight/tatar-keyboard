@@ -24,6 +24,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TextShortcutSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramPreparationResult
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
@@ -445,6 +446,30 @@ class SuggestionsController internal constructor(
     /** The undo-autocorrect window; see [RevertWindow]. */
     private val revertWindow = RevertWindow()
 
+    /**
+     * The user's text shortcuts, read live from the published snapshot on both the offer and the
+     * commit path; null (no shortcut feature) until wired. Read is a map lookup, never I/O.
+     */
+    private var shortcutSource: TextShortcutSource? = null
+
+    /**
+     * Paints the revert window's keep-typed cell: the typed word in the locale's quotes (the
+     * resource pattern), identity in tests that never wire it. Read at paint and at tap, so the
+     * two always agree on the cell's text.
+     */
+    private var revertCellDecorator: RevertCellDecorator = RevertCellDecorator { it }
+
+    /**
+     * The recent-clip cell's RAM-only holder; see [RecentClipCell]. Nothing about the clip is ever
+     * persisted or learned from.
+     */
+    private var recentClip = RecentClipCell()
+
+    /** Test seam: a fresh clip cell with a drivable clock, so the freshness window is testable. */
+    internal fun replaceRecentClipCellForTest(cell: RecentClipCell) {
+        recentClip = cell
+    }
+
     /** Set once by LatinIME. Kept out of the constructor so the test entry points stay unchanged. */
     fun setCompletionSink(sink: WordCompletionSink) {
         runMachine.completionSink = sink
@@ -493,6 +518,44 @@ class SuggestionsController internal constructor(
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
     fun setGlideRefusalFeedback(feedback: GlideRefusalFeedback) {
         glideRefusalFeedback = feedback
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setShortcutSource(source: TextShortcutSource) {
+        shortcutSource = source
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setRevertCellDecorator(decorator: RevertCellDecorator) {
+        revertCellDecorator = decorator
+    }
+
+    /**
+     * The system clipboard changed while the keyboard's input view was shown (LatinIME's primary
+     * clip listener). [clipText] is the clip's plain text — null or blank when it holds none —
+     * and [setAtMillis] when the clip was set. Held in RAM only ([RecentClipCell]); when the strip
+     * currently shows the clip cell this replaces or clears, the strip is re-derived at once, or a
+     * stale clip would stay on screen as a dead cell.
+     */
+    fun onPrimaryClipChanged(clipText: String?, setAtMillis: Long) {
+        val previousOffer = recentClip.offerText()
+        recentClip.noteClip(clipText, setAtMillis)
+        if (previousOffer != null
+            && displayedSessionId == sessionId
+            && displayedPrefix == null && displayedContextWord == null
+            && displayedGlideAlternativesFor == null
+            && bandBaseCells.size == 1 && bandBaseCells[0] == previousOffer
+        ) {
+            requestCurrentPrefix()
+        }
+    }
+
+    /**
+     * The keyboard's window hid: drop the held clip. The listener is unregistered at the same
+     * moment, so nothing new arrives until the next show re-reads the clipboard.
+     */
+    fun onInputViewHidden() {
+        recentClip.clear()
     }
 
     /**
@@ -631,6 +694,12 @@ class SuggestionsController internal constructor(
             strip.hideSuggestions()
             return
         }
+        // While the undo window of a just-committed replacement is open, the strip offers the
+        // typed word back as its first cell instead of predictions (see [maybeShowRevertCell]).
+        // [RevertWindow.advance] at the top already turned the armed replacement revertable (this
+        // text change is its own separator); the next one closes the window and the ordinary
+        // derivation below resumes the usual strip.
+        if (maybeShowRevertCell()) return
         requestCurrentPrefix()
     }
 
@@ -1733,8 +1802,10 @@ class SuggestionsController internal constructor(
         if (context.isEmpty()) {
             // An empty context at a sentence boundary is a sentence start, answered synchronously
             // from the sentence-start table. No engine request is issued, so bigram successors and
-            // after-word forms do not appear. Anywhere else: no context word, no prediction.
+            // after-word forms do not appear. Failing that, an idle strip may offer the recent
+            // clip's cell. Anywhere else: no context word, no prediction.
             if (requestSentenceStart()) return
+            if (maybeShowRecentClip()) return
             clearToReservedBand()
             return
         }
@@ -2116,6 +2187,45 @@ class SuggestionsController internal constructor(
         showEmptyBand()
     }
 
+    /**
+     * The expansion the user saved for [word], or null: no source wired, the empty word, no saved
+     * shortcut by that word, or a shortcut whose expansion was undone earlier in this field session
+     * (the shortcut shares the refused-correction list, so an undo is not immediately refired).
+     * The lookup runs before the normalization, so an empty store costs no allocation.
+     */
+    private fun shortcutExpansionFor(word: String): String? {
+        val source = shortcutSource ?: return null
+        if (word.isEmpty()) return null
+        val expansion = source.expansionFor(word) ?: return null
+        if (TatarWordUtils.normalizeForLookup(word) in refusedCorrections) return null
+        return expansion
+    }
+
+    /**
+     * Offers the recent-clip cell at an idle strip: an empty prefix AND an empty next-word context
+     * (a field start, or after a sentence end), where no prediction is pending. The sentence-start
+     * table was tried first by the caller; this fires only when the strip would otherwise stay
+     * empty. Returns true when the cell was painted.
+     *
+     * The strip is bound to nothing and [requestSessionId] is invalidated, so no late result can
+     * land on the cell; the tap path re-derives validity from [RecentClipCell] itself (freshness
+     * included), and any keystroke re-derives the strip as usual.
+     */
+    private fun maybeShowRecentClip(): Boolean {
+        if (destroyed || !eligible) return false
+        val offer = recentClip.offerText() ?: return false
+        previewKeepTypedCell = null
+        displayedPrefix = null
+        displayedContextWord = null
+        displayedGlideAlternativesFor = null
+        clearCompanionRequest()
+        requestSessionId = NO_SESSION
+        displayedSessionId = sessionId
+        bandHasActiveLanguageWord = false
+        showBand(listOf(offer))
+        return true
+    }
+
 
     private fun applyResult(
         slot: LanguageSlot,
@@ -2157,6 +2267,31 @@ class SuggestionsController internal constructor(
             (exactMiss != null && exactMiss == TatarWordUtils.normalizeForLookup(pendingPrefix))
         ) {
             runMachine.observeEmptyResult(pendingPrefix)
+        }
+        // A typed word the user saved as a shortcut offers its expansion in the first cell, ahead
+        // of the autocorrect preview (an explicit pair outranks a statistical correction) and of
+        // the ordinary completions, which keep the remaining cells. The strip stays PREFIX-bound,
+        // so a tap on the expansion commits it like any accepted suggestion (with the auto-space);
+        // no companion fill — the strip belongs to the user's pair.
+        val expansion = shortcutExpansionFor(pendingPrefix)
+        if (expansion != null) {
+            previewKeepTypedCell = null
+            displayedGlideAlternativesFor = null
+            displayedPrefix = pendingPrefix
+            displayedSessionId = sessionId
+            // The completions keep the typed casing, as on the ordinary path; the expansion is the
+            // user's verbatim text and is never re-cased.
+            val casing = TatarWordUtils.classifyCasing(pendingPrefix)
+            val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+            cells.add(expansion)
+            for (candidate in suggestions) {
+                val shown = TatarWordUtils.applyCasing(candidate, casing)
+                if (cells.contains(shown)) continue
+                cells.add(shown)
+                if (cells.size >= SuggestionStripState.CELL_COUNT) break
+            }
+            showBand(cells)
+            return
         }
         // When the separator-time autocorrect would fire on this word, the strip shows the coming
         // replacement instead of continuations, as in AOSP. The preview owns the whole strip: no
@@ -2314,10 +2449,55 @@ class SuggestionsController internal constructor(
         // replacement is the word they would have got by tapping it.
         val replacement = TatarWordUtils.applyCasing(advice.replacement, casing)
         if (replacement == word) return false
+        return replaceTrailingWordAndArm(word, replacement, separatorCodePoint,
+            requiresAutocorrectGate = true)
+    }
+
+    /**
+     * The text-shortcut counterpart of [maybeAutocorrectBeforeSeparator]: a separator about to
+     * finish a word the user saved as a shortcut replaces it with the saved expansion. Runs first
+     * (an explicit user pair outranks a statistical correction), and is not gated on the
+     * autocorrect switch — the pair is the user's own setting. Everything else mirrors the
+     * correction path: the same eligibility and cursor checks, the same single commit through
+     * [EditorSurface.replaceTypedWord], and the same armed undo window, so one backspace (or the
+     * keep-typed cell) restores the shortcut.
+     *
+     * The match is exact ([TextShortcuts.expansionFor]): the typed word IS the shortcut, casing
+     * included. A shortcut undone earlier in this field session is not expanded again.
+     */
+    fun maybeExpandShortcutBeforeSeparator(separatorCodePoint: Int): Boolean {
+        if (destroyed || !eligible) return false
+        val source = shortcutSource ?: return false
+        if (!editor.hasKnownCursor()) return false
+        if (editor.hasLetterAfterCursor()) return false
+        val word = editor.cachedWordBeforeCursor()
+        if (word.isEmpty()) return false
+        // The lookup before the normalization: an empty store costs no allocation.
+        val expansion = source.expansionFor(word) ?: return false
+        if (TatarWordUtils.normalizeForLookup(word) in refusedCorrections) return false
+        if (expansion == word) return false
+        return replaceTrailingWordAndArm(word, expansion, separatorCodePoint,
+            requiresAutocorrectGate = false)
+    }
+
+    /**
+     * The shared tail of both separator-time replacements (a correction and a shortcut expansion):
+     * the single editor commit, the strip unbind, the armed undo window and the learning guards.
+     * [requiresAutocorrectGate] says whether the undo dies with the autocorrect switch; see
+     * [RevertWindow.Replacement].
+     */
+    private fun replaceTrailingWordAndArm(
+        word: String,
+        replacement: String,
+        separatorCodePoint: Int,
+        requiresAutocorrectGate: Boolean,
+    ): Boolean {
         if (!editor.replaceTypedWord(word, replacement)) return false
-        // A correction is not the user spelling the word out: the run stops counting, exactly as it
-        // does for an accepted suggestion, so the replaced word reaches neither the pending set nor
-        // the personal dictionary.
+        // The preview (if any) described the word that no longer stands there.
+        previewKeepTypedCell = null
+        // A replacement is not the user spelling the word out: the run stops counting, exactly as
+        // it does for an accepted suggestion, so neither the replaced word nor what it replaces
+        // (the shortcut) reaches the pending set or the personal dictionary.
         runMachine.markRunDirty()
         // Whatever the strip was showing described the word that no longer stands there.
         displayedPrefix = null
@@ -2325,10 +2505,10 @@ class SuggestionsController internal constructor(
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
-        revertWindow.arm(word, replacement, separatorCodePoint, sessionId)
+        revertWindow.arm(word, replacement, separatorCodePoint, sessionId, requiresAutocorrectGate)
         // ...but the boundary it establishes is trusted for pairs, as on the tap path: the cursor
         // is known to sit right after a real word and the separator, so the next cleanly typed
-        // word may pair with the corrected one. Without this the pair machine would stay dirty
+        // word may pair with the replacement. Without this the pair machine would stay dirty
         // past the boundary (the run machine returns early when the word is unchanged).
         runMachine.trustPairBoundary()
         return true
@@ -2344,17 +2524,55 @@ class SuggestionsController internal constructor(
      */
     fun maybeRevertAutocorrect(): Boolean {
         val replacement = revertWindow.take() ?: return false
+        return revertNow(replacement)
+    }
+
+    /**
+     * The one undo, shared by the backspace path ([maybeRevertAutocorrect]) and the strip's
+     * keep-typed cell tap. The window is already closed (taken) when this runs, so a refused undo
+     * cannot be retried.
+     */
+    private fun revertNow(replacement: RevertWindow.Replacement): Boolean {
         if (destroyed || !eligible) return false
         if (replacement.sessionId != sessionId) return false
-        if (!autocorrectGate.isOn()) return false
+        // A correction's undo dies with the autocorrect switch; a shortcut expansion's does not
+        // (the pair is the user's own setting, there is no switch to consult).
+        if (replacement.requiresAutocorrectGate && !autocorrectGate.isOn()) return false
         if (!editor.hasKnownCursor()) return false
         runMachine.markRunDirty()
         val reverted = editor.revertTypedWord(
             replacement.insertedForm, replacement.separator, replacement.typedForm,
         )
-        // An undone correction is not repeated for that word in this field session.
+        // An undone replacement is not repeated for that word in this field session.
         if (reverted) refuseCorrection(TatarWordUtils.normalizeForLookup(replacement.typedForm))
         return reverted
+    }
+
+    /**
+     * Paints the keep-typed cell of an open undo window: the strip's first (and only) cell is the
+     * typed word in quotes ([RevertCellDecorator]), and a tap on it reverts the replacement.
+     * Returns true when the strip was painted (the caller skips the ordinary derivation).
+     *
+     * Runs right after [RevertWindow.advance] turned the armed replacement revertable, so the cell
+     * lives exactly for the window's lifetime. The strip's binding fields stay null and
+     * [requestSessionId] is invalidated: no late lookup or companion fill may repaint over the
+     * cell, and the tap path re-derives validity from the window itself.
+     */
+    private fun maybeShowRevertCell(): Boolean {
+        val replacement = revertWindow.peek() ?: return false
+        if (destroyed || !eligible) return false
+        if (replacement.requiresAutocorrectGate && !autocorrectGate.isOn()) return false
+        previewKeepTypedCell = null
+        displayedPrefix = null
+        displayedContextWord = null
+        displayedGlideAlternativesFor = null
+        clearCompanionRequest()
+        requestSessionId = NO_SESSION
+        displayedSessionId = sessionId
+        showBand(listOf(revertCellDecorator.decorate(replacement.typedForm)))
+        // TalkBack reads the bare typed word, not the quotation marks of the display form.
+        strip.setSpokenCellLabels(replacement.typedForm, null, null)
+        return true
     }
 
     private fun refuseCorrection(normalized: String) {
@@ -2383,6 +2601,26 @@ class SuggestionsController internal constructor(
     }
 
     private fun onTap(suggestion: String) {
+        // A tap on the keep-typed cell of an open undo window reverts the replacement, exactly like
+        // the one backspace would. The window, not the strip's bindings, is the state: it is taken
+        // before the editor is asked, so a refused undo cannot be retried, and whatever happens the
+        // strip is re-derived below (the cell described a state the tap just ended).
+        val revertable = revertWindow.peek()
+        if (revertable != null
+            && displayedSessionId == sessionId
+            && suggestion == revertCellDecorator.decorate(revertable.typedForm)
+        ) {
+            revertWindow.take()
+            revertNow(revertable)
+            displayedPrefix = null
+            displayedContextWord = null
+            displayedGlideAlternativesFor = null
+            bandBaseCells = emptyList()
+            clearCompanionRequest()
+            strip.reserve()
+            requestCurrentPrefix()
+            return
+        }
         // A tap on the typed-word cell of a preview strip refuses the coming correction for this
         // occurrence of the word. It is not an accepted suggestion: nothing is committed (the run
         // stays clean, the user typed every letter), the undo window is untouched (it closed
@@ -2396,6 +2634,33 @@ class SuggestionsController internal constructor(
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
+            strip.reserve()
+            requestCurrentPrefix()
+            return
+        }
+        // The recent-clip cell: the only strip bound to neither a prefix, nor a context word, nor
+        // a glide word, so the tap is recognized from the state, never from the string alone. The
+        // clip's freshness is re-checked (a stale cell is a dead cell: the tap commits nothing),
+        // and the offer is one-shot: the held clip is dropped with the tap, whatever the editor
+        // answers.
+        val clipOffer = recentClip.offerText()
+        if (clipOffer != null
+            && displayedSessionId == sessionId
+            && displayedPrefix == null && displayedContextWord == null
+            && displayedGlideAlternativesFor == null
+            && bandBaseCells.size == 1 && bandBaseCells[0] == suggestion
+            && suggestion == clipOffer
+        ) {
+            val fullText = recentClip.fullTextForCommit()
+            recentClip.clear()
+            bandBaseCells = emptyList()
+            clearCompanionRequest()
+            displayedSessionId = NO_SESSION
+            if (fullText != null && editor.commitClipText(fullText)) {
+                // Pasted text is not the user spelling anything out: nothing is learned from it —
+                // neither the words nor a pair with the clip's last word as context.
+                runMachine.markRunDirty()
+            }
             strip.reserve()
             requestCurrentPrefix()
             return

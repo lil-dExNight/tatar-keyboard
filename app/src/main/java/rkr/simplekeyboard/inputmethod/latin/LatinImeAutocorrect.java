@@ -21,9 +21,10 @@ import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils;
 
 /**
- * The autocorrect hooks of {@link LatinIME#onEvent}, which run before the input logic sees the
- * event: a separator about to finish a word may correct it first, and a backspace right after an
- * autocorrection undoes it. The decision itself lives in {@code SuggestionsController}.
+ * The separator-time hooks of {@link LatinIME#onEvent}, which run before the input logic sees the
+ * event: a separator about to finish a word may replace it first — with the user's saved
+ * text-shortcut expansion, else with a statistical correction — and a backspace right after a
+ * replacement undoes it. The decisions live in {@code SuggestionsController}.
  */
 final class LatinImeAutocorrect {
     private LatinImeAutocorrect() {
@@ -31,16 +32,17 @@ final class LatinImeAutocorrect {
     }
 
     /**
-     * Corrects the word a separator is about to finish, before that separator reaches the input
+     * Replaces the word a separator is about to finish, before that separator reaches the input
      * logic.
      *
      * <p>Before, not after: at this point the editor has a trailing word with a collapsed cursor
-     * behind it, which is what an accepted suggestion needs, so the correction is the same delete +
+     * behind it, which is what an accepted suggestion needs, so the replacement is the same delete +
      * commit, and the separator then takes the ordinary path (auto-space, double-space, shift).
      *
      * <p>The code point must be a word separator of the current layout and an autocorrect
      * separator ({@link TatarWordUtils#isAutocorrectSeparator}: space or punctuation). Enter and Tab
-     * are left alone. The controller decides whether anything is actually replaced.
+     * are left alone. The controller decides whether anything is actually replaced. The text
+     * shortcut (the user's own pair) is tried before the statistical correction.
      */
     static void maybeAutocorrectTatarWord(final LatinIME ime, final Event event) {
         if (ime.mSuggestionsController == null) {
@@ -50,6 +52,9 @@ final class LatinImeAutocorrect {
         if (codePoint == Event.NOT_A_CODE_POINT
                 || !TatarWordUtils.isAutocorrectSeparator(codePoint)
                 || !ime.mSettings.getCurrent().isWordSeparator(codePoint)) {
+            return;
+        }
+        if (ime.mSuggestionsController.maybeExpandShortcutBeforeSeparator(codePoint)) {
             return;
         }
         ime.mSuggestionsController.maybeAutocorrectBeforeSeparator(codePoint);
