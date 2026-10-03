@@ -475,6 +475,13 @@ class SuggestionsController internal constructor(
     private var revertCellDecorator: RevertCellDecorator = RevertCellDecorator { it }
 
     /**
+     * True while the keep-typed cell owns the strip ([maybeShowRevertCell]). The cell must survive
+     * the settled-cursor re-derivation that follows its own commit ([onCursorMoveSettled] is posted
+     * after it); any new text change clears the flag before the window decides again.
+     */
+    private var revertCellDisplayed = false
+
+    /**
      * The recent-clip cell's RAM-only holder; see [RecentClipCell]. Nothing about the clip is ever
      * persisted or learned from.
      */
@@ -680,6 +687,7 @@ class SuggestionsController internal constructor(
     }
 
     fun onTextChanged() {
+        revertCellDisplayed = false
         revertWindow.advance(sessionId)
         // The glide whole-word undo lives exactly one text change: any other edit closes it, and
         // the alternatives strip is re-derived below with the rest of the strip state.
@@ -795,6 +803,9 @@ class SuggestionsController internal constructor(
         if (destroyed || !eligible) return
         if (usableEngine() == null) return
         if (!editor.hasKnownCursor()) return
+        // The keep-typed cell owns the strip until the next text change; the settled callback of
+        // its own commit arrives after the paint and must not re-derive over it.
+        if (revertCellDisplayed) return
         if (displayedPrefix != null || displayedContextWord != null) return
         // A strip bound to glide alternatives is bound too: do not re-derive over it.
         if (displayedGlideAlternativesFor != null) return
@@ -2614,6 +2625,7 @@ class SuggestionsController internal constructor(
         showBand(listOf(revertCellDecorator.decorate(replacement.typedForm)))
         // TalkBack reads the bare typed word, not the quotation marks of the display form.
         strip.setSpokenCellLabels(replacement.typedForm, null, null)
+        revertCellDisplayed = true
         return true
     }
 
@@ -2632,6 +2644,7 @@ class SuggestionsController internal constructor(
      */
     private fun clearRevertState() {
         revertWindow.clear()
+        revertCellDisplayed = false
         suppressedPreviewWord = null
         // The lift-commit's whole-word undo dies at the same boundaries as the autocorrect undo.
         glideCommittedWord = null

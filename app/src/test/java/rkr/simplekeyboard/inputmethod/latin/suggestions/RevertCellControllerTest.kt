@@ -271,6 +271,22 @@ class RevertCellControllerTest {
     // --- The window's end ----------------------------------------------------------------------------
 
     @Test
+    fun theCellSurvivesTheSettledCursorCallbackOfItsOwnCommit() {
+        val h = Harness()
+        h.start()
+        h.advise("китәп", "китап")
+        h.typeWord("китәп")
+        h.separator(' ')
+        assertEquals(listOf("«китәп»", null, null), h.strip.lastBand())
+
+        // On device the commit's cursor move posts a settled callback that re-derives the strip;
+        // the cell must own the strip until the next text change.
+        h.controller.onCursorMoveSettled()
+
+        assertEquals(listOf("«китәп»", null, null), h.strip.lastBand())
+    }
+
+    @Test
     fun aFurtherKeystrokeEndsTheWindowAndRestoresTheOrdinaryBand() {
         val h = Harness()
         h.start()
