@@ -1525,6 +1525,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (mEmojiPanelController != null) {
             mEmojiPanelController.onDestroy();
         }
+        mKeyboardSwitcher.releaseDynamicThemeListener();
         if (mDevicePrefs != null) {
             mDevicePrefs.unregisterOnSharedPreferenceChangeListener(mSuggestionsSettingListener);
         }

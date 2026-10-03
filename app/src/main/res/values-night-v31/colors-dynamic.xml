@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+/*
+**
+** Copyright (C) 2026 Tatar Keyboard contributors
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
+-->
+
+<!-- Dark uiMode tier of the dynamic theme, API 31+. The dark roles of the slot mapping are
+     documented in the light tier (values-v31/colors-dynamic.xml): the surfaces sink to the
+     dark neutral2 tones, the accent inverts to the light accent1_100 tone, and the ink on it
+     goes dark. -->
+<resources>
+    <color name="dyn_keyboard_background">@android:color/system_neutral2_800</color>
+    <color name="dyn_key_normal">@android:color/system_neutral2_600</color>
+    <color name="dyn_key_normal_pressed">@android:color/system_neutral2_500</color>
+    <color name="dyn_key_functional">@android:color/system_neutral2_700</color>
+    <color name="dyn_key_functional_pressed">@android:color/system_neutral2_500</color>
+    <color name="dyn_key_checked">@android:color/system_neutral2_500</color>
+    <color name="dyn_key_sticky_on">@android:color/system_neutral2_600</color>
+    <color name="dyn_key_spacebar">@android:color/system_neutral2_600</color>
+    <color name="dyn_key_spacebar_pressed">@android:color/system_neutral2_500</color>
+    <color name="dyn_key_shadow">#B3000000</color>
+    <color name="dyn_popup_key_pressed">@android:color/system_accent1_100</color>
+    <color name="dyn_key_text_color">@android:color/system_neutral1_0</color>
+    <color name="dyn_key_functional_text_color">@android:color/system_neutral1_0</color>
+    <color name="dyn_key_action_fill">@android:color/system_accent1_100</color>
+    <color name="dyn_key_action_text_color">@android:color/system_neutral1_900</color>
+    <color name="dyn_key_text_inactive_color">#E6FFFFFF</color>
+    <color name="dyn_key_hint_color">#E6FFFFFF</color>
+    <color name="dyn_suggestion_emphasis">@android:color/system_accent1_100</color>
+    <color name="dyn_glide_trail">@android:color/system_accent1_100</color>
+</resources>

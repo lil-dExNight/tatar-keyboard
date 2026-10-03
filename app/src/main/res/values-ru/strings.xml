@@ -26,6 +26,8 @@
     <string name="settings_screen_key_press">Нажатие клавиши</string>
     <string name="settings_screen_appearance">Внешний вид</string>
     <string name="settings_screen_theme">"Тема"</string>
+    <string name="keyboard_theme_dynamic">Динамическая (Material You)</string>
+    <string name="keyboard_theme_dynamic_summary">«Динамическая» следует цветам обоев на Android 12 и новее; на более старых версиях остаётся палитра темы «Tatar».</string>
     <string name="settings_back">Назад</string>
     <string name="abbreviation_unit_milliseconds">"<xliff:g id="MILLISECONDS">%d</xliff:g> мс"</string>
     <string name="settings_system_default">"По умолчанию"</string>

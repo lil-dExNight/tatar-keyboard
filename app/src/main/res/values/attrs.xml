@@ -372,6 +372,7 @@
             <enum name="LXXSystem" value="5" />
             <enum name="LXXSystemBorder" value="6" />
             <enum name="Tatar" value="7" />
+            <enum name="TatarDynamic" value="8" />
         </attr>
         <!-- This should be aligned with
              {@link rkr.simplekeyboard.inputmethod.keyboard.KeyboardId#MODE_TEXT} etc. -->

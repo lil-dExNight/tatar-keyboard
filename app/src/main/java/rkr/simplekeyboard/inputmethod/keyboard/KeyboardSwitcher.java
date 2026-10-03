@@ -81,6 +81,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
 
     private KeyboardTheme mKeyboardTheme;
     private Context mThemeContext;
+    private DynamicThemeController mDynamicThemeController;
 
     private static final KeyboardSwitcher sInstance = new KeyboardSwitcher();
 
@@ -107,11 +108,13 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
                 mLatinIME, KeyboardTheme.getKeyboardTheme(mLatinIME));
         if (themeUpdated && mKeyboardView != null) {
             mLatinIME.setInputView(onCreateInputView());
+        } else {
+            syncDynamicThemeListener();
         }
     }
 
     public void onConfigurationChanged() {
-        mKeyboardTheme = KeyboardTheme.getKeyboardTheme(mLatinIME);
+        mKeyboardTheme = resolveEffectiveTheme(KeyboardTheme.getKeyboardTheme(mLatinIME));
         mThemeContext = new ContextThemeWrapper(mLatinIME, mKeyboardTheme.mStyleId);
         KeyboardLayoutSet.onKeyboardThemeChanged();
         if (mKeyboardView != null && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -120,11 +123,55 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         }
     }
 
+    /**
+     * The theme the keyboard actually renders with: the dynamic theme only where its framework
+     * palette resolves, everywhere else the default theme, so a half-resolved system palette
+     * never paints a half-mapped keyboard.
+     */
+    private KeyboardTheme resolveEffectiveTheme(final KeyboardTheme theme) {
+        if (theme.mThemeId == KeyboardTheme.THEME_ID_TATAR_DYNAMIC
+                && !DynamicThemePalette.isResolvable(mLatinIME)) {
+            return KeyboardTheme.getDefaultKeyboardTheme();
+        }
+        return theme;
+    }
+
+    /** Rebuilds the input view with the fresh framework palette after a wallpaper change. */
+    void onDynamicColorsChanged() {
+        // Drop the wrapper first: with the theme id unchanged it would survive and keep the
+        // stale colors. updateKeyboardTheme re-runs the resolve gate before rebuilding.
+        mThemeContext = null;
+        updateKeyboardTheme();
+    }
+
+    /** The wallpaper listener follows the input view: registered only while one driven by the
+     *  dynamic theme exists. */
+    private void syncDynamicThemeListener() {
+        final boolean active = mKeyboardView != null && mKeyboardTheme != null
+                && mKeyboardTheme.mThemeId == KeyboardTheme.THEME_ID_TATAR_DYNAMIC;
+        dynamicThemeController().sync(active);
+    }
+
+    public void releaseDynamicThemeListener() {
+        if (mDynamicThemeController != null) {
+            mDynamicThemeController.release();
+        }
+    }
+
+    private DynamicThemeController dynamicThemeController() {
+        if (mDynamicThemeController == null) {
+            mDynamicThemeController = new DynamicThemeController(mLatinIME,
+                    this::onDynamicColorsChanged);
+        }
+        return mDynamicThemeController;
+    }
+
     private boolean updateKeyboardThemeAndContextThemeWrapper(final Context context,
             final KeyboardTheme keyboardTheme) {
-        if (mThemeContext == null || !keyboardTheme.equals(mKeyboardTheme)) {
-            mKeyboardTheme = keyboardTheme;
-            mThemeContext = new ContextThemeWrapper(context, keyboardTheme.mStyleId);
+        final KeyboardTheme effectiveTheme = resolveEffectiveTheme(keyboardTheme);
+        if (mThemeContext == null || !effectiveTheme.equals(mKeyboardTheme)) {
+            mKeyboardTheme = effectiveTheme;
+            mThemeContext = new ContextThemeWrapper(context, effectiveTheme.mStyleId);
             KeyboardLayoutSet.onKeyboardThemeChanged();
             return true;
         }
@@ -630,6 +677,9 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         mKeyboardView = currentInputView.findViewById(R.id.keyboard_view);
         mKeyboardView.setKeyboardActionListener(mLatinIME);
         mCurrentInputView = currentInputView;
+        // A fresh input view exists: the wallpaper listener tracks it when (and only when) the
+        // dynamic theme drives it.
+        syncDynamicThemeListener();
         // The "panel is open" state never survives an input-view recreation (rotation, theme or
         // height change): the panel closes and the letters come back.
         mEmojiPanelShown = false;

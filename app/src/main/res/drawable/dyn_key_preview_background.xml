@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+/*
+**
+** Copyright (C) 2026 Tatar Keyboard contributors
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
+-->
+
+<!-- Dynamic-theme twin of ios_key_preview_background: identical geometry, colors from the
+     dyn_* set. The contract test pins the two files equal modulo the color prefix. In the
+     running keyboard the preview is the path-drawn balloon (KeyPreviewChoreographer swaps it
+     in for this resource id, as for the ios twin). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:top="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/dyn_key_shadow" />
+            <corners android:radius="5dp" />
+        </shape>
+    </item>
+    <item android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/dyn_key_normal" />
+            <size
+                android:height="5dp"
+                android:width="45dp" />
+            <padding
+                android:left="0dp"
+                android:top="0dp"
+                android:right="0dp"
+                android:bottom="60dp" />
+            <corners android:radius="5dp" />
+        </shape>
+    </item>
+</layer-list>
