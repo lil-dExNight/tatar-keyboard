@@ -82,10 +82,11 @@ Options, ranked:
 2. **Streamed structural validation**: run the `open()` walks over a sequential read window,
    keeping mmap purely for random-access lookups. Estimated −1.5…−2.4 MB PSS after mixed
    sessions; also removes speculative flash I/O at engine start.
-3. **`onTrimMemory` → run the existing `deallocateMemory()`** on UI_HIDDEN/MODERATE — system-
-   driven drops instead of only the 10 s timer; better kill-ranking between sessions.
-4. **Lazy bigram attach** (first next-word request, not engine start) — wins short sessions,
-   not the measured peak.
+3. Landed: `onTrimMemory` runs the idle `deallocateMemory()` pass on UI_HIDDEN and on MODERATE or
+   deeper, guarded by `!isInputViewShown()` — system-driven drops next to the 10 s timer.
+4. Landed: lazy bigram attach. Publication hands the engine the table's catalog; the engine maps
+   and opens the table on its worker at the first next-word lookup (`deferBigramAttach`), so a
+   session that never predicts never faults the table in. The measured peak is unchanged.
 5. **Future-facing (37.1/37.2+)**: `MADV_RANDOM` on mappings; runtime budget below the
    manifest ceiling with an over-budget listener driving early eviction.
 6. **Emoji-suggest table heap shape** (LinkedHashMap → flat arrays) only if observability

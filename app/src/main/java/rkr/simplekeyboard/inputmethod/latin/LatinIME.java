@@ -24,6 +24,7 @@ package rkr.simplekeyboard.inputmethod.latin;
 import android.app.AlertDialog;
 import android.app.KeyguardManager;
 import android.content.BroadcastReceiver;
+import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -1832,11 +1833,28 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         mKeyboardSwitcher.releaseEmojiPanelCaches();
     }
 
+    // System-driven drop of the same idle caches as MSG_DEALLOCATE_MEMORY: UI_HIDDEN means the
+    // window is already hidden, MODERATE and deeper reach only a cached process. Never while the
+    // input view is shown — the drop cancels live touches and frees the buffer the view draws
+    // from. deallocateMemory() is idempotent, so a trim after the timer's drop is a cheap no-op.
+    @Override
+    public void onTrimMemory(final int level) {
+        super.onTrimMemory(level);
+        if (level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
+                && level < ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            return;
+        }
+        if (isInputViewShown()) {
+            return;
+        }
+        deallocateMemory();
+    }
+
     protected void deallocateMemory() {
         mKeyboardSwitcher.deallocateMemory();
-        // The glide word indexes and the emoji indexes are released on the same idle timer. Each
-        // engine drops them on its own worker, so this UI-thread call only enqueues; everything
-        // is rebuilt on next use.
+        // The glide word indexes and the emoji indexes are released on the idle timer and on
+        // system memory trims alike. Each engine drops them on its own worker, so this UI-thread
+        // call only enqueues; everything is rebuilt on next use.
         if (mSuggestionsController != null) {
             mSuggestionsController.releaseGlideIndexes();
             mSuggestionsController.releaseEmojiSuggest();

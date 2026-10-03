@@ -111,14 +111,30 @@ internal class CompositePrefixComputer(
     /**
      * Two-stage readiness: the bigram table is not open yet when this computer is handed to
      * [LatestOnlyPrefixEngine], and publishing the engine must not wait for it.
-     * [attachBigramSource] wires it in later without a second request, executor or computer.
-     * Written by the thread that finishes the bigram preparation, read on the engine worker.
+     * [attachBigramSource] wires it in eagerly; [deferBigramAttach] hands over a deferred attach
+     * that the first [predict] runs on the engine worker. Written off the worker, read on it.
      */
     @Volatile
     private var bigramSource: NextWordComputer? = null
 
+    /** The deferred attach handed to [deferBigramAttach]; consumed on the engine worker only. */
+    @Volatile
+    private var pendingBigramAttach: (() -> Unit)? = null
+
     fun attachBigramSource(source: NextWordComputer) {
+        // An eager attach replaces a deferred one: predict reads bigramSource first, so the
+        // pending attach could never fire anyway, but keeping it would pin its catalog.
+        pendingBigramAttach = null
         bigramSource = source
+    }
+
+    /**
+     * Defers the bigram attach to the first [predict], which runs it on the engine worker: the
+     * mapping and the table walk happen there. One-shot; a failed attach is terminal, as with an
+     * eager attach.
+     */
+    fun deferBigramAttach(attach: () -> Unit) {
+        pendingBigramAttach = attach
     }
 
     /**
@@ -133,13 +149,14 @@ internal class CompositePrefixComputer(
      *    the bundled spelling wins;
      *  - word forms and the fallback fill what is still free, excluding everything shown.
      *
-     * Before a bigram source is attached (or when the table failed to open) this returns an empty
-     * list, with no learned pairs, forms or fallback. The controller re-requests on attach only
-     * while the active language has no word on the strip, and a strip filled before attach would
-     * suppress that re-request.
+     * With no bigram source attached (none given yet, the deferred attach not yet run, or the
+     * table failed to open) this returns an empty list, with no learned pairs, forms or fallback.
+     * The first predict after a deferred attach was set runs it inline, so only a request that
+     * predates it answers empty; the controller re-requests such a moment only while the strip
+     * holds no active-language word.
      */
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
-        val source = bigramSource ?: return emptyList()
+        val source = bigramSource ?: runPendingBigramAttach() ?: return emptyList()
         var result = source.predict(normalizedContextWordUtf8)
         if (result.size < CELL_COUNT) {
             result = withPersonalPairs(result, normalizedContextWordUtf8)
@@ -169,6 +186,22 @@ internal class CompositePrefixComputer(
             }
         }
         return result
+    }
+
+    /**
+     * Runs the deferred bigram attach, once, inside the calling [predict]. Consumed before
+     * running, so a failing attach never retries: the source stays null and [predict] keeps
+     * answering an empty list.
+     */
+    private fun runPendingBigramAttach(): NextWordComputer? {
+        val pending = pendingBigramAttach ?: return null
+        pendingBigramAttach = null
+        try {
+            pending()
+        } catch (_: Throwable) {
+            // The attach reports its own failure; prediction keeps answering empty.
+        }
+        return bigramSource
     }
 
     /**

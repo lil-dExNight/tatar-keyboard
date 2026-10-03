@@ -78,11 +78,11 @@ interface EngineHandle {
     fun updateGlideGeometry(geometry: GlideKeyGeometry?) {}
 
     /**
-     * Wires a bigram source into an already published handle. Performs mmap I/O, so call it off
-     * the UI thread. Returns false (and [requestNextWord] keeps answering empty) if the table is
-     * unavailable or invalid; false is also the default.
+     * Hands the published bigram catalog over without opening the table: the engine maps and
+     * attaches it lazily on its worker at the first [requestNextWord] lookup, so a session that
+     * never predicts a next word never pays the mapping. Default no-op: a fake handle has no table.
      */
-    fun attachBigramSource(catalog: PublishedBigramTableCatalog): Boolean = false
+    fun deferBigramAttach(catalog: PublishedBigramTableCatalog) {}
 
     /** True only if [token] identifies the newest still-active request on this handle. */
     fun isCurrent(token: Any): Boolean
@@ -150,8 +150,8 @@ class MappedEngineHandle private constructor(
     override fun updateGlideGeometry(geometry: GlideKeyGeometry?) =
         engine.updateGlideGeometry(geometry)
 
-    override fun attachBigramSource(catalog: PublishedBigramTableCatalog): Boolean =
-        engine.attachBigramSource(catalog)
+    override fun deferBigramAttach(catalog: PublishedBigramTableCatalog) =
+        engine.deferBigramAttach(catalog)
 
     override fun isCurrent(token: Any): Boolean =
         token is LookupToken && engine.isCurrent(token)
