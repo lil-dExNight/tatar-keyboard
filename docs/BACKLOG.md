@@ -31,3 +31,11 @@ move it to the roadmap.
   deletion candidate and a DL-1 substitution candidate are rank-indistinguishable. The open
   follow-up (a different pre-registered experiment, not a rerun): a shared DL-1 tier for
   classes #2/#4 candidates ranked among themselves by frequency, continuations after.
+- **Confidence-aware glide commit by the geometric score alone.** Measured rejection: on the
+  held-out set the garbage-refusal / normal-refusal frontier never meets the pre-registered
+  (≥ 80%, ≤ 5%) corner — about an eighth of garbage rows trace a real word too well, and the
+  noisy tail of normal rows overlaps them; the runner-up margin carries no signal either
+  (`research/glide-typing.md` G3). The dwell channel (G11) is the better signal.
+- **Glide endpoint pruning n=2→3.** Measured rejection: held-out top-1/top-3 improve
+  (+1.3/+2.7 pp) but the host p95 doubles past the 2 ms budget — the largest endpoint buckets
+  hold thousands of entries; `research/glide-typing.md` G6 carries the tuning attempts.

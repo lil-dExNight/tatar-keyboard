@@ -399,9 +399,9 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         _, data = pack.generate_set(selected, rects, aliases=aliases, context_pairs=context_pairs)
         # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values.
         # The set carries both variants of every doubled word, so there are more rows than words.
-        self.assertEqual(len(selected), 4526)
-        self.assertEqual(len(data), 11420862)
-        self.assertEqual(sha256_bytes(data), "4e2ea296ed6c492ca6f94cfb2f3db2f163fd3105d26354a9850df9e51bbcdc1d")
+        self.assertEqual(len(selected), 4563)
+        self.assertEqual(len(data), 11461325)
+        self.assertEqual(sha256_bytes(data), "eeae70f29590cb72021cb576a0520b808ab5bc83570ebf60abb05462828c1677")
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_tatar_layout_aliases_are_the_hard_sign_and_yo(self) -> None:

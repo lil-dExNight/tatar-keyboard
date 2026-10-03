@@ -24,6 +24,8 @@ These hold for every release and are not repeated in the entries below:
 ### Changed
 
 - Action labels, hint letters and the autocorrect emphasis now meet the WCAG AA contrast in both themes; the glide-trail color is per theme and readable on light keys.
+- The Tatar dictionary ranks words by wider evidence (HPLT web corpus, MADLAD-400, tt.wikipedia), so more conversational word forms complete and predict correctly.
+- Glide typing reads better on fast swipes, scores Tatar and Russian with per-language constants, and ranks a gesture's candidates by the word before it.
 - The key preview no longer clips at the screen edges: the balloon shifts inward and its stem stays on the key.
 - With system animations off, the glide trail disappears instantly at lift and the emoji panel jumps between sections without animating.
 - Emoji long-press vibration follows the key-vibration setting.

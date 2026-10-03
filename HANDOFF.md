@@ -136,6 +136,20 @@ The branch also holds the quick-wins sprint, all gates green (user-facing entrie
   `release_check.sh` (`artifact.profiles`); the publish checklist records the cold-start
   median per version.
 
+The prediction/glide quality round followed, experiment-gated (every memo ran to a verdict):
+
+- Landed: the Tatar dictionary now ranks on merged HPLT/MADLAD/tt.wikipedia evidence
+  (+0.96 pp held-out conversational coverage at the fixed size, chain top-3 flat, KS +1.22 pp;
+  corpus.tatar was unreachable); the glide decoder gained speed-adaptive sigma widening,
+  per-language constants with a length term, and a bigram channel on the N-best (context rows
+  in the calibration set). FUTO real-gesture diagnostic: 82.76% / 90.40% over the full slice.
+- Measured rejections, recorded in `docs/BACKLOG.md` with their numbers: the stem-keyed
+  bigram backoff (+0.46 pp against the +1.5 pp bar), the wider typo classes under
+  class-priority ranking (a DL-1 deletion and a DL-1 substitution are rank-indistinguishable;
+  the shared DL-1 tier is the registered follow-up), the confidence-aware glide commit (the
+  geometric signal cannot separate garbage from noise at the pre-registered refusal rates),
+  endpoint pruning n=2→3 (+1.3 pp top-1 but the host p95 doubles past the budget).
+
 The device pass for this sprint is listed in `docs/ROADMAP.md` section 3.
 
 ## Open release steps

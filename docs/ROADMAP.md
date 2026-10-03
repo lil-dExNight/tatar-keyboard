@@ -19,12 +19,10 @@ The steps listed in `HANDOFF.md` ("Open release steps") for 3.7.0 and 3.8.0.
 The full program, its tiers and per-item gates live in `research/README.md`; the per-topic
 evidence is in the documents it indexes. Work goes in this order:
 
-1. **Prediction and glide quality** — wider typo classes (insertion/deletion/transposition),
-   the stem-keyed bigram backoff (offline simulation first), corpus ingestion (HPLT, MADLAD,
-   Wikipedia, Taiga, the corpus.tatar frequency lists — see the licensing note below), glide
-   decoder work (confidence-aware commit, speed-adaptive weighting, the bigram channel,
-   endpoint pruning, per-language constants). (`research/prediction-engine.md`,
-   `research/glide-typing.md`)
+1. **Prediction and glide quality, continued** — the follow-ups the first round's measurements
+   opened: the shared DL-1 typo tier (the wider-typo-classes follow-up in `docs/BACKLOG.md`),
+   retraining the bigram tables on the newly ingested corpora, corpus.tatar frequency lists if
+   the host ever answers. (`research/prediction-engine.md`, `research/glide-typing.md`)
 2. **Features** — text shortcuts (abbreviation → expansion), the in-memory recent-clip cell
    (RAM only, never stored), dynamic-color theme variant, inline autofill, backup/export of
    learned data, one-handed mode, the inline autocorrect-revert cell, persistent refused

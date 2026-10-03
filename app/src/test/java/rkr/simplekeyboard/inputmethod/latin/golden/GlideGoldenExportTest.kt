@@ -129,9 +129,9 @@ class GlideGoldenExportTest {
         val sha = sha256(bytes)
         if (geo.id == "fixture-tt") {
             // The generator mirror must reproduce the pinned calibration set byte for byte.
-            assertEquals(4526, words.size)
-            assertEquals(11420862, bytes.size)
-            assertEquals("4e2ea296ed6c492ca6f94cfb2f3db2f163fd3105d26354a9850df9e51bbcdc1d", sha)
+            assertEquals(4563, words.size)
+            assertEquals(11461325, bytes.size)
+            assertEquals("eeae70f29590cb72021cb576a0520b808ab5bc83570ebf60abb05462828c1677", sha)
         }
         w.write("{\"kind\":\"set\",\"id\":${json(geo.id)},\"words\":${words.size},\"rows\":${paths.size}," +
             "\"bytes\":${bytes.size},\"sha256\":${json(sha)}}\n")

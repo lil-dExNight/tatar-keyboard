@@ -149,12 +149,14 @@ substitution candidates are rank-indistinguishable and class priority must pick 
 live follow-up is the shared DL-1 tier (classes #2/#4 candidates at distance 1 ranked among
 themselves by frequency, continuations after) — a new pre-registered experiment.
 
-**P3 — corpus.tatar + HPLT/MADLAD ingestion.** Ingest the corpus.tatar frequency lists
-(counted over 500M edited words) and HPLT v2 `tat_Cyrl` (CC0) with per-word Russian-bleed
-filtering and per-source merge weights. Licensing decision (operator): use all surveyed
-sources for now, review deferred. Gate: ≥ +0.5 pp held-out conversational coverage at fixed
-dictionary size; top-3 on the pinned harness must not regress (register skew is the risk —
-news/web frequencies can hurt a conversational metric if merged naively).
+**P3 — corpus.tatar + HPLT/MADLAD ingestion.** Landed for HPLT 2.0 `tat_Cyrl`, MADLAD-400 tt
+and tt.wikipedia: per-source extraction with a Russian-bleed filter, merged as integer bonus
+frequencies (`data/dictionary/dict-accept/bonus-freq-tt.tsv`), re-rank only at the fixed
+dictionary size. Measured: +0.96 pp held-out conversational token coverage (bar +0.5), chain
+top-3 flat (paired CI contains zero), keystroke savings +1.22 pp. corpus.tatar stayed
+unobtainable (host unreachable) and remains the best untapped lever. The bigram table was
+repacked against the new dictionary but not retrained on the new corpora — that is the
+natural next step.
 
 **P4 — Pack-time Kneser-Ney successor re-ranking.** Rank each head's kept successors by the
 interpolated KN score (continuation counts from one extra pass; discount and λ fixed from
