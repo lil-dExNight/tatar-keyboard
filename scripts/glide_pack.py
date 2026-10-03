@@ -65,7 +65,8 @@ _GRID_WIDTH = typo_pack._GEOMETRY_REFERENCE_WIDTH  # 100 000
 # ``splitmix64(GLIDE_SEED ^ fnv1a64(word.utf8))``:
 #   1. sampling step: step_min + draw % step_min grid units, step_min = narrowest key width /
 #      STEP_DIVISOR (sampling density varies per word, like a digitizer's rate with finger speed);
-#   2. timestamp step: TSTEP_MIN + draw % TSTEP_VAR ms per sample (the scoring ignores t);
+#   2. timestamp step: TSTEP_MIN + draw % TSTEP_VAR ms per sample (the persona scales the range;
+#      the decoder's speed-adaptive channel reads only the gesture's total duration);
 #   3. corner cutting: each interior non-loop vertex, with probability 1/CUT_MODULUS, moves by
 #      (P + Q - 2V) / CUT_DIVISOR (floor division), decided on the original vertices;
 #   4. endpoint offsets: the first and last vertex each move by a per-axis uniform draw in
@@ -98,6 +99,31 @@ ENDPOINT_START_PERCENT = 18  # measured touch-down offset from the first key cen
 ENDPOINT_END_PERCENT = 40  # measured lift-off offset from the last key center: p50 = 0.40 radii
 ENDPOINT_WIDE_MODULUS = 7  # measured endpoint offset p95/p50 ratio needs a heavy tail...
 ENDPOINT_WIDE_SCALE = 3  # ...start p95 = 0.68, end p95 = 1.14 radii
+# Personas (the corpus mixes fast recallers and slow tracers): every word belongs to exactly one
+# persona, drawn from a stream INDEPENDENT of the gesture stream (a different seed, so no gesture
+# draw moves). The persona scales the noise knobs and the timestamp step, never the draw count.
+# Fast: offsets x PERSONA_FAST_NUM/DEN and a shorter tstep; slow: offsets x PERSONA_SLOW_NUM/DEN
+# and a longer tstep; normal: the fitted knobs unchanged.
+PERSONA_SEED = 0x50EF5A
+PERSONA_MODULUS = 3
+PERSONA_NORMAL = 0
+PERSONA_FAST = 1
+PERSONA_SLOW = 2
+PERSONA_FAST_NUM = 3
+PERSONA_FAST_DEN = 2
+PERSONA_SLOW_NUM = 2
+PERSONA_SLOW_DEN = 3
+TSTEP_FAST_MIN = 5  # fast persona: dt in [5, 12) ms
+TSTEP_FAST_VAR = 7
+TSTEP_SLOW_MIN = 14  # slow persona: dt in [14, 27) ms
+TSTEP_SLOW_VAR = 13
+# Context rows (the bigram channel's calibration class): after the word rows, one row per
+# selected (previous, word) pair of consecutive eval-sentence tokens. The gesture traces the
+# word; the previous token is the committed context. The pair stream (seed below) drives both
+# the thinning draw and the gesture's stream seed, so a context row's gesture differs from the
+# word's own row even for the same word.
+CONTEXT_SEED = 0xC047E5
+CONTEXT_MODULUS = 4
 
 _MASK64 = (1 << 64) - 1
 
@@ -321,6 +347,8 @@ def generate_gesture(
     gesture_offset_percent: int = GESTURE_OFFSET_PERCENT,
     endpoint_start_percent: int = ENDPOINT_START_PERCENT,
     endpoint_end_percent: int = ENDPOINT_END_PERCENT,
+    tstep_min: int = TSTEP_MIN,
+    tstep_var: int = TSTEP_VAR,
 ) -> list[tuple[int, int, int]]:
     """One synthetic gesture for ``word`` as (x, y, t) integer samples; see the noise model.
 
@@ -336,7 +364,7 @@ def generate_gesture(
     step_min = standard_width // STEP_DIVISOR
     step = step_min + stream % step_min
     stream = splitmix64(stream)
-    tstep = TSTEP_MIN + stream % TSTEP_VAR
+    tstep = tstep_min + stream % tstep_var
     stream = splitmix64(stream)
     vertices, loop_flags = _ideal_vertices(word, by_letter, draw_loop)
 
@@ -441,9 +469,77 @@ def _clamp(value: int, bound: int) -> int:
     return max(-bound, min(bound, value))
 
 
+def persona_of(word: str, *, seed: int = PERSONA_SEED) -> int:
+    """The word's persona: an integer in [0, PERSONA_MODULUS), from a stream independent of the
+    gesture stream (PERSONA_SEED, not GLIDE_SEED), so no gesture draw moves."""
+    return splitmix64(seed ^ fnv1a64(word.encode("utf-8"))) % PERSONA_MODULUS
+
+
+def persona_knobs(persona: int) -> dict[str, int]:
+    """The generate_gesture overrides of one persona (empty for the normal one)."""
+    if persona == PERSONA_FAST:
+        return {
+            "jitter_percent": JITTER_PERCENT * PERSONA_FAST_NUM // PERSONA_FAST_DEN,
+            "gesture_offset_percent": GESTURE_OFFSET_PERCENT * PERSONA_FAST_NUM // PERSONA_FAST_DEN,
+            "endpoint_start_percent": ENDPOINT_START_PERCENT * PERSONA_FAST_NUM // PERSONA_FAST_DEN,
+            "endpoint_end_percent": ENDPOINT_END_PERCENT * PERSONA_FAST_NUM // PERSONA_FAST_DEN,
+            "tstep_min": TSTEP_FAST_MIN,
+            "tstep_var": TSTEP_FAST_VAR,
+        }
+    if persona == PERSONA_SLOW:
+        return {
+            "jitter_percent": JITTER_PERCENT * PERSONA_SLOW_NUM // PERSONA_SLOW_DEN,
+            "gesture_offset_percent": GESTURE_OFFSET_PERCENT * PERSONA_SLOW_NUM // PERSONA_SLOW_DEN,
+            "endpoint_start_percent": ENDPOINT_START_PERCENT * PERSONA_SLOW_NUM // PERSONA_SLOW_DEN,
+            "endpoint_end_percent": ENDPOINT_END_PERCENT * PERSONA_SLOW_NUM // PERSONA_SLOW_DEN,
+            "tstep_min": TSTEP_SLOW_MIN,
+            "tstep_var": TSTEP_SLOW_VAR,
+        }
+    return {}
+
+
 def render_gesture(word: str, points: Sequence[tuple[int, int, int]]) -> str:
     coords = ";".join(f"{x},{y},{t}" for x, y, t in points)
     return f"{word}\t{coords}\n"
+
+
+def render_context_row(previous: str, word: str, points: Sequence[tuple[int, int, int]]) -> str:
+    coords = ";".join(f"{x},{y},{t}" for x, y, t in points)
+    return f"{word}\t{previous}\t{coords}\n"
+
+
+def context_pair_seed(previous: str, word: str) -> int:
+    """The pair's stream value: the thinning draw and the gesture's stream seed."""
+    return splitmix64(CONTEXT_SEED ^ fnv1a64(f"{previous} {word}".encode("utf-8")))
+
+
+def select_context_pairs(
+    words: Sequence[str], eval_path: Path | None, letters: frozenset[int]
+) -> list[tuple[str, str]]:
+    """(previous, word) pairs of consecutive eval tokens: both dictionary words, the word
+    mappable and at least MIN_WORD_CODE_POINTS long, thinned by the pair draw."""
+    if eval_path is None:
+        return []
+    dictionary = set(words)
+    pairs: set[tuple[str, str]] = set()
+    for line in eval_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        tokens = line.split(" ")
+        for previous, word in zip(tokens, tokens[1:]):
+            if (
+                previous in dictionary
+                and word in dictionary
+                and len(word) >= MIN_WORD_CODE_POINTS
+                and _letters_mappable(word, letters)
+            ):
+                pairs.add((previous, word))
+    return [
+        pair
+        for pair in sorted(pairs)
+        if context_pair_seed(pair[0], pair[1]) % CONTEXT_MODULUS == 0
+    ]
 
 
 def generate_set(
@@ -452,6 +548,7 @@ def generate_set(
     *,
     seed: int = GLIDE_SEED,
     aliases: dict[int, int] | None = None,
+    context_pairs: Sequence[tuple[str, str]] = (),
 ) -> tuple[str, bytes]:
     by_letter = letters_by_code_point(rects, aliases)
     radius = key_radius(rects)
@@ -459,14 +556,33 @@ def generate_set(
     for word in words:
         # A doubled word contributes both variants (the decoder scores it only against its
         # looped path): the no-jog row first, then the jog row, from the same word stream, so
-        # the pair differs only in the detour.
-        rows.append(render_gesture(word, generate_gesture(word, by_letter, radius, seed=seed)))
+        # the pair differs only in the detour. Both variants carry the word's persona.
+        knobs = persona_knobs(persona_of(word))
+        rows.append(
+            render_gesture(word, generate_gesture(word, by_letter, radius, seed=seed, **knobs))
+        )
         if _has_double_key(word, by_letter):
             rows.append(
                 render_gesture(
-                    word, generate_gesture(word, by_letter, radius, seed=seed, draw_loop=True),
+                    word,
+                    generate_gesture(word, by_letter, radius, seed=seed, draw_loop=True, **knobs),
                 )
             )
+    # Context rows: one no-jog row per selected pair, after the word rows.
+    for previous, word in context_pairs:
+        rows.append(
+            render_context_row(
+                previous,
+                word,
+                generate_gesture(
+                    word,
+                    by_letter,
+                    radius,
+                    seed=context_pair_seed(previous, word),
+                    **persona_knobs(persona_of(word)),
+                ),
+            )
+        )
     rendered = "".join(rows)
     return rendered, rendered.encode("utf-8")
 
@@ -523,11 +639,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             aliases = read_layout_aliases(args.layout_dir, rects)
             letters = frozenset(letters_by_code_point(rects, aliases))
             selected = select_words(words, args.eval_words, letters)
-            _, data = generate_set(selected, rects, aliases=aliases)
+            context_pairs = select_context_pairs(words, args.eval_words, letters)
+            _, data = generate_set(
+                selected, rects, aliases=aliases, context_pairs=context_pairs
+            )
             write_atomic(args.output, data)
             _print_json(
                 {
                     "aliases": "".join(chr(alias) for alias in sorted(aliases)),
+                    "context_rows": len(context_pairs),
                     "dict_modulus": DICT_MODULUS,
                     "key_radius": key_radius(rects),
                     "letter_keys": len(rects),

@@ -77,10 +77,14 @@ class FutoRealGestureDiagnosticTest {
                 lexiconCounts.merge(word, 1L, Long::plus)
                 if (records.size < limit) {
                     val coords = FloatArray(data.size * 3)
+                    // Rebase the epoch-ms timestamps in Double before the Float store: at epoch
+                    // magnitude a Float cannot tell two samples 10 ms apart, and the speed
+                    // channel would read a zero duration.
+                    val t0 = data[0]["t"]!!
                     for ((index, point) in data.withIndex()) {
                         coords[index * 3] = (point["x"]!!.toFloat() * canvasWidth)
                         coords[index * 3 + 1] = (point["y"]!!.toFloat() * canvasHeight)
-                        coords[index * 3 + 2] = point["t"]!!.toFloat()
+                        coords[index * 3 + 2] = (point["t"]!! - t0).toFloat()
                     }
                     records.add(word to coords)
                 }

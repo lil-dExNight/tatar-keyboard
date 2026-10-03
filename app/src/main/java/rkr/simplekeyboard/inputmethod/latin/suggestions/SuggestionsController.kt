@@ -1826,7 +1826,10 @@ class SuggestionsController internal constructor(
         // and a language the user returns to rebuilds lazily on its next gesture.
         releaseGlideIndexesExcept(activeLanguage)
         val language = activeLanguage ?: return
-        val token = activeEngine.requestGlide(sessionId, language, path)
+        // The bigram channel's condition: the committed context word, normalized as on the
+        // NEXT_WORD path; empty at a field start, which switches the channel off.
+        val contextBytes = TatarWordUtils.toLookupBytes(TatarWordUtils.normalizeForLookup(context))
+        val token = activeEngine.requestGlide(sessionId, language, path, contextBytes)
         if (token == null) {
             clearToReservedBand()
         }

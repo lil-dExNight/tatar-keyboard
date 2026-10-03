@@ -106,6 +106,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.GlobalTopFrequency
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.GlideKeyGeometryBuilder;
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder;
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.MappedEngineHandle;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules;
@@ -670,13 +671,18 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // Typo recovery policy: the Tatar engine uses FuzzyEditPolicy.TATAR; the Russian
             // engine gets null, which means FuzzyEditPolicy.DEFAULT.
             final FuzzyEditPolicy fuzzyEditPolicy = tatarEngine ? FuzzyEditPolicy.TATAR : null;
+            // The glide decoder's scoring constants are per language: FUTO's measured finding is
+            // that glide scoring calibration does not transfer between languages.
+            final GlideDecoder.GlideConstants glideConstants = tatarEngine
+                    ? GlideDecoder.GlideConstants.TATAR
+                    : GlideDecoder.GlideConstants.RUSSIAN;
             // Every shipped-language engine gets a top-frequency fallback for next-word
             // prediction, built from its own dictionary. It only fills empty cells and never
             // displaces pair successors, word forms or the emoji cell.
             final FallbackWordsFactory fallbackWordsFactory = dictionaryArtifact != null
                     ? GlobalTopFrequencyFallbackFactory.INSTANCE : null;
             return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules,
-                    fuzzyEditPolicy, fallbackWordsFactory, personalBigrams);
+                    fuzzyEditPolicy, fallbackWordsFactory, personalBigrams, glideConstants);
         };
 
         mSuggestionsController = new SuggestionsController(

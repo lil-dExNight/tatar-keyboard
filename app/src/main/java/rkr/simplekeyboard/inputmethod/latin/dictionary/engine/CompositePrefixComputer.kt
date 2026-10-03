@@ -85,6 +85,24 @@ internal class CompositePrefixComputer(
 ) : PrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer, GlideGeometrySink,
     GlideIndexReleaser {
 
+    init {
+        // The glide bigram channel reads the bundled table's successors of the context word (the
+        // raw table, not the merged NEXT_WORD list). The provider runs on the engine worker, inside
+        // the decode; a missing or broken table answers empty and the channel stays off.
+        glideHost?.bigramSuccessorsProvider = { contextWord ->
+            val source = bigramSource ?: runPendingBigramAttach()
+            if (source == null) {
+                emptyList()
+            } else {
+                try {
+                    source.predict(ImmutableUtf8Prefix.copyOf(contextWord.toByteArray(Charsets.UTF_8)))
+                } catch (_: RuntimeException) {
+                    emptyList()
+                }
+            }
+        }
+    }
+
     /**
      * The autocorrect verdict as it leaves the engine: the primary's, unless the typed word is in
      * the personal dictionary. Written by the worker after each lookup, read on the UI thread.
@@ -242,8 +260,8 @@ internal class CompositePrefixComputer(
         glideHost?.updateGlideGeometry(geometry)
     }
 
-    override fun decodeGlide(path: GlidePath): List<String> =
-        glideHost?.decodeGlide(path) ?: emptyList()
+    override fun decodeGlide(path: GlidePath, contextWord: String?): List<String> =
+        glideHost?.decodeGlide(path, contextWord) ?: emptyList()
 
     /**
      * Idle memory release: the host drops the lazily built glide word index; the next decode

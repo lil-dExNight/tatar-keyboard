@@ -19,10 +19,11 @@ package rkr.simplekeyboard.inputmethod.latin.glide
 /**
  * The decode entry point of glide typing: one recorded path in, ranked words out. Runs on the
  * engine's serialized worker like the prefix lookup; the [GlideDecoder] behind it is
- * worker-confined.
+ * worker-confined. [contextWord] is the committed word before the cursor (the bigram channel's
+ * condition), null or empty at a field start.
  */
 fun interface GlideComputer {
-    fun decodeGlide(path: GlidePath): List<String>
+    fun decodeGlide(path: GlidePath, contextWord: String?): List<String>
 }
 
 /**

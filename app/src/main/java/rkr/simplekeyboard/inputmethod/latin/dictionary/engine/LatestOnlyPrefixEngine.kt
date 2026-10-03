@@ -45,7 +45,8 @@ data class LookupToken(
     val requestSerial: Long,
     val editorSessionId: Long,
     val subtypeId: String,
-    /** Prefix bytes for [LookupKind.PREFIX], context-word bytes for [LookupKind.NEXT_WORD]. */
+    /** Prefix bytes for [LookupKind.PREFIX], context-word bytes for [LookupKind.NEXT_WORD] and
+     * [LookupKind.GLIDE] (empty there at a field start). */
     val normalizedQuery: ImmutableUtf8Prefix,
     val dictionary: DictionaryIdentity,
     val kind: LookupKind = LookupKind.PREFIX,
@@ -134,7 +135,8 @@ class LatestOnlyPrefixEngine internal constructor(
     /**
      * GLIDE counterpart of [request]: same token, serial and staleness rules, but the payload is
      * the recorded path, copied here because the caller's [GlidePath] is PointerTracker's live
-     * buffer. The token's query is an empty sentinel; the worker reads the path off the request.
+     * buffer. [contextWordUtf8] is the normalized previous committed word (the bigram channel's
+     * condition); the token's query carries it. The worker reads the path off the request.
      *
      * A path with fewer than two points is rejected without invalidating the generation: unlike
      * an empty prefix (the user cleared the word), a junk gesture says nothing about the text.
@@ -144,12 +146,13 @@ class LatestOnlyPrefixEngine internal constructor(
         editorSessionId: Long,
         subtypeId: String,
         path: GlidePath,
+        contextWordUtf8: ByteArray,
     ): LookupToken? {
         if (path.size < 2) return null
         val snapshot = GlidePath(path.size)
         path.copyInto(snapshot)
         return requestInternal(
-            editorSessionId, subtypeId, ByteArray(0),
+            editorSessionId, subtypeId, contextWordUtf8,
             LookupKind.GLIDE, 0, snapshot,
         )
     }
@@ -312,7 +315,12 @@ class LatestOnlyPrefixEngine internal constructor(
                             (lookup as? NextWordComputer)?.predict(request.token.normalizedQuery)
                                 ?: emptyList()
                         LookupKind.GLIDE ->
-                            (lookup as? GlideComputer)?.decodeGlide(request.glidePath ?: GlidePath(0))
+                            (lookup as? GlideComputer)?.decodeGlide(
+                                request.glidePath ?: GlidePath(0),
+                                request.token.normalizedQuery.let {
+                                    if (it.byteCount == 0) null else it.decodeUtf8()
+                                },
+                            )
                                 ?: emptyList()
                     }
                 } catch (_: Throwable) {

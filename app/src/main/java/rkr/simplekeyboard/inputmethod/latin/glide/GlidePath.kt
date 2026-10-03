@@ -21,7 +21,8 @@ import kotlin.math.sqrt
 /**
  * A recorded glide path: fixed-capacity parallel point buffers (x, y, t) that never allocate
  * after construction. `x`/`y` are pixel (or grid-unit) coordinates in the keyboard's coordinate
- * space; `t` is the sample timestamp in milliseconds, recorded but unused by the scoring.
+ * space; `t` is the sample timestamp in milliseconds — the decoder reads only the gesture's total
+ * duration from it (the speed channel).
  *
  * Points past the capacity are dropped ([addPoint] returns false); the leading [MAX_POINTS]
  * samples cover far more finger travel than any real word.

@@ -63,11 +63,15 @@ class GlideGoldenExportTest {
 
             val ttWords = selectWords(tatar.second, fixtureTt.raw, evalLines, true)
             val ruWords = selectWords(russian.second, keysRu.raw, emptyList(), false)
+            val ttPairs = selectContextPairs(tatar.second, fixtureTt.raw, evalLines)
 
             for ((geo, lang) in listOf(fixtureTt to tatar, keysTt to tatar, keysRu to russian, fixtureRu to russian)) {
                 val words = if (geo.lang == "tt") ttWords else ruWords
                 // fixture-ru pins the geometry, index and set only (the e2e Russian test's layout).
-                exportGeometry(w, geo, lang.first, words, decodes = geo.id != "fixture-ru")
+                exportGeometry(
+                    w, geo, lang.first, words, decodes = geo.id != "fixture-ru",
+                    contextPairs = if (geo.lang == "tt") ttPairs else emptyList(),
+                )
             }
             exportPersonal(w, keysTt, tatar.first, ttWords)
             exportPersonal(w, fixtureTt, tatar.first, ttWords)
@@ -83,7 +87,14 @@ class GlideGoldenExportTest {
     // ---------------------------------------------------------------------------------------
     // Geometry, index, set, decodes.
 
-    private fun exportGeometry(w: Writer, geo: Geo, index: TdictPrefixIndex, words: List<String>, decodes: Boolean) {
+    private fun exportGeometry(
+        w: Writer,
+        geo: Geo,
+        index: TdictPrefixIndex,
+        words: List<String>,
+        decodes: Boolean,
+        contextPairs: List<Pair<String, String>> = emptyList(),
+    ) {
         val g = geo.geometry
         val sb = StringBuilder("{\"kind\":\"geometry\",\"id\":").append(json(geo.id))
             .append(",\"lang\":").append(json(geo.lang)).append(",\"raw\":[")
@@ -113,14 +124,14 @@ class GlideGoldenExportTest {
         val wordIndex = GlideWordIndex.build(inventory, g)
         writeIndexDigest(w, geo.id, "base", wordIndex, inventory.entryCount, g.keyCount)
 
-        val (rendered, paths) = renderSet(words, geo.raw)
+        val (rendered, paths) = renderSet(words, geo.raw, contextPairs)
         val bytes = rendered.toString().toByteArray(Charsets.UTF_8)
         val sha = sha256(bytes)
         if (geo.id == "fixture-tt") {
             // The generator mirror must reproduce the pinned calibration set byte for byte.
-            assertEquals(4563, words.size)
-            assertEquals(10424516, bytes.size)
-            assertEquals("5b1ccd59eeafeeeac0d9b62df03edde1884775ac5ead6e1cccb7e57bd5f686e1", sha)
+            assertEquals(4526, words.size)
+            assertEquals(11420862, bytes.size)
+            assertEquals("4e2ea296ed6c492ca6f94cfb2f3db2f163fd3105d26354a9850df9e51bbcdc1d", sha)
         }
         w.write("{\"kind\":\"set\",\"id\":${json(geo.id)},\"words\":${words.size},\"rows\":${paths.size}," +
             "\"bytes\":${bytes.size},\"sha256\":${json(sha)}}\n")
@@ -446,6 +457,9 @@ class GlideGoldenExportTest {
 
     private class GeneratedPath(val xs: IntArray, val ys: IntArray, val ts: IntArray, val drewLoop: Boolean) {
         var rowWord: String = ""
+
+        /** The committed previous word of a CONTEXT row; empty for plain word rows. */
+        var rowContext: String = ""
     }
 
     /**
@@ -485,18 +499,95 @@ class GlideGoldenExportTest {
     }
 
     private fun generateGesture(word: String, drawLoop: Boolean, raw: List<GlideKeyGeometry.RawKey>): GeneratedPath {
+        return generateGesture(word, drawLoop, raw, personaKnobs(personaOf(word)))
+    }
+
+    /** The pair's stream value: the thinning draw and the gesture's stream seed. */
+    private fun contextPairSeed(previous: String, word: String): Long =
+        splitmix64(CONTEXT_SEED xor fnv1a64("$previous $word".toByteArray(Charsets.UTF_8)))
+
+    /** Mirror of glide_pack.select_context_pairs over the golden test's own selection inputs. */
+    private fun selectContextPairs(
+        vocabulary: List<String>,
+        raw: List<GlideKeyGeometry.RawKey>,
+        evalLines: List<String>,
+    ): List<Pair<String, String>> {
+        val letters = rectsByLetter(raw).keys
+        val dictionary = HashSet(vocabulary)
+        val pairs = sortedSetOf<Pair<String, String>>(compareBy({ it.first }, { it.second }))
+        for (line in evalLines) {
+            if (line.isEmpty() || line.startsWith("#")) continue
+            val tokens = line.split(" ")
+            for (i in 0 until tokens.size - 1) {
+                val previous = tokens[i]
+                val word = tokens[i + 1]
+                if (previous !in dictionary || word !in dictionary) continue
+                if (word.codePointCount(0, word.length) < MIN_WORD_CODE_POINTS) continue
+                if (!lettersMappable(word, letters)) continue
+                pairs.add(previous to word)
+            }
+        }
+        return pairs.filter {
+            java.lang.Long.remainderUnsigned(contextPairSeed(it.first, it.second), CONTEXT_MODULUS) == 0L
+        }
+    }
+
+    /** The word's persona (mirror of glide_pack.persona_of). */
+    private fun personaOf(word: String): Int = java.lang.Long.remainderUnsigned(
+        splitmix64(PERSONA_SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8))),
+        PERSONA_MODULUS,
+    ).toInt()
+
+    private class PersonaKnobs(
+        val jitterPercent: Int,
+        val gestureOffsetPercent: Int,
+        val endpointStartPercent: Int,
+        val endpointEndPercent: Int,
+        val tstepMin: Int,
+        val tstepVar: Long,
+    )
+
+    /** The generateGesture overrides of one persona (mirror of glide_pack.persona_knobs). */
+    private fun personaKnobs(persona: Int): PersonaKnobs = when (persona) {
+        PERSONA_FAST -> PersonaKnobs(
+            JITTER_PERCENT * PERSONA_FAST_NUM / PERSONA_FAST_DEN,
+            GESTURE_OFFSET_PERCENT * PERSONA_FAST_NUM / PERSONA_FAST_DEN,
+            ENDPOINT_START_PERCENT * PERSONA_FAST_NUM / PERSONA_FAST_DEN,
+            ENDPOINT_END_PERCENT * PERSONA_FAST_NUM / PERSONA_FAST_DEN,
+            TSTEP_FAST_MIN, TSTEP_FAST_VAR,
+        )
+        PERSONA_SLOW -> PersonaKnobs(
+            JITTER_PERCENT * PERSONA_SLOW_NUM / PERSONA_SLOW_DEN,
+            GESTURE_OFFSET_PERCENT * PERSONA_SLOW_NUM / PERSONA_SLOW_DEN,
+            ENDPOINT_START_PERCENT * PERSONA_SLOW_NUM / PERSONA_SLOW_DEN,
+            ENDPOINT_END_PERCENT * PERSONA_SLOW_NUM / PERSONA_SLOW_DEN,
+            TSTEP_SLOW_MIN, TSTEP_SLOW_VAR,
+        )
+        else -> PersonaKnobs(
+            JITTER_PERCENT, GESTURE_OFFSET_PERCENT,
+            ENDPOINT_START_PERCENT, ENDPOINT_END_PERCENT, TSTEP_MIN, TSTEP_VAR,
+        )
+    }
+
+    private fun generateGesture(
+        word: String,
+        drawLoop: Boolean,
+        raw: List<GlideKeyGeometry.RawKey>,
+        knobs: PersonaKnobs,
+        streamSeed: Long = GLIDE_SEED,
+    ): GeneratedPath {
         val byLetter = rectsByLetter(raw)
         val minWidth = raw.minOf { it.right - it.left }
         val radius = raw.minOf { minOf(it.right - it.left, it.bottom - it.top) }
 
         val codePoints = word.codePoints().toArray()
         val hasDouble = hasDoubledKey(word, byLetter)
-        var stream = splitmix64(GLIDE_SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
+        var stream = splitmix64(streamSeed xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
         val loop = drawLoop && hasDouble
         val stepMin = minWidth / STEP_DIVISOR
         val step = stepMin + java.lang.Long.remainderUnsigned(stream, stepMin.toLong()).toInt()
         stream = splitmix64(stream)
-        val tstep = TSTEP_MIN + java.lang.Long.remainderUnsigned(stream, TSTEP_VAR).toInt()
+        val tstep = knobs.tstepMin + java.lang.Long.remainderUnsigned(stream, knobs.tstepVar).toInt()
         stream = splitmix64(stream)
 
         val vertexX = IntArray(5 * codePoints.size)
@@ -543,7 +634,7 @@ class GlideGoldenExportTest {
         }
 
         // Endpoint offsets (mirror of glide_pack.generate_gesture, draw group 4).
-        var startHalf = radius * ENDPOINT_START_PERCENT / 100
+        var startHalf = radius * knobs.endpointStartPercent / 100
         if (java.lang.Long.remainderUnsigned(stream, ENDPOINT_WIDE_MODULUS) == 0L) {
             startHalf *= ENDPOINT_WIDE_SCALE
         }
@@ -552,7 +643,7 @@ class GlideGoldenExportTest {
         stream = splitmix64(stream)
         val startDy = java.lang.Long.remainderUnsigned(stream, 2L * startHalf + 1).toInt() - startHalf
         stream = splitmix64(stream)
-        var endHalf = radius * ENDPOINT_END_PERCENT / 100
+        var endHalf = radius * knobs.endpointEndPercent / 100
         if (java.lang.Long.remainderUnsigned(stream, ENDPOINT_WIDE_MODULUS) == 0L) {
             endHalf *= ENDPOINT_WIDE_SCALE
         }
@@ -602,12 +693,12 @@ class GlideGoldenExportTest {
             pointY.add(cutY[vertexCount - 1])
         }
 
-        val jitter = radius * JITTER_PERCENT / 100
+        val jitter = radius * knobs.jitterPercent / 100
         val wander = jitter / WANDER_DIVISOR
         val span = 2L * jitter + 1
         val stepSpan = 2L * wander + 1
         // The gesture shift (draw group 5): one constant offset for the whole path.
-        val shift = radius * GESTURE_OFFSET_PERCENT / 100
+        val shift = radius * knobs.gestureOffsetPercent / 100
         val shiftSpan = 2L * shift + 1
         val shiftX = java.lang.Long.remainderUnsigned(stream, shiftSpan).toInt() - shift
         stream = splitmix64(stream)
@@ -637,13 +728,25 @@ class GlideGoldenExportTest {
         return GeneratedPath(xs, ys, ts, loop)
     }
 
-    private fun renderSet(words: List<String>, raw: List<GlideKeyGeometry.RawKey>): Pair<StringBuilder, List<GeneratedPath>> {
+    private fun renderSet(
+        words: List<String>,
+        raw: List<GlideKeyGeometry.RawKey>,
+        contextPairs: List<Pair<String, String>> = emptyList(),
+    ): Pair<StringBuilder, List<GeneratedPath>> {
         val rendered = StringBuilder()
         val paths = ArrayList<GeneratedPath>(words.size)
         val byLetter = rectsByLetter(raw)
         for (word in words) {
             appendRow(word, generateGesture(word, false, raw), rendered, paths)
             if (hasDoubledKey(word, byLetter)) appendRow(word, generateGesture(word, true, raw), rendered, paths)
+        }
+        // Context rows: one no-jog row per selected pair, after the word rows.
+        for ((previous, word) in contextPairs) {
+            val path = generateGesture(
+                word, false, raw, personaKnobs(personaOf(word)), contextPairSeed(previous, word),
+            )
+            path.rowContext = previous
+            appendRow(word, path, rendered, paths)
         }
         return rendered to paths
     }
@@ -652,6 +755,7 @@ class GlideGoldenExportTest {
         path.rowWord = word
         paths.add(path)
         rendered.append(word).append('\t')
+        if (path.rowContext.isNotEmpty()) rendered.append(path.rowContext).append('\t')
         for (i in path.xs.indices) {
             if (i > 0) rendered.append(';')
             rendered.append(path.xs[i]).append(',').append(path.ys[i]).append(',').append(path.ts[i])
@@ -750,5 +854,20 @@ class GlideGoldenExportTest {
         private const val ENDPOINT_END_PERCENT = 40
         private const val ENDPOINT_WIDE_MODULUS = 7L
         private const val ENDPOINT_WIDE_SCALE = 3
+        // Persona knobs (mirror of glide_pack.py).
+        private const val PERSONA_SEED = 0x50EF5AL
+        private const val PERSONA_MODULUS = 3L
+        private const val PERSONA_FAST = 1
+        private const val PERSONA_SLOW = 2
+        private const val PERSONA_FAST_NUM = 3
+        private const val PERSONA_FAST_DEN = 2
+        private const val PERSONA_SLOW_NUM = 2
+        private const val PERSONA_SLOW_DEN = 3
+        private const val TSTEP_FAST_MIN = 5
+        private const val TSTEP_FAST_VAR = 7L
+        private const val TSTEP_SLOW_MIN = 14
+        private const val TSTEP_SLOW_VAR = 13L
+        private const val CONTEXT_SEED = 0xC047E5L
+        private const val CONTEXT_MODULUS = 4L
     }
 }

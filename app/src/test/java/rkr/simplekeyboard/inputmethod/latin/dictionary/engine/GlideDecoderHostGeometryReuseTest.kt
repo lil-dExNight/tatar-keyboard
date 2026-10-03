@@ -65,7 +65,7 @@ class GlideDecoderHostGeometryReuseTest {
                 rebuilt
             }
             host.updateGlideGeometry(kept)
-            results += host.decodeGlide(path)
+            results += host.decodeGlide(path, null)
         }
         return inventory.walks to results
     }

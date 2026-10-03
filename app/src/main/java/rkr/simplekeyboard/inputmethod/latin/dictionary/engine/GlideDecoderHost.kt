@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 import rkr.simplekeyboard.inputmethod.latin.glide.CompositeGlideInventory
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideBigramRerank
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideComputer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGeometrySink
@@ -47,6 +48,7 @@ internal class GlideDecoderHost(
     private val inventory: GlideWordInventory,
     private val personal: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
     private val dictionaryMembership: (String) -> Boolean = { false },
+    private val glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
 ) : GlideComputer, GlideGeometrySink {
     @Volatile
     private var geometry: GlideKeyGeometry? = null
@@ -56,6 +58,15 @@ internal class GlideDecoderHost(
     private var decoderGeometry: GlideKeyGeometry? = null
     private var decoderSnapshot: PersonalDictionary? = null
     private val result = GlideResult()
+    // Scratch for the bigram channel's rerank (see GlideBigramRerank).
+    private val rerankAdjusted = FloatArray(GlideDecoder.TOP_N)
+
+    /**
+     * The bigram table's successors of a context word, count-descending. Set by the owning
+     * computer; the provider answers empty until the table attaches, which switches the channel
+     * off. Called on the engine worker.
+     */
+    var bigramSuccessorsProvider: (String) -> List<String> = { emptyList() }
 
     override fun updateGlideGeometry(geometry: GlideKeyGeometry?) {
         this.geometry = geometry
@@ -72,7 +83,7 @@ internal class GlideDecoderHost(
         decoderSnapshot = null
     }
 
-    override fun decodeGlide(path: GlidePath): List<String> {
+    override fun decodeGlide(path: GlidePath, contextWord: String?): List<String> {
         val current = geometry ?: return emptyList()
         if (current.isEmpty) return emptyList()
         val snapshot = personal.glideSnapshot()
@@ -81,15 +92,25 @@ internal class GlideDecoderHost(
             val effective =
                 if (snapshot.isEmpty) inventory
                 else CompositeGlideInventory(inventory, snapshot, dictionaryMembership)
-            active = GlideDecoder(current, effective)
+            active = GlideDecoder(current, effective, glideConstants)
             decoder = active
             decoderGeometry = current
             decoderSnapshot = snapshot
         }
         val count = active.decode(path, result)
         if (count == 0) return emptyList()
-        val words = ArrayList<String>(count)
-        for (slot in 0 until count) {
+        // The bigram channel: rerank the N-best against the committed context word. A missing or
+        // unknown context word (the table has no such head) leaves the decode order untouched.
+        if (!contextWord.isNullOrEmpty() && count > 1) {
+            val successors = try {
+                bigramSuccessorsProvider(contextWord)
+            } catch (_: RuntimeException) {
+                emptyList()
+            }
+            GlideBigramRerank.rerank(result, successors, glideConstants.bigramRankPenalty, rerankAdjusted)
+        }
+        val words = ArrayList<String>(result.count)
+        for (slot in 0 until result.count) {
             words.add(result.words[slot]!!)
         }
         return words
