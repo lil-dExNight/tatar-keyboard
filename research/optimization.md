@@ -45,8 +45,8 @@ Audit findings (measured against the shipped APK):
   zero-dependency rule forbids) — an accepted limitation worth one documented line.
 - Non-Play channels may defer install-time dexopt to overnight — worth a device probe
   (`dumpsys package | grep dexopt` right after an F-Droid/adb install).
-- The 3.8.0 cold-start median was never recorded — every option below is relative to an
-  unknown headroom. Record it (the ritual prints it; the release record should keep it).
+- The 3.8.0 cold-start median was never recorded — the publish checklist now records the
+  release build's median per version; the backlog of older versions stays unknown.
 
 Options, ranked:
 
@@ -55,8 +55,10 @@ Options, ranked:
 2. **Profile coverage audit per release**: archive the R8 startup diagnostic, and script the
    static resolved-class-ratio check; plus a Perfetto capture diff against the startup
    profile (the release build is already profileable, the TT# spans exist).
-3. **Verify profile rules in a gate** (`profgen validate` + resolved-ratio threshold) — kills
-   the hand-edit failure mode without banning regeneration-time judgment.
+3. Landed: `scripts/check_profiles.py` verifies the tracked profiles in the release gate
+   (`artifact.profiles` in `scripts/release_check.sh`): strict parse (a typo'd rule fails
+   instead of going dead), class rules resolved through the R8 mapping, the resolved ratio
+   gated on a pinned floor, `profgen validate` when the SDK is present.
 4. **Split a minimal startup journey** (process start → keyboard shown → one word) from the
    full profile; A/B on device via the cold leg with alternating installs. Bounded benefit —
    everything already fits one dex.

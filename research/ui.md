@@ -81,11 +81,11 @@ screens already flip `isLightTheme` correctly, but the IME window declares no ex
 
 ## Decision memos (ranked)
 
-**UI1 — Fix the three contrast failures and pin all ratios in a contract test.** Darken the
-action accents to measured values (the light fix already ships as `app_accent_pressed`), raise
-the dark hint alpha; add a JVM/python contract test parsing both `colors.xml` files and
-asserting AA thresholds (the THREAT-MODEL accepted-risk row gets updated to cover both
-action-label ratios). Cost: hours. Effect: every informative glyph meets WCAG AA.
+**UI1 — landed.** The action accents, dark hints and every other failing pair pass WCAG AA in
+both themes; `ThemeContrastContractTest` pins the pair list (13 text pairs at 4.5:1, 4 icon
+pairs at 3:1). The THREAT-MODEL accepted-risk row is resolved. Follow-up found by the same
+audit: the app-screen palette (setup link, filled-button labels, secondary text) still fails
+AA — tracked in `docs/ROADMAP.md`.
 
 **UI2 — Dynamic-color theme variant (zero-dep).** New theme entry reusing the iOS geometry,
 colors mapped from framework `system_*` resources on API 31+ with fixed, contrast-verified
@@ -100,20 +100,17 @@ yes/no` with the keyboard visible, screencap, assert the palette crossed. If sta
 API 31+, drop the `< S` condition in `KeyboardSwitcher.onConfigurationChanged` so the view
 is always recreated. Eliminates the FlorisBoard-#3034 bug class.
 
-**UI4 — Balloon clamping and neck mirroring at screen edges.** The one known iOS divergence,
-hit on every edge key. Clamp in the placer, mirror the neck in the drawable (path rebuilt
-only when the offset changes — the draw loop stays clean); screenshot probes against iOS
-reference; finish the two pending device verifications (more-keys panel border, emoji-panel
-header inset) in the same leg.
+**UI4 — landed.** The balloon clamps to the key grid's side band and the neck mirrors the
+shift (`KeyPreviewClampTest` pins the math; the draw loop allocates nothing new). The two
+device verifications (more-keys panel border, emoji-panel header inset) stay open, plus the
+new edge-panel slide-selection check.
 
-**UI5 — Gate hand-rolled animations on the system animator scale.** Glide trail fade clears
-instantly at lift when animations are off (the live trail while the finger moves is
-essential feedback and stays); emoji section jumps get duration 0. Read the scale once per
-gesture, never per frame. WCAG 2.3.3 compliance plus a battery win (Battery Saver zeroes the
-scale). Contract-test the wiring.
+**UI5 — landed.** The glide trail fade and the emoji fling/section jumps are gated on the
+system animator scale via `MotionPolicy` (read once per gesture); the live trail and the drag
+scroll stay (direct manipulation, not animation). The wiring is contract-tested.
 
-**UI6 — Route the emoji long-press haptic through the app's vibrate toggle.** One boolean;
-contract test. One consistent haptic policy.
+**UI6 — landed.** The emoji long-press haptic goes through the app's vibrate toggle
+(`AudioAndHapticFeedbackManager.performLongPressHapticFeedback`); contract-tested.
 
 **UI7 — Dynamic nav-bar-overlap reservation for the main keyboard.** Port the emoji panel's
 `getWindowVisibleDisplayFrame` overlap measurement to the keyboard surface so the spacebar

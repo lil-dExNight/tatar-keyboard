@@ -98,18 +98,12 @@ the reject option; decide `«»` vs `""` per locale; watch TalkBack reading).
 
 ### Glide UX
 
-**UX6 — Show glide alternates and refused-glide candidates even with suggestions off.**
-Today the default configuration (suggestions master switch off) commits glides with zero
-visible alternates and only a haptic tick on refusal. The alternates are corrections of typed
-text, not predictions — gate them on the glide switch instead. The biggest default-config UX
-gap; small policy branch + tests.
-**UX7 — Undo returns the rescue path.** After a whole-word glide undo, re-bind that gesture's
-remaining candidates to the empty position. Answers Reyal's most-cited complaint ("have to
-start from the beginning") with a two-tap recovery.
-**UX8 — Trail contrast per theme.** The single light-trail color at reduced alpha reads well
-on dark and poorly on light; SHARK2's learning-by-tracing theory says the ink is the primary
-teacher and the strongest passive discovery signal. Per-theme color constants; pixel-contrast
-probe in the device test; zero draw-loop changes.
+**UX6 — landed.** Glide alternates and refused-glide candidates show with suggestions off
+(gated on the glide switch; they are corrections, not predictions).
+**UX7 — landed.** A whole-word glide undo re-binds the gesture's remaining candidates at the
+emptied position; a tap commits one through the live glide path.
+**UX8 — landed.** The trail color is a per-theme resource whose alpha is the peak, pinned by
+the contrast contract test. The pixel-contrast probe in a device test remains open.
 **UX9 — Mid-gesture live candidate, throttled and speed-gated (do last).** Decode on speed
 minima or a ≥100 ms cadence and preview top-1 in the strip (CHI 2007's measured error
 reduction; SwiftKey's "lift when you see the word"). Gate on the decoder-confidence work
@@ -121,17 +115,14 @@ touch-and-hold accessibility delay is long. Document that glide is not a TalkBac
 
 ### Onboarding and discovery
 
-**UX11 — Pre-arm the system warning.** Step 1 copy: Android warns about *every* third-party
-keyboard; this one is fully offline. Nobody pre-explains the scariest dialog in the funnel.
-Strings only; lab A/B on cancels-at-dialog (watch the backfire risk — naming data collection
-may raise anxiety; measure before shipping).
-**UX12 — Auto-return from system settings after enable** (FlorisBoard's lifecycle-bound poll
-+ CLEAR_TOP relaunch), plus a status variant of the launcher screen when setup is already
-complete. Must be device-tested on HyperOS (task-manager quirks).
-**UX13 — Onboarding invites a glide, not just a tap.** The try-it field's hint currently
-implies tapping; change the done-screen copy to invite sliding over `сәләм` (optional: a
-small animated demo on the done card, activity-scoped). Pre-registered lab gate: does the
-participant glide unprompted in the first session.
+**UX11 — landed.** Step 1 copy pre-arms the system warning: Android warns about *every*
+third-party keyboard; this one is fully offline. The lab A/B on cancels-at-dialog is still
+open (watch the backfire risk — naming data collection may raise anxiety).
+**UX12 — landed.** A lifecycle-bound watcher relaunches the wizard with CLEAR_TOP once the
+IME is enabled, and a fully set-up install opens to a status variant. The HyperOS device
+check is still open (task-manager quirks).
+**UX13 — landed.** The try-it copy invites sliding over «сәләм». The pre-registered lab gate
+(does the participant glide unprompted in the first session) is still open.
 **UX14 — One-shot, non-modal discovery paths.** A recoverable "recommended" marker on the
 settings suggestions row for users who dismissed the offer modal (never re-show the modal —
 NN/g and our spent-flag discipline); a one-shot glide nudge for users with ~200 tap-only

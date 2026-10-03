@@ -111,6 +111,33 @@ section 2), all gates green:
 - The training corpora the asset pipeline expects in `~/corpora-leipzig` (Leipzig tt/ru and
   both conv-train streams) are present and manifest-verified on this machine.
 
+The branch also holds the quick-wins sprint, all gates green (user-facing entries in
+`CHANGELOG.md` under Unreleased):
+
+- Glide UX: alternates and refused-glide candidates show with suggestions off; a glide undo
+  re-binds the gesture's candidates for a one-tap rescue (`SuggestionsController.kt`,
+  `glideStripAllowed`).
+- Themes: every informative glyph pair passes WCAG AA in both themes
+  (`ThemeContrastContractTest` pins the pair list); the glide-trail color is per theme.
+  `docs/THREAT-MODEL.md`'s contrast risk row is resolved.
+- Key preview: the balloon clamps to the key grid at the screen edges, the neck stays on the
+  key (`KeyPreviewClampTest`); the more-keys panel's touch origin follows its clamped
+  position.
+- Motion and haptics: `MotionPolicy` gates the trail fade and the emoji fling/section jumps
+  on the system animator scale; the emoji long-press haptic follows the app vibration toggle.
+- Gestures: word-delete flick from the delete key (gated on the delete-swipe preference),
+  shift cycles the case of the selection or the trailing word, long-press enter opens the
+  text-editing menu.
+- Onboarding: the system warning is pre-armed, the wizard auto-returns once the IME is
+  enabled, a set-up install opens to a status screen, the try-it copy invites a glide.
+- Memory: `onTrimMemory` runs the deallocate pass; the bigram tables map at the first
+  next-word lookup instead of at engine start (baseline profiles regenerated).
+- Release process: `scripts/check_profiles.py` verifies the tracked profiles in
+  `release_check.sh` (`artifact.profiles`); the publish checklist records the cold-start
+  median per version.
+
+The device pass for this sprint is listed in `docs/ROADMAP.md` section 3.
+
 ## Open release steps
 
 These are manual and have not been confirmed as done:

@@ -11,6 +11,28 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [Unreleased]
+
+### Added
+
+- A fast swipe left from the delete key deletes the word before the cursor (needs the delete-swipe setting).
+- The shift key cycles the case of the selected text or the word before the cursor: lowercase, then Capitalized, then ALL CAPS.
+- Long-press the enter key for a text-editing menu: select all, cut, copy, paste, cursor left, cursor right.
+- With glide typing on and word suggestions off, a glided word still shows its alternates in the strip, a refused glide shows its candidates, and undoing a glide brings the remaining candidates back for one tap.
+- Setup explains Android's standard warning about third-party keyboards before it appears, returns to the wizard by itself once the keyboard is enabled, and invites sliding over «сәләм» instead of tapping.
+
+### Changed
+
+- Action labels, hint letters and the autocorrect emphasis now meet the WCAG AA contrast in both themes; the glide-trail color is per theme and readable on light keys.
+- The key preview no longer clips at the screen edges: the balloon shifts inward and its stem stays on the key.
+- With system animations off, the glide trail disappears instantly at lift and the emoji panel jumps between sections without animating.
+- Emoji long-press vibration follows the key-vibration setting.
+- The keyboard uses less memory: it drops its caches when the system asks, and the next-word tables load on first use instead of at startup.
+
+### Fixed
+
+- Sliding over a more-keys panel clamped at a screen edge highlighted keys with an offset.
+
 ## [3.8.0] — 2026-10-01
 
 ### Added

@@ -55,13 +55,13 @@ verifiable (CI checks the manifest; `release_check.sh` checks the size).
 
 ## Feature decision memos (ranked)
 
-1. **Text-editing actions** (select all / cut / copy / paste / cursor arrows) — pure
-   `InputConnection`; all three Android majors ship it. Entry point: a long-press menu on an
-   existing key (the cheap 80% of a toolbar). Lab metric: time for a scripted
-   move/select/copy/paste task.
-2. **Word-delete swipe-left from backspace** (distance-proportional), with the same undo
-   affordance discipline as autocorrect; disambiguation against auto-repeat pinned by device
-   tests.
+1. **Text-editing actions** (select all / cut / copy / paste / cursor arrows) — landed: a
+   long-press menu on the enter key drives the editor's own context-menu actions; suppressed
+   in password fields at layout level.
+2. **Word-delete swipe-left from backspace** — landed as a fast flick deleting the word before
+   the cursor, gated on the existing delete-swipe preference and the field type; the
+   auto-repeat and select-to-delete paths are unchanged. The distance/time constants need
+   on-device tuning (the device-pass checklist is in the change).
 3. **One-handed (compact) mode** — width scale + left/right alignment; layouts are data.
    Guard the fifth row's minimum key size; measure the perf legs with the mode on. Floating
    and split stay parked (tablet-centric, highest draw-loop risk).
@@ -71,8 +71,9 @@ verifiable (CI checks the manifest; `release_check.sh` checks the size).
 5. **Backup/export of settings + learned data via SAF** (one user-picked file, zip with
    canonical-path validation — HeliBoard's zip-slip bug is the cautionary precedent). Your
    words, your file: strengthens the privacy story. Round-trip tested (JVM + instrumentation).
-6. **Shift cycles case of the selection / last word** (capitalize after the fact — FlorisBoard
-   #759). Low cost; `InputConnection` divergence risk needs the manual matrix.
+6. **Shift cycles case of the selection / last word** — landed: selection uses the existing
+   recapitalize rotation, no selection cycles the word before the cursor; plain shift is
+   untouched. The InputConnection manual matrix stays on the device pass.
 7. **Text shortcuts (abbreviation → expansion)** over the personal-store plumbing; covers the
    pinned-clip use case *without touching the clipboard*; Tatar value: long suffixes and
    fixed phrases. No tracker groundswell — honest weak signal, but near-zero cost.
