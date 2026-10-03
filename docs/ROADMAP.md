@@ -20,9 +20,9 @@ The full program, its tiers and per-item gates live in `research/README.md`; the
 evidence is in the documents it indexes. Work goes in this order:
 
 1. **Prediction and glide quality, continued** — the follow-ups the measurements opened:
-   the shared DL-1 typo tier (the wider-typo-classes follow-up in `docs/BACKLOG.md`), a
-   conv-heavier bigram remix, composition admission for the Russian dictionary tail,
-   corpus.tatar frequency lists if the host ever answers.
+   a conv-heavier bigram remix, composition admission for the Russian dictionary tail,
+   corpus.tatar frequency lists if the host ever answers. The wider-typo-classes question is
+   closed by two bracketing measured rejections (`docs/BACKLOG.md`).
    (`research/prediction-engine.md`, `research/glide-typing.md`)
 2. **The lab program** — the fifth-row A/B/C sessions per `docs/LAB-FIFTH-ROW.md` (the
    instrument landed); needs Tatar-speaking participants. (`research/ux.md`)

@@ -23,14 +23,16 @@ move it to the roadmap.
   suggestion index, stem-keyed bigram backoff (simulated at +0.46 pp chain top-3 against the
   +1.5 pp bar; the case-blind form expansion converts only 58% of stem hits —
   `research/corpus/sim_stem_backoff.py`; a case-aware expansion is a different experiment).
-- **Wider typo classes ranked by (class, DL distance, frequency) below or between the existing
-  classes.** Measured rejection: on the typo-mutated held-out set, ranking the wide classes
-  below class #4 recovers deletion only to 51% (bar: 70%) — the empty-exact discipline and the
-  three-cell strip structurally lock deletion out; ranking deletion between #1 and #4 recovers
-  it to 77% but regresses substitution 91.2% → 88.1% (bar: no regression), because a DL-1
-  deletion candidate and a DL-1 substitution candidate are rank-indistinguishable. The open
-  follow-up (a different pre-registered experiment, not a rerun): a shared DL-1 tier for
-  classes #2/#4 candidates ranked among themselves by frequency, continuations after.
+- **Wider typo classes, two bracketing rejections.** (a) Class-priority ranking: wide classes
+  below #4 recover deletion only to 51% (the empty-exact discipline plus the three-cell strip
+  locks it out); deletion between #1 and #4 recovers 77% but regresses substitution
+  91.2% → 88.1% — a DL-1 deletion and a DL-1 substitution are rank-indistinguishable, so class
+  priority picks a loser. (b) The shared DL-1 tier (all one-edit candidates ranked by
+  frequency, class-blind) reaches del 75.1% / ins 98.2% / trans 91.0% but still regresses
+  substitution by 8 rows: high-frequency one-edit words evict the originals from the 3-cell
+  strip. Both directions measured on the typo-mutated held-out set with zero autocorrect false
+  triggers; a third attempt needs a structurally different registered design (a wider strip,
+  or arbitration on something other than raw frequency) — not a rerun.
 - **Confidence-aware glide commit by the geometric score alone.** Measured rejection: on the
   held-out set the garbage-refusal / normal-refusal frontier never meets the pre-registered
   (≥ 80%, ≤ 5%) corner — about an eighth of garbage rows trace a real word too well, and the
