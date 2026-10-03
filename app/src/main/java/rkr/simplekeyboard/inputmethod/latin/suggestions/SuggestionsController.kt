@@ -24,6 +24,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TextShortcutSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramPreparationResult
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
@@ -396,7 +398,8 @@ class SuggestionsController internal constructor(
     /**
      * Normalized words whose correction the user undid in this field session; they are not
      * corrected or previewed again until the session ends. Memory only, capped at
-     * [MAX_REFUSED_CORRECTIONS] (the oldest refusal goes first).
+     * [MAX_REFUSED_CORRECTIONS] (the oldest refusal goes first). The cross-session counterpart is
+     * [refusedCorrectionSource], pair-scoped and consulted after the engine's verdict.
      */
     private val refusedCorrections = LinkedHashSet<String>()
 
@@ -451,6 +454,18 @@ class SuggestionsController internal constructor(
      * commit path; null (no shortcut feature) until wired. Read is a map lookup, never I/O.
      */
     private var shortcutSource: TextShortcutSource? = null
+
+    /**
+     * The persisted refused corrections, consulted live on the correction and preview paths; null
+     * (nothing is remembered across sessions) until wired. Read is a snapshot lookup, never I/O.
+     */
+    private var refusedCorrectionSource: RefusedCorrectionSource? = null
+
+    /**
+     * Where an undone statistical correction is reported for the cross-session count; null (an undo
+     * is forgotten with its field session, the pre-persistence behavior) until wired.
+     */
+    private var refusedCorrectionSink: RefusedCorrectionSink? = null
 
     /**
      * Paints the revert window's keep-typed cell: the typed word in the locale's quotes (the
@@ -523,6 +538,16 @@ class SuggestionsController internal constructor(
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
     fun setShortcutSource(source: TextShortcutSource) {
         shortcutSource = source
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setRefusedCorrectionSource(source: RefusedCorrectionSource) {
+        refusedCorrectionSource = source
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setRefusedCorrectionSink(sink: RefusedCorrectionSink) {
+        refusedCorrectionSink = sink
     }
 
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
@@ -2298,6 +2323,7 @@ class SuggestionsController internal constructor(
         // companion fill.
         val preview = computeAutocorrectPreview(
             autocorrectGate, pendingPrefix, suppressedPreviewWord, refusedCorrections,
+            refusedCorrectionSource,
         ) {
             usableEngine()?.autocorrectAdvice()
         }
@@ -2406,7 +2432,8 @@ class SuggestionsController internal constructor(
      *  - the feature is on (and suggestions too: [eligible] carries that);
      *  - the user has not refused this occurrence's correction through the preview's typed-word
      *    cell (a one-shot refusal, consumed here);
-     *  - the user has not undone a correction of this word earlier in the field session;
+     *  - the user has not undone a correction of this word earlier in the field session, nor this
+     *    exact (typed word → replacement) correction enough times to be remembered across sessions;
      *  - an engine is usable and the cursor is known;
      *  - the cursor is not inside a word, and the word is not in mixed case (no defined form);
      *  - the word is long enough ([AutocorrectPolicy.MIN_WORD_CODE_POINTS], on the normalized form);
@@ -2444,6 +2471,9 @@ class SuggestionsController internal constructor(
         }
         val advice = activeEngine.autocorrectAdvice() ?: return false
         if (advice.typedWord != normalized) return false
+        // The exact correction (this typed word to this replacement) was undone enough times to be
+        // remembered across sessions. Pair-scoped: another replacement for the same word fires.
+        if (refusedCorrectionSource?.isRefused(normalized, advice.replacement) == true) return false
         if (advice.frequency < AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY) return false
         // The user's capitalization is re-applied exactly as it is to a shown candidate, so the
         // replacement is the word they would have got by tapping it.
@@ -2544,7 +2574,19 @@ class SuggestionsController internal constructor(
             replacement.insertedForm, replacement.separator, replacement.typedForm,
         )
         // An undone replacement is not repeated for that word in this field session.
-        if (reverted) refuseCorrection(TatarWordUtils.normalizeForLookup(replacement.typedForm))
+        if (reverted) {
+            val normalizedTyped = TatarWordUtils.normalizeForLookup(replacement.typedForm)
+            refuseCorrection(normalizedTyped)
+            // A statistical correction's undo also counts towards the cross-session refusal; a
+            // shortcut expansion's does not — that pair is the user's own setting, managed on its
+            // screen, not a counter's business. The inserted form folds back to the dictionary
+            // form the advice named, so record and lookup keys agree.
+            if (replacement.requiresAutocorrectGate) {
+                refusedCorrectionSink?.onCorrectionRefused(
+                    normalizedTyped, TatarWordUtils.normalizeForLookup(replacement.insertedForm),
+                )
+            }
+        }
         return reverted
     }
 

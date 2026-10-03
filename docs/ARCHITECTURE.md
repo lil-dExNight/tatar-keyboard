@@ -19,8 +19,8 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 | `latin/suggestions/` | `SuggestionsController`, `SuggestionStripView`, `SuggestionStripState`, the recent-clip cell (`RecentClipCell`), Tatar word utilities and suffix rules |
 | `latin/dictionary/engine/` | `LatestOnlyPrefixEngine`, `MappedDictionaryEngine`, `CompositePrefixComputer`, `TdictPrefixIndex`, `TatBigrPrefixIndex`, typo recovery |
 | `latin/dictionary/storage/` | asset publishing (`AtomicDictionaryStore`, `AtomicBigramStore`), validators, artifact specs and pins |
-| `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TcutFormat`), validators, snapshots |
-| `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, text shortcuts), learning gates, pending counters, quarantine |
+| `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TcutFormat`, `TrefFormat`), validators, snapshots |
+| `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, text shortcuts, refused corrections), learning gates, pending counters, quarantine |
 | `latin/glide/` | glide decoder, gesture detector, path and key geometry |
 | `latin/emoji/` | emoji panel, search, skin tones, recents, emoji suggestions |
 | `latin/settings/`, `latin/setup/` | settings screens, onboarding |
@@ -130,6 +130,12 @@ strip also yields an `AutocorrectAdvice` from edit class #1. On a space or punct
 `InputLogic`; one backspace right after undoes it (`RevertWindow`). While the undo window is open,
 the strip's first cell offers the typed word back in quotes (a tap reverts, like the backspace).
 An undone correction is not repeated or previewed for that word again in the same field session.
+Undoing the exact same correction (the same typed word replaced with the same word) a second time,
+in any session, persists the pair in the refused-corrections store (`RefusedCorrectionStore`,
+`.tref`, per language, capped and evicted oldest-first): that correction never fires and is never
+previewed again. The match is the exact pair; a different replacement named for the same word still
+fires. A text-shortcut expansion's undo shares only the session list — the pair is user-managed
+content with its own screen.
 
 **Text shortcuts** (managed on the "Text shortcuts" settings screen; one list for all layouts,
 `TextShortcutStore`, `.tcut`). While the typed word is exactly a saved shortcut, the strip offers
@@ -169,7 +175,10 @@ language has no suggestions; without its bigram table only next-word prediction 
 Opt-in (`PREF_PERSONAL_DICTIONARY`). Three stores per language share one worker thread
 (`PersonalDictionaries.sharedStoreExecutor()`): `PersonalDictionaryStore` (`.tpers`, learned
 words), `PersonalBigramStore` (`.tpersb`, learned word pairs) and `PersonalEmojiStore` (`.tpersem`,
-learned emoji). Files live in the credential-protected `noBackupFilesDir`. The text-shortcut store
+learned emoji). A fourth per-language store, `RefusedCorrectionStore` (`.tref`), holds the refused
+corrections of the autocorrect undo; it has no pending counters and no salt (a refusal is recorded
+only under the learning predicate, and it suppresses instead of suggesting). Files live in the
+credential-protected `noBackupFilesDir`. The text-shortcut store
 (`TextShortcutStore`, `.tcut`, one list for all layouts, managed on its own settings screen) shares
 the same directory and worker but holds managed content: pairs enter only from the settings screen,
 with no counters, no pending hashes and no learning.

@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSource
 
 /**
  * The autocorrect preview: the painted form of a coming replacement and the decision whether the
@@ -59,6 +60,7 @@ internal fun computeAutocorrectPreview(
     word: String,
     suppressedWord: String?,
     refusedWords: Set<String> = emptySet(),
+    persistedRefusal: RefusedCorrectionSource? = null,
     adviceProvider: () -> AutocorrectAdvice?,
 ): AutocorrectPreview? {
     if (!gate.isOn()) return null
@@ -73,8 +75,11 @@ internal fun computeAutocorrectPreview(
     val advice = adviceProvider() ?: return null
     val normalized = TatarWordUtils.normalizeForLookup(word)
     if (advice.typedWord != normalized) return null
-    // A correction the user undid in this field session is not announced again.
+    // A correction the user undid in this field session is not announced again. Neither is one
+    // undone enough times to be remembered across sessions — announcing a correction the
+    // separator would not fire would paint a lie.
     if (normalized in refusedWords) return null
+    if (persistedRefusal?.isRefused(normalized, advice.replacement) == true) return null
     if (normalized.codePointCount(0, normalized.length) <
         AutocorrectPolicy.MIN_WORD_CODE_POINTS
     ) {

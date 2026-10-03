@@ -249,8 +249,8 @@
     <string name="personal_dictionary_pair_delete_failed">Could not remove the pair. It is still saved.</string>
     <!-- Row and dialog title for erasing every saved word and word pair of every language -->
     <string name="personal_dictionary_erase_all">Erase everything saved</string>
-    <!-- Body of the erase-everything dialog. Names both stores: the learned pairs go with the words. -->
-    <string name="personal_dictionary_erase_confirm">Remove every word, word pair and learned emoji saved on this device, in all languages? This cannot be undone.</string>
+    <!-- Body of the erase-everything dialog. Names all four stores: the learned pairs, emoji and refused corrections go with the words. -->
+    <string name="personal_dictionary_erase_confirm">Remove every word, word pair, learned emoji and refused word correction saved on this device, in all languages? This cannot be undone.</string>
     <!-- Affirmative button of the erase-everything dialog. Names the action instead of OK because it is destructive and irreversible. -->
     <string name="personal_dictionary_erase_action">Erase</string>
     <!-- Shown when nothing has been saved yet -->

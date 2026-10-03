@@ -62,6 +62,7 @@ class BackupTransferTest {
         BackupTestStores.emojiStore(source.directory, "tt_RU").apply {
             repeat(2) { noteObservation("бәйрәм", "🎉") }
         }
+        BackupTestStores.writeRefused(source.directory, "tt_RU", "китәп" to "китап")
 
         val archive = BackupTransfer.export(source)
 
@@ -215,6 +216,8 @@ class BackupTransferTest {
                     BackupTestStores.pairStore(directory, subtypeId).replaceAll(bytes, outcome)
                 BackupFormat.PersonalKind.EMOJI ->
                     BackupTestStores.emojiStore(directory, subtypeId).replaceAll(bytes, outcome)
+                BackupFormat.PersonalKind.REFUSED ->
+                    BackupTestStores.refusedStore(directory, subtypeId).replaceAll(bytes, outcome)
             }
             return succeeded
         }

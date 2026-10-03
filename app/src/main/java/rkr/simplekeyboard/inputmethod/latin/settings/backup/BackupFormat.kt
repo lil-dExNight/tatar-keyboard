@@ -23,6 +23,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbValidator
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TrefFormat
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TrefValidator
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 
 /**
@@ -34,7 +36,7 @@ import rkr.simplekeyboard.inputmethod.latin.settings.Settings
  *   versionCode, and the path, size and SHA-256 of every other entry;
  * - `settings/preferences.xml` — the settings, in the SharedPreferences XML shape;
  * - `personal/<file>` — one personal store file per language and kind (saved words, learned word
- *   pairs, learned emoji), under the file name the store itself uses.
+ *   pairs, learned emoji, refused corrections), under the file name the store itself uses.
  *
  * The importer never resolves an archive path against the filesystem: a path classifies into a
  * store identity (kind + subtype), and the destination file name is re-derived from that identity.
@@ -91,6 +93,8 @@ object BackupFormat {
             TpersbFormat.MAX_FILE_SIZE),
         EMOJI("personal-emoji-", ".tpersem", TpersemFormat.SCHEMA_ID, TpersemFormat.FORMAT_VERSION,
             TpersemFormat.MAX_FILE_SIZE),
+        REFUSED("personal-refused-", ".tref", TrefFormat.SCHEMA_ID, TrefFormat.FORMAT_VERSION,
+            TrefFormat.MAX_FILE_SIZE),
     }
 
     /** What one archive entry path means. */
@@ -110,6 +114,7 @@ object BackupFormat {
         PersonalKind.WORDS -> TpersFormat.personalFileName(subtypeId)
         PersonalKind.PAIRS -> TpersbFormat.personalBigramsFileName(subtypeId)
         PersonalKind.EMOJI -> TpersemFormat.personalEmojiFileName(subtypeId)
+        PersonalKind.REFUSED -> TrefFormat.refusedCorrectionsFileName(subtypeId)
     }
 
     /** The archive path of a personal store file. */
@@ -181,6 +186,7 @@ object BackupFormat {
             PersonalKind.WORDS -> TpersValidator().validate(bytes, subtypeId)
             PersonalKind.PAIRS -> TpersbValidator().validate(bytes, subtypeId)
             PersonalKind.EMOJI -> TpersemValidator().validate(bytes, subtypeId)
+            PersonalKind.REFUSED -> TrefValidator().validate(bytes, subtypeId)
         }
         true
     } catch (_: Exception) {

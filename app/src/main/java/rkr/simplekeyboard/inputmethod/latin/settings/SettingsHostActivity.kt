@@ -45,6 +45,7 @@ import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
 import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStores
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
 import rkr.simplekeyboard.inputmethod.latin.lab.LabSessionLog
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupCoordinator
@@ -1262,19 +1263,25 @@ class SettingsHostActivity : Activity() {
                 .setTitle(R.string.personal_dictionary_erase_all)
                 .setMessage(R.string.personal_dictionary_erase_confirm)
                 .setPositiveButton(R.string.personal_dictionary_erase_action) { _, _ ->
-                    // "Erase all" covers all three stores, so no learned pair or emoji keeps
-                    // appearing afterwards. The stores answer independently; success is reported
-                    // only when every file of every language is gone.
+                    // "Erase all" covers all four stores, so no learned word, pair, emoji or
+                    // refused correction keeps working afterwards. The stores answer
+                    // independently; success is reported only when every file of every language
+                    // is gone.
                     controller.eraseAll(subtypeIds) { wordsErased ->
                         pairController.eraseAll(subtypeIds) { pairsErased ->
                             emojiController.eraseAll(subtypeIds) { emojiErased ->
-                                // Erasing takes the copies with it, so all three cards are re-read
-                                // rather than repainted from an answer that is now out of date.
-                                personalQuarantines = null
-                                personalPairQuarantines = null
-                                personalEmojiQuarantines = null
-                                afterPersonalMutation(wordsErased && pairsErased && emojiErased,
-                                        R.string.personal_dictionary_erase_failed)
+                                eraseRefusedCorrections(subtypeIds) { refusalsErased ->
+                                    // Erasing takes the copies with it, so all three cards are
+                                    // re-read rather than repainted from an answer that is now out
+                                    // of date.
+                                    personalQuarantines = null
+                                    personalPairQuarantines = null
+                                    personalEmojiQuarantines = null
+                                    afterPersonalMutation(
+                                            wordsErased && pairsErased && emojiErased
+                                                    && refusalsErased,
+                                            R.string.personal_dictionary_erase_failed)
+                                }
                             }
                         }
                     }
@@ -1285,6 +1292,29 @@ class SettingsHostActivity : Activity() {
                     DialogUtils.filterObscuredTouches(dialog)
                     dialog.show()
                 }
+    }
+
+    /**
+     * The erase-all half of the refused-corrections store: no screen lists the refused pairs, so
+     * the store's erasure rides the words screen's global action. The answer discipline is the
+     * screen controllers' own: `true` only when every language's file is really gone.
+     */
+    private fun eraseRefusedCorrections(subtypeIds: List<String>, onErased: (Boolean) -> Unit) {
+        val targets = subtypeIds.filter { PersonalSubtypes.isSupported(it) }
+        if (targets.isEmpty()) {
+            runOnUiThread { onErased(true) }
+            return
+        }
+        val remaining = java.util.concurrent.atomic.AtomicInteger(targets.size)
+        val everythingGone = java.util.concurrent.atomic.AtomicBoolean(true)
+        for (subtypeId in targets) {
+            RefusedCorrectionStores.storeFor(this, subtypeId).clearAll { erased ->
+                if (!erased) everythingGone.set(false)
+                if (remaining.decrementAndGet() == 0) {
+                    runOnUiThread { onErased(everythingGone.get()) }
+                }
+            }
+        }
     }
 
     /**

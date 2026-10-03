@@ -144,7 +144,7 @@
     <string name="personal_dictionary_pair_forget_title">Забыть «%1$s → %2$s»?</string>
     <string name="personal_dictionary_pair_delete_failed">Не удалось удалить пару. Она осталась в словаре.</string>
     <string name="personal_dictionary_erase_all">Стереть всё сохранённое</string>
-    <string name="personal_dictionary_erase_confirm">Удалить все слова, пары слов и изученные эмодзи, сохранённые на этом устройстве, на всех языках? Это действие необратимо.</string>
+    <string name="personal_dictionary_erase_confirm">Удалить все слова, пары слов, изученные эмодзи и отменённые исправления слов, сохранённые на этом устройстве, на всех языках? Это действие необратимо.</string>
     <string name="personal_dictionary_erase_action">Стереть</string>
     <string name="personal_dictionary_empty">Пока ничего не сохранено. Набранные слова будут появляться здесь, когда личный словарь включён.</string>
     <string name="personal_dictionary_no_matches">Ничего не найдено.</string>

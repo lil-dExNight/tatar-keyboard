@@ -80,11 +80,11 @@ paints the typed word as a tappable "keep-typed" cell (the iOS 17 pattern adapte
 we cannot underline host text). Gate: lab task "undo the planted wrong correction" — fraction
 reverting within 30 s, with vs without the cell (N≈12); JVM + device tests. The single
 angriest failure case made recoverable.
-**UX2 — Persist refused corrections.** Undo today suppresses re-correction for the field
-session only. Persist a capped per-language refused list (Apple's documented "reject a few
-times and we stop suggesting"). Guarded by the autocorrect false-trigger gate from
-`research/prediction-engine.md` (harness prerequisite 2) so the negative signal cannot grow
-false fires.
+**UX2 — landed.** Refused corrections persist: undoing the same (typed word → replacement)
+correction twice, in any sessions, mutes it for good, per language (`RefusedCorrectionStore`,
+`.tref`, capped, evicted oldest-first, erased with the saved words, part of the backup). The
+session-scoped word refusal stays as the fast half. The false-trigger gate stayed at zero: the
+persisted pair only ever suppresses.
 **UX3 — Confidence-gated next-word display; completion stays always-on.** Show idle-state
 predictions only above a margin; the ambiverted design (Quinn & Zhai) applied per-frame.
 Harness: extend `suggest_eval.py` with shown-vs-hidden simulation and strip precision

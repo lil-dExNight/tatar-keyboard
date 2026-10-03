@@ -24,7 +24,7 @@ import org.junit.Test
 /**
  * The learned-pairs part of the "Personal dictionary" screen —
  * the learned word pairs listed per language ("A → B", usage count), per-pair delete, per-language
- * "Clear all", the global erase covering all three stores, and the quarantine card for an
+ * "Clear all", the global erase covering all four stores, and the quarantine card for an
  * unreadable pairs file.
  *
  * The store half of every mutation named here is exercised for real in `PersonalBigramStoreWriteTest`
@@ -100,14 +100,19 @@ class PersonalBigramScreenSourceContractTest {
         val clearPairs = bodyOf(host, "private fun showClearPersonalPairsDialog(", "\n    /**")
         assertTrue("the destructive action asks first",
             clearPairs.contains("R.string.personal_dictionary_clear_pairs_confirm"))
-        // And the global erase covers ALL THREE stores — an "erase everything" that left the
-        // pairs or the learned emoji behind would be contradicted by the suggestions.
+        // And the global erase covers ALL FOUR stores — an "erase everything" that left the
+        // pairs, the learned emoji or the refused corrections behind would be contradicted by the
+        // suggestions.
         val erase = bodyOf(host, "private fun showErasePersonalDictionaryDialog(", "\n    /**")
         assertTrue("the words half", erase.contains("controller.eraseAll(subtypeIds)"))
         assertTrue("and the pairs half", erase.contains("pairController.eraseAll(subtypeIds)"))
         assertTrue("and the emoji third", erase.contains("emojiController.eraseAll(subtypeIds)"))
+        assertTrue("and the refused corrections fourth",
+            erase.contains("eraseRefusedCorrections(subtypeIds)"))
         assertTrue("reported as one honest answer",
-            erase.contains("afterPersonalMutation(wordsErased && pairsErased && emojiErased,"))
+            erase.contains("afterPersonalMutation(")
+                && erase.contains("wordsErased && pairsErased && emojiErased")
+                && erase.contains("&& refusalsErased"))
         assertTrue("with all three quarantine cards re-read",
             erase.contains("personalQuarantines = null")
                 && erase.contains("personalPairQuarantines = null")

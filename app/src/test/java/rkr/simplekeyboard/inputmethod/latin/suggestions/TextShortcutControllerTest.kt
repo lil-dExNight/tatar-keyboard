@@ -22,6 +22,7 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TextShortcutSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 import java.util.concurrent.AbstractExecutorService
@@ -181,6 +182,9 @@ class TextShortcutControllerTest {
         val pairSink = RecordingPairSink()
         val shortcuts = mutableMapOf<String, String>()
 
+        /** Every pair the persisted refused-corrections sink was told; must stay empty here. */
+        val refused = mutableListOf<Pair<String, String>>()
+
         val controller = SuggestionsController(
             strip,
             editor,
@@ -194,6 +198,9 @@ class TextShortcutControllerTest {
             controller.setCompletionSink(sink)
             controller.setPairCompletionSink(pairSink)
             controller.setShortcutSource(TextShortcutSource { word -> shortcuts[word] })
+            controller.setRefusedCorrectionSink(RefusedCorrectionSink { typedWord, replacement ->
+                refused.add(typedWord to replacement)
+            })
         }
 
         fun start(eligible: Boolean = true) {
@@ -348,6 +355,22 @@ class TextShortcutControllerTest {
 
         assertEquals("тк тк ", h.editor.before)
         assertEquals(1, h.editor.edits.count { it.startsWith("replace:") })
+    }
+
+    @Test
+    fun anUndoneExpansionIsNotCountedTowardsThePersistedRefusals() {
+        // The expansion is the user's own pair, managed on its screen: its undo suppresses it for
+        // the field session (above) but is never counted towards a cross-session refusal — a
+        // counter must not silently deaden a setting the user can see and delete.
+        val h = Harness()
+        h.start()
+        h.shortcuts["тк"] = "Татарстан"
+        h.typeWord("тк")
+        h.separator(' ')
+        h.backspace()
+        assertEquals("тк ", h.editor.before)
+
+        assertTrue(h.refused.isEmpty())
     }
 
     @Test
