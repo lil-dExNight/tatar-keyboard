@@ -8,10 +8,19 @@ linked inline; measured numbers carry their harness and were true at research ti
 Our decoder (`latin/glide/`) is a SHARK2-family statistical classifier written from scratch in
 pure Kotlin: 200-point arc-length resampling, bbox normalization, firstKey×lastKey CSR bucket
 pruning plus length pruning, fused Gaussian(shape) × Gaussian(location) × frequency^0.25
-scoring, top-8 candidates. Commit on lift with a context-aware leading space; alternates in
+scoring, top-8 candidates. On top of that core: a speed channel that widens the location sigma
+when the gesture outruns a candidate's normative duration (SHARK2 Eq. 10–11; the normative uses
+the plain path length, so the looped variant buys no extra slack), a hard location cutoff that
+keeps a widened sigma from resurrecting underflowed candidates, a length channel (unnormalized
+Gaussian bump over the path-length mismatch), per-language scoring constants selected at engine
+start (Tatar defaults, Russian overrides), and a bigram channel reranking the N-best against the
+previous committed word through the bundled table's successor ranks (SHARK2 Eq. 12–13).
+Commit on lift with a context-aware leading space; alternates in
 the strip with tap-to-replace; one backspace undoes the whole word. Doubled letters score
 against a looped ideal path, with a twinless free pass. Aliases map keyless letters to base
-keys. Calibration is fully synthetic (`scripts/glide_pack.py` + the bit-identical JVM mirror).
+keys. Calibration is fully synthetic (`scripts/glide_pack.py` + the bit-identical JVM mirror);
+the generator mixes three speed personas (normal / fast recaller / slow tracer) and carries
+context rows mined from the eval sentences.
 
 ## What the world does
 
@@ -209,10 +218,44 @@ with the existing refusal tick. Add a garbage-gesture class to the generator and
 risk–coverage assertion to the calibration test (El-Yaniv & Wiener's selective-classification
 frame). Eliminates the worst user-visible failure: the confident wrong commit.
 
+#### Refusal evidence (G3, measured rejection)
+
+The frequency-free geometric confidence (shape × location × length) was implemented, the
+generator gained a garbage class (polylines between 3–5 distant key centers), and the
+(floor × margin) refusal grid was swept on the train split. The pre-registered gate — garbage
+refusal ≥ 80 % with normal-row refusal ≤ 5 %, on held-out rows — is unreachable with this
+signal: the held-out frontier runs (84 %, 7.3 %) at floor 2·10⁷ through (76 %, 4.8 %) at 10⁸ to
+(70 %, 4.0 %) at 6·10⁸. About a tenth of the garbage rows trace some real word's path well
+enough to be geometrically indistinguishable, and the normal rows' tail (the noisiest fast
+personas) overlaps them. The margin leg is separately measured-useless: the runner-up/top-1
+ratio distribution is the same for word rows and garbage rows (p50 ≈ 24 vs 31), so it adds
+normal-class refusals without catching garbage. The would-be win, for the record: at floor
+6·10⁸ the committed rows' top-1 rises from 85.4 % to 88.7 % at 96.4 % coverage. The code was
+reverted; the decoder carries no commit policy. Revisit with a better signal (the dwell channel,
+G11, is the obvious candidate).
+
 **G4 — Speed-adaptive channel weighting (SHARK2 Eq. 10–11).** Gesture duration vs a normative
 duration per candidate; fast gestures widen the location σ. Generator gains slow/fast persona
 classes with correlated sloppiness. Targets the known tracer-vs-recaller mixture; O(1) per
 decode, timestamps already recorded.
+
+#### Speed-channel evidence (G4, landed)
+
+The generator assigns each word a persona from a stream independent of the gesture stream
+(normal / fast / slow, offsets scaled ×2/3–3/2, tstep ranges 8–19 / 5–12 / 14–27 ms), mirrored
+in all three pin sites. The decoder widens a candidate's location sigma by
+min(normative/actual, 1.5) with a 0.016 radii/ms normative speed; the normative uses the plain
+path length so the looped variant buys no slack over its twin. Held-out per-persona top-1,
+adapted vs not, at landing: fast 76.91 % vs 76.44 %, slow 91.82 % vs 92.06 %, normal 86.99 % vs
+87.11 % (the two non-fast classes inside the 1 pp tolerance; the numbers moved by tenths when
+G8's length channel landed on top). On real gestures
+(`FutoRealGestureDiagnosticTest`, which now rebases the epoch-ms timestamps in Double before
+the Float store — at epoch magnitude a Float cannot tell two samples 10 ms apart): top-1
+82.62 % vs 82.37 % without the channel. Two knock-on fixes: the test fixtures' ideal paths now
+move at normative speed per hop (their old 8 ms-per-key timing read as 10× fast and flipped a
+pinned twin-rule decode), and a hard location cutoff at 8 base sigmas keeps a widened sigma
+from rescuing candidates whose location probability underflowed to zero (a gesture below the
+keyboard must keep returning nothing).
 
 **G5 — Bigram channel on the glide N-best (SHARK2 Eq. 12–13).** Multiply each top-8
 candidate's confidence by the Gaussian-transformed bigram probability given the previous word
@@ -223,10 +266,37 @@ remains testable is a *pair-conditional* rerank (fire only on mined confusion pa
 Harness: extend the calibration set with context rows from the eval sentences; gate on
 held-out top-1 with context vs without.
 
+#### Bigram-channel evidence (G5, landed)
+
+The set carries 613 context rows (consecutive eval-sentence token pairs, both words in the
+dictionary, thinned by a pair draw; the gesture traces the second word from a pair-seeded
+stream), re-pinned at all three sites. The schema-3 table stores successor ranks, not counts,
+so the channel reads the probability off the rank: confidence × rankPenalty^rank, an absent
+candidate one rank past the last successor — the Gaussian bump over a log-spaced ladder. The
+rerank runs in `GlideDecoderHost` on the engine worker against the raw bundled table (not the
+merged next-word list), with the context word carried on the glide token. Train sweep: +0.33 pp
+at penalty 1.5, +0.66 pp at 3.0 (the shipped value; 4.0 is flat). Held-out gate: 86.04 % vs
+85.71 % without the channel (strictly greater — one row on n=308 — pass as pre-registered, and
+thin). Non-context rows never see the channel, so the plain calibration numbers are untouched.
+The blanket channel passed, so the pair-conditional variant was not built.
+
 **G6 — Endpoint pruning n=2→3.** Measured on real gestures (ASK study): +3 pp sensitivity,
 some p95 headroom spent. Cheap to A/B in the harness with an endpoint-noise gesture class;
 invisible on today's synthetic set (the generator always starts on the true key — fix that
 in G1).
+
+#### Endpoint-pruning evidence (G6, measured rejection)
+
+With the recalibrated generator the change is visible and real: held-out top-1 88.01 % →
+89.34 % and top-3 94.61 % → 97.27 %, every per-class floor holding (the twin no-jog ceiling at
+exactly 25.0 %). The p95 clause fails: host decode p95 1.20 ms → 2.05–2.31 ms against the 2 ms
+budget (a fully warm second pass measures 1.99 ms). The cost is inherent to the tail: the
+largest endpoint buckets hold thousands of entries, and the 3×3 arms score ~2100 candidates at
+p95. Tuning attempts that did not close the gap: a frequency-floor walk cut plus merge-arm head
+caching (2.24 → 2.08 ms, result-neutral), a scored-candidate cap (fixes the max, not the p95;
+at 1600 it broke the twin ceiling and the twinless floor), a tighter length threshold
+(train top-3 −1.3 pp at 6 radii — accuracy-toxic). The constant stays at 2; revisit only with a
+structurally cheaper scoring walk or a revised host budget.
 
 **G7 — End-weighted location channel + tunnel dead-zone (SHARK2 Eq. 3–6).** Precomputed
 200-sample weight profile (low middle, rising ends — users attend to endpoints) and a one-key-
@@ -237,6 +307,23 @@ tuning surface.
 calibration does not transfer between languages; we ship one constant set for tt and ru.
 Split constants per language and add a length term to the score (fixes the short-vs-long
 bias); tune on the train split only.
+
+#### Per-language evidence (G8, landed)
+
+The calibration harness runs a second language bench (the Russian dictionary over the Russian
+fixture layout, same selection rules, no eval sentences). The length channel is an
+unnormalized Gaussian bump over |userLength − idealLength| (peak 1: the fail-fast bounds are
+untouched). Train grids said both languages want tighter sigmas than the ported plateau, but
+held-out top-3 vetoed the Tatar sigma step (one row under the shared set), so the shipped
+split is: Tatar keeps the shared sigmas and gains the length channel (σ = 6 radii), Russian
+moves to shapeStd 8.28 / locationStdFactor 0.11 with the same length channel. Held-out gate
+(per-language vs the one shared set): tt 85.35 %/92.58 % vs 85.20 %/92.58 %, ru 87.28 %/93.44 %
+vs 86.49 %/93.44 % — improve-or-flat on both metrics for both languages. The constants are
+selected at engine start (`LatinIME` picks by the dictionary artifact's language tag, the same
+pattern as the per-language typo policy). FUTO sanity (English on the Tatar defaults, as
+shipped): top-1 82.76 %, top-3 90.40 % — the mechanism transfers; no collapse. The measured
+word-length bias on the synthetic set is mild and favors LONG words (train top-1 83.8 % for
+5–6 cp vs 87.1 % for 10+ cp); the length channel buys the short words +0.3 pp.
 
 **G9 — Pruning recall metric + confusables eval class.** Pin pruning recall (target survives
 the bucket and length gates) next to final top-k — separates "pruned away" from "ranked

@@ -134,18 +134,33 @@ internal object GlideTestFixtures {
     fun tatarKeyRadius(): Int = tatarRawKeys().minOf { minOf(it.right - it.left, it.bottom - it.top) }
 
     /** The ideal center-to-center path of [word] over [geometry] (no noise); null when a letter
-     * has no key. Shared by the engine-level and the controller-level glide tests. */
+     * has no key. Each hop takes its normative duration (the decoder's normative speed over the
+     * hop's length), so the speed channel neither fires nor dampens on these paths. Shared by the
+     * engine-level and the controller-level glide tests. */
     fun idealPath(word: String, geometry: GlideKeyGeometry): GlidePath? {
         val path = GlidePath()
+        val speed = GlideDecoder.GlideConstants().normativeSpeedRadiiPerMs * geometry.keyRadius
         var t = 0f
+        var previousX = 0f
+        var previousY = 0f
+        var first = true
         var offset = 0
         while (offset < word.length) {
             val codePoint = word.codePointAt(offset)
             offset += Character.charCount(codePoint)
             val key = geometry.keyIndexOfLetter(Character.toLowerCase(codePoint))
             if (key < 0) return null
-            path.addPoint(geometry.centerX(key), geometry.centerY(key), t)
-            t += 8f
+            val x = geometry.centerX(key)
+            val y = geometry.centerY(key)
+            if (!first) {
+                val dx = x - previousX
+                val dy = y - previousY
+                t += kotlin.math.sqrt(dx * dx + dy * dy) / speed
+            }
+            first = false
+            previousX = x
+            previousY = y
+            path.addPoint(x, y, t)
         }
         return path
     }

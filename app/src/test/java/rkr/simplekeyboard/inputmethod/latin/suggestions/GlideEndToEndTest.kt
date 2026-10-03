@@ -210,10 +210,22 @@ class GlideEndToEndTest {
         /** How many glide decodes the controller requested. */
         var glideRequests = 0
 
-        override fun requestGlide(editorSessionId: Long, subtypeId: String, path: GlidePath): Any? {
+        /** The context-word bytes of the newest glide request (the bigram channel's condition). */
+        var lastGlideContext: String? = null
+
+        override fun requestGlide(
+            editorSessionId: Long,
+            subtypeId: String,
+            path: GlidePath,
+            contextWordUtf8: ByteArray,
+        ): Any? {
             glideRequests++
+            lastGlideContext = String(contextWordUtf8, Charsets.UTF_8)
             val token = Any().also { latest = it }
-            val results = host.decodeGlide(path)
+            val results = host.decodeGlide(
+                path,
+                String(contextWordUtf8, Charsets.UTF_8).ifEmpty { null },
+            )
             if (holdGlide) {
                 heldGlide = { callback!!.onResult(token, results, LookupKind.GLIDE) }
             } else {
@@ -920,6 +932,8 @@ class GlideEndToEndTest {
         h.editor.text = "сүз "
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertEquals("сүз сәләм", h.editor.text)
+        // The bigram channel's condition reached the engine: the normalized committed word.
+        assertEquals("сүз", h.engines.getValue(PersonalSubtypes.TATAR_RU).lastGlideContext)
         // The undo takes ONLY the word: the user's own space is not the commit's.
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("сүз ", h.editor.text)

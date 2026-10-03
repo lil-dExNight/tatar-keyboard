@@ -79,6 +79,20 @@ class PrimitiveGoldenVectorTest(unittest.TestCase):
         self.assertEqual(pack.ENDPOINT_END_PERCENT, 40)
         self.assertEqual(pack.ENDPOINT_WIDE_MODULUS, 7)
         self.assertEqual(pack.ENDPOINT_WIDE_SCALE, 3)
+        self.assertEqual(pack.PERSONA_SEED, 0x50EF5A)
+        self.assertEqual(pack.PERSONA_MODULUS, 3)
+        self.assertEqual(pack.PERSONA_FAST, 1)
+        self.assertEqual(pack.PERSONA_SLOW, 2)
+        self.assertEqual(pack.PERSONA_FAST_NUM, 3)
+        self.assertEqual(pack.PERSONA_FAST_DEN, 2)
+        self.assertEqual(pack.PERSONA_SLOW_NUM, 2)
+        self.assertEqual(pack.PERSONA_SLOW_DEN, 3)
+        self.assertEqual(pack.TSTEP_FAST_MIN, 5)
+        self.assertEqual(pack.TSTEP_FAST_VAR, 7)
+        self.assertEqual(pack.TSTEP_SLOW_MIN, 14)
+        self.assertEqual(pack.TSTEP_SLOW_VAR, 13)
+        self.assertEqual(pack.CONTEXT_SEED, 0xC047E5)
+        self.assertEqual(pack.CONTEXT_MODULUS, 4)
 
 
 class VerticalModelTest(unittest.TestCase):
@@ -291,6 +305,66 @@ class NoiseModelTest(unittest.TestCase):
     def test_render_format_is_pinned(self) -> None:
         points = [(1, 2, 0), (30, 40, 8)]
         self.assertEqual(pack.render_gesture("аб", points), "аб\t1,2,0;30,40,8\n")
+        self.assertEqual(
+            pack.render_context_row("бв", "аб", points), "аб\tбв\t1,2,0;30,40,8\n"
+        )
+
+    def test_context_pairs_rules(self) -> None:
+        # Consecutive eval tokens, both dictionary words, the second mappable and >= 5 cp,
+        # thinned by the pair draw. The fixture dictionary holds five words.
+        words = ["абваг", "абвагд", "бвгда", "вгдае", "гдаеб"]
+        with tempfile.TemporaryDirectory() as directory:
+            eval_path = Path(directory) / "eval.txt"
+            eval_path.write_text("абваг абвагд бвгда\n# comment\n\nабваг жэюя бвгда\n", encoding="utf-8")
+            pairs = pack.select_context_pairs(words, eval_path, FIXTURE_LETTERS)
+        # (абваг, абвагд) and (абвагд, бвгда) qualify; (абваг, жэюя) and (жэюя, бвгда) fail
+        # membership. Of the qualifying pairs, only (абваг, абвагд) survives the thinning draw.
+        self.assertEqual(set(pairs), {("абваг", "абвагд")})
+        self.assertEqual(pairs, sorted(pairs))
+        # A pair's context gesture differs from the word's own row.
+        gesture = pack.generate_gesture(
+            "абвагд", FIXTURE_BY_LETTER, FIXTURE_RADIUS,
+            seed=pack.context_pair_seed("абваг", "абвагд"),
+        )
+        self.assertNotEqual(gesture, pack.generate_gesture("абвагд", FIXTURE_BY_LETTER, FIXTURE_RADIUS))
+        self.assertEqual(
+            pack.generate_gesture(
+                "абвагд", FIXTURE_BY_LETTER, FIXTURE_RADIUS,
+                seed=pack.context_pair_seed("абваг", "абвагд"),
+            ),
+            gesture,
+        )
+
+    def test_persona_is_stable_and_scales_the_gesture(self) -> None:
+        # The persona is a per-word constant from a stream independent of the gesture stream.
+        self.assertEqual(pack.persona_of("абба"), pack.persona_of("абба"))
+        self.assertEqual(pack.persona_of("абба"), 1)  # fast
+        self.assertEqual(pack.persona_of("абва"), 0)  # normal
+        self.assertEqual(pack.persona_of("абвагд"), 2)  # slow
+        # generate_gesture without persona knobs is persona-free; generate_set applies them:
+        # a fast word's set rows differ from its persona-free gesture, a normal word's do not.
+        plain = pack.generate_gesture("абба", FIXTURE_BY_LETTER, FIXTURE_RADIUS)
+        self.assertNotEqual(
+            plain,
+            pack.generate_gesture(
+                "абба", FIXTURE_BY_LETTER, FIXTURE_RADIUS,
+                **pack.persona_knobs(pack.PERSONA_FAST),
+            ),
+        )
+        self.assertEqual(pack.persona_knobs(pack.PERSONA_NORMAL), {})
+        rendered, _ = pack.generate_set(["абва", "абваг"], FIXTURE_RECTS)
+        rows = rendered.splitlines()
+        normal = pack.generate_gesture("абва", FIXTURE_BY_LETTER, FIXTURE_RADIUS)
+        self.assertEqual(rows[0] + "\n", pack.render_gesture("абва", normal))
+        # The timestamp step reflects the persona: the pinned per-word values.
+        fast_ts = pack.generate_gesture(
+            "абба", FIXTURE_BY_LETTER, FIXTURE_RADIUS, **pack.persona_knobs(pack.PERSONA_FAST)
+        )
+        slow_ts = pack.generate_gesture(
+            "абвагд", FIXTURE_BY_LETTER, FIXTURE_RADIUS, **pack.persona_knobs(pack.PERSONA_SLOW)
+        )
+        self.assertEqual(fast_ts[1][2] - fast_ts[0][2], 6)
+        self.assertEqual(slow_ts[1][2] - slow_ts[0][2], 22)
 
 
 class DeterminismTest(unittest.TestCase):
@@ -321,15 +395,13 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         aliases = pack.read_layout_aliases(LAYOUT_DIR, rects)
         letters = frozenset(pack.letters_by_code_point(rects, aliases))
         selected = pack.select_words(words, EVAL_WORDS, letters)
-        _, data = pack.generate_set(selected, rects, aliases=aliases)
+        context_pairs = pack.select_context_pairs(words, EVAL_WORDS, letters)
+        _, data = pack.generate_set(selected, rects, aliases=aliases, context_pairs=context_pairs)
         # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values.
         # The set carries both variants of every doubled word, so there are more rows than words.
         self.assertEqual(len(selected), 4526)
-        self.assertEqual(len(data), 10407494)
-        self.assertEqual(
-            sha256_bytes(data),
-            "3846bee2982bae815927a3325aa8ce8aa3e774e2f7a536571d8548ee208aac9c",
-        )
+        self.assertEqual(len(data), 11420862)
+        self.assertEqual(sha256_bytes(data), "4e2ea296ed6c492ca6f94cfb2f3db2f163fd3105d26354a9850df9e51bbcdc1d")
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_tatar_layout_aliases_are_the_hard_sign_and_yo(self) -> None:

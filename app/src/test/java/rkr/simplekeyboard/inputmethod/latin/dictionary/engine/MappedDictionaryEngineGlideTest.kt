@@ -98,7 +98,7 @@ class MappedDictionaryEngineGlideTest {
         val engine = startEngine(executor, published)
         engine.updateGlideGeometry(geometry)
 
-        val token = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәләм")))
+        val token = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәләм"), ByteArray(0)))
         executor.runAll()
 
         assertEquals(LookupKind.GLIDE, token.kind)
@@ -115,7 +115,7 @@ class MappedDictionaryEngineGlideTest {
         val engine = startEngine(executor, published)
         engine.updateGlideGeometry(geometry)
 
-        val glideToken = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәләм")))
+        val glideToken = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәләм"), ByteArray(0)))
         val prefixToken = requireNotNull(engine.request(1, "tt", utf8("ки")))
         executor.runAll()
 
@@ -136,7 +136,7 @@ class MappedDictionaryEngineGlideTest {
         engine.updateGlideGeometry(geometry)
 
         engine.request(1, "tt", utf8("ки"))
-        val glideToken = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәләм")))
+        val glideToken = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәләм"), ByteArray(0)))
         executor.runAll()
 
         assertEquals(1, published.size)
@@ -152,7 +152,7 @@ class MappedDictionaryEngineGlideTest {
         val engine = startEngine(executor, published)
         // No updateGlideGeometry at all: fail-closed.
 
-        val token = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәләм")))
+        val token = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәләм"), ByteArray(0)))
         executor.runAll()
 
         assertEquals(LookupKind.GLIDE, published.single().kind)
@@ -167,7 +167,7 @@ class MappedDictionaryEngineGlideTest {
         val engine = startEngine(executor, published)
         engine.updateGlideGeometry(GlideKeyGeometry.build(emptyList()))
 
-        engine.requestGlide(1, "tt", glidePath("сәләм"))
+        engine.requestGlide(1, "tt", glidePath("сәләм"), ByteArray(0))
         executor.runAll()
 
         assertTrue(published.single().suggestions.isEmpty())
@@ -185,14 +185,14 @@ class MappedDictionaryEngineGlideTest {
         val engine = startEngine(executor, published)
         engine.updateGlideGeometry(geometry)
 
-        engine.requestGlide(1, "tt", glidePath("сәләм"))
+        engine.requestGlide(1, "tt", glidePath("сәләм"), ByteArray(0))
         executor.runAll()
         assertEquals("сәләм", published.single().suggestions.first())
 
         engine.releaseGlideIndex()
         executor.runAll()
 
-        engine.requestGlide(2, "tt", glidePath("сәләм"))
+        engine.requestGlide(2, "tt", glidePath("сәләм"), ByteArray(0))
         executor.runAll()
         assertEquals(2, published.size)
         assertEquals(LookupKind.GLIDE, published.last().kind)
@@ -208,7 +208,7 @@ class MappedDictionaryEngineGlideTest {
 
         val onePoint = GlidePath()
         onePoint.addPoint(1f, 2f, 0f)
-        assertNull(engine.requestGlide(1, "tt", onePoint))
+        assertNull(engine.requestGlide(1, "tt", onePoint, ByteArray(0)))
 
         // The prefix request issued after the rejected glide is still fully servable.
         val prefixToken = requireNotNull(engine.request(1, "tt", utf8("ки")))
@@ -231,7 +231,7 @@ class MappedDictionaryEngineGlideTest {
         val engine = startEngine(executor, published, personal)
         engine.updateGlideGeometry(geometry)
 
-        val token = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәлинә")))
+        val token = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәлинә"), ByteArray(0)))
         executor.runAll()
 
         assertEquals(LookupKind.GLIDE, token.kind)
@@ -249,13 +249,13 @@ class MappedDictionaryEngineGlideTest {
         engine.updateGlideGeometry(geometry)
 
         // Empty snapshot: the personal-only word is undecodable.
-        engine.requestGlide(1, "tt", glidePath("сәлинә"))
+        engine.requestGlide(1, "tt", glidePath("сәлинә"), ByteArray(0))
         executor.runAll()
         assertTrue(published.single().suggestions.isEmpty())
 
         // A learning event republishes the snapshot; the next decode rebuilds over it.
         personal.snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 3)
-        engine.requestGlide(2, "tt", glidePath("сәлинә"))
+        engine.requestGlide(2, "tt", glidePath("сәлинә"), ByteArray(0))
         executor.runAll()
 
         assertEquals(2, published.size)
@@ -272,13 +272,13 @@ class MappedDictionaryEngineGlideTest {
         val engine = startEngine(executor, published, personal)
         engine.updateGlideGeometry(geometry)
 
-        engine.requestGlide(1, "tt", glidePath("сәлинә"))
+        engine.requestGlide(1, "tt", glidePath("сәлинә"), ByteArray(0))
         executor.runAll()
         assertEquals("сәлинә", published.single().suggestions.first())
 
         // The word was forgotten (or the feature switched off): the same gesture decodes empty.
         personal.snapshot = PersonalDictionary.EMPTY
-        engine.requestGlide(2, "tt", glidePath("сәлинә"))
+        engine.requestGlide(2, "tt", glidePath("сәлинә"), ByteArray(0))
         executor.runAll()
 
         assertEquals(2, published.size)
@@ -295,7 +295,7 @@ class MappedDictionaryEngineGlideTest {
         val engine = startEngine(executor, published, personal)
         engine.updateGlideGeometry(geometry)
 
-        engine.requestGlide(1, "tt", glidePath("сәлинә"))
+        engine.requestGlide(1, "tt", glidePath("сәлинә"), ByteArray(0))
         executor.runAll()
         assertEquals("сәлинә", published.single().suggestions.first())
 
@@ -304,7 +304,7 @@ class MappedDictionaryEngineGlideTest {
         engine.releaseGlideIndex()
         executor.runAll()
 
-        engine.requestGlide(2, "tt", glidePath("сәлинә"))
+        engine.requestGlide(2, "tt", glidePath("сәлинә"), ByteArray(0))
         executor.runAll()
         assertEquals(2, published.size)
         assertEquals("сәлинә", published.last().suggestions.first())

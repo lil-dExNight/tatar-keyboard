@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.GlideDecoderHost
 import java.lang.management.ManagementFactory
 
 /**
@@ -20,11 +21,28 @@ class GlideDecoderTest {
     private fun decoderOf(entries: List<Pair<String, Long>>): GlideDecoder =
         GlideDecoder(geometry, ListGlideInventory(entries))
 
-    /** The ideal center-to-center path of [word] over the fixture geometry (no noise). */
+    /** The ideal center-to-center path of [word] over the fixture geometry (no noise). Each hop
+     * takes its normative duration (the decoder's normative speed over the hop's length), so the
+     * speed channel neither fires nor dampens on these paths. */
     private fun idealPath(word: String, withLoop: Boolean = false): GlidePath {
         val path = GlidePath()
+        val speed = GlideDecoder.GlideConstants().normativeSpeedRadiiPerMs * geometry.keyRadius
         var t = 0f
         var previous = -1
+        var previousX = 0f
+        var previousY = 0f
+        var first = true
+        fun add(x: Float, y: Float) {
+            if (!first) {
+                val dx = x - previousX
+                val dy = y - previousY
+                t += kotlin.math.sqrt(dx * dx + dy * dy) / speed
+            }
+            first = false
+            previousX = x
+            previousY = y
+            path.addPoint(x, y, t)
+        }
         for (offset in 0 until word.length) {
             val codePoint = word.codePointAt(offset)
             val key = geometry.keyIndexOfLetter(codePoint)
@@ -32,13 +50,12 @@ class GlideDecoderTest {
             if (withLoop && codePoint == previous) {
                 val dx = geometry.halfWidth(key) / 2
                 val dy = geometry.halfHeight(key) / 2
-                path.addPoint(geometry.centerX(key) + dx, geometry.centerY(key) + dy, t); t += 8
-                path.addPoint(geometry.centerX(key) + dx, geometry.centerY(key) - dy, t); t += 8
-                path.addPoint(geometry.centerX(key) - dx, geometry.centerY(key) - dy, t); t += 8
-                path.addPoint(geometry.centerX(key) - dx, geometry.centerY(key) + dy, t); t += 8
+                add(geometry.centerX(key) + dx, geometry.centerY(key) + dy)
+                add(geometry.centerX(key) + dx, geometry.centerY(key) - dy)
+                add(geometry.centerX(key) - dx, geometry.centerY(key) - dy)
+                add(geometry.centerX(key) - dx, geometry.centerY(key) + dy)
             } else {
-                path.addPoint(geometry.centerX(key), geometry.centerY(key), t)
-                t += 8
+                add(geometry.centerX(key), geometry.centerY(key))
             }
             previous = codePoint
         }
@@ -139,6 +156,24 @@ class GlideDecoderTest {
             ),
         )
         assertEquals("ала", decodeWords(decoder, idealPath("алла"))[0])
+    }
+
+    @Test
+    fun theBigramChannelReranksThroughTheHost() {
+        // The no-loop path decodes to the twin ("ала"); with the channel and "алла" a successor of
+        // the context word, a large enough rank penalty flips the order — the wiring, not the
+        // tuning (the calibration gate measures that).
+        val host = GlideDecoderHost(
+            ListGlideInventory(listOf("алла" to 7466L, "ала" to 36L)),
+            glideConstants = GlideDecoder.GlideConstants(bigramRankPenalty = 1e6f),
+        )
+        host.updateGlideGeometry(geometry)
+        val path = idealPath("алла")
+        assertEquals("ала", host.decodeGlide(path, null)[0])
+        host.bigramSuccessorsProvider = { context -> if (context == "кук") listOf("алла") else emptyList() }
+        assertEquals("алла", host.decodeGlide(path, "кук")[0])
+        // An unknown context word (no successors) leaves the order alone.
+        assertEquals("ала", host.decodeGlide(path, "юм")[0])
     }
 
     @Test

@@ -28,6 +28,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSo
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedBigramTableCatalog
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import java.util.concurrent.TimeUnit
@@ -66,10 +67,16 @@ interface EngineHandle {
 
     /**
      * GLIDE variant of [request]. The engine snapshots [path] before returning, so the caller's
-     * buffer can stay the PointerTracker's live one. Returns a token, or null if rejected (the
-     * default, so a fake handle never decodes a glide).
+     * buffer can stay the PointerTracker's live one. [contextWordUtf8] is the normalized previous
+     * committed word (the bigram channel's condition; empty at a field start). Returns a token,
+     * or null if rejected (the default, so a fake handle never decodes a glide).
      */
-    fun requestGlide(editorSessionId: Long, subtypeId: String, path: GlidePath): Any? = null
+    fun requestGlide(
+        editorSessionId: Long,
+        subtypeId: String,
+        path: GlidePath,
+        contextWordUtf8: ByteArray,
+    ): Any? = null
 
     /**
      * Pushes the live layout's key geometry to the glide decoder. Null disables glide decoding.
@@ -144,8 +151,13 @@ class MappedEngineHandle private constructor(
     override fun requestNextWord(editorSessionId: Long, subtypeId: String, contextWordUtf8: ByteArray): Any? =
         engine.requestNextWord(editorSessionId, subtypeId, contextWordUtf8)
 
-    override fun requestGlide(editorSessionId: Long, subtypeId: String, path: GlidePath): Any? =
-        engine.requestGlide(editorSessionId, subtypeId, path)
+    override fun requestGlide(
+        editorSessionId: Long,
+        subtypeId: String,
+        path: GlidePath,
+        contextWordUtf8: ByteArray,
+    ): Any? =
+        engine.requestGlide(editorSessionId, subtypeId, path, contextWordUtf8)
 
     override fun updateGlideGeometry(geometry: GlideKeyGeometry?) =
         engine.updateGlideGeometry(geometry)
@@ -194,6 +206,8 @@ class MappedEngineHandle private constructor(
          *
          * [personalBigrams] supplies the user's learned word pairs for NEXT_WORD, per subtype and
          * gated live on the personal-dictionary setting; [PersonalBigramSource.EMPTY] disables them.
+         *
+         * [glideConstants]: the glide decoder's per-language scoring constants.
          */
         @JvmStatic
         @JvmOverloads
@@ -205,6 +219,7 @@ class MappedEngineHandle private constructor(
             fuzzyEditPolicy: FuzzyEditPolicy? = null,
             fallbackWordsFactory: FallbackWordsFactory? = null,
             personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
+            glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
         ): MappedEngineHandle? {
             val handoff = ResultHandoff { result ->
                 callback.onResult(result.token, result.suggestions, result.kind)
@@ -217,6 +232,7 @@ class MappedEngineHandle private constructor(
                 fuzzyEditPolicy = fuzzyEditPolicy,
                 fallbackWordsFactory = fallbackWordsFactory,
                 personalBigrams = personalBigrams,
+                glideConstants = glideConstants,
             ) ?: return null
             return MappedEngineHandle(engine)
         }

@@ -6,11 +6,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.BigramTableIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ImmutableUtf8Prefix
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TatBigrPrefixIndex
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TdictGlideInventory
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TdictPrefixIndex
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryTestFixtures
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatBigrValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 import java.io.File
 import java.lang.management.ManagementFactory
@@ -36,47 +41,28 @@ import kotlin.math.sqrt
  *  - G3: zero allocations after warmup in the decode path (the result strings are the only
  *    allocation, bounded per candidate).
  *
+ * The memo gates live alongside: [gatesG4SpeedAdaptationOnTheRealDictionary] (the speed channel
+ * beats the unadapted decoder on the fast-persona class), [gatesG8PerLanguageConstants] (the
+ * per-language constants never lose to the shared set on either language) and
+ * [gatesG5BigramChannel] (the bigram channel beats the plain decode on held-out context rows).
+ * The tuning surfaces print and never assert.
  * The train/held-out split is deterministic (a per-word SplitMix64 bit): constants are tuned
  * against the train split only, and the held-out split carries the reported numbers. The tuning
  * surface is a diagnostic printout ([tuningSurfaceOnTheTrainSplit]), never an assert.
  */
 class GlideRecoveryCalibrationTest {
 
-    // ---- Portable deterministic primitives (bit-identical to scripts/glide_pack.py). ----
-
-    private fun fnv1a64(data: ByteArray): Long {
-        var hash = 0xCBF29CE484222325uL.toLong()
-        for (byte in data) {
-            hash = hash xor (byte.toLong() and 0xffL)
-            hash *= 0x100000001B3L
-        }
-        return hash
-    }
-
-    private fun splitmix64(seed: Long): Long {
-        var z = seed + 0x9E3779B97F4A7C15uL.toLong()
-        z = (z xor (z ushr 30)) * 0xBF58476D1CE4E5B9uL.toLong()
-        z = (z xor (z ushr 27)) * 0x94D049BB133111EBuL.toLong()
-        return z xor (z ushr 31)
-    }
-
     // ---- Word selection, mirroring select_words() of glide_pack.py. ----
 
-    private fun lettersMappable(word: String, letters: Set<Int>): Boolean {
-        var offset = 0
-        while (offset < word.length) {
-            val codePoint = word.codePointAt(offset)
-            offset += Character.charCount(codePoint)
-            if (Character.toLowerCase(codePoint) !in letters) return false
-        }
-        return true
-    }
-
-    private fun selectWords(): List<String> {
-        val letters = byLetter.keys
-        val dictionary = HashSet(vocabulary)
+    private fun selectWords(
+        words: List<String>,
+        sentences: List<String>,
+        geo: GeneratorGeometry,
+    ): List<String> {
+        val letters = geo.byLetter.keys
+        val dictionary = HashSet(words)
         val selected = sortedSetOf<String>()
-        for (word in vocabulary) {
+        for (word in words) {
             if (word.codePointCount(0, word.length) < MIN_WORD_CODE_POINTS) continue
             if (!lettersMappable(word, letters)) continue
             val draw = java.lang.Long.remainderUnsigned(
@@ -85,7 +71,7 @@ class GlideRecoveryCalibrationTest {
             )
             if (draw == 0L) selected.add(word)
         }
-        for (line in evalLines) {
+        for (line in sentences) {
             if (line.isEmpty() || line.startsWith("#")) continue
             for (token in line.split(" ")) {
                 if (token.codePointCount(0, token.length) < MIN_WORD_CODE_POINTS) continue
@@ -104,36 +90,38 @@ class GlideRecoveryCalibrationTest {
     }
 
     /**
-     * Letter -> key rectangle of the fixture, every long-press letter without a key of its own on
-     * its base key's rectangle (mirror of `alias_bases` and `letters_by_code_point`).
+     * The generator's view of one layout: the letter -> key rectangle map (every long-press letter
+     * without a key of its own on its base key's rectangle, resolved through the built
+     * [GlideKeyGeometry] so multi-key aliases follow the production alias rule), the narrowest key
+     * width and the key radius.
      */
-    private val byLetter: Map<Int, Rect> by lazy {
-        val keys = GlideTestFixtures.tatarRawKeys()
-        val rects = HashMap<Int, Rect>()
-        for (key in keys) rects[key.codePoint] = Rect(key.left, key.top, key.right, key.bottom)
-        val bases = HashMap<Int, MutableSet<Int>>()
-        for (key in keys) {
-            for (moreKey in key.moreKeyCodePoints) {
-                val partner = Character.toLowerCase(moreKey)
-                if (!Character.isLetter(partner) || partner in rects) continue
-                bases.getOrPut(partner) { HashSet() }.add(key.codePoint)
+    private class GeneratorGeometry(raw: List<GlideKeyGeometry.RawKey>) {
+        val byLetter: Map<Int, Rect>
+        val minWidth = raw.minOf { it.right - it.left }
+        val radius = raw.minOf { minOf(it.right - it.left, it.bottom - it.top) }
+
+        init {
+            val built = GlideKeyGeometry.build(raw)
+            val rects = HashMap<Int, Rect>()
+            for (key in raw) rects[key.codePoint] = Rect(key.left, key.top, key.right, key.bottom)
+            val byKeyIndex = HashMap<Int, Rect>()
+            for (key in raw) {
+                byKeyIndex[built.keyIndexOfLetter(key.codePoint)] = rects.getValue(key.codePoint)
             }
+            for (slot in 0 until built.aliasCount) {
+                rects[built.aliasLetterAt(slot)] = byKeyIndex.getValue(built.aliasKeyAt(slot))
+            }
+            byLetter = rects
         }
-        val result = HashMap(rects)
-        for ((alias, candidates) in bases) {
-            check(candidates.size == 1) { "an alias on several keys fails the generator" }
-            result[alias] = rects.getValue(candidates.first())
-        }
-        result
     }
 
     /** Two adjacent letters on one key: a doubled letter, or a letter and its alias. */
-    private fun hasDoubledKey(word: String): Boolean {
+    private fun hasDoubledKey(word: String, geo: GeneratorGeometry): Boolean {
         var previous: Rect? = null
         var offset = 0
         while (offset < word.length) {
             val codePoint = word.codePointAt(offset)
-            val rect = byLetter.getValue(Character.toLowerCase(codePoint))
+            val rect = geo.byLetter.getValue(Character.toLowerCase(codePoint))
             if (rect === previous) return true
             previous = rect
             offset += Character.charCount(codePoint)
@@ -144,9 +132,13 @@ class GlideRecoveryCalibrationTest {
     private class GeneratedPath(val xs: IntArray, val ys: IntArray, val ts: IntArray, val drewLoop: Boolean) {
         /** The word of the set row this path was generated for (rows outnumber words). */
         var rowWord: String = ""
+
+        /** The committed previous word of a CONTEXT row; empty for plain word rows. */
+        var rowContext: String = ""
     }
 
     private fun generateGesture(
+        geo: GeneratorGeometry,
         word: String,
         drawLoop: Boolean = false,
         jitterPercent: Int = JITTER_PERCENT,
@@ -156,20 +148,23 @@ class GlideRecoveryCalibrationTest {
         gestureOffsetPercent: Int = GESTURE_OFFSET_PERCENT,
         endpointStartPercent: Int = ENDPOINT_START_PERCENT,
         endpointEndPercent: Int = ENDPOINT_END_PERCENT,
+        tstepMin: Int = TSTEP_MIN,
+        tstepVar: Long = TSTEP_VAR,
+        streamSeed: Long = GLIDE_SEED,
     ): GeneratedPath {
-        val minWidth = GlideTestFixtures.tatarRawKeys().minOf { it.right - it.left }
-        val radius = GlideTestFixtures.tatarKeyRadius()
+        val minWidth = geo.minWidth
+        val radius = geo.radius
 
         val codePoints = word.codePoints().toArray()
-        val hasDouble = hasDoubledKey(word)
-        var stream = splitmix64(GLIDE_SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
+        val hasDouble = hasDoubledKey(word, geo)
+        var stream = splitmix64(streamSeed xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
         // The loop is the CALLER's decision (the set carries both variants of a doubled word), so
         // the stream feeds the step draw at once.
         val loop = drawLoop && hasDouble
         val stepMin = minWidth / STEP_DIVISOR
         val step = stepMin + java.lang.Long.remainderUnsigned(stream, stepMin.toLong()).toInt()
         stream = splitmix64(stream)
-        val tstep = TSTEP_MIN + java.lang.Long.remainderUnsigned(stream, TSTEP_VAR).toInt()
+        val tstep = tstepMin + java.lang.Long.remainderUnsigned(stream, tstepVar).toInt()
         stream = splitmix64(stream)
 
         // Ideal vertices (loop corners replace the doubled letter's center when drawn).
@@ -179,7 +174,7 @@ class GlideRecoveryCalibrationTest {
         var vertexCount = 0
         var previous: Rect? = null
         for (codePoint in codePoints) {
-            val rect = byLetter.getValue(Character.toLowerCase(codePoint))
+            val rect = geo.byLetter.getValue(Character.toLowerCase(codePoint))
             if (loop && rect === previous) {
                 val dx = (rect.right - rect.left) / 4
                 val dy = (rect.bottom - rect.top) / 4
@@ -316,21 +311,86 @@ class GlideRecoveryCalibrationTest {
         return GeneratedPath(xs, ys, ts, loop)
     }
 
+    /** The word's persona (mirror of glide_pack.persona_of). */
+    private fun personaOf(word: String): Int = java.lang.Long.remainderUnsigned(
+        splitmix64(PERSONA_SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8))),
+        PERSONA_MODULUS,
+    ).toInt()
+
+    /** The generateGesture overrides of one persona (mirror of glide_pack.persona_knobs). */
+    private class PersonaKnobs(
+        val jitterPercent: Int,
+        val gestureOffsetPercent: Int,
+        val endpointStartPercent: Int,
+        val endpointEndPercent: Int,
+        val tstepMin: Int,
+        val tstepVar: Long,
+    )
+
+    private fun personaKnobs(persona: Int): PersonaKnobs = when (persona) {
+        PERSONA_FAST -> PersonaKnobs(
+            JITTER_PERCENT * PERSONA_FAST_NUM / PERSONA_FAST_DEN,
+            GESTURE_OFFSET_PERCENT * PERSONA_FAST_NUM / PERSONA_FAST_DEN,
+            ENDPOINT_START_PERCENT * PERSONA_FAST_NUM / PERSONA_FAST_DEN,
+            ENDPOINT_END_PERCENT * PERSONA_FAST_NUM / PERSONA_FAST_DEN,
+            TSTEP_FAST_MIN, TSTEP_FAST_VAR,
+        )
+        PERSONA_SLOW -> PersonaKnobs(
+            JITTER_PERCENT * PERSONA_SLOW_NUM / PERSONA_SLOW_DEN,
+            GESTURE_OFFSET_PERCENT * PERSONA_SLOW_NUM / PERSONA_SLOW_DEN,
+            ENDPOINT_START_PERCENT * PERSONA_SLOW_NUM / PERSONA_SLOW_DEN,
+            ENDPOINT_END_PERCENT * PERSONA_SLOW_NUM / PERSONA_SLOW_DEN,
+            TSTEP_SLOW_MIN, TSTEP_SLOW_VAR,
+        )
+        else -> PersonaKnobs(
+            JITTER_PERCENT, GESTURE_OFFSET_PERCENT,
+            ENDPOINT_START_PERCENT, ENDPOINT_END_PERCENT, TSTEP_MIN, TSTEP_VAR,
+        )
+    }
+
+    private fun generateGesture(
+        geo: GeneratorGeometry,
+        word: String,
+        drawLoop: Boolean,
+        knobs: PersonaKnobs,
+        streamSeed: Long = GLIDE_SEED,
+    ): GeneratedPath =
+        generateGesture(
+            geo, word, drawLoop,
+            jitterPercent = knobs.jitterPercent,
+            gestureOffsetPercent = knobs.gestureOffsetPercent,
+            endpointStartPercent = knobs.endpointStartPercent,
+            endpointEndPercent = knobs.endpointEndPercent,
+            tstepMin = knobs.tstepMin,
+            tstepVar = knobs.tstepVar,
+            streamSeed = streamSeed,
+        )
+
     private fun renderSet(
         words: List<String>,
-        jitterPercent: Int = JITTER_PERCENT,
-        cutModulus: Long = CUT_MODULUS,
-        wanderDivisor: Int = WANDER_DIVISOR,
+        geo: GeneratorGeometry,
+        contextPairs: List<Pair<String, String>> = emptyList(),
     ): Pair<StringBuilder, List<GeneratedPath>> {
         val rendered = StringBuilder()
         val paths = ArrayList<GeneratedPath>(words.size)
         for (word in words) {
             // A doubled word contributes BOTH variants — the no-jog row first, then the jog row —
-            // drawn from the same word stream (mirror of glide_pack.generate_set).
-            appendRow(word, generateGesture(word, false, jitterPercent, cutModulus, wanderDivisor), rendered, paths)
-            if (hasDoubledKey(word)) {
-                appendRow(word, generateGesture(word, true, jitterPercent, cutModulus, wanderDivisor), rendered, paths)
+            // drawn from the same word stream (mirror of glide_pack.generate_set). Both variants
+            // carry the word's persona.
+            val knobs = personaKnobs(personaOf(word))
+            appendRow(word, generateGesture(geo, word, false, knobs), rendered, paths)
+            if (hasDoubledKey(word, geo)) {
+                appendRow(word, generateGesture(geo, word, true, knobs), rendered, paths)
             }
+        }
+        // Context rows: one no-jog row per selected pair, after the word rows.
+        for ((previous, word) in contextPairs) {
+            val knobs = personaKnobs(personaOf(word))
+            val path = generateGesture(
+                geo, word, false, knobs, streamSeed = contextPairSeed(previous, word),
+            )
+            path.rowContext = previous
+            appendRow(word, path, rendered, paths)
         }
         return rendered to paths
     }
@@ -344,6 +404,7 @@ class GlideRecoveryCalibrationTest {
         path.rowWord = word
         paths.add(path)
         rendered.append(word).append('\t')
+        if (path.rowContext.isNotEmpty()) rendered.append(path.rowContext).append('\t')
         for (i in path.xs.indices) {
             if (i > 0) rendered.append(';')
             rendered.append(path.xs[i]).append(',').append(path.ys[i]).append(',')
@@ -368,9 +429,9 @@ class GlideRecoveryCalibrationTest {
 
     @Test
     fun theSyntheticSetIsByteIdenticalToTheGeneratorRun() {
-        val words = selectWords()
+        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
         assertEquals(SET_SIZE, words.size)
-        val (rendered, _) = renderSet(words)
+        val (rendered, _) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
         val bytes = rendered.toString().toByteArray(Charsets.UTF_8)
         assertEquals(SET_BYTES, bytes.size)
         val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -407,8 +468,8 @@ class GlideRecoveryCalibrationTest {
     @Test
     fun gatesG1AndG2OnTheRealDictionary() {
         val decoder = sharedDecoder()
-        val words = selectWords()
-        val (_, paths) = renderSet(words)
+        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
+        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
         val reusablePath = GlidePath(1024)
 
         val trainTop = IntArray(2)
@@ -434,6 +495,7 @@ class GlideRecoveryCalibrationTest {
         // iteration unit is the SET ROW (a doubled word contributes two); the row carries its word
         // with it.
         for ((position, path) in paths.withIndex()) {
+            if (path.rowContext.isNotEmpty()) continue // context rows belong to the G5 gate
             val word = path.rowWord
             val heldOut = isHeldOut(word)
             val started = System.nanoTime()
@@ -514,16 +576,16 @@ class GlideRecoveryCalibrationTest {
         }
 
         // Per-class tolerances of the doubled-letter evidence rule: plain words may not regress
-        // more than 1.0 pp, a no-jog doubled word must usually lose to its dictionary twin (under
-        // the recalibrated noise the twin still wins about four rows out of five), and a jog must
-        // still decode the doubled word.
+        // more than 1.0 pp, a no-jog doubled word must usually lose to its dictionary twin (the
+        // twin wins most of those rows), and a jog must still decode the doubled word. The pinned
+        // values describe the persona-mixed set under the shipped constants.
         assertTrue(
-            "plain top-1 regressed past the 1.0 pp tolerance (pinned 88.7446)",
-            classTop1[0] >= 88.7446 - 1.0,
+            "plain top-1 regressed past the 1.0 pp tolerance (pinned 86.3396)",
+            classTop1[0] >= 86.3396 - 1.0,
         )
         assertTrue(
-            "plain top-3 regressed past the 1.0 pp tolerance (pinned 95.0457)",
-            classTop3[0] >= 95.0457 - 1.0,
+            "plain top-3 regressed past the 1.0 pp tolerance (pinned 93.2179)",
+            classTop3[0] >= 93.2179 - 1.0,
         )
         assertTrue(
             "a doubled word must not win its no-jog row when the twin exists (ceiling 25%)",
@@ -535,12 +597,12 @@ class GlideRecoveryCalibrationTest {
         )
         // A twinless doubled word also scores against its loop-free path, which no other word owns.
         assertTrue(
-            "twinless no-jog top-1 regressed past the 1.0 pp tolerance (pinned 89.5522)",
-            classTop1[2] >= 89.5522 - 1.0,
+            "twinless no-jog top-1 regressed past the 1.0 pp tolerance (pinned 86.5672)",
+            classTop1[2] >= 86.5672 - 1.0,
         )
         assertTrue(
-            "twinless no-jog top-3 regressed past the 1.0 pp tolerance (pinned 96.5174)",
-            classTop3[2] >= 96.5174 - 1.0,
+            "twinless no-jog top-3 regressed past the 1.0 pp tolerance (pinned 93.5323)",
+            classTop3[2] >= 93.5323 - 1.0,
         )
     }
 
@@ -554,8 +616,8 @@ class GlideRecoveryCalibrationTest {
      */
     @Test
     fun tuningSurfaceOnTheTrainSplit() {
-        val words = selectWords()
-        val (_, paths) = renderSet(words)
+        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
+        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
         val train = trainWordIndices(paths)
         val reusablePath = GlidePath(1024)
         val inventory = TdictGlideInventory(realIndex!!)
@@ -610,6 +672,311 @@ class GlideRecoveryCalibrationTest {
         println(gammaRow.toString())
     }
 
+    /**
+     * The speed-channel tuning surface: top-1 on the TRAIN split per persona class over the
+     * (normative speed x widen cap) grid, diagnostic only. The shipped values were chosen here;
+     * the held-out gate is [gatesG4SpeedAdaptationOnTheRealDictionary].
+     */
+    @Test
+    fun tuningSurfaceSpeedChannelOnTheTrainSplit() {
+        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
+        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
+        val train = trainWordIndices(paths)
+        val reusablePath = GlidePath(1024)
+        val inventory = TdictGlideInventory(realIndex!!)
+        val wordIndex = GlideWordIndex.build(inventory, geometry)
+
+        // (top1 per persona) for one constants set on the train rows.
+        fun top1PerPersona(constants: GlideDecoder.GlideConstants): DoubleArray {
+            val decoder = GlideDecoder(geometry, inventory, constants)
+            decoder.preloadIndex(wordIndex)
+            val top = IntArray(3)
+            val count = IntArray(3)
+            for (position in train) {
+                val persona = personaOf(paths[position].rowWord)
+                count[persona]++
+                val found = decodePath(paths[position], decoder, reusablePath)
+                if (found > 0 && decodeResult.words[0] == paths[position].rowWord) top[persona]++
+            }
+            return DoubleArray(3) { if (count[it] == 0) 0.0 else top[it].toDouble() / count[it] * 100.0 }
+        }
+
+        println("Glide P7-1 speed surface (train split, top-1 % per persona normal/fast/slow):")
+        for (speed in listOf(0.012f, 0.016f, 0.02f, 0.024f, 0.03f)) {
+            val row = StringBuilder("normative=%6.3f ".format(java.util.Locale.ROOT, speed))
+            for (widen in listOf(1.0f, 1.5f, 2.0f, 3.0f)) {
+                val top = top1PerPersona(
+                    GlideDecoder.GlideConstants(
+                        normativeSpeedRadiiPerMs = speed, speedWidenMax = widen,
+                    ),
+                )
+                row.append(
+                    " w=%3.1f:%5.2f/%5.2f/%5.2f".format(
+                        java.util.Locale.ROOT, widen, top[0], top[1], top[2],
+                    ),
+                )
+            }
+            println(row.toString())
+        }
+    }
+
+    // ---- G8: per-language constants and the length channel. ----
+
+    /** One language's calibration inputs: dictionary inventory, layout and generator geometry. */
+    private inner class LanguageBench(
+        val name: String,
+        val inventory: GlideWordInventory,
+        val geometry: GlideKeyGeometry,
+        val generatorGeometry: GeneratorGeometry,
+        val words: List<String>,
+        val sentences: List<String>,
+    ) {
+        /** The language's generated set rows, computed once per bench. */
+        val paths: List<GeneratedPath> by lazy {
+            renderSet(
+                selectWords(words, sentences, generatorGeometry), generatorGeometry,
+                selectContextPairs(words, sentences, generatorGeometry),
+            ).second
+        }
+
+        /** The decoder word index over the bench's inventory, built once per bench. */
+        val wordIndex: GlideWordIndex by lazy { GlideWordIndex.build(inventory, geometry) }
+    }
+
+    private fun tatarBench() = LanguageBench(
+        "tt", TdictGlideInventory(realIndex!!), geometry, tatarGeneratorGeometry,
+        vocabulary, evalLines,
+    )
+
+    private fun russianBench() = LanguageBench(
+        "ru", TdictGlideInventory(russianIndex!!), russianGeometry, russianGeneratorGeometry,
+        russianVocabulary, emptyList(),
+    )
+
+    /** (top1, top3) percentages of [constants] over the bench's rows, train or held-out split. */
+    private fun measureTop(
+        bench: LanguageBench,
+        constants: GlideDecoder.GlideConstants,
+        heldOut: Boolean,
+    ): DoubleArray {
+        val decoder = GlideDecoder(bench.geometry, bench.inventory, constants)
+        decoder.preloadIndex(bench.wordIndex)
+        val reusablePath = GlidePath(1024)
+        var top1 = 0
+        var top3 = 0
+        var count = 0
+        for (path in bench.paths) {
+            if (path.rowContext.isNotEmpty()) continue
+            if (isHeldOut(path.rowWord) != heldOut) continue
+            count++
+            val found = decodePath(path, decoder, reusablePath)
+            if (found > 0 && decodeResult.words[0] == path.rowWord) top1++
+            for (slot in 0 until minOf(3, found)) {
+                if (decodeResult.words[slot] == path.rowWord) {
+                    top3++
+                    break
+                }
+            }
+        }
+        return doubleArrayOf(top1 * 100.0 / count, top3 * 100.0 / count)
+    }
+
+    /**
+     * The G8 tuning surface: on each language's TRAIN rows — the length-channel sigma grid at the
+     * shipped sigmas, the sigma grid at the chosen length sigma, and the top-1 split by word
+     * length (the short-vs-long bias the length channel targets). Diagnostic only; the gate is
+     * [gatesG8PerLanguageConstants].
+     */
+    @Test
+    fun tuningSurfacePerLanguageAndLengthChannel() {
+        val lengthSigmas = listOf(Float.POSITIVE_INFINITY, 6f, 4f, 3f, 2f)
+        for (bench in listOf(tatarBench(), russianBench())) {
+            println("Glide P7-10 ${bench.name} length-channel surface (train split, top-1 / top-3 %):")
+            for (lengthSigma in lengthSigmas) {
+                val top = measureTop(
+                    bench,
+                    GlideDecoder.GlideConstants(lengthStdFactor = lengthSigma),
+                    heldOut = false,
+                )
+                println(
+                    "  lengthStdFactor=${if (lengthSigma.isInfinite()) "off" else lengthSigma} " +
+                        "top1=${fmt(top[0])}% top3=${fmt(top[1])}%",
+                )
+            }
+            // The short-vs-long bias, with the length channel off and at the grid's best cell.
+            for (lengthSigma in listOf(Float.POSITIVE_INFINITY, 4f)) {
+                val perLength = measureTopPerLength(
+                    bench,
+                    GlideDecoder.GlideConstants(lengthStdFactor = lengthSigma),
+                )
+                println(
+                    "  ${bench.name} top-1 by word length (5-6 / 7-9 / 10+ cp), " +
+                        "lengthStdFactor=${if (lengthSigma.isInfinite()) "off" else lengthSigma}: " +
+                        perLength.joinToString(" / ") { fmt(it) } + "%",
+                )
+            }
+            println("Glide P7-10 ${bench.name} sigma grid (train split, top-1 %):")
+            val shapeStds = listOf(6.9f, 8.28f, 9.66f, 11.04f)
+            val locationFactors = listOf(0.09f, 0.11f, 0.1277f, 0.15f, 0.18f)
+            val lengthSigmas2 = listOf(4f, 6f)
+            for (lengthSigma in lengthSigmas2) {
+                println("  lengthStdFactor=$lengthSigma:")
+                println("  shapeStd\\locFactor " + locationFactors.joinToString(" ") { "%8.4f".format(it) })
+                for (shapeStd in shapeStds) {
+                    val row = StringBuilder("  %13.2f ".format(java.util.Locale.ROOT, shapeStd))
+                    for (locationFactor in locationFactors) {
+                        row.append(
+                            "%9.4f".format(
+                                java.util.Locale.ROOT,
+                                measureTop(
+                                    bench,
+                                    GlideDecoder.GlideConstants(
+                                        shapeStd = shapeStd, locationStdFactor = locationFactor,
+                                        lengthStdFactor = lengthSigma,
+                                    ),
+                                    heldOut = false,
+                                )[0],
+                            ),
+                        )
+                    }
+                    println(row.toString())
+                }
+            }
+        }
+    }
+
+    /** Top-1 percentages on the train rows, bucketed by word code-point length (5-6, 7-9, 10+). */
+    private fun measureTopPerLength(
+        bench: LanguageBench,
+        constants: GlideDecoder.GlideConstants,
+    ): DoubleArray {
+        val decoder = GlideDecoder(bench.geometry, bench.inventory, constants)
+        decoder.preloadIndex(bench.wordIndex)
+        val reusablePath = GlidePath(1024)
+        val top = IntArray(3)
+        val count = IntArray(3)
+        for (path in bench.paths) {
+            if (path.rowContext.isNotEmpty()) continue
+            if (isHeldOut(path.rowWord)) continue
+            val length = path.rowWord.codePointCount(0, path.rowWord.length)
+            val bucket = if (length <= 6) 0 else if (length <= 9) 1 else 2
+            count[bucket]++
+            val found = decodePath(path, decoder, reusablePath)
+            if (found > 0 && decodeResult.words[0] == path.rowWord) top[bucket]++
+        }
+        return DoubleArray(3) { if (count[it] == 0) 0.0 else top[it] * 100.0 / count[it] }
+    }
+
+    /**
+     * The G8 gate: the per-language constants must beat or match the one shared constant set on
+     * the held-out split of BOTH languages, top-1 and top-3. The per-language values were chosen
+     * on the train splits ([tuningSurfacePerLanguageAndLengthChannel]).
+     */
+    @Test
+    fun gatesG8PerLanguageConstants() {
+        val lines = ArrayList<String>()
+        var failures = 0
+        for (bench in listOf(tatarBench(), russianBench())) {
+            val shared = measureTop(bench, SHARED, heldOut = true)
+            val perLanguage = measureTop(
+                bench,
+                if (bench.name == "tt") {
+                    GlideDecoder.GlideConstants.TATAR
+                } else {
+                    GlideDecoder.GlideConstants.RUSSIAN
+                },
+                heldOut = true,
+            )
+            println(
+                "Glide P7-10 ${bench.name} held-out: shared top1=${fmt(shared[0])}% " +
+                    "top3=${fmt(shared[1])}% | per-language top1=${fmt(perLanguage[0])}% " +
+                    "top3=${fmt(perLanguage[1])}%",
+            )
+            if (perLanguage[0] < shared[0]) {
+                failures++
+                lines.add(
+                    "${bench.name}: per-language top-1 regressed vs the shared constants " +
+                        "(${fmt(perLanguage[0])}% < ${fmt(shared[0])}%)",
+                )
+            }
+            if (perLanguage[1] < shared[1]) {
+                failures++
+                lines.add(
+                    "${bench.name}: per-language top-3 regressed vs the shared constants " +
+                        "(${fmt(perLanguage[1])}% < ${fmt(shared[1])}%)",
+                )
+            }
+        }
+        assertTrue(lines.joinToString("; "), failures == 0)
+    }
+
+    // ---- G5: the bigram channel on the glide N-best. ----
+
+    /**
+     * Top-1 on the context rows of one split with the channel at [rankPenalty] (1f: off — the
+     * plain decode). The oracle is the bundled Tatar bigram table, as in production.
+     */
+    private fun contextRowTop1(rankPenalty: Float, heldOut: Boolean): Pair<Double, Int> {
+        val bigrams = tatarBigrams!!
+        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
+        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
+        val decoder = sharedDecoder()
+        val reusablePath = GlidePath(1024)
+        val adjusted = FloatArray(GlideDecoder.TOP_N)
+        var top1 = 0
+        var count = 0
+        for (path in paths) {
+            if (path.rowContext.isEmpty()) continue
+            if (isHeldOut(path.rowWord) != heldOut) continue
+            count++
+            val found = decodePath(path, decoder, reusablePath)
+            if (found <= 0) continue
+            val successors = try {
+                bigrams.predict(
+                    ImmutableUtf8Prefix.copyOf(path.rowContext.toByteArray(Charsets.UTF_8)),
+                )
+            } catch (_: RuntimeException) {
+                emptyList()
+            }
+            GlideBigramRerank.rerank(decodeResult, successors, rankPenalty, adjusted)
+            if (decodeResult.words[0] == path.rowWord) top1++
+        }
+        return (top1 * 100.0 / count) to count
+    }
+
+    /**
+     * The G5 tuning surface: context-row top-1 on the TRAIN split over the rank-penalty grid.
+     * Diagnostic only; the gate is [gatesG5BigramChannel].
+     */
+    @Test
+    fun tuningSurfaceBigramChannelOnTheTrainSplit() {
+        println("Glide P7-12 bigram channel (train context rows, top-1 %):")
+        for (penalty in listOf(1.0f, 1.25f, 1.5f, 2.0f, 3.0f, 4.0f)) {
+            val (top1, count) = contextRowTop1(penalty, heldOut = false)
+            println("  rankPenalty=%4.2f top1=%s%% (n=%d)".format(java.util.Locale.ROOT, penalty, fmt(top1), count))
+        }
+    }
+
+    /**
+     * The G5 gate: on the HELD-OUT context rows the channel (the shipped rank penalty) must beat
+     * the plain decode's top-1. Non-context rows never see the channel (no context word), so they
+     * are unchanged by construction — [gatesG1AndG2OnTheRealDictionary] covers them.
+     */
+    @Test
+    fun gatesG5BigramChannel() {
+        val (without, count) = contextRowTop1(1.0f, heldOut = true)
+        val (with, _) = contextRowTop1(GlideDecoder.GlideConstants.TATAR.bigramRankPenalty, heldOut = true)
+        println(
+            "Glide P7-12 bigram channel held-out: top1_without=${fmt(without)}% " +
+                "top1_with=${fmt(with)}% (n=$count)",
+        )
+        assertTrue(
+            "the bigram channel must improve held-out context-row top-1 " +
+                "(${fmt(with)}% vs ${fmt(without)}% without)",
+            with > without,
+        )
+    }
+
     /** Every second TRAIN row's index (the tuning grid must not pay full-set decodes). */
     private fun trainWordIndices(paths: List<GeneratedPath>): List<Int> {
         val result = ArrayList<Int>(paths.size / 4)
@@ -617,6 +984,70 @@ class GlideRecoveryCalibrationTest {
             if (!isHeldOut(path.rowWord) && index % 2 == 0) result.add(index)
         }
         return result
+    }
+
+    /**
+     * The G4 gate: the speed-adaptive location sigma (the shipped constants) must beat the
+     * unadapted decoder on the fast-persona class of the held-out split, with no regression on
+     * the other persona classes. The constants were chosen on the train split
+     * ([tuningSurfaceSpeedChannelOnTheTrainSplit]).
+     */
+    @Test
+    fun gatesG4SpeedAdaptationOnTheRealDictionary() {
+        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
+        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
+        val reusablePath = GlidePath(1024)
+        val inventory = TdictGlideInventory(realIndex!!)
+        val wordIndex = GlideWordIndex.build(inventory, geometry)
+        val adapted = GlideDecoder(geometry, inventory)
+        adapted.preloadIndex(wordIndex)
+        val unadapted = GlideDecoder(
+            geometry, inventory, GlideDecoder.GlideConstants(speedWidenMax = 1f),
+        )
+        unadapted.preloadIndex(wordIndex)
+
+        val personaNames = arrayOf("normal", "fast", "slow")
+        val personaCount = IntArray(3)
+        val personaAdaptedTop = IntArray(3)
+        val personaUnadaptedTop = IntArray(3)
+        for (path in paths) {
+            if (path.rowContext.isNotEmpty()) continue
+            if (!isHeldOut(path.rowWord)) continue
+            val persona = personaOf(path.rowWord)
+            personaCount[persona]++
+            val adaptedCount = decodePath(path, adapted, reusablePath)
+            if (adaptedCount > 0 && decodeResult.words[0] == path.rowWord) personaAdaptedTop[persona]++
+            val unadaptedCount = decodePath(path, unadapted, reusablePath)
+            if (unadaptedCount > 0 && decodeResult.words[0] == path.rowWord) {
+                personaUnadaptedTop[persona]++
+            }
+        }
+        val adaptedTop1 = DoubleArray(3)
+        val unadaptedTop1 = DoubleArray(3)
+        for (persona in 0 until 3) {
+            adaptedTop1[persona] =
+                personaAdaptedTop[persona].toDouble() / personaCount[persona] * 100.0
+            unadaptedTop1[persona] =
+                personaUnadaptedTop[persona].toDouble() / personaCount[persona] * 100.0
+            println(
+                "Glide P7-9 persona ${personaNames[persona]}: n=${personaCount[persona]} " +
+                    "top1_adapted=${fmt(adaptedTop1[persona])}% " +
+                    "top1_unadapted=${fmt(unadaptedTop1[persona])}%",
+            )
+        }
+        assertTrue(
+            "the speed channel must improve the fast-persona held-out top-1 " +
+                "(${fmt(adaptedTop1[1])}% vs ${fmt(unadaptedTop1[1])}% unadapted)",
+            adaptedTop1[1] > unadaptedTop1[1],
+        )
+        assertTrue(
+            "the speed channel must not regress the normal-persona held-out top-1 past 1.0 pp",
+            adaptedTop1[0] >= unadaptedTop1[0] - 1.0,
+        )
+        assertTrue(
+            "the speed channel must not regress the slow-persona held-out top-1 past 1.0 pp",
+            adaptedTop1[2] >= unadaptedTop1[2] - 1.0,
+        )
     }
 
     @Test
@@ -628,8 +1059,8 @@ class GlideRecoveryCalibrationTest {
         val threadId = Thread.currentThread().id
 
         val decoder = sharedDecoder()
-        val words = selectWords()
-        val (_, paths) = renderSet(words)
+        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
+        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
         val reusablePath = GlidePath(1024)
         val realGesture = paths[paths.size / 2]
         // The all-pruned path: a long zigzag whose length prunes every bucket it touches.
@@ -752,13 +1183,92 @@ class GlideRecoveryCalibrationTest {
         private const val ENDPOINT_END_PERCENT = 40
         private const val ENDPOINT_WIDE_MODULUS = 7L
         private const val ENDPOINT_WIDE_SCALE = 3
+        // Persona knobs (mirror of glide_pack.py).
+        private const val PERSONA_SEED = 0x50EF5AL
+        private const val PERSONA_MODULUS = 3L
+        private const val PERSONA_FAST = 1
+        private const val PERSONA_SLOW = 2
+        private const val PERSONA_FAST_NUM = 3
+        private const val PERSONA_FAST_DEN = 2
+        private const val PERSONA_SLOW_NUM = 2
+        private const val PERSONA_SLOW_DEN = 3
+        private const val TSTEP_FAST_MIN = 5
+        private const val TSTEP_FAST_VAR = 7L
+        private const val TSTEP_SLOW_MIN = 14
+        private const val TSTEP_SLOW_VAR = 13L
+        // Context rows (the bigram channel's calibration class; mirror of glide_pack.py).
+        // ---- Portable deterministic primitives (bit-identical to scripts/glide_pack.py). ----
+
+        private fun fnv1a64(data: ByteArray): Long {
+            var hash = 0xCBF29CE484222325uL.toLong()
+            for (byte in data) {
+                hash = hash xor (byte.toLong() and 0xffL)
+                hash *= 0x100000001B3L
+            }
+            return hash
+        }
+
+        private fun splitmix64(seed: Long): Long {
+            var z = seed + 0x9E3779B97F4A7C15uL.toLong()
+            z = (z xor (z ushr 30)) * 0xBF58476D1CE4E5B9uL.toLong()
+            z = (z xor (z ushr 27)) * 0x94D049BB133111EBuL.toLong()
+            return z xor (z ushr 31)
+        }
+
+        private const val CONTEXT_SEED = 0xC047E5L
+        private const val CONTEXT_MODULUS = 4L
+
+        private fun lettersMappable(word: String, letters: Set<Int>): Boolean {
+            var offset = 0
+            while (offset < word.length) {
+                val codePoint = word.codePointAt(offset)
+                offset += Character.charCount(codePoint)
+                if (Character.toLowerCase(codePoint) !in letters) return false
+            }
+            return true
+        }
+
+        /** The pair's stream value: the thinning draw and the gesture's stream seed. */
+        private fun contextPairSeed(previous: String, word: String): Long =
+            splitmix64(CONTEXT_SEED xor fnv1a64("$previous $word".toByteArray(Charsets.UTF_8)))
+
+        /**
+         * (previous, word) pairs of consecutive eval tokens (mirror of
+         * glide_pack.select_context_pairs): both dictionary words, the word mappable and at least
+         * MIN_WORD_CODE_POINTS long, thinned by the pair draw.
+         */
+        private fun selectContextPairs(
+            words: List<String>,
+            sentences: List<String>,
+            geo: GeneratorGeometry,
+        ): List<Pair<String, String>> {
+            val dictionary = HashSet(words)
+            val pairs = sortedSetOf<Pair<String, String>>(
+                compareBy({ it.first }, { it.second }),
+            )
+            for (line in sentences) {
+                if (line.isEmpty() || line.startsWith("#")) continue
+                val tokens = line.split(" ")
+                for (i in 0 until tokens.size - 1) {
+                    val previous = tokens[i]
+                    val word = tokens[i + 1]
+                    if (previous !in dictionary || word !in dictionary) continue
+                    if (word.codePointCount(0, word.length) < MIN_WORD_CODE_POINTS) continue
+                    if (!lettersMappable(word, geo.byLetter.keys)) continue
+                    pairs.add(previous to word)
+                }
+            }
+            return pairs.filter {
+                java.lang.Long.remainderUnsigned(contextPairSeed(it.first, it.second), CONTEXT_MODULUS) == 0L
+            }
+        }
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts). The
         // set carries both variants of every doubled word (rows outnumber words).
         private const val SET_SIZE = 4526
-        private const val SET_BYTES = 10407494
+        private const val SET_BYTES = 11420862
         private const val SET_SHA256 =
-            "3846bee2982bae815927a3325aa8ce8aa3e774e2f7a536571d8548ee208aac9c"
+            "4e2ea296ed6c492ca6f94cfb2f3db2f163fd3105d26354a9850df9e51bbcdc1d"
 
         // The per-class split of gatesG1AndG2OnTheRealDictionary.
         private const val CLASS_COUNT = 5
@@ -768,12 +1278,38 @@ class GlideRecoveryCalibrationTest {
         private const val G1_TOP1_MIN = 35.0
         private const val G2_P95_MS = 2.0
 
+        // The pre-G8 shared constant set (one set serving both languages): the G8 gate compares
+        // the per-language constants against it on each language's held-out split.
+        private val SHARED = GlideDecoder.GlideConstants(
+            shapeStd = 11.04f,
+            locationStdFactor = 0.18f,
+            normativeSpeedRadiiPerMs = 0.016f,
+            speedWidenMax = 1.5f,
+            lengthStdFactor = Float.POSITIVE_INFINITY,
+        )
+
         private val geometry = GlideTestFixtures.tatarGeometry()
+        private val russianGeometry = GlideTestFixtures.russianGeometry()
         private var realIndex: TdictPrefixIndex? = null
+        private var russianIndex: TdictPrefixIndex? = null
+        private var tatarBigrams: TatBigrPrefixIndex? = null
         private var sharedDecoder: GlideDecoder? = null
         private lateinit var vocabulary: List<String>
         internal var vocabularySet: Set<String> = emptySet()
+        private lateinit var russianVocabulary: List<String>
+        internal var russianVocabularySet: Set<String> = emptySet()
         private lateinit var evalLines: List<String>
+
+        /** The generator's geometry view of the Tatar fixture layout. */
+        private val tatarGeneratorGeometry by lazy { GeneratorGeometry(GlideTestFixtures.tatarRawKeys()) }
+
+        /** The eval-sentence context pairs of the Tatar set (mirror of glide_pack). */
+        private val tatarContextPairs: List<Pair<String, String>> by lazy {
+            selectContextPairs(vocabulary, evalLines, tatarGeneratorGeometry)
+        }
+
+        /** The generator's geometry view of the Russian fixture layout. */
+        private val russianGeneratorGeometry by lazy { GeneratorGeometry(GlideTestFixtures.russianRawKeys()) }
 
         private fun sharedDecoder(): GlideDecoder {
             if (sharedDecoder == null) {
@@ -782,14 +1318,11 @@ class GlideRecoveryCalibrationTest {
             return sharedDecoder!!
         }
 
-        @JvmStatic
-        @BeforeClass
-        fun loadCommittedAssets() {
+        private fun loadDictionary(spec: DictionaryArtifactSpec): Pair<TdictPrefixIndex, List<String>> {
             val asset = locate(
-                "src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
-                "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
+                "src/main/assets/${spec.assetPath}",
+                "app/src/main/assets/${spec.assetPath}",
             )
-            val spec = DictionaryArtifactSpec.TATAR_TOP100K_V1
             val rawFile = File.createTempFile("glide-calibration-", ".tdict")
             try {
                 rawFile.outputStream().use { output ->
@@ -803,23 +1336,72 @@ class GlideRecoveryCalibrationTest {
                     validated.formatVersion,
                     validated.rawSha256,
                 )
-                realIndex = TdictPrefixIndex.open(
+                val index = TdictPrefixIndex.open(
                     ByteBuffer.wrap(raw),
                     identity,
                     validated.entryCount,
                     validated.rawSize,
                 )
-                check(realIndex != null)
-                vocabulary = DictionaryTestFixtures.words(raw)
-                vocabularySet = vocabulary.toSet()
-                check(vocabulary.size == spec.expectedEntryCount.toInt())
+                check(index != null)
+                val words = DictionaryTestFixtures.words(raw)
+                check(words.size == spec.expectedEntryCount.toInt())
+                return index to words
             } finally {
                 rawFile.delete()
             }
+        }
+
+        @JvmStatic
+        @BeforeClass
+        fun loadCommittedAssets() {
+            val tatar = loadDictionary(DictionaryArtifactSpec.TATAR_TOP100K_V1)
+            realIndex = tatar.first
+            vocabulary = tatar.second
+            vocabularySet = vocabulary.toSet()
+            val russian = loadDictionary(DictionaryArtifactSpec.RUSSIAN_TOP100K_V1)
+            russianIndex = russian.first
+            russianVocabulary = russian.second
+            russianVocabularySet = russianVocabulary.toSet()
             evalLines = locate(
                 "src/test/resources/tt_eval_sentences.txt",
                 "app/src/test/resources/tt_eval_sentences.txt",
             ).readLines(Charsets.UTF_8).map { it.trim() }
+            tatarBigrams = loadBigramTable(BigramArtifactSpec.TATAR_BIGRAMS_V1, realIndex!!)
+        }
+
+        private fun loadBigramTable(
+            spec: BigramArtifactSpec,
+            dictionary: TdictPrefixIndex,
+        ): TatBigrPrefixIndex {
+            val asset = locate(
+                "src/main/assets/${spec.assetPath}",
+                "app/src/main/assets/${spec.assetPath}",
+            )
+            val rawFile = File.createTempFile("glide-calibration-", ".tatbigr")
+            try {
+                rawFile.outputStream().use { output ->
+                    TatBigrValidator().inflateAsset(asset.inputStream(), output, spec)
+                }
+                val validated = TatBigrValidator().validateRaw(rawFile, spec)
+                val identity = BigramTableIdentity(
+                    spec.generation,
+                    spec.fileLanguageTag,
+                    validated.schemaId,
+                    validated.formatVersion,
+                    validated.rawSha256,
+                )
+                return requireNotNull(
+                    TatBigrPrefixIndex.open(
+                        ByteBuffer.wrap(rawFile.readBytes()),
+                        identity,
+                        dictionary,
+                        validated.headCount,
+                        validated.rawSize,
+                    ),
+                )
+            } finally {
+                rawFile.delete()
+            }
         }
 
         private fun locate(vararg paths: String): File =

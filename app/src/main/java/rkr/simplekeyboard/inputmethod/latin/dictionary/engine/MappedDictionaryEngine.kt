@@ -2,6 +2,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramTableLease
@@ -56,12 +57,13 @@ class MappedDictionaryEngine private constructor(
         normalizedContextWordUtf8: ByteArray,
     ): LookupToken? = engine.requestNextWord(editorSessionId, subtypeId, normalizedContextWordUtf8)
 
-    /** GLIDE counterpart of [request]: same engine, same rules. */
+    /** GLIDE counterpart of [request]: same engine, same rules, plus the committed context word. */
     fun requestGlide(
         editorSessionId: Long,
         subtypeId: String,
         path: GlidePath,
-    ): LookupToken? = engine.requestGlide(editorSessionId, subtypeId, path)
+        contextWordUtf8: ByteArray,
+    ): LookupToken? = engine.requestGlide(editorSessionId, subtypeId, path, contextWordUtf8)
 
     /**
      * Idle memory release of the glide word index. The engine posts the drop onto its serialized
@@ -300,7 +302,8 @@ class MappedDictionaryEngine private constructor(
          *  - [fuzzyEditPolicy]: typo-recovery classes; null is [FuzzyEditPolicy.DEFAULT];
          *  - [fallbackWordsFactory]: top-frequency fill of empty NEXT_WORD cells; null means none;
          *  - [personalBigrams]: learned word pairs, ranked after the bigram successors and before
-         *    the forms; [PersonalBigramSource.EMPTY] means none.
+         *    the forms; [PersonalBigramSource.EMPTY] means none;
+         *  - [glideConstants]: the glide decoder's per-language scoring constants.
          */
         fun start(
             catalog: PublishedDictionaryCatalog,
@@ -314,6 +317,7 @@ class MappedDictionaryEngine private constructor(
             fuzzyEditPolicy: FuzzyEditPolicy? = null,
             fallbackWordsFactory: FallbackWordsFactory? = null,
             personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
+            glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
         ): MappedDictionaryEngine? {
             val lease = try {
                 catalog.acquireLatestForActivation()
@@ -323,7 +327,7 @@ class MappedDictionaryEngine private constructor(
             return startOwnedLease(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
                 suffixTable, afterWordFormsFactory, fuzzyEditPolicy, fallbackWordsFactory,
-                personalBigrams,
+                personalBigrams, glideConstants,
             )
         }
 
@@ -339,6 +343,7 @@ class MappedDictionaryEngine private constructor(
             fuzzyEditPolicy: FuzzyEditPolicy?,
             fallbackWordsFactory: FallbackWordsFactory?,
             personalBigrams: PersonalBigramSource,
+            glideConstants: GlideDecoder.GlideConstants,
         ): MappedDictionaryEngine? {
             val dictionary = lease.dictionary
             val identity = DictionaryIdentity(
@@ -382,7 +387,10 @@ class MappedDictionaryEngine private constructor(
                     // Learned pairs are resolved per language by the caller, like the personal
                     // source above.
                     personalBigrams,
-                    GlideDecoderHost(TdictGlideInventory(index), personalCandidates, index::containsWordCold),
+                    GlideDecoderHost(
+                        TdictGlideInventory(index), personalCandidates, index::containsWordCold,
+                        glideConstants,
+                    ),
                 )
                 val engine = LatestOnlyPrefixEngine(
                     identity,
