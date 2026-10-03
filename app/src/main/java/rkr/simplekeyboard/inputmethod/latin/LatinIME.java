@@ -1700,14 +1700,13 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * Inline autofill (API 30+): the platform asks for the strip's presentation specs when the
      * focused field supports inline suggestions. The system never calls this below R, and the
      * gate keeps the binder's API-30 classes from loading on older releases. The request is
-     * created after the field's startInput, so the EditorInfo here is the field's own; a password
-     * field gets no request from us, and its autofill stays with the platform's dropdown.
+     * created after the field's startInput, so the EditorInfo here is the field's own; a missing
+     * one refuses the request.
      */
     @Override
     public InlineSuggestionsRequest onCreateInlineSuggestionsRequest(final Bundle uiExtras) {
         final EditorInfo editorInfo = getCurrentInputEditorInfo();
-        final boolean fieldIsPassword = editorInfo == null || isPasswordField(editorInfo);
-        if (!InlineAutofillGate.mayHost(Build.VERSION.SDK_INT, fieldIsPassword)) {
+        if (editorInfo == null || !InlineAutofillGate.mayHost(Build.VERSION.SDK_INT)) {
             return null;
         }
         final InputView inputView = getInputViewForSuggestions();
@@ -1720,8 +1719,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * The response half of inline autofill. An empty response is the platform's clear signal for
      * the previous field's session (delivered at the next field's startInput), so it reaches the
      * surface before any gate: the gate reads the new field and must not strand the old field's
-     * content. A non-empty response is fail-closed — a field that cannot be proven clean (no live
-     * EditorInfo, a password type) hosts nothing. The content itself is never read, only hosted.
+     * content. A non-empty response is fail-closed — a field that cannot be proven live (no
+     * current EditorInfo) hosts nothing. The content itself is never read, only hosted.
      */
     @Override
     public boolean onInlineSuggestionsResponse(final InlineSuggestionsResponse response) {
@@ -1737,8 +1736,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             return false;
         }
         final EditorInfo editorInfo = getCurrentInputEditorInfo();
-        final boolean fieldIsPassword = editorInfo == null || isPasswordField(editorInfo);
-        if (!InlineAutofillGate.mayHost(Build.VERSION.SDK_INT, fieldIsPassword)) {
+        if (editorInfo == null || !InlineAutofillGate.mayHost(Build.VERSION.SDK_INT)) {
             return false;
         }
         return InlineAutofillBinder.hostResponse(this, inputView, response);

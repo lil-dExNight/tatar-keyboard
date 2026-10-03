@@ -48,11 +48,11 @@ class InlineAutofillSourceContractTest {
         val request = methodBody(latinIme,
             "public InlineSuggestionsRequest onCreateInlineSuggestionsRequest(final Bundle uiExtras)")
         assertTrue(request.contains("InlineAutofillGate.mayHost(Build.VERSION.SDK_INT"))
-        assertTrue(request.contains("editorInfo == null || isPasswordField(editorInfo)"))
+        assertTrue(request.contains("editorInfo == null"))
         val response = methodBody(latinIme,
             "public boolean onInlineSuggestionsResponse(final InlineSuggestionsResponse response)")
         assertTrue(response.contains("InlineAutofillGate.mayHost(Build.VERSION.SDK_INT"))
-        assertTrue(response.contains("editorInfo == null || isPasswordField(editorInfo)"))
+        assertTrue(response.contains("editorInfo == null"))
         assertTrue(response.contains("return false"))
     }
 

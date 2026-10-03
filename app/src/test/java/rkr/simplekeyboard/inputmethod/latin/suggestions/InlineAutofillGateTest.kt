@@ -21,26 +21,20 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The inline-autofill field gate: API floor 30, password fields refused at any level. */
+/** The inline-autofill field gate: the API floor is 30; password fields host chips like any
+ *  other field — the content comes from the user's own autofill service and is only hosted. */
 class InlineAutofillGateTest {
 
     @Test
     fun theApiFloorIs30() {
         assertEquals(30, InlineAutofillGate.MIN_API_LEVEL)
-        assertFalse(InlineAutofillGate.mayHost(29, fieldIsPassword = false))
-        assertTrue(InlineAutofillGate.mayHost(30, fieldIsPassword = false))
-        assertTrue(InlineAutofillGate.mayHost(34, fieldIsPassword = false))
+        assertFalse(InlineAutofillGate.mayHost(29))
+        assertTrue(InlineAutofillGate.mayHost(30))
+        assertTrue(InlineAutofillGate.mayHost(34))
     }
 
     @Test
-    fun aPasswordFieldIsRefusedAtAnyApiLevel() {
-        assertFalse(InlineAutofillGate.mayHost(30, fieldIsPassword = true))
-        assertFalse(InlineAutofillGate.mayHost(34, fieldIsPassword = true))
-    }
-
-    @Test
-    fun belowTheFloorEvenACleanFieldIsRefused() {
-        assertFalse(InlineAutofillGate.mayHost(24, fieldIsPassword = false))
-        assertFalse(InlineAutofillGate.mayHost(24, fieldIsPassword = true))
+    fun belowTheFloorNothingIsHosted() {
+        assertFalse(InlineAutofillGate.mayHost(24))
     }
 }

@@ -61,18 +61,19 @@ object InlineStripSpecs {
 
 /**
  * The field-level gate of the inline-autofill path. The API floor is 30: the platform classes do
- * not exist below it, and the system never calls the entry points there. A password field is
- * refused on our side too, independent of what the platform already filters.
+ * not exist below it, and the system never calls the entry points there. Password fields host
+ * chips like any other field — login forms are the feature's main use: the content comes from
+ * the user's own autofill service through the platform, and the keyboard hosts the view without
+ * ever reading it.
  */
 object InlineAutofillGate {
     const val MIN_API_LEVEL = 30
 
     /**
-     * [fieldIsPassword] is the caller's reading of the live field. Both entry points run after
-     * the field's startInput, so the EditorInfo is the field's own and a missing one refuses:
-     * nothing is hosted where the field cannot be proven clean.
+     * Both entry points run after the field's startInput, so the caller's EditorInfo is the
+     * field's own; a missing one refuses: nothing is hosted for a field that cannot be proven
+     * live.
      */
     @JvmStatic
-    fun mayHost(apiLevel: Int, fieldIsPassword: Boolean): Boolean =
-        apiLevel >= MIN_API_LEVEL && !fieldIsPassword
+    fun mayHost(apiLevel: Int): Boolean = apiLevel >= MIN_API_LEVEL
 }

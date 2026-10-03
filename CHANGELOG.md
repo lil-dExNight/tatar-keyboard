@@ -18,12 +18,18 @@ These hold for every release and are not repeated in the entries below:
 - A fast swipe left from the delete key deletes the word before the cursor (needs the delete-swipe setting).
 - The shift key cycles the case of the selected text or the word before the cursor: lowercase, then Capitalized, then ALL CAPS.
 - Long-press the enter key for a text-editing menu: select all, cut, copy, paste, cursor left, cursor right.
+- Text shortcuts: your own abbreviation → phrase pairs (Settings → Preferences), expanded as you type, with undo.
+- A fresh clipboard clip can appear in the suggestion strip while the keyboard is open — never stored, never in password fields.
+- After an autocorrect, the strip offers the word as you typed it for one-tap undo.
+- Backup and export: settings and learned words to a single file you choose (Settings → Backup and export).
+- One-handed mode: the keyboard docks to the left or right at 85% width (Settings → Appearance).
+- A Dynamic (Material You) theme that follows the wallpaper colors on Android 12+.
 - With glide typing on and word suggestions off, a glided word still shows its alternates in the strip, a refused glide shows its candidates, and undoing a glide brings the remaining candidates back for one tap.
 - Setup explains Android's standard warning about third-party keyboards before it appears, returns to the wizard by itself once the keyboard is enabled, and invites sliding over «сәләм» instead of tapping.
 
 ### Changed
 
-- Action labels, hint letters and the autocorrect emphasis now meet the WCAG AA contrast in both themes; the glide-trail color is per theme and readable on light keys.
+- Action labels, hint letters and the autocorrect emphasis now meet the WCAG AA contrast in both themes; the glide-trail color is per theme and readable on light keys. The settings and setup screens meet it too.
 - The Tatar dictionary ranks words by wider evidence (HPLT web corpus, MADLAD-400, tt.wikipedia), so more conversational word forms complete and predict correctly.
 - Glide typing reads better on fast swipes, scores Tatar and Russian with per-language constants, and ranks a gesture's candidates by the word before it.
 - The key preview no longer clips at the screen edges: the balloon shifts inward and its stem stays on the key.
