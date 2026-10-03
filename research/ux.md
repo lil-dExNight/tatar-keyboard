@@ -159,7 +159,10 @@ sentences plus an extra-letter-dense set; block-1 learnability vs block-5 ceilin
 measured (WPM, MSD error, KSPC, SUS/TLX, forced-choice ranking). Lab-build instrumentation:
 key codes + timestamps only, never text, pulled by adb. Pre-registered gate: challenger wins
 only with median WPM ≥5% better in the final block, MSD not worse, ≥60% rank-first; tiebreak
-is first-session success of new Tatar typists (the product's mission).
+is first-session success of new Tatar typists (the product's mission). Instrument landed: the
+arm switch and the opt-in key-code log live under Settings → Developer (default arm A), pinned
+by `FifthRowArmTest` and `LabSessionLogContractTest`; the standing protocol is
+[docs/LAB-FIFTH-ROW.md](../docs/LAB-FIFTH-ROW.md). Sessions pending participants.
 **UX21 — Per-app language memory.** Remember the last subtype per app (iOS's per-conversation
 precedent); local, clearable from the personal-data screen, documented in PRIVACY.md;
 `hintLocales` still wins when present. Lab: alternating tt/ru chat tasks.

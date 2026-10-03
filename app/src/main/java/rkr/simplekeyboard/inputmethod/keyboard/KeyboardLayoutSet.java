@@ -38,10 +38,13 @@ import java.util.Arrays;
 import java.util.HashMap;
 
 import rkr.simplekeyboard.inputmethod.R;
+import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.KeyboardBuilder;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.KeyboardParams;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.UniqueKeysCache;
 import rkr.simplekeyboard.inputmethod.latin.Subtype;
+import rkr.simplekeyboard.inputmethod.latin.lab.FifthRowArm;
+import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.XmlParseUtils;
 
@@ -164,6 +167,15 @@ public final class KeyboardLayoutSet {
     }
 
     private Keyboard getKeyboard(final ElementParams elementParams, final KeyboardId id) {
+        // The fifth-row experiment arm selects the Tatar alphabet keyboard at build time. The
+        // settings screen clears the keyboard cache when the arm changes, so the next build lands
+        // on the new order even when the parsed layout set predates the change.
+        if (id.isAlphabetKeyboard()) {
+            elementParams.mKeyboardXmlId = FifthRowArm.alphabetKeyboardXmlId(
+                    mParams.mKeyboardLayoutSetName, elementParams.mKeyboardXmlId,
+                    Settings.readFifthRowArm(
+                            PreferenceManagerCompat.getDeviceSharedPreferences(mContext)));
+        }
         final SoftReference<Keyboard> ref = sKeyboardCache.get(id);
         final Keyboard cachedKeyboard = (ref == null) ? null : ref.get();
         if (cachedKeyboard != null) {

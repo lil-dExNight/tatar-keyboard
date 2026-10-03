@@ -40,6 +40,7 @@ import rkr.simplekeyboard.inputmethod.keyboard.KeyboardTheme;
 import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager;
 import rkr.simplekeyboard.inputmethod.latin.InputAttributes;
 import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager;
+import rkr.simplekeyboard.inputmethod.latin.lab.FifthRowArm;
 
 public final class Settings extends BroadcastReceiver implements SharedPreferences.OnSharedPreferenceChangeListener {
     private static final String TAG = Settings.class.getSimpleName();
@@ -122,6 +123,16 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      */
     public static final String PREF_TATAR_SUGGESTIONS_OFFER_SPENT =
             "pref_tatar_suggestions_offer_spent";
+    /**
+     * The fifth-row experiment arm: {@link FifthRowArm#ARM_A} is the shipped order, the other two
+     * reorder the six extra letters. A developer setting, read when an alphabet keyboard is built.
+     */
+    public static final String PREF_FIFTH_ROW_ARM = "pref_fifth_row_arm";
+    /**
+     * The lab session log: opt-in, default OFF. While on, timestamps and key codes (never text)
+     * are appended to a capped file in the app's files dir; the owner pulls it with adb.
+     */
+    public static final String PREF_LAB_SESSION_LOG = "pref_lab_session_log";
 
     private static final float UNDEFINED_PREFERENCE_VALUE_FLOAT = -1.0f;
     private static final int UNDEFINED_PREFERENCE_VALUE_INT = -1;
@@ -389,6 +400,16 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      */
     public static boolean readGlideTypingEnabled(final SharedPreferences prefs) {
         return prefs.getBoolean(PREF_GLIDE_TYPING, true);
+    }
+
+    /** The stored arm, normalized: an unknown value resolves to the shipped arm. */
+    public static int readFifthRowArm(final SharedPreferences prefs) {
+        return FifthRowArm.normalize(prefs.getInt(PREF_FIFTH_ROW_ARM, FifthRowArm.DEFAULT));
+    }
+
+    /** The lab session log is opt-in: default OFF. This one reader governs every write to it. */
+    public static boolean readLabSessionLogEnabled(final SharedPreferences prefs) {
+        return prefs.getBoolean(PREF_LAB_SESSION_LOG, false);
     }
 
     /**

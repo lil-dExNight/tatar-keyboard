@@ -38,6 +38,14 @@ permission (`VIBRATE`).
    to disk, and is never read from password fields.
 5. **User trust in the offline claim.** A single observed outbound connection would invalidate
    the product, hence the three-level evidence in §7.
+6. **The lab session log** (`files/lab-session.log`): the opt-in instrument of the fifth-row
+   study. Off by default; while on, it appends a timestamp, an event kind, a key code and the
+   study arm per line — numbers only, the writer's API takes no text (pinned by
+   `LabSessionLogContractTest`). Key codes in sequence correspond to the letters pressed, so the
+   file is treated as content: it is never written before the first unlock or from password
+   fields, is capped with one rotation, is excluded from backup like everything else, is erasable
+   from the Developer screen, and can leave the device only through an adb pull, which needs a
+   debuggable build.
 
 ## 3. Trust boundaries
 
@@ -161,6 +169,7 @@ are listed after the table with the control that keeps them closed.
 | No suggestions or glide typing on the lock screen, even from the bundled dictionaries | The strip would also carry learned words and pairs; separating bundled from learned candidates in every engine source is disproportionate for lock-screen replies | User demand for lock-screen suggestions |
 | A pasted word can be the context of a learned pair typed after it | Like any text already in the field, the word before the cursor is a context, not a learned word; only the second word of a pair is shown as a suggestion | A change that shows pair contexts as suggestions |
 | The release build is `profileable` by the shell | Needed for Macrobenchmark and the baseline profile on release builds. It lets an adb host the user authorized trace the process and take a heap dump (`am dumpheap`), which can hold text in memory at that moment; such a host can already read the screen and every log | A change in what `profileable` exposes; the benchmarks move to a separate build type |
+| The lab session log can be left on after a study session | Opt-in and off by default; capped with one rotation; content-free by construction (the no-text API surface is pinned by `LabSessionLogContractTest`); erasable from the Developer screen and by clearing app data; excluded from backup; pulling it needs a debuggable build on an unlocked device | The log gains any text content, or a release-build pull path appears |
 
 Resolved, with the control that keeps them closed:
 

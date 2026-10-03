@@ -365,4 +365,23 @@
     <string name="edit_menu_paste">Paste</string>
     <string name="edit_menu_cursor_left">Cursor left</string>
     <string name="edit_menu_cursor_right">Cursor right</string>
+
+    <!-- Settings screen title and root row for the developer instruments. [CHAR LIMIT=33] -->
+    <string name="settings_screen_developer">Developer</string>
+    <!-- Opening line of the Developer screen: the rows below are lab instruments, not everyday settings. -->
+    <string name="developer_intro">Instruments of the fifth-row layout study. Everyday typing does not need them: the shipped layout is arm A and the log is off.</string>
+    <!-- Title of the study-arm row and of its one-tap picker dialog. -->
+    <string name="fifth_row_arm">Fifth-row study arm</string>
+    <!-- Picker options and the row's current value: the arm letter and its order of the six extra letters. Not translated: the letters are the same in every locale. -->
+    <string name="fifth_row_arm_option_a" translatable="false">A · ә ө ү җ ң һ</string>
+    <string name="fifth_row_arm_option_b" translatable="false">B · ә ү ң ө җ һ</string>
+    <string name="fifth_row_arm_option_c" translatable="false">C · һ ө ә ү ң җ</string>
+    <!-- The opt-in lab session log switch. -->
+    <string name="lab_session_log">Lab session log</string>
+    <string name="lab_session_log_summary">While on, writes key codes and timestamps (never text) to a capped file on this device, for the layout study</string>
+    <!-- Footer note of the Developer screen: how the log can leave the device. -->
+    <string name="lab_session_log_pull_note">The log stays on the device and is excluded from backup. Copying it needs adb (run-as), which works only on a debuggable build; a release build can record the log but cannot give it back.</string>
+    <!-- Action row that deletes the recorded lab session log. -->
+    <string name="clear_lab_log">Clear lab session log</string>
+    <string name="clear_lab_log_confirm">Delete the recorded lab session log from this device? This cannot be undone.</string>
 </resources>
