@@ -92,6 +92,11 @@
     <string name="emoji_panel_height_same">Same as keyboard</string>
     <string name="emoji_panel_height_larger">Larger</string>
     <string name="emoji_panel_height_max">Max</string>
+    <!-- The "One-handed mode" row and its three choices: a narrower key grid docked to a side -->
+    <string name="one_handed_mode">One-handed mode</string>
+    <string name="one_handed_mode_off">Off</string>
+    <string name="one_handed_mode_left">Left</string>
+    <string name="one_handed_mode_right">Right</string>
     <string name="prefs_bottom_offset_portrait_settings">Bottom offset</string>
     <string name="keyboard_color">Set custom keyboard color</string>
     <string name="show_special_chars">Show special characters</string>

@@ -27,6 +27,7 @@ import java.util.Locale;
 
 import rkr.simplekeyboard.inputmethod.compat.EditorInfoCompatUtils;
 import rkr.simplekeyboard.inputmethod.latin.Subtype;
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode;
 import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils;
 
 /**
@@ -67,6 +68,8 @@ public final class KeyboardId {
     public final boolean mShowMoreKeys;
     public final boolean mShowNumberRow;
     public final boolean mShowEmojiKey;
+    /** The one-handed dock side; part of the identity because it changes the key geometry. */
+    public final int mOneHandedSide;
 
     private final int mHashCode;
 
@@ -90,6 +93,9 @@ public final class KeyboardId {
         // previous layout when only this toggle changed. Live toggling works because
         // SettingsHostActivity clears that cache from its prefChangeListener.
         mShowEmojiKey = params.mShowEmojiKey;
+        // Unlike mShowEmojiKey: the side moves and resizes every key, so it must participate in
+        // equals()/computeHashCode() — the cache entry of one dock must never serve another.
+        mOneHandedSide = params.mOneHandedSide;
 
         mHashCode = computeHashCode(this);
     }
@@ -101,6 +107,7 @@ public final class KeyboardId {
                 id.mWidth,
                 id.mHeight,
                 id.mBottomOffset,
+                id.mOneHandedSide,
                 id.passwordInput(),
                 id.mClobberSettingsKey,
                 id.mLanguageSwitchKeyEnabled,
@@ -123,6 +130,7 @@ public final class KeyboardId {
                 && other.mWidth == mWidth
                 && other.mHeight == mHeight
                 && other.mBottomOffset == mBottomOffset
+                && other.mOneHandedSide == mOneHandedSide
                 && other.passwordInput() == passwordInput()
                 && other.mClobberSettingsKey == mClobberSettingsKey
                 && other.mLanguageSwitchKeyEnabled == mLanguageSwitchKeyEnabled
@@ -183,7 +191,7 @@ public final class KeyboardId {
 
     @Override
     public String toString() {
-        return String.format(Locale.ROOT, "[%s %s:%s %dx%d +%d %s %s%s%s%s%s%s %s %s]",
+        return String.format(Locale.ROOT, "[%s %s:%s %dx%d +%d %s %s%s%s%s%s%s%s %s %s]",
                 elementIdToName(mElementId),
                 mSubtype.getLocale(),
                 mSubtype.getKeyboardLayoutSet(),
@@ -196,6 +204,8 @@ public final class KeyboardId {
                 (passwordInput() ? " passwordInput" : ""),
                 (mLanguageSwitchKeyEnabled ? " languageSwitchKeyEnabled" : ""),
                 (isMultiLine() ? " isMultiLine" : ""),
+                (mOneHandedSide != OneHandedMode.SIDE_OFF
+                        ? " oneHandedSide=" + mOneHandedSide : ""),
                 KeyboardTheme.getKeyboardThemeName(mThemeId)
         );
     }

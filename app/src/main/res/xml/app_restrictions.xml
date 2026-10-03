@@ -110,6 +110,12 @@
         android:title="@string/emoji_panel_height"
         android:restrictionType="integer"
         android:defaultValue="100" />
+    <!-- The OneHandedMode SIDE_* values: 0 = off, 1 = dock left, 2 = dock right. -->
+    <restriction
+        android:key="pref_one_handed_side"
+        android:title="@string/one_handed_mode"
+        android:restrictionType="integer"
+        android:defaultValue="0" />
     <restriction
         android:key="pref_bottom_offset_portrait"
         android:title="@string/prefs_bottom_offset_portrait_settings"
