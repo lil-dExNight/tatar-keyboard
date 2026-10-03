@@ -444,19 +444,19 @@ class TypoMutatedEvalTest {
         )
 
         // Pins over the committed dictionary, eval set and layout; re-pin when an input changes.
-        private const val PIN_SUBSTRATE_WORDS = 2_320
-        private const val PIN_SET_ROWS = 9_280
-        private const val PIN_SET_BYTES = 300_800
+        private const val PIN_SUBSTRATE_WORDS = 2_369
+        private const val PIN_SET_ROWS = 9_476
+        private const val PIN_SET_BYTES = 308_490
         private const val PIN_SET_SHA256 =
-            "eeca46f81817cb908727eef1fca3d9a280f237209358291aeab0119ca6ea5688"
+            "83f1629717577ac0e4846f0178286d4ae3ec21cbbbe3c3def47a18af1b6bfe9a"
 
         // Measured baseline recovery counts (the production arm, then the exact-only control).
-        private const val PIN_SUB_HITS = 2_116
-        private const val PIN_DEL_HITS = 453
+        private const val PIN_SUB_HITS = 2_169
+        private const val PIN_DEL_HITS = 469
         private const val PIN_INS_HITS = 0
         private const val PIN_TRANS_HITS = 0
         private const val PIN_SUB_HITS_EXACTONLY = 0
-        private const val PIN_DEL_HITS_EXACTONLY = 325
+        private const val PIN_DEL_HITS_EXACTONLY = 339
         private const val PIN_INS_HITS_EXACTONLY = 0
         private const val PIN_TRANS_HITS_EXACTONLY = 0
         private const val PIN_AUTOCORRECT_FALSE_TRIGGERS = 0

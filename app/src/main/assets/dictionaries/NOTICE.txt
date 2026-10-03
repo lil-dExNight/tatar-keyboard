@@ -33,6 +33,14 @@ conversational frequency table data/dictionary/dict-accept/conv-freq-tt.tsv
 tat_news_2015_1M deliberately takes no part in the admission -- with the
 frequency set to the corpus count; the cap is 110,000 entries.
 
+The ranking of the Tatar entries additionally carries per-word bonus counts
+from three further collections (only counts enter the asset, never text):
+the MADLAD-400 Tatar clean split, the tt.wikipedia pages, and the HPLT 2.0
+tat_Cyrl documents. Each source was counted with the same normalization,
+filtered per word against Russian bleed, and merged with a per-source weight;
+the weights and the merge rule are documented in
+data/dictionary/dict-accept/bonus-freq-tt.tsv.
+
 --------------------------------------------------------------------------------
 tatar_sentstart_v1.txt
 
@@ -94,10 +102,10 @@ shorter and a length cut removes living ones. The rule is implemented by
 scripts/dict_accept.py; the accepted and rejected words with their counts are
 in data/dictionary/dict-accept/.
 
-32 833 Russian forms and 948 Tatar forms are inside the assets and carry their
+32 833 Russian forms and 1 993 Tatar forms are inside the assets and carry their
 conversational counts. The Russian dictionary's other 67 167 entries, and every
 frequency in them, are still Leipzig's; the Tatar dictionary's remaining
-110 000 - 948 entries split into 100 000 Leipzig forms and a further 9 052
+110 000 - 1 993 entries split into 88 962 Leipzig forms and a further 19 045
 generated word forms, admitted as the tatar_top100k_v1 section above describes
 and carrying their corpus counts.
 
@@ -135,3 +143,32 @@ sentence is reproduced anywhere in this repository; words seen only there carry
 a list of their neighbouring words with counts instead, which is a fact about
 the text and not the text.
 No sentence from either collection is stored in the app.
+
+--------------------------------------------------------------------------------
+Extra Tatar frequency sources (counts only, packed into tatar_top100k_v1)
+
+MADLAD-400, Tatar clean split
+https://huggingface.co/datasets/google/madlad400
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+Citation: Kudugunta et al., "MADLAD-400: A Multilingual And Document-Level
+Large Audited Dataset", NeurIPS 2023.
+
+tt.wikipedia pages dump
+https://dumps.wikimedia.org/ttwiki/
+License: Creative Commons Attribution-ShareAlike 4.0 International
+(CC BY-SA 4.0) https://creativecommons.org/licenses/by-sa/4.0/
+
+HPLT 2.0, tat_Cyrl documents
+https://hplt-project.org/datasets/v2.0
+License: CC0 1.0 Universal https://creativecommons.org/publicdomain/zero/1.0/
+Citation: Burchell et al., "An Expanded Massive Multilingual Dataset for
+High-Performance Language Technologies (HPLT)", ACL 2025.
+
+Changes by the Tatar Keyboard project: documents were language-filtered
+(HPLT's own per-document and per-segment labels), split into tokens,
+normalized to NFC lowercase, filtered to the Tatar alphabet, and counted per
+word; words that look Russian and have no independent Tatar attestation were
+dropped. Only the resulting per-word counts, merged with the other sources by
+the documented weights, enter the asset; no text from these collections is
+stored in the app.

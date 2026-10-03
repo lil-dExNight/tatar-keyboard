@@ -47,7 +47,7 @@ class TdictValidatorTest {
 
         // Pins of the committed dictionary; re-pin when the asset is rebuilt.
         assertEquals(110_000, validated.entryCount)
-        assertEquals(1_276_289, validated.rawSize)
+        assertEquals(1_311_438, validated.rawSize)
     }
 
     @Test

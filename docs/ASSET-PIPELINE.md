@@ -55,8 +55,10 @@ These inputs are in the repository:
   same change as the rebuilt assets.
 - `data/dictionary/`: the word review queues (`*-conv-review.tsv`, `*-query-review.tsv`) and
   `dict-accept/`, which holds the accepted and rejected words (`accepted-*.tsv`,
-  `rejected-*.tsv`, written by `dict_accept.py select`) and the conversational frequencies
-  (`conv-freq-*.tsv`).
+  `rejected-*.tsv`, written by `dict_accept.py select`), the conversational frequencies
+  (`conv-freq-*.tsv`) and the extra-corpus bonus frequencies (`bonus-freq-tt.tsv`, written by
+  `research/corpus/tt_merge_sim.py bonus-tsv`; `dict_accept.py pack` adds them to the merged
+  frequency of composition words without changing the composition).
 - `scripts/wordform_exceptions_tat.tsv`: exception rules for the Tatar word-form generator
   (`scripts/wordform_gen.py`). Its SHA-256 is pinned in `tests/wordform_gen/`.
 - `scripts/bigram_extra_heads_tat.txt`: extra Tatar bigram heads (imperatives ranked below the
@@ -85,7 +87,8 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    The result is written to `<work-dir>/wordforms-admitted-tt.tsv`, with a JSON report next to
    it.
 2. **Dictionaries.** `dict_accept.py pack --write` merges the baseline, the accepted words and
-   (for Tatar) the admitted forms. Frequencies are written plus conversational. It keeps the top
+   (for Tatar) the admitted forms. Frequencies are written plus conversational plus the bonus
+   file, when it exists. It keeps the top
    entries (`TATAR_DICTIONARY_TOP` for Tatar, 100 000 for Russian) and writes schema 2.
    `TATAR_DICTIONARY_TOP` is the largest cutoff that fits the size limits; measure again before
    you change it.

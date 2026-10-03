@@ -123,7 +123,7 @@ class TdictPrefixIndexSameStemBoostTest {
         val index = requireNotNull(tatarWithRules)
         // The intended effect: татарлар/татарча-type continuations above татарстан*. татар is
         // five code points, above the threshold.
-        assertEquals(listOf("татарлар", "татарча", "татарлары"), lookup(index, "татар"))
+        assertEquals(listOf("татарча", "татарлар", "татарлары"), lookup(index, "татар"))
     }
 
     @Test
@@ -132,13 +132,13 @@ class TdictPrefixIndexSameStemBoostTest {
         val withoutRules = requireNotNull(tatarWithoutRules)
         // су (2 cp) and өй (2 cp) are complete words below the threshold: no boost, although both
         // have table-suffix continuations — measured identical to the frozen pass.
-        assertEquals(listOf("сум", "сугыш", "сумга"), lookup(withoutRules, "су"))
+        assertEquals(listOf("сум", "сугыш", "сугышы"), lookup(withoutRules, "су"))
         assertEquals(lookup(withoutRules, "су"), lookup(withRules, "су"))
-        assertEquals(listOf("өйрәнү", "өйдә", "өйрәнергә"), lookup(withoutRules, "өй"))
+        assertEquals(listOf("өйрәнү", "өйдә", "өйгә"), lookup(withoutRules, "өй"))
         assertEquals(lookup(withoutRules, "өй"), lookup(withRules, "өй"))
         // кит (3 cp): same, one code point below the gate.
         assertEquals(lookup(withoutRules, "кит"), lookup(withRules, "кит"))
-        assertEquals(listOf("китте", "киткән", "китап"), lookup(withoutRules, "кит"))
+        assertEquals(listOf("китте", "китә", "китап"), lookup(withoutRules, "кит"))
     }
 
     @Test
@@ -147,7 +147,7 @@ class TdictPrefixIndexSameStemBoostTest {
         val withoutRules = requireNotNull(tatarWithoutRules)
         // "тата" is not a dictionary word — the boost must be inert, byte for byte.
         assertEquals(
-            listOf("татар", "татарстан", "татарстанда"),
+            listOf("татар", "татарстан", "татарстанның"),
             lookup(withoutRules, "тата"),
         )
         assertEquals(lookup(withoutRules, "тата"), lookup(withRules, "тата"))

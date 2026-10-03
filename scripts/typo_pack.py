@@ -31,10 +31,10 @@ from typing import Iterable, Sequence, TextIO
 # These match rkr...storage.DictionaryArtifactSpec.TATAR_TOP100K_V1. The SHA-256 values are
 # the check; the entry count is a readable cross-check.
 EXPECTED_ASSET_SHA256 = (
-    "e653ef6ee9d88fd25cd7802e59bb57b954be80d9b7ea897c849be66919fa96ed"
+    "1597715c5470fdd8175efbfbf2b2b7bb952330213d851230de95da43341fb7e9"
 )
 EXPECTED_RAW_SHA256 = (
-    "3634f021c056b90ab1eb042bf6bccfa1413d31af96993120e77bdcf843152518"
+    "10337a8b073baaebd7baa530718dba55a360bf2be29d7e3aae17ddd31c615d00"
 )
 EXPECTED_ENTRY_COUNT = 110_000
 

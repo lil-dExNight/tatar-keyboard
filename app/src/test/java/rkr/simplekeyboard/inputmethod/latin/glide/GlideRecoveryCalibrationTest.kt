@@ -518,12 +518,12 @@ class GlideRecoveryCalibrationTest {
         // the recalibrated noise the twin still wins about four rows out of five), and a jog must
         // still decode the doubled word.
         assertTrue(
-            "plain top-1 regressed past the 1.0 pp tolerance (pinned 88.7446)",
-            classTop1[0] >= 88.7446 - 1.0,
+            "plain top-1 regressed past the 1.0 pp tolerance (pinned 88.4305)",
+            classTop1[0] >= 88.4305 - 1.0,
         )
         assertTrue(
-            "plain top-3 regressed past the 1.0 pp tolerance (pinned 95.0457)",
-            classTop3[0] >= 95.0457 - 1.0,
+            "plain top-3 regressed past the 1.0 pp tolerance (pinned 94.9739)",
+            classTop3[0] >= 94.9739 - 1.0,
         )
         assertTrue(
             "a doubled word must not win its no-jog row when the twin exists (ceiling 25%)",
@@ -535,12 +535,12 @@ class GlideRecoveryCalibrationTest {
         )
         // A twinless doubled word also scores against its loop-free path, which no other word owns.
         assertTrue(
-            "twinless no-jog top-1 regressed past the 1.0 pp tolerance (pinned 89.5522)",
-            classTop1[2] >= 89.5522 - 1.0,
+            "twinless no-jog top-1 regressed past the 1.0 pp tolerance (pinned 89.1753)",
+            classTop1[2] >= 89.1753 - 1.0,
         )
         assertTrue(
-            "twinless no-jog top-3 regressed past the 1.0 pp tolerance (pinned 96.5174)",
-            classTop3[2] >= 96.5174 - 1.0,
+            "twinless no-jog top-3 regressed past the 1.0 pp tolerance (pinned 95.3608)",
+            classTop3[2] >= 95.3608 - 1.0,
         )
     }
 
@@ -755,10 +755,10 @@ class GlideRecoveryCalibrationTest {
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts). The
         // set carries both variants of every doubled word (rows outnumber words).
-        private const val SET_SIZE = 4526
-        private const val SET_BYTES = 10407494
+        private const val SET_SIZE = 4563
+        private const val SET_BYTES = 10424516
         private const val SET_SHA256 =
-            "3846bee2982bae815927a3325aa8ce8aa3e774e2f7a536571d8548ee208aac9c"
+            "5b1ccd59eeafeeeac0d9b62df03edde1884775ac5ead6e1cccb7e57bd5f686e1"
 
         // The per-class split of gatesG1AndG2OnTheRealDictionary.
         private const val CLASS_COUNT = 5
