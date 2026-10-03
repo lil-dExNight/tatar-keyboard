@@ -14,6 +14,10 @@ Mirrors, over the committed assets:
   generator, including its documented simplifications versus the build-time generator;
 * the deterministic SplitMix64 resample stream and nearest-rank CI of the bootstrap lines.
 
+``ChainMirror(suffix_rules=False)`` mirrors the Russian engine instead: no suffix rules
+means no same-stem boost and no after-word forms, so NEXT_WORD is bigram successors plus the
+fallback pool only.
+
 Letter classes and the harmony rules are imported from ``wordform_gen.py``: the runtime
 documents them as an exact mirror of it. Everything here is BMP-only Tatar, so Python string
 length is the code-point count and string order is code point (= UTF-8 byte) order, matching
@@ -256,7 +260,9 @@ class ChainMirror:
     """The production NEXT_WORD chain and completion path over the decoded assets.
 
     ``words`` is the dictionary in code-point order with parallel ``frequencies``;
-    ``successes_by_head`` is the schema-3 bigram table in packing order.
+    ``successes_by_head`` is the schema-3 bigram table in packing order. With
+    ``suffix_rules=False`` the mirror matches an engine without suffix rules (the Russian
+    engine): no same-stem boost in the prefix pass and no after-word forms in NEXT_WORD.
     """
 
     def __init__(
@@ -264,7 +270,9 @@ class ChainMirror:
         words: Sequence[str],
         frequencies: Sequence[int],
         successes_by_head: Mapping[str, Sequence[str]],
+        suffix_rules: bool = True,
     ) -> None:
+        self._suffix_rules = suffix_rules
         self._words = list(words)
         self._frequencies = list(frequencies)
         self._successes = successes_by_head
@@ -289,7 +297,7 @@ class ChainMirror:
         if cached is not None:
             return cached
         shown = list(self._successes.get(head, ()))[:BIGRAM_MAX_RESULTS]
-        if len(shown) < CELL_COUNT:
+        if len(shown) < CELL_COUNT and self._suffix_rules:
             shown += forms_of(head, shown, CELL_COUNT - len(shown), self.frequency_of)
         if len(shown) < CELL_COUNT:
             for word in self._fallback_pool:
@@ -319,7 +327,8 @@ class ChainMirror:
         low = bisect.bisect_left(words, prefix)
         high = bisect.bisect_left(words, prefix + "\U0010ffff", low)
         boosted = (
-            len(prefix) >= MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS
+            self._suffix_rules
+            and len(prefix) >= MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS
             and self.frequency_of(prefix) > 0
         )
         stem_track: list[tuple[int, str]] = []
