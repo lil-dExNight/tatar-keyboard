@@ -19,10 +19,10 @@ The steps listed in `HANDOFF.md` ("Open release steps") for 3.7.0 and 3.8.0.
 The full program, its tiers and per-item gates live in `research/README.md`; the per-topic
 evidence is in the documents it indexes. Work goes in this order:
 
-1. **Prediction and glide quality, continued** — the follow-ups the first round's measurements
-   opened: the shared DL-1 typo tier (the wider-typo-classes follow-up in `docs/BACKLOG.md`),
-   retraining the bigram tables on the newly ingested corpora, Taiga for conversational
-   Russian, corpus.tatar frequency lists if the host ever answers.
+1. **Prediction and glide quality, continued** — the follow-ups the measurements opened:
+   the shared DL-1 typo tier (the wider-typo-classes follow-up in `docs/BACKLOG.md`), a
+   conv-heavier bigram remix, composition admission for the Russian dictionary tail,
+   corpus.tatar frequency lists if the host ever answers.
    (`research/prediction-engine.md`, `research/glide-typing.md`)
 2. **The lab program** — the fifth-row A/B/C sessions per `docs/LAB-FIFTH-ROW.md` (the
    instrument landed); needs Tatar-speaking participants. (`research/ux.md`)

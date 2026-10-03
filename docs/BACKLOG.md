@@ -39,3 +39,12 @@ move it to the roadmap.
 - **Glide endpoint pruning n=2→3.** Measured rejection: held-out top-1/top-3 improve
   (+1.3/+2.7 pp) but the host p95 doubles past the 2 ms budget — the largest endpoint buckets
   hold thousands of entries; `research/glide-typing.md` G6 carries the tuning attempts.
+- **Bigram retraining on the ingested corpora (HPLT/MADLAD/tt.wikipedia sentences).** Measured
+  rejection: +0.16 pp chain top-3 against the +0.3 pp ship bar (paired CI contains zero; no
+  regression), plus a domain-skew flag on a high-traffic head; the conv-heavier remix is the
+  registered follow-up (`research/corpus/tt_extra_sentences.py` keeps the tooling).
+- **Taiga social frequencies into the Russian dictionary.** Measured rejection: +0.018 pp
+  held-out eval coverage against the +0.5 pp bar — the Russian dictionary is saturated
+  (97.5% token coverage) and reranking inside a fixed composition cannot reach the uncovered
+  tail; composition admission through the accept queue is the follow-up
+  (`research/corpus/ru_merge_sim.py`).
