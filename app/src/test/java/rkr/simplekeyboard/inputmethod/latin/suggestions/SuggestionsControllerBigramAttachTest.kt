@@ -21,13 +21,14 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * Two-stage engine readiness: bigram-table preparation and attachment must never be on the path
- * that publishes the dictionary engine — `strip.reserve()` and the already-typed prefix being
- * looked up must both have already happened by the time [SuggestionsController.onStartInput]
- * returns, whether or not bigram preparation has completed (or exists, or fails) by then.
+ * Two-stage engine readiness: preparing the bigram table and handing its catalog to the engine
+ * must never be on the path that publishes the dictionary engine — `strip.reserve()` and the
+ * already-typed prefix lookup must both have happened by the time [SuggestionsController.onStartInput]
+ * returns, whether or not bigram preparation has completed (or exists, or fails) by then. The
+ * engine attaches the table lazily on its worker; these tests pin the controller's half.
  * [PendingBigramPreparation] holds its callback until the test fires it — the "requested now,
- * resolves later, off the UI thread" shape of the real `BackgroundBigramPreparer`; fully
- * synchronous fakes would hide the ordering under test.
+ * resolves later, off the UI thread" shape of the real `BackgroundBigramPreparer`; synchronous
+ * fakes would hide the ordering.
  */
 class SuggestionsControllerBigramAttachTest {
 
@@ -67,8 +68,7 @@ class SuggestionsControllerBigramAttachTest {
     /** Records call ORDER across every tracked method, so tests can assert relative sequencing. */
     private class FakeEngine : EngineHandle {
         val events = mutableListOf<String>()
-        var attachCatalog: PublishedBigramTableCatalog? = null
-        var attachResult: Boolean = true
+        var handedCatalog: PublishedBigramTableCatalog? = null
 
         /** The result callback the controller handed to the engine factory. */
         var callback: ResultCallback? = null
@@ -109,10 +109,9 @@ class SuggestionsControllerBigramAttachTest {
             callback?.onResult(requireNotNull(lastToken), suggestions, LookupKind.NEXT_WORD)
         }
 
-        override fun attachBigramSource(catalog: PublishedBigramTableCatalog): Boolean {
-            events += "attachBigramSource"
-            attachCatalog = catalog
-            return attachResult
+        override fun deferBigramAttach(catalog: PublishedBigramTableCatalog) {
+            events += "deferBigramAttach"
+            handedCatalog = catalog
         }
 
         override fun isCurrent(token: Any): Boolean = true
@@ -252,8 +251,8 @@ class SuggestionsControllerBigramAttachTest {
 
         bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
-        assertEquals(listOf("request", "attachBigramSource"), engine.events)
-        assertTrue(engine.attachCatalog === bigramTable.catalog())
+        assertEquals(listOf("request", "deferBigramAttach"), engine.events)
+        assertTrue(engine.handedCatalog === bigramTable.catalog())
     }
 
     @Test
@@ -281,7 +280,7 @@ class SuggestionsControllerBigramAttachTest {
 
         assertEquals(listOf("request"), engine.events)
         assertEquals(1, strip.reserveCount)
-        assertNull(engine.attachCatalog)
+        assertNull(engine.handedCatalog)
     }
 
     @Test
@@ -308,21 +307,21 @@ class SuggestionsControllerBigramAttachTest {
         val controller = controller(strip, editor, engine, DirectExecutorService()) { bigramTable }
 
         controller.onStartInput(eligible = true)
-        // The engine is published, but the bigram attach is still in flight. The user finished a
-        // word and pressed space BEFORE the attach completed: the NEXT_WORD request goes to an
-        // engine without a table and gets the "not attached yet" empty list, which looks exactly
-        // like "no prediction for this context".
+        // The engine is published, but the bigram preparation has not resolved yet. The user
+        // finished a word and pressed space BEFORE the catalog arrived: the NEXT_WORD request goes
+        // to an engine with nothing to attach and gets the "not attached yet" empty list, which
+        // looks exactly like "no prediction for this context".
         editor.context = "мин"
         controller.onTextChanged()
 
         assertEquals(1, engine.requestedContexts.size)
         assertTrue(strip.shown.isEmpty())
 
-        // The table attached; the very same context has a real answer now.
+        // The catalog reached the engine; the very same context has a real answer now.
         engine.nextWordAnswer = listOf("дә", "үзем", "бу")
         bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
-        // A completed attach re-asks the still-pending NEXT_WORD context, and the band fills
+        // The readiness callback re-asks the still-pending NEXT_WORD context, and the band fills
         // without another keystroke.
         assertEquals(2, engine.requestedContexts.size)
         assertEquals(Triple("дә", "үзем", "бу"), strip.shown.last())
@@ -339,9 +338,9 @@ class SuggestionsControllerBigramAttachTest {
         controller.onStartInput(eligible = true)
         bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
-        // Attach by itself builds no lookup: nothing was asked before it, nothing is asked by it —
-        // "the band stays silent when there is nothing to answer" is preserved.
-        assertEquals(listOf("attachBigramSource"), engine.events)
+        // A ready table by itself builds no lookup: nothing was asked before it, nothing is asked
+        // by it — "the band stays silent when there is nothing to answer" is preserved.
+        assertEquals(listOf("deferBigramAttach"), engine.events)
         assertTrue(engine.requestedContexts.isEmpty())
         assertTrue(strip.shown.isEmpty())
     }
@@ -357,7 +356,7 @@ class SuggestionsControllerBigramAttachTest {
         controller.onStartInput(eligible = true)
         bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
-        assertEquals(listOf("request", "attachBigramSource"), engine.events)
+        assertEquals(listOf("request", "deferBigramAttach"), engine.events)
         assertTrue(engine.requestedContexts.isEmpty())
     }
 
@@ -378,7 +377,7 @@ class SuggestionsControllerBigramAttachTest {
         controller.setEmojiSuggestGate { true }
 
         controller.onStartInput(eligible = true)
-        // The NEXT_WORD request raced the attach and answered empty; the emoji table has a mapping
+        // The NEXT_WORD request raced the catalog and answered empty; the emoji table has a mapping
         // for the context word, so the band it painted is an emoji-ONLY band — no word cell of the
         // active language on it.
         editor.context = "мин"
@@ -387,9 +386,9 @@ class SuggestionsControllerBigramAttachTest {
         assertEquals(1, engine.requestedContexts.size)
         assertEquals(Triple("🙂", null, null), strip.shown.last())
 
-        // The table attached; the same context has a real answer now. The emoji cell must not read
-        // as "the band is filled": the re-request runs, and the words take their front cells with
-        // the emoji still pinned to the tail.
+        // The catalog reached the engine; the same context has a real answer now. The emoji cell
+        // must not read as "the band is filled": the re-request runs, and the words take their
+        // front cells with the emoji still pinned to the tail.
         engine.nextWordAnswer = listOf("дә", "үзем")
         bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
@@ -407,8 +406,8 @@ class SuggestionsControllerBigramAttachTest {
 
         controller.onStartInput(eligible = true)
         // The request went to an engine whose table was... already warm in effect: the answer came
-        // back with words BEFORE the attach completed. The band shows active-language words, so the
-        // attach repairs nothing — re-asking would only repaint what is already correct.
+        // back with words BEFORE the catalog arrived. The band shows active-language words, so the
+        // readiness callback repairs nothing — re-asking would only repaint what is already correct.
         editor.context = "мин"
         controller.onTextChanged()
 
@@ -463,13 +462,13 @@ class SuggestionsControllerBigramAttachTest {
         // The companion answers when the TEST says so — its bookkeeping is written after the
         // request returns, so a synchronous fake answer would be dropped as not-yet-expected.
         h.engine(PersonalSubtypes.RUSSIAN).synchronousAnswers = false
-        // The ACTIVE table is attached before the moment begins: its empty answer below is a
-        // legitimate "no prediction for this context", not a race.
+        // The ACTIVE table's catalog is handed over before the moment begins: its empty answer
+        // below is a legitimate "no prediction for this context", not a race.
         h.bigramTable(PersonalSubtypes.TATAR_RU)
             .completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
         // NEXT_WORD moment: the active language answers empty, the companion is asked to fill the
-        // band — but ITS table is still attaching, so its answer is the race's empty list.
+        // band — but ITS catalog has not arrived yet, so its answer is the race's empty list.
         h.editor.context = "мин"
         h.controller.onTextChanged()
         h.engine(PersonalSubtypes.RUSSIAN).deliverNextWord(emptyList())
@@ -477,8 +476,8 @@ class SuggestionsControllerBigramAttachTest {
         assertEquals(1, h.engine(PersonalSubtypes.RUSSIAN).requestedContexts.size)
         assertTrue(h.strip.shown.isEmpty())
 
-        // The companion table attached: the band still has no word of either language, so the
-        // companion fill is re-asked and the words arrive without another keystroke.
+        // The companion catalog reached its engine: the band still has no word of either language,
+        // so the companion fill is re-asked and the words arrive without another keystroke.
         h.bigramTable(PersonalSubtypes.RUSSIAN)
             .completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
@@ -495,7 +494,7 @@ class SuggestionsControllerBigramAttachTest {
             .completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
         // The active language fills all three cells: the companion is never even asked, and its
-        // attach completing later must not change that.
+        // catalog arriving later must not change that.
         h.engine(PersonalSubtypes.TATAR_RU).nextWordAnswer = listOf("дә", "үзем", "бу")
         h.editor.context = "мин"
         h.controller.onTextChanged()

@@ -331,8 +331,8 @@ class SuggestionsController internal constructor(
 
     // Whether the strip the active language painted for [pendingContextWord] holds at least one
     // word cell of that language. Not "the strip is occupied": an emoji-only strip and one filled
-    // by the companion language both leave it false and still deserve the re-request that a
-    // finished bigram attach issues ([onBigramAttached]). A fresh NEXT_WORD request clears it;
+    // by the companion language both leave it false and still deserve the re-request that a ready
+    // bigram table issues ([onBigramTableReady]). A fresh NEXT_WORD request clears it;
     // [applyNextWordResult] sets it from the answer it painted.
     private var bandHasActiveLanguageWord: Boolean = false
 
@@ -1027,28 +1027,28 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Second readiness stage: prepares and attaches the bigram table. Called from [publishEngine]
-     * only after the dictionary engine is assigned, reserved and (if a prefix was typed) looked
-     * up, so the table never delays publication. Both steps run on the background executor and
-     * touch no UI state; [CompositePrefixComputer.predict] starts answering once attached. A
-     * missing, corrupted or unpublished table leaves NEXT_WORD answering an empty list.
+     * Second readiness stage: publishes the bigram table and hands its catalog to the engine,
+     * which maps and attaches it lazily on its worker at the first NEXT_WORD lookup. Called from
+     * [publishEngine] only after the dictionary engine is assigned, reserved and (if a prefix was
+     * typed) looked up, so the table never delays publication. The prepare runs on the background
+     * executor and touches no UI state. A missing, corrupted or unpublished table leaves NEXT_WORD
+     * answering an empty list.
      *
-     * A successful attach must repair one race: a NEXT_WORD request that ran while the table was
-     * attaching got an empty list, and nothing would ask again until the next keystroke (a field
-     * opened on a draft ending in "слово " would show an empty strip). [onBigramAttached]
+     * The catalog's arrival must repair one race: a NEXT_WORD request that ran before the catalog
+     * arrived got an empty list, and nothing would ask again until the next keystroke (a field
+     * opened on a draft ending in "слово " would show an empty strip). [onBigramTableReady]
      * re-derives the strip on the UI thread, guarded to the NEXT_WORD moment of the lost request.
      */
-    private fun maybeAttachBigramSource(slot: LanguageSlot, handle: EngineHandle) {
+    private fun maybePrepareBigramTable(slot: LanguageSlot, handle: EngineHandle) {
         val preparation = bigramPreparationSeam(slot) ?: return
         try {
             preparation.prepare { result ->
-                // Runs on the background executor: attachBigramSource does blocking I/O and must
-                // stay off the UI thread. Only the re-derivation after a successful attach is
-                // posted through uiPoster.
-                if (result is BigramPreparationResult.Published &&
-                    handle.attachBigramSource(preparation.catalog())
-                ) {
-                    uiPoster.post { onBigramAttached(slot, handle) }
+                // Runs on the background executor. Passing the catalog to the engine does no I/O —
+                // the engine maps and opens the table lazily, on its own worker — so only the
+                // re-derivation is posted through uiPoster.
+                if (result is BigramPreparationResult.Published) {
+                    handle.deferBigramAttach(preparation.catalog())
+                    uiPoster.post { onBigramTableReady(slot, handle) }
                 }
             }
         } catch (_: Throwable) {
@@ -1057,10 +1057,11 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * The bigram table finished attaching to [handle]: the repair half of the race described at
-     * [maybeAttachBigramSource].
+     * The bigram table's catalog reached [handle]: the repair half of the race described at
+     * [maybePrepareBigramTable]. The re-request this may send is also what runs the deferred
+     * attach, so the strip it paints is a complete answer.
      *
-     * Every guard leaves the strip as it is, like [onEmojiSuggestReady]: the attach may belong to
+     * Every guard leaves the strip as it is, like [onEmojiSuggestReady]: the arrival may belong to
      * a language the user has left, to an engine a scheduled release made unusable, or to a
      * destroyed controller; and the live editor state, re-derived through [EditorSurface] like on
      * the tap path, must still be the NEXT_WORD moment of the outstanding request.
@@ -1070,12 +1071,12 @@ class SuggestionsController internal constructor(
      * active-language word is left alone. A context the table has no answer for comes back empty
      * again.
      *
-     * An attach of a non-active slot goes to [onCompanionBigramAttached].
+     * A catalog arriving for a non-active slot goes to [onCompanionBigramTableReady].
      */
-    private fun onBigramAttached(slot: LanguageSlot, handle: EngineHandle) {
+    private fun onBigramTableReady(slot: LanguageSlot, handle: EngineHandle) {
         if (destroyed || !eligible) return
         if (slot !== activeSlot()) {
-            onCompanionBigramAttached(slot, handle)
+            onCompanionBigramTableReady(slot, handle)
             return
         }
         if (usableEngine() !== handle) return
@@ -1089,14 +1090,14 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * The bigram table of the companion language finished attaching. A companion NEXT_WORD lookup
-     * issued while its table was attaching answered empty, and nothing would ask again. Guards
-     * mirror the active path (same session, same live NEXT_WORD moment, the engine the slot still
-     * holds), plus the fill rule: a cell must be left to fill. If the active request is still in
-     * flight, one extra companion lookup may run; the active answer re-issues the fill anyway
+     * The companion language's bigram catalog reached its engine. A companion NEXT_WORD lookup
+     * issued before it arrived answered empty, and nothing would ask again. Guards mirror the
+     * active path (same session, same live NEXT_WORD moment, the engine the slot still holds),
+     * plus the fill rule: a cell must be left to fill. If the active request is still in flight,
+     * one extra companion lookup may run; the active answer re-issues the fill anyway
      * ([applyNextWordResult]).
      */
-    private fun onCompanionBigramAttached(slot: LanguageSlot, handle: EngineHandle) {
+    private fun onCompanionBigramTableReady(slot: LanguageSlot, handle: EngineHandle) {
         if (slot.releasePending) return
         if (slot.engine !== handle) return
         if (requestSessionId != sessionId) return
@@ -1182,9 +1183,9 @@ class SuggestionsController internal constructor(
         }
         slot.engine = handle
         // Started after the engine is assigned, so the bigram table cannot delay publication.
-        // Regardless of `eligible`: the engine stays warm across an ineligible editor, and
-        // attaching has no visible effect.
-        maybeAttachBigramSource(slot, handle)
+        // Regardless of `eligible`: the engine stays warm across an ineligible editor, and the
+        // deferred attach has no visible effect.
+        maybePrepareBigramTable(slot, handle)
         if (slot !== activeSlot()) {
             // The user switched language while this engine was starting. Keep it — warm and idle —
             // for the moment they switch back, and leave the strip to whatever the language they
@@ -1674,8 +1675,8 @@ class SuggestionsController internal constructor(
         }
         // Duplicate suppression as in the PREFIX path, plus bandHasActiveLanguageWord: an
         // emoji-only strip also carries displayedContextWord, and skipping the re-request that
-        // onCompanionBigramAttached sends for it would leave the cells empty. With an
-        // active-language word on the strip the attach handler never re-requests, so the skip is
+        // onCompanionBigramTableReady sends for it would leave the cells empty. With an
+        // active-language word on the strip the readiness handler never re-requests, so the skip is
         // safe.
         if (context == displayedContextWord && displayedSessionId == sessionId
             && bandHasActiveLanguageWord

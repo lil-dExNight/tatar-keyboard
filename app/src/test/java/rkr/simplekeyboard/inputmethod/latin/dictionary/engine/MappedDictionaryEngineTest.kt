@@ -479,6 +479,81 @@ class MappedDictionaryEngineTest {
         assertTrue("the racing lease must not be leaked", closed)
     }
 
+    @Test
+    fun deferredBigramAttachMapsTheTableOnTheFirstNextWordLookupOnly() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val engine = requireNotNull(startWithDictionaryOnly(executor, published))
+        var acquisitions = 0
+        var bigramClosed = 0
+        val catalog = object : PublishedBigramTableCatalog {
+            private var lease: BigramTableLease? =
+                BigramTableLease(bigramFixture(listOf("аб" to listOf("аба")))) { bigramClosed++ }
+
+            override fun acquireLatestForActivation(): BigramTableLease? {
+                acquisitions++
+                return lease.also { lease = null }
+            }
+
+            override fun cleanupReleasedVersions() = Unit
+        }
+
+        engine.deferBigramAttach(catalog)
+        // Deferring opens nothing: a session that never predicts a next word never maps the
+        // table.
+        assertEquals(0, acquisitions)
+
+        engine.requestNextWord(1, "tt", utf8("аб"))
+        executor.runAll()
+
+        // The first NEXT_WORD lookup ran the attach on the worker and answers complete.
+        assertEquals(listOf("аба"), published.single().suggestions)
+        assertEquals(1, acquisitions)
+
+        engine.requestNextWord(2, "tt", utf8("аб"))
+        executor.runAll()
+
+        // Attached once per engine lifetime: later lookups reuse the wired source.
+        assertEquals(1, acquisitions)
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+        assertEquals(1, bigramClosed)
+    }
+
+    @Test
+    fun deferredBigramAttachFailsClosedOnCorruptTableAndIsTerminal() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val engine = requireNotNull(startWithDictionaryOnly(executor, published))
+        val corruptFile =
+            temporaryFolder.newFile("corrupt-deferred.tatbigr").also { it.writeBytes(byteArrayOf(1, 2, 3)) }
+        val corruptTable = PublishedBigramTable(1, "tt", corruptFile, 3, 1, 1, 1, 3, 1, "0".repeat(64))
+        var acquisitions = 0
+        var closed = 0
+        val catalog = object : PublishedBigramTableCatalog {
+            private var lease: BigramTableLease? = BigramTableLease(corruptTable) { closed++ }
+
+            override fun acquireLatestForActivation(): BigramTableLease? {
+                acquisitions++
+                return lease.also { lease = null }
+            }
+
+            override fun cleanupReleasedVersions() = Unit
+        }
+        engine.deferBigramAttach(catalog)
+
+        engine.requestNextWord(1, "tt", utf8("аб"))
+        executor.runAll()
+
+        assertEquals(emptyList<String>(), published.single().suggestions)
+        assertEquals("a failed attach must close the lease it acquired", 1, closed)
+
+        // Terminal, exactly like the eager path: the next lookup does not retry the attach.
+        engine.requestNextWord(2, "tt", utf8("аб"))
+        executor.runAll()
+        assertEquals(1, acquisitions)
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+    }
+
     private fun startWithDictionaryOnly(
         executor: ManualEngineExecutor,
         published: MutableList<LookupResult> = mutableListOf(),

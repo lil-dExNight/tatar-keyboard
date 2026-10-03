@@ -70,10 +70,10 @@ class SuggestionsControllerBigramLanguageSwitchTest {
         override fun hasLetterAfterCursor(): Boolean = false
     }
 
-    /** One engine per language; records which bigram catalog was attached to it, if any. */
+    /** One engine per language; records which bigram catalog was handed to it, if any. */
     private class FakeEngine(val subtypeId: String) : EngineHandle {
-        var attachedCatalog: PublishedBigramTableCatalog? = null
-        var attachCount = 0
+        var handedCatalog: PublishedBigramTableCatalog? = null
+        var catalogCount = 0
 
         override fun request(editorSessionId: Long, subtypeId: String, prefixUtf8: ByteArray): Any? =
             TOKEN
@@ -84,10 +84,9 @@ class SuggestionsControllerBigramLanguageSwitchTest {
             contextWordUtf8: ByteArray,
         ): Any? = null
 
-        override fun attachBigramSource(catalog: PublishedBigramTableCatalog): Boolean {
-            attachCount++
-            attachedCatalog = catalog
-            return true
+        override fun deferBigramAttach(catalog: PublishedBigramTableCatalog) {
+            catalogCount++
+            handedCatalog = catalog
         }
 
         override fun isCurrent(token: Any): Boolean = token === TOKEN
@@ -301,7 +300,7 @@ class SuggestionsControllerBigramLanguageSwitchTest {
 
         assertSame(
             h.bigramPreparations.getValue(tatar).catalog,
-            h.engines.getValue(tatar).attachedCatalog,
+            h.engines.getValue(tatar).handedCatalog,
         )
 
         h.editor.word = "сло"
@@ -309,12 +308,12 @@ class SuggestionsControllerBigramLanguageSwitchTest {
 
         assertSame(
             h.bigramPreparations.getValue(russian).catalog,
-            h.engines.getValue(russian).attachedCatalog,
+            h.engines.getValue(russian).handedCatalog,
         )
         // The Tatar engine kept its own table and was never handed the Russian one.
         assertSame(
             h.bigramPreparations.getValue(tatar).catalog,
-            h.engines.getValue(tatar).attachedCatalog,
+            h.engines.getValue(tatar).handedCatalog,
         )
     }
 
@@ -342,8 +341,8 @@ class SuggestionsControllerBigramLanguageSwitchTest {
 
         assertEquals(1, h.bigramPreparations.getValue(tatar).prepareCalls)
         assertEquals(1, h.bigramPreparations.getValue(russian).prepareCalls)
-        assertEquals(1, h.engines.getValue(tatar).attachCount)
-        assertEquals(1, h.engines.getValue(russian).attachCount)
+        assertEquals(1, h.engines.getValue(tatar).catalogCount)
+        assertEquals(1, h.engines.getValue(russian).catalogCount)
     }
 
     @Test
@@ -356,14 +355,14 @@ class SuggestionsControllerBigramLanguageSwitchTest {
         h.editor.word = "сло"
         h.controller.onSubtypeChanged(eligible = true, subtypeId = russian)
 
-        assertNull(h.engines.getValue(russian).attachedCatalog)
-        assertEquals(0, h.engines.getValue(russian).attachCount)
+        assertNull(h.engines.getValue(russian).handedCatalog)
+        assertEquals(0, h.engines.getValue(russian).catalogCount)
         // Prefix suggestions for that language are untouched: the band is still open.
         assertTrue(h.strip.reserveCount >= 2)
         // And the language that does have a table still has exactly its own.
         assertSame(
             h.bigramPreparations.getValue(tatar).catalog,
-            h.engines.getValue(tatar).attachedCatalog,
+            h.engines.getValue(tatar).handedCatalog,
         )
     }
 
@@ -375,8 +374,8 @@ class SuggestionsControllerBigramLanguageSwitchTest {
         h.editor.word = "сло"
         h.controller.onSubtypeChanged(eligible = true, subtypeId = russian)
 
-        assertNull(h.engines.getValue(russian).attachedCatalog)
-        assertNotNull(h.engines.getValue(tatar).attachedCatalog)
+        assertNull(h.engines.getValue(russian).handedCatalog)
+        assertNotNull(h.engines.getValue(tatar).handedCatalog)
         assertTrue(h.strip.reserveCount >= 2)
     }
 
@@ -390,17 +389,17 @@ class SuggestionsControllerBigramLanguageSwitchTest {
 
         // Prefix suggestions did not wait for the table.
         assertNotNull(h.engines[russian])
-        assertNull(h.engines.getValue(russian).attachedCatalog)
+        assertNull(h.engines.getValue(russian).handedCatalog)
 
         h.bigramPreparations.getValue(russian).publishPending()
 
         assertSame(
             h.bigramPreparations.getValue(russian).catalog,
-            h.engines.getValue(russian).attachedCatalog,
+            h.engines.getValue(russian).handedCatalog,
         )
         assertSame(
             h.bigramPreparations.getValue(tatar).catalog,
-            h.engines.getValue(tatar).attachedCatalog,
+            h.engines.getValue(tatar).handedCatalog,
         )
     }
 }

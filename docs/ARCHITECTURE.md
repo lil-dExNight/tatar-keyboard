@@ -140,8 +140,10 @@ fsync, validate, atomic rename, directory fsync. Every process start validates t
 again before activating it; the first activation after that check or a publication reuses its
 result while the file keeps the recorded length and modification time, and every later activation
 validates again. `MappedDictionaryEngine` maps the file read-only
-(`FileChannel.map`) and reads it in place. Pinned sizes and SHA-256 values are in
-`DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. Without a usable dictionary a
+(`FileChannel.map`) and reads it in place. The bigram table attaches lazily: publication hands the
+engine its catalog, and the engine maps and opens the table on its worker at the first next-word
+lookup, so a session that never predicts a next word never maps it. Pinned sizes and SHA-256 values
+are in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. Without a usable dictionary a
 language has no suggestions; without its bigram table only next-word prediction is empty.
 
 ## Personal dictionary

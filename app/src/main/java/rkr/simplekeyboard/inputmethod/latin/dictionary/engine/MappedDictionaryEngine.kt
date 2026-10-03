@@ -41,6 +41,7 @@ class MappedDictionaryEngine private constructor(
     private val engine: LatestOnlyPrefixEngine,
     private val computer: CompositePrefixComputer,
     private val resources: Resources,
+    private val mapper: DictionaryMapper,
 ) {
     fun request(
         editorSessionId: Long,
@@ -123,6 +124,15 @@ class MappedDictionaryEngine private constructor(
             }
             false
         }
+    }
+
+    /**
+     * Hands the published bigram catalog over without opening the table: the mapping and the open
+     * walk run lazily on the engine worker at the first NEXT_WORD lookup. A missing, corrupt or
+     * vanished table leaves NEXT_WORD answering empty, exactly as with [attachBigramSource].
+     */
+    fun deferBigramAttach(catalog: PublishedBigramTableCatalog) {
+        computer.deferBigramAttach { attachBigramSource(catalog, mapper) }
     }
 
     /**
@@ -381,7 +391,7 @@ class MappedDictionaryEngine private constructor(
                     resultHandoff,
                     resources::release,
                 )
-                return MappedDictionaryEngine(identity, engine, computer, resources)
+                return MappedDictionaryEngine(identity, engine, computer, resources, mapper)
             } catch (_: Throwable) {
                 mapped = null
                 try {
