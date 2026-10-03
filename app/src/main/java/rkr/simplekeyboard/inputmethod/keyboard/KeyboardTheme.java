@@ -39,14 +39,19 @@ public final class KeyboardTheme {
     public static final int THEME_ID_SYSTEM = 5;
     public static final int THEME_ID_SYSTEM_BORDER = 6;
     public static final int THEME_ID_TATAR = 7;
+    public static final int THEME_ID_TATAR_DYNAMIC = 8;
     public static final int DEFAULT_THEME_ID = THEME_ID_TATAR;
 
-    // Only the Tatar theme is user-facing. The legacy LXX themes are intentionally not listed
-    // here so that a stored preference with one of their ids falls back to the default theme
-    // in getKeyboardTheme (unknown id -> preference removed, default returned).
+    // The default Tatar theme stays first: it is the fallback every selection path returns.
+    // The legacy LXX themes are intentionally not listed here so that a stored preference with
+    // one of their ids falls back to the default theme in getKeyboardTheme (unknown id ->
+    // preference removed, default returned). The dynamic entry renders the default palette
+    // wherever the framework system colors are unavailable (see DynamicThemePalette).
     /* package private for testing */
     static final KeyboardTheme[] KEYBOARD_THEMES = {
         new KeyboardTheme(THEME_ID_TATAR, "Tatar", R.style.KeyboardTheme_Tatar, false),
+        new KeyboardTheme(THEME_ID_TATAR_DYNAMIC, "TatarDynamic",
+                R.style.KeyboardTheme_TatarDynamic, false),
     };
 
     public final int mThemeId;

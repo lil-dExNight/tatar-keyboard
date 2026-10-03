@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+/*
+**
+** Copyright (C) 2026 Tatar Keyboard contributors
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
+-->
+
+<!-- KeyboardTheme.TatarDynamic: the iOS geometry of the default theme with the palette taken
+     from the framework system colors on API 31+ (Material You tonal palette) and from the
+     default palette below it. The style tree reuses the Tatar styles as parents and overrides
+     color items only, so geometry edits apply to both themes. Colors resolve through the dyn_*
+     set: the values tier aliases the default palette wholesale, the v31 tiers map the
+     framework roles per uiMode. DynamicThemePalette gates the whole style on the roles being
+     resolvable, so a failed lookup never paints a half-mapped keyboard. -->
+<resources xmlns:android="http://schemas.android.com/apk/res/android">
+    <style name="KeyboardTheme.TatarDynamic">
+        <item name="inputViewStyle">@style/InputView</item>
+        <item name="keyboardStyle">@style/Keyboard.TatarDynamic</item>
+        <item name="keyboardViewStyle">@style/KeyboardView.TatarDynamic</item>
+        <item name="mainKeyboardViewStyle">@style/MainKeyboardView.TatarDynamic</item>
+        <item name="moreKeysKeyboardStyle">@style/MoreKeysKeyboard.TatarDynamic</item>
+        <item name="moreKeysKeyboardViewStyle">@style/MoreKeysKeyboardView.TatarDynamic</item>
+        <item name="functionalTextColor">@color/dyn_key_functional_text_color</item>
+        <item name="popupPanelBackgroundColor">@color/dyn_key_normal</item>
+        <item name="keyPressedBackgroundColor">@color/dyn_key_normal_pressed</item>
+        <item name="keyNormalBackgroundColor">@color/dyn_key_normal</item>
+        <item name="emojiPanelBackgroundColor">@color/dyn_keyboard_background</item>
+        <item name="emojiPanelFunctionalKeyColor">@color/dyn_key_functional</item>
+        <item name="suggestionEmphasisColor">@color/dyn_suggestion_emphasis</item>
+    </style>
+    <style
+        name="Keyboard.TatarDynamic"
+        parent="Keyboard.Tatar"
+    >
+    </style>
+    <style
+        name="KeyboardView.TatarDynamic"
+        parent="KeyboardView.Tatar"
+    >
+        <item name="android:background">@color/dyn_keyboard_background</item>
+        <item name="keyBackground">@drawable/dyn_key_normal</item>
+        <item name="functionalKeyBackground">@drawable/dyn_key_functional</item>
+        <item name="spacebarBackground">@drawable/dyn_key_spacebar</item>
+        <item name="keyTextColor">@color/dyn_key_text_color</item>
+        <item name="keyTextInactivatedColor">@color/dyn_key_text_inactive_color</item>
+        <item name="actionKeyTextColor">@color/dyn_key_action_text_color</item>
+        <item name="keyHintLetterColor">@color/dyn_key_hint_color</item>
+        <item name="keyHintLabelColor">@color/dyn_key_text_inactive_color</item>
+        <item name="keyShiftedLetterHintInactivatedColor">@color/dyn_key_text_inactive_color</item>
+        <item name="keyShiftedLetterHintActivatedColor">@color/dyn_key_text_color</item>
+        <item name="keyPreviewTextColor">@color/dyn_key_text_color</item>
+    </style>
+    <style
+        name="MainKeyboardView.TatarDynamic"
+        parent="KeyboardView.TatarDynamic"
+    >
+        <!-- The dimension items restate the Tatar geometry as dimen references, so the two
+             themes cannot drift apart. -->
+        <item name="keyPreviewBackground">@drawable/dyn_key_preview_background</item>
+        <item name="keyPreviewHeight">@dimen/config_key_preview_height_lxx</item>
+        <item name="keyPreviewWidth">@dimen/config_key_preview_width_lxx</item>
+        <item name="keyPreviewOffset">@dimen/config_key_preview_offset_lxx</item>
+        <item name="languageOnSpacebarTextColor">@color/dyn_key_text_inactive_color</item>
+        <item name="glideTrailColor">@color/dyn_glide_trail</item>
+    </style>
+    <style
+        name="MoreKeysKeyboard.TatarDynamic"
+        parent="MoreKeysKeyboard.Tatar"
+    >
+    </style>
+    <style
+        name="MoreKeysKeyboardView.TatarDynamic"
+        parent="KeyboardView.TatarDynamic"
+    >
+        <!-- The panel background drawable is shared with the default theme: it paints
+             ?attr/popupPanelBackgroundColor, which this theme points at the dyn_* set. -->
+        <item name="android:background">@drawable/ios_popup_panel_background</item>
+        <item name="android:foreground">@drawable/dyn_popup_panel_border</item>
+        <item name="keyBackground">@drawable/dyn_popup_key_background</item>
+        <item name="verticalCorrection">@dimen/config_more_keys_keyboard_vertical_correction</item>
+    </style>
+</resources>

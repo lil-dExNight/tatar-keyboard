@@ -40,6 +40,7 @@ import android.widget.Toast
 import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardLayoutSet
+import rkr.simplekeyboard.inputmethod.keyboard.KeyboardTheme
 import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
 import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
@@ -1138,6 +1139,7 @@ class SettingsHostActivity : Activity() {
 
     private fun buildAppearanceScreen() {
         addCard(listOf(
+            themeRow(),
             switchRow(Settings.PREF_SHOW_NUMBER_ROW, false,
                     R.string.show_number_row, R.string.show_number_row_summary),
             switchRow(Settings.PREF_SHOW_EMOJI_KEY, true,
@@ -1236,6 +1238,58 @@ class SettingsHostActivity : Activity() {
         return if (index >= 0) getString(emojiPanelHeightLabelRes[index])
         else getString(R.string.abbreviation_unit_percent,
                 Math.round(scale * PERCENTAGE_FLOAT))
+    }
+
+    /**
+     * "Theme": the user-facing themes in a one-tap picker, mirroring the height rows. The choice
+     * writes the theme id pref; the running keyboard re-resolves and rebuilds at the next input
+     * view start (LatinIME calls updateKeyboardTheme there), so no live swap is attempted here.
+     */
+    private fun themeRow(): View {
+        val row = inflateRow(R.layout.row_value, R.string.settings_screen_theme, 0)
+        val valueView = row.findViewById<TextView>(R.id.row_value)
+        valueView.text = themeName()
+        row.setOnClickListener {
+            showThemeDialog {
+                valueView.text = themeName()
+            }
+        }
+        if (isRestricted(Settings.SCREEN_THEME)) {
+            setRowEnabled(row, false)
+        }
+        return row
+    }
+
+    /** The current theme's localized name from the theme table arrays (names and ids align). */
+    private fun themeName(): String {
+        val names = resources.getStringArray(R.array.keyboard_theme_names)
+        val ids = resources.getIntArray(R.array.keyboard_theme_ids)
+        val currentId = KeyboardTheme.getKeyboardTheme(prefs).mThemeId
+        val index = ids.indexOf(currentId)
+        return if (index >= 0) names[index] else names[0]
+    }
+
+    private fun showThemeDialog(onValueChanged: () -> Unit) {
+        val names = resources.getStringArray(R.array.keyboard_theme_names)
+        val ids = resources.getIntArray(R.array.keyboard_theme_ids)
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.settings_screen_theme)
+                .setMessage(R.string.keyboard_theme_dynamic_summary)
+                // setItems on purpose, exactly like the keyboard-height picker: the choice applies
+                // on the tap itself and the dialog closes — no unnamed OK button.
+                .setItems(names) { _, which ->
+                    val themeId = ids[which]
+                    if (themeId != KeyboardTheme.getKeyboardTheme(prefs).mThemeId) {
+                        KeyboardTheme.saveKeyboardThemeId(themeId, prefs)
+                    }
+                    onValueChanged()
+                }
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
     }
 
     private fun showEmojiPanelHeightDialog(onValueChanged: () -> Unit) {

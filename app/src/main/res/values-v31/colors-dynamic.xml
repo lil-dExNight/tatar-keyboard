@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+/*
+**
+** Copyright (C) 2026 Tatar Keyboard contributors
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
+-->
+
+<!-- Light uiMode tier of the dynamic theme, API 31+: the dyn_* slots map to the framework
+     system colors (the Material You tonal palette). The role table is pinned in
+     DynamicThemePalette and the contrast contract test; keep the three in sync.
+     Framework scale: suffix 0 is the lightest tone (white), 1000 the darkest (black).
+     Slots and their light/dark roles:
+       keyboard background:  neutral2_100 / neutral2_800  (the sheet behind the keys)
+       letter key fill:      neutral1_10  / neutral2_600  (spacebar and sticky-on share it)
+       key pressed:          neutral2_200 / neutral2_500  (one step from the fill)
+       functional fill:      neutral2_300 / neutral2_700
+       functional pressed:   neutral1_10  / neutral2_500
+       locked-shift fill:    neutral2_400 / neutral2_500
+       key and icon ink:     neutral1_900 / neutral1_0    (functional glyphs included)
+       accent fill:          accent1_600  / accent1_100   (action keys, popup selection)
+       ink on the accent:    accent1_0    / neutral1_900
+       emphasis and trail:   accent1_600  / accent1_100   (autocorrect cell, glide trail)
+     The shadow and the dimmed hint inks stay fixed translucents: the framework palette
+     carries no translucent roles, and the neutral ink at the pinned alpha reads on every
+     tonal surface. -->
+<resources>
+    <color name="dyn_keyboard_background">@android:color/system_neutral2_100</color>
+    <color name="dyn_key_normal">@android:color/system_neutral1_10</color>
+    <color name="dyn_key_normal_pressed">@android:color/system_neutral2_200</color>
+    <color name="dyn_key_functional">@android:color/system_neutral2_300</color>
+    <color name="dyn_key_functional_pressed">@android:color/system_neutral1_10</color>
+    <color name="dyn_key_checked">@android:color/system_neutral2_400</color>
+    <color name="dyn_key_sticky_on">@android:color/system_neutral1_10</color>
+    <color name="dyn_key_spacebar">@android:color/system_neutral1_10</color>
+    <color name="dyn_key_spacebar_pressed">@android:color/system_neutral2_200</color>
+    <color name="dyn_key_shadow">#4D000000</color>
+    <color name="dyn_popup_key_pressed">@android:color/system_accent1_600</color>
+    <color name="dyn_key_text_color">@android:color/system_neutral1_900</color>
+    <color name="dyn_key_functional_text_color">@android:color/system_neutral1_900</color>
+    <color name="dyn_key_action_fill">@android:color/system_accent1_600</color>
+    <color name="dyn_key_action_text_color">@android:color/system_accent1_0</color>
+    <color name="dyn_key_text_inactive_color">#A0000000</color>
+    <color name="dyn_key_hint_color">#90000000</color>
+    <color name="dyn_suggestion_emphasis">@android:color/system_accent1_600</color>
+    <color name="dyn_glide_trail">@android:color/system_accent1_600</color>
+</resources>

@@ -50,7 +50,9 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
 
     /**
      * The glyph color of the selected alternative. The selection fill is the accent color, so
-     * the label must invert; read once from resources, like every other color of this view.
+     * the label follows the accent ink of the theme (actionKeyTextColor): the dynamic theme
+     * inverts it on the light accent of dark mode. The fallback is the static white both
+     * default palettes use.
      */
     private final int mSelectedLabelColor;
 
@@ -64,7 +66,11 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
     public MoreKeysKeyboardView(final Context context, final AttributeSet attrs,
             final int defStyle) {
         super(context, attrs, defStyle);
-        mSelectedLabelColor = context.getColor(R.color.ios_popup_key_selected_text);
+        final TypedArray popupKeyAttr = context.obtainStyledAttributes(attrs,
+                R.styleable.Keyboard_Key, defStyle, R.style.KeyboardView);
+        mSelectedLabelColor = popupKeyAttr.getColor(R.styleable.Keyboard_Key_actionKeyTextColor,
+                context.getColor(R.color.ios_popup_key_selected_text));
+        popupKeyAttr.recycle();
         final TypedArray moreKeysKeyboardViewAttr = context.obtainStyledAttributes(attrs,
                 R.styleable.MoreKeysKeyboardView, defStyle, R.style.MoreKeysKeyboardView);
         moreKeysKeyboardViewAttr.recycle();

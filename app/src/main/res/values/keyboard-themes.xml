@@ -19,22 +19,27 @@
 */
 -->
 <resources>
-    <!-- For keyboard color scheme option dialog. -->
-    <!-- Only the Tatar theme is user-facing; the legacy LXX themes are hidden and stored ids
-         for them fall back to the default theme (see KeyboardTheme.getKeyboardTheme). -->
+    <!-- For keyboard color scheme option dialog and the screen_theme restriction. -->
+    <!-- The legacy LXX themes are hidden: a stored id of theirs falls back to the default theme
+         (see KeyboardTheme.getKeyboardTheme). The dynamic entry renders the default palette
+         wherever the framework system colors are unavailable. -->
     <string-array name="keyboard_theme_names" translatable="false">
         <item>@string/keyboard_theme_tatar</item>
+        <item>@string/keyboard_theme_dynamic</item>
     </string-array>
 
     <integer-array name="keyboard_theme_ids" translatable="false">
         <item>7</item>
+        <item>8</item>
     </integer-array>
 
     <string-array name="keyboard_theme_ids_string" translatable="false">
         <item>7</item>
+        <item>8</item>
     </string-array>
 
     <array name="keyboard_theme_colors" translatable="false">
         <item>@color/ios_keyboard_background</item>
+        <item>@color/dyn_keyboard_background</item>
     </array>
 </resources>

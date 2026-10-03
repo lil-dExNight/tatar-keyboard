@@ -26,6 +26,8 @@
     <string name="settings_screen_key_press">Төймәгә басу</string>
     <string name="settings_screen_appearance">Тышкы кыяфәт</string>
     <string name="settings_screen_theme">Тема</string>
+    <string name="keyboard_theme_dynamic">Динамик (Material You)</string>
+    <string name="keyboard_theme_dynamic_summary">«Динамик» Android 12 һәм аннан югарырак версияләрдә обой төсләренә ияре; искерәк версияләрдә «Tatar» палитрасы кала.</string>
     <string name="settings_back">Артка</string>
     <string name="abbreviation_unit_milliseconds"><xliff:g id="MILLISECONDS">%d</xliff:g> мс</string>
     <string name="settings_system_default">Системадагыча</string>

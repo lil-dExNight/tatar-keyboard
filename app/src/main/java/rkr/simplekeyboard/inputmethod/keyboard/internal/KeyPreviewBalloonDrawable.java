@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.keyboard.internal;
 
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
@@ -94,7 +95,13 @@ public final class KeyPreviewBalloonDrawable extends Drawable {
         mNeckWidthPx = NECK_WIDTH_DP * density;
         mNeckTaperPx = NECK_TAPER_DP * density;
         mShadowPx = SHADOW_DP * density;
-        mFillPaint.setColor(context.getColor(R.color.ios_key_normal));
+        // The fill follows the letter-key surface of the active theme (both themes declare it at
+        // the theme root, so the balloon always matches the key it rises from); the shadow stays
+        // the shared neutral translucent of the key drawables.
+        final TypedArray themeAttr = context.getTheme().obtainStyledAttributes(
+                new int[] { R.attr.keyNormalBackgroundColor });
+        mFillPaint.setColor(themeAttr.getColor(0, context.getColor(R.color.ios_key_normal)));
+        themeAttr.recycle();
         mShadowPaint.setColor(context.getColor(R.color.ios_key_shadow));
     }
 
