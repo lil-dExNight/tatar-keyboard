@@ -154,9 +154,24 @@ and tt.wikipedia: per-source extraction with a Russian-bleed filter, merged as i
 frequencies (`data/dictionary/dict-accept/bonus-freq-tt.tsv`), re-rank only at the fixed
 dictionary size. Measured: +0.96 pp held-out conversational token coverage (bar +0.5), chain
 top-3 flat (paired CI contains zero), keystroke savings +1.22 pp. corpus.tatar stayed
-unobtainable (host unreachable) and remains the best untapped lever. The bigram table was
-repacked against the new dictionary but not retrained on the new corpora — that is the
-natural next step.
+unobtainable (host unreachable) and remains the best untapped lever.
+
+P3 follow-ups, both measured and closed. (a) Retraining the bigram table on the sentence-split
+extra corpora: rejected, +0.16 pp chain top-3 against the +0.3 pp bar (paired CI95 contained
+zero). (b) Glot500 `tat_Cyrl` (~4.7M sentence-level rows, per-row source labels): the shared
+machinery gained a `glot500` mode plus a normalized-form decontamination filter
+(`research/corpus/glot500_dump_to_text.py`, `tt_extra_freq.py`, `tt_extra_sentences.py`; the
+filter was load-bearing — 55 of the 1000 pinned eval sentences would otherwise have entered the
+stream through non-Tatoeba labels). Measured in both roles. As bonus frequencies: rejected —
+every positive weight loses conv-dev coverage monotonically, and the eval gate at the analogous
+weight is coverage −0.02 pp against the +0.5 pp bar. As bigram training sentences (conv stream
+counted ten times): passes the bar at +0.92 pp (paired CI95 [+0.48, +1.35]) but carries
+wiki-stub successors on high-traffic heads (`һәм` → `юпитер`, `бер` → `мәхәллә`); a
+Wikipedia-free arm lands at +1.06 pp [+0.63, +1.48]; and the conv upweight alone beats both,
++1.31 pp [+0.84, +1.83] with a clean head review. Landed: the conv upweight alone (the conv
+train90 file counted ten times, about a tenth of the training tokens; keystroke savings
++0.38 pp, no metric regression). Glot500 is rejected in both roles; the tooling stays for the
+next source.
 
 **P4 — Pack-time Kneser-Ney successor re-ranking.** Rank each head's kept successors by the
 interpolated KN score (continuation counts from one extra pass; discount and λ fixed from
