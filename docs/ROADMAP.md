@@ -40,14 +40,11 @@ and the JVM suites). Work goes in this order:
    Common Voice `tt` validated sentences (CC0). Then re-measure the conv-heavier remix against
    its ship bar (the first attempt was measured and rejected; the archived register is
    in `docs/HISTORY.md`).
-2. **Russian dictionary composition admission.** The rerank is saturated; admit new words to
-   the Russian dictionary tail through the accept queue (`scripts/dict_accept.py`), measured on
-   the held-out Russian eval set.
-3. **corpus.tatar permission letter.** Recover the unsent draft from commit `c7f6c50b` (its
+2. **corpus.tatar permission letter.** Recover the unsent draft from commit `c7f6c50b` (its
    archived path is listed in `docs/HISTORY.md`), update it, and hand it to the operator to
    send to tatcorpus@gmail.com; ingest the frequency lists if permission arrives. Nothing has
    ever been sent.
-4. **Optional, only after 1–2 land**: the pair-conditional glide rerank variant and the
+3. **Optional, only after 1 lands**: the pair-conditional glide rerank variant and the
    case-aware stem expansion — both keep their pre-registered bars; the earlier rejections
    are archived in `docs/HISTORY.md`.
 

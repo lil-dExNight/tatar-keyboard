@@ -215,6 +215,16 @@ gate on feature tests, not eval.
   (Fowler 2015); our LRU + counters are at the published optimum.
 - Stem+affix dictionary repack (Hunspell-style): no size pressure; front-coding already
   clusters forms after stems. Parked.
+- Russian dictionary composition admission (growing the tail past the 100,000-entry cap
+  through the accept machinery, the registered follow-up to the rejected Taiga rerank):
+  measured and rejected. The pool of words attested in the four Russian training corpora,
+  absent from the composition and passing the accept-queue discipline is large (158,219
+  candidates), but the uncovered eval mass is a flat tail of rare word forms: the largest
+  admission the dictionary byte budgets allow (+10,000 entries) gains +0.22 pp held-out
+  coverage (paired CI95 [+0.09, +0.37]) against the +0.5 pp bar, with the chain top-1/top-3
+  exactly unchanged, and reaching the bar takes about +40,000 entries — 23% over the
+  compressed-asset budget. Closed under the current budgets; the measurement tooling is
+  `research/corpus/ru_tail_admission.py`.
 - Apertium-tat / GiellaLT / kaikki / UniMorph as *shipped* data: GPL / CC BY-SA. Dev-time
   validation only (the kaikki precedent: `scripts/wordform_kaikki_check.py`). Option: an
   offline coverage report of our wordform paradigms against Apertium's analyzer — nothing
