@@ -180,10 +180,10 @@ class TtSuggestEvalTest {
         assertEquals(PIN_TOP1_HITS, top1Hits)
         assertEquals(PIN_TOP3_HITS, hits)
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
-        assertEquals("6.2745", format(top1Pct))
+        assertEquals("7.0358", format(top1Pct))
         assertEquals("85.0750", format(coveredPct))
-        assertEquals("10.9573", format(hitPct))
-        assertEquals("12.8796", format(hitCoveredPct))
+        assertEquals("12.2722", format(hitPct))
+        assertEquals("14.4252", format(hitCoveredPct))
     }
 
     /**
@@ -278,8 +278,8 @@ class TtSuggestEvalTest {
         assertEquals(PIN_CHAIN_TOP1_HITS, top1Hits)
         assertEquals(PIN_CHAIN_TOP3_HITS, top3Hits)
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
-        assertEquals("6.4360", format(top1Pct))
-        assertEquals("11.4187", format(top3Pct))
+        assertEquals("7.1972", format(top1Pct))
+        assertEquals("12.7336", format(top3Pct))
     }
 
     /**
@@ -310,8 +310,8 @@ class TtSuggestEvalTest {
         println("EVAL|nextword_chain_top3_ci95_lo|${format(lo)}")
         println("EVAL|nextword_chain_top3_ci95_hi|${format(hi)}")
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
-        assertEquals("10.4580", format(lo))
-        assertEquals("12.3575", format(hi))
+        assertEquals("11.7195", format(lo))
+        assertEquals("13.7219", format(hi))
     }
 
     /**
@@ -454,7 +454,7 @@ class TtSuggestEvalTest {
         assertEquals(PIN_KS_SIMULATED_KEYS, simulated)
         assertEquals(PIN_KS_ORACLE_KEYS, oracle)
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
-        assertEquals("33.8834", format(savedPct))
+        assertEquals("34.2584", format(savedPct))
         assertEquals("75.0660", format(oraclePct))
     }
 
@@ -572,7 +572,7 @@ class TtSuggestEvalTest {
         private const val PIN_UNIQUE_WORDS = 2_658
         private const val PIN_PAIRS = 4_335
         private const val PIN_COVERED = 3_688
-        private const val PIN_TOP3_HITS = 475
+        private const val PIN_TOP3_HITS = 532
         private const val PIN_CP1_WORDS = 2_658
         private const val PIN_CP2_WORDS = 2_656
         private const val PIN_CP3_WORDS = 2_614
@@ -588,14 +588,14 @@ class TtSuggestEvalTest {
         // Unique eval words whose committed-word strip is empty WITHOUT the top-frequency
         // fallback; with the fallback the count is asserted to be 0.
         private const val PIN_NEXTWORD_EMPTY_BEFORE = 642
-        private const val PIN_TOP1_HITS = 272
-        private const val PIN_CHAIN_TOP1_HITS = 279
-        private const val PIN_CHAIN_TOP3_HITS = 495
+        private const val PIN_TOP1_HITS = 305
+        private const val PIN_CHAIN_TOP1_HITS = 312
+        private const val PIN_CHAIN_TOP3_HITS = 552
         private const val PIN_STRATUM_SEEN_FORM_WORDS = 2_413
         private const val PIN_STRATUM_NEW_FORM_WORDS = 91
         private const val PIN_STRATUM_UNSEEN_STEM_WORDS = 154
         private const val PIN_KS_BASELINE_KEYS = 33_332
-        private const val PIN_KS_SIMULATED_KEYS = 22_038
+        private const val PIN_KS_SIMULATED_KEYS = 21_913
         private const val PIN_KS_ORACLE_KEYS = 8_311
 
         // Lemma-stratum ids and the strip cell count the cp3 stratum metric uses.

@@ -39,7 +39,7 @@ import java.security.MessageDigest
  * `сәләм` is no bigram head and has two attested forms, so the strip is
  * `[сәләмә, сәләме, һәм]`: the fallback fills the cell the bigrams and forms leave free. After
  * `сәләмә` (no successors,
- * no forms) it is `[һәм, белән, да]`, the global top words. A bigram head (сәлам) still shows only
+ * no forms) it is `[һәм, белән, да]`, the global top words. A bigram head (кил) still shows only
  * its first three stored successors (`TatBigrPrefixIndex.MAX_RESULTS` = 3).
  */
 class TtNextWordFillE2ETest {
@@ -74,13 +74,13 @@ class TtNextWordFillE2ETest {
 
     @Test
     fun aBigramHeadStillShowsOnlyItsSuccessors() {
-        // сәлам is a head with 4 stored successors; the read caps at three
+        // кил is a head with 4 stored successors; the read caps at three
         // (TatBigrPrefixIndex.MAX_RESULTS), so the strip is the first three and the fourth
-        // (хатлары) is not read — no form, no fallback cell.
-        // The successor белән is ALSO a top-8 word: the dedup rule is exercised here structurally
+        // (әле) is not read — no form, no fallback cell.
+        // The successor дә is ALSO a top-8 word: the dedup rule is exercised here structurally
         // (it must not appear twice, and the fallback never runs at all).
-        val result = tatarPredict("сәлам")
-        assertEquals(listOf("биреп", "белән", "бирү"), result)
+        val result = tatarPredict("кил")
+        assertEquals(listOf("дә", "монда", "һәм"), result)
         assertEquals(result.distinct(), result)
         assertFalse(result.contains("да"))
     }
@@ -88,11 +88,11 @@ class TtNextWordFillE2ETest {
     @Test
     fun theCommittedWordIsNeverReOffered() {
         // һәм IS the global top word: committing it must not put it back on the strip. It is also
-        // a bigram head: its first three stored successors fill the whole strip (the fourth, ул,
+        // a bigram head: its first three stored successors fill the whole strip (the fourth, бу,
         // is not read), minus the committed word itself.
         val result = tatarPredict("һәм")
         assertFalse(result.contains("һәм"))
-        assertEquals(listOf("башка", "аның", "фән"), result)
+        assertEquals(listOf("башка", "аның", "ул"), result)
     }
 
     @Test

@@ -100,13 +100,15 @@ BIGRAMS = (
         extra_heads="scripts/bigram_extra_heads_tat.txt",
         # Two Leipzig corpora plus the conversational input: deduplicated Tatoeba +
         # OpenSubtitles tt lines with id % 10 != 1 (the rest is the conversational held-out
-        # set). Not thinned: the conversational part is small next to the written one. The
-        # file is built with research/corpus/make_conv_train.py and an id filter and placed in
-        # --corpus-dir by hand; without it the rebuild stops before any step runs.
+        # set). The conversational file is listed ten times — a weight, not an error:
+        # repetition scales its pair counts, lifting its share of the training token mass
+        # from a few percent to about a tenth. The file is built with
+        # research/corpus/make_conv_train.py and an id filter and placed in --corpus-dir by
+        # hand; without it the rebuild stops before any step runs.
         train=(
             "tat_mixed_2015_1M-sentences.txt",
             "tat_web_2018_1M-sentences.txt",
-            "tt_conv_train90-sentences.txt",
+            *(["tt_conv_train90-sentences.txt"] * 10),
         ),
     ),
     BigramAsset(
