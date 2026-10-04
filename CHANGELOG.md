@@ -17,6 +17,10 @@ These hold for every release and are not repeated in the entries below:
 
 - Tatar next-word predictions lean more on conversational language, so chat-style suggestions rank higher.
 
+### Fixed
+
+- Inline autofill never rendered on a login field: the platform requires a style handshake on each strip-cell spec, and without it the field got neither the inline content nor the dropdown fallback.
+
 ### Removed
 
 - The fifth-row letter order `ә ө ү җ ң һ` is final by decision; the study instrument behind it (the debug-only Developer screen with the arm picker and the session log) is removed.

@@ -40,11 +40,10 @@ and the JVM suites). Work goes in this order:
 
 Checks that need a person or hardware not at hand (procedure: `docs/DEVICE-TEST-PLAN.md`):
 
-- inline autofill against a real autofill service (install one, e.g. Bitwarden, on a test
-  device; a stock device has none);
-- the revert cell under TalkBack, the reduced-motion and haptic feel checks;
+- the haptic feel check (a person's hand);
 - live Direct Boot (type the screen-lock PIN with this keyboard before the first unlock);
-- Telegram (typing, suggestions, autocorrect undo, glide spacing, emoji panel);
+- Telegram (typing, suggestions, autocorrect undo, glide spacing, emoji panel; needs a logged-in
+  account on the device);
 - TalkBack by ear (the spoken key descriptions, language announcement and digit popups);
 - tablet layout on tablet hardware (verified on an emulator tablet profile only).
 
@@ -60,6 +59,14 @@ Blocked until sections 1–3 are done; the operator drives these:
 - **Submissions.** RuStore; Google Play closed testing (12 testers for 14 days) per `BRIEF.md`.
 
 ## Closed since the last plan
+
+- Inline autofill verified on device against a real service (a probe app + a probe autofill
+  service on the POCO C71): it caught a render bug (the platform's renderer requires the
+  style-handshake bundle on each spec) — fixed in `InlineAutofillBinder.createRequest`, pinned
+  by `InlineAutofillSourceContractTest`.
+- The autocorrect-revert cell verified under TalkBack on device (the cell announces the typed
+  word and the accessibility click reverts); the reduced-motion gates verified on device (the
+  glide trail lifts instantly, the emoji section jump teleports at animator scale 0).
 
 - The pair-conditional glide rerank (the A6 follow-up): measured and rejected — the mined-pair
   firing rule is a no-op (it fires on almost every context row and moves zero rows against the

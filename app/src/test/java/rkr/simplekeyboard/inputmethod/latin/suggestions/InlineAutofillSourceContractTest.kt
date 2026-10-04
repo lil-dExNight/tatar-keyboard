@@ -137,6 +137,18 @@ class InlineAutofillSourceContractTest {
         assertTrue(specs.contains("const val CELL_COUNT = SuggestionStripState.CELL_COUNT"))
     }
 
+    @Test
+    fun everySpecCarriesTheInlineUiVersionHandshake() {
+        // The platform's render service refuses a spec without the style bundle, and an empty
+        // render has no dropdown fallback: no handshake means no autofill UI at all. The shape is
+        // the canonical one: the version list under the :key entry and a per-version bundle.
+        val binder = binder()
+        assertTrue(binder.contains("setStyle("))
+        assertTrue(binder.contains("androidx.autofill.inline.ui.version:key"))
+        assertTrue(binder.contains("androidx.autofill.inline.ui.version:v1"))
+        assertTrue(binder.contains("putBundle("))
+    }
+
     private fun latinImeSource(): String = File(sourceRoot(),
         "java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java").readText()
 

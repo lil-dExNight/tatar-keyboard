@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 import android.annotation.TargetApi
 import android.content.Context
 import android.os.Build
+import android.os.Bundle
 import android.util.Size
 import android.util.TypedValue
 import android.view.inputmethod.InlineSuggestionsRequest
@@ -31,9 +32,26 @@ import rkr.simplekeyboard.inputmethod.latin.InputView
  * framework type lives behind this object, and callers reach it only under an API-level check, so
  * on older releases none of those classes ever load. The content itself never enters our code:
  * the platform hands us views and we host them.
+ *
+ * Every spec carries the style bundle with the `androidx.autofill.inline.ui.version` handshake:
+ * the platform's render service refuses a spec without it, and an empty render means no inline
+ * content and no dropdown fallback.
  */
 @TargetApi(Build.VERSION_CODES.R)
 object InlineAutofillBinder {
+
+    /**
+     * The inline-ui version handshake the platform's render service requires, in its canonical
+     * shape: the version list under `…:key` and a per-version bundle with `style_v1` — a flat
+     * string entry fails the version match and the render is dropped.
+     */
+    private val INLINE_UI_VERSION_V1: Bundle = Bundle().apply {
+        putStringArrayList("androidx.autofill.inline.ui.version:key",
+            arrayListOf("androidx.autofill.inline.ui.version:v1"))
+        putBundle("androidx.autofill.inline.ui.version:v1", Bundle().apply {
+            putBoolean("style_v1", true)
+        })
+    }
 
     /**
      * Builds the request the platform asks for when the focused field supports inline autofill:
@@ -55,7 +73,7 @@ object InlineAutofillBinder {
             InlinePresentationSpec.Builder(
                 Size(cell.widthPx, cell.heightPx),
                 Size(cell.widthPx, cell.heightPx),
-            ).build()
+            ).setStyle(INLINE_UI_VERSION_V1).build()
         }
         return InlineSuggestionsRequest.Builder(specs)
             .setMaxSuggestionCount(InlineStripSpecs.CELL_COUNT)
