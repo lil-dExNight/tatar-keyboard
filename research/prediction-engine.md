@@ -137,12 +137,12 @@ simulation (`research/corpus/sim_stem_backoff.py`, run over the training corpora
 pinned eval set) gained +0.46 pp chain top-3 (paired CI95 [+0.21, +0.73]) against the
 pre-registered +1.5 pp bar. The named risk materialized: the stage engages on 15.8% of pairs,
 the case-blind expansion converts only 58% of stem hits, and correct after-word forms lose
-hits to displacement. Recorded in `docs/BACKLOG.md`; a case-aware expansion is a different
-experiment, not a rerun.
+hits to displacement. Rejected and recorded (archived in `docs/HISTORY.md`); a case-aware expansion is a
+different experiment, not a rerun.
 
 **P2 — Wider typo classes (insertion/deletion/transposition) ranked by edit distance.**
-Measured and rejected under the pre-registered ranking (`docs/BACKLOG.md` carries the two
-configurations and their numbers): with the wide classes below #4 the deletion class cannot
+Measured and rejected under the pre-registered ranking (the two configurations and their
+numbers are archived in `docs/HISTORY.md`): with the wide classes below #4 the deletion class cannot
 reach its bar (the empty-exact discipline plus the three-cell strip locks it out); with
 deletion between #1 and #4 the substitution class regresses, because DL-1 deletion and DL-1
 substitution candidates are rank-indistinguishable and class priority must pick a loser. The
@@ -214,7 +214,7 @@ gate on feature tests, not eval.
 - Exponential recency decay for personal stores: measured no better than uniform cache
   (Fowler 2015); our LRU + counters are at the published optimum.
 - Stem+affix dictionary repack (Hunspell-style): no size pressure; front-coding already
-  clusters forms after stems. Park in `docs/BACKLOG.md`.
+  clusters forms after stems. Parked.
 - Apertium-tat / GiellaLT / kaikki / UniMorph as *shipped* data: GPL / CC BY-SA. Dev-time
   validation only (the kaikki precedent: `scripts/wordform_kaikki_check.py`). Option: an
   offline coverage report of our wordform paradigms against Apertium's analyzer — nothing

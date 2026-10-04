@@ -58,6 +58,7 @@ Recover any of them with `git show <commit>:<path>`.
 | `docs/RESTRUCTURE-PLAN.md` | Plan for the audit, restructuring and cleanup campaign before 1.9.5 | `6a2fc290` |
 | `docs/RESTRUCTURE.md` | Log of the restructuring campaign that produced 1.9.5 | `6a2fc290` |
 | `docs/DEV-PLAN.md` | Developer tooling plan: asset orchestrator, CI, reproducible builds, error-prone | `6a2fc290` |
+| `docs/BACKLOG.md` | Parked-and-rejected ideas register; the verdicts and parked items are recoverable here | `f4021aa4` |
 | `docs/ROADMAP.md` | Roadmap of remaining prediction, UX and tech-debt work after 2.0.1 | `c74e8790` |
 | `docs/ROADMAP-P1.md` | Phase 1 report: sentence-start casing, Russian sentence starts, predictions after commas | `93966d2b` |
 | `docs/ROADMAP-P2.md` | Phase 2 report: personal bigrams, personal dictionary screen, incognito mode | `fb22da97` |

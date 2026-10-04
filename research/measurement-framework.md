@@ -2,14 +2,14 @@
 
 How this project proves that a change is an improvement. Every research proposal in this
 directory must name the metric it moves and the harness that measures it. A proposal without
-a measurable gate is an idea for `docs/BACKLOG.md`, not work for the roadmap.
+a measurable gate is an idea to park, not work for the roadmap.
 
 ## Principles
 
 - Pre-registered gates. The pass threshold is written down before the experiment runs.
   Precedents: the imperative-heads selection rule was written before measuring; the glide
-  context rerank patch measured below its decision rule and stayed parked in
-  `docs/BACKLOG.md`.
+  context rerank patch measured below its decision rule and stayed parked (the archived
+  register is in `docs/HISTORY.md`).
 - Train/held-out discipline. Nothing is tuned on held-out data. Splits are deterministic:
   a SplitMix64 hash of the word decides its side, so Python and Kotlin agree bit for bit.
 - Timings are measured on the reference device, never on CI hosts or emulators. Debug numbers
@@ -63,9 +63,10 @@ Data correctness:
    synthetic. The glide research must propose a privacy-preserving collection protocol.
 2. Companion-language behavior (one language filling another language's empty strip cells)
    has no eval coverage.
-3. `docs/BACKLOG.md` carries measured rejections (trigram prediction, two-edit typo
-   recovery, geometric-neighbor typo recovery, wider autocorrect, emoji index sharding).
-   Reopening one requires new data, not a rerun of the same experiment.
+3. Measured rejections stand (trigram prediction, two-edit typo recovery,
+   geometric-neighbor typo recovery, wider autocorrect, emoji index sharding); reopening one
+   requires new data, not a rerun of the same experiment. The archived register is in
+   `docs/HISTORY.md`.
 
 ## Writing a decision memo
 

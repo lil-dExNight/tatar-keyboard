@@ -74,7 +74,7 @@ These are manual and have not been confirmed as done:
 See `docs/ROADMAP.md`: the improvement program built from `research/README.md`, and the
 device checks that need a person or hardware not at hand (live Direct Boot, Telegram,
 TalkBack by ear, tablet hardware). The glide context rerank decision is closed (threshold
-confirmed; see `docs/BACKLOG.md`).
+confirmed).
 
 ## Where to look next
 

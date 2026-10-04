@@ -22,8 +22,8 @@ satisfy are in [measurement-framework.md](measurement-framework.md).
 - [optimization.md](optimization.md) — measured APK composition, cold-start profile audit,
   PSS, runtime, battery discipline, build loop.
 
-Documents that finish their job (a decision made and recorded in `docs/ROADMAP.md`,
-`docs/BACKLOG.md` or `BRIEF.md`) are removed and listed in `docs/HISTORY.md`.
+Documents that finish their job (a decision made and recorded in `docs/ROADMAP.md` or
+`BRIEF.md`) are removed and listed in `docs/HISTORY.md`.
 
 # The program at a glance
 

@@ -9,8 +9,6 @@ When every section below is done or closed, there are no open debts: the release
 everywhere it is meant to be, the prediction program is finished, and the store submissions are
 unblocked.
 
-Parked and rejected ideas are in `docs/BACKLOG.md`.
-
 Tatar-first is the priority rule for every item below: Tatar quality and the Tatar layout
 lead; Russian and English ride the shared mechanisms.
 
@@ -40,7 +38,8 @@ and the JVM suites). Work goes in this order:
    sources if access breaks: CulturaX `tt` or the community OSCAR mirror (survey of
    2026-10-04); TatarNLPWorld v3 only with category filtering. Register diversity for bigrams:
    Common Voice `tt` validated sentences (CC0). Then re-measure the conv-heavier remix against
-   its ship bar (`docs/BACKLOG.md` records the first attempt's rejection).
+   its ship bar (the first attempt was measured and rejected; the archived register is
+   in `docs/HISTORY.md`).
 2. **Russian dictionary composition admission.** The rerank is saturated; admit new words to
    the Russian dictionary tail through the accept queue (`scripts/dict_accept.py`), measured on
    the held-out Russian eval set.
@@ -49,8 +48,8 @@ and the JVM suites). Work goes in this order:
    send to tatcorpus@gmail.com; ingest the frequency lists if permission arrives. Nothing has
    ever been sent.
 4. **Optional, only after 1–2 land**: the pair-conditional glide rerank variant and the
-   case-aware stem expansion — both are registered follow-ups in `docs/BACKLOG.md` and keep
-   their pre-registered bars.
+   case-aware stem expansion — both keep their pre-registered bars; the earlier rejections
+   are archived in `docs/HISTORY.md`.
 
 ## 3. Device work
 

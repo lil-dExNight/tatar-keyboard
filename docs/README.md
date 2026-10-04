@@ -23,7 +23,6 @@ bilingual.
 - [DEVICE-TEST-PLAN.md](DEVICE-TEST-PLAN.md) — end-to-end test of the keyboard on a connected phone.
 - [PUBLISH-CHECKLIST.md](PUBLISH-CHECKLIST.md) — release procedure, from preflight to store upload.
 - [ROADMAP.md](ROADMAP.md) — mandatory development plan: all open work, in order.
-- [BACKLOG.md](BACKLOG.md) — parked and rejected ideas.
 - [HISTORY.md](HISTORY.md) — removed documents, with the last commit that contains each.
 
 ## Other locations

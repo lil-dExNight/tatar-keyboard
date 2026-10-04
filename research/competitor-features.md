@@ -161,7 +161,7 @@ foreseeable future**. Ranked:
    needs a dedicated mailbox and one PRIVACY.md sentence).
 4. **Kano micro-surveys** for genuinely open roadmap choices: ≤3 features, functional/
    dysfunctional pairs, 15+ respondents per segment, tt+ru pretested wording; results recorded
-   as decision memos resolving parked BACKLOG items.
+   as decision memos resolving parked ideas.
 5. **Beta ring**: GitHub prereleases + a documented Obtainium config; Play closed testing
    later per the checklist.
 6. **Store review mining protocol** (activates with the first listing): weekly pass, fixed
