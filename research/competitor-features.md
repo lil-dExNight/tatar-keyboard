@@ -10,7 +10,7 @@ What the majors ship and what users demonstrably care about:
 
 | Feature | Demand signal | Fits us? |
 |---|---|---|
-| Autocorrect + easy undo | The most emotionally charged keyboard feature on iOS (the "ducking" saga; iOS 17's fix celebrated) | **Shipped** (undo via backspace; UX1 in `research/ux.md` adds the visible revert) |
+| Autocorrect + easy undo | The most emotionally charged keyboard feature on iOS (the "ducking" saga; iOS 17's fix celebrated) | **Shipped** (undo via backspace plus the visible revert cell) |
 | Swipe typing | Mainstreamed by SwiftKey Flow and iOS QuickPath | **Shipped** |
 | Emoji search / recents | Top-voted HeliBoard (#259, 140 reactions) and FlorisBoard (#45, 80) requests | **Shipped** |
 | Next-word prediction | FlorisBoard's #325 (83 reactions) | **Shipped** |
@@ -18,8 +18,8 @@ What the majors ship and what users demonstrably care about:
 | Text-editing mode | Gboard/SwiftKey/Samsung all ship | Fits (pure `InputConnection` work) |
 | Word-delete gesture | HeliBoard #1289/#535 (47 combined reactions) | Fits (same gesture family as our spacebar swipe) |
 | One-handed mode | Gboard since 2016, iOS since iOS 11; our audience types on 6.5"+ budget phones | **Shipped** |
-| Themes | SwiftKey 100+, Samsung Keys Cafe is a whole product, Gboard dynamic color | Fits narrowly: the zero-dep dynamic-color path in `research/ui.md` (UI2), no theme store |
-| Voice typing | The current industry battleground (Pixel, SwiftKey "offline AI voice") | **Excluded in `BRIEF.md`** — feasibility study in `research/voice-input.md` |
+| Themes | SwiftKey 100+, Samsung Keys Cafe is a whole product, Gboard dynamic color | **Shipped** narrowly (the zero-dep dynamic-color variant), no theme store |
+| Voice typing | The current industry battleground (Pixel, SwiftKey "offline AI voice") | **Excluded in `BRIEF.md`** (operator decision) |
 | Translation, GIF/sticker search, Emoji Kitchen, proofread AI, handwriting | Headline features of the majors | **Never fit** (network, size, IP, or model cost) — do not schedule |
 | Inline autofill (password managers) | HeliBoard #163/#274/#1065/#1471, FlorisBoard #2728/#2978 — the #1 complaint class against offline keyboards | Fits (platform API 30+, system-mediated) |
 | Backup/export of learned data | HeliBoard #2585/#2576/#1639/#2562, ASK #2552; FlorisBoard shipped it | Fits (SAF file, `java.util.zip`) — and with no sync, a local file is the *only* migration story |
@@ -172,8 +172,7 @@ foreseeable future**. Ranked:
 8. **Release download counts** in the release record — the only fleet-wide quantitative
    signal pre-store; treat as an upper bound.
 
-Silence is the default for months; the protocol pre-commits to not pivoting on zero signal,
-and the lab sessions (`research/ux.md`) stay the primary evidence until channel volume exists.
+Silence is the default for months; the protocol pre-commits to not pivoting on zero signal.
 
 ## Risks and open questions
 

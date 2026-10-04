@@ -196,6 +196,10 @@ Recover any of them with `git show <commit>:<path>`.
 | Path | What it was | Last commit |
 |---|---|---|
 | `research/00-itog-i-roadmap.md` | Initial research summary and project roadmap (July 2026) | `b3d894da` |
+| `research/ux.md` | UX studies: strip, autocorrect, glide discovery, onboarding; UX20 closed by decision | `65617f2d` |
+| `research/ui.md` | UI study: iOS fidelity, dynamic color, contrast, reduced motion — all shipped | `65617f2d` |
+| `research/voice-input.md` | Voice-input go/no-go: declined, decision recorded in `BRIEF.md` | `65617f2d` |
+| `research/optimization.md` | Measured optimization study; budgets live in `docs/PERF-BUDGETS.md` | `65617f2d` |
 | `research/01-stek-i-arhitektura-ime.md` | Android IME tech stack and architecture research | `b3d894da` |
 | `research/02-ui-rendering.md` | Keyboard UI rendering approaches on Android | `b3d894da` |
 | `research/03-optimizaciya-slabye-ustroystva.md` | Optimizing the keyboard for low-end devices | `b3d894da` |
