@@ -222,9 +222,9 @@ class TatBigrPrefixIndexTest {
         assertTrue(results.size <= TatBigrPrefixIndex.MAX_RESULTS)
         // The imperative "кил" is an extra-list head; its successor row is pinned by the schema-3
         // equivalence check, so the reader must serve it. The shipped table stores K = 4
-        // successors per head; MAX_RESULTS caps the row at three, leaving the 4th (монда) unread.
+        // successors per head; MAX_RESULTS caps the row at three, leaving the 4th (әле) unread.
         assertEquals(
-            listOf("дә", "әле", "һәм"),
+            listOf("дә", "монда", "һәм"),
             index.predict(ImmutableUtf8Prefix.copyOf("кил".toByteArray(Charsets.UTF_8))),
         )
     }

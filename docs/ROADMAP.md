@@ -29,21 +29,16 @@ The program, its tiers and the per-item gates live in `research/README.md`; ever
 ships only through the pre-registered measurement bars (eval harness in `scripts/suggest_eval.py`
 and the JVM suites). Work goes in this order:
 
-1. **Glot500 ingestion + conv-heavier bigram remix.** Glot500 `tat_Cyrl` (verified: ~4.7M
-   sentence-level rows, openly downloadable from HuggingFace) is the next source: per-word bonus
-   frequencies for the Tatar dictionary ranking with the Russian-bleed filter, and a
-   sentence stream for the bigram training with a heavier conversational weight. Fallback
-   sources if access breaks: CulturaX `tt` or the community OSCAR mirror (survey of
-   2026-10-04); TatarNLPWorld v3 only with category filtering. Register diversity for bigrams:
-   Common Voice `tt` validated sentences (CC0). Then re-measure the conv-heavier remix against
-   its ship bar (the first attempt was measured and rejected; the archived register is
-   in `docs/HISTORY.md`).
-2. **corpus.tatar permission letter.** The letter is prepared and awaits the operator's send to
+1. **corpus.tatar permission letter.** The letter is prepared and awaits the operator's send to
    tatcorpus@gmail.com (`dist/corpus-tatar-letter.md`; drafted from the unsent draft archived in
    commit `c7f6c50b`). Ingest the frequency lists if permission arrives.
-3. **Optional, only after 1 lands**: the pair-conditional glide rerank variant and the
-   case-aware stem expansion — both keep their pre-registered bars; the earlier rejections
+2. **Optional follow-ups**: the pair-conditional glide rerank variant and the case-aware stem
+   expansion keep their pre-registered bars; a bigger conversational stream (Common Voice `tt`,
+   CC0) is the natural next bigram arm now that the conv-upweight landed; the earlier rejections
    are archived in `docs/HISTORY.md`.
+   case-aware stem expansion — both keep their pre-registered bars; the earlier rejections
+   are archived in `docs/HISTORY.md`. A Common Voice `tt` (CC0) register-diversity remix is
+   another optional arm, against the same ship bar.
 
 ## 3. Device work
 
@@ -78,3 +73,7 @@ Blocked until sections 1–3 are done; the operator drives these:
   against the +0.5 pp bar, and the format byte budgets bind before the candidate pool runs out
   (the register entry is in `research/prediction-engine.md`, the tooling in
   `research/corpus/ru_tail_admission.py`).
+- Tatar bigram training went conv-heavier (the conversational stream counts tenfold): chain
+  top-3 +1.31 pp — landed, the table is rebuilt and re-pinned. The Glot500 arms passed the ship
+  bar but were dominated by the conv-only arm and are not landed; the Glot500 dictionary bonus
+  frequencies are rejected (verdicts in `research/prediction-engine.md`).

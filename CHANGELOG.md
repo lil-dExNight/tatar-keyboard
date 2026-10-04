@@ -13,6 +13,10 @@ These hold for every release and are not repeated in the entries below:
 
 ## [Unreleased]
 
+### Changed
+
+- Tatar next-word predictions lean more on conversational language, so chat-style suggestions rank higher.
+
 ### Removed
 
 - The fifth-row letter order `ә ө ү җ ң һ` is final by decision; the study instrument behind it (the debug-only Developer screen with the arm picker and the session log) is removed.

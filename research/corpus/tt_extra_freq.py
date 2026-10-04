@@ -10,7 +10,9 @@ hplt_dump_to_text.py, never the parquet):
   payloads and strip wiki markup minimally (templates, file/category links, ref tags, HTML
   tags and external links go away; plain link text stays; no attempt at table or list
   structure),
-* ``hplt``: read the filtered plain-text intermediate, one document per line.
+* ``hplt``: read the filtered plain-text intermediate, one document per line,
+* ``glot500``: read the label-filtered plain-text intermediate of glot500_dump_to_text.py,
+  one sentence-level row per line.
 
 Tokenization is the shared dict_tokens rule (whitespace split, edge punctuation stripped,
 ``normalize_word`` with the Tatar alphabet), so counts are in the same word space as the
@@ -282,7 +284,7 @@ def filter_source(args) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("madlad", "ttwiki", "hplt"):
+    for name in ("madlad", "ttwiki", "hplt", "glot500"):
         child = sub.add_parser(name, help=f"extract word frequencies from the {name} source")
         child.add_argument("--input", type=Path, required=True)
         child.add_argument("--output", type=Path, required=True)
