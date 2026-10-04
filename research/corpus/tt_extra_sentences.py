@@ -31,7 +31,15 @@ sentence stays.
 Dedup: exact, on the sentence text, with the ``bigset.line_key`` 64-bit BLAKE2b digests of
 ``make_conv_train.py``. ``--seen-in``/``--seen-out`` chain a digest file across sources, so
 a sentence shared by two sources is credited to the earlier one; the fixed source order is
-ttwiki, madlad, hplt.
+ttwiki, madlad, hplt, glot500.
+
+Decontamination: ``--exclude-sentences FILE`` (repeatable) names a sentence file whose
+normalized forms must never enter the output — the pinned eval set, the conversational
+stream (training and held-out rows alike) and the shipped Leipzig tt training corpora for
+the Glot500 stream. Each line is tokenized by the same ``dict_tokens`` rule (a leading
+``id<TAB>`` field is ignored, ``#`` lines are skipped) and the token join is the exclusion
+key; a candidate whose own token join is in the union is dropped and counted as
+``dropped_excluded``.
 
 Thinning to the training weight is a separate step over the output ids (keep ``id % K ==
 0``), the same hand filter as the conversational files. The report carries the kept token
@@ -140,6 +148,21 @@ def iter_documents(command: str, path: Path, counters: Counter):
         yield from iter_plain_lines(path)
 
 
+def load_exclusion_set(path: Path, cache: dict[str, str | None]) -> frozenset[str]:
+    """Normalized token joins of a sentence file; a leading id<TAB> field is ignored."""
+    out: set[str] = set()
+    with path.open("r", encoding="utf-8") as stream:
+        for line in stream:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#"):
+                continue
+            _id, _tab, text = line.partition("\t")
+            tokens = sentence_tokens(text, cache)
+            if tokens:
+                out.add(" ".join(tokens))
+    return frozenset(out)
+
+
 def build(args) -> int:
     tatar_refs: set[str] = set()
     for path in args.tatar_refs:
@@ -161,6 +184,11 @@ def build(args) -> int:
         seen.add(key)
     max_share = Fraction(args.max_ru_share)
 
+    token_cache: dict[str, str | None] = {}
+    excluded: set[str] = set()
+    for exclude_path in args.exclude_sentences or []:
+        excluded |= load_exclusion_set(exclude_path, token_cache)
+
     counters: Counter = Counter()
     stats: dict[str, object] = {
         "input": str(args.input),
@@ -169,6 +197,7 @@ def build(args) -> int:
         "documents_read": 0,
         "sentences_split": 0,
         "dropped_empty": 0,
+        "dropped_excluded": 0,
         "dropped_bleed": 0,
         "dropped_duplicate": 0,
         "kept": 0,
@@ -179,9 +208,11 @@ def build(args) -> int:
             "<= 1/1": 0,
         },
     }
+    if args.exclude_sentences:
+        stats["exclude_sentences_files"] = [str(p) for p in args.exclude_sentences]
+        stats["exclude_sentences_forms"] = len(excluded)
     digest = hashlib.sha256()
     written = 0
-    token_cache: dict[str, str | None] = {}
     class_cache: dict[str, str] = {}
     with args.output.open("w", encoding="utf-8", newline="\n") as out:
         for document in iter_documents(args.command, args.input, counters):
@@ -191,6 +222,9 @@ def build(args) -> int:
                 tokens = sentence_tokens(sentence, token_cache)
                 if not tokens:
                     stats["dropped_empty"] += 1
+                    continue
+                if " ".join(tokens) in excluded:
+                    stats["dropped_excluded"] += 1
                     continue
                 russian = 0
                 for token in tokens:
@@ -239,7 +273,7 @@ def build(args) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("ttwiki", "madlad", "hplt"):
+    for name in ("ttwiki", "madlad", "hplt", "glot500"):
         child = sub.add_parser(name, help=f"sentence-split the {name} source")
         child.add_argument("--input", type=Path, required=True)
         child.add_argument("--output", type=Path, required=True)
@@ -260,6 +294,11 @@ def main() -> int:
         child.add_argument(
             "--seen-out", type=Path, default=None,
             help="where to write the digest file for the next source",
+        )
+        child.add_argument(
+            "--exclude-sentences", type=Path, action="append", default=None,
+            help="sentence file whose normalized forms must not enter the output "
+            "(repeatable; the eval set and the shipped training corpora)",
         )
         child.set_defaults(func=build)
     args = parser.parse_args()
