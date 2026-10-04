@@ -1,0 +1,4 @@
+• Opening the app with the keyboard already set up goes straight to the settings
+• The fixed theme is now called "Classic"; picking a theme notes it applies the next time the keyboard opens
+• Privacy policy and license share one "Legal information" screen; the data-sources screen is removed
+• The Developer screen (fifth-row study) exists in debuggable builds only

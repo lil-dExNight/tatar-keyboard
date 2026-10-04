@@ -11,6 +11,18 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [3.9.1] — 2026-10-04
+
+### Changed
+
+- Opening the app on a phone where the keyboard is already set up goes straight to the settings.
+- The fixed-palette theme is named "Classic" (was "Tatar"), and picking a theme says the change lands the next time the keyboard opens.
+
+### Removed
+
+- The data-sources screen: the corpus attribution stays in `NOTICE.txt` next to the bundled dictionaries, and the privacy policy and license sit on one "Legal information" screen.
+- The Developer screen with the fifth-row study instruments no longer exists in release builds; the study runs on debuggable builds, which is where its log can be pulled anyway.
+
 ## [3.9.0] — 2026-10-04
 
 ### Added
