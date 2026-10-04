@@ -140,6 +140,20 @@ the case-blind expansion converts only 58% of stem hits, and correct after-word 
 hits to displacement. Rejected and recorded (archived in `docs/HISTORY.md`); a case-aware expansion is a
 different experiment, not a rerun.
 
+The case-aware follow-up ran and is also rejected (`research/corpus/sim_stem_case.py`, the
+stem tables counted on the current training mix): a successor stem expands to the successor
+form most often attested after the head's stem in the training pairs, not the cluster's
+global top form. The pair-conditioned form overrode the cluster top on 20.7% of kept stem
+pairs and lifted expansion fidelity from 71.9% to 76.6% of stem hits, but that converts to
+three extra expansion hits: +0.83 pp chain top-3 (paired CI95 [+0.51, +1.18]) against the
+same +1.5 pp bar, and the case-aware minus case-blind delta is +0.07 pp with the CI95
+containing zero. Chain top-1 (+0.60 pp [+0.35, +0.86]) and keystroke savings (+0.29 pp
+[+0.18, +0.41]) did not regress; the bar is the miss. The case-blind arm rerun on the same
+mix gained +0.76 pp [+0.44, +1.12] — the conv-heavier training mix lifts the whole family
+(the 58% fidelity of the first experiment is 71.9% on the current mix) but not past the bar.
+Stem backoff in both expansion variants stays rejected; reopening needs new data, not another
+rerun.
+
 **P2 — Wider typo classes (insertion/deletion/transposition) ranked by edit distance.**
 Measured and rejected under the pre-registered ranking (the two configurations and their
 numbers are archived in `docs/HISTORY.md`): with the wide classes below #4 the deletion class cannot
