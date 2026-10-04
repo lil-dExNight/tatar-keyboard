@@ -977,6 +977,125 @@ class GlideRecoveryCalibrationTest {
         )
     }
 
+    // ---- The pair-conditional variant of the bigram channel: the measurement surface. ----
+
+    /**
+     * One decoded context row, frozen: the channel's input (the plain decode's words and scores)
+     * plus the row's successors, so every configuration of the sweep reuses one decode.
+     */
+    private class ContextSnapshot(
+        val path: GeneratedPath,
+        val heldOut: Boolean,
+        val words: Array<String?>,
+        val scores: FloatArray,
+        val count: Int,
+        val successors: List<String>,
+    ) {
+        val word: String get() = path.rowWord
+    }
+
+    /** Decodes every context row once with the plain (channel-off) decoder. */
+    private fun contextSnapshots(): List<ContextSnapshot> {
+        val decoder = sharedDecoder()
+        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
+        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
+        val reusablePath = GlidePath(1024)
+        val result = ArrayList<ContextSnapshot>()
+        for (path in paths) {
+            if (path.rowContext.isEmpty()) continue
+            val count = decodePath(path, decoder, reusablePath)
+            val snapshotWords = arrayOfNulls<String>(count)
+            val snapshotScores = FloatArray(count)
+            for (slot in 0 until count) {
+                snapshotWords[slot] = decodeResult.words[slot]
+                snapshotScores[slot] = decodeResult.scores[slot]
+            }
+            val successors = try {
+                tatarBigrams!!.predict(
+                    ImmutableUtf8Prefix.copyOf(path.rowContext.toByteArray(Charsets.UTF_8)),
+                )
+            } catch (_: RuntimeException) {
+                emptyList()
+            }
+            result.add(
+                ContextSnapshot(path, isHeldOut(path.rowWord), snapshotWords, snapshotScores, count, successors),
+            )
+        }
+        return result
+    }
+
+    /** The bigram channel applied to a copy of the snapshot when [fire] holds. */
+    private fun applyChannel(
+        snap: ContextSnapshot,
+        fire: Boolean,
+        penalty: Float,
+        reused: GlideResult,
+        adjusted: FloatArray,
+    ) {
+        reused.reset()
+        for (slot in 0 until snap.count) {
+            reused.words[slot] = snap.words[slot]
+            reused.scores[slot] = snap.scores[slot]
+        }
+        reused.count = snap.count
+        if (fire) GlideBigramRerank.rerank(reused, snap.successors, penalty, adjusted)
+    }
+
+    /** Top-1 hit of [reused]'s current order against the snapshot's word. */
+    private fun top1Hit(reused: GlideResult, snap: ContextSnapshot): Boolean =
+        reused.count > 0 && reused.words[0] == snap.word
+
+    /**
+     * The tuning surface of the pair-conditional variant on the TRAIN context rows: top-1 per
+     * (mined set x firing rule x rank penalty) cell, with the firing rate. The FUTO diagnostic
+     * evaluates the selected cell (PAIR_SET_MUTUAL, PAIR_RANK_ONE_ONLY, PAIR_RANK_PENALTY), chosen
+     * from this surface by train top-1, ties broken toward the wider set, the wider firing rule
+     * and the weaker penalty. Diagnostic only — it prints, it does not assert.
+     */
+    @Test
+    fun tuningSurfacePairConditionalOnTheTrainSplit() {
+        val snapshots = contextSnapshots().filter { !it.heldOut }
+        val pairs = minedPairs()
+        val reused = GlideResult()
+        val adjusted = FloatArray(GlideDecoder.TOP_N)
+        var plain = 0
+        var blanket = 0
+        for (snap in snapshots) {
+            applyChannel(snap, false, 1f, reused, adjusted)
+            if (top1Hit(reused, snap)) plain++
+            applyChannel(snap, true, GlideDecoder.GlideConstants.TATAR.bigramRankPenalty, reused, adjusted)
+            if (top1Hit(reused, snap)) blanket++
+        }
+        println(
+            "Glide P7-13 train context rows n=${snapshots.size}: plain=${fmt(pct(plain, snapshots.size))}% " +
+                "blanket=${fmt(pct(blanket, snapshots.size))}%",
+        )
+        println("Glide P7-13 pair-conditional surface (train context rows, top-1 %, firing rate %):")
+        for (setName in listOf("union", "mutual")) {
+            val keys = if (setName == "union") pairs.union else pairs.mutual
+            for (rankOneOnly in listOf(false, true)) {
+                val row = StringBuilder("  set=$setName rankOneOnly=$rankOneOnly")
+                for (penalty in listOf(1.5f, 2f, 3f, 4f, 6f, 8f)) {
+                    var top1 = 0
+                    var fired = 0
+                    for (snap in snapshots) {
+                        val fire = GlideConfusionPairs.holdsMinedPair(keys, snap.words, snap.count, rankOneOnly)
+                        if (fire) fired++
+                        applyChannel(snap, fire, penalty, reused, adjusted)
+                        if (top1Hit(reused, snap)) top1++
+                    }
+                    row.append(
+                        "  p=%4.2f:%s/%s".format(
+                            java.util.Locale.ROOT, penalty,
+                            fmt(pct(top1, snapshots.size)), fmt(pct(fired, snapshots.size)),
+                        ),
+                    )
+                }
+                println(row.toString())
+            }
+        }
+    }
+
     /** Every second TRAIN row's index (the tuning grid must not pay full-set decodes). */
     private fun trainWordIndices(paths: List<GeneratedPath>): List<Int> {
         val result = ArrayList<Int>(paths.size / 4)
@@ -1278,6 +1397,13 @@ class GlideRecoveryCalibrationTest {
         private const val G1_TOP1_MIN = 35.0
         private const val G2_P95_MS = 2.0
 
+        // The pair-conditional variant's selected cell on the train surface (every cell tied, so
+        // the tie-break chose the wider set, the wider firing rule and the weaker penalty); the
+        // FUTO diagnostic's context slice evaluates the same arm.
+        internal const val PAIR_SET_MUTUAL = false
+        internal const val PAIR_RANK_ONE_ONLY = false
+        internal const val PAIR_RANK_PENALTY = 1.5f
+
         // The pre-G8 shared constant set (one set serving both languages): the G8 gate compares
         // the per-language constants against it on each language's held-out split.
         private val SHARED = GlideDecoder.GlideConstants(
@@ -1407,5 +1533,23 @@ class GlideRecoveryCalibrationTest {
         private fun locate(vararg paths: String): File =
             paths.map(::File).firstOrNull(File::isFile)
                 ?: error("cannot locate committed test resource")
+
+        // ---- Confusion-pair mining (the pair-conditional channel's offline half). ----
+
+        private var minedPairsCache: GlideConfusionPairs.Mined? = null
+
+        /** The mined sets, computed once per class run (the mining decodes the whole dictionary). */
+        private fun minedPairs(): GlideConfusionPairs.Mined {
+            minedPairsCache?.let { return it }
+            val mined = GlideConfusionPairs.mine(TdictGlideInventory(realIndex!!), geometry)
+            println(
+                "Glide P7-13 mining: union=${mined.union.size} mutual=${mined.mutual.size} pairs",
+            )
+            minedPairsCache = mined
+            return mined
+        }
+
+        private fun pct(count: Int, total: Int): Double =
+            if (total == 0) 0.0 else count * 100.0 / total
     }
 }
