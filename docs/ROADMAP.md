@@ -1,64 +1,84 @@
 # Roadmap
 
-The mandatory development plan after 3.9.1. Every item here must be done, or
-closed by an explicit decision recorded in this file, before new features are started. Work
-goes in the order of the sections. Delete an item when it is done, since the change itself is
-the record. Delete this file when it is empty and list it in `docs/HISTORY.md`.
+The mandatory development plan after 3.9.1. Every item here must be done, or closed by an
+explicit decision recorded in this file, before new features are started. Work goes in the
+order of the sections. Delete an item when it is done, since the change itself is the record.
+Delete this file when it is empty and list it in `docs/HISTORY.md`.
+
+When every section below is done or closed, there are no open debts: the release is published
+everywhere it is meant to be, the prediction program is finished, and the store submissions are
+unblocked.
 
 Parked and rejected ideas are in `docs/BACKLOG.md`.
 
 Tatar-first is the priority rule for every item below: Tatar quality and the Tatar layout
 lead; Russian and English ride the shared mechanisms.
 
-## 1. Publication
+## 1. Publication of 3.9.x
 
-The steps listed in `HANDOFF.md` ("Open release steps").
+Manual steps that close the current releases (details in `HANDOFF.md` → "Open release steps",
+procedure in `docs/PUBLISH-CHECKLIST.md`):
 
-## 2. The improvement program
+1. The **3.9.1 GitHub Release** through the web UI: tag `v3.9.1`, title `Tatar Keyboard 3.9.1`,
+   notes from `dist/release-notes-3.9.1.md`, attachments `dist/tatar-keyboard-3.9.1.apk` and
+   `dist/release-check-3.9.1.txt` (the verified files, never a rebuild).
+2. The **store uploads**: 3.9.0 with `metadata/{en-US,ru-RU,tt}/changelogs/46.txt` (if still
+   pending) and 3.9.1 with `changelogs/47.txt`.
+3. The **3.9.1 cold-start record**: the `cold` leg of `scripts/device-perf-ritual.sh` on the
+   reference device, recorded in the release record (pending hardware).
 
-The full program, its tiers and per-item gates live in `research/README.md`; the per-topic
-evidence is in the documents it indexes. The open follow-up:
+## 2. Prediction and glide quality (the improvement program remainder)
 
-1. **Prediction and glide quality, continued** — the follow-ups the measurements opened:
-   a conv-heavier bigram remix, composition admission for the Russian dictionary tail,
-   corpus.tatar frequency lists if the host ever answers. The wider-typo-classes question is
-   closed by two bracketing measured rejections (`docs/BACKLOG.md`).
-   (`research/prediction-engine.md`, `research/glide-typing.md`)
+The program, its tiers and the per-item gates live in `research/README.md`; every change here
+ships only through the pre-registered measurement bars (eval harness in `scripts/suggest_eval.py`
+and the JVM suites). Work goes in this order:
 
-The fifth-row order question is closed by operator decision: the alphabetical order
-`ә ө ү җ ң һ` is final, no A/B study is run (`BRIEF.md`).
-
-Decisions recorded for this program:
-
-- The glide context rerank (A6) is closed: the operator confirmed the threshold, the patch
-  measured below it, the code stays parked. The pair-conditional variant may still be tested
-  as part of the glide bigram channel work.
-- Voice input stays excluded entirely: no in-app recognition, and no delegation mic key
-  (operator decision; the full analysis is in `research/voice-input.md`).
-- Clipboard history stays excluded. In scope instead: text shortcuts and the in-memory
-  recent-clip cell (never written to disk). A persistent clipboard pane is declined.
-- Corpus licensing: all surveyed corpus and frequency-list sources may be used for now,
-  license posture notwithstanding; the review is deferred and deliberately out of this plan.
-  Personal-data scraping (social dumps) stays excluded — that is privacy, not licensing.
-- Distribution and community work is descoped from this plan.
+1. **Glot500 ingestion + conv-heavier bigram remix.** Glot500 `tat_Cyrl` (verified: ~4.7M
+   sentence-level rows, openly downloadable from HuggingFace) is the next source: per-word bonus
+   frequencies for the Tatar dictionary ranking with the Russian-bleed filter, and a
+   sentence stream for the bigram training with a heavier conversational weight. Fallback
+   sources if access breaks: CulturaX `tt` or the community OSCAR mirror (survey of
+   2026-10-04); TatarNLPWorld v3 only with category filtering. Register diversity for bigrams:
+   Common Voice `tt` validated sentences (CC0). Then re-measure the conv-heavier remix against
+   its ship bar (`docs/BACKLOG.md` records the first attempt's rejection).
+2. **Russian dictionary composition admission.** The rerank is saturated; admit new words to
+   the Russian dictionary tail through the accept queue (`scripts/dict_accept.py`), measured on
+   the held-out Russian eval set.
+3. **corpus.tatar permission letter.** Recover the unsent draft from commit `c7f6c50b` (its
+   archived path is listed in `docs/HISTORY.md`), update it, and hand it to the operator to
+   send to tatcorpus@gmail.com; ingest the frequency lists if permission arrives. Nothing has
+   ever been sent.
+4. **Optional, only after 1–2 land**: the pair-conditional glide rerank variant and the
+   case-aware stem expansion — both are registered follow-ups in `docs/BACKLOG.md` and keep
+   their pre-registered bars.
 
 ## 3. Device work
 
-Checks that need a person or hardware not at hand:
+Checks that need a person or hardware not at hand (procedure: `docs/DEVICE-TEST-PLAN.md`):
 
-- the device pass landed on the reference device (its results are in `HANDOFF.md`): the new
-  perf-ritual legs ran (suggest round trip in budget, battery clean, palette flip live,
-  font-scale labels pixel-identical), the instrumentation suites pass per class, and the
-  feature probes verified the strip features, the gestures, the editing menu, one-handed mode,
-  the dynamic theme, the lab arm switch and the SAF backup round trip — four real bugs were
-  found and fixed by the pass. Still open on hardware: inline autofill against a real autofill
-  service (none on a stock device), the release-build perf legs (the release APK cannot
-  install next to the signed one), the revert cell under TalkBack, and the reduced-motion and
-  haptic feel checks;
-- live Direct Boot (needs a screen-lock PIN and a reboot: type the PIN with this keyboard
-  before the first unlock);
-- Telegram (typing, suggestions, autocorrect undo, glide spacing, emoji panel; the app is not
-  on the test device);
-- TalkBack by ear (the spoken key descriptions, language announcement and digit popups; their
-  text is verified, the speech is not);
+- inline autofill against a real autofill service (install one, e.g. Bitwarden, on a test
+  device; a stock device has none);
+- the release-build perf legs and the 3.9.1 cold-start record (item 1.3);
+- the revert cell under TalkBack, the reduced-motion and haptic feel checks;
+- live Direct Boot (type the screen-lock PIN with this keyboard before the first unlock);
+- Telegram (typing, suggestions, autocorrect undo, glide spacing, emoji panel);
+- TalkBack by ear (the spoken key descriptions, language announcement and digit popups);
 - tablet layout on tablet hardware (verified on an emulator tablet profile only).
+
+## 4. Store readiness (RuStore, Google Play)
+
+Blocked until sections 1–3 are done; the operator drives these:
+
+- **Corpus-license review.** Use of all surveyed sources was accepted for now with the review
+  explicitly deferred (`research/prediction-engine.md`); the review must happen before any
+  store publication. Any new source from section 2 joins the review.
+- **Store listings.** `metadata/{en-US,ru-RU,tt}/` review and a screenshot refresh if the
+  settings screens changed since the shots.
+- **Submissions.** RuStore; Google Play closed testing (12 testers for 14 days) per `BRIEF.md`.
+
+## Closed since the last plan
+
+- The fifth-row key order: fixed as alphabetical `ә ө ү җ ң һ` by operator decision, no A/B
+  study; the lab instrument is removed (`BRIEF.md`).
+- The settings/onboarding UX batch (3.9.1): direct-to-settings launch, the Classic theme name,
+  the merged legal screen, the data-sources screen removed.
