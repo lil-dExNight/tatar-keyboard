@@ -280,6 +280,36 @@ at penalty 1.5, +0.66 pp at 3.0 (the shipped value; 4.0 is flat). Held-out gate:
 thin). Non-context rows never see the channel, so the plain calibration numbers are untouched.
 The blanket channel passed, so the pair-conditional variant was not built.
 
+#### Pair-conditional channel (the A6 follow-up): the pre-registered gate
+
+The variant the blanket channel's landing left open: the channel fires on a context row only
+when the decode's top-8 contains a mined confusion pair. A confusion pair is an unordered pair
+of distinct dictionary words {a, b} with b in the top-8 of a's ideal-path decode or vice versa,
+mined from the decoder's own ideal paths over the whole bundled dictionary (normative-speed
+paths; a word with a doubled letter contributes its looped path as well as the plain one) — the
+FUTO swipe-negatives idea at zero data dependency. The firing-condition variant (any mined pair
+inside the top-8, or one involving the rank-1 candidate) and the conditional rank penalty are
+chosen by top-1 on the TRAIN context rows; the held-out split is then measured once.
+
+The gate is the A6 family, every clause on the held-out rows of the calibration set:
+
+1. context-row top-1, pair-conditional vs the plain decode (channel off): gain >= +1.0 pp
+   absolute — the bar the blanket rerank failed;
+2. context-row top-1, pair-conditional >= the shipped blanket channel (the variant must not
+   lose to what ships);
+3. context rows whose top-8 holds no mined pair decode identically to the plain decode (zero
+   differing rows); non-context rows never see the channel by construction;
+4. context-row top-3, pair-conditional >= the plain decode.
+
+Budget clauses: the rerank path keeps the suite's host p95 <= 2 ms and zero-post-warmup-
+allocation gates (the pair probe is a precomputed hash set, probed allocation-free per decode).
+The FUTO real-gesture slice, when the local corpus file is present, is a diagnostic, never a
+gate: the channel's oracle there is the file's own prompt-sentence pair statistics, and the
+printout compares plain, blanket and pair-conditional top-1.
+
+Verdict rule: land only if every clause passes; otherwise record the numbers, revert the engine
+change and keep the measurement tooling.
+
 **G6 — Endpoint pruning n=2→3.** Measured on real gestures (ASK study): +3 pp sensitivity,
 some p95 headroom spent. Cheap to A/B in the harness with an endpoint-noise gesture class;
 invisible on today's synthetic set (the generator always starts on the true key — fix that
