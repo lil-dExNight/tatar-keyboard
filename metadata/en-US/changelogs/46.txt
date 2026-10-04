@@ -1,0 +1,5 @@
+• Text shortcuts: an abbreviation you type expands to your saved phrase
+• One-handed mode (left/right), a Dynamic Material You theme on Android 12+, backup & export of your learned data
+• Editing menu on enter long-press; swipe left from delete drops a word; shift cycles a word's case
+• Tatar suggestions rank on wider text evidence; glide works with suggestions off, undo offers alternates
+• WCAG contrast, reduced-motion support, calmer memory use
