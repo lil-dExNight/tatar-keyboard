@@ -32,13 +32,9 @@ and the JVM suites). Work goes in this order:
 1. **corpus.tatar permission letter.** The letter is prepared and awaits the operator's send to
    tatcorpus@gmail.com (`dist/corpus-tatar-letter.md`; drafted from the unsent draft archived in
    commit `c7f6c50b`). Ingest the frequency lists if permission arrives.
-2. **Optional follow-ups**: the pair-conditional glide rerank variant and the case-aware stem
-   expansion keep their pre-registered bars; a bigger conversational stream (Common Voice `tt`,
-   CC0) is the natural next bigram arm now that the conv-upweight landed; the earlier rejections
-   are archived in `docs/HISTORY.md`.
-   case-aware stem expansion — both keep their pre-registered bars; the earlier rejections
-   are archived in `docs/HISTORY.md`. A Common Voice `tt` (CC0) register-diversity remix is
-   another optional arm, against the same ship bar.
+2. **Optional follow-ups**: the pair-conditional glide rerank variant keeps its pre-registered
+   bar, and a Common Voice `tt` (CC0) register-diversity remix is another optional bigram arm
+   against the same ship bar; the earlier rejections are archived in `docs/HISTORY.md`.
 
 ## 3. Device work
 
@@ -77,3 +73,6 @@ Blocked until sections 1–3 are done; the operator drives these:
   top-3 +1.31 pp — landed, the table is rebuilt and re-pinned. The Glot500 arms passed the ship
   bar but were dominated by the conv-only arm and are not landed; the Glot500 dictionary bonus
   frequencies are rejected (verdicts in `research/prediction-engine.md`).
+- The case-aware stem expansion: measured and rejected — +0.83 pp chain top-3 (paired CI95
+  [+0.51, +1.18]) against the +1.5 pp bar (the register entry is in
+  `research/prediction-engine.md`, the tooling in `research/corpus/sim_stem_case.py`).
