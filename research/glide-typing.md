@@ -278,37 +278,47 @@ merged next-word list), with the context word carried on the glide token. Train 
 at penalty 1.5, +0.66 pp at 3.0 (the shipped value; 4.0 is flat). Held-out gate: 86.04 % vs
 85.71 % without the channel (strictly greater — one row on n=308 — pass as pre-registered, and
 thin). Non-context rows never see the channel, so the plain calibration numbers are untouched.
-The blanket channel passed, so the pair-conditional variant was not built.
+The blanket channel passed, so the pair-conditional variant was not built. It was later built
+and measured — the evidence follows.
 
-#### Pair-conditional channel (the A6 follow-up): the pre-registered gate
+#### Pair-conditional channel evidence (the A6 follow-up, measured rejection)
 
-The variant the blanket channel's landing left open: the channel fires on a context row only
-when the decode's top-8 contains a mined confusion pair. A confusion pair is an unordered pair
-of distinct dictionary words {a, b} with b in the top-8 of a's ideal-path decode or vice versa,
-mined from the decoder's own ideal paths over the whole bundled dictionary (normative-speed
-paths; a word with a doubled letter contributes its looped path as well as the plain one) — the
-FUTO swipe-negatives idea at zero data dependency. The firing-condition variant (any mined pair
-inside the top-8, or one involving the rank-1 candidate) and the conditional rank penalty are
-chosen by top-1 on the TRAIN context rows; the held-out split is then measured once.
+The pre-registered gate (the A6 family, written down before the measurement): the channel fires
+on a context row only when the decode's top-8 contains a mined confusion pair — an unordered
+pair {a, b} with b in the top-8 of a's ideal-path decode or vice versa, mined from the decoder's
+own ideal paths over the whole bundled dictionary — and on the held-out context rows it must
+gain >= +1.0 pp of top-1 over the plain decode, must not lose to the shipped blanket channel,
+must leave non-pair rows identical to the plain decode and must not drop top-3; the p95 and
+allocation budgets hold. The firing rule and penalty were chosen on the train split.
 
-The gate is the A6 family, every clause on the held-out rows of the calibration set:
+The condition is no filter. Mining yields 579,121 union pairs (207,958 mutual) over 110,000
+indexed words — about ten partners per word in the union set — so an 8-candidate N-best almost
+always contains a mined pair: the firing rate is 92–99 % on every train cell and 312 of 313
+held-out rows. The whole train surface ties:
+every (set x firing rule x penalty) cell gives the blanket's train top-1 exactly (the channel is
+penalty-flat 1.5–8), so the tie-break selected union, any pair in the top-8, penalty 1.5.
+Held-out (n=313): plain 86.58 %, blanket 86.90 %, pair-conditional 86.90 % — the gain over plain
+is +0.32 pp with the paired bootstrap 95 % CI [0.00, +0.96], below the +1.0 pp bar; the
+difference against the blanket is 0.00 pp, CI [0.00, 0.00]. The side clauses held (non-pair rows
+identical, top-3 flat at 92.33 %, rerank path p95 1.04 ms against the 2 ms budget). The
+channel's entire held-out effect is one row either way (flips: one gained, none lost).
 
-1. context-row top-1, pair-conditional vs the plain decode (channel off): gain >= +1.0 pp
-   absolute — the bar the blanket rerank failed;
-2. context-row top-1, pair-conditional >= the shipped blanket channel (the variant must not
-   lose to what ships);
-3. context rows whose top-8 holds no mined pair decode identically to the plain decode (zero
-   differing rows); non-context rows never see the channel by construction;
-4. context-row top-3, pair-conditional >= the plain decode.
+The FUTO real-gesture slice (diagnostic, never a gate; the oracle is the file's own
+prompt-sentence pairs with the record's own pair decremented out — a matched-domain ceiling, not
+a deployable estimate): 38,822 records with an in-prompt context give plain 82.22 %, blanket
+86.97 % (+4.74 pp, CI [+4.47, +5.01]), the blanket at the conditional penalty 85.73 % (+3.50)
+and the pair-conditional 85.73 % (+3.50, CI [+3.23, +3.77]) — pair vs the blanket at equal
+penalty: CI [0.00, 0.00] on 38,822 real gestures; fired 98.61 %.
 
-Budget clauses: the rerank path keeps the suite's host p95 <= 2 ms and zero-post-warmup-
-allocation gates (the pair probe is a precomputed hash set, probed allocation-free per decode).
-The FUTO real-gesture slice, when the local corpus file is present, is a diagnostic, never a
-gate: the channel's oracle there is the file's own prompt-sentence pair statistics, and the
-printout compares plain, blanket and pair-conditional top-1.
-
-Verdict rule: land only if every clause passes; otherwise record the numbers, revert the engine
-change and keep the measurement tooling.
+Verdict: **rejected**. No engine change was made (the harness drives the production
+`GlideBigramRerank` directly); the measurement tooling stays: `GlideConfusionPairs` (mining,
+probes, the paired bootstrap), the train-split tuning surface and the FUTO context slice. Two
+findings outlive the variant: (a) conditioning on ideal-path confusion pairs cannot select —
+the pair graph is too dense at this lexicon size; (b) the blanket channel's ceiling with a
+matched-domain language model is about +5 pp of real-gesture top-1, against +0.3 pp on the
+synthetic Tatar context rows — the shipped channel's thin synthetic gain is the bundled table's
+domain mismatch, not the mechanism's, which is what G13's real tt/ru collection and any future
+bigram improvement would unlock.
 
 **G6 — Endpoint pruning n=2→3.** Measured on real gestures (ASK study): +3 pp sensitivity,
 some p95 headroom spent. Cheap to A/B in the harness with an endpoint-noise gesture class;

@@ -32,13 +32,9 @@ and the JVM suites). Work goes in this order:
 1. **corpus.tatar permission letter.** The letter is prepared and awaits the operator's send to
    tatcorpus@gmail.com (`dist/corpus-tatar-letter.md`; drafted from the unsent draft archived in
    commit `c7f6c50b`). Ingest the frequency lists if permission arrives.
-2. **Optional follow-ups**: the pair-conditional glide rerank variant and the case-aware stem
-   expansion keep their pre-registered bars; a bigger conversational stream (Common Voice `tt`,
-   CC0) is the natural next bigram arm now that the conv-upweight landed; the earlier rejections
-   are archived in `docs/HISTORY.md`.
-   case-aware stem expansion — both keep their pre-registered bars; the earlier rejections
-   are archived in `docs/HISTORY.md`. A Common Voice `tt` (CC0) register-diversity remix is
-   another optional arm, against the same ship bar.
+2. **Optional follow-ups**: the case-aware stem expansion keeps its pre-registered bar; a bigger
+   conversational stream (Common Voice `tt`, CC0) is the natural next bigram arm now that the
+   conv-upweight landed; the earlier rejections are archived in `docs/HISTORY.md`.
 
 ## 3. Device work
 
@@ -65,6 +61,11 @@ Blocked until sections 1–3 are done; the operator drives these:
 
 ## Closed since the last plan
 
+- The pair-conditional glide rerank (the A6 follow-up): measured and rejected — the mined-pair
+  firing rule is a no-op (it fires on almost every context row and moves zero rows against the
+  blanket channel at equal penalty, on the calibration set and on the real-gesture slice), and
+  the held-out gain stays at the blanket's one row against the +1.0 pp bar. The record, with the
+  matched-domain ceiling finding for the bigram channel, is in `research/glide-typing.md`.
 - The fifth-row key order: fixed as alphabetical `ә ө ү җ ң һ` by operator decision, no A/B
   study; the lab instrument is removed (`BRIEF.md`).
 - The settings/onboarding UX batch (3.9.1): direct-to-settings launch, the Classic theme name,
