@@ -29,12 +29,23 @@ see "Reproducing a published APK" in `docs/PUBLISH-CHECKLIST.md`.
 
 ## State of `main`
 
-`main` carries the 3.9.1 release plus one unreleased change: the fifth-row question is closed
-by operator decision (the alphabetical order `ә ө ү җ ң һ` is final, `BRIEF.md`) and the study
-instrument is removed — the Developer screen, the arm picker, the session log and the arm-B/C
-layout files are gone; the protocol text is listed in `docs/HISTORY.md`. The `improvement`
-branch is merged and closed out: its measurement foundation, quick-wins sprint, prediction/glide
-round and features sprint shipped as 3.9.0 (see `CHANGELOG.md`).
+`main` carries the 3.9.1 release plus unreleased work (the next release):
+
+- the fifth-row question is closed by operator decision (the alphabetical order `ә ө ү җ ң һ` is
+  final, `BRIEF.md`) and the study instrument is removed — the Developer screen, the arm picker,
+  the session log and the arm-B/C layout files are gone; the protocol text is listed in
+  `docs/HISTORY.md`;
+- the Tatar bigram table is retrained conv-heavier (the conversational stream counts tenfold):
+  chain top-3 +1.31 pp on the held-out set; the table is rebuilt and re-pinned, so an update
+  re-inflates it on first use; the Russian dictionary admission and the Glot500 dictionary
+  bonus were measured and rejected, the case-aware stem expansion and the pair-conditional
+  glide rerank likewise (verdicts in `research/prediction-engine.md` and
+  `research/glide-typing.md`);
+- inline autofill actually renders now: the style handshake in `InlineAutofillBinder` — found
+  and verified on the reference device with a probe autofill service.
+
+The `improvement` branch is merged and closed out: its measurement foundation, quick-wins
+sprint, prediction/glide round and features sprint shipped as 3.9.0 (see `CHANGELOG.md`).
 
 Code-level notes on what 3.9.1 changed:
 
