@@ -43,8 +43,6 @@
     <string name="setup_step2_button">Select keyboard</string>
 
     <string name="setup_done_title">Done!</string>
-    <!-- Title of the same block when the app opens onto a completed setup. -->
-    <string name="setup_status_title">Keyboard is active</string>
     <string name="setup_done_hint">Glide typing works too: slide across the letters without lifting your finger</string>
     <!-- Hint doubles as the TalkBack label of the try-it field. The word is
          Tatar on purpose in every locale — it is the product's point. -->

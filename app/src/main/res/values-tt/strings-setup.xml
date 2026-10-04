@@ -28,7 +28,6 @@
     <string name="setup_step2_button">Төймәсарны сайлау</string>
 
     <string name="setup_done_title">Әзер!</string>
-    <string name="setup_status_title">Төймәсар актив</string>
     <string name="setup_done_hint">Суйрып язу да эшли: бармагыгызны күтәрмәстән хәрефләр буйлап суйрыгыз</string>
     <string name="setup_test_field_hint">Сынап карагыз: „сәләм“ сүзен суйрыгыз</string>
     <string name="setup_done_button">Көйләүләрне ачу</string>

@@ -62,6 +62,16 @@ class SetupStateTest {
         assertFalse(SetupState.isSetupComplete(enabled = false, current = false))
     }
 
+    @Test
+    fun completedSetupForwardsToSettingsOnlyForAFreshInstance() {
+        assertTrue(SetupState.shouldForwardToSettings(
+                setupComplete = true, setupIncompleteSeen = false))
+        assertFalse(SetupState.shouldForwardToSettings(
+                setupComplete = true, setupIncompleteSeen = true))
+        assertFalse(SetupState.shouldForwardToSettings(
+                setupComplete = false, setupIncompleteSeen = false))
+    }
+
     private companion object {
         const val RELEASE_PACKAGE = "org.tatarkeyboard.ime"
     }

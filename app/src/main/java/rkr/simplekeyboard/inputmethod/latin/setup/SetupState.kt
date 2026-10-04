@@ -37,4 +37,12 @@ object SetupState {
 
     /** Setup is complete only when the IME is both enabled and selected. */
     fun isSetupComplete(enabled: Boolean, current: Boolean): Boolean = enabled && current
+
+    /**
+     * A launch onto a completed setup forwards straight to the settings: the
+     * wizard's done block belongs to the session that finished the steps, a
+     * later launcher tap wants the settings.
+     */
+    fun shouldForwardToSettings(setupComplete: Boolean, setupIncompleteSeen: Boolean): Boolean =
+            setupComplete && !setupIncompleteSeen
 }

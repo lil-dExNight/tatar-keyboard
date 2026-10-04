@@ -28,7 +28,6 @@
     <string name="setup_step2_button">Выбрать клавиатуру</string>
 
     <string name="setup_done_title">Готово!</string>
-    <string name="setup_status_title">Клавиатура активна</string>
     <string name="setup_done_hint">Работает и набор свайпом: ведите по буквам, не отрывая палец</string>
     <string name="setup_test_field_hint">Попробуйте: проведите по буквам „сәләм“</string>
     <string name="setup_done_button">Открыть настройки</string>

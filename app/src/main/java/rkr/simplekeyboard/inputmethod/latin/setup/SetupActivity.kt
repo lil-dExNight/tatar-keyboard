@@ -41,8 +41,9 @@ import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
  * SetupWizardActivity pattern in a minimal single-Activity form: step 1
  * enables the IME via the system input-method settings screen, step 2
  * selects it as the current keyboard via the system input-method picker.
- * With setup complete, the same screen collapses into a status variant:
- * step cards hidden, try-it field and settings link shown.
+ * A launch onto a completed setup forwards straight to the settings and
+ * finishes; the done block with the try-it field belongs to the instance
+ * that watched the steps get finished.
  *
  * Both step states are read live from the system on every appearance
  * (enabled input-method list and Settings.Secure.DEFAULT_INPUT_METHOD) —
@@ -73,8 +74,8 @@ class SetupActivity : Activity() {
     private var enableWatchTicks = 0
 
     // True once this instance has rendered an incomplete wizard: completing
-    // the steps in place then keeps the celebratory done title, while an
-    // instance that opens on a completed setup shows the neutral status one.
+    // the steps in place then keeps this instance on the done block, while a
+    // fresh launch onto a completed setup forwards to the settings instead.
     private var sawIncompleteSetup = false
 
     /**
@@ -111,6 +112,17 @@ class SetupActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A launcher tap onto a completed setup wants the settings, not the
+        // wizard; forward before any view exists so nothing flashes. Explicit
+        // `am start -n` launches (the device scripts type into the try-it
+        // field) carry no launcher category and keep the full screen.
+        if (intent.hasCategory(Intent.CATEGORY_LAUNCHER)
+                && SetupState.shouldForwardToSettings(
+                SetupState.isSetupComplete(isImeEnabled(), isImeEnabled() && isImeCurrent()),
+                setupIncompleteSeen = false)) {
+            openSettingsAndFinish()
+            return
+        }
         setContentView(R.layout.setup_activity)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -146,9 +158,14 @@ class SetupActivity : Activity() {
                     .showInputMethodPicker()
         }
         findViewById<Button>(R.id.setup_done_button).setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-            finish()
+            openSettingsAndFinish()
         }
+    }
+
+    /** The done button and the completed-setup forward share this: settings on top, no return here. */
+    private fun openSettingsAndFinish() {
+        startActivity(Intent(this, SettingsActivity::class.java))
+        finish()
     }
 
     override fun onResume() {
@@ -208,16 +225,23 @@ class SetupActivity : Activity() {
     }
 
     /**
-     * Idempotent render of the four states: nothing done, step 1 done (step 2
-     * becomes active), both done in this instance (done block celebrates),
-     * and the status variant for a launch onto a completed setup (step cards
-     * and subtitle hidden, neutral title, try-it field and settings link).
+     * Idempotent render of the three states: nothing done, step 1 done (step 2
+     * becomes active), and both done in this instance (step cards and subtitle
+     * hidden, done block with the try-it field shown). A completed setup this
+     * instance did not watch finish forwards to the settings instead — the same
+     * gate as in onCreate, kept for state flips between create and resume.
      */
     private fun updateStepStates() {
         val enabled = isImeEnabled()
         val current = enabled && isImeCurrent()
         val setupComplete = SetupState.isSetupComplete(enabled, current)
         if (!setupComplete) sawIncompleteSetup = true
+        if (intent.hasCategory(Intent.CATEGORY_LAUNCHER)
+                && SetupState.shouldForwardToSettings(setupComplete, sawIncompleteSetup)
+                && !isFinishing) {
+            openSettingsAndFinish()
+            return
+        }
 
         // The visual marks ("1"/"2"/"✓") mean nothing to TalkBack — each
         // status mark carries a spoken done/pending description instead.
@@ -247,18 +271,15 @@ class SetupActivity : Activity() {
         findViewById<Button>(R.id.setup_step2_button).isEnabled = enabled && !current
         findViewById<View>(R.id.setup_step2_card).alpha = if (enabled) 1f else 0.4f
 
-        // A fully set-up keyboard needs no wizard: collapse the steps into
-        // the status variant. The done-block title stays celebratory when the
-        // steps were completed in front of this instance, neutral otherwise.
+        // A fully set-up keyboard needs no wizard: collapse the steps. The
+        // done-block title stays the layout's celebratory default; this point
+        // is reached only by an instance that watched the steps complete.
         findViewById<View>(R.id.setup_step1_card).visibility =
                 if (setupComplete) View.GONE else View.VISIBLE
         findViewById<View>(R.id.setup_step2_card).visibility =
                 if (setupComplete) View.GONE else View.VISIBLE
         findViewById<View>(R.id.setup_subtitle).visibility =
                 if (setupComplete) View.GONE else View.VISIBLE
-        setTextIfChanged(findViewById(R.id.setup_done_title),
-                getString(if (sawIncompleteSetup) R.string.setup_done_title
-                          else R.string.setup_status_title))
 
         findViewById<View>(R.id.setup_done_block).visibility =
                 if (current) View.VISIBLE else View.GONE
