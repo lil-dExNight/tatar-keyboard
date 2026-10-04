@@ -194,6 +194,13 @@ These are manual and have not been confirmed as done:
     from `dist/release-notes-3.8.0.md`; attach `dist/tatar-keyboard-3.8.0.apk` and
     `dist/release-check-3.8.0.txt` from the packing machine, not a rebuild;
   - the **store upload** with `metadata/{en-US,ru-RU,tt}/changelogs/45.txt`.
+- **3.9.0** (the improvement branch, all release steps up to the tag are done — gates, signed
+  APK, cold-start record; the notes with the release record are in `dist/release-notes-3.9.0.md`):
+  - merge `improvement` into `main`, then the tag `v3.9.0` (`docs/PUBLISH-CHECKLIST.md`, step 5);
+  - the **GitHub Release**: tag `v3.9.0`, title `Tatar Keyboard 3.9.0`, notes from
+    `dist/release-notes-3.9.0.md`; attach `dist/tatar-keyboard-3.9.0.apk` and
+    `dist/release-check-3.9.0.txt`;
+  - the **store upload** with `metadata/{en-US,ru-RU,tt}/changelogs/46.txt`.
 
 ## Known risks and open items
 
