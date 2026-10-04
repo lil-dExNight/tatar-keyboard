@@ -38,13 +38,10 @@ and the JVM suites). Work goes in this order:
    Common Voice `tt` validated sentences (CC0). Then re-measure the conv-heavier remix against
    its ship bar (the first attempt was measured and rejected; the archived register is
    in `docs/HISTORY.md`).
-2. **Russian dictionary composition admission.** The rerank is saturated; admit new words to
-   the Russian dictionary tail through the accept queue (`scripts/dict_accept.py`), measured on
-   the held-out Russian eval set.
-3. **corpus.tatar permission letter.** The letter is prepared and awaits the operator's send to
+2. **corpus.tatar permission letter.** The letter is prepared and awaits the operator's send to
    tatcorpus@gmail.com (`dist/corpus-tatar-letter.md`; drafted from the unsent draft archived in
    commit `c7f6c50b`). Ingest the frequency lists if permission arrives.
-4. **Optional, only after 1–2 land**: the pair-conditional glide rerank variant and the
+3. **Optional, only after 1 lands**: the pair-conditional glide rerank variant and the
    case-aware stem expansion — both keep their pre-registered bars; the earlier rejections
    are archived in `docs/HISTORY.md`.
 
@@ -77,3 +74,7 @@ Blocked until sections 1–3 are done; the operator drives these:
   study; the lab instrument is removed (`BRIEF.md`).
 - The settings/onboarding UX batch (3.9.1): direct-to-settings launch, the Classic theme name,
   the merged legal screen, the data-sources screen removed.
+- Russian dictionary composition admission: measured and rejected — +0.22 pp held-out coverage
+  against the +0.5 pp bar, and the format byte budgets bind before the candidate pool runs out
+  (the register entry is in `research/prediction-engine.md`, the tooling in
+  `research/corpus/ru_tail_admission.py`).
