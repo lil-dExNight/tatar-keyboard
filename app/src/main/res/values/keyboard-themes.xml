@@ -24,7 +24,7 @@
          (see KeyboardTheme.getKeyboardTheme). The dynamic entry renders the default palette
          wherever the framework system colors are unavailable. -->
     <string-array name="keyboard_theme_names" translatable="false">
-        <item>@string/keyboard_theme_tatar</item>
+        <item>@string/keyboard_theme_classic</item>
         <item>@string/keyboard_theme_dynamic</item>
     </string-array>
 

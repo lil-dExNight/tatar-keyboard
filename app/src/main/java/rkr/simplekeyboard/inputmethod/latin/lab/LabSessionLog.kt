@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.lab
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.os.UserManager
 import java.io.File
 import java.util.concurrent.ExecutorService
@@ -34,7 +35,7 @@ import rkr.simplekeyboard.inputmethod.latin.settings.Settings
  * is still encrypted, or from password fields.
  *
  * The key-down path only enqueues; file work runs on one background thread. The owner pulls the
- * file off the device with adb on a debuggable build.
+ * file off the device with adb; the switch and the log itself exist only on debuggable builds.
  */
 object LabSessionLog {
     private val lock = Any()
@@ -67,7 +68,12 @@ object LabSessionLog {
 
     @JvmStatic
     fun syncWith(prefs: SharedPreferences) {
-        enabled = Settings.readLabSessionLogEnabled(prefs)
+        // The switch lives on the debug-only developer screen; a pref arriving any other way
+        // (a restored backup) must not arm the log on a release build.
+        val debuggable = appContext?.let {
+            it.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        } ?: false
+        enabled = debuggable && Settings.readLabSessionLogEnabled(prefs)
         arm = Settings.readFifthRowArm(prefs)
     }
 

@@ -22,6 +22,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -81,8 +82,7 @@ class SettingsHostActivity : Activity() {
         // Title is the language display name, set dynamically in showScreen.
         LANGUAGE_DETAIL(0),
         PERSONAL_DICTIONARY(R.string.personal_dictionary),
-        DATA_SOURCES(R.string.settings_screen_data_sources),
-        // New entries go last on purpose: older saved states carry ordinals of the entries above.
+        LEGAL(R.string.settings_screen_legal),
         TEXT_SHORTCUTS(R.string.text_shortcuts_screen),
         DEVELOPER(R.string.settings_screen_developer),
         BACKUP(R.string.settings_screen_backup)
@@ -208,13 +208,16 @@ class SettingsHostActivity : Activity() {
         titleView = findViewById(R.id.settings_title)
         findViewById<ImageButton>(R.id.settings_back).setOnClickListener { onBackPressed() }
 
-        val screens = Screen.values()
-        savedInstanceState?.getIntArray(STATE_BACK_STACK)?.forEach { ordinal ->
-            if (ordinal in screens.indices) backStack.addLast(screens[ordinal])
+        // Screens persist by name, not ordinal: an enum edit must not misrestore a saved stack.
+        // Values written by an older version (ordinals, or a since-removed screen) read as null
+        // and fall back to the root screen.
+        val screensByName = Screen.values().associateBy { it.name }
+        savedInstanceState?.getStringArray(STATE_BACK_STACK)?.forEach { name ->
+            screensByName[name]?.let { backStack.addLast(it) }
         }
         detailLocale = savedInstanceState?.getString(STATE_DETAIL_LOCALE)
-        val initial = savedInstanceState?.getInt(STATE_SCREEN, 0) ?: 0
-        currentScreen = screens[initial.coerceIn(screens.indices)]
+        currentScreen = savedInstanceState?.getString(STATE_SCREEN)?.let { screensByName[it] }
+                ?: Screen.ROOT
         // The content itself is built in onStart, which follows right after.
     }
 
@@ -240,8 +243,8 @@ class SettingsHostActivity : Activity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putInt(STATE_SCREEN, currentScreen.ordinal)
-        outState.putIntArray(STATE_BACK_STACK, backStack.map { it.ordinal }.toIntArray())
+        outState.putString(STATE_SCREEN, currentScreen.name)
+        outState.putStringArray(STATE_BACK_STACK, backStack.map { it.name }.toTypedArray())
         outState.putString(STATE_DETAIL_LOCALE, detailLocale)
     }
 
@@ -288,7 +291,7 @@ class SettingsHostActivity : Activity() {
             Screen.LANGUAGE_DETAIL -> buildLanguageDetailScreen(detail!!)
             Screen.PERSONAL_DICTIONARY -> buildPersonalDictionaryScreen()
             Screen.TEXT_SHORTCUTS -> buildTextShortcutsScreen()
-            Screen.DATA_SOURCES -> buildDataSourcesScreen()
+            Screen.LEGAL -> buildLegalScreen()
             Screen.DEVELOPER -> buildDeveloperScreen()
             Screen.BACKUP -> buildBackupScreen()
         }
@@ -338,21 +341,30 @@ class SettingsHostActivity : Activity() {
         addCard(listOf(
             linkRow(R.string.keyboard_languages, R.string.keyboard_languages_summary,
                     Settings.PREF_ENABLED_SUBTYPES) { navigateTo(Screen.LANGUAGES) }))
-        addCard(listOf(
+        val screenRows = mutableListOf(
             linkRow(R.string.settings_screen_preferences) { navigateTo(Screen.PREFERENCES) }
                     .apply { id = R.id.row_link_preferences },
             linkRow(R.string.settings_screen_key_press) { navigateTo(Screen.KEY_PRESS) },
-            linkRow(R.string.settings_screen_appearance) { navigateTo(Screen.APPEARANCE) },
-            linkRow(R.string.settings_screen_developer) { navigateTo(Screen.DEVELOPER) }))
+            linkRow(R.string.settings_screen_appearance) { navigateTo(Screen.APPEARANCE) })
+        // The lab instruments exist only where their log can be pulled: run-as needs a
+        // debuggable build, so a release build never shows the row (the arm and the log
+        // themselves are gated on the same flag where they apply).
+        if (isDebuggableBuild()) {
+            screenRows.add(linkRow(R.string.settings_screen_developer) {
+                navigateTo(Screen.DEVELOPER)
+            })
+        }
+        addCard(screenRows)
         addCard(listOf(
             linkRow(R.string.settings_screen_backup, R.string.settings_screen_backup_summary) {
                 navigateTo(Screen.BACKUP)
             }))
         addCard(listOf(
-            linkRow(R.string.privacy_policy) { openUrl(getString(R.string.privacy_policy_url)) },
-            linkRow(R.string.license) { openUrl(getString(R.string.license_url)) },
-            linkRow(R.string.settings_screen_data_sources) { navigateTo(Screen.DATA_SOURCES) }))
+            linkRow(R.string.settings_screen_legal) { navigateTo(Screen.LEGAL) }))
     }
+
+    private fun isDebuggableBuild(): Boolean =
+            applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
 
     /**
      * The "Backup and export" screen: one explanation row and the two actions. The explanation
@@ -449,36 +461,18 @@ class SettingsHostActivity : Activity() {
         return created
     }
 
-    /**
-     * "Data sources": one row per collection the word lists come from, as their terms require.
-     * Leipzig and Tatoeba are CC BY (attribution); OpenSubtitles asks for a link back to
-     * opensubtitles.org ([R.string.data_sources_opensubtitles_url]). `NOTICE.txt` next to the
-     * assets carries the same names in full. All three collections are in the shipped
-     * dictionaries and bigram tables, so they share one "In this version" section.
-     */
-    private fun buildDataSourcesScreen() {
-        addCard(listOf(textRow(getString(R.string.data_sources_intro))))
-
-        addSectionHeader(getString(R.string.data_sources_in_app))
+    /** "Legal information": the app's public documents, opened in the browser. */
+    private fun buildLegalScreen() {
         addCard(listOf(
-            linkRow(getString(R.string.data_sources_leipzig_title),
-                    getString(R.string.data_sources_leipzig_summary)) {
-                openUrl(getString(R.string.data_sources_leipzig_url))
-            },
-            linkRow(getString(R.string.data_sources_tatoeba_title),
-                    getString(R.string.data_sources_tatoeba_summary)) {
-                openUrl(getString(R.string.data_sources_tatoeba_url))
-            },
-            linkRow(getString(R.string.data_sources_opensubtitles_title),
-                    getString(R.string.data_sources_opensubtitles_summary)) {
-                openUrl(getString(R.string.data_sources_opensubtitles_url))
-            }), spacedFromPrevious = false)
+            linkRow(R.string.privacy_policy) { openUrl(getString(R.string.privacy_policy_url)) },
+            linkRow(R.string.license) { openUrl(getString(R.string.license_url)) }))
     }
 
     /**
      * "Developer": the instruments of the fifth-row layout study — the arm picker, the opt-in
      * lab session log and its clear action. The shipped layout is arm A and the log is off; the
-     * notes say what the log records and how it can leave the device.
+     * notes say what the log records and how it can leave the device. The root screen links here
+     * only on debuggable builds, the only place the log can be pulled from with run-as.
      */
     private fun buildDeveloperScreen() {
         addCard(listOf(textRow(getString(R.string.developer_intro))))
@@ -1578,7 +1572,8 @@ class SettingsHostActivity : Activity() {
     /**
      * "Theme": the user-facing themes in a one-tap picker, mirroring the height rows. The choice
      * writes the theme id pref; the running keyboard re-resolves and rebuilds at the next input
-     * view start (LatinIME calls updateKeyboardTheme there), so no live swap is attempted here.
+     * view start (LatinIME calls updateKeyboardTheme there), so no live swap is attempted here —
+     * the toast says where and when the change lands.
      */
     private fun themeRow(): View {
         val row = inflateRow(R.layout.row_value, R.string.settings_screen_theme, 0)
@@ -1617,6 +1612,8 @@ class SettingsHostActivity : Activity() {
                     val themeId = ids[which]
                     if (themeId != KeyboardTheme.getKeyboardTheme(prefs).mThemeId) {
                         KeyboardTheme.saveKeyboardThemeId(themeId, prefs)
+                        Toast.makeText(this, R.string.keyboard_theme_applies_on_next_show,
+                                Toast.LENGTH_SHORT).show()
                     }
                     onValueChanged()
                 }

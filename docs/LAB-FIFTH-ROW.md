@@ -113,8 +113,8 @@ stays.
 
 ## Pull-and-analyze procedure
 
-The pull needs a debuggable build (`run-as` follows the debuggable flag); a release build can
-record the log but cannot give it back, so sessions run on a debug build:
+The pull needs a debuggable build (`run-as` follows the debuggable flag), and the instrument
+itself — the screen, the arm, the logging — exists only there, so sessions run on a debug build:
 
 ```
 adb shell run-as org.tatarkeyboard.ime.debug cat files/lab-session.log   > participant-NN-arm-X.log

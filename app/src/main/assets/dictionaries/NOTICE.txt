@@ -125,10 +125,9 @@ Large Parallel Corpora from Movie and TV Subtitles", LREC 2016.
 OpenSubtitles publishes NO license grant for this text -- not an unclear
 license, an absent one. What the collection does ask is a link back to
 opensubtitles.org from anything built on its data; that link is on the line
-above and on the app's "Data sources" screen. The project uses the data
-anyway, with the absence of a grant stated here as an accepted risk rather
-than a settled question; docs/HISTORY.md lists the archived record of the
-decision and the measurements behind it.
+above. The project uses the data anyway, with the absence of a grant stated
+here as an accepted risk rather than a settled question; docs/HISTORY.md
+lists the archived record of the decision and the measurements behind it.
 
 Changes by the Tatar Keyboard project: lines are deduplicated, tokens are
 normalized to NFC lowercase and filtered to the language alphabet, proper nouns

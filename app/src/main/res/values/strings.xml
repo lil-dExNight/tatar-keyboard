@@ -63,12 +63,16 @@
          A pure "%1$s (%2$s)" format template — nothing to translate. -->
     <string name="subtype_generic_layout" translatable="false"><xliff:g id="LANGUAGE_NAME" example="English (US)">%1$s</xliff:g> (<xliff:g id="LAYOUT" example="QWERTY">%2$s</xliff:g>)</string>
 
-    <string name="keyboard_theme_tatar" translatable="false">Tatar</string>
+    <!-- Theme name in the Appearance picker: the fixed palette the app ships with. -->
+    <string name="keyboard_theme_classic">Classic</string>
     <!-- Theme name in the Appearance picker: the palette follows the wallpaper colors. -->
     <string name="keyboard_theme_dynamic">Dynamic (Material You)</string>
     <!-- Explanation in the theme picker dialog: the dynamic entry reads the wallpaper palette
-         on Android 12+ and silently keeps the Tatar palette on older versions. -->
-    <string name="keyboard_theme_dynamic_summary">Dynamic follows the wallpaper colors on Android 12 and later; on older versions it keeps the Tatar palette.</string>
+         on Android 12+ and silently keeps the classic palette on older versions. -->
+    <string name="keyboard_theme_dynamic_summary">Dynamic follows the wallpaper colors on Android 12 and later; on older versions it keeps the Classic palette.</string>
+    <!-- Toast after a different theme is picked: the change recolors the keyboard, not this
+         screen, and lands the next time the keyboard opens. -->
+    <string name="keyboard_theme_applies_on_next_show">The theme applies to the keyboard the next time it opens</string>
 
     <!-- Title of the button to add a language in the settings dialog [CHAR LIMIT=15] -->
     <string name="add">Add</string>
@@ -383,15 +387,8 @@
     <string name="personal_dictionary_empty_ready">No saved words yet. Words you type will appear here.</string>
     <!-- Shown when a long press asks to forget a word while saved words are switched off. Names the switch, because turning it on is the only thing the person can do about it. -->
     <string name="personal_dictionary_off_nothing_to_forget">Saved words are off, so there is nothing to forget. Turn on Personal dictionary in the keyboard settings to have the words you type remembered.</string>
-    <!-- Title of the settings row and screen that lists where the keyboard's language data comes from. -->
-    <string name="settings_screen_data_sources">Data sources</string>
-    <!-- Opening line of the Data sources screen. Says that nothing leaves the phone and that the words come from named sources. -->
-    <string name="data_sources_intro">The keyboard works offline and sends nothing anywhere. Its word lists and next-word suggestions are built from open collections of text. These are the collections.</string>
-    <!-- Section header above the sources whose data is inside this version of the app. -->
-    <string name="data_sources_in_app">In this version</string>
-    <string name="data_sources_leipzig_summary">Most of both word lists and both next-word tables. CC BY 4.0.</string>
-    <string name="data_sources_tatoeba_summary">Everyday words in both lists, and parts of both next-word tables: frequencies from example sentences. CC BY 2.0 FR.</string>
-    <string name="data_sources_opensubtitles_summary">Everyday words in both lists, and parts of both next-word tables: frequencies from film subtitles.</string>
+    <!-- Title of the settings row and screen holding the legal links. -->
+    <string name="settings_screen_legal">Legal information</string>
     <!-- The text-editing menu on a long press of the Enter key. The labels sit on keys in the
          long-press panel, so they stay short. -->
     <string name="edit_menu_select_all">Select all</string>
@@ -414,15 +411,16 @@
     <!-- The opt-in lab session log switch. -->
     <string name="lab_session_log">Lab session log</string>
     <string name="lab_session_log_summary">While on, writes key codes and timestamps (never text) to a capped file on this device, for the layout study</string>
-    <!-- Footer note of the Developer screen: how the log can leave the device. -->
-    <string name="lab_session_log_pull_note">The log stays on the device and is excluded from backup. Copying it needs adb (run-as), which works only on a debuggable build; a release build can record the log but cannot give it back.</string>
+    <!-- Footer note of the Developer screen: how the log can leave the device, and why the
+         screen itself exists only on debuggable builds. -->
+    <string name="lab_session_log_pull_note">The log stays on the device and is excluded from backup. Copying it needs adb (run-as), which works only on a debuggable build — so this screen exists only there.</string>
     <!-- Action row that deletes the recorded lab session log. -->
     <string name="clear_lab_log">Clear lab session log</string>
     <string name="clear_lab_log_confirm">Delete the recorded lab session log from this device? This cannot be undone.</string>
     <!-- Title of the settings row and screen for the user-run backup to a file. -->
     <string name="settings_screen_backup">Backup and export</string>
     <!-- Summary under the root-screen row. -->
-    <string name="settings_screen_backup_summary">Save settings and learned words to a file, or load them back</string>
+    <string name="settings_screen_backup_summary">Save settings and learned words to a file, or load them back — useful when switching to a new phone</string>
     <!-- The explanation at the top of the backup screen. Says plainly that the file carries the
          learned words, that it is not encrypted, and that it goes only where the person puts it. -->
     <string name="backup_contents_note">A backup file holds your settings and everything the keyboard has learned: your saved words, learned word pairs, learned emoji and your text shortcuts. The file is not encrypted: anyone who can open it can read those words. It is written only where you choose, and the keyboard never uploads it anywhere.</string>

@@ -26,8 +26,10 @@
     <string name="settings_screen_key_press">Төймәгә басу</string>
     <string name="settings_screen_appearance">Тышкы кыяфәт</string>
     <string name="settings_screen_theme">Тема</string>
+    <string name="keyboard_theme_classic">Классик</string>
     <string name="keyboard_theme_dynamic">Динамик (Material You)</string>
-    <string name="keyboard_theme_dynamic_summary">«Динамик» Android 12 һәм аннан югарырак версияләрдә обой төсләренә ияре; искерәк версияләрдә «Tatar» палитрасы кала.</string>
+    <string name="keyboard_theme_dynamic_summary">«Динамик» Android 12 һәм аннан югарырак версияләрдә обой төсләренә ияре; искерәк версияләрдә «Классик» палитрасы кала.</string>
+    <string name="keyboard_theme_applies_on_next_show">Тема клавиатура киләсе ачылганда кулланылачак</string>
     <string name="settings_back">Артка</string>
     <string name="abbreviation_unit_milliseconds"><xliff:g id="MILLISECONDS">%d</xliff:g> мс</string>
     <string name="settings_system_default">Системадагыча</string>
@@ -209,15 +211,8 @@
     <string name="no_app_for_link">Бу җиһазда сылтамаларны ача торган кушымта юк.</string>
     <string name="personal_dictionary_empty_ready">Әлегә бернәрсә дә сакланмаган. Сез язган сүзләр монда күренә башлар.</string>
     <string name="personal_dictionary_off_nothing_to_forget">Сүзләрне саклау сүндерелгән, онытыр нәрсә юк. Язган сүзләрегез исендә калсын өчен клавиатура көйләүләрендә «Шәхси сүзлек»не кабызыгыз.</string>
-    <!-- Title of the settings row and screen that lists where the keyboard's language data comes from. -->
-    <string name="settings_screen_data_sources">Мәгълүмат чыганаклары</string>
-    <!-- Opening line of the Data sources screen. -->
-    <string name="data_sources_intro">Клавиатура интернетсыз эшли һәм беркая да бернәрсә җибәрми. Сүзлекләр һәм киләсе сүз тәкъдимнәре ачык текст җыелмаларыннан төзелгән. Менә ул җыелмалар.</string>
-    <!-- Section header above the sources whose data is inside this version of the app. -->
-    <string name="data_sources_in_app">Бу версиядә</string>
-    <string name="data_sources_leipzig_summary">Ике сүзлекнең күп өлеше һәм ике тәкъдим таблицасы да. CC BY 4.0.</string>
-    <string name="data_sources_tatoeba_summary">Ике сүзлектәге сөйләм сүзләре һәм ике тәкъдим таблицасының да өлеше: мисал җөмләләрдән ешлык. CC BY 2.0 FR.</string>
-    <string name="data_sources_opensubtitles_summary">Ике сүзлектәге сөйләм сүзләре һәм ике тәкъдим таблицасының да өлеше: фильм субтитрларыннан ешлык.</string>
+    <!-- Title of the settings row and screen holding the legal links. -->
+    <string name="settings_screen_legal">Хокукый мәгълүмат</string>
     <!-- The text-editing menu on a long press of the Enter key. The labels sit on keys in the
          long-press panel, so they stay short. -->
     <string name="edit_menu_select_all">Барысын сайлау</string>
@@ -237,12 +232,12 @@
     <string name="lab_session_log">Лаборатория сессиясе журналы</string>
     <string name="lab_session_log_summary">Кабызылганда төймә кодлары белән басу вакытларын (текстны түгел) тикшеренү өчен бу җиһаздагы чикләнгән файлга язып бара</string>
     <!-- Footer note of the Developer screen: how the log can leave the device. -->
-    <string name="lab_session_log_pull_note">Журнал җиһазда кала һәм резерв күчермәләргә эләкми. Аны adb (run-as) аша күчереп алырга мөмкин, бу исә тик debuggable җыелмада гына эшли; чыгарылыш җыелмасы журнал яза ала, ләкин аны кире кайтара алмый.</string>
+    <string name="lab_session_log_pull_note">Журнал җиһазда кала һәм резерв күчермәләргә эләкми. Аны adb (run-as) аша күчереп алырга мөмкин, бу исә тик debuggable җыелмада гына эшли — шуңа күрә бу экран да тик шунда гына бар.</string>
     <!-- Action row that deletes the recorded lab session log. -->
     <string name="clear_lab_log">Лаборатория журналын чистарту</string>
     <string name="clear_lab_log_confirm">Бу җиһазда язылган лаборатория журналы бетерелсәнме? Бу гамәлне кире кайтарып булмый.</string>
     <string name="settings_screen_backup">Күчермә һәм экспорт</string>
-    <string name="settings_screen_backup_summary">Көйләүләрне һәм өйрәнелгән сүзләрне файлга саклау яки кире йөкләү</string>
+    <string name="settings_screen_backup_summary">Көйләүләрне һәм өйрәнелгән сүзләрне файлга саклау яки кире йөкләү — телефон алмашканда файдалы</string>
     <string name="backup_contents_note">Күчермә файлы сезнең көйләүләрне һәм клавиатураның өйрәнгән бар нәрсәсен саклый: сезнең сүзләрегезне, өйрәнелгән сүз парларын, өйрәнелгән эмодзиларны һәм сезнең текст кыскартмаларыгызны. Файл шифрланмаган: аны ача алган һәркем бу сүзләрне укый ала. Ул бары сез сайлаган урынга гына языла, һәм клавиатура аны беркая да җибәрми.</string>
     <string name="backup_export_action">Файлга чыгару…</string>
     <string name="backup_import_action">Файлдан йөкләү…</string>

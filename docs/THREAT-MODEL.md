@@ -48,7 +48,8 @@ permission (`VIBRATE`).
    file is treated as content: it is never written before the first unlock or from password
    fields, is capped with one rotation, is excluded from backup like everything else, is erasable
    from the Developer screen, and can leave the device only through an adb pull, which needs a
-   debuggable build.
+   debuggable build. The screen, the layout arm and the logging are all gated on the debuggable
+   flag, so a release build carries no part of the instrument.
 
 ## 3. Trust boundaries
 

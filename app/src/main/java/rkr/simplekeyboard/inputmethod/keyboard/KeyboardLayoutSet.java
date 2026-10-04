@@ -20,6 +20,7 @@ package rkr.simplekeyboard.inputmethod.keyboard;
 
 import android.app.KeyguardManager;
 import android.content.Context;
+import android.content.pm.ApplicationInfo;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.content.res.XmlResourceParser;
@@ -169,13 +170,18 @@ public final class KeyboardLayoutSet {
 
     private Keyboard getKeyboard(final ElementParams elementParams, final KeyboardId id) {
         // The fifth-row experiment arm selects the Tatar alphabet keyboard at build time. The
-        // settings screen clears the keyboard cache when the arm changes, so the next build lands
-        // on the new order even when the parsed layout set predates the change.
+        // arm applies on debuggable builds only — the study's screen is release-hidden, and a
+        // pref restored from a backup must not leak the experiment into a release build. The
+        // settings screen clears the keyboard cache when the arm changes, so the next build
+        // lands on the new order even when the parsed layout set predates the change.
         if (id.isAlphabetKeyboard()) {
+            final boolean debuggable = (mContext.getApplicationInfo().flags
+                    & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+            final int arm = debuggable ? Settings.readFifthRowArm(
+                    PreferenceManagerCompat.getDeviceSharedPreferences(mContext))
+                    : FifthRowArm.DEFAULT;
             elementParams.mKeyboardXmlId = FifthRowArm.alphabetKeyboardXmlId(
-                    mParams.mKeyboardLayoutSetName, elementParams.mKeyboardXmlId,
-                    Settings.readFifthRowArm(
-                            PreferenceManagerCompat.getDeviceSharedPreferences(mContext)));
+                    mParams.mKeyboardLayoutSetName, elementParams.mKeyboardXmlId, arm);
         }
         final SoftReference<Keyboard> ref = sKeyboardCache.get(id);
         final Keyboard cachedKeyboard = (ref == null) ? null : ref.get();

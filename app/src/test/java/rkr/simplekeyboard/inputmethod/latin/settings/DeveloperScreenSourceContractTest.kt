@@ -21,10 +21,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The Developer screen is the operator-facing half of the fifth-row instrument: it must stay
- * reachable, hold the arm picker, the lab-log switch and the clear action, and clear the keyboard
- * cache when the arm changes. The screen is an `Activity`, so it is pinned by source (as in
- * `DataSourcesScreenSourceContractTest`).
+ * The Developer screen is the operator-facing half of the fifth-row instrument: it holds the arm
+ * picker, the lab-log switch and the clear action, and clears the keyboard cache when the arm
+ * changes. The whole instrument is debug-only — the root row is gated on FLAG_DEBUGGABLE, and
+ * the arm application and the log itself are gated on the same flag where they apply, so a pref
+ * restored from a backup cannot arm them on a release build. The screen is an `Activity`, so it
+ * is pinned by source (as in `LegalScreenSourceContractTest`).
  */
 class DeveloperScreenSourceContractTest {
 
@@ -43,6 +45,10 @@ class DeveloperScreenSourceContractTest {
         File(sourceRoot(),
             "java/rkr/simplekeyboard/inputmethod/latin/lab/LabSessionLog.kt").readText()
     }
+    private val layoutSet by lazy {
+        File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardLayoutSet.java").readText()
+    }
 
     private fun bodyOf(source: String, from: String, to: String) =
         source.substringAfter(from).substringBefore(to)
@@ -52,14 +58,26 @@ class DeveloperScreenSourceContractTest {
     }
 
     @Test
-    fun the_screen_is_reachable_from_the_root_screen() {
-        val root = bodyOf(host, "private fun buildRootScreen()", "\n    /**\n     * \"Data sources\"")
+    fun the_screen_is_reachable_from_the_root_screen_on_debuggable_builds_only() {
+        val root = bodyOf(host, "private fun buildRootScreen()", "private fun buildLegalScreen()")
         assertTrue("root screen must offer a row that opens the developer screen",
             root.contains("navigateTo(Screen.DEVELOPER)"))
         assertTrue("the row needs its own title string",
             root.contains("R.string.settings_screen_developer"))
+        assertTrue("the row must be gated on the debuggable flag",
+            root.contains("ApplicationInfo.FLAG_DEBUGGABLE"))
         assertTrue("the screen must be dispatched in showScreen",
             host.contains("Screen.DEVELOPER -> buildDeveloperScreen()"))
+    }
+
+    @Test
+    fun the_arm_and_the_log_are_gated_where_they_apply() {
+        assertTrue("the layout set applies the arm only on debuggable builds",
+            layoutSet.contains("ApplicationInfo.FLAG_DEBUGGABLE"))
+        assertTrue("the layout set still resolves the alphabet element through the arm",
+            layoutSet.contains("FifthRowArm.alphabetKeyboardXmlId("))
+        assertTrue("the log arms only on debuggable builds",
+            labLog.contains("ApplicationInfo.FLAG_DEBUGGABLE"))
     }
 
     @Test
