@@ -22,8 +22,6 @@ procedure in `docs/PUBLISH-CHECKLIST.md`):
    `dist/release-check-3.9.1.txt` (the verified files, never a rebuild).
 2. The **store uploads**: 3.9.0 with `metadata/{en-US,ru-RU,tt}/changelogs/46.txt` (if still
    pending) and 3.9.1 with `changelogs/47.txt`.
-3. The **3.9.1 cold-start record**: the `cold` leg of `scripts/device-perf-ritual.sh` on the
-   reference device, recorded in the release record (pending hardware).
 
 ## 2. Prediction and glide quality (the improvement program remainder)
 
@@ -56,7 +54,6 @@ Checks that need a person or hardware not at hand (procedure: `docs/DEVICE-TEST-
 
 - inline autofill against a real autofill service (install one, e.g. Bitwarden, on a test
   device; a stock device has none);
-- the release-build perf legs and the 3.9.1 cold-start record (item 1.3);
 - the revert cell under TalkBack, the reduced-motion and haptic feel checks;
 - live Direct Boot (type the screen-lock PIN with this keyboard before the first unlock);
 - Telegram (typing, suggestions, autocorrect undo, glide spacing, emoji panel);

@@ -56,8 +56,10 @@ Verified for 3.9.1:
 
 - `release_check.sh --full`, then `--quick` and `check-no-internet.sh` on the signed APK, two
   byte-identical packs, and `text_hygiene_check.py`.
-- Not run: device checks (no device at hand). The batch touches the settings and setup screens
-  only, not the input path; the cold-start record is pending a reference device.
+- On the reference device (POCO C71), the release ritual (`build/device-perf-3.9.1-release/`):
+  cold start median 343.1 ms, PSS within the 69 MB ceiling in all scenarios, frames p95 ≤
+  12.3 ms with 0% janky, warm show median 69.1 ms, touch p95 4.5 ms, suggest round trip p95
+  19.9 ms — every leg within budget.
 
 ## Open release steps
 
