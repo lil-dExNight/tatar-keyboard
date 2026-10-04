@@ -149,17 +149,16 @@ suggestion, tabs+swipe panel hybrid.
 
 ### Multilingual and layout
 
-**UX20 — Fifth-row A/B/C lab protocol (closes the BRIEF open question).** Three arms: current
+**UX20 — Fifth-row A/B/C lab protocol (closed the BRIEF open question).** Three arms: current
 pair order, frequency order, incumbent/desktop scan order. N=24 (Latin-square), native/L2
 Tatar writers recruited via the KFU/community channels; transcription of natural-frequency
 sentences plus an extra-letter-dense set; block-1 learnability vs block-5 ceiling both
 measured (WPM, MSD error, KSPC, SUS/TLX, forced-choice ranking). Lab-build instrumentation:
 key codes + timestamps only, never text, pulled by adb. Pre-registered gate: challenger wins
 only with median WPM ≥5% better in the final block, MSD not worse, ≥60% rank-first; tiebreak
-is first-session success of new Tatar typists (the product's mission). Instrument landed: the
-arm switch and the opt-in key-code log live under Settings → Developer (default arm A), pinned
-by `FifthRowArmTest` and `LabSessionLogContractTest`; the standing protocol is
-[docs/LAB-FIFTH-ROW.md](../docs/LAB-FIFTH-ROW.md). Sessions pending participants.
+is first-session success of new Tatar typists (the product's mission). Never run: the
+alphabetical order was fixed by operator decision and the instrument removed; the protocol
+text is recoverable via `docs/HISTORY.md`.
 **UX21 — Per-app language memory.** Remember the last subtype per app (iOS's per-conversation
 precedent); local, clearable from the personal-data screen, documented in PRIVACY.md;
 `hintLocales` still wins when present. Lab: alternating tt/ru chat tasks.

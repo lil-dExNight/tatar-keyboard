@@ -1,6 +1,6 @@
 # Roadmap
 
-The mandatory development plan after 3.8.0. Every item here must be done, or
+The mandatory development plan after 3.9.1. Every item here must be done, or
 closed by an explicit decision recorded in this file, before new features are started. Work
 goes in the order of the sections. Delete an item when it is done, since the change itself is
 the record. Delete this file when it is empty and list it in `docs/HISTORY.md`.
@@ -12,20 +12,21 @@ lead; Russian and English ride the shared mechanisms.
 
 ## 1. Publication
 
-The steps listed in `HANDOFF.md` ("Open release steps") for 3.7.0 and 3.8.0.
+The steps listed in `HANDOFF.md` ("Open release steps").
 
 ## 2. The improvement program
 
 The full program, its tiers and per-item gates live in `research/README.md`; the per-topic
-evidence is in the documents it indexes. Work goes in this order:
+evidence is in the documents it indexes. The open follow-up:
 
 1. **Prediction and glide quality, continued** — the follow-ups the measurements opened:
    a conv-heavier bigram remix, composition admission for the Russian dictionary tail,
    corpus.tatar frequency lists if the host ever answers. The wider-typo-classes question is
    closed by two bracketing measured rejections (`docs/BACKLOG.md`).
    (`research/prediction-engine.md`, `research/glide-typing.md`)
-2. **The lab program** — the fifth-row A/B/C sessions per `docs/LAB-FIFTH-ROW.md` (the
-   instrument landed); needs Tatar-speaking participants. (`research/ux.md`)
+
+The fifth-row order question is closed by operator decision: the alphabetical order
+`ә ө ү җ ң һ` is final, no A/B study is run (`BRIEF.md`).
 
 Decisions recorded for this program:
 
@@ -54,8 +55,6 @@ Checks that need a person or hardware not at hand:
   service (none on a stock device), the release-build perf legs (the release APK cannot
   install next to the signed one), the revert cell under TalkBack, and the reduced-motion and
   haptic feel checks;
-- the fifth-row lab sessions per `docs/LAB-FIFTH-ROW.md` (recruitment, scripted sessions, the
-  analysis script);
 - live Direct Boot (needs a screen-lock PIN and a reboot: type the PIN with this keyboard
   before the first unlock);
 - Telegram (typing, suggestions, autocorrect undo, glide spacing, emoji panel; the app is not

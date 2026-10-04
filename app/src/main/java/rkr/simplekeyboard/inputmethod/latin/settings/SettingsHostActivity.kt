@@ -22,7 +22,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -48,7 +47,6 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStores
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
-import rkr.simplekeyboard.inputmethod.latin.lab.LabSessionLog
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupCoordinator
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupFormat
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupImportResult
@@ -84,7 +82,6 @@ class SettingsHostActivity : Activity() {
         PERSONAL_DICTIONARY(R.string.personal_dictionary),
         LEGAL(R.string.settings_screen_legal),
         TEXT_SHORTCUTS(R.string.text_shortcuts_screen),
-        DEVELOPER(R.string.settings_screen_developer),
         BACKUP(R.string.settings_screen_backup)
     }
     companion object {
@@ -160,8 +157,7 @@ class SettingsHostActivity : Activity() {
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (Settings.PREF_SHOW_NUMBER_ROW == key
                     || Settings.PREF_SHOW_EMOJI_KEY == key
-                    || Settings.PREF_SHOW_SPECIAL_CHARS == key
-                    || Settings.PREF_FIFTH_ROW_ARM == key) {
+                    || Settings.PREF_SHOW_SPECIAL_CHARS == key) {
                 KeyboardLayoutSet.onKeyboardThemeChanged()
             }
         }
@@ -292,7 +288,6 @@ class SettingsHostActivity : Activity() {
             Screen.PERSONAL_DICTIONARY -> buildPersonalDictionaryScreen()
             Screen.TEXT_SHORTCUTS -> buildTextShortcutsScreen()
             Screen.LEGAL -> buildLegalScreen()
-            Screen.DEVELOPER -> buildDeveloperScreen()
             Screen.BACKUP -> buildBackupScreen()
         }
         scrollView.scrollTo(0, 0)
@@ -341,20 +336,11 @@ class SettingsHostActivity : Activity() {
         addCard(listOf(
             linkRow(R.string.keyboard_languages, R.string.keyboard_languages_summary,
                     Settings.PREF_ENABLED_SUBTYPES) { navigateTo(Screen.LANGUAGES) }))
-        val screenRows = mutableListOf(
+        addCard(listOf(
             linkRow(R.string.settings_screen_preferences) { navigateTo(Screen.PREFERENCES) }
                     .apply { id = R.id.row_link_preferences },
             linkRow(R.string.settings_screen_key_press) { navigateTo(Screen.KEY_PRESS) },
-            linkRow(R.string.settings_screen_appearance) { navigateTo(Screen.APPEARANCE) })
-        // The lab instruments exist only where their log can be pulled: run-as needs a
-        // debuggable build, so a release build never shows the row (the arm and the log
-        // themselves are gated on the same flag where they apply).
-        if (isDebuggableBuild()) {
-            screenRows.add(linkRow(R.string.settings_screen_developer) {
-                navigateTo(Screen.DEVELOPER)
-            })
-        }
-        addCard(screenRows)
+            linkRow(R.string.settings_screen_appearance) { navigateTo(Screen.APPEARANCE) }))
         addCard(listOf(
             linkRow(R.string.settings_screen_backup, R.string.settings_screen_backup_summary) {
                 navigateTo(Screen.BACKUP)
@@ -363,8 +349,6 @@ class SettingsHostActivity : Activity() {
             linkRow(R.string.settings_screen_legal) { navigateTo(Screen.LEGAL) }))
     }
 
-    private fun isDebuggableBuild(): Boolean =
-            applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
 
     /**
      * The "Backup and export" screen: one explanation row and the two actions. The explanation
@@ -466,79 +450,6 @@ class SettingsHostActivity : Activity() {
         addCard(listOf(
             linkRow(R.string.privacy_policy) { openUrl(getString(R.string.privacy_policy_url)) },
             linkRow(R.string.license) { openUrl(getString(R.string.license_url)) }))
-    }
-
-    /**
-     * "Developer": the instruments of the fifth-row layout study — the arm picker, the opt-in
-     * lab session log and its clear action. The shipped layout is arm A and the log is off; the
-     * notes say what the log records and how it can leave the device. The root screen links here
-     * only on debuggable builds, the only place the log can be pulled from with run-as.
-     */
-    private fun buildDeveloperScreen() {
-        addCard(listOf(textRow(getString(R.string.developer_intro))))
-        addCard(listOf(
-            fifthRowArmRow(),
-            switchRow(Settings.PREF_LAB_SESSION_LOG, false,
-                    R.string.lab_session_log, R.string.lab_session_log_summary)))
-        addCard(listOf(actionRow(R.string.clear_lab_log) { showClearLabLogDialog() }))
-        addCard(listOf(textRow(getString(R.string.lab_session_log_pull_note))))
-    }
-
-    private val fifthRowArmLabelRes = listOf(
-        R.string.fifth_row_arm_option_a,
-        R.string.fifth_row_arm_option_b,
-        R.string.fifth_row_arm_option_c,
-    )
-
-    /** The arm as a one-tap picker, like the keyboard-height row: the tap writes the pref. */
-    private fun fifthRowArmRow(): View {
-        val row = inflateRow(R.layout.row_value, R.string.fifth_row_arm, 0)
-        val valueView = row.findViewById<TextView>(R.id.row_value)
-        valueView.text = getString(fifthRowArmLabelRes[Settings.readFifthRowArm(prefs)])
-        row.setOnClickListener {
-            showFifthRowArmDialog {
-                valueView.text = getString(fifthRowArmLabelRes[Settings.readFifthRowArm(prefs)])
-            }
-        }
-        return row
-    }
-
-    private fun showFifthRowArmDialog(onValueChanged: () -> Unit) {
-        val labels = fifthRowArmLabelRes.map { getString(it) }.toTypedArray()
-        currentDialog?.dismiss()
-        currentDialog = AlertDialog.Builder(this)
-                .setTitle(R.string.fifth_row_arm)
-                // setItems on purpose, exactly like the keyboard-height picker: the choice applies
-                // on the tap itself and the dialog closes. The pref listener clears the keyboard
-                // cache, so the next shown keyboard is built under the new arm.
-                .setItems(labels) { _, which ->
-                    if (which != Settings.readFifthRowArm(prefs)) {
-                        prefs.edit().putInt(Settings.PREF_FIFTH_ROW_ARM, which).apply()
-                    }
-                    onValueChanged()
-                }
-                .create()
-                .also { dialog ->
-                    DialogUtils.filterObscuredTouches(dialog)
-                    dialog.show()
-                }
-    }
-
-    /** Confirmation dialog for "Clear lab session log", kept in [currentDialog] like the others. */
-    private fun showClearLabLogDialog() {
-        currentDialog?.dismiss()
-        currentDialog = AlertDialog.Builder(this)
-                .setTitle(R.string.clear_lab_log)
-                .setMessage(R.string.clear_lab_log_confirm)
-                .setPositiveButton(R.string.clear_recent_emoji_action) { _, _ ->
-                    LabSessionLog.clear(this)
-                }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
-                .also { dialog ->
-                    DialogUtils.filterObscuredTouches(dialog)
-                    dialog.show()
-                }
     }
 
     private fun buildPreferencesScreen() {

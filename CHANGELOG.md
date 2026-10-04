@@ -11,6 +11,12 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [Unreleased]
+
+### Removed
+
+- The fifth-row letter order `ә ө ү җ ң һ` is final by decision; the study instrument behind it (the debug-only Developer screen with the arm picker and the session log) is removed.
+
 ## [3.9.1] — 2026-10-04
 
 ### Changed

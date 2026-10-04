@@ -252,20 +252,6 @@
     <string name="edit_menu_cursor_left">Курсор влево</string>
     <string name="edit_menu_cursor_right">Курсор вправо</string>
 
-    <!-- Settings screen title and root row for the developer instruments. -->
-    <string name="settings_screen_developer">Разработчику</string>
-    <!-- Opening line of the Developer screen. -->
-    <string name="developer_intro">Инструменты исследования пятого ряда раскладки. Для обычного набора они не нужны: стандартная раскладка — вариант A, журнал выключен.</string>
-    <!-- Title of the study-arm row and of its picker dialog. -->
-    <string name="fifth_row_arm">Вариант пятого ряда</string>
-    <!-- The opt-in lab session log switch. -->
-    <string name="lab_session_log">Журнал лабораторной сессии</string>
-    <string name="lab_session_log_summary">Пока включён, записывает коды клавиш и время нажатий (никогда текст) в файл ограниченного размера на этом устройстве — для исследования раскладки</string>
-    <!-- Footer note of the Developer screen: how the log can leave the device. -->
-    <string name="lab_session_log_pull_note">Журнал остаётся на устройстве и не попадает в резервные копии. Скопировать его можно через adb (run-as), а это работает только на отлаживаемой сборке — поэтому и этот экран есть только в ней.</string>
-    <!-- Action row that deletes the recorded lab session log. -->
-    <string name="clear_lab_log">Очистить журнал лабораторной сессии</string>
-    <string name="clear_lab_log_confirm">Удалить записанный журнал лабораторной сессии с этого устройства? Это действие нельзя отменить.</string>
     <string name="settings_screen_backup">Резервная копия и экспорт</string>
     <string name="settings_screen_backup_summary">Сохранить настройки и изученные слова в файл или загрузить их обратно — пригодится при смене телефона</string>
     <string name="backup_contents_note">Файл резервной копии хранит ваши настройки и всё, чему научилась клавиатура: ваши сохранённые слова, изученные пары слов, изученные эмодзи и ваши текстовые сокращения. Файл не зашифрован: любой, кто может его открыть, может прочитать эти слова. Он записывается только туда, куда вы выберете, и клавиатура никуда его не отправляет.</string>

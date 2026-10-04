@@ -76,7 +76,6 @@ import rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView;
 import rkr.simplekeyboard.inputmethod.keyboard.PointerTracker;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.inputlogic.InputLogic;
-import rkr.simplekeyboard.inputmethod.latin.lab.LabSessionLog;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource;
@@ -418,7 +417,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // observe a half-built service.
             mLastKnownTatarSuggestionsEnabled = Settings.readTatarSuggestionsEnabled(mDevicePrefs);
             mDevicePrefs.registerOnSharedPreferenceChangeListener(mSuggestionsSettingListener);
-            LabSessionLog.init(this, mDevicePrefs);
 
             // Register to receive ringer mode change.
             final IntentFilter filter = new IntentFilter();
@@ -2002,7 +2000,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onWindowShown() {
         super.onWindowShown();
-        LabSessionLog.onKeyboardShown();
         registerRecentClipListener();
         if (isInputViewShown())
             LatinImeSoftInputWindow.setNavigationBarColor(this);
@@ -2011,7 +2008,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onWindowHidden() {
         super.onWindowHidden();
-        LabSessionLog.onKeyboardHidden();
         unregisterRecentClipListener();
         // Close the emoji search and panel, or the next show would bring back a search whose
         // query is already dropped. Both calls are no-ops when the panel never opened.
@@ -2644,9 +2640,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onPressKey(final int primaryCode, final int repeatCount,
             final boolean isSinglePointer) {
-        // The lab log gates itself on its own setting; a password field is never an event.
-        LabSessionLog.onKeyDown(primaryCode,
-                mSettings.getCurrent().mInputAttributes.mIsPasswordField);
         mKeyboardSwitcher.onPressKey(primaryCode, isSinglePointer, getCurrentAutoCapsState(),
                 getCurrentRecapitalizeState());
         LatinImeKeyFeedback.hapticAndAudioFeedback(this, primaryCode, repeatCount);

@@ -21,7 +21,6 @@ bilingual.
 - [THREAT-MODEL.md](THREAT-MODEL.md) — assets, trust boundaries, controls and the residual-risk register.
 - [PERF-BUDGETS.md](PERF-BUDGETS.md) — performance budgets and the test or script that enforces each.
 - [DEVICE-TEST-PLAN.md](DEVICE-TEST-PLAN.md) — end-to-end test of the keyboard on a connected phone.
-- [LAB-FIFTH-ROW.md](LAB-FIFTH-ROW.md) — standing protocol of the fifth-row A/B/C study (UX20): arms, session script, gate, log pull.
 - [PUBLISH-CHECKLIST.md](PUBLISH-CHECKLIST.md) — release procedure, from preflight to store upload.
 - [ROADMAP.md](ROADMAP.md) — mandatory development plan: all open work, in order.
 - [BACKLOG.md](BACKLOG.md) — parked and rejected ideas.

@@ -29,10 +29,12 @@ see "Reproducing a published APK" in `docs/PUBLISH-CHECKLIST.md`.
 
 ## State of `main`
 
-`main` is the 3.9.1 release; nothing is unreleased. The `improvement` branch is merged and
-closed out: its measurement foundation, quick-wins sprint, prediction/glide round, features
-sprint and the fifth-row lab instrument shipped as 3.9.0 (see `CHANGELOG.md`); the lab sessions
-await participants.
+`main` carries the 3.9.1 release plus one unreleased change: the fifth-row question is closed
+by operator decision (the alphabetical order `ә ө ү җ ң һ` is final, `BRIEF.md`) and the study
+instrument is removed — the Developer screen, the arm picker, the session log and the arm-B/C
+layout files are gone; the protocol text is listed in `docs/HISTORY.md`. The `improvement`
+branch is merged and closed out: its measurement foundation, quick-wins sprint, prediction/glide
+round and features sprint shipped as 3.9.0 (see `CHANGELOG.md`).
 
 Code-level notes on what 3.9.1 changed:
 
@@ -41,9 +43,6 @@ Code-level notes on what 3.9.1 changed:
 - Settings: `Screen.LEGAL` replaces `Screen.DATA_SOURCES`; the legal screen opens the two
   documents in the browser. The removed screen's contract test became
   `LegalScreenSourceContractTest`; the NOTICE pins live in `DictionaryNoticeContractTest`.
-- Lab: the arm application is in `KeyboardLayoutSet.getKeyboard`, the log arming in
-  `LabSessionLog.syncWith`, the root row in `SettingsHostActivity.buildRootScreen` — each behind
-  `ApplicationInfo.FLAG_DEBUGGABLE`, pinned by `DeveloperScreenSourceContractTest`.
 
 Also true of the current tree:
 
@@ -64,6 +63,9 @@ Verified for 3.9.1:
 
 These are manual and have not been confirmed as done:
 
+- the **3.9.1 GitHub Release** through the web UI: tag `v3.9.1`, title `Tatar Keyboard 3.9.1`,
+  notes from `dist/release-notes-3.9.1.md`; attach `dist/tatar-keyboard-3.9.1.apk` and
+  `dist/release-check-3.9.1.txt`;
 - the store uploads: 3.9.0 with `metadata/{en-US,ru-RU,tt}/changelogs/46.txt` (if still
   pending) and 3.9.1 with `changelogs/47.txt`.
 

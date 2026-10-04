@@ -56,8 +56,8 @@ native code fit in 1–3 MB, hence the size limit.
   tolerable, and a dedicated key is a comfort.
 - Layouts are data (XML), not code. A Latin Tatar layout (Zamanälif) is not planned, but the format
   must allow it.
-- Open question: the order of the fifth-row keys (alphabetical `ә ө ү җ ң һ`, the current one, or by
-  frequency `ә ү ң ө җ һ`); to be decided by user testing.
+- Fifth-row key order: alphabetical `ә ө ү җ ң һ` — fixed by decision; the frequency order
+  (`ә ү ң ө җ һ`) was considered and not taken, no A/B study is run.
 
 ## iOS style: limits
 

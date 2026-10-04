@@ -188,6 +188,7 @@ Recover any of them with `git show <commit>:<path>`.
 | `docs/TABLET-ENTER.md` | Enter key restored on Cyrillic layouts on tablets, 1.9.13 | `3b43fb8a` |
 | `docs/RESEARCH-FIXES.md` | Keyboard text in dp, emoji panel padding and shrinking, 1.9.14 | `7529200a` |
 | `docs/APPLE-UX-2026-09-25.md` | Apple-style UX audit of the current app and implementation plan | `2b4e0fd6` |
+| `docs/LAB-FIFTH-ROW.md` | Fifth-row A/B/C study protocol; the order was fixed by decision, no sessions run | `78880620` |
 
 ## Research
 
