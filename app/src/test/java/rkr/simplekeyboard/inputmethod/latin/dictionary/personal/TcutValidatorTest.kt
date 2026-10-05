@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
@@ -102,6 +104,21 @@ class TcutValidatorTest {
         assertRejected(buildWithRawRecord("тк".toByteArray(StandardCharsets.UTF_8),
             "line\nbreak".toByteArray(StandardCharsets.UTF_8)), "a line break is not a fixed phrase")
         assertRejected(build(listOf("" to "буш")), "an empty shortcut")
+    }
+
+    @Test
+    fun rejectsFormatCharactersInExpansions() {
+        // A bidi override or a zero-width space would disguise what the cell shows and commits.
+        assertRejected(build(listOf("тк" to "казань\u202Eсъезд")), "a bidi override")
+        assertRejected(build(listOf("тк" to "ка\u200Bзань")), "a zero-width space")
+    }
+
+    @Test
+    fun theExpansionRuleRejectsFormatCharactersDirectly() {
+        assertFalse(TcutValidator.isWellFormedExpansion("a\u202Eb"))
+        assertFalse(TcutValidator.isWellFormedExpansion("a\u200Bb"))
+        assertFalse(TcutValidator.isWellFormedExpansion("a\u00ADb")) // soft hyphen
+        assertTrue(TcutValidator.isWellFormedExpansion("бик үк"))
     }
 
     private fun assertRejected(image: ByteArray, why: String = "") {

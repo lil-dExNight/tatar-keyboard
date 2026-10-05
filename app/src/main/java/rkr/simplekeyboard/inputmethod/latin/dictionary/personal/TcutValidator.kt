@@ -203,9 +203,9 @@ class TcutValidator {
         }
 
         /**
-         * The content rule of an expansion: within the length bounds and free of control
-         * characters (line breaks included), so what the cell shows and what the commit inserts
-         * are single-line fixed phrases.
+         * The content rule of an expansion: within the length bounds and free of control and
+         * format characters (line breaks, bidi overrides, zero-width spaces), so what the cell
+         * shows and what the commit inserts are the same single-line fixed phrase.
          */
         fun isWellFormedExpansion(expansion: String): Boolean {
             val codePointCount = expansion.codePointCount(0, expansion.length)
@@ -217,7 +217,10 @@ class TcutValidator {
             var offset = 0
             while (offset < expansion.length) {
                 val codePoint = expansion.codePointAt(offset)
-                if (Character.getType(codePoint) == Character.CONTROL.toInt()) return false
+                val type = Character.getType(codePoint)
+                if (type == Character.CONTROL.toInt() || type == Character.FORMAT.toInt()) {
+                    return false
+                }
                 offset += Character.charCount(codePoint)
             }
             return true
