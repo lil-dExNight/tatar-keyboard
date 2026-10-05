@@ -33,8 +33,9 @@ import java.io.File
  * through it — a new dialog that forgets it fails here.
  *
  * A related rule lives here too: the activity-wide FLAG_SECURE does not extend
- * to dialog windows, so the settings dialogs that render personal content set it on their own
- * window through [DialogUtils.securePersonalContent].
+ * to dialog windows, so the dialogs that render personal content — the settings side's word and
+ * pair dialogs, and the IME-side forget-word dialog whose title names the saved word — set it on
+ * their own window through [DialogUtils.securePersonalContent].
  */
 class DialogObscuredTouchContractTest {
 
@@ -55,9 +56,14 @@ class DialogObscuredTouchContractTest {
             javaBody(ime, "private void attachDialogToInputWindow")
                 .contains("DialogUtils.filterObscuredTouches(dialog)"),
         )
-        // Every dialog LatinIME shows is attached through it: the pinned call-site count plus the
-        // definition.
-        assertEquals(11, ime.occurrencesOf("attachDialogToInputWindow("))
+        // Every dialog LatinIME builds is attached through it: one attach call per builder site,
+        // plus the attach's own definition. The correspondence, not only the count: a new dialog
+        // that skips the attach (or an attach without a dialog) fails here.
+        assertEquals(
+            "every AlertDialog.Builder in LatinIME must pass through the filtering attach",
+            ime.occurrencesOf("AlertDialog.Builder(") + 1,
+            ime.occurrencesOf("attachDialogToInputWindow("),
+        )
     }
 
     @Test
@@ -120,6 +126,13 @@ class DialogObscuredTouchContractTest {
                 javaBody(activity, signature).contains("DialogUtils.securePersonalContent(dialog)"),
             )
         }
+        // The IME-side forget-word dialog names the saved word in its title, so it secures its
+        // window the same way.
+        assertTrue(
+            "the IME-side forget-word dialog must secure its dialog's window",
+            javaBody(read(LATIN_IME), "private void showForgetPersonalWordDialog(")
+                .contains("DialogUtils.securePersonalContent(dialog)"),
+        )
     }
 
     // --- helpers ---------------------------------------------------------------------------------

@@ -487,6 +487,12 @@ class SuggestionsController internal constructor(
      */
     private var recentClip = RecentClipCell()
 
+    /**
+     * The live keyguard state, re-read at the clip cell's offer and tap: [eligible] is a
+     * session-start snapshot that can predate the screen locking. Fail-closed (locked) until wired.
+     */
+    private var keyguardGate: KeyguardGate = KeyguardGate { true }
+
     /** Test seam: a fresh clip cell with a drivable clock, so the freshness window is testable. */
     internal fun replaceRecentClipCellForTest(cell: RecentClipCell) {
         recentClip = cell
@@ -560,6 +566,11 @@ class SuggestionsController internal constructor(
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
     fun setRevertCellDecorator(decorator: RevertCellDecorator) {
         revertCellDecorator = decorator
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setKeyguardGate(gate: KeyguardGate) {
+        keyguardGate = gate
     }
 
     /**
@@ -2248,7 +2259,9 @@ class SuggestionsController internal constructor(
      * included), and any keystroke re-derives the strip as usual.
      */
     private fun maybeShowRecentClip(): Boolean {
-        if (destroyed || !eligible) return false
+        // [eligible] is a session-start snapshot that can predate the screen locking, so the
+        // keyguard is re-read live here (and again at the tap).
+        if (destroyed || !eligible || keyguardGate.isLocked()) return false
         val offer = recentClip.offerText() ?: return false
         previewKeepTypedCell = null
         displayedPrefix = null
@@ -2695,9 +2708,9 @@ class SuggestionsController internal constructor(
         }
         // The recent-clip cell: the only strip bound to neither a prefix, nor a context word, nor
         // a glide word, so the tap is recognized from the state, never from the string alone. The
-        // clip's freshness is re-checked (a stale cell is a dead cell: the tap commits nothing),
-        // and the offer is one-shot: the held clip is dropped with the tap, whatever the editor
-        // answers.
+        // clip's freshness is re-checked and the keyguard re-read (a stale cell, like one painted
+        // before the screen locked, is a dead cell: the tap commits nothing), and the offer is
+        // one-shot: the held clip is dropped with the tap, whatever the editor answers.
         val clipOffer = recentClip.offerText()
         if (clipOffer != null
             && displayedSessionId == sessionId
@@ -2706,7 +2719,7 @@ class SuggestionsController internal constructor(
             && bandBaseCells.size == 1 && bandBaseCells[0] == suggestion
             && suggestion == clipOffer
         ) {
-            val fullText = recentClip.fullTextForCommit()
+            val fullText = if (keyguardGate.isLocked()) null else recentClip.fullTextForCommit()
             recentClip.clear()
             bandBaseCells = emptyList()
             clearCompanionRequest()

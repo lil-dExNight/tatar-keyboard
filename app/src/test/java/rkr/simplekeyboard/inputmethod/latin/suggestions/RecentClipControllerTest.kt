@@ -170,6 +170,8 @@ class RecentClipControllerTest {
 
     private class Harness {
         var now = 10_000_000L
+        /** The live keyguard state the controller's gate reads; false = unlocked. */
+        var keyguardLocked = false
         /** When true, the sentence-start table answers (the production default); the clip's
          * precedence over it is part of the contract under test. */
         var withSentStart = false
@@ -202,6 +204,7 @@ class RecentClipControllerTest {
             controller.setCompletionSink(sink)
             controller.setPairCompletionSink(pairSink)
             controller.replaceRecentClipCellForTest(RecentClipCell { now })
+            controller.setKeyguardGate(KeyguardGate { keyguardLocked })
         }
 
         fun start(eligible: Boolean = true) {
@@ -369,6 +372,42 @@ class RecentClipControllerTest {
 
         assertEquals("reserve", h.strip.events.last())
         assertEquals(1, h.strip.bands.size)
+    }
+
+    @Test
+    fun aClipIsNotOfferedAfterTheKeyguardLocksMidSession() {
+        // The session started unlocked: the strip's eligibility is a snapshot of that moment. The
+        // screen then locked without a session boundary, and the offer re-reads the keyguard, so
+        // the clip never reaches the lock screen.
+        val h = Harness()
+        h.start()
+        h.keyguardLocked = true
+        h.clip("сәләм")
+
+        h.controller.onTextChanged()
+
+        assertTrue(h.strip.bands.isEmpty())
+    }
+
+    @Test
+    fun aCellPaintedBeforeTheLockCommitsNothingAtTheTap() {
+        // The cell was painted while unlocked; the screen locked before the tap. The tap re-reads
+        // the keyguard: the clip is dropped like a stale one and nothing is committed.
+        val h = Harness()
+        h.clip("сәләм")
+        h.start()
+        assertEquals(listOf("сәләм", null, null), h.strip.lastBand())
+
+        h.keyguardLocked = true
+        h.tap("сәләм")
+
+        assertTrue(h.editor.edits.isEmpty())
+        assertEquals("", h.editor.before)
+
+        // The offer was one-shot: unlocked again, the clip is not re-offered.
+        h.keyguardLocked = false
+        h.controller.onTextChanged()
+        assertEquals(1, h.strip.bands.count { it.first() == "сәләм" })
     }
 
     // --- The tap --------------------------------------------------------------------------------

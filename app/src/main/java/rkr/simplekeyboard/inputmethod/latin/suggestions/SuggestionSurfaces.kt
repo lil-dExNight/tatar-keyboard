@@ -213,6 +213,15 @@ fun interface EmojiSuggestGate {
 }
 
 /**
+ * Reads the live keyguard state (true = locked). The strip's eligibility is a session-start
+ * snapshot and a session can outlive the locking of the screen, so the recent-clip cell — a piece
+ * of the user's clipboard — re-reads this gate at the offer and at the tap.
+ */
+fun interface KeyguardGate {
+    fun isLocked(): Boolean
+}
+
+/**
  * Paints the revert window's keep-typed cell: the typed word wrapped in the locale's quotation
  * marks. Production reads it from a string resource; JVM tests inject their own. Read at paint and
  * at tap, so the two always agree on the cell's text.

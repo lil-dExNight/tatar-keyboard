@@ -25,7 +25,8 @@ import java.io.File
  * The recent-clip cell's privacy contracts, in code shape: the clipboard listener is registered
  * only while the input view is shown, the clip text is RAM-only (never a file, never preferences,
  * never logged), and the offer is gated on the strip's own eligibility (which already excludes
- * password, numeric, incognito and lock-screen fields).
+ * password, numeric, incognito and lock-screen fields) plus a live keyguard re-read — the session
+ * snapshot can predate the screen locking.
  */
 class RecentClipSourceContractTest {
 
@@ -86,9 +87,12 @@ class RecentClipSourceContractTest {
             "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt").readText()
         val offer = controller.substringAfter("private fun maybeShowRecentClip(): Boolean {")
             .substringBefore("    }")
-        assertTrue(offer.contains("if (destroyed || !eligible) return false"))
-        // The tap re-checks the clip's freshness before committing: a stale cell is a dead cell.
+        // The strip's eligibility is a session-start snapshot that can predate the screen locking,
+        // so the offer re-reads the keyguard state live, and the tap re-reads it before committing.
+        assertTrue(offer.contains("if (destroyed || !eligible || keyguardGate.isLocked()) return false"))
         val tap = controller.substringAfter("private fun onTap(suggestion: String) {")
+        assertTrue(tap.contains("keyguardGate.isLocked()"))
+        // The tap re-checks the clip's freshness before committing: a stale cell is a dead cell.
         assertTrue(tap.contains("recentClip.fullTextForCommit()"))
     }
 

@@ -753,6 +753,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // Emoji suggestions: read live the same way.
         mSuggestionsController.setEmojiSuggestGate(
                 () -> mSettings.getCurrent().mEmojiSuggestEnabled);
+        // The recent-clip cell re-reads the keyguard state at the offer and at the tap: the
+        // session's eligibility snapshot can predate the screen locking.
+        mSuggestionsController.setKeyguardGate(this::isKeyguardLocked);
         // A tap on the strip's emoji cell updates the recent emoji. Wired to the recents-only
         // onStripEmojiInserted, not onEmojiInserted: the controller already reports the tap to the
         // learned-emoji sink (see onStripEmojiInserted).
@@ -1156,6 +1159,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         dialog.setCancelable(true);
         dialog.setCanceledOnTouchOutside(true);
         attachDialogToInputWindow(dialog, windowToken);
+        // The title names the saved word, so the dialog window also gets FLAG_SECURE, as the
+        // settings screen's word dialogs do.
+        DialogUtils.securePersonalContent(dialog);
         mOptionsDialog = dialog;
         dialog.show();
     }

@@ -78,4 +78,12 @@ class LockScreenPrivacySourceContractTest {
         assertTrue(gate.contains("isKeyguardLocked()"))
         assertTrue(gate.contains("Settings.readIncognitoModeEnabled(mDevicePrefs)"))
     }
+
+    @Test
+    fun theRecentClipCellGetsALiveKeyguardGate() {
+        // The strip's eligibility is computed once per session, but a session can outlive the
+        // locking of the screen, so the recent-clip cell re-reads the keyguard through a live gate
+        // (the controller side of the contract is pinned in RecentClipSourceContractTest).
+        assertTrue(ime.contains("mSuggestionsController.setKeyguardGate(this::isKeyguardLocked);"))
+    }
 }
