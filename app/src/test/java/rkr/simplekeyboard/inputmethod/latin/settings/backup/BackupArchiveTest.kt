@@ -106,6 +106,22 @@ class BackupArchiveTest {
     }
 
     @Test
+    fun rejectsAnUppercasePathVariant() {
+        // Classification is case-sensitive: the capitalized twin of a known path is unknown.
+        assertRejectedZipEntry("settings/Preferences.xml")
+    }
+
+    @Test
+    fun rejectsATrailingDotPath() {
+        assertRejectedZipEntry("manifest.json.")
+    }
+
+    @Test
+    fun rejectsANonAsciiPath() {
+        assertRejectedZipEntry("settings/prеferences.xml")
+    }
+
+    @Test
     fun rejectsDotSegments() {
         assertRejectedZipEntry("personal/./personal-tt_RU-s1-f1.tpers")
     }
@@ -296,6 +312,40 @@ class BackupArchiveTest {
         val big = ByteArray(BackupFormat.MAX_SETTINGS_BYTES.toInt() + 1) { ' '.code.toByte() }
         val archive = zipOf("settings/preferences.xml" to big)
         assertRejected(archive)
+    }
+
+    @Test
+    fun rejectsAnArchiveBeyondTheEntryCap() {
+        // The entry-count gate runs on the stream, before any path or content check of the entry
+        // that trips it. The distinct known paths number fewer than the cap, so the filler entries
+        // here trip an earlier stream gate; the pin is that an archive past the cap never imports.
+        val settings = BackupPreferencesXml.serialize(preferences)
+        val entries = ArrayList<Pair<String, ByteArray>>()
+        entries += "manifest.json" to manifestBytes(listOf("settings/preferences.xml" to settings))
+        entries += "settings/preferences.xml" to settings
+        repeat(BackupFormat.MAX_ENTRIES) { index ->
+            entries += "personal/filler$index.tpers" to ByteArray(0)
+        }
+        assertRejected(zipOf(*entries.toTypedArray()))
+    }
+
+    @Test
+    fun rejectsAnArchiveBeyondTheTotalUncompressedCap() {
+        // Zero-filled entries compress to nearly nothing, so the archive stays tiny while the
+        // uncompressed total passes the cap. Same reachability note as the entry-cap test.
+        val settings = BackupPreferencesXml.serialize(preferences)
+        val entries = ArrayList<Pair<String, ByteArray>>()
+        entries += "manifest.json" to manifestBytes(listOf("settings/preferences.xml" to settings))
+        entries += "settings/preferences.xml" to settings
+        val chunk = ByteArray(256 * 1024)
+        var total = settings.size
+        var index = 0
+        while (total <= BackupFormat.MAX_TOTAL_UNCOMPRESSED_BYTES) {
+            entries += "personal/filler$index.tpers" to chunk
+            total += chunk.size
+            index++
+        }
+        assertRejected(zipOf(*entries.toTypedArray()))
     }
 
     // ---- helpers --------------------------------------------------------------------------------
