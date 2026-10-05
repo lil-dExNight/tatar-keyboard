@@ -25,14 +25,19 @@ import org.junit.Test
 /**
  * Log-safety check for the input pipeline: a keystroke or committed text must never reach logcat.
  * Checked from source because these JVM tests have no Android framework to observe logcat with.
- * Scanned packages, recursively, `.java` and `.kt` alike:
+ * Scanned packages, `.java` and `.kt` alike:
  *
  *   * `keyboard/` (incl. `keyboard/internal/`)
- *   * `latin/suggestions/`
+ *   * `latin/` top level (LatinIME, RichInputConnection and the small root classes — the
+ *     subpackages are scan roots of their own, so the root is not recursed)
  *   * `latin/dictionary/`
  *   * `latin/emoji/`
+ *   * `latin/inputlogic/`
+ *   * `latin/setup/`
+ *   * `latin/suggestions/`
+ *   * `latin/utils/`
  *
- * Three rules:
+ * Four rules:
  *
  * 1. **Pinned call-site set.** The exact set of `Log.d/e/i/v/w/wtf/println` call sites, normalized
  *    as `path::trimmed first line`, each group justified in [EXPECTED_CALL_SITES]. Any addition,
@@ -50,6 +55,9 @@ import org.junit.Test
  *    These flags guard AOSP's keystroke tracers in `PointerTracker` and `KeyboardState`. The
  *    tracers now log only key position, key kind and functional-key flags, but they once logged
  *    the typed character and committed text, so the flags stay pinned off.
+ *
+ * 4. **LatinIME's TRACE stays off.** `TRACE` gates the keystroke-position logs and the
+ *    session-long method tracing there; the constant is pinned to `false`.
  *
  * Limits: this is a grep-level check. A rewrite like `if (DEBUG_LISTENER)` → `if (true)` trips
  * no rule here (code review catches that), and the comment stripper does not honor comment
@@ -81,9 +89,10 @@ class LogSafetySourceContractTest {
     @Test
     fun noLogStatementMentionsTextCarryingNames() {
         for (site in scanCallSites()) {
+            val trimmed = site.statement.trimEnd()
             assertTrue(
                 "log statement extraction broke at ${site.path}:${site.line}",
-                site.statement.trimEnd().endsWith(";"),
+                trimmed.endsWith(";") || (site.path.endsWith(".kt") && trimmed.endsWith(")")),
             )
             val lowered = site.statement.lowercase()
             for (token in TEXT_CARRIER_DENYLIST) {
@@ -96,6 +105,17 @@ class LogSafetySourceContractTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun theLatinImeTraceFlagStaysDisabled() {
+        // Rule 4: TRACE gates LatinIME's keystroke-position logs and the session-long
+        // Debug.startMethodTracing, so the constant is pinned off like the DEBUG* flags of rule 3.
+        val file = File(sourceRoot(), "java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java")
+        assertTrue(
+            "LatinIME.TRACE must stay a compile-time false",
+            file.readText().contains("private static final boolean TRACE = false;"),
+        )
     }
 
     @Test
@@ -153,8 +173,9 @@ class LogSafetySourceContractTest {
         for (pkg in SCAN_PACKAGES) {
             val dir = File(javaRoot, pkg)
             assertTrue("input-pipeline package dir not found: ${dir.absolutePath}", dir.isDirectory)
-            dir.walkTopDown()
-                .filter { it.isFile && (it.extension == "java" || it.extension == "kt") }
+            // The latin/ root is not recursed: its subpackages are scan roots of their own.
+            val walk = if (pkg == LATIN_ROOT) dir.walkTopDown().maxDepth(1) else dir.walkTopDown()
+            walk.filter { it.isFile && (it.extension == "java" || it.extension == "kt") }
                 .mapTo(files) {
                     ScannedFile(
                         path = it.relativeTo(javaRoot).invariantSeparatorsPath,
@@ -248,7 +269,8 @@ class LogSafetySourceContractTest {
         return out.toString()
     }
 
-    /** The full Log statement starting at [startIndex]: lines until the `;` at paren depth zero. */
+    /** The full Log statement starting at [startIndex]: lines until the `;` at paren depth zero
+     * (Java) or until the call's parens close at end of line (Kotlin needs no `;`). */
     private fun extractStatement(lines: List<String>, startIndex: Int, where: String): String {
         val parts = ArrayList<String>()
         var depth = 0
@@ -265,6 +287,7 @@ class LogSafetySourceContractTest {
                     ';' -> if (sawParen && depth == 0) return parts.joinToString("\n")
                 }
             }
+            if (sawParen && depth == 0) return parts.joinToString("\n")
         }
         error("unterminated Log statement at $where")
     }
@@ -274,11 +297,17 @@ class LogSafetySourceContractTest {
             ?: error("cannot locate app/src/main from ${File(".").absolutePath}")
 
     private companion object {
+        const val LATIN_ROOT = "rkr/simplekeyboard/inputmethod/latin"
+
         val SCAN_PACKAGES = listOf(
             "rkr/simplekeyboard/inputmethod/keyboard",
+            LATIN_ROOT,
             "rkr/simplekeyboard/inputmethod/latin/dictionary",
             "rkr/simplekeyboard/inputmethod/latin/emoji",
+            "rkr/simplekeyboard/inputmethod/latin/inputlogic",
+            "rkr/simplekeyboard/inputmethod/latin/setup",
             "rkr/simplekeyboard/inputmethod/latin/suggestions",
+            "rkr/simplekeyboard/inputmethod/latin/utils",
         )
 
         val LOG_CALL = Regex("""\bLog\s*\.\s*(?:d|e|i|v|w|wtf|println)\s*\(""")
@@ -356,6 +385,27 @@ class LogSafetySourceContractTest {
          * internal/PointerTrackerQueue.java — the `Log.d` sites sit behind `DEBUG = false`;
          * the `Log.w` duplicate tripwires are reachable, and `pointer` renders as
          * `PointerTracker@<hash>` (PointerTracker has no toString override) — identity metadata.
+         *
+         * latin/InputAttributes.java — fixed-string field-type diagnostics; the format args are
+         * the inputType/imeOptions bitmasks, never user text.
+         *
+         * latin/LatinIME.java — the null-EditorInfo error is a fixed string (reachable); the two
+         * position traces sit behind TRACE = false (rule 4).
+         *
+         * latin/RichInputConnection.java — fixed-string consistency tripwires: the batch nest
+         * level, the refused replace/delete guards, the reload staleness notices, the null-read
+         * errors. Positions and flags only, never a payload.
+         *
+         * latin/SystemBroadcastReceiver.java — fixed-string locale-change notice (reachable).
+         *
+         * latin/setup/SetupActivity.kt — a fixed-string setup-wizard error with the caught
+         * exception (reachable).
+         *
+         * latin/utils/ApplicationUtils.java — fixed-string errors with the caught exception
+         * (reachable).
+         *
+         * latin/utils/SubtypePreferenceUtils.java — the subtype preference values (locale and
+         * layout-set ids: settings metadata).
          */
         val EXPECTED_CALL_SITES = listOf(
             // KeyboardLayoutSet.java — cache instrumentation, DEBUG_CACHE = false; ids only.
@@ -456,6 +506,50 @@ class LogSafetySourceContractTest {
             "rkr/simplekeyboard/inputmethod/keyboard/internal/PointerTrackerQueue.java::Log.d(TAG, \"cancelAllPointerTracker: \" + this);",
             // internal/ShiftKeyState.java — inherited DEBUG = false; mName constant.
             "rkr/simplekeyboard/inputmethod/keyboard/internal/ShiftKeyState.java::Log.d(TAG, mName + \".onOtherKeyPressed: \" + toString(oldState) + \" > \" + this);",
+            // latin/InputAttributes.java — fixed strings; the format args are the inputType /
+            // imeOptions bitmasks.
+            "rkr/simplekeyboard/inputmethod/latin/InputAttributes.java::Log.w(TAG, \"No editor info for this field. Bug?\");",
+            "rkr/simplekeyboard/inputmethod/latin/InputAttributes.java::Log.i(TAG, \"InputType.TYPE_NULL is specified\");",
+            "rkr/simplekeyboard/inputmethod/latin/InputAttributes.java::Log.w(TAG, String.format(\"Unexpected input class: inputType=0x%08x\"",
+            // latin/LatinIME.java — fixed string (reachable).
+            "rkr/simplekeyboard/inputmethod/latin/LatinIME.java::Log.e(TAG, \"Null EditorInfo in onStartInputView()\");",
+            // latin/LatinIME.java — cursor-position traces, behind TRACE = false (rule 4).
+            "rkr/simplekeyboard/inputmethod/latin/LatinIME.java::if (TRACE) Log.i(TAG, \"Starting input. Cursor position = \"",
+            "rkr/simplekeyboard/inputmethod/latin/LatinIME.java::if (TRACE) Log.i(TAG, \"Update Selection. Cursor position = \" + newSelStart + \",\" + newSelEnd);",
+            // latin/RichInputConnection.java — fixed-string tripwires: nest level and batch pairing.
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"Nest level too deep : \" + mNestLevel);",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::if (mNestLevel <= 0) Log.e(TAG, \"Batch edit not in progress!\");",
+            // latin/RichInputConnection.java — fixed-string null-read errors (reachable).
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"Unable to read around the cursor.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"The read around the cursor carries an out-of-range selection.\");",
+            // latin/RichInputConnection.java — reload staleness notices (reachable), no payload.
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.w(TAG, \"Selection range modified before the reload reached the editor.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.w(TAG, \"Selection range modified before thread completion.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.w(TAG, \"Selection start modified before thread completion.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"Unable to read before the cursor.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.w(TAG, \"Selection range modified before thread completion.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.w(TAG, \"Selection end modified before thread completion.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"Unable to read after the cursor.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.w(TAG, \"Selection range modified before thread completion.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"Unable to read the selection.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.w(TAG, \"Selection range modified before thread completion.\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.i(TAG, \"Clearing editor caches.\");",
+            // latin/RichInputConnection.java — refused-edit tripwires, fixed strings (reachable).
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"replace refused: a selection is active\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"replace refused: the range does not start at the cursor\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"replace refused: the range runs past the cache\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"selection delete refused: nothing is selected\");",
+            // latin/SystemBroadcastReceiver.java — fixed string (reachable).
+            "rkr/simplekeyboard/inputmethod/latin/SystemBroadcastReceiver.java::Log.i(TAG, \"System locale changed\");",
+            // latin/setup/SetupActivity.kt — fixed string + the caught exception (reachable).
+            "rkr/simplekeyboard/inputmethod/latin/setup/SetupActivity.kt::Log.e(TAG, \"Exception in check if input method is enabled\", e)",
+            // latin/utils/ApplicationUtils.java — fixed strings + the caught exception (reachable).
+            "rkr/simplekeyboard/inputmethod/latin/utils/ApplicationUtils.java::Log.e(TAG, \"Failed to get settings activity title res id.\", e);",
+            "rkr/simplekeyboard/inputmethod/latin/utils/ApplicationUtils.java::Log.e(TAG, \"Could not find version info.\", e);",
+            "rkr/simplekeyboard/inputmethod/latin/utils/ApplicationUtils.java::Log.e(TAG, \"Could not find version info.\", e);",
+            // latin/utils/SubtypePreferenceUtils.java — locale / layout-set ids (settings metadata).
+            "rkr/simplekeyboard/inputmethod/latin/utils/SubtypePreferenceUtils.java::Log.i(TAG, \"Loading subtypes: \" + prefSubtypes);",
+            "rkr/simplekeyboard/inputmethod/latin/utils/SubtypePreferenceUtils.java::Log.w(TAG, \"Unknown subtype specified: \" + prefSubtype + \" in \"",
         )
     }
 }
