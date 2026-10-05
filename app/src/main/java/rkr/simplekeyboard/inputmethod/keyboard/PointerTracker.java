@@ -1077,13 +1077,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         if (curKey == null /* && newKey != null */) {
             return true;
         }
-        // A press that went down on a modifier key must travel a real distance from its
-        // touch-down point before it is allowed to leave that key. The hysteresis below is
-        // measured from the key edge, so without this gate a press landing near the edge of
-        // ?123 or shift leaves the key after 5dp of movement -- less than the platform's own
-        // 8dp touch slop -- which arms the momentary layout switch and springs it back on
-        // release. Measuring from the touch-down point instead makes the edge of the key as
-        // reliable as its center.
+        // Sliding-modifier slop, measured from the touch-down point; see
+        // {@link KeyDetector#isBeyondSlidingModifierSlop}.
         if (mIsDownOnModifierKey && !mIsInDraggingFinger
                 && !mKeyDetector.isBeyondSlidingModifierSlop(CoordinateUtils.x(mDownCoordinates),
                         CoordinateUtils.y(mDownCoordinates), x, y)) {

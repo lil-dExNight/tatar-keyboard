@@ -27,12 +27,8 @@ import rkr.simplekeyboard.inputmethod.latin.utils.LeakGuardHandlerWrapper;
 
 public final class TimerHandler extends LeakGuardHandlerWrapper<DrawingProxy>
         implements TimerProxy {
-    // Zero is not used as a message id here for the same reason it is not used in
-    // LatinIME.UIHandler: Handler#post(Runnable) enqueues a message whose {@code what} is 0, and
-    // Handler#removeMessages(int) matches on {@code what} alone, so a zero id makes every
-    // cancellation of this message silently delete any posted runnable of the same handler as
-    // well. Nothing posts a bare runnable on this handler; the non-zero id keeps it safe if
-    // something ever does.
+    // Zero is not used as a message id here (see LatinIME.UIHandler). Nothing posts a bare
+    // runnable on this handler; the non-zero id keeps it safe if something ever does.
     private static final int MSG_TYPING_STATE_EXPIRED = 5;
     private static final int MSG_REPEAT_KEY = 1;
     private static final int MSG_LONGPRESS_KEY = 2;

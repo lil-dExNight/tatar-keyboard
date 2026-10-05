@@ -196,7 +196,7 @@ class EmojiPanelController internal constructor(
     /** The single latest-only deferred "show the search". Never more than one outstanding. */
     private var pendingSearch = false
 
-    // The single latest-only deferred show. Never more than one outstanding.
+    // Same latest-only deferred shape as [pendingSearch], for the panel show.
     private var pendingShow = false
 
     private var destroyed = false

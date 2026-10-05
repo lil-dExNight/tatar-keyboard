@@ -119,7 +119,7 @@ class BigramBudgetError(ValueError):
 
 @dataclass
 class ParsedBigramTable:
-    """What a validated file actually contains — the round-trip shape used by tests."""
+    """What a validated file contains — the round-trip shape used by tests."""
 
     head_words: list[str]
     success_vocabulary: list[str]

@@ -329,14 +329,12 @@ public class KeyboardView extends View {
                 canvas.drawColor(Color.BLACK, PorterDuff.Mode.CLEAR);
                 background.draw(canvas);
             }
-            // Draw all keys. Indexed loop to avoid iterator allocation on every frame.
             final List<Key> sortedKeys = keyboard.getSortedKeys();
             for (int i = 0; i < sortedKeys.size(); i++) {
                 onDrawKey(sortedKeys.get(i), canvas, paint, false /* pressed */);
             }
         } else {
-            // Indexed loop, like the all-keys branch above: a collection iterator would
-            // allocate on every key-press frame.
+            // Indexed loop, like the all-keys branch above.
             for (int i = 0; i < mInvalidatedKeys.size(); i++) {
                 final Key key = mInvalidatedKeys.get(i);
                 if (!keyboard.hasKey(key)) {

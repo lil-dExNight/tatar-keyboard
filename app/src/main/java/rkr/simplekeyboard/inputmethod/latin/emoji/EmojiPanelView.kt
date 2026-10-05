@@ -130,13 +130,12 @@ class EmojiPanelView @JvmOverloads constructor(
         private const val TAB_PILL_INSET_DP = 4f
         private const val HEADER_TEXT_INSET_DP = 12f
 
-        // The magnifier is drawn from primitives rather than shipped as a font or a bitmap.
+        // Search-cell magnifier dimensions; see drawSearchIcon in EmojiPanelDrawing.kt.
         private const val SEARCH_ICON_RADIUS_DP = 6f
         private const val SEARCH_ICON_STROKE_DP = 1.6f
         private const val SEARCH_ICON_HANDLE_DP = 5f
 
         // The recents tab carries a clock rather than whichever emoji happens to be most recent.
-        // It is drawn from primitives too, so no icon font ships.
         private const val CLOCK_ICON_RADIUS_DP = 9f
         private const val CLOCK_ICON_STROKE_DP = 1.8f
 
@@ -405,7 +404,7 @@ class EmojiPanelView @JvmOverloads constructor(
         this.listener = listener
     }
 
-    /** Binds the skin-tone table; until it arrives a long press simply does nothing. */
+    /** Binds the skin-tone table; until it arrives a long press does nothing. */
     fun setSkinTones(tones: EmojiSkinTones) {
         skinTones = tones
     }

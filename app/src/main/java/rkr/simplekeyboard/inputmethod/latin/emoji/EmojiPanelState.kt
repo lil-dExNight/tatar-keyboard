@@ -134,9 +134,8 @@ internal class EmojiPanelState {
     }
 
     /**
-     * How far the panel reaches under the navigation bar, in px. The view measures it from its own
-     * position on screen; this class only arranges what it is given, exactly as it does with every
-     * other metric. Returns true when the value actually changed, so the caller redraws only then.
+     * How far the panel reaches under the navigation bar, in px; measured by the view, see
+     * [setCellMetrics]. Returns true when the value changed, so the caller redraws only then.
      */
     fun setBottomInset(px: Int): Boolean {
         val value = px.coerceAtLeast(0)

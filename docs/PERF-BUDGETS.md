@@ -43,7 +43,7 @@ Enforcement kinds:
 ## Measurement rules
 
 - **Hard timing limits belong on the device, not on shared CI runners.** Wall-clock asserts on
-  shared runners fail at random. A host timing test is CI-safe only with a very large margin
+  shared runners fail at random. A host timing test is CI-safe only with a large margin
   (such as next-word prediction against its 5 ms budget); otherwise it is skipped under `CI`, as
   the host glide decode test is.
 - **Report median and p95 over a fixed script, with the sample size.** The device tests and the

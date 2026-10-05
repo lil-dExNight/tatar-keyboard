@@ -131,7 +131,7 @@ public final class KeyPreviewBalloonDrawable extends Drawable {
 
     /**
      * Moves the neck's anchor horizontally, keeping it centered on the parent key when the
-     * balloon is clamped at the key grid's edge. Rebuilds the path only when the offset actually
+     * balloon is clamped at the key grid's edge. Rebuilds the path only when the offset
      * changes; an offset change before the first layout is picked up by {@link #onBoundsChange}.
      */
     public void setNeckOffset(final float offsetPx) {

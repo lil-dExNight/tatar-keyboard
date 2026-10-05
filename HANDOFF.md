@@ -32,15 +32,6 @@ sprint shipped as 3.9.0 (see `CHANGELOG.md`). The measured rejections of the pos
 pair-conditional glide rerank) are recorded in `research/prediction-engine.md` and
 `research/glide-typing.md`.
 
-Code-level notes on what 3.9.1 changed:
-
-`main` is the 3.9.2 release; nothing is unreleased. The `improvement` branch is merged and
-closed out: its measurement foundation, quick-wins sprint, prediction/glide round and features
-sprint shipped as 3.9.0 (see `CHANGELOG.md`). The measured rejections of the post-3.9.1 round
-(Russian dictionary admission, Glot500 dictionary bonus, case-aware stem expansion,
-pair-conditional glide rerank) are recorded in `research/prediction-engine.md` and
-`research/glide-typing.md`.
-
 Also true of the current tree:
 
 - The golden vectors of `GlideGoldenExportTest` (geometry with aliases, word-index digests, set

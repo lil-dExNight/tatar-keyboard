@@ -70,7 +70,7 @@ final class LatinImeEmojiSearch {
         return true;
     }
 
-    /** Hands the current query text to the search rows, which re-run the match and redraw. */
+    /** See {@link KeyboardSwitcher#setEmojiSearchQuery}. */
     static void updateEmojiSearchView(final LatinIME ime) {
         final EmojiSearchQuery query = ime.mEmojiSearchQuery;
         if (query != null) {

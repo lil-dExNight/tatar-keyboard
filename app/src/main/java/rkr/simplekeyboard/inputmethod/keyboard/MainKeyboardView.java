@@ -731,8 +731,8 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         return TypefaceUtils.getStringWidth(text, paint) < maxTextWidth;
     }
 
-    // Compute and cache the language name for the spacebar. Called only when the cache is
-    // empty (subtype or keyboard changed) — never on the steady-state draw path.
+    // Called only when the cache is empty (subtype or keyboard changed) — never on the
+    // steady-state draw path.
     private void cacheLanguageOnSpacebarText(final Paint paint,
                                              final Subtype subtype, final int width) {
         // Choose appropriate language name to fit into the width.

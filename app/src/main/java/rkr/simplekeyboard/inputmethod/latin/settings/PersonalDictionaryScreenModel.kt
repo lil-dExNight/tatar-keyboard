@@ -46,7 +46,7 @@ internal class PersonalPairRow(
     val successorNormalizedForm: String,
     val usageCount: Int,
 ) {
-    /** Says nothing on purpose: this type carries the user's words. */
+    /** See [PersonalWordRow.toString]. */
     override fun toString(): String = "PersonalPairRow"
 }
 
@@ -63,7 +63,7 @@ internal class PersonalEmojiRow(
     val usageCount: Int,
     val frequencyCount: Int,
 ) {
-    /** Says nothing on purpose: this type carries the user's word. */
+    /** See [PersonalWordRow.toString]. */
     override fun toString(): String = "PersonalEmojiRow"
 }
 

@@ -93,7 +93,7 @@ public final class InputView extends FrameLayout {
 
     /**
      * Creates the inline-autofill host on first use. The class carries no autofill framework
-     * types, but nothing inflates it before the first gated response actually hosts content.
+     * types, but nothing inflates it before the first gated response hosts content.
      */
     public InlineAutofillStripView getOrCreateInlineAutofillStripView() {
         if (mInlineAutofillStripView != null) {

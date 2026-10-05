@@ -75,7 +75,6 @@ internal fun SettingsHostActivity.buildLanguagesScreen() {
         actions.add(actionRow(R.string.add_language) {
             showLocalePickerDialog(unusedValues, R.string.add_language, R.string.add,
                     allowAllChecked = true) { checkedValues ->
-                // Enable the default layout for all of the checked languages.
                 for (localeString in checkedValues) {
                     richImm.addSubtype(
                             SubtypeLocaleUtils.getDefaultSubtype(localeString, resources))
@@ -87,7 +86,6 @@ internal fun SettingsHostActivity.buildLanguagesScreen() {
         actions.add(actionRow(R.string.remove_language) {
             showLocalePickerDialog(usedValues, R.string.remove_language, R.string.remove,
                     allowAllChecked = false) { checkedValues ->
-                // Disable all of the layouts of the checked languages.
                 for (localeString in checkedValues) {
                     for (subtype in richImm.getEnabledSubtypesForLocale(localeString)) {
                         richImm.removeSubtype(subtype)
@@ -129,7 +127,6 @@ internal fun SettingsHostActivity.showLocalePickerDialog(localeValues: List<Stri
             }
             .setPositiveButton(positiveButtonRes) { _, _ ->
                 onAccept(localeValues.filterIndexed { index, _ -> checkedItems[index] })
-                // Refresh the list of enabled languages.
                 showScreen(Screen.LANGUAGES)
             }
             .setNegativeButton(android.R.string.cancel, null)

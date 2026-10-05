@@ -404,7 +404,7 @@ class SuggestionsController internal constructor(
     private val refusedCorrections = LinkedHashSet<String>()
 
     // --- Emoji suggestion state. Not persisted; the source is immutable once loaded, and the emoji
-    // cell is simply part of [bandBaseCells], so every clear/invalidate path covers it.
+    // cell is part of [bandBaseCells], so every clear/invalidate path covers it.
     /** The emoji-suggestions setting, read live. OFF until LatinIME wires the real one. */
     private var emojiSuggestGate: EmojiSuggestGate = EmojiSuggestGate { false }
 
@@ -2134,8 +2134,7 @@ class SuggestionsController internal constructor(
         sentStartPreparationRequested.add(language)
         try {
             preparation.prepare { source ->
-                // The callback may run on the background executor. Marshal onto the serialized UI
-                // owner before touching any controller state.
+                // Same marshal-onto-UI rule as the emoji-load callback above.
                 uiPoster.post { onSentStartReady(language, source) }
             }
         } catch (_: Throwable) {

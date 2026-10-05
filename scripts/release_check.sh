@@ -991,7 +991,7 @@ fi
 
 # --- 8. delta against the previous release in dist/ ---------------------------------------------
 # Previous = the dist/ APK with the highest versionCode strictly below the candidate's.
-# Informational only: artifact.size enforces the size budget, this is just a summary.
+# Informational only: artifact.size enforces the size budget.
 
 PREV=""
 PREV_VC=-1

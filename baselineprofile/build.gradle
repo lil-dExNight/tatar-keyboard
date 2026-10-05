@@ -17,7 +17,6 @@ android {
         targetSdkVersion 37
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
-    // Point to the app module, the module that we're generating the Baseline Profile for.
     targetProjectPath ':app'
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

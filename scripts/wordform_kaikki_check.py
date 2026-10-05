@@ -53,7 +53,7 @@ def is_plural_possessed(form: str) -> bool:
 
 def is_possessive_label(label: str) -> bool:
     # noun.p1/p2/p3/p1pl/p2pl/p3pl and noun.p3.* are possessive; noun.pl and
-    # noun.pl.* are the plural cases, which of course contain лар themselves.
+    # noun.pl.* are the plural cases, which contain лар themselves.
     return label.startswith("noun.p") and not label.startswith("noun.pl")
 
 

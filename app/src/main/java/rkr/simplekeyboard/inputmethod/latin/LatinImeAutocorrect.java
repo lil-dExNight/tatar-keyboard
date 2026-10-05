@@ -41,7 +41,7 @@ final class LatinImeAutocorrect {
      *
      * <p>The code point must be a word separator of the current layout and an autocorrect
      * separator ({@link TatarWordUtils#isAutocorrectSeparator}: space or punctuation). Enter and Tab
-     * are left alone. The controller decides whether anything is actually replaced. The text
+     * are left alone. The controller decides whether anything is replaced. The text
      * shortcut (the user's own pair) is tried before the statistical correction.
      */
     static void maybeAutocorrectTatarWord(final LatinIME ime, final Event event) {

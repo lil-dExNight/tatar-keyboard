@@ -617,7 +617,7 @@ class SettingsHostActivity : Activity() {
 
         addCard(listOf(
                 textInputRow(R.string.personal_dictionary_search_hint, personalSearchQuery) { text ->
-                    // Filtering happens before any row View exists: the whole screen is simply
+                    // Filtering happens before any row View exists: the whole screen is
                     // rebuilt from the model with the new query.
                     personalSearchQuery = text
                     showScreen(Screen.PERSONAL_DICTIONARY)
@@ -828,7 +828,7 @@ class SettingsHostActivity : Activity() {
             }
             return
         }
-        // In the order the languages are listed, not the order the worker happened to answer in.
+        // Same ordering as the word quarantine cards above.
         for (subtypeId in subtypeIds) {
             val report = reports[subtypeId] ?: continue
             val summary = when {
@@ -900,7 +900,7 @@ class SettingsHostActivity : Activity() {
             }
             return
         }
-        // In the order the languages are listed, not the order the worker happened to answer in.
+        // Same ordering as the word quarantine cards above.
         for (subtypeId in subtypeIds) {
             val report = reports[subtypeId] ?: continue
             val summary = when {
@@ -989,7 +989,7 @@ class SettingsHostActivity : Activity() {
                     if (!accepted) {
                         // The message names the alphabet of the store the word was meant for:
                         // the same screen adds to the Russian dictionary when the current
-                        // subtype is Russian, and "use Tatar letters" is simply wrong there.
+                        // subtype is Russian, and "use Tatar letters" is wrong there.
                         val messageRes = if (subtypeId == PersonalSubtypes.RUSSIAN)
                                 R.string.personal_dictionary_add_rejected_ru
                             else R.string.personal_dictionary_add_rejected
@@ -1517,8 +1517,7 @@ class SettingsHostActivity : Activity() {
         currentDialog = AlertDialog.Builder(this)
                 .setTitle(R.string.settings_screen_theme)
                 .setMessage(R.string.keyboard_theme_dynamic_summary)
-                // setItems on purpose, exactly like the keyboard-height picker: the choice applies
-                // on the tap itself and the dialog closes — no unnamed OK button.
+                // setItems on purpose, exactly like the keyboard-height picker.
                 .setItems(names) { _, which ->
                     val themeId = ids[which]
                     if (themeId != KeyboardTheme.getKeyboardTheme(prefs).mThemeId) {
@@ -1540,8 +1539,7 @@ class SettingsHostActivity : Activity() {
         currentDialog?.dismiss()
         currentDialog = AlertDialog.Builder(this)
                 .setTitle(R.string.emoji_panel_height)
-                // setItems on purpose, exactly like the keyboard-height picker: the choice applies
-                // on the tap itself and the dialog closes — no unnamed OK button.
+                // setItems on purpose, exactly like the keyboard-height picker.
                 .setItems(labels) { _, which ->
                     val scale = EmojiPanelHeightPresets.SCALES[which]
                     if (scale != Settings.readEmojiPanelHeight(prefs,
@@ -1629,8 +1627,7 @@ class SettingsHostActivity : Activity() {
         currentDialog?.dismiss()
         currentDialog = AlertDialog.Builder(this)
                 .setTitle(R.string.one_handed_mode)
-                // setItems on purpose, exactly like the keyboard-height picker: the choice applies
-                // on the tap itself and the dialog closes — no unnamed OK button.
+                // setItems on purpose, exactly like the keyboard-height picker.
                 .setItems(labels) { _, which ->
                     val side = OneHandedMode.SIDES[which]
                     if (side != Settings.readOneHandedSide(prefs)) {

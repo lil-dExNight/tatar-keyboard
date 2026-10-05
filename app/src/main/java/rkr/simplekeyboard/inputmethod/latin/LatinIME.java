@@ -393,8 +393,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onCreate() {
-        // Trace section for IME initialization. Trace sections wrap only coarse spans, never
-        // per-frame code.
+        // Trace section for IME initialization. Markers wrap only coarse spans — the policy and
+        // its cost rationale sit in KeyboardSwitcher.loadKeyboard.
         Trace.beginSection("TT#onCreate");
         try {
             Settings.init(this);

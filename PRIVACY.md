@@ -99,15 +99,6 @@ A single switch (keyboard settings → Preferences → **“Incognito mode”**,
 - **What does not pause.** What you already saved keeps working: saved words, learned pairs and learned emoji still appear in suggestions, a remembered refused correction keeps suppressing its correction, and the “Recent” tab still shows your recent emoji. This is a pause, not a wipe; the personal dictionary switch is the one that hides them.
 - **Turning it off** resumes learning where it stopped. Nothing typed while it was on is learned afterwards; for the stores, those observations never happened.
 
-## Lab session log (layout study)
-
-The keyboard contains an **opt-in** instrument for a one-time layout study, under keyboard settings → **“Developer”** → **“Lab session log.”** It is **off by default**, and while it is off nothing is recorded anywhere.
-
-- **What it records while on.** One line per event: a timestamp, the kind of event (a printable key, space, delete, keyboard shown or hidden), the **key code** of the key (a number, not text) and the study arm. Nothing else: no words, no suggestions, no app or field names. Note what key codes still are: in sequence, the codes of letter keys correspond to the letters pressed, so treat the file like typed content.
-- **Where.** A single size-capped file in the app's internal folder, in storage that is **decrypted only after you enter your device's lock code**. When it grows past the cap, the older half moves aside into one rotation file; there are never more than two. **Nothing is recorded before the first unlock** after a restart, and **nothing is recorded in password fields**.
-- **It never leaves your device by itself.** The file is excluded from backup like everything else. The only way off the device is a copy made with `adb` by a person holding your unlocked device — and that works only on a debuggable build. The regular (release) app can record the log but offers no way to read it back.
-- **How to erase it.** Keyboard settings → **“Developer”** → **“Clear lab session log.”** Clearing the app's data removes it too. Turning the switch off stops recording immediately.
-
 ## Contact
 
 Privacy questions: open an issue in the project repository.

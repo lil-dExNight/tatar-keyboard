@@ -436,7 +436,7 @@ internal class PersonalBigramStore(
         return true
     }
 
-    /** The body of [open], where an early exit is a plain `return` rather than a `return true`. */
+    /** The body of [open]. See [PersonalDictionaryStore.load]. */
     private fun load() {
         val directory = directoryProvider.personalDirectory()
         if (!directory.isDirectory) {
