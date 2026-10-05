@@ -14,14 +14,11 @@ lead; Russian and English ride the shared mechanisms.
 
 ## 1. Publication of 3.9.x
 
-Manual steps that close the current releases (details in `HANDOFF.md` → "Open release steps",
-procedure in `docs/PUBLISH-CHECKLIST.md`):
+The GitHub Releases for 3.9.1 and 3.9.3 are published (3.9.2 was folded into 3.9.3). What
+remains is manual (details in `HANDOFF.md` → "Open release steps"):
 
-1. The **3.9.1 GitHub Release** through the web UI: tag `v3.9.1`, title `Tatar Keyboard 3.9.1`,
-   notes from `dist/release-notes-3.9.1.md`, attachments `dist/tatar-keyboard-3.9.1.apk` and
-   `dist/release-check-3.9.1.txt` (the verified files, never a rebuild).
-2. The **store uploads**: 3.9.0 with `metadata/{en-US,ru-RU,tt}/changelogs/46.txt` (if still
-   pending) and 3.9.1 with `changelogs/47.txt`.
+1. The **store uploads**: 3.9.0 with `metadata/{en-US,ru-RU,tt}/changelogs/46.txt` (if still
+   pending), 3.9.1 with `changelogs/47.txt`, 3.9.3 with `changelogs/49.txt`.
 
 ## 2. Prediction and glide quality (the improvement program remainder)
 

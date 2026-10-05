@@ -55,17 +55,10 @@ Verified for 3.9.3:
 
 These are manual and have not been confirmed as done:
 
-- the **GitHub Releases** through the web UI (the machine's gh token is read-only): 3.9.1 (tag
-  `v3.9.1`, notes `dist/release-notes-3.9.1.md`, attach `dist/tatar-keyboard-3.9.1.apk` and
-  `dist/release-check-3.9.1.txt`), 3.9.2 (tag `v3.9.2`, notes `dist/release-notes-3.9.2.md`,
-  attach `dist/tatar-keyboard-3.9.2.apk` and `dist/release-check-3.9.2.txt`) and 3.9.3 (tag
-  `v3.9.3`, notes `dist/release-notes-3.9.3.md`, attach `dist/tatar-keyboard-3.9.3.apk` and
-  `dist/release-check-3.9.3.txt`);
 - the **corpus.tatar letter**: ready in `dist/corpus-tatar-letter.md`, send to
   tatcorpus@gmail.com;
 - the store uploads: 3.9.0 with `metadata/{en-US,ru-RU,tt}/changelogs/46.txt` (if still
-  pending), 3.9.1 with `changelogs/47.txt`, 3.9.2 with `changelogs/48.txt`, 3.9.3 with
-  `changelogs/49.txt`.
+  pending), 3.9.1 with `changelogs/47.txt`, 3.9.3 with `changelogs/49.txt`.
 
 ## Known risks and open items
 
