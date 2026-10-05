@@ -161,6 +161,14 @@ internal class PendingCounters private constructor(
          */
         const val MAX_SERIALIZED_BYTES: Int = HEADER_SIZE + MAX_PENDING * RECORD_SIZE
 
+        /**
+         * The largest nextSerial [parse] accepts. 2^40 is far past any real count — a note every
+         * millisecond would need decades to reach it — while keeping `nextSerial + 1` in [note]
+         * millions of times short of Long overflow, so a corrupt file cannot stall learning by
+         * wrapping the serial negative or by making every flush prune everything.
+         */
+        const val MAX_NEXT_SERIAL: Long = 1L shl 40
+
         val EMPTY = PendingCounters(LongArray(0), IntArray(0), LongArray(0), 1L)
 
         /**
@@ -218,7 +226,7 @@ internal class PendingCounters private constructor(
                 if (counts[index] < 1) return EMPTY
                 if (index > 0 && keys[index] <= keys[index - 1]) return EMPTY
             }
-            if (nextSerial < 1) return EMPTY
+            if (nextSerial < 1 || nextSerial > MAX_NEXT_SERIAL) return EMPTY
             return PendingCounters(keys, counts, serials, nextSerial)
         }
 

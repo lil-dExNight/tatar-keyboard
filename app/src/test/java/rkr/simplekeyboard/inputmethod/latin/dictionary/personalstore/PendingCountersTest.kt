@@ -124,6 +124,28 @@ class PendingCountersTest {
         assertEquals(0, PendingCounters.parse(corrupted).size)
     }
 
+    @Test
+    fun anAbsurdNextSerialFailsClosedToEmpty() {
+        // The header is MAGIC (8 bytes) + version (2) + count (2) + nextSerial (8, little-endian).
+        val good = PendingCounters.EMPTY.note(PendingCounters.keyOf(salt, "гүзәлия")).serialize()
+        fun withSerial(serial: Long): ByteArray {
+            val bytes = good.copyOf()
+            for (index in 0 until 8) bytes[12 + index] = (serial shr (8 * index)).toByte()
+            return bytes
+        }
+        // A huge serial would wrap negative at the next note() and make every flush prune
+        // everything: the file is rejected instead.
+        assertEquals(0, PendingCounters.parse(withSerial(Long.MAX_VALUE)).size)
+        assertEquals(0, PendingCounters.parse(withSerial(PendingCounters.MAX_NEXT_SERIAL + 1)).size)
+        assertEquals(0, PendingCounters.parse(withSerial(0)).size)
+        // The boundary itself still parses, and a note from it stays far from Long overflow.
+        val atBound = PendingCounters.parse(withSerial(PendingCounters.MAX_NEXT_SERIAL))
+        assertEquals(1, atBound.size)
+        assertEquals(PendingCounters.MAX_NEXT_SERIAL, atBound.nextSerial)
+        assertEquals(PendingCounters.MAX_NEXT_SERIAL + 1,
+            atBound.note(PendingCounters.keyOf(salt, "дөнья")).nextSerial)
+    }
+
     private fun indexOf(haystack: ByteArray, needle: ByteArray): Int {
         if (needle.isEmpty() || needle.size > haystack.size) return -1
         outer@ for (start in 0..haystack.size - needle.size) {
