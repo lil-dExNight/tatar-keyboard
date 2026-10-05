@@ -180,6 +180,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             capturePrimaryClipForOffer();
         }
     };
+    // The registration runs past the first frame: the offer is evaluated later anyway, and the
+    // clip's own timestamp drives freshness. A hide or destroy before the post runs cancels it,
+    // so the listener never outlives the window.
+    private final Runnable mRegisterRecentClipListener = new Runnable() {
+        @Override
+        public void run() {
+            registerRecentClipListener();
+        }
+    };
 
     // Owns the emoji panel's single-per-process snapshot. Null until set up in onCreate().
     private EmojiPanelController mEmojiPanelController;
@@ -1611,6 +1620,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         PersonalEmojiDictionaries.setQuarantineListener(null);
         TextShortcutStores.setErasureListener(null);
         // The clipboard listener goes too: the clipboard is never listened to without a window.
+        mHandler.removeCallbacks(mRegisterRecentClipListener);
         unregisterRecentClipListener();
         if (mSuggestionsController != null) {
             mSuggestionsController.onDestroy();
@@ -2019,7 +2029,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onWindowShown() {
         super.onWindowShown();
-        registerRecentClipListener();
+        mHandler.post(mRegisterRecentClipListener);
         if (isInputViewShown())
             LatinImeSoftInputWindow.setNavigationBarColor(this);
     }
@@ -2027,6 +2037,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onWindowHidden() {
         super.onWindowHidden();
+        mHandler.removeCallbacks(mRegisterRecentClipListener);
         unregisterRecentClipListener();
         // Close the emoji search and panel, or the next show would bring back a search whose
         // query is already dropped. Both calls are no-ops when the panel never opened.

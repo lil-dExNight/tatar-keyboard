@@ -33,15 +33,21 @@ class RecentClipSourceContractTest {
     @Test
     fun theListenerIsRegisteredOnlyWhileTheInputViewIsShown() {
         val latinIme = latinImeSource()
-        assertTrue("onWindowShown registers the listener",
+        assertTrue("onWindowShown posts the registration past the first frame",
             methodBody(latinIme, "public void onWindowShown()")
-                .contains("registerRecentClipListener()"))
+                .contains("mHandler.post(mRegisterRecentClipListener)"))
         assertTrue("onWindowHidden unregisters it",
             methodBody(latinIme, "public void onWindowHidden()")
                 .contains("unregisterRecentClipListener()"))
         assertTrue("onDestroy unregisters it too",
             methodBody(latinIme, "public void onDestroy()")
                 .contains("unregisterRecentClipListener()"))
+        assertTrue("a hide before the post runs cancels the registration",
+            methodBody(latinIme, "public void onWindowHidden()")
+                .contains("removeCallbacks(mRegisterRecentClipListener)"))
+        assertTrue("a destroy before the post runs cancels it too",
+            methodBody(latinIme, "public void onDestroy()")
+                .contains("removeCallbacks(mRegisterRecentClipListener)"))
         assertTrue(methodBody(latinIme, "private void registerRecentClipListener()")
             .contains("addPrimaryClipChangedListener"))
         val unregister = methodBody(latinIme, "private void unregisterRecentClipListener()")
