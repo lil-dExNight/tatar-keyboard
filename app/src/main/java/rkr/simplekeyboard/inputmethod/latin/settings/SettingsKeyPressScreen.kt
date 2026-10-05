@@ -60,7 +60,7 @@ internal fun SettingsHostActivity.buildKeyPressScreen() {
     addCard(rows)
     // The volume row depends on sound_on. A managed restriction on the
     // volume key wins over the dependency.
-    setRowEnabled(volume, prefs.getBoolean(Settings.PREF_SOUND_ON, soundDefault)
+    setRowEnabled(volume, Settings.readKeypressSoundEnabled(prefs, resources)
             && !isRestricted(Settings.PREF_KEYPRESS_SOUND_VOLUME))
 }
 

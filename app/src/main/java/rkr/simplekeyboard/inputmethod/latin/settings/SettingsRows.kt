@@ -96,7 +96,7 @@ internal fun SettingsHostActivity.switchRow(key: String, defaultValue: Boolean, 
                       onCheckedChanged: ((Boolean) -> Unit)? = null): View {
     val row = switchRowRaw(getString(titleRes),
             if (summaryRes != 0) getString(summaryRes) else null,
-            prefs.getBoolean(key, defaultValue)) { checked ->
+            Settings.readBooleanTolerant(prefs, key, defaultValue)) { checked ->
         prefs.edit().putBoolean(key, checked).apply()
         onCheckedChanged?.invoke(checked)
         true

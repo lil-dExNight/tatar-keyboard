@@ -270,7 +270,8 @@ class SettingsHostActivity : Activity() {
         }
         detailLocale = detail
         currentScreen = screen
-        restrictionKeys = prefs.getStringSet(Settings.ACTIVE_RESTRICTIONS, null) ?: emptySet()
+        restrictionKeys = Settings.readStringSetTolerant(prefs, Settings.ACTIVE_RESTRICTIONS, null)
+                ?: emptySet()
         if (detail != null) {
             titleView.text = LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(detail)
         } else {
@@ -547,7 +548,7 @@ class SettingsHostActivity : Activity() {
         addCard(rows)
         // The IME-switch row depends on the language switch key.
         setRowEnabled(imeRow,
-                prefs.getBoolean(Settings.PREF_SHOW_LANGUAGE_SWITCH_KEY, true)
+                Settings.readShowLanguageSwitchKey(prefs)
                         && !isRestricted(Settings.PREF_ENABLE_IME_SWITCH),
                 disabledReason(isRestricted(Settings.PREF_ENABLE_IME_SWITCH),
                         R.string.row_needs_language_switch))

@@ -60,15 +60,14 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     public static final String PREF_KEY_LONGPRESS_TIMEOUT = "pref_key_longpress_timeout";
     /**
      * Keyboard height as a float scale of the resource default (1.0f = default). The settings row
-     * writes one of the three {@link KeyboardHeightPresets} values; other floats (older seek-bar
-     * values in 0.50–1.50, or an integer-percent managed restriction) keep applying as stored.
+     * writes one of the three {@link KeyboardHeightPresets} values; other floats keep applying,
+     * clamped at read to the former seek-bar range (see {@link #readKeyboardHeight}).
      */
     public static final String PREF_KEYBOARD_HEIGHT = "pref_keyboard_height";
     /**
      * Emoji panel height as a float scale of the keyboard box (1.0f = same size as the keyboard).
      * The settings row writes one of the three {@link EmojiPanelHeightPresets} values; other floats
-     * (an integer-percent managed restriction divided by 100) keep applying as stored, capped at
-     * the 46%p screen ceiling.
+     * keep applying, clamped at read to the preset range (see {@link #readEmojiPanelHeight}).
      */
     public static final String PREF_EMOJI_PANEL_HEIGHT = "pref_emoji_panel_height";
     public static final String PREF_BOTTOM_OFFSET_PORTRAIT = "pref_bottom_offset_portrait";
@@ -332,6 +331,32 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
         }
     }
 
+    static Set<String> readStringSetTolerant(final SharedPreferences prefs,
+            final String key, final Set<String> defaultValue) {
+        try {
+            return prefs.getStringSet(key, defaultValue);
+        } catch (ClassCastException e) {
+            prefs.edit().remove(key).apply();
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Defense in depth behind the tolerant reads: a stored value outside the range the settings
+     * screens can produce (a hand-edited file could carry one) is clamped into it, and a
+     * non-finite float reads as the default.
+     */
+    private static float clampStoredFloat(final float value, final float min, final float max,
+            final float defaultValue) {
+        if (Float.isNaN(value) || Float.isInfinite(value)) return defaultValue;
+        return Math.min(max, Math.max(min, value));
+    }
+
+    /** The int twin of {@link #clampStoredFloat}; ints cannot be non-finite. */
+    private static int clampStoredInt(final int value, final int min, final int max) {
+        return Math.min(max, Math.max(min, value));
+    }
+
     // TODO: Remove this method and add proxy method to SettingsValues.
     public SettingsValues getCurrent() {
         return mSettingsValues;
@@ -483,9 +508,10 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     public static float readKeypressSoundVolume(final SharedPreferences prefs) {
-        final float volume = readFloatTolerant(prefs, 
+        final float volume = readFloatTolerant(prefs,
                 PREF_KEYPRESS_SOUND_VOLUME, UNDEFINED_PREFERENCE_VALUE_FLOAT);
-        return (volume != UNDEFINED_PREFERENCE_VALUE_FLOAT) ? volume
+        return (volume != UNDEFINED_PREFERENCE_VALUE_FLOAT)
+                ? clampStoredFloat(volume, 0.0f, 1.0f, DEFAULT_KEYPRESS_SOUND_VOLUME)
                 : readDefaultKeypressSoundVolume();
     }
 
@@ -497,7 +523,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
 
     public static int readKeyLongpressTimeout(final SharedPreferences prefs,
             final Resources res) {
-        final int milliseconds = readIntTolerant(prefs, 
+        final int milliseconds = readIntTolerant(prefs,
                 PREF_KEY_LONGPRESS_TIMEOUT, UNDEFINED_PREFERENCE_VALUE_INT);
         return (milliseconds != UNDEFINED_PREFERENCE_VALUE_INT) ? milliseconds
                 : readDefaultKeyLongpressTimeout(res);
@@ -507,18 +533,30 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
         return res.getInteger(R.integer.config_default_longpress_key_timeout);
     }
 
+    // The scale range the height settings stay within (the former seek bar's 50–150%; the
+    // KeyboardHeightPresets values sit inside it).
+    private static final float MIN_KEYBOARD_HEIGHT_SCALE = 0.5f;
+    private static final float MAX_KEYBOARD_HEIGHT_SCALE = 1.5f;
+
     public static float readKeyboardHeight(final SharedPreferences prefs,
             final float defaultValue) {
-        return readFloatTolerant(prefs, PREF_KEYBOARD_HEIGHT, defaultValue);
+        return clampStoredFloat(readFloatTolerant(prefs, PREF_KEYBOARD_HEIGHT, defaultValue),
+                MIN_KEYBOARD_HEIGHT_SCALE, MAX_KEYBOARD_HEIGHT_SCALE, defaultValue);
     }
 
     public static float readEmojiPanelHeight(final SharedPreferences prefs,
             final float defaultValue) {
-        return readFloatTolerant(prefs, PREF_EMOJI_PANEL_HEIGHT, defaultValue);
+        return clampStoredFloat(readFloatTolerant(prefs, PREF_EMOJI_PANEL_HEIGHT, defaultValue),
+                EmojiPanelHeightPresets.SAME_SCALE, EmojiPanelHeightPresets.MAX_SCALE, defaultValue);
     }
 
+    // The slider range the offset row writes within; mirrors config_min/max_bottom_offset_portrait.
+    private static final int MIN_BOTTOM_OFFSET = 0;
+    private static final int MAX_BOTTOM_OFFSET = 100;
+
     public static int readBottomOffsetPortrait(final SharedPreferences prefs) {
-        return readIntTolerant(prefs, PREF_BOTTOM_OFFSET_PORTRAIT, DEFAULT_BOTTOM_OFFSET);
+        return clampStoredInt(readIntTolerant(prefs, PREF_BOTTOM_OFFSET_PORTRAIT, DEFAULT_BOTTOM_OFFSET),
+                MIN_BOTTOM_OFFSET, MAX_BOTTOM_OFFSET);
     }
 
     public static final int DEFAULT_BOTTOM_OFFSET = 0;
