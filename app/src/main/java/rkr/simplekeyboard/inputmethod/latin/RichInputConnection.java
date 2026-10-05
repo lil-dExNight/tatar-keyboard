@@ -160,13 +160,13 @@ public final class RichInputConnection {
     @TargetApi(Build.VERSION_CODES.S)
     private void setTextAroundCursor(final SurroundingText textAroundCursor) {
         if (null == textAroundCursor) {
-            Log.e(TAG, "Unable get text around cursor.");
+            Log.e(TAG, "Unable to read around the cursor.");
             applyTextAroundCursor("", 0, 0);
             return;
         }
         if (!applyTextAroundCursor(textAroundCursor.getText(),
                 textAroundCursor.getSelectionStart(), textAroundCursor.getSelectionEnd())) {
-            Log.e(TAG, "Text around cursor carries an out-of-range selection.");
+            Log.e(TAG, "The read around the cursor carries an out-of-range selection.");
         }
     }
 
@@ -262,6 +262,14 @@ public final class RichInputConnection {
     private boolean mReloadRequestedWhileInFlight = false;
 
     /**
+     * Bumped by every cache clear ({@link #clearCaches} funnels through {@link #clearTextCaches}).
+     * A reload captures it next to the expected selection and every apply re-checks it: a negative
+     * selection report normalizes to the same (-1,-1) a clear leaves, so the selection alone
+     * cannot stop a pre-clear reload from applying after it.
+     */
+    private int mCacheGeneration = 0;
+
+    /**
      * Reload the cached text from the InputConnection.
      */
     public void reloadTextCache() {
@@ -277,6 +285,9 @@ public final class RichInputConnection {
         // To check if selection changed before text was retrieved
         final int expectedSelStart = mExpectedSelStart;
         final int expectedSelEnd = mExpectedSelEnd;
+        // A clear between here and the apply must void the reload even when it leaves the
+        // selection pair unchanged (a negative report and a clear both read as (-1,-1)).
+        final int expectedCacheGeneration = mCacheGeneration;
 
         mBackgroundThread.execute(() -> {
             boolean applyPosted = false;
@@ -286,7 +297,7 @@ public final class RichInputConnection {
                 }
                 // Check for staleness before the IPC: a reload the selection has already moved
                 // past never touches the editor.
-                if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
+                if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd)) {
                     Log.w(TAG, "Selection range modified before the reload reached the editor.");
                     return;
                 }
@@ -296,7 +307,7 @@ public final class RichInputConnection {
                     // Apply on the UI thread, where the expected selection is mutated, so the
                     // re-check there cannot race with those mutations.
                     mLatinIME.mHandler.post(() -> {
-                        if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
+                        if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd)) {
                             Log.w(TAG, "Selection range modified before thread completion.");
                         } else {
                             setTextAroundCursor(textAroundCursor);
@@ -315,9 +326,9 @@ public final class RichInputConnection {
                         return;
                     }
                     if (null == textBeforeCursor) {
-                        Log.e(TAG, "Unable get text before cursor.");
+                        Log.e(TAG, "Unable to read before the cursor.");
                         mLatinIME.mHandler.post(() -> {
-                            if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
+                            if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd)) {
                                 Log.w(TAG, "Selection range modified before thread completion.");
                             } else {
                                 onBeforeCursorCacheReloaded("");
@@ -335,7 +346,7 @@ public final class RichInputConnection {
                         return;
                     }
                     if (null == textAfterCursor) {
-                        Log.e(TAG, "Unable get text after cursor.");
+                        Log.e(TAG, "Unable to read after the cursor.");
                     }
                     final String afterCursor =
                             null == textAfterCursor ? "" : textAfterCursor.toString();
@@ -348,7 +359,7 @@ public final class RichInputConnection {
                             return;
                         }
                         if (null == textSelection) {
-                            Log.e(TAG, "Unable get text selection.");
+                            Log.e(TAG, "Unable to read the selection.");
                         }
                         selection = null == textSelection ? "" : textSelection.toString();
                     } else {
@@ -360,7 +371,7 @@ public final class RichInputConnection {
                     // depends on the text on both sides of the cursor; a dropped apply above
                     // leaves the cache and the strip untouched.
                     mLatinIME.mHandler.post(() -> {
-                        if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
+                        if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd)) {
                             Log.w(TAG, "Selection range modified before thread completion.");
                         } else {
                             onBeforeCursorCacheReloaded(beforeCursor);
@@ -400,6 +411,16 @@ public final class RichInputConnection {
         }
     }
 
+    /**
+     * The staleness verdict of a reload's captured state: the clear generation and the expected
+     * selection must both still be current. Android-free and package-private for the JVM tests.
+     */
+    /* package */ boolean reloadCaptureIsStale(final int expectedCacheGeneration,
+            final int expectedSelStart, final int expectedSelEnd) {
+        return expectedCacheGeneration != mCacheGeneration
+                || expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd;
+    }
+
     public void clearCaches() {
         mExpectedSelStart = INVALID_CURSOR_POSITION;
         mExpectedSelEnd = INVALID_CURSOR_POSITION;
@@ -412,7 +433,9 @@ public final class RichInputConnection {
      * re-reads the text from the editor instead of the stale EditorInfo of the session start.
      */
     public void clearTextCaches() {
-        Log.i(TAG, "Clearing text caches.");
+        Log.i(TAG, "Clearing editor caches.");
+        // Voids every reload captured before this moment; see mCacheGeneration.
+        mCacheGeneration++;
         mTextBeforeCursor = "";
         mTextSelection = "";
         mTextAfterCursor = "";
@@ -557,18 +580,18 @@ public final class RichInputConnection {
 
     public void replaceText(final int startPosition, final int endPosition, CharSequence text) {
         if (mExpectedSelStart != mExpectedSelEnd) {
-            Log.e(TAG, "replaceText called with text range selected");
+            Log.e(TAG, "replace refused: a selection is active");
             return;
         }
         if (mExpectedSelStart != startPosition) {
-            Log.e(TAG, "replaceText called with range not starting with current cursor position");
+            Log.e(TAG, "replace refused: the range does not start at the cursor");
             return;
         }
 
         final int numCharsSelected = endPosition - startPosition;
         final String textAfterCursor = mTextAfterCursor;
         if (textAfterCursor.length() < numCharsSelected) {
-            Log.e(TAG, "replaceText called with range longer than current text");
+            Log.e(TAG, "replace refused: the range runs past the cache");
             return;
         }
 
@@ -621,7 +644,7 @@ public final class RichInputConnection {
 
     public void deleteSelectedText() {
         if (mExpectedSelStart == mExpectedSelEnd) {
-            Log.e(TAG, "deleteSelectedText called with text range not selected");
+            Log.e(TAG, "selection delete refused: nothing is selected");
             return;
         }
 
@@ -689,18 +712,23 @@ public final class RichInputConnection {
 
     public void pasteClipboard() {
         final ClipboardManager clipboard = (ClipboardManager) mLatinIME.getSystemService(Context.CLIPBOARD_SERVICE);
-        if (clipboard != null && clipboard.hasPrimaryClip()) {
-            final ClipData clipData = clipboard.getPrimaryClip();
-            if (clipData != null && clipData.getItemCount() == 1) {
-                final String mimeType = clipData.getDescription().getMimeType(0);
-                if (MIMETYPE_TEXT_PLAIN.equals(mimeType) || MIMETYPE_TEXT_HTML.equals(mimeType)) {
-                    final CharSequence pasteData = clipData.getItemAt(0).getText();
-                    if (shouldCommitPasteDirectly(pasteData)) {
-                        mLatinIME.onTextInput(pasteData.toString());
-                        return;
+        try {
+            if (clipboard != null && clipboard.hasPrimaryClip()) {
+                final ClipData clipData = clipboard.getPrimaryClip();
+                if (clipData != null && clipData.getItemCount() == 1) {
+                    final String mimeType = clipData.getDescription().getMimeType(0);
+                    if (MIMETYPE_TEXT_PLAIN.equals(mimeType) || MIMETYPE_TEXT_HTML.equals(mimeType)) {
+                        final CharSequence pasteData = clipData.getItemAt(0).getText();
+                        if (shouldCommitPasteDirectly(pasteData)) {
+                            mLatinIME.onTextInput(pasteData.toString());
+                            return;
+                        }
                     }
                 }
             }
+        } catch (final RuntimeException e) {
+            // See the class javadoc. A throwing clipboard manager (a dead system service, a
+            // malformed clip) degrades to the editor's own paste below.
         }
 
         // Refresh the connection first: the field can hold a stale or null one from an earlier

@@ -109,12 +109,12 @@ class BatchEditPairingContractTest {
         val runtimeCatches =
             Regex("catch \\(final RuntimeException e\\)").findAll(code).count()
         assertEquals(
-            "RichInputConnection: one catch per editor-call site — begin/endBatchEdit, the " +
+            "RichInputConnection: one catch per guarded region — begin/endBatchEdit, the " +
                 "reload body, commitText, replaceText, deleteTextBeforeCursor, " +
                 "deleteSelectedText, performEditorAction, performContextMenuAction, " +
-                "pasteClipboard, sendKeyEvent, " +
-                "setSelection; a new editor call without one trips the O6 inventory first",
-            12, runtimeCatches,
+                "pasteClipboard's clipboard read and its editor action, sendKeyEvent, " +
+                "setSelection; a new guarded call without one trips the call inventory first",
+            13, runtimeCatches,
         )
         assertEquals(
             "every catch is RuntimeException-only — never Throwable, Error, or checked-only",
@@ -149,5 +149,25 @@ class BatchEditPairingContractTest {
         val rotate = body.indexOf("mRecapitalizeStatus.rotate();")
         assertTrue("the guard follows the length computation", compute in 0 until guard)
         assertTrue("and precedes the edit", guard in 0 until rotate)
+    }
+
+    /** Next to the pairing: the size cap guards the string actually case-mapped. */
+    @Test
+    fun performRecapitalizationCapsTheSelectedStringNotOnlyTheReportedDelta() {
+        // numCharsSelected is the host's REPORTED selection span; the cached selection string is
+        // the host's verbatim SurroundingText payload and can be far longer than the report. The
+        // cap must therefore be re-applied to the string handed to RecapitalizeStatus.
+        val body = files.getValue("InputLogic")
+            .substringAfter("private void performSelectionRecapitalization()")
+            .substringBefore("public int getCurrentAutoCapsState(")
+        val deltaCap =
+            body.indexOf("if (numCharsSelected > Constants.MAX_CHARACTERS_FOR_RECAPITALIZATION) {")
+        val read = body.indexOf("mConnection.getSelectedText();")
+        val stringCap =
+            body.indexOf("if (selectedText.length() > Constants.MAX_CHARACTERS_FOR_RECAPITALIZATION) {")
+        val start = body.indexOf("mRecapitalizeStatus.start(")
+        assertTrue("the reported-delta cap comes first", deltaCap >= 0)
+        assertTrue("the string is read before the status starts", read in (deltaCap + 1) until start)
+        assertTrue("and the cap is re-applied to the string itself", stringCap in (read + 1) until start)
     }
 }

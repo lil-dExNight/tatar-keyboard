@@ -115,6 +115,48 @@ class RichInputConnectionRobustnessTest {
         assertFalse(connection.hasSelection())
     }
 
+    // --- A reload captured before a cache clear must not apply after it ---------------------------
+
+    @Test
+    fun aReloadCapturedBeforeAClearIsStaleEvenWithAnUnchangedSelectionReport() {
+        val connection = RichInputConnection(null)
+        // A host's "unknown" selection report: the very pair a clear leaves behind.
+        connection.updateSelection(-1, -1)
+        val generation = cacheGenerationOf(connection)
+
+        // Same generation, same selection: the reload may apply.
+        assertFalse(connection.reloadCaptureIsStale(generation, -1, -1))
+
+        // A finishInput or a hide clears the caches: the selection pair is unchanged, so the
+        // generation bump is what refuses the apply.
+        bumpCacheGeneration(connection)
+        assertTrue(connection.reloadCaptureIsStale(generation, -1, -1))
+    }
+
+    @Test
+    fun aLiveReloadCaptureIsNotStale() {
+        val connection = RichInputConnection(null)
+        connection.updateSelection(3, 5)
+        val generation = cacheGenerationOf(connection)
+
+        assertFalse(connection.reloadCaptureIsStale(generation, 3, 5))
+        // A moved selection stays covered by the selection half of the check.
+        assertTrue(connection.reloadCaptureIsStale(generation, 3, 4))
+    }
+
+    private fun cacheGenerationOf(connection: RichInputConnection): Int {
+        val field = RichInputConnection::class.java.getDeclaredField("mCacheGeneration")
+        field.isAccessible = true
+        return field.getInt(connection)
+    }
+
+    /** What clearCaches/clearTextCaches do; they log, which a plain JVM test cannot run. */
+    private fun bumpCacheGeneration(connection: RichInputConnection) {
+        val field = RichInputConnection::class.java.getDeclaredField("mCacheGeneration")
+        field.isAccessible = true
+        field.setInt(connection, field.getInt(connection) + 1)
+    }
+
     // --- The paste threshold ---------------------------------------------------------------------
 
     @Test

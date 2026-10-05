@@ -93,6 +93,24 @@ class HostileHostRobustnessTest {
     }
 
     @Test
+    fun theReportedSelectionDeltaAndTheSelectionStringCanDisagree() {
+        // The recapitalization input pair: InputLogic's cap check reads the selection delta from
+        // the selection reports, but the string it case-maps is the SurroundingText payload's
+        // span, which a host sizes independently of them. The string keeps the payload span
+        // verbatim (deleteSelectedText relies on it), so the cap is re-applied to the string
+        // itself in InputLogic (pinned in BatchEditPairingContractTest); this is the mismatch it
+        // guards.
+        val connection = RichInputConnection(null)
+        connection.updateSelection(2, 4)
+
+        val huge = "а".repeat(3 * window)
+        assertTrue(connection.applyTextAroundCursor(huge, window, 2 * window))
+
+        assertEquals(2, connection.expectedSelectionEnd - connection.expectedSelectionStart)
+        assertEquals(window, connection.selectedText.length)
+    }
+
+    @Test
     fun aOneMegabytePayloadLeavesTheWindowBoundedAndConsistent() {
         val connection = RichInputConnection(null)
         val half = 1 shl 19

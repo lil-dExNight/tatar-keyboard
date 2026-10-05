@@ -126,6 +126,11 @@ class RichInputConnectionRobustnessContractTest {
             source.contains("if (mReloadInFlight) {") &&
                 source.contains("mReloadRequestedWhileInFlight = true;"),
         )
+        assertTrue(
+            "the reload captures the clear generation with the expected selection (a negative" +
+                " report and a clear both read as (-1,-1), so the pair alone is not enough)",
+            reloadBody.contains("final int expectedCacheGeneration = mCacheGeneration;"),
+        )
         val background = reloadBody.indexOf("mBackgroundThread.execute(")
         val preIpcCheck = reloadBody.indexOf("Selection range modified before the reload reached the editor.")
         val surroundingIpc = reloadBody.indexOf("mIC.getSurroundingText(")
@@ -172,17 +177,18 @@ class RichInputConnectionRobustnessContractTest {
 
     @Test
     fun theApplyRunsOnTheUiThreadAgainstAReVerifiedSelection() {
-        // Every apply block: a posted runnable whose FIRST act is the staleness re-check, with
-        // the cache writes behind it and the completion at the end.
+        // Every apply block: a posted runnable whose FIRST act is the staleness re-check (the
+        // captured clear generation and the captured selection), with the cache writes behind it
+        // and the completion at the end.
         val applies = Regex("mLatinIME\\.mHandler\\.post\\(\\(\\) -> \\{")
             .findAll(reloadBody).toList()
         assertEquals("the reload posts applies (S+, pre-S null, pre-S full)", 3, applies.size)
+        val recheckCall =
+            "if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd))"
         for (apply in applies) {
             val block = reloadBody.substring(apply.range.first)
-            val recheck = block.indexOf(
-                "if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd)"
-            )
-            assertTrue("each apply re-verifies the selection on the UI thread", recheck > 0)
+            val recheck = block.indexOf(recheckCall)
+            assertTrue("each apply re-verifies the captured state on the UI thread", recheck > 0)
             assertTrue(
                 "and every apply ends the reload (flag bookkeeping)",
                 block.substring(0, block.indexOf("});")).contains("finishReloadTextCache();"),
@@ -190,11 +196,22 @@ class RichInputConnectionRobustnessContractTest {
         }
         // The S+ apply: the re-check sits before the window write.
         val sPlusApply = reloadBody.substringAfter("mIC.getSurroundingText(")
-        val recheck = sPlusApply.indexOf(
-            "if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd)"
-        )
+        val recheck = sPlusApply.indexOf(recheckCall)
         val write = sPlusApply.indexOf("setTextAroundCursor(textAroundCursor);")
         assertTrue("the S+ apply re-checks before writing", recheck in 0 until write)
+    }
+
+    @Test
+    fun everyCacheClearVoidsTheInFlightReloads() {
+        // The generation bump lives in clearTextCaches; clearCaches funnels through it, so a
+        // finishInput or a hide voids every reload captured before it even when the expected
+        // selection reads the same (-1,-1) on both sides.
+        val clearBody = bodyOf("public void clearTextCaches()", "\n    }\n")
+        assertTrue(clearBody.contains("mCacheGeneration++"))
+        val clearAll = bodyOf("public void clearCaches()", "public void clearTextCaches()")
+        assertTrue("clearCaches funnels through clearTextCaches", clearAll.contains("clearTextCaches();"))
+        val predicate = bodyOf("boolean reloadCaptureIsStale(", "\n    }\n")
+        assertTrue(predicate.contains("expectedCacheGeneration != mCacheGeneration"))
     }
 
     @Test
@@ -254,7 +271,10 @@ class RichInputConnectionRobustnessContractTest {
      * within its method body. The count anchors live in BatchEditPairingContractTest (catch count,
      * RuntimeException-only) and InputConnectionBinderContractTest (the call inventory); this pin
      * makes each individual site prove its own wrapping, so a refactor that drops one try/catch
-     * pair goes red even when the counts stay right.
+     * pair goes red even when the counts stay right. A method may hold several guarded regions
+     * (pasteClipboard guards the clipboard read and the editor action separately), so the check is
+     * per call site: the nearest enclosing try must be open at the call, and a RuntimeException
+     * catch must follow it.
      */
     @Test
     fun everyEditorCallSiteIsWrappedInARuntimeExceptionCatch() {
@@ -282,12 +302,31 @@ class RichInputConnectionRobustnessContractTest {
                 at += 4
             }
             assertTrue("body #$index holds at least one editor call", calls.isNotEmpty())
-            val tryOpen = body.indexOf("try {")
-            val catchOpen = body.indexOf("catch (final RuntimeException e)")
-            assertTrue("body #$index: a try opens before the first editor call",
-                tryOpen in 0 until calls.first())
-            assertTrue("body #$index: the RuntimeException catch follows the last editor call",
-                catchOpen > calls.last())
+            for (call in calls) {
+                val openTry = body.lastIndexOf("try {", call)
+                val closedCatch = body.lastIndexOf("catch (final RuntimeException e)", call)
+                assertTrue("body #$index: an open try wraps the editor call at $call",
+                    openTry >= 0 && openTry > closedCatch)
+                assertTrue("body #$index: a RuntimeException catch follows the call at $call",
+                    body.indexOf("catch (final RuntimeException e)", call) > call)
+            }
         }
+    }
+
+    // --- The clipboard read gets the same guard as the editor calls -------------------------------
+
+    @Test
+    fun pasteClipboardWrapsTheClipboardReadsToo() {
+        // hasPrimaryClip/getPrimaryClip reach the system clipboard, which can throw like any
+        // service (a dead service, a malformed clip from another app): the reads sit in a
+        // RuntimeException catch and degrade to the editor's own paste below.
+        val tryOpen = pasteBody.indexOf("try {")
+        val hasClip = pasteBody.indexOf("clipboard.hasPrimaryClip()")
+        val getClip = pasteBody.indexOf("clipboard.getPrimaryClip()")
+        val catchOpen = pasteBody.indexOf("catch (final RuntimeException e)")
+        val refresh = pasteBody.indexOf("mIC = mLatinIME.getCurrentInputConnection();")
+        assertTrue("the clipboard reads sit in a try", tryOpen in 0 until hasClip && hasClip < getClip)
+        assertTrue("with a RuntimeException catch after them", getClip < catchOpen)
+        assertTrue("and the editor-paste fallback still follows", catchOpen in 0 until refresh)
     }
 }

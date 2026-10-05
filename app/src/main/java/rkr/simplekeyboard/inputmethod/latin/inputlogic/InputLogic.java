@@ -667,6 +667,12 @@ public final class InputLogic {
                 || !mRecapitalizeStatus.isSetAt(selectionStart, selectionEnd)) {
             final CharSequence selectedText = mConnection.getSelectedText();
             if (TextUtils.isEmpty(selectedText)) return; // Race condition with the input connection
+            // The delta above is the host's REPORTED selection span; the cached selection string
+            // is the host's verbatim payload and can be far longer. The cap guards the string
+            // actually case-mapped here.
+            if (selectedText.length() > Constants.MAX_CHARACTERS_FOR_RECAPITALIZATION) {
+                return;
+            }
             mRecapitalizeStatus.start(selectionStart, selectionEnd, selectedText.toString(), mLatinIME.getCurrentLayoutLocale());
             // We trim leading and trailing whitespace.
             mRecapitalizeStatus.trim();
