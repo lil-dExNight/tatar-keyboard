@@ -169,13 +169,38 @@ are listed after the table with the control that keeps them closed.
 | No scrollbars in settings | Style decision (`android:scrollbars="none"` in `settings_screen.xml`) | A design pass |
 | error-prone `ClassInitializationDeadlock` on `KeyboardActionListener.EMPTY_LISTENER` | Unreachable in practice: both classes are initialized only on the UI thread | Initialization moves off the UI thread |
 | Generic confirmation dialogs (clear all, erase, discard quarantined file) have no `FLAG_SECURE` | They show no personal content, so a capture reveals nothing | A dialog showing personal content without `DialogUtils.securePersonalContent` (pinned by `DialogObscuredTouchContractTest`) |
-| A field session started while unlocked keeps its suggestion strip if the device locks without the editor restarting input | The strip's eligibility is computed at each field start and language change; learning and recent emoji re-check the keyguard at every write and read, so nothing is learned or shown from the Recent tab; the strip shows what the same field showed a moment earlier | A platform change that keeps an editor bound across the keyguard |
+| A field session started while unlocked keeps its suggestion strip if the device locks without the editor restarting input | The strip's eligibility is computed at each field start and language change; learning and recent emoji re-check the keyguard at every write and read, and the recent-clip cell re-reads it at the offer and at the tap, so nothing is learned, recorded or offered after the lock; the strip shows what the same field showed a moment earlier | A platform change that keeps an editor bound across the keyguard |
+| A host that blocks `getSurroundingText` parks the single cache-reload thread | Typing and local edit tracking keep working; the reload is off the UI thread so there is no ANR; the next answer re-syncs | A reload watchdog |
+| The setup wizard's step 1 launches the system input-method settings with an implicit intent | A malicious app can only add a chooser entry next to the system one; nothing is learned and the wizard keeps no state | A decision to launch it package-explicit |
 | No suggestions or glide typing on the lock screen, even from the bundled dictionaries | The strip would also carry learned words and pairs; separating bundled from learned candidates in every engine source is disproportionate for lock-screen replies | User demand for lock-screen suggestions |
 | A pasted word can be the context of a learned pair typed after it | Like any text already in the field, the word before the cursor is a context, not a learned word; only the second word of a pair is shown as a suggestion | A change that shows pair contexts as suggestions |
 | The release build is `profileable` by the shell | Needed for Macrobenchmark and the baseline profile on release builds. It lets an adb host the user authorized trace the process and take a heap dump (`am dumpheap`), which can hold text in memory at that moment; such a host can already read the screen and every log | A change in what `profileable` exposes; the benchmarks move to a separate build type |
 
 Resolved, with the control that keeps them closed:
 
+- **Wrong-typed or out-of-range values in an imported backup (a type-confused `auto_cap`
+  crash-looped the IME).** The settings document is verified against a key-and-type schema
+  (unknown keys drop, a wrong-typed known key fails the import), non-finite floats are rejected,
+  every settings read is tolerant and the geometry reads clamp to their ranges; pinned by
+  `BackupPreferencesXmlTest`, `BackupArchiveTest` and the tolerant/clamped-read contract tests.
+- **The strip's forget-word dialog named a saved word without FLAG_SECURE.** Secured like the
+  settings-side personal dialogs; pinned by `DialogObscuredTouchContractTest`.
+- **The recent-clip cell never re-read the keyguard.** It re-reads at the offer and at the tap;
+  pinned by `RecentClipControllerTest` and `LockScreenPrivacySourceContractTest`.
+- **Text-shortcut expansions admitted bidi/format characters.** Rejected with
+  `Character.FORMAT`; pinned by `TcutValidatorTest`.
+- **Hostile-host edges.** The recapitalize cap measures the processed string, a cache reload can
+  no longer apply across a session boundary (a generation re-check), and the clipboard reads
+  catch `RuntimeException` like every other system read; pinned by `HostileHostRobustnessTest`
+  and `RichInputConnectionRobustnessContractTest`.
+- **Silent-pass holes in the release scripts.** `check-no-internet.sh` hard-errors on a missing
+  manifest, `--checks` is whitespace-normalized, the secrets scan covers the current token
+  prefixes, and `artifact.freshness` binds the candidate APK's recorded commit to an ancestor of
+  HEAD.
+- **The log-safety scan missed `latin/` root and three packages.** Extended, and `TRACE = false`
+  is pinned by `LogSafetySourceContractTest`.
+- **A pending-counter file with an absurd serial stalled learning.** Fail-closed bound; pinned
+  by `PendingCountersTest`.
 - **Keyboard-theme contrast below WCAG AA (the action-key labels and the dark hint text).**
   Every informative glyph/background pair of both palettes holds AA for text and the non-text
   floor for state icons; pinned by `ThemeContrastContractTest`.
