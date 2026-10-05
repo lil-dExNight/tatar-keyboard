@@ -4,24 +4,20 @@ This file is rewritten, not appended to; history lives in git.
 
 ## Release
 
-The current release is **3.9.1** (versionCode 47). It ships the settings and onboarding UX
-batch:
+The current release is **3.9.2** (versionCode 48). It ships:
 
-- a launcher tap on a set-up keyboard opens the settings directly (the wizard's done block
-  shows only right after the wizard; explicit `am start -n` launches keep the full screen — the
-  device scripts type into its try-it field);
-- the fixed theme is named "Classic" (was "Tatar"), and picking a theme says the change lands
-  the next time the keyboard opens;
-- the privacy policy and the license sit on one "Legal information" screen; the data-sources
-  screen is removed (the corpus attribution lives in `assets/dictionaries/NOTICE.txt`);
-- the Developer screen and the fifth-row instrument exist in debuggable builds only: the root
-  row, the layout arm and the session log are all gated on the debuggable flag;
-- the settings back stack persists screen names, not enum ordinals.
+- the Tatar bigram table retrained conv-heavier (the conversational stream counts tenfold):
+  chain top-3 +1.31 pp on the held-out set — the table is rebuilt and re-pinned, so an update
+  re-inflates it once on first use;
+- the inline-autofill fix: the presentation specs now carry the canonical style handshake, so
+  password managers render their chips in the strip (found and verified on the reference device
+  with a probe autofill service);
+- the fifth-row question closed by operator decision (alphabetical order final, `BRIEF.md`) with
+  the study instrument removed (Developer screen, arm picker, session log, arm-B/C layouts).
 
-The bundled dictionaries, bigram tables and emoji data are unchanged from 3.9.0, so an update
-re-inflates nothing. User-facing notes are in `CHANGELOG.md` and `metadata/*/changelogs/47.txt`.
-The English GitHub Release notes with the filled release record are in
-`dist/release-notes-3.9.1.md` on the packing machine.
+The bundled dictionaries and emoji data are unchanged from 3.9.1. User-facing notes are in
+`CHANGELOG.md` and `metadata/*/changelogs/48.txt`. The English GitHub Release notes with the
+filled release record are in `dist/release-notes-3.9.2.md` on the packing machine.
 
 The signed APK was packed on the tree of the release commit before that commit existed, so its
 `META-INF/version-control-info.textproto` names the parent commit. To rebuild it byte for byte,
@@ -29,31 +25,21 @@ see "Reproducing a published APK" in `docs/PUBLISH-CHECKLIST.md`.
 
 ## State of `main`
 
-`main` carries the 3.9.1 release plus unreleased work (the next release):
-
-- the fifth-row question is closed by operator decision (the alphabetical order `ә ө ү җ ң һ` is
-  final, `BRIEF.md`) and the study instrument is removed — the Developer screen, the arm picker,
-  the session log and the arm-B/C layout files are gone; the protocol text is listed in
-  `docs/HISTORY.md`;
-- the Tatar bigram table is retrained conv-heavier (the conversational stream counts tenfold):
-  chain top-3 +1.31 pp on the held-out set; the table is rebuilt and re-pinned, so an update
-  re-inflates it on first use; the Russian dictionary admission and the Glot500 dictionary
-  bonus were measured and rejected, the case-aware stem expansion and the pair-conditional
-  glide rerank likewise (verdicts in `research/prediction-engine.md` and
-  `research/glide-typing.md`);
-- inline autofill actually renders now: the style handshake in `InlineAutofillBinder` — found
-  and verified on the reference device with a probe autofill service.
-
-The `improvement` branch is merged and closed out: its measurement foundation, quick-wins
-sprint, prediction/glide round and features sprint shipped as 3.9.0 (see `CHANGELOG.md`).
+`main` is the 3.9.2 release; nothing is unreleased. The `improvement` branch is merged and
+closed out: its measurement foundation, quick-wins sprint, prediction/glide round and features
+sprint shipped as 3.9.0 (see `CHANGELOG.md`). The measured rejections of the post-3.9.1 round
+(Russian dictionary admission, Glot500 dictionary bonus, case-aware stem expansion,
+pair-conditional glide rerank) are recorded in `research/prediction-engine.md` and
+`research/glide-typing.md`.
 
 Code-level notes on what 3.9.1 changed:
 
-- Setup: `SetupState.shouldForwardToSettings` gates the completed-setup forward, and
-  `SetupActivity.openSettingsAndFinish` serves it and the done button.
-- Settings: `Screen.LEGAL` replaces `Screen.DATA_SOURCES`; the legal screen opens the two
-  documents in the browser. The removed screen's contract test became
-  `LegalScreenSourceContractTest`; the NOTICE pins live in `DictionaryNoticeContractTest`.
+`main` is the 3.9.2 release; nothing is unreleased. The `improvement` branch is merged and
+closed out: its measurement foundation, quick-wins sprint, prediction/glide round and features
+sprint shipped as 3.9.0 (see `CHANGELOG.md`). The measured rejections of the post-3.9.1 round
+(Russian dictionary admission, Glot500 dictionary bonus, case-aware stem expansion,
+pair-conditional glide rerank) are recorded in `research/prediction-engine.md` and
+`research/glide-typing.md`.
 
 Also true of the current tree:
 
@@ -63,24 +49,25 @@ Also true of the current tree:
 - Typo recovery as shipped: the Tatar engine runs edit classes #1 (long-press partner) and #4
   (single substitution); the Russian engine runs class #1 only.
 
-Verified for 3.9.1:
+Verified for 3.9.2:
 
 - `release_check.sh --full`, then `--quick` and `check-no-internet.sh` on the signed APK, two
   byte-identical packs, and `text_hygiene_check.py`.
-- On the reference device (POCO C71), the release ritual (`build/device-perf-3.9.1-release/`):
-  cold start median 343.1 ms, PSS within the 69 MB ceiling in all scenarios, frames p95 ≤
-  12.3 ms with 0% janky, warm show median 69.1 ms, touch p95 4.5 ms, suggest round trip p95
-  19.9 ms — every leg within budget.
+- On the reference device (POCO C71): the cold-start leg, median 367.6 ms over 5 runs
+  (`build/device-perf-3.9.2-release/`).
 
 ## Open release steps
 
 These are manual and have not been confirmed as done:
 
-- the **3.9.1 GitHub Release** through the web UI: tag `v3.9.1`, title `Tatar Keyboard 3.9.1`,
-  notes from `dist/release-notes-3.9.1.md`; attach `dist/tatar-keyboard-3.9.1.apk` and
-  `dist/release-check-3.9.1.txt`;
+- the **GitHub Releases** through the web UI (the machine's gh token is read-only): 3.9.1 (tag
+  `v3.9.1`, notes `dist/release-notes-3.9.1.md`, attach `dist/tatar-keyboard-3.9.1.apk` and
+  `dist/release-check-3.9.1.txt`) and 3.9.2 (tag `v3.9.2`, notes `dist/release-notes-3.9.2.md`,
+  attach `dist/tatar-keyboard-3.9.2.apk` and `dist/release-check-3.9.2.txt`);
+- the **corpus.tatar letter**: ready in `dist/corpus-tatar-letter.md`, send to
+  tatcorpus@gmail.com;
 - the store uploads: 3.9.0 with `metadata/{en-US,ru-RU,tt}/changelogs/46.txt` (if still
-  pending) and 3.9.1 with `changelogs/47.txt`.
+  pending), 3.9.1 with `changelogs/47.txt`, 3.9.2 with `changelogs/48.txt`.
 
 ## Known risks and open items
 

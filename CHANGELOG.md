@@ -11,7 +11,7 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
-## [Unreleased]
+## [3.9.2] — 2026-10-05
 
 ### Changed
 

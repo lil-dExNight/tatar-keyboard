@@ -1,0 +1,3 @@
+• Tatar next-word suggestions lean more on conversational language, so chat-style predictions rank higher
+• Fixed: password-manager suggestions now actually render in the strip on login fields (inline autofill)
+• Removed the leftover fifth-row study instrument; the letter order is final
