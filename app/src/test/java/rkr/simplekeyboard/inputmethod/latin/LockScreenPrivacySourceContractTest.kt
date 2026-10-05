@@ -64,9 +64,14 @@ class LockScreenPrivacySourceContractTest {
 
     @Test
     fun theStripAndGlideAreOffWhileTheKeyguardIsLocked() {
+        // The predicates read the session's snapshot, refreshed from the live check at every
+        // field start; the snapshot starts locked, so an unevaluated session stays closed.
         assertTrue(body("private boolean isSuggestionsEligible(final boolean")
-            .contains("!isKeyguardLocked()"))
-        assertTrue(body("private boolean isGlideEligible()").contains("!isKeyguardLocked()"))
+            .contains("!mSessionKeyguardLocked"))
+        assertTrue(body("private boolean isGlideEligible()").contains("!mSessionKeyguardLocked"))
+        assertTrue(ime.contains("private boolean mSessionKeyguardLocked = true;"))
+        assertTrue(body("void onStartInputViewInternal(final EditorInfo")
+            .contains("mSessionKeyguardLocked = isKeyguardLocked()"))
         // Learning goes through the strip's eligibility, so it inherits the check.
         assertTrue(body("private boolean mayLearnPersonalWords()").contains("isSuggestionsEligible()"))
     }

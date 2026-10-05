@@ -1475,6 +1475,17 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         return keyguardManager == null || keyguardManager.isKeyguardLocked();
     }
 
+    // The keyguard state of the current field's session, read once per onStartInputViewInternal
+    // instead of once per consumer: each live read is a binder call. Fail-closed until the first
+    // field starts. A session can outlive the locking of the screen; the recent-clip and
+    // recent-emoji gates keep reading isKeyguardLocked() live for exactly that case.
+    private boolean mSessionKeyguardLocked = true;
+
+    /** The session's keyguard snapshot, for the keyboard build's settings-key clobber. */
+    public boolean isKeyguardLockedForSession() {
+        return mSessionKeyguardLocked;
+    }
+
     /**
      * Computes whether opt-in word suggestions may run for the current field and subtype.
      */
@@ -1495,7 +1506,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 && !settingsValues.mInputAttributes.mNoPersonalizedLearning
                 && mInputLogic.mConnection.hasCursorPosition()
                 // The strip would offer learned words on the lock screen.
-                && !isKeyguardLocked();
+                && !mSessionKeyguardLocked;
     }
 
     /**
@@ -1509,7 +1520,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 && settingsValues.mInputAttributes.mShouldShowSuggestions
                 && !settingsValues.mInputAttributes.mNoPersonalizedLearning
                 && mInputLogic.mConnection.hasCursorPosition()
-                && !isKeyguardLocked();
+                && !mSessionKeyguardLocked;
     }
 
     /**
@@ -1835,6 +1846,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (mainKeyboardView == null) {
             return;
         }
+
+        mSessionKeyguardLocked = isKeyguardLocked();
 
         final boolean inputTypeChanged = !currentSettingsValues.isSameInputType(editorInfo);
         final boolean isDifferentTextField = !restarting || inputTypeChanged;

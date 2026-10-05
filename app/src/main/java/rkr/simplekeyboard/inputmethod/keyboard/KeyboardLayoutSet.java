@@ -18,7 +18,6 @@
 
 package rkr.simplekeyboard.inputmethod.keyboard;
 
-import android.app.KeyguardManager;
 import android.content.Context;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
@@ -217,9 +216,6 @@ public final class KeyboardLayoutSet {
             params.mMode = getKeyboardMode(editorInfo);
             // TODO: Consolidate those with {@link InputAttributes}.
             params.mEditorInfo = editorInfo;
-
-            final KeyguardManager kgMgr = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
-            params.mNoSettingsKey = kgMgr.isKeyguardLocked();
         }
 
         public Builder setKeyboardTheme(final int themeId) {
@@ -251,6 +247,15 @@ public final class KeyboardLayoutSet {
 
         public Builder setLanguageSwitchKeyEnabled(final boolean enabled) {
             mParams.mLanguageSwitchKeyEnabled = enabled;
+            return this;
+        }
+
+        /**
+         * Clobbers the settings key while the keyguard is locked. The caller passes its own
+         * keyguard snapshot: the Builder never queries the KeyguardManager itself.
+         */
+        public Builder setNoSettingsKey(final boolean noSettingsKey) {
+            mParams.mNoSettingsKey = noSettingsKey;
             return this;
         }
 

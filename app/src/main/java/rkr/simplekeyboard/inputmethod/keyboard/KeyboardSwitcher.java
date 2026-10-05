@@ -197,6 +197,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
             builder.setKeyboardGeometry(keyboardWidth, keyboardHeight, keyboardBottomOffset);
             builder.setSubtype(mRichImm.getCurrentSubtype());
             builder.setLanguageSwitchKeyEnabled(mLatinIME.shouldShowLanguageSwitchKey());
+            builder.setNoSettingsKey(mLatinIME.isKeyguardLockedForSession());
             builder.setShowSpecialChars(settingsValues.mShowSpecialChars);
             builder.setShowNumberRow(settingsValues.mShowNumberRow);
             builder.setShowEmojiKey(settingsValues.mShowEmojiKey);

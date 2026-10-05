@@ -104,7 +104,7 @@ class RecentClipSourceContractTest {
         val latinIme = latinImeSource()
         val eligibility = latinIme.substringAfter("private boolean isSuggestionsEligible(final boolean")
             .substringBefore("private boolean isGlideEligible()")
-        assertTrue(eligibility.contains("isKeyguardLocked()"))
+        assertTrue(eligibility.contains("mSessionKeyguardLocked"))
         assertTrue(eligibility.contains("mNoPersonalizedLearning"))
         assertTrue(eligibility.contains("mShouldShowSuggestions"))
     }
