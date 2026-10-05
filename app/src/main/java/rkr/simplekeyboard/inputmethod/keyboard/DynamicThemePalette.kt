@@ -50,6 +50,10 @@ object DynamicThemePalette {
         RoleMapping("dyn_glide_trail", "system_accent1_600", "system_accent1_100"),
     )
 
+    // The answer is process-constant (framework colors cannot appear or disappear without a
+    // process restart), while the check runs on every keyboard-theme refresh.
+    private var resolvable: Boolean? = null
+
     /**
      * True only where the dynamic theme may paint from the framework palette: API 31 and up
      * (the system_* colors do not exist below) and every mapped role of both uiModes actually
@@ -61,9 +65,12 @@ object DynamicThemePalette {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return false
         }
-        return ROLES.all { mapping ->
+        resolvable?.let { return it }
+        val result = ROLES.all { mapping ->
             resolves(context, mapping.lightRole) && resolves(context, mapping.darkRole)
         }
+        resolvable = result
+        return result
     }
 
     private fun resolves(context: Context, role: String): Boolean {
