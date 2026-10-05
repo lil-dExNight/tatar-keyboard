@@ -119,9 +119,9 @@ presentation spec per cell (`InlineStripSpecs` — the cells' exact sizes, min e
 `InlineAutofillStripView`, a container inflated only then (`InlineAutofillBinder` keeps every
 autofill class behind the API gate). While a session is up the word strip is GONE but keeps
 updating, so the platform's session end — an empty response at the next field's startInput — puts
-current words back (`InputView.hideInlineAutofillStrip`). Password fields get no request at all
-(`InlineAutofillGate`; the platform's dropdown stays available there), and a response arriving
-while the emoji panel owns the surface is refused instead of hosted.
+current words back (`InputView.hideInlineAutofillStrip`). Password fields host chips like any
+other field — login forms are the feature's main use (`InlineAutofillGate` is an API-level gate),
+and a response arriving while the emoji panel owns the surface is refused instead of hosted.
 
 **Word completion** (`CompositePrefixComputer.lookup`): exact dictionary candidates by frequency,
 then at most one personal-dictionary word not already shown, then typo-recovery candidates. Typo

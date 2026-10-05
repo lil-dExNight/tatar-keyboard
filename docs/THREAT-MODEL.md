@@ -31,10 +31,11 @@ permission (`VIBRATE`).
    it is the only artifact of this data that leaves the app-private storage, and it moves only
    because the user picks a place for it.
 3. **The clipboard.** Since Android 10 the default IME may read the clipboard at any time. This
-   keyboard reads it only when the user taps the paste key (`RichInputConnection.pasteClipboard`).
-   It is never stored and never learned from (see the learning row in §5), and a paste above
-   `RichInputConnection.MAX_DIRECT_PASTE_CHARS` is handed to the editor's own paste action
-   instead of being committed through the IME.
+   keyboard reads it in one place only: the recent-clip cell — while the keyboard window is shown,
+   a fresh text clip can be offered in the strip's first cell (`RecentClipCell`), held in memory
+   with a short freshness window, never offered in password fields or where suggestions may not
+   run, and a commit marks the run non-learnable. Nothing from the clipboard is ever stored or
+   learned from (see the learning row in §5).
 4. **Surrounding text**: the window of the host field's text that the platform gives the IME for
    predictions, capped at `Constants.EDITOR_CONTENTS_CACHE_SIZE` characters around the cursor. It
    lives only in the in-memory editor cache, is cleared at every session boundary, is never written
