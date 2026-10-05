@@ -615,8 +615,8 @@ SHOT smoke-tt-back.png
 # strip content is proven by tapping a cell and reading the try-it field.
 # Two probes against the bundled assets (the bigram table stores up to four
 # successors per head; the strip shows three):
-#  1. татар is a bigram head whose first three successors (теле, дәүләт, телен)
-#     fill the whole strip, so cell 2 (index 1) must commit дәүләт: bigram
+#  1. татар is a bigram head whose first three successors (теле, телен, дәүләт)
+#     fill the whole strip, so cell 2 (index 1) must commit телен: bigram
 #     successors take priority and neither word forms nor the fallback run
 #     (CompositePrefixComputer). Any other word fails.
 #  2. сәләм is not a head, so its one attested after-word form (сәләмә) comes
@@ -634,10 +634,10 @@ elif [ "$SUGGESTIONS" != on ]; then
     result SKIP wordform-tt-татар "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "$wf_mid" ]; then
     result FAIL wordform-tt-татар "cell-2 tap committed nothing; field: '$wf_after'"
-elif [ "$w2" = "дәүләт" ]; then
-    result PASS wordform-tt-татар "cell 2 = дәүләт: the successors fill the whole strip (pinned)"
+elif [ "$w2" = "телен" ]; then
+    result PASS wordform-tt-татар "cell 2 = телен: the successors fill the whole strip (pinned)"
 else
-    result FAIL wordform-tt-татар "cell 2 committed '$w2' (expected дәүләт from the pinned successor row); field: '$wf_after'"
+    result FAIL wordform-tt-татар "cell 2 committed '$w2' (expected телен from the pinned successor row); field: '$wf_after'"
 fi
 
 wf=$(type_tt_and_tap_cell2 "сәләм" syalam "$STRIP_CELL0")
