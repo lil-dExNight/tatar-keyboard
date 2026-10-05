@@ -414,9 +414,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             AudioAndHapticFeedbackManager.init(this);
             super.onCreate();
 
-            // TODO: Resolve mutual dependencies of {@link #loadSettings()} and
-            // {@link #resetDictionaryFacilitatorIfNecessary()}.
-            loadSettings();
+            // SettingsValues are first built by onStartInputViewInternal, against the real
+            // field: a build here would use a null EditorInfo and be rebuilt there anyway.
 
             mDevicePrefs = PreferenceManagerCompat.getDeviceSharedPreferences(this);
             setUpSuggestionsController();
@@ -1499,7 +1498,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * Computes whether opt-in word suggestions may run for the current field and subtype.
      */
     private boolean isSuggestionsEligible() {
-        return isSuggestionsEligible(mSettings.getCurrent().mTatarSuggestionsEnabled);
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        // Null before the first field start (onCreate defers the build): no settings, no
+        // eligibility. The same holds for the two predicates below.
+        return settingsValues != null
+                && isSuggestionsEligible(settingsValues.mTatarSuggestionsEnabled);
     }
 
     /**
@@ -1508,7 +1511,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      */
     private boolean isSuggestionsEligible(final boolean suggestionsEnabled) {
         final SettingsValues settingsValues = mSettings.getCurrent();
-        return suggestionsEnabled
+        return settingsValues != null
+                && suggestionsEnabled
                 && activeDictionarySubtype() != null
                 && settingsValues.mInputAttributes.mShouldShowSuggestions
                 // IME_FLAG_NO_PERSONALIZED_LEARNING: no strip and no engine queries in the field.
@@ -1524,7 +1528,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      */
     private boolean isGlideEligible() {
         final SettingsValues settingsValues = mSettings.getCurrent();
-        return settingsValues.mGlideTypingEnabled
+        return settingsValues != null
+                && settingsValues.mGlideTypingEnabled
                 && activeDictionarySubtype() != null
                 && settingsValues.mInputAttributes.mShouldShowSuggestions
                 && !settingsValues.mInputAttributes.mNoPersonalizedLearning
@@ -1649,14 +1654,20 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
             return useOnScreen;
         } else {
-            return useOnScreen || mSettings.getCurrent().mUseOnScreen;
+            final SettingsValues settingsValues = mSettings.getCurrent();
+            // Null before the first field start (onCreate defers the build): the framework's
+            // answer stands until then.
+            return useOnScreen || (settingsValues != null && settingsValues.mUseOnScreen);
         }
     }
 
     @Override
     public void onConfigurationChanged(final Configuration conf) {
-        SettingsValues settingsValues = mSettings.getCurrent();
-        if (settingsValues.mHasHardwareKeyboard != Settings.readHasHardwareKeyboard(conf)) {
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        // Null before the first field start: the deferred first build reads the then-current
+        // configuration, so there is nothing to refresh here.
+        if (settingsValues != null
+                && settingsValues.mHasHardwareKeyboard != Settings.readHasHardwareKeyboard(conf)) {
             // If the state of having a hardware keyboard changed, then we want to reload the
             // settings to adjust for that.
             // TODO: we should probably do this unconditionally here, rather than only when we
@@ -1859,6 +1870,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
         mSessionKeyguardLocked = isKeyguardLocked();
 
+        // The first start builds the settings now (onCreate skips the build), ahead of the
+        // hardware-keyboard check and the input-type diff below, and skips the reload further
+        // down: it would rebuild from the same EditorInfo and configuration.
+        final boolean settingsUninitialized = currentSettingsValues == null;
+        if (settingsUninitialized) {
+            loadSettings();
+            currentSettingsValues = mSettings.getCurrent();
+        }
+
         final boolean inputTypeChanged = !currentSettingsValues.isSameInputType(editorInfo);
         final boolean isDifferentTextField = !restarting || inputTypeChanged;
 
@@ -1892,8 +1912,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
         }
 
-        if (isDifferentTextField ||
-                !currentSettingsValues.hasSameOrientation(getResources().getConfiguration())) {
+        if (!settingsUninitialized && (isDifferentTextField ||
+                !currentSettingsValues.hasSameOrientation(getResources().getConfiguration()))) {
             loadSettings();
         }
         if (isDifferentTextField) {
