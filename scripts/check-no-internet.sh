@@ -24,8 +24,16 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
-APK="${1:-app/build/outputs/apk/debug/app-debug.apk}"
-MANIFEST="app/src/main/AndroidManifest.xml"
+REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
+
+# An explicit APK argument stays relative to the caller's working directory; the defaults
+# resolve against the repository root, so the script works from any directory.
+if [ "$#" -ge 1 ]; then
+    APK="$1"
+else
+    APK="$REPO_ROOT/app/build/outputs/apk/debug/app-debug.apk"
+fi
+MANIFEST="$REPO_ROOT/app/src/main/AndroidManifest.xml"
 
 # Domains every backup rule section must exclude whole (regular + device-protected:
 # files, SharedPreferences, databases, external storage). Kept in lockstep with
@@ -131,6 +139,11 @@ _check_rules_tree() {
 }
 
 # Level 1: source manifest (INTERNET, instant signal)
+# Hard error, not a silent pass, when there is nothing to grep.
+if [ ! -f "$MANIFEST" ] || [ ! -r "$MANIFEST" ]; then
+    echo "ERROR: source manifest not found or unreadable: $MANIFEST" >&2
+    exit 2
+fi
 if grep -qF "android.permission.INTERNET" "$MANIFEST"; then
     echo "ERROR: android.permission.INTERNET found in $MANIFEST" >&2
     exit 1

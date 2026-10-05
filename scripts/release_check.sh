@@ -4,7 +4,7 @@
 # machine-readable RESULT block, and any FAIL gives a non-zero exit code. Any
 # unexpected error (no aapt2, broken APK, missing contract) also exits non-zero.
 # Artifact checks: size, asset pins, bundled asset sets, dex layout, profile rules, permissions,
-# signature, version, store changelog and the delta against dist/.
+# signature, tree/APK freshness, version, store changelog and the delta against dist/.
 #
 # Run from the repository root:
 #   bash scripts/release_check.sh [--quick|--full|--checks LIST] [path/to.apk]
@@ -59,10 +59,15 @@ while [ "$#" -gt 0 ]; do
         --quick) QUICK=1 ;;
         --full)  FULL=1 ;;
         --checks)
-            if [ "$#" -eq 0 ] || [ -z "$1" ]; then
+            if [ "$#" -eq 0 ]; then
                 echo "ERROR: --checks требует список проверок" >&2; exit 2
             fi
-            CHECKS="$1"; shift
+            # Whitespace is decorative ("size, signature"): want() below matches exact
+            # ",name," substrings, so a space after a comma would silently drop entries.
+            CHECKS="${1//[[:space:]]/}"; shift
+            if [ -z "$CHECKS" ]; then
+                echo "ERROR: --checks требует список проверок" >&2; exit 2
+            fi
             ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "ERROR: неизвестный флаг: $arg" >&2; usage >&2; exit 2 ;;
@@ -847,7 +852,8 @@ fi
 # (a) repo: `git ls-files` (tracked files only, so the gitignored local keystore.properties
 #     and .jks do not trip the check), scanned for secret filenames
 #     (*.jks, *.keystore, keystore.properties, *.pem, *.p12), private-key block
-#     headers, and common token shapes (GitHub PAT, AWS access key id, sk-tokens).
+#     headers, and common token shapes (GitHub tokens of every prefix, GitLab PAT,
+#     Google API key, AWS access key id, sk-tokens).
 # (b) APK: no zip entry may carry a secret filename.
 # The content regexes are written so this script's own text never matches them (the literal
 # prefix is followed by '[', outside the accepted class). The check scans this tracked file
@@ -868,6 +874,10 @@ SECRET_SUFFIXES = (".jks", ".keystore", ".pem", ".p12")
 CONTENT_PATTERNS = [
     ("private-key block header", re.compile(rb"-----BEGIN [A-Z0-9 ]{0,64}PRIVATE KEY")),
     ("GitHub PAT", re.compile(rb"ghp_[A-Za-z0-9]{36}")),
+    ("GitHub fine-grained PAT", re.compile(rb"github_pat_[A-Za-z0-9_]{22,}")),
+    ("GitHub OAuth/server/refresh token", re.compile(rb"gh[ousr]_[A-Za-z0-9]{36}")),
+    ("GitLab PAT", re.compile(rb"glpat-[A-Za-z0-9_-]{20}")),
+    ("Google API key", re.compile(rb"AIza[0-9A-Za-z_-]{35}")),
     ("AWS access key id", re.compile(rb"AKIA[0-9A-Z]{16}")),
     ("sk-token", re.compile(rb"sk-[A-Za-z0-9]{20,}")),
 ]
@@ -952,6 +962,38 @@ if SIG=$("$APKSIGNER" verify --print-certs "$APK" 2>&1); then
     fi
 else
     report FAIL artifact.signature "APK не подписан или подпись не верифицируется: $(tail -1 <<<"$SIG")"
+fi
+fi
+
+# --- 5b. freshness: the candidate was built from an ancestor of HEAD ------------------------------
+# META-INF/version-control-info.textproto records the commit the APK was built from. The release
+# flow packs the APK before the release commit lands, so the recorded commit is HEAD or one of
+# its ancestors; anything else means the tree moved on past the tested artifact. Runs whenever
+# --checks did not narrow the run (default, --quick and an explicit APK path all count).
+if [ -z "$CHECKS" ]; then
+APK_REVISION=$(python3 - "$APK" <<'PYEOF'
+import re
+import sys
+import zipfile
+
+try:
+    with zipfile.ZipFile(sys.argv[1]) as zf:
+        text = zf.read("META-INF/version-control-info.textproto").decode("utf-8", "replace")
+except (KeyError, zipfile.BadZipFile):
+    sys.exit(0)
+match = re.search(r'revision: "([0-9a-f]{7,40})"', text)
+if match:
+    print(match.group(1))
+PYEOF
+)
+if [ -z "$APK_REVISION" ]; then
+    report SKIP artifact.freshness "в APK нет META-INF/version-control-info.textproto с revision"
+elif ! HEAD_REVISION=$(git rev-parse HEAD 2>/dev/null) || [ -z "$HEAD_REVISION" ]; then
+    report SKIP artifact.freshness "дерево не git-репозиторий, сверять не с чем"
+elif git merge-base --is-ancestor "$APK_REVISION" HEAD 2>/dev/null; then
+    report PASS artifact.freshness "APK собран из ${APK_REVISION:0:12}… — предок HEAD (${HEAD_REVISION:0:12}…)"
+else
+    report FAIL artifact.freshness "APK собран из ${APK_REVISION:0:12}…, а это не предок HEAD (${HEAD_REVISION:0:12}…): артефакт устарел относительно дерева"
 fi
 fi
 
