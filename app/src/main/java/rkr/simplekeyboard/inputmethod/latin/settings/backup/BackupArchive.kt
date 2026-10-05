@@ -36,7 +36,7 @@ class VerifiedPersonalFile(
     val bytes: ByteArray,
 )
 
-/** An archive that passed every check: the parsed settings and the validated personal files. */
+/** An archive that passed every check: the schema-filtered settings and the validated personal files. */
 class VerifiedBackup(
     val preferences: Map<String, Any>,
     val personalFiles: List<VerifiedPersonalFile>,
@@ -54,8 +54,9 @@ class VerifiedBackup(
  * canonical known path, no duplicates, per-kind and total uncompressed size caps read from the
  * actual stream (never from the zip's own size fields); a present, parseable manifest with the
  * supported format version and this app's package; the manifest's entry set exactly equal to the
- * archive's; each entry's size and SHA-256 matching the manifest; the settings document parsing;
- * every personal file passing its store's strict binary validator. Any failure throws
+ * archive's; each entry's size and SHA-256 matching the manifest; the settings document parsing
+ * and passing the preference-key schema of [BackupPreferenceSchema]; every personal file passing
+ * its store's strict binary validator. Any failure throws
  * [BackupValidationException] and nothing is considered read.
  */
 object BackupArchive {
@@ -138,7 +139,7 @@ object BackupArchive {
         val settingsBytes = entries.remove(BackupFormat.SETTINGS_PATH)
             ?: fail("settings entry is missing")
         val preferences = try {
-            BackupPreferencesXml.parse(settingsBytes)
+            BackupPreferenceSchema.applyTo(BackupPreferencesXml.parse(settingsBytes))
         } catch (e: BackupPreferencesXml.PreferencesXmlException) {
             fail("settings document is invalid")
         }

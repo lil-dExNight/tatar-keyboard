@@ -16,13 +16,16 @@
 
 package rkr.simplekeyboard.inputmethod.latin.settings.backup
 
+import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
 /**
  * The settings document of the backup archive: round-trip of every SharedPreferences value type,
- * the deterministic output, and the strict parser's rejections.
+ * the deterministic output, the strict parser's rejections, and the preference-key schema
+ * (unknown keys dropped, a wrong-typed known key failed).
  */
 class BackupPreferencesXmlTest {
 
@@ -156,5 +159,130 @@ class BackupPreferencesXmlTest {
             fail("must reject: $document")
         } catch (expected: BackupPreferencesXml.PreferencesXmlException) {
         }
+    }
+
+    // ---- non-finite floats ------------------------------------------------------------------
+
+    @Test
+    fun rejectsNonFiniteFloats() {
+        // The writer only produces finite values; NaN, the infinities and an overflow parse but
+        // must fail.
+        assertRejected("<map><float name=\"a\" value=\"NaN\" /></map>")
+        assertRejected("<map><float name=\"a\" value=\"Infinity\" /></map>")
+        assertRejected("<map><float name=\"a\" value=\"-Infinity\" /></map>")
+        assertRejected("<map><float name=\"a\" value=\"1e40\" /></map>")
+    }
+
+    // ---- the preference-key schema ------------------------------------------------------------
+
+    @Test
+    fun schemaDropsUnknownKeys() {
+        // A key no current build knows (a since-removed one, or a newer build's) is dropped, not
+        // failed.
+        val parsed = parseDoc(
+            "<map><boolean name=\"auto_cap\" value=\"false\" />" +
+                "<boolean name=\"pref_fifth_row_arm\" value=\"true\" /></map>")
+        assertEquals(mapOf<String, Any>("auto_cap" to false), BackupPreferenceSchema.applyTo(parsed))
+    }
+
+    @Test
+    fun schemaKeepsKnownKeysAtTheirTypes() {
+        val parsed = parseDoc(
+            "<map>" +
+                "<boolean name=\"auto_cap\" value=\"true\" />" +
+                "<int name=\"pref_key_longpress_timeout\" value=\"300\" />" +
+                "<int name=\"pref_bottom_offset_portrait\" value=\"-12\" />" +
+                "<float name=\"pref_keyboard_height\" value=\"1.15\" />" +
+                "<string name=\"pref_enabled_subtypes\">tt_RU;ru</string>" +
+                "<string name=\"pref_keyboard_theme_20140509\">7</string>" +
+                "<int name=\"pref_keyboard_color\" value=\"-16776961\" />" +
+                "</map>")
+        assertEquals(parsed, BackupPreferenceSchema.applyTo(parsed))
+    }
+
+    @Test
+    fun schemaRejectsAKnownKeyWithAWrongType() {
+        // Each document is syntactically fine; the schema must refuse it whole.
+        val documents = listOf(
+            "<map><string name=\"auto_cap\">x</string></map>",
+            "<map><int name=\"auto_cap\" value=\"1\" /></map>",
+            "<map><boolean name=\"pref_keyboard_height\" value=\"true\" /></map>",
+            "<map><string name=\"pref_bottom_offset_portrait\">5</string></map>",
+            "<map><long name=\"pref_key_longpress_timeout\" value=\"5\" /></map>",
+            "<map><set name=\"pref_enabled_subtypes\"></set></map>",
+        )
+        for (document in documents) {
+            try {
+                BackupPreferenceSchema.applyTo(parseDoc(document))
+                fail("must reject: $document")
+            } catch (expected: BackupPreferencesXml.PreferencesXmlException) {
+            }
+        }
+    }
+
+    @Test
+    fun schemaPinsTheValueTypeOfEveryKey() {
+        val boolean = BackupPreferenceSchema.ValueType.BOOLEAN
+        val int = BackupPreferenceSchema.ValueType.INT
+        val float = BackupPreferenceSchema.ValueType.FLOAT
+        val string = BackupPreferenceSchema.ValueType.STRING
+        val expected = mapOf(
+            "auto_cap" to boolean,
+            "vibrate_on" to boolean,
+            "sound_on" to boolean,
+            "popup_on" to boolean,
+            "pref_show_language_switch_key" to boolean,
+            "pref_use_on_screen" to boolean,
+            "pref_enable_ime_switch" to boolean,
+            "pref_show_special_chars" to boolean,
+            "pref_show_number_row" to boolean,
+            "pref_show_emoji_key" to boolean,
+            "pref_space_swipe" to boolean,
+            "pref_delete_swipe" to boolean,
+            "pref_glide_typing" to boolean,
+            "pref_tatar_suggestions" to boolean,
+            "pref_personal_dictionary" to boolean,
+            "pref_tatar_autocorrect" to boolean,
+            "pref_emoji_suggestions" to boolean,
+            "pref_incognito_mode" to boolean,
+            "pref_tatar_suggestions_offer_spent" to boolean,
+            "pref_key_longpress_timeout" to int,
+            "pref_one_handed_side" to int,
+            "pref_bottom_offset_portrait" to int,
+            "pref_keyboard_color" to int,
+            "pref_keypress_sound_volume" to float,
+            "pref_keyboard_height" to float,
+            "pref_emoji_panel_height" to float,
+            "pref_enabled_subtypes" to string,
+            "pref_current_subtype" to string,
+            // The theme id crosses as a decimal string, as KeyboardTheme writes it.
+            "pref_keyboard_theme_20140509" to string,
+        )
+        assertEquals(expected, BackupPreferenceSchema.KEY_TYPES)
+    }
+
+    @Test
+    fun schemaCoversEveryCurrentPreferenceKey() {
+        // The PREF_* constants of Settings.java plus KeyboardTheme's key are the whole key set.
+        val settings = readSource("rkr/simplekeyboard/inputmethod/latin/settings/Settings.java")
+        val prefKeys = Regex("""String\s+PREF_\w+\s*=\s*"([^"]+)"""")
+            .findAll(settings).map { it.groupValues[1] }.toSet()
+        assertTrue("no PREF_ constants found in Settings.java", prefKeys.isNotEmpty())
+        val theme = readSource("rkr/simplekeyboard/inputmethod/keyboard/KeyboardTheme.java")
+        val themeKey = Regex("""KEYBOARD_THEME_KEY\s*=\s*"([^"]+)"""")
+            .find(theme)?.groupValues?.get(1) ?: error("KEYBOARD_THEME_KEY not found")
+        assertEquals(prefKeys + themeKey, BackupPreferenceSchema.KEY_TYPES.keys)
+    }
+
+    private fun parseDoc(document: String): Map<String, Any> =
+        BackupPreferencesXml.parse(document.toByteArray(Charsets.UTF_8))
+
+    private fun readSource(relative: String): String {
+        val candidates = listOf(File("src/main/java"), File("app/src/main/java"))
+        val root = candidates.firstOrNull(File::isDirectory)
+            ?: error("cannot locate app/src/main/java from ${File(".").absolutePath}")
+        val file = File(root, relative)
+        assertTrue("$relative missing", file.isFile)
+        return file.readText()
     }
 }

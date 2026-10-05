@@ -162,9 +162,15 @@ object BackupPreferencesXml {
         private fun requiredValue(tag: Tag): String =
             tag.attributes["value"] ?: fail("entry without a value")
 
-        /** Floats come from Float.toString on write; the same domain is accepted back. */
-        private fun parseFloat(raw: String): Float =
-            raw.toFloatOrNull() ?: fail("bad float value")
+        /**
+         * Floats come from Float.toString on write; only that finite domain is accepted back —
+         * a NaN or infinite geometry scale must fail the import, not reach the keyboard.
+         */
+        private fun parseFloat(raw: String): Float {
+            val value = raw.toFloatOrNull() ?: fail("bad float value")
+            if (value.isNaN() || value.isInfinite()) fail("bad float value")
+            return value
+        }
 
         /** After a scalar's value attribute: either `/>` was read already, or a `</tag>` follows. */
         private fun expectEndTagOrEmpty(tag: Tag) {

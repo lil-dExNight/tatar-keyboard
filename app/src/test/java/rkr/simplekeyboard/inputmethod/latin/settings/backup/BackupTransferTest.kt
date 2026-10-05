@@ -154,6 +154,14 @@ class BackupTransferTest {
                 )).serialize(),
             "settings/preferences.xml" to settings,
         )
+        // A known preference key carrying a wrong value type: the schema gate rejects the archive.
+        val wrongType = "<map><string name=\"auto_cap\">x</string></map>".toByteArray()
+        variants += zipOf(
+            "manifest.json" to BackupManifest(1, BackupFormat.ARCHIVE_PACKAGE, 45,
+                listOf(BackupManifest.Entry("settings/preferences.xml",
+                    wrongType.size.toLong(), sha256(wrongType)))).serialize(),
+            "settings/preferences.xml" to wrongType,
+        )
 
         for (variant in variants) {
             val destination = StoreBackedTarget(temporaryFolder.newFolder())

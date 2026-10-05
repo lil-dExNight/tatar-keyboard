@@ -235,6 +235,29 @@ class BackupArchiveTest {
     }
 
     @Test
+    fun rejectsSettingsWithAWrongTypedKnownKey() {
+        // The XML is syntactically fine; the preference-key schema is the gate that must fire.
+        val settings = "<map><string name=\"auto_cap\">x</string></map>".toByteArray(Charsets.UTF_8)
+        val archive = zipOf(
+            "manifest.json" to manifestBytes(listOf("settings/preferences.xml" to settings)),
+            "settings/preferences.xml" to settings,
+        )
+        assertRejected(archive)
+    }
+
+    @Test
+    fun dropsUnknownSettingsKeysOnVerify() {
+        val settings = ("<map><boolean name=\"auto_cap\" value=\"true\" />" +
+            "<boolean name=\"pref_fifth_row_arm\" value=\"true\" /></map>").toByteArray(Charsets.UTF_8)
+        val archive = zipOf(
+            "manifest.json" to manifestBytes(listOf("settings/preferences.xml" to settings)),
+            "settings/preferences.xml" to settings,
+        )
+        val verified = BackupArchive.readAndVerify(archive)
+        assertEquals(mapOf<String, Any>("auto_cap" to true), verified.preferences)
+    }
+
+    @Test
     fun rejectsInvalidPersonalFileContent() {
         // The hash and size match: only the store's own validator can catch this, and it must run.
         val garbage = ByteArray(128) { 0x55 }
