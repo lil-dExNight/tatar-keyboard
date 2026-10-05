@@ -11,6 +11,22 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [3.9.3] — 2026-10-05
+
+### Changed
+
+- The keyboard restarts faster when the system has killed it in the background (the reference device's cold-start median improved measurably).
+
+### Fixed
+
+- A hand-edited or hostile backup file can no longer crash the keyboard at startup: imported settings are checked against the known keys and their value types and ranges.
+- The dialogs that name your saved words are protected from screen capture, like the rest of the personal screens.
+- A fresh clipboard clip is no longer offered on the lock screen mid-session.
+
+### Security
+
+- Hardened the boundary against buggy or hostile editor apps (oversized selections, stale cache reloads, clipboard reads) and the release gates against silent passes.
+
 ## [3.9.2] — 2026-10-05
 
 ### Changed

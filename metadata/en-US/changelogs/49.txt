@@ -1,0 +1,3 @@
+• Faster cold start after the system kills the keyboard in the background
+• Security hardening: backup import is validated against the known settings, personal-content dialogs are protected from screen capture, no clipboard offers on the lock screen
+• No other visible changes
