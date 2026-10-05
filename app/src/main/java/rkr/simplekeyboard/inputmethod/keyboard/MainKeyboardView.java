@@ -99,7 +99,10 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
 
     // More keys keyboard
     private final Paint mBackgroundDimAlphaPaint = new Paint();
-    private final View mMoreKeysKeyboardContainer;
+    // The container is a full second KeyboardView chain for a panel that only a long-press
+    // opens, so it inflates at the first show, never at construction.
+    private final int mMoreKeysKeyboardLayoutId;
+    private View mMoreKeysKeyboardContainer;
     private final WeakHashMap<Key, Keyboard> mMoreKeysKeyboardCache = new WeakHashMap<>();
     private final boolean mConfigShowMoreKeysKeyboardAtTouchedPoint;
     // More keys panel (used by both more keys keyboard and more suggestions view)
@@ -184,7 +187,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         mKeyPreviewDrawParams = new KeyPreviewDrawParams(mainKeyboardViewAttr);
         mKeyPreviewChoreographer = new KeyPreviewChoreographer(mKeyPreviewDrawParams);
 
-        final int moreKeysKeyboardLayoutId = mainKeyboardViewAttr.getResourceId(
+        mMoreKeysKeyboardLayoutId = mainKeyboardViewAttr.getResourceId(
                 R.styleable.MainKeyboardView_moreKeysKeyboardLayout, 0);
         mConfigShowMoreKeysKeyboardAtTouchedPoint = mainKeyboardViewAttr.getBoolean(
                 R.styleable.MainKeyboardView_showMoreKeysKeyboardAtTouchedPoint, false);
@@ -193,8 +196,6 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
 
         mDrawingPreviewPlacerView = drawingPreviewPlacerView;
 
-        final LayoutInflater inflater = LayoutInflater.from(getContext());
-        mMoreKeysKeyboardContainer = inflater.inflate(moreKeysKeyboardLayoutId, null);
         mAltCodeKeyWhileTypingFadeoutAnimator = loadObjectAnimator(
                 altCodeKeyWhileTypingFadeoutAnimatorResId, this);
         mAltCodeKeyWhileTypingFadeinAnimator = loadObjectAnimator(
@@ -500,6 +501,10 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
             mMoreKeysKeyboardCache.put(key, moreKeysKeyboard);
         }
 
+        if (mMoreKeysKeyboardContainer == null) {
+            mMoreKeysKeyboardContainer = LayoutInflater.from(getContext())
+                    .inflate(mMoreKeysKeyboardLayoutId, null);
+        }
         final MoreKeysKeyboardView moreKeysKeyboardView =
                 mMoreKeysKeyboardContainer.findViewById(R.id.more_keys_keyboard_view);
         moreKeysKeyboardView.setKeyboard(moreKeysKeyboard);
