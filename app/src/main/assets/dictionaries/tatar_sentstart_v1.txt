@@ -1,4 +1,4 @@
-# Tatar sentence-start suggestions, v1 (TT-SUGGESTIONS, phase P4).
+# Tatar sentence-start suggestions, v1.
 #
 # Source: sentence-initial tokens of the Leipzig Corpora Collection Tatar corpora
 # tat_mixed_2015_1M and tat_web_2018_1M

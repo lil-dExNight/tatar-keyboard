@@ -329,7 +329,7 @@ class CliContractTest(unittest.TestCase):
 
 
 # The shipped asset is pinned: a data change must update these numbers too.
-EXPECTED_ASSET_SHA256 = "f84e82074fa5a5cdca91c41184e8486a0c0afac951c4e2e1cbcc123afbc22216"
+EXPECTED_ASSET_SHA256 = "d050ebc983b5e203c95136f92000a531e6294aec1ff0feaf38ab4dd2aa9fa8a7"
 EXPECTED_RECORD_COUNT = 64
 
 
@@ -445,7 +445,7 @@ class RussianLanguageTest(unittest.TestCase):
 
 
 # The shipped Russian asset is pinned the same way.
-EXPECTED_RU_ASSET_SHA256 = "ffab114daf924d8f23f295d833a0d90df7298b16fb139b3ba1bdb87a7783f86d"
+EXPECTED_RU_ASSET_SHA256 = "989222b7a6cfbe4ac82eaaf1672413c3c00d871d0b55e5fd9b376a13a94f132c"
 EXPECTED_RU_RECORD_COUNT = 64
 
 

@@ -41,7 +41,7 @@ MIN_RECORDS = 16
 MAX_RECORDS = 256
 
 HEADER_LINES_TAT = (
-    "# Tatar sentence-start suggestions, v1 (TT-SUGGESTIONS, phase P4).",
+    "# Tatar sentence-start suggestions, v1.",
     "#",
     "# Source: sentence-initial tokens of the Leipzig Corpora Collection Tatar corpora",
     "# tat_mixed_2015_1M and tat_web_2018_1M",
@@ -58,7 +58,7 @@ HEADER_LINES_TAT = (
 )
 
 HEADER_LINES_RUS = (
-    "# Russian sentence-start suggestions, v1 (ROADMAP Phase 1, P3b).",
+    "# Russian sentence-start suggestions, v1.",
     "#",
     "# Source: sentence-initial tokens of the Leipzig Corpora Collection Russian corpora",
     "# rus_news_2022_1M, rus_news_2019_1M and rus_wikipedia_2021_1M",
