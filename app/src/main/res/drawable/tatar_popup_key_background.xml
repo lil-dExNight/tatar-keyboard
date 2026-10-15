@@ -17,11 +17,11 @@
 <!-- More-keys panel key background for the Tatar theme. The slide-to-select
      highlight needs its own color pair: the shared pressed fill
      (keyPressedBackgroundColor) is near-identical to the panel background in
-     light mode. Radius 5dp matches ios_popup_panel_background. -->
+     light mode. Radius 5dp matches tatar_popup_panel_background. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <solid android:color="@color/ios_popup_key_pressed" />
+            <solid android:color="@color/tatar_popup_key_pressed" />
             <corners android:radius="5dp" />
         </shape>
     </item>

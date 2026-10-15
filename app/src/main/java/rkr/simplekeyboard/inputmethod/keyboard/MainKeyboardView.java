@@ -352,7 +352,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     @Override
     public void onKeyPressed(final Key key, final boolean withPreview) {
         final boolean showPreview = withPreview && !key.noKeyPreview();
-        // As on iOS, a letter key answers a tap with the balloon only and does not darken.
+        // A letter key answers a tap with the balloon only and does not darken.
         // Functional keys (shift, delete, 123, enter, spacebar) keep the pressed fill. The fill
         // also stays whenever the balloon cannot appear (popup off in settings, or a key with no
         // preview), so no key is left without feedback. The glide highlight arrives with

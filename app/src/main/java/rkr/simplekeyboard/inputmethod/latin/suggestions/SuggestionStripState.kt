@@ -168,7 +168,7 @@ internal class SuggestionStripState {
         const val NO_CELL = -1
         const val INVALID_POINTER_ID = -1
         /**
-         * 44dp, the iOS tap-target height (the cells are tappable). Mirrored by the ViewStub
+         * 44dp, a comfortable tap-target height (the cells are tappable). Mirrored by the ViewStub
          * heights of input_view.xml (both layout folders) and the coordinates in
          * scripts/emulator-smoke.sh.
          */

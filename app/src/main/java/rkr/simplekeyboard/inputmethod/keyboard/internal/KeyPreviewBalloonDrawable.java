@@ -29,7 +29,7 @@ import android.graphics.drawable.Drawable;
 import rkr.simplekeyboard.inputmethod.R;
 
 /**
- * The key preview balloon as an iOS-style droplet instead of a rectangle.
+ * The key preview balloon as a droplet instead of a rectangle.
  *
  * <p>The preview bounds are {@code keyPreviewHeight} tall, and the background's bottom padding
  * marks the part that must stay invisible, the part that hangs over the parent key (see
@@ -40,7 +40,7 @@ import rkr.simplekeyboard.inputmethod.R;
  *
  * <p>{@code KeyPreviewChoreographer.placeKeyPreview} clamps the balloon inside the key grid's
  * side edges; when the body shifts, the neck mirrors the shift and stays centered on the parent
- * key (the iOS edge behavior). The anchor offset arrives via {@link #setNeckOffset} before
+ * key (the edge behavior). The anchor offset arrives via {@link #setNeckOffset} before
  * placement.</p>
  *
  * <p>The path is rebuilt only on a bounds change or a neck-offset change, never per frame;
@@ -51,7 +51,7 @@ public final class KeyPreviewBalloonDrawable extends Drawable {
     private static final float WIDTH_DP = 45f;
     /** The invisible part that hangs over the parent key. */
     private static final float BOTTOM_PADDING_DP = 60f;
-    /** Corner radius of the body: iOS balloons are rounder than the 5dp keys. */
+    /** Corner radius of the body: the balloon is rounder than the 5dp keys. */
     private static final float BODY_RADIUS_DP = 10f;
     /** Radius where the body's bottom edge turns into the neck. */
     private static final float BODY_BOTTOM_RADIUS_DP = 6f;
@@ -100,9 +100,9 @@ public final class KeyPreviewBalloonDrawable extends Drawable {
         // the shared neutral translucent of the key drawables.
         final TypedArray themeAttr = context.getTheme().obtainStyledAttributes(
                 new int[] { R.attr.keyNormalBackgroundColor });
-        mFillPaint.setColor(themeAttr.getColor(0, context.getColor(R.color.ios_key_normal)));
+        mFillPaint.setColor(themeAttr.getColor(0, context.getColor(R.color.tatar_key_normal)));
         themeAttr.recycle();
-        mShadowPaint.setColor(context.getColor(R.color.ios_key_shadow));
+        mShadowPaint.setColor(context.getColor(R.color.tatar_key_shadow));
     }
 
     @Override

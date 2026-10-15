@@ -15,7 +15,7 @@
 -->
 
 <!-- Two-step onboarding. Classic View/XML on purpose: no new dependencies,
-     system Material widgets under platformSettingsTheme. iOS-style grouped
+     system Material widgets under platformSettingsTheme. Grouped
      table: flat cards on a grouped-table field, 34sp large title, system-blue
      filled actions, all colored by the shared app_* design tokens. View ids
      are referenced by SetupActivity.kt; do not rename them. -->
@@ -33,7 +33,7 @@
         android:orientation="vertical"
         android:padding="24dp">
 
-        <!-- iOS large title: 34sp sans-serif bold (inline, no AppText.* dep) -->
+        <!-- Large title: 34sp sans-serif bold (inline, no AppText.* dep) -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -211,7 +211,7 @@
                 android:imeOptions="actionDone"
                 android:inputType="text" />
 
-            <!-- Borderless secondary: system-blue text, iOS accent. -->
+            <!-- Borderless secondary: system-blue text, the accent. -->
             <Button
                 android:id="@+id/setup_done_button"
                 android:filterTouchesWhenObscured="true"

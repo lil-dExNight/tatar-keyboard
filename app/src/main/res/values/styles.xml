@@ -14,7 +14,7 @@
      limitations under the License.
 -->
 
-<!-- iOS-style typography for the app screens. Uses platform sans-serif (Roboto),
+<!-- Typography for the app screens. Uses platform sans-serif (Roboto),
      never SF Pro. -->
 <resources>
     <!-- List-row / cell text: 17sp. -->

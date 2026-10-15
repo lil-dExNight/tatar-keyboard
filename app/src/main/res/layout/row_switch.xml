@@ -14,13 +14,13 @@
      limitations under the License.
 -->
 
-<!-- Toggle row: title (+ optional summary) with the iOS-style Switch
+<!-- Toggle row: title (+ optional summary) with the capsule Switch
      (app_switch_track / app_switch_thumb). The whole row is the single click and
      accessibility target — the Switch itself is decorative here, it is
      toggled by SettingsHostActivity, which also mirrors the checked
      state into the row's accessibility node. splitTrack must stay off:
      the Material default punches a hole around the thumb, which would
-     break the solid iOS capsule. -->
+     break the solid capsule. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"

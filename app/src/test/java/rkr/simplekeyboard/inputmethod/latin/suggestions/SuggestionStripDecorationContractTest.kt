@@ -22,7 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The strip's decoration is iOS-shaped — separators inset vertically instead of running edge to
+ * The strip's decoration is inset — separators inset vertically instead of running edge to
  * edge, the pressed cell an inset rounded rect instead of a full-bleed square one, cell text 18dp.
  *
  * `Canvas` does not exist on a plain JVM (no Robolectric here, by design), so the draw shape is

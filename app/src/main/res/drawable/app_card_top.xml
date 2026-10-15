@@ -14,7 +14,7 @@
      limitations under the License.
 -->
 
-<!-- iOS-style grouped card, top row of a multi-row group: only top corners rounded. -->
+<!-- Grouped card, top row of a multi-row group: only top corners rounded. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="@color/app_card_bg" />

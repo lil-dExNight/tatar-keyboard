@@ -39,7 +39,7 @@
     </string-array>
 
     <array name="keyboard_theme_colors" translatable="false">
-        <item>@color/ios_keyboard_background</item>
+        <item>@color/tatar_keyboard_background</item>
         <item>@color/dyn_keyboard_background</item>
     </array>
 </resources>

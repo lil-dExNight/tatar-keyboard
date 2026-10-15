@@ -55,7 +55,7 @@ import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
 
 /**
- * View-based settings screens, built as iOS-style grouped cards from the row_link / row_switch /
+ * View-based settings screens, built as grouped cards from the row_link / row_switch /
  * row_value layouts without android.preference. One activity swaps pages inside one scaffold
  * ([R.layout.settings_screen]) with a manual back stack, so system back and the back chevron
  * behave like separate activities. Prefs are device-protected ([PreferenceManagerCompat]);
@@ -296,7 +296,7 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * As on iOS, a pushed screen slides in from the right and a popped one from the left: a short
+     * A pushed screen slides in from the right and a popped one from the left: a short
      * slide + fade of the rebuilt content column. With system animations off
      * (`Settings.Global.ANIMATOR_DURATION_SCALE` = 0) the screen just appears; a rebuild without
      * a navigation direction never animates.

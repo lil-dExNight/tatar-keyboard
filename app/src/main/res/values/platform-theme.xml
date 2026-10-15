@@ -24,7 +24,7 @@
              fixed token as the app rows, so its contrast follows the app palette. -->
         <item name="android:textColorSecondary">@color/app_text_secondary</item>
     </style>
-    <!-- iOS-style alert styling on the platform dialog: card surface with a 13dp radius,
+    <!-- Alert styling on the platform dialog: card surface with a 13dp radius,
          a centered 17sp semibold title, and accent-colored buttons that are not all caps.
          The full-width stacked button bar stays as on Android: it lives in the framework's
          dialog layout and cannot be restyled by a theme. -->

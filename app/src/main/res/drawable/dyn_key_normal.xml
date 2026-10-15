@@ -18,7 +18,7 @@
 */
 -->
 
-<!-- Dynamic-theme twin of ios_key_normal: identical geometry and state logic, colors from the
+<!-- Dynamic-theme twin of tatar_key_normal: identical geometry and state logic, colors from the
      dyn_* set. The contract test pins the two files equal modulo the color prefix. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Sticky keys (caps-locked shift): distinct highlighted fill so the

@@ -24,16 +24,16 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.keyboard.internal.KeyPreviewBalloonDrawable
 
 /**
- * Pins the structural parts of the iOS-style UI (pixels are checked on the emulator):
+ * Pins the structural parts of the UI (pixels are checked on the emulator):
  * - settings screens animate on push and pop, and do not move when the animation scale is 0;
  * - an action key is accent-filled and its glyph uses the action color;
  * - the more-keys panel uses the key surface and marks the selected key with the accent color;
  * - the suggestion strip is 44dp everywhere, including the smoke test's tap coordinates;
  * - a letter key with a visible preview balloon does not darken; functional keys and glide do;
  * - the droplet balloon respects the framework's padding contract;
- * - the platform dialog uses the iOS card style.
+ * - the platform dialog uses the card style.
  */
-class AppleUxStageBContractTest {
+class KeyboardUiStructureContractTest {
 
     private fun project(relative: String): File {
         val root = listOf(File("."), File("app"), File("..")).firstOrNull {
@@ -90,11 +90,11 @@ class AppleUxStageBContractTest {
 
     @Test
     fun b2AnActionKeyIsAccentFilledWithItsOwnGlyphColour() {
-        val normal = source("src/main/res/drawable/ios_key_normal.xml")
+        val normal = source("src/main/res/drawable/tatar_key_normal.xml")
         val active = normal.substringAfter("<item android:state_active=\"true\">")
             .substringBefore("<item android:state_checkable=")
         assertTrue("the active item fills with the action accent",
-            active.contains("@color/ios_key_action_fill"))
+            active.contains("@color/tatar_key_action_fill"))
         val key = source("src/main/java/rkr/simplekeyboard/inputmethod/keyboard/Key.java")
         val selectColor = key.substringAfter("public final int selectTextColor(")
             .substringBefore("public final int selectHintTextSize(")
@@ -106,7 +106,7 @@ class AppleUxStageBContractTest {
         assertTrue(
             "the theme supplies it",
             source("src/main/res/values/themes-tatar.xml")
-                .contains("<item name=\"actionKeyTextColor\">@color/ios_key_action_text_color</item>"),
+                .contains("<item name=\"actionKeyTextColor\">@color/tatar_key_action_text_color</item>"),
         )
     }
 
@@ -141,17 +141,17 @@ class AppleUxStageBContractTest {
         assertTrue(
             "panel surface = key surface",
             source("src/main/res/values/themes-tatar.xml")
-                .contains("<item name=\"popupPanelBackgroundColor\">@color/ios_key_normal</item>"),
+                .contains("<item name=\"popupPanelBackgroundColor\">@color/tatar_key_normal</item>"),
         )
         for (palette in listOf("values", "values-night")) {
             val colors = source("src/main/res/$palette/colors.xml")
             assertTrue(
                 "$palette: the selection is the action accent",
-                colors.contains("<color name=\"ios_popup_key_pressed\">@color/ios_key_action_fill</color>"),
+                colors.contains("<color name=\"tatar_popup_key_pressed\">@color/tatar_key_action_fill</color>"),
             )
             assertTrue(
                 "$palette: and its glyph is white",
-                colors.contains("<color name=\"ios_popup_key_selected_text\">#FFFFFF</color>"),
+                colors.contains("<color name=\"tatar_popup_key_selected_text\">#FFFFFF</color>"),
             )
         }
         val panel = source(
@@ -258,7 +258,7 @@ class AppleUxStageBContractTest {
     // ----- Platform dialog -----
 
     @Test
-    fun b7ThePlatformDialogCarriesTheIosCard() {
+    fun b7ThePlatformDialogCarriesTheCardStyle() {
         val theme = source("src/main/res/values/platform-theme.xml")
         assertTrue("card background", theme.contains("<item name=\"android:windowBackground\">@drawable/app_dialog_bg</item>"))
         assertTrue("centered title", theme.substringAfter("name=\"AppDialogTitle\"").contains("center"))

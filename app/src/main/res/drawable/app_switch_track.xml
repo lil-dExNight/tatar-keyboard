@@ -14,7 +14,7 @@
      limitations under the License.
 -->
 
-<!-- iOS-style toggle track for android.widget.Switch: 51x31dp capsule.
+<!-- Toggle track for android.widget.Switch: 51x31dp capsule.
      The color jumps on toggle (no fill cross-fade). -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_checked="true">

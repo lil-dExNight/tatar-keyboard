@@ -14,7 +14,7 @@
      limitations under the License.
 -->
 
-<!-- iOS-style grouped card, single-row or standalone: all four corners rounded.
+<!-- Grouped card, single-row or standalone: all four corners rounded.
      Dark theme resolves @color/app_card_bg via values-night automatically. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">

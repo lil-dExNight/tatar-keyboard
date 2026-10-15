@@ -25,7 +25,7 @@ import javax.xml.parsers.DocumentBuilderFactory
  * pinned at the WCAG 1.4.11 non-text floor (3:1). Ratios are computed from the parsed hex,
  * never pinned as numbers, so a palette edit re-measures itself. The disabled filled button
  * and the dimmed rows are inactive components (WCAG-exempt) and stay unpinned; the disclosure
- * chevron and the switch keep their iOS colors because the state is also carried by the row
+ * chevron and the switch keep their own colors because the state is also carried by the row
  * text and the thumb position.
  */
 class AppScreenContrastContractTest {

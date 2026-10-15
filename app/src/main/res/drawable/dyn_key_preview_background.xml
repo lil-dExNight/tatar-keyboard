@@ -18,10 +18,10 @@
 */
 -->
 
-<!-- Dynamic-theme twin of ios_key_preview_background: identical geometry, colors from the
+<!-- Dynamic-theme twin of tatar_key_preview_background: identical geometry, colors from the
      dyn_* set. The contract test pins the two files equal modulo the color prefix. In the
      running keyboard the preview is the path-drawn balloon (KeyPreviewChoreographer swaps it
-     in for this resource id, as for the ios twin). -->
+     in for this resource id, as for the static twin). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:top="1dp">
         <shape android:shape="rectangle">

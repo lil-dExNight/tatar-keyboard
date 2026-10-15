@@ -20,48 +20,48 @@
 -->
 
 <resources>
-    <!-- Color resources for iOS-style Tatar theme (dark). -->
-    <color name="ios_keyboard_background">#2C2C2C</color>
-    <color name="ios_key_normal">#6B6B6B</color>
-    <color name="ios_key_normal_pressed">#7D7D7D</color>
-    <color name="ios_key_functional">#474747</color>
-    <color name="ios_key_functional_pressed">#8E8E8E</color>
-    <color name="ios_key_checked">#8F8F8F</color>
+    <!-- Color resources for the Tatar theme (dark). -->
+    <color name="tatar_keyboard_background">#2C2C2C</color>
+    <color name="tatar_key_normal">#6B6B6B</color>
+    <color name="tatar_key_normal_pressed">#7D7D7D</color>
+    <color name="tatar_key_functional">#474747</color>
+    <color name="tatar_key_functional_pressed">#8E8E8E</color>
+    <color name="tatar_key_checked">#8F8F8F</color>
     <!-- Sticky shift: dark mode inverts to the letter-key gray, not to white. -->
-    <color name="ios_key_sticky_on">#6B6B6B</color>
-    <color name="ios_key_spacebar">#6B6B6B</color>
-    <color name="ios_key_spacebar_pressed">#7D7D7D</color>
-    <color name="ios_key_shadow">#B3000000</color>
+    <color name="tatar_key_sticky_on">#6B6B6B</color>
+    <color name="tatar_key_spacebar">#6B6B6B</color>
+    <color name="tatar_key_spacebar_pressed">#7D7D7D</color>
+    <color name="tatar_key_shadow">#B3000000</color>
     <!-- Slide-to-select highlight on the more-keys panel: the action accent, so it clearly
-         differs from ios_keyboard_background (the panel fill) and keeps the white glyph of
+         differs from tatar_keyboard_background (the panel fill) and keeps the white glyph of
          the selected cell at WCAG AA. -->
-    <color name="ios_popup_key_pressed">@color/ios_key_action_fill</color>
-    <color name="ios_popup_key_selected_text">#FFFFFF</color>
-    <color name="ios_key_text_color">#FFFFFF</color>
-    <color name="ios_key_functional_text_color">#FFFFFF</color>
-    <!-- Action-key and selected-popup-cell fill: an iOS blue dark enough that white
+    <color name="tatar_popup_key_pressed">@color/tatar_key_action_fill</color>
+    <color name="tatar_popup_key_selected_text">#FFFFFF</color>
+    <color name="tatar_key_text_color">#FFFFFF</color>
+    <color name="tatar_key_functional_text_color">#FFFFFF</color>
+    <!-- Action-key and selected-popup-cell fill: a blue dark enough that white
          labels keep WCAG AA on it. -->
-    <color name="ios_key_action_fill">#0A72DC</color>
+    <color name="tatar_key_action_fill">#0A72DC</color>
     <!-- Action key label: white reads on the accent fill in the dark palette too. -->
-    <color name="ios_key_action_text_color">#FFFFFF</color>
-    <color name="ios_key_text_inactive_color">#E6FFFFFF</color>
-    <color name="ios_key_hint_color">#E6FFFFFF</color>
-    <!-- The autocorrect preview's correction cell: a lighter iOS blue than app_accent,
+    <color name="tatar_key_action_text_color">#FFFFFF</color>
+    <color name="tatar_key_text_inactive_color">#E6FFFFFF</color>
+    <color name="tatar_key_hint_color">#E6FFFFFF</color>
+    <!-- The autocorrect preview's correction cell: a lighter blue than app_accent,
          so the text keeps WCAG AA on the dark strip. -->
-    <color name="ios_suggestion_emphasis">#409CFF</color>
+    <color name="tatar_suggestion_emphasis">#409CFF</color>
     <!-- Glide trail: near-white ink, 95 % at the fingertip (the resource alpha is the
          trail's peak, faded per point by GlideTrail) so the ribbon keeps WCAG AA over
          the letter-key gray. -->
-    <color name="ios_glide_trail">#F2FFFFFF</color>
+    <color name="tatar_glide_trail">#F2FFFFFF</color>
 
-    <!-- Color resources for iOS-style app screens (dark). App-screen palette,
-         kept separate from the keyboard ios_* colors above. -->
+    <!-- Color resources for the app screens (dark). App-screen palette,
+         kept separate from the keyboard tatar_* colors above. -->
     <color name="app_screen_bg">#000000</color>
     <color name="app_card_bg">#1C1C1E</color>
     <color name="app_text_primary">#FFFFFF</color>
     <color name="app_text_secondary">#98989E</color>
     <color name="app_separator">#38383A</color>
-    <!-- Accent family. app_accent stays the iOS dark blue for text links, action-row
+    <!-- Accent family. app_accent stays the dark blue for text links, action-row
          titles, dialog buttons and the back chevron; the filled button takes the darker
          app_accent_fill so its white label keeps WCAG AA. See values/colors.xml. -->
     <color name="app_accent">#0A84FF</color>

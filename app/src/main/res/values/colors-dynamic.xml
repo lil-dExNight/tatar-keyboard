@@ -25,23 +25,23 @@
      the aliases are the structural safety net and the default configuration the resource
      linker requires. The v31 tiers map the same names to the framework system colors. -->
 <resources>
-    <color name="dyn_keyboard_background">@color/ios_keyboard_background</color>
-    <color name="dyn_key_normal">@color/ios_key_normal</color>
-    <color name="dyn_key_normal_pressed">@color/ios_key_normal_pressed</color>
-    <color name="dyn_key_functional">@color/ios_key_functional</color>
-    <color name="dyn_key_functional_pressed">@color/ios_key_functional_pressed</color>
-    <color name="dyn_key_checked">@color/ios_key_checked</color>
-    <color name="dyn_key_sticky_on">@color/ios_key_sticky_on</color>
-    <color name="dyn_key_spacebar">@color/ios_key_spacebar</color>
-    <color name="dyn_key_spacebar_pressed">@color/ios_key_spacebar_pressed</color>
-    <color name="dyn_key_shadow">@color/ios_key_shadow</color>
-    <color name="dyn_popup_key_pressed">@color/ios_popup_key_pressed</color>
-    <color name="dyn_key_text_color">@color/ios_key_text_color</color>
-    <color name="dyn_key_functional_text_color">@color/ios_key_functional_text_color</color>
-    <color name="dyn_key_action_fill">@color/ios_key_action_fill</color>
-    <color name="dyn_key_action_text_color">@color/ios_key_action_text_color</color>
-    <color name="dyn_key_text_inactive_color">@color/ios_key_text_inactive_color</color>
-    <color name="dyn_key_hint_color">@color/ios_key_hint_color</color>
-    <color name="dyn_suggestion_emphasis">@color/ios_suggestion_emphasis</color>
-    <color name="dyn_glide_trail">@color/ios_glide_trail</color>
+    <color name="dyn_keyboard_background">@color/tatar_keyboard_background</color>
+    <color name="dyn_key_normal">@color/tatar_key_normal</color>
+    <color name="dyn_key_normal_pressed">@color/tatar_key_normal_pressed</color>
+    <color name="dyn_key_functional">@color/tatar_key_functional</color>
+    <color name="dyn_key_functional_pressed">@color/tatar_key_functional_pressed</color>
+    <color name="dyn_key_checked">@color/tatar_key_checked</color>
+    <color name="dyn_key_sticky_on">@color/tatar_key_sticky_on</color>
+    <color name="dyn_key_spacebar">@color/tatar_key_spacebar</color>
+    <color name="dyn_key_spacebar_pressed">@color/tatar_key_spacebar_pressed</color>
+    <color name="dyn_key_shadow">@color/tatar_key_shadow</color>
+    <color name="dyn_popup_key_pressed">@color/tatar_popup_key_pressed</color>
+    <color name="dyn_key_text_color">@color/tatar_key_text_color</color>
+    <color name="dyn_key_functional_text_color">@color/tatar_key_functional_text_color</color>
+    <color name="dyn_key_action_fill">@color/tatar_key_action_fill</color>
+    <color name="dyn_key_action_text_color">@color/tatar_key_action_text_color</color>
+    <color name="dyn_key_text_inactive_color">@color/tatar_key_text_inactive_color</color>
+    <color name="dyn_key_hint_color">@color/tatar_key_hint_color</color>
+    <color name="dyn_suggestion_emphasis">@color/tatar_suggestion_emphasis</color>
+    <color name="dyn_glide_trail">@color/tatar_glide_trail</color>
 </resources>

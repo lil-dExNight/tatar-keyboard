@@ -152,7 +152,7 @@ class GlideTrailContractTest {
             "src/main/res/values/themes-tatar.xml",
             "app/src/main/res/values/themes-tatar.xml",
         )
-        assertTrue(tatar.contains("<item name=\"glideTrailColor\">@color/ios_glide_trail</item>"))
+        assertTrue(tatar.contains("<item name=\"glideTrailColor\">@color/tatar_glide_trail</item>"))
         // Per-theme trail inks: the accent blue in the light palette, near-white in the dark
         // one, each carrying its peak alpha in the resource value. The literals are pinned so
         // a palette edit cannot silently recolor the trail; the AA ratios of both pairs are
@@ -161,13 +161,13 @@ class GlideTrailContractTest {
             "src/main/res/values/colors.xml",
             "app/src/main/res/values/colors.xml",
         )
-        assertTrue(colors.contains("<color name=\"ios_glide_trail\">#FF0A6CD9</color>"))
+        assertTrue(colors.contains("<color name=\"tatar_glide_trail\">#FF0A6CD9</color>"))
         val nightColors = read(
             "src/main/res/values-night/colors.xml",
             "app/src/main/res/values-night/colors.xml",
         )
         assertTrue("the dark palette carries its own trail ink",
-            nightColors.contains("<color name=\"ios_glide_trail\">#F2FFFFFF</color>"))
+            nightColors.contains("<color name=\"tatar_glide_trail\">#F2FFFFFF</color>"))
         val config = read(
             "src/main/res/values/config.xml",
             "app/src/main/res/values/config.xml",

@@ -24,7 +24,7 @@
              fixed token, so its contrast follows the app palette. -->
         <item name="android:textColorSecondary">@color/app_text_secondary</item>
     </style>
-    <!-- The same iOS-style alert styling on the dark platform dialog; the colors resolve to
+    <!-- The same alert styling on the dark platform dialog; the colors resolve to
          their night variants through @color. -->
     <style name="platformDialogTheme" parent="@android:style/Theme.DeviceDefault.Dialog">
         <item name="android:windowBackground">@drawable/app_dialog_bg</item>

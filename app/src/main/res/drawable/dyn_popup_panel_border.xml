@@ -18,7 +18,7 @@
 */
 -->
 
-<!-- Dynamic-theme twin of ios_popup_panel_border: identical geometry, the stroke from the
+<!-- Dynamic-theme twin of tatar_popup_panel_border: identical geometry, the stroke from the
      dyn_* set. The contract test pins the two files equal modulo the color prefix. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">

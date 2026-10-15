@@ -8,7 +8,7 @@ import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * The dynamic-theme contract. The theme wires the iOS geometry to the framework system colors
+ * The dynamic-theme contract. The theme wires the static theme's geometry to the framework system colors
  * (the Material You tonal palette) on API 31+ and to the default palette below it. This suite
  * pins, without a device:
  *  - the slot -> role mapping: the Kotlin table, the two v31 resource tiers and this file's
@@ -18,7 +18,7 @@ import javax.xml.parsers.DocumentBuilderFactory
  *    and non-text (3:1) thresholds in both uiModes;
  *  - the wholesale fallback: the base tier aliases the default palette slot for slot;
  *  - the API gate: the resolver refuses to run below API 31;
- *  - geometry parity: every dyn_* drawable equals its ios_* twin modulo the color prefix.
+ *  - geometry parity: every dyn_* drawable equals its tatar_* twin modulo the color prefix.
  */
 class DynamicThemeContractTest {
 
@@ -118,7 +118,7 @@ class DynamicThemeContractTest {
         val fallback = parseColors(source("src/main/res/values/colors-dynamic.xml"))
         for ((slot, value) in fallback) {
             assertEquals("the fallback tier must alias the default palette slot for slot",
-                "@color/" + slot.replaceFirst("dyn_", "ios_"), value)
+                "@color/" + slot.replaceFirst("dyn_", "tatar_"), value)
         }
     }
 
@@ -173,18 +173,18 @@ class DynamicThemeContractTest {
         // Half-mapping guard: the dynamic styles take every color from the dyn_* set. The one
         // shared drawable reads ?attr/popupPanelBackgroundColor, which the theme overrides.
         val styles = source("src/main/res/values/themes-dynamic.xml")
-        val iosRefs = Regex("@(color|drawable)/ios_[a-z_]+").findAll(styles)
+        val iosRefs = Regex("@(color|drawable)/tatar_[a-z_]+").findAll(styles)
             .map { it.value }.toList()
-        assertEquals(listOf("@drawable/ios_popup_panel_background"), iosRefs)
+        assertEquals(listOf("@drawable/tatar_popup_panel_background"), iosRefs)
     }
 
     @Test
-    fun theDynamicDrawablesMirrorTheIosGeometry() {
+    fun theDynamicDrawablesMirrorTheStaticGeometry() {
         for (name in DRAWABLE_TWINS) {
             val dyn = normalizedDrawable("dyn_$name")
-            val ios = normalizedDrawable("ios_$name")
-            assertEquals("drawable/dyn_$name.xml must equal its ios twin modulo the color prefix",
-                ios, dyn.replace("dyn_", "ios_"))
+            val base = normalizedDrawable("tatar_$name")
+            assertEquals("drawable/dyn_$name.xml must equal its static twin modulo the color prefix",
+                base, dyn.replace("dyn_", "tatar_"))
         }
     }
 

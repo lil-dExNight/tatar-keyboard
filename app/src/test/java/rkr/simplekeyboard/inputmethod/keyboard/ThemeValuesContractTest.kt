@@ -23,7 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pins the iOS-style theme values so a later theme edit cannot move them:
+ * Pins the theme values so a later theme edit cannot move them:
  * - key shadow alpha 0.30 in light mode (`#4D000000`); dark stays 0.70;
  * - functional key light fill `#ABB1BA`;
  * - the spacebar language label does not fade (final alpha 255);
@@ -31,7 +31,7 @@ import org.junit.Test
  *   switch applies on API < 29 as the Vibrator already does on API 29+.
  * Checked from source because resources and framework classes are unavailable on a plain JVM.
  */
-class AppleUxBatchOneContractTest {
+class ThemeValuesContractTest {
 
     private fun projectFile(relative: String): File {
         val candidates = listOf(File("."), File("app"), File(".."))
@@ -50,19 +50,19 @@ class AppleUxBatchOneContractTest {
     @Test
     fun w1TheLightKeyShadowIsThirtyPercentBlack() {
         val colors = projectFile("src/main/res/values/colors.xml").readText()
-        assertEquals("W1: light key shadow", "#4D000000", colorValue(colors, "ios_key_shadow"))
+        assertEquals("W1: light key shadow", "#4D000000", colorValue(colors, "tatar_key_shadow"))
     }
 
     @Test
     fun w1TheDarkKeyShadowIsUnchanged() {
         val night = projectFile("src/main/res/values-night/colors.xml").readText()
-        assertEquals("dark shadow stays 0.70", "#B3000000", colorValue(night, "ios_key_shadow"))
+        assertEquals("dark shadow stays 0.70", "#B3000000", colorValue(night, "tatar_key_shadow"))
     }
 
     @Test
     fun w2TheLightFunctionalKeyMatchesTheReference() {
         val colors = projectFile("src/main/res/values/colors.xml").readText()
-        assertEquals("W2: functional key", "#ABB1BA", colorValue(colors, "ios_key_functional"))
+        assertEquals("W2: functional key", "#ABB1BA", colorValue(colors, "tatar_key_functional"))
     }
 
     @Test

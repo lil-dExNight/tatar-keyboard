@@ -76,7 +76,7 @@ public final class KeyPreviewChoreographer {
         // The themes' rectangular preview backgrounds are replaced by the path-drawn droplet.
         // Once per pooled view (a handful of views for the lifetime of the keyboard), never per
         // frame.
-        if (mParams.mPreviewBackgroundResId == R.drawable.ios_key_preview_background
+        if (mParams.mPreviewBackgroundResId == R.drawable.tatar_key_preview_background
                 || mParams.mPreviewBackgroundResId == R.drawable.dyn_key_preview_background) {
             keyPreviewView.setBackground(new KeyPreviewBalloonDrawable(context));
         } else {

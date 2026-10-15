@@ -26,7 +26,7 @@ import android.widget.Toast
 import rkr.simplekeyboard.inputmethod.R
 
 /**
- * Row builders of the settings screens: the iOS-style link, text, action, switch and value rows,
+ * Row builders of the settings screens: the link, text, action, switch and value rows,
  * the card scaffolding that lays them out ([addSectionHeader], [addCard]) and small shared
  * helpers ([setRowEnabled], [isRestricted], [dp]). They are `internal` extensions on
  * [SettingsHostActivity], which exposes the state they use (`prefs`, `contentView`,
@@ -81,7 +81,7 @@ internal fun SettingsHostActivity.textRow(text: CharSequence): View {
 }
 
 /**
- * Action row (iOS "button cell"): accent-colored title, no chevron —
+ * Action row: accent-colored title, no chevron —
  * it opens a dialog on the same screen instead of navigating.
  */
 internal fun SettingsHostActivity.actionRow(titleRes: Int, onClick: () -> Unit): View {
@@ -165,7 +165,7 @@ internal fun SettingsHostActivity.valueRow(key: String, titleRes: Int, minValue:
 }
 
 /**
- * Uppercase 13sp section header above a card (iOS grouped-list header).
+ * Uppercase 13sp section header above a card (grouped-list header).
  * The card that follows should pass spacedFromPrevious = false to
  * [addCard] — the header carries the vertical spacing itself.
  */

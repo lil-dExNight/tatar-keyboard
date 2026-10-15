@@ -198,7 +198,7 @@ These hold for every release and are not repeated in the entries below:
 
 ### Changed
 
-- The keyboard looks closer to iOS: three Shift states, a droplet-shaped key preview, blue action Return keys, a white long-press panel and a taller suggestion strip.
+- A refreshed look: three Shift states, a droplet-shaped key preview, blue action Return keys, a white long-press panel and a taller suggestion strip.
 - Letter keys answer a tap with the key preview only; functional keys still change color, and letter keys keep their pressed look when the key preview is off.
 - The spacebar language label no longer fades while you type, and the glide trail is light gray instead of blue.
 - Settings screens slide in and out unless system animations are off, and dialogs are restyled.

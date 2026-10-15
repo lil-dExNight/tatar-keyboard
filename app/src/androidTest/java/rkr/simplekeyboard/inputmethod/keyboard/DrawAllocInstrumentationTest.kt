@@ -462,7 +462,7 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
             boardCanvas = Canvas(Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888))
             stripCanvas = Canvas(Bitmap.createBitmap(strip.width, strip.height, Bitmap.Config.ARGB_8888))
             // The bare key-background selector for the framework-attribution isolation step.
-            rawSelector = requireNotNull(view.context.getDrawable(R.drawable.ios_key_normal)) {
+            rawSelector = requireNotNull(view.context.getDrawable(R.drawable.tatar_key_normal)) {
                 "the key background selector must resolve"
             }
             // Warmup, uncounted: the exact measured sequences twice. The first draws fill the

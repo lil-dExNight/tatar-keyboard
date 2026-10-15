@@ -315,7 +315,7 @@ class SuggestionStripView @JvmOverloads constructor(
         val pressedCell = state.pressedCell()
         if (pressedCell != SuggestionStripState.NO_CELL) {
             decorationPaint.color = pressedColor
-            // A pressed cell is highlighted with an inset rounded rect, as on iOS. The rect is
+            // A pressed cell is highlighted with an inset rounded rect. The rect is
             // a field, so the draw loop allocates nothing.
             pressedCellRect.set(
                 state.cellLeft(pressedCell, width) + pressedCellInsetPx,

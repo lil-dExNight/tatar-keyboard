@@ -26,15 +26,15 @@
         <item name="mainKeyboardViewStyle">@style/MainKeyboardView.Tatar</item>
         <item name="moreKeysKeyboardStyle">@style/MoreKeysKeyboard.Tatar</item>
         <item name="moreKeysKeyboardViewStyle">@style/MoreKeysKeyboardView.Tatar</item>
-        <item name="functionalTextColor">@color/ios_key_functional_text_color</item>
-        <!-- As on iOS, the more-keys panel is drawn on the key surface (white in light,
+        <item name="functionalTextColor">@color/tatar_key_functional_text_color</item>
+        <!-- The more-keys panel is drawn on the key surface (white in light,
              key gray in dark), not on a second keyboard gray. -->
-        <item name="popupPanelBackgroundColor">@color/ios_key_normal</item>
-        <item name="keyPressedBackgroundColor">@color/ios_key_normal_pressed</item>
-        <item name="keyNormalBackgroundColor">@color/ios_key_normal</item>
-        <item name="emojiPanelBackgroundColor">@color/ios_keyboard_background</item>
-        <item name="emojiPanelFunctionalKeyColor">@color/ios_key_functional</item>
-        <item name="suggestionEmphasisColor">@color/ios_suggestion_emphasis</item>
+        <item name="popupPanelBackgroundColor">@color/tatar_key_normal</item>
+        <item name="keyPressedBackgroundColor">@color/tatar_key_normal_pressed</item>
+        <item name="keyNormalBackgroundColor">@color/tatar_key_normal</item>
+        <item name="emojiPanelBackgroundColor">@color/tatar_keyboard_background</item>
+        <item name="emojiPanelFunctionalKeyColor">@color/tatar_key_functional</item>
+        <item name="suggestionEmphasisColor">@color/tatar_suggestion_emphasis</item>
     </style>
     <style
         name="Keyboard.Tatar"
@@ -45,30 +45,30 @@
         name="KeyboardView.Tatar"
         parent="KeyboardView"
     >
-        <item name="android:background">@color/ios_keyboard_background</item>
-        <item name="keyBackground">@drawable/ios_key_normal</item>
-        <item name="functionalKeyBackground">@drawable/ios_key_functional</item>
-        <item name="spacebarBackground">@drawable/ios_key_spacebar</item>
+        <item name="android:background">@color/tatar_keyboard_background</item>
+        <item name="keyBackground">@drawable/tatar_key_normal</item>
+        <item name="functionalKeyBackground">@drawable/tatar_key_functional</item>
+        <item name="spacebarBackground">@drawable/tatar_key_spacebar</item>
         <item name="keyTypeface">normal</item>
-        <item name="keyTextColor">@color/ios_key_text_color</item>
-        <item name="keyTextInactivatedColor">@color/ios_key_text_inactive_color</item>
-        <item name="actionKeyTextColor">@color/ios_key_action_text_color</item>
-        <item name="keyHintLetterColor">@color/ios_key_hint_color</item>
-        <item name="keyHintLabelColor">@color/ios_key_text_inactive_color</item>
-        <item name="keyShiftedLetterHintInactivatedColor">@color/ios_key_text_inactive_color</item>
-        <item name="keyShiftedLetterHintActivatedColor">@color/ios_key_text_color</item>
-        <item name="keyPreviewTextColor">@color/ios_key_text_color</item>
+        <item name="keyTextColor">@color/tatar_key_text_color</item>
+        <item name="keyTextInactivatedColor">@color/tatar_key_text_inactive_color</item>
+        <item name="actionKeyTextColor">@color/tatar_key_action_text_color</item>
+        <item name="keyHintLetterColor">@color/tatar_key_hint_color</item>
+        <item name="keyHintLabelColor">@color/tatar_key_text_inactive_color</item>
+        <item name="keyShiftedLetterHintInactivatedColor">@color/tatar_key_text_inactive_color</item>
+        <item name="keyShiftedLetterHintActivatedColor">@color/tatar_key_text_color</item>
+        <item name="keyPreviewTextColor">@color/tatar_key_text_color</item>
     </style>
     <style
         name="MainKeyboardView.Tatar"
         parent="KeyboardView.Tatar"
     >
-        <item name="keyPreviewBackground">@drawable/ios_key_preview_background</item>
+        <item name="keyPreviewBackground">@drawable/tatar_key_preview_background</item>
         <item name="keyPreviewHeight">@dimen/config_key_preview_height_lxx</item>
         <item name="keyPreviewWidth">@dimen/config_key_preview_width_lxx</item>
         <item name="keyPreviewOffset">@dimen/config_key_preview_offset_lxx</item>
-        <item name="languageOnSpacebarTextColor">@color/ios_key_text_inactive_color</item>
-        <item name="glideTrailColor">@color/ios_glide_trail</item>
+        <item name="languageOnSpacebarTextColor">@color/tatar_key_text_inactive_color</item>
+        <item name="glideTrailColor">@color/tatar_glide_trail</item>
     </style>
     <style
         name="MoreKeysKeyboard.Tatar"
@@ -82,9 +82,9 @@
         name="MoreKeysKeyboardView.Tatar"
         parent="KeyboardView.Tatar"
         >
-        <item name="android:background">@drawable/ios_popup_panel_background</item>
-        <item name="android:foreground">@drawable/ios_popup_panel_border</item>
-        <item name="keyBackground">@drawable/ios_popup_key_background</item>
+        <item name="android:background">@drawable/tatar_popup_panel_background</item>
+        <item name="android:foreground">@drawable/tatar_popup_panel_border</item>
+        <item name="keyBackground">@drawable/tatar_popup_key_background</item>
         <item name="keyTypeface">normal</item>
         <item name="verticalCorrection">@dimen/config_more_keys_keyboard_vertical_correction</item>
     </style>

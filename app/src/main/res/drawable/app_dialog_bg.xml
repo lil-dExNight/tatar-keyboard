@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  iOS-style alert sheet: the card surface with the 13dp corner radius iOS uses for alerts
+  Alert sheet: the card surface with a 13dp corner radius for alerts
   (the grouped-list cards of this app use 10dp). Insets keep the platform dialog's margins
   from the screen edges.
 -->

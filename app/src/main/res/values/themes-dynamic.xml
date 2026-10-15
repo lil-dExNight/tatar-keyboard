@@ -18,7 +18,7 @@
 */
 -->
 
-<!-- KeyboardTheme.TatarDynamic: the iOS geometry of the default theme with the palette taken
+<!-- KeyboardTheme.TatarDynamic: the geometry of the default theme with the palette taken
      from the framework system colors on API 31+ (Material You tonal palette) and from the
      default palette below it. The style tree reuses the Tatar styles as parents and overrides
      color items only, so geometry edits apply to both themes. Colors resolve through the dyn_*
@@ -87,7 +87,7 @@
     >
         <!-- The panel background drawable is shared with the default theme: it paints
              ?attr/popupPanelBackgroundColor, which this theme points at the dyn_* set. -->
-        <item name="android:background">@drawable/ios_popup_panel_background</item>
+        <item name="android:background">@drawable/tatar_popup_panel_background</item>
         <item name="android:foreground">@drawable/dyn_popup_panel_border</item>
         <item name="keyBackground">@drawable/dyn_popup_key_background</item>
         <item name="verticalCorrection">@dimen/config_more_keys_keyboard_vertical_correction</item>

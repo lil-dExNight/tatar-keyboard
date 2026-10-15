@@ -15,39 +15,20 @@
 -->
 
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Sticky keys (caps-locked shift): distinct highlighted fill so the
-         locked state is visible in both light and dark palettes. -->
-    <!-- Action keys (Go, Search, Send, Done, Next, Previous, custom label) carry
-         state_active and are painted in the action accent, the way iOS paints an actionable
-         Return; the fill is the AA-safe accent so the white label keeps its contrast.
-         A plain Return is a functional gray key and never reaches this item. -->
-    <item android:state_active="true">
-        <layer-list>
-            <item android:top="1dp">
-                <shape android:shape="rectangle">
-                    <solid android:color="@color/ios_key_shadow" />
-                    <corners android:radius="5dp" />
-                </shape>
-            </item>
-            <item android:bottom="1dp">
-                <shape android:shape="rectangle">
-                    <solid android:color="@color/ios_key_action_fill" />
-                    <corners android:radius="5dp" />
-                </shape>
-            </item>
-        </layer-list>
-    </item>
+    <!-- Sticky keys (shift on, caps locked): the key inverts to the
+         letter-key surface (white in light, key gray in dark) instead of turning a
+         darker gray. -->
     <item android:state_checkable="true" android:state_checked="true">
         <layer-list>
             <item android:top="1dp">
                 <shape android:shape="rectangle">
-                    <solid android:color="@color/ios_key_shadow" />
+                    <solid android:color="@color/tatar_key_shadow" />
                     <corners android:radius="5dp" />
                 </shape>
             </item>
             <item android:bottom="1dp">
                 <shape android:shape="rectangle">
-                    <solid android:color="@color/ios_key_checked" />
+                    <solid android:color="@color/tatar_key_sticky_on" />
                     <corners android:radius="5dp" />
                 </shape>
             </item>
@@ -57,13 +38,13 @@
         <layer-list>
             <item android:top="1dp">
                 <shape android:shape="rectangle">
-                    <solid android:color="@color/ios_key_shadow" />
+                    <solid android:color="@color/tatar_key_shadow" />
                     <corners android:radius="5dp" />
                 </shape>
             </item>
             <item android:bottom="1dp">
                 <shape android:shape="rectangle">
-                    <solid android:color="@color/ios_key_normal_pressed" />
+                    <solid android:color="@color/tatar_key_functional_pressed" />
                     <corners android:radius="5dp" />
                 </shape>
             </item>
@@ -73,13 +54,13 @@
         <layer-list>
             <item android:top="1dp">
                 <shape android:shape="rectangle">
-                    <solid android:color="@color/ios_key_shadow" />
+                    <solid android:color="@color/tatar_key_shadow" />
                     <corners android:radius="5dp" />
                 </shape>
             </item>
             <item android:bottom="1dp">
                 <shape android:shape="rectangle">
-                    <solid android:color="@color/ios_key_normal" />
+                    <solid android:color="@color/tatar_key_functional" />
                     <corners android:radius="5dp" />
                 </shape>
             </item>

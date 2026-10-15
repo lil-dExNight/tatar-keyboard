@@ -22,41 +22,41 @@ class ThemeContrastContractTest {
 
     private val textPairs = listOf(
         // Letter labels; also the more-keys panel text and the key preview text.
-        ContrastPair("ios_key_text_color", "ios_key_normal"),
+        ContrastPair("tatar_key_text_color", "tatar_key_normal"),
         // Suggestion strip words and the emoji search results.
-        ContrastPair("ios_key_text_color", "ios_keyboard_background"),
+        ContrastPair("tatar_key_text_color", "tatar_keyboard_background"),
         // Functional key glyphs (shift, delete, ?123, ...), tinted icons included.
-        ContrastPair("ios_key_functional_text_color", "ios_key_functional"),
+        ContrastPair("tatar_key_functional_text_color", "tatar_key_functional"),
         // Action/enter labels and their tinted icons on the accent fill.
-        ContrastPair("ios_key_action_text_color", "ios_key_action_fill"),
+        ContrastPair("tatar_key_action_text_color", "tatar_key_action_fill"),
         // Hint letters on the letter keys.
-        ContrastPair("ios_key_hint_color", "ios_key_normal"),
+        ContrastPair("tatar_key_hint_color", "tatar_key_normal"),
         // Hint labels on the number rows.
-        ContrastPair("ios_key_text_inactive_color", "ios_key_normal"),
+        ContrastPair("tatar_key_text_inactive_color", "tatar_key_normal"),
         // The period key's punctuation hint sits on a functional fill.
-        ContrastPair("ios_key_text_inactive_color", "ios_key_functional"),
+        ContrastPair("tatar_key_text_inactive_color", "tatar_key_functional"),
         // The spacebar language label is painted with the paint alpha forced opaque.
-        ContrastPair("ios_key_text_inactive_color", "ios_key_spacebar", 0xFF),
+        ContrastPair("tatar_key_text_inactive_color", "tatar_key_spacebar", 0xFF),
         // The slide-to-select cell of the more-keys panel.
-        ContrastPair("ios_popup_key_selected_text", "ios_popup_key_pressed"),
+        ContrastPair("tatar_popup_key_selected_text", "tatar_popup_key_pressed"),
         // The autocorrect preview's correction cell.
-        ContrastPair("ios_suggestion_emphasis", "ios_keyboard_background"),
+        ContrastPair("tatar_suggestion_emphasis", "tatar_keyboard_background"),
         // Emoji panel category headers, dimmed to HEADER_ALPHA.
-        ContrastPair("ios_key_functional_text_color", "ios_keyboard_background", HEADER_ALPHA),
+        ContrastPair("tatar_key_functional_text_color", "tatar_keyboard_background", HEADER_ALPHA),
         // Emoji search hint and empty message, dimmed to HINT_ALPHA.
-        ContrastPair("ios_key_functional_text_color", "ios_keyboard_background", HINT_ALPHA),
+        ContrastPair("tatar_key_functional_text_color", "tatar_keyboard_background", HINT_ALPHA),
         // The glide trail at its fingertip peak over the letter keys.
-        ContrastPair("ios_glide_trail", "ios_key_normal"),
+        ContrastPair("tatar_glide_trail", "tatar_key_normal"),
     )
 
     private val iconPairs = listOf(
         // Locked shift and sticky shift are state icons: WCAG 1.4.11 asks 3:1, not AA text.
-        ContrastPair("ios_key_functional_text_color", "ios_key_checked"),
-        ContrastPair("ios_key_functional_text_color", "ios_key_sticky_on"),
+        ContrastPair("tatar_key_functional_text_color", "tatar_key_checked"),
+        ContrastPair("tatar_key_functional_text_color", "tatar_key_sticky_on"),
         // The emoji panel's search-entry icon, dimmed to SEARCH_HINT_ALPHA.
-        ContrastPair("ios_key_functional_text_color", "ios_keyboard_background", SEARCH_HINT_ALPHA),
+        ContrastPair("tatar_key_functional_text_color", "tatar_keyboard_background", SEARCH_HINT_ALPHA),
         // The trail also crosses the gaps between keys.
-        ContrastPair("ios_glide_trail", "ios_keyboard_background"),
+        ContrastPair("tatar_glide_trail", "tatar_keyboard_background"),
     )
 
     @Test

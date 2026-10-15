@@ -69,7 +69,7 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
         final TypedArray popupKeyAttr = context.obtainStyledAttributes(attrs,
                 R.styleable.Keyboard_Key, defStyle, R.style.KeyboardView);
         mSelectedLabelColor = popupKeyAttr.getColor(R.styleable.Keyboard_Key_actionKeyTextColor,
-                context.getColor(R.color.ios_popup_key_selected_text));
+                context.getColor(R.color.tatar_popup_key_selected_text));
         popupKeyAttr.recycle();
         final TypedArray moreKeysKeyboardViewAttr = context.obtainStyledAttributes(attrs,
                 R.styleable.MoreKeysKeyboardView, defStyle, R.style.MoreKeysKeyboardView);

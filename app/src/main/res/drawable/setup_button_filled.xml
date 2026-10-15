@@ -14,12 +14,12 @@
      limitations under the License.
 -->
 
-<!-- iOS-style filled primary button: system-blue fill,
+<!-- Filled primary button: system-blue fill,
      12dp corners, darkened while pressed. Colors come from the shared
      app_* design tokens. Disabled state dims to convey the locked
      step 2 (the Kotlin toggles isEnabled; semantics stay on the button).
      Pair with android:stateListAnimator="@null" in the layout so the
-     Material button elevation does not fight the flat iOS look. -->
+     Material button elevation does not fight the flat look. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_enabled="false">
         <shape android:shape="rectangle">

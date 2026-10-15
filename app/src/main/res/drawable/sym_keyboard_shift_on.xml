@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The one-shot shift state. As on iOS, a filled arrow without the caps-lock bar on a
+  The one-shot shift state: a filled arrow without the caps-lock bar on a
   white key; the bar belongs to caps lock only
   (sym_keyboard_shift_locked), and the hollow outline belongs to shift-off
   (sym_keyboard_shift). Geometry is the locked icon's arrow path verbatim, minus the bar,

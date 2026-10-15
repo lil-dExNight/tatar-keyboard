@@ -22,48 +22,48 @@
 <resources>
     <color name="ic_launcher_background">#FEFEFE</color>
 
-    <!-- Color resources for iOS-style Tatar theme (light). -->
-    <color name="ios_keyboard_background">#D4D6DD</color>
-    <color name="ios_key_normal">#FFFFFF</color>
-    <color name="ios_key_normal_pressed">#C8CDD4</color>
-    <color name="ios_key_functional">#ABB1BA</color>
-    <color name="ios_key_functional_pressed">#FFFFFF</color>
-    <color name="ios_key_checked">#A2A6B0</color>
+    <!-- Color resources for the Tatar theme (light). -->
+    <color name="tatar_keyboard_background">#D4D6DD</color>
+    <color name="tatar_key_normal">#FFFFFF</color>
+    <color name="tatar_key_normal_pressed">#C8CDD4</color>
+    <color name="tatar_key_functional">#ABB1BA</color>
+    <color name="tatar_key_functional_pressed">#FFFFFF</color>
+    <color name="tatar_key_checked">#A2A6B0</color>
     <!-- Sticky shift: the shift key inverts to the letter-key surface while shift or caps is on. -->
-    <color name="ios_key_sticky_on">#FFFFFF</color>
-    <color name="ios_key_spacebar">#FFFFFF</color>
-    <color name="ios_key_spacebar_pressed">#C8CDD4</color>
-    <color name="ios_key_shadow">#4D000000</color>
+    <color name="tatar_key_sticky_on">#FFFFFF</color>
+    <color name="tatar_key_spacebar">#FFFFFF</color>
+    <color name="tatar_key_spacebar_pressed">#C8CDD4</color>
+    <color name="tatar_key_shadow">#4D000000</color>
     <!-- Slide-to-select highlight on the more-keys panel: the action accent, so it clearly
-         differs from ios_keyboard_background (the panel fill) and keeps the white glyph of
+         differs from tatar_keyboard_background (the panel fill) and keeps the white glyph of
          the selected cell at WCAG AA. -->
-    <color name="ios_popup_key_pressed">@color/ios_key_action_fill</color>
+    <color name="tatar_popup_key_pressed">@color/tatar_key_action_fill</color>
     <!-- The glyph on that highlight is white in both palettes. -->
-    <color name="ios_popup_key_selected_text">#FFFFFF</color>
-    <color name="ios_key_text_color">#000000</color>
-    <color name="ios_key_functional_text_color">#3C3C43</color>
-    <!-- Action-key and selected-popup-cell fill: an iOS blue dark enough that white
+    <color name="tatar_popup_key_selected_text">#FFFFFF</color>
+    <color name="tatar_key_text_color">#000000</color>
+    <color name="tatar_key_functional_text_color">#3C3C43</color>
+    <!-- Action-key and selected-popup-cell fill: a blue dark enough that white
          labels keep WCAG AA on it. -->
-    <color name="ios_key_action_fill">#0A6CD9</color>
+    <color name="tatar_key_action_fill">#0A6CD9</color>
     <!-- An action key is accent-filled, so its label and icon are white. -->
-    <color name="ios_key_action_text_color">#FFFFFF</color>
-    <color name="ios_key_text_inactive_color">#A0000000</color>
-    <color name="ios_key_hint_color">#90000000</color>
-    <!-- The autocorrect preview's correction cell: a deeper iOS blue than app_accent,
+    <color name="tatar_key_action_text_color">#FFFFFF</color>
+    <color name="tatar_key_text_inactive_color">#A0000000</color>
+    <color name="tatar_key_hint_color">#90000000</color>
+    <!-- The autocorrect preview's correction cell: a deeper blue than app_accent,
          so the text keeps WCAG AA on the keyboard-gray strip. -->
-    <color name="ios_suggestion_emphasis">#0052BE</color>
+    <color name="tatar_suggestion_emphasis">#0052BE</color>
     <!-- Glide trail: the action-accent ink, opaque at the fingertip (the resource alpha is
          the trail's peak, faded per point by GlideTrail) so the ribbon keeps WCAG AA over
          the white keys; the dark palette carries its own value. -->
-    <color name="ios_glide_trail">#FF0A6CD9</color>
+    <color name="tatar_glide_trail">#FF0A6CD9</color>
 
-    <!-- Color resources for iOS-style app screens (light). App-screen palette,
-         kept separate from the keyboard ios_* colors above. -->
+    <!-- Color resources for the app screens (light). App-screen palette,
+         kept separate from the keyboard tatar_* colors above. -->
     <color name="app_screen_bg">#F2F2F7</color>
     <color name="app_card_bg">#FFFFFF</color>
     <color name="app_text_primary">#000000</color>
     <!-- Secondary text (summaries, values, hints, section headers): one step darker
-         than the iOS gray, so it keeps WCAG AA on the card and on the grouped field. -->
+         than the usual gray, so it keeps WCAG AA on the card and on the grouped field. -->
     <color name="app_text_secondary">#69696E</color>
     <color name="app_separator">#C6C6C8</color>
     <!-- Accent family. app_accent colors text links, action-row titles, dialog buttons and

@@ -33,7 +33,7 @@ class SuggestionStripSourceContractTest {
         for (layout in listOf(normalLayout, v28Layout)) {
             assertTrue(layout.contains("<ViewStub"))
             assertTrue(layout.contains("@layout/suggestion_strip"))
-            // The strip is 44dp, the iOS tap target.
+            // The strip is 44dp, the tap-target height.
             assertTrue(layout.contains("android:layout_height=\"44dp\""))
             assertEquals(1, "<rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView".toRegex()
                 .findAll(layout).count())
@@ -193,7 +193,7 @@ class SuggestionStripSourceContractTest {
             .substringBefore("</declare-styleable>")
         assertTrue(styleable.contains("suggestionEmphasisColor"))
         val theme = File(main, "res/values/themes-tatar.xml").readText()
-        assertTrue(theme.contains("name=\"suggestionEmphasisColor\">@color/ios_suggestion_emphasis"))
+        assertTrue(theme.contains("name=\"suggestionEmphasisColor\">@color/tatar_suggestion_emphasis"))
     }
 
     @Test

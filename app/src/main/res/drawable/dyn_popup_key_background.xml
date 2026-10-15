@@ -18,7 +18,7 @@
 */
 -->
 
-<!-- Dynamic-theme twin of ios_popup_key_background: identical geometry and state logic, colors
+<!-- Dynamic-theme twin of tatar_popup_key_background: identical geometry and state logic, colors
      from the dyn_* set. The contract test pins the two files equal modulo the color prefix.
      The slide-to-select highlight is the action accent. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
