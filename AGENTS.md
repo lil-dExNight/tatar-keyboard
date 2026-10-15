@@ -4,7 +4,7 @@ Offline Android keyboard with a Tatar layout. It is a fork of Simple Keyboard (i
 AOSP LatinIME): legacy Java code plus new Kotlin code. Application id `org.tatarkeyboard.ime`,
 source namespace `rkr.simplekeyboard.inputmethod`. Work happens on branch `main`.
 
-Current state: `HANDOFF.md`. Documentation index: `docs/README.md`. Code map: `docs/ARCHITECTURE.md`.
+Documentation index: `docs/README.md`. Code map: `docs/ARCHITECTURE.md`.
 
 ## Commands
 
@@ -16,7 +16,7 @@ grep first in `PATH` (they use `stat -c`, `sha256sum` and `grep -P`):
 |---|---|
 | JVM tests | `./gradlew test` (`--rerun-tasks` forces a full rerun); JUnit 4, no Robolectric. The `*CalibrationTest` suites are excluded from `test` and run in `./gradlew calibrationTest`; CI and `scripts/release_check.sh` run `test calibrationTest` together. |
 | Python tests | `bash scripts/run_python_tests.sh` (one `unittest` module per process, in parallel; `TT_PYTHON_TEST_JOBS` sets the width); pytest is not used. |
-| Device tests | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, `adb install -r` both APKs, then `adb shell am instrument -w -e class <test class> org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner`; timing assertions need an idle device with the screen on, and `GlideUiDeviceTest` is calibrated for a 720x1640 screen and fails fast on any other. Full procedure: `docs/DEVICE-TEST-PLAN.md`. |
+| Device tests | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, `adb install -r` both APKs, then `adb shell am instrument -w -e class <test class> org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner`; timing assertions need an idle device with the screen on, and `GlideUiDeviceTest` is calibrated for a 720x1640 screen and fails fast on any other. |
 | Emulator smoke test | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk <path>] [--no-boot] [--outdir build/emulator-smoke/]`; installs and selects the IME, runs the typing, suggestion and emoji probes and prints `RESULT\|…` lines. |
 | Device performance check | `bash scripts/device-perf-ritual.sh [--serial <id>] [--pkg org.tatarkeyboard.ime.debug] [--legs cold,pss,frames,warm,touch,suggest] [--enable-suggestions-ui] [--outdir build/device-perf-ritual]`; measures cold start, PSS, frame times, janky frames, warm show, touch handling and the suggestion round trip on a 720x1640 device, prints `over_budget=` on each budgeted line and restores the device state on exit; the opt-in legs battery,uimode,fontscale (idle power accounting, night-mode and font-scale probes) run only when listed in `--legs`; `--enable-suggestions-ui` turns suggestions on in a release build through its settings screen. |
 | Lint | `./gradlew lintRelease`; `abortOnError` is on, baseline `app/lint-baseline.xml`, rule classification `app/lint.xml`. |
@@ -55,10 +55,9 @@ After any change to code or resources, all of these must pass:
 - Zero third-party runtime dependencies. Build-time tools (lint, Error Prone, Macrobenchmark) are
   allowed but must not end up in the APK.
 - No `android.permission.INTERNET`; CI checks the manifest and the built APKs.
-- No NDK/C++. No Compose in the IME process. No Apple fonts, icons or sounds.
-- Budgets: APK ≤ 3 MiB, cold start < 400 ms, zero allocations in the draw loop
-  (`docs/PERF-BUDGETS.md`).
+- No NDK/C++. No Compose in the IME process. No proprietary fonts, icons or sounds from other platforms.
 - Locales and layouts: tt, ru and en only (`resConfigs "tt", "ru", "en"`).
+- Out of scope: voice input and clipboard history.
 
 ## Assets and pins
 
@@ -72,9 +71,9 @@ binary formats: `docs/ASSET-FORMATS.md`.
 ## Documents and commits
 
 - Git is the record. Documents describe the current state and are rewritten, not appended to; a
-  finished plan or report is deleted in the same change (list it in `docs/HISTORY.md`).
-- Live documents sit in `docs/`, indexed in `docs/README.md`; `HANDOFF.md` holds the current
-  state of the project.
+  finished plan or report is deleted in the same change.
+- The repository is public: it holds no plans, task lists, release paperwork or store-submission
+  notes. Live documents sit in `docs/`, indexed in `docs/README.md`.
 - Commits are written only by the operator, in Russian, split by meaning. No co-author trailers.
 - Push, external tags and publishing happen only on the operator's explicit command.
 - `dist/` is local and never committed. `keystore.properties` and the release `.jks` are secrets

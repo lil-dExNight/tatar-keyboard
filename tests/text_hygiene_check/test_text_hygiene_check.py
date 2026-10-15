@@ -142,16 +142,16 @@ class MarkdownLinkTest(TreeTestCase):
         self.assertClean()
 
     def test_backticked_docs_path_must_exist(self):
-        self.write("HANDOFF.md", "Read `docs/GONE.md` and `docs/A.md`.\n")
+        self.write("NOTES.md", "Read `docs/GONE.md` and `docs/A.md`.\n")
         self.write("docs/A.md", "# A\n")
-        self.assertEqual(self.findings(), [("HANDOFF.md", 1, "broken-link")])
+        self.assertEqual(self.findings(), [("NOTES.md", 1, "broken-link")])
 
     def test_link_outside_repository_fails(self):
-        self.write("BRIEF.md", "[ios](../ios/README.md)\n")
-        self.assertEqual(self.findings(), [("BRIEF.md", 1, "broken-link")])
+        self.write("NOTES.md", "[other](../other/README.md)\n")
+        self.assertEqual(self.findings(), [("NOTES.md", 1, "broken-link")])
 
     def test_fenced_block_and_code_span_are_skipped(self):
-        self.write("BRIEF.md", "```\n[x](GONE.md) docs/GONE.md\n```\n`[y](GONE.md)`\n")
+        self.write("NOTES.md", "```\n[x](GONE.md) docs/GONE.md\n```\n`[y](GONE.md)`\n")
         self.assertClean()
 
 

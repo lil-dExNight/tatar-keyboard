@@ -320,5 +320,3 @@ Details and the risk register: [THREAT-MODEL.md](THREAT-MODEL.md).
   (`app/src/main/generated/baselineProfiles/`, read by every build). ART applies the bundled
   profiles only on API 28+; on API 24–27 profile compilation needs androidx.profileinstaller,
   which the zero-dependency rule forbids, so there the profiles only shape the dex layout.
-
-Budgets and how they are measured: [PERF-BUDGETS.md](PERF-BUDGETS.md).

@@ -14,12 +14,12 @@ What the majors ship and what users demonstrably care about:
 | Swipe typing | Mainstreamed by SwiftKey Flow and iOS QuickPath | **Shipped** |
 | Emoji search / recents | Top-voted HeliBoard (#259, 140 reactions) and FlorisBoard (#45, 80) requests | **Shipped** |
 | Next-word prediction | FlorisBoard's #325 (83 reactions) | **Shipped** |
-| Clipboard history | Headline Gboard feature (Google is extending retention); SwiftKey headline; HeliBoard/FlorisBoard ship it; **12+ issues — the most requested feature in Simple Keyboard, our own upstream** | Fits technically; **excluded in `BRIEF.md`** — see the decision memo below |
+| Clipboard history | Headline Gboard feature (Google is extending retention); SwiftKey headline; HeliBoard/FlorisBoard ship it; **12+ issues — the most requested feature in Simple Keyboard, our own upstream** | Fits technically; **out of scope** (`AGENTS.md`) — see the decision memo below |
 | Text-editing mode | Gboard/SwiftKey/Samsung all ship | Fits (pure `InputConnection` work) |
 | Word-delete gesture | HeliBoard #1289/#535 (47 combined reactions) | Fits (same gesture family as our spacebar swipe) |
 | One-handed mode | Gboard since 2016, iOS since iOS 11; our audience types on 6.5"+ budget phones | **Shipped** |
 | Themes | SwiftKey 100+, Samsung Keys Cafe is a whole product, Gboard dynamic color | **Shipped** narrowly (the zero-dep dynamic-color variant), no theme store |
-| Voice typing | The current industry battleground (Pixel, SwiftKey "offline AI voice") | **Excluded in `BRIEF.md`** (operator decision) |
+| Voice typing | The current industry battleground (Pixel, SwiftKey "offline AI voice") | **Out of scope** (`AGENTS.md`) |
 | Translation, GIF/sticker search, Emoji Kitchen, proofread AI, handwriting | Headline features of the majors | **Never fit** (network, size, IP, or model cost) — do not schedule |
 | Inline autofill (password managers) | HeliBoard #163/#274/#1065/#1471, FlorisBoard #2728/#2978 — the #1 complaint class against offline keyboards | Fits (platform API 30+, system-mediated) |
 | Backup/export of learned data | HeliBoard #2585/#2576/#1639/#2562, ASK #2552; FlorisBoard shipped it | Fits (SAF file, `java.util.zip`) — and with no sync, a local file is the *only* migration story |
@@ -89,9 +89,9 @@ verifiable (CI checks the manifest; `release_check.sh` checks the size).
    sits next to Saved words.
 8. **Undo/redo actions** built on existing commit tracking; gate to well-behaved editors.
 
-## Clipboard: decision memo (BRIEF-level)
+## Clipboard: decision memo
 
-`BRIEF.md` excludes clipboard history. The research finding: it is the strongest-demand
+Clipboard history is out of scope. The research finding: it is the strongest-demand
 unbuilt feature in our lineage, and our upstream's only objection (no UI place without a
 permanent bar) does not apply — the emoji-pane pattern solves it. The privacy cost is real
 too: a clipboard history converts the most secret-laden transient channel on the phone into
@@ -105,16 +105,15 @@ Compatible shapes, in escalating order:
 - **Opt-in clipboard pane** — toggled like the emoji panel; text-only (no images); default
   retention 60 min (the Gboard mental model), pin = keep until unpinned; listener active only
   while enabled and unlocked; `noBackupFilesDir`; insertions routed so clips are never
-  learned; lock-screen and private-field contract tests. Requires editing the BRIEF exclusion
+  learned; lock-screen and private-field contract tests. Requires lifting the scope exclusion
   and adding a plain-language residual-risk note to `PRIVACY.md` (we cannot detect sensitive
   clips from other apps — mitigations are behavioral).
 
 The real argument against: a single "the privacy keyboard stored my password" incident costs
 more than the feature adds.
 
-**Decision (operator)**: the staged shape up to the in-memory cell — text shortcuts and the
-in-memory recent-clip cell are in scope (see `docs/ROADMAP.md`); the persistent pane is
-declined and stays excluded in `BRIEF.md`.
+**Decision**: the staged shape up to the in-memory cell — text shortcuts and the in-memory
+recent-clip cell are in scope; the persistent pane is declined and stays out of scope.
 
 ## Distribution channels
 
@@ -154,8 +153,8 @@ foreseeable future**. Ranked:
 1. **GitHub issue forms + public triage funnel** (FlorisBoard's model: `proposal` /
    `proposal-accepted|maybe|rejected`; required fields include install source and "tested on
    latest"; an AI-policy checkbox from day one). Hours, free.
-2. **Discussions with a Polls category** — seed with the fifth-row key-order question (a real
-   open BRIEF decision that suits a poll); upvotes are the standing demand counter.
+2. **Discussions with a Polls category** — seed with the fifth-row key-order question (an open
+   decision that suits a poll); upvotes are the standing demand counter.
 3. **In-app "Send feedback" row composing an email** (HeliBoard's shipped proof that mailto
    works for a no-INTERNET app; prefill only version/device/Android — never typed content;
    needs a dedicated mailbox and one PRIVACY.md sentence).
@@ -182,7 +181,7 @@ Silence is the default for months; the protocol pre-commits to not pivoting on z
   a device before writing comparative claims in listings.
 - Play's Russia billing status and identity-verification details need operator-side
   confirmation.
-- Whether the BRIEF clipboard exclusion covers a *stateless* pane (show/pin the current clip,
+- Whether the clipboard exclusion covers a *stateless* pane (show/pin the current clip,
   no history) is an open scoping question for the operator.
 - FlorisBoard/HeliBoard ratios (proposals outnumber bugs ~4:1) say what arrives once channels
   open: mostly feature requests — install the triage funnel before the volume.

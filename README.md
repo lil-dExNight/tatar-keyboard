@@ -57,7 +57,3 @@ A native Android keyboard with a Tatar Cyrillic layout: the standard ЙЦУКЕ�
 [Apache License 2.0](LICENSE).
 
 Проект — форк [Simple Keyboard](https://github.com/rkkr/simple-keyboard) (Apache-2.0), который в свою очередь основан на клавиатуре AOSP LatinIME. Спасибо авторам обоих проектов.
-
-### Для мейнтейнера
-
-Пошаговая инструкция публикации релиза: [docs/PUBLISH-CHECKLIST.md](docs/PUBLISH-CHECKLIST.md).

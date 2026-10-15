@@ -16,6 +16,4 @@ satisfy are in [measurement-framework.md](measurement-framework.md).
 - `corpus/` — corpus measurement scripts and manifests (OPUS data is not committed for
   licensing reasons).
 
-The executed studies (ux, ui, voice-input, optimization) did their job and are retired; they
-are listed in `docs/HISTORY.md`. The open work is in `docs/ROADMAP.md`; the standing decisions
-are in `docs/ROADMAP.md` and `BRIEF.md`.
+The fixed product decisions and constraints are in `AGENTS.md`.

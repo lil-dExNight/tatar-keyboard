@@ -8,12 +8,11 @@ a measurable gate is an idea to park, not work for the roadmap.
 
 - Pre-registered gates. The pass threshold is written down before the experiment runs.
   Precedents: the imperative-heads selection rule was written before measuring; the glide
-  context rerank patch measured below its decision rule and stayed parked (the archived
-  register is in `docs/HISTORY.md`).
+  context rerank patch measured below its decision rule and stayed parked.
 - Train/held-out discipline. Nothing is tuned on held-out data. Splits are deterministic:
   a SplitMix64 hash of the word decides its side, so Python and Kotlin agree bit for bit.
 - Timings are measured on the reference device, never on CI hosts or emulators. Debug numbers
-  never close or break a release budget. The rules live in `docs/PERF-BUDGETS.md`.
+  are not compared with release numbers.
 - Size and artifact regressions are checked by `scripts/release_check.sh`, not by inspection.
 - No telemetry. The keyboard has no INTERNET permission, so all quality evidence comes from
   offline corpora, lab sessions and device scripts.
@@ -43,8 +42,7 @@ Quality:
 Performance and footprint:
 
 - `scripts/device-perf-ritual.sh` legs: cold, pss, frames, warm, touch, suggest (opt-in:
-  battery, uimode, fontscale). Budgets are constants in the script; `docs/PERF-BUDGETS.md`
-  defines the measurement rules.
+  battery, uimode, fontscale). Thresholds are constants in the script.
 - Zero allocations in the draw loop: `DrawAllocInstrumentationTest`, backed by source
   contracts such as `KeyboardViewDrawLoopContractTest`.
 - APK size and asset budgets: `scripts/release_check.sh` (`artifact.size`) and the byte
@@ -65,8 +63,7 @@ Data correctness:
    has no eval coverage.
 3. Measured rejections stand (trigram prediction, two-edit typo recovery,
    geometric-neighbor typo recovery, wider autocorrect, emoji index sharding); reopening one
-   requires new data, not a rerun of the same experiment. The archived register is in
-   `docs/HISTORY.md`.
+   requires new data, not a rerun of the same experiment.
 
 ## Writing a decision memo
 
