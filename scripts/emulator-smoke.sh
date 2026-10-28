@@ -894,7 +894,7 @@ PYEOF
         type_word "$(tt_word_coords "ояш")"
         sleep 1.5
         SHOT "smoke-learned-emoji-search-$round.png"
-        TAPF 0.6157 0.5908       # the ☀️ result cell (5th for "кояш", asset order)
+        TAPF 0.3438 0.5908       # the ☀️ result cell (5th for "кояш", asset order): column 2, upper row of the two-row band
         sleep 1.5
         f=$(field_text)
         echo "$f" | grep -qE "$SUN_TAIL_RE" \

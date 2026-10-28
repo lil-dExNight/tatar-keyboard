@@ -38,6 +38,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.AssetEmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestIndex
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestSource
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureSink
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import java.util.concurrent.ConcurrentHashMap
@@ -353,6 +354,11 @@ class SuggestionsController internal constructor(
     // The current layout's key geometry for the glide decoder, built by LatinIME from the live
     // keyboard. Remembered and re-pushed like [keyNeighbors]. Null disables glide.
     private var glideGeometry: GlideKeyGeometry? = null
+
+    // The path of the latest gesture awaiting a decode result, for the debug recorder's sink.
+    // Overwritten by every new gesture; the latest-only engine never answers for a superseded
+    // one, so the sink always sees the path that produced the committed word.
+    private var pendingGlidePathForSink: GlidePath? = null
 
     // Whether the strip the active language painted for [pendingContextWord] holds at least one
     // word cell of that language. Not "the strip is occupied": an emoji-only strip and one filled
@@ -2057,6 +2063,7 @@ class SuggestionsController internal constructor(
             glideRefusalFeedback.onGlideRefused()
             return
         }
+        pendingGlidePathForSink = path
         val trailingWord = editor.cachedWordBeforeCursor()
         val cursor = editor.cursorPosition()
         val context = editor.cachedNextWordContext()
@@ -2131,6 +2138,7 @@ class SuggestionsController internal constructor(
     private fun applyGlideResult(suggestions: List<String>) {
         previewKeepTypedCell = null
         if (suggestions.isEmpty()) {
+            pendingGlidePathForSink = null
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             showEmptyBand()
@@ -2155,6 +2163,7 @@ class SuggestionsController internal constructor(
         val commitResult = editor.commitGlideWord(
             pendingGlideContext, committed, pendingGlideTrailingWord, pendingGlideCursor)
         if (commitResult == EditorSurface.GLIDE_COMMIT_REFUSED) {
+            pendingGlidePathForSink = null
             glideRefusalFeedback.onGlideRefused()
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
@@ -2170,6 +2179,13 @@ class SuggestionsController internal constructor(
             )
             return
         }
+        val gestureSink = GlideGestureSink.current
+        val sinkPath = pendingGlidePathForSink
+        if (gestureSink != null && sinkPath != null) {
+            gestureSink.onGlideGesture(sinkPath, glideGeometry?.keyRadius ?: 0f,
+                activeLanguage ?: "", committed)
+        }
+        pendingGlidePathForSink = null
         // Not the user spelling the word out: the run stops counting, and the new boundary is
         // trusted for pairs, as on the tap path.
         runMachine.markRunDirty()

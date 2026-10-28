@@ -23,7 +23,8 @@
      absent from the release APK. No permissions are requested. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <application>
+    <application
+        android:name=".latin.glide.recorder.GestureRecorderApp">
         <activity
             android:name=".latin.glide.recorder.GestureRecorderActivity"
             android:label="Gesture recorder"
