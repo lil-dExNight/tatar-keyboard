@@ -297,12 +297,66 @@ def _chain_metrics(
         ("nextword_chain_top3_mde_pp", f"{mde_pp:.4f}"),
     ]
     metrics.extend(_completion_metrics(unique_words, chain))
+    metrics.extend(_context_boost_metrics(lines, chain))
     metrics.extend(_strip_empty_metrics(lines, pairs, chain))
     if suffix_rules:
         # The strata are defined by the Tatar suffix table; Russian has no suffix rules.
         metrics.extend(_strata_metrics(lines, unique_words, chain))
     metrics.extend(_keystroke_metrics(lines, unique_words, chain))
     return metrics
+
+
+def _context_boost_metrics(
+    lines: list[str], chain: suggest_chain.ChainMirror
+) -> list[tuple[str, str]]:
+    """The context-boost rows over the prefix moments at >= 2 code points: completion top-1 of
+    the armed exact pass (the previous committed word's packed bigram successors lead) against
+    the same moments unarmed, with the sentence-level paired-bootstrap CI95, plus the top-3
+    non-regression rows. Token-occurrence weighted, like the strip-empty moments."""
+    n_lines = len(lines)
+    moments = [0] * n_lines
+    base_top1 = [0] * n_lines
+    boost_top1 = [0] * n_lines
+    base_top3 = [0] * n_lines
+    boost_top3 = [0] * n_lines
+    for line_index, line in enumerate(lines):
+        words = line.split(" ")
+        for position, word in enumerate(words):
+            context = chain.packed_successors(words[position - 1]) if position > 0 else ()
+            for length in range(2, len(word)):
+                prefix = word[:length]
+                moments[line_index] += 1
+                base = chain.prefix_top3(prefix)
+                boost = chain.prefix_top3(prefix, context)
+                if base and base[0] == word:
+                    base_top1[line_index] += 1
+                if boost and boost[0] == word:
+                    boost_top1[line_index] += 1
+                if word in base:
+                    base_top3[line_index] += 1
+                if word in boost:
+                    boost_top3[line_index] += 1
+    total = sum(moments)
+    base1 = sum(base_top1)
+    boost1 = sum(boost_top1)
+    base3 = sum(base_top3)
+    boost3 = sum(boost_top3)
+    ci_lo, ci_hi = suggest_chain.paired_delta_ci95(base_top1, boost_top1, moments)
+    return [
+        ("ctxboost_cp2plus_moments", str(total)),
+        ("ctxboost_cp2plus_top1_base_hits", str(base1)),
+        ("ctxboost_cp2plus_top1_base_pct", f"{percent(base1, total):.4f}"),
+        ("ctxboost_cp2plus_top1_boost_hits", str(boost1)),
+        ("ctxboost_cp2plus_top1_boost_pct", f"{percent(boost1, total):.4f}"),
+        ("ctxboost_cp2plus_top1_delta_pp", f"{percent(boost1 - base1, total):+.4f}"),
+        ("ctxboost_cp2plus_top1_delta_ci95_lo", f"{ci_lo:+.4f}"),
+        ("ctxboost_cp2plus_top1_delta_ci95_hi", f"{ci_hi:+.4f}"),
+        ("ctxboost_cp2plus_top3_base_hits", str(base3)),
+        ("ctxboost_cp2plus_top3_base_pct", f"{percent(base3, total):.4f}"),
+        ("ctxboost_cp2plus_top3_boost_hits", str(boost3)),
+        ("ctxboost_cp2plus_top3_boost_pct", f"{percent(boost3, total):.4f}"),
+        ("ctxboost_cp2plus_top3_delta_pp", f"{percent(boost3 - base3, total):+.4f}"),
+    ]
 
 
 def _completion_metrics(

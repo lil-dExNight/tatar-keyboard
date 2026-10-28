@@ -236,6 +236,111 @@ class RuSuggestEvalTest {
         assertEquals("0.0000", format(nextwordEmpty * 100.0 / nextwordMoments))
     }
 
+    /**
+     * The context boost on the prefix path: exact-pass candidates among the previous committed
+     * word's packed bigram successors lead the strip. Measured over the token-occurrence typing
+     * moments at prefix length >= 2 code points; the control is the same moments unarmed. The
+     * top-1 delta and its sentence-level paired-bootstrap CI95 (the SplitMix64 stream, seed and
+     * rounds shared with the python harness) are cross-pinned with
+     * scripts/suggest_eval.py --language rus (the ctxboost_* rows); the top-3 delta is the
+     * non-regression reading. The Russian engine has no same-stem boost, so the context track is
+     * the only reordering.
+     */
+    @Test
+    fun contextBoostedCompletionDeltaOnTheEvalSet() {
+        val index = requireNotNull(dictionaryIndex)
+        val bigrams = requireNotNull(bigramIndex)
+        index.updateKeyNeighbors(null)
+        val ids = IntArray(TatBigrPrefixIndex.MAX_RESULTS)
+        val moments = IntArray(evalLines.size)
+        val baseTop1 = IntArray(evalLines.size)
+        val boostTop1 = IntArray(evalLines.size)
+        val baseTop3 = IntArray(evalLines.size)
+        val boostTop3 = IntArray(evalLines.size)
+        for (lineIndex in evalLines.indices) {
+            val words = evalLines[lineIndex].split(" ")
+            for (position in words.indices) {
+                val contextCount = if (position > 0) {
+                    bigrams.collectSuccessorIds(
+                        ImmutableUtf8Prefix.copyOf(words[position - 1].toByteArray(Charsets.UTF_8)),
+                        ids,
+                    )
+                } else {
+                    0
+                }
+                val word = words[position]
+                // The eval set is BMP-only, so char splits are code-point splits here.
+                for (codePoints in 2 until word.length) {
+                    val query = ImmutableUtf8Prefix.copyOf(
+                        word.substring(0, codePoints).toByteArray(Charsets.UTF_8)
+                    )
+                    moments[lineIndex]++
+                    val base = index.lookup(query)
+                    if (base.firstOrNull() == word) baseTop1[lineIndex]++
+                    if (base.contains(word)) baseTop3[lineIndex]++
+                    val boost = index.lookup(query, ids, contextCount)
+                    if (boost.firstOrNull() == word) boostTop1[lineIndex]++
+                    if (boost.contains(word)) boostTop3[lineIndex]++
+                }
+            }
+        }
+        val totalMoments = moments.sum()
+        val base1 = baseTop1.sum()
+        val boost1 = boostTop1.sum()
+        val base3 = baseTop3.sum()
+        val boost3 = boostTop3.sum()
+        // The paired CI95: one SplitMix64 stream, both arms scored on the same drawn sentence
+        // indices, nearest-rank 25/975 per-mille of the per-round deltas.
+        val deltas = DoubleArray(BOOTSTRAP_ROUNDS)
+        var state = splitmix64(BOOTSTRAP_SEED)
+        for (round in 0 until BOOTSTRAP_ROUNDS) {
+            var base = 0
+            var boost = 0
+            var weight = 0
+            repeat(evalLines.size) {
+                val drawn = java.lang.Long.remainderUnsigned(state, evalLines.size.toLong()).toInt()
+                state = splitmix64(state)
+                base += baseTop1[drawn]
+                boost += boostTop1[drawn]
+                weight += moments[drawn]
+            }
+            deltas[round] = (boost - base) * 100.0 / weight
+        }
+        deltas.sort()
+        val ciLo = deltas[nearestRankIndex(25, BOOTSTRAP_ROUNDS)]
+        val ciHi = deltas[nearestRankIndex(975, BOOTSTRAP_ROUNDS)]
+        println("EVAL|ctxboost_cp2plus_moments|$totalMoments")
+        println("EVAL|ctxboost_cp2plus_top1_base_hits|$base1")
+        println("EVAL|ctxboost_cp2plus_top1_base_pct|${format(ratePct(base1, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_top1_boost_hits|$boost1")
+        println("EVAL|ctxboost_cp2plus_top1_boost_pct|${format(ratePct(boost1, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_top1_delta_pp|${formatSigned(ratePct(boost1 - base1, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_top1_delta_ci95_lo|${formatSigned(ciLo)}")
+        println("EVAL|ctxboost_cp2plus_top1_delta_ci95_hi|${formatSigned(ciHi)}")
+        println("EVAL|ctxboost_cp2plus_top3_base_pct|${format(ratePct(base3, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_top3_boost_pct|${format(ratePct(boost3, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_top3_delta_pp|${formatSigned(ratePct(boost3 - base3, totalMoments))}")
+
+        assertEquals(PIN_CTXBOOST_CP2PLUS_MOMENTS, totalMoments)
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS, base1)
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS, boost1)
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP3_BASE_HITS, base3)
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP3_BOOST_HITS, boost3)
+        // Cross-implementation pins: scripts/suggest_eval.py --language rus must print the same.
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT, format(ratePct(base1, totalMoments)))
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT, format(ratePct(boost1, totalMoments)))
+        assertEquals(
+            PIN_CTXBOOST_CP2PLUS_TOP1_DELTA, formatSigned(ratePct(boost1 - base1, totalMoments)),
+        )
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO, formatSigned(ciLo))
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI, formatSigned(ciHi))
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP3_BASE_PCT, format(ratePct(base3, totalMoments)))
+        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP3_BOOST_PCT, format(ratePct(boost3, totalMoments)))
+        assertEquals(
+            PIN_CTXBOOST_CP2PLUS_TOP3_DELTA, formatSigned(ratePct(boost3 - base3, totalMoments)),
+        )
+    }
+
     @Test
     fun evalSetShapeMatchesThePinnedSet() {
         assertEquals(PIN_EVAL_LINES, evalLines.size)
@@ -267,7 +372,22 @@ class RuSuggestEvalTest {
         return builder.toString()
     }
 
+    /** One SplitMix64 output for [state] (matches scripts/typo_pack.py bit for bit). */
+    private fun splitmix64(state: Long): Long {
+        var z = state + 0x9E3779B97F4A7C15uL.toLong()
+        z = (z xor (z ushr 30)) * 0xBF58476D1CE4E5B9uL.toLong()
+        z = (z xor (z ushr 27)) * 0x94D049BB133111EBuL.toLong()
+        return z xor (z ushr 31)
+    }
+
+    /** Zero-based index of the [perMille]/1000 percentile, nearest-rank: ceil(p*N/1000)-1. */
+    private fun nearestRankIndex(perMille: Int, size: Int): Int = (perMille * size + 999) / 1000 - 1
+
+    private fun ratePct(part: Int, whole: Int): Double = if (whole > 0) part * 100.0 / whole else 0.0
+
     private fun format(value: Double): String = "%.4f".format(java.util.Locale.ROOT, value)
+
+    private fun formatSigned(value: Double): String = "%+.4f".format(java.util.Locale.ROOT, value)
 
     companion object {
         // Pins over the committed assets and eval set; re-pin when either changes (see class KDoc).
@@ -297,6 +417,26 @@ class RuSuggestEvalTest {
         private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 283
         private const val PIN_STRIP_EMPTY_PREFIX_PCT = "1.3767"
         private const val PIN_SENTSTART_TOP3_HITS = 194
+        // The context boost over the cp>=2 prefix moments, cross-pinned with the ctxboost_* rows
+        // of scripts/suggest_eval.py --language rus; the CI95 is the paired sentence-level
+        // bootstrap (the seed and rounds are shared with scripts/suggest_chain.py).
+        private const val PIN_CTXBOOST_CP2PLUS_MOMENTS = 15_636
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS = 5_968
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS = 6_270
+        private const val PIN_CTXBOOST_CP2PLUS_TOP3_BASE_HITS = 9_800
+        private const val PIN_CTXBOOST_CP2PLUS_TOP3_BOOST_HITS = 9_906
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT = "38.1683"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT = "40.0998"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_DELTA = "+1.9314"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO = "+1.5925"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI = "+2.2991"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP3_BASE_PCT = "62.6759"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP3_BOOST_PCT = "63.3538"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP3_DELTA = "+0.6779"
+
+        // Bootstrap knobs, shared with scripts/suggest_chain.py; changing them re-pins the CI.
+        private const val BOOTSTRAP_SEED = 20261001L
+        private const val BOOTSTRAP_ROUNDS = 2_000
 
         private lateinit var evalLines: List<String>
         private lateinit var uniqueWords: List<String>

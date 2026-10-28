@@ -78,6 +78,8 @@ class SuggestionsControllerTest {
 
         // --- NEXT_WORD ----------------------------------------------------------------------
         var nextWordContext: String = ""
+        /** The committed word before the trailing one (the prefix path's context boost input). */
+        var wordBeforeTrailingWord: String = ""
         var predictedCommitResult: Boolean = true
         val predictedCommits = mutableListOf<Pair<String, String>>()
 
@@ -96,6 +98,8 @@ class SuggestionsControllerTest {
             TatarWordUtils.startsWithWordCharacter(textAfterCursor)
 
         override fun cachedNextWordContext(): String = nextWordContext
+
+        override fun cachedWordBeforeTrailingWord(): String = wordBeforeTrailingWord
 
         override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
             predictedCommits.add(expectedContextWord to suggestion)
@@ -127,6 +131,9 @@ class SuggestionsControllerTest {
     private class FakeEngine : EngineHandle {
         val requestedPrefixes = mutableListOf<ByteArray>()
         val requestedContexts = mutableListOf<ByteArray>()
+
+        /** The context words of the context-armed prefix requests (empty when unarmed). */
+        val requestedPrefixContexts = mutableListOf<ByteArray>()
         var nextToken: Any? = TOKEN
         var isCurrentResult: Boolean = true
         var finishCount = 0
@@ -135,6 +142,17 @@ class SuggestionsControllerTest {
 
         override fun request(editorSessionId: Long, subtypeId: String, prefixUtf8: ByteArray): Any? {
             requestedPrefixes.add(prefixUtf8)
+            return nextToken
+        }
+
+        override fun request(
+            editorSessionId: Long,
+            subtypeId: String,
+            prefixUtf8: ByteArray,
+            contextWordUtf8: ByteArray,
+        ): Any? {
+            requestedPrefixes.add(prefixUtf8)
+            requestedPrefixContexts.add(contextWordUtf8)
             return nextToken
         }
 
@@ -321,6 +339,38 @@ class SuggestionsControllerTest {
         assertTrue(
             h.engine.requestedPrefixes.single()
                 .contentEquals("сүз".toByteArray(Charsets.UTF_8)),
+        )
+    }
+
+    @Test
+    fun aPrefixRequestCarriesTheNormalizedCommittedWordBeforeTheTrailingOne() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true)
+
+        h.editor.word = "каз"
+        h.editor.wordBeforeTrailingWord = "ДАН"
+        h.controller.onTextChanged()
+
+        assertEquals(1, h.engine.requestedPrefixes.size)
+        assertEquals(1, h.engine.requestedPrefixContexts.size)
+        assertTrue(
+            h.engine.requestedPrefixContexts.single()
+                .contentEquals("дан".toByteArray(Charsets.UTF_8)),
+        )
+    }
+
+    @Test
+    fun aPrefixRequestAtASentenceStartCarriesNoContext() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true)
+
+        h.editor.word = "каз"
+        h.editor.wordBeforeTrailingWord = ""
+        h.controller.onTextChanged()
+
+        assertEquals(1, h.engine.requestedPrefixes.size)
+        assertTrue(
+            h.engine.requestedPrefixContexts.single().isEmpty(),
         )
     }
 

@@ -44,6 +44,34 @@ fun interface WordFrequencySource {
 }
 
 /**
+ * A [PrefixComputer] that also answers a prefix lookup armed with the previous committed word.
+ * The engine's worker calls the two-argument form only when the request's context is non-empty;
+ * an empty context always takes the one-argument form, so a computer without the boost answers
+ * exactly the pre-boost lookup. [CompositePrefixComputer] implements it, resolving the word
+ * through the bigram table.
+ */
+internal interface ContextAwarePrefixComputer : PrefixComputer {
+    fun lookup(
+        normalizedPrefixUtf8: ImmutableUtf8Prefix,
+        normalizedContextWordUtf8: ImmutableUtf8Prefix,
+    ): List<String>
+}
+
+/**
+ * A [ClassifiedPrefixComputer] whose exact pass can rank the previous committed word's packed
+ * bigram successors first (the context boost). [contextSuccessorIds] carries dictionary entry
+ * indices in packing order, [contextSuccessorCount] of them; the caller's array is read during
+ * the call only. [TdictPrefixIndex] is the implementation.
+ */
+internal interface ContextBoostedPrefixComputer : ClassifiedPrefixComputer {
+    fun lookup(
+        normalizedPrefixUtf8: ImmutableUtf8Prefix,
+        contextSuccessorIds: IntArray,
+        contextSuccessorCount: Int,
+    ): List<String>
+}
+
+/**
  * Sink of [TdictPrefixIndex.forEachWordCold]: one visit per entry, in dictionary order, with the
  * word and its raw frequency. A fun interface with a primitive Long (not a Kotlin function type),
  * so the full-dictionary walk does not box a Long per word.
@@ -64,6 +92,16 @@ fun interface ColdWordVisitor {
 internal interface ClassifiedPrefixComputer : PrefixComputer {
     /** Number of leading results of the last [lookup] that are exact candidates. */
     val lastExactCount: Int
+
+    /**
+     * Frequency of the last [lookup]'s first exact candidate, meaningful only when
+     * [lastExactCount] is positive. The personal promotion gate reads it, exposed as state for the
+     * same reason as [lastExactCount]. The default, [Long.MAX_VALUE], reads as a maximally strong
+     * dictionary answer: a computer that cannot name the frequency never lets a personal word
+     * above the dictionary's top exact candidate.
+     */
+    val lastTopExactFrequency: Long
+        get() = Long.MAX_VALUE
 
     /**
      * Autocorrect verdict of the last [lookup], or null when the typed word must not be replaced.
@@ -172,7 +210,7 @@ internal class TdictPrefixIndex private constructor(
     private val suffixTable: InflectedSuffixTable?,
     private val fuzzyPolicy: FuzzyEditPolicy,
     private val autocorrectMinCandidateFrequency: Long,
-) : ClassifiedPrefixComputer, KeyNeighborSink, BigramDictionary, WordFrequencySource,
+) : ContextBoostedPrefixComputer, KeyNeighborSink, BigramDictionary, WordFrequencySource,
     TopFrequencySource {
     // Reusable per-index scratch, touched only inside lookup(), whose exclusivity is guaranteed by
     // LatestOnlyPrefixEngine serialization (at most one active worker). updateKeyNeighbors() only
@@ -228,6 +266,14 @@ internal class TdictPrefixIndex private constructor(
     private val otherTrackIndices = IntArray(MAX_RESULTS)
     private val otherTrackFrequencies = LongArray(MAX_RESULTS)
     private val otherTrackClasses = IntArray(MAX_RESULTS)
+    // Context boost: the previous committed word's packed bigram successors as dictionary entry
+    // indices (copied out of the caller's array at lookup entry), and the exact pass's third
+    // track, which ranks ahead of the same-stem and other tracks. Worker-confined like the rest.
+    private val contextSuccessorIds = IntArray(TatBigrPrefixIndex.MAX_RESULTS)
+    private var contextSuccessorCount = 0
+    private val contextTrackIndices = IntArray(MAX_RESULTS)
+    private val contextTrackFrequencies = LongArray(MAX_RESULTS)
+    private val contextTrackClasses = IntArray(MAX_RESULTS)
     // Ranking key carried with every ranked slot as a primitive int. Exact candidates all carry
     // EDIT_CLASS_EXACT, so the key never changes the exact order; typo-recovery candidates carry
     // their packed rank key (see [fuzzyRankKey]), so that level orders by class first (see
@@ -250,6 +296,13 @@ internal class TdictPrefixIndex private constructor(
      * of every lookup, so a failed or rejected one leaves no stale boundary.
      */
     override var lastExactCount = 0
+        private set
+
+    /**
+     * Frequency of the newest lookup's first exact candidate (0 when the exact pass was empty).
+     * Worker-confined like [lastExactCount] and read with the same result; reset on entry.
+     */
+    override var lastTopExactFrequency = 0L
         private set
 
     /**
@@ -325,9 +378,34 @@ internal class TdictPrefixIndex private constructor(
         neighborTable = table
     }
 
+    /** The unarmed lookup: no context, so the exact pass keeps the pre-boost ranking. */
     override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
+        contextSuccessorCount = 0
+        return lookupInternal(normalizedPrefixUtf8)
+    }
+
+    /**
+     * The context-armed lookup: [ids] holds the previous committed word's packed bigram
+     * successors as dictionary entry indices, [count] of them. They are copied into the
+     * worker-confined scratch, so the caller's array may be reused as soon as this returns.
+     */
+    override fun lookup(
+        normalizedPrefixUtf8: ImmutableUtf8Prefix,
+        contextSuccessorIds: IntArray,
+        contextSuccessorCount: Int,
+    ): List<String> {
+        val count = contextSuccessorCount.coerceIn(0, this.contextSuccessorIds.size)
+        for (slot in 0 until count) {
+            this.contextSuccessorIds[slot] = contextSuccessorIds[slot]
+        }
+        this.contextSuccessorCount = count
+        return lookupInternal(normalizedPrefixUtf8)
+    }
+
+    private fun lookupInternal(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
         val prefixLength = normalizedPrefixUtf8.byteCount
         lastExactCount = 0
+        lastTopExactFrequency = 0L
         lastAutocorrectAdvice = null
         lastAutocorrectProbeCount = 0
         if (prefixLength == 0 ||
@@ -351,6 +429,7 @@ internal class TdictPrefixIndex private constructor(
             // Recorded before typo recovery appends to the same ranked arrays: the personal merge
             // needs this boundary.
             lastExactCount = resultCount
+            if (resultCount > 0) lastTopExactFrequency = rankedFrequencies[0]
             // Typo recovery fills only cells the exact pass left empty; exact candidates are
             // never shifted or replaced.
             if (resultCount < MAX_RESULTS) {
@@ -373,6 +452,7 @@ internal class TdictPrefixIndex private constructor(
             }
         } catch (_: RuntimeException) {
             lastExactCount = 0
+            lastTopExactFrequency = 0L
             lastAutocorrectAdvice = null
             emptyList()
         }
@@ -511,11 +591,12 @@ internal class TdictPrefixIndex private constructor(
         val end = upperBound(exactScratch, prefixLength, start)
         if (start >= end) return 0
         val table = suffixTable
-        if (table == null ||
-            countCodePointsByLeadBytes(exactScratch, prefixLength) <
-            MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS ||
-            !wordEquals(start, exactScratch, prefixLength)
-        ) {
+        val stemActive = table != null &&
+            countCodePointsByLeadBytes(exactScratch, prefixLength) >=
+            MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS &&
+            wordEquals(start, exactScratch, prefixLength)
+        val contextCount = contextSuccessorCount
+        if (!stemActive && contextCount == 0) {
             var resultCount = 0
             scanBlockRange(
                 start, end, exactScratch, prefixLength, prefixLength,
@@ -531,37 +612,51 @@ internal class TdictPrefixIndex private constructor(
             )
             return resultCount
         }
+        var contextCount2 = 0
         var stemCount = 0
         var otherCount = 0
         scanBlockRange(
             start, end, exactScratch, prefixLength, prefixLength,
-            onEntry = { _, equalsQuery, remFirstStart, remFirstLength, remSecondStart, remSecondLength ->
+            onEntry = { index, equalsQuery, remFirstStart, remFirstLength, remSecondStart, remSecondLength ->
                 when {
                     equalsQuery -> SCAN_SKIP
-                    table.isInflectedContinuation(
+                    // The context track is tested first: a packed successor leads even when its
+                    // remainder is also a known suffix.
+                    contextCount > 0 && isContextSuccessor(index) -> SCAN_TAKE_CONTEXT
+                    stemActive && table!!.isInflectedContinuation(
                         rangeScanView, remFirstStart, remFirstLength, remSecondStart, remSecondLength,
                     ) -> SCAN_TAKE_STEM
                     else -> SCAN_TAKE
                 }
             },
             onFrequency = { index, frequency, verdict ->
-                if (verdict == SCAN_TAKE_STEM) {
-                    stemCount = insertRanked(
+                when (verdict) {
+                    SCAN_TAKE_CONTEXT -> contextCount2 = insertRanked(
+                        contextTrackIndices, contextTrackFrequencies, contextTrackClasses,
+                        contextCount2, MAX_RESULTS, index, frequency, EDIT_CLASS_EXACT,
+                    )
+                    SCAN_TAKE_STEM -> stemCount = insertRanked(
                         stemTrackIndices, stemTrackFrequencies, stemTrackClasses,
                         stemCount, MAX_RESULTS, index, frequency, EDIT_CLASS_EXACT,
                     )
-                } else {
-                    otherCount = insertRanked(
+                    else -> otherCount = insertRanked(
                         otherTrackIndices, otherTrackFrequencies, otherTrackClasses,
                         otherCount, MAX_RESULTS, index, frequency, EDIT_CLASS_EXACT,
                     )
                 }
             },
         )
-        // Same-stem candidates first, then the rest fill the remaining cells; both tracks are
-        // already in (frequency, code point) order.
+        // The previous word's successors first, then same-stem candidates, then the rest; every
+        // track is already in (frequency, code point) order.
         var resultCount = 0
+        for (slot in 0 until contextCount2) {
+            rankedIndices[resultCount] = contextTrackIndices[slot]
+            rankedFrequencies[resultCount] = contextTrackFrequencies[slot]
+            rankedClasses[resultCount] = contextTrackClasses[slot]
+            resultCount++
+        }
         for (slot in 0 until stemCount) {
+            if (resultCount >= MAX_RESULTS) break
             rankedIndices[resultCount] = stemTrackIndices[slot]
             rankedFrequencies[resultCount] = stemTrackFrequencies[slot]
             rankedClasses[resultCount] = stemTrackClasses[slot]
@@ -575,6 +670,14 @@ internal class TdictPrefixIndex private constructor(
             resultCount++
         }
         return resultCount
+    }
+
+    /** True when [index] is one of the context word's packed bigram successor entries. */
+    private fun isContextSuccessor(index: Int): Boolean {
+        for (slot in 0 until contextSuccessorCount) {
+            if (contextSuccessorIds[slot] == index) return true
+        }
+        return false
     }
 
     /**
@@ -1272,7 +1375,8 @@ internal class TdictPrefixIndex private constructor(
      * so no callback allocates; each block is bulk-fetched once per visit ([ensureRangeScanBlock]).
      *
      * [onEntry] verdicts: [SCAN_SKIP], not a candidate; [SCAN_TAKE], a candidate;
-     * [SCAN_TAKE_STEM], a same-stem candidate of the two-track exact pass;
+     * [SCAN_TAKE_STEM], a same-stem candidate of the exact pass; [SCAN_TAKE_CONTEXT], a context
+     * successor of the exact pass;
      * [SCAN_TAKE_SAME_LENGTH], a candidate whose remainder past the variant is empty (typo
      * recovery only);
      * [SCAN_ABORT], stop at once (budget trip; the level is dropped, so [onFrequency] may be
@@ -1309,6 +1413,7 @@ internal class TdictPrefixIndex private constructor(
             var takeMask = 0
             var stemMask = 0
             var sameLengthMask = 0
+            var contextMask = 0
             var position = 0
             // Entry 0 is the block's first word; treating it as "prefix 0 + whole-word suffix"
             // keeps the loop body uniform.
@@ -1360,12 +1465,13 @@ internal class TdictPrefixIndex private constructor(
                         SCAN_TAKE -> takeMask = takeMask or (1 shl position)
                         SCAN_TAKE_STEM -> stemMask = stemMask or (1 shl position)
                         SCAN_TAKE_SAME_LENGTH -> sameLengthMask = sameLengthMask or (1 shl position)
+                        SCAN_TAKE_CONTEXT -> contextMask = contextMask or (1 shl position)
                         SCAN_ABORT -> return
                     }
                 }
                 position++
             }
-            val verdictMask = takeMask or stemMask or sameLengthMask
+            val verdictMask = takeMask or stemMask or sameLengthMask or contextMask
             if (verdictMask != 0) {
                 // Finish walking the word section to reach the block's frequencies.
                 while (position < inBlock) {
@@ -1384,6 +1490,7 @@ internal class TdictPrefixIndex private constructor(
                         takeMask and frequencyBit != 0 -> SCAN_TAKE
                         stemMask and frequencyBit != 0 -> SCAN_TAKE_STEM
                         sameLengthMask and frequencyBit != 0 -> SCAN_TAKE_SAME_LENGTH
+                        contextMask and frequencyBit != 0 -> SCAN_TAKE_CONTEXT
                         else -> SCAN_SKIP
                     }
                     if (verdict != SCAN_SKIP) {
@@ -1617,10 +1724,13 @@ internal class TdictPrefixIndex private constructor(
 
         // scanBlockRange entry verdicts: not a candidate / candidate / abort the whole scan (budget
         // trip). SCAN_TAKE_STEM: a candidate whose remainder is a known suffix of the table.
+        // SCAN_TAKE_CONTEXT: a candidate among the previous committed word's packed bigram
+        // successors (the context boost's leading track of the exact pass).
         private const val SCAN_SKIP = 0
         private const val SCAN_TAKE = 1
         private const val SCAN_ABORT = 2
         private const val SCAN_TAKE_STEM = 3
+        private const val SCAN_TAKE_CONTEXT = 5
         // A typo-recovery candidate as long as the typed prefix (only scanVariantBlock returns it,
         // under the policy's bonus flag).
         private const val SCAN_TAKE_SAME_LENGTH = 4

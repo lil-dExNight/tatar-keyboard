@@ -76,7 +76,7 @@ class PersonalBigramDictionary private constructor(
                 .thenBy { it },
         )
         return matches.map {
-            PersonalCandidate(successorRawForms[it], successorNormalizedForms[it])
+            PersonalCandidate(successorRawForms[it], successorNormalizedForms[it], usageCounts[it])
         }
     }
 

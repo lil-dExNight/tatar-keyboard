@@ -1957,11 +1957,17 @@ class SuggestionsController internal constructor(
         pendingPrefix = word
         requestSessionId = sessionId
         val prefixBytes = TatarWordUtils.toLookupBytes(TatarWordUtils.normalizeForLookup(word))
+        // The exact pass's context boost condition: the committed word before the trailing one,
+        // by the NEXT_WORD context rule. Empty at a sentence start or when the editor cache cannot
+        // prove the word, which keeps the pre-boost ranking byte-identical.
+        val contextBytes = TatarWordUtils.toLookupBytes(
+            TatarWordUtils.normalizeForLookup(editor.cachedWordBeforeTrailingWord())
+        )
         val language = activeLanguage ?: return
         // The round trip crosses threads, hence the async slice; a null token means no request
         // left the UI thread, so the slice closes at once.
         beginLookupTrace()
-        val token = activeEngine.request(sessionId, language, prefixBytes)
+        val token = activeEngine.request(sessionId, language, prefixBytes, contextBytes)
         if (token == null) {
             endLookupTrace()
             clearToReservedBand()

@@ -142,10 +142,10 @@ object TatarWordUtils {
     }
 
     /**
-     * The committed word before the trailing completed word: for "A B " at the cursor (the
-     * separator that ended B just committed), the word A. This is the context a learned word pair
-     * is recorded against, read from the live text at completion time, never from remembered
-     * state.
+     * The committed word before the trailing word: for "A B " at the cursor (the separator that
+     * ended B just committed) and for the in-progress "A B" alike, the word A. This is the context
+     * a learned word pair is recorded against and the context a prefix lookup is armed with, read
+     * from the live text at completion or lookup time, never from remembered state.
      *
      * The separator after B may be any non-word run, because pair completion fires on every word
      * boundary. The context is what [extractNextWordContext] would return right before B, so a

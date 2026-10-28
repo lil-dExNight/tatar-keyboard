@@ -286,10 +286,16 @@ class ChainMirror:
             )[:TOP_WORD_POOL]
         ]
         self._prefix_cache: dict[str, list[str]] = {}
+        self._prefix_context_cache: dict[tuple[str, tuple[str, ...]], list[str]] = {}
         self._predict_cache: dict[str, list[str]] = {}
 
     def frequency_of(self, word: str) -> int:
         return self._frequency_by_word.get(word, 0)
+
+    def packed_successors(self, head: str) -> tuple[str, ...]:
+        """The packed bigram successors of [head]: the raw table answer, at most
+        BIGRAM_MAX_RESULTS, in packing order. This is the context the prefix boost reads."""
+        return tuple(self._successes.get(head, ()))[:BIGRAM_MAX_RESULTS]
 
     def predict_top3(self, head: str) -> list[str]:
         """Mirror of the NEXT_WORD chain for a committed word: bigrams, forms, fallback."""
@@ -309,7 +315,7 @@ class ChainMirror:
         self._predict_cache[head] = shown
         return shown
 
-    def prefix_top3(self, prefix: str) -> list[str]:
+    def prefix_top3(self, prefix: str, context: Sequence[str] = ()) -> list[str]:
         """Mirror of the exact pass of ``TdictPrefixIndex.lookup``, typo recovery off.
 
         Candidates are the dictionary words continuing ``prefix`` (the word equal to the
@@ -317,12 +323,33 @@ class ChainMirror:
         four. With a complete-word prefix of at least four code points the same-stem boost
         applies: candidates whose remainder is a runtime suffix form rank first, frequency
         order kept within each track.
+
+        With a non-empty [context] — the previous committed word's packed bigram successors,
+        see [packed_successors] — the context boost applies (the runtime's context-armed
+        lookup): candidates among the successors rank first in one context track, frequency
+        order kept, then the unchanged same-stem and other tracks over the rest. An empty
+        context is the pre-boost path, byte-identical.
         """
         if not prefix:
             return []
-        cached = self._prefix_cache.get(prefix)
+        if not context:
+            cached = self._prefix_cache.get(prefix)
+            if cached is not None:
+                return cached
+            result = self._exact_pass(prefix, ())
+            self._prefix_cache[prefix] = result
+            return result
+        key = (prefix, tuple(context))
+        cached = self._prefix_context_cache.get(key)
         if cached is not None:
             return cached
+        result = self._exact_pass(prefix, tuple(context))
+        self._prefix_context_cache[key] = result
+        return result
+
+    def _exact_pass(self, prefix: str, context: tuple[str, ...]) -> list[str]:
+        """The track composition of [prefix_top3]: context track first, then same-stem, then
+        the rest; every track keeps (frequency descending, code point ascending) order."""
         words = self._words
         low = bisect.bisect_left(words, prefix)
         high = bisect.bisect_left(words, prefix + "\U0010ffff", low)
@@ -331,6 +358,8 @@ class ChainMirror:
             and len(prefix) >= MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS
             and self.frequency_of(prefix) > 0
         )
+        context_set = set(context)
+        context_track: list[tuple[int, str]] = []
         stem_track: list[tuple[int, str]] = []
         other_track: list[tuple[int, str]] = []
         for index in range(low, high):
@@ -338,16 +367,16 @@ class ChainMirror:
             if word == prefix:
                 continue
             entry = (-self._frequencies[index], word)
-            target = (
-                stem_track
-                if boosted and is_inflected_continuation(word[len(prefix):])
-                else other_track
-            )
+            if word in context_set:
+                target = context_track
+            elif boosted and is_inflected_continuation(word[len(prefix):]):
+                target = stem_track
+            else:
+                target = other_track
             bisect.insort(target, entry)
             del target[CELL_COUNT:]
-        result = [word for _, word in (stem_track + other_track)[:CELL_COUNT]]
-        self._prefix_cache[prefix] = result
-        return result
+        tracks = context_track + stem_track + other_track
+        return [word for _, word in tracks[:CELL_COUNT]]
 
 
 def splitmix64_index_stream(count: int, seed: int = BOOTSTRAP_SEED) -> Iterator[int]:
@@ -392,6 +421,34 @@ def bootstrap_rate_ci95(
         rates.append(hits * 100.0 / weights)
     rates.sort()
     return rates[nearest_rank_index(25, rounds)], rates[nearest_rank_index(975, rounds)]
+
+
+def paired_delta_ci95(
+    hits_base: Sequence[int],
+    hits_boost: Sequence[int],
+    weights: Sequence[int],
+    rounds: int = BOOTSTRAP_ROUNDS,
+    seed: int = BOOTSTRAP_SEED,
+) -> tuple[float, float]:
+    """CI95 of the paired two-arm delta sum(boost-hits)/sum(weights) - sum(base-hits)/sum(weights),
+    in pp: one SplitMix64 stream, both arms scored on the same drawn unit indices, nearest-rank
+    25/975 per-mille of the per-round deltas."""
+    size = len(weights)
+    stream = splitmix64_index_stream(size, seed)
+    deltas: list[float] = []
+    for _ in range(rounds):
+        base = 0
+        boost = 0
+        weight = 0
+        for _ in range(size):
+            drawn = next(stream)
+            base += hits_base[drawn]
+            boost += hits_boost[drawn]
+            weight += weights[drawn]
+        deltas.append((boost - base) * 100.0 / weight)
+    deltas.sort()
+    return (deltas[nearest_rank_index(25, rounds)],
+            deltas[nearest_rank_index(975, rounds)])
 
 
 def minimum_detectable_effect_pp(p: float, n: int) -> float:

@@ -83,7 +83,7 @@ class PersonalDictionary private constructor(
         matches.sortWith(
             compareByDescending<Int> { usageCounts[it] }.thenBy { it },
         )
-        return matches.map { PersonalCandidate(rawForms[it], normalizedForms[it]) }
+        return matches.map { PersonalCandidate(rawForms[it], normalizedForms[it], usageCounts[it]) }
     }
 
     /**

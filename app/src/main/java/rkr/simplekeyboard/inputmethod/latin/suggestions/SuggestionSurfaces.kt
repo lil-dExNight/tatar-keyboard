@@ -67,10 +67,12 @@ interface EditorSurface {
     fun cachedNextWordContext(): String = ""
 
     /**
-     * The committed word before the just-completed trailing word: A in a just-typed "A B ". Read
-     * when the trailing word has just become empty, so the tail ends with the separator after B.
-     * "" when there is no such word or the cache cannot prove it (a window cut off before the
-     * text start). Defaults to "", so no pair is ever learned.
+     * The committed word before the trailing word: A in a just-typed "A B " and in the in-progress
+     * "A B" alike. Read at pair-learning time (the trailing word has just become empty, so the
+     * tail ends with the separator after B) and at every prefix lookup, where it arms the exact
+     * pass's context boost. "" when there is no such word or the cache cannot prove it (a window
+     * cut off before the text start). Defaults to "", so no pair is ever learned and no lookup is
+     * context-armed.
      */
     fun cachedWordBeforeTrailingWord(): String = ""
 

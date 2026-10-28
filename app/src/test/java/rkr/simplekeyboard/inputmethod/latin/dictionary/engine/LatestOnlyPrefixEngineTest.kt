@@ -133,6 +133,142 @@ class LatestOnlyPrefixEngineTest {
     }
 
     @Test
+    fun prefixRequestCarriesTheContextWordIntoTheTokenAndTheArmedLookup() {
+        val executor = ManualEngineExecutor()
+        val armedCalls = mutableListOf<Pair<String, String>>()
+        val plainCalls = mutableListOf<String>()
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity,
+            object : ContextAwarePrefixComputer {
+                override fun lookup(prefix: ImmutableUtf8Prefix): List<String> {
+                    plainCalls += prefix.decodeUtf8()
+                    return emptyList()
+                }
+
+                override fun lookup(
+                    prefix: ImmutableUtf8Prefix,
+                    context: ImmutableUtf8Prefix,
+                ): List<String> {
+                    armedCalls += prefix.decodeUtf8() to context.decodeUtf8()
+                    return emptyList()
+                }
+            },
+            executor,
+            ResultHandoff {},
+        )
+
+        val token = requireNotNull(engine.request(1, "tt", utf8("ка"), utf8("дан")))
+        assertEquals("дан", token.normalizedContext.decodeUtf8())
+        // NEXT_WORD and GLIDE requests carry no prefix-path context.
+        val nextWord = requireNotNull(engine.requestNextWord(1, "tt", utf8("дан")))
+        assertEquals(0, nextWord.normalizedContext.byteCount)
+        executor.runAll()
+
+        assertEquals(listOf("ка" to "дан"), armedCalls)
+        assertTrue(plainCalls.isEmpty())
+    }
+
+    @Test
+    fun emptyContextKeepsTheUnarmedLookupByteIdentical() {
+        val executor = ManualEngineExecutor()
+        val armedCalls = mutableListOf<Pair<String, String>>()
+        val plainCalls = mutableListOf<String>()
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity,
+            object : ContextAwarePrefixComputer {
+                override fun lookup(prefix: ImmutableUtf8Prefix): List<String> {
+                    plainCalls += prefix.decodeUtf8()
+                    return emptyList()
+                }
+
+                override fun lookup(
+                    prefix: ImmutableUtf8Prefix,
+                    context: ImmutableUtf8Prefix,
+                ): List<String> {
+                    armedCalls += prefix.decodeUtf8() to context.decodeUtf8()
+                    return emptyList()
+                }
+            },
+            executor,
+            ResultHandoff {},
+        )
+
+        val token = requireNotNull(engine.request(1, "tt", utf8("ка")))
+        assertEquals(0, token.normalizedContext.byteCount)
+        executor.runAll()
+
+        assertEquals(listOf("ка"), plainCalls)
+        assertTrue(armedCalls.isEmpty())
+    }
+
+    @Test
+    fun anUnusableContextIsDroppedNeverTheRequest() {
+        val executor = ManualEngineExecutor()
+        val plainCalls = mutableListOf<String>()
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity,
+            object : ContextAwarePrefixComputer {
+                override fun lookup(prefix: ImmutableUtf8Prefix): List<String> {
+                    plainCalls += prefix.decodeUtf8()
+                    return emptyList()
+                }
+
+                override fun lookup(
+                    prefix: ImmutableUtf8Prefix,
+                    context: ImmutableUtf8Prefix,
+                ): List<String> = throw AssertionError("a dropped context never arms a lookup")
+            },
+            executor,
+            ResultHandoff {},
+        )
+
+        // Over-long and invalid UTF-8 contexts are clamped to none; the request stands.
+        val overLong = requireNotNull(
+            engine.request(1, "tt", utf8("ка"), ByteArray(TatBigrPrefixIndex.MAX_WORD_BYTES + 1))
+        )
+        val invalid = requireNotNull(
+            engine.request(1, "tt", utf8("ка"), byteArrayOf(0xd0.toByte()))
+        )
+        assertEquals(0, overLong.normalizedContext.byteCount)
+        assertEquals(0, invalid.normalizedContext.byteCount)
+        executor.runAll()
+        assertEquals(listOf("ка", "ка"), plainCalls)
+    }
+
+    @Test
+    fun aContextChangeInvalidatesTheRunningAnswerLikeAnyOtherChange() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity,
+            PrefixComputer { listOf("result:${it.decodeUtf8()}") },
+            executor,
+            ResultHandoff { published += it },
+        )
+
+        val old = requireNotNull(engine.request(1, "tt", utf8("ка"), utf8("дан")))
+        val current = requireNotNull(engine.request(1, "tt", utf8("ка"), utf8("сүз")))
+        executor.runAll()
+
+        assertNotEquals(old, current)
+        assertNotEquals(old.normalizedContext, current.normalizedContext)
+        assertEquals(listOf(current), published.map { it.token })
+        assertEquals(1L, engine.suppressedStaleResultCount)
+    }
+
+    @Test
+    fun aComputerWithoutTheBoostAnswersTheUnarmedLookup() {
+        val executor = ManualEngineExecutor()
+        val computed = mutableListOf<String>()
+        val engine = engine(executor, computed, mutableListOf())
+
+        engine.request(1, "tt", utf8("ка"), utf8("дан"))
+        executor.runAll()
+
+        assertEquals(listOf("ка"), computed)
+    }
+
+    @Test
     fun computerCanRetainImmutablePrefixButCannotMutateOrObserveCallerChanges() {
         val executor = ManualEngineExecutor()
         val computed = mutableListOf<String>()

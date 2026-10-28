@@ -42,6 +42,9 @@ class CompositePrefixComputerTest {
     private class FakePrimary(
         private val results: List<String>,
         override val lastExactCount: Int,
+        // Long.MAX_VALUE models a strong dictionary top: the promotion gate stays shut unless a
+        // test arms a weak one.
+        override val lastTopExactFrequency: Long = Long.MAX_VALUE,
     ) : ClassifiedPrefixComputer {
         override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> = results
     }
@@ -55,8 +58,10 @@ class CompositePrefixComputerTest {
         dictionary: List<String>,
         exactCount: Int,
         personal: PersonalCandidateSource,
+        topFrequency: Long = Long.MAX_VALUE,
     ): List<String> =
-        CompositePrefixComputer(FakePrimary(dictionary, exactCount), personal).lookup(prefix("гүз"))
+        CompositePrefixComputer(FakePrimary(dictionary, exactCount, topFrequency), personal)
+            .lookup(prefix("гүз"))
 
     @Test
     fun personalOnlyWordTakesIndexOneWhenExactCandidatesExist() {
@@ -177,6 +182,209 @@ class CompositePrefixComputerTest {
         val result = CompositePrefixComputer(FakePrimary(dictionary, 2), exploding)
             .lookup(prefix("гүз"))
         assertSame(dictionary, result)
+    }
+
+    // --- Personal word promotion ---------------------------------------------------------------
+
+    @Test
+    fun aGraduatedPersonalWordLeadsWhenTheDictionaryTopIsWeak() {
+        val result = merge(
+            listOf("гүзәллек", "гүзәлләр", "гүзәллеге", "гүзәллеген"), exactCount = 4,
+            personalSource("гүзәлия" to "гүзәлия"),
+            topFrequency = CompositePrefixComputer.PROMOTION_TOP_FREQUENCY_GATE - 1,
+        )
+        assertEquals(
+            "the personal word leads; the fourth exact candidate leaves the strip",
+            listOf("гүзәлия", "гүзәллек", "гүзәлләр", "гүзәллеге"), result,
+        )
+    }
+
+    @Test
+    fun aGraduatedPersonalWordNeverLeadsAboveAFrequentDictionaryTop() {
+        val result = merge(
+            listOf("гүзәллек", "гүзәлләр"), exactCount = 2,
+            personalSource("гүзәлия" to "гүзәлия"),
+            topFrequency = CompositePrefixComputer.PROMOTION_TOP_FREQUENCY_GATE,
+        )
+        assertEquals(listOf("гүзәллек", "гүзәлия", "гүзәлләр"), result)
+    }
+
+    @Test
+    fun aSubThresholdPersonalWordKeepsTheSecondCell() {
+        val result = merge(
+            listOf("гүзәллек", "гүзәлләр"), exactCount = 2,
+            PersonalCandidateSource {
+                listOf(PersonalCandidate("гүзәлия", "гүзәлия", usageCount = 0))
+            },
+            topFrequency = 1L,
+        )
+        assertEquals(listOf("гүзәллек", "гүзәлия", "гүзәлләр"), result)
+    }
+
+    @Test
+    fun thePromotionNeverReordersWithinAWordLifetime() {
+        // The promotion moves the word exactly one cell (from the second to the first), and a
+        // growing usage counter never moves it again.
+        val dictionary = listOf("гүзәллек", "гүзәлләр")
+        val subThreshold = CompositePrefixComputer(
+            FakePrimary(dictionary, 2, 1L),
+            PersonalCandidateSource {
+                listOf(PersonalCandidate("гүзәлия", "гүзәлия", usageCount = 0))
+            },
+        ).lookup(prefix("гүз"))
+        val justGraduated = CompositePrefixComputer(
+            FakePrimary(dictionary, 2, 1L),
+            PersonalCandidateSource {
+                listOf(PersonalCandidate("гүзәлия", "гүзәлия", usageCount = 1))
+            },
+        ).lookup(prefix("гүз"))
+        val grown = CompositePrefixComputer(
+            FakePrimary(dictionary, 2, 1L),
+            PersonalCandidateSource {
+                listOf(PersonalCandidate("гүзәлия", "гүзәлия", usageCount = 5))
+            },
+        ).lookup(prefix("гүз"))
+        assertEquals(listOf("гүзәллек", "гүзәлия", "гүзәлләр"), subThreshold)
+        assertEquals(listOf("гүзәлия", "гүзәллек", "гүзәлләр"), justGraduated)
+        assertEquals(justGraduated, grown)
+        assertEquals(1, subThreshold.indexOf("гүзәлия") - justGraduated.indexOf("гүзәлия"))
+    }
+
+    @Test
+    fun withThePersonalStoreEmptyThePromotionCannotFire() {
+        // Zero-churn is structural: with an empty source the merge returns the primary's own list
+        // even when the frequency gate would pass.
+        val dictionary = listOf("гүзәллек", "гүзәлләр")
+        val result = CompositePrefixComputer(
+            FakePrimary(dictionary, 2, 1L), PersonalCandidateSource.EMPTY,
+        ).lookup(prefix("гүз"))
+        assertSame("not merely equal — the very same list the primary returned", dictionary, result)
+    }
+
+    // --- The context boost of the exact pass -----------------------------------------------------
+
+    @Test
+    fun theContextWordResolvesToPackedIdsThatArmThePrimary() {
+        val received = mutableListOf<Pair<IntArray, Int>>()
+        val primary = object : ContextBoostedPrefixComputer {
+            override val lastExactCount = 1
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> =
+                throw AssertionError("an armed request must reach the armed lookup")
+
+            override fun lookup(
+                normalizedPrefixUtf8: ImmutableUtf8Prefix,
+                contextSuccessorIds: IntArray,
+                contextSuccessorCount: Int,
+            ): List<String> {
+                received += contextSuccessorIds.copyOf(contextSuccessorCount) to contextSuccessorCount
+                return listOf("казанган", "казан")
+            }
+        }
+        val bigrams = object : NextWordComputer, PackedSuccessorSource {
+            override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> =
+                emptyList()
+
+            override fun collectSuccessorIds(
+                normalizedContextWordUtf8: ImmutableUtf8Prefix,
+                sink: IntArray,
+            ): Int {
+                sink[0] = 42
+                sink[1] = 7
+                return 2
+            }
+        }
+        val computer = CompositePrefixComputer(primary, PersonalCandidateSource.EMPTY)
+        computer.attachBigramSource(bigrams)
+
+        val result = computer.lookup(prefix("ка"), prefix("дан"))
+
+        assertEquals(listOf("казанган", "казан"), result)
+        assertEquals(listOf(intArrayOf(42, 7).toList() to 2), received.map { it.first.toList() to it.second })
+    }
+
+    @Test
+    fun withoutABigramSourceTheArmedLookupFallsBackToThePlainOne() {
+        val primary = object : ContextBoostedPrefixComputer {
+            override val lastExactCount = 1
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> =
+                listOf("казан", "казанда")
+
+            override fun lookup(
+                normalizedPrefixUtf8: ImmutableUtf8Prefix,
+                contextSuccessorIds: IntArray,
+                contextSuccessorCount: Int,
+            ): List<String> = throw AssertionError("no table, no armed lookup")
+        }
+        val computer = CompositePrefixComputer(primary, PersonalCandidateSource.EMPTY)
+
+        assertEquals(listOf("казан", "казанда"), computer.lookup(prefix("ка"), prefix("дан")))
+    }
+
+    @Test
+    fun aBrokenBigramTableLeavesTheLookupUnarmed() {
+        var armedCalls = 0
+        val primary = object : ContextBoostedPrefixComputer {
+            override val lastExactCount = 1
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> =
+                listOf("казан", "казанда")
+
+            override fun lookup(
+                normalizedPrefixUtf8: ImmutableUtf8Prefix,
+                contextSuccessorIds: IntArray,
+                contextSuccessorCount: Int,
+            ): List<String> {
+                armedCalls++
+                return emptyList()
+            }
+        }
+        val broken = object : NextWordComputer, PackedSuccessorSource {
+            override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> =
+                emptyList()
+
+            override fun collectSuccessorIds(
+                normalizedContextWordUtf8: ImmutableUtf8Prefix,
+                sink: IntArray,
+            ): Int = throw IllegalStateException("broken table")
+        }
+        val computer = CompositePrefixComputer(primary, PersonalCandidateSource.EMPTY)
+        computer.attachBigramSource(broken)
+
+        assertEquals(listOf("казан", "казанда"), computer.lookup(prefix("ка"), prefix("дан")))
+        assertEquals(0, armedCalls)
+    }
+
+    @Test
+    fun aZeroCountResolutionKeepsThePlainLookup() {
+        // The context word heads no table entry: no successor ids, no armed lookup.
+        var armedCalls = 0
+        val primary = object : ContextBoostedPrefixComputer {
+            override val lastExactCount = 1
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> =
+                listOf("казан")
+
+            override fun lookup(
+                normalizedPrefixUtf8: ImmutableUtf8Prefix,
+                contextSuccessorIds: IntArray,
+                contextSuccessorCount: Int,
+            ): List<String> {
+                armedCalls++
+                return emptyList()
+            }
+        }
+        val noHeads = object : NextWordComputer, PackedSuccessorSource {
+            override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> =
+                emptyList()
+
+            override fun collectSuccessorIds(
+                normalizedContextWordUtf8: ImmutableUtf8Prefix,
+                sink: IntArray,
+            ): Int = 0
+        }
+        val computer = CompositePrefixComputer(primary, PersonalCandidateSource.EMPTY)
+        computer.attachBigramSource(noHeads)
+
+        assertEquals(listOf("казан"), computer.lookup(prefix("ка"), prefix("дан")))
+        assertEquals(0, armedCalls)
     }
 
     @Test

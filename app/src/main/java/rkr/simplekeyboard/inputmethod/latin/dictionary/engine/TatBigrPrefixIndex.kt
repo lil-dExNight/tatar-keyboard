@@ -42,6 +42,21 @@ internal interface BigramDictionary {
 }
 
 /**
+ * The packed bigram successors of a context word as raw dictionary entry indices, for the prefix
+ * path's context boost: the membership test there compares entry indices, so the ids are never
+ * resolved to strings. The ids are written into the caller's [sink] in packing order; nothing is
+ * allocated. Worker-confined like [NextWordComputer.predict].
+ */
+internal fun interface PackedSuccessorSource {
+    /**
+     * Writes the context word's packed successor entry indices into [sink], at most
+     * [TatBigrPrefixIndex.MAX_RESULTS], and returns their count; 0 when the word heads no entry
+     * or the read fails.
+     */
+    fun collectSuccessorIds(normalizedContextWordUtf8: ImmutableUtf8Prefix, sink: IntArray): Int
+}
+
+/**
  * Zero-allocation reader for one mapped TATBIGR schema-3 file, like [TdictPrefixIndex]: [open]
  * re-validates the structural invariants a lookup depends on (section arithmetic, strictly
  * increasing head indices, minimal varints, stream boundaries, the dictionary link) instead of
@@ -51,7 +66,7 @@ internal interface BigramDictionary {
  * the head-block index for the last block whose first index is ≤ the query's, stream-decode the
  * block's delta-varint head indices (≤ [HEAD_BLOCK_SIZE] - 1 varints) to find the head, then
  * skip/decode the u8-counted varint successor ids in the same block and resolve them through the
- * dictionary: at most `min(3, count)` strings, in packing order (count descending, ties by code
+ * dictionary: at most [MAX_RESULTS] strings, in packing order (count descending, ties by code
  * point ascending). No re-ranking happens here.
  */
 internal class TatBigrPrefixIndex private constructor(
@@ -64,23 +79,68 @@ internal class TatBigrPrefixIndex private constructor(
     private val headDeltasOffset: Int,
     private val countsOffset: Int,
     private val successIdsOffset: Int,
-) : NextWordComputer {
+) : NextWordComputer, PackedSuccessorSource {
 
     private val queryScratch = ByteArray(MAX_WORD_BYTES)
     private var varintValue = 0
     private var varintNext = 0
+    // Worker-confined results of [resolveHeadSuccessors]: the stream position of the resolved
+    // head's packed successor ids and that head's stored count. Valid until the next resolution.
+    private var headSuccessCursor = 0
+    private var headStoredCount = 0
 
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
+        if (!resolveHeadSuccessors(normalizedContextWordUtf8)) return emptyList()
+        return try {
+            val count = minOf(MAX_RESULTS, headStoredCount)
+            var successCursor = headSuccessCursor
+            ArrayList<String>(count).also { result ->
+                repeat(count) {
+                    decodeVarint(successCursor)
+                    successCursor = varintNext
+                    result += dictionary.wordAt(varintValue)
+                }
+            }
+        } catch (_: RuntimeException) {
+            emptyList()
+        }
+    }
+
+    override fun collectSuccessorIds(
+        normalizedContextWordUtf8: ImmutableUtf8Prefix,
+        sink: IntArray,
+    ): Int {
+        if (!resolveHeadSuccessors(normalizedContextWordUtf8)) return 0
+        return try {
+            val count = minOf(minOf(MAX_RESULTS, headStoredCount), sink.size)
+            var successCursor = headSuccessCursor
+            for (slot in 0 until count) {
+                decodeVarint(successCursor)
+                successCursor = varintNext
+                sink[slot] = varintValue
+            }
+            count
+        } catch (_: RuntimeException) {
+            0
+        }
+    }
+
+    /**
+     * The shared walk of [predict] and [collectSuccessorIds]: resolves the context word to its
+     * head and positions [headSuccessCursor]/[headStoredCount] at its packed successor ids.
+     * False when the word heads no entry, and on any failure (a broken table answers empty).
+     */
+    private fun resolveHeadSuccessors(normalizedContextWordUtf8: ImmutableUtf8Prefix): Boolean {
         val length = normalizedContextWordUtf8.byteCount
         if (length == 0 || length > MAX_WORD_BYTES || !isValidUtf8Scalar(normalizedContextWordUtf8)) {
-            return emptyList()
+            return false
         }
         return try {
             for (offset in 0 until length) {
                 queryScratch[offset] = normalizedContextWordUtf8.byteAt(offset).toByte()
             }
             val queryIndex = dictionary.indexOfWord(queryScratch, length)
-            if (queryIndex < 0) return emptyList()
+            if (queryIndex < 0) return false
 
             // Last block whose first head index is <= the query's: heads are a subset of the
             // dictionary in the same ascending order, so dictionary indices compare, not strings.
@@ -91,7 +151,7 @@ internal class TatBigrPrefixIndex private constructor(
                 if (blockFirstIndex(middle) <= queryIndex) low = middle + 1 else high = middle
             }
             val block = low - 1
-            if (block < 0) return emptyList()
+            if (block < 0) return false
 
             val first = block * HEAD_BLOCK_SIZE
             val blockHeads = minOf(HEAD_BLOCK_SIZE, headCount - first)
@@ -108,9 +168,9 @@ internal class TatBigrPrefixIndex private constructor(
                     found = position
                     break
                 }
-                if (index > queryIndex) return emptyList()
+                if (index > queryIndex) return false
             }
-            if (found < 0) return emptyList()
+            if (found < 0) return false
             val head = first + found
 
             var successCursor = successIdsOffset + blockSuccessOffset(block)
@@ -120,16 +180,11 @@ internal class TatBigrPrefixIndex private constructor(
                     successCursor = varintNext
                 }
             }
-            val count = minOf(MAX_RESULTS, countAt(head))
-            ArrayList<String>(count).also { result ->
-                repeat(count) {
-                    decodeVarint(successCursor)
-                    successCursor = varintNext
-                    result += dictionary.wordAt(varintValue)
-                }
-            }
+            headSuccessCursor = successCursor
+            headStoredCount = countAt(head)
+            true
         } catch (_: RuntimeException) {
-            emptyList()
+            false
         }
     }
 

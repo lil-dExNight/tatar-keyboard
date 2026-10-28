@@ -44,11 +44,18 @@ class MappedDictionaryEngine private constructor(
     private val resources: Resources,
     private val mapper: DictionaryMapper,
 ) {
+    /**
+     * [normalizedContextWordUtf8] is the normalized previous committed word (the exact pass's
+     * context boost condition); empty at a sentence start, which keeps the pre-boost ranking.
+     */
     fun request(
         editorSessionId: Long,
         subtypeId: String,
         normalizedPrefixUtf8: ByteArray,
-    ): LookupToken? = engine.request(editorSessionId, subtypeId, normalizedPrefixUtf8)
+        normalizedContextWordUtf8: ByteArray = ByteArray(0),
+    ): LookupToken? = engine.request(
+        editorSessionId, subtypeId, normalizedPrefixUtf8, normalizedContextWordUtf8,
+    )
 
     /** NEXT_WORD counterpart of [request]: same engine, token and executor, different kind. */
     fun requestNextWord(

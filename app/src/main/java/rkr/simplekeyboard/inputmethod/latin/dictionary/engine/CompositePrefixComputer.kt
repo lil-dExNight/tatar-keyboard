@@ -55,7 +55,9 @@ fun interface AfterWordFormsFactory {
  *
  *  1. exact dictionary candidates, in their order (frequency descending, then code point);
  *  2. at most one personal-only word: index 0 when there are no exact candidates, index 1
- *     otherwise (it pushes the fourth exact candidate out of the strip);
+ *     otherwise (it pushes the fourth exact candidate out of the strip) — and index 0 even with
+ *     exact candidates when the word is promoted (usage at least [PROMOTION_MIN_USAGE] and the
+ *     top exact candidate below [PROMOTION_TOP_FREQUENCY_GATE]);
  *  3. typo-recovery candidates, in their own order.
  *
  * A word in both the dictionary and the personal list takes one cell; when its saved spelling
@@ -82,8 +84,8 @@ internal class CompositePrefixComputer(
     // The glide decode side. Null: glide typing returns no candidates. The host wraps the
     // personal dictionary itself (see GlideDecoderHost).
     private val glideHost: GlideDecoderHost? = null,
-) : PrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer, GlideGeometrySink,
-    GlideIndexReleaser, EmptyPrefixProber {
+) : ContextAwarePrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer,
+    GlideGeometrySink, GlideIndexReleaser, EmptyPrefixProber {
 
     init {
         // The glide bigram channel reranks the N-best against the context word's successors:
@@ -154,6 +156,11 @@ internal class CompositePrefixComputer(
         lastExactMissPrefix = null
         lastExactCount = 0
     }
+
+    // Scratch of the context-armed lookup: the previous committed word's packed bigram successors
+    // as dictionary entry indices, filled by the bigram source and consumed by the primary within
+    // one lookup call. Worker-confined like the verdicts above.
+    private val contextSuccessorIdScratch = IntArray(TatBigrPrefixIndex.MAX_RESULTS)
 
     /**
      * Two-stage readiness: the bigram table is not open yet when this computer is handed to
@@ -300,8 +307,44 @@ internal class CompositePrefixComputer(
         glideHost?.releaseIndex()
     }
 
-    override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
-        val dictionary = primary.lookup(normalizedPrefixUtf8)
+    override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> =
+        mergePersonal(normalizedPrefixUtf8, primary.lookup(normalizedPrefixUtf8))
+
+    /**
+     * The context-armed lookup: the previous committed word's packed bigram successors rank first
+     * in the primary's exact pass. The context resolves through the attached bigram source only —
+     * the deferred attach still fires on the first [predict], so a keystroke never pays the table
+     * mapping; until a NEXT_WORD moment has run, the answer is the unarmed lookup.
+     */
+    override fun lookup(
+        normalizedPrefixUtf8: ImmutableUtf8Prefix,
+        normalizedContextWordUtf8: ImmutableUtf8Prefix,
+    ): List<String> {
+        val source = bigramSource
+        val successorCount = if (source is PackedSuccessorSource) {
+            try {
+                source.collectSuccessorIds(normalizedContextWordUtf8, contextSuccessorIdScratch)
+            } catch (_: RuntimeException) {
+                // A broken bigram table leaves the dictionary suggestions intact.
+                0
+            }
+        } else {
+            0
+        }
+        val primaryComputer = primary
+        val dictionary = if (successorCount > 0 && primaryComputer is ContextBoostedPrefixComputer) {
+            primaryComputer.lookup(normalizedPrefixUtf8, contextSuccessorIdScratch, successorCount)
+        } else {
+            primaryComputer.lookup(normalizedPrefixUtf8)
+        }
+        return mergePersonal(normalizedPrefixUtf8, dictionary)
+    }
+
+    /** The shared tail of both lookup forms: verdicts, the exact boundary and the personal merge. */
+    private fun mergePersonal(
+        normalizedPrefixUtf8: ImmutableUtf8Prefix,
+        dictionary: List<String>,
+    ): List<String> {
         lastAutocorrectAdvice = withoutPersonalWords(primary.lastAutocorrectAdvice)
         // Decoded only on an empty exact pass, which the learning rule needs whatever typo
         // recovery added after it.
@@ -374,14 +417,32 @@ internal class CompositePrefixComputer(
             return dictionary
         }
 
+        // The promotion: a graduated personal word leads the strip when the dictionary's exact
+        // answer is weak (no exact candidate, or its top candidate below the frequency gate).
+        // The promotion moves the word exactly one cell up (from the second to the first), so a
+        // word never jumps across the strip as its usage grows.
+        val promotedWord = if (
+            personalOnly != null &&
+            personalOnly.usageCount >= PROMOTION_MIN_USAGE &&
+            (exactCount == 0 || primary.lastTopExactFrequency < PROMOTION_TOP_FREQUENCY_GATE)
+        ) {
+            personalOnly
+        } else {
+            null
+        }
         val cells = ArrayList<String>(CELL_COUNT)
-        if (personalOnly != null && exactCount > 0) {
+        if (promotedWord != null) {
+            cells.add(promotedWord.rawForm)
+        } else if (personalOnly != null && exactCount > 0) {
             cells.add(displayFormOf(dictionary[0], matches))
         }
-        if (personalOnly != null) {
+        if (personalOnly != null && promotedWord == null) {
             cells.add(personalOnly.rawForm)
         }
-        val firstRemainingExact = if (personalOnly != null && exactCount > 0) 1 else 0
+        // Under the promotion the dictionary's top exact candidate has not been shown yet: the
+        // exact cells start from index 0, and the fourth exact candidate leaves the strip.
+        val firstRemainingExact =
+            if (personalOnly != null && exactCount > 0 && promotedWord == null) 1 else 0
         for (index in firstRemainingExact until exactCount) {
             if (cells.size >= CELL_COUNT) return cells
             cells.add(displayFormOf(dictionary[index], matches))
@@ -438,6 +499,22 @@ internal class CompositePrefixComputer(
          * most four candidates (`TdictPrefixIndex.MAX_RESULTS`).
          */
         internal const val CELL_COUNT = 4
+
+        /**
+         * The promotion rule's usage threshold. A stored word's counter starts at 1 when it
+         * graduates into the personal dictionary (the pending counters stay below the store), so
+         * the threshold is graduation itself; the graduated-word measurement showed no room for a
+         * higher bar.
+         */
+        internal const val PROMOTION_MIN_USAGE = 1
+
+        /**
+         * The promotion rule's frequency gate: the personal word yields to the dictionary's top
+         * exact candidate once that candidate is this frequent. Below the gate the measured
+         * completion gain is large; at or above it the dictionary's answer is the safer lead.
+         */
+        internal const val PROMOTION_TOP_FREQUENCY_GATE = 10_000L
+
 
         /**
          * Most cells learned pairs may take in one NEXT_WORD answer. With all four cells free one

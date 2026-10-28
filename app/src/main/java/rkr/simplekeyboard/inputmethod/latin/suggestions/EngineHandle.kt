@@ -61,6 +61,18 @@ interface EngineHandle {
     fun request(editorSessionId: Long, subtypeId: String, prefixUtf8: ByteArray): Any?
 
     /**
+     * The context-armed variant of [request]: [contextWordUtf8] is the normalized previous
+     * committed word (the exact pass's context boost condition; empty at a sentence start).
+     * The default drops the context, so a fake handle answers exactly the unboosted lookup.
+     */
+    fun request(
+        editorSessionId: Long,
+        subtypeId: String,
+        prefixUtf8: ByteArray,
+        contextWordUtf8: ByteArray,
+    ): Any? = request(editorSessionId, subtypeId, prefixUtf8)
+
+    /**
      * NEXT_WORD variant of [request]: same engine, token and executor, a different kind. Default
      * null: a fake handle never predicts a next word.
      */
@@ -167,6 +179,13 @@ class MappedEngineHandle private constructor(
 
     override fun request(editorSessionId: Long, subtypeId: String, prefixUtf8: ByteArray): Any? =
         engine.request(editorSessionId, subtypeId, prefixUtf8)
+
+    override fun request(
+        editorSessionId: Long,
+        subtypeId: String,
+        prefixUtf8: ByteArray,
+        contextWordUtf8: ByteArray,
+    ): Any? = engine.request(editorSessionId, subtypeId, prefixUtf8, contextWordUtf8)
 
     override fun requestNextWord(editorSessionId: Long, subtypeId: String, contextWordUtf8: ByteArray): Any? =
         engine.requestNextWord(editorSessionId, subtypeId, contextWordUtf8)

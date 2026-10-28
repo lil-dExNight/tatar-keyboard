@@ -29,6 +29,9 @@ class ImmutableUtf8Prefix private constructor(private val value: ByteArray) {
     override fun hashCode(): Int = value.contentHashCode()
 
     companion object {
+        /** The shared empty value: no request context, or no context a request could prove. */
+        internal val EMPTY = ImmutableUtf8Prefix(ByteArray(0))
+
         internal fun copyOf(bytes: ByteArray) = ImmutableUtf8Prefix(bytes.copyOf())
     }
 }
@@ -50,6 +53,13 @@ data class LookupToken(
     val normalizedQuery: ImmutableUtf8Prefix,
     val dictionary: DictionaryIdentity,
     val kind: LookupKind = LookupKind.PREFIX,
+    /**
+     * The previous committed word of a [LookupKind.PREFIX] request (the context boost's
+     * condition), empty when there is none; NEXT_WORD and GLIDE carry their context in
+     * [normalizedQuery] instead. The token carries it so a result computed against a stale
+     * context fails the currency check like any other superseded request.
+     */
+    val normalizedContext: ImmutableUtf8Prefix = ImmutableUtf8Prefix.EMPTY,
 )
 
 data class LookupResult(
@@ -110,14 +120,33 @@ class LatestOnlyPrefixEngine internal constructor(
             token.dictionary == dictionaryIdentity
     }
 
+    /**
+     * PREFIX lookup. [normalizedContextWordUtf8] is the normalized previous committed word (the
+     * exact pass's context boost condition); empty at a sentence start or when the editor cache
+     * could not prove one, which keeps the pre-boost ranking byte-identical. An unusable context
+     * (over-long or invalid UTF-8) is dropped, never the request: word completion must survive a
+     * broken context.
+     */
     fun request(
         editorSessionId: Long,
         subtypeId: String,
         normalizedPrefixUtf8: ByteArray,
-    ): LookupToken? = requestInternal(
-        editorSessionId, subtypeId, normalizedPrefixUtf8,
-        LookupKind.PREFIX, TdictPrefixIndex.MAX_PREFIX_BYTES,
-    )
+        normalizedContextWordUtf8: ByteArray = EMPTY_CONTEXT_BYTES,
+    ): LookupToken? {
+        val context =
+            if (normalizedContextWordUtf8.isEmpty() ||
+                normalizedContextWordUtf8.size > TatBigrPrefixIndex.MAX_WORD_BYTES ||
+                !isValidUtf8Scalar(normalizedContextWordUtf8)
+            ) {
+                EMPTY_CONTEXT_BYTES
+            } else {
+                normalizedContextWordUtf8
+            }
+        return requestInternal(
+            editorSessionId, subtypeId, normalizedPrefixUtf8,
+            LookupKind.PREFIX, TdictPrefixIndex.MAX_PREFIX_BYTES, context,
+        )
+    }
 
     /**
      * NEXT_WORD counterpart of [request]. An empty [normalizedContextWordUtf8] is rejected and
@@ -153,7 +182,7 @@ class LatestOnlyPrefixEngine internal constructor(
         path.copyInto(snapshot)
         return requestInternal(
             editorSessionId, subtypeId, contextWordUtf8,
-            LookupKind.GLIDE, 0, snapshot,
+            LookupKind.GLIDE, 0, glidePath = snapshot,
         )
     }
 
@@ -163,6 +192,7 @@ class LatestOnlyPrefixEngine internal constructor(
         normalizedBytes: ByteArray,
         kind: LookupKind,
         maxBytes: Int,
+        normalizedContextBytes: ByteArray = EMPTY_CONTEXT_BYTES,
         glidePath: GlidePath? = null,
     ): LookupToken? {
         // Reject before constructing the immutable token or making the single owned copy.
@@ -183,6 +213,12 @@ class LatestOnlyPrefixEngine internal constructor(
             if (state != State.ACTIVE) return@synchronized null
             requestSerial = nextSerial(requestSerial)
             val immutableQuery = ImmutableUtf8Prefix.copyOf(normalizedBytes)
+            val immutableContext =
+                if (normalizedContextBytes.isEmpty()) {
+                    ImmutableUtf8Prefix.EMPTY
+                } else {
+                    ImmutableUtf8Prefix.copyOf(normalizedContextBytes)
+                }
             val token = LookupToken(
                 engineInstanceId,
                 requestSerial,
@@ -191,6 +227,7 @@ class LatestOnlyPrefixEngine internal constructor(
                 immutableQuery,
                 dictionaryIdentity,
                 kind,
+                immutableContext,
             )
             val request = Request(token, glidePath)
             currentToken = token
@@ -343,7 +380,17 @@ class LatestOnlyPrefixEngine internal constructor(
                 val lookup = synchronized(lock) { computer }
                 val suggestions = try {
                     when (request.token.kind) {
-                        LookupKind.PREFIX -> lookup?.lookup(request.token.normalizedQuery) ?: emptyList()
+                        LookupKind.PREFIX -> {
+                            val query = request.token.normalizedQuery
+                            val context = request.token.normalizedContext
+                            when {
+                                lookup == null -> emptyList()
+                                // An empty context is the pre-boost path, byte-identical.
+                                context.byteCount == 0 -> lookup.lookup(query)
+                                lookup is ContextAwarePrefixComputer -> lookup.lookup(query, context)
+                                else -> lookup.lookup(query)
+                            }
+                        }
                         LookupKind.NEXT_WORD ->
                             (lookup as? NextWordComputer)?.predict(request.token.normalizedQuery)
                                 ?: emptyList()
@@ -439,6 +486,9 @@ class LatestOnlyPrefixEngine internal constructor(
     private data class Completion(val handoff: LookupResult?, val next: Request?)
 
     companion object {
+        /** The no-context sentinel of a PREFIX request; only ever read, never mutated. */
+        private val EMPTY_CONTEXT_BYTES = ByteArray(0)
+
         private val NEXT_ENGINE_INSTANCE_ID = AtomicLong()
 
         private fun nextEngineInstanceId(): Long {

@@ -127,7 +127,13 @@ other field — login forms are the feature's main use (`InlineAutofillGate` is 
 and a response arriving while the emoji panel owns the surface is refused instead of hosted.
 
 **Word completion** (`CompositePrefixComputer.lookup`): exact dictionary candidates by frequency,
-then at most one personal-dictionary word not already shown, then typo-recovery candidates. Typo
+then at most one personal-dictionary word not already shown, then typo-recovery candidates. The
+exact pass carries the previous committed word (the `EditorSurface` cache read, by the next-word
+context rule): candidates among its packed bigram successors rank first, frequency order kept,
+then the same-stem and other tracks (`TatBigrPrefixIndex.collectSuccessorIds` hands the packed
+successor ids over without decoding strings). A graduated personal word leads the strip when the
+exact pass is empty or the dictionary's top exact candidate is below
+`CompositePrefixComputer.PROMOTION_TOP_FREQUENCY_GATE`. Typo
 recovery (`TdictPrefixIndex.collectFuzzy`, configured by `FuzzyEditPolicy`) uses edit class #1
 (long-press partner, from the layout's `moreKeys` via `KeyNeighborTable`) for every language; on
 an empty exact pass at a long enough prefix both shipped engines run the shared DL-1 tier

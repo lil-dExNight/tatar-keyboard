@@ -295,6 +295,41 @@ class ChainMirrorTest(unittest.TestCase):
         # Boosted at the complete-word prefix: suffix continuations first, then the rest.
         self.assertEqual(["эшләү", "эшләп", "эшләмәк"], mirror.prefix_top3("эшлә"))
 
+    def test_prefix_top3_context_boost(self) -> None:
+        mirror = self.mirror()
+        # The default is off: the context alone changes nothing unless it is passed.
+        self.assertEqual(["бала", "балалар"], mirror.prefix_top3("б"))
+        # A packed successor leads, then the unchanged track output over the rest.
+        self.assertEqual(
+            ["балалар", "бала"], mirror.prefix_top3("б", context=("балалар",))
+        )
+        # Frequency order is kept inside the context track, not the packing order.
+        self.assertEqual(
+            ["бала", "балалар"],
+            mirror.prefix_top3("б", context=("балалар", "бала")),
+        )
+        # Successors that do not continue the prefix (or equal it) are inert.
+        self.assertEqual(
+            ["бала", "балалар"], mirror.prefix_top3("б", context=("китап", "б"))
+        )
+        # An empty context is the pre-boost path, byte-identical.
+        self.assertEqual(mirror.prefix_top3("б"), mirror.prefix_top3("б", context=()))
+        # The context track leads the same-stem track at a complete-word prefix.
+        self.assertEqual(
+            ["эшләмәк", "эшләү", "эшләп"],
+            mirror.prefix_top3("эшлә", context=("эшләмәк",)),
+        )
+        # A successor whose remainder is also a suffix takes the context track only.
+        self.assertEqual(
+            ["эшләп", "эшләү", "эшләмәк"],
+            mirror.prefix_top3("эшлә", context=("эшләп",)),
+        )
+
+    def test_packed_successors(self) -> None:
+        mirror = self.mirror()
+        self.assertEqual(("син", "китап", "дие", "сәләм"), mirror.packed_successors("мин"))
+        self.assertEqual((), mirror.packed_successors("qqq"))
+
 
 class CompletionMetricsTest(unittest.TestCase):
     """The per-prefix-length completion rows of ``scripts/suggest_eval.py`` on a fixture."""
@@ -376,6 +411,16 @@ class BootstrapSamplerTest(unittest.TestCase):
         again = suggest_chain.bootstrap_rate_ci95([1, 0, 1], [2, 2, 2], rounds=10,
                                                   seed=suggest_chain.BOOTSTRAP_SEED)
         self.assertEqual((lo, hi), again)
+
+    def test_paired_delta_ci95_is_deterministic(self) -> None:
+        lo, hi = suggest_chain.paired_delta_ci95([0, 1, 0], [1, 1, 0], [2, 2, 2],
+                                                 rounds=10, seed=suggest_chain.BOOTSTRAP_SEED)
+        again = suggest_chain.paired_delta_ci95([0, 1, 0], [1, 1, 0], [2, 2, 2],
+                                                rounds=10, seed=suggest_chain.BOOTSTRAP_SEED)
+        self.assertEqual((lo, hi), again)
+        # The second unit's arm delta is +50 pp; a paired stream keeps the bracket around it.
+        self.assertLessEqual(lo, 50.0)
+        self.assertGreaterEqual(hi, 50.0)
 
 
 class LemmaStratificationTest(unittest.TestCase):
@@ -473,6 +518,16 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["strip_empty_prefix_pct"], "2.1258")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
         self.assertEqual(table["ks_pct"], "36.7815")
+        # The context boost (the armed exact pass) over the cp>=2 prefix moments; the JVM pins
+        # in TtSuggestEvalTest assert the same values on the real index.
+        self.assertEqual(table["ctxboost_cp2plus_moments"], "18338")
+        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "34.2186")
+        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "36.0508")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+1.8323")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+1.4943")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+2.1713")
+        self.assertEqual(table["ctxboost_cp2plus_top3_base_pct"], "54.5152")
+        self.assertEqual(table["ctxboost_cp2plus_top3_boost_pct"], "55.5459")
 
     def test_russian_pins(self) -> None:
         table = self.tables["rus"]
@@ -486,6 +541,15 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["strip_empty_prefix_pct"], "1.3767")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
         self.assertEqual(table["ks_pct"], "40.3667")
+        # The context boost over the cp>=2 prefix moments; RuSuggestEvalTest pins the same values.
+        self.assertEqual(table["ctxboost_cp2plus_moments"], "15636")
+        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "38.1683")
+        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "40.0998")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+1.9314")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+1.5925")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+2.2991")
+        self.assertEqual(table["ctxboost_cp2plus_top3_base_pct"], "62.6759")
+        self.assertEqual(table["ctxboost_cp2plus_top3_boost_pct"], "63.3538")
 
 
 if __name__ == "__main__":
