@@ -33,14 +33,14 @@ import java.nio.ByteBuffer
  * Each set line is `expected_lead<TAB>sentence`. A mixing case is a sentence word that is a
  * dictionary entry of the expected-lead language and whose full-word exact pass in the active
  * (other) language is empty: the user is typing a word of the companion language on the active
- * layout. The strip lead is replayed at the index level: the active arm runs the production
+ * The strip lead is replayed at the index level: the active arm runs the production
  * wiring (the Tatar index carries the suffix rules, the TATAR fuzzy policy and the Tatar layout
  * neighbor table; the Russian index runs the default policy with the Russian layout table), and
- * the companion arm runs exact-only, like the fill path it feeds. The lead is correct when the
- * active answer is empty and the companion exact pass is non-empty: the one case where the
- * companion fills the strip from the first cell. No gate is asserted on the rate; the gate
- * accompanies the companion-lead rule. Assets are SHA-pinned, so every count is a deterministic
- * function of committed bytes.
+ * the companion arm runs exact-only, the pass the exact-lead rule takes its leading candidates
+ * from. The lead is correct when the active answer holds no exact candidate and the companion
+ * exact pass is non-empty: the one condition under which the companion takes over the strip's
+ * first cell. Assets are SHA-pinned, so every count is a deterministic function of committed
+ * bytes.
  */
 class MixEvalTest {
 
@@ -95,19 +95,22 @@ class MixEvalTest {
     }
 
     /**
-     * The current correct-language-lead rate over all mixing cases, printed without a gate. A
-     * case leads correctly when the active answer is empty and the companion's top-3 holds the
-     * word, so the companion's exact candidate fills the strip from the first cell; an active
-     * typo-recovery candidate or a buried companion word both count as wrong leads.
+     * The correct-language-lead rate over all mixing cases, with the companion exact-lead rule
+     * ON. A case leads correctly when the active answer holds NO exact candidate (typo-recovery
+     * candidates may fill it) and the companion's top-3 holds the word: then the companion's
+     * exact candidate leads the strip. An active exact candidate or a buried companion word both
+     * count as wrong leads. The fill-only baseline (the companion leads only a completely empty
+     * active answer) is printed alongside for the record; the gate pins the rule's rate.
      */
     @Test
-    fun baselineCorrectLanguageLeadRateOnTheMixingSet() {
+    fun companionExactLeadClearsTheGateOnTheMixingSet() {
         val indexes = arrayOf(requireNotNull(tatarIndex), requireNotNull(russianIndex))
         val activeTables = arrayOf(tatarTable, russianTable)
 
         var linesWithoutCase = 0
         val cases = IntArray(2)
         val correct = IntArray(2)
+        val correctFillOnly = IntArray(2)
         val companionBuried = IntArray(2)
         val coveredLetters = arrayOf(HashSet<Char>(), HashSet<Char>())
         var linesTt = 0
@@ -132,12 +135,16 @@ class MixEvalTest {
                 cases[lead]++
                 indexes[active].updateKeyNeighbors(activeTables[active])
                 val activeAnswer = indexes[active].lookup(prefixOf(probe))
+                val activeExactCount = indexes[active].lastExactCount
                 indexes[lead].updateKeyNeighbors(null)
                 val companionAnswer = indexes[lead].lookup(prefixOf(probe))
                 if (word !in companionAnswer) {
                     companionBuried[lead]++
-                } else if (activeAnswer.isEmpty()) {
-                    correct[lead]++
+                } else {
+                    // The rule engages exactly when the active exact pass is empty; within it,
+                    // the fill-only baseline additionally requires an empty active answer.
+                    if (activeExactCount == 0) correct[lead]++
+                    if (activeAnswer.isEmpty()) correctFillOnly[lead]++
                 }
                 val markers = if (lead == 0) TT_MARKER_LETTERS else RU_MARKER_LETTERS
                 for (letter in word) {
@@ -148,6 +155,7 @@ class MixEvalTest {
         }
         val casesAll = cases[0] + cases[1]
         val correctAll = correct[0] + correct[1]
+        val correctFillOnlyAll = correctFillOnly[0] + correctFillOnly[1]
         println("EVAL|mix_lines_tt|$linesTt")
         println("EVAL|mix_lines_ru|$linesRu")
         println("EVAL|mix_cases_tt|${cases[0]}")
@@ -164,6 +172,8 @@ class MixEvalTest {
         println("EVAL|mix_correct_lead|$correctAll")
         println("EVAL|mix_wrong_lead|${casesAll - correctAll}")
         println("EVAL|mix_lead_pct|${format(ratePct(correctAll, casesAll))}")
+        println("EVAL|mix_fill_only_correct_lead|$correctFillOnlyAll")
+        println("EVAL|mix_fill_only_lead_pct|${format(ratePct(correctFillOnlyAll, casesAll))}")
 
         assertEquals("every mixing line yields at least one case", 0, linesWithoutCase)
         for (letter in TT_MARKER_LETTERS) {
@@ -172,6 +182,11 @@ class MixEvalTest {
         for (letter in RU_MARKER_LETTERS) {
             assertTrue("a ru-lead case word carries $letter", letter in coveredLetters[1])
         }
+        assertTrue(
+            "companion exact-lead rate ${format(ratePct(correctAll, casesAll))}% is below" +
+                " the gate ${format(GATE_LEAD_PCT)}% ($correctAll of $casesAll cases)",
+            ratePct(correctAll, casesAll) >= GATE_LEAD_PCT,
+        )
     }
 
     private class MixLine(val expectedLead: String, val sentence: String)
@@ -204,6 +219,10 @@ class MixEvalTest {
         // The set contract: at least the committed size and a meaningful mass per direction.
         private const val MIN_SET_LINES = 180
         private const val MIN_DIRECTION_LINES = 60
+
+        // The companion exact-lead gate: the share of mixing cases whose strip lead comes from
+        // the expected language once an empty active exact pass lets the companion lead.
+        private const val GATE_LEAD_PCT = 80.0
 
         // The marker letters: a word containing one can only belong to one side. The Russian
         // layout lacks әҗңөүһ as keys; щыэ have no Tatar dictionary words in practice.

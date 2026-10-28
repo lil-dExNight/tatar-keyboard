@@ -76,22 +76,25 @@ internal class CompositePrefixComputer(
     // Top-frequency fill of the NEXT_WORD cells still empty after bigrams and forms. Null: no
     // fill.
     private val fallbackWords: FallbackWords? = null,
-    // Learned word pairs for NEXT_WORD answers. Separate from the prefix path's
-    // PersonalCandidateSource, which predict never reads. EMPTY: no learned pairs.
+    // Learned word pairs for NEXT_WORD answers and the glide bigram channel. Separate from the
+    // prefix path's PersonalCandidateSource, which predict never reads. EMPTY: no learned pairs.
     private val personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
     // The glide decode side. Null: glide typing returns no candidates. The host wraps the
     // personal dictionary itself (see GlideDecoderHost).
     private val glideHost: GlideDecoderHost? = null,
 ) : PrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer, GlideGeometrySink,
-    GlideIndexReleaser {
+    GlideIndexReleaser, EmptyPrefixProber {
 
     init {
-        // The glide bigram channel reads the bundled table's successors of the context word (the
-        // raw table, not the merged NEXT_WORD list). The provider runs on the engine worker, inside
-        // the decode; a missing or broken table answers empty and the channel stays off.
+        // The glide bigram channel scores candidates in-decode against the context word's
+        // successors: the learned pairs rank above the bundled table's successors (the prefix
+        // merge's personal-over-dictionary convention), a duplicate keeps its personal rank, and
+        // the raw table answers, not the merged NEXT_WORD list. The provider runs on the engine
+        // worker, once per decode; a missing or broken source answers empty and the channel
+        // stays off.
         glideHost?.bigramSuccessorsProvider = { contextWord ->
             val source = bigramSource ?: runPendingBigramAttach()
-            if (source == null) {
+            val bundled = if (source == null) {
                 emptyList()
             } else {
                 try {
@@ -99,6 +102,23 @@ internal class CompositePrefixComputer(
                 } catch (_: RuntimeException) {
                     emptyList()
                 }
+            }
+            val personal = if (personalBigrams.isEmpty()) {
+                emptyList()
+            } else {
+                try {
+                    personalBigrams.successorsFor(contextWord)
+                } catch (_: RuntimeException) {
+                    emptyList()
+                }
+            }
+            if (personal.isEmpty()) {
+                bundled
+            } else {
+                val merged = ArrayList<String>(personal.size + bundled.size)
+                for (candidate in personal) merged.add(candidate.normalizedForm)
+                for (word in bundled) if (!merged.contains(word)) merged.add(word)
+                merged
             }
         }
     }
@@ -120,10 +140,20 @@ internal class CompositePrefixComputer(
     var lastExactMissPrefix: String? = null
         private set
 
+    /**
+     * How many leading candidates of the newest lookup came from the exact dictionary pass.
+     * Written by the worker, read on the UI thread with that lookup's result; the companion
+     * exact-lead rule splits the companion answer with it.
+     */
+    @Volatile
+    var lastExactCount: Int = 0
+        private set
+
     /** Drops the current verdicts; called when the engine idles or is torn down. */
     fun clearLookupVerdicts() {
         lastAutocorrectAdvice = null
         lastExactMissPrefix = null
+        lastExactCount = 0
     }
 
     /**
@@ -278,6 +308,7 @@ internal class CompositePrefixComputer(
         // recovery added after it.
         lastExactMissPrefix =
             if (primary.lastExactCount == 0) normalizedPrefixUtf8.decodeUtf8() else null
+        lastExactCount = primary.lastExactCount.coerceIn(0, dictionary.size)
         if (personal.isEmpty()) return dictionary
         val matches = try {
             personal.candidatesFor(normalizedPrefixUtf8.decodeUtf8())
@@ -286,8 +317,34 @@ internal class CompositePrefixComputer(
             return dictionary
         }
         if (matches.isEmpty()) return dictionary
-        val exactCount = primary.lastExactCount.coerceIn(0, dictionary.size)
-        return merge(dictionary, exactCount, matches)
+        return merge(dictionary, lastExactCount, matches)
+    }
+
+    /**
+     * The deferred empty-prefix probe (see [EmptyPrefixProber]): binary-searches the shortest
+     * proper prefix of [word] with an empty exact pass, through the primary computer, so the
+     * search sees exactly what a typed lookup would. A word the dictionary already knows is not
+     * probed at all: its own continuations make every proper prefix non-empty, so the search
+     * would burn the whole budget to answer [EmptyPrefixProber.NO_EMPTY_PREFIX].
+     */
+    override fun shortestEmptyProperPrefixLength(word: String): Int {
+        val known = (primary as? WordFrequencySource)?.frequencyOf(word) ?: 0L
+        if (known > 0L) return EmptyPrefixProber.NO_EMPTY_PREFIX
+        var low = 1
+        var high = word.length - 1
+        var found = EmptyPrefixProber.NO_EMPTY_PREFIX
+        while (low <= high) {
+            val middle = (low + high) ushr 1
+            val prefix = word.substring(0, middle).toByteArray(Charsets.UTF_8)
+            primary.lookup(ImmutableUtf8Prefix.copyOf(prefix))
+            if (primary.lastExactCount == 0) {
+                found = middle
+                high = middle - 1
+            } else {
+                low = middle + 1
+            }
+        }
+        return found
     }
 
     /**

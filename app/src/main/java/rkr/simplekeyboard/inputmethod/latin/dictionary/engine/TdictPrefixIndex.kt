@@ -81,6 +81,28 @@ internal interface KeyNeighborSink {
     fun updateKeyNeighbors(table: KeyNeighborTable?)
 }
 
+/**
+ * The deferred empty-prefix probe: the clean-run machine graduates a completed word only when a
+ * proper prefix of it came back with an empty exact pass, but latest-only coalescing can drop
+ * every intermediate lookup of a fast-typed word. This reconstructs the missing observation after
+ * the fact, on the engine worker, behind the separator's next-word lookup.
+ */
+internal interface EmptyPrefixProber {
+    /**
+     * Length (UTF-16 units) of the shortest PROPER prefix of [word] whose exact pass is empty, or
+     * [NO_EMPTY_PREFIX]. Exact-pass emptiness is monotone in prefix length — a prefix no
+     * dictionary word continues dooms every longer one — so a binary search needs
+     * ≤ ⌈log2|w|⌉ lookups. Runs on the engine worker; the published lookup verdicts are not
+     * touched, so the probe is invisible to the strip and to autocorrect.
+     */
+    fun shortestEmptyProperPrefixLength(word: String): Int
+
+    companion object {
+        /** No proper prefix of the probed word has an empty exact pass. */
+        const val NO_EMPTY_PREFIX = -1
+    }
+}
+
 /** Strict scalar UTF-8 validation without a decoder or temporary objects. */
 internal fun isValidUtf8Scalar(bytes: ByteArray): Boolean =
     isValidUtf8Scalar(bytes.size) { bytes[it].toInt() and 0xff }

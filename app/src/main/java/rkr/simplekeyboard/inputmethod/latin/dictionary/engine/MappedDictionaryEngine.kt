@@ -72,6 +72,14 @@ class MappedDictionaryEngine private constructor(
     fun releaseGlideIndex() = engine.releaseGlideIndex()
 
     /**
+     * The deferred empty-prefix probe (see [EmptyPrefixProber]), enqueued on the serialized
+     * worker behind every lookup issued so far; the callback fires on the worker thread. False
+     * when the probe will not run.
+     */
+    fun requestEmptyPrefixProbe(word: String, callback: (Int) -> Unit): Boolean =
+        engine.requestEmptyPrefixProbe(word, callback)
+
+    /**
      * Second stage of readiness: acquires, maps and opens the bigram table, then wires it into the
      * already-published composite computer. Call off the UI thread (file I/O, like [start]).
      *
@@ -153,6 +161,13 @@ class MappedDictionaryEngine private constructor(
      */
     val exactMissPrefix: String?
         get() = computer.lastExactMissPrefix
+
+    /**
+     * How many leading candidates of the newest completed lookup were exact dictionary
+     * candidates. Read with that lookup's result, as with [exactMissPrefix].
+     */
+    val lastExactCount: Int
+        get() = computer.lastExactCount
 
     fun finishInput() {
         // Idling the engine invalidates the generation, so the verdicts computed for it go too.

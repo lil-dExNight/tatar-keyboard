@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 import android.content.Context
 import android.os.Handler
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.EmptyPrefixProber
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
@@ -360,11 +361,14 @@ class SuggestionsController internal constructor(
     private var bandHasActiveLanguageWord: Boolean = false
 
     // --- Language priority. The layout the user chose owns the strip; the other (companion)
-    // language may only fill the cells that language left empty, and only from the end.
+    // language fills the cells that language left empty, from the end — with one exception:
+    // when the active answer held no exact candidate at all, a non-empty companion exact pass
+    // leads instead ([companionLeadArmed]).
     //
     // [bandBaseCells] is what is on the strip right now, in strip order and already re-cased (the
-    // strings handed to [StripSurface.showSuggestions]). The companion's candidates are appended to
-    // this list, never mixed into it, so no cell of the current language ever changes.
+    // strings handed to [StripSurface.showSuggestions]). Outside the lead case the companion's
+    // candidates are appended to this list, never mixed into it, so no cell of the current
+    // language ever changes.
     private var bandBaseCells: List<String> = emptyList()
 
     // The one outstanding companion lookup, or null. Its kind and text are kept so a result that
@@ -373,6 +377,14 @@ class SuggestionsController internal constructor(
     private var companionSlot: LanguageSlot? = null
     private var companionKind: LookupKind? = null
     private var companionQuery: String = ""
+
+    /**
+     * True while the outstanding companion PREFIX lookup was requested for an active answer
+     * whose exact pass was empty: when the companion's own exact pass comes back non-empty, its
+     * exact candidates take the lead and the active (typo-recovery) candidates fill the cells
+     * they leave. See [applyCompanionResult].
+     */
+    private var companionLeadArmed: Boolean = false
 
     /** The clean-run machines for completed words and completed pairs; see [CleanRunMachine]. */
     private val runMachine = CleanRunMachine(editor)
@@ -621,14 +633,17 @@ class SuggestionsController internal constructor(
     /**
      * Publishes the key-neighbor table used by typo recovery. LatinIME rebuilds it from the live
      * layout on every keyboard or subtype change; null (a non-alphabet layout or an ineligible
-     * field) disables typo recovery. Stored for engines started later and forwarded to the running
+     * field) disables typo recovery. Stored for engines started later and forwarded to every warm
      * engine at once. UI thread only.
      */
     fun updateKeyNeighbors(table: KeyNeighborTable?) {
         keyNeighbors = table
-        // Only the active language's engine is ever asked anything. A warm engine of another
-        // language is handed the stored table when it becomes active again (setActiveLanguage).
-        activeSlot()?.engine?.updateKeyNeighbors(table)
+        // Every warm engine gets the live layout's table, not just the active one: a warm
+        // companion answers fill and exact-lead lookups, and its typo recovery must substitute
+        // against the keys the user actually touches, which are the active layout's.
+        for (slot in slots.values) {
+            slot.engine?.updateKeyNeighbors(table)
+        }
     }
 
     /**
@@ -714,6 +729,10 @@ class SuggestionsController internal constructor(
         glideCommitPrependedSpace = false
         glideUndoCandidates = emptyList()
         runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
+        // A clean word that just ended without ever producing an empty-result observation waits
+        // on the engine's deferred empty-prefix probe; it is resolved below, after the
+        // separator's lookup is issued, or dropped where no probe can run.
+        val deferredProbeWord = runMachine.deferredEmptyProbeWord
         // A glide undo armed its rescue candidates and this text change is the deletion itself
         // (the backspace path fires onTextChanged right after the undo). They re-bind to the
         // position the undo emptied — but only while the editor still shows exactly that state;
@@ -725,6 +744,7 @@ class SuggestionsController internal constructor(
             && editor.cursorPosition() == glideRescueCursor
             && editor.cachedWordBeforeCursor() == glideRescueTrailingWord
         ) {
+            if (deferredProbeWord != null) dropDeferredEmptyProbe(deferredProbeWord)
             displayedPrefix = null
             displayedContextWord = null
             displayedGlideAlternativesFor = REFUSED_GLIDE
@@ -740,6 +760,7 @@ class SuggestionsController internal constructor(
         ) {
             // Suggestions off: the strip is not re-derived below, so a text change unbinds and
             // hides whatever a glide painted, or it would go stale on screen.
+            if (deferredProbeWord != null) dropDeferredEmptyProbe(deferredProbeWord)
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             clearCompanionRequest()
@@ -751,8 +772,44 @@ class SuggestionsController internal constructor(
         // [RevertWindow.advance] at the top already turned the armed replacement revertable (this
         // text change is its own separator); the next one closes the window and the ordinary
         // derivation below resumes the usual strip.
-        if (maybeShowRevertCell()) return
+        if (maybeShowRevertCell()) {
+            if (deferredProbeWord != null) dropDeferredEmptyProbe(deferredProbeWord)
+            return
+        }
         requestCurrentPrefix()
+        // The probe is enqueued only now, behind the separator's next-word lookup
+        // ([requestCurrentPrefix] on an empty trailing word), which it must never delay.
+        if (deferredProbeWord != null) {
+            if (eligible) {
+                requestDeferredEmptyPrefixProbe(deferredProbeWord)
+            } else {
+                dropDeferredEmptyProbe(deferredProbeWord)
+            }
+        }
+    }
+
+    /** Drops a parked deferred probe without an observation: no probe can run on this path. */
+    private fun dropDeferredEmptyProbe(word: String) {
+        runMachine.resolveDeferredEmptyProbe(word, EmptyPrefixProber.NO_EMPTY_PREFIX)
+    }
+
+    /**
+     * The separator completed a clean word whose proper prefixes were never observed empty
+     * (latest-only coalescing dropped the intermediate lookups): asks the engine worker for the
+     * shortest proper prefix with an empty exact pass, sequenced behind the next-word lookup
+     * that was just issued. The answer, possibly negative, resolves the word parked in the
+     * clean-run machine; an engine that cannot run the probe resolves it at once.
+     */
+    private fun requestDeferredEmptyPrefixProbe(word: String) {
+        val engine = usableEngine()
+        val accepted = engine != null && engine.requestEmptyPrefixProbe(
+            TatarWordUtils.normalizeForLookup(word),
+        ) { shortestEmptyPrefixLength ->
+            uiPoster.post { runMachine.resolveDeferredEmptyProbe(word, shortestEmptyPrefixLength) }
+        }
+        if (!accepted) {
+            runMachine.resolveDeferredEmptyProbe(word, EmptyPrefixProber.NO_EMPTY_PREFIX)
+        }
     }
 
     /**
@@ -1378,9 +1435,11 @@ class SuggestionsController internal constructor(
         if (slot !== activeSlot()) {
             // The user switched language while this engine was starting. Keep it — warm and idle —
             // for the moment they switch back, and leave the strip to whatever the language they
-            // are actually typing in is doing. Its key-neighbor table and glide geometry are pushed
-            // by setActiveLanguage when it becomes active, because the live layout is the other
-            // language's right now.
+            // are actually typing in is doing. As a companion it can be asked for fill lookups
+            // right away, so it gets the live layout's key-neighbor table now (its typo recovery
+            // must see the keys the user touches); the glide geometry is pushed by
+            // setActiveLanguage when it becomes active, because a companion never decodes.
+            handle.updateKeyNeighbors(keyNeighbors)
             handle.finishInput()
             return
         }
@@ -1487,8 +1546,15 @@ class SuggestionsController internal constructor(
      * Lazy on purpose: the active language usually fills all three cells, so asking both engines on
      * every keystroke would mostly be wasted work; and because this runs only after the active
      * result was applied, it never delays the first cell.
+     *
+     * [exactLeadEligible] arms the companion exact-lead rule (PREFIX only): the active answer
+     * held no exact candidate, so a non-empty exact pass of the companion takes the lead.
      */
-    private fun requestCompanionFill(kind: LookupKind, query: String) {
+    private fun requestCompanionFill(
+        kind: LookupKind,
+        query: String,
+        exactLeadEligible: Boolean = false,
+    ) {
         clearCompanionRequest()
         if (query.isEmpty()) return
         val slot = companionSlotForFill() ?: return
@@ -1505,6 +1571,7 @@ class SuggestionsController internal constructor(
         companionSlot = slot
         companionKind = kind
         companionQuery = query
+        companionLeadArmed = exactLeadEligible && kind == LookupKind.PREFIX
     }
 
     /** Forgets the outstanding companion lookup; a result for it can no longer reach the strip. */
@@ -1512,15 +1579,18 @@ class SuggestionsController internal constructor(
         companionSlot = null
         companionKind = null
         companionQuery = ""
+        companionLeadArmed = false
     }
 
     /**
-     * Appends the companion language's candidates to the cells the active language left empty.
+     * Appends the companion language's candidates to the cells the active language left empty —
+     * or, under the armed exact-lead rule, repaints the strip with the companion's exact
+     * candidates leading and the active language's typo-recovery candidates filling the rest.
      *
      * Every guard leaves the strip as the active language painted it. The key ones: the result must
      * belong to the one outstanding companion lookup, its text must still be the text under the
-     * cursor, and the base cells are copied first, so no candidate of the active language is
-     * displaced or reordered.
+     * cursor, and — outside the armed lead case — the base cells are copied first, so no candidate
+     * of the active language is displaced or reordered.
      */
     private fun applyCompanionResult(
         slot: LanguageSlot,
@@ -1542,6 +1612,8 @@ class SuggestionsController internal constructor(
             LookupKind.GLIDE -> pendingGlideContext
         }
         if (live != query) return
+        // Read the arming before clearing the request: clearing resets it.
+        val leadArmed = companionLeadArmed
         clearCompanionRequest()
         if (suggestions.isEmpty()) return
         val base = bandBaseCells
@@ -1550,10 +1622,41 @@ class SuggestionsController internal constructor(
         val emojiTail = if (base.isNotEmpty() && isEmojiCell(base.last())) base.last() else null
         val wordBase = if (emojiTail != null) base.dropLast(1) else base
         val room = SuggestionStripState.CELL_COUNT - (if (emojiTail != null) 1 else 0)
-        if (wordBase.size >= room) return
         // PREFIX re-applies the typed capitalization to every cell it shows, so the companion's
         // candidates get exactly the same treatment; NEXT_WORD applies none, to either language.
         val casing = if (kind == LookupKind.PREFIX) TatarWordUtils.classifyCasing(query) else null
+        // The companion exact-lead rule, armed at the request by an empty active exact pass: the
+        // companion's exact candidates lead and the active typo-recovery candidates fill the
+        // cells they leave. With an empty companion exact pass the rule does not engage and the
+        // ordinary fill below runs unchanged. The exact count belongs to the newest lookup of an
+        // engine that serves only this fill, so it describes this answer.
+        if (leadArmed && casing != null) {
+            val leadExactCount = engine.lastExactCount().coerceIn(0, suggestions.size)
+            if (leadExactCount > 0) {
+                val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+                for (index in 0 until leadExactCount) {
+                    if (cells.size >= room) break
+                    val shown = TatarWordUtils.applyCasing(suggestions[index], casing)
+                    // Dedup is by the shown (cased) form, as in the fill below.
+                    if (cells.contains(shown)) continue
+                    cells.add(shown)
+                }
+                for (candidate in wordBase) {
+                    if (cells.size >= room) break
+                    if (cells.contains(candidate)) continue
+                    cells.add(candidate)
+                }
+                // A lead that reproduces the painted strip exactly repaints nothing.
+                if (cells != wordBase) {
+                    if (emojiTail != null) cells.add(emojiTail)
+                    displayedPrefix = query
+                    displayedSessionId = sessionId
+                    showBand(cells)
+                }
+                return
+            }
+        }
+        if (wordBase.size >= room) return
         val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
         cells.addAll(wordBase)
         for (candidate in suggestions) {
@@ -2320,9 +2423,9 @@ class SuggestionsController internal constructor(
         // Typo recovery and personal words can fill a strip whose exact dictionary pass was
         // empty; the learning rule needs only the empty exact pass.
         val exactMiss = usableEngine()?.exactMissPrefix()
-        if (suggestions.isEmpty() ||
-            (exactMiss != null && exactMiss == TatarWordUtils.normalizeForLookup(pendingPrefix))
-        ) {
+        val exactPassEmpty =
+            exactMiss != null && exactMiss == TatarWordUtils.normalizeForLookup(pendingPrefix)
+        if (suggestions.isEmpty() || exactPassEmpty) {
             runMachine.observeEmptyResult(pendingPrefix)
         }
         // A typed word the user saved as a shortcut offers its expansion in the first cell, ahead
@@ -2395,8 +2498,11 @@ class SuggestionsController internal constructor(
             if (cells.size >= SuggestionStripState.CELL_COUNT) break
         }
         showBand(cells)
-        if (cells.size < SuggestionStripState.CELL_COUNT) {
-            requestCompanionFill(LookupKind.PREFIX, pendingPrefix)
+        // With an empty exact pass the companion is asked even when its cells are already full of
+        // typo-recovery candidates: a non-empty companion exact pass takes the lead
+        // (applyCompanionResult). Without one the fill stays lazy, as before.
+        if (exactPassEmpty || cells.size < SuggestionStripState.CELL_COUNT) {
+            requestCompanionFill(LookupKind.PREFIX, pendingPrefix, exactLeadEligible = exactPassEmpty)
         }
     }
 

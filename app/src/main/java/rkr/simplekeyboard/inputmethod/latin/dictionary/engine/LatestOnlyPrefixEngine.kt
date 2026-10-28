@@ -242,6 +242,39 @@ class LatestOnlyPrefixEngine internal constructor(
     }
 
     /**
+     * Enqueues the deferred empty-prefix probe of a cleanly completed word (see
+     * [EmptyPrefixProber]) onto the serialized worker, behind every request issued so far — the
+     * separator's NEXT_WORD lookup in particular, which the caller always issues first and which
+     * the drain loop still consumes ahead of this task. The probe neither carries a token nor
+     * touches the generation: it answers a question about a word that is already complete, and
+     * the caller matches the answer against its own parked state. [callback] fires on the worker
+     * thread, once, with the probe's answer. Returns false — no callback will fire — when the
+     * engine has no prober, is no longer active, or the executor rejects the task.
+     */
+    fun requestEmptyPrefixProbe(word: String, callback: (Int) -> Unit): Boolean {
+        val prober = synchronized(lock) {
+            if (state != State.ACTIVE) null else computer as? EmptyPrefixProber
+        } ?: return false
+        return try {
+            executor.execute {
+                val length = try {
+                    prober.shortestEmptyProperPrefixLength(word)
+                } catch (_: Throwable) {
+                    EmptyPrefixProber.NO_EMPTY_PREFIX
+                }
+                try {
+                    callback(length)
+                } catch (_: Throwable) {
+                    // A failing callback drops the observation; ordinary input is unaffected.
+                }
+            }
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
      * Idle memory release of the glide word index. The decoder is worker-confined, so the drop is
      * posted to the serialized executor and runs between submissions, never mid-decode; the caller
      * (UI thread, LatinIME's MSG_DEALLOCATE_MEMORY) only enqueues. A destroyed engine skips it.

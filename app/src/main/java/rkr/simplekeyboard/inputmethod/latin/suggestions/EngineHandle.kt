@@ -119,6 +119,25 @@ interface EngineHandle {
     fun exactMissPrefix(): String? = null
 
     /**
+     * How many leading candidates of the newest completed lookup came from the exact dictionary
+     * pass; the companion exact-lead rule splits a companion answer with it. Read on the UI
+     * thread with the lookup's result, like [exactMissPrefix]. Default 0: no exact candidates
+     * are ever reported.
+     */
+    fun lastExactCount(): Int = 0
+
+    /**
+     * Enqueues the deferred empty-prefix probe of a cleanly completed word (see
+     * `EmptyPrefixProber`) on the engine worker, behind every lookup issued so far — the
+     * separator's next-word one in particular, which is always requested first and is never
+     * delayed by this. [word] is normalized; the answer (a proper-prefix length, negative when
+     * none qualifies) fires on the worker thread. Returns false when the probe will not run; the
+     * caller then drops the deferred observation itself. Default false: a fake handle has no
+     * dictionary to probe.
+     */
+    fun requestEmptyPrefixProbe(word: String, callback: (Int) -> Unit): Boolean = false
+
+    /**
      * Exact whole-word membership of [normalizedWord] in this engine's dictionary: the dictionary
      * half of the learned-pair context check. Safe from any thread (a cache-free read of the
      * read-only mapping). Default false, which leaves the personal half of the check to decide.
@@ -176,6 +195,11 @@ class MappedEngineHandle private constructor(
     override fun autocorrectAdvice(): AutocorrectAdvice? = engine.autocorrectAdvice
 
     override fun exactMissPrefix(): String? = engine.exactMissPrefix
+
+    override fun lastExactCount(): Int = engine.lastExactCount
+
+    override fun requestEmptyPrefixProbe(word: String, callback: (Int) -> Unit): Boolean =
+        engine.requestEmptyPrefixProbe(word, callback)
 
     override fun containsWord(normalizedWord: String): Boolean = engine.containsWord(normalizedWord)
 

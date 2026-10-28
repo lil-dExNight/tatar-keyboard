@@ -36,6 +36,16 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
     /** Length of the longest proper prefix of the current run that came back with NO candidates. */
     private var runEmptyResultPrefixLength: Int = NO_EMPTY_RESULT
 
+    /**
+     * The cleanly completed word whose graduation waits on the engine's deferred empty-prefix
+     * probe: its proper prefixes were never observed empty, because latest-only coalescing
+     * dropped the intermediate lookups. Set only while [completionSink] is live. Resolved by
+     * [resolveDeferredEmptyProbe]; dropped by [markRunDirty] or replaced by the next parked word
+     * (latest-only, like the engine whose answer it waits for).
+     */
+    var deferredEmptyProbeWord: String? = null
+        private set
+
     /** Where clean word completions go. Default writes nothing. */
     var completionSink: WordCompletionSink = WordCompletionSink.NONE
 
@@ -69,6 +79,7 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
         if (word.isEmpty()) {
             reportCompletionIfClean(previous)
             reportPairCompletionIfClean(previous)
+            parkForDeferredProbe(previous)
             runWord = ""
             runClean = true
             // A completed boundary is a position the pair machine trusts: whatever state the run
@@ -123,13 +134,43 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
      * back with an empty exact pass. That means no dictionary word other than p itself begins with
      * p, so a longer word starting with p cannot be in the dictionary either.
      *
-     * If no such observation was made (requests were coalesced, the engine was not ready, the strip
-     * was ineligible), nothing is reported: when in doubt, learn less.
+     * If no such observation was made, the word is parked for the deferred empty-prefix probe
+     * ([parkForDeferredProbe]); when the probe cannot run either (the engine was not ready, the
+     * strip was ineligible), nothing is reported: when in doubt, learn less.
      */
     private fun reportCompletionIfClean(word: String) {
         if (!runClean || word.isEmpty()) return
         val observed = runEmptyResultPrefixLength
         if (observed !in 1 until word.length) return
+        completionSink.onCleanCompletion(word)
+    }
+
+    /**
+     * Parks a cleanly completed word whose PROPER prefixes never produced an empty-result
+     * observation, for the deferred empty-prefix probe the controller runs on the engine worker
+     * behind the separator's next-word lookup. That covers the intermediate lookups coalescing
+     * dropped and the one lookup that landed only at the full word. Nothing is parked when a
+     * qualifying observation exists (the ordinary path already decided), when learning is off,
+     * or when the word has no proper prefix to probe: when in doubt, learn less.
+     */
+    private fun parkForDeferredProbe(word: String) {
+        if (!runClean || word.length < 2) return
+        if (runEmptyResultPrefixLength in 1 until word.length) return
+        if (completionSink === WordCompletionSink.NONE) return
+        deferredEmptyProbeWord = word
+    }
+
+    /**
+     * The probe's answer for the parked word: [shortestEmptyPrefixLength] is the shortest proper
+     * prefix length whose exact pass was empty, or a value outside `1 until word.length` when
+     * the probe found none or never ran. The graduation check is the one
+     * [reportCompletionIfClean] runs, against the observation the probe reconstructed. An answer
+     * for a word that is no longer parked is dropped.
+     */
+    fun resolveDeferredEmptyProbe(word: String, shortestEmptyPrefixLength: Int) {
+        if (deferredEmptyProbeWord != word) return
+        deferredEmptyProbeWord = null
+        if (shortestEmptyPrefixLength !in 1 until word.length) return
         completionSink.onCleanCompletion(word)
     }
 
@@ -156,6 +197,7 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
         runClean = false
         pairRunClean = false
         runEmptyResultPrefixLength = NO_EMPTY_RESULT
+        deferredEmptyProbeWord = null
     }
 
     /**
