@@ -13,13 +13,34 @@ These hold for every release and are not repeated in the entries below:
 
 ## [Unreleased]
 
+### Added
+
+- A personal sentence-start overlay: the words you actually open sentences with lead the strip at a sentence start, above the static table (they are never removed from it). Learned under the same privacy gates as the personal dictionary, eight entries at most, never backed up.
+- The Russian sentence-start table now covers conversational openings (`я`, `ты`, `он` rank where they belong): measured hit rate on the held-out set went 3.1% → 18.7%.
+- A pause-learning marker on the spacebar while learning is paused.
+- Emoji search shows two rows of results while you type.
+- One-handed mode: a tap in the freed dock strip returns the keyboard to full width, a long-press opens the side picker.
+- A debug-build gesture recorder and a static web collector page for the real-gesture corpus (opt-in, discard-by-default, never in release builds).
+
 ### Changed
 
-- The suggestion strip shows four cells instead of three: the bundled bigram tables always packed four successors per word, and the fourth one is now shown too.
-- Learned word pairs now steer glide typing too: after a word you often pair, the words you usually write next rank higher in glide suggestions.
-- Typo recovery on both Cyrillic layouts now covers the missing, extra and swapped letters of a mistyped word, not just wrong-letter substitutions (`пирвет` → `привет`).
-- Word completions lean on the previous word: a completion that the bigram table predicts after the just-committed word now leads the strip while you type it.
+- Word suggestions are on by default for new installs, and the onboarding's last step carries the switch. Personal dictionary and autocorrection stay off until enabled.
+- The suggestion strip shows four cells instead of three: the bundled bigram tables always packed four successors per word, and the fourth one is now shown too. Measured keystroke savings improved by about 2.5-2.8 points on both languages.
+- Typo recovery on both Cyrillic layouts now covers the missing, extra and swapped letters of a mistyped word, not just wrong-letter substitutions (`пирвет` → `привет`). Measured recovery on the pinned sets: insertion 0% → 98%, transposition 0% → 91%, deletion 20% → 75%.
+- Word completions lean on the previous word: a completion that the bigram table predicts after the just-committed word now leads the strip while you type it (+1.8-1.9 points of top-1 completion on the held-out sets).
 - A word you use regularly now leads the strip ahead of rare dictionary continuations; frequent dictionary words still keep the top cell.
+- Learned word pairs now steer glide typing too: after a word you often pair, the words you usually write next rank higher in glide suggestions.
+- Typing in one language while the strip shows the other now leads with the language of the actual letters: an exact match in the companion language beats letter-soup guesses in the active one (measured 50% → 85% correct-language leads on the mixing set).
+- Glide: fewer accidental glides from fast slips (the arming distance is 1.5 key widths now, measured against a synthetic slip model), and learning a new word no longer stalls the next glide on a full index rebuild.
+- Strip taps (accept, revert, keep-typed, clip, glide alternative) give the same haptic tick as keys.
+- The suggestions row moved to the top of the first settings card.
+
+### Fixed
+
+- The one-time "enable suggestions" offer is no longer spent before its dialog is actually shown (a windowless moment could burn it forever).
+- Next-word prediction no longer goes empty forever when the bigram table fails to open: learned pairs, word forms and the frequency fallback still answer.
+- Glide on Russian `ё`-words (`её`, `неё`) no longer demands a loop the word doesn't have: the loop rule keys on a doubled letter, not a doubled key.
+- Words typed whole but never seen empty at a prefix are now learned anyway: the engine checks the shortest empty prefix after the word completes, so fast typists stop losing their vocabulary.
 
 ## [3.9.3] — 2026-10-05
 
