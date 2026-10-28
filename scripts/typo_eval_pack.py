@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Build the deterministic typo-mutated held-out eval set for typo-recovery measurement.
 
-Substrate: the unique words of the held-out eval set (``tt_eval_sentences.txt``) that are words
-of the pinned bundled dictionary and have at least 3 code points. One mutation per (word, class):
-``sub`` replaces a code point with a geometric key neighbor, ``del`` deletes one code point,
-``ins`` inserts a layout-alphabet letter, ``trans`` swaps an adjacent pair of distinct code
-points. Each (word, class) pair draws its choices from a private SplitMix64 stream seeded
-``splitmix64(TYPO_EVAL_SEED ^ fnv1a64(word)) ^ class_tag`` (class tags are 1..4 in the class
-order above), walked position-first, then the choice within the position; ``del`` and ``trans``
-have no second draw. A pair with no legal mutation is skipped. Rows are
-``original<TAB>class<TAB>mutated`` sorted by (original, class), UTF-8/LF. The set is regenerated,
-never committed: its identity is the pinned SHA-256 asserted by tests/typo_eval_pack and mirrored
-bit-for-bit by TypoMutatedEvalTest.kt. Exits 2 on missing or invalid input.
+Substrate: the unique words of the language's held-out eval set (``tt_eval_sentences.txt`` or
+``ru_eval_sentences.txt``) that are words of the pinned bundled dictionary and have at least 3
+code points. One mutation per (word, class): ``sub`` replaces a code point with a geometric key
+neighbor, ``del`` deletes one code point, ``ins`` inserts a layout-alphabet letter, ``trans``
+swaps an adjacent pair of distinct code points. Each (word, class) pair draws its choices from a
+private SplitMix64 stream seeded ``splitmix64(seed ^ fnv1a64(word)) ^ class_tag`` (the seed is
+the language's; class tags are 1..4 in the class order above), walked position-first, then the
+choice within the position; ``del`` and ``trans`` have no second draw. A pair with no legal
+mutation is skipped. Rows are ``original<TAB>class<TAB>mutated`` sorted by (original, class),
+UTF-8/LF. The Tatar set is regenerated, never committed: its identity is the pinned SHA-256
+asserted by tests/typo_eval_pack and mirrored bit-for-bit by TypoMutatedEvalTest.kt. The Russian
+set is committed (``app/src/test/resources/ru_typo_eval_set.tsv``): ``build --language rus``
+regenerates it, tests/typo_eval_pack asserts the committed file is byte-identical, and
+RuTypoMutatedEvalTest.kt measures the committed rows. Exits 2 on missing or invalid input.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ import argparse
 import hashlib
 import json
 import sys
+import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence, TextIO
@@ -31,13 +35,76 @@ import typo_pack  # noqa: E402
 
 
 # --- Deterministic-selection knobs. -----------------------------------------------------
-# The seed is fixed and arbitrary; changing it changes the whole set and the JVM test that
-# mirrors it. The class tags double as stream salts so the four mutations of one word are
-# independent draws.
+# The seeds are fixed and arbitrary (the language tag in ASCII, then "EV"); changing a seed
+# changes that language's whole set and the tests that pin it. The class tags double as stream
+# salts so the four mutations of one word are independent draws.
 TYPO_EVAL_SEED = 0x54544556
+RU_TYPO_EVAL_SEED = 0x52554556
 MIN_WORD_CODE_POINTS = 3
 CLASS_TAGS = {"sub": 1, "del": 2, "ins": 3, "trans": 4}
 CLASS_NAMES = tuple(sorted(CLASS_TAGS, key=CLASS_TAGS.get))
+
+_RES_XML_DIR = ROOT / "app" / "src" / "main" / "res" / "xml"
+_TEST_RESOURCES_DIR = ROOT / "app" / "src" / "test" / "resources"
+_DICTIONARIES_DIR = ROOT / "app" / "src" / "main" / "assets" / "dictionaries"
+
+# The Russian bundled dictionary identity, mirroring
+# DictionaryStorageContracts.RUSSIAN_TOP100K_V1.
+_RUSSIAN_ASSET_SHA256 = "273f1a6928f74fdbd7f0fda4490978124b3748160ac283d0b51e8c913fea5fde"
+_RUSSIAN_RAW_SHA256 = "f05499a3b4c3c2811c6ee8e9084dfaf472951a289a20dde2ab8cb098cb5a15b2"
+_RUSSIAN_ENTRY_COUNT = 100_000
+
+
+@dataclass(frozen=True)
+class LanguageSpec:
+    """One language's pinned generator inputs: eval set, dictionary, layout files and seed.
+
+    ``rowkey_files`` feed the insertion alphabet; ``rows_file`` (which includes them by
+    reference) feeds the geometric map. ``default_output`` is the committed set path, or None
+    when the language's set is regenerated and never committed.
+    """
+
+    tag: str
+    seed: int
+    eval_set: Path
+    dictionary: Path
+    dictionary_asset_sha256: str
+    dictionary_raw_sha256: str
+    dictionary_entry_count: int
+    rows_file: str
+    rowkey_files: tuple[str, ...]
+    default_output: Path | None
+
+
+TATAR = LanguageSpec(
+    tag="tat",
+    seed=TYPO_EVAL_SEED,
+    eval_set=_TEST_RESOURCES_DIR / "tt_eval_sentences.txt",
+    dictionary=_DICTIONARIES_DIR / "tatar_top100k_v1.tdict.zlib",
+    dictionary_asset_sha256=typo_pack.EXPECTED_ASSET_SHA256,
+    dictionary_raw_sha256=typo_pack.EXPECTED_RAW_SHA256,
+    dictionary_entry_count=typo_pack.EXPECTED_ENTRY_COUNT,
+    rows_file="rows_tatar.xml",
+    rowkey_files=typo_pack._TATAR_ROWKEY_FILES,
+    default_output=None,
+)
+RUSSIAN = LanguageSpec(
+    tag="rus",
+    seed=RU_TYPO_EVAL_SEED,
+    eval_set=_TEST_RESOURCES_DIR / "ru_eval_sentences.txt",
+    dictionary=_DICTIONARIES_DIR / "russian_top100k_v1.tdict.zlib",
+    dictionary_asset_sha256=_RUSSIAN_ASSET_SHA256,
+    dictionary_raw_sha256=_RUSSIAN_RAW_SHA256,
+    dictionary_entry_count=_RUSSIAN_ENTRY_COUNT,
+    rows_file="rows_russian.xml",
+    rowkey_files=(
+        "rowkeys_russian1.xml",
+        "rowkeys_russian2.xml",
+        "rowkeys_russian3.xml",
+    ),
+    default_output=_TEST_RESOURCES_DIR / "ru_typo_eval_set.tsv",
+)
+LANGUAGES = {language.tag: language for language in (TATAR, RUSSIAN)}
 
 
 class SplitMixStream:
@@ -137,6 +204,139 @@ _MUTATORS = {
 }
 
 
+# --------------------------------------------------------------------------------------
+# Layout reading, parameterized by the language's resource files. The parsing and geometry
+# primitives live in typo_pack (one implementation); only the file names are per language.
+# --------------------------------------------------------------------------------------
+def _row_width_specs(
+    layout_dir: Path, rows_file: str
+) -> list[list[tuple[str | None, float | str | None]]]:
+    """The rows XML as rows of (single-char keySpec or None, width percent or fill).
+
+    Same model as ``typo_pack._row_width_specs``: a None width is the row's default keyWidth and
+    "fill" is fillRight; non-letter keys keep their width entry but carry no keySpec.
+    """
+    rows_path = layout_dir / rows_file
+    if not rows_path.is_file():
+        raise typo_pack.TypoPackError(f"layout resource is missing: {rows_path}")
+    try:
+        root = ElementTree.parse(rows_path).getroot()
+    except (ElementTree.ParseError, OSError) as error:
+        raise typo_pack.TypoPackError(
+            f"cannot parse layout resource {rows_path}: {error}"
+        ) from error
+    key_spec_attr = f"{{{typo_pack._ANDROID_RES_AUTO}}}keySpec"
+    key_width_attr = f"{{{typo_pack._ANDROID_RES_AUTO}}}keyWidth"
+    layout_attr = f"{{{typo_pack._ANDROID_RES_AUTO}}}keyboardLayout"
+    rows: list[list[tuple[str | None, float | str | None]]] = []
+    for row in root.findall("Row"):
+        entries: list[tuple[str | None, float | str | None]] = []
+        for child in row:
+            if child.tag == "Key":
+                width_attr = child.get(key_width_attr)
+                width: float | str | None
+                if width_attr == "fillRight":
+                    width = "fill"
+                elif width_attr is not None:
+                    width = typo_pack._parse_percent(width_attr)
+                else:
+                    width = None  # the row default applies
+                spec = child.get(key_spec_attr)
+                entries.append((spec if spec is not None and len(spec) == 1 else None, width))
+            elif child.tag == "include":
+                include_layout = child.get(layout_attr)
+                if include_layout is None:
+                    continue
+                name = include_layout.split("/")[-1] + ".xml"
+                for spec in typo_pack._read_row_key_specs(layout_dir / name):
+                    entries.append((spec, None))
+        rows.append(entries)
+    return rows
+
+
+def read_language_geometric_map(
+    layout_dir: Path, language: LanguageSpec
+) -> dict[int, tuple[int, ...]]:
+    """The geometric key-neighbor relation of the language's rows file.
+
+    Same model as ``typo_pack.read_layout_geometric_map``: the device key rectangles on the
+    reference grid (gap/padding from the shared ``res/values/config.xml``), then the overlap
+    relation of ``typo_pack.build_geometric_map``.
+    """
+    raw_rows = _row_width_specs(layout_dir, language.rows_file)
+    rows_path = layout_dir / language.rows_file
+    try:
+        root = ElementTree.parse(rows_path).getroot()
+    except (ElementTree.ParseError, OSError) as error:
+        raise typo_pack.TypoPackError(
+            f"cannot parse layout resource {rows_path}: {error}"
+        ) from error
+    key_width_attr = f"{{{typo_pack._ANDROID_RES_AUTO}}}keyWidth"
+    row_widths: list[float] = []
+    for row in root.findall("Row"):
+        row_width_attr = row.get(key_width_attr)
+        row_widths.append(typo_pack._parse_percent(row_width_attr) if row_width_attr else 0.0)
+    if len(row_widths) != len(raw_rows):
+        raise typo_pack.TypoPackError("row count mismatch while resolving row default widths")
+    resolved: list[list[tuple[str | None, float | str]]] = []
+    for entries, row_width in zip(raw_rows, row_widths):
+        resolved.append(
+            [(spec, row_width if width is None else width) for spec, width in entries]
+        )
+    config_path = layout_dir.parent / "values" / typo_pack._VALUES_CONFIG_FILE
+    gap, left_pad, right_pad = typo_pack.read_keyboard_gaps(config_path)
+    geometric_map = typo_pack.build_geometric_map(
+        typo_pack.build_device_geometry(
+            resolved,
+            gap_percent=gap,
+            left_padding_percent=left_pad,
+            right_padding_percent=right_pad,
+        )
+    )
+    if not geometric_map:
+        raise typo_pack.TypoPackError("layout geometry yielded no geometric neighbour")
+    return geometric_map
+
+
+def read_language_alphabet(layout_dir: Path, language: LanguageSpec) -> tuple[int, ...]:
+    """The language's typeable letters as a sorted tuple of code points (== the node set).
+
+    Same model as ``typo_pack.read_layout_alphabet``: every letter key of the rowkeys files plus
+    every letter appearing in their ``latin:moreKeys``.
+    """
+    letters: set[int] = set()
+    for name in language.rowkey_files:
+        path = layout_dir / name
+        if not path.is_file():
+            raise typo_pack.TypoPackError(f"layout resource is missing: {path}")
+        try:
+            root = ElementTree.parse(path).getroot()
+        except (ElementTree.ParseError, OSError) as error:
+            raise typo_pack.TypoPackError(
+                f"cannot parse layout resource {path}: {error}"
+            ) from error
+        key_spec_attr = f"{{{typo_pack._ANDROID_RES_AUTO}}}keySpec"
+        more_keys_attr = f"{{{typo_pack._ANDROID_RES_AUTO}}}moreKeys"
+        for key in root.iter("Key"):
+            spec = key.get(key_spec_attr)
+            if spec is not None and len(spec) == 1:
+                normalized = typo_pack._normalize_letter(ord(spec))
+                if normalized is not None:
+                    letters.add(normalized)
+            more_keys = key.get(more_keys_attr)
+            if more_keys:
+                for token in more_keys.split(","):
+                    token = token.strip()
+                    if len(token) != 1:
+                        continue
+                    normalized = typo_pack._normalize_letter(ord(token))
+                    if normalized is not None:
+                        letters.add(normalized)
+    if not letters:
+        raise typo_pack.TypoPackError("layout resources yielded no alphabet letter")
+    return tuple(sorted(letters))
+
+
 def read_eval_words(eval_set_path: Path) -> set[str]:
     """The unique words of the eval set: blank lines and ``#`` header lines are skipped."""
     if not eval_set_path.is_file():
@@ -223,15 +423,23 @@ def generate(
     dictionary_path: Path,
     layout_dir: Path,
     *,
-    seed: int = TYPO_EVAL_SEED,
+    language: LanguageSpec = TATAR,
 ) -> TypoEvalSet:
-    """Read the pinned inputs and build the mutated eval set."""
-    dictionary_words = typo_pack.read_dictionary_words(dictionary_path)
+    """Read the language's pinned inputs and build the mutated eval set."""
+    dictionary_words = typo_pack.read_dictionary_words(
+        dictionary_path,
+        expected_asset_sha256=language.dictionary_asset_sha256,
+        expected_raw_sha256=language.dictionary_raw_sha256,
+        expected_entry_count=language.dictionary_entry_count,
+    )
     eval_words = read_eval_words(eval_set_path)
-    geometric_map = typo_pack.read_layout_geometric_map(layout_dir)
-    alphabet = typo_pack.read_layout_alphabet(layout_dir)
+    geometric_map = read_language_geometric_map(layout_dir, language)
+    alphabet = read_language_alphabet(layout_dir, language)
     return build_typo_eval_set(
-        substrate_words(dictionary_words, eval_words), geometric_map, alphabet, seed=seed
+        substrate_words(dictionary_words, eval_words),
+        geometric_map,
+        alphabet,
+        seed=language.seed,
     )
 
 
@@ -242,10 +450,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     build = commands.add_parser("build", help="generate the typo-mutated eval set")
-    build.add_argument("--eval-set", type=Path, required=True)
-    build.add_argument("--dictionary", type=Path, required=True)
-    build.add_argument("--layout-dir", type=Path, required=True)
-    build.add_argument("--output", type=Path, required=True)
+    build.add_argument("--language", default=TATAR.tag, choices=sorted(LANGUAGES))
+    build.add_argument("--eval-set", type=Path)
+    build.add_argument("--dictionary", type=Path)
+    build.add_argument("--layout-dir", type=Path)
+    build.add_argument("--output", type=Path)
     return parser
 
 
@@ -260,13 +469,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = create_argument_parser().parse_args(argv)
     try:
         if args.command == "build":
-            result = generate(args.eval_set, args.dictionary, args.layout_dir)
-            typo_pack.write_atomic(args.output, result.data)
+            language = LANGUAGES[args.language]
+            eval_set = args.eval_set if args.eval_set is not None else language.eval_set
+            dictionary = (
+                args.dictionary if args.dictionary is not None else language.dictionary
+            )
+            layout_dir = (
+                args.layout_dir if args.layout_dir is not None else _RES_XML_DIR
+            )
+            output = args.output if args.output is not None else language.default_output
+            if output is None:
+                raise typo_pack.TypoPackError(
+                    f"--output is required: the {language.tag} set has no default path"
+                )
+            result = generate(eval_set, dictionary, layout_dir, language=language)
+            typo_pack.write_atomic(output, result.data)
             _print_json(
                 {
                     "class_counts": result.class_counts,
+                    "language": language.tag,
                     "rows": result.size,
-                    "seed": TYPO_EVAL_SEED,
+                    "seed": language.seed,
                     "set_bytes": len(result.data),
                     "set_sha256": result.sha256,
                     "substrate_words": result.substrate_count,

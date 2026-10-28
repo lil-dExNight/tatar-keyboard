@@ -17,6 +17,11 @@ ROOT = Path(__file__).resolve().parents[2]
 LAYOUT_DIR = ROOT / "app" / "src" / "main" / "res" / "xml"
 DICTIONARY = ROOT / "app" / "src" / "main" / "assets" / "dictionaries" / "tatar_top100k_v1.tdict.zlib"
 EVAL_SET = ROOT / "app" / "src" / "test" / "resources" / "tt_eval_sentences.txt"
+RU_DICTIONARY = (
+    ROOT / "app" / "src" / "main" / "assets" / "dictionaries" / "russian_top100k_v1.tdict.zlib"
+)
+RU_EVAL_SET = ROOT / "app" / "src" / "test" / "resources" / "ru_eval_sentences.txt"
+RU_COMMITTED_SET = ROOT / "app" / "src" / "test" / "resources" / "ru_typo_eval_set.tsv"
 
 
 def load_module(name: str, path: Path):
@@ -349,6 +354,151 @@ class CliTest(unittest.TestCase):
             code, _ = self.run_cli(out, dictionary=broken)
             self.assertEqual(code, 2)
             self.assertFalse(out.exists())
+
+
+class LanguageSpecTest(unittest.TestCase):
+    """The per-language generator inputs; the Russian dictionary pins mirror the Kotlin contract."""
+
+    def test_language_registry_and_seeds(self) -> None:
+        self.assertEqual(sorted(pack.LANGUAGES), ["rus", "tat"])
+        self.assertEqual(pack.TATAR.seed, 0x54544556)
+        self.assertEqual(pack.RUSSIAN.seed, 0x52554556)
+        self.assertEqual(pack.CLASS_TAGS, {"sub": 1, "del": 2, "ins": 3, "trans": 4})
+        self.assertEqual(pack.CLASS_NAMES, ("sub", "del", "ins", "trans"))
+
+    def test_russian_spec_pins(self) -> None:
+        self.assertEqual(pack.RUSSIAN.rows_file, "rows_russian.xml")
+        self.assertEqual(
+            pack.RUSSIAN.rowkey_files,
+            ("rowkeys_russian1.xml", "rowkeys_russian2.xml", "rowkeys_russian3.xml"),
+        )
+        self.assertEqual(
+            pack.RUSSIAN.dictionary_asset_sha256,
+            "273f1a6928f74fdbd7f0fda4490978124b3748160ac283d0b51e8c913fea5fde",
+        )
+        self.assertEqual(
+            pack.RUSSIAN.dictionary_raw_sha256,
+            "f05499a3b4c3c2811c6ee8e9084dfaf472951a289a20dde2ab8cb098cb5a15b2",
+        )
+        self.assertEqual(pack.RUSSIAN.dictionary_entry_count, 100_000)
+        self.assertIsNone(pack.TATAR.default_output)
+        self.assertEqual(pack.RUSSIAN.default_output, RU_COMMITTED_SET)
+
+    def test_russian_stream_seed_golden(self) -> None:
+        stream_seed = pack.stream_seed
+        self.assertEqual(stream_seed("привет", 1, seed=pack.RU_TYPO_EVAL_SEED), 16682546826994418570)
+        self.assertEqual(stream_seed("время", 4, seed=pack.RU_TYPO_EVAL_SEED), 2416925652796641242)
+        stream = pack.SplitMixStream(stream_seed("привет", 1, seed=pack.RU_TYPO_EVAL_SEED))
+        self.assertEqual(stream.next(), 11338241493119723635)
+        self.assertEqual(stream.next(), 6969238145513660153)
+
+
+class RussianLayoutTest(unittest.TestCase):
+    """The Russian layout as the generator reads it; the JVM test pins the same counts."""
+
+    def test_geometric_map_shape(self) -> None:
+        geometric_map = pack.read_language_geometric_map(LAYOUT_DIR, pack.RUSSIAN)
+        self.assertEqual(len(geometric_map), 31)
+        self.assertEqual(sum(len(neighbors) for neighbors in geometric_map.values()), 40)
+        for node, neighbors in geometric_map.items():
+            self.assertEqual(list(neighbors), sorted(neighbors))
+            for neighbor in neighbors:
+                self.assertIn(node, geometric_map[neighbor])
+
+    def test_alphabet_is_the_layout_node_set(self) -> None:
+        alphabet = pack.read_language_alphabet(LAYOUT_DIR, pack.RUSSIAN)
+        self.assertEqual(len(alphabet), 39)
+        self.assertEqual(list(alphabet), sorted(alphabet))
+        self.assertEqual(len(set(alphabet)), 39)
+        for letter in "абвгдежзийклмнопрстуфхцчшщъыьэюяё":
+            self.assertIn(ord(letter), alphabet)
+
+    def test_tatar_readers_match_the_typo_pack_ones(self) -> None:
+        # The parameterized readers route the Tatar language through the same model; the result
+        # must equal typo_pack's own Tatar readers bit-for-bit.
+        self.assertEqual(
+            pack.read_language_geometric_map(LAYOUT_DIR, pack.TATAR),
+            typo_pack.read_layout_geometric_map(LAYOUT_DIR),
+        )
+        self.assertEqual(
+            pack.read_language_alphabet(LAYOUT_DIR, pack.TATAR),
+            typo_pack.read_layout_alphabet(LAYOUT_DIR),
+        )
+
+
+class RussianCommittedSetIdentityTest(unittest.TestCase):
+    """On the committed inputs the Russian set identity is pinned, and the committed file is it."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not (RU_DICTIONARY.is_file() and RU_EVAL_SET.is_file()):
+            raise unittest.SkipTest("committed dictionary or eval set not available")
+        cls.result = pack.generate(RU_EVAL_SET, RU_DICTIONARY, LAYOUT_DIR, language=pack.RUSSIAN)
+
+    def test_set_identity(self) -> None:
+        result = self.result
+        self.assertEqual(result.substrate_count, 2051)
+        self.assertEqual(result.size, 8204)
+        self.assertEqual(
+            result.class_counts, {"sub": 2051, "del": 2051, "ins": 2051, "trans": 2051}
+        )
+        self.assertEqual(len(result.data), 273422)
+        self.assertEqual(
+            result.sha256, "abf3988db71591bdde26562439c08a5c50ac4e3338ff4681384854144872108d"
+        )
+
+    def test_the_committed_file_is_byte_identical_to_the_regeneration(self) -> None:
+        self.assertTrue(RU_COMMITTED_SET.is_file())
+        self.assertEqual(RU_COMMITTED_SET.read_bytes(), self.result.data)
+
+    def test_every_class_is_present(self) -> None:
+        for count in self.result.class_counts.values():
+            self.assertGreater(count, 0)
+
+    def test_every_row_differs_by_exactly_the_class_edit(self) -> None:
+        geometric_map = pack.read_language_geometric_map(LAYOUT_DIR, pack.RUSSIAN)
+        alphabet = pack.read_language_alphabet(LAYOUT_DIR, pack.RUSSIAN)
+        for original, class_name, mutated in self.result.rows:
+            assert_class_edit(self, geometric_map, alphabet, original, class_name, mutated)
+
+    def test_two_full_builds_are_byte_identical(self) -> None:
+        again = pack.generate(RU_EVAL_SET, RU_DICTIONARY, LAYOUT_DIR, language=pack.RUSSIAN)
+        self.assertEqual(self.result.data, again.data)
+
+
+class RussianCliTest(unittest.TestCase):
+    def setUp(self) -> None:
+        if not (RU_DICTIONARY.is_file() and RU_EVAL_SET.is_file()):
+            self.skipTest("committed dictionary or eval set not available")
+
+    def test_language_rus_builds_from_the_russian_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "ru_typo_eval_set.tsv"
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+                code = pack.main(["build", "--language", "rus", "--output", str(out)])
+            self.assertEqual(code, 0)
+            report = json.loads(stdout.getvalue())
+            self.assertEqual(report["language"], "rus")
+            self.assertEqual(report["seed"], 0x52554556)
+            self.assertEqual(report["rows"], 8204)
+            self.assertEqual(report["substrate_words"], 2051)
+            self.assertEqual(report["set_bytes"], 273422)
+            self.assertEqual(
+                report["set_sha256"],
+                "abf3988db71591bdde26562439c08a5c50ac4e3338ff4681384854144872108d",
+            )
+            self.assertEqual(
+                report["class_counts"],
+                {"sub": 2051, "del": 2051, "ins": 2051, "trans": 2051},
+            )
+            self.assertEqual(hashlib.sha256(out.read_bytes()).hexdigest(), report["set_sha256"])
+
+    def test_tatar_build_without_an_output_exits_two(self) -> None:
+        # The Tatar set is regenerated, never committed, so it has no default output path.
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = pack.main(["build"])
+        self.assertEqual(code, 2)
 
 
 if __name__ == "__main__":
