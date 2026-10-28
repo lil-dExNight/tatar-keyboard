@@ -54,7 +54,8 @@ fun interface PersonalCandidateSource {
 
     /**
      * The whole personal dictionary for the glide decoder, read on the engine worker when the
-     * decoder is rebuilt after the snapshot identity changes. Defaults to [PersonalDictionary.EMPTY].
+     * decoder is rebuilt after the snapshot's structure version changes. Defaults to
+     * [PersonalDictionary.EMPTY].
      */
     fun glideSnapshot(): PersonalDictionary = PersonalDictionary.EMPTY
 

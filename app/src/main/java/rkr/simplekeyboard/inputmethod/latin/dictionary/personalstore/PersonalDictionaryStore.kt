@@ -90,6 +90,16 @@ internal class PersonalDictionaryStore(
         private set
 
     /**
+     * The word-set version stamped into [snapshot]: bumped only when the published word set
+     * changes (a new word, a removal, an import), never on a counter-only republish, so the glide
+     * decoder does not rebuild its word index for an accepted suggestion. Runtime-only; nothing on
+     * disk carries it.
+     */
+    @Volatile
+    var structureVersion: Long = 0L
+        private set
+
+    /**
      * Manually adds one word (the settings screen's "Add word" action); a no-op if the word is not
      * eligible. [outcome] is told on the worker whether the whole-file write succeeded, so a failed
      * write is visible to the screen.
@@ -102,7 +112,8 @@ internal class PersonalDictionaryStore(
         }
         // Evaluated before reporting: a safe call on a null outcome would skip evaluating its
         // argument, and the write with it.
-        val saved = commitWrite(entries.upsert(word, normalized))
+        // Adding a word already saved is a counter bump, not a word-set change.
+        val saved = commitWrite(entries.upsert(word, normalized), !entries.containsNormalized(normalized))
         report(outcome, saved)
     }
 
@@ -121,7 +132,7 @@ internal class PersonalDictionaryStore(
             val candidate = entries.upsert(word, normalized)
             if (writeWhole(candidate)) {
                 entries = candidate
-                snapshot = candidate.toSnapshot(subtypeId)
+                publish(candidate.toSnapshot(subtypeId), structural = true)
                 pending = noted.without(key)
             } else {
                 pending = noted
@@ -175,7 +186,10 @@ internal class PersonalDictionaryStore(
             return true
         }
         val previousSnapshot = snapshot
-        snapshot = if (candidate.isEmpty) PersonalDictionary.EMPTY else candidate.toSnapshot(subtypeId)
+        publish(
+            if (candidate.isEmpty) PersonalDictionary.EMPTY else candidate.toSnapshot(subtypeId),
+            structural = true,
+        )
         // A throw here becomes `false` inside the mutation, so the snapshot restore below still
         // runs: the word is still on disk.
         val removed = try {
@@ -192,7 +206,7 @@ internal class PersonalDictionaryStore(
         if (removed) {
             entries = candidate
         } else {
-            snapshot = previousSnapshot
+            publish(previousSnapshot, structural = true)
             return false
         }
         purgeFromQuarantine(normalized)
@@ -250,7 +264,7 @@ internal class PersonalDictionaryStore(
         pending = PendingCounters.EMPTY
         pendingDirty = false
         salt = null
-        snapshot = PersonalDictionary.EMPTY
+        publishLoaded(PersonalDictionary.EMPTY)
         loaded = true
         if (!unlockGate()) {
             // Memory is empty but the files are untouched and come back on the next start, so this
@@ -318,7 +332,7 @@ internal class PersonalDictionaryStore(
         // Re-read the disk state: the published snapshot now matches the imported file (or none).
         entries = PersonalEntries.empty(maxEntries)
         pendingCounterFlush = false
-        snapshot = PersonalDictionary.EMPTY
+        publishLoaded(PersonalDictionary.EMPTY)
         loaded = false
         open()
         return true
@@ -393,7 +407,7 @@ internal class PersonalDictionaryStore(
         }
         // Every salvaged word was already saved: nothing to write, and the request is fulfilled.
         if (added == 0) return true
-        return commitWrite(candidate)
+        return commitWrite(candidate, structural = true)
     }
 
     /** Reads the quarantined file behind the unlock gate; `null` when there is none to read. */
@@ -414,7 +428,9 @@ internal class PersonalDictionaryStore(
         alphabet ?: return@onWorker
         val candidate = entries.noteUse(PersonalWordFilter.normalize(word)) ?: return@onWorker
         entries = candidate
-        snapshot = candidate.toSnapshot(subtypeId)
+        // A counter bump is not a word-set change: the version is kept, so the glide decoder does
+        // not rebuild its word index here.
+        publish(candidate.toSnapshot(subtypeId), structural = false)
         pendingCounterFlush = true
     }
 
@@ -449,10 +465,32 @@ internal class PersonalDictionaryStore(
         return PersonalWordFilter.acceptedNormalizedForm(word, alpha)
     }
 
-    private fun commitWrite(candidate: PersonalEntries): Boolean {
+    private fun commitWrite(candidate: PersonalEntries, structural: Boolean): Boolean {
         if (!writeWhole(candidate)) return false
         entries = candidate
-        snapshot = candidate.toSnapshot(subtypeId)
+        publish(candidate.toSnapshot(subtypeId), structural)
+        return true
+    }
+
+    /**
+     * Publishes [next] as the snapshot. [structural] says the word set may have changed and bumps
+     * [structureVersion]; a counter-only republish keeps it. The version rides inside the snapshot,
+     * so a reader's one volatile read carries a consistent (words, version) pair.
+     */
+    private fun publish(next: PersonalDictionary, structural: Boolean) {
+        if (structural) structureVersion++
+        snapshot = next.withStructureVersion(structureVersion)
+    }
+
+    /** Publishes a disk-loaded [next]; the version bumps only when the word set really changed. */
+    private fun publishLoaded(next: PersonalDictionary) = publish(next, !sameWordSet(snapshot, next))
+
+    /** Whether two snapshots hold the same normalized forms in the same (canonical) order. */
+    private fun sameWordSet(first: PersonalDictionary, second: PersonalDictionary): Boolean {
+        if (first.size != second.size) return false
+        for (index in 0 until first.size) {
+            if (first.normalizedFormAt(index) != second.normalizedFormAt(index)) return false
+        }
         return true
     }
 
@@ -494,7 +532,7 @@ internal class PersonalDictionaryStore(
             load()
         } catch (_: Exception) {
             entries = PersonalEntries.empty(maxEntries)
-            snapshot = PersonalDictionary.EMPTY
+            publishLoaded(PersonalDictionary.EMPTY)
         }
         // The only place the notice is raised. Every open passes here, both after a quarantine now
         // and when a previous process left the mark, so an unannounced loss is announced at the next
@@ -513,14 +551,14 @@ internal class PersonalDictionaryStore(
     private fun load() {
         val directory = directoryProvider.personalDirectory()
         if (!directory.isDirectory) {
-            snapshot = PersonalDictionary.EMPTY
+            publishLoaded(PersonalDictionary.EMPTY)
             return
         }
         cleanupTemps(directory)
         readPending(directory)
         val file = File(directory, TpersFormat.personalFileName(subtypeId))
         if (!file.isFile) {
-            snapshot = PersonalDictionary.EMPTY
+            publishLoaded(PersonalDictionary.EMPTY)
             return
         }
         val validated = try {
@@ -531,11 +569,11 @@ internal class PersonalDictionaryStore(
         if (validated == null) {
             quarantine(directory, file)
             entries = PersonalEntries.empty(maxEntries)
-            snapshot = PersonalDictionary.EMPTY
+            publishLoaded(PersonalDictionary.EMPTY)
             return
         }
         entries = PersonalEntries.fromValidated(validated, maxEntries)
-        snapshot = entries.toSnapshot(subtypeId)
+        publishLoaded(entries.toSnapshot(subtypeId))
     }
 
     /**

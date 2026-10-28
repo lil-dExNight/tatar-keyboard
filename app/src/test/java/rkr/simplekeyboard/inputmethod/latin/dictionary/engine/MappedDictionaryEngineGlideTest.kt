@@ -49,7 +49,7 @@ class MappedDictionaryEngineGlideTest {
     /**
      * A personal source with a caller-swappable snapshot: each swap publishes a NEW immutable
      * instance, like the store's `@Volatile` republish on a learning event, so the tests drive the
-     * host's snapshot-identity rebuild for real.
+     * host's structure-version rebuild for real.
      */
     private class FakePersonalSource : PersonalCandidateSource {
         @Volatile
@@ -253,8 +253,9 @@ class MappedDictionaryEngineGlideTest {
         executor.runAll()
         assertTrue(published.single().suggestions.isEmpty())
 
-        // A learning event republishes the snapshot; the next decode rebuilds over it.
-        personal.snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 3)
+        // A learning event republishes the snapshot with a bumped structure version; the next
+        // decode sees the version change and rebuilds over it.
+        personal.snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 3).withStructureVersion(1)
         engine.requestGlide(2, "tt", glidePath("сәлинә"), ByteArray(0))
         executor.runAll()
 
@@ -268,7 +269,7 @@ class MappedDictionaryEngineGlideTest {
         val executor = ManualEngineExecutor()
         val published = mutableListOf<LookupResult>()
         val personal = FakePersonalSource()
-        personal.snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 3)
+        personal.snapshot = GlideTestFixtures.personalDictionary("сәлинә" to 3).withStructureVersion(1)
         val engine = startEngine(executor, published, personal)
         engine.updateGlideGeometry(geometry)
 
@@ -276,8 +277,9 @@ class MappedDictionaryEngineGlideTest {
         executor.runAll()
         assertEquals("сәлинә", published.single().suggestions.first())
 
-        // The word was forgotten (or the feature switched off): the same gesture decodes empty.
-        personal.snapshot = PersonalDictionary.EMPTY
+        // The word was forgotten (or the feature switched off): the republish bumps the
+        // structure version, and the same gesture decodes empty.
+        personal.snapshot = PersonalDictionary.EMPTY.withStructureVersion(2)
         engine.requestGlide(2, "tt", glidePath("сәлинә"), ByteArray(0))
         executor.runAll()
 

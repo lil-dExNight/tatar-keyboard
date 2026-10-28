@@ -19,11 +19,14 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionaryReader
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
@@ -335,6 +338,87 @@ class PersonalDictionaryStoreWriteTest {
         assertFalse(destinationFile(directory).exists())
         assertTrue(store.snapshot.isEmpty)
         assertNoTemp(directory)
+    }
+
+    // ---- the structure version bumps only when the word set changes ------------------------------
+
+    @Test
+    fun acceptedSuggestionsRepublishTheSameStructureVersion() {
+        val directory = newPersonalDir()
+        val store = store(directory, RecordingOps(), RealOpener)
+        store.addManually("абыйлар")
+        val version = store.structureVersion
+        val snapshot = store.snapshot
+
+        repeat(25) { store.noteAcceptedSuggestion("абыйлар") }
+
+        assertEquals("a counter bump keeps the word-set version", version, store.structureVersion)
+        assertNotSame("the snapshot itself is still republished", snapshot, store.snapshot)
+        assertEquals("and carries the unchanged version", version, store.snapshot.structureVersion)
+    }
+
+    @Test
+    fun wordSetChangesIncrementTheStructureVersion() {
+        val directory = newPersonalDir()
+        val store = store(directory, RecordingOps(), RealOpener)
+        assertEquals(0L, store.structureVersion)
+
+        store.addManually("абыйлар")
+        assertEquals("a new word bumps the version", 1L, store.structureVersion)
+        store.addManually("абыйлар")
+        assertEquals("re-adding a saved word is a counter bump", 1L, store.structureVersion)
+        store.addManually("сүзлек")
+        assertEquals(2L, store.structureVersion)
+
+        store.forget("абыйлар")
+        assertEquals("a removal bumps the version", 3L, store.structureVersion)
+
+        val imported = PersonalEntries.empty().upsert("төш", "төш").serialize(subtype)
+        val beforeImport = store.structureVersion
+        store.replaceAll(imported)
+        assertTrue("an import bumps the version", store.structureVersion > beforeImport)
+
+        val beforeClear = store.structureVersion
+        store.clearAll()
+        assertTrue("erasing a non-empty list bumps the version", store.structureVersion > beforeClear)
+        store.clearAll()
+        assertEquals(
+            "erasing an already empty list changes no word set",
+            beforeClear + 1, store.structureVersion,
+        )
+    }
+
+    @Test
+    fun learningAGraduatedWordIncrementsTheStructureVersion() {
+        val directory = newPersonalDir()
+        val store = store(directory, RecordingOps(), RealOpener)
+
+        repeat(PendingCounters.LEARN_THRESHOLD - 1) { store.noteCompletion("гүзәлия") }
+        assertEquals("below the learn threshold nothing is published", 0L, store.structureVersion)
+
+        store.noteCompletion("гүзәлия")
+        assertEquals("graduation adds a word", 1L, store.structureVersion)
+        assertEquals(1L, store.snapshot.structureVersion)
+    }
+
+    @Test
+    fun loadingAnExistingFileFromDiskIncrementsTheStructureVersion() {
+        val directory = newPersonalDir()
+        store(directory, RecordingOps(), RealOpener).addManually("абыйлар")
+
+        val reopened = store(directory, RecordingOps(), RealOpener)
+        assertEquals(0L, reopened.structureVersion)
+        reopened.prime()
+        assertEquals("the loaded word set differs from the initial empty one", 1L, reopened.structureVersion)
+        assertEquals(1L, reopened.snapshot.structureVersion)
+    }
+
+    @Test
+    fun openingAnEmptyStoreKeepsTheStructureVersionAndTheEmptySingleton() {
+        val store = store(newPersonalDir(), RecordingOps(), RealOpener)
+        store.prime()
+        assertEquals(0L, store.structureVersion)
+        assertSame(PersonalDictionary.EMPTY, store.snapshot)
     }
 
     // ---- shared fault harness -------------------------------------------------------------------

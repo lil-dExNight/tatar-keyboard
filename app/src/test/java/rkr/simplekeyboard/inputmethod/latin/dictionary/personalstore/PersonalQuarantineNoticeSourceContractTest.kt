@@ -146,7 +146,7 @@ class PersonalQuarantineNoticeSourceContractTest {
             body.contains("val removed = try {\n            if (candidate.isEmpty) {"))
         assertTrue(body.contains("\n                deleteFile()\n                true\n            } else {\n                writeWhole(candidate)"))
         assertTrue("so the snapshot restore still runs: the word IS still saved",
-            body.contains("snapshot = previousSnapshot"))
+            body.contains("publish(previousSnapshot, structural = true)"))
     }
 
     // --- the process-wide owner ------------------------------------------------------------------

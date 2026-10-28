@@ -38,9 +38,10 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlideWordInventory
  * against the geometry they were built from. A null or empty geometry returns no candidates.
  *
  * Personal dictionary: a decode reads the personal source's current immutable snapshot (one
- * `@Volatile` read, no I/O) and rebuilds the decoder when the snapshot's identity changed, so one
- * rebuild per learning event, on the worker. An empty snapshot keeps the base inventory
- * unwrapped; [PersonalDictionary.EMPTY] is a singleton, so the identity check does not churn.
+ * `@Volatile` read, no I/O) and rebuilds the decoder when its [PersonalDictionary.structureVersion]
+ * changed. The store bumps that version only when the word set changes, so the counter republish
+ * of an accepted suggestion does not rebuild the word index. An empty snapshot keeps the base
+ * inventory unwrapped; [PersonalDictionary.EMPTY] stays at version 0, so the check does not churn.
  * [dictionaryMembership] is the duplicate check of the composite inventory; it runs only during
  * such a rebuild, never per gesture.
  */
@@ -56,7 +57,7 @@ internal class GlideDecoderHost(
     // Worker-confined: touched only inside decodeGlide.
     private var decoder: GlideDecoder? = null
     private var decoderGeometry: GlideKeyGeometry? = null
-    private var decoderSnapshot: PersonalDictionary? = null
+    private var decoderStructureVersion: Long = 0L
     private val result = GlideResult()
     // Scratch for the bigram channel's rerank (see GlideBigramRerank).
     private val rerankAdjusted = FloatArray(GlideDecoder.TOP_N)
@@ -80,7 +81,7 @@ internal class GlideDecoderHost(
     fun releaseIndex() {
         decoder = null
         decoderGeometry = null
-        decoderSnapshot = null
+        decoderStructureVersion = 0L
     }
 
     override fun decodeGlide(path: GlidePath, contextWord: String?): List<String> {
@@ -88,14 +89,16 @@ internal class GlideDecoderHost(
         if (current.isEmpty) return emptyList()
         val snapshot = personal.glideSnapshot()
         var active = decoder
-        if (active == null || decoderGeometry !== current || decoderSnapshot !== snapshot) {
+        if (active == null || decoderGeometry !== current ||
+            decoderStructureVersion != snapshot.structureVersion
+        ) {
             val effective =
                 if (snapshot.isEmpty) inventory
                 else CompositeGlideInventory(inventory, snapshot, dictionaryMembership)
             active = GlideDecoder(current, effective, glideConstants)
             decoder = active
             decoderGeometry = current
-            decoderSnapshot = snapshot
+            decoderStructureVersion = snapshot.structureVersion
         }
         val count = active.decode(path, result)
         if (count == 0) return emptyList()

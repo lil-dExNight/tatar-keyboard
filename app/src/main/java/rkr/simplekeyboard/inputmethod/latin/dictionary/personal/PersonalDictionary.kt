@@ -32,6 +32,12 @@ class PersonalDictionary private constructor(
     private val normalizedForms: Array<String>,
     private val usageCounts: IntArray,
     val subtypeTag: String,
+    /**
+     * The word-set version stamped by the publishing store: bumped only when the word set changes,
+     * never on a counter-only republish, so the glide decoder keys its index rebuild on it instead
+     * of instance identity. Runtime-only — the on-disk format carries no version.
+     */
+    val structureVersion: Long = 0L,
 ) {
     val size: Int
         get() = rawForms.size
@@ -88,6 +94,14 @@ class PersonalDictionary private constructor(
         val index = lowerBound(normalized)
         return if (index < normalizedForms.size && normalizedForms[index] == normalized) index else -1
     }
+
+    /**
+     * A copy stamped with [version]; the arrays are shared, never copied. Returns `this` when the
+     * version already matches, so [EMPTY] stays a singleton at version 0.
+     */
+    fun withStructureVersion(version: Long): PersonalDictionary =
+        if (version == structureVersion) this
+        else PersonalDictionary(rawForms, normalizedForms, usageCounts, subtypeTag, version)
 
     /** First index whose normalized form is >= [key]; a plain binary lower bound. */
     private fun lowerBound(key: String): Int {
