@@ -1,0 +1,570 @@
+<!doctype html>
+<!--
+  Gesture trace collector — a self-contained research page for crowdsourced glide-typing
+  traces on the app's exact Tatar and Russian key grids.
+
+  Privacy design (frozen):
+  - the page makes no network requests and loads no framework, font or analytics;
+  - the only stored content is the prompted-word trace record: the prompt word (drawn from
+    the small embedded pool below), the trace resampled to 50 points in key-radius units,
+    per-point timing, the layout id, the screen density bucket, the board size in CSS pixels
+    and a random pseudonymous participant id;
+  - records live in the browser's local storage and leave it only when the participant
+    downloads the JSONL file and sends it themselves;
+  - the page has no text fields and never sees anything the participant types elsewhere.
+
+  The prompt pools are the 20 most frequent 4–7-letter words of the repository's own tt/ru
+  evaluation corpora whose letters all sit on base keys of the respective layout (proper-name
+  forms excluded).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Gesture trace collector</title>
+<style>
+  body { font: 16px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0;
+         color: #1a1a1a; background: #fafafa; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 12px; }
+  h1 { font-size: 20px; margin: 8px 0; }
+  button { font: inherit; padding: 10px 14px; border: 1px solid #888; border-radius: 8px;
+           background: #fff; cursor: pointer; }
+  button.primary { background: #185abc; color: #fff; border-color: #185abc; }
+  button.current { background: #e8f0fe; border-color: #185abc; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  #prompt { font-size: 34px; text-align: center; margin: 12px 0 2px; min-height: 44px;
+            font-weight: 600; letter-spacing: 0.02em; }
+  #statusline { min-height: 22px; text-align: center; }
+  .ok { color: #137333; } .bad { color: #b00020; }
+  .muted { color: #5f6368; font-size: 14px; }
+  code { background: #eee; padding: 1px 5px; border-radius: 4px; }
+  #board { position: relative; margin: 0 auto; touch-action: none;
+           user-select: none; -webkit-user-select: none; }
+  .key { position: absolute; box-sizing: border-box; border: 1px solid #9aa0a6;
+         border-radius: 6px; background: #fff; display: flex; align-items: center;
+         justify-content: center; font-size: 20px; color: #111; }
+  .key.spacer { background: #e8eaed; border-color: #c8cacc; }
+  #trace { position: absolute; left: 0; top: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Gesture trace collector</h1>
+
+  <section id="consent">
+    <p>This page collects swipe traces of prompted words on an on-screen keyboard, for
+    calibrating an offline Tatar/Russian gesture decoder.</p>
+    <p>Each kept record contains exactly: the prompt word, the trace resampled to 50 points
+    in key-radius units, per-point timing, the layout id, the screen density bucket, the
+    board size in pixels, and a random participant id shown on the next screen. The page has
+    no text fields: it never sees anything you type anywhere else.</p>
+    <p>Records stay in this browser's local storage and leave it only when you download them
+    yourself and send the file to the researchers. You can delete single records or all of
+    them at any time. The page makes no network requests — once it has loaded, you can
+    switch to airplane mode and everything keeps working.</p>
+    <div class="row">
+      <button id="agree" class="primary">Agree and start</button>
+    </div>
+  </section>
+
+  <section id="collector" hidden>
+    <div class="row">
+      <button id="lang-tt">Татарча</button>
+      <button id="lang-ru">Русский</button>
+      <span class="muted">participant <code id="pid"></code></span>
+      <button id="newid">new id</button>
+    </div>
+    <div id="prompt"></div>
+    <div id="statusline" class="muted">swipe the word through its letters, in one motion</div>
+    <div id="board"><canvas id="trace"></canvas></div>
+    <div class="row">
+      <span id="count" class="muted"></span>
+      <button id="skip">skip word</button>
+      <button id="undolast">delete last</button>
+      <button id="clear">discard all</button>
+      <button id="export" class="primary">download records (JSONL)</button>
+    </div>
+  </section>
+</div>
+
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+ * Key-grid geometry: the same model the app builds from its layout XML — rows of
+ * percent-width keys with a horizontal gap and side padding, computed in a
+ * 100 000-unit grid and scaled to the board's pixel width. The Tatar layout adds
+ * its extra row (ә ө ү җ ң һ) on top; both layouts put nine letters on the bottom
+ * letter row between two spacer keys (shift/delete in the app, inert here).
+ * ------------------------------------------------------------------------- */
+var GRID = 100000;
+var H_GAP = 1.739 / 100 * GRID;   // horizontal gap between keys
+var H_PAD = 0.870 / 100 * GRID;   // side padding
+var BASE_W = GRID - 2 * H_PAD + H_GAP;
+var RIGHT_EDGE = GRID - H_PAD;
+var ROW_PITCH = Math.round(113 * GRID / 1080); // 20%p of the reference keyboard height
+var KEY_H = Math.round(97 * GRID / 1080);      // pitch minus the vertical gap
+var TOP_PAD = Math.round(13 * GRID / 1080);
+
+function letterRow(letters, wPct) {
+  var out = [];
+  for (var i = 0; i < letters.length; i++) out.push([letters.charAt(i), wPct]);
+  return out;
+}
+function bottomRow() {
+  return [[null, 10.8]].concat(letterRow('ячсмитьбю', 8.711), [[null, 10.801]]);
+}
+
+var LAYOUTS = {
+  tt: {
+    rows: [
+      letterRow('әөүҗңһ', 16.667),
+      letterRow('йцукенгшщзх', 9.091),
+      letterRow('фывапролджэ', 9.091),
+      bottomRow(),
+    ],
+    prompts: ['белән', 'минем', 'миңа', 'өчен', 'түгел', 'моны', 'аның', 'алар', 'кирәк',
+              'нәрсә', 'синең', 'генә', 'гына', 'сиңа', 'идем', 'сезнең', 'монда', 'кеше',
+              'безнең', 'инде'],
+  },
+  ru: {
+    rows: [
+      letterRow('йцукенгшщзх', 9.091),
+      letterRow('фывапролджэ', 9.091),
+      bottomRow(),
+    ],
+    prompts: ['меня', 'тебя', 'было', 'есть', 'почему', 'очень', 'тебе', 'сегодня', 'этом',
+              'надо', 'когда', 'много', 'сказал', 'тому', 'больше', 'были', 'если', 'чтобы',
+              'лучше', 'хочу'],
+  },
+};
+
+/* The letter keys of [rows] with rectangle and center, the key radius (the smallest
+ * key half-extent basis: min over keys of min(width, height), as in the app) and the
+ * grid-space board height. */
+function buildGeometry(rows) {
+  var keys = [];
+  for (var r = 0; r < rows.length; r++) {
+    var x = H_PAD;
+    var top = TOP_PAD + r * ROW_PITCH;
+    for (var i = 0; i < rows[r].length; i++) {
+      var c = rows[r][i][0];
+      var pitch = rows[r][i][1] / 100 * BASE_W;
+      var w = pitch - H_GAP;
+      if (x + w > RIGHT_EDGE) w = RIGHT_EDGE - x;
+      keys.push({ c: c, left: x, top: top, right: x + w, bottom: top + KEY_H });
+      x += pitch;
+    }
+  }
+  var radius = Infinity;
+  for (var k = 0; k < keys.length; k++) {
+    if (!keys[k].c) continue;
+    var dim = Math.min(keys[k].right - keys[k].left, keys[k].bottom - keys[k].top);
+    if (dim < radius) radius = dim;
+  }
+  return { keys: keys, radius: radius, height: TOP_PAD + rows.length * ROW_PITCH };
+}
+
+function letterCenters(geometry) {
+  var map = {};
+  for (var k = 0; k < geometry.keys.length; k++) {
+    var key = geometry.keys[k];
+    if (!key.c) continue;
+    map[key.c] = { x: (key.left + key.right) / 2, y: (key.top + key.bottom) / 2 };
+  }
+  return map;
+}
+
+/* ---------------------------------------------------------------------------
+ * Resampling: the same 50-point arc-equidistant walk the app's recorder runs —
+ * both endpoints included, timestamps linearly interpolated along the arc,
+ * coordinates divided by the key radius and rounded to three decimals, per-point
+ * time deltas in whole milliseconds (the first point carries 0). A zero-length
+ * trace degenerates to the single point repeated with the duration spread evenly.
+ * ------------------------------------------------------------------------- */
+var SAMPLE_COUNT = 50;
+
+function resampleGesture(xs, ys, ts, keyRadius, n) {
+  if (n < 2 || xs.length === 0 || !(keyRadius > 0)) return null;
+  var size = xs.length;
+  var cum = [0];
+  var total = 0;
+  for (var i = 1; i < size; i++) {
+    var dx = xs[i] - xs[i - 1];
+    var dy = ys[i] - ys[i - 1];
+    total += Math.sqrt(dx * dx + dy * dy);
+    cum.push(total);
+  }
+  var ox = [], oy = [], ot = [];
+  if (total <= 0) {
+    var t0 = ts[0];
+    var span = ts[size - 1] - t0;
+    for (var a = 0; a < n; a++) {
+      ox.push(xs[0]);
+      oy.push(ys[0]);
+      ot.push(t0 + span * a / (n - 1));
+    }
+  } else {
+    var seg = 0;
+    for (var k = 0; k < n; k++) {
+      var d = total * k / (n - 1);
+      while (seg + 1 < size - 1 && cum[seg + 1] < d) seg++;
+      var segLen = cum[seg + 1] - cum[seg];
+      var frac = segLen > 0 ? (d - cum[seg]) / segLen : 0;
+      ox.push(xs[seg] + frac * (xs[seg + 1] - xs[seg]));
+      oy.push(ys[seg] + frac * (ys[seg + 1] - ys[seg]));
+      ot.push(ts[seg] + frac * (ts[seg + 1] - ts[seg]));
+    }
+  }
+  var dt = [0];
+  for (var m = 1; m < n; m++) dt.push(Math.max(0, Math.round(ot[m] - ot[m - 1])));
+  for (var q = 0; q < n; q++) {
+    ox[q] = Math.round(ox[q] / keyRadius * 1000) / 1000;
+    oy[q] = Math.round(oy[q] / keyRadius * 1000) / 1000;
+  }
+  return { x: ox, y: oy, dt: dt };
+}
+
+/* ---------------------------------------------------------------------------
+ * The decoder-free correctness gate: the trace starts on the prompt's first key,
+ * finishes on its last key and passes every letter's key in order (within one key
+ * radius of the center). Failed traces are not stored; the participant retries.
+ * ------------------------------------------------------------------------- */
+function gateTrace(tr, prompt, centers, radius) {
+  if (tr.x.length < 5) return 'too few samples — swipe through the letters';
+  if (tr.t[tr.t.length - 1] - tr.t[0] < 80) return 'too fast — swipe a little slower';
+  var chain = [];
+  for (var i = 0; i < prompt.length; i++) {
+    var c = centers[prompt.charAt(i)];
+    if (!c) return 'this word is not traceable on the layout';
+    chain.push(c);
+  }
+  var dStart = Math.hypot(tr.x[0] - chain[0].x, tr.y[0] - chain[0].y);
+  if (dStart > radius) return 'start on the first letter';
+  var last = chain.length - 1;
+  var dEnd = Math.hypot(tr.x[tr.x.length - 1] - chain[last].x,
+                        tr.y[tr.y.length - 1] - chain[last].y);
+  if (dEnd > 1.5 * radius) return 'finish on the last letter';
+  var j = 0;
+  for (var m = 0; m < chain.length; m++) {
+    var hit = false;
+    for (; j < tr.x.length; j++) {
+      if (Math.hypot(tr.x[j] - chain[m].x, tr.y[j] - chain[m].y) <= radius) {
+        hit = true;
+        j++;
+        break;
+      }
+    }
+    if (!hit) return 'the trace misses a letter';
+  }
+  return null;
+}
+
+/* The nearest standard dpi bucket, the same ladder the app recorder uses. */
+function densityBucket() {
+  var dpi = (window.devicePixelRatio || 1) * 160;
+  var buckets = [120, 160, 213, 240, 320, 480, 640];
+  var best = buckets[0];
+  for (var i = 0; i < buckets.length; i++) {
+    if (Math.abs(buckets[i] - dpi) < Math.abs(best - dpi)) best = buckets[i];
+  }
+  return best;
+}
+
+function randomParticipantId() {
+  var bytes = new Uint8Array(4);
+  (window.crypto || window.msCrypto).getRandomValues(bytes);
+  var hex = '';
+  for (var i = 0; i < bytes.length; i++) {
+    hex += ('0' + bytes[i].toString(16)).slice(-2);
+  }
+  return hex;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Page wiring (DOM only below; the functions above stay pure for testability). */
+/* ------------------------------------------------------------------------- */
+if (typeof document !== 'undefined') (function () {
+  var STORE_RECORDS = 'ggc.records';
+  var STORE_PID = 'ggc.participant';
+  var STORE_CONSENT = 'ggc.consent';
+
+  function loadRecords() {
+    try { return JSON.parse(localStorage.getItem(STORE_RECORDS) || '[]'); }
+    catch (e) { return []; }
+  }
+  function saveRecords(records) {
+    localStorage.setItem(STORE_RECORDS, JSON.stringify(records));
+  }
+
+  var state = {
+    lang: 'tt',
+    prompt: null,
+    pid: localStorage.getItem(STORE_PID),
+    records: loadRecords(),
+    trace: null,      // {id, x:[], y:[], t:[]}
+    geometry: null,
+    centers: null,
+    scale: 1,         // grid unit -> CSS px
+    boardW: 0,
+    boardH: 0,
+  };
+  if (!state.pid) {
+    state.pid = randomParticipantId();
+    localStorage.setItem(STORE_PID, state.pid);
+  }
+
+  var board = document.getElementById('board');
+  var canvas = document.getElementById('trace');
+  var promptEl = document.getElementById('prompt');
+  var statusEl = document.getElementById('statusline');
+  var countEl = document.getElementById('count');
+
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = cls || 'muted';
+  }
+
+  function nextPrompt() {
+    var pool = LAYOUTS[state.lang].prompts;
+    // Every pool word's letters all sit on base keys of its layout, so any draw is traceable.
+    state.prompt = pool[Math.floor(Math.random() * pool.length)];
+    promptEl.textContent = state.prompt;
+  }
+
+  function renderBoard() {
+    var geometry = buildGeometry(LAYOUTS[state.lang].rows);
+    state.geometry = geometry;
+    state.centers = letterCenters(geometry);
+    var width = Math.min(board.parentNode.clientWidth, 640);
+    var scale = width / GRID;
+    state.scale = scale;
+    state.boardW = width;
+    state.boardH = geometry.height * scale;
+    board.style.width = width + 'px';
+    board.style.height = state.boardH + 'px';
+    var olds = board.querySelectorAll('.key');
+    for (var i = 0; i < olds.length; i++) board.removeChild(olds[i]);
+    for (var k = 0; k < geometry.keys.length; k++) {
+      var key = geometry.keys[k];
+      var el = document.createElement('div');
+      el.className = key.c ? 'key' : 'key spacer';
+      el.style.left = key.left * scale + 'px';
+      el.style.top = key.top * scale + 'px';
+      el.style.width = (key.right - key.left) * scale + 'px';
+      el.style.height = (key.bottom - key.top) * scale + 'px';
+      if (key.c) el.textContent = key.c;
+      board.insertBefore(el, canvas);
+    }
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(state.boardH * dpr);
+    canvas.style.width = width + 'px';
+    canvas.style.height = state.boardH + 'px';
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+  }
+
+  function refreshCounts() {
+    var tt = 0, ru = 0;
+    for (var i = 0; i < state.records.length; i++) {
+      if (state.records[i].layout_id === 'tt') tt++;
+      else if (state.records[i].layout_id === 'ru') ru++;
+    }
+    countEl.textContent = 'kept: ' + state.records.length +
+      ' (tt: ' + tt + ', ru: ' + ru + ')';
+  }
+
+  function drawTrace(color) {
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, state.boardW, state.boardH);
+    var tr = state.trace;
+    if (!tr || tr.x.length === 0) return;
+    ctx.strokeStyle = color || '#185abc';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(tr.x[0], tr.y[0]);
+    for (var i = 1; i < tr.x.length; i++) ctx.lineTo(tr.x[i], tr.y[i]);
+    ctx.stroke();
+  }
+
+  function clearTraceSoon(color, then) {
+    drawTrace(color);
+    window.setTimeout(function () {
+      var ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, state.boardW, state.boardH);
+      if (then) then();
+    }, 220);
+  }
+
+  function boardPoint(e) {
+    var rect = board.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function finishTrace() {
+    var tr = state.trace;
+    state.trace = null;
+    if (!tr) return;
+    var radiusPx = state.geometry.radius * state.scale;
+    var problem = gateTrace(tr, state.prompt, gridCentersToPx(), radiusPx);
+    if (problem) {
+      setStatus(problem + ' — try again', 'bad');
+      clearTraceSoon('#b00020');
+      return;
+    }
+    var sample = resampleGesture(tr.x, tr.y, tr.t, radiusPx, SAMPLE_COUNT);
+    if (!sample) {
+      setStatus('the trace was not readable — try again', 'bad');
+      clearTraceSoon('#b00020');
+      return;
+    }
+    state.records.push({
+      participant: state.pid,
+      layout_id: state.lang,
+      prompt: state.prompt,
+      path_x: sample.x,
+      path_y: sample.y,
+      dt_ms: sample.dt,
+      density_bucket: densityBucket(),
+      board_w: Math.round(state.boardW),
+      board_h: Math.round(state.boardH),
+      gate_passed: true,
+    });
+    saveRecords(state.records);
+    refreshCounts();
+    setStatus('kept', 'ok');
+    clearTraceSoon('#137333', nextPrompt);
+  }
+
+  /* The gate and the resampler run in board CSS pixels; the centers map follows
+   * the current scale. */
+  function gridCentersToPx() {
+    var map = {};
+    for (var c in state.centers) {
+      if (Object.prototype.hasOwnProperty.call(state.centers, c)) {
+        map[c] = { x: state.centers[c].x * state.scale,
+                   y: state.centers[c].y * state.scale };
+      }
+    }
+    return map;
+  }
+
+  function onDown(e) {
+    if (state.trace) return;
+    var p = boardPoint(e);
+    state.trace = { id: e.pointerId, x: [p.x], y: [p.y], t: [e.timeStamp] };
+    try { board.setPointerCapture(e.pointerId); } catch (ignore) {}
+    e.preventDefault();
+  }
+  function onMove(e) {
+    var tr = state.trace;
+    if (!tr || e.pointerId !== tr.id) return;
+    var events = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    if (!events.length) events = [e];
+    for (var i = 0; i < events.length; i++) {
+      var p = boardPoint(events[i]);
+      tr.x.push(p.x);
+      tr.y.push(p.y);
+      tr.t.push(events[i].timeStamp);
+    }
+    drawTrace();
+    e.preventDefault();
+  }
+  function onUp(e) {
+    if (!state.trace || e.pointerId !== state.trace.id) return;
+    var p = boardPoint(e);
+    state.trace.x.push(p.x);
+    state.trace.y.push(p.y);
+    state.trace.t.push(e.timeStamp);
+    finishTrace();
+    e.preventDefault();
+  }
+  function onCancel(e) {
+    if (!state.trace || e.pointerId !== state.trace.id) return;
+    state.trace = null;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, state.boardW, state.boardH);
+    setStatus('interrupted — try again', 'bad');
+  }
+
+  function setLang(lang) {
+    state.lang = lang;
+    document.getElementById('lang-tt').className = lang === 'tt' ? 'current' : '';
+    document.getElementById('lang-ru').className = lang === 'ru' ? 'current' : '';
+    state.trace = null;
+    renderBoard();
+    nextPrompt();
+    setStatus('swipe the word through its letters, in one motion', 'muted');
+  }
+
+  function exportRecords() {
+    var lines = [];
+    for (var i = 0; i < state.records.length; i++) {
+      lines.push(JSON.stringify(state.records[i]));
+    }
+    var blob = new Blob([lines.join('\n') + (lines.length ? '\n' : '')],
+                        { type: 'application/jsonl' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'gesture-traces-' + state.pid + '-' +
+      new Date().toISOString().slice(0, 10) + '.jsonl';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  document.getElementById('agree').addEventListener('click', function () {
+    localStorage.setItem(STORE_CONSENT, '1');
+    document.getElementById('consent').hidden = true;
+    document.getElementById('collector').hidden = false;
+    setLang(state.lang);
+  });
+  document.getElementById('lang-tt').addEventListener('click', function () { setLang('tt'); });
+  document.getElementById('lang-ru').addEventListener('click', function () { setLang('ru'); });
+  document.getElementById('skip').addEventListener('click', nextPrompt);
+  document.getElementById('newid').addEventListener('click', function () {
+    state.pid = randomParticipantId();
+    localStorage.setItem(STORE_PID, state.pid);
+    document.getElementById('pid').textContent = state.pid;
+  });
+  document.getElementById('undolast').addEventListener('click', function () {
+    state.records.pop();
+    saveRecords(state.records);
+    refreshCounts();
+  });
+  document.getElementById('clear').addEventListener('click', function () {
+    if (!window.confirm('Discard all collected records?')) return;
+    state.records = [];
+    saveRecords(state.records);
+    refreshCounts();
+  });
+  document.getElementById('export').addEventListener('click', exportRecords);
+  window.addEventListener('resize', function () {
+    if (state.trace) { state.trace = null; }
+    if (!document.getElementById('collector').hidden) renderBoard();
+  });
+
+  document.getElementById('pid').textContent = state.pid;
+  if (!window.PointerEvent) {
+    setStatus('this browser has no pointer input — please use a current browser', 'bad');
+  } else {
+    board.addEventListener('pointerdown', onDown);
+    board.addEventListener('pointermove', onMove);
+    board.addEventListener('pointerup', onUp);
+    board.addEventListener('pointercancel', onCancel);
+  }
+  if (localStorage.getItem(STORE_CONSENT) === '1') {
+    document.getElementById('consent').hidden = true;
+    document.getElementById('collector').hidden = false;
+    setLang(state.lang);
+  }
+  refreshCounts();
+})();
+</script>
+</body>
+</html>
