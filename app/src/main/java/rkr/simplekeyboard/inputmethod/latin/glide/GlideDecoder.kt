@@ -43,6 +43,10 @@ import kotlin.math.sqrt
  *     only input). The confidence competes for the top-N; cheap fail-fast checks
  *     (frequency alone, then shape alone) skip the expensive channels when a candidate cannot
  *     reach the current k-th worst score.
+ *  4. The bigram channel ([GlideConstants.bigramRankPenalty]): when [decode] gets the committed
+ *     context word's successors, every candidate's confidence gains the per-rank factor before
+ *     the top-N comparison and every fail-fast bound scales by the candidate's own factor, so
+ *     the pruning stays exact under the channel.
  *
  * Scoring is one fused loop: the ideal path's arc-equidistant points are produced on the fly
  * by the resampler's segment walk (segment lengths cached by the path writer), and both
@@ -115,9 +119,17 @@ class GlideDecoder(
          */
         val frequencyExponent: Float = 0.25f,
         /**
-         * The bigram channel's per-rank penalty on the glide N-best: a successor of the previous
-         * committed word multiplies its confidence by rankPenalty^rank, an absent candidate ranks
-         * one past the last successor. 1f disables the channel (the context-free decode).
+         * The bigram channel's per-rank penalty (the SHARK2 language-model channel), applied to
+         * a candidate's score BEFORE the top-N insertion: the successor source stores the
+         * context word's successors in count order without counts, so the probability reads off
+         * the rank — a candidate matching successor rank r multiplies its confidence by
+         * rankPenalty^r (the Gaussian bump over that log-spaced ladder), and an unmatched
+         * candidate ranks one past the last successor. Every fail-fast bound scales by the
+         * candidate's own factor: the prune stays exact, a context-poor candidate needs a
+         * proportionally better shape and location, and a successor can enter the N-best from
+         * beyond the plain decode's cutoff. Matching is by key sequence — the gesture-path
+         * equivalence class — so an alias spelling of a successor matches too. 1f disables the
+         * channel (the context-free decode).
          */
         val bigramRankPenalty: Float = 3.0f,
     ) {
@@ -168,6 +180,13 @@ class GlideDecoder(
     // The extremity-pruning merge arms: 2 nearest start keys x 2 nearest end keys.
     private val mergeEnd = IntArray(constants.extremityNeighbors * constants.extremityNeighbors)
     private val mergeCursor = IntArray(constants.extremityNeighbors * constants.extremityNeighbors)
+    // The bigram channel's scratch, filled per decode: the context word's successors as key
+    // sequences, packed at MAX_POINTS stride (a word whose ideal path would exceed MAX_POINTS is
+    // never scored, so a longer successor needs no more room), and the penalty ladder,
+    // ladder[rank] = bigramRankPenalty^rank.
+    private val successorKeyPool = ByteArray(MAX_TRACKED_SUCCESSORS * GlideIdealPaths.MAX_POINTS)
+    private val successorKeyLengths = IntArray(MAX_TRACKED_SUCCESSORS)
+    private val contextLadder = FloatArray(MAX_TRACKED_SUCCESSORS + 1)
 
     // Test-only observability, worker-confined like the decode itself: candidates visited after
     // extremity pruning and candidates fully scored (the fail-fast checks skip the rest).
@@ -181,8 +200,12 @@ class GlideDecoder(
      * Decodes [path] into [out] (reset on entry) and returns the candidate count, best first.
      * Fewer than two path points, an empty geometry or an all-pruned candidate space yield 0,
      * and the strip shows nothing for the gesture.
+     *
+     * [successors] arms the bigram channel: the committed context word's successors, best first.
+     * An empty list (or [GlideConstants.bigramRankPenalty] at 1) is the context-free decode with
+     * bit-identical scores.
      */
-    fun decode(path: GlidePath, out: GlideResult): Int {
+    fun decode(path: GlidePath, out: GlideResult, successors: List<String> = emptyList()): Int {
         out.reset()
         lastCandidateCount = 0
         lastScoredCount = 0
@@ -232,6 +255,39 @@ class GlideDecoder(
             (1.0 / (2.0 * constants.shapeStd * constants.shapeStd)).toFloat()
         val locationInvTwoSigmaSq = (1.0 / (2.0 * locationStd * locationStd)).toFloat()
         val maxChannelProduct = shapeFactor * locationFactor
+
+        // The bigram channel: the successors as key sequences (the same lowercase-then-key fold
+        // the index build applies), plus the penalty ladder. A successor with an unmappable
+        // letter or an over-long key sequence keeps its rank slot but matches nothing — such a
+        // word is never an indexed candidate. A list past [MAX_TRACKED_SUCCESSORS] truncates;
+        // the absent rank is the tracked count.
+        var contextRankCount = 0
+        if (constants.bigramRankPenalty > 1f) {
+            for (word in successors) {
+                if (contextRankCount == MAX_TRACKED_SUCCESSORS) break
+                var length = 0
+                var mappable = true
+                var offset = 0
+                while (offset < word.length) {
+                    val codePoint = word.codePointAt(offset)
+                    offset += Character.charCount(codePoint)
+                    val key = geometry.keyIndexOfLetter(Character.toLowerCase(codePoint))
+                    if (key < 0 || length == GlideIdealPaths.MAX_POINTS) {
+                        mappable = false
+                        break
+                    }
+                    successorKeyPool[contextRankCount * GlideIdealPaths.MAX_POINTS + length] =
+                        key.toByte()
+                    length++
+                }
+                successorKeyLengths[contextRankCount] = if (mappable && length > 0) length else -1
+                contextRankCount++
+            }
+        }
+        contextLadder[0] = 1f
+        for (rank in 1..contextRankCount) {
+            contextLadder[rank] = contextLadder[rank - 1] * constants.bigramRankPenalty
+        }
 
         val startCount = geometry.findClosestKeys(path.firstX, path.firstY, startKeys)
         val endCount = geometry.findClosestKeys(path.lastX, path.lastY, endKeys)
@@ -285,6 +341,7 @@ class GlideDecoder(
                 index, entry, topCount, shapeFactor, locationFactor,
                 shapeInvTwoSigmaSq, locationInvTwoSigmaSq, maxChannelProduct,
                 userDurationMs, normativeSpeed, locationCutoff, userLength, lengthInvTwoSigmaSq,
+                contextRankCount,
             )
         }
 
@@ -314,15 +371,45 @@ class GlideDecoder(
         locationCutoff: Float,
         userLength: Float,
         lengthInvTwoSigmaSq: Float,
+        contextRankCount: Int,
     ): Int {
         val samples = constants.sampleCount
         val frequencyRatio = index.frequencyAt(entry).toDouble() / index.maxFrequency
         val frequencyWeight =
             (constants.frequencyWeight * Math.pow(frequencyRatio, constants.frequencyExponent.toDouble())).toFloat()
+        // The bigram channel: the candidate's context factor, ladder[rank] with rank = the
+        // first successor whose key sequence equals the candidate's (an unmatched candidate
+        // ranks one past the last successor). 1 when the channel is off, and a factor of 1 is
+        // the exact identity of every bound below.
+        val contextFactor: Float
+        if (contextRankCount == 0) {
+            contextFactor = 1f
+        } else {
+            val start = index.keySeqStart(entry)
+            val keyLength = index.keySeqEnd(entry) - start
+            var rank = contextRankCount
+            for (slot in 0 until contextRankCount) {
+                if (successorKeyLengths[slot] != keyLength) continue
+                var position = 0
+                while (position < keyLength &&
+                    successorKeyPool[slot * GlideIdealPaths.MAX_POINTS + position].toInt() ==
+                    index.keySeqAt(start + position)
+                ) {
+                    position++
+                }
+                if (position == keyLength) {
+                    rank = slot
+                    break
+                }
+            }
+            contextFactor = contextLadder[rank]
+        }
         // Fail-fast #1: even a perfect shape and location cannot lift this candidate past the
-        // current k-th worst when its frequency weight is too low.
+        // current k-th worst when its frequency weight is too low. The bound scales by the
+        // candidate's context factor, so a context-poor candidate drops out proportionally
+        // earlier.
         if (topCount == TOP_N &&
-            maxChannelProduct * frequencyWeight <= 1f / topScores[TOP_N - 1]
+            maxChannelProduct * frequencyWeight <= contextFactor / topScores[TOP_N - 1]
         ) {
             return topCount
         }
@@ -335,12 +422,14 @@ class GlideDecoder(
             index, entry, topCount, doubled, shapeFactor, locationFactor,
             shapeInvTwoSigmaSq, locationInvTwoSigmaSq, frequencyWeight, samples,
             userDurationMs, normativeSpeed, locationCutoff, userLength, lengthInvTwoSigmaSq,
+            contextFactor,
         )
         if (doubled && index.isTwinlessAt(entry)) {
             val plain = scoreVariant(
                 index, entry, topCount, false, shapeFactor, locationFactor,
                 shapeInvTwoSigmaSq, locationInvTwoSigmaSq, frequencyWeight, samples,
                 userDurationMs, normativeSpeed, locationCutoff, userLength, lengthInvTwoSigmaSq,
+                contextFactor,
             )
             if (plain < best) best = plain
         }
@@ -394,6 +483,7 @@ class GlideDecoder(
         locationCutoff: Float,
         userLength: Float,
         lengthInvTwoSigmaSq: Float,
+        contextFactor: Float,
     ): Float {
         val points = GlideIdealPaths.write(
             index, entry, geometry, loopedOnly, idealX, idealY, idealStats, idealSegLens,
@@ -427,13 +517,15 @@ class GlideDecoder(
         val centroidY = (idealHeight / 2f + idealStats[2]) * invSide
         // Early-bail limit for the shape channel: the partial sums below are monotone
         // nondecreasing, so once the running distance passes the distance at which the
-        // Gaussian can no longer beat the k-th worst (even with a perfect location), the
-        // loop's rest cannot change the verdict. Float compare against a Double-derived
-        // limit is exact enough — the bail fires strictly past the true threshold.
+        // Gaussian can no longer beat the k-th worst (even with a perfect location, the
+        // candidate's context factor already in the bound), the loop's rest cannot change the
+        // verdict. Float compare against a Double-derived limit is exact enough — the bail
+        // fires strictly past the true threshold.
         var shapeLimit = Float.POSITIVE_INFINITY
         if (topCount == TOP_N) {
             val needed =
-                1.0 / (topScores[TOP_N - 1].toDouble() * variantLocationFactor * frequencyWeight)
+                contextFactor.toDouble() /
+                    (topScores[TOP_N - 1].toDouble() * variantLocationFactor * frequencyWeight)
             if (needed >= shapeFactor) return Float.POSITIVE_INFINITY
             shapeLimit = (constants.shapeStd *
                 Math.sqrt(-2.0 * Math.log(needed / shapeFactor))).toFloat()
@@ -509,14 +601,15 @@ class GlideDecoder(
         // Fail-fast #2: shape already known; even a perfect location cannot qualify. The widened
         // factor is the candidate's own (a wider sigma lowers the peak).
         if (topCount == TOP_N &&
-            shapeProbability * variantLocationFactor * frequencyWeight <= 1f / topScores[TOP_N - 1]
+            shapeProbability * variantLocationFactor * frequencyWeight <=
+            contextFactor / topScores[TOP_N - 1]
         ) {
             return Float.POSITIVE_INFINITY
         }
         if (topCount == TOP_N) {
             // Location check: the fused walk has already accumulated the full location sum,
             // so this bound is checked once here instead of inside the loop.
-            val needed = 1.0 /
+            val needed = contextFactor.toDouble() /
                 (topScores[TOP_N - 1].toDouble() * shapeProbability * frequencyWeight)
             if (needed >= variantLocationFactor) return Float.POSITIVE_INFINITY
         }
@@ -530,7 +623,7 @@ class GlideDecoder(
         val lengthDelta = userLength - totalLength
         val lengthBoost =
             Math.exp((-lengthDelta * lengthDelta * lengthInvTwoSigmaSq).toDouble()).toFloat()
-        return 1f / (shapeProbability * locationProbability * frequencyWeight * lengthBoost)
+        return contextFactor / (shapeProbability * locationProbability * frequencyWeight * lengthBoost)
     }
 
     /** The one-sided Gaussian probability of [distance]; Float wrapper over Math.exp. */
@@ -542,6 +635,13 @@ class GlideDecoder(
     companion object {
         /** Candidates kept by a decode; the strip displays the leading three. */
         const val TOP_N = 8
+
+        /**
+         * Successor words the bigram channel tracks per decode; a longer successor list
+         * truncates. At the shipped penalty the truncated ranks carry a factor past any score
+         * ratio the N-best spans.
+         */
+        private const val MAX_TRACKED_SUCCESSORS = 8
 
         private val SQRT_2_PI = sqrt(2.0 * Math.PI)
     }
