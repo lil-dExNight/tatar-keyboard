@@ -166,6 +166,6 @@ class RussianSentStartAssetTest {
         // rebuilds it.
         const val EXPECTED_RECORD_COUNT = 64
         const val EXPECTED_ASSET_SHA256 =
-            "989222b7a6cfbe4ac82eaaf1672413c3c00d871d0b55e5fd9b376a13a94f132c"
+            "dbc78d75eddc2a50d82d8a445acdbf53cd48587382c427b28117914439e8c186"
     }
 }

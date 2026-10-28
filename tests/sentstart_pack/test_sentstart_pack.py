@@ -445,7 +445,7 @@ class RussianLanguageTest(unittest.TestCase):
 
 
 # The shipped Russian asset is pinned the same way.
-EXPECTED_RU_ASSET_SHA256 = "989222b7a6cfbe4ac82eaaf1672413c3c00d871d0b55e5fd9b376a13a94f132c"
+EXPECTED_RU_ASSET_SHA256 = "dbc78d75eddc2a50d82d8a445acdbf53cd48587382c427b28117914439e8c186"
 EXPECTED_RU_RECORD_COUNT = 64
 
 

@@ -9,7 +9,7 @@ described in [ASSET-FORMATS.md](ASSET-FORMATS.md).
 |---|---|---|
 | `dictionaries/*.tdict.zlib` | `scripts/rebuild_assets.py` (runs `dict_accept.py pack`) | release 1.8.4 baseline dictionaries, `data/dictionary/dict-accept/`, Tatar word forms |
 | `bigrams/*.tatbigr.zlib` | `scripts/rebuild_assets.py` (runs `bigram_asset_pack.py pack`) | Leipzig sentence corpora, conversational training files, the fresh dictionaries |
-| `dictionaries/*_sentstart_v1.txt` | `scripts/sentstart_pack.py` | Leipzig sentence corpora, the bundled dictionary |
+| `dictionaries/*_sentstart_v1.txt` | `scripts/sentstart_pack.py` | Leipzig sentence corpora, the bundled dictionary; the Russian table also takes the conversational training file |
 | `emoji/emoji_set_v1.txt`, `emoji_skin_v1.txt` | `scripts/emoji_pack.py`, `scripts/emoji_skin_pack.py` | Unicode Emoji 15.1 `emoji-test.txt` |
 | `emoji/emoji_search_v1.txt` | `scripts/emoji_search_pack.py` | CLDR 44 annotations (ru, en), `scripts/emoji_search_tt_extra.txt` |
 | `emoji/emoji_suggest_v1.txt` | `scripts/emoji_suggest_pack.py` | `scripts/emoji_suggest_data.tsv` |
@@ -187,8 +187,8 @@ python3 scripts/sentstart_pack.py build --language tat \
     --output app/src/main/assets/dictionaries/tatar_sentstart_v1.txt
 ```
 
-For the Russian sentence-start table, use `--language rus` with the three Russian corpora listed
-in the table's header.
+For the Russian sentence-start table, use `--language rus` with the three Russian Leipzig corpora
+plus `rus_conv_thinned60-sentences.txt`, as listed in the table's header.
 
 ## Equivalence checks
 

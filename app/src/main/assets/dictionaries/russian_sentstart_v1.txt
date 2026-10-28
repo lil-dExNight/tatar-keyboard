@@ -2,9 +2,12 @@
 #
 # Source: sentence-initial tokens of the Leipzig Corpora Collection Russian corpora
 # rus_news_2022_1M, rus_news_2019_1M and rus_wikipedia_2021_1M
-# (https://wortschatz.uni-leipzig.de/en/download/Russian).
-# License: Creative Commons Attribution 4.0 International (CC BY 4.0),
-# https://creativecommons.org/licenses/by/4.0/ -- see NOTICE.txt beside this file.
+# (https://wortschatz.uni-leipzig.de/en/download/Russian) and of the conversational
+# training stream (deduplicated Tatoeba + OpenSubtitles Russian lines, thinned to
+# every 60th unique line).
+# License: the Leipzig part is Creative Commons Attribution 4.0 International
+# (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/; Tatoeba is CC BY 2.0 FR;
+# OpenSubtitles publishes no license grant -- see NOTICE.txt beside this file.
 #
 # Pipeline: the first whitespace token of every sentence, hugging punctuation
 # stripped (the dict_tokens rule), normalized exactly like the dictionary pipeline
@@ -12,67 +15,67 @@
 # Russian dictionary -- the table can never offer a word the keyboard does not know.
 # Rows: word<TAB>sentence-initial occurrences, sorted by count descending, word
 # ascending.
-в	349125
-по	81782
-на	69779
-он	43589
-это	42802
-с	39182
-но	36697
-как	34330
-а	34177
-после	32953
-и	32519
-также	27702
-при	26825
-однако	25349
-об	25029
-я	22378
-если	22037
-для	21099
-мы	20870
-кроме	20845
-за	18958
-так	18340
-у	17783
-они	16950
-к	16748
-ранее	16432
-сейчас	16353
-она	15226
-во	13928
-все	13518
-не	12750
-его	12306
-напомним	11979
-когда	11074
-поэтому	10453
-сегодня	8560
-до	8526
-из	8392
-что	8110
-согласно	7982
-президент	7336
-тем	7141
-всего	6949
-там	6869
-таким	6739
-о	6664
-этот	6502
-глава	6449
-чтобы	6015
-тогда	5866
-среди	5804
-затем	5779
-несмотря	5770
-еще	5747
-например	5714
-здесь	5697
-теперь	5543
-ну	5384
-их	5288
-эти	5266
-вот	5133
-то	5060
-есть	4974
-именно	4843
+в	361613
+я	99971
+по	83687
+на	74912
+это	66437
+он	61071
+и	60896
+а	59751
+но	56718
+как	43971
+с	43575
+мы	38281
+после	34119
+если	33887
+у	32003
+ты	30872
+также	27872
+не	27858
+при	27201
+так	27029
+однако	25663
+об	25183
+она	25115
+они	24675
+для	22857
+кроме	21305
+за	20891
+что	18905
+к	18606
+сейчас	18153
+да	17866
+все	17670
+вы	17666
+ну	17207
+ранее	16471
+когда	16038
+во	14583
+его	14323
+поэтому	12137
+напомним	11982
+мне	11440
+о	10505
+вот	10436
+сегодня	9938
+до	9507
+из	9184
+нет	9082
+тогда	8657
+там	8643
+теперь	8496
+этот	8274
+согласно	8133
+чтобы	7744
+президент	7490
+тем	7480
+здесь	7450
+то	7304
+всего	7223
+может	7130
+таким	6915
+только	6817
+еще	6591
+есть	6556
+глава	6507

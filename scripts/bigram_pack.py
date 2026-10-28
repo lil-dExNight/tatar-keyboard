@@ -239,6 +239,41 @@ def count_pairs(
     return table
 
 
+def count_continuations(
+    paths: Sequence[Path],
+    vocabulary: frozenset[str],
+    alphabet: frozenset[str] = coverage.TATAR_ALPHABET,
+) -> tuple[dict[str, int], dict[str, int], int]:
+    """Kneser-Ney continuation counts: one pass over the training sentences.
+
+    Returns ``(successor_continuations, head_continuations, continuation_total)``:
+    ``successor_continuations[w]`` is the number of distinct in-vocabulary words that [w]
+    follows (N₁₊(•,w)), ``head_continuations[h]`` the number of distinct in-vocabulary
+    successors of [h] (N₁₊(h,•)), and the total is the number of distinct in-vocabulary
+    pairs. Pair eligibility is the ``count_pairs`` rule. Distinctness makes the counts
+    invariant to a corpus file listed more than once (a count weight), so callers
+    deduplicate the paths.
+    """
+    words = sorted(vocabulary)
+    index = {word: position for position, word in enumerate(words)}
+    width = len(words)
+    pairs: set[int] = set()
+    for path in paths:
+        for sentence in iter_sentences(path):
+            tokens = normalized_tokens(sentence, alphabet)
+            for head, success in iter_pairs(tokens, vocabulary):
+                pairs.add(index[head] * width + index[success])
+    successor_continuations: dict[str, int] = {}
+    head_continuations: dict[str, int] = {}
+    for key in pairs:
+        head_position, success_position = divmod(key, width)
+        head_word = words[head_position]
+        head_continuations[head_word] = head_continuations.get(head_word, 0) + 1
+        success_word = words[success_position]
+        successor_continuations[success_word] = successor_continuations.get(success_word, 0) + 1
+    return successor_continuations, head_continuations, len(pairs)
+
+
 def blob_bytes(words: Iterable[str]) -> int:
     """Measured UTF-8 size of a word blob."""
     return sum(len(word.encode("utf-8")) for word in words)

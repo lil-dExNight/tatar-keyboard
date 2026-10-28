@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Build a sentence-start suggestion table (tatar/russian_sentstart_v1.txt).
 
-Input: Leipzig sentence files (CC BY 4.0, not committed) and the bundled
-dictionary of the same ``--language``. A record is the first token of a
+Input: Leipzig sentence files (CC BY 4.0, not committed), optionally the
+conversational training file of the same language (the Russian table includes
+it; the Tatar one does not), and the bundled dictionary of the same
+``--language``. A record is the first token of a
 sentence, edge punctuation stripped, accepted by ``normalize_word`` and present
 in the dictionary. Output: a ``#`` attribution header, then ``word<TAB>freq``
 rows by frequency descending, then word; the same inputs give the same bytes.
@@ -62,9 +64,12 @@ HEADER_LINES_RUS = (
     "#",
     "# Source: sentence-initial tokens of the Leipzig Corpora Collection Russian corpora",
     "# rus_news_2022_1M, rus_news_2019_1M and rus_wikipedia_2021_1M",
-    "# (https://wortschatz.uni-leipzig.de/en/download/Russian).",
-    "# License: Creative Commons Attribution 4.0 International (CC BY 4.0),",
-    "# https://creativecommons.org/licenses/by/4.0/ -- see NOTICE.txt beside this file.",
+    "# (https://wortschatz.uni-leipzig.de/en/download/Russian) and of the conversational",
+    "# training stream (deduplicated Tatoeba + OpenSubtitles Russian lines, thinned to",
+    "# every 60th unique line).",
+    "# License: the Leipzig part is Creative Commons Attribution 4.0 International",
+    "# (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/; Tatoeba is CC BY 2.0 FR;",
+    "# OpenSubtitles publishes no license grant -- see NOTICE.txt beside this file.",
     "#",
     "# Pipeline: the first whitespace token of every sentence, hugging punctuation",
     "# stripped (the dict_tokens rule), normalized exactly like the dictionary pipeline",

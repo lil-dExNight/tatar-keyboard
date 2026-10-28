@@ -295,7 +295,7 @@ class RuSuggestEvalTest {
         private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 20_556
         private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 283
         private const val PIN_STRIP_EMPTY_PREFIX_PCT = "1.3767"
-        private const val PIN_SENTSTART_TOP3_HITS = 31
+        private const val PIN_SENTSTART_TOP3_HITS = 187
 
         private lateinit var evalLines: List<String>
         private lateinit var uniqueWords: List<String>

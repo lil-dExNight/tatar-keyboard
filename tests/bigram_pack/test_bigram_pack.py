@@ -171,6 +171,52 @@ class HeldOutDenominatorTest(unittest.TestCase):
         self.assertEqual(3, configuration.events)
 
 
+class ContinuationCountsTest(unittest.TestCase):
+    """count_continuations: distinct in-vocabulary pairs over the training sentences."""
+
+    VOCABULARY = frozenset({"әни", "өйгә", "кайтты", "китап", "матур"})
+
+    def test_distinct_pairs_not_occurrences(self) -> None:
+        with TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            train = directory / "train-sentences.txt"
+            train.write_text(
+                # distinct: (әни,өйгә), (өйгә,кайтты), (өйгә,китап), (кайтты,матур),
+                # (матур,китап), (китап,матур); repetitions do not count twice
+                "1\tәни өйгә кайтты\n"
+                "2\tәни өйгә китап\n"
+                "3\tәни өйгә кайтты матур китап матур\n",
+                encoding="utf-8",
+            )
+            successors, heads, total = bigram_pack.count_continuations(
+                [train], self.VOCABULARY
+            )
+
+        self.assertEqual(6, total)
+        self.assertEqual({"өйгә": 1, "кайтты": 1, "китап": 2, "матур": 2}, successors)
+        self.assertEqual(
+            {"әни": 1, "өйгә": 2, "кайтты": 1, "матур": 1, "китап": 1}, heads
+        )
+
+    def test_out_of_vocabulary_and_self_pairs_are_not_continuations(self) -> None:
+        with TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            train = directory / "train-sentences.txt"
+            train.write_text(
+                "1\tәни чит кайтты\n"  # чит is outside the vocabulary
+                "2\tәни әни кайтты\n",  # the self-pair is dropped
+                encoding="utf-8",
+            )
+            successors, heads, total = bigram_pack.count_continuations(
+                [train], self.VOCABULARY
+            )
+
+        # Line 1's pairs touch an out-of-vocabulary word; line 2 drops the self-pair.
+        self.assertEqual({"кайтты": 1}, successors)
+        self.assertEqual({"әни": 1}, heads)
+        self.assertEqual(1, total)
+
+
 class EndToEndMatrixTest(unittest.TestCase):
     """A whole run on a corpus of a few sentences, through the real shipped-asset reader."""
 

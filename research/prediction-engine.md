@@ -189,23 +189,39 @@ train90 file counted ten times, about a tenth of the training tokens; keystroke 
 +0.38 pp, no metric regression). Glot500 is rejected in both roles; the tooling stays for the
 next source.
 
-**P4 — Pack-time Kneser-Ney successor re-ranking.** Rank each head's kept successors by the
-interpolated KN score (continuation counts from one extra pass; discount and λ fixed from
-leave-one-out on the training side, never on eval); schema and runtime unchanged — zero
-bytes, zero milliseconds. Gate: ≥ +0.3 pp unconditional next-word top-3. Honestly uncertain
-(successors are already count-ordered); cheap to falsify. Decide first whether continuation
-counts cover in-vocabulary pairs only or all token transitions, and record the choice.
+**P4 — Pack-time Kneser-Ney successor re-ranking.** Measured and rejected. The discount was
+fixed by leave-one-out on the training stream before any eval run (grid 0.1–0.9 by 0.1,
+argmax 0.2 Tatar / 0.4 Russian; continuation counts from one extra pass, in-vocabulary pairs
+only — forced by schema 3 storing dictionary indices); the simulation
+(`research/corpus/sim_kn_rerank.py`) re-ranks each shipped head's four packed successors, the
+sets unchanged. Tatar: +0.02 pp chain top-3 (paired CI95 [−0.05, +0.11]) against the +0.3 pp
+bar, chain top-1 exactly unchanged; Russian: +0.00 pp ([−0.07, +0.07]), top-1 +0.02 pp
+[0.00, +0.07]. The mechanism engaged — 2 728 Tatar heads had their top-3 order permuted,
+625 changed their first successor, 55 promoted the packed fourth to first — but the promoted
+candidates are not the eval's successors: of the 92 Tatar eval pairs whose true successor
+sits at packed position 4 (the 2.12 pp oracle ceiling) the re-rank captured one. Successors
+are already count-ordered, and the continuation bonus re-ranks low-count tails the eval
+never rewards. Rejected; reopening needs a different objective, not another discount.
 
 **P5 — Continuation-count fallback pool.** Replace the raw-frequency fallback pool with
 top-N by continuation count N₁₊(•,w) (a small shipped text asset). Gate: ≥ +0.3 pp
 unconditional top-3 on the composite chain metric. Risk: high-context particles
 crowding out rarer correct words — review the produced list as product, not only as metric.
 
-**P6 — Bigram head expansion at K=4, funded by successor singleton cutoffs.** The head
-expansion was measured but not shipped (byte discipline); the byte argument is weaker now.
-Gate: ≥ +0.3 pp unconditional over current pins, within the compressed table budget. Lesson
-from the last round: surgical conversational heads beat blanket frequency heads — domain
-match beats head count.
+**P6 — Bigram head expansion at K=4, funded by successor singleton cutoffs.** Measured and
+rejected. Surgical conversational heads (frequency rank below the head cutoff, ≥ 5
+conversational occurrences, and — the new requirement — at least one successor pair attested
+in the conversational stream under the packer's pairing rule; generator
+`research/corpus/surgical_heads.py`, gate measured with `research/corpus/chain_delta.py`),
+funded by cutting successor singleton pairs (count 1: 2 407 pairs, 851 of them at the
+invisible fourth position, eval exposure exactly one hit) at the current compressed-table
+budget: +0.09 pp chain top-3 (paired CI95 [−0.02, +0.21]) at +500 heads, against the +0.3 pp
+bar; top-1 +0.07 pp [0.00, +0.16]. The byte budget binds the head count and the CI upper
+bound at the budget's edge stays under the bar. The blanket control (+500 frequency heads at
+equal bytes) gained +0.00 pp [−0.07, +0.07]: surgical heads do beat blanket frequency heads —
+domain match beats head count, as the last round's lesson said — but the conversational tail
+below the floor is too thin (the candidates carry 5–9 stream occurrences each) to convert.
+Rejected within the current budget; a bigger budget is a different experiment, not a rerun.
 
 **P7 — Letter-set language detection for companion priority.** When the active prefix is
 impossible in the active language (contains `ә җ ң ө ү һ` under ru, or `щ` under tt) and its
