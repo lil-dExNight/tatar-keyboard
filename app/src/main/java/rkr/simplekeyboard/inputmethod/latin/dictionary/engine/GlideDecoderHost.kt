@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 import rkr.simplekeyboard.inputmethod.latin.glide.CompositeGlideInventory
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideBigramRerank
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideComputer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGeometrySink
@@ -58,12 +59,13 @@ internal class GlideDecoderHost(
     private var decoderGeometry: GlideKeyGeometry? = null
     private var decoderStructureVersion: Long = 0L
     private val result = GlideResult()
+    // Scratch for the bigram channel's rerank (see GlideBigramRerank).
+    private val rerankAdjusted = FloatArray(GlideDecoder.TOP_N)
 
     /**
-     * The context word's successors for the bigram channel: the learned pairs ranked above the
-     * bundled table's successors (merged by the owning computer). The provider answers empty
-     * until the table attaches, which switches the channel off. Called on the engine worker,
-     * once per decode with a context word.
+     * The bigram table's successors of a context word, count-descending. Set by the owning
+     * computer; the provider answers empty until the table attaches, which switches the channel
+     * off. Called on the engine worker.
      */
     var bigramSuccessorsProvider: (String) -> List<String> = { emptyList() }
 
@@ -98,19 +100,18 @@ internal class GlideDecoderHost(
             decoderGeometry = current
             decoderStructureVersion = snapshot.structureVersion
         }
-        // The bigram channel: the committed context word's successors score the candidates
-        // in-decode. A missing or unknown context word (no successors) decodes context-free.
-        val successors = if (contextWord.isNullOrEmpty()) {
-            emptyList()
-        } else {
-            try {
+        val count = active.decode(path, result)
+        if (count == 0) return emptyList()
+        // The bigram channel: rerank the N-best against the committed context word. A missing or
+        // unknown context word (the table has no such head) leaves the decode order untouched.
+        if (!contextWord.isNullOrEmpty() && count > 1) {
+            val successors = try {
                 bigramSuccessorsProvider(contextWord)
             } catch (_: RuntimeException) {
                 emptyList()
             }
+            GlideBigramRerank.rerank(result, successors, glideConstants.bigramRankPenalty, rerankAdjusted)
         }
-        val count = active.decode(path, result, successors)
-        if (count == 0) return emptyList()
         val words = ArrayList<String>(result.count)
         for (slot in 0 until result.count) {
             words.add(result.words[slot]!!)

@@ -116,44 +116,6 @@ internal object GlideConfusionPairs {
     }
 
     /**
-     * The bigram channel applied post-hoc to a decoded N-best: each candidate's confidence is
-     * multiplied by [rankPenalty]^rank (rank = the candidate's position in [successors], an
-     * absent candidate one past the last) and [result]'s slots are reordered by the adjusted
-     * scores, stable on ties. [adjusted] is caller scratch of at least [GlideResult.count]
-     * elements. The production channel scores in-decode (see [GlideDecoder]); this arm serves
-     * the measurement surfaces that compare against the post-hoc shape. A no-op for fewer than
-     * two candidates, no successors, or a penalty below 1.
-     */
-    fun blanketRerank(result: GlideResult, successors: List<String>, rankPenalty: Float, adjusted: FloatArray) {
-        val count = result.count
-        if (count <= 1 || rankPenalty <= 1f || successors.isEmpty()) return
-        for (slot in 0 until count) {
-            val rank = successors.indexOf(result.words[slot]).let { if (it < 0) successors.size else it }
-            var penalty = 1f
-            repeat(rank) { penalty *= rankPenalty }
-            adjusted[slot] = result.scores[slot] * penalty
-        }
-        // Stable insertion sort over the slots (count <= TOP_N): ties keep the pre-channel order.
-        var i = 1
-        while (i < count) {
-            val adjustedI = adjusted[i]
-            val word = result.words[i]
-            val score = result.scores[i]
-            var j = i - 1
-            while (j >= 0 && adjusted[j] > adjustedI) {
-                adjusted[j + 1] = adjusted[j]
-                result.words[j + 1] = result.words[j]
-                result.scores[j + 1] = result.scores[j]
-                j--
-            }
-            adjusted[j + 1] = adjustedI
-            result.words[j + 1] = word
-            result.scores[j + 1] = score
-            i++
-        }
-    }
-
-    /**
      * Paired bootstrap of the top-1 gain ([variant] minus [baseline]), in percentage points: the
      * rows are resampled with replacement from a deterministic SplitMix64 stream; the interval is
      * the 2.5/97.5 percentiles of the resampled gain.

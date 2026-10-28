@@ -14,7 +14,8 @@ the plain path length, so the looped variant buys no extra slack), a hard locati
 keeps a widened sigma from resurrecting underflowed candidates, a length channel (unnormalized
 Gaussian bump over the path-length mismatch), per-language scoring constants selected at engine
 start (Tatar defaults, Russian overrides), and a bigram channel reranking the N-best against the
-previous committed word through the bundled table's successor ranks (SHARK2 Eq. 12–13).
+previous committed word through the successor ranks of the bundled table merged with the learned
+personal pairs, personal ranks first (SHARK2 Eq. 12–13).
 Commit on lift with a context-aware leading space; alternates in
 the strip with tap-to-replace; one backspace undoes the whole word. Doubled letters score
 against a looped ideal path, with a twinless free pass. Aliases map keyless letters to base
@@ -319,6 +320,30 @@ matched-domain language model is about +5 pp of real-gesture top-1, against +0.3
 synthetic Tatar context rows — the shipped channel's thin synthetic gain is the bundled table's
 domain mismatch, not the mechanism's, which is what G13's real tt/ru collection and any future
 bigram improvement would unlock.
+
+#### In-decode channel scoring (the B3 variant, measured rejection)
+
+The pre-registered gate: with the context factor applied at candidate insertion inside the
+decode (every fail-fast bound scaled by the candidate's own factor, so a successor can enter
+the top-8 from beyond the plain cutoff), held-out context-row top-1 must beat the shipped
+post-hoc blanket by >= +1.0 pp with the paired bootstrap CI excluding 0; top-3 non-inferior;
+p95 and the zero-allocation budget hold. The opportunity pre-measurement passed (2.12 % of eval
+pairs carry the truth at packed successor rank 4), and the engagement is real: at penalty 10^6
+thirteen percent of held-out context rows change top-8 membership.
+
+The falsification is structural. On every context row of the bench, whenever the truth is among
+the served successors (26 of 313 rows), it is already inside the plain decode's top-8 — the
+served-and-beyond-the-cutoff class is empty. The post-hoc rerank therefore already reaches
+every candidate the successor list can influence, and the in-decode differential's ceiling is
+zero rows. Train surface: in-decode equals the blanket at every swept penalty from 1.25 to 16
+and loses one row at 100. Held-out: identical 86.90 % (0.00 pp, CI [0.00, 0.00]). Verdict:
+**rejected**; the runtime change was reverted and the post-hoc channel stays. What landed from
+the variant: the channel's successor source now merges the learned personal pairs ahead of the
+bundled table (unit-gated on the precedence; its accuracy effect is not measurable on the
+synthetic bench, which carries no personal data). The finding that outlives it: the bundled
+table's served successors never sit beyond the plain N-best on this bench, so deeper context
+headroom needs a wider or count-carrying successor source (a schema-4 table on the G13 corpus),
+not a different insertion point.
 
 **G6 — Endpoint pruning n=2→3.** Measured on real gestures (ASK study): +3 pp sensitivity,
 some p95 headroom spent. Cheap to A/B in the harness with an endpoint-noise gesture class;

@@ -44,13 +44,9 @@ import kotlin.math.sqrt
  *
  * The memo gates live alongside: [gatesG4SpeedAdaptationOnTheRealDictionary] (the speed channel
  * beats the unadapted decoder on the fast-persona class), [gatesG8PerLanguageConstants] (the
- * per-language constants never lose to the shared set on either language), the B3 cluster —
- * [gatesB3InDecodeContextChannel] (the in-decode bigram channel beats the post-hoc blanket arm
- * on held-out context rows, top-3 non-inferior), [gatesB3NonContextRowsAreThePlainDecode]
- * (context-free rows are bit-identical under the shipped constants),
- * [gatesB3DecodeLatencyWithTheChannel] (the channel-armed decode stays inside the G2 budget)
- * and [gateB3ZeroAllocationsWithTheChannel] (the channel adds no allocation to the decode
- * path) — and the B1 pair [gatesB1AliasDoubledClassOnTheRussianBench] /
+ * per-language constants never lose to the shared set on either language),
+ * [gatesG5BigramChannel] (the bigram channel beats the plain decode on held-out context rows)
+ * and the B1 pair [gatesB1AliasDoubledClassOnTheRussianBench] /
  * [gatesB1RussianHeldOutIsImproveOrFlat] (alias-folded words decode without a loop; the Russian
  * held-out split is improve-or-flat).
  * The tuning surfaces print and never assert.
@@ -411,19 +407,14 @@ class GlideRecoveryCalibrationTest {
         rendered.append('\n')
     }
 
-    private fun decodePath(
-        path: GeneratedPath,
-        decoder: GlideDecoder,
-        reusable: GlidePath,
-        successors: List<String> = emptyList(),
-    ): Int {
+    private fun decodePath(path: GeneratedPath, decoder: GlideDecoder, reusable: GlidePath): Int {
         reusable.clear()
         for (i in path.xs.indices) {
             reusable.addPoint(
                 path.xs[i].toFloat(), path.ys[i].toFloat(), path.ts[i].toFloat(),
             )
         }
-        return decoder.decode(reusable, decodeResult, successors)
+        return decoder.decode(reusable, decodeResult)
     }
 
     private val decodeResult = GlideResult()
@@ -996,46 +987,47 @@ class GlideRecoveryCalibrationTest {
         )
     }
 
-    // ---- B3: the bigram channel, scored in-decode. ----
-
-    /** The bundled table's successors of [context]: the channel's oracle, as in production. */
-    private fun bundledSuccessors(context: String): List<String> = try {
-        tatarBigrams!!.predict(ImmutableUtf8Prefix.copyOf(context.toByteArray(Charsets.UTF_8)))
-    } catch (_: RuntimeException) {
-        emptyList()
-    }
+    // ---- G5: the bigram channel on the glide N-best. ----
 
     /**
-     * Top-1 on the context rows of one split with the in-decode channel at [rankPenalty] (1f:
-     * off — the plain decode). The oracle is the bundled Tatar bigram table, as in production.
+     * Top-1 on the context rows of one split with the channel at [rankPenalty] (1f: off — the
+     * plain decode). The oracle is the bundled Tatar bigram table, as in production.
      */
     private fun contextRowTop1(rankPenalty: Float, heldOut: Boolean): Pair<Double, Int> {
+        val bigrams = tatarBigrams!!
         val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
         val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
-        val decoder = channelDecoder(rankPenalty)
+        val decoder = sharedDecoder()
         val reusablePath = GlidePath(1024)
+        val adjusted = FloatArray(GlideDecoder.TOP_N)
         var top1 = 0
         var count = 0
         for (path in paths) {
             if (path.rowContext.isEmpty()) continue
             if (isHeldOut(path.rowWord) != heldOut) continue
             count++
-            val found = decodePath(path, decoder, reusablePath, bundledSuccessors(path.rowContext))
+            val found = decodePath(path, decoder, reusablePath)
             if (found <= 0) continue
+            val successors = try {
+                bigrams.predict(
+                    ImmutableUtf8Prefix.copyOf(path.rowContext.toByteArray(Charsets.UTF_8)),
+                )
+            } catch (_: RuntimeException) {
+                emptyList()
+            }
+            GlideBigramRerank.rerank(decodeResult, successors, rankPenalty, adjusted)
             if (decodeResult.words[0] == path.rowWord) top1++
         }
         return (top1 * 100.0 / count) to count
     }
 
     /**
-     * The B3 tuning surface: in-decode context-row top-1 on the TRAIN split over the rank-penalty
-     * grid (the 1f row is the plain decode — the channel switched off). The shipped penalty is
-     * chosen on this surface, never on the held-out split; the gate is
-     * [gatesB3InDecodeContextChannel]. Diagnostic only — it prints, it does not assert.
+     * The G5 tuning surface: context-row top-1 on the TRAIN split over the rank-penalty grid.
+     * Diagnostic only; the gate is [gatesG5BigramChannel].
      */
     @Test
     fun tuningSurfaceBigramChannelOnTheTrainSplit() {
-        println("Glide P7-12 bigram channel (train context rows, in-decode top-1 %):")
+        println("Glide P7-12 bigram channel (train context rows, top-1 %):")
         for (penalty in listOf(1.0f, 1.25f, 1.5f, 2.0f, 3.0f, 4.0f)) {
             val (top1, count) = contextRowTop1(penalty, heldOut = false)
             println("  rankPenalty=%4.2f top1=%s%% (n=%d)".format(java.util.Locale.ROOT, penalty, fmt(top1), count))
@@ -1043,229 +1035,22 @@ class GlideRecoveryCalibrationTest {
     }
 
     /**
-     * The B3 gate: on the HELD-OUT context rows the in-decode channel (the shipped rank penalty)
-     * must beat the post-hoc blanket arm by at least [B3_TOP1_GAIN_MIN_PP] of top-1 with the
-     * paired bootstrap CI of the gain excluding 0, and its top-3 must not regress against the
-     * blanket arm. The blanket arm replays the post-hoc shape over the plain decode's frozen
-     * N-best ([GlideConfusionPairs.blanketRerank]); context-free rows are covered by
-     * [gatesB3NonContextRowsAreThePlainDecode].
+     * The G5 gate: on the HELD-OUT context rows the channel (the shipped rank penalty) must beat
+     * the plain decode's top-1. Non-context rows never see the channel (no context word), so they
+     * are unchanged by construction — [gatesG1AndG2OnTheRealDictionary] covers them.
      */
     @Test
-    fun gatesB3InDecodeContextChannel() {
-        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
-        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
-        val plain = channelDecoder(1f)
-        val inDecode = channelDecoder(GlideDecoder.GlideConstants.TATAR.bigramRankPenalty)
-        val reusablePath = GlidePath(1024)
-        val reused = GlideResult()
-        val adjusted = FloatArray(GlideDecoder.TOP_N)
-        var count = 0
-        var blanketTop1 = 0
-        var inDecodeTop1 = 0
-        var blanketTop3 = 0
-        var inDecodeTop3 = 0
-        val blanketMarks = ArrayList<Boolean>()
-        val inDecodeMarks = ArrayList<Boolean>()
-        for (path in paths) {
-            if (path.rowContext.isEmpty()) continue
-            if (!isHeldOut(path.rowWord)) continue
-            count++
-            val successors = bundledSuccessors(path.rowContext)
-            // The blanket arm: the plain decode's frozen N-best, reordered post-hoc.
-            decodePath(path, plain, reusablePath)
-            reused.reset()
-            for (slot in 0 until decodeResult.count) {
-                reused.words[slot] = decodeResult.words[slot]
-                reused.scores[slot] = decodeResult.scores[slot]
-            }
-            reused.count = decodeResult.count
-            GlideConfusionPairs.blanketRerank(
-                reused, successors, GlideDecoder.GlideConstants.TATAR.bigramRankPenalty, adjusted,
-            )
-            val blanketHit1 = reused.count > 0 && reused.words[0] == path.rowWord
-            var blanketHit3 = blanketHit1
-            for (slot in 1 until minOf(3, reused.count)) {
-                if (reused.words[slot] == path.rowWord) blanketHit3 = true
-            }
-            // The in-decode arm: the same row decoded with the channel armed.
-            val found = decodePath(path, inDecode, reusablePath, successors)
-            val inDecodeHit1 = found > 0 && decodeResult.words[0] == path.rowWord
-            var inDecodeHit3 = inDecodeHit1
-            for (slot in 1 until minOf(3, found)) {
-                if (decodeResult.words[slot] == path.rowWord) inDecodeHit3 = true
-            }
-            blanketMarks.add(blanketHit1)
-            inDecodeMarks.add(inDecodeHit1)
-            if (blanketHit1) blanketTop1++
-            if (inDecodeHit1) inDecodeTop1++
-            if (blanketHit3) blanketTop3++
-            if (inDecodeHit3) inDecodeTop3++
-        }
-        val gain = (inDecodeTop1 - blanketTop1) * 100.0 / count
-        val ci = GlideConfusionPairs.pairedGainCi(
-            inDecodeMarks.toBooleanArray(), blanketMarks.toBooleanArray(),
-        )
+    fun gatesG5BigramChannel() {
+        val (without, count) = contextRowTop1(1.0f, heldOut = true)
+        val (with, _) = contextRowTop1(GlideDecoder.GlideConstants.TATAR.bigramRankPenalty, heldOut = true)
         println(
-            "Glide P7-12 in-decode channel held-out: n=$count " +
-                "top1_blanket=${fmt(blanketTop1 * 100.0 / count)}% " +
-                "top1_indecode=${fmt(inDecodeTop1 * 100.0 / count)}% " +
-                "(${fmt(gain)} pp, CI [${fmt(ci[0])}, ${fmt(ci[1])}]) " +
-                "top3_blanket=${fmt(blanketTop3 * 100.0 / count)}% " +
-                "top3_indecode=${fmt(inDecodeTop3 * 100.0 / count)}%",
+            "Glide P7-12 bigram channel held-out: top1_without=${fmt(without)}% " +
+                "top1_with=${fmt(with)}% (n=$count)",
         )
         assertTrue(
-            "the in-decode channel must beat the blanket arm by >= $B3_TOP1_GAIN_MIN_PP pp of " +
-                "held-out context-row top-1 (${fmt(gain)} pp)",
-            gain >= B3_TOP1_GAIN_MIN_PP,
-        )
-        assertTrue(
-            "the paired bootstrap CI of the top-1 gain must exclude 0 " +
-                "[${fmt(ci[0])}, ${fmt(ci[1])}]",
-            ci[0] > 0.0,
-        )
-        assertTrue(
-            "top-3 must not regress against the blanket arm ($inDecodeTop3 vs $blanketTop3 of $count)",
-            inDecodeTop3 >= blanketTop3,
-        )
-    }
-
-    /**
-     * The B3 side clause: rows that carry no context decode bit-identically with the shipped
-     * (channel-capable) constants and with the channel switched off — the channel touches a
-     * decode only through the context word's successors.
-     */
-    @Test
-    fun gatesB3NonContextRowsAreThePlainDecode() {
-        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
-        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
-        val plain = channelDecoder(1f)
-        val shipped = channelDecoder(GlideDecoder.GlideConstants.TATAR.bigramRankPenalty)
-        val reusablePath = GlidePath(1024)
-        var checked = 0
-        for (path in paths) {
-            if (path.rowContext.isNotEmpty()) continue
-            decodePath(path, plain, reusablePath)
-            val expectedCount = decodeResult.count
-            val expectedWords = decodeResult.words.copyOf()
-            val expectedScores = decodeResult.scores.copyOf()
-            decodePath(path, shipped, reusablePath)
-            assertEquals("candidate count of a context-free row", expectedCount, decodeResult.count)
-            for (slot in 0 until expectedCount) {
-                assertEquals("word of slot $slot", expectedWords[slot], decodeResult.words[slot])
-                assertEquals(
-                    "score bits of slot $slot",
-                    expectedScores[slot].toBits(), decodeResult.scores[slot].toBits(),
-                )
-            }
-            checked++
-        }
-        assertTrue("the set must carry context-free rows", checked > 0)
-    }
-
-    /**
-     * The B3 latency clause: the channel-armed decode (the successor encoding plus the
-     * per-candidate factor) stays inside the G2 wall-clock budget. Same host rule as G2:
-     * asserted on developer hosts, skipped on shared CI runners; the measurement prints either
-     * way, and on-device latency is asserted by GlideDeviceInstrumentationTest.
-     */
-    @Test
-    fun gatesB3DecodeLatencyWithTheChannel() {
-        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
-        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
-        val decoder = channelDecoder(GlideDecoder.GlideConstants.TATAR.bigramRankPenalty)
-        val reusablePath = GlidePath(1024)
-        // Warmup (the shared index, the JIT, the channel paths) on the train context rows.
-        for (path in paths) {
-            if (path.rowContext.isEmpty() || isHeldOut(path.rowWord)) continue
-            decodePath(path, decoder, reusablePath, bundledSuccessors(path.rowContext))
-        }
-        val timings = ArrayList<Long>()
-        for (path in paths) {
-            if (path.rowContext.isEmpty() || !isHeldOut(path.rowWord)) continue
-            val successors = bundledSuccessors(path.rowContext)
-            val started = System.nanoTime()
-            decodePath(path, decoder, reusablePath, successors)
-            timings.add(System.nanoTime() - started)
-        }
-        val sorted = timings.sorted()
-        val p50 = percentileNanos(sorted, 0.50)
-        val p95 = percentileNanos(sorted, 0.95)
-        val max = sorted.last() / 1_000_000.0
-        println(
-            "Glide P7-12 channel-armed decode: n=${timings.size} " +
-                "decodeMs_p50=${fmt(p50)} decodeMs_p95=${fmt(p95)} decodeMs_max=${fmt(max)} " +
-                "G2(p95<=2ms)=${if (p95 <= G2_P95_MS) "PASS" else "FAIL"}",
-        )
-        if (System.getenv("CI") == null) {
-            assertTrue("channel-armed decode p95 ${fmt(p95)}ms over the 2ms host gate", p95 <= G2_P95_MS)
-        }
-    }
-
-    /**
-     * The B3 allocation clause: the channel-armed decode allocates like the context-free one —
-     * the successor encoding and the per-candidate factor run on decoder scratch, so the result
-     * strings remain the only allocation of the decode path (the same bounds as G3).
-     */
-    @Test
-    fun gateB3ZeroAllocationsWithTheChannel() {
-        val bean = ManagementFactory.getThreadMXBean() as? ThreadMXBean
-        assumeTrue(bean != null && bean.isThreadAllocatedMemorySupported)
-        val threadBean = bean!!
-        threadBean.isThreadAllocatedMemoryEnabled = true
-        val threadId = Thread.currentThread().id
-
-        val decoder = channelDecoder(GlideDecoder.GlideConstants.TATAR.bigramRankPenalty)
-        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
-        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
-        val reusablePath = GlidePath(1024)
-        // A context row the table serves successors for: the channel fires on it.
-        val contextRow = requireNotNull(
-            paths.firstOrNull {
-                it.rowContext.isNotEmpty() && bundledSuccessors(it.rowContext).isNotEmpty()
-            },
-        ) { "the set must carry a context row with successors" }
-        val successors = bundledSuccessors(contextRow.rowContext)
-        // The all-pruned path: a long zigzag whose length prunes every bucket it touches.
-        val zigzag = GlidePath(1024)
-        var x = 0f
-        for (i in 0 until 512) {
-            zigzag.addPoint(x, if (i % 2 == 0) 0f else 50_000f, i * 8f)
-            x += 400f
-        }
-
-        fun perCallBytes(pruned: Boolean, iterations: Int): Long {
-            val before = threadBean.getThreadAllocatedBytes(threadId)
-            for (i in 0 until iterations) {
-                if (pruned) decoder.decode(zigzag, decodeResult, successors)
-                else decodePath(contextRow, decoder, reusablePath, successors)
-            }
-            val after = threadBean.getThreadAllocatedBytes(threadId)
-            return (after - before) / iterations
-        }
-
-        // Warm the shared index, the JIT, the channel paths and the result slots.
-        perCallBytes(pruned = false, iterations = 200)
-        perCallBytes(pruned = true, iterations = 200)
-
-        val prunedBytes = perCallBytes(pruned = true, iterations = 2_000)
-        assertEquals("the zigzag path returned candidates", 0, decodeResult.count)
-        assertTrue(
-            "channel-armed machinery bytes/call on an all-pruned path: $prunedBytes",
-            prunedBytes <= 8L,
-        )
-
-        val wordBytes = perCallBytes(pruned = false, iterations = 2_000)
-        assertTrue("the context row returned no candidates", decodeResult.count > 0)
-        // The only allocation of the decode path: each surfaced word materializes a String plus
-        // its decoded backing array (the bound carries headroom). The machinery itself is pinned
-        // at zero by the pruned path above.
-        assertTrue(
-            "channel-armed bytes/call with results: $wordBytes (bound = ${GlideDecoder.TOP_N} strings)",
-            wordBytes <= GlideDecoder.TOP_N * 256L,
-        )
-        println(
-            "Glide P7-12 B3 allocations: pruned_bytes_per_call=$prunedBytes " +
-                "result_bytes_per_call=$wordBytes (results materialize <= ${GlideDecoder.TOP_N} strings)",
+            "the bigram channel must improve held-out context-row top-1 " +
+                "(${fmt(with)}% vs ${fmt(without)}% without)",
+            with > without,
         )
     }
 
@@ -1316,7 +1101,7 @@ class GlideRecoveryCalibrationTest {
         return result
     }
 
-    /** The post-hoc channel arm applied to a copy of the snapshot when [fire] holds. */
+    /** The bigram channel applied to a copy of the snapshot when [fire] holds. */
     private fun applyChannel(
         snap: ContextSnapshot,
         fire: Boolean,
@@ -1330,7 +1115,7 @@ class GlideRecoveryCalibrationTest {
             reused.scores[slot] = snap.scores[slot]
         }
         reused.count = snap.count
-        if (fire) GlideConfusionPairs.blanketRerank(reused, snap.successors, penalty, adjusted)
+        if (fire) GlideBigramRerank.rerank(reused, snap.successors, penalty, adjusted)
     }
 
     /** Top-1 hit of [reused]'s current order against the snapshot's word. */
@@ -1692,10 +1477,6 @@ class GlideRecoveryCalibrationTest {
         private const val G1_TOP1_MIN = 35.0
         private const val G2_P95_MS = 2.0
 
-        // The B3 gate: the in-decode channel's held-out top-1 margin over the post-hoc blanket
-        // arm, in percentage points (the paired bootstrap CI of the gain must also exclude 0).
-        private const val B3_TOP1_GAIN_MIN_PP = 1.0
-
         // The B1 gates: the alias_doubled class floor on the Russian bench, and the pre-fix
         // Russian held-out values the improve-or-flat guard compares against (pinned from the
         // pre-fix tree's measurement).
@@ -1746,27 +1527,9 @@ class GlideRecoveryCalibrationTest {
         private fun sharedDecoder(): GlideDecoder {
             if (sharedDecoder == null) {
                 sharedDecoder = GlideDecoder(geometry, TdictGlideInventory(realIndex!!))
-                sharedDecoder!!.preloadIndex(sharedWordIndex())
             }
             return sharedDecoder!!
         }
-
-        private var sharedWordIndex: GlideWordIndex? = null
-
-        /** The Tatar word index, built once and preloaded into every decoder arm. */
-        private fun sharedWordIndex(): GlideWordIndex {
-            sharedWordIndex?.let { return it }
-            return GlideWordIndex.build(TdictGlideInventory(realIndex!!), geometry).also {
-                sharedWordIndex = it
-            }
-        }
-
-        /** A decoder at [rankPenalty] over the shared index (the channel's sweep and gate arms). */
-        private fun channelDecoder(rankPenalty: Float): GlideDecoder =
-            GlideDecoder(
-                geometry, TdictGlideInventory(realIndex!!),
-                GlideDecoder.GlideConstants(bigramRankPenalty = rankPenalty),
-            ).also { it.preloadIndex(sharedWordIndex()) }
 
         private fun loadDictionary(spec: DictionaryArtifactSpec): Pair<TdictPrefixIndex, List<String>> {
             val asset = locate(

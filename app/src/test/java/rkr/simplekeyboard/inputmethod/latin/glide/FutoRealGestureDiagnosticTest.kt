@@ -26,9 +26,9 @@ import java.io.File
  * successors in count order, the same shape the bundled schema-3 table stores, with the record's
  * own pair decremented out) and each record whose target word follows another token of its
  * prompt gets that token as its context. On those records the printout compares the plain
- * decode, the in-decode channel (the shipped mechanism), the post-hoc blanket arm and the
- * pair-conditional variant (confusion pairs mined from the lexicon's ideal paths — see
- * GlideConfusionPairs — with the calibration surface's selected firing rule and penalty).
+ * decode, the blanket bigram channel and the pair-conditional variant (confusion pairs mined
+ * from the lexicon's ideal paths — see GlideConfusionPairs — with the calibration surface's
+ * selected firing rule and penalty).
  */
 class FutoRealGestureDiagnosticTest {
 
@@ -118,7 +118,10 @@ class FutoRealGestureDiagnosticTest {
         // same frozen N-best.
         val snapshots = ArrayList<Triple<Array<String?>, FloatArray, Int>>(records.size)
         for ((_, coords) in records) {
-            fillPath(path, coords)
+            path.clear()
+            for (index in 0 until coords.size / 3) {
+                path.addPoint(coords[index * 3], coords[index * 3 + 1], coords[index * 3 + 2])
+            }
             val count = decoder.decode(path, result)
             val words = arrayOfNulls<String>(count)
             val scores = FloatArray(count)
@@ -177,12 +180,9 @@ class FutoRealGestureDiagnosticTest {
         // construction and each record's own prompt voted in it, so the record's own pair is
         // decremented out (leave-one-out); identical prompts from other records stay — the slice
         // reads as a ceiling of the mechanism on real gestures, not a deployable estimate. The
-        // in-decode arm re-decodes the record with the channel armed by that record's successors
-        // (the shipped mechanism); the blanket arm replays the post-hoc shape over the frozen
-        // plain N-best. The confusion pairs are mined from the lexicon's ideal paths; the firing
-        // rule and the conditional penalty are the calibration surface's. The blanket15 arm
-        // (always fire at the conditional penalty) separates the firing condition from the
-        // penalty strength.
+        // confusion pairs are mined from the lexicon's ideal paths; the firing rule and the
+        // conditional penalty are the calibration surface's. The blanket15 arm (always fire at the
+        // conditional penalty) separates the firing condition from the penalty strength.
         val pairCounts = HashMap<String, HashMap<String, Int>>()
         for (tokens in sentences) {
             for (i in 0 until tokens.size - 1) {
@@ -201,12 +201,10 @@ class FutoRealGestureDiagnosticTest {
         var contextCount = 0
         var fired = 0
         var plainContextTop1 = 0
-        var inDecodeContextTop1 = 0
         var blanketContextTop1 = 0
         var blanket15ContextTop1 = 0
         var pairContextTop1 = 0
         val plainMarks = ArrayList<Boolean>()
-        val inDecodeMarks = ArrayList<Boolean>()
         val blanketMarks = ArrayList<Boolean>()
         val blanket15Marks = ArrayList<Boolean>()
         val pairMarks = ArrayList<Boolean>()
@@ -222,20 +220,14 @@ class FutoRealGestureDiagnosticTest {
                 .map { it.first }
             plainMarks.add(count > 0 && words[0] == word)
             if (plainMarks.last()) plainContextTop1++
-            // The in-decode arm re-decodes the record: the channel can surface a successor the
-            // plain N-best never held, which the post-hoc arms below cannot see.
-            fillPath(path, records[i].second)
-            val inDecodeCount = decoder.decode(path, reused, successors)
-            inDecodeMarks.add(inDecodeCount > 0 && reused.words[0] == word)
-            if (inDecodeMarks.last()) inDecodeContextTop1++
             refill(reused, words, scores, count)
-            GlideConfusionPairs.blanketRerank(
+            GlideBigramRerank.rerank(
                 reused, successors, GlideDecoder.GlideConstants.TATAR.bigramRankPenalty, adjusted,
             )
             blanketMarks.add(reused.count > 0 && reused.words[0] == word)
             if (blanketMarks.last()) blanketContextTop1++
             refill(reused, words, scores, count)
-            GlideConfusionPairs.blanketRerank(
+            GlideBigramRerank.rerank(
                 reused, successors, GlideRecoveryCalibrationTest.PAIR_RANK_PENALTY, adjusted,
             )
             blanket15Marks.add(reused.count > 0 && reused.words[0] == word)
@@ -246,7 +238,7 @@ class FutoRealGestureDiagnosticTest {
             if (fire) fired++
             refill(reused, words, scores, count)
             if (fire) {
-                GlideConfusionPairs.blanketRerank(
+                GlideBigramRerank.rerank(
                     reused, successors, GlideRecoveryCalibrationTest.PAIR_RANK_PENALTY, adjusted,
                 )
             }
@@ -254,17 +246,9 @@ class FutoRealGestureDiagnosticTest {
             if (pairMarks.last()) pairContextTop1++
         }
         if (contextCount > 0) {
-            val inDecodeGain = (inDecodeContextTop1 - plainContextTop1) * 100.0 / contextCount
-            val inDecodeVsBlanket = (inDecodeContextTop1 - blanketContextTop1) * 100.0 / contextCount
             val pairGain = (pairContextTop1 - plainContextTop1) * 100.0 / contextCount
             val blanketGain = (blanketContextTop1 - plainContextTop1) * 100.0 / contextCount
             val blanket15Gain = (blanket15ContextTop1 - plainContextTop1) * 100.0 / contextCount
-            val ciInDecode = GlideConfusionPairs.pairedGainCi(
-                inDecodeMarks.toBooleanArray(), plainMarks.toBooleanArray(),
-            )
-            val ciInDecodeVsBlanket = GlideConfusionPairs.pairedGainCi(
-                inDecodeMarks.toBooleanArray(), blanketMarks.toBooleanArray(),
-            )
             val ciPair = GlideConfusionPairs.pairedGainCi(
                 pairMarks.toBooleanArray(), plainMarks.toBooleanArray(),
             )
@@ -280,28 +264,16 @@ class FutoRealGestureDiagnosticTest {
             )
             println(
                 "FUTO context top1: plain=${percent(plainContextTop1, contextCount)}% " +
-                    "indecode=${percent(inDecodeContextTop1, contextCount)}% " +
-                    "(${signed(inDecodeGain)} pp, CI [${signed(ciInDecode[0])}, ${signed(ciInDecode[1])}]) " +
                     "blanket=${percent(blanketContextTop1, contextCount)}% " +
                     "(${signed(blanketGain)} pp, CI [${signed(ciBlanket[0])}, ${signed(ciBlanket[1])}]) " +
                     "blanket@cond_penalty=${percent(blanket15ContextTop1, contextCount)}% " +
                     "(${signed(blanket15Gain)} pp) " +
                     "pair=${percent(pairContextTop1, contextCount)}% " +
                     "(${signed(pairGain)} pp, CI [${signed(ciPair[0])}, ${signed(ciPair[1])}]) " +
-                    "indecode_vs_blanket ${signed(inDecodeVsBlanket)} pp " +
-                    "CI [${signed(ciInDecodeVsBlanket[0])}, ${signed(ciInDecodeVsBlanket[1])}] " +
                     "pair_vs_blanket15 CI [${signed(ciPairVsBlanket15[0])}, ${signed(ciPairVsBlanket15[1])}]",
             )
         } else {
             println("FUTO context slice: no record carries an in-prompt context token")
-        }
-    }
-
-    /** Refills [path] with one record's scaled coordinates for a re-decode. */
-    private fun fillPath(path: GlidePath, coords: FloatArray) {
-        path.clear()
-        for (index in 0 until coords.size / 3) {
-            path.addPoint(coords[index * 3], coords[index * 3 + 1], coords[index * 3 + 2])
         }
     }
 

@@ -86,12 +86,11 @@ internal class CompositePrefixComputer(
     GlideIndexReleaser, EmptyPrefixProber {
 
     init {
-        // The glide bigram channel scores candidates in-decode against the context word's
-        // successors: the learned pairs rank above the bundled table's successors (the prefix
-        // merge's personal-over-dictionary convention), a duplicate keeps its personal rank, and
-        // the raw table answers, not the merged NEXT_WORD list. The provider runs on the engine
-        // worker, once per decode; a missing or broken source answers empty and the channel
-        // stays off.
+        // The glide bigram channel reranks the N-best against the context word's successors:
+        // the learned pairs rank above the bundled table's successors (the prefix merge's
+        // personal-over-dictionary convention), a duplicate keeps its personal rank, and the raw
+        // table answers, not the merged NEXT_WORD list. The provider runs on the engine worker,
+        // inside the decode; a missing or broken source answers empty and the channel stays off.
         glideHost?.bigramSuccessorsProvider = { contextWord ->
             val source = bigramSource ?: runPendingBigramAttach()
             val bundled = if (source == null) {
