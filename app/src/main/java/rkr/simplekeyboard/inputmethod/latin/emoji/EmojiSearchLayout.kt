@@ -19,9 +19,18 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 /**
  * The parts of [EmojiSearchView] geometry and state that can go wrong without a crash, kept
  * Android-free so they run on the plain JVM (the same split as the panel and [EmojiPanelState]):
- * caret position, hint position, whether there is a query, and the measured height.
+ * caret position, hint position, whether there is a query, the measured height, and the two-row
+ * result band's position <-> cell mapping.
  */
 internal object EmojiSearchLayout {
+
+    /**
+     * The band's row count while there is a query: two rows double the visible results without
+     * taking the query row or the letters keyboard away. Results fill the band column by column
+     * (a column is one cell per row), so the first columns hold the best matches and horizontal
+     * scrolling brings the next column pair in.
+     */
+    const val RESULT_ROWS = 2
 
     /**
      * X of the caret: the right edge of the drawn query and nothing else. The caret follows the
@@ -52,8 +61,31 @@ internal object EmojiSearchLayout {
     fun showsResultBand(queryText: String): Boolean = hasQuery(queryText)
 
     /**
-     * Height the view asks for: the query row always, the result band only while there is a query.
+     * Height the view asks for: the query row always, the result band only while there is a
+     * query. The band is [RESULT_ROWS] rows of [resultRowPx].
      */
-    fun contentHeight(queryRowPx: Int, resultBandPx: Int, queryText: String): Int =
-        if (showsResultBand(queryText)) queryRowPx + resultBandPx else queryRowPx
+    fun contentHeight(queryRowPx: Int, resultRowPx: Int, queryText: String): Int =
+        if (showsResultBand(queryText)) queryRowPx + resultRowPx * RESULT_ROWS else queryRowPx
+
+    /** The column a result position sits in: positions fill the band column by column. */
+    fun resultColumn(position: Int): Int = position / RESULT_ROWS
+
+    /** The row a result position sits in within its column. */
+    fun resultRow(position: Int): Int = position % RESULT_ROWS
+
+    /** The result position of the cell at ([column], [row]). */
+    fun resultPosition(column: Int, row: Int): Int = column * RESULT_ROWS + row
+
+    /** The number of columns [resultCount] results occupy; the last one may hold one cell. */
+    fun resultColumnCount(resultCount: Int): Int = (resultCount + RESULT_ROWS - 1) / RESULT_ROWS
+
+    /** The first column the band shows at [scrollXPx]; never negative. */
+    fun firstVisibleColumn(scrollXPx: Int, cellPx: Int): Int = (scrollXPx / cellPx).coerceAtLeast(0)
+
+    /**
+     * The widest scroll offset that still shows content: the band never scrolls past its last
+     * column. Zero while every column fits the view.
+     */
+    fun maxScrollX(resultCount: Int, cellPx: Int, widthPx: Int): Int =
+        (resultColumnCount(resultCount) * cellPx - widthPx).coerceAtLeast(0)
 }

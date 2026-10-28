@@ -26,11 +26,12 @@ import org.w3c.dom.Element
 
 /**
  * The one-handed (compact) mode: [OneHandedMode] scales the key grid to 85% of the keyboard
- * width and docks it to the chosen side, and the freed strip on the other side stays dead and
- * background-colored.
+ * width and docks it to the chosen side, and the freed strip on the other side stays
+ * background-colored and free of key hitboxes, answering only the exit handle
+ * (see [OneHandedExitHandleTest]).
  *
  * The geometry math (scale, dock paddings, the fifth-row floor, left/right symmetry) is pure and
- * tested directly; the wiring (the pref's path into the keyboard builder, the dead strip's hitbox
+ * tested directly; the wiring (the pref's path into the keyboard builder, the strip's hitbox
  * caps, the full-width strip and panel) is pinned at the source level — this project's JVM suite
  * runs without Robolectric on purpose.
  */
@@ -237,7 +238,7 @@ class OneHandedModeTest {
     }
 
     @Test
-    fun theDockIsGeometryOnlyAndTheStripStaysDead() {
+    fun theDockIsGeometryOnlyAndTheStripKeepsNoKeyHitbox() {
         val builder = java("rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardBuilder.java")
         val attrs = builder.substringAfter("private void parseKeyboardAttributes(")
             .substringBefore("private void parseKeyboardContent(")
@@ -246,7 +247,8 @@ class OneHandedModeTest {
         // ...the grid scales and the freed strip joins the side padding opposite the grid...
         assertTrue(attrs.contains("OneHandedMode.gridWidthPx(width, oneHandedSide)"))
         assertTrue(attrs.contains("OneHandedMode.dockPaddingsPx(width, oneHandedSide)"))
-        // ...and the hitbox span keeps the strip touch-dead on both sides.
+        // ...and the hitbox span keeps every key hitbox out of the strip on both sides, so a
+        // touch there can only be the exit handle.
         assertTrue(attrs.contains("params.mHitboxMinX = dockPaddings[0];"))
         assertTrue(attrs.contains("params.mHitboxMaxX = width - dockPaddings[1];"))
         // The row-end extension and the row-start span honor the two caps.

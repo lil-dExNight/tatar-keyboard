@@ -18,11 +18,12 @@ package rkr.simplekeyboard.inputmethod.latin.settings
 /**
  * The one-handed (compact) mode: the key grid scales to [WIDTH_SCALE] of the keyboard width and
  * docks to the chosen side; the strip the scale frees on the other side keeps the keyboard
- * background and answers no touch. The dock is pure geometry — the keyboard builder adds the
- * freed width to the side padding opposite the grid — so keys, hit boxes and the balloon clamp
- * band follow on their own, while the suggestion strip and the emoji panel sit outside the key
- * grid and keep the full width. Stored as the `pref_one_handed_side` int and applied on the
- * keyboard's next rebuild, like the keyboard-height preset.
+ * background, stays free of key hitboxes, and answers only the exit handle — a tap there returns
+ * to full width, a long-press opens the side picker. The dock is pure geometry — the keyboard
+ * builder adds the freed width to the side padding opposite the grid — so keys, hit boxes and
+ * the balloon clamp band follow on their own, while the suggestion strip and the emoji panel sit
+ * outside the key grid and keep the full width. Stored as the `pref_one_handed_side` int and
+ * applied on the keyboard's next rebuild, like the keyboard-height preset.
  *
  * Pure value holder with no Android imports, so the math is unit-tested on the JVM.
  */
@@ -33,6 +34,7 @@ object OneHandedMode {
 
     /** The factory state; [SIDES] is the settings dialog's display order. */
     const val SIDE_DEFAULT = SIDE_OFF
+    @JvmField
     val SIDES: List<Int> = listOf(SIDE_OFF, SIDE_LEFT, SIDE_RIGHT)
 
     /**
@@ -89,4 +91,29 @@ object OneHandedMode {
             else -> intArrayOf(0, 0)
         }
     }
+
+    /**
+     * The exit handle's half-open x-span [minX, maxX) in keyboard coordinates: the whole strip
+     * the dock frees. Empty ([0, 0), no handle) when the mode is off, the side is invalid or the
+     * dock degenerates. The span can never overlap a key hitbox: the builder clamps hitboxes to
+     * [mHitboxMinX, mHitboxMaxX), which is exactly the span's complement within the keyboard.
+     */
+    @JvmStatic
+    fun exitHandleSpanPx(fullWidthPx: Int, side: Int): IntArray {
+        val extra = fullWidthPx - gridWidthPx(fullWidthPx, side)
+        return when {
+            extra <= 0 -> intArrayOf(0, 0)
+            side == SIDE_LEFT -> intArrayOf(fullWidthPx - extra, fullWidthPx)
+            side == SIDE_RIGHT -> intArrayOf(0, extra)
+            else -> intArrayOf(0, 0)
+        }
+    }
+
+    /**
+     * Whether the keyboard point ([x], [y]) lies in the exit handle: inside the half-open x-span
+     * from [minX] to [maxX], anywhere in the occupied height. Always false for an empty span.
+     */
+    @JvmStatic
+    fun exitHandleContains(minX: Int, maxX: Int, x: Int, y: Int, occupiedHeightPx: Int): Boolean =
+            minX < maxX && x >= minX && x < maxX && y >= 0 && y < occupiedHeightPx
 }

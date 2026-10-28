@@ -93,6 +93,17 @@ public interface KeyboardActionListener {
      */
     default void onGlideInput(final rkr.simplekeyboard.inputmethod.latin.glide.GlidePath path) {}
 
+    /**
+     * Called when a tap completes inside the one-handed mode's dock exit handle: the tap returns
+     * the keyboard to full width.
+     */
+    default void onDockExitHandleTap() {}
+
+    /**
+     * Called when the one-handed mode's dock exit handle is long-pressed: opens the side picker.
+     */
+    default void onDockExitHandleLongPress() {}
+
     KeyboardActionListener EMPTY_LISTENER = new Adapter();
 
     class Adapter implements KeyboardActionListener {

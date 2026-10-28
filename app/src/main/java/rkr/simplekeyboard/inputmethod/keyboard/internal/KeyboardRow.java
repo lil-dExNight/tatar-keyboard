@@ -246,8 +246,8 @@ public final class KeyboardRow {
             mCurrentX = mNextKeyXPos;
             if (mLastKeyRightEdge < FLOAT_THRESHOLD || mLastKeyWasSpacer) {
                 // The first key in the row and a key next to a spacer should have a left padding
-                // that spans the available distance — but not the one-handed dock's dead strip:
-                // the hitbox stops at mHitboxMinX and the strip answers no touch.
+                // that spans the available distance — but not the one-handed dock's strip:
+                // the hitbox stops at mHitboxMinX and the strip answers only the exit handle.
                 mCurrentKeyLeftPadding = mCurrentX - Math.max(mLastKeyRightEdge,
                         mParams.mHitboxMinX);
             } else {

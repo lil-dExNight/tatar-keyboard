@@ -24,8 +24,8 @@ import org.junit.Test
 
 /**
  * Emoji search layout rules: the caret sits at the end of the typed query, the result band does
- * not exist while the query is empty, a field holding only spaces is not a query, and the caret
- * does not stand on the hint.
+ * not exist while the query is empty, a query shows two result rows, a field holding only spaces
+ * is not a query, and the caret does not stand on the hint.
  *
  * The pure half is checked directly; the half inside `onDraw` / `onMeasure` is checked by grepping
  * the source, like [EmojiPanelSourceContractTest].
@@ -102,12 +102,64 @@ class EmojiSearchLayoutTest {
     @Test
     fun anEmptyQueryMeasuresTheQueryRowAloneAndATypedOneAddsTheBand() {
         assertEquals(46, EmojiSearchLayout.contentHeight(46, 54, ""))
-        assertEquals(100, EmojiSearchLayout.contentHeight(46, 54, "к"))
+        // The band is two rows of the row height: twice the results stay visible.
+        assertEquals(46 + 2 * 54, EmojiSearchLayout.contentHeight(46, 54, "к"))
         // The band is the whole of the difference: nothing else changes with the query.
         assertEquals(
-            54,
+            2 * 54,
             EmojiSearchLayout.contentHeight(46, 54, "кот") - EmojiSearchLayout.contentHeight(46, 54, ""),
         )
+    }
+
+    // --- The two-row band's position <-> cell mapping -----------------------------------------
+
+    @Test
+    fun resultsFillTheBandColumnByColumn() {
+        // A column holds one cell per row; the best matches sit in the first columns.
+        assertEquals(0, EmojiSearchLayout.resultColumn(0))
+        assertEquals(0, EmojiSearchLayout.resultRow(0))
+        assertEquals(0, EmojiSearchLayout.resultColumn(1))
+        assertEquals(1, EmojiSearchLayout.resultRow(1))
+        assertEquals(1, EmojiSearchLayout.resultColumn(2))
+        assertEquals(0, EmojiSearchLayout.resultRow(2))
+        // Round trip across the whole result cap.
+        for (position in 0 until 60) {
+            assertEquals(
+                position,
+                EmojiSearchLayout.resultPosition(
+                    EmojiSearchLayout.resultColumn(position),
+                    EmojiSearchLayout.resultRow(position),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun theLastColumnMayHoldOneCell() {
+        assertEquals(1, EmojiSearchLayout.resultColumnCount(1))
+        assertEquals(1, EmojiSearchLayout.resultColumnCount(2))
+        assertEquals(2, EmojiSearchLayout.resultColumnCount(3))
+        assertEquals(30, EmojiSearchLayout.resultColumnCount(60))
+        assertEquals(0, EmojiSearchLayout.resultColumnCount(0))
+    }
+
+    @Test
+    fun theBandScrollsColumnsAndNeverPastTheLastOne() {
+        // 14 results = 7 columns of 54 px in a 300 px view: the band scrolls until the last
+        // column's right edge meets the view's right edge, and no further.
+        assertEquals(0, EmojiSearchLayout.maxScrollX(14, 54, 7 * 54))
+        assertEquals(7 * 54 - 300, EmojiSearchLayout.maxScrollX(14, 54, 300))
+        assertEquals(0, EmojiSearchLayout.maxScrollX(2, 54, 300))
+        assertEquals(0, EmojiSearchLayout.maxScrollX(0, 54, 300))
+    }
+
+    @Test
+    fun theFirstVisibleColumnFollowsTheScrollOffset() {
+        assertEquals(0, EmojiSearchLayout.firstVisibleColumn(0, 54))
+        assertEquals(0, EmojiSearchLayout.firstVisibleColumn(53, 54))
+        assertEquals(1, EmojiSearchLayout.firstVisibleColumn(54, 54))
+        // A corrupted (negative) offset reads as the first column, never as a crash.
+        assertEquals(0, EmojiSearchLayout.firstVisibleColumn(-10, 54))
     }
 
     // --- The caret sits at the end of the text ------------------------------------------------
@@ -300,6 +352,49 @@ class EmojiSearchLayoutTest {
         assertTrue(
             "the hint x must come from EmojiSearchLayout.hintLeft",
             queryRow.contains("EmojiSearchLayout.hintLeft("),
+        )
+    }
+
+    // --- The two-row band in the view (source contracts) ---------------------------------------
+
+    /** Draw, hit test and the spoken nodes must all agree on the same column-major mapping. */
+    @Test
+    fun theViewDrawsHitsAndSpeaksTheTwoRowsThroughOneMapping() {
+        val draw = bodyOf("private fun drawResults", "private fun maxScrollX()")
+        assertTrue(draw.contains("EmojiSearchLayout.firstVisibleColumn(scrollX, resultCellPx)"))
+        assertTrue(draw.contains("EmojiSearchLayout.resultColumnCount(resultCount)"))
+        assertTrue(draw.contains("EmojiSearchLayout.resultPosition(column, row)"))
+        // Each row's cell is centered on its own row, not on the band.
+        assertTrue(draw.contains("rowTop + resultRowPx / 2f + centerOffset"))
+        val hit = bodyOf("private fun targetAt(", "override fun onTouchEvent")
+        assertTrue(hit.contains("EmojiSearchLayout.resultPosition(column, row)"))
+        assertTrue(hit.contains("EmojiSearchLayout.RESULT_ROWS"))
+        val node = bodyOf("override fun onPopulateNodeForVirtualView", "override fun onPerformActionForVirtualView")
+        assertTrue(node.contains("EmojiSearchLayout.resultColumn(virtualViewId)"))
+        assertTrue(node.contains("EmojiSearchLayout.resultRow(virtualViewId)"))
+    }
+
+    /** The scroll limit is the band's columns, not its cells: two rows share one scroll offset. */
+    @Test
+    fun theScrollLimitCountsColumnsNotCells() {
+        val limit = bodyOf("private fun maxScrollX()", "private fun targetAt(")
+        assertTrue(
+            "maxScrollX must come from EmojiSearchLayout.maxScrollX",
+            limit.contains("EmojiSearchLayout.maxScrollX(resultCount, resultCellPx, width)"),
+        )
+        assertFalse(
+            "the scroll limit still multiplies cells by the result count",
+            limit.contains("resultCount * resultCellPx"),
+        )
+    }
+
+    /** The no-results message centers on the whole band, not on the first row of two. */
+    @Test
+    fun theNoResultsMessageCentersOnTheWholeBand() {
+        val draw = bodyOf("private fun drawResults", "private fun maxScrollX()")
+        assertTrue(
+            "the message baseline must use the band height",
+            draw.contains("top + bandPx / 2f"),
         )
     }
 }

@@ -72,6 +72,10 @@ public class Keyboard {
     public final int mMostCommonKeyHeight;
     public final int mMostCommonKeyWidth;
 
+    /** The one-handed dock's exit handle x span, copied from the params; empty (0, 0) when off. */
+    public final int mDockExitHandleMinX;
+    public final int mDockExitHandleMaxX;
+
     /** More keys keyboard template */
     public final int mMoreKeysTemplate;
 
@@ -91,6 +95,8 @@ public class Keyboard {
         mOccupiedWidth = params.mOccupiedWidth;
         mMostCommonKeyHeight = params.mMostCommonKeyHeight;
         mMostCommonKeyWidth = params.mMostCommonKeyWidth;
+        mDockExitHandleMinX = params.mDockExitHandleMinX;
+        mDockExitHandleMaxX = params.mDockExitHandleMaxX;
         mMoreKeysTemplate = params.mMoreKeysTemplate;
         mKeyVisualAttributes = params.mKeyVisualAttributes;
         mBottomPadding = params.mBottomPadding;

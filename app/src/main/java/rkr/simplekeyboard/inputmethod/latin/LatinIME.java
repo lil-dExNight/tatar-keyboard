@@ -1118,6 +1118,49 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // reference through the one existing path instead of a second mechanism.
         mOptionsDialog = dialog;
         dialog.show();
+        return true;
+    }
+
+    // A tap on the one-handed mode's freed dock strip returns the keyboard to full width.
+    @Override
+    public void onDockExitHandleTap() {
+        mDevicePrefs.edit().putInt(Settings.PREF_ONE_HANDED_SIDE, OneHandedMode.SIDE_OFF).apply();
+        loadKeyboard();
+    }
+
+    // A long-press on the dock strip opens the side picker, mirroring the settings row's dialog.
+    @Override
+    public void onDockExitHandleLongPress() {
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView == null) {
+            return;
+        }
+        final IBinder windowToken = mainKeyboardView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        final String[] labels = new String[] {
+                getString(R.string.one_handed_mode_off),
+                getString(R.string.one_handed_mode_left),
+                getString(R.string.one_handed_mode_right) };
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setTitle(R.string.one_handed_mode)
+                .setItems(labels, (di, which) -> {
+                    final int side = OneHandedMode.SIDES.get(which);
+                    if (side != Settings.readOneHandedSide(mDevicePrefs)) {
+                        mDevicePrefs.edit()
+                                .putInt(Settings.PREF_ONE_HANDED_SIDE, side)
+                                .apply();
+                        loadKeyboard();
+                    }
+                })
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        mOptionsDialog = dialog;
+        dialog.show();
     }
 
     /**

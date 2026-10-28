@@ -263,7 +263,7 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
             // adds the freed strip to the side padding opposite the grid, so every key position
             // and width follows from the unchanged formulas below. The view still spans the whole
             // occupied width (the strip keeps the keyboard background), and the hitbox span keeps
-            // the strip touch-dead.
+            // every key hitbox out of the strip, which answers only the exit handle.
             final int oneHandedSide = params.mId.mOneHandedSide;
             final int gridWidth = OneHandedMode.gridWidthPx(width, oneHandedSide);
             final int[] dockPaddings = OneHandedMode.dockPaddingsPx(width, oneHandedSide);
@@ -273,6 +273,9 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
                     R.styleable.Keyboard_keyboardRightPadding, gridWidth, 0) + dockPaddings[1];
             params.mHitboxMinX = dockPaddings[0];
             params.mHitboxMaxX = width - dockPaddings[1];
+            final int[] exitHandleSpan = OneHandedMode.exitHandleSpanPx(width, oneHandedSide);
+            params.mDockExitHandleMinX = exitHandleSpan[0];
+            params.mDockExitHandleMaxX = exitHandleSpan[1];
 
             params.mHorizontalGap = keyboardAttr.getFraction(
                     R.styleable.Keyboard_horizontalGap, gridWidth, gridWidth, 0);
@@ -748,9 +751,9 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
             throw new RuntimeException("orphan end row tag");
         }
         if (mPreviousKeyInRow != null && !mPreviousKeyInRow.isSpacer()) {
-            // mHitboxMaxX, not mOccupiedWidth: past it lies the one-handed dock's dead strip,
-            // which must not join the last key's hitbox (it is the occupied edge itself when
-            // the mode is off).
+            // mHitboxMaxX, not mOccupiedWidth: past it lies the one-handed dock's strip, which
+            // must not join the last key's hitbox — the strip answers only the exit handle (it
+            // is the occupied edge itself when the mode is off).
             setKeyHitboxRightEdge(mPreviousKeyInRow, mParams.mHitboxMaxX);
             mPreviousKeyInRow = null;
         }

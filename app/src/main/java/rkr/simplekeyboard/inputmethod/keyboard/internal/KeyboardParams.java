@@ -53,6 +53,14 @@ public class KeyboardParams {
     public int mHitboxMinX = 0;
     public int mHitboxMaxX = Integer.MAX_VALUE;
 
+    /** The one-handed dock's exit handle: the strip's half-open x span
+     *  [mDockExitHandleMinX, mDockExitHandleMaxX) over the full occupied height. Empty (0, 0)
+     *  when the mode is off. Key hitboxes never reach it — they stop at mHitboxMinX/mHitboxMaxX —
+     *  so a touch there can only mean the handle.
+     */
+    public int mDockExitHandleMinX = 0;
+    public int mDockExitHandleMaxX = 0;
+
     public KeyVisualAttributes mKeyVisualAttributes;
 
     public float mDefaultRowHeight;

@@ -34,6 +34,7 @@ import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.common.CoordinateUtils;
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureDecider;
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath;
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode;
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 import rkr.simplekeyboard.inputmethod.latin.utils.WordDeleteFlick;
 
@@ -109,6 +110,15 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     // True once this gesture's word-delete flick (a fast leftward swipe from the delete key) has
     // fired; the rest of the gesture is then consumed so no character selection follows it.
     private boolean mWordDeleteFired = false;
+
+    // The one-handed mode's dock exit handle: mDockExitGesture is set when a gesture starts inside
+    // the freed dock strip (no key under the finger); the strip tracks nothing, so the gesture is
+    // consumed whole. The tap fires only when the finger never leaves the slop and lands back
+    // inside the handle; a long-press opens the side picker.
+    private boolean mDockExitGesture = false;
+    private boolean mDockExitTapEligible = false;
+    private int mDockExitDownX;
+    private int mDockExitDownY;
 
     // true if keyboard layout has been changed.
     private boolean mKeyboardLayoutHasBeenChanged;
@@ -588,6 +598,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         // swipe callbacks for a gesture that never swiped.
         mCursorMoved = false;
         mWordDeleteFired = false;
+        mDockExitGesture = false;
+        mDockExitTapEligible = false;
         resetKeySelectionByDraggingFinger();
         if (key != null) {
             // This onPress call may have changed keyboard layout. Those cases are detected at
@@ -614,6 +626,17 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             mStartX = x;
             //mStartY = y;
             mStartTime = System.currentTimeMillis();
+        }
+        if (key == null && mKeyboard != null && OneHandedMode.exitHandleContains(
+                mKeyboard.mDockExitHandleMinX, mKeyboard.mDockExitHandleMaxX, x, y,
+                mKeyboard.mOccupiedHeight)) {
+            // A down in the freed dock strip: the strip answers only the exit handle.
+            mDockExitGesture = true;
+            mDockExitTapEligible = true;
+            mDockExitDownX = x;
+            mDockExitDownY = y;
+            sTimerProxy.startLongPressTimerOf(this,
+                    Settings.getInstance().getCurrent().mKeyLongpressTimeout);
         }
         // Start the glide decision for this touch. Eligible means the field and layout can decode
         // a glide, the preference is on, the keyboard is an alphabet page (a symbols page may hold
@@ -788,6 +811,15 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     }
 
     private void onMoveEventInternal(final int x, final int y, final long eventTime) {
+        if (mDockExitGesture) {
+            // The strip tracks nothing: a move past the slop only cancels the tap.
+            final int slop = mKeyboard.mMostCommonKeyWidth / 4;
+            if (Math.abs(x - mDockExitDownX) > slop || Math.abs(y - mDockExitDownY) > slop) {
+                mDockExitTapEligible = false;
+                sTimerProxy.cancelKeyTimersOf(this);
+            }
+            return;
+        }
         final Key oldKey = mCurrentKey;
 
         // Glide branches, deliberately ahead of every other MOVE branch: an armed glide feeds
@@ -899,6 +931,17 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     private void onUpEventInternal(final int x, final int y) {
         sTimerProxy.cancelKeyTimersOf(this);
+        if (mDockExitGesture) {
+            final boolean fire = mDockExitTapEligible && mKeyboard != null
+                    && OneHandedMode.exitHandleContains(mKeyboard.mDockExitHandleMinX,
+                            mKeyboard.mDockExitHandleMaxX, x, y, mKeyboard.mOccupiedHeight);
+            mDockExitGesture = false;
+            mDockExitTapEligible = false;
+            if (fire) {
+                sListener.onDockExitHandleTap();
+            }
+            return;
+        }
         // Snapshot the glide state before the reset below (the decider itself is reset here so
         // no path state survives into the next touch).
         final boolean armedGlide = mGlideDecider.isArmed();
@@ -993,6 +1036,12 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         if (isShowingMoreKeysPanel()) {
             return;
         }
+        if (mDockExitGesture) {
+            mDockExitGesture = false;
+            mDockExitTapEligible = false;
+            sListener.onDockExitHandleLongPress();
+            return;
+        }
         if (mCursorMoved) {
             return;
         }
@@ -1053,6 +1102,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     private void onCancelEventInternal() {
         sTimerProxy.cancelKeyTimersOf(this);
+        mDockExitGesture = false;
+        mDockExitTapEligible = false;
         setReleasedKeyGraphics(mCurrentKey, true /* withAnimation */);
         resetKeySelectionByDraggingFinger();
         dismissMoreKeysPanel();

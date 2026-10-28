@@ -41,6 +41,7 @@ import java.util.WeakHashMap;
 
 import rkr.simplekeyboard.inputmethod.R;
 import rkr.simplekeyboard.inputmethod.accessibility.KeyboardAccessibilityDelegate;
+import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.DrawingPreviewPlacerView;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.DrawingProxy;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.GlideTrail;
@@ -55,6 +56,7 @@ import rkr.simplekeyboard.inputmethod.latin.Subtype;
 import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.common.CoordinateUtils;
+import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 import rkr.simplekeyboard.inputmethod.latin.utils.LanguageOnSpacebarUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.MotionPolicy;
@@ -719,8 +721,10 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         }
     }
 
-    private boolean fitsTextIntoWidth(final int width, final String text, final Paint paint) {
-        final int maxTextWidth = width - mLanguageOnSpacebarHorizontalMargin * 2;
+    // Width is a float so the pause-learning badge's reservation can be subtracted without a
+    // rounding step (see drawLanguageOnSpacebar).
+    private boolean fitsTextIntoWidth(final float width, final String text, final Paint paint) {
+        final float maxTextWidth = width - mLanguageOnSpacebarHorizontalMargin * 2;
         paint.setTextScaleX(1.0f);
         final float textWidth = TypefaceUtils.getStringWidth(text, paint);
         if (textWidth < width) {
@@ -784,7 +788,57 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         final float baseline = height / 2f + textHeight / 2;
         paint.setColor(mLanguageOnSpacebarTextColor);
         paint.setAlpha(mLanguageOnSpacebarFinalAlpha);
-        canvas.drawText(language, width / 2f, baseline - descent, paint);
+        // The pause-learning badge: two bars after the language name while learning is paused —
+        // the only on-surface evidence of the pause. The pref is read per draw: the toggle lives
+        // in the settings activity, and the keyboard window redraws when it shows again, so the
+        // badge follows the toggle without any settings push into the view.
+        final boolean learningPaused = Settings.readIncognitoModeEnabled(
+                PreferenceManagerCompat.getDeviceSharedPreferences(getContext()));
+        final float reservation = SpacebarPauseBadge.reservedWidth(mLanguageOnSpacebarTextSize);
+        boolean nameFitsWithBadge = false;
+        if (learningPaused && !language.isEmpty()) {
+            nameFitsWithBadge = fitsTextIntoWidth(width - reservation, language, paint);
+            if (!nameFitsWithBadge) {
+                // The badge yields: put back the unbadged fit (the fit call moved the scale).
+                paint.setTextScaleX(mLanguageOnSpacebarTextScaleX);
+            }
+        }
+        final int plan = SpacebarPauseBadge.drawPlan(
+                learningPaused, language.isEmpty(), nameFitsWithBadge);
+        float badgeLeft = 0f;
+        switch (plan) {
+        case SpacebarPauseBadge.PLAN_NAME_AND_BADGE:
+            // The name is measured and drawn with the fit's scale still on the paint; the bars
+            // are rectangles, so the scale must leave the paint before they are drawn.
+            final float scaledNameWidth = TypefaceUtils.getStringWidth(language, paint);
+            final float nameCenterX = SpacebarPauseBadge.groupedNameCenterX(width, reservation);
+            canvas.drawText(language, nameCenterX, baseline - descent, paint);
+            paint.setTextScaleX(1.0f);
+            badgeLeft = SpacebarPauseBadge.badgeLeftX(nameCenterX, scaledNameWidth,
+                    SpacebarPauseBadge.nameGap(mLanguageOnSpacebarTextSize));
+            break;
+        case SpacebarPauseBadge.PLAN_BADGE_ONLY:
+            badgeLeft = SpacebarPauseBadge.centeredBadgeLeftX(width,
+                    SpacebarPauseBadge.badgeWidth(mLanguageOnSpacebarTextSize));
+            break;
+        default: // SpacebarPauseBadge.PLAN_NAME_ONLY
+            canvas.drawText(language, width / 2f, baseline - descent, paint);
+            break;
+        }
+        if (plan != SpacebarPauseBadge.PLAN_NAME_ONLY) {
+            // The bars take the language name's paint as it stands: the themed color and alpha,
+            // so the badge tracks both themes with no attr of its own.
+            final float barWidth = SpacebarPauseBadge.barWidth(mLanguageOnSpacebarTextSize);
+            final float barTop = SpacebarPauseBadge.barTop(height, textHeight);
+            final float barBottom = barTop + SpacebarPauseBadge.badgeHeight(textHeight);
+            final Paint.Style style = paint.getStyle();
+            paint.setStyle(Paint.Style.FILL);
+            canvas.drawRect(badgeLeft, barTop, badgeLeft + barWidth, barBottom, paint);
+            final float secondBarLeft = badgeLeft + barWidth
+                    + SpacebarPauseBadge.barGap(mLanguageOnSpacebarTextSize);
+            canvas.drawRect(secondBarLeft, barTop, secondBarLeft + barWidth, barBottom, paint);
+            paint.setStyle(style);
+        }
         paint.clearShadowLayer();
         paint.setTextScaleX(1.0f);
     }

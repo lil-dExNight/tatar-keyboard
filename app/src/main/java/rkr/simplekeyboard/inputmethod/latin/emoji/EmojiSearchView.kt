@@ -39,7 +39,7 @@ import rkr.simplekeyboard.inputmethod.R
  * The emoji-search surface: a query row and a result band that take the suggestion strip's place
  * while the search is open, with the letter keyboard underneath. The emoji grid and a letter
  * layout do not fit on screen together, so the grid gives way and results come back as a
- * horizontally scrolling strip. The panel opens it from the search cell in its tab row.
+ * horizontally scrolling two-row strip. The panel opens it from the search cell in its tab row.
  *
  * The query lives in the pure [EmojiSearchQuery] and never reaches the editor; matching is the
  * pure [EmojiSearchIndex]. This view owns only the Android surface: paints built once, no
@@ -331,38 +331,48 @@ class EmojiSearchView @JvmOverloads constructor(
 
     private fun drawResults(canvas: Canvas, w: Float) {
         val top = queryRowPx.toFloat()
+        val bandPx = resultRowPx * EmojiSearchLayout.RESULT_ROWS
         val centerOffset = -(resultFontMetrics.ascent + resultFontMetrics.descent) / 2f
-        val baseline = top + resultRowPx / 2f + centerOffset
         if (resultCount == 0) {
             // An empty query has no band to draw in: it is not measured, so there is nothing here.
             if (!EmojiSearchLayout.showsResultBand(queryText)) return
             val messageBaseline =
-                top + resultRowPx / 2f - (messageFontMetrics.ascent + messageFontMetrics.descent) / 2f
+                top + bandPx / 2f - (messageFontMetrics.ascent + messageFontMetrics.descent) / 2f
             canvas.drawText(noResultsText, messageInsetPx, messageBaseline, messagePaint)
             return
         }
-        val first = (scrollX / resultCellPx).coerceAtLeast(0)
-        var position = first
-        while (position < resultCount) {
-            val left = position * resultCellPx - scrollX
+        var column = EmojiSearchLayout.firstVisibleColumn(scrollX, resultCellPx)
+        val columnCount = EmojiSearchLayout.resultColumnCount(resultCount)
+        while (column < columnCount) {
+            val left = column * resultCellPx - scrollX
             if (left > w) break
-            if (pressedTarget == position) {
-                val inset = resultCellPx * 0.08f
-                pillRect.set(
-                    left + inset,
-                    top + inset,
-                    left + resultCellPx - inset,
-                    top + resultRowPx - inset,
+            for (row in 0 until EmojiSearchLayout.RESULT_ROWS) {
+                val position = EmojiSearchLayout.resultPosition(column, row)
+                if (position >= resultCount) break
+                val rowTop = top + row * resultRowPx
+                if (pressedTarget == position) {
+                    val inset = resultCellPx * 0.08f
+                    pillRect.set(
+                        left + inset,
+                        rowTop + inset,
+                        left + resultCellPx - inset,
+                        rowTop + resultRowPx - inset,
+                    )
+                    canvas.drawRoundRect(pillRect, inset * 2f, inset * 2f, pressedPaint)
+                }
+                canvas.drawText(
+                    index.resultAt(position),
+                    left + resultCellPx / 2f,
+                    rowTop + resultRowPx / 2f + centerOffset,
+                    resultPaint,
                 )
-                canvas.drawRoundRect(pillRect, inset * 2f, inset * 2f, pressedPaint)
             }
-            canvas.drawText(index.resultAt(position), left + resultCellPx / 2f, baseline, resultPaint)
-            position++
+            column++
         }
     }
 
-    /** Widest scroll offset that still shows content; the strip never scrolls past its last cell. */
-    private fun maxScrollX(): Int = (resultCount * resultCellPx - width).coerceAtLeast(0)
+    /** Widest scroll offset that still shows content; the strip never scrolls past its last column. */
+    private fun maxScrollX(): Int = EmojiSearchLayout.maxScrollX(resultCount, resultCellPx, width)
 
     private fun targetAt(x: Float, y: Float): Int {
         if (x < 0f || x >= width || y < 0f || y >= height) return NO_TARGET
@@ -371,7 +381,10 @@ class EmojiSearchView @JvmOverloads constructor(
             return if (abs(x - closeX) <= closeRadiusPx) CLOSE_TARGET else NO_TARGET
         }
         if (resultCount == 0 || resultCellPx <= 0) return NO_TARGET
-        val position = ((x + scrollX) / resultCellPx).toInt()
+        val row = ((y - queryRowPx) / resultRowPx).toInt()
+        if (row !in 0 until EmojiSearchLayout.RESULT_ROWS) return NO_TARGET
+        val column = ((x + scrollX) / resultCellPx).toInt()
+        val position = EmojiSearchLayout.resultPosition(column, row)
         return if (position in 0 until resultCount) position else NO_TARGET
     }
 
@@ -509,10 +522,16 @@ class EmojiSearchView @JvmOverloads constructor(
             virtualViewIds.add(QUERY_ID)
             virtualViewIds.add(CLOSE_ID)
             if (resultCount == 0 || resultCellPx <= 0) return
-            var position = (scrollX / resultCellPx).coerceAtLeast(0)
-            while (position < resultCount && position * resultCellPx - scrollX <= width) {
-                virtualViewIds.add(position)
-                position++
+            // Position order is the column-major fill order, so listing the visible columns in
+            // order also lists the positions in order.
+            var column = EmojiSearchLayout.firstVisibleColumn(scrollX, resultCellPx)
+            val columnCount = EmojiSearchLayout.resultColumnCount(resultCount)
+            while (column < columnCount && column * resultCellPx - scrollX <= width) {
+                for (row in 0 until EmojiSearchLayout.RESULT_ROWS) {
+                    val position = EmojiSearchLayout.resultPosition(column, row)
+                    if (position < resultCount) virtualViewIds.add(position)
+                }
+                column++
             }
         }
 
@@ -540,8 +559,9 @@ class EmojiSearchView @JvmOverloads constructor(
                 }
                 virtualViewId in 0 until resultCount -> {
                     node.contentDescription = index.resultNameAt(virtualViewId)
-                    val left = virtualViewId * resultCellPx - scrollX
-                    tempBounds.set(left, queryRowPx, left + resultCellPx, queryRowPx + resultRowPx)
+                    val left = EmojiSearchLayout.resultColumn(virtualViewId) * resultCellPx - scrollX
+                    val rowTop = queryRowPx + EmojiSearchLayout.resultRow(virtualViewId) * resultRowPx
+                    tempBounds.set(left, rowTop, left + resultCellPx, rowTop + resultRowPx)
                 }
                 else -> {
                     node.contentDescription = ""
