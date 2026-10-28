@@ -11,8 +11,9 @@ import org.junit.Test
  * performs) and the arm verdicts are counted over a (distance x velocity x window) threshold
  * grid around the shipped constants. Populations: tap-with-tremor (must never arm), the fast
  * tap with a slip past one key width (the false-arm class), deliberate glide onsets (arm floor
- * in [TRUE_ONSET_ARM_FLOOR]), and slow two-key drags. The printout carries the retune rule and
- * the shipped-point rates are pinned as the baseline.
+ * in [TRUE_ONSET_ARM_FLOOR]), and slow two-key drags. The printout carries the retune rule, the
+ * shipped-point rates are pinned as the baseline, and the shipped point is held to the retune
+ * gates (slip false-arm within [RETUNE_FALSE_ARM_GATE], onsets arming).
  */
 class GlideDeciderSyntheticTest {
 
@@ -45,6 +46,20 @@ class GlideDeciderSyntheticTest {
     }
 
     @Test
+    fun theShippedPointPassesTheRetuneGates() {
+        assertTrue(
+            "slip false-arm ${pct(GRID.shipped.slipArm)} is above " +
+                "the ${pct(RETUNE_FALSE_ARM_GATE)} gate",
+            GRID.shipped.slipArm <= RETUNE_FALSE_ARM_GATE,
+        )
+        assertTrue(
+            "deliberate onsets armed ${pct(GRID.shipped.onsetArm)}, " +
+                "below the ${pct(TRUE_ONSET_ARM_FLOOR)} floor",
+            GRID.shipped.onsetArm >= TRUE_ONSET_ARM_FLOOR,
+        )
+    }
+
+    @Test
     fun shippedPointRatesMatchThePinnedBaseline() {
         assertEquals("tremor arm rate", BASELINE_TREMOR_ARM, GRID.shipped.tremorArm, BASELINE_TOLERANCE)
         assertEquals("slip false-arm rate", BASELINE_SLIP_FALSE_ARM, GRID.shipped.slipArm, BASELINE_TOLERANCE)
@@ -55,7 +70,7 @@ class GlideDeciderSyntheticTest {
     @Test
     fun thePrintedVerdictEncodesTheRetuneRule() {
         val token =
-            if (GRID.shipped.slipArm > RETUNE_FALSE_ARM_GATE) "RETUNE JUSTIFIED" else "KEEP INHERITED CONSTANTS"
+            if (GRID.shipped.slipArm > RETUNE_FALSE_ARM_GATE) "RETUNE JUSTIFIED" else "KEEP THE SHIPPED CONSTANTS"
         assertTrue("the grid printout lacks the verdict line", GRID.rendered.contains("-> $token"))
     }
 
@@ -65,7 +80,6 @@ class GlideDeciderSyntheticTest {
         // reference screen (2.75 px/dp), so the shipped velocity threshold is 0.275 px/ms.
         const val KEY_WIDTH_PX = 100f
         const val DENSITY_PX_PER_DP = 2.75f
-        const val SHIPPED_DISTANCE_KEY_WIDTHS = 1.0f
         val SLOP_PX = KEY_WIDTH_PX * GlideGestureDecider.DEFAULT_SLOP_KEY_WIDTH_FRACTION
 
         const val TRACE_SEED = 0x5EEDB50A01L
@@ -109,7 +123,7 @@ class GlideDeciderSyntheticTest {
 
         val TWO_PI = 2.0 * Math.PI
 
-        // The threshold grid around the shipped point (1 key width, 0.10 dp/ms, 500 ms).
+        // The threshold grid around the shipped point (1.5 key widths, 0.10 dp/ms, 500 ms).
         val GRID_DISTANCE_KEY_WIDTHS = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
         val GRID_VELOCITY_DP_PER_MS = floatArrayOf(0.05f, 0.075f, 0.10f, 0.125f, 0.15f, 0.20f)
         val GRID_WINDOW_MS = longArrayOf(250L, 375L, 500L, 750L, 1000L)
@@ -122,8 +136,8 @@ class GlideDeciderSyntheticTest {
         // Baseline rates at the shipped point, pinned from the measured run of this harness;
         // re-pin when the trace model, the populations or the shipped constants change.
         const val BASELINE_TREMOR_ARM = 0.0
-        const val BASELINE_SLIP_FALSE_ARM = 1.0
-        const val BASELINE_ONSET_MISS = 0.0
+        const val BASELINE_SLIP_FALSE_ARM = 0.0
+        const val BASELINE_ONSET_MISS = 0.003
         const val BASELINE_DRAG_ARM = 0.0
         const val BASELINE_TOLERANCE = 0.005
 
@@ -191,7 +205,7 @@ class GlideDeciderSyntheticTest {
             val rates: Rates,
         ) {
             val isShipped: Boolean
-                get() = distanceKeyWidths == SHIPPED_DISTANCE_KEY_WIDTHS &&
+                get() = distanceKeyWidths == GlideGestureDecider.DISTANCE_THRESHOLD_KEY_WIDTHS &&
                     velocityDpPerMs == GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS &&
                     windowMs == GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS
         }
@@ -405,7 +419,7 @@ class GlideDeciderSyntheticTest {
                     "onsets=${populations.onsets.size} drags=${populations.drags.size}",
             )
             out.appendLine(
-                "  shipped point: distance=${SHIPPED_DISTANCE_KEY_WIDTHS}kw " +
+                "  shipped point: distance=${GlideGestureDecider.DISTANCE_THRESHOLD_KEY_WIDTHS}kw " +
                     "velocity=${GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS}dp/ms " +
                     "window=${GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS}ms",
             )
@@ -415,7 +429,7 @@ class GlideDeciderSyntheticTest {
                     "onsetMiss=${pct(shipped.onsetMiss)} dragArm=${pct(shipped.dragArm)}",
             )
             val verdict =
-                if (shipped.slipArm > RETUNE_FALSE_ARM_GATE) "RETUNE JUSTIFIED" else "KEEP INHERITED CONSTANTS"
+                if (shipped.slipArm > RETUNE_FALSE_ARM_GATE) "RETUNE JUSTIFIED" else "KEEP THE SHIPPED CONSTANTS"
             out.appendLine(
                 "  verdict: slip false-arm ${pct(shipped.slipArm)} vs ${pct(RETUNE_FALSE_ARM_GATE)} " +
                     "gate -> $verdict",

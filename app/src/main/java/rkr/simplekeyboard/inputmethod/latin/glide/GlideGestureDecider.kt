@@ -24,10 +24,14 @@ import kotlin.math.sqrt
  * samples, decide whether the gesture is a glide over letter keys.
  *
  * The thresholds follow FlorisBoard's `GlideTypingGesture.Detector` (Apache-2.0, (C) the
- * FlorisBoard contributors): the gesture is a glide once it has travelled more than one key
- * width from the touch-down point at a velocity above 0.10 dp/ms, decided within a 500 ms
- * window. Constants here are already in pixels (the caller, PointerTracker, converts the
- * density-dependent values), so this class stays unit-pure and JVM-testable.
+ * FlorisBoard contributors), with a wider distance: the gesture is a glide once it has
+ * travelled more than [DISTANCE_THRESHOLD_KEY_WIDTHS] key widths from the touch-down point at
+ * a velocity above 0.10 dp/ms, decided within a 500 ms window. The reference's one key width
+ * arms on every fast tap whose finger slips past the key edge; the wider distance is the
+ * smallest one that keeps that false-arm class under the synthetic arm-rate harness's gate
+ * with deliberate onsets still arming. The constructor takes pixels (the caller,
+ * PointerTracker, converts the density-dependent and key-width-relative values), so this
+ * class stays unit-pure and JVM-testable.
  *
  * Unlike the reference, the window and the velocity are measured from the first sample that
  * leaves a small slop around the touch-down point, not from the touch-down itself. Otherwise a
@@ -116,6 +120,14 @@ class GlideGestureDecider(
 
         /** FlorisBoard's velocity threshold: 0.10 dp/ms. */
         const val VELOCITY_THRESHOLD_DP_PER_MS = 0.10f
+
+        /**
+         * The distance threshold as a fraction of the key width (the caller passes the px).
+         * One key width arms on every fast tap whose finger slips past the key edge; this is
+         * the smallest distance that keeps that false-arm class under the synthetic arm-rate
+         * harness's gate with deliberate onsets still arming.
+         */
+        const val DISTANCE_THRESHOLD_KEY_WIDTHS = 1.5f
 
         /**
          * The first-move anchor slop as a fraction of the key width (the caller passes the px).

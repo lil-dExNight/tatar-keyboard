@@ -147,7 +147,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     private boolean mIsDownOnModifierKey;
 
     // Glide typing: the per-pointer decision machine (rebuilt when the keyboard changes, since
-    // its distance threshold is the keyboard's key width) and the path buffer the gesture
+    // its distance threshold scales with the keyboard's key width) and the path buffer the gesture
     // records into. The buffer is allocated lazily on the first glide-eligible touch down, so a
     // tracker that only taps never pays for it; the decider's invariant (TRACKING/ARMED only
     // after an eligible down) guarantees the buffer exists wherever a point is recorded or a
@@ -332,12 +332,12 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         }
         mKeyDetector = keyDetector;
         mKeyboard = keyboard;
-        // The glide decider's distance threshold is the keyboard's key width; the velocity
-        // threshold is the reference detector's 0.10 dp/ms, converted to pixels here. The
-        // first-move anchor slop is a quarter of the key width, so a resting finger does not
-        // start the detection clock.
+        // The glide decider's distance threshold is a key-width fraction and the velocity
+        // threshold is 0.10 dp/ms, both converted to pixels here. The first-move anchor slop
+        // is a quarter of the key width, so a resting finger does not start the detection
+        // clock.
         mGlideDecider = new GlideGestureDecider(
-                keyboard.mMostCommonKeyWidth,
+                keyboard.mMostCommonKeyWidth * GlideGestureDecider.DISTANCE_THRESHOLD_KEY_WIDTHS,
                 GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS
                         * Resources.getSystem().getDisplayMetrics().density,
                 GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS,
