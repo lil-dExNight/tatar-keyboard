@@ -418,9 +418,10 @@ class BootstrapSamplerTest(unittest.TestCase):
         again = suggest_chain.paired_delta_ci95([0, 1, 0], [1, 1, 0], [2, 2, 2],
                                                 rounds=10, seed=suggest_chain.BOOTSTRAP_SEED)
         self.assertEqual((lo, hi), again)
-        # The second unit's arm delta is +50 pp; a paired stream keeps the bracket around it.
-        self.assertLessEqual(lo, 50.0)
-        self.assertGreaterEqual(hi, 50.0)
+        # The first unit is the only one that differs between the arms (base 0, boost 1).
+        # Ten seeded rounds over three units bracket the delta at [0, 33.33].
+        self.assertEqual(0.0, lo)
+        self.assertAlmostEqual(33.333333333333336, hi)
 
 
 class LemmaStratificationTest(unittest.TestCase):
