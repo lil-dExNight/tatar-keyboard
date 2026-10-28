@@ -28,8 +28,10 @@ over the same kind of fixture.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib.util
+import io
 import sys
 import tempfile
 import unittest
@@ -432,6 +434,58 @@ class KeystrokeSimulatorTest(unittest.TestCase):
         self.assertEqual(8, baseline)
         self.assertEqual(6, simulated)
         self.assertEqual(5, oracle)
+
+
+class FullEvalRecomputeTest(unittest.TestCase):
+    """The full eval over the committed assets reproduces the pinned numbers.
+
+    The JVM pins in TtSuggestEvalTest/RuSuggestEvalTest assert the same values on the Kotlin
+    side; this class is the python-side recompute (run_python_tests.sh runs it, CI included), so
+    a drift between the mirror and the JVM harness fails here. It runs the real pipeline (a few
+    seconds per language) and never skips: the assets and the eval sets are committed.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tables = {}
+        for language, argv in (("tat", []), ("rus", ["--language", "rus"])):
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                result = suggest_eval.main(argv)
+            if result != 0:
+                raise AssertionError(f"suggest_eval {language} exited {result}")
+            table = {}
+            for line in buffer.getvalue().splitlines():
+                tag, name, value = line.split("|", 2)
+                if tag == "EVAL":
+                    table[name] = value
+            cls.tables[language] = table
+
+    def test_tatar_pins(self) -> None:
+        table = self.tables["tat"]
+        self.assertEqual(table["dict_word_coverage_tokens_pct"], "95.3327")
+        self.assertEqual(table["bigram_head_coverage_pct"], "85.0750")
+        self.assertEqual(table["nextword_chain_top1_pct"], "7.1972")
+        self.assertEqual(table["nextword_chain_top3_pct"], "12.7336")
+        self.assertEqual(table["prefix_top1_cp1_pct"], "0.9782")
+        self.assertEqual(table["prefix_top1_cp2_pct"], "5.1581")
+        self.assertEqual(table["prefix_top1_cp3_pct"], "15.1875")
+        self.assertEqual(table["strip_empty_prefix_pct"], "2.1258")
+        self.assertEqual(table["strip_empty_nextword_empty"], "0")
+        self.assertEqual(table["ks_pct"], "34.2584")
+
+    def test_russian_pins(self) -> None:
+        table = self.tables["rus"]
+        self.assertEqual(table["dict_word_coverage_tokens_pct"], "97.5485")
+        self.assertEqual(table["bigram_head_coverage_pct"], "89.7895")
+        self.assertEqual(table["nextword_chain_top1_pct"], "7.8594")
+        self.assertEqual(table["nextword_chain_top3_pct"], "15.7412")
+        self.assertEqual(table["prefix_top1_cp1_pct"], "1.0370")
+        self.assertEqual(table["prefix_top1_cp2_pct"], "6.5611")
+        self.assertEqual(table["prefix_top1_cp3_pct"], "17.9440")
+        self.assertEqual(table["strip_empty_prefix_pct"], "1.3767")
+        self.assertEqual(table["strip_empty_nextword_empty"], "0")
+        self.assertEqual(table["ks_pct"], "37.5623")
 
 
 if __name__ == "__main__":
