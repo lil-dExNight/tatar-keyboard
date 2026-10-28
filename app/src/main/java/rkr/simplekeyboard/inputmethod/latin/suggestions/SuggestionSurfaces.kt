@@ -205,6 +205,16 @@ fun interface GlideRefusalFeedback {
 }
 
 /**
+ * The short haptic tick of a strip tap that took effect: an accepted suggestion, a reverted
+ * replacement, a keep-typed refusal, a pasted clip or a glide alternative. One tick per such tap;
+ * a refused or stale tap gets none. Production calls the tick of the key feedback, which honors
+ * the vibrate setting; JVM tests count the calls.
+ */
+fun interface SuggestionTapFeedback {
+    fun onSuggestionTap()
+}
+
+/**
  * Reads the live value of `PREF_EMOJI_SUGGESTIONS`, like [AutocorrectGate], for the emoji cell of
  * the NEXT_WORD strip. Read on every fill, so flipping the setting takes effect on the next strip.
  */

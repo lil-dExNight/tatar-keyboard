@@ -104,11 +104,13 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiTextUtils;
 import rkr.simplekeyboard.inputmethod.latin.emoji.RecentEmojiGate;
 import rkr.simplekeyboard.inputmethod.latin.emoji.RecentEmojiGateState;
 import rkr.simplekeyboard.inputmethod.latin.emoji.SharedEmojiSearchIndex;
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode;
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsValues;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.EditorSurface;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.EngineHandle;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FallbackWordsFactory;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.GlobalTopFrequencyFallbackFactory;
@@ -732,8 +734,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // displaces pair successors, word forms or the emoji cell.
             final FallbackWordsFactory fallbackWordsFactory = dictionaryArtifact != null
                     ? GlobalTopFrequencyFallbackFactory.INSTANCE : null;
+            // The autocorrect candidate floor is per language, derived from the language's shipped
+            // dictionary and pinned against it by AutocorrectFloorPinTest.
+            final long autocorrectFloor = tatarEngine
+                    ? AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                    : AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU;
             return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules,
-                    fuzzyEditPolicy, fallbackWordsFactory, personalBigrams, glideConstants);
+                    fuzzyEditPolicy, fallbackWordsFactory, personalBigrams, glideConstants,
+                    autocorrectFloor);
         };
 
         mSuggestionsController = new SuggestionsController(
@@ -833,6 +841,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         });
         // A refused glide gives the cursor gestures' tick: one pulse, none with vibration off.
         mSuggestionsController.setGlideRefusalFeedback(LatinImeKeyFeedback::hapticTickFeedback);
+        // A strip tap that took effect gives the same tick: one pulse per tap, throttled like
+        // the key feedback, none with vibration off.
+        mSuggestionsController.setSuggestionTapFeedback(LatinImeKeyFeedback::hapticTickFeedback);
         // Text shortcuts: the user's own (shortcut → expansion) pairs. The source reads the
         // published in-memory snapshot (a lookup, never I/O), so an edit on the settings screen
         // takes effect on the next keystroke.
@@ -1060,8 +1071,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
         final OfferPresenter presenter = new OfferPresenter() {
             @Override
-            public void showEnableOffer() {
-                showSuggestionsOfferDialog();
+            public boolean showEnableOffer() {
+                return showSuggestionsOfferDialog();
             }
 
             @Override
@@ -1078,18 +1089,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Shows the one-shot offer to turn Tatar suggestions on. {@link SuggestionsOfferController}
-     * has already spent the one-shot flag, so neither answer writes it; cancelling means "Not now".
-     * The user's text and the suggestion strip are not touched.
+     * Shows the one-shot offer to turn Tatar suggestions on and returns whether it showed.
+     * {@link SuggestionsOfferController} spends the one-shot flag only on a true return, so a
+     * null view or window token leaves the offer pending; neither answer writes the flag, and
+     * cancelling means "Not now". The user's text and the suggestion strip are not touched.
      */
-    private void showSuggestionsOfferDialog() {
+    private boolean showSuggestionsOfferDialog() {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView == null) {
-            return;
+            return false;
         }
         final IBinder windowToken = mainKeyboardView.getWindowToken();
         if (windowToken == null) {
-            return;
+            return false;
         }
         final AlertDialog dialog = new AlertDialog.Builder(
                 DialogUtils.getPlatformDialogThemeContext(this))

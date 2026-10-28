@@ -80,14 +80,18 @@ interface OfferEnvironment {
 interface OfferFlagStore {
     fun isOfferSpent(): Boolean
 
-    /** Marks the offer spent durably. Called exactly once, before the dialog is shown. */
+    /** Marks the offer spent durably. Called exactly once, once the dialog has shown. */
     fun spendOffer()
 }
 
 /** Shows the two modal dialogs over the IME window. */
 interface OfferPresenter {
-    /** The offer to turn Tatar suggestions on: two buttons, dismissible. */
-    fun showEnableOffer()
+    /**
+     * The offer to turn Tatar suggestions on: two buttons, dismissible. Returns true when the
+     * dialog actually showed; a false return (no view or window token at show time) leaves the
+     * one-shot flag unspent, so the next qualifying word offers again.
+     */
+    fun showEnableOffer(): Boolean
 
     /** The one-shot "could not turn suggestions on" message: one dismiss button. */
     fun showUnavailableMessage()
@@ -99,9 +103,11 @@ interface OfferPresenter {
  *
  * Two independent one-shot events live here:
  * - the **offer**: shown at most once per installation, after the user commits a first word of at
- *   least [MIN_WORD_LETTERS] letters with the Tatar subtype active. The durable flag is written
- *   before the dialog appears, so no rotation, crash or reboot can bring it back (never showing it
- *   is acceptable; showing it twice is not);
+ *   least [MIN_WORD_LETTERS] letters with the Tatar subtype active. The durable flag is spent only
+ *   when the presenter reports the dialog shown, so a show that fails in the environment (no view
+ *   or window token) keeps the offer pending for the next qualifying word, and a crash between the
+ *   show and the write re-shows it once (showing it twice in a crash window is acceptable;
+ *   burning it unseen is not);
  * - the **unavailable message**: shown at most once per process, only for a preparation an explicit
  *   enable asked for. Deferred, not dropped, when the surroundings are wrong; they are re-checked
  *   in the method that shows it.
@@ -153,11 +159,13 @@ class SuggestionsOfferController(
         ) {
             return
         }
-        // Spend the flag on the decision to show, not on the answer: a crash or a rotation between
-        // the write and the answer must not resurrect the offer.
-        offerSpent = true
-        flags.spendOffer()
-        presenter.showEnableOffer()
+        // Spend the flag on the dialog actually showing, not on the decision to show or on the
+        // answer: a presenter that cannot show (no view or window token) leaves the offer pending
+        // for the next qualifying word instead of burning it unseen.
+        if (presenter.showEnableOffer()) {
+            offerSpent = true
+            flags.spendOffer()
+        }
     }
 
     /**

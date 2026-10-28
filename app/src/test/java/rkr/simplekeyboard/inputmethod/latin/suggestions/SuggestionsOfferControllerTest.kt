@@ -87,8 +87,12 @@ class SuggestionsOfferControllerTest {
         var offerCount = 0
         var messageCount = 0
 
-        override fun showEnableOffer() {
+        /** What the show reports: false models the environment failing at show time. */
+        var offerShows = true
+
+        override fun showEnableOffer(): Boolean {
             offerCount++
+            return offerShows
         }
 
         override fun showUnavailableMessage() {
@@ -160,6 +164,54 @@ class SuggestionsOfferControllerTest {
         assertEquals(1, h.presenter.offerCount)
         assertEquals(1, h.flags.spendCount)
         assertEquals(readsAfterOffer, h.environment.textReads)
+    }
+
+    // --- The show can fail in the environment -----------------------------------------------------
+
+    @Test
+    fun aShowThatFailsInTheEnvironmentLeavesTheOfferPendingAndUnspent() {
+        // The dialog could not attach (no view or window token at show time): the presenter
+        // reports false, and the one-shot flag must NOT burn on an offer nobody saw.
+        val h = Harness()
+        h.presenter.offerShows = false
+
+        h.controller.onKeyPressCommitted(Constants.CODE_SPACE, isWordSeparator = true)
+
+        assertEquals("the show was attempted", 1, h.presenter.offerCount)
+        assertEquals(0, h.flags.spendCount)
+        assertTrue(h.controller.isOfferPending())
+    }
+
+    @Test
+    fun theOfferIsMadeAgainAtTheNextQualifyingWordAfterAFailedShow() {
+        // The process dies between the show and the flag write (or the window is gone for a
+        // while): the offer is re-shown once the environment can hold the dialog.
+        val h = Harness()
+        h.presenter.offerShows = false
+        h.controller.onKeyPressCommitted(Constants.CODE_SPACE, isWordSeparator = true)
+        assertTrue(h.controller.isOfferPending())
+
+        h.presenter.offerShows = true
+        h.controller.onKeyPressCommitted(Constants.CODE_SPACE, isWordSeparator = true)
+
+        assertEquals(2, h.presenter.offerCount)
+        assertEquals(1, h.flags.spendCount)
+        assertFalse(h.controller.isOfferPending())
+    }
+
+    @Test
+    fun aShownDialogSpendsTheOfferForeverEvenWhenLaterShowsWouldFail() {
+        // Shown once means spent forever, whatever the user answered and whatever later shows
+        // would do: the flag is written on the show, not on the answer.
+        val h = Harness()
+        h.controller.onKeyPressCommitted(Constants.CODE_SPACE, isWordSeparator = true)
+        assertEquals(1, h.flags.spendCount)
+
+        h.presenter.offerShows = false
+        repeat(10) { h.controller.onKeyPressCommitted(Constants.CODE_SPACE, isWordSeparator = true) }
+
+        assertEquals(1, h.presenter.offerCount)
+        assertEquals(1, h.flags.spendCount)
     }
 
     @Test

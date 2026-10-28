@@ -345,6 +345,9 @@ class SuggestionsController internal constructor(
     /** The haptic tick of a refused glide; silent until wired. */
     private var glideRefusalFeedback: GlideRefusalFeedback = GlideRefusalFeedback {}
 
+    /** The haptic tick of a strip tap that took effect; silent until wired. */
+    private var suggestionTapFeedback: SuggestionTapFeedback = SuggestionTapFeedback {}
+
     // The current layout's key geometry for the glide decoder, built by LatinIME from the live
     // keyboard. Remembered and re-pushed like [keyNeighbors]. Null disables glide.
     private var glideGeometry: GlideKeyGeometry? = null
@@ -546,6 +549,11 @@ class SuggestionsController internal constructor(
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
     fun setGlideRefusalFeedback(feedback: GlideRefusalFeedback) {
         glideRefusalFeedback = feedback
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setSuggestionTapFeedback(feedback: SuggestionTapFeedback) {
+        suggestionTapFeedback = feedback
     }
 
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
@@ -2679,7 +2687,10 @@ class SuggestionsController internal constructor(
             && suggestion == revertCellDecorator.decorate(revertable.typedForm)
         ) {
             revertWindow.take()
-            revertNow(revertable)
+            // The tick belongs to the edit: a revert the editor refused changed nothing.
+            if (revertNow(revertable)) {
+                suggestionTapFeedback.onSuggestionTap()
+            }
             displayedPrefix = null
             displayedContextWord = null
             displayedGlideAlternativesFor = null
@@ -2696,6 +2707,8 @@ class SuggestionsController internal constructor(
         val keepTyped = previewKeepTypedCell
         if (keepTyped != null && displayedSessionId == sessionId && suggestion == keepTyped) {
             val prefix = displayedPrefix ?: return
+            // Nothing is committed, but the tap took effect: the coming correction is refused.
+            suggestionTapFeedback.onSuggestionTap()
             suppressedPreviewWord = prefix
             previewKeepTypedCell = null
             displayedPrefix = null
@@ -2725,6 +2738,7 @@ class SuggestionsController internal constructor(
             clearCompanionRequest()
             displayedSessionId = NO_SESSION
             if (fullText != null && editor.commitClipText(fullText)) {
+                suggestionTapFeedback.onSuggestionTap()
                 // Pasted text is not the user spelling anything out: nothing is learned from it —
                 // neither the words nor a pair with the clip's last word as context.
                 runMachine.markRunDirty()
@@ -2756,6 +2770,7 @@ class SuggestionsController internal constructor(
             // stale-tap guard (re-reads live cache, requires collapsed selection and live trailing
             // word == expectedPrefix, deletes by code points) is the second line of defense.
             if (editor.commitSuggestion(prefix, suggestion)) {
+                suggestionTapFeedback.onSuggestionTap()
                 // The field is still eligible after a commit; clear the words but keep the reserved
                 // strip so accepting a suggestion does not resize the keyboard.
                 displayedPrefix = null
@@ -2786,6 +2801,7 @@ class SuggestionsController internal constructor(
             // Same second line of defense as the PREFIX path, through the predicted-word commit:
             // the editor re-derives the live context word and refuses a stale tap itself.
             if (editor.commitPredictedWord(context, suggestion)) {
+                suggestionTapFeedback.onSuggestionTap()
                 displayedContextWord = null
                 displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
@@ -2834,6 +2850,7 @@ class SuggestionsController internal constructor(
                 glideRefusalFeedback.onGlideRefused()
                 return
             }
+            suggestionTapFeedback.onSuggestionTap()
             glideCommittedWord = suggestion
             glideCommitPrependedSpace = result == EditorSurface.GLIDE_COMMIT_PREPENDED
             // The refused strip's cells are this gesture's N-best; the undo's rescue strip
@@ -2854,6 +2871,7 @@ class SuggestionsController internal constructor(
             // it, and the strip refreshes for it.
             if (editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion,
                     glidePrependedSpace)) {
+                suggestionTapFeedback.onSuggestionTap()
                 // The undo window tracks the text: a backspace now deletes the alternative whole
                 // (with the same leading-space treatment).
                 glideCommittedWord = suggestion
