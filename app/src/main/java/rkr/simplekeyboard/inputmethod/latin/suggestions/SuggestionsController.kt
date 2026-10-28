@@ -2463,7 +2463,7 @@ class SuggestionsController internal constructor(
      *  - the word is long enough ([AutocorrectPolicy.MIN_WORD_CODE_POINTS], on the normalized form);
      *  - a verdict exists and was computed for this word: a coalesced or unanswered lookup leaves
      *    an older verdict behind, which must not be applied to a different word;
-     *  - the candidate is frequent enough ([AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY]).
+     *  - the candidate is frequent enough (the per-language floor the advice carries).
      *
      * The last two are re-checked although the engine already applied them, so the rule does not
      * live on one side of the decision only.
@@ -2498,7 +2498,7 @@ class SuggestionsController internal constructor(
         // The exact correction (this typed word to this replacement) was undone enough times to be
         // remembered across sessions. Pair-scoped: another replacement for the same word fires.
         if (refusedCorrectionSource?.isRefused(normalized, advice.replacement) == true) return false
-        if (advice.frequency < AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY) return false
+        if (advice.frequency < advice.minCandidateFrequency) return false
         // The user's capitalization is re-applied exactly as it is to a shown candidate, so the
         // replacement is the word they would have got by tapping it.
         val replacement = TatarWordUtils.applyCasing(advice.replacement, casing)

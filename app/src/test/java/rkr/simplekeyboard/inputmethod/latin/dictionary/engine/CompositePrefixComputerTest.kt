@@ -281,16 +281,15 @@ class CompositePrefixComputerTest {
     }
 
     @Test
-    fun formsAreNotOfferedBeforeABigramSourceIsAttached() {
-        // When the bigram table attaches after the first NEXT_WORD request, the request is
-        // re-issued, but only while the strip holds no active-language word. A forms-only strip
-        // painted from "not attached yet" would suppress that, and the bigram successors (which
-        // outrank forms) would not appear until the next keystroke.
+    fun formsAnswerWhenNoBigramSourceIsAttached() {
+        // No table at all takes only the bigram successors out of the chain: the word forms
+        // still answer, so a language without a table (or one whose table failed to open) does
+        // not show an empty strip forever.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр")),
         )
 
-        assertTrue(computer.predict(prefix("сүз")).isEmpty())
+        assertEquals(listOf("сүзләр"), computer.predict(prefix("сүз")))
     }
 
     @Test
@@ -405,18 +404,16 @@ class CompositePrefixComputerTest {
     }
 
     @Test
-    fun personalPairsAreNotOfferedBeforeABigramSourceIsAttached() {
-        // The late-attach rule holds for learned pairs exactly as for forms and the fallback: a
-        // pairs-only strip painted from "not attached yet" would suppress the re-request fired on
-        // attach, and the static successors (which outrank pairs) would not appear until the next
-        // keystroke.
+    fun personalPairsAnswerWhenNoBigramSourceIsAttached() {
+        // The no-source chain is pairs, then forms, then the fallback: the pairs lead as they do
+        // behind the bigram successors, and each later source fills what the earlier ones left.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
             fakeBigrams("бакча" to "бакча"),
         )
 
-        assertTrue(computer.predict(prefix("өй")).isEmpty())
+        assertEquals(listOf("бакча", "сүзләр", "һәм"), computer.predict(prefix("өй")))
     }
 
     @Test
@@ -518,16 +515,15 @@ class CompositePrefixComputerTest {
     }
 
     @Test
-    fun theFallbackIsNotOfferedBeforeABigramSourceIsAttached() {
-        // The late-attach re-request fires only while the strip holds no active-language word; a
-        // fallback-only strip painted from "not attached yet" would suppress it, the same rule
-        // the forms follow.
+    fun theFallbackAnswersWhenNoBigramSourceIsAttached() {
+        // With no table the fallback still fills the cells the forms leave free, in the same
+        // order as behind the bigram successors.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм", "белән", "да")),
         )
 
-        assertTrue(computer.predict(prefix("сүз")).isEmpty())
+        assertEquals(listOf("сүзләр", "һәм", "белән"), computer.predict(prefix("сүз")))
     }
 
     @Test
@@ -585,6 +581,74 @@ class CompositePrefixComputerTest {
         val filled = fallback.fallbackWords(prefix("һәм"), listOf("белән", "да", "бу"), 3)
         assertTrue(filled.isEmpty())
         assertEquals(filled.distinct(), filled)
+    }
+
+    // --- failed bigram attach: terminal, but the rest of the chain still answers -----------------
+
+    @Test
+    fun aFailedDeferredAttachAnswersFromPairsFormsAndFallback() {
+        // The attach throws (a corrupt table's open walk fails inside it): the failure is
+        // terminal for the bigram successors only — pairs, forms and the fallback still answer.
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
+            fakeBigrams("бакча" to "бакча"),
+        )
+        computer.deferBigramAttach { throw IllegalStateException("table is broken") }
+
+        assertEquals(listOf("бакча", "сүзләр", "һәм"), computer.predict(prefix("өй")))
+    }
+
+    @Test
+    fun aDeferredAttachThatOpensNoTableAnswersFromTheChain() {
+        // The attach runs cleanly but wires nothing (a missing or vanished table): the same
+        // fall-through as a throwing attach.
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
+        )
+        computer.deferBigramAttach { }
+
+        assertEquals(listOf("сүзләр", "һәм"), computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun aFailedAttachIsConsumedAndNeverRetried() {
+        // Terminal means terminal: the attach ran once, and later predictions do not run it
+        // again — a failing table open must not be paid on every NEXT_WORD lookup.
+        var attachRuns = 0
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")),
+        )
+        computer.deferBigramAttach {
+            attachRuns++
+            throw IllegalStateException("table is broken")
+        }
+
+        computer.predict(prefix("сүз"))
+        computer.predict(prefix("өй"))
+        computer.predict(prefix("бакча"))
+
+        assertEquals(1, attachRuns)
+        assertEquals(listOf("сүзләр"), computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun aLateSuccessfulAttachStillFeedsTheChain() {
+        // The failing case is terminal, but a deferred attach that succeeds on the first
+        // predict feeds the successors into the chain ahead of pairs and forms.
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeForms(listOf("сүзләр")),
+            fakeFallback(listOf("һәм")),
+            fakeBigrams("бакча" to "бакча"),
+        )
+        computer.deferBigramAttach {
+            computer.attachBigramSource(NextWordComputer { listOf("йорт") })
+        }
+
+        assertEquals(listOf("йорт", "бакча", "сүзләр"), computer.predict(prefix("өй")))
     }
 
     // --- The exact-miss verdict ------------------------------------------------------------------

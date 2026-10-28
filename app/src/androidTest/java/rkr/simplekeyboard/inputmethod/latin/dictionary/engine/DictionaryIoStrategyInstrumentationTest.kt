@@ -211,6 +211,9 @@ class DictionaryIoStrategyInstrumentationTest : InstrumentationTestCase() {
         val index = requireNotNull(
             TdictPrefixIndex.open(
                 buffer, identity, spec.expectedEntryCount, spec.expectedRawSize, null, policy,
+                autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                    AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
             ),
         )
         if (neighbors != null) index.updateKeyNeighbors(neighbors)

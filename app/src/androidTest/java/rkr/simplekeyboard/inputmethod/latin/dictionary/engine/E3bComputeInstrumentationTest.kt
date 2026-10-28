@@ -109,7 +109,7 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
         return requireNotNull(
             TdictPrefixIndex.open(
                 ByteBuffer.wrap(raw), identity, spec.expectedEntryCount, raw.size.toLong(),
-                null, policy,
+                null, policy, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
             ),
         )
     }

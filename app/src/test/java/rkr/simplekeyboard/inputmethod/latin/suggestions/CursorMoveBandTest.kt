@@ -20,6 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.EngineExecutor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
@@ -319,6 +320,9 @@ class CursorMoveBandTest {
                         ),
                         validated.entryCount,
                         validated.rawSize,
+                        autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                            AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                        else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                     ),
                 )
             } finally {

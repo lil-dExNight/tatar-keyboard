@@ -147,6 +147,9 @@ class TdictPrefixIndexTopFrequentWordsTest {
                 return requireNotNull(
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(raw), identity, spec.expectedEntryCount, raw.size.toLong(),
+                        autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                            AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                        else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                     ),
                 )
             } finally {

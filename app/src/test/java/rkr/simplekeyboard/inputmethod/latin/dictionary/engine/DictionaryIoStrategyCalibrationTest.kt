@@ -109,7 +109,7 @@ class DictionaryIoStrategyCalibrationTest {
             consumed = consumed xor requireNotNull(
                 TdictPrefixIndex.open(
                     heapBuffer, identity, spec.expectedEntryCount, spec.expectedRawSize,
-                    null, FuzzyEditPolicy.TATAR,
+                    null, FuzzyEditPolicy.TATAR, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 ),
             ).entryCount
             openHeap[rep] = System.nanoTime() - started
@@ -121,7 +121,7 @@ class DictionaryIoStrategyCalibrationTest {
             consumed = consumed xor requireNotNull(
                 TdictPrefixIndex.open(
                     mappedBuffer, identity, spec.expectedEntryCount, spec.expectedRawSize,
-                    null, FuzzyEditPolicy.TATAR,
+                    null, FuzzyEditPolicy.TATAR, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 ),
             ).entryCount
             openMapped[rep] = System.nanoTime() - started
@@ -264,7 +264,7 @@ class DictionaryIoStrategyCalibrationTest {
         ): TdictPrefixIndex = requireNotNull(
             TdictPrefixIndex.open(
                 buffer, identity, spec.expectedEntryCount, spec.expectedRawSize,
-                null, FuzzyEditPolicy.TATAR,
+                null, FuzzyEditPolicy.TATAR, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
             ),
         ).also { it.updateKeyNeighbors(E3bTestFixtures.tatarNeighborTable()) }
 

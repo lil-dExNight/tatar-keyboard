@@ -22,6 +22,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
@@ -370,7 +371,9 @@ class SuggestionsControllerLanguagePriorityTest {
         h.controller.onTextChanged()
         h.deliver(tatar, emptyList())
         h.deliver(russian, listOf("берег", "берёза"))
-        h.engine(russian).advice = AutocorrectAdvice("бераз", "берег", 1_000_000)
+        h.engine(russian).advice = AutocorrectAdvice(
+            "бераз", "берег", 1_000_000, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
+        )
 
         assertFalse(h.controller.maybeAutocorrectBeforeSeparator(' '.code))
         assertEquals(emptyList<Pair<String, String>>(), h.editor.replaced)

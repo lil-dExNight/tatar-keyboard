@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ExecutorServiceEngineExecutor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ImmutableUtf8Prefix
@@ -175,6 +176,7 @@ class LanguagePriorityCostTest {
                     ),
                     validated.entryCount,
                     validated.rawSize,
+                    autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 )
                 check(russianIndex != null)
             } finally {

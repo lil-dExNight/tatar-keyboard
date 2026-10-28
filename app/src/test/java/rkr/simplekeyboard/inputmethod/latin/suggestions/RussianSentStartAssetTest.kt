@@ -22,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TdictPrefixIndex
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
@@ -132,6 +133,7 @@ class RussianSentStartAssetTest {
                 TdictPrefixIndex.open(
                     java.nio.ByteBuffer.wrap(rawFile.readBytes()), identity,
                     validated.entryCount, validated.rawSize,
+                    autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 ),
             )
         } finally {

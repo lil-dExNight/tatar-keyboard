@@ -121,6 +121,9 @@ class ShippedIndexPrefixCoverageTest {
                 )
                 val index = TdictPrefixIndex.open(
                     ByteBuffer.wrap(raw), identity, validated.entryCount, validated.rawSize,
+                    autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                        AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                    else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 ) ?: error("index did not open for ${spec.family}")
                 return Loaded(index, decodeWords(raw))
             } finally {

@@ -20,6 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
@@ -196,7 +197,9 @@ class RevertCellControllerTest {
         }
 
         fun advise(typed: String, replacement: String) {
-            engine.adviceByWord[typed] = AutocorrectAdvice(typed, replacement, 5_000L)
+            engine.adviceByWord[typed] = AutocorrectAdvice(
+                typed, replacement, 5_000L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+            )
         }
     }
 

@@ -248,6 +248,7 @@ class RuSuggestEvalTest {
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(dictRawFile.readBytes()), identity,
                         validated.entryCount, validated.rawSize,
+                        autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                     ),
                 )
             } finally {

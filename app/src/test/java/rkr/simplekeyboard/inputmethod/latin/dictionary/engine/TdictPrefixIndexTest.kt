@@ -129,6 +129,7 @@ class TdictPrefixIndexTest {
             EngineTestFixtures.identity,
             2,
             raw.size.toLong(),
+            autocorrectMinCandidateFrequency = 0L,
         )
 
     private fun utf8(value: String) = value.toByteArray(Charsets.UTF_8)

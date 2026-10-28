@@ -32,17 +32,20 @@ class AutocorrectAdvice(
     val typedWord: String,
     /** The single class #1 dictionary word [typedWord] may be replaced with (NFC lowercase). */
     val replacement: String,
-    /** Frequency of [replacement] in the bundled dictionary, for the [AutocorrectPolicy] threshold. */
+    /** Frequency of [replacement] in the bundled dictionary, for the [minCandidateFrequency] check. */
     val frequency: Long,
+    /** The floor [frequency] was checked against: the per-language value of the engine that produced this advice. */
+    val minCandidateFrequency: Long,
 ) {
     /** Deliberately says nothing: the user's word must never reach a log or exception message. */
     override fun toString(): String = "AutocorrectAdvice"
 }
 
 /**
- * The two autocorrect thresholds, in one place, read by both sides of the decision: the index
+ * The autocorrect thresholds, in one place, read by both sides of the decision: the index
  * (which prunes work with them) and the controller (which re-checks them before it edits text).
- * They were fixed before any quality measurement and are not tuned to results.
+ * The word length is shared; the candidate frequency floor is per language, derived from each
+ * shipped dictionary and pinned by `AutocorrectFloorPinTest`.
  */
 object AutocorrectPolicy {
     /**
@@ -52,9 +55,16 @@ object AutocorrectPolicy {
     const val MIN_WORD_CODE_POINTS: Int = 4
 
     /**
-     * Minimum frequency of the candidate: the frequency of the word at rank 10 000 in the bundled
-     * Tatar dictionary, so autocorrect only offers words people actually write. Re-measure it the
-     * same way whenever the dictionary is rebuilt.
+     * Minimum candidate frequency of the Tatar engine: the frequency of the rank-10 000 word of
+     * the shipped Tatar dictionary, so autocorrect only offers words people actually write.
+     * `AutocorrectFloorPinTest` pins it against the shipped asset; a rebuilt dictionary that moves
+     * the rank-10 000 frequency fails that test until this constant is re-derived the same way.
      */
-    const val MIN_CANDIDATE_FREQUENCY: Long = 411L
+    const val MIN_CANDIDATE_FREQUENCY_TT: Long = 3_283L
+
+    /**
+     * Minimum candidate frequency of the Russian engine: the frequency of the rank-10 000 word of
+     * the shipped Russian dictionary. See [MIN_CANDIDATE_FREQUENCY_TT] for the rule.
+     */
+    const val MIN_CANDIDATE_FREQUENCY_RU: Long = 2_734L
 }

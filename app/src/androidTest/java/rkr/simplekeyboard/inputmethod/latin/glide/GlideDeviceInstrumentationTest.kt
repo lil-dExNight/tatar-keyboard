@@ -24,6 +24,7 @@ import rkr.simplekeyboard.inputmethod.keyboard.KeyboardId
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardLayoutSet
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardTheme
 import rkr.simplekeyboard.inputmethod.latin.Subtype
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TdictGlideInventory
@@ -199,7 +200,7 @@ class GlideDeviceInstrumentationTest : InstrumentationTestCase() {
         return requireNotNull(
             TdictPrefixIndex.open(
                 ByteBuffer.wrap(raw), identity, spec.expectedEntryCount, raw.size.toLong(),
-                null, FuzzyEditPolicy.DEFAULT,
+                null, FuzzyEditPolicy.DEFAULT, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
             ),
         )
     }

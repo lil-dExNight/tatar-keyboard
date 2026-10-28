@@ -2,6 +2,7 @@ package rkr.simplekeyboard.inputmethod.latin.golden
 
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.BigramTableIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.CompositePrefixComputer
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
@@ -125,6 +126,8 @@ class EdgeGoldenExportTest {
                     ByteBuffer.wrap(dictRaw.readBytes()), identity, v.entryCount, v.rawSize,
                     if (tatar) TatarSuffixRules else null,
                     if (tatar) FuzzyEditPolicy.TATAR else null,
+                    if (tatar) AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                    else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 ),
             )
             entryCount = v.entryCount.toInt()

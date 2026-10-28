@@ -33,7 +33,8 @@ import kotlin.math.ceil
 
 /**
  * Calibration of widening the autocorrect edit classes from {1} to {1, 4} (probe-first full
- * single substitution), with the frequency floor 411 and the single-candidate rule unchanged.
+ * single substitution), with the per-language frequency floor
+ * ([AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT] here) and the single-candidate rule unchanged.
  * Tatar only. The widened arm is not shipped: it made false corrections that change meaning and
  * gave little recovery lift.
  *
@@ -155,7 +156,8 @@ class AutocorrectWideningCalibrationTest {
     /**
      * Rare-but-correct proxy: the dictionary's lowest-frequency decile at the variant level (these
      * words are present, so this simulates "if this rare word were OOV"). A word would fire when
-     * its substitution space contains exactly one other dictionary word with frequency >= 411.
+     * its substitution space contains exactly one other dictionary word at or above the Tatar
+     * floor.
      */
     @Test
     fun gateG1FalseCorrectionsOnTheLowestFrequencyDecile() {
@@ -168,12 +170,12 @@ class AutocorrectWideningCalibrationTest {
         for (word in decile) {
             val bytes = word.toByteArray(Charsets.UTF_8)
             val class1 = singleMatchFrequency(bytes, geometric = false, scratch, variantScratch)
-            if (class1 != null && class1 >= AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY) {
+            if (class1 != null && class1 >= AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT) {
                 class1Fires.add(word)
                 continue
             }
             val class4 = singleMatchFrequency(bytes, geometric = true, scratch, variantScratch)
-            if (class4 != null && class4 >= AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY) {
+            if (class4 != null && class4 >= AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT) {
                 class4OnlyFires.add(word)
             }
         }
@@ -234,7 +236,7 @@ class AutocorrectWideningCalibrationTest {
     /**
      * Autocorrect recovery at the separator on the 5-cp typo sets, same conditions for both arms:
      * a row recovers when its typo prefix is absent from the dictionary and the advice names the
-     * original word (the >= 411 floor applies).
+     * original word (the Tatar floor applies).
      */
     @Test
     fun gateG2RecoveryAtSeparatorOnTheTypoSets() {
@@ -380,10 +382,10 @@ class AutocorrectWideningCalibrationTest {
     }
 
     /**
-     * The widened policy's pinned real cases: "аашнең" — absent, NOT reachable by class #1, and
-     * exactly one single-substitution dictionary neighbor (ааҗнең, frequency 1 738 >= 411) — is
-     * corrected by WIDENED and left alone by CURRENT; the two-candidate "ааҗнңң" (ааҗның + ааҗнең)
-     * is refused by the single-candidate rule under WIDENED too.
+     * The widened policy's pinned real cases: "ертты" — absent, NOT reachable by class #1, and
+     * exactly one single-substitution dictionary neighbor (артты, frequency 14 458, above the
+     * Tatar floor) — is corrected by WIDENED and left alone by CURRENT; the two-candidate
+     * "ааҗнңң" (ааҗный + ааҗнең) is refused by the single-candidate rule under WIDENED too.
      */
     @Test
     fun theWidenedPolicyCorrectsAClass4OnlyCaseAndRefusesAmbiguity() {
@@ -395,12 +397,12 @@ class AutocorrectWideningCalibrationTest {
             return index.lastAutocorrectAdvice
         }
 
-        assertNull("CURRENT leaves the class-#4-only case alone", advice(current, "аашнең"))
-        val widenedAdvice = advice(widened, "аашнең")
+        assertNull("CURRENT leaves the class-#4-only case alone", advice(current, "ертты"))
+        val widenedAdvice = advice(widened, "ертты")
         assertNotNull("WIDENED corrects the class-#4-only case", widenedAdvice)
-        assertEquals("аашнең", widenedAdvice!!.typedWord)
-        assertEquals("ааҗнең", widenedAdvice.replacement)
-        assertEquals(3_169L, widenedAdvice.frequency)
+        assertEquals("ертты", widenedAdvice!!.typedWord)
+        assertEquals("артты", widenedAdvice.replacement)
+        assertEquals(14_458L, widenedAdvice.frequency)
 
         assertNull("two class-#4 candidates: the single-candidate rule still refuses",
             advice(widened, "ааҗнңң"))
@@ -468,16 +470,16 @@ class AutocorrectWideningCalibrationTest {
 
         // Pins over the committed assets and eval set; re-pin when an input changes.
         private const val PIN_G1A_PRESENT = 2_413
-        private const val PIN_G1A_CURRENT_FIRES = 5
-        private const val PIN_G1A_WIDENED_FIRES = 17
-        private const val PIN_G1B_CLASS1_FIRES = 234
-        private const val PIN_G1B_CLASS4ONLY_FIRES = 803
+        private const val PIN_G1A_CURRENT_FIRES = 2
+        private const val PIN_G1A_WIDENED_FIRES = 4
+        private const val PIN_G1B_CLASS1_FIRES = 123
+        private const val PIN_G1B_CLASS4ONLY_FIRES = 165
         private const val PIN_G2_ACTIVE1 = 99_999
-        private const val PIN_G2_RECOVERED1_CURRENT = 3_859
-        private const val PIN_G2_RECOVERED1_WIDENED = 2_154
+        private const val PIN_G2_RECOVERED1_CURRENT = 1_356
+        private const val PIN_G2_RECOVERED1_WIDENED = 705
         private const val PIN_G2_ACTIVE4 = 103_348
-        private const val PIN_G2_RECOVERED4_CURRENT = 40
-        private const val PIN_G2_RECOVERED4_WIDENED = 2_198
+        private const val PIN_G2_RECOVERED4_CURRENT = 12
+        private const val PIN_G2_RECOVERED4_WIDENED = 728
         private const val PIN_G3_ZERO = 40_183
         private const val PIN_G3_SINGLE = 31_888
         private const val PIN_G3_MULTI = 31_277
@@ -541,7 +543,7 @@ class AutocorrectWideningCalibrationTest {
             return requireNotNull(
                 TdictPrefixIndex.open(
                     ByteBuffer.wrap(raw), identity, spec.expectedEntryCount, raw.size.toLong(),
-                    null, policy,
+                    null, policy, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 ),
             )
         }

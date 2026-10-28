@@ -114,6 +114,7 @@ class TatBigrPrefixIndexTest {
                     DictionaryIdentity(1, 2, 1, "c".repeat(64)),
                     dictionaryWords.size.toLong(),
                     rawDict.size.toLong(),
+                    autocorrectMinCandidateFrequency = 0L,
                 )
             },
         )
@@ -244,6 +245,7 @@ class TatBigrPrefixIndexTest {
                 EngineTestFixtures.identity,
                 words.size.toLong(),
                 rawDict.size.toLong(),
+                autocorrectMinCandidateFrequency = 0L,
             ),
         )
     }
@@ -270,6 +272,7 @@ class TatBigrPrefixIndexTest {
                 val index = TdictPrefixIndex.open(
                     ByteBuffer.wrap(rawFile.readBytes()), identity,
                     validated.entryCount, validated.rawSize,
+                    autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 )
                 check(index != null)
                 dictionary = index

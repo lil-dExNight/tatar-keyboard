@@ -20,9 +20,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Ranking inside the fuzzy level under the default policy: edit class first, and only inside one
- * class the frozen tie-break (frequency descending, then Unicode code-point ascending). The exact
- * level stays above every fuzzy candidate and its rule is unchanged.
+ * Ranking inside the fuzzy level. Under the default policy (class #1 only) the edit class is a
+ * constant tie and the frozen tie-break (frequency descending, then Unicode code-point ascending)
+ * decides. On the DL-1 tier domain (empty exact pass, >= 4 code points, the TATAR policy) every
+ * candidate carries one class tag whatever family produced it, so the same tie-break decides
+ * across families. The exact level stays above every fuzzy candidate and its rule is unchanged.
  */
 class TdictPrefixIndexEditClassRankingTest {
     // The full Tatar alphabet keyboard.
@@ -31,8 +33,12 @@ class TdictPrefixIndexEditClassRankingTest {
     // The reduced letter set of [E3aTestFixtures], with the same long-press partners.
     private val longPressOnlyTable = E3aTestFixtures.tatarNeighborTable()
 
-    private fun index(entries: List<Pair<String, Long>>, table: KeyNeighborTable): TdictPrefixIndex {
-        val index = EngineTestFixtures.index(entries)
+    private fun index(
+        entries: List<Pair<String, Long>>,
+        table: KeyNeighborTable,
+        policy: FuzzyEditPolicy? = null,
+    ): TdictPrefixIndex {
+        val index = EngineTestFixtures.index(entries, fuzzyEditPolicy = policy)
         index.updateKeyNeighbors(table)
         return index
     }
@@ -117,5 +123,44 @@ class TdictPrefixIndexEditClassRankingTest {
             longPressOnlyTable,
         )
         assertEquals(listOf("күләк", "күл", "күлә"), lookup(index, "кул"))
+    }
+
+    /**
+     * On the DL-1 tier domain the four families share one class tag, so frequency decides across
+     * families. Typed "китап" (exact pass empty): "питап" is one substitution away, "киап" one
+     * deletion away, "кистап" one insertion away — all three are corrections (empty remainder, so
+     * the same-length bonus ties them) and rank purely by frequency, 30 > 20 > 10.
+     */
+    @Test
+    fun withinTheTierTheFamiliesRankByFrequencyAlone() {
+        val index = index(
+            // Code-point sorted, as the tdict fixture requires: киап < кистап < питап.
+            listOf(
+                "киап" to 20L,      // deletion family ("китап" minus т)
+                "кистап" to 10L,    // insertion family ("китап" plus с at position 2)
+                "питап" to 30L,     // substitution family (к→п)
+            ),
+            tatarTable,
+            FuzzyEditPolicy.TATAR,
+        )
+        assertEquals(listOf("питап", "киап", "кистап"), lookup(index, "китап"))
+    }
+
+    /**
+     * Inside the tier the same-length bonus still puts the correction before its continuations:
+     * "киап" (the deletion-variant match itself) outranks the far more frequent "киапкала", which
+     * the same variant reaches only as a continuation.
+     */
+    @Test
+    fun withinTheTierACorrectionPrecedesItsContinuations() {
+        val index = index(
+            listOf(
+                "киап" to 5L,
+                "киапкала" to 9_999L,
+            ),
+            tatarTable,
+            FuzzyEditPolicy.TATAR,
+        )
+        assertEquals(listOf("киап", "киапкала"), lookup(index, "китап"))
     }
 }

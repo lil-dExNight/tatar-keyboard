@@ -11,7 +11,8 @@ import org.junit.Test
  * otherwise, and the bonus never crosses edit classes or touches the exact level.
  *
  * The detection is allocation-free: a candidate whose remainder past the variant is empty IS the
- * variant itself, and a substitution variant has the typed prefix's code-point length.
+ * variant itself. On the DL-1 tier domain all four families share one class tag, so the bonus
+ * spans the tier: a correction always precedes the continuations of its own and other variants.
  */
 class TdictPrefixIndexSameLengthBonusTest {
     private val table = E3bTestFixtures.tatarNeighborTable()
@@ -62,13 +63,13 @@ class TdictPrefixIndexSameLengthBonusTest {
     }
 
     @Test
-    fun theBonusNeverCrossesEditClasses() {
-        // Typed "кума" (4 code points, no exact continuation): "күмак" is a class #1 CONTINUATION
-        // (variant "күма" + "к"), "кома" a class #4 same-length word (variant "кома" itself). The
-        // class key dominates the bonus: the class #1 continuation still outranks the class #4
-        // same-length candidate.
+    fun theBonusSpansTheWholeTier() {
+        // Typed "кума" (4 code points, no exact continuation): "күмак" is reached only as a
+        // CONTINUATION of the substitution variant "күма", while "кома" is a substitution
+        // variant itself (empty remainder). Every tier candidate shares one class tag, so the
+        // correction leads whatever variant family each side came through.
         val index = index(listOf("кома" to 10L, "күмак" to 5L), FuzzyEditPolicy.TATAR)
-        assertEquals(listOf("күмак", "кома"), lookup(index, "кума"))
+        assertEquals(listOf("кома", "күмак"), lookup(index, "кума"))
     }
 
     @Test

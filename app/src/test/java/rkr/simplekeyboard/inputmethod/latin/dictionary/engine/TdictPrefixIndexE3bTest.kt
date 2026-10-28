@@ -49,15 +49,15 @@ class TdictPrefixIndexE3bTest {
 
     @Test
     fun theWholeFuzzyLevelIsDroppedWhenTheVariantBudgetIsExceeded() {
-        // A synthetic table whose 'к' key carries 65 long-press partners — one past the engine's
+        // A synthetic table whose 'к' key carries 257 long-press partners — one past the engine's
         // MAX_FUZZY_VARIANTS budget — makes class #1 alone overflow on a prefix starting with 'к'.
-        // Latin + Cyrillic + Greek lowercase letters are all NFC-stable and distinct, so the built
-        // partner set keeps all 65.
-        val fakePartners = ((0x61..0x7A) + (0x430..0x44F) + (0x3B1..0x3C9))
+        // Latin + Cyrillic + Greek lowercase letters plus CJK unified ideographs are all
+        // NFC-stable and distinct, so the built partner set keeps all 257.
+        val fakePartners = ((0x61..0x7A) + (0x430..0x44F) + (0x3B1..0x3C9) + (0x4E00..0x4FFF))
             .filter { it != 'к'.code }
-            .take(65)
+            .take(257)
             .toIntArray()
-        assertEquals(65, fakePartners.size)
+        assertEquals(257, fakePartners.size)
         assertTrue("target partner must be present", fakePartners.contains('з'.code))
         val overloaded = KeyNeighborTable.build(
             "tt_RU", true,
@@ -66,7 +66,7 @@ class TdictPrefixIndexE3bTest {
                 E3aTestFixtures.rawKey('о'), E3aTestFixtures.rawKey('т'),
             ),
         )
-        assertEquals(65, overloaded.longPressPartnersOf('к'.code)!!.size)
+        assertEquals(257, overloaded.longPressPartnersOf('к'.code)!!.size)
         val small = KeyNeighborTable.build(
             "tt_RU", true,
             listOf(

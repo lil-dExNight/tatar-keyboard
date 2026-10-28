@@ -6,11 +6,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Engine behavior of edit class #4: the activation gate (empty exact pass AND >= 4 code points),
- * the probe-first cost shape (one probe per variant, scans only for survivors), the shared
- * budgets (exceeding one drops the whole fuzzy level), and the ranking of the class against
- * class #1. The calibration on the real asset lives in [TtTypoPhaseCCalibrationTest]; the policy
- * pins in [TdictPrefixIndexShippedFuzzyClassesTest].
+ * Engine behavior of the DL-1 typo tier: the activation gate (empty exact pass AND >= 4 code
+ * points), the probe-first cost shape (one probe per variant, scans only for survivors), the
+ * shared budgets (exceeding one drops the whole fuzzy level), and the ranking inside the tier
+ * (one class tag for every family: the same-length bonus, then frequency). The calibration on
+ * the real asset lives in [TtTypoPhaseCCalibrationTest]; the policy pins in
+ * [TdictPrefixIndexShippedFuzzyClassesTest].
  */
 class TdictPrefixIndexPhaseCTest {
     private val table = E3bTestFixtures.tatarNeighborTable()
@@ -45,24 +46,24 @@ class TdictPrefixIndexPhaseCTest {
         val index = index(listOf("китап" to 10L), FuzzyEditPolicy.TATAR)
         lookup(index, "аита")
         // Position narrowing: "аита" has no word starting with "а" in this dictionary, so every
-        // position past the first is skipped for free — only position 0's (39 - 1) = 38 probes are
-        // issued. Exactly one survivor ("кита"). The shared variant budget counts the class-#1
-        // emissions (а→ә at the two а positions) plus the survivor: 2 + 1 = 3.
-        assertEquals(38, index.lastFuzzyProbeCount)
-        assertEquals(3, index.lastFuzzyVariantCount)
+        // position past the first is skipped for free — only position 0 issues probes:
+        // 38 substitutions + 1 deletion + 39 insertions + 1 transposition = 79. Exactly one
+        // survivor ("кита"), and the shared variant budget counts survivors only: 1.
+        assertEquals(79, index.lastFuzzyProbeCount)
+        assertEquals(1, index.lastFuzzyVariantCount)
         assertTrue(index.lastFuzzyVisitedCount > 0)
         assertFalse(index.lastFuzzyOverBudget)
     }
 
     @Test
     fun theSharedVariantBudgetCountsSurvivorsNotProbes() {
-        // A prefix with NO class-#4 survivors: 38 probes (only position 0 — "д" starts nothing
-        // here), and only the four class-#1 emissions (ә→а/э at the two ә positions) consume the
-        // variant budget — the probes never do.
+        // A prefix with NO survivors: the same 79 probes as above (only position 0 — "д" starts
+        // nothing here), and not one probe survives, so the variant budget stays at 0 — the
+        // probes never consume it.
         val index = index(listOf("китап" to 10L), FuzzyEditPolicy.TATAR)
         assertEquals(emptyList<String>(), lookup(index, "дәлә"))
-        assertEquals(38, index.lastFuzzyProbeCount)
-        assertEquals(4, index.lastFuzzyVariantCount)
+        assertEquals(79, index.lastFuzzyProbeCount)
+        assertEquals(0, index.lastFuzzyVariantCount)
     }
 
     @Test
@@ -74,20 +75,20 @@ class TdictPrefixIndexPhaseCTest {
     }
 
     @Test
-    fun class1CandidatesOutrankClass4Candidates() {
-        // Typed "кумеш" (5 cp): class #1 (у→ү) finds "күмеш"; class #4 (у→ө, among all letters)
-        // finds "көмеш" at a far higher frequency. The class key dominates.
+    fun frequencyDecidesInsideTheDl1Tier() {
+        // Typed "кумеш" (5 cp): the tier's substitution family finds both "күмеш" (у→ү) and
+        // "көмеш" (у→ө) under one class tag, so frequency descending decides inside the tier.
         val index = index(listOf("күмеш" to 5L, "көмеш" to 9_999L), FuzzyEditPolicy.TATAR)
-        assertEquals(listOf("күмеш", "көмеш"), lookup(index, "кумеш"))
+        assertEquals(listOf("көмеш", "күмеш"), lookup(index, "кумеш"))
     }
 
     @Test
     fun theProbeBudgetDropsTheWholeLevelFailClosed() {
         // A synthetic layout whose alphabet overflows MAX_FUZZY_PROBES (8 192): the fixture
         // dictionary is a shared-prefix chain so every position of "кумеш" has a non-empty probe
-        // range, and 38 + 4 x (N - 1) probes with N ≈ 3 000 exceed the budget. The level is
-        // dropped whole — including the class #1 candidate already found. Only the alphabet size
-        // matters.
+        // range, and the four families issue ≈ (2N + 1) probes per position — tens of thousands
+        // with N ≈ 3 000 — which exceeds the budget. The level is dropped whole — including the
+        // class #1 candidate already found. Only the alphabet size matters.
         val letters = ArrayList<KeyNeighborTable.RawKey>()
         var codePoint = 0x41
         while (letters.size < 3_000 && codePoint < 0x2_FFFF) {
@@ -100,7 +101,7 @@ class TdictPrefixIndexPhaseCTest {
         val huge = KeyNeighborTable.build("tt_RU", true, letters)
         assertTrue(
             "premise: the synthetic alphabet overflows the probe budget",
-            38 + 4L * (huge.nodes.size - 1) > 8_192,
+            5L * (2L * huge.nodes.size + 1) > 8_192,
         )
         // The chain ку/кум/куме/кумет keeps the probe ranges of "кумеш" non-empty at every
         // position while the exact pass returns nothing (no word starts with "кумеш").
@@ -112,8 +113,8 @@ class TdictPrefixIndexPhaseCTest {
             FuzzyEditPolicy.TATAR,
         )
         index.updateKeyNeighbors(huge)
-        // "кумеш" would recover "күмеш" through class #1 — but the class #4 probe budget trips and
-        // the whole fuzzy level drops, class #1 included (never partial).
+        // "кумеш" would recover "күмеш" through the tier's substitution family (у→ү) — but the
+        // probe budget trips and the whole fuzzy level drops, never in part.
         assertEquals(emptyList<String>(), lookup(index, "кумеш"))
         assertTrue(index.lastFuzzyOverBudget)
     }

@@ -167,15 +167,15 @@ internal class CompositePrefixComputer(
      *    the bundled spelling wins;
      *  - word forms and the fallback fill what is still free, excluding everything shown.
      *
-     * With no bigram source attached (none given yet, the deferred attach not yet run, or the
-     * table failed to open) this returns an empty list, with no learned pairs, forms or fallback.
-     * The first predict after a deferred attach was set runs it inline, so only a request that
-     * predates it answers empty; the controller re-requests such a moment only while the strip
-     * holds no active-language word.
+     * With no bigram source — none attached yet, or the attach failed — only the bigram
+     * successors drop out of the chain; learned pairs, word forms and the fallback still answer.
+     * A failed attach is terminal: it is consumed and never retried, so its absence costs one
+     * null read per predict and nothing else. The first predict after a deferred attach was set
+     * runs it inline.
      */
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
-        val source = bigramSource ?: runPendingBigramAttach() ?: return emptyList()
-        var result = source.predict(normalizedContextWordUtf8)
+        val source = bigramSource ?: runPendingBigramAttach()
+        var result = source?.predict(normalizedContextWordUtf8) ?: emptyList()
         if (result.size < CELL_COUNT) {
             result = withPersonalPairs(result, normalizedContextWordUtf8)
         }
@@ -208,8 +208,8 @@ internal class CompositePrefixComputer(
 
     /**
      * Runs the deferred bigram attach, once, inside the calling [predict]. Consumed before
-     * running, so a failing attach never retries: the source stays null and [predict] keeps
-     * answering an empty list.
+     * running, so a failing attach never retries: the source stays null and [predict] answers
+     * without the bigram successors.
      */
     private fun runPendingBigramAttach(): NextWordComputer? {
         val pending = pendingBigramAttach ?: return null

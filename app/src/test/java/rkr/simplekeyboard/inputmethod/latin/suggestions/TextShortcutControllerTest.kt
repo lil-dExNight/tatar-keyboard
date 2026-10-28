@@ -20,6 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSink
@@ -396,7 +397,9 @@ class TextShortcutControllerTest {
         val h = Harness()
         h.start()
         h.shortcuts["китәп"] = "китап кибете"
-        h.engine.advice = AutocorrectAdvice("китәп", "китап", 100_000L)
+        h.engine.advice = AutocorrectAdvice(
+            "китәп", "китап", 100_000L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+        )
 
         h.typeWord("китәп")
         // The strip offers the expansion, not the correction preview's emphasis pair.

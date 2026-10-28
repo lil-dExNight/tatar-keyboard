@@ -274,6 +274,9 @@ class TdictPrefixIndexSameStemBoostTest {
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(rawFile.readBytes()), identity,
                         validated.entryCount, validated.rawSize, suffixTable,
+                        autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                            AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                        else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                     ),
                 )
             } finally {

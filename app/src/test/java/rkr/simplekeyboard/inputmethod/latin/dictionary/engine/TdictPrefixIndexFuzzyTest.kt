@@ -178,11 +178,10 @@ class TdictPrefixIndexFuzzyTest {
         assertTrue("many=$many bytes/lookup", many <= 8L)
     }
 
-    // The same allocation contract with edit class #4 engaged: under the Tatar policy {1, 4} the
-    // heavy arm runs the probe-first full substitution (probes only, 0 survivors, 0 scanned
-    // variants). Both prefixes return the SAME empty result (materializing a non-empty result is
-    // out of scope); the probe path and the bonus branch are primitive arithmetic and allocate
-    // nothing.
+    // The same allocation contract with the DL-1 tier engaged: under the Tatar policy the heavy
+    // arm runs the probe-first tier (probes only, 0 survivors, 0 scanned variants). Both prefixes
+    // return the SAME empty result (materializing a non-empty result is out of scope); the probe
+    // path and the bonus branch are primitive arithmetic and allocate nothing.
     @Test
     fun perLookupAllocationWithTheTatarPolicyDoesNotDependOnTheNumberOfProbes() {
         val bean = ManagementFactory.getThreadMXBean() as? ThreadMXBean
@@ -198,14 +197,15 @@ class TdictPrefixIndexFuzzyTest {
         )
         index.updateKeyNeighbors(tatarTable)
         // "abc": no letter is in the table at all -> 0 variants, 0 probes. "мсмә": 4 code points
-        // with an empty exact pass -> the class #4 gate fires; with the empty-range narrowing
+        // with an empty exact pass -> the DL-1 tier gate fires; with the empty-range narrowing
         // only positions 0 ("*смә", whole dictionary) and 1 ("м*мә", the "мин" range) are probed —
-        // 2 x 38 = 76 probes, no survivor.
+        // 2 x 38 substitutions + 2 deletions + 2 x 39 insertions + 2 transpositions = 158 probes,
+        // no survivor.
         val fewVariants = ImmutableUtf8Prefix.copyOf("abc".toByteArray(Charsets.UTF_8))
         val manyProbes = ImmutableUtf8Prefix.copyOf("мсмә".toByteArray(Charsets.UTF_8))
         assertTrue(index.lookup(fewVariants).isEmpty())
         assertTrue(index.lookup(manyProbes).isEmpty())
-        assertEquals(76, index.lastFuzzyProbeCount)
+        assertEquals(158, index.lastFuzzyProbeCount)
 
         repeat(50_000) {
             index.lookup(fewVariants)

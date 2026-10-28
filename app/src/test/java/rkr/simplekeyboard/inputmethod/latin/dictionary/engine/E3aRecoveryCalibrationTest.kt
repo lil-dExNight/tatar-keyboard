@@ -280,6 +280,7 @@ class E3aRecoveryCalibrationTest {
                     identity,
                     validated.entryCount,
                     validated.rawSize,
+                    autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 )
                 check(realIndex != null)
                 vocabulary = enumerateWords(raw)

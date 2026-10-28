@@ -666,13 +666,14 @@ class TtSuggestEvalTest {
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(raw), identity,
                         validated.entryCount, validated.rawSize, TatarSuffixRules,
-                        FuzzyEditPolicy.TATAR,
+                        FuzzyEditPolicy.TATAR, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                     ),
                 )
                 controlDictionary = requireNotNull(
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(raw), identity,
                         validated.entryCount, validated.rawSize,
+                        autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                     ),
                 )
             } finally {

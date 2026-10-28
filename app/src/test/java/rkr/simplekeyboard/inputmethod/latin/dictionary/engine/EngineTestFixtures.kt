@@ -15,6 +15,7 @@ internal object EngineTestFixtures {
         entries: List<Pair<String, Long>>,
         suffixTable: InflectedSuffixTable? = null,
         fuzzyEditPolicy: FuzzyEditPolicy? = null,
+        autocorrectMinCandidateFrequency: Long = 0L,
     ): TdictPrefixIndex {
         val raw = DictionaryTestFixtures.raw(entries)
         return requireNotNull(
@@ -25,6 +26,7 @@ internal object EngineTestFixtures {
                 raw.size.toLong(),
                 suffixTable,
                 fuzzyEditPolicy,
+                autocorrectMinCandidateFrequency,
             ),
         )
     }

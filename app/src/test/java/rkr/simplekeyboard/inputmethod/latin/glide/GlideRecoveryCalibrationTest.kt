@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.BigramTableIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ImmutableUtf8Prefix
@@ -1467,6 +1468,11 @@ class GlideRecoveryCalibrationTest {
                     identity,
                     validated.entryCount,
                     validated.rawSize,
+                    autocorrectMinCandidateFrequency =
+                        if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                            AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                        else
+                            AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 )
                 check(index != null)
                 val words = DictionaryTestFixtures.words(raw)

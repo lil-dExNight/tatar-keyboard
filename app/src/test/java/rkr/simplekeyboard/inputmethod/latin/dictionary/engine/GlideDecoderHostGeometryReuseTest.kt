@@ -97,6 +97,7 @@ class GlideDecoderHostGeometryReuseTest {
             val index = requireNotNull(
                 TdictPrefixIndex.open(
                     ByteBuffer.wrap(rawFile.readBytes()), identity, validated.entryCount, validated.rawSize,
+                    autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 ),
             )
             val inventory = TdictGlideInventory(index)

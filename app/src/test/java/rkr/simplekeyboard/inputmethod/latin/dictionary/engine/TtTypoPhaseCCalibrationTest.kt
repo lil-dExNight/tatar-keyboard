@@ -364,20 +364,20 @@ class TtTypoPhaseCCalibrationTest {
 
         // 2 code points: fuzzy never fires; the exact "сц*" block.
         assertEquals(listOf("сценарий", "сценарийлар", "сценарист"), strip("сц"))
-        // 3 code points: exact==0, but the class-#4 gate needs >= 4 cp, so the strip stays empty.
+        // 3 code points: exact==0, but the tier gate needs >= 4 cp, so the strip stays empty.
         assertEquals(emptyList<String>(), strip("сцл"))
-        // 4 code points: class #4 fires (exact==0); the "сәлә*" block's frequency leaders fill the
+        // 4 code points: the tier fires (exact==0); the "сәлә*" block's frequency leaders fill the
         // strip — no same-length candidate exists at 4 cp.
         assertEquals(listOf("сәләтле", "сәләт", "сәләтен"), strip("сцлә"))
         // 5 code points: the correction itself leads the strip; the same-length bonus keeps the
         // exact-length "сәләм" above the longer "сәләмәтлек" and "сәләмә" follows it.
         assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмә"), strip("сцләм"))
         // 10 code points: with the empty-range narrowing only positions 0-2 probe (the "сцл*"
-        // range is empty, which skips positions >= 3) — 3 x 38 = 114 probes instead of 380; the
-        // sole survivor's own word wins.
+        // range is empty, which skips positions >= 3) — 3 x (38 substitutions + 1 deletion +
+        // 39 insertions) + 3 transpositions = 237 probes; the sole survivor's own word wins.
         val deep = ImmutableUtf8Prefix.copyOf("сцләмәтлек".toByteArray(Charsets.UTF_8))
         assertEquals(listOf("сәләмәтлек"), index.lookup(deep))
-        assertEquals(114, index.lastFuzzyProbeCount)
+        assertEquals(237, index.lastFuzzyProbeCount)
     }
 
     /**
@@ -457,19 +457,19 @@ class TtTypoPhaseCCalibrationTest {
 
         // Pins over the committed dictionary and eval set; re-pin when an input changes.
         private const val PIN_BASE_W5 = 37_599
-        private const val PIN_CAND_W5 = 27_825
+        private const val PIN_CAND_W5 = 25_131
         private const val PIN_BASE_W5_SUBSET = 98_074
         private const val PIN_CAND_W5_SUBSET = 101_446
         private const val PIN_EVAL_PREFIXES_GE4 = 7_451
         private const val PIN_EXACT_EMPTY = 1_436
-        private const val PIN_CLASS4_FILLED = 894
+        private const val PIN_CLASS4_FILLED = 1_070
 
         // Pins of the same-set lift measurement.
         private const val PIN_C2_BASE_W5_WHOLE = 458
-        private const val PIN_C2_CAND_W5_WHOLE = 27_831
+        private const val PIN_C2_CAND_W5_WHOLE = 25_137
         private const val PIN_C2_ACTIVE_ROWS = 101_446
         private const val PIN_C2_BASE_W5_ACTIVE = 452
-        private const val PIN_C2_CAND_W5_ACTIVE = 27_825
+        private const val PIN_C2_CAND_W5_ACTIVE = 25_131
         private const val PIN_C2_BASE_W3_WHOLE = 91
         private const val PIN_C2_CAND_W3_WHOLE = 93
 
@@ -563,6 +563,9 @@ class TtTypoPhaseCCalibrationTest {
                 TdictPrefixIndex.open(
                     ByteBuffer.wrap(raw), identity,
                     spec.expectedEntryCount, raw.size.toLong(), suffixTable, policy,
+                    if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                        AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                    else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 ),
             )
         }

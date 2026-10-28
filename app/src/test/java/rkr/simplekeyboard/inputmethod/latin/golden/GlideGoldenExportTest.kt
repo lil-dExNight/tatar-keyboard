@@ -3,6 +3,7 @@ package rkr.simplekeyboard.inputmethod.latin.golden
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TdictGlideInventory
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TdictPrefixIndex
@@ -779,7 +780,11 @@ class GlideGoldenExportTest {
             val v = TdictValidator().validateRaw(rawFile, spec)
             val raw = rawFile.readBytes()
             val identity = DictionaryIdentity(spec.generation, v.schemaId, v.formatVersion, v.rawSha256)
-            val index = requireNotNull(TdictPrefixIndex.open(ByteBuffer.wrap(raw), identity, v.entryCount, v.rawSize))
+            val index = requireNotNull(TdictPrefixIndex.open(ByteBuffer.wrap(raw), identity, v.entryCount, v.rawSize,
+                autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                    AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                else
+                    AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU))
             return index to DictionaryTestFixtures.words(raw)
         } finally {
             rawFile.delete()

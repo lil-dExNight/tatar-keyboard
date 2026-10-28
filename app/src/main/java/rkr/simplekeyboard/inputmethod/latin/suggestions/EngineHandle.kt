@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FallbackWordsFactory
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupToken
@@ -220,6 +221,7 @@ class MappedEngineHandle private constructor(
             fallbackWordsFactory: FallbackWordsFactory? = null,
             personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
             glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
+            autocorrectMinCandidateFrequency: Long = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
         ): MappedEngineHandle? {
             val handoff = ResultHandoff { result ->
                 callback.onResult(result.token, result.suggestions, result.kind)
@@ -233,6 +235,7 @@ class MappedEngineHandle private constructor(
                 fallbackWordsFactory = fallbackWordsFactory,
                 personalBigrams = personalBigrams,
                 glideConstants = glideConstants,
+                autocorrectMinCandidateFrequency = autocorrectMinCandidateFrequency,
             ) ?: return null
             return MappedEngineHandle(engine)
         }

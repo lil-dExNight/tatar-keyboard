@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.CompositePrefixComputer
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.GlideDecoderHost
@@ -1386,6 +1387,9 @@ class GlideEndToEndTest {
             return requireNotNull(
                 TdictPrefixIndex.open(
                     ByteBuffer.wrap(raw), identity, spec.expectedEntryCount, raw.size.toLong(),
+                    autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                        AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                    else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 ),
             )
         }

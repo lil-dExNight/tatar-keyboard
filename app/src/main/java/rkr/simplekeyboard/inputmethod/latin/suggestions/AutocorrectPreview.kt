@@ -85,7 +85,7 @@ internal fun computeAutocorrectPreview(
     ) {
         return null
     }
-    if (advice.frequency < AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY) return null
+    if (advice.frequency < advice.minCandidateFrequency) return null
     val correction = TatarWordUtils.applyCasing(advice.replacement, casing)
     if (correction == word) return null
     return AutocorrectPreview(word, correction)

@@ -148,6 +148,7 @@ class TtNextWordFillE2ETest {
             return requireNotNull(
                 TdictPrefixIndex.open(
                     ByteBuffer.wrap(raw), identity, spec.expectedEntryCount, raw.size.toLong(),
+                    autocorrectMinCandidateFrequency = 0L,
                 ),
             )
         }

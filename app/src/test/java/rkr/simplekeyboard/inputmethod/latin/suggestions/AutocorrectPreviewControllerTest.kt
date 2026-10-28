@@ -21,6 +21,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSource
@@ -290,7 +291,9 @@ class AutocorrectPreviewControllerTest {
         }
 
         fun advise(typed: String, replacement: String, frequency: Long = 5_000L) {
-            engine.adviceByWord[typed] = AutocorrectAdvice(typed, replacement, frequency)
+            engine.adviceByWord[typed] = AutocorrectAdvice(
+                typed, replacement, frequency, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+            )
         }
     }
 

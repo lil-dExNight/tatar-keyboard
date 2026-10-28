@@ -21,11 +21,12 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
  * same-length bonus applies. Injected per engine through [MappedDictionaryEngine.start]; the Tatar
  * engine runs [TATAR], every other engine runs [DEFAULT].
  *
- * [editClasses] holds EDIT_CLASS_* values; their order is irrelevant, because
- * [TdictPrefixIndex.collectFuzzy] always runs and ranks the classes in numeric order.
- * [sameLengthBonus] ranks a candidate exactly as long as the typed prefix before its own
- * continuations within its edit class, so the corrected word itself comes before longer words
- * that start with it.
+ * [editClasses] holds EDIT_CLASS_* values; their order is irrelevant. EDIT_CLASS_LONG_PRESS runs
+ * on every typo-recovery activation; EDIT_CLASS_SUBSTITUTION engages the shared DL-1 tier
+ * (substitution, deletion, insertion and transposition under one rank tag) on its gated domain —
+ * see [TdictPrefixIndex.collectFuzzy].
+ * [sameLengthBonus] ranks a candidate exactly as long as its variant before that variant's
+ * continuations, so the corrected word itself comes before longer words that start with it.
  *
  * [autocorrectClasses] are the edit classes autocorrect may draw from. The default is class #1
  * alone, and the display classes never change it implicitly.
@@ -55,9 +56,9 @@ class FuzzyEditPolicy(
         val DEFAULT = FuzzyEditPolicy(intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS), false)
 
         /**
-         * The Tatar configuration: class #1 always, class #4 (probe-first full single substitution,
-         * only on an empty exact pass at >= 4 code points, see [TdictPrefixIndex.collectFuzzy]) and
-         * the same-length bonus.
+         * The Tatar configuration: class #1 on the always-on domain, the DL-1 tier (all four
+         * distance-1 families, one rank tag) on the empty-exact >= 4-code-point domain, and the
+         * same-length bonus. See [TdictPrefixIndex.collectFuzzy].
          */
         @JvmField
         val TATAR = FuzzyEditPolicy(

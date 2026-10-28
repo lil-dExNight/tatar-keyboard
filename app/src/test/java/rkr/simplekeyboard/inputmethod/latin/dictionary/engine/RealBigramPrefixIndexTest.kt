@@ -138,6 +138,7 @@ class RealBigramPrefixIndexTest {
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(dictRawFile.readBytes()), dictIdentity,
                         validated.entryCount, validated.rawSize,
+                        autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                     ),
                 )
             } finally {

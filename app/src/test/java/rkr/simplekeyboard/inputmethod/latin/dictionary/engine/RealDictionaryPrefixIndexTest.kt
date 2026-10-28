@@ -196,6 +196,7 @@ class RealDictionaryPrefixIndexTest {
                     identity,
                     validated.entryCount,
                     validated.rawSize,
+                    autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 )
                 check(realIndex != null)
                 tatarPolicyIndex = TdictPrefixIndex.open(
@@ -205,6 +206,7 @@ class RealDictionaryPrefixIndexTest {
                     validated.rawSize,
                     null,
                     FuzzyEditPolicy.TATAR,
+                    AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 )?.also { it.updateKeyNeighbors(E3bTestFixtures.tatarNeighborTable()) }
                 check(tatarPolicyIndex != null)
             } finally {

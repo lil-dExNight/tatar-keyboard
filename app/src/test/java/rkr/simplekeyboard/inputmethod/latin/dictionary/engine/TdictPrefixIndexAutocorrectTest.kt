@@ -28,17 +28,26 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
  * which candidate that verdict names. Everything here runs against the same class #1 (long-press
  * partner) variant generator the suggestion strip uses; there is no second edit-distance mechanism.
  *
- * The frequency values below are chosen around [AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY] on
+ * The frequency values below are chosen around [TEST_MIN_CANDIDATE_FREQUENCY] on
  * purpose, so the threshold is exercised as the number it actually is rather than as a symbol.
  */
 class TdictPrefixIndexAutocorrectTest {
+    /**
+     * The floor the boundary fixtures are built around: the historical shipped rank-10 000
+     * frequency (411), kept test-local now that the shipped floors are per-language constants.
+     */
+    private val TEST_MIN_CANDIDATE_FREQUENCY = 411L
+
     private val table = E3aTestFixtures.tatarNeighborTable()
 
     private fun index(
         entries: List<Pair<String, Long>>,
         withTable: Boolean = true,
+        minCandidateFrequency: Long = 0L,
     ): TdictPrefixIndex {
-        val index = EngineTestFixtures.index(entries)
+        val index = EngineTestFixtures.index(
+            entries, autocorrectMinCandidateFrequency = minCandidateFrequency,
+        )
         if (withTable) index.updateKeyNeighbors(table)
         return index
     }
@@ -82,10 +91,12 @@ class TdictPrefixIndexAutocorrectTest {
 
     @Test
     fun aCandidateBelowTheFrequencyThresholdIsNotAdvised() {
-        // The threshold is the frequency of rank 10 000 in the shipped dictionary.
-        assertEquals(411L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY)
-        val below = index(listOf("китап" to 410L))
-        val atThreshold = index(listOf("китап" to 411L))
+        // The threshold fixture mirrors the shipped rule: the floor is the rank-10 000 frequency.
+        assertEquals(411L, TEST_MIN_CANDIDATE_FREQUENCY)
+        val below = index(listOf("китап" to 410L), minCandidateFrequency = TEST_MIN_CANDIDATE_FREQUENCY)
+        val atThreshold = index(
+            listOf("китап" to 411L), minCandidateFrequency = TEST_MIN_CANDIDATE_FREQUENCY,
+        )
 
         assertNull(advise(below, "китәп"))
         assertEquals("китап", advise(atThreshold, "китәп")?.replacement)

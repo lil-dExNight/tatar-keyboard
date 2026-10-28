@@ -38,6 +38,10 @@ internal fun countCodePointsByLeadBytes(bytes: ByteArray, length: Int): Int {
  * each variant to UTF-8, because a byte-level edit of a two-byte Cyrillic letter would produce
  * invalid UTF-8 and an empty block scan.
  *
+ * The families: edit class #1 (long-press partners) and the DL-1 tier — full substitution,
+ * deletion, insertion and transposition — whose generators report the edited position, because
+ * the probe path narrows its search by the typed prefix up to that position.
+ *
  * Nothing is allocated per variant: the caller supplies reusable scratch buffers and receives each
  * variant through [VariantConsumer] as `(bytes, length)`.
  */
@@ -48,8 +52,8 @@ internal object FuzzyPrefixVariants {
     }
 
     /**
-     * VariantConsumer that also receives the substituted position. Only the class #4 generator
-     * uses it: the probe path narrows its search by the typed word's prefix up to that position.
+     * VariantConsumer that also receives the edited position. The DL-1 tier generators use it:
+     * the probe path narrows its search by the typed word's prefix up to that position.
      */
     fun interface PositionedVariantConsumer {
         fun onVariant(position: Int, variantUtf8: ByteArray, length: Int)
@@ -138,6 +142,127 @@ internal object FuzzyPrefixVariants {
             }
             // Restore this position before moving on, so exactly one letter differs per variant.
             codePointScratch[position] = original
+        }
+        return emitted
+    }
+
+    /**
+     * DL-1 tier, deletion family: remove one code point, in every position (n variants).
+     * Position order ascending. The variant at position p shares the typed prefix's first p
+     * code points, so the consumer can probe within the p-narrowed range.
+     *
+     * [codePointScratch] holds the decoded prefix and is restored before every position, so the
+     * scratch always carries the typed sequence between variants. Returns the number of variants
+     * emitted, or -1 on malformed input or budget overflow (the caller drops the whole level).
+     */
+    fun generateDeletionVariants(
+        prefixUtf8: ByteArray,
+        prefixLength: Int,
+        codePointScratch: IntArray,
+        variantScratch: ByteArray,
+        maxVariants: Int,
+        consumer: PositionedVariantConsumer,
+    ): Int {
+        val codePointCount = decodeCodePoints(prefixUtf8, prefixLength, codePointScratch)
+        if (codePointCount < 0) return -1
+        var emitted = 0
+        for (position in 0 until codePointCount) {
+            if (emitted >= maxVariants) return -1
+            val removed = codePointScratch[position]
+            for (index in position + 1 until codePointCount) {
+                codePointScratch[index - 1] = codePointScratch[index]
+            }
+            val length = encodeCodePoints(codePointScratch, codePointCount - 1, variantScratch)
+            consumer.onVariant(position, variantScratch, length)
+            emitted++
+            for (index in codePointCount - 1 downTo position + 1) {
+                codePointScratch[index] = codePointScratch[index - 1]
+            }
+            codePointScratch[position] = removed
+        }
+        return emitted
+    }
+
+    /**
+     * DL-1 tier, insertion family: insert every letter of the layout's alphabet at every gap
+     * ((n + 1) x alphabet variants, position ascending, then the alphabet's order). [alphabet] is
+     * the layout-derived node set (`KeyNeighborTable.nodes`), never a hard-coded list. The end
+     * position p = n shares the whole typed prefix, so the caller's probe ranges must run to
+     * index n. [codePointScratch] must hold n + 1 code points.
+     *
+     * Returns the number of variants emitted, or -1 on malformed input, a short scratch, or
+     * budget overflow (the caller drops the whole level).
+     */
+    fun generateInsertionVariants(
+        prefixUtf8: ByteArray,
+        prefixLength: Int,
+        alphabet: IntArray,
+        codePointScratch: IntArray,
+        variantScratch: ByteArray,
+        maxVariants: Int,
+        consumer: PositionedVariantConsumer,
+    ): Int {
+        val codePointCount = decodeCodePoints(prefixUtf8, prefixLength, codePointScratch)
+        if (codePointCount < 0) return -1
+        if (codePointCount + 1 > codePointScratch.size) return -1
+        var emitted = 0
+        for (position in 0..codePointCount) {
+            // Open slot [position]: the tail moves one code point right.
+            for (index in codePointCount - 1 downTo position) {
+                codePointScratch[index + 1] = codePointScratch[index]
+            }
+            for (letter in alphabet) {
+                if (emitted >= maxVariants) {
+                    for (index in position until codePointCount) {
+                        codePointScratch[index] = codePointScratch[index + 1]
+                    }
+                    return -1
+                }
+                codePointScratch[position] = letter
+                val length = encodeCodePoints(codePointScratch, codePointCount + 1, variantScratch)
+                consumer.onVariant(position, variantScratch, length)
+                emitted++
+            }
+            // Close the slot: the next position starts from the decoded prefix again.
+            for (index in position until codePointCount) {
+                codePointScratch[index] = codePointScratch[index + 1]
+            }
+        }
+        return emitted
+    }
+
+    /**
+     * DL-1 tier, transposition family: swap each pair of adjacent code points (at most n - 1
+     * variants, pivot ascending). A swap of equal letters reproduces the typed prefix and is not
+     * emitted. The variant at pivot p shares the typed prefix's first p code points, so the
+     * consumer can probe within the p-narrowed range.
+     *
+     * Returns the number of variants emitted, or -1 on malformed input or budget overflow (the
+     * caller drops the whole level).
+     */
+    fun generateTranspositionVariants(
+        prefixUtf8: ByteArray,
+        prefixLength: Int,
+        codePointScratch: IntArray,
+        variantScratch: ByteArray,
+        maxVariants: Int,
+        consumer: PositionedVariantConsumer,
+    ): Int {
+        val codePointCount = decodeCodePoints(prefixUtf8, prefixLength, codePointScratch)
+        if (codePointCount < 0) return -1
+        var emitted = 0
+        for (position in 0 until codePointCount - 1) {
+            val first = codePointScratch[position]
+            val second = codePointScratch[position + 1]
+            if (first == second) continue
+            if (emitted >= maxVariants) return -1
+            codePointScratch[position] = second
+            codePointScratch[position + 1] = first
+            val length = encodeCodePoints(codePointScratch, codePointCount, variantScratch)
+            consumer.onVariant(position, variantScratch, length)
+            emitted++
+            codePointScratch[position] = first
+            codePointScratch[position + 1] = second
         }
         return emitted
     }

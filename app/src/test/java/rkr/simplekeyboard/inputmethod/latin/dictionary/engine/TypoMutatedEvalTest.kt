@@ -41,8 +41,8 @@ import java.security.MessageDigest
  *    substrate word must never name a replacement.
  *
  * The set identity and the per-class hit counts are pinned exactly; re-pin when the dictionary,
- * the eval set, the layout or the ranking change. The engine recovers substitutions only, so the
- * del/ins/trans rates are the baseline the wider edit classes must beat.
+ * the eval set, the layout or the ranking change. The engine recovers all four edit classes
+ * (substitutions, deletions, insertions and transpositions).
  */
 class TypoMutatedEvalTest {
 
@@ -451,10 +451,10 @@ class TypoMutatedEvalTest {
             "83f1629717577ac0e4846f0178286d4ae3ec21cbbbe3c3def47a18af1b6bfe9a"
 
         // Measured baseline recovery counts (the production arm, then the exact-only control).
-        private const val PIN_SUB_HITS = 2_169
-        private const val PIN_DEL_HITS = 469
-        private const val PIN_INS_HITS = 0
-        private const val PIN_TRANS_HITS = 0
+        private const val PIN_SUB_HITS = 2_161
+        private const val PIN_DEL_HITS = 1_776
+        private const val PIN_INS_HITS = 2_327
+        private const val PIN_TRANS_HITS = 2_155
         private const val PIN_SUB_HITS_EXACTONLY = 0
         private const val PIN_DEL_HITS_EXACTONLY = 339
         private const val PIN_INS_HITS_EXACTONLY = 0
@@ -504,7 +504,7 @@ class TypoMutatedEvalTest {
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(raw), identity,
                         validated.entryCount, validated.rawSize, TatarSuffixRules,
-                        FuzzyEditPolicy.TATAR,
+                        FuzzyEditPolicy.TATAR, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                     ),
                 )
                 vocabulary = DictionaryTestFixtures.words(raw)

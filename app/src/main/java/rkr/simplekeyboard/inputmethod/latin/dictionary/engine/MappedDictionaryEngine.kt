@@ -77,8 +77,9 @@ class MappedDictionaryEngine private constructor(
      *
      * Returns false, with no effect on this engine, if the table is missing or corrupt or the
      * engine was destroyed meanwhile (whichever of this and [destroy] reaches [Resources] first
-     * wins; the loser's lease is closed unused). On failure [CompositePrefixComputer.predict] keeps
-     * returning an empty list; word completion and typing are unaffected.
+     * wins; the loser's lease is closed unused). On failure [CompositePrefixComputer.predict]
+     * answers without the table's successors (learned pairs, word forms and the fallback still
+     * run); word completion and typing are unaffected.
      */
     fun attachBigramSource(
         catalog: PublishedBigramTableCatalog,
@@ -131,7 +132,8 @@ class MappedDictionaryEngine private constructor(
     /**
      * Hands the published bigram catalog over without opening the table: the mapping and the open
      * walk run lazily on the engine worker at the first NEXT_WORD lookup. A missing, corrupt or
-     * vanished table leaves NEXT_WORD answering empty, exactly as with [attachBigramSource].
+     * vanished table leaves NEXT_WORD without the table's successors, exactly as with
+     * [attachBigramSource].
      */
     fun deferBigramAttach(catalog: PublishedBigramTableCatalog) {
         computer.deferBigramAttach { attachBigramSource(catalog, mapper) }
@@ -303,7 +305,9 @@ class MappedDictionaryEngine private constructor(
          *  - [fallbackWordsFactory]: top-frequency fill of empty NEXT_WORD cells; null means none;
          *  - [personalBigrams]: learned word pairs, ranked after the bigram successors and before
          *    the forms; [PersonalBigramSource.EMPTY] means none;
-         *  - [glideConstants]: the glide decoder's per-language scoring constants.
+         *  - [glideConstants]: the glide decoder's per-language scoring constants;
+         *  - [autocorrectMinCandidateFrequency]: the autocorrect candidate floor of this engine's
+         *    language, from [AutocorrectPolicy].
          */
         fun start(
             catalog: PublishedDictionaryCatalog,
@@ -318,6 +322,7 @@ class MappedDictionaryEngine private constructor(
             fallbackWordsFactory: FallbackWordsFactory? = null,
             personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
             glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
+            autocorrectMinCandidateFrequency: Long = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
         ): MappedDictionaryEngine? {
             val lease = try {
                 catalog.acquireLatestForActivation()
@@ -327,7 +332,7 @@ class MappedDictionaryEngine private constructor(
             return startOwnedLease(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
                 suffixTable, afterWordFormsFactory, fuzzyEditPolicy, fallbackWordsFactory,
-                personalBigrams, glideConstants,
+                personalBigrams, glideConstants, autocorrectMinCandidateFrequency,
             )
         }
 
@@ -344,6 +349,7 @@ class MappedDictionaryEngine private constructor(
             fallbackWordsFactory: FallbackWordsFactory?,
             personalBigrams: PersonalBigramSource,
             glideConstants: GlideDecoder.GlideConstants,
+            autocorrectMinCandidateFrequency: Long,
         ): MappedDictionaryEngine? {
             val dictionary = lease.dictionary
             val identity = DictionaryIdentity(
@@ -363,6 +369,7 @@ class MappedDictionaryEngine private constructor(
                     dictionary.rawSize,
                     suffixTable,
                     fuzzyEditPolicy,
+                    autocorrectMinCandidateFrequency,
                 ) ?: throw IllegalArgumentException("validated dictionary layout mismatch")
                 val executor = executorFactory()
                 createdExecutor = executor
