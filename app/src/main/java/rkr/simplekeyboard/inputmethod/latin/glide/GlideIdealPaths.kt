@@ -22,7 +22,7 @@ import kotlin.math.sqrt
  * Ideal-path writer: turns a word's key sequence (as stored in [GlideWordIndex]) into the
  * polyline a perfect user would draw — key centers in order, with the doubled-letter loop
  * detour (bottom-right, top-right, top-left, bottom-left around the center at a quarter of the
- * key's width/height) when [withLoops] is set.
+ * key's width/height) at the positions [withLoops] and the index's same-letter bit both mark.
  *
  * The geometry of the loop detour is pinned identical to the offline gesture generator
  * (`scripts/glide_pack.py`) and to [GlideWordIndex]'s precomputed ideal lengths, so the decoder,
@@ -53,7 +53,6 @@ internal object GlideIdealPaths {
         val start = index.keySeqStart(entry)
         val end = index.keySeqEnd(entry)
         var count = 0
-        var previousKey = -1
         var minX = Float.MAX_VALUE
         var maxX = -Float.MAX_VALUE
         var minY = Float.MAX_VALUE
@@ -62,7 +61,9 @@ internal object GlideIdealPaths {
             val key = index.keySeqAt(position)
             val x = geometry.centerX(key)
             val y = geometry.centerY(key)
-            if (withLoops && key == previousKey) {
+            // The detour fires on the index's same-letter bit: two different letters folded to
+            // one key by an alias (е then ё) draw no loop.
+            if (withLoops && index.sameLetterAsPreviousAt(position)) {
                 if (count + 4 > outX.size) return -1
                 val dx = geometry.halfWidth(key) / 2
                 val dy = geometry.halfHeight(key) / 2
@@ -90,7 +91,6 @@ internal object GlideIdealPaths {
                 if (y < minY) minY = y
                 if (y > maxY) maxY = y
             }
-            previousKey = key
         }
         if (segLenOut != null) {
             for (i in 1 until count) {

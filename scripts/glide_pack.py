@@ -244,10 +244,11 @@ def letters_by_code_point(
     return by_letter
 
 
-def _has_double_key(word: str, by_letter: dict[int, _Rect]) -> bool:
-    """True when two adjacent letters sit on one key (a doubled letter, or a letter and its alias)."""
-    keys = [by_letter[ord(char.lower())].code_point for char in word]
-    return any(keys[i] == keys[i - 1] for i in range(1, len(keys)))
+def _has_doubled_letter(word: str) -> bool:
+    """True when two adjacent letters are the same letter. A letter and its alias share a key
+    but draw no loop: the loop detour fires on letter adjacency, not key adjacency."""
+    letters = [ord(char.lower()) for char in word]
+    return any(letters[i] == letters[i - 1] for i in range(1, len(letters)))
 
 
 def key_radius(rects: Sequence[_Rect]) -> int:
@@ -313,14 +314,17 @@ def _ideal_vertices(
     word: str, by_letter: dict[int, _Rect], draw_loop: bool
 ) -> tuple[list[tuple[int, int]], list[bool]]:
     """Key centers in letter order; a doubled letter contributes the 4 loop corners (or the
-    repeated center) exactly as the decoder's ideal-path writer produces them."""
+    repeated center) exactly as the decoder's ideal-path writer produces them. The detour fires
+    on letter adjacency, not key adjacency: a letter and its alias share a key but draw no loop.
+    """
     vertices: list[tuple[int, int]] = []
     loop_flags: list[bool] = []
     previous = -1
     for char in word:
-        rect = by_letter[ord(char.lower())]
+        letter = ord(char.lower())
+        rect = by_letter[letter]
         cx, cy = rect.center_x, rect.center_y
-        if draw_loop and rect.code_point == previous:
+        if draw_loop and letter == previous:
             dx = (rect.right - rect.left) // 4
             dy = (rect.bottom - rect.top) // 4
             vertices.extend(
@@ -330,7 +334,7 @@ def _ideal_vertices(
         else:
             vertices.append((cx, cy))
             loop_flags.append(False)
-        previous = rect.code_point
+        previous = letter
     return vertices, loop_flags
 
 
@@ -355,7 +359,7 @@ def generate_gesture(
     ``draw_loop`` is the caller's choice, not a draw: the set carries both variants of a doubled
     word, and the stream feeds the step draw first.
     """
-    has_double = _has_double_key(word, by_letter)
+    has_double = _has_doubled_letter(word)
     stream = splitmix64(seed ^ fnv1a64(word.encode("utf-8")))
     draw_loop = draw_loop and has_double
     # The sampling step references the narrowest letter-key width (the bottom row's 8.711%p
@@ -556,12 +560,13 @@ def generate_set(
     for word in words:
         # A doubled word contributes both variants (the decoder scores it only against its
         # looped path): the no-jog row first, then the jog row, from the same word stream, so
-        # the pair differs only in the detour. Both variants carry the word's persona.
+        # the pair differs only in the detour. Both variants carry the word's persona. An alias
+        # fold (е then ё, one key) is not a doubled letter and gets no jog row.
         knobs = persona_knobs(persona_of(word))
         rows.append(
             render_gesture(word, generate_gesture(word, by_letter, radius, seed=seed, **knobs))
         )
-        if _has_double_key(word, by_letter):
+        if _has_doubled_letter(word):
             rows.append(
                 render_gesture(
                     word,

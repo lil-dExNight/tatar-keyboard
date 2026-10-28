@@ -233,9 +233,10 @@ class AliasTest(unittest.TestCase):
                 ["абвёг", "абвъг"], eval_path, frozenset(by_letter), dict_modulus=1
             )
         self.assertEqual(selected, ["абвёг"])
-        # A letter followed by its alias is the same key twice: the set carries both variants.
+        # A letter followed by its alias folds to one key but is not a doubled letter: the set
+        # carries the plain row only.
         rendered, _ = pack.generate_set(["вгдеёа"], FIXTURE_RECTS, aliases=aliases)
-        self.assertEqual(len(rendered.splitlines()), 2)
+        self.assertEqual(len(rendered.splitlines()), 1)
         # The alias gesture is the base-letter gesture's geometry (only the word stream differs).
         self.assertEqual(
             pack._ideal_vertices("абвёг", by_letter, False),

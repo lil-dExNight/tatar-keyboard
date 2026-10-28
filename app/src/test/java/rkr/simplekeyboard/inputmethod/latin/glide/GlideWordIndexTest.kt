@@ -91,7 +91,7 @@ class GlideWordIndexTest {
                 "ммаммм" to 1L, // collapsed мам is absent: twinless
                 "ееш" to 1L, // collapsed еш equals ёш on the same keys: alias twin
                 "ёш" to 1L,
-                "её" to 1L, // е and its alias on one key: a doubled key, twin е absent
+                "её" to 1L, // е and its alias ё fold onto one key: an alias fold, not a doubled letter
                 "китап" to 1L, // no doubled key: never twinless
             ),
         )
@@ -102,8 +102,8 @@ class GlideWordIndexTest {
         assertTrue(index.isTwinlessAt(4))
         assertFalse(index.isTwinlessAt(5))
         assertFalse(index.isTwinlessAt(6))
-        assertTrue(index.isTwinlessAt(7))
-        assertTrue(index.loopLengthAt(7) >= 0f)
+        assertFalse(index.isTwinlessAt(7))
+        assertEquals(-1f, index.loopLengthAt(7), 0f)
         assertFalse(index.isTwinlessAt(8))
     }
 

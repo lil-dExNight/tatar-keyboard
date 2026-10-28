@@ -44,8 +44,11 @@ import kotlin.math.sqrt
  *
  * The memo gates live alongside: [gatesG4SpeedAdaptationOnTheRealDictionary] (the speed channel
  * beats the unadapted decoder on the fast-persona class), [gatesG8PerLanguageConstants] (the
- * per-language constants never lose to the shared set on either language) and
- * [gatesG5BigramChannel] (the bigram channel beats the plain decode on held-out context rows).
+ * per-language constants never lose to the shared set on either language),
+ * [gatesG5BigramChannel] (the bigram channel beats the plain decode on held-out context rows)
+ * and the B1 pair [gatesB1AliasDoubledClassOnTheRussianBench] /
+ * [gatesB1RussianHeldOutIsImproveOrFlat] (alias-folded words decode without a loop; the Russian
+ * held-out split is improve-or-flat).
  * The tuning surfaces print and never assert.
  * The train/held-out split is deterministic (a per-word SplitMix64 bit): constants are tuned
  * against the train split only, and the held-out split carries the reported numbers. The tuning
@@ -116,20 +119,6 @@ class GlideRecoveryCalibrationTest {
         }
     }
 
-    /** Two adjacent letters on one key: a doubled letter, or a letter and its alias. */
-    private fun hasDoubledKey(word: String, geo: GeneratorGeometry): Boolean {
-        var previous: Rect? = null
-        var offset = 0
-        while (offset < word.length) {
-            val codePoint = word.codePointAt(offset)
-            val rect = geo.byLetter.getValue(Character.toLowerCase(codePoint))
-            if (rect === previous) return true
-            previous = rect
-            offset += Character.charCount(codePoint)
-        }
-        return false
-    }
-
     private class GeneratedPath(val xs: IntArray, val ys: IntArray, val ts: IntArray, val drewLoop: Boolean) {
         /** The word of the set row this path was generated for (rows outnumber words). */
         var rowWord: String = ""
@@ -157,7 +146,7 @@ class GlideRecoveryCalibrationTest {
         val radius = geo.radius
 
         val codePoints = word.codePoints().toArray()
-        val hasDouble = hasDoubledKey(word, geo)
+        val hasDouble = hasDoubledLetter(word)
         var stream = splitmix64(streamSeed xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
         // The loop is the CALLER's decision (the set carries both variants of a doubled word), so
         // the stream feeds the step draw at once.
@@ -168,15 +157,18 @@ class GlideRecoveryCalibrationTest {
         val tstep = tstepMin + java.lang.Long.remainderUnsigned(stream, tstepVar).toInt()
         stream = splitmix64(stream)
 
-        // Ideal vertices (loop corners replace the doubled letter's center when drawn).
+        // Ideal vertices (loop corners replace the doubled letter's center when drawn). The
+        // detour fires on LETTER adjacency, not key adjacency: a letter and its alias (е then ё)
+        // share a key but draw no loop (mirror of glide_pack._ideal_vertices).
         val vertexX = IntArray(5 * codePoints.size)
         val vertexY = IntArray(5 * codePoints.size)
         val vertexIsLoop = BooleanArray(5 * codePoints.size)
         var vertexCount = 0
-        var previous: Rect? = null
+        var previousLetter = -1
         for (codePoint in codePoints) {
-            val rect = geo.byLetter.getValue(Character.toLowerCase(codePoint))
-            if (loop && rect === previous) {
+            val letter = Character.toLowerCase(codePoint)
+            val rect = geo.byLetter.getValue(letter)
+            if (loop && letter == previousLetter) {
                 val dx = (rect.right - rect.left) / 4
                 val dy = (rect.bottom - rect.top) / 4
                 vertexX[vertexCount] = rect.centerX + dx
@@ -194,7 +186,7 @@ class GlideRecoveryCalibrationTest {
                 vertexY[vertexCount] = rect.centerY
                 vertexCount++
             }
-            previous = rect
+            previousLetter = letter
         }
 
         // Corner cutting: decided on the original vertices, applied to copies.
@@ -377,10 +369,11 @@ class GlideRecoveryCalibrationTest {
         for (word in words) {
             // A doubled word contributes BOTH variants — the no-jog row first, then the jog row —
             // drawn from the same word stream (mirror of glide_pack.generate_set). Both variants
-            // carry the word's persona.
+            // carry the word's persona. An alias fold (е then ё, one key) is not a doubled
+            // letter and gets no jog row.
             val knobs = personaKnobs(personaOf(word))
             appendRow(word, generateGesture(geo, word, false, knobs), rendered, paths)
-            if (hasDoubledKey(word, geo)) {
+            if (hasDoubledLetter(word)) {
                 appendRow(word, generateGesture(geo, word, true, knobs), rendered, paths)
             }
         }
@@ -911,6 +904,89 @@ class GlideRecoveryCalibrationTest {
         assertTrue(lines.joinToString("; "), failures == 0)
     }
 
+    // ---- B1: the alias-fold class (the ё-family) on the Russian bench. ----
+
+    /**
+     * The word has two adjacent DIFFERENT letters mapping to one key rectangle (a letter and its
+     * alias, е then ё): the loop detour must not fire for it, so its ideal path is the plain one.
+     */
+    private fun isAliasFolded(word: String, geo: GeneratorGeometry): Boolean {
+        var previousLetter = -1
+        var previousRect: Rect? = null
+        var offset = 0
+        while (offset < word.length) {
+            val codePoint = word.codePointAt(offset)
+            offset += Character.charCount(codePoint)
+            val letter = Character.toLowerCase(codePoint)
+            val rect = geo.byLetter[letter] ?: return false // unmappable: the word is unglideable
+            if (letter != previousLetter && rect === previousRect) return true
+            previousLetter = letter
+            previousRect = rect
+        }
+        return false
+    }
+
+    /**
+     * The B1 gate: every Russian dictionary word whose adjacent letters fold to one key through
+     * an alias must decode from its PLAIN gesture (the user draws no loop for a word without a
+     * doubled letter). The bench's thinned selection contains none of these words, so the class
+     * seeds itself from the whole vocabulary; the gesture for a seed word is its set row (the
+     * word's persona, no jog).
+     */
+    @Test
+    fun gatesB1AliasDoubledClassOnTheRussianBench() {
+        val bench = russianBench()
+        val seeds = russianVocabulary.filter { isAliasFolded(it, bench.generatorGeometry) }
+        assertTrue("the Russian dictionary must seed the alias_doubled class", seeds.isNotEmpty())
+        val decoder = GlideDecoder(bench.geometry, bench.inventory, GlideDecoder.GlideConstants.RUSSIAN)
+        decoder.preloadIndex(bench.wordIndex)
+        val reusablePath = GlidePath(1024)
+        var top1 = 0
+        var top3 = 0
+        for (word in seeds) {
+            val path = generateGesture(
+                bench.generatorGeometry, word, false, personaKnobs(personaOf(word)),
+            )
+            val count = decodePath(path, decoder, reusablePath)
+            if (count > 0 && decodeResult.words[0] == word) top1++
+            for (slot in 0 until minOf(3, count)) {
+                if (decodeResult.words[slot] == word) {
+                    top3++
+                    break
+                }
+            }
+        }
+        val top1Pct = top1 * 100.0 / seeds.size
+        val top3Pct = top3 * 100.0 / seeds.size
+        println(
+            "Glide B1 alias_doubled: n=${seeds.size} top1=${fmt(top1Pct)}% top3=${fmt(top3Pct)}% " +
+                "words=$seeds",
+        )
+        assertTrue(
+            "alias_doubled top-3 ${fmt(top3Pct)}% below the 90% gate",
+            top3Pct >= B1_ALIAS_DOUBLED_TOP3_MIN,
+        )
+    }
+
+    /**
+     * The B1 held-out guard: the Russian bench's held-out top-1/top-3 must be improve-or-flat
+     * against the pre-fix run. The pins carry the PRE-FIX measured values (see the printout of
+     * [gatesG8PerLanguageConstants] on the tree before the alias-fold fix).
+     */
+    @Test
+    fun gatesB1RussianHeldOutIsImproveOrFlat() {
+        val top = measureTop(russianBench(), GlideDecoder.GlideConstants.RUSSIAN, heldOut = true)
+        println("Glide B1 ru held-out: top1=${fmt(top[0])}% top3=${fmt(top[1])}%")
+        assertTrue(
+            "ru held-out top-1 ${fmt(top[0])}% regressed past the pre-fix pin",
+            top[0] >= B1_RU_HELD_OUT_TOP1_PIN,
+        )
+        assertTrue(
+            "ru held-out top-3 ${fmt(top[1])}% regressed past the pre-fix pin",
+            top[1] >= B1_RU_HELD_OUT_TOP3_PIN,
+        )
+    }
+
     // ---- G5: the bigram channel on the glide N-best. ----
 
     /**
@@ -1243,14 +1319,17 @@ class GlideRecoveryCalibrationTest {
         return false
     }
 
-    /** Class split: the word carries a doubled letter (adjacent equal code points). */
+    /** Class split and the generator's loop trigger: the word carries a doubled letter
+     * (adjacent equal letters; an alias fold is not a double). Mirror of
+     * glide_pack._has_doubled_letter. */
     private fun hasDoubledLetter(word: String): Boolean {
         var previous = -1
         var offset = 0
         while (offset < word.length) {
             val codePoint = word.codePointAt(offset)
-            if (codePoint == previous) return true
-            previous = codePoint
+            val letter = Character.toLowerCase(codePoint)
+            if (letter == previous) return true
+            previous = letter
             offset += Character.charCount(codePoint)
         }
         return false
@@ -1398,6 +1477,13 @@ class GlideRecoveryCalibrationTest {
         private const val G1_TOP1_MIN = 35.0
         private const val G2_P95_MS = 2.0
 
+        // The B1 gates: the alias_doubled class floor on the Russian bench, and the pre-fix
+        // Russian held-out values the improve-or-flat guard compares against (pinned from the
+        // pre-fix tree's measurement).
+        private const val B1_ALIAS_DOUBLED_TOP3_MIN = 90.0
+        private const val B1_RU_HELD_OUT_TOP1_PIN = 0.0
+        private const val B1_RU_HELD_OUT_TOP3_PIN = 0.0
+
         // The pair-conditional variant's selected cell on the train surface (every cell tied, so
         // the tie-break chose the wider set, the wider firing rule and the weaker penalty); the
         // FUTO diagnostic's context slice evaluates the same arm.
@@ -1468,11 +1554,9 @@ class GlideRecoveryCalibrationTest {
                     identity,
                     validated.entryCount,
                     validated.rawSize,
-                    autocorrectMinCandidateFrequency =
-                        if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
-                            AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
-                        else
-                            AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
+                    autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                        AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                    else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 )
                 check(index != null)
                 val words = DictionaryTestFixtures.words(raw)

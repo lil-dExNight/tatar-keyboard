@@ -244,9 +244,10 @@ is decoded from a gesture over that key and committed with the right letter: on 
 `ъ` on `ь` and `ё` on `е`; on the Russian layout the Tatar letters too. A letter that is the long
 press of two keys takes its base from `ALIAS_BASES` (`һ` on `х`, `ә` on `а`) or gets no alias;
 digits and other non-letters never become aliases. Words that share a key sequence (`все` and
-`всё`) compete by frequency. A word with two adjacent letters on one key (a doubled letter, or a
-letter and its alias) is scored against its looped ideal path, so the gesture needs a loop or a
-dwell there, because the plain path belongs to the undoubled twin. When no indexed word has the
+`всё`) compete by frequency. A word with a doubled letter is scored against its looped ideal
+path, so the gesture needs a loop or a dwell there, because the plain path belongs to the
+undoubled twin. Two different letters that share a key through an alias (`её`) draw no loop and
+score against the plain path. When no indexed word has the
 collapsed key sequence (the twin bit of `GlideWordIndex`, recomputed with the personal words),
 the doubled word is also scored against the plain path and keeps the better score.
 

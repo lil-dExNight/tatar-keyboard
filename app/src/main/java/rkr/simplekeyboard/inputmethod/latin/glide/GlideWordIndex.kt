@@ -27,6 +27,10 @@ import kotlin.math.sqrt
  * Layout (all flat arrays, no per-word objects):
  *  - [keySeqStarts]/[keySeqPool]: each indexed word's letter sequence as key indices, so a
  *    survivor's ideal path is regenerated per decode without materializing the word;
+ *  - [sameLetterAsPrevious]: a bit per key-pool position, set when the letter at that position
+ *    is the same letter as at the position before — known only while the word's letters are
+ *    still unfolded, so a letter followed by its alias (е then ё, one key) is NOT a doubled
+ *    letter; the loop detour fires on this bit, never on key adjacency alone;
  *  - [frequencies]: the word's raw frequency, and [maxFrequency] across indexed words (the
  *    frequency channel's normalizer);
  *  - [plainLengths]/[loopLengths]: the word's ideal-path arc length, plain and with the
@@ -34,8 +38,8 @@ import kotlin.math.sqrt
  *    of the pruner is then two float reads per candidate;
  *  - [pairOffsets]/[pairEntries]: CSR buckets keyed by firstKey x lastKey, entry indices in
  *    dictionary order;
- *  - [twinless]: a bit per entry, set on a word with a doubled key whose collapsed key sequence
- *    is no other indexed word, so its plain path belongs to nobody else.
+ *  - [twinless]: a bit per entry, set on a word with a doubled letter whose collapsed key
+ *    sequence is no other indexed word, so its plain path belongs to nobody else.
  *
  * Words with a letter that has neither a key nor an alias on the layout (see
  * [GlideKeyGeometry.build]) are not indexed and can never be glide candidates; [skippedWordCount]
@@ -48,6 +52,7 @@ class GlideWordIndex private constructor(
     private val keyCount: Int,
     private val keySeqStarts: IntArray,
     private val keySeqPool: ByteArray,
+    private val sameLetterAsPrevious: LongArray,
     private val frequencies: IntArray,
     private val plainLengths: FloatArray,
     private val loopLengths: FloatArray,
@@ -57,9 +62,9 @@ class GlideWordIndex private constructor(
 ) {
     /** Estimated retained heap of the index, in bytes (array headers excluded). */
     val retainedByteEstimate: Long
-        get() = keySeqStarts.size * 4L + keySeqPool.size + frequencies.size * 4L +
-            plainLengths.size * 4L + loopLengths.size * 4L + pairOffsets.size * 4L +
-            pairEntries.size * 4L + twinless.size * 8L
+        get() = keySeqStarts.size * 4L + keySeqPool.size + sameLetterAsPrevious.size * 8L +
+            frequencies.size * 4L + plainLengths.size * 4L + loopLengths.size * 4L +
+            pairOffsets.size * 4L + pairEntries.size * 4L + twinless.size * 8L
 
     /** Start (inclusive) of the pair bucket's entry range in the CSR table. */
     fun pairRangeStart(startKeyIndex: Int, endKeyIndex: Int): Int =
@@ -81,6 +86,14 @@ class GlideWordIndex private constructor(
     /** The key index at [position] of the key-sequence pool. */
     fun keySeqAt(position: Int): Int = keySeqPool[position].toInt()
 
+    /**
+     * True when the letter at pool [position] is the same letter as at the previous position of
+     * its word — the only position where the loop detour fires. Two different letters folded to
+     * one key by an alias (е then ё) do not set the bit.
+     */
+    fun sameLetterAsPreviousAt(position: Int): Boolean =
+        (sameLetterAsPrevious[position ushr 6] ushr (position and 63)) and 1L != 0L
+
     /** Raw frequency of [entry] (schema stores strictly positive u32 values). */
     fun frequencyAt(entry: Int): Long = frequencies[entry].toLong() and 0xffff_ffffL
 
@@ -91,8 +104,8 @@ class GlideWordIndex private constructor(
     fun loopLengthAt(entry: Int): Float = loopLengths[entry]
 
     /**
-     * True when [entry] has a doubled key and no indexed word has its key sequence with every run
-     * of one key collapsed to a single visit.
+     * True when [entry] has a doubled letter and no indexed word has its key sequence with every
+     * run of one key collapsed to a single visit.
      */
     fun isTwinlessAt(entry: Int): Boolean =
         (twinless[entry ushr 6] ushr (entry and 63)) and 1L != 0L
@@ -110,6 +123,7 @@ class GlideWordIndex private constructor(
             val keySeqStarts = IntArray(entryCount + 1)
             val frequencies = IntArray(entryCount)
             var pool = ByteArray(entryCount * 4)
+            var sameLetter = LongArray((entryCount * 4 ushr 6) + 1)
             var poolSize = 0
             var wordCount = 0
             var skipped = 0
@@ -125,19 +139,34 @@ class GlideWordIndex private constructor(
                 var lastKey = -1
                 var i = 0
                 var letters = 0
+                var previousLetter = -1
                 val start = poolSize
                 while (i < word.length) {
                     val codePoint = word.codePointAt(i)
                     i += Character.charCount(codePoint)
-                    val key = geometry.keyIndexOfLetter(Character.toLowerCase(codePoint))
+                    val letter = Character.toLowerCase(codePoint)
+                    val key = geometry.keyIndexOfLetter(letter)
                     if (key < 0) {
                         mappable = false
                         break
                     }
                     if (poolSize + 1 > pool.size) {
                         pool = pool.copyOf(pool.size * 2)
+                        sameLetter = sameLetter.copyOf((pool.size ushr 6) + 1)
+                    }
+                    // The doubled-letter bit lives beside the pool position and compares the
+                    // LETTERS, before the alias fold maps them to keys: a letter followed by its
+                    // alias (е then ё) shares the key but is not a doubled letter. Written
+                    // unconditionally, so a rolled-back word's stale bits never leak into the
+                    // next word's positions.
+                    val bit = 1L shl (poolSize and 63)
+                    if (letter == previousLetter) {
+                        sameLetter[poolSize ushr 6] = sameLetter[poolSize ushr 6] or bit
+                    } else {
+                        sameLetter[poolSize ushr 6] = sameLetter[poolSize ushr 6] and bit.inv()
                     }
                     pool[poolSize++] = key.toByte()
+                    previousLetter = letter
                     if (firstKey < 0) firstKey = key
                     lastKey = key
                     letters++
@@ -157,6 +186,7 @@ class GlideWordIndex private constructor(
             }
             keySeqStarts[entryCount] = poolSize
             val keySeqPool = pool.copyOf(poolSize)
+            val sameLetterAsPrevious = sameLetter.copyOf((poolSize + 63) ushr 6)
 
             // CSR offsets from the pair counts.
             val pairOffsets = IntArray(keyCount * keyCount + 1)
@@ -181,8 +211,10 @@ class GlideWordIndex private constructor(
                 val firstKey = keySeqPool[start].toInt()
                 val lastKey = keySeqPool[end - 1].toInt()
                 pairEntries[cursors[firstKey * keyCount + lastKey]++] = entry
-                plainLengths[entry] = idealLength(keySeqPool, start, end, geometry, false)
-                val loopLength = idealLength(keySeqPool, start, end, geometry, true)
+                plainLengths[entry] =
+                    idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, false)
+                val loopLength =
+                    idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, true)
                 if (loopLength >= 0f) loopLengths[entry] = loopLength
             }
             // Insertion sort within each bucket: buckets average ~80 entries and the pass is
@@ -207,12 +239,13 @@ class GlideWordIndex private constructor(
             val twinless = twinlessBits(keySeqStarts, keySeqPool, loopLengths, entryCount)
             return GlideWordIndex(
                 wordCount, skipped, maxFrequency, keyCount, keySeqStarts, keySeqPool,
-                frequencies, plainLengths, loopLengths, pairOffsets, pairEntries, twinless,
+                sameLetterAsPrevious, frequencies, plainLengths, loopLengths, pairOffsets,
+                pairEntries, twinless,
             )
         }
 
         /**
-         * The twin bit set. Every indexed entry without a doubled key goes into an
+         * The twin bit set. Every indexed entry without a doubled letter goes into an
          * open-addressing table keyed by the hash of its key sequence (linear probing, load
          * <= 1/2); every doubled entry then probes with the hash of its collapsed sequence, and a
          * hit counts only after a full comparison. Key sequences rather than strings, so alias
@@ -303,10 +336,13 @@ class GlideWordIndex private constructor(
         /**
          * The ideal-path arc length of one word's key sequence; with [withLoops], every doubled
          * letter contributes its four-point loop detour (returns -1 instead when the word has no
-         * doubled letter, so the pruner never matches the same length twice).
+         * doubled letter, so the pruner never matches the same length twice). The detour fires
+         * only where [sameLetter] marks the position: two different letters sharing a key through
+         * an alias (е then ё) never draw a loop.
          */
         private fun idealLength(
             keySeq: ByteArray,
+            sameLetter: LongArray,
             start: Int,
             end: Int,
             geometry: GlideKeyGeometry,
@@ -322,7 +358,9 @@ class GlideWordIndex private constructor(
                 val x = geometry.centerX(key)
                 val y = geometry.centerY(key)
                 if (previousKey >= 0) {
-                    if (withLoops && key == previousKey) {
+                    if (withLoops &&
+                        (sameLetter[position ushr 6] ushr (position and 63)) and 1L != 0L
+                    ) {
                         hasDouble = true
                         // The detour: previous point -> 4 loop corners (bottom-right, top-right,
                         // top-left, bottom-left), replacing the doubled letter's center visit, as

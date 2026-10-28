@@ -479,12 +479,14 @@ class GlideGoldenExportTest {
         return rects
     }
 
-    private fun hasDoubledKey(word: String, byLetter: Map<Int, Rect>): Boolean {
-        var previous: Rect? = null
+    /** Two adjacent equal letters (mirror of glide_pack._has_doubled_letter): an alias fold —
+     * a letter and its alias on one key — is not a double and draws no loop. */
+    private fun hasDoubledLetter(word: String): Boolean {
+        var previous = -1
         for (codePoint in word.codePoints().toArray()) {
-            val rect = byLetter.getValue(Character.toLowerCase(codePoint))
-            if (rect === previous) return true
-            previous = rect
+            val letter = Character.toLowerCase(codePoint)
+            if (letter == previous) return true
+            previous = letter
         }
         return false
     }
@@ -582,7 +584,7 @@ class GlideGoldenExportTest {
         val radius = raw.minOf { minOf(it.right - it.left, it.bottom - it.top) }
 
         val codePoints = word.codePoints().toArray()
-        val hasDouble = hasDoubledKey(word, byLetter)
+        val hasDouble = hasDoubledLetter(word)
         var stream = splitmix64(streamSeed xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
         val loop = drawLoop && hasDouble
         val stepMin = minWidth / STEP_DIVISOR
@@ -595,10 +597,11 @@ class GlideGoldenExportTest {
         val vertexY = IntArray(5 * codePoints.size)
         val vertexIsLoop = BooleanArray(5 * codePoints.size)
         var vertexCount = 0
-        var previous: Rect? = null
+        var previousLetter = -1
         for (codePoint in codePoints) {
-            val rect = byLetter.getValue(Character.toLowerCase(codePoint))
-            if (loop && rect === previous) {
+            val letter = Character.toLowerCase(codePoint)
+            val rect = byLetter.getValue(letter)
+            if (loop && letter == previousLetter) {
                 val dx = (rect.right - rect.left) / 4
                 val dy = (rect.bottom - rect.top) / 4
                 vertexX[vertexCount] = rect.centerX + dx
@@ -616,7 +619,7 @@ class GlideGoldenExportTest {
                 vertexY[vertexCount] = rect.centerY
                 vertexCount++
             }
-            previous = rect
+            previousLetter = letter
         }
 
         val cut = BooleanArray(vertexCount)
@@ -736,10 +739,9 @@ class GlideGoldenExportTest {
     ): Pair<StringBuilder, List<GeneratedPath>> {
         val rendered = StringBuilder()
         val paths = ArrayList<GeneratedPath>(words.size)
-        val byLetter = rectsByLetter(raw)
         for (word in words) {
             appendRow(word, generateGesture(word, false, raw), rendered, paths)
-            if (hasDoubledKey(word, byLetter)) appendRow(word, generateGesture(word, true, raw), rendered, paths)
+            if (hasDoubledLetter(word)) appendRow(word, generateGesture(word, true, raw), rendered, paths)
         }
         // Context rows: one no-jog row per selected pair, after the word rows.
         for ((previous, word) in contextPairs) {
@@ -780,11 +782,14 @@ class GlideGoldenExportTest {
             val v = TdictValidator().validateRaw(rawFile, spec)
             val raw = rawFile.readBytes()
             val identity = DictionaryIdentity(spec.generation, v.schemaId, v.formatVersion, v.rawSha256)
-            val index = requireNotNull(TdictPrefixIndex.open(ByteBuffer.wrap(raw), identity, v.entryCount, v.rawSize,
-                autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
-                    AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
-                else
-                    AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU))
+            val index = requireNotNull(
+                TdictPrefixIndex.open(
+                    ByteBuffer.wrap(raw), identity, v.entryCount, v.rawSize,
+                    autocorrectMinCandidateFrequency = if (spec == DictionaryArtifactSpec.TATAR_TOP100K_V1)
+                        AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
+                    else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
+                ),
+            )
             return index to DictionaryTestFixtures.words(raw)
         } finally {
             rawFile.delete()
