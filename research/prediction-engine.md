@@ -96,7 +96,7 @@ Open-source engines (license check: project is Apache-2.0, no GPL code, no NDK):
 
 | Source | Size | License | Verdict |
 |---|---|---|---|
-| corpus.tatar wordform frequency lists | counted over 500M+ edited words | No terms stated | **Best single Tatar ranking lever; needs written permission (tatcorpus@gmail.com)** |
+| corpus.tatar wordform frequency lists | counted over 500M+ edited words | No terms stated | Closed: host unreachable, no acquisition path is pursued |
 | HPLT v2/v3 `tat_Cyrl` | ~297M words, v3 has register labels | CC0 packaging | Top unblocked source for unigrams *and* bigrams; filter Russian bleed |
 | MADLAD-400 tt | ~60M tokens | CC BY 4.0 | Clean cross-validation source; keep words attested in both |
 | tt.wikipedia | ~216M words | CC BY-SA 4.0 | Usable with attribution; SA-on-frequency-list is a gray zone — needs an explicit decision |
@@ -167,7 +167,7 @@ and tt.wikipedia: per-source extraction with a Russian-bleed filter, merged as i
 frequencies (`data/dictionary/dict-accept/bonus-freq-tt.tsv`), re-rank only at the fixed
 dictionary size. Measured: +0.96 pp held-out conversational token coverage (bar +0.5), chain
 top-3 flat (paired CI contains zero), keystroke savings +1.22 pp. corpus.tatar stayed
-unobtainable (host unreachable) and remains the best untapped lever.
+unobtainable (host unreachable); the source is closed.
 
 P3 follow-ups, both measured and closed. (a) Retraining the bigram table on the sentence-split
 extra corpora: rejected, +0.16 pp chain top-3 against the +0.3 pp bar (paired CI95 contained
@@ -261,8 +261,8 @@ gate on feature tests, not eval.
 ## Risks and open questions
 
 - **License posture (decision recorded)**: the operator accepted use of all surveyed sources
-  for now, including CC BY-SA (Wikipedia, Taiga) and the terms-free corpus.tatar frequency
-  lists; the review is deferred and out of the work plan. Revisit before any store
+  for now, including CC BY-SA (Wikipedia, Taiga); the review is deferred and out of the work
+  plan. Revisit before any store
   publication. Shipped assets still must never carry GPL analyzer data (Apertium/GiellaLT) —
   that stays dev-time only (the kaikki precedent).
 - **Eval domain**: the pinned Tatar set is Tatoeba-register; the conversational decile exists
