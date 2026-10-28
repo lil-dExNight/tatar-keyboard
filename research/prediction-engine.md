@@ -8,19 +8,22 @@ truth.
 ## Current state
 
 Engine: binary-search prefix lookup over the front-coded dictionary (TATDICT v2), at most one
-personal word merged in, then typo recovery (edit class #1 for both languages, class #4 for
-Tatar only). Next-word: form-keyed bigram table (TATBIGR v3, ≤4 successors per head) →
-learned pairs → generated Tatar word forms → top-frequency fallback. Autocorrect on
-unambiguous class-#1 typos above a frequency gate.
+personal word merged in, then typo recovery (edit class #1 for every language; on an empty exact
+pass at ≥ 4 code points the Tatar engine runs the shared DL-1 tier — substitution, deletion,
+insertion and transposition under one rank tag). Next-word: form-keyed bigram table (TATBIGR v3,
+≤4 successors per head) → learned pairs → generated Tatar word forms → top-frequency fallback.
+Autocorrect on unambiguous class-#1 typos above a per-language frequency gate.
 
-Measured baseline at research time (`scripts/suggest_eval.py`, pinned held-out Tatar set):
+Measured baseline (`scripts/suggest_eval.py`, pinned held-out Tatar set, current pins):
 
-- Dictionary covers 94.3% of eval tokens but 88.9% of types — the 5.4 pp gap is the
+- Dictionary covers 95.3% of eval tokens but 90.8% of types — the 4.5 pp gap is the
   morphology tax.
-- 45.1% of eval tokens carry a known inflectional suffix; 64.1% of the shipped Tatar
-  dictionary entries are generated inflected forms.
-- Bigram head coverage 84.2%; next-word top-3 hit 10.8% overall, 12.9% on covered heads —
+- 45.0% of eval tokens carry a known inflectional suffix; most shipped Tatar dictionary entries
+  are generated inflected forms.
+- Bigram head coverage 85.1%; next-word top-3 hit 12.3% overall, 14.4% on covered heads —
   large headroom, concentrated in uncovered heads and form-fragmented successors.
+- Typo recovery with the DL-1 tier is pinned per edit class in `TypoMutatedEvalTest` and
+  `TtDl1TierCalibrationTest`.
 
 ## What the world does
 
