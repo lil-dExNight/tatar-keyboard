@@ -219,6 +219,30 @@ object TatarWordUtils {
         return Character.isLetter(textBeforeCursor[punctStart - 1])
     }
 
+    /**
+     * True when the last word in [textBeforeCursor] began where a sentence begins: the text before
+     * that word is a sentence-start context per [isSentenceStartContext]. A trailing non-word run
+     * is skipped first, so both "word|" (a completion the user is still typing) and "word. |"
+     * (a word the separator just finished) answer for the same word.
+     *
+     * This is the sentence-initial overlay's commit-time check; [cacheReachedTextStart] works as
+     * in [isSentenceStartContext].
+     */
+    @JvmStatic
+    fun isTrailingWordAtSentenceStart(
+        textBeforeCursor: CharSequence?,
+        cacheReachedTextStart: Boolean,
+    ): Boolean {
+        if (textBeforeCursor == null) return false
+        var end = textBeforeCursor.length
+        // The separator run that may follow the word (one or more non-word characters).
+        while (end > 0 && !isWordCharacter(textBeforeCursor[end - 1])) end--
+        val word = extractTrailingWord(textBeforeCursor.subSequence(0, end))
+        if (word.isEmpty()) return false
+        return isSentenceStartContext(
+            textBeforeCursor.subSequence(0, end - word.length), cacheReachedTextStart)
+    }
+
     /** The four sentence-ending characters: '.', '!', '?', '…' (U+2026). */
     private fun isSentenceEndingPunctuation(ch: Char): Boolean =
         ch == '.' || ch == '!' || ch == '?' || ch == '…'

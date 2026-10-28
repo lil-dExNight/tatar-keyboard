@@ -82,6 +82,14 @@ interface EditorSurface {
     fun isAtSentenceStart(): Boolean = false
 
     /**
+     * True when the word at the cursor — the trailing word being typed, or the word a
+     * just-committed separator finished — began where a sentence begins, by
+     * [TatarWordUtils.isTrailingWordAtSentenceStart]'s rules. Read at commit time by the
+     * sentence-initial overlay's learning paths. Defaults to false: nothing is learned.
+     */
+    fun isTrailingWordAtSentenceStart(): Boolean = false
+
+    /**
      * Commits a predicted next word. Unlike [commitSuggestion] and [replaceTypedWord] it deletes
      * nothing (NEXT_WORD fires only on an empty prefix) and only inserts, with the same auto-space
      * rule as an accepted suggestion.
@@ -246,6 +254,16 @@ fun interface RevertCellDecorator {
  */
 fun interface UiPoster {
     fun post(runnable: Runnable)
+}
+
+/**
+ * The personal sentence-initial overlay of a language: its saved words, most-used first, or an
+ * empty list. Read live at every sentence-start fill, on the UI thread; implementations answer
+ * from a published snapshot, never from a file. The personal-dictionary gate lives behind the
+ * seam; pausing learning gates writes only, never this read.
+ */
+fun interface SentStartOverlaySource {
+    fun topWords(subtypeId: String): List<String>
 }
 
 /**

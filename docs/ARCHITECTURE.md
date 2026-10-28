@@ -100,8 +100,10 @@ posts it to the UI thread and applies it only if `isCurrent(token)` still holds.
 
 **Lookup kinds** (`LookupKind`): `PREFIX` (word completion), `NEXT_WORD` (next-word prediction
 after a committed word), `GLIDE` (glide decoding). At a sentence start (the field start, a line
-start, or '.', '!', '?', '…' followed by a space) the strip is filled synchronously from a static
-table (`SentStartIndex`, `assets/dictionaries/*_sentstart_v1.txt`).
+start, or '.', '!', '?', '…' followed by a space) the strip is filled synchronously: the personal
+sentence-initial overlay (`SentStartOverlayStore`, learned from sentence-initial commits through
+the shared learning gates) leads, then the static table (`SentStartIndex`,
+`assets/dictionaries/*_sentstart_v1.txt`), deduplicated, at most one cell per word.
 
 **Strip.** `SuggestionStripView` is one Canvas view with four cells
 (`SuggestionStripState.CELL_COUNT`). A tap commits the word with a space; a punctuation mark that

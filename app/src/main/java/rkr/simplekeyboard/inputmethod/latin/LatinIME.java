@@ -91,6 +91,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmo
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalForget;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearningGates;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.SentStartOverlayLearning;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.SentStartOverlays;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStores;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.TextShortcutStores;
@@ -646,6 +648,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
+            public boolean isTrailingWordAtSentenceStart() {
+                // Same cache and cache-start flag as isAtSentenceStart.
+                return TatarWordUtils.INSTANCE.isTrailingWordAtSentenceStart(
+                        mInputLogic.mConnection.getCachedTextBeforeCursor(),
+                        mInputLogic.mConnection.cacheReachedTextStart());
+            }
+
+            @Override
             public boolean commitPredictedWord(final String expectedContextWord,
                     final String suggestion) {
                 final boolean committed =
@@ -757,6 +767,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // Word pairs, under the same predicate.
         mSuggestionsController.setPairCompletionSink(PersonalBigramLearning.sinkFor(
                 this, this::activeDictionarySubtype, this::mayLearnPersonalWords));
+        // The sentence-initial overlay, under the same predicate: a word committed at a sentence
+        // start counts toward the small per-language overlay the strip leads with.
+        mSuggestionsController.setSentenceStartSink(SentStartOverlayLearning.sinkFor(
+                this, this::activeDictionarySubtype, this::mayLearnPersonalWords));
+        // The overlay's read side, gated live on the personal-dictionary setting like the other
+        // personal sources; pause learning gates writes only, never this read.
+        mSuggestionsController.setSentStartOverlaySource(subtypeId -> SentStartOverlays.topWordsFor(
+                this, subtypeId, () -> Settings.readPersonalDictionaryEnabled(mDevicePrefs)));
         // Whether a pair's context word is in the bundled dictionary, asked by the pair store
         // on its worker before a pair is kept (the personal-dictionary check lives in
         // PersonalBigramDictionaries). Without a controller the answer is false.

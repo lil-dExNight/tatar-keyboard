@@ -233,6 +233,24 @@ and over-length words, but checks no alphabet (a refused typed word is off-dicti
 construction) and no ordering. The store has no pending counters and no salt, and its quarantine is
 silent: no screen lists the refused pairs.
 
+## Sentence-initial overlay files: TATSENT
+
+`sentstart-<tag>-s1-f1.tsent` (magic `TATSENT\0`) holds the few words the user actually starts
+sentences with, one file per language in the same `noBackupFilesDir/personal/` directory, with the
+same 72-byte header (subtype tag included) and the same record layout as `.tpers`
+(`wordByteLength u8`, `usageCount u16`, `lastUseSerial u32`, the word as entered). The cap is 8
+entries and 4 096 bytes, and the normalized length bounds are 1..24 code points — sentence starts
+admit one-letter words («я» opens Russian sentences). Records are sorted by the normalized form;
+the strip order is by usage count, then last-use serial.
+
+Validation (`personal/TsentValidator.kt`) is the `.tpers` one with these bounds. Learning follows
+the personal dictionary's pending-counter discipline (`PendingCounters`): a word crosses into
+plaintext only after the shared learn threshold of sentence-initial commits, and the pending hashes
+and salt live in the store's own `pending-sentstart-<tag>-s1-f1.bin` and `salt-sentstart.bin`. The
+quarantine is the move to `<file name>.quarantine` with no notice: no screen lists the overlay, and
+the overlay relearns. The files do not classify into a backup kind, so an export never carries
+them.
+
 ## Plain-text assets
 
 These assets are UTF-8 with LF line endings. Their readers are fail-closed: a malformed line is

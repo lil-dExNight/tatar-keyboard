@@ -17,14 +17,16 @@
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SentenceStartSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 
 /**
  * The clean-run machines of [SuggestionsController]: the completed-word machine (personal
- * dictionary) and the completed-pair machine (learned word pairs), which share one run of text.
+ * dictionary), the completed-pair machine (learned word pairs) and the sentence-initial machine
+ * (the personal sentence-start overlay), which share one run of text.
  *
  * Nothing here is persisted and nothing leaves this object except the completions handed to the
- * two sinks; with the default sinks those are no-ops. One completed word may outlive its run:
+ * three sinks; with the default sinks those are no-ops. One completed word may outlive its run:
  * the one parked for the deferred empty-prefix probe, until the probe's answer lands.
  */
 internal class CleanRunMachine(private val editor: EditorSurface) {
@@ -62,8 +64,21 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
     /** Where clean pair completions and accepted pair predictions go. Default writes nothing. */
     var pairCompletionSink: PairCompletionSink = PairCompletionSink.NONE
 
+    // --- Sentence-initial clean-run state. The sentence-initial machine shares [runWord] but
+    // keeps its own cleanliness bit, because its rule differs from the word machine's in two
+    // places: the word is usually IN the dictionary (the overlay learns usage, not unknown words,
+    // so the empty-prefix filter does not apply), and a word typed at the start of a session does
+    // count — the sentence-start check ([EditorSurface.isTrailingWordAtSentenceStart]) already
+    // proves where the word began, and the first-observation length cap below still rejects a
+    // pre-filled word the user merely extended.
+    /** False as soon as anything but plain growth happens in the current run. */
+    private var sentStartRunClean: Boolean = false
+
+    /** Where sentence-initial word commits go. Default writes nothing. */
+    var sentenceStartSink: SentenceStartSink = SentenceStartSink.NONE
+
     /**
-     * Advances both machines from the existing hooks: no extra IPC, no extra editor call, and
+     * Advances the machines from the existing hooks: no extra IPC, no extra editor call, and
      * nothing kept about the text beyond the current word.
      *
      * A run is CLEAN while the trailing word grows one piece at a time (`w.startsWith(previous) &&
@@ -83,24 +98,32 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
         if (word.isEmpty()) {
             reportCompletionIfClean(previous)
             reportPairCompletionIfClean(previous)
+            // Before the state reset, while the editor still shows "word<separator>".
+            reportSentenceStartIfClean(previous)
             val parked = parkForDeferredProbe(previous)
             runWord = ""
             runClean = true
             // A completed boundary is a position the pair machine trusts: whatever state the run
             // that just ended was in, the NEXT word grows from nothing under our eyes.
             pairRunClean = true
+            sentStartRunClean = true
             runEmptyResultPrefixLength = NO_EMPTY_RESULT
             return parked
         }
         if (previous.isEmpty()) {
             // A fresh word begins; whether it stays clean is decided by what follows.
             runWord = word
+            // The sentence-initial machine saw this word start: its session-start caution is
+            // covered by the first-observation length cap below and by the commit-time
+            // sentence-start check.
+            sentStartRunClean = true
             if (word.length > MAX_FIRST_OBSERVATION_UNITS) {
                 // Privacy: one observation may carry at most one keystroke of new text (1-2
                 // UTF-16 units; a surrogate pair is one key). More is a paste or a replacement,
-                // so the run starts dirty on both machines and a pasted word is never learned.
+                // so the run starts dirty on all machines and a pasted word is never learned.
                 runClean = false
                 pairRunClean = false
+                sentStartRunClean = false
             }
             runEmptyResultPrefixLength = NO_EMPTY_RESULT
             return null
@@ -113,6 +136,7 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
         runWord = word
         runClean = false
         pairRunClean = false
+        sentStartRunClean = false
         runEmptyResultPrefixLength = NO_EMPTY_RESULT
         return null
     }
@@ -198,10 +222,35 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
         pairCompletionSink.onCleanPairCompletion(context, word)
     }
 
+    /**
+     * Reports [word] as committed at a sentence start. Unlike the word machine there is no
+     * "unknown to the dictionary" filter: the overlay learns usage, and a dictionary word is the
+     * common case. The position is read from the live editor cache now: the text ends with the
+     * separator that just completed [word], and the word is sentence-initial exactly when the text
+     * before it is a sentence-start context. A word not at a sentence start is never reported.
+     */
+    private fun reportSentenceStartIfClean(word: String) {
+        if (!sentStartRunClean || word.isEmpty()) return
+        if (sentenceStartSink === SentenceStartSink.NONE) return
+        if (!editor.isTrailingWordAtSentenceStart()) return
+        sentenceStartSink.onSentenceStartWord(word)
+    }
+
+    /**
+     * An accepted cell committed at a sentence start: a sentence-start strip's word (its binding
+     * is the sentence start itself) or a completion tapped while the word it replaced began at
+     * one. The tapped word counts toward the sentence-initial overlay; the sink applies the
+     * learning gates and the store's filters.
+     */
+    fun noteAcceptedSentenceStartWord(word: String) {
+        sentenceStartSink.onSentenceStartWord(word)
+    }
+
     fun markRunDirty() {
         runWord = ""
         runClean = false
         pairRunClean = false
+        sentStartRunClean = false
         runEmptyResultPrefixLength = NO_EMPTY_RESULT
         deferredProbeAwaitingAnswer = null
     }
@@ -233,12 +282,14 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
     }
 
     /**
-     * The one boundary where the personal dictionary and learned pairs write what they have
-     * accumulated (usage counters and pending hashes), once, and only if something changed.
+     * The one boundary where the personal dictionary, learned pairs and the sentence-initial
+     * overlay write what they have accumulated (usage counters and pending hashes), once, and
+     * only if something changed.
      */
     fun onInputFinished() {
         completionSink.onInputFinished()
         pairCompletionSink.onInputFinished()
+        sentenceStartSink.onInputFinished()
     }
 
     private companion object {

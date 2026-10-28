@@ -122,18 +122,22 @@ class PersonalEmojiScreenSourceContractTest {
                 && clearing.contains(".clearAll"))
         assertTrue("and the band is unbound at once",
             clearing.contains("PersonalEmojiDictionaries.notifyErased()"))
-        // The global erase covers ALL FOUR stores — an "erase everything" that left the learned
-        // emoji or the refused corrections behind would be contradicted by the suggestions.
+        // The global erase covers ALL FIVE stores — an "erase everything" that left the learned
+        // emoji, the refused corrections or the sentence-initial overlay behind would be
+        // contradicted by the suggestions.
         val erase = bodyOf(host, "private fun showErasePersonalDictionaryDialog(", "\n    /**")
         assertTrue("the words half", erase.contains("controller.eraseAll(subtypeIds)"))
         assertTrue("the pairs half", erase.contains("pairController.eraseAll(subtypeIds)"))
         assertTrue("and the emoji third", erase.contains("emojiController.eraseAll(subtypeIds)"))
         assertTrue("and the refused corrections fourth",
             erase.contains("eraseRefusedCorrections(subtypeIds)"))
+        assertTrue("and the sentence-initial overlay fifth",
+            erase.contains("eraseSentStartOverlays(subtypeIds)"))
         assertTrue("reported as one honest answer",
             erase.contains("afterPersonalMutation(")
                 && erase.contains("wordsErased && pairsErased && emojiErased")
-                && erase.contains("&& refusalsErased"))
+                && erase.contains("&& refusalsErased")
+                && erase.contains("&& overlayErased"))
         assertTrue("with all three quarantine cards re-read",
             erase.contains("personalQuarantines = null")
                 && erase.contains("personalPairQuarantines = null")

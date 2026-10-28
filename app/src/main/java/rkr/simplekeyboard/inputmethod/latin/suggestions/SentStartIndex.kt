@@ -110,3 +110,28 @@ fun interface SentStartSource {
     /** The top [maxOut] sentence-start words in ranking order; empty when unusable. */
     fun topWords(maxOut: Int): List<String>
 }
+
+/**
+ * The sentence-start strip fill: [overlay] first (the user's own sentence-initial words, in usage
+ * order), then [table] (the static table's ranking), at most [maxOut] cells. The static order is
+ * never rearranged, and a word already shown — compared by normalized form — is not repeated, so
+ * a static entry the overlay carries is skipped rather than displaced. Fewer than [maxOut] cells
+ * come back only when both sources run out.
+ */
+internal fun mergeSentenceStartCells(
+    overlay: List<String>,
+    table: List<String>,
+    maxOut: Int,
+): List<String> {
+    val merged = ArrayList<String>(maxOut)
+    val seen = HashSet<String>()
+    for (word in overlay) {
+        if (merged.size == maxOut) break
+        if (seen.add(TatarWordUtils.normalizeForLookup(word))) merged.add(word)
+    }
+    for (word in table) {
+        if (merged.size == maxOut) break
+        if (seen.add(TatarWordUtils.normalizeForLookup(word))) merged.add(word)
+    }
+    return merged
+}

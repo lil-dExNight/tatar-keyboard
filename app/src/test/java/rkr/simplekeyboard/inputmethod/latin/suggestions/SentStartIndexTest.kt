@@ -83,4 +83,45 @@ class SentStartIndexTest {
         val index = SentStartIndex.parse("бу\t9\n${"а".repeat(600)}\t1\nул\t5\n")
         assertEquals(listOf("бу", "ул"), index.topWords(10))
     }
+
+    // --- mergeSentenceStartCells: the overlay-first fill ------------------------------------------
+
+    @Test
+    fun theOverlayLeadsAndTheTableFillsInItsOwnOrder() {
+        assertEquals(
+            listOf("мин", "бүген", "бу", "ул"),
+            mergeSentenceStartCells(listOf("мин", "бүген"), listOf("бу", "ул", "ә", "әле"), 4),
+        )
+    }
+
+    @Test
+    fun aTableWordTheOverlayCarriesIsNotRepeated() {
+        assertEquals(
+            listOf("бүген", "мин", "бу", "ул"),
+            mergeSentenceStartCells(listOf("бүген", "мин"), listOf("бу", "ул", "бүген", "әле"), 4),
+        )
+    }
+
+    @Test
+    fun theDedupIsOnTheNormalizedFormSoCasingDoesNotDuplicate() {
+        assertEquals(
+            listOf("Бүген", "бу", "ул"),
+            mergeSentenceStartCells(listOf("Бүген"), listOf("бүген", "бу", "ул"), 4),
+        )
+    }
+
+    @Test
+    fun theFillCapsAtTheCellCount() {
+        assertEquals(
+            listOf("а", "б", "в", "г"),
+            mergeSentenceStartCells(listOf("а", "б", "в"), listOf("г", "д"), 4),
+        )
+    }
+
+    @Test
+    fun fewerCellsOnlyWhenBothSourcesRunOut() {
+        assertEquals(listOf("мин", "бу"), mergeSentenceStartCells(listOf("мин"), listOf("бу"), 4))
+        assertEquals(emptyList<String>(), mergeSentenceStartCells(emptyList(), emptyList(), 4))
+        assertEquals(listOf("бу"), mergeSentenceStartCells(emptyList(), listOf("бу"), 4))
+    }
 }

@@ -23,6 +23,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.EmptyPrefixProber
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SentenceStartSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSink
@@ -461,6 +462,13 @@ class SuggestionsController internal constructor(
     /** The languages whose one-per-process load was requested; a failure is not retried. */
     private val sentStartPreparationRequested = HashSet<String>()
 
+    /**
+     * The personal sentence-initial overlay, read live at every sentence-start fill; null (the
+     * static table alone) until wired. The personal-dictionary gate lives behind the seam;
+     * pausing learning gates writes only, never this read.
+     */
+    private var sentStartOverlaySource: SentStartOverlaySource? = null
+
     /** The undo-autocorrect window; see [RevertWindow]. */
     private val revertWindow = RevertWindow()
 
@@ -521,6 +529,16 @@ class SuggestionsController internal constructor(
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
     fun setPairCompletionSink(sink: PairCompletionSink) {
         runMachine.pairCompletionSink = sink
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setSentenceStartSink(sink: SentenceStartSink) {
+        runMachine.sentenceStartSink = sink
+    }
+
+    /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
+    fun setSentStartOverlaySource(source: SentStartOverlaySource) {
+        sentStartOverlaySource = source
     }
 
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
@@ -2187,10 +2205,15 @@ class SuggestionsController internal constructor(
 
     /**
      * Paints the sentence-start strip synchronously when the position is a sentence start: the
-     * table is static, so there is no engine request, token or callback. Returns false (the caller
-     * then shows the reserved empty strip) when the active language ships no table (the artifact
-     * registry decides), the position is not a sentence start, the table is missing, broken or
-     * still loading, or it has nothing to offer.
+     * table is static and the overlay is a published snapshot, so there is no engine request,
+     * token or callback. Returns false (the caller then shows the reserved empty strip) when the
+     * position is not a sentence start, or when neither source has anything to offer — the active
+     * language ships no table (the artifact registry decides) and holds no learned words, or the
+     * table is missing, broken or still loading and the overlay is empty.
+     *
+     * The fill is the personal sentence-initial overlay first (usage order), then the static
+     * table, deduplicated against what is already shown: the overlay never displaces a static
+     * entry, it only leads (see [mergeSentenceStartCells]).
      *
      * The strip is bound to the empty context, a value the NEXT_WORD path never binds, and the tap
      * path commits it through the predicted-word editor call, which re-derives the live sentence
@@ -2210,12 +2233,22 @@ class SuggestionsController internal constructor(
             maybePrepareSentStart(language)
             source = sentStartSources[language]
         }
-        if (source == null) return false
-        val words = try {
-            source.topWords(SuggestionStripState.CELL_COUNT)
-        } catch (_: RuntimeException) {
-            return false
+        // A missing, broken or still-loading table contributes nothing; the overlay may still fill
+        // the band on its own.
+        val tableWords = if (source == null) {
+            emptyList()
+        } else {
+            try {
+                source.topWords(SuggestionStripState.CELL_COUNT)
+            } catch (_: RuntimeException) {
+                emptyList()
+            }
         }
+        val words = mergeSentenceStartCells(
+            sentStartOverlaySource?.topWords(language).orEmpty(),
+            tableWords,
+            SuggestionStripState.CELL_COUNT,
+        )
         if (words.isEmpty()) return false
         // A sentence start takes a capital, so the cells are shown capitalized (display-time
         // casing, as in applyPrefixResult), and the tap commits the displayed string. The table
@@ -2875,6 +2908,9 @@ class SuggestionsController internal constructor(
             // Commit against the DISPLAYED prefix, not the mutable pendingPrefix. The editor's own
             // stale-tap guard (re-reads live cache, requires collapsed selection and live trailing
             // word == expectedPrefix, deletes by code points) is the second line of defense.
+            // Read BEFORE the commit rewrites the trailing word: whether the completed word lands
+            // at a sentence start, for the sentence-initial overlay.
+            val completesAtSentenceStart = editor.isTrailingWordAtSentenceStart()
             if (editor.commitSuggestion(prefix, suggestion)) {
                 suggestionTapFeedback.onSuggestionTap()
                 // The field is still eligible after a commit; clear the words but keep the reserved
@@ -2887,6 +2923,11 @@ class SuggestionsController internal constructor(
                 // The accepted cell counts as a use: for a saved personal word the sink bumps its
                 // usage counter (in memory; the file is written at the session boundary).
                 runMachine.noteAcceptedSuggestion(suggestion)
+                // A completion committed at a sentence start also counts toward the
+                // sentence-initial overlay.
+                if (completesAtSentenceStart) {
+                    runMachine.noteAcceptedSentenceStartWord(suggestion)
+                }
                 // The tapped word itself never counts (markRunDirty above), but the boundary after
                 // it (the committed word and its auto-space) is trusted for pairs: the next cleanly
                 // typed word may pair with it.
@@ -2937,6 +2978,12 @@ class SuggestionsController internal constructor(
                 // context) is never a pair.
                 if (context.isNotEmpty()) {
                     runMachine.noteAcceptedPrediction(context, suggestion)
+                }
+                // The empty context binds only the sentence-start strip, and its commit path
+                // re-derives the live sentence start: an accepted cell is a word committed at a
+                // sentence start, so it counts toward the sentence-initial overlay.
+                if (context.isEmpty()) {
+                    runMachine.noteAcceptedSentenceStartWord(suggestion)
                 }
                 // Same pair-machine recovery as the PREFIX branch above: the committed prediction
                 // is a trusted context for whatever the user types next.

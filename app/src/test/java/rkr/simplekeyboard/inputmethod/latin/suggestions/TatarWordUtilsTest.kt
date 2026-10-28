@@ -284,6 +284,38 @@ class TatarWordUtilsTest {
         assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз ", true))
     }
 
+    // --- isTrailingWordAtSentenceStart -------------------------------------------------------------
+
+    @Test
+    fun trailingWordAtSentenceStartAnswersForTheWordBeingTypedOrJustFinished() {
+        // Both shapes of the commit moment: the word still growing ("сә"), and the word the
+        // separator just finished ("сәләм " or "сәләм.").
+        assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("сә", true))
+        assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("сәләм ", true))
+        assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("сәләм.", true))
+        assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("сүз. дә", true))
+        assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("сүз!\nтава ", true))
+    }
+
+    @Test
+    fun trailingWordAtSentenceStartIsFalseMidSentence() {
+        assertFalse(TatarWordUtils.isTrailingWordAtSentenceStart("сәләм дөнья ", true))
+        assertFalse(TatarWordUtils.isTrailingWordAtSentenceStart("сәләм до", true))
+        // A comma keeps the word before it: the word after it is mid-sentence.
+        assertFalse(TatarWordUtils.isTrailingWordAtSentenceStart("сүз, дә ", true))
+        assertFalse(TatarWordUtils.isTrailingWordAtSentenceStart("сүз, дә", true))
+    }
+
+    @Test
+    fun trailingWordAtSentenceStartNeedsTheWordAndTheProvenance() {
+        // No word at or before the cursor: nothing to answer for.
+        assertFalse(TatarWordUtils.isTrailingWordAtSentenceStart("", true))
+        assertFalse(TatarWordUtils.isTrailingWordAtSentenceStart(". ", true))
+        assertFalse(TatarWordUtils.isTrailingWordAtSentenceStart(null, true))
+        // A field start without provenance stays conservative, as in isSentenceStartContext.
+        assertFalse(TatarWordUtils.isTrailingWordAtSentenceStart("сәләм ", false))
+    }
+
     // --- extractNextWordContext after non-final punctuation --------------------------------------
 
     @Test

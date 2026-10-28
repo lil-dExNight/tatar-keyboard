@@ -116,15 +116,17 @@ class IncognitoModeTest {
     }
 
     @Test
-    fun bothSinksAreGatedByTheSameIncognitoCarryingPredicate() {
-        // The words sink, the pairs sink and the refused-corrections sink are wired with the very
-        // same predicate instance, so the pause covers their stores — and the pending counters,
-        // whose only writer is the completion event the sinks gate.
+    fun everyLearningSinkIsGatedByTheSameIncognitoCarryingPredicate() {
+        // The words sink, the pairs sink, the refused-corrections sink and the sentence-initial
+        // sink are wired with the very same predicate instance, so the pause covers their stores —
+        // and the pending counters, whose only writer is the completion event the sinks gate.
         val wordWiring = ime.substringAfter("PersonalLearning.sinkFor(").substringBefore(");")
         val pairWiring = ime.substringAfter("PersonalBigramLearning.sinkFor(").substringBefore(");")
         val refusalWiring = ime.substringAfter("RefusedCorrectionLearning.sinkFor(").substringBefore(");")
+        val sentenceStartWiring =
+            ime.substringAfter("SentStartOverlayLearning.sinkFor(").substringBefore(");")
         for ((name, wiring) in listOf("words" to wordWiring, "pairs" to pairWiring,
-                "refusals" to refusalWiring)) {
+                "refusals" to refusalWiring, "sentence starts" to sentenceStartWiring)) {
             assertTrue("the $name sink consults the ONE predicate",
                 wiring.contains("this::mayLearnPersonalWords"))
         }
@@ -138,8 +140,8 @@ class IncognitoModeTest {
         // nothing else: incognito is a pause on WRITES, never a hide on reads.
         val readGates = Regex("\\(\\) -> (Settings\\.\\w+\\(mDevicePrefs\\))")
             .findAll(ime).map { it.groupValues[1] }.toList()
-        assertEquals("all four personal sources are gated: words, pairs, emoji and refused corrections",
-            4, readGates.size)
+        assertEquals("all five personal sources are gated: words, pairs, emoji, refused corrections and the sentence-initial overlay",
+            5, readGates.size)
         for (gate in readGates) {
             assertEquals("the read gate is the personal-dictionary setting",
                 "Settings.readPersonalDictionaryEnabled(mDevicePrefs)", gate)
