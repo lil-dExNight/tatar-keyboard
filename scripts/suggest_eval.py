@@ -8,8 +8,11 @@ Russian assets and ``ru_eval_sentences.txt``.
 Output: ``EVAL|metric|value`` lines: eval sizes, dictionary coverage of tokens and types,
 bigram head coverage and plain-bigram next-word top-1 and top-3 hit rates; then, through the
 production-chain mirror of ``suggest_chain.py``: the full-chain next-word top-1/top-3 hit
-rates with a sentence-level bootstrap CI95 and the minimum detectable effect, and the
-keystroke-savings simulation with its vocabulary-oracle bound. The Tatar mode additionally
+rates with a sentence-level bootstrap CI95 and the minimum detectable effect, completion
+top-3 and top-1 hit counts and rates at one-, two- and three-code-point prefixes, the share
+of typing moments with an empty strip answer (prefix moments while a word is incomplete,
+next-word moments over the adjacent pairs), and the keystroke-savings simulation with its
+vocabulary-oracle bound. The Tatar mode additionally
 reports a lower-bound share of inflected tokens and the lemma strata (seen form / new form
 of a seen stem / unseen stem) with per-stratum cp3 completion and chain hit rates; both are
 defined by the Tatar suffix tables and are absent from the Russian report. ``TtSuggestEvalTest``
@@ -250,7 +253,7 @@ def _chain_metrics(
     unique_words: set[str],
     suffix_rules: bool,
 ) -> list[tuple[str, str]]:
-    """The chain-hit, bootstrap, MDE, lemma-strata and keystroke-savings lines."""
+    """The chain-hit, bootstrap, MDE, completion, strip-empty, strata and keystroke lines."""
     chain = suggest_chain.ChainMirror(
         dictionary_words, dictionary_frequencies, successes_by_head,
         suffix_rules=suffix_rules,
@@ -289,11 +292,75 @@ def _chain_metrics(
         ("nextword_chain_top3_ci95_hi", f"{ci95_hi:.4f}"),
         ("nextword_chain_top3_mde_pp", f"{mde_pp:.4f}"),
     ]
+    metrics.extend(_completion_metrics(unique_words, chain))
+    metrics.extend(_strip_empty_metrics(lines, pairs, chain))
     if suffix_rules:
         # The strata are defined by the Tatar suffix table; Russian has no suffix rules.
         metrics.extend(_strata_metrics(lines, unique_words, chain))
     metrics.extend(_keystroke_metrics(lines, unique_words, chain))
     return metrics
+
+
+def _completion_metrics(
+    unique_words: set[str], chain: suggest_chain.ChainMirror
+) -> list[tuple[str, str]]:
+    """Per-prefix-length completion: top-3 and top-1 hit counts and rates, one to three
+    code-point prefixes over the unique eval words. The same-stem boost needs a four-code-point
+    prefix, so these prefixes never engage it."""
+    metrics: list[tuple[str, str]] = []
+    for length in (1, 2, 3):
+        words = 0
+        top3_hits = 0
+        top1_hits = 0
+        for word in unique_words:
+            if len(word) < length:
+                continue
+            words += 1
+            shown = chain.prefix_top3(word[:length])
+            if word in shown:
+                top3_hits += 1
+            if shown and shown[0] == word:
+                top1_hits += 1
+        metrics.extend(
+            [
+                (f"prefix_cp{length}_words", str(words)),
+                (f"prefix_cp{length}_hits", str(top3_hits)),
+                (f"prefix_top3_cp{length}_pct", f"{percent(top3_hits, words):.4f}"),
+                (f"prefix_cp{length}_top1_hits", str(top1_hits)),
+                (f"prefix_top1_cp{length}_pct", f"{percent(top1_hits, words):.4f}"),
+            ]
+        )
+    return metrics
+
+
+def _strip_empty_metrics(
+    lines: list[str], pairs: list[tuple[str, str]], chain: suggest_chain.ChainMirror
+) -> list[tuple[str, str]]:
+    """The share of typing moments whose strip answer is empty, per answer kind.
+
+    A prefix moment is one keystroke into a token, up to the completing one; the answer is
+    the exact completion pass of the typed prefix. A next-word moment is one committed-word
+    context (an adjacent pair, the ``nextword_chain_pairs`` denominator); the answer is the
+    NEXT_WORD chain. The chain ends in the top-frequency fallback, so a next-word answer is
+    empty only when the fallback itself is empty; that side is the fallback invariant.
+    """
+    prefix_moments = 0
+    prefix_empty = 0
+    for line in lines:
+        for word in line.split(" "):
+            for length in range(1, len(word)):
+                prefix_moments += 1
+                if not chain.prefix_top3(word[:length]):
+                    prefix_empty += 1
+    nextword_empty = sum(1 for head, _ in pairs if not chain.predict_top3(head))
+    return [
+        ("strip_empty_prefix_moments", str(prefix_moments)),
+        ("strip_empty_prefix_empty", str(prefix_empty)),
+        ("strip_empty_prefix_pct", f"{percent(prefix_empty, prefix_moments):.4f}"),
+        ("strip_empty_nextword_moments", str(len(pairs))),
+        ("strip_empty_nextword_empty", str(nextword_empty)),
+        ("strip_empty_nextword_pct", f"{percent(nextword_empty, len(pairs)):.4f}"),
+    ]
 
 
 def _strata_metrics(

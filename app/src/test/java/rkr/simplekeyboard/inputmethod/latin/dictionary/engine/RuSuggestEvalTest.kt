@@ -20,6 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatBigrValidator
@@ -34,12 +35,14 @@ import java.nio.ByteBuffer
  * `app/src/test/resources/ru_eval_sentences.txt` (built by `scripts/make_ru_eval_set.py` from
  * Tatoeba lines whose normalized form never appears in a training corpus) and prints
  * `EVAL|metric|value` lines:
- *  - prefix top-3 completion: for each unique word, prefixes of 1/2/3 code points are looked up
- *    in [TdictPrefixIndex] and the word must be in the top-3;
+ *  - prefix top-3 and top-1 completion: for each unique word, prefixes of 1/2/3 code points
+ *    are looked up in [TdictPrefixIndex] and the word must be in the top-3, respectively lead it;
  *  - bigram head coverage and next-word top-1/top-3 hit rates over adjacent pairs, via
  *    [TatBigrPrefixIndex.predict];
- *  - strip-empty at sentence start and sentence-start top-3 hit rate, via the sentence-start
- *    table (`russian_sentstart_v1.txt`, parsed by [SentStartIndex]).
+ *  - strip-empty rates: at sentence start and over typing moments (prefix moments while a word
+ *    is incomplete, next-word moments over the adjacent pairs), plus the sentence-start top-3
+ *    hit rate, via the sentence-start table (`russian_sentstart_v1.txt`, parsed by
+ *    [SentStartIndex]) and the production NEXT_WORD chain.
  *
  * The production Russian wiring carries no suffix rules and no fuzzy policy. Assets and eval set
  * are SHA-pinned, so the exact counts below are a deterministic function of committed bytes:
@@ -54,6 +57,7 @@ class RuSuggestEvalTest {
 
         val wordsPerLength = IntArray(4)
         val hitsPerLength = IntArray(4)
+        val top1HitsPerLength = IntArray(4)
         for (codePoints in 1..3) {
             for (word in uniqueWords) {
                 val prefix = codePointPrefix(word, codePoints) ?: continue
@@ -62,15 +66,20 @@ class RuSuggestEvalTest {
                     ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8))
                 )
                 if (results.contains(word)) hitsPerLength[codePoints]++
+                if (results.firstOrNull() == word) top1HitsPerLength[codePoints]++
             }
         }
         for (codePoints in 1..3) {
             val words = wordsPerLength[codePoints]
             val hits = hitsPerLength[codePoints]
+            val top1Hits = top1HitsPerLength[codePoints]
             val rate = hits * 100.0 / words
+            val top1Rate = top1Hits * 100.0 / words
             println("EVAL|prefix_cp${codePoints}_words|$words")
             println("EVAL|prefix_cp${codePoints}_hits|$hits")
             println("EVAL|prefix_top3_cp${codePoints}_pct|${format(rate)}")
+            println("EVAL|prefix_cp${codePoints}_top1_hits|$top1Hits")
+            println("EVAL|prefix_top1_cp${codePoints}_pct|${format(top1Rate)}")
         }
         assertEquals(PIN_CP1_WORDS, wordsPerLength[1])
         assertEquals(PIN_CP1_HITS, hitsPerLength[1])
@@ -78,6 +87,13 @@ class RuSuggestEvalTest {
         assertEquals(PIN_CP2_HITS, hitsPerLength[2])
         assertEquals(PIN_CP3_WORDS, wordsPerLength[3])
         assertEquals(PIN_CP3_HITS, hitsPerLength[3])
+        assertEquals(PIN_CP1_TOP1_HITS, top1HitsPerLength[1])
+        assertEquals(PIN_CP2_TOP1_HITS, top1HitsPerLength[2])
+        assertEquals(PIN_CP3_TOP1_HITS, top1HitsPerLength[3])
+        // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
+        assertEquals(PIN_CP1_TOP1_PCT, format(top1HitsPerLength[1] * 100.0 / wordsPerLength[1]))
+        assertEquals(PIN_CP2_TOP1_PCT, format(top1HitsPerLength[2] * 100.0 / wordsPerLength[2]))
+        assertEquals(PIN_CP3_TOP1_PCT, format(top1HitsPerLength[3] * 100.0 / wordsPerLength[3]))
     }
 
     @Test
@@ -159,6 +175,66 @@ class RuSuggestEvalTest {
         assertEquals(PIN_SENTSTART_TOP3_HITS, hits)
     }
 
+    /**
+     * The strip-empty share over typing moments, per answer kind. A prefix moment is one
+     * keystroke into a token, up to the completing one; the answer is the exact completion pass
+     * of the typed prefix. A next-word moment is one committed-word context (an adjacent pair,
+     * the [PIN_PAIRS] denominator); the answer is the full NEXT_WORD chain (bigram successors,
+     * top-frequency fallback; the Russian engine has no word-form rules). The chain ends in the
+     * fallback, so the next-word side asserts the fallback invariant (never empty) rather than
+     * a measured rate. Token-occurrence weighted, not per unique word.
+     */
+    @Test
+    fun stripEmptyMomentRatesOnTheEvalSet() {
+        val index = requireNotNull(dictionaryIndex)
+        index.updateKeyNeighbors(null)
+        val chain = chainComputer()
+        val predictCache = HashMap<String, List<String>>()
+        var prefixMoments = 0
+        var prefixEmpty = 0
+        var nextwordMoments = 0
+        var nextwordEmpty = 0
+        for (line in evalLines) {
+            val words = line.split(" ")
+            for (word in words) {
+                // The eval set is BMP-only, so char splits are code-point splits here.
+                for (codePoints in 1 until word.length) {
+                    prefixMoments++
+                    val shown = index.lookup(
+                        ImmutableUtf8Prefix.copyOf(
+                            word.substring(0, codePoints).toByteArray(Charsets.UTF_8)
+                        )
+                    )
+                    if (shown.isEmpty()) prefixEmpty++
+                }
+            }
+            for (position in 0 until words.size - 1) {
+                nextwordMoments++
+                val shown = predictCache.getOrPut(words[position]) {
+                    chain.predict(
+                        ImmutableUtf8Prefix.copyOf(
+                            words[position].toByteArray(Charsets.UTF_8)
+                        )
+                    )
+                }
+                if (shown.isEmpty()) nextwordEmpty++
+            }
+        }
+        println("EVAL|strip_empty_prefix_moments|$prefixMoments")
+        println("EVAL|strip_empty_prefix_empty|$prefixEmpty")
+        println("EVAL|strip_empty_prefix_pct|${format(prefixEmpty * 100.0 / prefixMoments)}")
+        println("EVAL|strip_empty_nextword_moments|$nextwordMoments")
+        println("EVAL|strip_empty_nextword_empty|$nextwordEmpty")
+        println("EVAL|strip_empty_nextword_pct|${format(nextwordEmpty * 100.0 / nextwordMoments)}")
+        assertEquals(PIN_STRIP_EMPTY_PREFIX_MOMENTS, prefixMoments)
+        assertEquals(PIN_STRIP_EMPTY_PREFIX_EMPTY, prefixEmpty)
+        assertEquals(PIN_PAIRS, nextwordMoments)
+        assertEquals(0, nextwordEmpty)
+        // Cross-implementation pins: scripts/suggest_eval.py --language rus must print the same.
+        assertEquals(PIN_STRIP_EMPTY_PREFIX_PCT, format(prefixEmpty * 100.0 / prefixMoments))
+        assertEquals("0.0000", format(nextwordEmpty * 100.0 / nextwordMoments))
+    }
+
     @Test
     fun evalSetShapeMatchesThePinnedSet() {
         assertEquals(PIN_EVAL_LINES, evalLines.size)
@@ -167,6 +243,19 @@ class RuSuggestEvalTest {
             val words = line.split(" ")
             assertTrue("eval lines carry 3..12 words", words.size in 3..12)
         }
+    }
+
+    /**
+     * The production Russian NEXT_WORD wiring: bundled bigrams, empty personal sources and the
+     * top-frequency fallback. The Russian engine has no word-form rules, so the after-word
+     * forms slot stays null.
+     */
+    private fun chainComputer(): CompositePrefixComputer {
+        val index = requireNotNull(dictionaryIndex)
+        return CompositePrefixComputer(
+            index, PersonalCandidateSource.EMPTY, null,
+            GlobalTopFrequencyFallbackFactory.createFallbackWords(index),
+        ).also { it.attachBigramSource(requireNotNull(bigramIndex)) }
     }
 
     private fun codePointPrefix(word: String, codePoints: Int): String? {
@@ -197,6 +286,15 @@ class RuSuggestEvalTest {
         private const val PIN_CP1_HITS = 67
         private const val PIN_CP2_HITS = 354
         private const val PIN_CP3_HITS = 768
+        private const val PIN_CP1_TOP1_HITS = 23
+        private const val PIN_CP2_TOP1_HITS = 145
+        private const val PIN_CP3_TOP1_HITS = 391
+        private const val PIN_CP1_TOP1_PCT = "1.0370"
+        private const val PIN_CP2_TOP1_PCT = "6.5611"
+        private const val PIN_CP3_TOP1_PCT = "17.9440"
+        private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 20_556
+        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 283
+        private const val PIN_STRIP_EMPTY_PREFIX_PCT = "1.3767"
         private const val PIN_SENTSTART_TOP3_HITS = 31
 
         private lateinit var evalLines: List<String>

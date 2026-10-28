@@ -35,13 +35,17 @@ import java.nio.ByteBuffer
  * Runs the real shipped Tatar dictionary and bigram indexes over the held-out eval set
  * `app/src/test/resources/tt_eval_sentences.txt` (built by `scripts/make_eval_set.py` from
  * Tatoeba lines that never entered the training mix) and prints `EVAL|metric|value` lines:
- *  - prefix top-3 completion: for each unique word, prefixes of 1/2/3 code points are looked up
- *    in [TdictPrefixIndex] (fuzzy pass off) and the word must be in the top-3;
+ *  - prefix top-3 and top-1 completion: for each unique word, prefixes of 1/2/3 code points
+ *    are looked up in [TdictPrefixIndex] (fuzzy pass off) and the word must be in the top-3,
+ *    respectively lead it;
  *  - next-word top-1 and top-3 hit rates of the plain bigram path ([TatBigrPrefixIndex.predict])
  *    and of the full production NEXT_WORD chain (bigram successors, after-word forms,
  *    top-frequency fallback; learned word pairs empty), the chain top-3 with a sentence-level
  *    bootstrap CI95 (SplitMix64 resample stream, the seed shared with the python harness, which
  *    additionally prints the minimum-detectable-effect bound);
+ *  - strip-empty rates over typing moments: the share of prefix moments (one keystroke into a
+ *    token, up to the completing one) whose completion answer is empty, and the share of
+ *    next-word moments (adjacent pairs) whose chain answer is empty;
  *  - lemma strata (seen-form / new-form-of-seen-stem / unseen-stem): unique-word counts,
  *    per-stratum cp3 completion top-3 rates and per-stratum chain top-3 next-word rates;
  *  - keystroke savings: strip taps at cost 1, completion assist at the first prefix that shows
@@ -66,6 +70,7 @@ class TtSuggestEvalTest {
 
         val wordsPerLength = IntArray(4)
         val hitsPerLength = IntArray(4)
+        val top1HitsPerLength = IntArray(4)
         for (codePoints in 1..3) {
             for (word in uniqueWords) {
                 val prefix = codePointPrefix(word, codePoints) ?: continue
@@ -74,15 +79,20 @@ class TtSuggestEvalTest {
                     ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8))
                 )
                 if (results.contains(word)) hitsPerLength[codePoints]++
+                if (results.firstOrNull() == word) top1HitsPerLength[codePoints]++
             }
         }
         for (codePoints in 1..3) {
             val words = wordsPerLength[codePoints]
             val hits = hitsPerLength[codePoints]
+            val top1Hits = top1HitsPerLength[codePoints]
             val rate = hits * 100.0 / words
+            val top1Rate = top1Hits * 100.0 / words
             println("EVAL|prefix_cp${codePoints}_words|$words")
             println("EVAL|prefix_cp${codePoints}_hits|$hits")
             println("EVAL|prefix_top3_cp${codePoints}_pct|${format(rate)}")
+            println("EVAL|prefix_cp${codePoints}_top1_hits|$top1Hits")
+            println("EVAL|prefix_top1_cp${codePoints}_pct|${format(top1Rate)}")
         }
         assertEquals(PIN_CP1_WORDS, wordsPerLength[1])
         assertEquals(PIN_CP1_HITS, hitsPerLength[1])
@@ -90,6 +100,13 @@ class TtSuggestEvalTest {
         assertEquals(PIN_CP2_HITS, hitsPerLength[2])
         assertEquals(PIN_CP3_WORDS, wordsPerLength[3])
         assertEquals(PIN_CP3_HITS, hitsPerLength[3])
+        assertEquals(PIN_CP1_TOP1_HITS, top1HitsPerLength[1])
+        assertEquals(PIN_CP2_TOP1_HITS, top1HitsPerLength[2])
+        assertEquals(PIN_CP3_TOP1_HITS, top1HitsPerLength[3])
+        // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
+        assertEquals("0.9782", format(top1HitsPerLength[1] * 100.0 / wordsPerLength[1]))
+        assertEquals("5.1581", format(top1HitsPerLength[2] * 100.0 / wordsPerLength[2]))
+        assertEquals("15.1875", format(top1HitsPerLength[3] * 100.0 / wordsPerLength[3]))
     }
 
     /**
@@ -252,6 +269,65 @@ class TtSuggestEvalTest {
     }
 
     /**
+     * The strip-empty share over typing moments, per answer kind. A prefix moment is one
+     * keystroke into a token, up to the completing one; the answer is the exact completion pass
+     * of the typed prefix. A next-word moment is one committed-word context (an adjacent pair,
+     * the [PIN_PAIRS] denominator); the answer is the full NEXT_WORD chain. The chain ends in
+     * the top-frequency fallback, so the next-word side asserts the fallback invariant (never
+     * empty) rather than a measured rate. Token-occurrence weighted, not per unique word.
+     */
+    @Test
+    fun stripEmptyMomentRatesOnTheEvalSet() {
+        val index = requireNotNull(dictionaryIndex)
+        index.updateKeyNeighbors(null)
+        val chain = chainComputer()
+        val predictCache = HashMap<String, List<String>>()
+        var prefixMoments = 0
+        var prefixEmpty = 0
+        var nextwordMoments = 0
+        var nextwordEmpty = 0
+        for (line in evalLines) {
+            val words = line.split(" ")
+            for (word in words) {
+                // The eval set is BMP-only, so char splits are code-point splits here.
+                for (codePoints in 1 until word.length) {
+                    prefixMoments++
+                    val shown = index.lookup(
+                        ImmutableUtf8Prefix.copyOf(
+                            word.substring(0, codePoints).toByteArray(Charsets.UTF_8)
+                        )
+                    )
+                    if (shown.isEmpty()) prefixEmpty++
+                }
+            }
+            for (position in 0 until words.size - 1) {
+                nextwordMoments++
+                val shown = predictCache.getOrPut(words[position]) {
+                    chain.predict(
+                        ImmutableUtf8Prefix.copyOf(
+                            words[position].toByteArray(Charsets.UTF_8)
+                        )
+                    )
+                }
+                if (shown.isEmpty()) nextwordEmpty++
+            }
+        }
+        println("EVAL|strip_empty_prefix_moments|$prefixMoments")
+        println("EVAL|strip_empty_prefix_empty|$prefixEmpty")
+        println("EVAL|strip_empty_prefix_pct|${format(prefixEmpty * 100.0 / prefixMoments)}")
+        println("EVAL|strip_empty_nextword_moments|$nextwordMoments")
+        println("EVAL|strip_empty_nextword_empty|$nextwordEmpty")
+        println("EVAL|strip_empty_nextword_pct|${format(nextwordEmpty * 100.0 / nextwordMoments)}")
+        assertEquals(PIN_STRIP_EMPTY_PREFIX_MOMENTS, prefixMoments)
+        assertEquals(PIN_STRIP_EMPTY_PREFIX_EMPTY, prefixEmpty)
+        assertEquals(PIN_PAIRS, nextwordMoments)
+        assertEquals(0, nextwordEmpty)
+        // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
+        assertEquals("2.1258", format(prefixEmpty * 100.0 / prefixMoments))
+        assertEquals("0.0000", format(nextwordEmpty * 100.0 / nextwordMoments))
+    }
+
+    /**
      * The full production NEXT_WORD chain (bigram successors, after-word forms, top-frequency
      * fallback) against the plain bigram path: top-1 and top-3 hit rates over all eval pairs.
      * Cross-pinned with `scripts/suggest_eval.py`, which runs the mirror of the same chain.
@@ -329,6 +405,7 @@ class TtSuggestEvalTest {
         val predictCache = HashMap<String, List<String>>()
         val strata = intArrayOf(STRATUM_SEEN_FORM, STRATUM_NEW_FORM, STRATUM_UNSEEN_STEM)
         val names = arrayOf("seen_form", "new_form_of_seen_stem", "unseen_stem")
+        val top3PctByStratum = arrayOfNulls<String>(strata.size)
         val stratumByWord = HashMap<String, Int>(uniqueWords.size)
         for (word in uniqueWords) {
             stratumByWord[word] = when {
@@ -367,19 +444,24 @@ class TtSuggestEvalTest {
                 }
             }
             val name = names[stratum]
+            top3PctByStratum[stratum] = format(ratePct(hits, pairs))
             println("EVAL|stratum_${name}_words|${words.size}")
             println("EVAL|stratum_${name}_cp3_words|$cp3Words")
             println("EVAL|stratum_${name}_cp3_hits|$cp3Hits")
             println("EVAL|stratum_${name}_cp3_pct|${format(ratePct(cp3Hits, cp3Words))}")
             println("EVAL|stratum_${name}_pairs|$pairs")
             println("EVAL|stratum_${name}_top3_hits|$hits")
-            println("EVAL|stratum_${name}_top3_pct|${format(ratePct(hits, pairs))}")
+            println("EVAL|stratum_${name}_top3_pct|${top3PctByStratum[stratum]}")
         }
         assertEquals(PIN_STRATUM_SEEN_FORM_WORDS, stratumCount(stratumByWord, STRATUM_SEEN_FORM))
         assertEquals(PIN_STRATUM_NEW_FORM_WORDS, stratumCount(stratumByWord, STRATUM_NEW_FORM))
         assertEquals(
             PIN_STRATUM_UNSEEN_STEM_WORDS, stratumCount(stratumByWord, STRATUM_UNSEEN_STEM)
         )
+        // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
+        assertEquals("13.1661", top3PctByStratum[STRATUM_SEEN_FORM])
+        assertEquals("2.3529", top3PctByStratum[STRATUM_NEW_FORM])
+        assertEquals("3.8835", top3PctByStratum[STRATUM_UNSEEN_STEM])
     }
 
     /**
@@ -581,6 +663,11 @@ class TtSuggestEvalTest {
         private const val PIN_CP1_HITS = 70
         private const val PIN_CP2_HITS = 320
         private const val PIN_CP3_HITS = 765
+        private const val PIN_CP1_TOP1_HITS = 26
+        private const val PIN_CP2_TOP1_HITS = 137
+        private const val PIN_CP3_TOP1_HITS = 397
+        private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 23_662
+        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 503
         private const val PIN_SAMESTEM_WORDS = 1_750
         private const val PIN_SAMESTEM_HITS = 1_173
         private const val PIN_SAMESTEM_HITS_BOOST_OFF = 1_090

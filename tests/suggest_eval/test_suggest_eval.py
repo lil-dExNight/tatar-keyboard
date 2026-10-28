@@ -22,7 +22,9 @@ pin and format tests above never skip, so a corrupted committed file fails every
 A second block covers the pure functions of ``scripts/suggest_chain.py`` (the production-chain
 mirror): the runtime suffix table port, the form generator, the chain composition, the
 bootstrap sampler against golden SplitMix64 vectors, the lemma-strata predicate and the
-keystroke simulator, all on tiny synthetic fixtures that need no assets.
+keystroke simulator, all on tiny synthetic fixtures that need no assets. A third block covers
+the completion-by-prefix-length and strip-empty report rows of ``scripts/suggest_eval.py``
+over the same kind of fixture.
 """
 from __future__ import annotations
 
@@ -58,6 +60,7 @@ def load_module(name: str, path: Path):
 make_eval_set = load_module("make_eval_set", MAKE_EVAL_SCRIPT)
 coverage = load_module("dictionary_coverage", COVERAGE_SCRIPT)
 suggest_chain = load_module("suggest_chain", ROOT / "scripts" / "suggest_chain.py")
+suggest_eval = load_module("suggest_eval", ROOT / "scripts" / "suggest_eval.py")
 
 
 def read_committed() -> bytes:
@@ -289,6 +292,64 @@ class ChainMirrorTest(unittest.TestCase):
         self.assertEqual(["эшлә", "эшләү", "эшләмәк"], mirror.prefix_top3("эш"))
         # Boosted at the complete-word prefix: suffix continuations first, then the rest.
         self.assertEqual(["эшләү", "эшләп", "эшләмәк"], mirror.prefix_top3("эшлә"))
+
+
+class CompletionMetricsTest(unittest.TestCase):
+    """The per-prefix-length completion rows of ``scripts/suggest_eval.py`` on a fixture."""
+
+    WORDS = ChainMirrorTest.WORDS + ["яя"]
+
+    def test_top3_and_top1_rows_by_prefix_length(self) -> None:
+        mirror = suggest_chain.ChainMirror(
+            ChainMirrorTest.WORDS, ChainMirrorTest.FREQUENCIES, ChainMirrorTest.BIGRAMS
+        )
+        metrics = suggest_eval._completion_metrics(set(self.WORDS), mirror)
+        self.assertEqual(
+            [
+                ("prefix_cp1_words", "13"),
+                ("prefix_cp1_hits", "11"),
+                ("prefix_top3_cp1_pct", "84.6154"),
+                ("prefix_cp1_top1_hits", "6"),
+                ("prefix_top1_cp1_pct", "46.1538"),
+                ("prefix_cp2_words", "13"),
+                ("prefix_cp2_hits", "11"),
+                ("prefix_top3_cp2_pct", "84.6154"),
+                ("prefix_cp2_top1_hits", "7"),
+                ("prefix_top1_cp2_pct", "53.8462"),
+                # "яя" is shorter than three code points and drops out of the cp3 denominator.
+                ("prefix_cp3_words", "12"),
+                ("prefix_cp3_hits", "7"),
+                ("prefix_top3_cp3_pct", "58.3333"),
+                ("prefix_cp3_top1_hits", "4"),
+                ("prefix_top1_cp3_pct", "33.3333"),
+            ],
+            metrics,
+        )
+
+
+class StripEmptyMetricsTest(unittest.TestCase):
+    """The strip-empty rows: prefix moments miss, the fallback keeps next-word non-empty."""
+
+    def test_moment_counts_and_rates(self) -> None:
+        mirror = suggest_chain.ChainMirror(
+            ChainMirrorTest.WORDS, ChainMirrorTest.FREQUENCIES, ChainMirrorTest.BIGRAMS
+        )
+        lines = ["мин син бала", "китап зыя", "б мин"]
+        pairs = [(head, tail) for line in lines
+                 for head, tail in zip(line.split(" "), line.split(" ")[1:])]
+        metrics = suggest_eval._strip_empty_metrics(lines, pairs, mirror)
+        self.assertEqual(
+            [
+                # "зыя" misses at both its prefixes; the one-letter "б" has no prefix moment.
+                ("strip_empty_prefix_moments", "15"),
+                ("strip_empty_prefix_empty", "2"),
+                ("strip_empty_prefix_pct", "13.3333"),
+                ("strip_empty_nextword_moments", "4"),
+                ("strip_empty_nextword_empty", "0"),
+                ("strip_empty_nextword_pct", "0.0000"),
+            ],
+            metrics,
+        )
 
 
 class BootstrapSamplerTest(unittest.TestCase):
