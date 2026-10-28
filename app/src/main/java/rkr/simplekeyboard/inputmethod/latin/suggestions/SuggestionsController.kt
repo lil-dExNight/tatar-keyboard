@@ -728,11 +728,10 @@ class SuggestionsController internal constructor(
         glideCommittedWord = null
         glideCommitPrependedSpace = false
         glideUndoCandidates = emptyList()
-        runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
-        // A clean word that just ended without ever producing an empty-result observation waits
-        // on the engine's deferred empty-prefix probe; it is resolved below, after the
+        // A clean word that just ended without ever producing an empty-result observation is
+        // parked for the engine's deferred empty-prefix probe; it is resolved below, after the
         // separator's lookup is issued, or dropped where no probe can run.
-        val deferredProbeWord = runMachine.deferredEmptyProbeWord
+        val deferredProbeWord = runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
         // A glide undo armed its rescue candidates and this text change is the deletion itself
         // (the backspace path fires onTextChanged right after the undo). They re-bind to the
         // position the undo emptied — but only while the editor still shows exactly that state;

@@ -56,8 +56,10 @@ class GestureRecorderReleaseContractTest {
         val sources = recorderSources()
         assertTrue("the recorder sources exist under app/src/debug", sources.isNotEmpty())
         for (file in sources) {
+            // The candidates in recorderSources() are relative, so the check runs on the
+            // absolute path: a plain "src/debug/..." match would lack the leading separator.
             assertTrue("${file.path} is a debug-source-set file",
-                file.path.replace(File.separatorChar, '/').contains("/src/debug/"))
+                file.absolutePath.replace(File.separatorChar, '/').contains("/src/debug/"))
         }
     }
 

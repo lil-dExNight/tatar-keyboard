@@ -24,7 +24,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSi
  * dictionary) and the completed-pair machine (learned word pairs), which share one run of text.
  *
  * Nothing here is persisted and nothing leaves this object except the completions handed to the
- * two sinks; with the default sinks those are no-ops.
+ * two sinks; with the default sinks those are no-ops. One completed word may outlive its run:
+ * the one parked for the deferred empty-prefix probe, until the probe's answer lands.
  */
 internal class CleanRunMachine(private val editor: EditorSurface) {
 
@@ -38,13 +39,13 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
 
     /**
      * The cleanly completed word whose graduation waits on the engine's deferred empty-prefix
-     * probe: its proper prefixes were never observed empty, because latest-only coalescing
-     * dropped the intermediate lookups. Set only while [completionSink] is live. Resolved by
-     * [resolveDeferredEmptyProbe]; dropped by [markRunDirty] or replaced by the next parked word
-     * (latest-only, like the engine whose answer it waits for).
+     * probe answer: its proper prefixes were never observed empty, because latest-only
+     * coalescing dropped the intermediate lookups. Parked at the word boundary
+     * ([trackCleanRun] returns it then, exactly once), resolved by
+     * [resolveDeferredEmptyProbe], dropped by [markRunDirty] or superseded by the next parked
+     * word (latest-only, like the engine whose answer it waits for).
      */
-    var deferredEmptyProbeWord: String? = null
-        private set
+    private var deferredProbeAwaitingAnswer: String? = null
 
     /** Where clean word completions go. Default writes nothing. */
     var completionSink: WordCompletionSink = WordCompletionSink.NONE
@@ -72,21 +73,24 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
      * word whose FIRST observation already carries more than one keystroke's worth of text (see
      * [MAX_FIRST_OBSERVATION_UNITS]): that is a paste or a replacement, and learning uses typing,
      * not clipboard contents.
+     *
+     * Returns the completed word that was parked for the deferred empty-prefix probe (exactly
+     * once, at its boundary), or null.
      */
-    fun trackCleanRun(word: String) {
+    fun trackCleanRun(word: String): String? {
         val previous = runWord
-        if (word == previous) return
+        if (word == previous) return null
         if (word.isEmpty()) {
             reportCompletionIfClean(previous)
             reportPairCompletionIfClean(previous)
-            parkForDeferredProbe(previous)
+            val parked = parkForDeferredProbe(previous)
             runWord = ""
             runClean = true
             // A completed boundary is a position the pair machine trusts: whatever state the run
             // that just ended was in, the NEXT word grows from nothing under our eyes.
             pairRunClean = true
             runEmptyResultPrefixLength = NO_EMPTY_RESULT
-            return
+            return parked
         }
         if (previous.isEmpty()) {
             // A fresh word begins; whether it stays clean is decided by what follows.
@@ -99,17 +103,18 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
                 pairRunClean = false
             }
             runEmptyResultPrefixLength = NO_EMPTY_RESULT
-            return
+            return null
         }
         if (word.startsWith(previous) && word.length > previous.length) {
             runWord = word
-            return
+            return null
         }
         // Anything else — backspace, a swipe-delete, a replacement — is not growth.
         runWord = word
         runClean = false
         pairRunClean = false
         runEmptyResultPrefixLength = NO_EMPTY_RESULT
+        return null
     }
 
     /**
@@ -153,11 +158,12 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
      * qualifying observation exists (the ordinary path already decided), when learning is off,
      * or when the word has no proper prefix to probe: when in doubt, learn less.
      */
-    private fun parkForDeferredProbe(word: String) {
-        if (!runClean || word.length < 2) return
-        if (runEmptyResultPrefixLength in 1 until word.length) return
-        if (completionSink === WordCompletionSink.NONE) return
-        deferredEmptyProbeWord = word
+    private fun parkForDeferredProbe(word: String): String? {
+        if (!runClean || word.length < 2) return null
+        if (runEmptyResultPrefixLength in 1 until word.length) return null
+        if (completionSink === WordCompletionSink.NONE) return null
+        deferredProbeAwaitingAnswer = word
+        return word
     }
 
     /**
@@ -168,8 +174,8 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
      * for a word that is no longer parked is dropped.
      */
     fun resolveDeferredEmptyProbe(word: String, shortestEmptyPrefixLength: Int) {
-        if (deferredEmptyProbeWord != word) return
-        deferredEmptyProbeWord = null
+        if (deferredProbeAwaitingAnswer != word) return
+        deferredProbeAwaitingAnswer = null
         if (shortestEmptyPrefixLength !in 1 until word.length) return
         completionSink.onCleanCompletion(word)
     }
@@ -197,7 +203,7 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
         runClean = false
         pairRunClean = false
         runEmptyResultPrefixLength = NO_EMPTY_RESULT
-        deferredEmptyProbeWord = null
+        deferredProbeAwaitingAnswer = null
     }
 
     /**

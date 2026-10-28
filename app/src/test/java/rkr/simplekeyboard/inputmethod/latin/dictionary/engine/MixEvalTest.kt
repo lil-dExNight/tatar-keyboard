@@ -33,6 +33,7 @@ import java.nio.ByteBuffer
  * Each set line is `expected_lead<TAB>sentence`. A mixing case is a sentence word that is a
  * dictionary entry of the expected-lead language and whose full-word exact pass in the active
  * (other) language is empty: the user is typing a word of the companion language on the active
+ * layout.
  * The strip lead is replayed at the index level: the active arm runs the production
  * wiring (the Tatar index carries the suffix rules, the TATAR fuzzy policy and the Tatar layout
  * neighbor table; the Russian index runs the default policy with the Russian layout table), and
@@ -96,11 +97,15 @@ class MixEvalTest {
 
     /**
      * The correct-language-lead rate over all mixing cases, with the companion exact-lead rule
-     * ON. A case leads correctly when the active answer holds NO exact candidate (typo-recovery
-     * candidates may fill it) and the companion's top-3 holds the word: then the companion's
-     * exact candidate leads the strip. An active exact candidate or a buried companion word both
-     * count as wrong leads. The fill-only baseline (the companion leads only a completely empty
-     * active answer) is printed alongside for the record; the gate pins the rule's rate.
+     * ON. A case leads with the correct language when the active answer holds NO exact candidate
+     * (typo-recovery candidates may fill it) and the companion's exact pass is non-empty: then
+     * the companion's exact candidates lead the strip, and they are words of the expected
+     * language. A case whose minus-one prefix genuinely continues active-language words keeps
+     * the active lead and counts as a wrong lead; a case word ranked below the companion's exact
+     * top-3 (buried) is a companion ranking miss, counted separately, not a language-lead one —
+     * the strip still leads with the right language. The stricter word-exact rate (the word
+     * itself in the lead group) and the fill-only baseline are printed alongside for the record;
+     * the gate pins the language-lead rate.
      */
     @Test
     fun companionExactLeadClearsTheGateOnTheMixingSet() {
@@ -110,6 +115,7 @@ class MixEvalTest {
         var linesWithoutCase = 0
         val cases = IntArray(2)
         val correct = IntArray(2)
+        val correctWordExact = IntArray(2)
         val correctFillOnly = IntArray(2)
         val companionBuried = IntArray(2)
         val coveredLetters = arrayOf(HashSet<Char>(), HashSet<Char>())
@@ -138,13 +144,13 @@ class MixEvalTest {
                 val activeExactCount = indexes[active].lastExactCount
                 indexes[lead].updateKeyNeighbors(null)
                 val companionAnswer = indexes[lead].lookup(prefixOf(probe))
-                if (word !in companionAnswer) {
-                    companionBuried[lead]++
-                } else {
-                    // The rule engages exactly when the active exact pass is empty; within it,
-                    // the fill-only baseline additionally requires an empty active answer.
-                    if (activeExactCount == 0) correct[lead]++
-                    if (activeAnswer.isEmpty()) correctFillOnly[lead]++
+                if (word !in companionAnswer) companionBuried[lead]++
+                if (activeExactCount == 0) {
+                    // The rule engages exactly when the active exact pass is empty.
+                    if (companionAnswer.isNotEmpty()) correct[lead]++
+                    if (word in companionAnswer) correctWordExact[lead]++
+                    // The fill-only baseline additionally requires an empty active answer.
+                    if (activeAnswer.isEmpty() && word in companionAnswer) correctFillOnly[lead]++
                 }
                 val markers = if (lead == 0) TT_MARKER_LETTERS else RU_MARKER_LETTERS
                 for (letter in word) {
@@ -155,6 +161,7 @@ class MixEvalTest {
         }
         val casesAll = cases[0] + cases[1]
         val correctAll = correct[0] + correct[1]
+        val correctWordExactAll = correctWordExact[0] + correctWordExact[1]
         val correctFillOnlyAll = correctFillOnly[0] + correctFillOnly[1]
         println("EVAL|mix_lines_tt|$linesTt")
         println("EVAL|mix_lines_ru|$linesRu")
@@ -172,6 +179,8 @@ class MixEvalTest {
         println("EVAL|mix_correct_lead|$correctAll")
         println("EVAL|mix_wrong_lead|${casesAll - correctAll}")
         println("EVAL|mix_lead_pct|${format(ratePct(correctAll, casesAll))}")
+        println("EVAL|mix_word_exact_lead|$correctWordExactAll")
+        println("EVAL|mix_word_exact_lead_pct|${format(ratePct(correctWordExactAll, casesAll))}")
         println("EVAL|mix_fill_only_correct_lead|$correctFillOnlyAll")
         println("EVAL|mix_fill_only_lead_pct|${format(ratePct(correctFillOnlyAll, casesAll))}")
 
