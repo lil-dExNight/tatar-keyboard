@@ -192,6 +192,10 @@
     <string name="emoji_suggestions">Emoji suggestions</string>
     <!-- Description for the emoji suggestions option. Says plainly that tapping the emoji only adds it and never changes the typed word. -->
     <string name="emoji_suggestions_summary">Show a matching emoji above the keyboard when you finish a word, in Tatar and in Russian. Tapping it only adds the emoji — the typed word stays.</string>
+    <!-- Option to widen the suggestion strip from three cells to four -->
+    <string name="strip_fourth_cell">Fourth suggestion cell</string>
+    <!-- Description for the fourth suggestion cell option -->
+    <string name="strip_fourth_cell_summary">Show four suggestions above the keyboard instead of three. The cells get narrower.</string>
     <!-- Option to type words by sliding a finger over the letters instead of tapping each -->
     <string name="glide_typing">Glide typing</string>
     <!-- Description for the glide typing option. Says plainly which languages it works for and that nothing changes when it is off. -->

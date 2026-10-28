@@ -43,11 +43,16 @@ class SuggestionsControllerTest {
         var reserveCount = 0
         var visible = false
         var listener: SuggestionTapListener? = null
+        var visibleCells = SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT
 
         override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
             shown.add(listOf(first, second, third, fourth))
             visible = true
             visibilityEvents.add("show")
+        }
+
+        override fun setVisibleCellCount(cells: Int) {
+            visibleCells = cells
         }
 
         override fun reserve() {
@@ -392,8 +397,29 @@ class SuggestionsControllerTest {
     // --- Result application --------------------------------------------------------------------
 
     @Test
-    fun currentResultIsShownTopFour() {
+    fun currentResultIsShownTopThreeByDefault() {
         val h = Harness()
+        h.controller.onStartInput(eligible = true)
+        h.editor.word = "сүз"
+        h.controller.onTextChanged()
+
+        h.engine.isCurrentResult = true
+        h.capturedCallback!!.onResult(
+            FakeEngine.TOKEN,
+            listOf("сүзләр", "сүзлек", "сүзсез", "сүзчән", "сүзен"),
+            LookupKind.PREFIX,
+        )
+
+        // The shipped default is three cells: the engine's fourth and fifth candidates are
+        // composed but not shown.
+        assertEquals(1, h.strip.shown.size)
+        assertEquals(listOf("сүзләр", "сүзлек", "сүзсез", null), h.strip.shown.single())
+    }
+
+    @Test
+    fun theFourthCellSettingShowsFourCells() {
+        val h = Harness()
+        h.controller.setStripCellCount(SuggestionStripState.CELL_COUNT)
         h.controller.onStartInput(eligible = true)
         h.editor.word = "сүз"
         h.controller.onTextChanged()
@@ -407,6 +433,8 @@ class SuggestionsControllerTest {
 
         assertEquals(1, h.strip.shown.size)
         assertEquals(listOf("сүзләр", "сүзлек", "сүзсез", "сүзчән"), h.strip.shown.single())
+        // The push reached the strip surface too.
+        assertEquals(SuggestionStripState.CELL_COUNT, h.strip.visibleCells)
     }
 
     @Test
@@ -1611,8 +1639,8 @@ class SuggestionsControllerTest {
         h.controller.onTextChanged()
 
         // The bigram successor keeps the lead; the strip cells it leaves free carry the forms of
-        // татар, frequency-ranked (12 085 > 9 093 > 2 752).
-        assertEquals(listOf("белән", "татарлар", "татарча", "татарның"), h.strip.shown.last())
+        // татар, frequency-ranked (12 085 > 9 093 > the unshown татарның 2 752).
+        assertEquals(listOf("белән", "татарлар", "татарча", null), h.strip.shown.last())
 
         // A form cell commits exactly like a predicted word: the NEXT_WORD insertion path.
         h.strip.listener!!.onTap("татарча")
@@ -1621,8 +1649,9 @@ class SuggestionsControllerTest {
     }
 
     @Test
-    fun bigramSuccessorsTakingAllFourCellsLeaveNoRoomForForms() {
+    fun bigramSuccessorsTakingAllThreeCellsLeaveNoRoomForForms() {
         val h = Harness()
+        // The fourth successor is composed but not shown at the default three cells.
         h.factoryResult = realTatarNextWordEngine(h, listOf("белән", "дип", "туры", "үзем"))
         h.controller.onStartInput(eligible = true)
 
@@ -1630,6 +1659,6 @@ class SuggestionsControllerTest {
         h.editor.nextWordContext = "татар"
         h.controller.onTextChanged()
 
-        assertEquals(listOf("белән", "дип", "туры", "үзем"), h.strip.shown.last())
+        assertEquals(listOf("белән", "дип", "туры", null), h.strip.shown.last())
     }
 }

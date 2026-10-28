@@ -16,7 +16,11 @@
 
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
-/** Pure, fixed-size state and hit geometry for the four-cell Canvas strip. */
+/**
+ * Pure, fixed-size state and hit geometry for the Canvas strip. The strip holds up to
+ * [CELL_COUNT] cells; [visibleCellCount] of them are drawn and tappable (the user's fourth-cell
+ * setting), and the full width splits among the visible ones.
+ */
 internal class SuggestionStripState {
     private val suggestions = arrayOfNulls<String>(CELL_COUNT)
     private var downCell = NO_CELL
@@ -25,6 +29,8 @@ internal class SuggestionStripState {
     // The autocorrect preview's emphasized cell: the correction the next separator would insert.
     // [NO_CELL] on every ordinary strip.
     private var emphasizedCell = NO_CELL
+    /** The cells that are drawn and tappable; the rest keep their content but stay inert. */
+    private var visibleCellCount = DEFAULT_VISIBLE_CELL_COUNT
 
     fun setSuggestions(first: String?, second: String?, third: String?, fourth: String?): Boolean {
         var changed = setSuggestion(0, first)
@@ -38,6 +44,22 @@ internal class SuggestionStripState {
     }
 
     fun clear(): Boolean = setSuggestions(null, null, null, null)
+
+    /** The count the strip draws and hit-tests; the full width splits among these cells. */
+    fun visibleCellCount(): Int = visibleCellCount
+
+    /**
+     * Sets the visible (and tappable) cell count, clamped to 1..[CELL_COUNT]. Content in a cell
+     * past the count is kept but never drawn or hit. A count change moves every cell boundary, so
+     * an active gesture is cancelled. Returns true on a visual change.
+     */
+    fun setVisibleCellCount(count: Int): Boolean {
+        val clamped = count.coerceIn(1, CELL_COUNT)
+        if (clamped == visibleCellCount) return false
+        visibleCellCount = clamped
+        cancelGesture()
+        return true
+    }
 
     fun suggestionAt(cell: Int): String? =
         if (cell in 0 until CELL_COUNT) suggestions[cell] else null
@@ -56,7 +78,7 @@ internal class SuggestionStripState {
      */
     fun setEmphasis(cell: Int): Boolean {
         if (cell == NO_CELL) return clearEmphasis()
-        if (cell !in 0 until CELL_COUNT || !isCellPopulated(cell)) return false
+        if (cell !in 0 until visibleCellCount || !isCellPopulated(cell)) return false
         if (emphasizedCell == cell) return false
         emphasizedCell = cell
         return true
@@ -89,15 +111,17 @@ internal class SuggestionStripState {
         ) {
             return NO_CELL
         }
-        if (x < cellRight(0, width)) return 0
-        if (x < cellRight(1, width)) return 1
-        if (x < cellRight(2, width)) return 2
-        return 3
+        var cell = 0
+        while (cell < visibleCellCount - 1) {
+            if (x < cellRight(cell, width)) return cell
+            cell++
+        }
+        return visibleCellCount - 1
     }
 
-    fun cellLeft(cell: Int, width: Int): Int = width * cell / CELL_COUNT
+    fun cellLeft(cell: Int, width: Int): Int = width * cell / visibleCellCount
 
-    fun cellRight(cell: Int, width: Int): Int = width * (cell + 1) / CELL_COUNT
+    fun cellRight(cell: Int, width: Int): Int = width * (cell + 1) / visibleCellCount
 
     fun onDown(pointerId: Int, x: Float, y: Float, width: Int, height: Int): Boolean {
         val cell = cellAt(x, y, width, height)
@@ -163,10 +187,13 @@ internal class SuggestionStripState {
 
     companion object {
         /**
-         * Four cells; the Tatar bigram table's four packed successors per word are all shown
-         * (`TatBigrPrefixIndex.MAX_RESULTS` reads them).
+         * Four cells at most; the Tatar bigram table packs four successors per word
+         * (`TatBigrPrefixIndex.MAX_RESULTS` reads them), and the engines compose four candidates.
+         * How many of them the strip shows is [visibleCellCount].
          */
         const val CELL_COUNT = 4
+        /** The shipped strip width; the fourth-cell setting widens it to [CELL_COUNT]. */
+        const val DEFAULT_VISIBLE_CELL_COUNT = 3
         const val NO_CELL = -1
         const val INVALID_POINTER_ID = -1
         /**

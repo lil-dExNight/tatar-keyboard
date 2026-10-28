@@ -64,6 +64,13 @@ interface StripSurface {
      */
     fun setEmphasizedCell(cell: Int) {}
 
+    /**
+     * The visible cell count (the user's fourth-cell setting), pushed when LatinIME (re)loads the
+     * settings. The strip re-splits its full width among the visible cells; a cell past the count
+     * keeps its content but stays inert. Default no-op.
+     */
+    fun setVisibleCellCount(cells: Int) {}
+
     /** Make the strip VISIBLE with no words, keeping its reserved height. */
     fun reserve()
 
@@ -378,6 +385,17 @@ class SuggestionsController internal constructor(
     // language ever changes.
     private var bandBaseCells: List<String> = emptyList()
 
+    /**
+     * The visible strip cell count (the user's fourth-cell setting), pushed by LatinIME at every
+     * settings (re)load. The engines always compose up to [SuggestionStripState.CELL_COUNT]
+     * candidates; band compositions cap at [bandCapacity], and [showBand] truncates to it.
+     */
+    private var stripCellCount = SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT
+
+    /** The cells one band may occupy: the setting clamped to what the strip can hold. */
+    private val bandCapacity: Int
+        get() = minOf(stripCellCount, SuggestionStripState.CELL_COUNT)
+
     // The one outstanding companion lookup, or null. Its kind and text are kept so a result that
     // arrives after the user typed on is dropped by comparing against them: the companion engine
     // is not asked on every keystroke, so its newest token can belong to an old word.
@@ -615,6 +633,16 @@ class SuggestionsController internal constructor(
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
     fun setKeyguardGate(gate: KeyguardGate) {
         keyguardGate = gate
+    }
+
+    /**
+     * Pushed at every settings (re)load, unlike the once-wired seams above: the toggle can flip
+     * while the service lives. Forwarded to the strip even when unchanged, because the strip view
+     * may have been recreated (it starts at the default count) since the last push.
+     */
+    fun setStripCellCount(cells: Int) {
+        stripCellCount = cells.coerceIn(1, SuggestionStripState.CELL_COUNT)
+        strip.setVisibleCellCount(stripCellCount)
     }
 
     /**
@@ -1378,7 +1406,7 @@ class SuggestionsController internal constructor(
         // take the emoji cell at the end.
         val base = bandBaseCells
         val emojiTail = if (base.isNotEmpty() && isEmojiCell(base.last())) base.last() else null
-        val room = SuggestionStripState.CELL_COUNT - (if (emojiTail != null) 1 else 0)
+        val room = bandCapacity - (if (emojiTail != null) 1 else 0)
         val wordBase = if (emojiTail != null) base.dropLast(1) else base
         if (wordBase.size >= room) return
         requestCompanionFill(LookupKind.NEXT_WORD, context)
@@ -1644,7 +1672,7 @@ class SuggestionsController internal constructor(
         // never push it out. A word cell is always a letter sequence; only the emoji cell is not.
         val emojiTail = if (base.isNotEmpty() && isEmojiCell(base.last())) base.last() else null
         val wordBase = if (emojiTail != null) base.dropLast(1) else base
-        val room = SuggestionStripState.CELL_COUNT - (if (emojiTail != null) 1 else 0)
+        val room = bandCapacity - (if (emojiTail != null) 1 else 0)
         // PREFIX re-applies the typed capitalization to every cell it shows, so the companion's
         // candidates get exactly the same treatment; NEXT_WORD applies none, to either language.
         val casing = if (kind == LookupKind.PREFIX) TatarWordUtils.classifyCasing(query) else null
@@ -1656,7 +1684,7 @@ class SuggestionsController internal constructor(
         if (leadArmed && casing != null) {
             val leadExactCount = engine.lastExactCount().coerceIn(0, suggestions.size)
             if (leadExactCount > 0) {
-                val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+                val cells = ArrayList<String>(bandCapacity)
                 for (index in 0 until leadExactCount) {
                     if (cells.size >= room) break
                     val shown = TatarWordUtils.applyCasing(suggestions[index], casing)
@@ -1680,7 +1708,7 @@ class SuggestionsController internal constructor(
             }
         }
         if (wordBase.size >= room) return
-        val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+        val cells = ArrayList<String>(bandCapacity)
         cells.addAll(wordBase)
         for (candidate in suggestions) {
             val shown = if (casing == null) candidate else TatarWordUtils.applyCasing(candidate, casing)
@@ -1707,18 +1735,23 @@ class SuggestionsController internal constructor(
         cells: List<String>,
         emphasizedCell: Int = SuggestionStripState.NO_CELL,
     ) {
-        bandBaseCells = cells
-        strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2), cells.getOrNull(3))
+        // Every composition already caps at the visible count; this is the fail-safe for the one
+        // place a wider list could slip through (a retained glide list outliving a narrower push).
+        val shown = if (cells.size <= bandCapacity) cells else cells.subList(0, bandCapacity)
+        bandBaseCells = shown
+        strip.showSuggestions(shown[0], shown.getOrNull(1), shown.getOrNull(2), shown.getOrNull(3))
         // The emphasis travels with the words it marks, in the same publication. It runs before
         // the spoken labels: setEmphasis triggers the view's one display rebuild, and the label
         // lookup reads the emoji index, which can fail. A label failure then leaves a consistent
         // strip with missing labels, which the next publication re-sends.
-        strip.setEmphasizedCell(emphasizedCell)
+        strip.setEmphasizedCell(
+            if (emphasizedCell < shown.size) emphasizedCell else SuggestionStripState.NO_CELL
+        )
         strip.setSpokenCellLabels(
-            spokenLabelFor(cells[0]),
-            spokenLabelFor(cells.getOrNull(1)),
-            spokenLabelFor(cells.getOrNull(2)),
-            spokenLabelFor(cells.getOrNull(3)),
+            spokenLabelFor(shown[0]),
+            spokenLabelFor(shown.getOrNull(1)),
+            spokenLabelFor(shown.getOrNull(2)),
+            spokenLabelFor(shown.getOrNull(3)),
         )
     }
 
@@ -1786,8 +1819,8 @@ class SuggestionsController internal constructor(
         if (contextWord.isEmpty()) return
         val emoji = emojiCandidate(contextWord) ?: return
         if (bandBaseCells.contains(emoji)) return
-        val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
-        val wordCap = SuggestionStripState.CELL_COUNT - 1
+        val cells = ArrayList<String>(bandCapacity)
+        val wordCap = bandCapacity - 1
         for (cell in bandBaseCells) {
             cells.add(cell)
             if (cells.size >= wordCap) break
@@ -2152,10 +2185,10 @@ class SuggestionsController internal constructor(
         // strip of cells: the strip never shows more, and the revert window of the commit
         // retains exactly this list so the whole-word undo can re-bind the remaining candidates
         // as the rescue strip ([maybeUndoGlideCommit]).
-        val nbest = ArrayList<String>(SuggestionStripState.CELL_COUNT + 1)
+        val nbest = ArrayList<String>(bandCapacity + 1)
         for (suggestion in suggestions) {
             nbest.add(TatarWordUtils.applyCasing(suggestion, casing))
-            if (nbest.size > SuggestionStripState.CELL_COUNT) break
+            if (nbest.size > bandCapacity) break
         }
         val committed = nbest[0]
         // The glide commit path re-derives the live context and refuses a stale gesture itself
@@ -2174,8 +2207,8 @@ class SuggestionsController internal constructor(
             displayedGlideAlternativesFor = REFUSED_GLIDE
             displayedSessionId = sessionId
             showBand(
-                if (nbest.size <= SuggestionStripState.CELL_COUNT) nbest
-                else nbest.subList(0, SuggestionStripState.CELL_COUNT),
+                if (nbest.size <= bandCapacity) nbest
+                else nbest.subList(0, bandCapacity),
             )
             return
         }
@@ -2269,7 +2302,7 @@ class SuggestionsController internal constructor(
         val words = mergeSentenceStartCells(
             sentStartOverlaySource?.topWords(language).orEmpty(),
             tableWords,
-            SuggestionStripState.CELL_COUNT,
+            bandCapacity,
         )
         if (words.isEmpty()) return false
         // A sentence start takes a capital, so the cells are shown capitalized (display-time
@@ -2497,13 +2530,13 @@ class SuggestionsController internal constructor(
             // The completions keep the typed casing, as on the ordinary path; the expansion is the
             // user's verbatim text and is never re-cased.
             val casing = TatarWordUtils.classifyCasing(pendingPrefix)
-            val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+            val cells = ArrayList<String>(bandCapacity)
             cells.add(expansion)
             for (candidate in suggestions) {
                 val shown = TatarWordUtils.applyCasing(candidate, casing)
                 if (cells.contains(shown)) continue
                 cells.add(shown)
-                if (cells.size >= SuggestionStripState.CELL_COUNT) break
+                if (cells.size >= bandCapacity) break
             }
             showBand(cells)
             return
@@ -2547,16 +2580,16 @@ class SuggestionsController internal constructor(
         // the prefix this result was computed for, never from the live editor state, and the strip
         // hands the very same string back on tap, so the displayed and the inserted form match.
         val casing = TatarWordUtils.classifyCasing(pendingPrefix)
-        val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+        val cells = ArrayList<String>(bandCapacity)
         for (candidate in suggestions) {
             cells.add(TatarWordUtils.applyCasing(candidate, casing))
-            if (cells.size >= SuggestionStripState.CELL_COUNT) break
+            if (cells.size >= bandCapacity) break
         }
         showBand(cells)
         // With an empty exact pass the companion is asked even when its cells are already full of
         // typo-recovery candidates: a non-empty companion exact pass takes the lead
         // (applyCompanionResult). Without one the fill stays lazy, as before.
-        if (exactPassEmpty || cells.size < SuggestionStripState.CELL_COUNT) {
+        if (exactPassEmpty || cells.size < bandCapacity) {
             requestCompanionFill(LookupKind.PREFIX, pendingPrefix, exactLeadEligible = exactPassEmpty)
         }
     }
@@ -2595,18 +2628,18 @@ class SuggestionsController internal constructor(
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = true
         val wordCap = if (emoji == null) {
-            SuggestionStripState.CELL_COUNT
+            bandCapacity
         } else {
-            SuggestionStripState.CELL_COUNT - 1
+            bandCapacity - 1
         }
-        val cells = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+        val cells = ArrayList<String>(bandCapacity)
         for (candidate in suggestions) {
             cells.add(candidate)
             if (cells.size >= wordCap) break
         }
         if (emoji != null && !cells.contains(emoji)) cells.add(emoji)
         showBand(cells)
-        if (cells.size < SuggestionStripState.CELL_COUNT) {
+        if (cells.size < bandCapacity) {
             requestCompanionFill(LookupKind.NEXT_WORD, pendingContextWord)
         }
     }
@@ -3105,11 +3138,11 @@ class SuggestionsController internal constructor(
         // in [clearToReservedBand].
         requestSessionId = NO_SESSION
         // Remaining candidates of the deleted word's gesture, capped at one strip of cells.
-        val rescue = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+        val rescue = ArrayList<String>(bandCapacity)
         for (candidate in candidates) {
             if (candidate == word) continue
             rescue.add(candidate)
-            if (rescue.size >= SuggestionStripState.CELL_COUNT) break
+            if (rescue.size >= bandCapacity) break
         }
         if (rescue.isEmpty() || !glideStripAllowed()) {
             showEmptyBand()

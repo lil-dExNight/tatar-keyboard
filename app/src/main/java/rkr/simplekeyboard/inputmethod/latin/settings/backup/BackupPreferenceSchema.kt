@@ -51,6 +51,7 @@ object BackupPreferenceSchema {
         Settings.PREF_TATAR_AUTOCORRECT to ValueType.BOOLEAN,
         Settings.PREF_EMOJI_SUGGESTIONS to ValueType.BOOLEAN,
         Settings.PREF_INCOGNITO_MODE to ValueType.BOOLEAN,
+        Settings.PREF_STRIP_FOURTH_CELL to ValueType.BOOLEAN,
         Settings.PREF_TATAR_SUGGESTIONS_OFFER_SPENT to ValueType.BOOLEAN,
         // Ints.
         Settings.PREF_KEY_LONGPRESS_TIMEOUT to ValueType.INT,

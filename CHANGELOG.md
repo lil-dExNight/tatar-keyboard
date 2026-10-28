@@ -15,6 +15,7 @@ These hold for every release and are not repeated in the entries below:
 
 ### Added
 
+- A "Fourth suggestion cell" setting: the strip above the keyboard shows four suggestions instead of three while it is on.
 - A personal sentence-start overlay: the words you actually open sentences with lead the strip at a sentence start, above the static table (they are never removed from it). Learned under the same privacy gates as the personal dictionary, eight entries at most, never backed up.
 - The Russian sentence-start table now covers conversational openings (`я`, `ты`, `он` rank where they belong): measured hit rate on the held-out set went 3.1% → 18.7%.
 - A pause-learning marker on the spacebar while learning is paused.
@@ -25,7 +26,7 @@ These hold for every release and are not repeated in the entries below:
 ### Changed
 
 - Word suggestions are on by default for new installs, and the onboarding's last step carries the switch. Personal dictionary and autocorrection stay off until enabled.
-- The suggestion strip shows four cells instead of three: the bundled bigram tables always packed four successors per word, and the fourth one is now shown too. Measured keystroke savings improved by about 2.5-2.8 points on both languages.
+- The suggestion strip can show four cells instead of three (the "Fourth suggestion cell" setting; three remain the default): the bundled bigram tables always packed four successors per word, and the fourth one is shown while the setting is on. Measured keystroke savings with four cells improve by about 2.5-2.8 points on both languages.
 - Typo recovery on both Cyrillic layouts now covers the missing, extra and swapped letters of a mistyped word, not just wrong-letter substitutions (`пирвет` → `привет`). Measured recovery on the pinned sets: insertion 0% → 98%, transposition 0% → 91%, deletion 20% → 75%.
 - Word completions lean on the previous word: a completion that the bigram table predicts after the just-committed word now leads the strip while you type it (+1.8-1.9 points of top-1 completion on the held-out sets).
 - A word you use regularly now leads the strip ahead of rare dictionary continuations; frequent dictionary words still keep the top cell.

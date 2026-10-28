@@ -229,7 +229,10 @@ class SuggestionStripSourceContractTest {
         // The single band writer publishes the marker with the words, never apart from them.
         val showBandBody = controller.substringAfter("private fun showBand(")
             .substringBefore("    /**")
-        assertTrue(showBandBody.contains("strip.setEmphasizedCell(emphasizedCell)"))
+        assertTrue(showBandBody.contains("strip.setEmphasizedCell("))
+        // The marker travels with the words, truncated bands included: a marker past the visible
+        // cells is dropped, not painted onto a cell that is not there.
+        assertTrue(showBandBody.contains("if (emphasizedCell < shown.size) emphasizedCell"))
         // The emphasis (which runs the publication's one display rebuild in the view) goes BEFORE
         // the spoken labels: the label lookup reads the emoji index and can fail, and between words
         // and emphasis it would leave the band half-published.
@@ -243,11 +246,37 @@ class SuggestionStripSourceContractTest {
         ).readText()
         assertTrue(latinIme.contains("public void setEmphasizedCell(final int cell)"))
         assertTrue(latinIme.contains("inputView.setSuggestionStripEmphasis(cell)"))
+        // The visible cell count rides the same seam: a default no-op on the surface, pushed by
+        // LatinIME's loadSettings through the controller into the lazily inflated strip.
+        assertTrue(controller.contains("fun setVisibleCellCount(cells: Int) {}"))
+        assertTrue(controller.contains("strip.setVisibleCellCount(stripCellCount)"))
+        assertTrue(latinIme.contains("public void setVisibleCellCount(final int cells)"))
+        assertTrue(latinIme.contains("inputView.setSuggestionStripCellCount(cells)"))
         val inputView = File(
             main,
             "java/rkr/simplekeyboard/inputmethod/latin/InputView.java",
         ).readText()
         assertTrue(inputView.contains("mSuggestionStripView.setEmphasis(cell)"))
+        assertTrue(inputView.contains("strip.setVisibleCellCount(mStripVisibleCellCount)"))
+    }
+
+    @Test
+    fun theFourthCellSettingDefaultsOffStaysSubordinateAndMatchesTheRow() {
+        val main = sourceRoot()
+        val settings = File(
+            main,
+            "java/rkr/simplekeyboard/inputmethod/latin/settings/Settings.java",
+        ).readText()
+        assertTrue(settings.contains("readBooleanTolerant(prefs, PREF_STRIP_FOURTH_CELL, false)"))
+        val body = settings
+            .substringAfter("public static boolean readStripFourthCellEnabled")
+            .substringBefore("}")
+        assertTrue("the fourth cell stays subordinate", body.contains("readTatarSuggestionsEnabled"))
+        val host = File(
+            main,
+            "java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt",
+        ).readText()
+        assertTrue(host.contains("switchRow(Settings.PREF_STRIP_FOURTH_CELL, false"))
     }
 
     @Test

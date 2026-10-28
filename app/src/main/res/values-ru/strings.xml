@@ -105,6 +105,8 @@
     <string name="text_shortcuts_delete_failed">Не удалось удалить сокращение. Оно всё ещё сохранено.</string>
     <string name="emoji_suggestions">Подсказки эмодзи</string>
     <string name="emoji_suggestions_summary">Показывать подходящий эмодзи над клавиатурой после завершённого слова — для татарского и русского. Нажатие только добавляет эмодзи: набранное слово остаётся.</string>
+    <string name="strip_fourth_cell">Четвёртая ячейка подсказок</string>
+    <string name="strip_fourth_cell_summary">Показывать над клавиатурой четыре подсказки вместо трёх. Ячейки становятся уже.</string>
     <string name="glide_typing">Набор свайпом</string>
     <string name="glide_typing_summary">Печатайте слово, проводя пальцем по его буквам, не отрывая, — в татарском и в русском. Распознавание работает на этом устройстве.</string>
     <string name="personal_dictionary">Личный словарь</string>

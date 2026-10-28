@@ -200,6 +200,15 @@ class CursorMoveBandTest {
     @Test
     fun theThreeReportedPrefixesAllAnswerFromTheShippedRussianDictionary() {
         val h = Harness()
+        assertEquals(listOf("друг", "другой", "друга"), h.type("др"))
+        assertEquals(listOf("друг", "другой", "друга"), h.type("дру"))
+        assertEquals(listOf("другой", "друга", "других"), h.type("друг"))
+    }
+
+    @Test
+    fun theFourthCellSettingExtendsTheBandToFour() {
+        val h = Harness()
+        h.controller.setStripCellCount(SuggestionStripState.CELL_COUNT)
         assertEquals(listOf("друг", "другой", "друга", "других"), h.type("др"))
         assertEquals(listOf("друг", "другой", "друга", "других"), h.type("дру"))
         assertEquals(listOf("другой", "друга", "других", "другие"), h.type("друг"))
@@ -210,7 +219,7 @@ class CursorMoveBandTest {
     @Test
     fun aCursorMoveThatLeavesTheWordAloneGetsTheBandBack() {
         val h = Harness()
-        assertEquals(listOf("друг", "другой", "друга", "других"), h.type("дру"))
+        assertEquals(listOf("друг", "другой", "друга"), h.type("дру"))
         // The band is blanked the moment the move is seen: what it was painting is no longer bound
         // to the live editor state, and that half is unchanged.
         h.controller.onSelectionChanged()
@@ -220,7 +229,7 @@ class CursorMoveBandTest {
         // same word the dictionary answered a moment ago.
         h.controller.onCursorMoveSettled()
         h.drain()
-        assertEquals(listOf("друг", "другой", "друга", "других"), h.strip.cells)
+        assertEquals(listOf("друг", "другой", "друга"), h.strip.cells)
     }
 
     @Test
@@ -247,7 +256,7 @@ class CursorMoveBandTest {
             before,
             h.requestsMadeFor(PersonalSubtypes.RUSSIAN),
         )
-        assertEquals(listOf("друг", "другой", "друга", "других"), h.strip.cells)
+        assertEquals(listOf("друг", "другой", "друга"), h.strip.cells)
     }
 
     @Test

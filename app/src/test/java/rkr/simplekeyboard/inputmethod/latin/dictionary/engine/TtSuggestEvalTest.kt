@@ -49,12 +49,14 @@ import java.nio.ByteBuffer
  *  - lemma strata (seen-form / new-form-of-seen-stem / unseen-stem): unique-word counts,
  *    per-stratum cp3 completion top-3 rates and per-stratum chain top-3 next-word rates;
  *  - keystroke savings: strip taps at cost 1, completion assist at the first prefix that shows
- *    the word, plus the vocabulary-oracle bound over minimal distinguishing prefixes;
+ *    the word, plus the vocabulary-oracle bound over minimal distinguishing prefixes. Two arms:
+ *    the shipped three-cell default and the fourth-cell setting, over the same engine answers;
  *  - strip-empty at sentence start and sentence-start top-3 hit rate, via the sentence-start
  *    table (`tatar_sentstart_v1.txt`, parsed by [SentStartIndex]).
  *
- * Metrics count the four strip cells; the Tatar table stores K = 4 successors and
- * `TatBigrPrefixIndex.MAX_RESULTS` reads them all, so the results match `scripts/suggest_eval.py`.
+ * The engine-side metrics count the four composed candidates; the Tatar table stores K = 4
+ * successors and `TatBigrPrefixIndex.MAX_RESULTS` reads them all. The keystroke arms differ only
+ * in how many of the four a tap can reach. The results match `scripts/suggest_eval.py`.
  * Assets and eval set are SHA-pinned, so the exact counts below are a deterministic function of
  * committed bytes: re-pin when the assets, the eval set or the ranking change. Zero-allocation and
  * p95 contracts live in [RealDictionaryPrefixIndexTest] and [RealBigramPrefixIndexTest].
@@ -572,9 +574,13 @@ class TtSuggestEvalTest {
      * every code point plus one space between words. The simulation types the first word with
      * completion assist; a later word is a tap when the chain shows it for the previous word,
      * else completion assist. Completion assist types code points until the word enters the
-     * prefix top-3 (cost k+1 with the tap) or, when it never does, the full length. The oracle
-     * types the first word's minimal distinguishing prefix over the eval vocabulary (never more
-     * than the word) and taps every later word.
+     * prefix answer's shown cells (cost k+1 with the tap) or, when it never does, the full
+     * length. The oracle types the first word's minimal distinguishing prefix over the eval
+     * vocabulary (never more than the word) and taps every later word.
+     *
+     * Two arms over the same engine answers: the shipped default strip (three cells) and the
+     * fourth-cell setting (all four). The engine composes four candidates either way; the arm
+     * decides how many are tappable.
      */
     @Test
     fun keystrokeSavingsOnTheEvalSet() {
@@ -582,10 +588,11 @@ class TtSuggestEvalTest {
         index.updateKeyNeighbors(null)
         val chain = chainComputer()
         val completionCosts = HashMap<String, Int>(uniqueWords.size)
+        val completionCostsCells4 = HashMap<String, Int>(uniqueWords.size)
         val predictCache = HashMap<String, List<String>>()
 
-        fun completionCostOf(word: String): Int {
-            completionCosts[word]?.let { return it }
+        fun completionCostOf(word: String, cells: Int, cache: HashMap<String, Int>): Int {
+            cache[word]?.let { return it }
             var cost = word.length
             for (codePoints in 1 until word.length) {
                 val results = index.lookup(
@@ -593,23 +600,27 @@ class TtSuggestEvalTest {
                         word.substring(0, codePoints).toByteArray(Charsets.UTF_8)
                     )
                 )
-                if (results.contains(word)) {
+                if (results.take(cells).contains(word)) {
                     cost = codePoints + 1
                     break
                 }
             }
-            completionCosts[word] = cost
+            cache[word] = cost
             return cost
         }
 
         val distinguishing = minimalDistinguishingPrefixLengths(uniqueWords)
         var baseline = 0
         var simulated = 0
+        var simulatedCells4 = 0
         var oracle = 0
         for (line in evalLines) {
             val words = line.split(" ")
             baseline += words.sumOf { it.length } + words.size - 1
-            simulated += completionCostOf(words[0])
+            simulated += completionCostOf(
+                words[0], SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT, completionCosts)
+            simulatedCells4 += completionCostOf(
+                words[0], SuggestionStripState.CELL_COUNT, completionCostsCells4)
             for (position in 1 until words.size) {
                 val shown = predictCache.getOrPut(words[position - 1]) {
                     chain.predict(
@@ -618,7 +629,20 @@ class TtSuggestEvalTest {
                         )
                     )
                 }
-                simulated += if (shown.contains(words[position])) 1 else completionCostOf(words[position])
+                val target = words[position]
+                simulated +=
+                    if (shown.take(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT).contains(target)) {
+                        1
+                    } else {
+                        completionCostOf(
+                            target, SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT, completionCosts)
+                    }
+                simulatedCells4 +=
+                    if (shown.take(SuggestionStripState.CELL_COUNT).contains(target)) {
+                        1
+                    } else {
+                        completionCostOf(target, SuggestionStripState.CELL_COUNT, completionCostsCells4)
+                    }
             }
             val distinguishingLength = distinguishing[words[0]]
             oracle += if (distinguishingLength != null) {
@@ -629,17 +653,22 @@ class TtSuggestEvalTest {
             oracle += words.size - 1
         }
         val savedPct = (baseline - simulated) * 100.0 / baseline
+        val savedPctCells4 = (baseline - simulatedCells4) * 100.0 / baseline
         val oraclePct = (baseline - oracle) * 100.0 / baseline
         println("EVAL|ks_baseline_keys|$baseline")
         println("EVAL|ks_simulated_keys|$simulated")
         println("EVAL|ks_pct|${format(savedPct)}")
+        println("EVAL|ks_cells4_simulated_keys|$simulatedCells4")
+        println("EVAL|ks_cells4_pct|${format(savedPctCells4)}")
         println("EVAL|ks_oracle_keys|$oracle")
         println("EVAL|ks_oracle_pct|${format(oraclePct)}")
         assertEquals(PIN_KS_BASELINE_KEYS, baseline)
         assertEquals(PIN_KS_SIMULATED_KEYS, simulated)
+        assertEquals(PIN_KS_SIMULATED_KEYS_CELLS4, simulatedCells4)
         assertEquals(PIN_KS_ORACLE_KEYS, oracle)
-        // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
-        assertEquals("36.7815", format(savedPct))
+        // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
+        assertEquals("34.2584", format(savedPct))
+        assertEquals("36.7815", format(savedPctCells4))
         assertEquals("75.0660", format(oraclePct))
     }
 
@@ -787,7 +816,8 @@ class TtSuggestEvalTest {
         private const val PIN_STRATUM_NEW_FORM_WORDS = 91
         private const val PIN_STRATUM_UNSEEN_STEM_WORDS = 154
         private const val PIN_KS_BASELINE_KEYS = 33_332
-        private const val PIN_KS_SIMULATED_KEYS = 21_072
+        private const val PIN_KS_SIMULATED_KEYS = 21_913
+        private const val PIN_KS_SIMULATED_KEYS_CELLS4 = 21_072
         private const val PIN_KS_ORACLE_KEYS = 8_311
         // The context boost over the cp>=2 prefix moments, cross-pinned with the ctxboost_* rows
         // of scripts/suggest_eval.py; the CI95 is the paired sentence-level bootstrap.

@@ -187,10 +187,10 @@ class KeyboardUiStructureContractTest {
             else listOf(File("scripts/emulator-smoke.sh"), File("../scripts/emulator-smoke.sh"))
                 .first(File::isFile).readText()
         }
-        // At 44dp the strip's center sits at y = 0.5954; the strip has four cells, so the smoke
-        // test taps the center of each quarter.
-        assertTrue("the strip cell moved with the height", smoke.contains("STRIP_CELL3=\"0.8750,0.5954\""))
-        assertTrue("the strip's four cells are pinned", smoke.contains("STRIP_CELL0=\"0.1250,0.5954\""))
+        // At 44dp the strip's center sits at y = 0.5954; the strip shows three cells by default,
+        // so the smoke test taps the center of each third.
+        assertTrue("the strip cell moved with the height", smoke.contains("STRIP_CELL2=\"0.8333,0.5954\""))
+        assertTrue("the strip's three default cells are pinned", smoke.contains("STRIP_CELL0=\"0.1667,0.5954\""))
     }
 
     // ----- Key press feedback -----

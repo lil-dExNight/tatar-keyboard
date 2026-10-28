@@ -32,15 +32,16 @@ import java.nio.ByteBuffer
 import java.security.MessageDigest
 
 /**
- * The NEXT_WORD strip after a committed word, end to end on the real shipped assets with the
- * production wiring (suffix rules, TATAR fuzzy policy, after-word forms and the global
- * top-frequency fallback).
+ * The NEXT_WORD strip's engine answer after a committed word, end to end on the real shipped
+ * assets with the production wiring (suffix rules, TATAR fuzzy policy, after-word forms and the
+ * global top-frequency fallback).
  *
- * `сәләм` is no bigram head and has two attested forms, so the strip is
- * `[сәләмә, сәләме, һәм]`: the fallback fills the cell the bigrams and forms leave free. After
- * `сәләмә` (no successors,
- * no forms) it is `[һәм, белән, да]`, the global top words. A bigram head (кил) still shows only
- * its first three stored successors (`TatBigrPrefixIndex.MAX_RESULTS` = 3).
+ * `сәләм` is no bigram head and has two attested forms, so the answer is
+ * `[сәләмә, сәләме, һәм, белән]`: the fallback fills the cells the bigrams and forms leave free.
+ * After `сәләмә` (no successors, no forms) it is `[һәм, белән, да, дә]`, the global top words.
+ * A bigram head (кил) still gets only its four stored successors
+ * (`TatBigrPrefixIndex.MAX_RESULTS`). The strip's visible cell count is the controller's
+ * business; these pins cover the composed answer.
  */
 class TtNextWordFillE2ETest {
 

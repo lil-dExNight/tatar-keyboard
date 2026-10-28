@@ -45,38 +45,98 @@ class SuggestionStripStateTest {
         val state = SuggestionStripState()
         state.setSuggestions("бер", null, "өч", null)
 
+        // The default strip: three visible cells, thirds of the width — [0,100), [100,201),
+        // [201,302) of 302.
+        assertEquals(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT, state.visibleCellCount())
         assertEquals("бер", state.suggestionAt(0))
         assertNull(state.suggestionAt(1))
         assertEquals("өч", state.suggestionAt(2))
         assertNull(state.suggestionAt(3))
+        assertTrue(state.onDown(activePointer, 0f, 20f, 302, height))
+        assertEquals(0, state.onUp(activePointer, 99f, 20f, 302, height))
+        assertFalse(state.onDown(activePointer, 151f, 20f, 302, height))
+        assertTrue(state.onDown(activePointer, 301f, 20f, 302, height))
+        assertEquals(2, state.onUp(activePointer, 301f, 20f, 302, height))
+    }
+
+    @Test
+    fun theFourthCellSettingSplitsTheWidthIntoQuarters() {
+        val state = SuggestionStripState()
+        assertTrue(state.setVisibleCellCount(SuggestionStripState.CELL_COUNT))
+        state.setSuggestions("бер", null, "өч", "дүрт")
+
+        assertEquals(SuggestionStripState.CELL_COUNT, state.visibleCellCount())
         // Quarters of 400: the cells span [0,100), [100,200), [200,300), [300,400).
         assertTrue(state.onDown(activePointer, 0f, 20f, 400, height))
         assertEquals(0, state.onUp(activePointer, 99f, 20f, 400, height))
         assertFalse(state.onDown(activePointer, 151f, 20f, 400, height))
         assertTrue(state.onDown(activePointer, 250f, 20f, 400, height))
         assertEquals(2, state.onUp(activePointer, 250f, 20f, 400, height))
+        assertTrue(state.onDown(activePointer, 350f, 20f, 400, height))
+        assertEquals(3, state.onUp(activePointer, 350f, 20f, 400, height))
+    }
+
+    @Test
+    fun aCellPastTheVisibleCountKeepsItsContentButStaysInert() {
+        val state = SuggestionStripState()
+        state.setSuggestions("бер", "ике", "өч", "дүрт")
+
+        // The fourth cell is stored but neither hit nor emphasized at the default three.
+        assertEquals("дүрт", state.suggestionAt(3))
+        assertEquals(2, state.cellAt(299f, 20f, width, height))
+        assertFalse(state.setEmphasis(3))
+
+        // Widening to four hit-tests and emphasizes it.
+        assertTrue(state.setVisibleCellCount(SuggestionStripState.CELL_COUNT))
+        assertEquals(3, state.cellAt(299f, 20f, width, height))
+        assertTrue(state.setEmphasis(3))
+    }
+
+    @Test
+    fun narrowingTheStripCancelsAnActiveGesture() {
+        val state = SuggestionStripState()
+        state.setVisibleCellCount(SuggestionStripState.CELL_COUNT)
+        state.setSuggestions("бер", "ике", "өч", "дүрт")
+        assertTrue(state.onDown(activePointer, 290f, 20f, width, height))
+        assertEquals(3, state.pressedCell())
+
+        // The count change moves every cell boundary, so the gesture cannot survive it.
+        assertTrue(state.setVisibleCellCount(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT))
+        assertEquals(SuggestionStripState.NO_CELL, state.pressedCell())
+        assertEquals(
+            SuggestionStripState.NO_CELL,
+            state.onUp(activePointer, 290f, 20f, width, height),
+        )
+        // A repeated push of the live count is no change at all.
+        assertFalse(state.setVisibleCellCount(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT))
     }
 
     @Test
     fun nonDivisibleWidthsHaveContiguousFullCoverage() {
         val state = SuggestionStripState()
-        for (width in 3..503) {
-            assertEquals(0, state.cellLeft(0, width))
-            assertEquals(width, state.cellRight(3, width))
-            assertEquals(state.cellRight(0, width), state.cellLeft(1, width))
-            assertEquals(state.cellRight(1, width), state.cellLeft(2, width))
-            assertEquals(state.cellRight(2, width), state.cellLeft(3, width))
-            for (x in 0 until width) {
-                val cell = state.cellAt(x.toFloat(), 20f, width, height)
-                assertTrue(cell in 0 until SuggestionStripState.CELL_COUNT)
-                assertTrue(x >= state.cellLeft(cell, width))
-                assertTrue(x < state.cellRight(cell, width))
+        for (cells in listOf(
+            SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT,
+            SuggestionStripState.CELL_COUNT,
+        )) {
+            state.setVisibleCellCount(cells)
+            for (width in 3..503) {
+                assertEquals(0, state.cellLeft(0, width))
+                assertEquals(width, state.cellRight(cells - 1, width))
+                for (cell in 0 until cells - 1) {
+                    assertEquals(state.cellRight(cell, width), state.cellLeft(cell + 1, width))
+                }
+                for (x in 0 until width) {
+                    val cell = state.cellAt(x.toFloat(), 20f, width, height)
+                    assertTrue(cell in 0 until cells)
+                    assertTrue(x >= state.cellLeft(cell, width))
+                    assertTrue(x < state.cellRight(cell, width))
+                }
+                assertEquals(SuggestionStripState.NO_CELL, state.cellAt(-1f, 20f, width, height))
+                assertEquals(
+                    SuggestionStripState.NO_CELL,
+                    state.cellAt(width.toFloat(), 20f, width, height),
+                )
             }
-            assertEquals(SuggestionStripState.NO_CELL, state.cellAt(-1f, 20f, width, height))
-            assertEquals(
-                SuggestionStripState.NO_CELL,
-                state.cellAt(width.toFloat(), 20f, width, height),
-            )
         }
     }
 
@@ -215,10 +275,13 @@ class SuggestionStripStateTest {
     }
 
     @Test
-    fun stripContractIs44DpAndFourCells() {
+    fun stripContractIs44DpAndFourCellsWithThreeVisibleByDefault() {
         assertEquals(44, SuggestionStripState.STRIP_HEIGHT_DP)
-        // Four cells: the Tatar bigram table's K = 4 packed successors are all shown.
+        // Four cells at most: the Tatar bigram table packs K = 4 successors per word and the
+        // engines compose four candidates.
         assertEquals(4, SuggestionStripState.CELL_COUNT)
+        // The shipped default shows three; the fourth cell is the user's setting.
+        assertEquals(3, SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT)
     }
 
     /**

@@ -462,6 +462,7 @@ class SettingsHostActivity : Activity() {
         var incognitoRow: View? = null
         var autocorrectRow: View? = null
         var emojiSuggestRow: View? = null
+        var fourthCellRow: View? = null
         var glideRow: View? = null
         rows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, true,
                 R.string.tatar_suggestions, R.string.tatar_suggestions_summary) { checked ->
@@ -479,12 +480,22 @@ class SettingsHostActivity : Activity() {
             emojiSuggestRow?.let {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS))
             }
+            fourthCellRow?.let {
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL))
+            }
             glideRow?.let {
                 // Glide typing does not depend on the master switch; only the MDM restriction
                 // disables the row.
                 setRowEnabled(it, !isRestricted(Settings.PREF_GLIDE_TYPING))
             }
         }.apply { id = R.id.row_switch_tatar_suggestions })
+        // The fourth strip cell widens the same strip the master switch owns, so the row sits in
+        // this cluster and follows that switch. The default matches
+        // Settings.readStripFourthCellEnabled (off); a user-set value always wins.
+        val fourthCellSwitch = switchRow(Settings.PREF_STRIP_FOURTH_CELL, false,
+                R.string.strip_fourth_cell, R.string.strip_fourth_cell_summary)
+        fourthCellRow = fourthCellSwitch
+        rows.add(fourthCellSwitch)
         // The personal dictionary depends on the suggestion strip: without suggestions a saved
         // word has nowhere to appear, so the row follows the switch above it.
         val personalRow = switchRow(Settings.PREF_PERSONAL_DICTIONARY, false,
@@ -574,6 +585,11 @@ class SettingsHostActivity : Activity() {
                 Settings.readTatarSuggestionsEnabled(prefs)
                         && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
                 disabledReason(isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
+                        R.string.row_needs_suggestions))
+        setRowEnabled(fourthCellSwitch,
+                Settings.readTatarSuggestionsEnabled(prefs)
+                        && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
+                disabledReason(isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
                         R.string.row_needs_suggestions))
         setRowEnabled(glideSwitch,
                 !isRestricted(Settings.PREF_GLIDE_TYPING))

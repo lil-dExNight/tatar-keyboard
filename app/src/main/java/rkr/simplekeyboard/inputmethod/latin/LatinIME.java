@@ -131,6 +131,7 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferPresenter;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.PersonalEmojiSink;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.ResultCallback;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.StripSurface;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionTapListener;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionsController;
@@ -171,6 +172,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Optional opt-in Tatar suggestions controller. Null until set up in onCreate().
     // Package-visible for the extracted service helpers (LatinImeAutocorrect & co.).
     SuggestionsController mSuggestionsController;
+
+    // The last strip cell count pushed from loadSettings(): re-applied to every new input view,
+    // whose strip starts at the default count.
+    private int mStripCellCount = SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT;
 
     // The recent-clip cell's clipboard ears. The listener is registered only while the input view
     // is shown (see onWindowShown/onWindowHidden); the clip text itself lives in the controller's
@@ -446,6 +451,13 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         mSettings.loadSettings(inputAttributes);
         final SettingsValues currentSettingsValues = mSettings.getCurrent();
         AudioAndHapticFeedbackManager.getInstance().onSettingsChanged(currentSettingsValues);
+        // The strip width is a push, not a live gate: the strip view re-splits its cells once per
+        // change instead of re-reading the setting on every draw and touch.
+        mStripCellCount = currentSettingsValues.mStripFourthCellEnabled
+                ? SuggestionStripState.CELL_COUNT : SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT;
+        if (mSuggestionsController != null) {
+            mSuggestionsController.setStripCellCount(mStripCellCount);
+        }
     }
 
     /**
@@ -478,6 +490,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 final InputView inputView = getInputViewForSuggestions();
                 if (inputView != null) {
                     inputView.setSuggestionStripEmphasis(cell);
+                }
+            }
+
+            @Override
+            public void setVisibleCellCount(final int cells) {
+                final InputView inputView = getInputViewForSuggestions();
+                if (inputView != null) {
+                    inputView.setSuggestionStripCellCount(cells);
                 }
             }
 
@@ -1787,6 +1807,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (view instanceof InputView) {
             ((InputView) view).setInsetsChangedListener(
                     () -> LatinImeSoftInputWindow.onInputGeometryChanged(this));
+            // A fresh view's strip starts at the default cell count; the live setting follows.
+            ((InputView) view).setSuggestionStripCellCount(mStripCellCount);
         }
         LatinImeSoftInputWindow.updateSoftInputWindowLayoutParameters(this);
         view.requestApplyInsets();

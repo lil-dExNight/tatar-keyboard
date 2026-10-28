@@ -493,20 +493,20 @@ class SuggestionsControllerBigramAttachTest {
         h.bigramTable(PersonalSubtypes.TATAR_RU)
             .completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
-        // The active language fills all four cells: the companion is never even asked, and its
+        // The active language fills all three cells: the companion is never even asked, and its
         // catalog arriving later must not change that.
         h.engine(PersonalSubtypes.TATAR_RU).nextWordAnswer = listOf("дә", "үзем", "бу", "хәзер")
         h.editor.context = "мин"
         h.controller.onTextChanged()
 
         assertTrue(h.engine(PersonalSubtypes.RUSSIAN).requestedContexts.isEmpty())
-        assertEquals(listOf("дә", "үзем", "бу", "хәзер"), h.strip.shown.last())
+        assertEquals(listOf("дә", "үзем", "бу", null), h.strip.shown.last())
 
         h.bigramTable(PersonalSubtypes.RUSSIAN)
             .completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
 
         assertTrue(h.engine(PersonalSubtypes.RUSSIAN).requestedContexts.isEmpty())
-        assertEquals(listOf("дә", "үзем", "бу", "хәзер"), h.strip.shown.last())
+        assertEquals(listOf("дә", "үзем", "бу", null), h.strip.shown.last())
     }
 
     private fun fakeTable() = rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedBigramTable(

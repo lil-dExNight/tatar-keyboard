@@ -518,7 +518,9 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["prefix_top1_cp3_pct"], "15.1875")
         self.assertEqual(table["strip_empty_prefix_pct"], "2.1258")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
-        self.assertEqual(table["ks_pct"], "36.7815")
+        # The shipped default strip shows three cells; the fourth-cell arm is the opt-in setting.
+        self.assertEqual(table["ks_pct"], "34.2584")
+        self.assertEqual(table["ks_cells4_pct"], "36.7815")
         # The context boost (the armed exact pass) over the cp>=2 prefix moments; the JVM pins
         # in TtSuggestEvalTest assert the same values on the real index.
         self.assertEqual(table["ctxboost_cp2plus_moments"], "18338")
@@ -541,7 +543,8 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["prefix_top1_cp3_pct"], "17.9440")
         self.assertEqual(table["strip_empty_prefix_pct"], "1.3767")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
-        self.assertEqual(table["ks_pct"], "40.3667")
+        self.assertEqual(table["ks_pct"], "37.5623")
+        self.assertEqual(table["ks_cells4_pct"], "40.3667")
         # The context boost over the cp>=2 prefix moments; RuSuggestEvalTest pins the same values.
         self.assertEqual(table["ctxboost_cp2plus_moments"], "15636")
         self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "38.1683")

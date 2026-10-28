@@ -49,7 +49,10 @@ RU_BIGRAM_ASSET = (
     ROOT / "app" / "src" / "main" / "assets" / "bigrams" / "russian_bigrams_v1.tatbigr.zlib"
 )
 
-SHOWN_RESULTS = 4
+# The shipped strip width (SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT): the keystroke
+# simulation measures what a default install can tap. The engines compose four candidates
+# (suggest_chain.CELL_COUNT); the fourth-cell setting's arm is reported next to the default's.
+SHOWN_RESULTS = 3
 
 # The stratum completion metric's prefix length ("cp3"): fixed at three code points by the
 # metric's definition, independent of the strip width.
@@ -215,7 +218,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         head_covered += 1
         if successor == shown[0]:
             top1_hits += 1
-        if successor in shown[:SHOWN_RESULTS]:
+        # The table's full packed answer counts (engine-level, like the JVM pin over
+        # TatBigrPrefixIndex.predict), not only the cells the strip shows.
+        if successor in shown:
             top3_hits += 1
 
     metrics: list[tuple[str, str]] = [
@@ -468,15 +473,28 @@ def _strata_metrics(
 def _keystroke_metrics(
     lines: list[str], unique_words: set[str], chain: suggest_chain.ChainMirror
 ) -> list[tuple[str, str]]:
-    """The keystroke-savings simulation and its vocabulary-oracle bound."""
+    """The keystroke-savings simulation and its vocabulary-oracle bound.
+
+    Two arms over the same chain answers: the shipped default strip taps only the first
+    SHOWN_RESULTS cells, the fourth-cell arm taps the full composed answer. The baseline and
+    the oracle do not depend on the strip width.
+    """
     mdp_lengths = suggest_chain.minimal_distinguishing_prefix_lengths(sorted(unique_words))
     baseline, simulated, oracle = suggest_chain.keystroke_costs(
+        lines,
+        lambda head: chain.predict_top3(head)[:SHOWN_RESULTS],
+        lambda prefix: chain.prefix_top3(prefix)[:SHOWN_RESULTS],
+        mdp_lengths,
+    )
+    _, simulated4, _ = suggest_chain.keystroke_costs(
         lines, chain.predict_top3, chain.prefix_top3, mdp_lengths
     )
     return [
         ("ks_baseline_keys", str(baseline)),
         ("ks_simulated_keys", str(simulated)),
         ("ks_pct", f"{percent(baseline - simulated, baseline):.4f}"),
+        ("ks_cells4_simulated_keys", str(simulated4)),
+        ("ks_cells4_pct", f"{percent(baseline - simulated4, baseline):.4f}"),
         ("ks_oracle_keys", str(oracle)),
         ("ks_oracle_pct", f"{percent(baseline - oracle, baseline):.4f}"),
     ]

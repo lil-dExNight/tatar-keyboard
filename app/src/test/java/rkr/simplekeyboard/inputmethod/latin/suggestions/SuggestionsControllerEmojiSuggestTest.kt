@@ -314,22 +314,34 @@ class SuggestionsControllerEmojiSuggestTest {
         h.typeWordAndSpace("йөрәк")
         h.deliver(tatar, listOf("минем", "тибә", "китте", "килә"))
 
-        // The band is full of bigrams: the emoji still takes the tail cell, and the three front
-        // bigrams stand exactly where they were. Only bigram #4 yields.
+        // The band is full of bigrams: the emoji still takes the tail cell, and the two front
+        // bigrams stand exactly where they were. Only bigram #3 yields.
+        assertEquals(listOf("минем", "тибә", "❤️"), h.strip.lastCells())
+    }
+
+    @Test
+    fun theFourthCellSettingKeepsThreeWordsBeforeTheEmoji() {
+        val h = harnessWithMapping("tt", "йөрәк", "❤️")
+        h.controller.setStripCellCount(SuggestionStripState.CELL_COUNT)
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем", "тибә", "китте", "килә"))
+
+        // The widened band: three words, the emoji still in the tail cell; only bigram #4 yields.
         assertEquals(listOf("минем", "тибә", "китте", "❤️"), h.strip.lastCells())
     }
 
     @Test
     fun theEmojiTailSurvivesAFallbackFilledBand() {
         // The fallback fills the NEXT_WORD cells the bigrams and forms leave free, so a mapped
-        // context word can arrive with more words than the word cells hold — the emoji still
-        // takes the tail cell and the three front words keep their order.
+        // context word can arrive with a FULL three-word band — the emoji still takes the tail cell
+        // and the two front words keep their order.
         val h = harnessWithMapping("tt", "йөрәк", "❤️")
         h.start(tatar)
         h.typeWordAndSpace("йөрәк")
         h.deliver(tatar, listOf("йөрәкләр", "һәм", "белән", "да"))
 
-        assertEquals(listOf("йөрәкләр", "һәм", "белән", "❤️"), h.strip.lastCells())
+        assertEquals(listOf("йөрәкләр", "һәм", "❤️"), h.strip.lastCells())
     }
 
     @Test
@@ -498,7 +510,8 @@ class SuggestionsControllerEmojiSuggestTest {
         h.typeWordAndSpace("самолет")
         h.deliver(russian, listOf("улетел", "прилетел", "приземлился"))
 
-        assertEquals(listOf("улетел", "прилетел", "приземлился", "✈️"), h.strip.lastCells())
+        // Two words and the emoji fill the three cells; the third word stays off the strip.
+        assertEquals(listOf("улетел", "прилетел", "✈️"), h.strip.lastCells())
         assertTrue(h.engine(tatar).nextWordRequests.isEmpty())
     }
 

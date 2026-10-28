@@ -271,7 +271,8 @@ class SuggestionsControllerSentStartOverlayTest {
         val h = Harness(overlayWords = mutableListOf())
         h.startAtSentenceStart()
 
-        assertEquals(listOf("Бу", "Ул", "Ә", "Бүген"), h.strip.lastCells())
+        // The table packs four words; the default three-cell strip shows the first three.
+        assertEquals(listOf("Бу", "Ул", "Ә"), h.strip.lastCells())
     }
 
     @Test
@@ -280,7 +281,7 @@ class SuggestionsControllerSentStartOverlayTest {
         h.startAtSentenceStart()
 
         // The overlay's two words lead (its usage order), then the table's top in ITS order.
-        assertEquals(listOf("Мин", "Бүген", "Бу", "Ул"), h.strip.lastCells())
+        assertEquals(listOf("Мин", "Бүген", "Бу"), h.strip.lastCells())
     }
 
     @Test
@@ -289,12 +290,21 @@ class SuggestionsControllerSentStartOverlayTest {
         h.startAtSentenceStart()
 
         // «бүген» leaves the table's tail: the next static word fills the cell instead.
-        assertEquals(listOf("Бүген", "Мин", "Бу", "Ул"), h.strip.lastCells())
+        assertEquals(listOf("Бүген", "Мин", "Бу"), h.strip.lastCells())
     }
 
     @Test
-    fun anOverlayLongerThanTheStripCapsAtFourCells() {
+    fun anOverlayLongerThanTheStripCapsAtThreeCells() {
         val h = Harness(overlayWords = mutableListOf("мин", "син", "ул", "бүген", "әле"))
+        h.startAtSentenceStart()
+
+        assertEquals(listOf("Мин", "Син", "Ул"), h.strip.lastCells())
+    }
+
+    @Test
+    fun theFourthCellSettingLetsTheOverlayTakeFourCells() {
+        val h = Harness(overlayWords = mutableListOf("мин", "син", "ул", "бүген", "әле"))
+        h.controller.setStripCellCount(SuggestionStripState.CELL_COUNT)
         h.startAtSentenceStart()
 
         assertEquals(listOf("Мин", "Син", "Ул", "Бүген"), h.strip.lastCells())
@@ -309,7 +319,7 @@ class SuggestionsControllerSentStartOverlayTest {
     }
 
     @Test
-    fun fewerThanFourCellsOnlyWhenBothRunOut() {
+    fun fewerThanThreeCellsOnlyWhenBothRunOut() {
         val h = Harness(table = listOf("бу"), overlayWords = mutableListOf("мин"))
         h.startAtSentenceStart()
 
@@ -393,7 +403,7 @@ class SuggestionsControllerSentStartOverlayTest {
     fun aSentenceStartStripTapCountsTheCommittedWord() {
         val h = Harness()
         h.startAtSentenceStart()
-        assertEquals(listOf("Бу", "Ул", "Ә", "Бүген"), h.strip.lastCells())
+        assertEquals(listOf("Бу", "Ул", "Ә"), h.strip.lastCells())
 
         requireNotNull(h.strip.tap).onTap("Бүген")
 

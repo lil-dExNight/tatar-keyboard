@@ -32,6 +32,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchView;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSetSnapshot;
 import rkr.simplekeyboard.inputmethod.latin.settings.EmojiPanelHeightPresets;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.InlineAutofillStripView;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView;
 
 public final class InputView extends FrameLayout {
@@ -41,6 +42,11 @@ public final class InputView extends FrameLayout {
     private EmojiPanelView mEmojiPanelView;
     private EmojiSearchView mEmojiSearchView;
     private Runnable mInsetsChangedListener;
+    /**
+     * The last pushed visible strip cell count (the user's fourth-cell setting). Remembered here
+     * because the strip is inflated lazily: a strip created after the push still gets the count.
+     */
+    private int mStripVisibleCellCount = SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT;
 
     /**
      * Set while the emoji panel hid a visible suggestion strip, so {@link #hideEmojiPanel()} can
@@ -83,6 +89,7 @@ public final class InputView extends FrameLayout {
             return null;
         }
         final SuggestionStripView strip = (SuggestionStripView) inflated;
+        strip.setVisibleCellCount(mStripVisibleCellCount);
         mSuggestionStripView = strip;
         return strip;
     }
@@ -451,6 +458,17 @@ public final class InputView extends FrameLayout {
     public void setSuggestionStripEmphasis(final int cell) {
         if (mSuggestionStripView != null) {
             mSuggestionStripView.setEmphasis(cell);
+        }
+    }
+
+    /**
+     * Pushes the visible strip cell count (the user's fourth-cell setting). Stored even when the
+     * strip is not inflated yet, so the count survives lazy creation; never creates the strip.
+     */
+    public void setSuggestionStripCellCount(final int cells) {
+        mStripVisibleCellCount = cells;
+        if (mSuggestionStripView != null) {
+            mSuggestionStripView.setVisibleCellCount(cells);
         }
     }
 

@@ -110,6 +110,12 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      */
     public static final String PREF_EMOJI_SUGGESTIONS = "pref_emoji_suggestions";
     /**
+     * The fourth cell of the suggestion strip: opt-in, default OFF (three cells). Subordinate to
+     * {@link #PREF_TATAR_SUGGESTIONS} like the other strip rows. The engines always compose four
+     * candidates; this setting only widens what the strip shows.
+     */
+    public static final String PREF_STRIP_FOURTH_CELL = "pref_strip_fourth_cell";
+    /**
      * Pause learning (incognito): while ON, nothing new is learned (no write reaches the personal
      * word store, the learned-pairs store or their pending counters); what is already saved keeps
      * appearing. One toggle for both stores, like {@link #PREF_PERSONAL_DICTIONARY}. Turning it
@@ -454,6 +460,16 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      */
     public static boolean readEmojiSuggestionsEnabled(final SharedPreferences prefs) {
         return readBooleanTolerant(prefs, PREF_EMOJI_SUGGESTIONS, true)
+                && readTatarSuggestionsEnabled(prefs);
+    }
+
+    /**
+     * The fourth strip cell is opt-in AND subordinate, like autocorrection: true only when Tatar
+     * suggestions are on as well. Reading both here makes the subordination a property of the
+     * setting instead of a rule every caller has to remember.
+     */
+    public static boolean readStripFourthCellEnabled(final SharedPreferences prefs) {
+        return readBooleanTolerant(prefs, PREF_STRIP_FOURTH_CELL, false)
                 && readTatarSuggestionsEnabled(prefs);
     }
 

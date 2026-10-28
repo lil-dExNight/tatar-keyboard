@@ -35,7 +35,8 @@ class InlineStripSpecsTest {
 
     @Test
     fun theRoundingRemainderFollowsTheStripCellBoundaries() {
-        // The same boundaries as SuggestionStripState.cellLeft/cellRight: 0, 100, 200, 300, 401.
+        // The same boundaries as SuggestionStripState.cellLeft/cellRight at the widest, four-cell
+        // layout: 0, 100, 200, 300, 401.
         val cells = InlineStripSpecs.cellSizesPx(401, 44)
         assertEquals(listOf(100, 100, 100, 101), cells.map { it.widthPx })
         assertEquals(401, cells.sumOf { it.widthPx })

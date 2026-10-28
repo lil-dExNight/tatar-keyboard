@@ -245,6 +245,7 @@ class BackupPreferencesXmlTest {
             "pref_tatar_autocorrect" to boolean,
             "pref_emoji_suggestions" to boolean,
             "pref_incognito_mode" to boolean,
+            "pref_strip_fourth_cell" to boolean,
             "pref_tatar_suggestions_offer_spent" to boolean,
             "pref_key_longpress_timeout" to int,
             "pref_one_handed_side" to int,

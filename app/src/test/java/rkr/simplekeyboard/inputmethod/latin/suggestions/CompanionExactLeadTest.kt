@@ -202,14 +202,15 @@ class CompanionExactLeadTest {
         h.tatarEngine().exactCount = 0
         h.tatarEngine().answer(listOf("привеле", "привеләр", "привелебез"))
         assertEquals(listOf("привеле", "привеләр", "привелебез", null), h.strip.lastBand())
-        // The empty exact pass armed the exact-lead rule, so the companion request went out.
+        // The full strip did not stop the companion request: the exact-lead rule armed it.
         assertEquals(listOf("приве"), h.russianEngine().prefixRequests)
 
         h.russianEngine().exactCount = 1
         h.russianEngine().answer(listOf("привет", "приветик"))
 
-        // The companion's exact candidate leads; the active typo recovery fills the rest.
-        assertEquals(listOf("привет", "привеле", "привеләр", "привелебез"), h.strip.lastBand())
+        // The companion's exact candidate leads; the active typo recovery fills the rest, and
+        // its third word stays off the three-cell strip.
+        assertEquals(listOf("привет", "привеле", "привеләр", null), h.strip.lastBand())
     }
 
     @Test
@@ -287,7 +288,8 @@ class CompanionExactLeadTest {
         h.tatarEngine().exactMiss = null
         h.tatarEngine().answer(listOf("китап", "китаплар", "китабы", "китапханә"))
 
-        assertEquals(listOf("китап", "китаплар", "китабы", "китапханә"), h.strip.lastBand())
+        // The engine answered four; the default strip shows the first three and is full.
+        assertEquals(listOf("китап", "китаплар", "китабы", null), h.strip.lastBand())
         assertTrue(h.russianEngine().prefixRequests.isEmpty())
     }
 

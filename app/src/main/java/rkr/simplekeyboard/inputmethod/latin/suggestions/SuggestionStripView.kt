@@ -37,7 +37,11 @@ import android.view.accessibility.AccessibilityNodeInfo
 import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper
 import rkr.simplekeyboard.inputmethod.R
 
-/** One allocation-free hot-path Canvas view containing exactly four suggestion cells. */
+/**
+ * One allocation-free hot-path Canvas view containing up to four suggestion cells: three are
+ * visible by default, the user's fourth-cell setting widens it ([setVisibleCellCount]). The full
+ * width always splits among the visible cells.
+ */
 class SuggestionStripView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -184,6 +188,18 @@ class SuggestionStripView @JvmOverloads constructor(
     }
 
     /**
+     * The visible cell count (the user's fourth-cell setting), pushed by the strip's owner. A
+     * change re-splits the full width, so the ellipsized texts are rebuilt against the new cell
+     * widths and the accessibility nodes are re-described.
+     */
+    fun setVisibleCellCount(count: Int) {
+        if (!state.setVisibleCellCount(count)) return
+        rebuildDisplaySuggestions()
+        accessibilityHelper.invalidateRoot()
+        invalidate()
+    }
+
+    /**
      * The timer body: the cell is read here, off the touch path, and the tap of this sequence is
      * cancelled — a long press NEVER commits text.
      */
@@ -219,12 +235,12 @@ class SuggestionStripView @JvmOverloads constructor(
         // TalkBack users rely on (the shift announcements skip auto-caps for the same reason, see
         // KeyboardAccessibilityDelegate). The words stay reachable through the virtual cell nodes.
         if (hadSuggestions || !accessibilityManager.isTouchExplorationEnabled) return
-        val available = listOfNotNull(
-            state.suggestionAt(0),
-            state.suggestionAt(1),
-            state.suggestionAt(2),
-            state.suggestionAt(3),
-        )
+        val available = ArrayList<String>(SuggestionStripState.CELL_COUNT)
+        var announcedCell = 0
+        while (announcedCell < state.visibleCellCount()) {
+            state.suggestionAt(announcedCell)?.let(available::add)
+            announcedCell++
+        }
         if (available.isNotEmpty()) {
             announceForAccessibility(
                 context.getString(
@@ -345,14 +361,14 @@ class SuggestionStripView @JvmOverloads constructor(
         val separatorTop = height * SEPARATOR_INSET_FRACTION
         val separatorBottom = height - separatorTop
         var separator = 1
-        while (separator < SuggestionStripState.CELL_COUNT) {
+        while (separator < state.visibleCellCount()) {
             val x = state.cellLeft(separator, width).toFloat()
             canvas.drawLine(x, separatorTop, x, separatorBottom, decorationPaint)
             separator++
         }
 
         var cell = 0
-        while (cell < SuggestionStripState.CELL_COUNT) {
+        while (cell < state.visibleCellCount()) {
             val suggestion = displaySuggestions[cell]
             if (suggestion != null) {
                 val center = (state.cellLeft(cell, width) + state.cellRight(cell, width)) / 2f
@@ -482,7 +498,7 @@ class SuggestionStripView @JvmOverloads constructor(
             return
         }
         var cell = 0
-        while (cell < SuggestionStripState.CELL_COUNT) {
+        while (cell < state.visibleCellCount()) {
             val suggestion = state.suggestionAt(cell)
             displaySuggestions[cell] = if (suggestion == null) {
                 null
@@ -504,6 +520,11 @@ class SuggestionStripView @JvmOverloads constructor(
                 }
                 display
             }
+            cell++
+        }
+        // A cell the narrower strip no longer shows keeps no ellipsized text.
+        while (cell < SuggestionStripState.CELL_COUNT) {
+            displaySuggestions[cell] = null
             cell++
         }
     }
@@ -528,7 +549,7 @@ class SuggestionStripView @JvmOverloads constructor(
 
         override fun getVisibleVirtualViews(virtualViewIds: MutableList<Int>) {
             var cell = 0
-            while (cell < SuggestionStripState.CELL_COUNT) {
+            while (cell < state.visibleCellCount()) {
                 if (state.isCellPopulated(cell)) virtualViewIds.add(cell)
                 cell++
             }

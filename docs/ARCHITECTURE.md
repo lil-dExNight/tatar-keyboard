@@ -105,8 +105,10 @@ sentence-initial overlay (`SentStartOverlayStore`, learned from sentence-initial
 the shared learning gates) leads, then the static table (`SentStartIndex`,
 `assets/dictionaries/*_sentstart_v1.txt`), deduplicated, at most one cell per word.
 
-**Strip.** `SuggestionStripView` is one Canvas view with four cells
-(`SuggestionStripState.CELL_COUNT`). A tap commits the word with a space; a punctuation mark that
+**Strip.** `SuggestionStripView` is one Canvas view with up to four cells
+(`SuggestionStripState.CELL_COUNT`): three are visible by default, the fourth-cell setting widens
+the strip to all four (`SuggestionStripState.visibleCellCount`; the engines always compose four
+candidates and the controller truncates the band). A tap commits the word with a space; a punctuation mark that
 attaches to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ",
 "сүз?! "), tracked by the cursor position in `InputLogic`. A space typed there is swallowed and
 counts as the first space of a double-space period. Two quick spaces give a period only in a

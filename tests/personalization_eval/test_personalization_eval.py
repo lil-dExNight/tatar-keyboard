@@ -5,8 +5,9 @@ What is pinned and why:
 
 * The dictionary-only control of the full eval set must reproduce the pinned chain counters
   of ``TtSuggestEvalTest`` (4335 pairs, 312 top-1, 649 top-3), and the repetition split's
-  control keystrokes must reproduce the pinned keystroke counters (33332/21072/8311): the
-  harness stands on the same mirror as ``suggest_eval.py``.
+  control keystrokes must reproduce the pinned fourth-cell keystroke counters
+  (33332/21072/8311): the harness taps every composed cell — the personalization arms are
+  compared at the widest strip — and stands on the same mirror as ``suggest_eval.py``.
 * Graduation counters per split (hash/chrono/rep) and observation arm (oracle/realistic/
   fixed) are pinned exactly; the JVM mirror ``PersonalizationEvalTest`` pins the same
   constants, which is the Python/JVM parity channel. Re-pin both sides together whenever

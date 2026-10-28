@@ -33,6 +33,7 @@ import android.widget.EditText
 import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.latin.InputView
+import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView
 
 /**
@@ -447,9 +448,11 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
             val inputView = requireNotNull(inputViewOf(view)) {
                 "the keyboard view must sit inside the InputView"
             }
-            // Four live cells, one emphasized: the fullest strip that is ever painted. Goes
-            // through the production entry point, which also inflates the strip stub on first
-            // use; the paired setEmphasis runs the (one-off, unmeasured) ellipsize rebuild.
+            // Four live cells, one emphasized: the fullest strip that is ever painted. The
+            // fourth-cell setting is opted into through the production push, then the production
+            // entry point paints the words (and inflates the strip stub on first use); the paired
+            // setEmphasis runs the (one-off, unmeasured) ellipsize rebuild.
+            inputView.setSuggestionStripCellCount(SuggestionStripState.CELL_COUNT)
             val strip = requireNotNull(
                 inputView.showSuggestionStrip(
                     STRIP_WORDS[0], STRIP_WORDS[1], STRIP_WORDS[2], STRIP_WORDS[3],
