@@ -44,8 +44,9 @@
 
     <string name="setup_done_title">Done!</string>
     <string name="setup_done_hint">Glide typing works too: slide across the letters without lifting your finger</string>
-    <!-- Hint doubles as the TalkBack label of the try-it field. The word is
-         Tatar on purpose in every locale — it is the product's point. -->
-    <string name="setup_test_field_hint">Try it: slide across “сәләм”</string>
+    <!-- Hint doubles as the TalkBack label of the try-it field: glide one Tatar
+         word, then type one and watch the strip answer. The words are Tatar on
+         purpose in every locale — they are the product's point. -->
+    <string name="setup_test_field_hint">Try it: slide across “сәләм”,\nthen type “бел” and watch the strip fill</string>
     <string name="setup_done_button">Open settings</string>
 </resources>

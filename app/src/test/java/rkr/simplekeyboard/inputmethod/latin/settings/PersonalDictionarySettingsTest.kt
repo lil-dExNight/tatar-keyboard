@@ -120,7 +120,7 @@ class PersonalDictionarySettingsTest {
     fun thereIsExactlyOneToggleAndItDefaultsToOff() {
         assertTrue("the single key",
             settingsSource.contains("PREF_PERSONAL_DICTIONARY = \"pref_personal_dictionary\""))
-        assertTrue("default OFF, like Tatar suggestions",
+        assertTrue("default OFF",
             settingsSource.contains("readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, false)"))
         assertFalse("default must not be true", settingsSource
             .contains("readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, true)"))

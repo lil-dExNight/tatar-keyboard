@@ -23,8 +23,8 @@ import org.junit.Test
 
 /**
  * Source contract (like EmojiPanelSourceContractTest): emoji suggestions default ON (under the
- * master suggestions switch, which stays opt-in), and the reader default and the settings-screen
- * default must match; if they differ, the feature is silently off.
+ * master suggestions switch, itself default ON for new installs), and the reader default and the
+ * settings-screen default must match; if they differ, the feature is silently off.
  */
 class EmojiSuggestDefaultSourceContractTest {
 

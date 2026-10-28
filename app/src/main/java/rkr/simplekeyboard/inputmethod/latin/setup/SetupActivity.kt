@@ -30,9 +30,12 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import rkr.simplekeyboard.inputmethod.R
+import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
+import rkr.simplekeyboard.inputmethod.latin.settings.Settings as AppSettings
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity
 import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
 
@@ -159,6 +162,15 @@ class SetupActivity : Activity() {
         }
         findViewById<Button>(R.id.setup_done_button).setOnClickListener {
             openSettingsAndFinish()
+        }
+
+        // The same switch the settings screen shows: one pref, read live on
+        // entry, so the card and the settings row never disagree.
+        val prefs = PreferenceManagerCompat.getDeviceSharedPreferences(this)
+        val suggestionsSwitch = findViewById<Switch>(R.id.setup_suggestions_switch)
+        suggestionsSwitch.isChecked = AppSettings.readTatarSuggestionsEnabled(prefs)
+        suggestionsSwitch.setOnCheckedChangeListener { _, checked ->
+            AppSettings.writeTatarSuggestionsEnabled(prefs, checked)
         }
     }
 

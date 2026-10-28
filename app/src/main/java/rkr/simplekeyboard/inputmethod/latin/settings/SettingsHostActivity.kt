@@ -455,36 +455,14 @@ class SettingsHostActivity : Activity() {
 
     private fun buildPreferencesScreen() {
         val rows = ArrayList<View>()
-        rows.add(switchRow(Settings.PREF_AUTO_CAP, true,
-                R.string.auto_cap, R.string.auto_cap_summary))
-        rows.add(switchRow(Settings.PREF_SHOW_SPECIAL_CHARS, true,
-                R.string.show_special_chars, R.string.show_special_chars_summary))
-        var imeSwitchRow: View? = null
-        rows.add(switchRow(Settings.PREF_SHOW_LANGUAGE_SWITCH_KEY, true,
-                R.string.show_language_switch_key,
-                R.string.show_language_switch_key_summary) { checked ->
-            imeSwitchRow?.let {
-                setRowEnabled(it, checked && !isRestricted(Settings.PREF_ENABLE_IME_SWITCH))
-            }
-        })
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
-            rows.add(switchRow(Settings.PREF_USE_ON_SCREEN, false,
-                    R.string.pref_use_on_screen, R.string.pref_use_on_screen_summary))
-        }
-        val imeRow = switchRow(Settings.PREF_ENABLE_IME_SWITCH, false,
-                R.string.pref_enable_ime_switch, R.string.pref_enable_ime_switch_summary)
-        imeSwitchRow = imeRow
-        rows.add(imeRow)
-        rows.add(switchRow(Settings.PREF_SPACE_SWIPE, true,
-                R.string.space_swipe, R.string.space_swipe_summary))
-        rows.add(switchRow(Settings.PREF_DELETE_SWIPE, false,
-                R.string.delete_swipe, R.string.delete_swipe_summary))
+        // The suggestions cluster opens the card: the master switch and the rows it
+        // gates sit ahead of the typing-behavior toggles.
         var personalDictionaryRow: View? = null
         var incognitoRow: View? = null
         var autocorrectRow: View? = null
         var emojiSuggestRow: View? = null
         var glideRow: View? = null
-        rows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, false,
+        rows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, true,
                 R.string.tatar_suggestions, R.string.tatar_suggestions_summary) { checked ->
             // Rows disabled here get no disabledReason, so until the screen is rebuilt they
             // ignore taps instead of explaining why they are dimmed.
@@ -545,6 +523,30 @@ class SettingsHostActivity : Activity() {
                 R.string.glide_typing, R.string.glide_typing_summary)
         glideRow = glideSwitch
         rows.add(glideSwitch)
+        rows.add(switchRow(Settings.PREF_AUTO_CAP, true,
+                R.string.auto_cap, R.string.auto_cap_summary))
+        rows.add(switchRow(Settings.PREF_SHOW_SPECIAL_CHARS, true,
+                R.string.show_special_chars, R.string.show_special_chars_summary))
+        var imeSwitchRow: View? = null
+        rows.add(switchRow(Settings.PREF_SHOW_LANGUAGE_SWITCH_KEY, true,
+                R.string.show_language_switch_key,
+                R.string.show_language_switch_key_summary) { checked ->
+            imeSwitchRow?.let {
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_ENABLE_IME_SWITCH))
+            }
+        })
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+            rows.add(switchRow(Settings.PREF_USE_ON_SCREEN, false,
+                    R.string.pref_use_on_screen, R.string.pref_use_on_screen_summary))
+        }
+        val imeRow = switchRow(Settings.PREF_ENABLE_IME_SWITCH, false,
+                R.string.pref_enable_ime_switch, R.string.pref_enable_ime_switch_summary)
+        imeSwitchRow = imeRow
+        rows.add(imeRow)
+        rows.add(switchRow(Settings.PREF_SPACE_SWIPE, true,
+                R.string.space_swipe, R.string.space_swipe_summary))
+        rows.add(switchRow(Settings.PREF_DELETE_SWIPE, false,
+                R.string.delete_swipe, R.string.delete_swipe_summary))
         addCard(rows)
         // The IME-switch row depends on the language switch key.
         setRowEnabled(imeRow,
@@ -581,9 +583,9 @@ class SettingsHostActivity : Activity() {
         }, linkRow(R.string.text_shortcuts_screen, R.string.text_shortcuts_summary) {
             navigateTo(Screen.TEXT_SHORTCUTS)
         }))
-        // A data action, not an appearance toggle: its own card at the end of Preferences, next to
-        // the Tatar-suggestions switch. Erasing recent emoji is a confirmed, one-way action; it does
-        // not belong on the Appearance screen where the emoji-key toggle lives.
+        // A data action, not an appearance toggle: its own card at the end of Preferences.
+        // Erasing recent emoji is a confirmed, one-way action; it does not belong on the
+        // Appearance screen where the emoji-key toggle lives.
         addCard(listOf(actionRow(R.string.clear_recent_emoji) {
             showClearRecentEmojiDialog()
         }))

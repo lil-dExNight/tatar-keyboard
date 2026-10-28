@@ -195,6 +195,56 @@
                 android:text="@string/setup_done_hint"
                 android:textAppearance="?android:attr/textAppearanceMedium" />
 
+            <!-- The word-suggestions switch: the same pref the settings screen
+                 writes (wired in SetupActivity), so the card and the settings row
+                 never disagree. The Switch is the tap and TalkBack target; the
+                 texts only label it. -->
+            <LinearLayout
+                android:id="@+id/setup_suggestions_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/app_card_bg"
+                android:padding="16dp"
+                android:filterTouchesWhenObscured="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:labelFor="@+id/setup_suggestions_switch"
+                        android:text="@string/tatar_suggestions"
+                        android:textAppearance="?android:attr/textAppearanceMedium" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/tatar_suggestions_summary"
+                        android:textAppearance="?android:attr/textAppearanceSmall" />
+                </LinearLayout>
+
+                <Switch
+                    android:id="@+id/setup_suggestions_switch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@null"
+                    android:filterTouchesWhenObscured="true"
+                    android:showText="false"
+                    android:splitTrack="false"
+                    android:switchMinWidth="51dp"
+                    android:thumb="@drawable/app_switch_thumb"
+                    android:track="@drawable/app_switch_track" />
+            </LinearLayout>
+
             <!-- Try-it field in its own card: the freshly selected keyboard
                  opens here. The hint is also
                  the field's TalkBack label (no contentDescription on an

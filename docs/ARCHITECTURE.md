@@ -81,9 +81,10 @@ the app's languages and, when the system allows it, moves to the next input meth
 
 ## Suggestions
 
-Suggestions for Tatar and Russian are off by default (`Settings.PREF_TATAR_SUGGESTIONS`) and never
-run in password fields, in fields that disallow suggestions or personalized learning, or while the
-keyguard is shown (`LatinIME.isKeyguardLocked`, also after the first unlock).
+Suggestions for Tatar and Russian are on by default for new installs
+(`Settings.PREF_TATAR_SUGGESTIONS`; the personal dictionary and autocorrection stay off until
+enabled) and never run in password fields, in fields that disallow suggestions or personalized
+learning, or while the keyguard is shown (`LatinIME.isKeyguardLocked`, also after the first unlock).
 
 **Threads.** `SuggestionsController` owns all strip state and runs on the UI thread only. Each
 language has a `LanguageSlot` with one engine, and each engine runs lookups on its own single

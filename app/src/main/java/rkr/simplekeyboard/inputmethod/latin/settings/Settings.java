@@ -417,12 +417,12 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     }
 
     public static boolean readTatarSuggestionsEnabled(final SharedPreferences prefs) {
-        return readBooleanTolerant(prefs, PREF_TATAR_SUGGESTIONS, false);
+        return readBooleanTolerant(prefs, PREF_TATAR_SUGGESTIONS, true);
     }
 
     /**
-     * The personal dictionary is opt-in: default OFF, exactly like Tatar suggestions. This one
-     * reader governs both showing personal words and saving them.
+     * The personal dictionary is opt-in: default OFF. This one reader governs both showing
+     * personal words and saving them.
      */
     public static boolean readPersonalDictionaryEnabled(final SharedPreferences prefs) {
         return readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, false);
@@ -449,7 +449,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
 
     /**
      * Emoji suggestions default ON but stay subordinate, like autocorrection: true only when Tatar
-     * suggestions (themselves opt-in) are on as well. Reading both here makes the subordination a
+     * suggestions are on as well. Reading both here makes the subordination a
      * property of the setting instead of a rule every caller has to remember.
      */
     public static boolean readEmojiSuggestionsEnabled(final SharedPreferences prefs) {
