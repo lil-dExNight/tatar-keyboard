@@ -59,8 +59,8 @@ class GoldenExportTest {
 
     // ---------------------------------------------------------------------------------------
     // Engine assembly — exactly the production wiring of EngineHandle.start /
-    // MappedDictionaryEngine.start (Tatar: suffix rules + TATAR fuzzy policy; Russian: neither;
-    // both: the global top-frequency fallback; no personal sources).
+    // MappedDictionaryEngine.start (Tatar: suffix rules + TATAR fuzzy policy; Russian: no suffix
+    // rules + RUSSIAN fuzzy policy; both: the global top-frequency fallback; no personal sources).
 
     private class Engine(
         val lang: String,
@@ -88,7 +88,7 @@ class GoldenExportTest {
                 TdictPrefixIndex.open(
                     ByteBuffer.wrap(dictRaw.readBytes()), identity, v.entryCount, v.rawSize,
                     if (tatar) TatarSuffixRules else null,
-                    if (tatar) FuzzyEditPolicy.TATAR else null,
+                    if (tatar) FuzzyEditPolicy.TATAR else FuzzyEditPolicy.RUSSIAN,
                     if (tatar) AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
                     else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 ),

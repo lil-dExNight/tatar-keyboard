@@ -19,7 +19,8 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 /**
  * Per-engine configuration of the typo-recovery pass: which edit classes run and whether the
  * same-length bonus applies. Injected per engine through [MappedDictionaryEngine.start]; the Tatar
- * engine runs [TATAR], every other engine runs [DEFAULT].
+ * engine runs [TATAR], the Russian engine runs [RUSSIAN], and an engine opened without an
+ * explicit policy runs [DEFAULT].
  *
  * [editClasses] holds EDIT_CLASS_* values; their order is irrelevant. EDIT_CLASS_LONG_PRESS runs
  * on every typo-recovery activation; EDIT_CLASS_SUBSTITUTION engages the shared DL-1 tier
@@ -49,8 +50,8 @@ class FuzzyEditPolicy(
 
     companion object {
         /**
-         * Edit class #1 (long-press partner) only, no same-length bonus. Every engine without an
-         * explicit policy, the Russian one included, runs this.
+         * Edit class #1 (long-press partner) only, no same-length bonus. The fallback of an
+         * engine opened without an explicit policy; no shipped engine runs it.
          */
         @JvmField
         val DEFAULT = FuzzyEditPolicy(intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS), false)
@@ -67,6 +68,20 @@ class FuzzyEditPolicy(
                 TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
             ),
             true,
+        )
+
+        /**
+         * The Russian configuration: class #1 on the always-on domain and the DL-1 tier on the
+         * empty-exact >= 4-code-point domain, without the same-length bonus, so class #1 outside
+         * the tier domain ranks exactly as under [DEFAULT].
+         */
+        @JvmField
+        val RUSSIAN = FuzzyEditPolicy(
+            intArrayOf(
+                TdictPrefixIndex.EDIT_CLASS_LONG_PRESS,
+                TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
+            ),
+            false,
         )
     }
 }

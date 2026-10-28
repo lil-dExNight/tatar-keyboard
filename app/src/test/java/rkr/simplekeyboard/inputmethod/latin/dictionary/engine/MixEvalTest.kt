@@ -36,12 +36,12 @@ import java.nio.ByteBuffer
  * layout.
  * The strip lead is replayed at the index level: the active arm runs the production
  * wiring (the Tatar index carries the suffix rules, the TATAR fuzzy policy and the Tatar layout
- * neighbor table; the Russian index runs the default policy with the Russian layout table), and
- * the companion arm runs exact-only, the pass the exact-lead rule takes its leading candidates
- * from. The lead is correct when the active answer holds no exact candidate and the companion
- * exact pass is non-empty: the one condition under which the companion takes over the strip's
- * first cell. Assets are SHA-pinned, so every count is a deterministic function of committed
- * bytes.
+ * neighbor table; the Russian index carries the RUSSIAN fuzzy policy and the Russian layout
+ * table), and the companion arm runs exact-only, the pass the exact-lead rule takes its leading
+ * candidates from. The lead is correct when the active answer holds no exact candidate and the
+ * companion exact pass is non-empty: the one condition under which the companion takes over the
+ * strip's first cell. Assets are SHA-pinned, so every count is a deterministic function of
+ * committed bytes.
  */
 class MixEvalTest {
 
@@ -268,7 +268,8 @@ class MixEvalTest {
             )
 
             // The production Tatar engine is constructed with the suffix rules and the TATAR
-            // fuzzy policy; the production Russian engine carries neither.
+            // fuzzy policy; the production Russian engine carries no suffix rules and the
+            // RUSSIAN fuzzy policy.
             tatarIndex = openShippedDictionary(
                 DictionaryArtifactSpec.TATAR_TOP100K_V1, true,
                 "src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
@@ -319,8 +320,8 @@ class MixEvalTest {
                     } else {
                         TdictPrefixIndex.open(
                             ByteBuffer.wrap(raw), identity,
-                            validated.entryCount, validated.rawSize,
-                            autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
+                            validated.entryCount, validated.rawSize, null,
+                            FuzzyEditPolicy.RUSSIAN, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                         )
                     },
                 )

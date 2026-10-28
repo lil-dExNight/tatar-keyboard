@@ -722,8 +722,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                     && PersonalSubtypes.TATAR_RU.equals(dictionaryArtifact.getLanguageTag());
             final TatarSuffixRules suffixRules = tatarEngine ? TatarSuffixRules.INSTANCE : null;
             // Typo recovery policy: the Tatar engine uses FuzzyEditPolicy.TATAR; the Russian
-            // engine gets null, which means FuzzyEditPolicy.DEFAULT.
-            final FuzzyEditPolicy fuzzyEditPolicy = tatarEngine ? FuzzyEditPolicy.TATAR : null;
+            // engine uses FuzzyEditPolicy.RUSSIAN (the DL-1 tier without the same-length bonus,
+            // so class #1 outside the tier domain ranks exactly as before).
+            final FuzzyEditPolicy fuzzyEditPolicy =
+                    tatarEngine ? FuzzyEditPolicy.TATAR : FuzzyEditPolicy.RUSSIAN;
             // The glide decoder's scoring constants are per language: FUTO's measured finding is
             // that glide scoring calibration does not transfer between languages.
             final GlideDecoder.GlideConstants glideConstants = tatarEngine

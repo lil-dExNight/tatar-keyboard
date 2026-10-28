@@ -17,6 +17,7 @@ These hold for every release and are not repeated in the entries below:
 
 - The suggestion strip shows four cells instead of three: the bundled bigram tables always packed four successors per word, and the fourth one is now shown too.
 - Learned word pairs now steer glide typing too: after a word you often pair, the words you usually write next rank higher in glide suggestions.
+- Typo recovery on both Cyrillic layouts now covers the missing, extra and swapped letters of a mistyped word, not just wrong-letter substitutions (`пирвет` → `привет`).
 
 ## [3.9.3] — 2026-10-05
 

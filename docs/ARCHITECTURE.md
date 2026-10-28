@@ -128,9 +128,9 @@ and a response arriving while the emoji panel owns the surface is refused instea
 then at most one personal-dictionary word not already shown, then typo-recovery candidates. Typo
 recovery (`TdictPrefixIndex.collectFuzzy`, configured by `FuzzyEditPolicy`) uses edit class #1
 (long-press partner, from the layout's `moreKeys` via `KeyNeighborTable`) for every language; on
-an empty exact pass at a long enough prefix the Tatar engine runs the shared DL-1 tier
-(substitution, deletion, insertion and transposition under one rank tag, ranked by frequency with
-a same-length bonus).
+an empty exact pass at a long enough prefix both shipped engines run the shared DL-1 tier
+(substitution, deletion, insertion and transposition under one rank tag, ranked by frequency;
+the Tatar policy adds a same-length bonus, the Russian one does not).
 
 **Next-word prediction** (`CompositePrefixComputer.predict`): bigram successors, then learned word
 pairs (at most `MAX_PERSONAL_BIGRAM_CELLS`), then word forms of the context word (Tatar,

@@ -381,20 +381,20 @@ class TtTypoPhaseCCalibrationTest {
     }
 
     /**
-     * The Russian engine keeps the default policy: class #4 never fires. "апаси" (а for с on
-     * "спаси(бо)") has zero exact continuations in the Russian asset; under DEFAULT the strip
+     * The default policy — which no shipped engine runs — never fires class #4. "апаси" (а for с
+     * on "спаси(бо)") has zero exact continuations in the Russian asset; under DEFAULT the strip
      * stays empty — while the SAME dictionary under the TATAR policy paints the pinned class-#4
      * strip, proving the pin discriminates. Note the same-length bonus at work: the same-length
      * words "спаси"/"упаси" outrank the much more frequent continuation "спасибо", which takes
      * only the fourth cell.
      */
     @Test
-    fun theRussianEngineIsUntouchedByClass4() {
+    fun theDefaultPolicyKeepsClass4OffTheRussianDictionary() {
         val russianDefault = requireNotNull(russianDefaultIndex)
         val russianAsTatar = requireNotNull(russianTatarPolicyIndex)
         val typo = ImmutableUtf8Prefix.copyOf("апаси".toByteArray(Charsets.UTF_8))
         val defaultResult = russianDefault.lookup(typo)
-        assertFalse("class #4 must stay off the default (Russian) path", defaultResult.contains("спаси"))
+        assertFalse("class #4 must stay off the default path", defaultResult.contains("спаси"))
         assertEquals(emptyList<String>(), defaultResult)
         assertEquals(
             "premise: the case discriminates — the TATAR policy paints the class-#4 strip",

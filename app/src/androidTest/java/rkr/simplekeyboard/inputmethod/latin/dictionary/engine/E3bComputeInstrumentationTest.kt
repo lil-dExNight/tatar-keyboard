@@ -27,8 +27,8 @@ import kotlin.math.ceil
 /**
  * Device-side lookup latency: fuzzy lookup cost can only be measured on real hardware.
  *
- * Measures both shipped policies, [FuzzyEditPolicy.DEFAULT] (edit class #1 only) and
- * [FuzzyEditPolicy.TATAR] (classes #1 + #4: probe-first full substitution plus same-length
+ * Measures two policies, [FuzzyEditPolicy.DEFAULT] (edit class #1 only, the no-policy fallback)
+ * and [FuzzyEditPolicy.TATAR] (classes #1 + #4: probe-first full substitution plus same-length
  * bonus), over [REVIEW_PREFIXES] and [TYPO_PROBES].
  *
  * Packaged only into the debug androidTest APK. Uses the JUnit3 legacy runner on purpose:

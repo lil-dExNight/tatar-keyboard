@@ -9,11 +9,14 @@ import java.io.File
 /**
  * The shipped fuzzy policies as executable pins:
  *
- *  - [FuzzyEditPolicy.DEFAULT]: class #1 (long-press partner) only, no same-length bonus. Every
- *    engine opened without an explicit policy runs it, the Russian engine included.
+ *  - [FuzzyEditPolicy.DEFAULT]: class #1 (long-press partner) only, no same-length bonus. The
+ *    fallback of an engine opened without an explicit policy; no shipped engine runs it.
  *  - [FuzzyEditPolicy.TATAR]: class #1 on the always-on domain, the DL-1 tier (substitution,
  *    deletion, insertion and transposition under one rank tag, gated on an empty exact pass at
  *    >= 4 code points) on the tier domain, and the same-length bonus. Autocorrect stays class #1.
+ *  - [FuzzyEditPolicy.RUSSIAN]: class #1 plus the DL-1 tier on the same gated domain, without
+ *    the same-length bonus, so class #1 outside the tier domain ranks exactly as under DEFAULT.
+ *    Autocorrect stays class #1.
  */
 class TdictPrefixIndexShippedFuzzyClassesTest {
     private val table = E3bTestFixtures.tatarNeighborTable()
@@ -31,11 +34,11 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
         index.lookup(ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8)))
 
     /**
-     * Source contract, part 1: the DEFAULT policy (every engine without an explicit one, the
-     * Russian engine included) is class #1 only, with no same-length bonus.
+     * Source contract, part 1: the DEFAULT policy (the fallback of an engine opened without an
+     * explicit one; no shipped engine runs it) is class #1 only, with no same-length bonus.
      */
     @Test
-    fun theDefaultPolicyIsExactlyThePrePhaseBShippedConfiguration() {
+    fun theDefaultPolicyIsClass1OnlyWithoutTheSameLengthBonus() {
         assertEquals(
             listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
             FuzzyEditPolicy.DEFAULT.editClasses.toList(),
@@ -58,6 +61,25 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
     }
 
     /**
+     * Source contract, part 3: the RUSSIAN policy carries class #1 (always-on domain) and
+     * EDIT_CLASS_SUBSTITUTION (the DL-1 tier on the gated domain), WITHOUT the same-length bonus,
+     * so class #1 outside the tier domain ranks exactly as under DEFAULT. Autocorrect stays
+     * class #1.
+     */
+    @Test
+    fun theRussianPolicyRunsClassesOneAndFourWithoutTheSameLengthBonus() {
+        assertEquals(
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+            FuzzyEditPolicy.RUSSIAN.editClasses.toList(),
+        )
+        assertFalse(FuzzyEditPolicy.RUSSIAN.sameLengthBonus)
+        assertEquals(
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
+            FuzzyEditPolicy.RUSSIAN.autocorrectClasses.toList(),
+        )
+    }
+
+    /**
      * Under the default policy the tier never engages — even where its activation gate
      * (empty exact pass, >= 4 code points) would be met. "аита" corrects to "китап" only through
      * a substitution variant (а→к at position 0, which has no long-press partner).
@@ -73,6 +95,36 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
     fun theTatarPolicyRecoversTheGatedTierCase() {
         val index = index(listOf("китап" to 10L), FuzzyEditPolicy.TATAR)
         assertEquals(listOf("китап"), lookup(index, "аита"))
+    }
+
+    /** The RUSSIAN policy recovers the same gated tier case, without the same-length bonus. */
+    @Test
+    fun theRussianPolicyRecoversTheGatedTierCase() {
+        val index = index(listOf("китап" to 10L), FuzzyEditPolicy.RUSSIAN)
+        assertEquals(listOf("китап"), lookup(index, "аита"))
+    }
+
+    /**
+     * Outside the tier domain the RUSSIAN policy is byte-identical to DEFAULT: no same-length
+     * bonus, so class #1 ranks the same under both. "кита" has a non-empty exact pass (the tier
+     * gate is closed), "кум" is under the tier's 4-code-point floor (class #1 recovers "күмеш"
+     * through у→ү), "кү" is under the fuzzy pass floor entirely.
+     */
+    @Test
+    fun theRussianPolicyIsByteIdenticalToDefaultOutsideTheTierDomain() {
+        // Code-point sorted, as the tdict fixture requires: китап < китә < күмеш.
+        val entries = listOf("китап" to 10L, "китә" to 7L, "күмеш" to 5L)
+        val defaultIndex = index(entries)
+        val russianIndex = index(entries, FuzzyEditPolicy.RUSSIAN)
+        for (prefix in listOf("кита", "кум", "кү")) {
+            assertEquals(
+                "policy results differ on \"$prefix\"",
+                lookup(defaultIndex, prefix),
+                lookup(russianIndex, prefix),
+            )
+        }
+        assertEquals(listOf("китап", "китә"), lookup(russianIndex, "кита"))
+        assertEquals(listOf("күмеш"), lookup(russianIndex, "кум"))
     }
 
     /**
@@ -124,13 +176,13 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
     }
 
     /**
-     * Source contract, part 3 — the production wiring itself. LatinIME is an Android service and
+     * Source contract, part 4 — the production wiring itself. LatinIME is an Android service and
      * cannot run under the JVM harness, so the wiring is pinned on its source text with the same
      * dual-path lookup the resource contracts use: the Tatar engine must receive
-     * [FuzzyEditPolicy.TATAR] and every other engine null (= [FuzzyEditPolicy.DEFAULT]).
+     * [FuzzyEditPolicy.TATAR] and the Russian engine [FuzzyEditPolicy.RUSSIAN].
      */
     @Test
-    fun latinImeWiresTheTatarPolicyToTheTatarEngineOnly() {
+    fun latinImeWiresEachShippedPolicyToItsEngine() {
         val candidates = listOf(
             File("src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java"),
             File("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java"),
@@ -138,8 +190,8 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
         val source = candidates.firstOrNull { it.isFile }?.readText()
             ?: error("cannot locate LatinIME.java from ${File(".").absolutePath}")
         assertTrue(
-            "the Tatar engine ships FuzzyEditPolicy.TATAR, others ship null (= DEFAULT)",
-            source.contains("tatarEngine ? FuzzyEditPolicy.TATAR : null"),
+            "the Tatar engine ships FuzzyEditPolicy.TATAR, the Russian engine FuzzyEditPolicy.RUSSIAN",
+            source.contains("tatarEngine ? FuzzyEditPolicy.TATAR : FuzzyEditPolicy.RUSSIAN"),
         )
     }
 }

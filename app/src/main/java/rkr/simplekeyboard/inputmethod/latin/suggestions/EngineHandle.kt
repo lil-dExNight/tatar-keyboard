@@ -223,8 +223,8 @@ class MappedEngineHandle private constructor(
          * and the after-word forms of NEXT_WORD. The Tatar engine gets it; the Russian engine gets
          * null and has neither.
          *
-         * [fuzzyEditPolicy]: the Tatar engine uses [FuzzyEditPolicy.TATAR]; null means
-         * [FuzzyEditPolicy.DEFAULT] (the Russian engine).
+         * [fuzzyEditPolicy]: the Tatar engine uses [FuzzyEditPolicy.TATAR], the Russian engine
+         * [FuzzyEditPolicy.RUSSIAN]; null means [FuzzyEditPolicy.DEFAULT].
          *
          * [fallbackWordsFactory] builds the top-frequency NEXT_WORD fallback from the engine's own
          * dictionary at startup, so each language has its own.

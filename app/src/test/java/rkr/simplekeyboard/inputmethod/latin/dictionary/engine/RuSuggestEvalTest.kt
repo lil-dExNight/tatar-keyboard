@@ -44,8 +44,9 @@ import java.nio.ByteBuffer
  *    hit rate, via the sentence-start table (`russian_sentstart_v1.txt`, parsed by
  *    [SentStartIndex]) and the production NEXT_WORD chain.
  *
- * The production Russian wiring carries no suffix rules and no fuzzy policy. Assets and eval set
- * are SHA-pinned, so the exact counts below are a deterministic function of committed bytes:
+ * The production Russian wiring carries no suffix rules and the RUSSIAN fuzzy policy; the
+ * neighbor table is nulled in every measurement, so typo recovery never engages. Assets and eval
+ * set are SHA-pinned, so the exact counts below are a deterministic function of committed bytes:
  * re-pin when the assets, the eval set or the ranking change.
  */
 class RuSuggestEvalTest {
@@ -324,8 +325,9 @@ class RuSuggestEvalTest {
             check(!sentStart.isEmpty) { "the committed sentence-start table failed to parse" }
             sentStartIndex = sentStart
 
-            // The production Russian engine is constructed with no suffix rules and no fuzzy
-            // policy; the eval index is opened the same way.
+            // The production Russian engine is constructed with no suffix rules and the RUSSIAN
+            // fuzzy policy; the eval index is opened the same way. The neighbor table stays null
+            // in every measurement below, so the typo-recovery pass never engages.
             val dictSpec = DictionaryArtifactSpec.RUSSIAN_TOP100K_V1
             val dictAsset = locate(
                 "src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib",
@@ -346,6 +348,7 @@ class RuSuggestEvalTest {
                     TdictPrefixIndex.open(
                         ByteBuffer.wrap(dictRawFile.readBytes()), identity,
                         validated.entryCount, validated.rawSize,
+                        fuzzyEditPolicy = FuzzyEditPolicy.RUSSIAN,
                         autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                     ),
                 )

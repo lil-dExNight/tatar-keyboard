@@ -6,8 +6,8 @@ import org.junit.Test
 
 /**
  * Engine behavior on the live path of an engine opened WITHOUT an explicit fuzzy policy, i.e.
- * [FuzzyEditPolicy.DEFAULT] (class #1 long-press partner only; the Russian engine's
- * configuration), with the full Tatar alphabet table.
+ * [FuzzyEditPolicy.DEFAULT] (class #1 long-press partner only; no shipped engine runs it), with
+ * the full Tatar alphabet table.
  */
 class TdictPrefixIndexE3bTest {
     private val table = E3bTestFixtures.tatarNeighborTable()

@@ -125,7 +125,7 @@ class EdgeGoldenExportTest {
                 TdictPrefixIndex.open(
                     ByteBuffer.wrap(dictRaw.readBytes()), identity, v.entryCount, v.rawSize,
                     if (tatar) TatarSuffixRules else null,
-                    if (tatar) FuzzyEditPolicy.TATAR else null,
+                    if (tatar) FuzzyEditPolicy.TATAR else FuzzyEditPolicy.RUSSIAN,
                     if (tatar) AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
                     else AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 ),
