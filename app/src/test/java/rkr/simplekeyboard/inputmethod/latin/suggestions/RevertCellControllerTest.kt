@@ -44,15 +44,15 @@ class RevertCellControllerTest {
         val bands = mutableListOf<List<String?>>()
 
         /** The spoken labels of the last publication (null = speak the cell's text). */
-        var spokenLabels = listOf<String?>(null, null, null)
+        var spokenLabels = listOf<String?>(null, null, null, null)
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            bands.add(listOf(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            bands.add(listOf(first, second, third, fourth))
         }
 
-        override fun setSpokenCellLabels(first: String?, second: String?, third: String?) {
-            spokenLabels = listOf(first, second, third)
+        override fun setSpokenCellLabels(first: String?, second: String?, third: String?, fourth: String?) {
+            spokenLabels = listOf(first, second, third, fourth)
         }
 
         override fun reserve() = Unit
@@ -217,7 +217,7 @@ class RevertCellControllerTest {
         h.separator(' ')
 
         assertEquals("китап ", h.editor.before)
-        assertEquals(listOf("«китәп»", null, null), h.strip.lastBand())
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
     }
 
     @Test
@@ -228,8 +228,8 @@ class RevertCellControllerTest {
         h.typeWord("китәп")
         h.separator(' ')
 
-        assertEquals(listOf("«китәп»", null, null), h.strip.lastBand())
-        assertEquals(listOf("китәп", null, null), h.strip.spokenLabels)
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
+        assertEquals(listOf("китәп", null, null, null), h.strip.spokenLabels)
     }
 
     @Test
@@ -280,13 +280,13 @@ class RevertCellControllerTest {
         h.advise("китәп", "китап")
         h.typeWord("китәп")
         h.separator(' ')
-        assertEquals(listOf("«китәп»", null, null), h.strip.lastBand())
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
 
         // On device the commit's cursor move posts a settled callback that re-derives the strip;
         // the cell must own the strip until the next text change.
         h.controller.onCursorMoveSettled()
 
-        assertEquals(listOf("«китәп»", null, null), h.strip.lastBand())
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
     }
 
     @Test
@@ -297,13 +297,13 @@ class RevertCellControllerTest {
         h.engine.suggestionsByWord["д"] = listOf("дөнья")
         h.typeWord("китәп")
         h.separator(' ')
-        assertEquals(listOf("«китәп»", null, null), h.strip.lastBand())
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
 
         h.type("д")
 
         // The ordinary PREFIX band of the new word, and the keep-typed cell is gone. What the
         // strip shows is what a tap delivers, so the revert offer cannot be accepted anymore.
-        assertEquals(listOf("дөнья", null, null), h.strip.lastBand())
+        assertEquals(listOf("дөнья", null, null, null), h.strip.lastBand())
         assertEquals("китап д", h.editor.before)
         assertEquals(listOf("replace:китәп->китап"), h.editor.edits)
     }
@@ -350,7 +350,7 @@ class RevertCellControllerTest {
         h.advise("китәп", "китап")
         h.typeWord("китәп")
         h.separator(' ')
-        assertEquals(listOf("«китәп»", null, null), h.strip.lastBand())
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
 
         h.controller.onFinishInput()
         h.tap("«китәп»")

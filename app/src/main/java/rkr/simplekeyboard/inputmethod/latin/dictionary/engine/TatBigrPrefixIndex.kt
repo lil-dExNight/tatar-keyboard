@@ -12,7 +12,7 @@ data class BigramTableIdentity(
 )
 
 /**
- * Predicts up to three next words for an exact, already-normalized context word (the read side of
+ * Predicts up to four next words for an exact, already-normalized context word (the read side of
  * the TATBIGR bigram table).
  *
  * A separate interface from [PrefixComputer] rather than a wider `lookup` signature: the state
@@ -175,8 +175,8 @@ internal class TatBigrPrefixIndex private constructor(
         private const val BLOCK_RECORD_BYTES = 12
         private const val HEAD_BLOCK_SIZE = 64
         // One per strip cell (SuggestionStripState.CELL_COUNT). The Tatar table is packed with up
-        // to four successors per head; the fourth is not read.
-        internal const val MAX_RESULTS = 3
+        // to four successors per head; all four are read.
+        internal const val MAX_RESULTS = 4
         internal const val MAX_WORD_BYTES = 128
         private const val MAX_U32 = 0xffff_ffffL
         private const val HEX_DIGITS = "0123456789abcdef"

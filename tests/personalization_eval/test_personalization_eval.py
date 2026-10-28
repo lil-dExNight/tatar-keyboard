@@ -4,8 +4,8 @@
 What is pinned and why:
 
 * The dictionary-only control of the full eval set must reproduce the pinned chain counters
-  of ``TtSuggestEvalTest`` (4335 pairs, 312 top-1, 552 top-3), and the repetition split's
-  control keystrokes must reproduce the pinned keystroke counters (33332/21913/8311): the
+  of ``TtSuggestEvalTest`` (4335 pairs, 312 top-1, 649 top-3), and the repetition split's
+  control keystrokes must reproduce the pinned keystroke counters (33332/21072/8311): the
   harness stands on the same mirror as ``suggest_eval.py``.
 * Graduation counters per split (hash/chrono/rep) and observation arm (oracle/realistic/
   fixed) are pinned exactly; the JVM mirror ``PersonalizationEvalTest`` pins the same
@@ -47,9 +47,9 @@ suggest_chain = load_module("suggest_chain", ROOT / "scripts" / "suggest_chain.p
 # Pins of the committed assets and eval set (see TtSuggestEvalTest).
 PIN_CONTROL_PAIRS = 4_335
 PIN_CONTROL_TOP1 = 312
-PIN_CONTROL_TOP3 = 552
+PIN_CONTROL_TOP3 = 649
 PIN_REP_CTRL_KS_BASELINE = 33_332
-PIN_REP_CTRL_KS_SIMULATED = 21_913
+PIN_REP_CTRL_KS_SIMULATED = 21_072
 PIN_REP_CTRL_KS_ORACLE = 8_311
 
 # Graduation-counter pins per split and arm; PersonalizationEvalTest.kt pins the same
@@ -92,8 +92,8 @@ PIN_REP_SWEEP = {
 # Measure-side pins of the repetition split (oracle arm).
 PIN_REP_COMP_ACCEPT = 210
 PIN_REP_COMP_CP2_TOP3 = 82
-PIN_REP_NW_PERS_TOP3 = 554
-PIN_REP_KS_PERS_KEYS = 21_065
+PIN_REP_NW_PERS_TOP3 = 651
+PIN_REP_KS_PERS_KEYS = 20_135
 PIN_REP_REORD_PROMO_1 = 212
 
 _OUTPUT: dict[str, str] | None = None
@@ -297,12 +297,12 @@ class MergeReplicaTest(unittest.TestCase):
         self.assertEqual([], fixture.engine.chain.prefix_top3("zz"))
         self.assertEqual(["zz"], harness.merged_strip(fixture.engine, model, "zz"))
 
-    def test_personal_word_takes_the_second_cell_and_pushes_the_third_out(self):
+    def test_personal_word_takes_the_second_cell(self):
         fixture = FixtureEngine()
         model = fixture.model()
         model.words.add("appx")
         self.assertEqual(
-            ["app", "appx", "apps"], harness.merged_strip(fixture.engine, model, "ap")
+            ["app", "appx", "apps", "apple"], harness.merged_strip(fixture.engine, model, "ap")
         )
 
     def test_usage_orders_the_personal_candidates(self):
@@ -322,32 +322,32 @@ class PredictReplicaTest(unittest.TestCase):
         return harness.Engine(fixture.words, fixture.frequencies, successes, suffix_rules=False)
 
     def test_pairs_fill_free_cells_only(self):
-        engine = self.make_engine({"b": ["x", "y", "zr"]})
-        model = harness.PersonalModel(lambda word: True, frozenset("abeprsxyz"))
+        engine = self.make_engine({"b": ["x", "y", "zr", "w"]})
+        model = harness.PersonalModel(lambda word: True, frozenset("abeprsxyzw"))
         model.pairs.upsert("b", "app", 2)
-        self.assertEqual(["x", "y", "zr"], harness.personalized_predict(engine, model, "b"))
+        self.assertEqual(["x", "y", "zr", "w"], harness.personalized_predict(engine, model, "b"))
         # With one free cell the pair fills it, behind the successors.
-        engine = self.make_engine({"b": ["x", "y"]})
-        self.assertEqual(["x", "y", "app"], harness.personalized_predict(engine, model, "b"))
+        engine = self.make_engine({"b": ["x", "y", "zr"]})
+        self.assertEqual(["x", "y", "zr", "app"], harness.personalized_predict(engine, model, "b"))
 
     def test_pair_already_shown_is_not_duplicated(self):
         engine = self.make_engine({"b": ["x"]})
         model = harness.PersonalModel(lambda word: True, frozenset("abeprsxyz"))
         model.pairs.upsert("b", "x", 2)
-        self.assertEqual(["x", "zr", "y"], harness.personalized_predict(engine, model, "b"))
+        self.assertEqual(["x", "zr", "y", "app"], harness.personalized_predict(engine, model, "b"))
 
     def test_displace_arm_requires_full_successors_and_usage(self):
-        engine = self.make_engine({"b": ["x", "y", "zr"]})
-        model = harness.PersonalModel(lambda word: True, frozenset("abeprsxyz"))
+        engine = self.make_engine({"b": ["x", "y", "zr", "w"]})
+        model = harness.PersonalModel(lambda word: True, frozenset("abeprsxyzw"))
         model.pairs.upsert("b", "app", 2)
         # usage 0: no displacement.
-        self.assertEqual(["x", "y", "zr"], harness.displace_predict(engine, model, "b"))
+        self.assertEqual(["x", "y", "zr", "w"], harness.displace_predict(engine, model, "b"))
         for _ in range(harness.PAIR_DISPLACE_MIN_USAGE):
             model.pairs.note_use("b", "app")
-        self.assertEqual(["x", "y", "app"], harness.displace_predict(engine, model, "b"))
+        self.assertEqual(["x", "y", "zr", "app"], harness.displace_predict(engine, model, "b"))
         # With a free cell the pair is already shown; nothing to displace.
         engine = self.make_engine({"b": ["x", "y"]})
-        self.assertEqual(["x", "y", "app"], harness.displace_predict(engine, model, "b"))
+        self.assertEqual(["x", "y", "app", "zr"], harness.displace_predict(engine, model, "b"))
 
 
 class MeasureWalkTest(unittest.TestCase):

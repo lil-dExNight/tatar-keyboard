@@ -42,8 +42,8 @@ class SuggestionTapFeedbackTest {
         val bands = mutableListOf<List<String?>>()
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            bands.add(listOf(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            bands.add(listOf(first, second, third, fourth))
         }
 
         override fun reserve() = Unit
@@ -310,7 +310,7 @@ class SuggestionTapFeedbackTest {
         h.start()
         h.engine.suggestionsByWord["сүз"] = listOf("сүзең", "сүзләр")
         h.typeWord("сүз")
-        assertEquals(listOf("сүзең", "сүзләр", null), h.strip.lastBand())
+        assertEquals(listOf("сүзең", "сүзләр", null, null), h.strip.lastBand())
 
         h.tap("сүзең")
 
@@ -342,7 +342,7 @@ class SuggestionTapFeedbackTest {
         h.engine.nextWordByContext["сүз"] = listOf("бөек", "китап")
         h.typeWord("сүз")
         h.separator(' ')
-        assertEquals(listOf("бөек", "китап", null), h.strip.lastBand())
+        assertEquals(listOf("бөек", "китап", null, null), h.strip.lastBand())
 
         h.tap("бөек")
 
@@ -375,7 +375,7 @@ class SuggestionTapFeedbackTest {
         h.advise("китәп", "китап")
         h.typeWord("китәп")
         h.separator(' ')
-        assertEquals(listOf("«китәп»", null, null), h.strip.lastBand())
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
 
         h.tap("«китәп»")
 
@@ -408,7 +408,7 @@ class SuggestionTapFeedbackTest {
         h.advise("китәп", "китап")
         h.typeWord("китәп")
         // The preview strip: the typed word first, the coming correction second.
-        assertEquals(listOf("китәп", "китап", null), h.strip.lastBand())
+        assertEquals(listOf("китәп", "китап", null, null), h.strip.lastBand())
 
         h.tap("китәп")
 
@@ -457,7 +457,7 @@ class SuggestionTapFeedbackTest {
         // The lift itself is the gesture, not a tap: no tick for it.
         assertEquals(0, h.ticks)
         assertEquals("сәләм", h.editor.before)
-        assertEquals(listOf("сәлләм", "сәлми", null), h.strip.lastBand())
+        assertEquals(listOf("сәлләм", "сәлми", null, null), h.strip.lastBand())
 
         h.tap("сәлләм")
 
@@ -491,7 +491,7 @@ class SuggestionTapFeedbackTest {
         // The refused lift: the refusal tick fired, no suggestion tick, the candidates stay.
         assertEquals(1, h.refusalTicks)
         assertEquals(0, h.ticks)
-        assertEquals(listOf("сәләм", "сәлләм", null), h.strip.lastBand())
+        assertEquals(listOf("сәләм", "сәлләм", null, null), h.strip.lastBand())
 
         h.editor.glideCommitsRefused = false
         h.tap("сәлләм")

@@ -54,8 +54,8 @@ class SuggestionsControllerLanguagePriorityTest {
         var reserveCount = 0
         var hideCount = 0
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            shown.add(listOf(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            shown.add(listOf(first, second, third, fourth))
         }
 
         override fun reserve() {
@@ -239,7 +239,7 @@ class SuggestionsControllerLanguagePriorityTest {
         assertEquals(listOf("бер"), h.engine(russian).prefixRequests)
 
         h.deliver(russian, listOf("берег", "берёза", "беречь"))
-        assertEquals(listOf("бераз", "берәү", "берег"), h.strip.lastCells())
+        assertEquals(listOf("бераз", "берәү", "берег", "берёза"), h.strip.lastCells())
     }
 
     @Test
@@ -248,9 +248,9 @@ class SuggestionsControllerLanguagePriorityTest {
         h.warmBoth(tatar)
         h.editor.word = "бер"
         h.controller.onTextChanged()
-        h.deliver(tatar, listOf("бераз", "берәү", "беренче"))
+        h.deliver(tatar, listOf("бераз", "берәү", "беренче", "бергә"))
 
-        assertEquals(listOf("бераз", "берәү", "беренче"), h.strip.lastCells())
+        assertEquals(listOf("бераз", "берәү", "беренче", "бергә"), h.strip.lastCells())
         assertEquals(emptyList<String>(), h.engine(russian).prefixRequests)
     }
 
@@ -263,7 +263,7 @@ class SuggestionsControllerLanguagePriorityTest {
         h.deliver(tatar, listOf("бераз"))
         h.deliver(russian, listOf("берег", "берёза", "беречь"))
 
-        assertEquals(listOf("бераз", "берег", "берёза"), h.strip.lastCells())
+        assertEquals(listOf("бераз", "берег", "берёза", "беречь"), h.strip.lastCells())
     }
 
     @Test
@@ -463,9 +463,9 @@ class SuggestionsControllerLanguagePriorityTest {
         h.editor.word = ""
         h.editor.contextWord = "мин"
         h.controller.onTextChanged()
-        h.deliver(tatar, listOf("бит", "дә", "инде"), LookupKind.NEXT_WORD)
+        h.deliver(tatar, listOf("бит", "дә", "инде", "хәзер"), LookupKind.NEXT_WORD)
 
-        assertEquals(listOf("бит", "дә", "инде"), h.strip.lastCells())
+        assertEquals(listOf("бит", "дә", "инде", "хәзер"), h.strip.lastCells())
         assertEquals(emptyList<String>(), h.engine(russian).nextWordRequests)
     }
 
@@ -511,7 +511,7 @@ class SuggestionsControllerLanguagePriorityTest {
                 "p95=${"%.4f".format(java.util.Locale.ROOT, p95)} ms",
         )
         assertTrue("p95=$p95 ms", p95 <= 1.0)
-        assertEquals(listOf("бераз", "берег", "берёза"), h.strip.lastCells())
+        assertEquals(listOf("бераз", "берег", "берёза", "беречь"), h.strip.lastCells())
     }
 
     @Test

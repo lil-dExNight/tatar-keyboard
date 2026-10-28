@@ -83,12 +83,12 @@ class TdictPrefixIndexFuzzyTest {
         )
         val withoutTable = index(entries, withTable = false)
         // Identical to the frozen expectation in TdictPrefixIndexTest.
-        assertEquals(listOf("бала", "балан", "балчык"), lookup(withoutTable, "бал"))
+        assertEquals(listOf("бала", "балан", "балчык", "балалар"), lookup(withoutTable, "бал"))
         assertEquals(listOf("балан", "балалар"), lookup(withoutTable, "бала"))
     }
 
     @Test
-    fun theFuzzyLevelIsSkippedWhenTheExactPassAlreadyFillsAllThreeCells() {
+    fun theFuzzyLevelIsSkippedWhenTheExactPassAlreadyFillsAllFourCells() {
         val index = index(
             listOf(
                 "бал" to 50L,
@@ -97,11 +97,11 @@ class TdictPrefixIndexFuzzyTest {
                 "балан" to 9L,
                 "балчык" to 9L,
                 "бар" to 100L,
-                "бәлеш" to 9_999L,   // a fuzzy candidate that must NOT appear (exact fills 3 cells)
+                "бәлеш" to 9_999L,   // a fuzzy candidate that must NOT appear (exact fills 4 cells)
             ),
         )
         val result = lookup(index, "бал")
-        assertEquals(listOf("бала", "балан", "балчык"), result)
+        assertEquals(listOf("бала", "балан", "балчык", "балалар"), result)
         assertFalse(result.contains("бәлеш"))
     }
 

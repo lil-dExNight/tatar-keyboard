@@ -53,8 +53,8 @@ import java.nio.ByteBuffer
  *  - strip-empty at sentence start and sentence-start top-3 hit rate, via the sentence-start
  *    table (`tatar_sentstart_v1.txt`, parsed by [SentStartIndex]).
  *
- * Metrics count the three strip cells; the Tatar table stores K = 4 successors but
- * `TatBigrPrefixIndex.MAX_RESULTS` = 3, so the results match `scripts/suggest_eval.py`.
+ * Metrics count the four strip cells; the Tatar table stores K = 4 successors and
+ * `TatBigrPrefixIndex.MAX_RESULTS` reads them all, so the results match `scripts/suggest_eval.py`.
  * Assets and eval set are SHA-pinned, so the exact counts below are a deterministic function of
  * committed bytes: re-pin when the assets, the eval set or the ranking change. Zero-allocation and
  * p95 contracts live in [RealDictionaryPrefixIndexTest] and [RealBigramPrefixIndexTest].
@@ -199,8 +199,8 @@ class TtSuggestEvalTest {
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
         assertEquals("7.0358", format(top1Pct))
         assertEquals("85.0750", format(coveredPct))
-        assertEquals("12.2722", format(hitPct))
-        assertEquals("14.4252", format(hitCoveredPct))
+        assertEquals("14.3945", format(hitPct))
+        assertEquals("16.9197", format(hitCoveredPct))
     }
 
     /**
@@ -355,7 +355,7 @@ class TtSuggestEvalTest {
         assertEquals(PIN_CHAIN_TOP3_HITS, top3Hits)
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
         assertEquals("7.1972", format(top1Pct))
-        assertEquals("12.7336", format(top3Pct))
+        assertEquals("14.9712", format(top3Pct))
     }
 
     /**
@@ -386,8 +386,8 @@ class TtSuggestEvalTest {
         println("EVAL|nextword_chain_top3_ci95_lo|${format(lo)}")
         println("EVAL|nextword_chain_top3_ci95_hi|${format(hi)}")
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
-        assertEquals("11.7195", format(lo))
-        assertEquals("13.7219", format(hi))
+        assertEquals("13.8941", format(lo))
+        assertEquals("15.9781", format(hi))
     }
 
     /**
@@ -419,7 +419,7 @@ class TtSuggestEvalTest {
             var cp3Words = 0
             var cp3Hits = 0
             for (word in words) {
-                val prefix = codePointPrefix(word, SHOWN_CELLS) ?: continue
+                val prefix = codePointPrefix(word, STRATUM_PREFIX_CODE_POINTS) ?: continue
                 cp3Words++
                 val results = index.lookup(
                     ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8))
@@ -459,7 +459,7 @@ class TtSuggestEvalTest {
             PIN_STRATUM_UNSEEN_STEM_WORDS, stratumCount(stratumByWord, STRATUM_UNSEEN_STEM)
         )
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
-        assertEquals("13.1661", top3PctByStratum[STRATUM_SEEN_FORM])
+        assertEquals("15.5052", top3PctByStratum[STRATUM_SEEN_FORM])
         assertEquals("2.3529", top3PctByStratum[STRATUM_NEW_FORM])
         assertEquals("3.8835", top3PctByStratum[STRATUM_UNSEEN_STEM])
     }
@@ -536,7 +536,7 @@ class TtSuggestEvalTest {
         assertEquals(PIN_KS_SIMULATED_KEYS, simulated)
         assertEquals(PIN_KS_ORACLE_KEYS, oracle)
         // Cross-implementation pin: scripts/suggest_eval.py must print the same values.
-        assertEquals("34.2584", format(savedPct))
+        assertEquals("36.7815", format(savedPct))
         assertEquals("75.0660", format(oraclePct))
     }
 
@@ -654,42 +654,43 @@ class TtSuggestEvalTest {
         private const val PIN_UNIQUE_WORDS = 2_658
         private const val PIN_PAIRS = 4_335
         private const val PIN_COVERED = 3_688
-        private const val PIN_TOP3_HITS = 532
+        private const val PIN_TOP3_HITS = 624
         private const val PIN_CP1_WORDS = 2_658
         private const val PIN_CP2_WORDS = 2_656
         private const val PIN_CP3_WORDS = 2_614
         // The same-stem boost only engages at >= 4 code points, so these 1-3 code-point prefix
         // counters are unaffected by it.
-        private const val PIN_CP1_HITS = 70
-        private const val PIN_CP2_HITS = 320
-        private const val PIN_CP3_HITS = 765
+        private const val PIN_CP1_HITS = 87
+        private const val PIN_CP2_HITS = 381
+        private const val PIN_CP3_HITS = 887
         private const val PIN_CP1_TOP1_HITS = 26
         private const val PIN_CP2_TOP1_HITS = 137
         private const val PIN_CP3_TOP1_HITS = 397
         private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 23_662
         private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 503
         private const val PIN_SAMESTEM_WORDS = 1_750
-        private const val PIN_SAMESTEM_HITS = 1_173
-        private const val PIN_SAMESTEM_HITS_BOOST_OFF = 1_090
-        private const val PIN_SENTSTART_TOP3_HITS = 124
+        private const val PIN_SAMESTEM_HITS = 1_273
+        private const val PIN_SAMESTEM_HITS_BOOST_OFF = 1_179
+        private const val PIN_SENTSTART_TOP3_HITS = 127
         // Unique eval words whose committed-word strip is empty WITHOUT the top-frequency
         // fallback; with the fallback the count is asserted to be 0.
         private const val PIN_NEXTWORD_EMPTY_BEFORE = 642
         private const val PIN_TOP1_HITS = 305
         private const val PIN_CHAIN_TOP1_HITS = 312
-        private const val PIN_CHAIN_TOP3_HITS = 552
+        private const val PIN_CHAIN_TOP3_HITS = 649
         private const val PIN_STRATUM_SEEN_FORM_WORDS = 2_413
         private const val PIN_STRATUM_NEW_FORM_WORDS = 91
         private const val PIN_STRATUM_UNSEEN_STEM_WORDS = 154
         private const val PIN_KS_BASELINE_KEYS = 33_332
-        private const val PIN_KS_SIMULATED_KEYS = 21_913
+        private const val PIN_KS_SIMULATED_KEYS = 21_072
         private const val PIN_KS_ORACLE_KEYS = 8_311
 
-        // Lemma-stratum ids and the strip cell count the cp3 stratum metric uses.
+        // Lemma-stratum ids, and the stratum completion metric's prefix length ("cp3"): fixed
+        // at three code points by the metric's definition, independent of the strip width.
         private const val STRATUM_SEEN_FORM = 0
         private const val STRATUM_NEW_FORM = 1
         private const val STRATUM_UNSEEN_STEM = 2
-        private const val SHOWN_CELLS = 3
+        private const val STRATUM_PREFIX_CODE_POINTS = 3
 
         // Bootstrap knobs, shared with scripts/suggest_chain.py; changing them re-pins the CI.
         private const val BOOTSTRAP_SEED = 20261001L

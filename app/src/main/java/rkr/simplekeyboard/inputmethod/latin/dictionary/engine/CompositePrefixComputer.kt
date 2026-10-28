@@ -51,11 +51,11 @@ fun interface AfterWordFormsFactory {
 }
 
 /**
- * Merges dictionary candidates and one personal-dictionary word into the three strip cells:
+ * Merges dictionary candidates and one personal-dictionary word into the four strip cells:
  *
  *  1. exact dictionary candidates, in their order (frequency descending, then code point);
  *  2. at most one personal-only word: index 0 when there are no exact candidates, index 1
- *     otherwise (it pushes the third exact candidate out of the strip);
+ *     otherwise (it pushes the fourth exact candidate out of the strip);
  *  3. typo-recovery candidates, in their own order.
  *
  * A word in both the dictionary and the personal list takes one cell; when its saved spelling
@@ -189,7 +189,7 @@ internal class CompositePrefixComputer(
      * Next-word prediction. The prefix-path personal source ([personal]) is never read here;
      * learned word pairs come through [personalBigrams]. The chain is: bigram successors >
      * learned pairs > word forms > fallback. A later source never displaces or duplicates an
-     * earlier one and never goes past the three strip cells:
+     * earlier one and never goes past the four strip cells:
      *
      *  - bigram successors come first and are never displaced;
      *  - learned pairs fill free cells, at most [MAX_PERSONAL_BIGRAM_CELLS], in their own order
@@ -435,15 +435,15 @@ internal class CompositePrefixComputer(
 
     companion object {
         /**
-         * The strip has three cells (`SuggestionStripState.CELL_COUNT`) and the index returns at
-         * most three candidates (`TdictPrefixIndex.MAX_RESULTS`).
+         * The strip has four cells (`SuggestionStripState.CELL_COUNT`) and the index returns at
+         * most four candidates (`TdictPrefixIndex.MAX_RESULTS`).
          */
-        internal const val CELL_COUNT = 3
+        internal const val CELL_COUNT = 4
 
         /**
-         * Most cells learned pairs may take in one NEXT_WORD answer. With all three cells free one
+         * Most cells learned pairs may take in one NEXT_WORD answer. With all four cells free one
          * is always left for word forms and the fallback.
          */
-        internal const val MAX_PERSONAL_BIGRAM_CELLS = 2
+        internal const val MAX_PERSONAL_BIGRAM_CELLS = 3
     }
 }

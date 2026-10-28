@@ -47,8 +47,8 @@ from wordform_gen import (  # noqa: E402
 
 # Production bounds (CompositePrefixComputer / TatBigrPrefixIndex / TatarAfterWordForms /
 # GlobalTopFrequencyFallbackFactory / TdictPrefixIndex).
-CELL_COUNT = 3
-BIGRAM_MAX_RESULTS = 3
+CELL_COUNT = 4
+BIGRAM_MAX_RESULTS = 4
 GENERATION_CAP = 40
 MAX_CONTEXT_BYTES = 128
 TOP_WORD_POOL = 8
@@ -314,7 +314,7 @@ class ChainMirror:
 
         Candidates are the dictionary words continuing ``prefix`` (the word equal to the
         prefix is excluded), ranked frequency descending then code point ascending, at most
-        three. With a complete-word prefix of at least four code points the same-stem boost
+        four. With a complete-word prefix of at least four code points the same-stem boost
         applies: candidates whose remainder is a runtime suffix form rank first, frequency
         order kept within each track.
         """

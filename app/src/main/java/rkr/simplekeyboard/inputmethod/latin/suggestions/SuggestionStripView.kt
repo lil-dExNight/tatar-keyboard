@@ -37,7 +37,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import rkr.simplekeyboard.inputmethod.compat.ExploreByTouchHelper
 import rkr.simplekeyboard.inputmethod.R
 
-/** One allocation-free hot-path Canvas view containing exactly three suggestion cells. */
+/** One allocation-free hot-path Canvas view containing exactly four suggestion cells. */
 class SuggestionStripView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -205,10 +205,10 @@ class SuggestionStripView @JvmOverloads constructor(
         if (resetFired) longPressFired = false
     }
 
-    fun setSuggestions(first: String?, second: String?, third: String?) {
+    fun setSuggestions(first: String?, second: String?, third: String?, fourth: String?) {
         clearSpokenLabels()
         val hadSuggestions = state.hasAnySuggestion()
-        if (!state.setSuggestions(first, second, third)) return
+        if (!state.setSuggestions(first, second, third, fourth)) return
         // No rebuild here: the paired setEmphasis() of the same publication runs it once, with
         // the final emphasis state already in place (see displayRebuildPending).
         displayRebuildPending = true
@@ -223,6 +223,7 @@ class SuggestionStripView @JvmOverloads constructor(
             state.suggestionAt(0),
             state.suggestionAt(1),
             state.suggestionAt(2),
+            state.suggestionAt(3),
         )
         if (available.isNotEmpty()) {
             announceForAccessibility(
@@ -243,24 +244,29 @@ class SuggestionStripView @JvmOverloads constructor(
     }
 
     /**
-     * Sets the spoken labels of the three cells; see the field comment. Called by the owner of the
+     * Sets the spoken labels of the four cells; see the field comment. Called by the owner of the
      * strip in the same publication as [setSuggestions], after the words and their emphasis; never
      * creates content of its own.
      */
-    fun setSpokenLabels(first: String?, second: String?, third: String?) {
-        if (spokenLabels[0] == first && spokenLabels[1] == second && spokenLabels[2] == third) {
+    fun setSpokenLabels(first: String?, second: String?, third: String?, fourth: String?) {
+        if (spokenLabels[0] == first && spokenLabels[1] == second && spokenLabels[2] == third
+            && spokenLabels[3] == fourth
+        ) {
             return
         }
         spokenLabels[0] = first
         spokenLabels[1] = second
         spokenLabels[2] = third
+        spokenLabels[3] = fourth
         accessibilityHelper.invalidateRoot()
     }
 
     private fun clearSpokenLabels() {
-        spokenLabels[0] = null
-        spokenLabels[1] = null
-        spokenLabels[2] = null
+        var cell = 0
+        while (cell < SuggestionStripState.CELL_COUNT) {
+            spokenLabels[cell] = null
+            cell++
+        }
     }
 
     /**
@@ -588,9 +594,6 @@ class SuggestionStripView @JvmOverloads constructor(
     }
 
     companion object {
-        const val VIRTUAL_ID_LEFT = 0
-        const val VIRTUAL_ID_CENTER = 1
-        const val VIRTUAL_ID_RIGHT = 2
         // Text sizes of keyboard surfaces are in dp, not sp: each text lives in a band of fixed
         // dp height, and the system font scale grows only the text. At a large font scale the
         // cells would ellipsize into indistinguishable stubs. Layout keys use dp for the same

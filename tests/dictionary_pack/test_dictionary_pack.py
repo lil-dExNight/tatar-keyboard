@@ -38,8 +38,8 @@ RUSSIAN_REVIEW = ROOT / "data" / "dictionary" / "ru-query-review.tsv"
 # Review dates of the two query-review tables. They can differ per language and per rebuild,
 # so they live here instead of in dictionary_pack.AUTOMATED_REVIEW_DATE (the date of the
 # first build).
-RUSSIAN_REVIEW_DATE = "2026-08-24"
-TATAR_REVIEW_DATE = "2026-10-03"
+RUSSIAN_REVIEW_DATE = "2026-10-28"
+TATAR_REVIEW_DATE = "2026-10-28"
 
 
 def load_module(name: str, path: Path):
@@ -510,7 +510,7 @@ class DictionaryPackTest(unittest.TestCase):
         notice = NOTICE.read_text(encoding="utf-8")
         self.assertIn("CC BY 4.0", notice)
         rows = pack._audit_rows(
-            parsed, pack._read_queries(FIXTURES / "manual_tatar_queries.txt"), 3
+            parsed, pack._read_queries(FIXTURES / "manual_tatar_queries.txt"), 4
         )
         pack._check_review(rows, REVIEW, review_date=TATAR_REVIEW_DATE)
 
@@ -585,7 +585,7 @@ class DictionaryPackTest(unittest.TestCase):
             pack._read_queries(
                 FIXTURES / "manual_russian_queries.txt", coverage.RUSSIAN
             ),
-            3,
+            4,
             coverage.RUSSIAN,
         )
         pack._check_review(

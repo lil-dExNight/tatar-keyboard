@@ -44,7 +44,7 @@ class TextShortcutControllerTest {
     // --- Fakes ---------------------------------------------------------------------------------
 
     private class FakeStrip : StripSurface {
-        /** One painted band: the three cells. */
+        /** One painted band: the four cells. */
         val bands = mutableListOf<List<String?>>()
 
         /** The first cell as visible right now: a reserve or a hide clears it, like the view. */
@@ -52,8 +52,8 @@ class TextShortcutControllerTest {
             private set
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            bands.add(listOf(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            bands.add(listOf(first, second, third, fourth))
             shownFirst = first
         }
 
@@ -253,7 +253,7 @@ class TextShortcutControllerTest {
 
         h.typeWord("тк")
 
-        assertEquals(listOf("Татарстан Республикасы", "ткы", null), h.strip.lastBand())
+        assertEquals(listOf("Татарстан Республикасы", "ткы", null, null), h.strip.lastBand())
     }
 
     @Test
@@ -264,7 +264,7 @@ class TextShortcutControllerTest {
 
         h.typeWord("мм")
 
-        assertEquals(listOf("мәхәббәт", null, null), h.strip.lastBand())
+        assertEquals(listOf("мәхәббәт", null, null, null), h.strip.lastBand())
     }
 
     @Test
@@ -351,7 +351,7 @@ class TextShortcutControllerTest {
         // and the separator leaves the word as typed.
         h.typeWord("тк")
         assertEquals("the offer is suppressed after the undo",
-            listOf("ткы", null, null), h.strip.bands.drop(bandsAfterUndo).lastOrNull())
+            listOf("ткы", null, null, null), h.strip.bands.drop(bandsAfterUndo).lastOrNull())
         h.separator(' ')
 
         assertEquals("тк тк ", h.editor.before)

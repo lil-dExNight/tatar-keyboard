@@ -11,7 +11,7 @@ import java.nio.ByteOrder
 
 class TdictPrefixIndexTest {
     @Test
-    fun binaryRangeExcludesExactWordAndRanksTopThree() {
+    fun binaryRangeExcludesExactWordAndRanksTopFour() {
         val index = EngineTestFixtures.index(
             listOf(
                 "бал" to 50,
@@ -23,7 +23,7 @@ class TdictPrefixIndexTest {
             ),
         )
 
-        assertEquals(listOf("бала", "балан", "балчык"), lookup(index, utf8("бал")))
+        assertEquals(listOf("бала", "балан", "балчык", "балалар"), lookup(index, utf8("бал")))
         assertEquals(listOf("балан", "балалар"), lookup(index, utf8("бала")))
         assertFalse(lookup(index, utf8("бал")).contains("бал"))
     }
@@ -40,7 +40,7 @@ class TdictPrefixIndexTest {
             ),
         )
 
-        assertEquals(listOf("ав", "аа", "аб"), lookup(index, utf8("а")))
+        assertEquals(listOf("ав", "аа", "аб", "аә"), lookup(index, utf8("а")))
     }
 
     @Test

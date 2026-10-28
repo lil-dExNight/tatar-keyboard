@@ -51,8 +51,8 @@ class GlideEndToEndTest {
         var hideCount = 0
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            shown.add(listOf(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            shown.add(listOf(first, second, third, fourth))
         }
 
         override fun reserve() {
@@ -351,7 +351,7 @@ class GlideEndToEndTest {
         assertEquals("сәлләм", h.editor.text)
         // The strip then behaves as if the word had been typed: the trailing word is "сәлләм", so
         // the band is the prefix path for it (forms), not the NEXT_WORD chain.
-        assertEquals(listOf("сәлләмнең", "сәлләмгә", null), h.strip.shown.last())
+        assertEquals(listOf("сәлләмнең", "сәлләмгә", null, null), h.strip.shown.last())
     }
 
     @Test

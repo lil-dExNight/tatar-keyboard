@@ -49,17 +49,17 @@ class SuggestionsControllerEmojiSuggestTest {
 
     private class FakeStrip : StripSurface {
         val shown = mutableListOf<List<String?>>()
-        var labels = listOf<String?>(null, null, null)
+        var labels = listOf<String?>(null, null, null, null)
         var reserveCount = 0
         var hideCount = 0
         var tap: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            shown.add(listOf(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            shown.add(listOf(first, second, third, fourth))
         }
 
-        override fun setSpokenCellLabels(first: String?, second: String?, third: String?) {
-            labels = listOf(first, second, third)
+        override fun setSpokenCellLabels(first: String?, second: String?, third: String?, fourth: String?) {
+            labels = listOf(first, second, third, fourth)
         }
 
         override fun reserve() {
@@ -312,24 +312,24 @@ class SuggestionsControllerEmojiSuggestTest {
         val h = harnessWithMapping("tt", "йөрәк", "❤️")
         h.start(tatar)
         h.typeWordAndSpace("йөрәк")
-        h.deliver(tatar, listOf("минем", "тибә", "китте"))
+        h.deliver(tatar, listOf("минем", "тибә", "китте", "килә"))
 
-        // The band is full of bigrams: the emoji still takes the tail cell, and the two front
-        // bigrams stand exactly where they were. Only bigram #3 yields.
-        assertEquals(listOf("минем", "тибә", "❤️"), h.strip.lastCells())
+        // The band is full of bigrams: the emoji still takes the tail cell, and the three front
+        // bigrams stand exactly where they were. Only bigram #4 yields.
+        assertEquals(listOf("минем", "тибә", "китте", "❤️"), h.strip.lastCells())
     }
 
     @Test
     fun theEmojiTailSurvivesAFallbackFilledBand() {
         // The fallback fills the NEXT_WORD cells the bigrams and forms leave free, so a mapped
-        // context word can arrive with a FULL three-word band — the emoji still takes the tail cell
-        // and the two front words keep their order.
+        // context word can arrive with more words than the word cells hold — the emoji still
+        // takes the tail cell and the three front words keep their order.
         val h = harnessWithMapping("tt", "йөрәк", "❤️")
         h.start(tatar)
         h.typeWordAndSpace("йөрәк")
-        h.deliver(tatar, listOf("йөрәкләр", "һәм", "белән"))
+        h.deliver(tatar, listOf("йөрәкләр", "һәм", "белән", "да"))
 
-        assertEquals(listOf("йөрәкләр", "һәм", "❤️"), h.strip.lastCells())
+        assertEquals(listOf("йөрәкләр", "һәм", "белән", "❤️"), h.strip.lastCells())
     }
 
     @Test
@@ -487,7 +487,7 @@ class SuggestionsControllerEmojiSuggestTest {
 
         h.deliver(tatar, listOf("очты"))
 
-        // The companion word fills the free middle cell; the emoji keeps the tail.
+        // The companion word fills a free word cell; the emoji keeps the tail.
         assertEquals(listOf("улетел", "очты", "✈️"), h.strip.lastCells())
     }
 
@@ -496,9 +496,9 @@ class SuggestionsControllerEmojiSuggestTest {
         val h = harnessWithMapping("ru", "самолет", "✈️")
         h.start(russian, companion = tatar)
         h.typeWordAndSpace("самолет")
-        h.deliver(russian, listOf("улетел", "прилетел"))
+        h.deliver(russian, listOf("улетел", "прилетел", "приземлился"))
 
-        assertEquals(listOf("улетел", "прилетел", "✈️"), h.strip.lastCells())
+        assertEquals(listOf("улетел", "прилетел", "приземлился", "✈️"), h.strip.lastCells())
         assertTrue(h.engine(tatar).nextWordRequests.isEmpty())
     }
 
@@ -775,7 +775,7 @@ class SuggestionsControllerEmojiSuggestTest {
         h.deliver(tatar, listOf("минем"))
 
         assertEquals(listOf("минем", "❤️"), h.strip.lastCells())
-        assertEquals(listOf(null, "йөрәк", null), h.strip.labels)
+        assertEquals(listOf(null, "йөрәк", null, null), h.strip.labels)
     }
 
     @Test
@@ -785,7 +785,7 @@ class SuggestionsControllerEmojiSuggestTest {
         h.typeWordAndSpace("башка") // no mapping: no emoji, no labels
         h.deliver(tatar, listOf("минем", "тибә"))
 
-        assertEquals(listOf(null, null, null), h.strip.labels)
+        assertEquals(listOf(null, null, null, null), h.strip.labels)
     }
 
     // --- The gates ------------------------------------------------------------------------------

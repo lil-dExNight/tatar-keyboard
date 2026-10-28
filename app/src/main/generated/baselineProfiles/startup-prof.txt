@@ -1056,9 +1056,9 @@ HSPLrkr/simplekeyboard/inputmethod/latin/InputView;->notifyInsetsChanged()V
 HSPLrkr/simplekeyboard/inputmethod/latin/InputView;->reserveSuggestionStrip()Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;
 HSPLrkr/simplekeyboard/inputmethod/latin/InputView;->setInsetsChangedListener(Ljava/lang/Runnable;)V
 HSPLrkr/simplekeyboard/inputmethod/latin/InputView;->setSuggestionStripEmphasis(I)V
-HSPLrkr/simplekeyboard/inputmethod/latin/InputView;->setSuggestionStripSpokenLabels(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+HSPLrkr/simplekeyboard/inputmethod/latin/InputView;->setSuggestionStripSpokenLabels(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 PLrkr/simplekeyboard/inputmethod/latin/InputView;->showEmojiPanel(ILrkr/simplekeyboard/inputmethod/latin/emoji/EmojiSetSnapshot;FI)Lrkr/simplekeyboard/inputmethod/latin/emoji/EmojiPanelView;
-HSPLrkr/simplekeyboard/inputmethod/latin/InputView;->showSuggestionStrip(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;
+HSPLrkr/simplekeyboard/inputmethod/latin/InputView;->showSuggestionStrip(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;
 Lrkr/simplekeyboard/inputmethod/latin/LatinIME;
 PLrkr/simplekeyboard/inputmethod/latin/LatinIME;->$r8$lambda$KTbmpAgJb35tJUhd0QSdwSN-5FE(Lrkr/simplekeyboard/inputmethod/latin/LatinIME;)Z
 PLrkr/simplekeyboard/inputmethod/latin/LatinIME;->$r8$lambda$_aEyfp73I1UJ8p4HE719dAZgrvk(Lrkr/simplekeyboard/inputmethod/latin/LatinIME;Ljava/lang/String;)V
@@ -1198,9 +1198,9 @@ HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$1;->hideSuggestions()V
 PLrkr/simplekeyboard/inputmethod/latin/LatinIME$1;->lambda$setTapListener$0(Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionTapListener;ILjava/lang/String;)V
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$1;->reserve()V
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$1;->setEmphasizedCell(I)V
-HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$1;->setSpokenCellLabels(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$1;->setSpokenCellLabels(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$1;->setTapListener(Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionTapListener;)V
-HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$1;->showSuggestions(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$1;->showSuggestions(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 Lrkr/simplekeyboard/inputmethod/latin/LatinIME$1$$ExternalSyntheticLambda0;
 HSPLrkr/simplekeyboard/inputmethod/latin/LatinIME$1$$ExternalSyntheticLambda0;-><init>(Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionTapListener;)V
 PLrkr/simplekeyboard/inputmethod/latin/LatinIME$1$$ExternalSyntheticLambda0;->onSuggestionClick(ILjava/lang/String;)V
@@ -3155,7 +3155,7 @@ PLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState;->onUp(I
 HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState;->pressedCell()I
 HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState;->setEmphasis(I)Z
 HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState;->setSuggestion(ILjava/lang/String;)Z
-HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState;->setSuggestions(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z
+HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState;->setSuggestions(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z
 HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState;->suggestionAt(I)Ljava/lang/String;
 Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState$Companion;
 HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState$Companion;-><init>()V
@@ -3178,8 +3178,8 @@ PLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;->schedul
 HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;->setEmphasis(I)V
 HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;->setOnSuggestionClickListener(Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView$OnSuggestionClickListener;)V
 HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;->setOnSuggestionLongPressListener(Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView$OnSuggestionLongPressListener;)V
-HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;->setSpokenLabels(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;->setSuggestions(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;->setSpokenLabels(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;->setSuggestions(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView$$ExternalSyntheticLambda0;
 HSPLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView$$ExternalSyntheticLambda0;-><init>(Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView;)V
 PLrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView$$ExternalSyntheticLambda0;->run()V

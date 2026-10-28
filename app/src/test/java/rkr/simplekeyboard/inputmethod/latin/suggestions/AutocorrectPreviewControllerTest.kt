@@ -45,7 +45,7 @@ class AutocorrectPreviewControllerTest {
     // --- Fakes ---------------------------------------------------------------------------------
 
     private class FakeStrip : StripSurface {
-        /** One painted band: the three cells plus the emphasized cell index (NO_CELL = plain). */
+        /** One painted band: the four cells plus the emphasized cell index (NO_CELL = plain). */
         class Band(val cells: List<String?>, val emphasized: Int)
 
         val bands = mutableListOf<Band>()
@@ -55,9 +55,9 @@ class AutocorrectPreviewControllerTest {
         var currentEmphasis = SuggestionStripState.NO_CELL
             private set
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
             currentEmphasis = SuggestionStripState.NO_CELL
-            bands.add(Band(listOf(first, second, third), SuggestionStripState.NO_CELL))
+            bands.add(Band(listOf(first, second, third, fourth), SuggestionStripState.NO_CELL))
         }
 
         override fun setEmphasizedCell(cell: Int) {
@@ -309,7 +309,7 @@ class AutocorrectPreviewControllerTest {
 
         // The typed word leads, the correction follows, emphasized; the third cell stays empty.
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("китәп", "китап", null), band.cells)
+        assertEquals(listOf("китәп", "китап", null, null), band.cells)
         assertEquals(1, band.emphasized)
     }
 
@@ -329,7 +329,7 @@ class AutocorrectPreviewControllerTest {
 
         // The ordinary suggestions for the word, not the announcement of a correction.
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("китәпләр", null, null), band.cells)
+        assertEquals(listOf("китәпләр", null, null, null), band.cells)
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
     }
 
@@ -346,7 +346,7 @@ class AutocorrectPreviewControllerTest {
         h.typeWord("китәп")
 
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("китәпләр", null, null), band.cells)
+        assertEquals(listOf("китәпләр", null, null, null), band.cells)
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
 
         h.separator(' ')
@@ -367,7 +367,7 @@ class AutocorrectPreviewControllerTest {
 
         val band = h.strip.lastBand()!!
         assertEquals(PREVIEW_EMPHASIZED_CELL, band.emphasized)
-        assertEquals(listOf("китәп", "китап", null), band.cells)
+        assertEquals(listOf("китәп", "китап", null, null), band.cells)
     }
 
     @Test
@@ -382,7 +382,7 @@ class AutocorrectPreviewControllerTest {
         h.typeWord("китап")
 
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("китаплар", "китабы", null), band.cells)
+        assertEquals(listOf("китаплар", "китабы", null, null), band.cells)
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
         h.separator(' ')
         assertEquals("китап ", h.editor.before)
@@ -460,7 +460,7 @@ class AutocorrectPreviewControllerTest {
         h.typeWord("Китәп")
 
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("Китәп", "Китап", null), band.cells)
+        assertEquals(listOf("Китәп", "Китап", null, null), band.cells)
         assertEquals(1, band.emphasized)
     }
 
@@ -512,7 +512,7 @@ class AutocorrectPreviewControllerTest {
         assertEquals("китәп", h.editor.before)
         // The band immediately falls back to this word's ordinary suggestions, with no marker.
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("китәпләр", null, null), band.cells)
+        assertEquals(listOf("китәпләр", null, null, null), band.cells)
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
         // And the separator now commits the typed word as-is.
         h.separator(' ')
@@ -554,7 +554,7 @@ class AutocorrectPreviewControllerTest {
         // corrects again.
         h.typeWord("китәп")
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("китәп", "китап", null), band.cells)
+        assertEquals(listOf("китәп", "китап", null, null), band.cells)
         assertEquals(1, band.emphasized)
         h.separator(' ')
         assertEquals("китәп китап ", h.editor.before)
@@ -624,7 +624,7 @@ class AutocorrectPreviewControllerTest {
         h.backspace()
         assertEquals("китәп", h.editor.before)
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("китәп", null, null), band.cells)
+        assertEquals(listOf("китәп", null, null, null), band.cells)
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
 
         // The refusal holds for the separator too: the word commits as typed.
@@ -646,14 +646,14 @@ class AutocorrectPreviewControllerTest {
         // While the undo window is open the band offers the typed word back (the keep-typed
         // cell) — plain, unmarked; no preview marker rides it.
         val revertBand = h.strip.lastBand()!!
-        assertEquals(listOf("китәп", null, null), revertBand.cells)
+        assertEquals(listOf("китәп", null, null, null), revertBand.cells)
         assertEquals(SuggestionStripState.NO_CELL, revertBand.emphasized)
 
         // The next keystroke ends the window, and the band belongs to the NEXT_WORD slot again —
         // plain, unmarked.
         h.separator(' ')
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("дөнья", null, null), band.cells)
+        assertEquals(listOf("дөнья", null, null, null), band.cells)
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
     }
 
@@ -669,7 +669,7 @@ class AutocorrectPreviewControllerTest {
         h.typeWord("китәп")
 
         val band = h.strip.lastBand()!!
-        assertEquals(listOf("китәпләр", null, null), band.cells)
+        assertEquals(listOf("китәпләр", null, null, null), band.cells)
         assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
         h.separator(' ')
         assertEquals("китәп ", h.editor.before)

@@ -63,15 +63,16 @@ class TdictPrefixIndexSameStemBoostTest {
     fun withoutATableTheFrozenOrderIsByteIdentical() {
         val index = EngineTestFixtures.index(fixture)
         // The frozen expectation: frequency desc, code-point asc on ties, typed word excluded.
-        assertEquals(listOf("балайт", "балак", "балалы"), lookup(index, "бала"))
+        assertEquals(listOf("балайт", "балак", "балалы", "балалар"), lookup(index, "бала"))
     }
 
     @Test
     fun withATableSameStemContinuationsRankBeforeUnrelatedOnes() {
         val index = EngineTestFixtures.index(fixture, TatarSuffixRules)
-        // Stem track (балалы 12, балалар 10, балам 4 — frequency desc) fills all three cells; the
-        // unrelated балайт (100) and балак (90) fall off the strip despite outranking them all.
-        assertEquals(listOf("балалы", "балалар", "балам"), lookup(index, "бала"))
+        // Stem track (балалы 12, балалар 10, балам 4 — frequency desc) fills three of the four
+        // cells; the last goes to the unrelated балайт (100), and балак (90) falls off the
+        // strip despite outranking the whole stem track.
+        assertEquals(listOf("балалы", "балалар", "балам", "балайт"), lookup(index, "бала"))
     }
 
     @Test
@@ -106,7 +107,7 @@ class TdictPrefixIndexSameStemBoostTest {
         // state: the threshold keeps the frozen order byte-identical.
         val withTable = EngineTestFixtures.index(fixture, TatarSuffixRules)
         val withoutTable = EngineTestFixtures.index(fixture)
-        assertEquals(listOf("балайт", "балак", "бала"), lookup(withoutTable, "бал"))
+        assertEquals(listOf("балайт", "балак", "бала", "балалы"), lookup(withoutTable, "бал"))
         assertEquals(lookup(withoutTable, "бал"), lookup(withTable, "бал"))
     }
 
@@ -123,7 +124,7 @@ class TdictPrefixIndexSameStemBoostTest {
         val index = requireNotNull(tatarWithRules)
         // The intended effect: татарлар/татарча-type continuations above татарстан*. татар is
         // five code points, above the threshold.
-        assertEquals(listOf("татарча", "татарлар", "татарлары"), lookup(index, "татар"))
+        assertEquals(listOf("татарча", "татарлар", "татарлары", "татарның"), lookup(index, "татар"))
     }
 
     @Test
@@ -132,13 +133,13 @@ class TdictPrefixIndexSameStemBoostTest {
         val withoutRules = requireNotNull(tatarWithoutRules)
         // су (2 cp) and өй (2 cp) are complete words below the threshold: no boost, although both
         // have table-suffix continuations — measured identical to the frozen pass.
-        assertEquals(listOf("сум", "сугыш", "сугышы"), lookup(withoutRules, "су"))
+        assertEquals(listOf("сум", "сугыш", "сугышы", "сумга"), lookup(withoutRules, "су"))
         assertEquals(lookup(withoutRules, "су"), lookup(withRules, "су"))
-        assertEquals(listOf("өйрәнү", "өйдә", "өйгә"), lookup(withoutRules, "өй"))
+        assertEquals(listOf("өйрәнү", "өйдә", "өйгә", "өйрәнә"), lookup(withoutRules, "өй"))
         assertEquals(lookup(withoutRules, "өй"), lookup(withRules, "өй"))
         // кит (3 cp): same, one code point below the gate.
         assertEquals(lookup(withoutRules, "кит"), lookup(withRules, "кит"))
-        assertEquals(listOf("китте", "китә", "китап"), lookup(withoutRules, "кит"))
+        assertEquals(listOf("китте", "китә", "китап", "киткән"), lookup(withoutRules, "кит"))
     }
 
     @Test
@@ -147,7 +148,7 @@ class TdictPrefixIndexSameStemBoostTest {
         val withoutRules = requireNotNull(tatarWithoutRules)
         // "тата" is not a dictionary word — the boost must be inert, byte for byte.
         assertEquals(
-            listOf("татар", "татарстан", "татарстанның"),
+            listOf("татар", "татарстан", "татарстанның", "татарстанда"),
             lookup(withoutRules, "тата"),
         )
         assertEquals(lookup(withoutRules, "тата"), lookup(withRules, "тата"))

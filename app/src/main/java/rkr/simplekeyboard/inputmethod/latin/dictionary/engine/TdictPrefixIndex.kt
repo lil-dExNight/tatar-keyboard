@@ -1551,7 +1551,7 @@ internal class TdictPrefixIndex private constructor(
         private const val HEADER_SIZE = 72
         private const val CHECKSUM_ALGORITHM_SHA256 = 1
         private const val U32_BYTES = 4
-        private const val MAX_RESULTS = 3
+        private const val MAX_RESULTS = 4
         internal const val MAX_PREFIX_BYTES = 128
         private const val MAX_U32 = 0xffff_ffffL
         // Upper bound on one front-coded block's raw byte size in the canonical encoding: u8

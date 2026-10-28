@@ -24,8 +24,8 @@ import org.junit.Test
 class InlineStripSpecsTest {
 
     @Test
-    fun anExactThirdGivesThreeEqualCells() {
-        val cells = InlineStripSpecs.cellSizesPx(300, 44)
+    fun anExactQuarterGivesFourEqualCells() {
+        val cells = InlineStripSpecs.cellSizesPx(400, 44)
         assertEquals(InlineStripSpecs.CELL_COUNT, cells.size)
         for (cell in cells) {
             assertEquals(100, cell.widthPx)
@@ -35,16 +35,16 @@ class InlineStripSpecsTest {
 
     @Test
     fun theRoundingRemainderFollowsTheStripCellBoundaries() {
-        // The same boundaries as SuggestionStripState.cellLeft/cellRight: 0, 133, 266, 400.
-        val cells = InlineStripSpecs.cellSizesPx(400, 44)
-        assertEquals(listOf(133, 133, 134), cells.map { it.widthPx })
-        assertEquals(400, cells.sumOf { it.widthPx })
+        // The same boundaries as SuggestionStripState.cellLeft/cellRight: 0, 100, 200, 300, 401.
+        val cells = InlineStripSpecs.cellSizesPx(401, 44)
+        assertEquals(listOf(100, 100, 100, 101), cells.map { it.widthPx })
+        assertEquals(401, cells.sumOf { it.widthPx })
     }
 
     @Test
     fun theCellCountIsTheStrips() {
         assertEquals(SuggestionStripState.CELL_COUNT, InlineStripSpecs.CELL_COUNT)
-        assertEquals(3, InlineStripSpecs.CELL_COUNT)
+        assertEquals(4, InlineStripSpecs.CELL_COUNT)
     }
 
     @Test

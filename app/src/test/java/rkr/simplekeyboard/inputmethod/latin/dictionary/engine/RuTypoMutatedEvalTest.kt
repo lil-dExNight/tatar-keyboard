@@ -245,7 +245,7 @@ class RuTypoMutatedEvalTest {
 
         // The deletion recovery count (the two arms coincide; see the baseline test), measured
         // on the committed Russian dictionary.
-        private const val PIN_DEL_HITS = 262
+        private const val PIN_DEL_HITS = 274
 
         private const val PIN_AUTOCORRECT_FALSE_TRIGGERS = 0
 

@@ -84,13 +84,13 @@ class CompositePrefixComputerTest {
     }
 
     @Test
-    fun theThirdExactCandidateIsPushedOutOfTheBandEntirely() {
+    fun theFourthExactCandidateIsPushedOutOfTheBandEntirely() {
         val result = merge(
-            listOf("гүзәллек", "гүзәлләр", "гүзәллеге"), exactCount = 3,
+            listOf("гүзәллек", "гүзәлләр", "гүзәллеге", "гүзәллеген"), exactCount = 4,
             personalSource("гүзәлия" to "гүзәлия"),
         )
-        assertEquals("the band is three cells: the third exact candidate is not shown at all",
-            listOf("гүзәллек", "гүзәлия", "гүзәлләр"), result)
+        assertEquals("the band is four cells: the fourth exact candidate is not shown at all",
+            listOf("гүзәллек", "гүзәлия", "гүзәлләр", "гүзәллеге"), result)
         assertEquals(SuggestionStripState.CELL_COUNT, result.size)
     }
 
@@ -260,13 +260,13 @@ class CompositePrefixComputerTest {
 
     @Test
     fun bigramSuccessorsAreNeverDisplacedByForms() {
-        val bigrams = listOf("эшләгән", "белән", "туры")
+        val bigrams = listOf("эшләгән", "белән", "туры", "дөнья")
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр")),
         )
         computer.attachBigramSource(NextWordComputer { bigrams })
 
-        // Three successors take all three cells: the forms are never even consulted beyond the
+        // Four successors take all four cells: the forms are never even consulted beyond the
         // room check, and the list is the bigram list itself.
         assertSame(bigrams, computer.predict(prefix("сүз")))
     }
@@ -349,33 +349,33 @@ class CompositePrefixComputerTest {
 
     @Test
     fun staticSuccessorsAreNeverDisplacedByPersonalPairs() {
-        val bigrams = listOf("йорт", "бакча", "капка")
+        val bigrams = listOf("йорт", "бакча", "капка", "дөнья")
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             personalBigrams = fakeBigrams("да" to "да"),
         )
         computer.attachBigramSource(NextWordComputer { bigrams })
 
-        // Three successors take all three cells: the personal source is never even consulted
+        // Four successors take all four cells: the personal source is never even consulted
         // beyond the emptiness check, and the list is the bigram list itself.
         assertSame(bigrams, computer.predict(prefix("өй")))
     }
 
     @Test
-    fun atMostTwoCellsArePersonalEvenWithAllCellsFree() {
-        // The leave-room pin: with no static successor at all the personal half takes TWO cells
-        // and the forms/fallback half keeps its chance at the third.
+    fun atMostThreeCellsArePersonalEvenWithAllCellsFree() {
+        // The leave-room pin: with no static successor at all the personal half takes THREE cells
+        // and the forms/fallback half keeps its chance at the fourth.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             fakeForms(listOf("сүзләр")),
             personalBigrams = fakeBigrams(
-                "бакча" to "бакча", "капка" to "капка", "йорт" to "йорт",
+                "бакча" to "бакча", "капка" to "капка", "йорт" to "йорт", "эчке" to "эчке",
             ),
         )
         computer.attachBigramSource(NextWordComputer { emptyList() })
 
-        assertEquals(2, CompositePrefixComputer.MAX_PERSONAL_BIGRAM_CELLS)
-        assertEquals(listOf("бакча", "капка", "сүзләр"), computer.predict(prefix("өй")))
+        assertEquals(3, CompositePrefixComputer.MAX_PERSONAL_BIGRAM_CELLS)
+        assertEquals(listOf("бакча", "капка", "йорт", "сүзләр"), computer.predict(prefix("өй")))
     }
 
     @Test
@@ -490,26 +490,27 @@ class CompositePrefixComputerTest {
 
     @Test
     fun theFallbackFillsTheCellsBigramsAndFormsLeaveFree() {
-        // The chain is bigram successors > after-word forms > fallback, one cell each.
+        // The chain is bigram successors > after-word forms > fallback; the fallback takes the
+        // two cells the single successor and the single form leave free.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм", "белән")),
         )
         computer.attachBigramSource(NextWordComputer { listOf("эшләгән") })
 
-        assertEquals(listOf("эшләгән", "сүзләр", "һәм"), computer.predict(prefix("сүз")))
+        assertEquals(listOf("эшләгән", "сүзләр", "һәм", "белән"), computer.predict(prefix("сүз")))
     }
 
     @Test
     fun theFallbackNeverDisplacesBigramsOrForms() {
-        val bigrams = listOf("эшләгән", "белән", "туры")
+        val bigrams = listOf("эшләгән", "белән", "туры", "дөнья")
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
         )
         computer.attachBigramSource(NextWordComputer { bigrams })
 
-        // Three successors take all three cells: the forms and the fallback are never consulted
+        // Four successors take all four cells: the forms and the fallback are never consulted
         // beyond the room check, and the list is the bigram list itself.
         assertSame(bigrams, computer.predict(prefix("сүз")))
     }
@@ -523,7 +524,7 @@ class CompositePrefixComputerTest {
             fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм", "белән", "да")),
         )
 
-        assertEquals(listOf("сүзләр", "һәм", "белән"), computer.predict(prefix("сүз")))
+        assertEquals(listOf("сүзләр", "һәм", "белән", "да"), computer.predict(prefix("сүз")))
     }
 
     @Test
@@ -648,7 +649,7 @@ class CompositePrefixComputerTest {
             computer.attachBigramSource(NextWordComputer { listOf("йорт") })
         }
 
-        assertEquals(listOf("йорт", "бакча", "сүзләр"), computer.predict(prefix("өй")))
+        assertEquals(listOf("йорт", "бакча", "сүзләр", "һәм"), computer.predict(prefix("өй")))
     }
 
     // --- The exact-miss verdict ------------------------------------------------------------------

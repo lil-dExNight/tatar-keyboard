@@ -275,17 +275,17 @@ class RuSuggestEvalTest {
         private const val PIN_PAIRS = 4_466
         private const val PIN_COVERED = 4_010
         private const val PIN_TOP1_HITS = 349
-        private const val PIN_TOP3_HITS = 673
+        private const val PIN_TOP3_HITS = 794
         private const val PIN_COVERED_PCT = "89.7895"
         private const val PIN_TOP1_PCT = "7.8146"
-        private const val PIN_TOP3_PCT = "15.0694"
-        private const val PIN_TOP3_COVERED_PCT = "16.7830"
+        private const val PIN_TOP3_PCT = "17.7788"
+        private const val PIN_TOP3_COVERED_PCT = "19.8005"
         private const val PIN_CP1_WORDS = 2_218
         private const val PIN_CP2_WORDS = 2_210
         private const val PIN_CP3_WORDS = 2_179
-        private const val PIN_CP1_HITS = 67
-        private const val PIN_CP2_HITS = 354
-        private const val PIN_CP3_HITS = 768
+        private const val PIN_CP1_HITS = 90
+        private const val PIN_CP2_HITS = 425
+        private const val PIN_CP3_HITS = 880
         private const val PIN_CP1_TOP1_HITS = 23
         private const val PIN_CP2_TOP1_HITS = 145
         private const val PIN_CP3_TOP1_HITS = 391
@@ -295,7 +295,7 @@ class RuSuggestEvalTest {
         private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 20_556
         private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 283
         private const val PIN_STRIP_EMPTY_PREFIX_PCT = "1.3767"
-        private const val PIN_SENTSTART_TOP3_HITS = 187
+        private const val PIN_SENTSTART_TOP3_HITS = 194
 
         private lateinit var evalLines: List<String>
         private lateinit var uniqueWords: List<String>

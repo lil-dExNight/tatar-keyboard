@@ -472,13 +472,14 @@ except KeyError as exc:
 PYEOF
 }
 
-# Suggestion strip cells: three equal thirds (SuggestionStripState), centers x = (i + 0.5) / 3.
+# Suggestion strip cells: four equal quarters (SuggestionStripState), centers x = (i + 0.5) / 4.
 # The y is measured on the tt 5-row layout (1080x2280, density 2.75). The 44dp strip (121 px)
 # sits on the keyboard's top edge (1418 px) and spans ~1297-1418 px, so its center is
 # ~1357.5 px ~ 0.5954.
-STRIP_CELL0="0.1667,0.5954"
-STRIP_CELL1="0.5000,0.5954"
-STRIP_CELL2="0.8333,0.5954"
+STRIP_CELL0="0.1250,0.5954"
+STRIP_CELL1="0.3750,0.5954"
+STRIP_CELL2="0.6250,0.5954"
+STRIP_CELL3="0.8750,0.5954"
 
 second_word_after() {                    # second_word_after "<text>" "<word>" → token after last <word>
     python3 - "$1" "$2" <<'PYEOF'
@@ -498,7 +499,7 @@ PYEOF
 # are on; default the last cell), read the field again. Stdout: field-after-space <TAB>
 # field-after-tap.
 type_tt_and_tap_cell2() {
-    local word="$1" tag="$2" cell="${3:-$STRIP_CELL2}" coords mid after
+    local word="$1" tag="$2" cell="${3:-$STRIP_CELL3}" coords mid after
     coords=$(tt_word_coords "$word")
     type_word "$coords"
     TAPF ${SPACE%,*} ${SPACE#*,}
@@ -614,13 +615,13 @@ SHOT smoke-tt-back.png
 # Tap-and-read, not pixel diff: uiautomator does not see the IME window, so the
 # strip content is proven by tapping a cell and reading the try-it field.
 # Two probes against the bundled assets (the bigram table stores up to four
-# successors per head; the strip shows three):
-#  1. татар is a bigram head whose first three successors (теле, телен, дәүләт)
-#     fill the whole strip, so cell 2 (index 1) must commit телен: bigram
+# successors per head; the strip shows them all):
+#  1. татар is a bigram head whose four successors (теле, телен, дәүләт,
+#     телендә) fill the whole strip, so cell 2 (index 1) must commit телен: bigram
 #     successors take priority and neither word forms nor the fallback run
 #     (CompositePrefixComputer). Any other word fails.
 #  2. сәләм is not a head, so its one attested after-word form (сәләмә) comes
-#     first and the global top words fill the rest (һәм, белән): cell 1
+#     first and the global top words fill the rest (һәм, белән, да): cell 1
 #     (index 0) must commit сәләмә, proving word forms come before the fill.
 wf=$(type_tt_and_tap_cell2 "татар" tatar "$STRIP_CELL1")
 wf_mid="${wf%$'\t'*}"
@@ -662,7 +663,7 @@ fi
 # The сәләм probe's cell-1 tap committed сәләмә with a trailing space, and the tap
 # itself must re-issue the NEXT_WORD lookup without waiting for a keystroke.
 # сәләмә is not a bigram head and has no word forms, so the strip is the top-word
-# fill [һәм, белән, да]: a second tap on cell 1 (index 0) must commit һәм.
+# fill [һәм, белән, да, дә]: a second tap on cell 1 (index 0) must commit һәм.
 if [ "$SUGGESTIONS" != on ]; then
     result SKIP tap-followup-tt-сәләм "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "__NOFIELD__" ] || [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "$wf_mid" ]; then
@@ -909,7 +910,7 @@ PYEOF
         TAPF ${SPACE%,*} ${SPACE#*,}
         sleep 2                  # the NEXT_WORD answer (and the learned emoji) is asynchronous
         SHOT smoke-learned-emoji-band.png
-        TAPF ${STRIP_CELL2%,*} ${STRIP_CELL2#*,}
+        TAPF ${STRIP_CELL3%,*} ${STRIP_CELL3#*,}
         sleep 1
         f=$(field_text)
         if echo "$f" | grep -qE "$SUN_TAIL_RE"; then

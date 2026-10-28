@@ -23,7 +23,7 @@ import android.view.View
 import android.view.ViewGroup
 
 /**
- * The strip surface while an inline-autofill session owns it: up to three equal cells, each
+ * The strip surface while an inline-autofill session owns it: up to four equal cells, each
  * holding one content view the system inflates. A plain [ViewGroup] — the API-30 autofill types
  * never appear here, so this class loads on any API level; it is inflated only from the gated
  * binder path. The word strip's rendering is untouched: while this host is visible,

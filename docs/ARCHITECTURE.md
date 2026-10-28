@@ -103,7 +103,7 @@ after a committed word), `GLIDE` (glide decoding). At a sentence start (the fiel
 start, or '.', '!', '?', '…' followed by a space) the strip is filled synchronously from a static
 table (`SentStartIndex`, `assets/dictionaries/*_sentstart_v1.txt`).
 
-**Strip.** `SuggestionStripView` is one Canvas view with three cells
+**Strip.** `SuggestionStripView` is one Canvas view with four cells
 (`SuggestionStripState.CELL_COUNT`). A tap commits the word with a space; a punctuation mark that
 attaches to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ",
 "сүз?! "), tracked by the cursor position in `InputLogic`. A space typed there is swallowed and

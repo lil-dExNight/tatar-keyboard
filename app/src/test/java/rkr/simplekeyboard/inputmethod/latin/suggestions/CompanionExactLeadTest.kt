@@ -52,8 +52,8 @@ class CompanionExactLeadTest {
     private class FakeStrip : StripSurface {
         val bands = mutableListOf<List<String?>>()
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            bands.add(listOf(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            bands.add(listOf(first, second, third, fourth))
         }
 
         override fun reserve() = Unit
@@ -201,15 +201,15 @@ class CompanionExactLeadTest {
         h.tatarEngine().exactMiss = "приве"
         h.tatarEngine().exactCount = 0
         h.tatarEngine().answer(listOf("привеле", "привеләр", "привелебез"))
-        assertEquals(listOf("привеле", "привеләр", "привелебез"), h.strip.lastBand())
-        // The full strip did not stop the companion request: the exact-lead rule armed it.
+        assertEquals(listOf("привеле", "привеләр", "привелебез", null), h.strip.lastBand())
+        // The empty exact pass armed the exact-lead rule, so the companion request went out.
         assertEquals(listOf("приве"), h.russianEngine().prefixRequests)
 
         h.russianEngine().exactCount = 1
         h.russianEngine().answer(listOf("привет", "приветик"))
 
         // The companion's exact candidate leads; the active typo recovery fills the rest.
-        assertEquals(listOf("привет", "привеле", "привеләр"), h.strip.lastBand())
+        assertEquals(listOf("привет", "привеле", "привеләр", "привелебез"), h.strip.lastBand())
     }
 
     @Test
@@ -224,7 +224,7 @@ class CompanionExactLeadTest {
         h.russianEngine().exactCount = 2
         h.russianEngine().answer(listOf("привет", "приветик"))
 
-        assertEquals(listOf("привет", "приветик", "привеле"), h.strip.lastBand())
+        assertEquals(listOf("привет", "приветик", "привеле", null), h.strip.lastBand())
     }
 
     @Test
@@ -243,7 +243,7 @@ class CompanionExactLeadTest {
         h.russianEngine().exactCount = 2
         h.russianEngine().answer(listOf("китай", "китамичә"))
 
-        assertEquals(listOf("китап", "китай", "китамичә"), h.strip.lastBand())
+        assertEquals(listOf("китап", "китай", "китамичә", null), h.strip.lastBand())
     }
 
     @Test
@@ -259,7 +259,7 @@ class CompanionExactLeadTest {
         h.russianEngine().exactCount = 0
         h.russianEngine().answer(listOf("привет", "приветик"))
 
-        assertEquals(listOf("привеле", "привет", "приветик"), h.strip.lastBand())
+        assertEquals(listOf("привеле", "привет", "приветик", null), h.strip.lastBand())
     }
 
     @Test
@@ -275,7 +275,7 @@ class CompanionExactLeadTest {
         h.russianEngine().answer(listOf("привеле", "привет"))
 
         // "привеле" shows once, cased like the typed prefix; the companion exact pass leads.
-        assertEquals(listOf("Привеле", "Привет", null), h.strip.lastBand())
+        assertEquals(listOf("Привеле", "Привет", null, null), h.strip.lastBand())
     }
 
     @Test
@@ -285,9 +285,9 @@ class CompanionExactLeadTest {
 
         h.type("китап")
         h.tatarEngine().exactMiss = null
-        h.tatarEngine().answer(listOf("китап", "китаплар", "китабы"))
+        h.tatarEngine().answer(listOf("китап", "китаплар", "китабы", "китапханә"))
 
-        assertEquals(listOf("китап", "китаплар", "китабы"), h.strip.lastBand())
+        assertEquals(listOf("китап", "китаплар", "китабы", "китапханә"), h.strip.lastBand())
         assertTrue(h.russianEngine().prefixRequests.isEmpty())
     }
 
@@ -304,7 +304,7 @@ class CompanionExactLeadTest {
         h.russianEngine().exactCount = 1
         h.russianEngine().answer(listOf("привет"))
 
-        assertEquals(listOf("привет", null, null), h.strip.lastBand())
+        assertEquals(listOf("привет", null, null, null), h.strip.lastBand())
     }
 
     // --- The live layout's neighbor table --------------------------------------------------------

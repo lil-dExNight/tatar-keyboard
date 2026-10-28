@@ -97,7 +97,7 @@ PAIR_WORD_MAX_CODE_POINTS = 24
 CELL_COUNT = suggest_chain.CELL_COUNT
 BIGRAM_MAX_RESULTS = suggest_chain.BIGRAM_MAX_RESULTS
 TOP_WORD_POOL = suggest_chain.TOP_WORD_POOL
-MAX_PERSONAL_BIGRAM_CELLS = 2
+MAX_PERSONAL_BIGRAM_CELLS = 3
 PAIR_DISPLACE_MIN_USAGE = 3
 
 SPLITS = ("hash", "chrono", "rep")
@@ -571,7 +571,7 @@ def pair_successors(model: PersonalModel, context: str) -> list[tuple[str, int, 
 
 def personalized_predict(engine: Engine, model: PersonalModel, head: str) -> list[str]:
     """CompositePrefixComputer.predict: bigram successors, then learned pairs in their
-    at-most-2 free cells (a pair already shown is skipped), then word forms, then fallback."""
+    at-most-3 free cells (a pair already shown is skipped), then word forms, then fallback."""
     result = list(engine.successes.get(head, ()))[:BIGRAM_MAX_RESULTS]
     if len(result) < CELL_COUNT:
         room = min(MAX_PERSONAL_BIGRAM_CELLS, CELL_COUNT - len(result))
@@ -599,7 +599,7 @@ def personalized_predict(engine: Engine, model: PersonalModel, head: str) -> lis
 
 def displace_predict(engine: Engine, model: PersonalModel, head: str) -> list[str]:
     """The chain-order arm: the top learned pair with usage >= PAIR_DISPLACE_MIN_USAGE may
-    displace bigram successor #3 when the successors fill all three cells."""
+    displace bigram successor #4 when the successors fill all four cells."""
     base = personalized_predict(engine, model, head)
     if len(list(engine.successes.get(head, ()))[:BIGRAM_MAX_RESULTS]) < CELL_COUNT:
         return base

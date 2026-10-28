@@ -455,19 +455,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final StripSurface stripSurface = new StripSurface() {
             @Override
             public void showSuggestions(final String first, final String second,
-                    final String third) {
+                    final String third, final String fourth) {
                 final InputView inputView = getInputViewForSuggestions();
                 if (inputView != null) {
-                    inputView.showSuggestionStrip(first, second, third);
+                    inputView.showSuggestionStrip(first, second, third, fourth);
                 }
             }
 
             @Override
             public void setSpokenCellLabels(final String first, final String second,
-                    final String third) {
+                    final String third, final String fourth) {
                 final InputView inputView = getInputViewForSuggestions();
                 if (inputView != null) {
-                    inputView.setSuggestionStripSpokenLabels(first, second, third);
+                    inputView.setSuggestionStripSpokenLabels(first, second, third, fourth);
                 }
             }
 

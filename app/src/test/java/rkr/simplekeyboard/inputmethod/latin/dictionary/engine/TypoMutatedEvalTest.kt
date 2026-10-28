@@ -451,12 +451,12 @@ class TypoMutatedEvalTest {
             "83f1629717577ac0e4846f0178286d4ae3ec21cbbbe3c3def47a18af1b6bfe9a"
 
         // Measured baseline recovery counts (the production arm, then the exact-only control).
-        private const val PIN_SUB_HITS = 2_161
-        private const val PIN_DEL_HITS = 1_776
-        private const val PIN_INS_HITS = 2_327
-        private const val PIN_TRANS_HITS = 2_155
+        private const val PIN_SUB_HITS = 2_181
+        private const val PIN_DEL_HITS = 1_829
+        private const val PIN_INS_HITS = 2_328
+        private const val PIN_TRANS_HITS = 2_165
         private const val PIN_SUB_HITS_EXACTONLY = 0
-        private const val PIN_DEL_HITS_EXACTONLY = 339
+        private const val PIN_DEL_HITS_EXACTONLY = 349
         private const val PIN_INS_HITS_EXACTONLY = 0
         private const val PIN_TRANS_HITS_EXACTONLY = 0
         private const val PIN_AUTOCORRECT_FALSE_TRIGGERS = 0

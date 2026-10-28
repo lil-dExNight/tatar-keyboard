@@ -58,29 +58,28 @@ class TtNextWordFillE2ETest {
     fun committingSyalamOffersItsFormThenTheTopWords() {
         // сәләм: no bigram successors (not a head), two attested forms — then the fill.
         assertEquals(
-            listOf("сәләмә", "сәләме", "һәм"),
+            listOf("сәләмә", "сәләме", "һәм", "белән"),
             tatarPredict("сәләм"),
         )
     }
 
     @Test
-    fun committingSyalamaFillsAllThreeCellsFromTheTopWords() {
+    fun committingSyalamaFillsAllFourCellsFromTheTopWords() {
         // сәләмә: no successors and no attested forms — the whole strip is the fill.
         assertEquals(
-            listOf("һәм", "белән", "да"),
+            listOf("һәм", "белән", "да", "дә"),
             tatarPredict("сәләмә"),
         )
     }
 
     @Test
     fun aBigramHeadStillShowsOnlyItsSuccessors() {
-        // кил is a head with 4 stored successors; the read caps at three
-        // (TatBigrPrefixIndex.MAX_RESULTS), so the strip is the first three and the fourth
-        // (әле) is not read — no form, no fallback cell.
+        // кил is a head with 4 stored successors; the strip is the four of them — no form, no
+        // fallback cell.
         // The successor дә is ALSO a top-8 word: the dedup rule is exercised here structurally
         // (it must not appear twice, and the fallback never runs at all).
         val result = tatarPredict("кил")
-        assertEquals(listOf("дә", "монда", "һәм"), result)
+        assertEquals(listOf("дә", "монда", "һәм", "әле"), result)
         assertEquals(result.distinct(), result)
         assertFalse(result.contains("да"))
     }
@@ -88,19 +87,19 @@ class TtNextWordFillE2ETest {
     @Test
     fun theCommittedWordIsNeverReOffered() {
         // һәм IS the global top word: committing it must not put it back on the strip. It is also
-        // a bigram head: its first three stored successors fill the whole strip (the fourth, бу,
-        // is not read), minus the committed word itself.
+        // a bigram head: its four stored successors fill the whole strip, minus the committed
+        // word itself.
         val result = tatarPredict("һәм")
         assertFalse(result.contains("һәм"))
-        assertEquals(listOf("башка", "аның", "ул"), result)
+        assertEquals(listOf("башка", "аның", "ул", "бу"), result)
     }
 
     @Test
     fun aNonHeadRussianWordFillsWithRussianTopWords() {
-        // тюлень: in the Russian dictionary, not a bigram head → all three cells are the Russian
+        // тюлень: in the Russian dictionary, not a bigram head → all four cells are the Russian
         // global top words (the ru engine ships no word-form rules — the pure fill).
         assertEquals(
-            listOf("я", "не", "в"),
+            listOf("я", "не", "в", "и"),
             russianPredict("тюлень"),
         )
     }

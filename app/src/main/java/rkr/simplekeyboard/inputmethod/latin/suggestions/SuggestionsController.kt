@@ -45,14 +45,14 @@ import java.util.concurrent.Executors
 
 /** Suggestion-strip UI seam. All methods are called on the UI thread. */
 interface StripSurface {
-    fun showSuggestions(first: String, second: String?, third: String?)
+    fun showSuggestions(first: String, second: String?, third: String?, fourth: String?)
 
     /**
      * Optional spoken labels for cells whose own text does not read well aloud (an emoji cell).
      * Called in the same publication as [showSuggestions], after the words and their emphasis; a
      * null entry means "speak the cell's text". Default no-op: the glyph is spoken.
      */
-    fun setSpokenCellLabels(first: String?, second: String?, third: String?) {}
+    fun setSpokenCellLabels(first: String?, second: String?, third: String?, fourth: String?) {}
 
     /**
      * The autocorrect preview's emphasis marker: the cell holding the correction the next
@@ -1542,7 +1542,7 @@ class SuggestionsController internal constructor(
      * Asks the companion language for [query], but only after the active language has already
      * answered and left a cell empty.
      *
-     * Lazy on purpose: the active language usually fills all three cells, so asking both engines on
+     * Lazy on purpose: the active language usually fills all four cells, so asking both engines on
      * every keystroke would mostly be wasted work; and because this runs only after the active
      * result was applied, it never delays the first cell.
      *
@@ -1684,7 +1684,7 @@ class SuggestionsController internal constructor(
         emphasizedCell: Int = SuggestionStripState.NO_CELL,
     ) {
         bandBaseCells = cells
-        strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2))
+        strip.showSuggestions(cells[0], cells.getOrNull(1), cells.getOrNull(2), cells.getOrNull(3))
         // The emphasis travels with the words it marks, in the same publication. It runs before
         // the spoken labels: setEmphasis triggers the view's one display rebuild, and the label
         // lookup reads the emoji index, which can fail. A label failure then leaves a consistent
@@ -1694,6 +1694,7 @@ class SuggestionsController internal constructor(
             spokenLabelFor(cells[0]),
             spokenLabelFor(cells.getOrNull(1)),
             spokenLabelFor(cells.getOrNull(2)),
+            spokenLabelFor(cells.getOrNull(3)),
         )
     }
 
@@ -2750,7 +2751,7 @@ class SuggestionsController internal constructor(
         displayedSessionId = sessionId
         showBand(listOf(revertCellDecorator.decorate(replacement.typedForm)))
         // TalkBack reads the bare typed word, not the quotation marks of the display form.
-        strip.setSpokenCellLabels(replacement.typedForm, null, null)
+        strip.setSpokenCellLabels(replacement.typedForm, null, null, null)
         revertCellDisplayed = true
         return true
     }

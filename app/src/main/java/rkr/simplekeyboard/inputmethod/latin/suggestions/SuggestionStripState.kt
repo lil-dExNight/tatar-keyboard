@@ -16,7 +16,7 @@
 
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
-/** Pure, fixed-size state and hit geometry for the three-cell Canvas strip. */
+/** Pure, fixed-size state and hit geometry for the four-cell Canvas strip. */
 internal class SuggestionStripState {
     private val suggestions = arrayOfNulls<String>(CELL_COUNT)
     private var downCell = NO_CELL
@@ -26,17 +26,18 @@ internal class SuggestionStripState {
     // [NO_CELL] on every ordinary strip.
     private var emphasizedCell = NO_CELL
 
-    fun setSuggestions(first: String?, second: String?, third: String?): Boolean {
+    fun setSuggestions(first: String?, second: String?, third: String?, fourth: String?): Boolean {
         var changed = setSuggestion(0, first)
         changed = setSuggestion(1, second) || changed
         changed = setSuggestion(2, third) || changed
+        changed = setSuggestion(3, fourth) || changed
         // A fresh publication describes the whole strip, emphasis included: the caller that
         // publishes the words re-applies it right after this.
         changed = clearEmphasis() || changed
         return cancelGesture() || changed
     }
 
-    fun clear(): Boolean = setSuggestions(null, null, null)
+    fun clear(): Boolean = setSuggestions(null, null, null, null)
 
     fun suggestionAt(cell: Int): String? =
         if (cell in 0 until CELL_COUNT) suggestions[cell] else null
@@ -90,7 +91,8 @@ internal class SuggestionStripState {
         }
         if (x < cellRight(0, width)) return 0
         if (x < cellRight(1, width)) return 1
-        return 2
+        if (x < cellRight(2, width)) return 2
+        return 3
     }
 
     fun cellLeft(cell: Int, width: Int): Int = width * cell / CELL_COUNT
@@ -161,10 +163,10 @@ internal class SuggestionStripState {
 
     companion object {
         /**
-         * Three cells. The Tatar bigram table stores four successors per word; the fourth is
-         * unread headroom (`TatBigrPrefixIndex.MAX_RESULTS` caps the read at three).
+         * Four cells; the Tatar bigram table's four packed successors per word are all shown
+         * (`TatBigrPrefixIndex.MAX_RESULTS` reads them).
          */
-        const val CELL_COUNT = 3
+        const val CELL_COUNT = 4
         const val NO_CELL = -1
         const val INVALID_POINTER_ID = -1
         /**

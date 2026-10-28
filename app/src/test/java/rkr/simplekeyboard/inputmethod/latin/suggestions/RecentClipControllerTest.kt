@@ -49,8 +49,8 @@ class RecentClipControllerTest {
         val events = mutableListOf<String>()
         var listener: SuggestionTapListener? = null
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            bands.add(listOf(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            bands.add(listOf(first, second, third, fourth))
             events.add("show")
         }
 
@@ -243,7 +243,7 @@ class RecentClipControllerTest {
 
         h.start()
 
-        assertEquals(listOf("сәләм дөнья", null, null), h.strip.lastBand())
+        assertEquals(listOf("сәләм дөнья", null, null, null), h.strip.lastBand())
     }
 
     @Test
@@ -255,7 +255,7 @@ class RecentClipControllerTest {
         h.type(" ")  // a separator change drives the idle re-derivation
 
         assertEquals(
-            listOf("Бу", "Ул", "Ә"),
+            listOf("Бу", "Ул", "Ә", null),
             h.strip.lastBand(),
         )
     }
@@ -269,7 +269,7 @@ class RecentClipControllerTest {
 
         h.start()
 
-        assertEquals(listOf("сәләм дөнья", null, null), h.strip.lastBand())
+        assertEquals(listOf("сәләм дөнья", null, null, null), h.strip.lastBand())
     }
 
     @Test
@@ -282,7 +282,7 @@ class RecentClipControllerTest {
         // The event alone does not repaint an idle empty strip; the next derivation does.
         h.controller.onTextChanged()
 
-        assertEquals(listOf("сәләм", null, null), h.strip.lastBand())
+        assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
     }
 
     @Test
@@ -330,7 +330,7 @@ class RecentClipControllerTest {
 
         h.start()
 
-        assertEquals(listOf("өйгә", null, null), h.strip.lastBand())
+        assertEquals(listOf("өйгә", null, null, null), h.strip.lastBand())
     }
 
     @Test
@@ -338,11 +338,11 @@ class RecentClipControllerTest {
         val h = Harness()
         h.clip("беренче")
         h.start()
-        assertEquals(listOf("беренче", null, null), h.strip.lastBand())
+        assertEquals(listOf("беренче", null, null, null), h.strip.lastBand())
 
         h.clip("икенче")
 
-        assertEquals(listOf("икенче", null, null), h.strip.lastBand())
+        assertEquals(listOf("икенче", null, null, null), h.strip.lastBand())
     }
 
     @Test
@@ -350,7 +350,7 @@ class RecentClipControllerTest {
         val h = Harness()
         h.clip("беренче")
         h.start()
-        assertEquals(listOf("беренче", null, null), h.strip.lastBand())
+        assertEquals(listOf("беренче", null, null, null), h.strip.lastBand())
 
         // A non-text clip (or a cleared clipboard) arrives as null: the cell goes away.
         h.clip(null)
@@ -365,7 +365,7 @@ class RecentClipControllerTest {
         val h = Harness()
         h.clip("сәләм")
         h.start()
-        assertEquals(listOf("сәләм", null, null), h.strip.lastBand())
+        assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
 
         h.controller.onInputViewHidden()
         h.controller.onTextChanged()
@@ -396,7 +396,7 @@ class RecentClipControllerTest {
         val h = Harness()
         h.clip("сәләм")
         h.start()
-        assertEquals(listOf("сәләм", null, null), h.strip.lastBand())
+        assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
 
         h.keyguardLocked = true
         h.tap("сәләм")
@@ -443,7 +443,7 @@ class RecentClipControllerTest {
         val h = Harness()
         h.clip("сәләм")
         h.start()
-        assertEquals(listOf("сәләм", null, null), h.strip.lastBand())
+        assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
 
         // The clip expired while the cell was on screen: the tap commits nothing.
         h.now += RecentClipCell.TTL_MILLIS + 1

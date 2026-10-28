@@ -77,7 +77,7 @@ internal class GlobalTopFrequencyFallback(
 
 /**
  * The production [FallbackWordsFactory]. It builds the pool from the engine's own dictionary, so
- * each engine's fallback stays in its own language. The pool is 8: three cells to fill plus room
+ * each engine's fallback stays in its own language. The pool is 8: four cells to fill plus room
  * for the excluded committed word and the already-shown candidates.
  */
 object GlobalTopFrequencyFallbackFactory : FallbackWordsFactory {

@@ -264,21 +264,21 @@ class ChainMirrorTest(unittest.TestCase):
     def mirror(self) -> "suggest_chain.ChainMirror":
         return suggest_chain.ChainMirror(self.WORDS, self.FREQUENCIES, self.BIGRAMS)
 
-    def test_bigram_successes_come_first_and_truncate_to_three(self) -> None:
-        self.assertEqual(["син", "китап", "дие"], self.mirror().predict_top3("мин"))
+    def test_bigram_successes_come_first_and_truncate_to_four(self) -> None:
+        self.assertEqual(["син", "китап", "дие", "сәләм"], self.mirror().predict_top3("мин"))
 
     def test_forms_fill_free_cells_before_the_fallback(self) -> None:
-        self.assertEqual(["балалар", "мин", "син"], self.mirror().predict_top3("бала"))
+        self.assertEqual(["балалар", "мин", "син", "китап"], self.mirror().predict_top3("бала"))
 
     def test_fallback_excludes_the_committed_word_and_the_shown(self) -> None:
         # No bigrams, no attested forms: the pool fills, minus the head itself.
-        self.assertEqual(["мин", "син", "сәләм"], self.mirror().predict_top3("китап"))
+        self.assertEqual(["мин", "син", "сәләм", "бала"], self.mirror().predict_top3("китап"))
         # One bigram successor; the pool fills the rest minus the successor.
-        self.assertEqual(["мин", "син", "китап"], self.mirror().predict_top3("дие"))
+        self.assertEqual(["мин", "син", "китап", "сәләм"], self.mirror().predict_top3("дие"))
 
     def test_unknown_head_still_gets_the_fallback(self) -> None:
         shown = self.mirror().predict_top3("qqq")
-        self.assertEqual(["мин", "син", "китап"], shown)
+        self.assertEqual(["мин", "син", "китап", "сәләм"], shown)
 
     def test_prefix_top3_plain_ranking(self) -> None:
         mirror = self.mirror()
@@ -291,7 +291,7 @@ class ChainMirrorTest(unittest.TestCase):
     def test_prefix_top3_same_stem_boost(self) -> None:
         mirror = self.mirror()
         # No boost below four code points even for a complete word ("эшлә" continues "эш").
-        self.assertEqual(["эшлә", "эшләү", "эшләмәк"], mirror.prefix_top3("эш"))
+        self.assertEqual(["эшлә", "эшләү", "эшләмәк", "эшләп"], mirror.prefix_top3("эш"))
         # Boosted at the complete-word prefix: suffix continuations first, then the rest.
         self.assertEqual(["эшләү", "эшләп", "эшләмәк"], mirror.prefix_top3("эшлә"))
 
@@ -309,19 +309,19 @@ class CompletionMetricsTest(unittest.TestCase):
         self.assertEqual(
             [
                 ("prefix_cp1_words", "13"),
-                ("prefix_cp1_hits", "11"),
-                ("prefix_top3_cp1_pct", "84.6154"),
+                ("prefix_cp1_hits", "12"),
+                ("prefix_top3_cp1_pct", "92.3077"),
                 ("prefix_cp1_top1_hits", "6"),
                 ("prefix_top1_cp1_pct", "46.1538"),
                 ("prefix_cp2_words", "13"),
-                ("prefix_cp2_hits", "11"),
-                ("prefix_top3_cp2_pct", "84.6154"),
+                ("prefix_cp2_hits", "12"),
+                ("prefix_top3_cp2_pct", "92.3077"),
                 ("prefix_cp2_top1_hits", "7"),
                 ("prefix_top1_cp2_pct", "53.8462"),
                 # "яя" is shorter than three code points and drops out of the cp3 denominator.
                 ("prefix_cp3_words", "12"),
-                ("prefix_cp3_hits", "7"),
-                ("prefix_top3_cp3_pct", "58.3333"),
+                ("prefix_cp3_hits", "8"),
+                ("prefix_top3_cp3_pct", "66.6667"),
                 ("prefix_cp3_top1_hits", "4"),
                 ("prefix_top1_cp3_pct", "33.3333"),
             ],
@@ -466,26 +466,26 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["dict_word_coverage_tokens_pct"], "95.3327")
         self.assertEqual(table["bigram_head_coverage_pct"], "85.0750")
         self.assertEqual(table["nextword_chain_top1_pct"], "7.1972")
-        self.assertEqual(table["nextword_chain_top3_pct"], "12.7336")
+        self.assertEqual(table["nextword_chain_top3_pct"], "14.9712")
         self.assertEqual(table["prefix_top1_cp1_pct"], "0.9782")
         self.assertEqual(table["prefix_top1_cp2_pct"], "5.1581")
         self.assertEqual(table["prefix_top1_cp3_pct"], "15.1875")
         self.assertEqual(table["strip_empty_prefix_pct"], "2.1258")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
-        self.assertEqual(table["ks_pct"], "34.2584")
+        self.assertEqual(table["ks_pct"], "36.7815")
 
     def test_russian_pins(self) -> None:
         table = self.tables["rus"]
         self.assertEqual(table["dict_word_coverage_tokens_pct"], "97.5485")
         self.assertEqual(table["bigram_head_coverage_pct"], "89.7895")
         self.assertEqual(table["nextword_chain_top1_pct"], "7.8594")
-        self.assertEqual(table["nextword_chain_top3_pct"], "15.7412")
+        self.assertEqual(table["nextword_chain_top3_pct"], "18.6520")
         self.assertEqual(table["prefix_top1_cp1_pct"], "1.0370")
         self.assertEqual(table["prefix_top1_cp2_pct"], "6.5611")
         self.assertEqual(table["prefix_top1_cp3_pct"], "17.9440")
         self.assertEqual(table["strip_empty_prefix_pct"], "1.3767")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
-        self.assertEqual(table["ks_pct"], "37.5623")
+        self.assertEqual(table["ks_pct"], "40.3667")
 
 
 if __name__ == "__main__":

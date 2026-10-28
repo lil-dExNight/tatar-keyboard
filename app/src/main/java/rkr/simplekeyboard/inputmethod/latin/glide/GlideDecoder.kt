@@ -633,7 +633,7 @@ class GlideDecoder(
     }
 
     companion object {
-        /** Candidates kept by a decode; the strip displays the leading three. */
+        /** Candidates kept by a decode; the strip displays the leading four. */
         const val TOP_N = 8
 
         /**

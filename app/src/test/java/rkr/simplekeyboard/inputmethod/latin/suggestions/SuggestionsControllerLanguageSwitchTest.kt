@@ -47,13 +47,13 @@ class SuggestionsControllerLanguageSwitchTest {
     // --- Fakes ---------------------------------------------------------------------------------
 
     private class FakeStrip : StripSurface {
-        val shown = mutableListOf<Triple<String, String?, String?>>()
+        val shown = mutableListOf<List<String?>>()
         var hideCount = 0
         var reserveCount = 0
         var visible = false
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            shown.add(Triple(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            shown.add(listOf(first, second, third, fourth))
             visible = true
         }
 
@@ -304,7 +304,7 @@ class SuggestionsControllerLanguageSwitchTest {
         h.callbacks.getValue(russian)
             .onResult(FakeEngine.TOKEN, listOf("слово", "словом"), LookupKind.PREFIX)
         assertEquals(shownBefore + 1, h.strip.shown.size)
-        assertEquals("слово", h.strip.shown.last().first)
+        assertEquals("слово", h.strip.shown.last().first())
     }
 
     @Test

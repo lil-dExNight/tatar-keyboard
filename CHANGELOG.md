@@ -11,6 +11,12 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [Unreleased]
+
+### Changed
+
+- The suggestion strip shows four cells instead of three: the bundled bigram tables always packed four successors per word, and the fourth one is now shown too.
+
 ## [3.9.3] — 2026-10-05
 
 ### Changed

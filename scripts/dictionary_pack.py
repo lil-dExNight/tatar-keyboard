@@ -1122,7 +1122,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     audit.add_argument("--asset", required=True, type=Path)
     audit.add_argument("--queries", required=True, type=Path)
     audit.add_argument("--review", type=Path)
-    audit.add_argument("--top", type=_positive_int, default=3)
+    audit.add_argument("--top", type=_positive_int, default=4)
     audit.add_argument("--reviewer", default=AUTOMATED_REVIEWER)
     audit.add_argument("--review-date", default=AUTOMATED_REVIEW_DATE)
     add_language(audit)

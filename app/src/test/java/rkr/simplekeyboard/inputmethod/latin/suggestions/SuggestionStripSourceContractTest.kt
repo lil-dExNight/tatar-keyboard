@@ -59,9 +59,6 @@ class SuggestionStripSourceContractTest {
             listOf("= Rect(", "= Paint(", "MotionEvent.obtain", "intArrayOf(", "TextUtils.", ".toString()")
                 .forEach { forbidden -> assertFalse("hot path contains $forbidden", hotBody.contains(forbidden)) }
         }
-        assertTrue(viewSource.contains("VIRTUAL_ID_LEFT = 0"))
-        assertTrue(viewSource.contains("VIRTUAL_ID_CENTER = 1"))
-        assertTrue(viewSource.contains("VIRTUAL_ID_RIGHT = 2"))
         assertTrue(viewSource.contains("ExploreByTouchHelper"))
     }
 

@@ -58,8 +58,8 @@ class CursorMoveBandTest {
     private class FakeStrip : StripSurface {
         var cells: List<String> = emptyList()
         var reserveCount = 0
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            cells = listOfNotNull(first, second, third).filter(String::isNotEmpty)
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            cells = listOfNotNull(first, second, third, fourth).filter(String::isNotEmpty)
         }
         override fun reserve() { cells = emptyList(); reserveCount++ }
         override fun hideSuggestions() { cells = emptyList() }
@@ -200,9 +200,9 @@ class CursorMoveBandTest {
     @Test
     fun theThreeReportedPrefixesAllAnswerFromTheShippedRussianDictionary() {
         val h = Harness()
-        assertEquals(listOf("друг", "другой", "друга"), h.type("др"))
-        assertEquals(listOf("друг", "другой", "друга"), h.type("дру"))
-        assertEquals(listOf("другой", "друга", "других"), h.type("друг"))
+        assertEquals(listOf("друг", "другой", "друга", "других"), h.type("др"))
+        assertEquals(listOf("друг", "другой", "друга", "других"), h.type("дру"))
+        assertEquals(listOf("другой", "друга", "других", "другие"), h.type("друг"))
     }
 
     // --- the defect ------------------------------------------------------------------------------
@@ -210,7 +210,7 @@ class CursorMoveBandTest {
     @Test
     fun aCursorMoveThatLeavesTheWordAloneGetsTheBandBack() {
         val h = Harness()
-        assertEquals(listOf("друг", "другой", "друга"), h.type("дру"))
+        assertEquals(listOf("друг", "другой", "друга", "других"), h.type("дру"))
         // The band is blanked the moment the move is seen: what it was painting is no longer bound
         // to the live editor state, and that half is unchanged.
         h.controller.onSelectionChanged()
@@ -220,7 +220,7 @@ class CursorMoveBandTest {
         // same word the dictionary answered a moment ago.
         h.controller.onCursorMoveSettled()
         h.drain()
-        assertEquals(listOf("друг", "другой", "друга"), h.strip.cells)
+        assertEquals(listOf("друг", "другой", "друга", "других"), h.strip.cells)
     }
 
     @Test
@@ -247,7 +247,7 @@ class CursorMoveBandTest {
             before,
             h.requestsMadeFor(PersonalSubtypes.RUSSIAN),
         )
-        assertEquals(listOf("друг", "другой", "друга"), h.strip.cells)
+        assertEquals(listOf("друг", "другой", "друга", "других"), h.strip.cells)
     }
 
     @Test

@@ -49,7 +49,11 @@ RU_BIGRAM_ASSET = (
     ROOT / "app" / "src" / "main" / "assets" / "bigrams" / "russian_bigrams_v1.tatbigr.zlib"
 )
 
-SHOWN_RESULTS = 3
+SHOWN_RESULTS = 4
+
+# The stratum completion metric's prefix length ("cp3"): fixed at three code points by the
+# metric's definition, independent of the strip width.
+STRATUM_PREFIX_CODE_POINTS = 3
 
 # Tatar inflectional surface suffixes: plural, six cases, possessives, post-3sg-possessive
 # case forms, the main verb forms, and the frequent derivational set. Multi-letter only:
@@ -377,10 +381,10 @@ def _strata_metrics(
         cp3_words = 0
         cp3_hits = 0
         for word in words:
-            if len(word) < SHOWN_RESULTS:
+            if len(word) < STRATUM_PREFIX_CODE_POINTS:
                 continue
             cp3_words += 1
-            if word in chain.prefix_top3(word[:SHOWN_RESULTS]):
+            if word in chain.prefix_top3(word[:STRATUM_PREFIX_CODE_POINTS]):
                 cp3_hits += 1
         stratum_pairs = 0
         stratum_hits = 0

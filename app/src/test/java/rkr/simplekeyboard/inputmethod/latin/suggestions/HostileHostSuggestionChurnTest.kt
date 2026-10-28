@@ -41,8 +41,8 @@ class HostileHostSuggestionChurnTest {
         var hideCount = 0
         var visible = false
 
-        override fun showSuggestions(first: String, second: String?, third: String?) {
-            shown.add(listOf(first, second, third))
+        override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
+            shown.add(listOf(first, second, third, fourth))
             visible = true
         }
 
@@ -147,7 +147,7 @@ class HostileHostSuggestionChurnTest {
         h.controller.onTextChanged()
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("китап"), LookupKind.PREFIX)
 
-        assertEquals(listOf("китап", null, null), h.strip.shown.last())
+        assertEquals(listOf("китап", null, null, null), h.strip.shown.last())
         assertTrue(h.strip.visible)
     }
 
@@ -215,6 +215,6 @@ class HostileHostSuggestionChurnTest {
         h.controller.onTextChanged()
         h.engine.isCurrentResult = true
         h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сәләм"), LookupKind.PREFIX)
-        assertEquals(listOf("сәләм", null, null), h.strip.shown.last())
+        assertEquals(listOf("сәләм", null, null, null), h.strip.shown.last())
     }
 }

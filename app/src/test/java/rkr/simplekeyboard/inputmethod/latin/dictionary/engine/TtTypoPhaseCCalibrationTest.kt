@@ -363,15 +363,15 @@ class TtTypoPhaseCCalibrationTest {
             index.lookup(ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8)))
 
         // 2 code points: fuzzy never fires; the exact "сц*" block.
-        assertEquals(listOf("сценарий", "сценарийлар", "сценарист"), strip("сц"))
+        assertEquals(listOf("сценарий", "сценарийлар", "сценарист", "сценарие"), strip("сц"))
         // 3 code points: exact==0, but the tier gate needs >= 4 cp, so the strip stays empty.
         assertEquals(emptyList<String>(), strip("сцл"))
         // 4 code points: the tier fires (exact==0); the "сәлә*" block's frequency leaders fill the
         // strip — no same-length candidate exists at 4 cp.
-        assertEquals(listOf("сәләтле", "сәләт", "сәләтен"), strip("сцлә"))
+        assertEquals(listOf("сәләтле", "сәләт", "сәләтен", "сәләте"), strip("сцлә"))
         // 5 code points: the correction itself leads the strip; the same-length bonus keeps the
         // exact-length "сәләм" above the longer "сәләмәтлек" and "сәләмә" follows it.
-        assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмә"), strip("сцләм"))
+        assertEquals(listOf("сәләм", "сәләмәтлек", "сәләмә", "сәләмәт"), strip("сцләм"))
         // 10 code points: with the empty-range narrowing only positions 0-2 probe (the "сцл*"
         // range is empty, which skips positions >= 3) — 3 x (38 substitutions + 1 deletion +
         // 39 insertions) + 3 transpositions = 237 probes; the sole survivor's own word wins.
@@ -385,7 +385,8 @@ class TtTypoPhaseCCalibrationTest {
      * "спаси(бо)") has zero exact continuations in the Russian asset; under DEFAULT the strip
      * stays empty — while the SAME dictionary under the TATAR policy paints the pinned class-#4
      * strip, proving the pin discriminates. Note the same-length bonus at work: the same-length
-     * words "спаси"/"упаси" outrank the much more frequent continuation "спасибо".
+     * words "спаси"/"упаси" outrank the much more frequent continuation "спасибо", which takes
+     * only the fourth cell.
      */
     @Test
     fun theRussianEngineIsUntouchedByClass4() {
@@ -397,7 +398,7 @@ class TtTypoPhaseCCalibrationTest {
         assertEquals(emptyList<String>(), defaultResult)
         assertEquals(
             "premise: the case discriminates — the TATAR policy paints the class-#4 strip",
-            listOf("спаси", "упаси", "апачи"),
+            listOf("спаси", "упаси", "апачи", "спасибо"),
             russianAsTatar.lookup(typo),
         )
     }
@@ -456,22 +457,22 @@ class TtTypoPhaseCCalibrationTest {
         private const val SEED = 20260727L
 
         // Pins over the committed dictionary and eval set; re-pin when an input changes.
-        private const val PIN_BASE_W5 = 37_599
-        private const val PIN_CAND_W5 = 25_131
+        private const val PIN_BASE_W5 = 43_439
+        private const val PIN_CAND_W5 = 30_074
         private const val PIN_BASE_W5_SUBSET = 98_074
         private const val PIN_CAND_W5_SUBSET = 101_446
         private const val PIN_EVAL_PREFIXES_GE4 = 7_451
         private const val PIN_EXACT_EMPTY = 1_436
-        private const val PIN_CLASS4_FILLED = 1_070
+        private const val PIN_CLASS4_FILLED = 1_071
 
         // Pins of the same-set lift measurement.
-        private const val PIN_C2_BASE_W5_WHOLE = 458
-        private const val PIN_C2_CAND_W5_WHOLE = 25_137
+        private const val PIN_C2_BASE_W5_WHOLE = 532
+        private const val PIN_C2_CAND_W5_WHOLE = 30_083
         private const val PIN_C2_ACTIVE_ROWS = 101_446
-        private const val PIN_C2_BASE_W5_ACTIVE = 452
-        private const val PIN_C2_CAND_W5_ACTIVE = 25_131
-        private const val PIN_C2_BASE_W3_WHOLE = 91
-        private const val PIN_C2_CAND_W3_WHOLE = 93
+        private const val PIN_C2_BASE_W5_ACTIVE = 523
+        private const val PIN_C2_CAND_W5_ACTIVE = 30_074
+        private const val PIN_C2_BASE_W3_WHOLE = 114
+        private const val PIN_C2_CAND_W3_WHOLE = 118
 
         private val neighborTable = E3bTestFixtures.tatarNeighborTable()
         private lateinit var vocabulary: List<String>
