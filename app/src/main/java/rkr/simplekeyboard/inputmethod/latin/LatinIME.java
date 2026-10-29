@@ -1967,9 +1967,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
         mSessionKeyguardLocked = isKeyguardLocked();
 
-        // The first start builds the settings now (onCreate skips the build), ahead of the
-        // hardware-keyboard check and the input-type diff below, and skips the reload further
-        // down: it would rebuild from the same EditorInfo and configuration.
+        // The first start builds the settings now (onCreate skips the build) and skips the
+        // reload below: it would rebuild from the same EditorInfo and configuration.
         final boolean settingsUninitialized = currentSettingsValues == null;
         if (settingsUninitialized) {
             loadSettings();
@@ -1979,13 +1978,17 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final boolean inputTypeChanged = !currentSettingsValues.isSameInputType(editorInfo);
         final boolean isDifferentTextField = !restarting || inputTypeChanged;
 
+        // A field switch or an orientation change leaves the cached values describing the
+        // previous field; reload before the fullscreen and hardware-keyboard checks read them.
+        if (!settingsUninitialized && (isDifferentTextField ||
+                !currentSettingsValues.hasSameOrientation(getResources().getConfiguration()))) {
+            loadSettings();
+            currentSettingsValues = mSettings.getCurrent();
+        }
+
         // The EditorInfo might have a flag that affects fullscreen mode.
         // Note: This call should be done by InputMethodService?
         updateFullscreenMode();
-
-        // ALERT: settings have not been reloaded and there is a chance they may be stale.
-        // In the practice, if it is, we should have gotten onConfigurationChanged so it should
-        // be fine, but this is horribly confusing and must be fixed AS SOON AS POSSIBLE.
 
         // In some cases the input connection has not been reset yet and we can't access it. In
         // this case we will need to call loadKeyboard() later, when it's accessible, so that we
@@ -2009,14 +2012,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
         }
 
-        if (!settingsUninitialized && (isDifferentTextField ||
-                !currentSettingsValues.hasSameOrientation(getResources().getConfiguration()))) {
-            loadSettings();
-        }
         if (isDifferentTextField) {
             mainKeyboardView.closing();
-            currentSettingsValues = mSettings.getCurrent();
-
             switcher.loadKeyboard(editorInfo, currentSettingsValues, getCurrentAutoCapsState(),
                     getCurrentRecapitalizeState());
         } else {

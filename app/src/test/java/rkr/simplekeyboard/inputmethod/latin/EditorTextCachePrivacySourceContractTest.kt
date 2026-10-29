@@ -76,8 +76,7 @@ class EditorTextCachePrivacySourceContractTest {
     fun passwordFieldsAreNeverReReadFromTheEditor() {
         val ime = read(LATIN_IME)
         // The field-start reload: password fields take the clear-instead-of-reload branch, and
-        // the check runs on the fresh EditorInfo (the settings still describe the previous field
-        // at that point).
+        // the check runs on the fresh EditorInfo parameter rather than on the settings.
         val startView = javaBody(ime, "void onStartInputViewInternal(final EditorInfo editorInfo")
         assertTrue(startView.contains("if (isPasswordField(editorInfo))"))
         assertTrue(startView.contains("mInputLogic.clearCaches();"))
