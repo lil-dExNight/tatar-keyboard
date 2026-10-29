@@ -11,7 +11,7 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
-## [Unreleased]
+## [3.10.0] — 2026-10-29
 
 ### Added
 
@@ -22,6 +22,7 @@ These hold for every release and are not repeated in the entries below:
 - Emoji search shows two rows of results while you type.
 - One-handed mode: a tap in the freed dock strip returns the keyboard to full width, a long-press opens the side picker.
 - A debug-build gesture recorder and a static web collector page for the real-gesture corpus (opt-in, discard-by-default, never in release builds).
+- Emoji names are spoken in Tatar on the Tatar layout: the suggestion strip's emoji cell and the emoji search announcements read the curated Tatar names, falling back to Russian where an emoji has no Tatar name of its own (a Tatar word shared by several emoji, such as hearts or clocks, is not used as a name).
 
 ### Changed
 
@@ -33,6 +34,7 @@ These hold for every release and are not repeated in the entries below:
 - Learned word pairs now steer glide typing too: after a word you often pair, the words you usually write next rank higher in glide suggestions.
 - Typing in one language while the strip shows the other now leads with the language of the actual letters: an exact match in the companion language beats letter-soup guesses in the active one (measured 50% → 85% correct-language leads on the mixing set).
 - Glide: fewer accidental glides from fast slips (the arming distance is 1.5 key widths now, measured against a synthetic slip model), and learning a new word no longer stalls the next glide on a full index rebuild.
+- Faster keyboard start: the bundled dictionary and the next-word table no longer go through the same structural check twice per process; the store hands the engine a process-local validation token for the file it just checked.
 - Strip taps (accept, revert, keep-typed, clip, glide alternative) give the same haptic tick as keys.
 - The suggestions row moved to the top of the first settings card.
 
@@ -42,6 +44,8 @@ These hold for every release and are not repeated in the entries below:
 - Next-word prediction no longer goes empty forever when the bigram table fails to open: learned pairs, word forms and the frequency fallback still answer.
 - Glide on Russian `ё`-words (`её`, `неё`) no longer demands a loop the word doesn't have: the loop rule keys on a doubled letter, not a doubled key.
 - Words typed whole but never seen empty at a prefix are now learned anyway: the engine checks the shortest empty prefix after the word completes, so fast typists stop losing their vocabulary.
+- The keyboard no longer crashes on a missing layout resource (it falls back to the QWERTY layout) or on an unknown function key.
+- On a full disk the personal dictionary, learned word pairs and learned emoji no longer rewrite their whole file on every word; a corrupted pending-changes file is quarantined instead of silently dropped.
 
 ## [3.9.3] — 2026-10-05
 

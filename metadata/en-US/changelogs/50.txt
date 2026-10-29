@@ -1,0 +1,5 @@
+• Smarter suggestions: typo recovery for missing, extra and swapped letters; completions use the previous word; your usual sentence openers come first
+• Optional fourth suggestion cell; word suggestions are on by default for new installs
+• Glide typing learns from your word pairs and triggers less often by accident
+• Emoji search shows two rows; emoji names are spoken in Tatar on the Tatar layout
+• Faster start, pause-learning marker on the spacebar, fixes
