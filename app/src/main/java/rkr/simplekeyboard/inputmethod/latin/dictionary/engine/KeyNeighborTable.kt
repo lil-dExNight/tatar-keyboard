@@ -30,9 +30,10 @@ import java.util.Arrays
  * It holds the long-press partners of edit class #1 (from the layout's `moreKeys`) and the node
  * set that serves as the alphabet of edit class #4.
  *
- * The table carries the [subtypeId] it was built for, so the engine can refuse a typo-recovery
- * pass when it does not match the requesting language. Partners are stored in sorted [IntArray]s
- * searched by primitive binary search, so the hot path never boxes a code point.
+ * The table carries the [subtypeId] it was built for, but the engine uses it unconditionally:
+ * variant letters of a foreign alphabet match no dictionary blocks, so sharing the active
+ * layout's table is safe. Partners are stored in sorted [IntArray]s searched by primitive binary
+ * search, so the hot path never boxes a code point.
  */
 class KeyNeighborTable private constructor(
     val subtypeId: String,
