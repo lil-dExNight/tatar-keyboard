@@ -394,6 +394,107 @@ class PersonalBigramStoreWriteTest {
         assertEquals(setOf("сәләм" to "дөнья"), pairsOnDisk(directory).toSet())
     }
 
+    // ---- a failed graduation write is not retried until the flush boundary ----------------------
+
+    @Test
+    fun aFailedGraduationWriteIsNotRetriedUntilTheNextFlush() {
+        val directory = newPersonalDir()
+        val events = mutableListOf<String>()
+        var replaceFails = false
+        val ops = object : RecordingOps(events) {
+            override fun atomicReplace(source: File, destination: File) {
+                if (replaceFails) throw IOException("no space left")
+                super.atomicReplace(source, destination)
+            }
+        }
+        val store = store(directory, ops, RealOpener)
+        store.notePair("сәләм", "дөнья") // creates the salt while writes still work
+        events.clear()
+
+        replaceFails = true
+        repeat(PersonalBigramStore.LEARN_THRESHOLD) { store.notePair("бәйрәм", "котлы") }
+        assertEquals(
+            "the graduation write was attempted once",
+            listOf("create", "file-fsync", "delete"),
+            events.toList(),
+        )
+        assertFalse(destinationFile(directory).isFile)
+        events.clear()
+
+        repeat(2) { store.notePair("бәйрәм", "котлы") }
+        assertEquals("a suppressed write is not even attempted", emptyList<String>(), events.toList())
+
+        replaceFails = false
+        store.flush() // the boundary: the counters reach the disk and the suppression lifts
+        val salt = File(directory, "salt-bigrams.bin").readBytes()
+        val counters =
+            PendingCounters.parse(File(directory, "pending-bigrams-$subtype-s1-f1.bin").readBytes())
+        assertEquals(
+            "four observations were counted, none lost",
+            4,
+            counters.countOf(PendingCounters.keyOfPair(salt, "бәйрәм", "котлы")),
+        )
+
+        events.clear()
+        store.notePair("бәйрәм", "котлы") // the first observation after the boundary retries
+        assertEquals(listOf("create", "file-fsync", "replace", "dir-fsync"), events.toList())
+        assertTrue(store.snapshot.indexOfPair("бәйрәм", "котлы") >= 0)
+    }
+
+    // ---- an unreadable pending file is set aside, with its own notice mark ----------------------
+
+    @Test
+    fun aCorruptPendingFileIsSetAsideAndAnnouncedUntilDelivered() {
+        val directory = newPersonalDir()
+        val writer = store(directory, RecordingOps(), RealOpener)
+        writer.notePair("сәләм", "дөнья")
+        writer.flush()
+        val pendingFile = File(directory, "pending-bigrams-$subtype-s1-f1.bin")
+        assertTrue(pendingFile.isFile)
+        val bytes = pendingFile.readBytes()
+        bytes[0] = 'X'.code.toByte() // the magic no longer matches
+        pendingFile.writeBytes(bytes)
+
+        var notices = 0
+        val store = store(directory, RecordingOps(), RealOpener, quarantineNotice = { notices++ })
+        store.prime()
+
+        assertEquals("the loss is announced on the open that sets the file aside", 1, notices)
+        assertFalse("the corrupt file does not stay where the reader looks", pendingFile.exists())
+        assertArrayEquals(
+            "the bytes are set aside, not destroyed",
+            bytes,
+            File(directory, "pending-bigrams-$subtype-s1-f1.bin.quarantine").readBytes(),
+        )
+        assertTrue(
+            "the durable mark is the pending channel's own",
+            File(directory, "quarantine-notice-bigrams-$subtype-s1-f1-pending.flag").isFile,
+        )
+        assertFalse(
+            "the pairs' own mark stays down: their file is fine",
+            File(directory, "quarantine-notice-bigrams-$subtype-s1-f1.flag").exists(),
+        )
+        assertTrue("learning restarts from empty", store.snapshot.isEmpty)
+
+        // The pending slot holds hashes, not pairs the settings screen could restore.
+        var inspected = false
+        var report: PersonalQuarantineReport? = null
+        store.inspectQuarantine { inspected = true; report = it }
+        assertTrue(inspected)
+        assertNull(report)
+
+        // Across a process restart the mark raises the notice again, until it is delivered.
+        var nextProcess = 0
+        store(directory, RecordingOps(), RealOpener, quarantineNotice = { nextProcess++ }).prime()
+        assertEquals("a notice nobody has taken is still owed", 1, nextProcess)
+
+        store(directory, RecordingOps(), RealOpener).noticeDelivered()
+        assertFalse(File(directory, "quarantine-notice-bigrams-$subtype-s1-f1-pending.flag").exists())
+        var afterDelivery = 0
+        store(directory, RecordingOps(), RealOpener, quarantineNotice = { afterDelivery++ }).prime()
+        assertEquals("a delivered notice is not raised again", 0, afterDelivery)
+    }
+
     // ---- the context-membership gate at graduation ----------------------------------------------
 
     @Test

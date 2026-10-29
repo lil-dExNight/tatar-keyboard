@@ -39,7 +39,10 @@ import java.util.concurrent.Executor
  * Whole-file write only, in a fixed sequence: exclusive temp in the same directory →
  * write → flush → fsync file → RE-VALIDATE the written bytes → atomic replace → fsync directory.
  * A partial temp never becomes the main file; any failure leaves the previous valid file untouched;
- * temp garbage is removed when the store next opens the directory.
+ * temp garbage is removed when the store next opens the directory. A failed write suppresses the
+ * learning path's retries until the next flush boundary or a successful write, so a full disk
+ * costs one failed write per input session, not one per typed word; pending counters keep
+ * accumulating in memory meanwhile.
  *
  * Fail-closed everywhere: a caught exception (including the unlock gate closing the
  * credential-protected path before the first unlock) drops the mutation and leaves the feature
@@ -69,8 +72,14 @@ internal class PersonalDictionaryStore(
     private var loaded = false
     private var pendingCounterFlush = false
 
-    // Set when this session quarantined a file, until the notice has been raised. The durable half
-    // of the same mark is the file [quarantineNoticeFileName] names.
+    // Set by a failed whole-file write, lifted by the next flush boundary or a successful write:
+    // while set, the learning path keeps graduated words in the pending counters instead of
+    // retrying the write on every completion (see [writeWhole]).
+    private var wholeWriteSuppressed = false
+
+    // Set when this session quarantined a file (the dictionary or the pending counters), until
+    // the notice has been raised. The durable halves of the same mark are the files
+    // [quarantineNoticeFileName] and [pendingQuarantineNoticeFileName] name.
     private var justQuarantined = false
 
     // Progress towards learning, as salted truncated hashes. Held in memory and written on the
@@ -129,8 +138,10 @@ internal class PersonalDictionaryStore(
         val noted = pending.note(key)
         if (noted.countOf(key) >= PendingCounters.LEARN_THRESHOLD) {
             // Graduated: it goes into the dictionary itself, and its pending trace goes away.
-            val candidate = entries.upsert(word, normalized)
-            if (writeWhole(candidate)) {
+            // While a failed whole-file write is suppressed, no candidate is built and no write
+            // is attempted: the counter keeps accumulating in memory until the next flush.
+            val candidate = if (wholeWriteSuppressed) null else entries.upsert(word, normalized)
+            if (candidate != null && writeWhole(candidate)) {
                 entries = candidate
                 publish(candidate.toSnapshot(subtypeId), structural = true)
                 pending = noted.without(key)
@@ -284,11 +295,14 @@ internal class PersonalDictionaryStore(
         // a failed erasure.
         val quarantineGone = directory != null &&
             deleted { deleteFile(directory, File(directory, quarantineFileName())) }
-        // The notice mark goes too, but outside the answer below: it holds none of the user's
-        // words, so failing to delete it must not turn "your words are gone" into "the erasure
-        // failed".
+        // The notice marks and the pending quarantine slot go too, but outside the answer below:
+        // the marks hold none of the user's words and the slot only salted hashes that the
+        // deleted salt invalidates, so failing to delete them must not turn "your words are gone"
+        // into "the erasure failed".
         if (directory != null) {
             deleted { deleteFile(directory, File(directory, quarantineNoticeFileName())) }
+            deleted { deleteFile(directory, File(directory, pendingQuarantineNoticeFileName())) }
+            deleted { deleteFile(directory, File(directory, pendingQuarantineFileName())) }
         }
         report(outcome, dictionaryGone && countersGone && saltGone && quarantineGone)
     }
@@ -346,6 +360,7 @@ internal class PersonalDictionaryStore(
         justQuarantined = false
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return@onWorker
         deleted { deleteFile(directory, File(directory, quarantineNoticeFileName())) }
+        deleted { deleteFile(directory, File(directory, pendingQuarantineNoticeFileName())) }
     }
 
     /**
@@ -441,6 +456,8 @@ internal class PersonalDictionaryStore(
      */
     fun flush() = onWorker {
         if (!open()) return@onWorker
+        // The flush boundary lifts the write suppression: the learning path may retry from here.
+        wholeWriteSuppressed = false
         if (pendingCounterFlush && writeWhole(entries)) pendingCounterFlush = false
         if (pendingDirty) {
             pending = pending.prunedForFlush()
@@ -580,35 +597,45 @@ internal class PersonalDictionaryStore(
      * The whole-file write sequence. Returns true only when every step succeeded. On any caught
      * failure the temp is removed and false is returned, leaving the previous file untouched. An
      * uncaught [Error] (a simulated process death) leaves the temp for the next open to discard.
+     *
+     * Every result also drives [wholeWriteSuppressed]: a failure suppresses the learning path's
+     * retries until the next flush boundary, a success lifts the suppression at once. Callers the
+     * user asked directly (add, forget, restore) always attempt their write, so their answer
+     * stays honest.
      */
     private fun writeWhole(candidate: PersonalEntries): Boolean {
         val directory = directoryProvider.personalDirectory()
-        return try {
+        val written = try {
             ensureDirectory(directory)
             cleanupTemps(directory)
             val bytes = candidate.serialize(subtypeId)
             val required = bytes.size.toLong() + FREE_SPACE_RESERVE_BYTES
-            if (spaceProbe.usableBytes(directory) < required) return false
-            val temporary = createExclusiveTemp(directory)
-            try {
-                outputOpener.open(temporary).use { output ->
-                    output.write(bytes)
-                    output.flush()
-                    fileOps.syncFile(output.fd)
-                }
-                validator.validate(temporary, subtypeId)
-                val destination = File(directory, TpersFormat.personalFileName(subtypeId))
-                fileOps.atomicReplace(temporary, destination)
-                fileOps.syncDirectory(directory)
-                writeCount++
-                true
-            } catch (_: Exception) {
-                if (temporary.exists()) runCatching { fileOps.delete(temporary) }
+            if (spaceProbe.usableBytes(directory) < required) {
                 false
+            } else {
+                val temporary = createExclusiveTemp(directory)
+                try {
+                    outputOpener.open(temporary).use { output ->
+                        output.write(bytes)
+                        output.flush()
+                        fileOps.syncFile(output.fd)
+                    }
+                    validator.validate(temporary, subtypeId)
+                    val destination = File(directory, TpersFormat.personalFileName(subtypeId))
+                    fileOps.atomicReplace(temporary, destination)
+                    fileOps.syncDirectory(directory)
+                    writeCount++
+                    true
+                } catch (_: Exception) {
+                    if (temporary.exists()) runCatching { fileOps.delete(temporary) }
+                    false
+                }
             }
         } catch (_: Exception) {
             false
         }
+        wholeWriteSuppressed = !written
+        return written
     }
 
     /**
@@ -637,19 +664,31 @@ internal class PersonalDictionaryStore(
         }
     }
 
-    /** Reads the pending counters once, alongside the dictionary itself. Fail-closed to empty. */
+    /**
+     * Reads the pending counters once, alongside the dictionary itself. Fail-closed to empty; a
+     * file that does not parse is set aside with the dictionary's notice flow (see
+     * [quarantinePending]) instead of being silently dropped.
+     */
     private fun readPending(directory: File) {
-        pending = try {
-            val file = File(directory, pendingFileName())
-            // Size check before the read: a file past MAX_SERIALIZED_BYTES cannot parse, and past
-            // 2 GiB readBytes() throws an OutOfMemoryError, which the catch below does not stop.
-            if (file.isFile && file.length() <= PendingCounters.MAX_SERIALIZED_BYTES) {
-                PendingCounters.parse(file.readBytes())
-            } else {
-                PendingCounters.EMPTY
-            }
+        val file = File(directory, pendingFileName())
+        // Size check before the read: a file past MAX_SERIALIZED_BYTES cannot parse, and past
+        // 2 GiB readBytes() throws an OutOfMemoryError, which the catch below does not stop. A
+        // file rejected by length alone is left in place for the next flush to overwrite: setting
+        // aside possibly gigabytes of garbage would pin that space in the quarantine slot.
+        if (!file.isFile || file.length() > PendingCounters.MAX_SERIALIZED_BYTES) {
+            pending = PendingCounters.EMPTY
+            return
+        }
+        val parsed = try {
+            PendingCounters.parseOrNull(file.readBytes())
         } catch (_: Exception) {
-            PendingCounters.EMPTY
+            null
+        }
+        if (parsed == null) {
+            pending = PendingCounters.EMPTY
+            quarantinePending(directory, file)
+        } else {
+            pending = parsed
         }
     }
 
@@ -715,12 +754,41 @@ internal class PersonalDictionaryStore(
 
     private fun quarantineNoticeFileName(): String = "quarantine-notice-$subtypeId-s1-f1.flag"
 
-    /** Whether the on-disk notice mark exists; false on error. */
+    /** Whether either on-disk notice mark (the dictionary's or the pending counters') exists. */
     private fun quarantineNoticeIsMarked(): Boolean = try {
-        File(directoryProvider.personalDirectory(), quarantineNoticeFileName()).isFile
+        val directory = directoryProvider.personalDirectory()
+        File(directory, quarantineNoticeFileName()).isFile ||
+            File(directory, pendingQuarantineNoticeFileName()).isFile
     } catch (_: Exception) {
         false
     }
+
+    /**
+     * Moves an unreadable pending file into this subtype's single pending quarantine slot and
+     * marks that the user is owed a notice, mirroring [quarantine]. The slot holds only salted
+     * hashes, so the settings screen neither lists nor restores it; [clearAll] removes it.
+     */
+    private fun quarantinePending(directory: File, file: File) {
+        val moved = try {
+            fileOps.atomicReplace(file, File(directory, pendingQuarantineFileName()))
+            fileOps.syncDirectory(directory)
+            true
+        } catch (_: Exception) {
+            false
+        }
+        if (!moved) runCatching { deleteFile(directory, file) }
+        // Marked in both cases, with the pending channel's own mark: sharing the dictionary's
+        // mark would let one channel's delivery spend the other's unshown notice.
+        justQuarantined = true
+        runCatching {
+            writeBytesDurably(directory, File(directory, pendingQuarantineNoticeFileName()), ByteArray(1))
+        }
+    }
+
+    private fun pendingQuarantineFileName(): String = pendingFileName() + QUARANTINE_SUFFIX
+
+    private fun pendingQuarantineNoticeFileName(): String =
+        "quarantine-notice-$subtypeId-s1-f1-pending.flag"
 
     private fun pendingFileName(): String = "pending-$subtypeId-s1-f1.bin"
 

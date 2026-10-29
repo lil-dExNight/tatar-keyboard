@@ -221,9 +221,14 @@ with no counters, no pending hashes and no learning.
   `PendingCounters.LEARN_THRESHOLD` clean observations; until then only a truncated salted SHA-256
   is kept, and it expires.
 - **Writes** rewrite the whole file (temp, fsync, validate, atomic replace, directory fsync). The
-  engine reads an immutable snapshot through a `@Volatile` field.
+  engine reads an immutable snapshot through a `@Volatile` field. A failed whole-file write
+  suppresses the learning path's retries until the next flush boundary or a successful write, so
+  a full disk costs one failed write per input session instead of one per typed word; pending
+  counters keep accumulating in memory meanwhile.
 - **Quarantine.** A file that fails validation is moved aside, not deleted; the settings screen
-  tells the user and can restore what is readable.
+  tells the user and can restore what is readable. A pending-counters file that fails to parse is
+  moved aside the same way, into its own slot with its own notice mark; it holds only salted
+  hashes, so the screen neither lists nor restores it.
 - **Pause learning** (`PREF_INCOGNITO_MODE`) stops all writes; saved entries keep appearing.
 - **Backup restore.** `replaceAll` swaps a store's file for bytes from a backup archive (or deletes
   it) on the store's worker, re-validating first, and re-publishes the snapshot, so an import takes

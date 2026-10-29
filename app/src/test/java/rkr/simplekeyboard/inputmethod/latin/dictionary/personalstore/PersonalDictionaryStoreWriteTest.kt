@@ -20,6 +20,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -340,6 +341,132 @@ class PersonalDictionaryStoreWriteTest {
         assertNoTemp(directory)
     }
 
+    // ---- a failed graduation write is not retried until the flush boundary ----------------------
+
+    @Test
+    fun aFailedGraduationWriteIsNotRetriedUntilTheNextFlush() {
+        val directory = newPersonalDir()
+        val events = mutableListOf<String>()
+        var replaceFails = false
+        val ops = object : RecordingOps(events) {
+            override fun atomicReplace(source: File, destination: File) {
+                if (replaceFails) throw IOException("no space left")
+                super.atomicReplace(source, destination)
+            }
+        }
+        val store = store(directory, ops, RealOpener)
+        store.noteCompletion("сүзләр") // creates the salt while writes still work
+        events.clear()
+
+        replaceFails = true
+        repeat(PendingCounters.LEARN_THRESHOLD) { store.noteCompletion("гүзәлия") }
+        assertEquals(
+            "the graduation write was attempted once",
+            listOf("create", "file-fsync", "delete"),
+            events.toList(),
+        )
+        assertFalse(destinationFile(directory).isFile)
+        events.clear()
+
+        repeat(3) { store.noteCompletion("гүзәлия") }
+        assertEquals("a suppressed write is not even attempted", emptyList<String>(), events.toList())
+
+        replaceFails = false
+        store.flush() // the boundary: the counters reach the disk and the suppression lifts
+        assertEquals("six completions were counted, none lost", 6, pendingCountOnDisk(directory, "гүзәлия"))
+
+        events.clear()
+        store.noteCompletion("гүзәлия") // the first completion after the boundary retries the write
+        assertEquals(listOf("create", "file-fsync", "replace", "dir-fsync"), events.toList())
+        assertTrue(store.snapshot.indexOfNormalized("гүзәлия") >= 0)
+    }
+
+    @Test
+    fun aSuccessfulWriteLiftsTheSuppressionBeforeTheFlush() {
+        val directory = newPersonalDir()
+        val events = mutableListOf<String>()
+        var replaceFails = false
+        val ops = object : RecordingOps(events) {
+            override fun atomicReplace(source: File, destination: File) {
+                if (replaceFails) throw IOException("no space left")
+                super.atomicReplace(source, destination)
+            }
+        }
+        val store = store(directory, ops, RealOpener)
+        store.noteCompletion("сүзләр")
+        replaceFails = true
+        repeat(PendingCounters.LEARN_THRESHOLD) { store.noteCompletion("гүзәлия") }
+        assertFalse(destinationFile(directory).isFile)
+
+        // A write the user asked for is still attempted, and its success lifts the suppression.
+        replaceFails = false
+        store.addManually("абыйлар")
+        assertTrue(destinationFile(directory).isFile)
+
+        events.clear()
+        store.noteCompletion("гүзәлия")
+        assertEquals(
+            "the graduation is retried before any flush",
+            listOf("create", "file-fsync", "replace", "dir-fsync"),
+            events.toList(),
+        )
+        assertTrue(store.snapshot.indexOfNormalized("гүзәлия") >= 0)
+    }
+
+    // ---- an unreadable pending file is set aside, with its own notice mark ----------------------
+
+    @Test
+    fun aCorruptPendingFileIsSetAsideAndAnnouncedUntilDelivered() {
+        val directory = newPersonalDir()
+        val writer = store(directory, RecordingOps(), RealOpener)
+        writer.noteCompletion("сүзләр")
+        writer.flush()
+        val pendingFile = File(directory, "pending-$subtype-s1-f1.bin")
+        assertTrue(pendingFile.isFile)
+        val bytes = pendingFile.readBytes()
+        bytes[0] = 'X'.code.toByte() // the magic no longer matches
+        pendingFile.writeBytes(bytes)
+
+        var notices = 0
+        val store = store(directory, RecordingOps(), RealOpener, notice = PersonalQuarantineNotice { notices++ })
+        store.prime()
+
+        assertEquals("the loss is announced on the open that sets the file aside", 1, notices)
+        assertFalse("the corrupt file does not stay where the reader looks", pendingFile.exists())
+        assertArrayEquals(
+            "the bytes are set aside, not destroyed",
+            bytes,
+            File(directory, "pending-$subtype-s1-f1.bin.quarantine").readBytes(),
+        )
+        assertTrue(
+            "the durable mark is the pending channel's own",
+            File(directory, "quarantine-notice-$subtype-s1-f1-pending.flag").isFile,
+        )
+        assertFalse(
+            "the dictionary's own mark stays down: its file is fine",
+            File(directory, "quarantine-notice-$subtype-s1-f1.flag").exists(),
+        )
+        assertTrue("learning restarts from empty", store.snapshot.isEmpty)
+
+        // The settings screen's contract is untouched: there is no salvaged-word copy to inspect.
+        var inspected = false
+        var report: PersonalQuarantineReport? = null
+        store.inspectQuarantine { inspected = true; report = it }
+        assertTrue(inspected)
+        assertNull("the pending slot holds hashes, not words the screen could restore", report)
+
+        // Across a process restart the mark raises the notice again, until it is delivered.
+        var nextProcess = 0
+        store(directory, RecordingOps(), RealOpener, notice = PersonalQuarantineNotice { nextProcess++ }).prime()
+        assertEquals("a notice nobody has taken is still owed", 1, nextProcess)
+
+        store(directory, RecordingOps(), RealOpener).noticeDelivered()
+        assertFalse(File(directory, "quarantine-notice-$subtype-s1-f1-pending.flag").exists())
+        var afterDelivery = 0
+        store(directory, RecordingOps(), RealOpener, notice = PersonalQuarantineNotice { afterDelivery++ }).prime()
+        assertEquals("a delivered notice is not raised again", 0, afterDelivery)
+    }
+
     // ---- the structure version bumps only when the word set changes ------------------------------
 
     @Test
@@ -459,6 +586,7 @@ class PersonalDictionaryStoreWriteTest {
         spaceProbe: SpaceProbe = SpaceProbe { Long.MAX_VALUE },
         unlockGate: () -> Boolean = { true },
         maxEntries: Int = TpersFormat.MAX_PERSONAL_ENTRIES.toInt(),
+        notice: PersonalQuarantineNotice? = null,
     ): PersonalDictionaryStore = PersonalDictionaryStore(
         subtypeId = subtype,
         directoryProvider = { directory },
@@ -469,10 +597,18 @@ class PersonalDictionaryStoreWriteTest {
         executor = directExecutor,
         unlockGate = unlockGate,
         maxEntries = maxEntries,
+        quarantineNotice = notice,
     )
 
     private fun destinationFile(directory: File) =
         File(directory, TpersFormat.personalFileName(subtype))
+
+    /** The on-disk pending count of [word] (already normalized), keyed with the salt on disk. */
+    private fun pendingCountOnDisk(directory: File, word: String): Int {
+        val salt = File(directory, "salt.bin").readBytes()
+        val counters = PendingCounters.parse(File(directory, "pending-$subtype-s1-f1.bin").readBytes())
+        return counters.countOf(PendingCounters.keyOf(salt, word))
+    }
 
     private fun temps(directory: File): List<File> =
         directory.listFiles { f -> f.name.startsWith(".personal-") && f.name.endsWith(".tmp") }

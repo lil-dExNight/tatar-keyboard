@@ -205,17 +205,23 @@ internal class PendingCounters private constructor(
         }
 
         /** Fail-closed: anything unreadable yields empty counters rather than an exception. */
-        fun parse(bytes: ByteArray): PendingCounters {
-            if (bytes.size < HEADER_SIZE) return EMPTY
+        fun parse(bytes: ByteArray): PendingCounters = parseOrNull(bytes) ?: EMPTY
+
+        /**
+         * The strict half of [parse]: null on anything unreadable, so the store can tell a
+         * corrupt file from empty counters and set the corrupt one aside.
+         */
+        fun parseOrNull(bytes: ByteArray): PendingCounters? {
+            if (bytes.size < HEADER_SIZE) return null
             val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             val magic = ByteArray(MAGIC.length)
             buffer.get(magic)
-            if (String(magic, StandardCharsets.US_ASCII) != MAGIC) return EMPTY
-            if (buffer.short.toInt() != FORMAT_VERSION) return EMPTY
+            if (String(magic, StandardCharsets.US_ASCII) != MAGIC) return null
+            if (buffer.short.toInt() != FORMAT_VERSION) return null
             val count = buffer.short.toInt() and 0xFFFF
             val nextSerial = buffer.long
-            if (count > MAX_PENDING) return EMPTY
-            if (bytes.size != HEADER_SIZE + count * RECORD_SIZE) return EMPTY
+            if (count > MAX_PENDING) return null
+            if (bytes.size != HEADER_SIZE + count * RECORD_SIZE) return null
             val keys = LongArray(count)
             val counts = IntArray(count)
             val serials = LongArray(count)
@@ -223,10 +229,10 @@ internal class PendingCounters private constructor(
                 keys[index] = buffer.long
                 counts[index] = buffer.short.toInt() and 0xFFFF
                 serials[index] = buffer.int.toLong() and 0xFFFFFFFFL
-                if (counts[index] < 1) return EMPTY
-                if (index > 0 && keys[index] <= keys[index - 1]) return EMPTY
+                if (counts[index] < 1) return null
+                if (index > 0 && keys[index] <= keys[index - 1]) return null
             }
-            if (nextSerial < 1 || nextSerial > MAX_NEXT_SERIAL) return EMPTY
+            if (nextSerial < 1 || nextSerial > MAX_NEXT_SERIAL) return null
             return PendingCounters(keys, counts, serials, nextSerial)
         }
 

@@ -57,6 +57,9 @@ internal class PersonalBigramStore(
     private var loaded = false
     private var counterFlushPending = false
 
+    // See PersonalDictionaryStore.wholeWriteSuppressed.
+    private var wholeWriteSuppressed = false
+
     // See PersonalDictionaryStore.justQuarantined.
     private var justQuarantined = false
 
@@ -109,9 +112,12 @@ internal class PersonalBigramStore(
                 pendingDirty = true
                 return@onWorker
             }
-            // Graduated: it goes into the store itself, and its pending trace goes away.
-            val candidate = entries.upsert(normalizedContext, rawWord, normalizedWord, LEARN_THRESHOLD)
-            if (writeWhole(candidate)) {
+            // Graduated: it goes into the store itself, and its pending trace goes away. While a
+            // failed whole-file write is suppressed, no candidate is built and no write is
+            // attempted: the counter keeps accumulating in memory until the next flush.
+            val candidate = if (wholeWriteSuppressed) null
+                else entries.upsert(normalizedContext, rawWord, normalizedWord, LEARN_THRESHOLD)
+            if (candidate != null && writeWhole(candidate)) {
                 entries = candidate
                 snapshot = candidate.toSnapshot(subtypeId)
                 pending = noted.without(key)
@@ -216,9 +222,12 @@ internal class PersonalBigramStore(
             deleted { deleteFile(directory, File(directory, SALT_FILE_NAME)) }
         val quarantineGone = directory != null &&
             deleted { deleteFile(directory, File(directory, quarantineFileName())) }
-        // The notice mark goes too, outside the answer below: it holds none of the user's pairs.
+        // The notice marks and the pending quarantine slot go too, outside the answer below; see
+        // PersonalDictionaryStore.clearAll.
         if (directory != null) {
             deleted { deleteFile(directory, File(directory, quarantineNoticeFileName())) }
+            deleted { deleteFile(directory, File(directory, pendingQuarantineNoticeFileName())) }
+            deleted { deleteFile(directory, File(directory, pendingQuarantineFileName())) }
         }
         report(outcome, storeGone && countersGone && saltGone && quarantineGone)
     }
@@ -258,11 +267,12 @@ internal class PersonalBigramStore(
         return true
     }
 
-    /** Clears the notice mark. See [PersonalDictionaryStore.noticeDelivered]. */
+    /** Clears the notice marks. See [PersonalDictionaryStore.noticeDelivered]. */
     fun noticeDelivered() = onWorker {
         justQuarantined = false
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return@onWorker
         deleted { deleteFile(directory, File(directory, quarantineNoticeFileName())) }
+        deleted { deleteFile(directory, File(directory, pendingQuarantineNoticeFileName())) }
     }
 
     /** Reports what is readable in the quarantined file. See [PersonalDictionaryStore.inspectQuarantine]. */
@@ -369,6 +379,8 @@ internal class PersonalBigramStore(
     /** Writes changed counters and serials to disk. See [PersonalDictionaryStore.flush]. */
     fun flush() = onWorker {
         if (!open()) return@onWorker
+        // The flush boundary lifts the write suppression; see PersonalDictionaryStore.flush.
+        wholeWriteSuppressed = false
         if (counterFlushPending && writeWhole(entries)) counterFlushPending = false
         if (pendingDirty) {
             pending = pending.prunedForFlush()
@@ -465,35 +477,43 @@ internal class PersonalBigramStore(
         snapshot = entries.toSnapshot(subtypeId)
     }
 
-    /** The whole-file write sequence. See `PersonalDictionaryStore.writeWhole`. */
+    /**
+     * The whole-file write sequence. See `PersonalDictionaryStore.writeWhole`; every result also
+     * drives [wholeWriteSuppressed] there and here.
+     */
     private fun writeWhole(candidate: PersonalBigramEntries): Boolean {
         val directory = directoryProvider.personalDirectory()
-        return try {
+        val written = try {
             ensureDirectory(directory)
             cleanupTemps(directory)
             val bytes = candidate.serialize(subtypeId)
             val required = bytes.size.toLong() + FREE_SPACE_RESERVE_BYTES
-            if (spaceProbe.usableBytes(directory) < required) return false
-            val temporary = createExclusiveTemp(directory)
-            try {
-                outputOpener.open(temporary).use { output ->
-                    output.write(bytes)
-                    output.flush()
-                    fileOps.syncFile(output.fd)
-                }
-                validator.validate(temporary, subtypeId)
-                val destination = File(directory, TpersbFormat.personalBigramsFileName(subtypeId))
-                fileOps.atomicReplace(temporary, destination)
-                fileOps.syncDirectory(directory)
-                writeCount++
-                true
-            } catch (_: Exception) {
-                if (temporary.exists()) runCatching { fileOps.delete(temporary) }
+            if (spaceProbe.usableBytes(directory) < required) {
                 false
+            } else {
+                val temporary = createExclusiveTemp(directory)
+                try {
+                    outputOpener.open(temporary).use { output ->
+                        output.write(bytes)
+                        output.flush()
+                        fileOps.syncFile(output.fd)
+                    }
+                    validator.validate(temporary, subtypeId)
+                    val destination = File(directory, TpersbFormat.personalBigramsFileName(subtypeId))
+                    fileOps.atomicReplace(temporary, destination)
+                    fileOps.syncDirectory(directory)
+                    writeCount++
+                    true
+                } catch (_: Exception) {
+                    if (temporary.exists()) runCatching { fileOps.delete(temporary) }
+                    false
+                }
             }
         } catch (_: Exception) {
             false
         }
+        wholeWriteSuppressed = !written
+        return written
     }
 
     /**
@@ -521,18 +541,27 @@ internal class PersonalBigramStore(
         }
     }
 
-    /** Reads the pending counters once, alongside the store itself. Fail-closed to empty. */
+    /**
+     * Reads the pending counters once, alongside the store itself. Fail-closed to empty; a file
+     * that does not parse is set aside (see `PersonalDictionaryStore.readPending`).
+     */
     private fun readPending(directory: File) {
-        pending = try {
-            val file = File(directory, pendingFileName())
-            // Size check before the read; see PersonalDictionaryStore.readPending.
-            if (file.isFile && file.length() <= PendingCounters.MAX_SERIALIZED_BYTES) {
-                PendingCounters.parse(file.readBytes())
-            } else {
-                PendingCounters.EMPTY
-            }
+        val file = File(directory, pendingFileName())
+        // Size check before the read; see PersonalDictionaryStore.readPending.
+        if (!file.isFile || file.length() > PendingCounters.MAX_SERIALIZED_BYTES) {
+            pending = PendingCounters.EMPTY
+            return
+        }
+        val parsed = try {
+            PendingCounters.parseOrNull(file.readBytes())
         } catch (_: Exception) {
-            PendingCounters.EMPTY
+            null
+        }
+        if (parsed == null) {
+            pending = PendingCounters.EMPTY
+            quarantinePending(directory, file)
+        } else {
+            pending = parsed
         }
     }
 
@@ -584,12 +613,35 @@ internal class PersonalBigramStore(
 
     private fun quarantineNoticeFileName(): String = "quarantine-notice-bigrams-$subtypeId-s1-f1.flag"
 
-    /** Whether the on-disk notice mark exists; false on error. */
+    /** Whether either on-disk notice mark exists; false on error. */
     private fun quarantineNoticeIsMarked(): Boolean = try {
-        File(directoryProvider.personalDirectory(), quarantineNoticeFileName()).isFile
+        val directory = directoryProvider.personalDirectory()
+        File(directory, quarantineNoticeFileName()).isFile ||
+            File(directory, pendingQuarantineNoticeFileName()).isFile
     } catch (_: Exception) {
         false
     }
+
+    /** Sets aside an unreadable pending file. See `PersonalDictionaryStore.quarantinePending`. */
+    private fun quarantinePending(directory: File, file: File) {
+        val moved = try {
+            fileOps.atomicReplace(file, File(directory, pendingQuarantineFileName()))
+            fileOps.syncDirectory(directory)
+            true
+        } catch (_: Exception) {
+            false
+        }
+        if (!moved) runCatching { deleteFile(directory, file) }
+        justQuarantined = true
+        runCatching {
+            writeBytesDurably(directory, File(directory, pendingQuarantineNoticeFileName()), ByteArray(1))
+        }
+    }
+
+    private fun pendingQuarantineFileName(): String = pendingFileName() + QUARANTINE_SUFFIX
+
+    private fun pendingQuarantineNoticeFileName(): String =
+        "quarantine-notice-bigrams-$subtypeId-s1-f1-pending.flag"
 
     private fun pendingFileName(): String = "pending-bigrams-$subtypeId-s1-f1.bin"
 
