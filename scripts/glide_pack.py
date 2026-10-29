@@ -2,7 +2,8 @@
 """Generate the deterministic synthetic glide-gesture set that calibrates the glide decoder.
 
 Input: the Tatar layout (``rows_tatar.xml``, ``values/config.xml``; x edges via ``typo_pack.py``),
-the bundled Tatar dictionary (pins from ``typo_pack.py``) and ``tt_eval_sentences.txt``.
+the bundled Tatar dictionary (pins read from the storage contract by ``typo_pack.py``) and
+``tt_eval_sentences.txt``.
 Output: one ``word<TAB>x0,y0,t0;x1,y1,t1;...`` UTF-8/LF row per selected word, byte-identical
 for the same inputs. All arithmetic is integer-exact, so the JVM calibration test regenerates
 the same bytes; the SHA-256 pins in ``tests/glide_pack/`` and that test are the contract.
@@ -36,7 +37,7 @@ def _load_typo_pack():
 
 typo_pack = _load_typo_pack()
 
-# Dictionary pins are inherited from typo_pack (the bundled Tatar dictionary).
+# Dictionary pins, read by typo_pack from the storage contract (the bundled Tatar dictionary).
 EXPECTED_ASSET_SHA256 = typo_pack.EXPECTED_ASSET_SHA256
 EXPECTED_RAW_SHA256 = typo_pack.EXPECTED_RAW_SHA256
 EXPECTED_ENTRY_COUNT = typo_pack.EXPECTED_ENTRY_COUNT

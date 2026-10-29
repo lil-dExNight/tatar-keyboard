@@ -129,7 +129,8 @@ class GlideGoldenExportTest {
         val bytes = rendered.toString().toByteArray(Charsets.UTF_8)
         val sha = sha256(bytes)
         if (geo.id == "fixture-tt") {
-            // The generator mirror must reproduce the pinned calibration set byte for byte.
+            // The generator mirror must reproduce the pinned calibration set byte for byte;
+            // the asset rebuild rewrites the pins (scripts/rebuild_assets.py).
             assertEquals(4563, words.size)
             assertEquals(11461325, bytes.size)
             assertEquals("eeae70f29590cb72021cb576a0520b808ab5bc83570ebf60abb05462828c1677", sha)

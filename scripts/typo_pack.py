@@ -2,7 +2,8 @@
 """Generate deterministic typo sets (edit classes #1-#4) for calibrating typo recovery.
 
 Input: the Tatar layout (``res/xml/rowkeys_tatar*.xml``; class #2 also reads ``rows_tatar.xml``
-and ``values/config.xml``) and the bundled dictionary ``tatar_top100k_v1.tdict.zlib`` (pinned).
+and ``values/config.xml``) and the bundled dictionary ``tatar_top100k_v1.tdict.zlib`` (its pins
+are read from ``DictionaryStorageContracts.kt``).
 Output: one ``original<TAB>typo_prefix`` UTF-8/LF row per eligible word, byte-identical for the
 same inputs; every choice is a function of a fixed seed and the word. No key pair is hard-coded.
 The JVM calibration tests apply the same selection rule (classes #1 and #4) to the same asset.
@@ -26,17 +27,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence, TextIO
 
-
-# --- Pinned input identity: the bundled Tatar dictionary asset. -----------------------
-# These match rkr...storage.DictionaryArtifactSpec.TATAR_TOP100K_V1. The SHA-256 values are
-# the check; the entry count is a readable cross-check.
-EXPECTED_ASSET_SHA256 = (
-    "1597715c5470fdd8175efbfbf2b2b7bb952330213d851230de95da43341fb7e9"
-)
-EXPECTED_RAW_SHA256 = (
-    "10337a8b073baaebd7baa530718dba55a360bf2be29d7e3aae17ddd31c615d00"
-)
-EXPECTED_ENTRY_COUNT = 110_000
 
 # --- Deterministic-selection knobs. -----------------------------------------------------
 # The seed is fixed; changing it changes every typo set and the JVM tests that mirror them.
@@ -79,6 +69,72 @@ class TypoPackError(ValueError):
 
 class TypoGuardrailError(TypoPackError):
     """A guardrail breach (exit 4)."""
+
+
+# --- Pinned input identity: the bundled Tatar dictionary asset. -----------------------
+# The pins live in the storage contract (the single source of truth the asset rebuild
+# rewrites) and are read from it here. The names stay module level so tests can patch them.
+_CONTRACT = (
+    Path(__file__).resolve().parents[1]
+    / "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/dictionary/storage"
+    / "DictionaryStorageContracts.kt"
+)
+_CONTRACT_SPEC = "TATAR_TOP100K_V1"
+# The marker protocol of scripts/rebuild_assets.py: pinned spec blocks sit between these lines.
+_PINS_MARKER_OPEN = "// <generated pins>"
+_PINS_MARKER_CLOSE = "// </generated pins>"
+
+
+def _tatar_dictionary_pins(contract: Path = _CONTRACT) -> tuple[str, str, int]:
+    """(asset SHA-256, raw SHA-256, entry count) of the Tatar dictionary, from the contract."""
+    try:
+        text = contract.read_text(encoding="utf-8")
+    except OSError as error:
+        raise TypoPackError(f"cannot read the storage contract {contract}: {error}") from error
+    regions: list[tuple[int, int]] = []
+    open_end: int | None = None
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped == _PINS_MARKER_OPEN:
+            if open_end is not None:
+                raise TypoPackError(f"nested pins marker in {contract}")
+            open_end = offset + len(line)
+        elif stripped == _PINS_MARKER_CLOSE:
+            if open_end is None:
+                raise TypoPackError(f"unpaired pins marker in {contract}")
+            regions.append((open_end, offset))
+            open_end = None
+        offset += len(line)
+    if open_end is not None:
+        raise TypoPackError(f"unclosed pins marker in {contract}")
+    marked = [
+        text[start:end]
+        for start, end in regions
+        if f"val {_CONTRACT_SPEC} = DictionaryArtifactSpec(" in text[start:end]
+    ]
+    if len(marked) != 1:
+        raise TypoPackError(
+            f"{_CONTRACT_SPEC}: expected exactly one marked spec block in {contract}, "
+            f"found {len(marked)}"
+        )
+    block = marked[0]
+
+    def field(pattern: str) -> str:
+        matches = re.findall(pattern, block)
+        if len(matches) != 1:
+            raise TypoPackError(
+                f"{_CONTRACT_SPEC}: expected one match of {pattern!r}, found {len(matches)}"
+            )
+        return matches[0]
+
+    asset_sha256 = field(r'expectedCompressedSha256\s*=\s*"([0-9a-f]{64})"')
+    raw_sha256 = field(r'expectedRawSha256\s*=\s*"([0-9a-f]{64})"')
+    entry_count = int(field(r"expectedEntryCount\s*=\s*([\d_]+)").replace("_", ""))
+    return asset_sha256, raw_sha256, entry_count
+
+
+EXPECTED_ASSET_SHA256, EXPECTED_RAW_SHA256, EXPECTED_ENTRY_COUNT = _tatar_dictionary_pins()
 
 
 # --------------------------------------------------------------------------------------

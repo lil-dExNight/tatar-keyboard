@@ -1462,8 +1462,9 @@ class GlideRecoveryCalibrationTest {
             }
         }
 
-        // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts). The
-        // set carries both variants of every doubled word (rows outnumber words).
+        // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts; the
+        // asset rebuild rewrites both). The set carries both variants of every doubled word
+        // (rows outnumber words).
         private const val SET_SIZE = 4563
         private const val SET_BYTES = 11461325
         private const val SET_SHA256 =

@@ -96,6 +96,7 @@ data class DictionaryArtifactSpec(
          * makes every device that already inflated this file inflate it again.
          */
         @JvmField
+        // <generated pins>
         val TATAR_TOP100K_V1 = DictionaryArtifactSpec(
             family = "tatar_top100k",
             languageTag = PersonalSubtypes.TATAR_RU,
@@ -113,6 +114,7 @@ data class DictionaryArtifactSpec(
             sentStartAssetPath = "dictionaries/tatar_sentstart_v1.txt",
             personalAlphabet = PersonalSubtypes.TATAR_RU_ALPHABET,
         )
+        // </generated pins>
 
         /**
          * The Russian dictionary, in its own family and directory so the Tatar file is neither
@@ -122,6 +124,7 @@ data class DictionaryArtifactSpec(
          * one; for a shipped asset the exact SHA-256 match is the real guard.
          */
         @JvmField
+        // <generated pins>
         val RUSSIAN_TOP100K_V1 = DictionaryArtifactSpec(
             family = "russian_top100k",
             languageTag = PersonalSubtypes.RUSSIAN,
@@ -139,6 +142,7 @@ data class DictionaryArtifactSpec(
             sentStartAssetPath = "dictionaries/russian_sentstart_v1.txt",
             personalAlphabet = PersonalSubtypes.RUSSIAN_ALPHABET,
         )
+        // </generated pins>
 
         /**
          * Every language the app ships, newest last. Callers resolve dictionaries and next-word

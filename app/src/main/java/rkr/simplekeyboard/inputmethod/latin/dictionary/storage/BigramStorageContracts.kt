@@ -82,6 +82,7 @@ data class BigramArtifactSpec(
         // The pins between the marker pairs are rewritten by scripts/rebuild_assets.py.
         /** The Tatar bigram table; its pinned sizes, SHA-256 values and head count follow. */
         @JvmField
+        // <generated pins>
         val TATAR_BIGRAMS_V1 = BigramArtifactSpec(
             family = "tatar_bigrams",
             generation = 1,
@@ -99,9 +100,11 @@ data class BigramArtifactSpec(
                 "10337a8b073baaebd7baa530718dba55a360bf2be29d7e3aae17ddd31c615d00",
             expectedHeadCount = 12_609,
         )
+        // </generated pins>
 
         /** The Russian bigram table, in its own family and directory; pins follow. */
         @JvmField
+        // <generated pins>
         val RUSSIAN_BIGRAMS_V1 = BigramArtifactSpec(
             family = "russian_bigrams",
             generation = 1,
@@ -119,6 +122,7 @@ data class BigramArtifactSpec(
                 "f05499a3b4c3c2811c6ee8e9084dfaf472951a289a20dde2ab8cb098cb5a15b2",
             expectedHeadCount = 9_998,
         )
+        // </generated pins>
     }
 }
 

@@ -404,7 +404,7 @@ class CommittedInputsSmokeTest(unittest.TestCase):
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_real_build_matches_recorded_set_identity(self) -> None:
         typo_set, neighbor_map = pack.generate(DICTIONARY, LAYOUT_DIR)
-        # The Kotlin calibration test asserts the same values. A dictionary rebuild changes them.
+        # The Kotlin calibration test asserts the same values; the asset rebuild rewrites both.
         self.assertEqual(typo_set.size, 96079)
         self.assertEqual(
             typo_set.sha256,
@@ -705,7 +705,7 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_class1_class2_class3_recorded_identities(self) -> None:
-        # A dictionary rebuild changes all three identities; a geometry model change affects
+        # A dictionary rebuild rewrites all three identities; a geometry model change affects
         # only class #2 (classes #1 and #3 do not involve geometry).
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1)
         self.assertEqual(one.size, 96079)

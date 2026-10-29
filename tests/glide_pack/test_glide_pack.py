@@ -398,8 +398,9 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         selected = pack.select_words(words, EVAL_WORDS, letters)
         context_pairs = pack.select_context_pairs(words, EVAL_WORDS, letters)
         _, data = pack.generate_set(selected, rects, aliases=aliases, context_pairs=context_pairs)
-        # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values.
-        # The set carries both variants of every doubled word, so there are more rows than words.
+        # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values; the
+        # asset rebuild rewrites both. The set carries both variants of every doubled word, so
+        # there are more rows than words.
         self.assertEqual(len(selected), 4563)
         self.assertEqual(len(data), 11461325)
         self.assertEqual(sha256_bytes(data), "eeae70f29590cb72021cb576a0520b808ab5bc83570ebf60abb05462828c1677")

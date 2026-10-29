@@ -129,7 +129,7 @@ class TtTypoPhaseCCalibrationTest {
         // The alphabet of the offline model is exactly the engine-side node set.
         assertEquals(39, neighborTable.nodes.size)
         // Identities of `python3 scripts/typo_pack.py build --edit-class 4 [--prefix-code-points 5]`
-        // on the committed 110k asset.
+        // on the committed asset; the asset rebuild rewrites them (scripts/rebuild_assets.py).
         val class4w3 = buildSubstitutionSet(3)
         assertEquals(109_647, class4w3.rows.size)
         assertEquals("6412d308bb4ec7990c659bc1166c01a6eeded62db60b77ed5e669ed26c911eb4", class4w3.sha256)

@@ -96,9 +96,15 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    dictionaries with the `BIGRAMS` parameters (head count, successors per head, extra heads,
    training corpora). Change these parameters only together with a rebuild.
 4. **Pins.** Each asset is measured, and its pins are rewritten in
-   `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. There is one atomic write
+   `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`, between the
+   `// <generated pins>` marker pairs of each spec block. There is one atomic write
    per file, and the values are read back afterwards.
-5. **Check.** The `--check` procedure runs over all four assets.
+5. **Calibration pins.** The typo-recovery and glide calibration sets are deterministic
+   functions of the Tatar dictionary, so their identities change with it. The rebuild
+   regenerates the sets and rewrites the pinned identities in `tests/typo_pack/`,
+   `tests/glide_pack/` and the JVM calibration tests (`E3aRecoveryCalibrationTest`,
+   `TtTypoPhaseCCalibrationTest`, `GlideRecoveryCalibrationTest`, `GlideGoldenExportTest`).
+6. **Check.** The `--check` procedure runs over all four assets.
 
 The raw tables and the JSON reports go to `--work-dir`, which defaults to
 `build/rebuild_assets/`.
@@ -151,13 +157,12 @@ dictionary. When a rebuild changes these counts, update the file and its `reason
 
 ## Pins outside the storage contracts
 
-`rebuild_assets.py` rewrites only the two storage contracts. After a Tatar dictionary rebuild,
-you also need to update these by hand:
+The storage contracts are the single source of truth for the dictionary pins:
+`scripts/typo_pack.py` reads the Tatar pins from `DictionaryStorageContracts.kt`, and
+`glide_pack.py` reuses them. The typo-set and glide-set identities in `tests/typo_pack/`,
+`tests/glide_pack/` and the JVM calibration tests are regenerated and rewritten by the rebuild
+itself (step 5 above). What a Tatar dictionary rebuild still leaves to you:
 
-- `EXPECTED_ASSET_SHA256` and `EXPECTED_RAW_SHA256` in `scripts/typo_pack.py`
-  (`glide_pack.py` reuses them);
-- the recorded typo-set and glide-set identities in `tests/typo_pack/`, `tests/glide_pack/` and
-  the JVM calibration tests that regenerate these sets;
 - the sentence-start tables, if a word left the dictionary (`*SentStartAssetTest` checks that
   every word is in it).
 
@@ -219,7 +224,7 @@ runs the same runner.
 ## After a rebuild
 
 1. `python3 scripts/rebuild_assets.py --check --allow-known-drift` passes.
-2. Update the pins outside the contracts (above) and `known_asset_drift.json` if needed.
+2. Update `known_asset_drift.json` if the head drift changed.
 3. Run the gates from `AGENTS.md`: JVM tests, python tests, `lintRelease`, `check-no-internet.sh`,
    and the release APK size limit.
 4. Update the `NOTICE.txt` next to the asset if its sources changed.

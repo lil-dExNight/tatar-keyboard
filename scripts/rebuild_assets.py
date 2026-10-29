@@ -5,7 +5,9 @@ Inputs not in the repo: --baseline DIR (the two 1.8.4 dictionary assets, extract
 and --corpus-dir DIR (the corpus files named in BIGRAMS and WORDFORM_FREQUENCY_SOURCES, whose
 size and SHA-256 are pinned in data/corpus-manifest.json and verified before any step). Steps:
 Tatar word forms, dict_accept pack, bigram_asset_pack pack, pin rewrite in the Kotlin storage
-contracts, then --check. --only tatar|russian rebuilds one side; the other must stay identical.
+contracts (between the `// <generated pins>` markers), regeneration of the Tatar calibration
+sets (typo recovery, glide) with a pin rewrite in their python and JVM tests, then --check.
+--only tatar|russian rebuilds one side; the other must stay identical.
 --check compares assets with pins, bigram heads with dictionaries, and the corpus manifest with
 the registry (and with the files, if --corpus-dir is given); head drift passes only with
 --allow-known-drift and an exact match in known_asset_drift.json. Exit: 0 ok, 1 mismatch,
@@ -338,32 +340,69 @@ class ContractError(ValueError):
     """The Kotlin contract file does not have the expected structure."""
 
 
-def _spec_block(text: str, spec: str, kind: str) -> tuple[int, int]:
-    """Return [start, end) of the `val <spec> = <kind>(...)` block in the contract text.
+# The pinned spec blocks in the contracts sit between these marker lines; the rewrite touches
+# only the pin literals inside a pair, so reformatting outside or inside the markers (indents,
+# line breaks, trailing commas) is harmless. A missing or duplicated marker fails closed.
+PINS_MARKER_OPEN = "// <generated pins>"
+PINS_MARKER_CLOSE = "// </generated pins>"
 
-    The block ends at a closing parenthesis indented by 8 spaces, as all specs are written.
-    Anything other than exactly one match means the file layout changed, so it raises.
+
+def _pin_regions(text: str) -> list[tuple[int, int]]:
+    """[start, end) spans between the marker lines. Markers must pair up without nesting."""
+    regions: list[tuple[int, int]] = []
+    open_end: int | None = None
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped == PINS_MARKER_OPEN:
+            if open_end is not None:
+                raise ContractError("вложенный маркер пинов")
+            open_end = offset + len(line)
+        elif stripped == PINS_MARKER_CLOSE:
+            if open_end is None:
+                raise ContractError("закрывающий маркер пинов без открывающего")
+            regions.append((open_end, offset))
+            open_end = None
+        offset += len(line)
+    if open_end is not None:
+        raise ContractError("открывающий маркер пинов без закрывающего")
+    return regions
+
+
+def _spec_block(text: str, spec: str, kind: str) -> tuple[int, int]:
+    """Return [start, end) of the marked region holding the `val <spec> = <kind>(...)` block.
+
+    Fails closed: the val must appear exactly once and sit inside a marker pair, and every
+    marker pair must wrap exactly one block.
     """
-    matches = list(
-        re.finditer(rf"val {spec} = {kind}\(.*?\n        \)", text, re.DOTALL)
-    )
-    if len(matches) != 1:
-        raise ContractError(f"{spec}: ожидался ровно один блок {kind}, найдено {len(matches)}")
-    return matches[0].start(), matches[0].end()
+    targets = list(re.finditer(rf"val {spec} = {kind}\(", text))
+    if len(targets) != 1:
+        raise ContractError(f"{spec}: ожидался ровно один блок {kind}, найдено {len(targets)}")
+    regions = _pin_regions(text)
+    enclosing = [region for region in regions if region[0] <= targets[0].start() < region[1]]
+    if len(enclosing) != 1:
+        raise ContractError(f"{spec}: блок {kind} не стоит между маркерами пинов")
+    for start, end in regions:
+        blocks = re.findall(r"val \w+ = \w+\(", text[start:end])
+        if len(blocks) != 1:
+            raise ContractError(
+                f"между маркерами пинов ожидался ровно один блок, найдено {len(blocks)}"
+            )
+    return enclosing[0]
 
 
 def _read_number(block: str, field: str) -> int:
-    match = re.search(rf"{field} = ([\d_]+),", block)
-    if match is None:
-        raise ContractError(f"поле {field} не найдено в блоке спецификации")
-    return int(match.group(1).replace("_", ""))
+    matches = re.findall(rf"\b{field}\s*=\s*([\d_]+)", block)
+    if len(matches) != 1:
+        raise ContractError(f"поле {field}: ожидалось ровно одно совпадение, найдено {len(matches)}")
+    return int(matches[0].replace("_", ""))
 
 
 def _read_sha(block: str, field: str) -> str:
-    match = re.search(rf'{field} =\s*"([0-9a-f]{{64}})"', block)
-    if match is None:
-        raise ContractError(f"поле {field} не найдено в блоке спецификации")
-    return match.group(1)
+    matches = re.findall(rf'\b{field}\s*=\s*"([0-9a-f]{{64}})"', block)
+    if len(matches) != 1:
+        raise ContractError(f"поле {field}: ожидалось ровно одно совпадение, найдено {len(matches)}")
+    return matches[0]
 
 
 def read_pins(
@@ -385,8 +424,10 @@ def read_pins(
 
 
 def _replace_number(block: str, field: str, value: int) -> str:
+    # Only the literal is rewritten; whitespace and line breaks around it are kept. The Kotlin
+    # underscore grouping of the new value follows Python's f-string style (1_311_438).
     block, count = re.subn(
-        rf"({field} = )[\d_]+(,)", rf"\g<1>{value:_}\g<2>", block, count=1
+        rf"(\b{field}\s*=\s*)[\d_]+", rf"\g<1>{value:_}", block
     )
     if count != 1:
         raise ContractError(f"поле {field} не заменено в блоке спецификации")
@@ -394,10 +435,10 @@ def _replace_number(block: str, field: str, value: int) -> str:
 
 
 def _replace_sha(block: str, field: str, value: str) -> str:
-    # The file has a newline and indent between `=` and the hash string; \s* in the first
-    # group keeps them, so only the literal itself is rewritten.
+    # Only the literal is rewritten; whatever whitespace or line break stands between `=` and
+    # the hash string is kept.
     block, count = re.subn(
-        rf'({field} =\s*)"[0-9a-f]{{64}}"(,)', rf'\g<1>"{value}"\g<2>', block, count=1
+        rf'(\b{field}\s*=\s*)"[0-9a-f]{{64}}"', rf'\g<1>"{value}"', block
     )
     if count != 1:
         raise ContractError(f"поле {field} не заменено в блоке спецификации")
@@ -772,6 +813,234 @@ def run_check(
     return 1 if failed else 0
 
 
+# --- calibration set pins ---------------------------------------------------------------------
+
+# The typo-recovery and glide calibration sets are deterministic functions of the Tatar
+# dictionary, the layout and the seeds, so a Tatar dictionary rebuild changes their identities.
+# The identities are pinned in tests/typo_pack/, tests/glide_pack/ and the JVM calibration
+# tests; the rebuild regenerates the sets and rewrites the pins, leaving no hand step.
+
+LAYOUT_DIR = Path("app/src/main/res/xml")
+GLIDE_EVAL_SENTENCES = Path("app/src/test/resources/tt_eval_sentences.txt")
+
+# The (edit class, prefix window) sets the python tests and the JVM calibration tests pin.
+CALIBRATION_TYPO_SETS = ((1, 3), (2, 3), (3, 3), (4, 3), (1, 5), (2, 5), (4, 5))
+
+# Calibration test files the rebuild rewrites, relative to the repository root.
+TYPO_PACK_TEST = Path("tests/typo_pack/test_typo_pack.py")
+GLIDE_PACK_TEST = Path("tests/glide_pack/test_glide_pack.py")
+JVM_TESTS_DIR = Path("app/src/test/java/rkr/simplekeyboard/inputmethod/latin")
+E3A_TEST = JVM_TESTS_DIR / "dictionary/engine/E3aRecoveryCalibrationTest.kt"
+PHASE_C_TEST = JVM_TESTS_DIR / "dictionary/engine/TtTypoPhaseCCalibrationTest.kt"
+GLIDE_CALIBRATION_TEST = JVM_TESTS_DIR / "glide/GlideRecoveryCalibrationTest.kt"
+GLIDE_GOLDEN_TEST = JVM_TESTS_DIR / "golden/GlideGoldenExportTest.kt"
+
+
+@dataclass(frozen=True)
+class CalibrationPins:
+    """Identities of the deterministic calibration sets over the Tatar dictionary.
+
+    typo maps (edit class, prefix window) to (row count, set SHA-256). variant_p95 belongs to
+    the class-1, 3-code-point set. The glide triple is the selected word count, the set byte
+    count and its SHA-256.
+    """
+
+    typo: dict[tuple[int, int], tuple[int, str]]
+    variant_p95: int
+    glide_words: int
+    glide_bytes: int
+    glide_sha256: str
+
+
+def measure_calibration_pins(root: Path, dictionary: Pins) -> CalibrationPins:
+    """Regenerate the Tatar calibration sets over the fresh dictionary and return their pins.
+
+    The dictionary pins come from the caller (the just-measured asset), not from the
+    generators' defaults, so the check works on any --root.
+    """
+    # Imported lazily: the generators read the contract of their own checkout at import time,
+    # which is pointless on a fake --root, and --check never needs them.
+    import glide_pack
+    import typo_pack
+
+    asset = root / next(d.asset for d in DICTIONARIES if d.tag == "tat")
+    layout = root / LAYOUT_DIR
+    expected = {
+        "expected_asset_sha256": dictionary.compressed_sha256,
+        "expected_raw_sha256": dictionary.raw_sha256,
+        "expected_entry_count": dictionary.count,
+    }
+    typo: dict[tuple[int, int], tuple[int, str]] = {}
+    variant_p95 = 0
+    for edit_class, window in CALIBRATION_TYPO_SETS:
+        typo_set, _ = typo_pack.generate(
+            asset, layout, prefix_code_points=window, edit_class=edit_class, **expected
+        )
+        typo[(edit_class, window)] = (typo_set.size, typo_set.sha256)
+        if (edit_class, window) == (1, 3):
+            variant_p95 = typo_set.variant_p95
+    words = typo_pack.read_dictionary_words(asset, **expected)
+    rects = glide_pack.read_glide_geometry(layout)
+    aliases = glide_pack.read_layout_aliases(layout, rects)
+    letters = frozenset(glide_pack.letters_by_code_point(rects, aliases))
+    eval_sentences = root / GLIDE_EVAL_SENTENCES
+    selected = glide_pack.select_words(words, eval_sentences, letters)
+    context_pairs = glide_pack.select_context_pairs(words, eval_sentences, letters)
+    _rendered, data = glide_pack.generate_set(
+        selected, rects, aliases=aliases, context_pairs=context_pairs
+    )
+    return CalibrationPins(
+        typo=typo,
+        variant_p95=variant_p95,
+        glide_words=len(selected),
+        glide_bytes=len(data),
+        glide_sha256=hashlib.sha256(data).hexdigest(),
+    )
+
+
+def _reformat_like(old: str, value: int) -> str:
+    """The integer in the style of the literal it replaces: underscores iff it had them."""
+    return f"{value:_}" if "_" in old else str(value)
+
+
+def _function_region(text: str, name: str) -> tuple[int, int]:
+    """[start, end) of the `    def <name>(` method through the line before the next def/class."""
+    matches = list(re.finditer(rf"\n    def {name}\(", text))
+    if len(matches) != 1:
+        raise ContractError(f"{name}: ожидался ровно один метод, найдено {len(matches)}")
+    start = matches[0].start()
+    following = re.search(r"\n    def |\nclass ", text[start + 1:])
+    end = start + 1 + following.start() if following is not None else len(text)
+    return start, end
+
+
+def _rewrite_pin_literals(
+    path: Path, region: str | None, literals: Sequence[tuple[str, object]]
+) -> bool:
+    """Rewrite group 1 of every pattern in `path`; each must match exactly once (inside the
+    named python method when `region` is given). Writes only on change; returns whether the
+    file changed."""
+    text = path.read_text(encoding="utf-8")
+    start, end = _function_region(text, region) if region is not None else (0, len(text))
+    body = text[start:end]
+    for pattern, value in literals:
+        matches = list(re.finditer(pattern, body))
+        if len(matches) != 1:
+            raise ContractError(
+                f"{path}: калибровочный шаблон {pattern!r}: совпадений {len(matches)}"
+            )
+        old = matches[0].group(1)
+        new = _reformat_like(old, value) if isinstance(value, int) else value
+        if old != new:
+            body = body[: matches[0].start(1)] + new + body[matches[0].end(1):]
+    if body == text[start:end]:
+        return False
+    _atomic_write_text(path, text[:start] + body + text[end:])
+    return True
+
+
+def _calibration_pin_sites(
+    pins: CalibrationPins,
+) -> list[tuple[Path, str | None, list[tuple[str, object]]]]:
+    """Every pinned literal of the calibration sets: (file, scoping method, patterns)."""
+    size = {key: pins.typo[key][0] for key in pins.typo}
+    sha = {key: pins.typo[key][1] for key in pins.typo}
+
+    def typo_literals(one: str, two: str, key1: tuple[int, int], key2: tuple[int, int]):
+        return [
+            (rf"{one}\.size, (\d+)", size[key1]),
+            (rf'{one}\.sha256,\s*"([0-9a-f]{{64}})"', sha[key1]),
+            (rf"{two}\.size, (\d+)", size[key2]),
+            (rf'{two}\.sha256,\s*"([0-9a-f]{{64}})"', sha[key2]),
+        ]
+
+    return [
+        (
+            TYPO_PACK_TEST,
+            "test_real_build_matches_recorded_set_identity",
+            [
+                (r"typo_set\.size, (\d+)", size[(1, 3)]),
+                (r'typo_set\.sha256,\s*"([0-9a-f]{64})"', sha[(1, 3)]),
+                (r"typo_set\.variant_p95, (\d+)", pins.variant_p95),
+            ],
+        ),
+        (
+            TYPO_PACK_TEST,
+            "test_class1_class2_class3_recorded_identities",
+            typo_literals("one", "two", (1, 3), (2, 3))
+            + [
+                (r"three\.size, (\d+)", size[(3, 3)]),
+                (r'three\.sha256,\s*"([0-9a-f]{64})"', sha[(3, 3)]),
+            ],
+        ),
+        (
+            TYPO_PACK_TEST,
+            "test_class1_and_class2_five_code_point_window_identities",
+            typo_literals("one", "two", (1, 5), (2, 5)),
+        ),
+        (
+            TYPO_PACK_TEST,
+            "test_class4_recorded_identities",
+            typo_literals("four3", "four5", (4, 3), (4, 5)),
+        ),
+        (
+            GLIDE_PACK_TEST,
+            "test_real_build_matches_recorded_set_identity",
+            [
+                (r"len\(selected\), (\d+)", pins.glide_words),
+                (r"len\(data\), (\d+)", pins.glide_bytes),
+                (r'sha256_bytes\(data\), "([0-9a-f]{64})"', pins.glide_sha256),
+            ],
+        ),
+        (
+            E3A_TEST,
+            None,
+            [
+                (r"GENERATOR_SET_SIZE = ([\d_]+)", size[(1, 3)]),
+                (r'GENERATOR_SET_SHA256 =\s*"([0-9a-f]{64})"', sha[(1, 3)]),
+            ],
+        ),
+        (
+            PHASE_C_TEST,
+            None,
+            [
+                (r"assertEquals\(([\d_]+), class4w3\.rows\.size\)", size[(4, 3)]),
+                (r'assertEquals\("([0-9a-f]{64})", class4w3\.sha256\)', sha[(4, 3)]),
+                (r"assertEquals\(([\d_]+), class4w5\.rows\.size\)", size[(4, 5)]),
+                (r'assertEquals\("([0-9a-f]{64})", class4w5\.sha256\)', sha[(4, 5)]),
+            ],
+        ),
+        (
+            GLIDE_CALIBRATION_TEST,
+            None,
+            [
+                (r"SET_SIZE = ([\d_]+)", pins.glide_words),
+                (r"SET_BYTES = ([\d_]+)", pins.glide_bytes),
+                (r'SET_SHA256 =\s*"([0-9a-f]{64})"', pins.glide_sha256),
+            ],
+        ),
+        (
+            GLIDE_GOLDEN_TEST,
+            None,
+            [
+                (r"assertEquals\((\d+), words\.size\)", pins.glide_words),
+                (r"assertEquals\((\d+), bytes\.size\)", pins.glide_bytes),
+                (r'assertEquals\("([0-9a-f]{64})", sha\)', pins.glide_sha256),
+            ],
+        ),
+    ]
+
+
+def propagate_calibration_pins(root: Path, dictionary: Pins) -> list[str]:
+    """Rewrite the pinned calibration-set identities; return the changed repo-relative paths."""
+    pins = measure_calibration_pins(root, dictionary)
+    changed = []
+    for relative, region, literals in _calibration_pin_sites(pins):
+        if _rewrite_pin_literals(root / relative, region, literals):
+            changed.append(str(relative))
+    return changed
+
+
 # --- rebuild ----------------------------------------------------------------------------------
 
 
@@ -997,13 +1266,29 @@ def run_rebuild(
                 print(f"  {key}", file=sys.stderr)
             return 2
 
+    # 3c. The Tatar calibration sets (typo recovery, glide) derive from the dictionary, so
+    # their pinned identities in the python tests and the JVM calibration tests are
+    # regenerated and rewritten too.
+    if "tat" in selected:
+        try:
+            moved = propagate_calibration_pins(root, dict_updates["TATAR_TOP100K_V1"])
+        except ContractError:
+            raise
+        except Exception as error:
+            raise SystemExit(f"шаг обновления калибровочных пинов упал: {error}") from error
+        if moved:
+            print("калибровочные пины переписаны:", file=sys.stderr)
+            for path in moved:
+                print(f"  {path}", file=sys.stderr)
+        else:
+            print("калибровочные пины уже совпадают", file=sys.stderr)
+
     # 4. Verify the result with the --check procedure over all four assets, including the
     # untouched side.
     result = run_check(root, known_drift_path, stream)
     print(
-        "дальше руками: прогнать гейты (JVM + python + lintRelease + check-no-internet), "
-        "обновить scripts/known_asset_drift.json, если расхождение голов изменилось, "
-        "и пересобрать наборы опечаток (scripts/typo_pack.py, см. DICT-WIDEN «Воспроизведение»)",
+        "дальше руками: прогнать гейты (JVM + python + lintRelease + check-no-internet) и "
+        "обновить scripts/known_asset_drift.json, если расхождение голов изменилось",
         file=sys.stderr,
     )
     return result

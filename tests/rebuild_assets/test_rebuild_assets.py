@@ -71,6 +71,7 @@ SHA0 = "0" * 64
 DICT_ASSET = Path("app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib")
 
 DICT_BLOCK = """\
+        // <generated pins>
         val {spec} = DictionaryArtifactSpec(
             family = "{family}",
             expectedCompressedSize = 1,
@@ -80,9 +81,11 @@ DICT_BLOCK = """\
             expectedRawSha256 =
                 "{sha}",
             expectedEntryCount = 1,
-        )"""
+        )
+        // </generated pins>"""
 
 BIGRAM_BLOCK = """\
+        // <generated pins>
         val {spec} = BigramArtifactSpec(
             family = "{family}",
             expectedCompressedSize = 1,
@@ -94,7 +97,8 @@ BIGRAM_BLOCK = """\
             expectedDictionaryRawSha256 =
                 "{sha}",
             expectedHeadCount = 1,
-        )"""
+        )
+        // </generated pins>"""
 
 
 def write_fake_contracts(root: Path) -> None:
@@ -240,6 +244,87 @@ class PinsIoTest(FakeTreeTest):
     def test_a_block_that_disappeared_fails_closed(self):
         contract = self.root / rebuild_assets.DICT_CONTRACT
         contract.write_text("// пусто\n", encoding="utf-8")
+        with self.assertRaises(rebuild_assets.ContractError):
+            rebuild_assets.read_pins(contract, "TATAR_TOP100K_V1",
+                                     "DictionaryArtifactSpec", "expectedEntryCount")
+
+
+class MarkerFormattingTest(FakeTreeTest):
+    """The pin rewrite keys off the marker lines, not the formatting around the pins."""
+
+    def test_reformatted_contract_still_rewrites(self):
+        contract = self.root / rebuild_assets.DICT_CONTRACT
+        text = contract.read_text(encoding="utf-8")
+        # A formatter's reflow of the Tatar block: the hash on the `=` line, no spaces around
+        # `=`, a dropped trailing comma, the closing paren dedented, a comment inside the
+        # region and extra comment and blank lines outside it.
+        text = text.replace(
+            f'expectedCompressedSha256 =\n                "{SHA0}"',
+            f'expectedCompressedSha256="{SHA0}"', 1)
+        text = text.replace("expectedRawSize = 72,", "expectedRawSize=72,", 1)
+        text = text.replace("expectedEntryCount = 1,", "expectedEntryCount = 1", 1)
+        text = text.replace(
+            "        )\n        // </generated pins>",
+            "        // комментарий внутри региона\n)\n        // </generated pins>", 1)
+        text = text.replace(
+            "// комментарий между блоками",
+            "// комментарий между блоками\n\n\n// ещё один комментарий", 1)
+        contract.write_text(text, encoding="utf-8")
+
+        pin_everything(self.root, self.dictionary, self.bigram)
+
+        pins = rebuild_assets.measure_dictionary(self.root / self.dictionary.asset, "tat")
+        read_back = rebuild_assets.read_pins(
+            contract, "TATAR_TOP100K_V1", "DictionaryArtifactSpec", "expectedEntryCount")
+        self.assertEqual(pins, read_back)
+        text = contract.read_text(encoding="utf-8")
+        self.assertIn("// комментарий внутри региона", text)
+        self.assertIn("// ещё один комментарий", text)
+        # The Russian block kept its formatting and its dummy pins.
+        self.assertIn("expectedRawSize = 72,", text)
+        russian = rebuild_assets.read_pins(
+            contract, "RUSSIAN_TOP100K_V1", "DictionaryArtifactSpec", "expectedEntryCount")
+        self.assertEqual(SHA0, russian.raw_sha256)
+
+    def test_missing_markers_fail_closed(self):
+        contract = self.root / rebuild_assets.DICT_CONTRACT
+        text = contract.read_text(encoding="utf-8")
+        text = text.replace("// <generated pins>\n", "").replace("// </generated pins>\n", "")
+        contract.write_text(text, encoding="utf-8")
+        with self.assertRaises(rebuild_assets.ContractError):
+            rebuild_assets.read_pins(contract, "TATAR_TOP100K_V1",
+                                     "DictionaryArtifactSpec", "expectedEntryCount")
+        with self.assertRaises(rebuild_assets.ContractError):
+            rebuild_assets.write_pins(
+                contract,
+                {"TATAR_TOP100K_V1": rebuild_assets.Pins(1, "a" * 64, 2, "b" * 64, 3)},
+                "DictionaryArtifactSpec", "expectedEntryCount")
+
+    def test_a_duplicated_marked_block_fails_closed(self):
+        contract = self.root / rebuild_assets.DICT_CONTRACT
+        text = contract.read_text(encoding="utf-8")
+        block = DICT_BLOCK.format(spec="TATAR_TOP100K_V1", family="tatar_top100k", sha=SHA0)
+        contract.write_text(text + block + "\n", encoding="utf-8")
+        with self.assertRaises(rebuild_assets.ContractError):
+            rebuild_assets.read_pins(contract, "TATAR_TOP100K_V1",
+                                     "DictionaryArtifactSpec", "expectedEntryCount")
+
+    def test_a_nested_marker_fails_closed(self):
+        contract = self.root / rebuild_assets.DICT_CONTRACT
+        text = contract.read_text(encoding="utf-8")
+        text = text.replace('family = "tatar_top100k",',
+                            '// <generated pins>\n            family = "tatar_top100k",', 1)
+        contract.write_text(text, encoding="utf-8")
+        with self.assertRaises(rebuild_assets.ContractError):
+            rebuild_assets.read_pins(contract, "TATAR_TOP100K_V1",
+                                     "DictionaryArtifactSpec", "expectedEntryCount")
+
+    def test_an_empty_marked_region_fails_closed(self):
+        contract = self.root / rebuild_assets.DICT_CONTRACT
+        text = contract.read_text(encoding="utf-8")
+        contract.write_text(
+            text + "        // <generated pins>\n        // пусто\n        // </generated pins>\n",
+            encoding="utf-8")
         with self.assertRaises(rebuild_assets.ContractError):
             rebuild_assets.read_pins(contract, "TATAR_TOP100K_V1",
                                      "DictionaryArtifactSpec", "expectedEntryCount")
@@ -800,6 +885,15 @@ class RealTreeTest(unittest.TestCase):
         # not stored empty.
         self.assertEqual(2, report["bigrams"]["rus"]["drift"]["missing_top_heads"])
         self.assertEqual(0, report["bigrams"]["rus"]["drift"]["unexpected_heads"])
+
+    def test_calibration_pin_propagation_is_a_noop_on_the_committed_tree(self):
+        # The rebuild rewrites the typo/glide set pins from the fresh dictionary; on the
+        # committed tree everything must already match, so nothing is written.
+        dictionary = rebuild_assets.measure_dictionary(
+            REPOSITORY_ROOT / "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
+            "tat")
+        self.assertEqual(
+            [], rebuild_assets.propagate_calibration_pins(REPOSITORY_ROOT, dictionary))
 
 
 if __name__ == "__main__":
