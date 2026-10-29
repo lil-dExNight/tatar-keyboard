@@ -307,7 +307,9 @@ public final class InputLogic {
                 // Shift + Enter is not supported in all devices
                 break;
             default:
-                throw new RuntimeException("Unknown key code : " + event.mKeyCode);
+                // A functional code without a branch is consumed without touching the text:
+                // a new Constants.CODE_* must not crash the IME.
+                break;
         }
     }
 
