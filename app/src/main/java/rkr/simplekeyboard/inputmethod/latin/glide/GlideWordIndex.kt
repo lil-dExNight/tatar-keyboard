@@ -25,8 +25,8 @@ import kotlin.math.sqrt
  * range lookup instead of a dictionary scan.
  *
  * Layout (all flat arrays, no per-word objects):
- *  - [keySeqStarts]/[keySeqPool]: each indexed word's letter sequence as key indices, so a
- *    survivor's ideal path is regenerated per decode without materializing the word;
+ *  - [keySeqStarts]/[keySeqPool]: each indexed word's letter sequence as key indices (one
+ *    unsigned byte per key), so a survivor's ideal path needs no materialized word;
  *  - [sameLetterAsPrevious]: a bit per key-pool position, set when the letter at that position
  *    is the same letter as at the position before — known only while the word's letters are
  *    still unfolded, so a letter followed by its alias (е then ё, one key) is NOT a doubled
@@ -84,7 +84,7 @@ class GlideWordIndex private constructor(
     fun keySeqEnd(entry: Int): Int = keySeqStarts[entry + 1]
 
     /** The key index at [position] of the key-sequence pool. */
-    fun keySeqAt(position: Int): Int = keySeqPool[position].toInt()
+    fun keySeqAt(position: Int): Int = keySeqPool[position].toInt() and 0xff
 
     /**
      * True when the letter at pool [position] is the same letter as at the previous position of
@@ -111,6 +111,9 @@ class GlideWordIndex private constructor(
         (twinless[entry ushr 6] ushr (entry and 63)) and 1L != 0L
 
     companion object {
+        /** Most keys a geometry may hold: the pool stores a key index per signed byte. */
+        private const val MAX_KEY_COUNT = 127
+
         /**
          * Builds the index over [inventory] for [geometry]. Two walks of the inventory would
          * halve the transient footprint; the single walk below keeps per-entry records in
@@ -120,6 +123,11 @@ class GlideWordIndex private constructor(
         fun build(inventory: GlideWordInventory, geometry: GlideKeyGeometry): GlideWordIndex {
             val entryCount = inventory.entryCount
             val keyCount = geometry.keyCount
+            // The cap keeps every key index in the signed byte's positive range, so no pool
+            // read can ever leak a sign extension.
+            if (keyCount > MAX_KEY_COUNT) {
+                throw IllegalArgumentException("glide key geometry has more than 127 keys")
+            }
             val keySeqStarts = IntArray(entryCount + 1)
             val frequencies = IntArray(entryCount)
             var pool = ByteArray(entryCount * 4)
@@ -208,8 +216,8 @@ class GlideWordIndex private constructor(
                 val start = keySeqStarts[entry]
                 val end = keySeqStarts[entry + 1]
                 if (end <= start) continue // a skipped (unmappable) word: an empty range
-                val firstKey = keySeqPool[start].toInt()
-                val lastKey = keySeqPool[end - 1].toInt()
+                val firstKey = keySeqPool[start].toInt() and 0xff
+                val lastKey = keySeqPool[end - 1].toInt() and 0xff
                 pairEntries[cursors[firstKey * keyCount + lastKey]++] = entry
                 plainLengths[entry] =
                     idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, false)
@@ -324,9 +332,9 @@ class GlideWordIndex private constructor(
             var twin = twinStart
             var previous = -1
             for (position in start until end) {
-                val key = keySeq[position].toInt()
+                val key = keySeq[position].toInt() and 0xff
                 if (key == previous) continue
-                if (twin >= twinEnd || keySeq[twin].toInt() != key) return false
+                if (twin >= twinEnd || (keySeq[twin].toInt() and 0xff) != key) return false
                 twin++
                 previous = key
             }
@@ -354,7 +362,7 @@ class GlideWordIndex private constructor(
             var previousX = 0f
             var previousY = 0f
             for (position in start until end) {
-                val key = keySeq[position].toInt()
+                val key = keySeq[position].toInt() and 0xff
                 val x = geometry.centerX(key)
                 val y = geometry.centerY(key)
                 if (previousKey >= 0) {

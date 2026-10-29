@@ -2,8 +2,10 @@ package rkr.simplekeyboard.inputmethod.latin.glide
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.text.Normalizer
 
 /** Unit tests for [GlideWordIndex]: bucketing, ideal lengths, skips, memory estimate. */
 class GlideWordIndexTest {
@@ -140,4 +142,49 @@ class GlideWordIndexTest {
         assertEquals(0, index.wordCount)
         assertEquals(0, index.maxFrequency)
     }
+
+    @Test
+    fun moreThan127KeysAreRejectedAtBuild() {
+        val geometry = geometryOf(syntheticLetters(128))
+        assertEquals(128, geometry.keyCount)
+        assertThrows(IllegalArgumentException::class.java) {
+            GlideWordIndex.build(ListGlideInventory(listOf("a" to 1L)), geometry)
+        }
+    }
+
+    @Test
+    fun highKeyIndicesRoundTripThroughThePool() {
+        val letters = syntheticLetters(127)
+        val word = buildString { for (key in 64..126) appendCodePoint(letters[key]) }
+        val index =
+            GlideWordIndex.build(ListGlideInventory(listOf(word to 1L)), geometryOf(letters))
+        assertEquals(1, index.wordCount)
+        assertEquals(63, index.keySeqEnd(0) - index.keySeqStart(0))
+        for (key in 64..126) {
+            assertEquals(key, index.keySeqAt(index.keySeqStart(0) + key - 64))
+        }
+    }
+
+    /** The first [count] code points the geometry's letter filter keeps unchanged. */
+    private fun syntheticLetters(count: Int): IntArray {
+        val letters = ArrayList<Int>(count)
+        var codePoint = 'a'.code
+        while (letters.size < count) {
+            val folded = Normalizer
+                .normalize(String(Character.toChars(codePoint)), Normalizer.Form.NFC)
+                .lowercase()
+            if (folded.codePointCount(0, folded.length) == 1 &&
+                folded.codePointAt(0) == codePoint &&
+                Character.isLetter(codePoint)
+            ) {
+                letters.add(codePoint)
+            }
+            codePoint++
+        }
+        return letters.toIntArray()
+    }
+
+    /** A geometry of one key per letter; key index `i` carries `letters[i]`. */
+    private fun geometryOf(letters: IntArray): GlideKeyGeometry =
+        GlideKeyGeometry.build(letters.map { GlideKeyGeometry.RawKey(it, 0, 0, 10, 10) })
 }
