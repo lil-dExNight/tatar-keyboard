@@ -60,6 +60,10 @@ public final class KeyboardLayoutSet {
 
     private static final String KEYBOARD_LAYOUT_SET_RESOURCE_PREFIX = "keyboard_layout_set_";
 
+    /** Layout set used when the subtype's own layout set has no resource. */
+    private static final String FALLBACK_KEYBOARD_LAYOUT_SET_NAME =
+            KEYBOARD_LAYOUT_SET_RESOURCE_PREFIX + "qwerty";
+
     private final Context mContext;
     private final Params mParams;
 
@@ -199,6 +203,31 @@ public final class KeyboardLayoutSet {
         return keyboard;
     }
 
+    /**
+     * Resolves a resource name to its XML id, or 0 when no such resource exists. Backed by
+     * {@link Resources#getIdentifier} in the app and faked in unit tests.
+     */
+    interface XmlIdResolver {
+        int resolve(String name);
+    }
+
+    /**
+     * Resolves {@code keyboardLayoutSetName}, falling back to the qwerty layout set when the
+     * requested one has no resource; throws when even qwerty is missing.
+     */
+    static int getXmlId(final XmlIdResolver resolver, final String keyboardLayoutSetName) {
+        final int xmlId = resolver.resolve(keyboardLayoutSetName);
+        if (xmlId != 0) {
+            return xmlId;
+        }
+        final int fallbackXmlId = resolver.resolve(FALLBACK_KEYBOARD_LAYOUT_SET_NAME);
+        if (fallbackXmlId == 0) {
+            throw new RuntimeException("Missing keyboard layout set resource "
+                    + FALLBACK_KEYBOARD_LAYOUT_SET_NAME);
+        }
+        return fallbackXmlId;
+    }
+
     public static final class Builder {
         private final Context mContext;
         private final Resources mResources;
@@ -290,7 +319,9 @@ public final class KeyboardLayoutSet {
         private static int getXmlId(final Resources resources, final String keyboardLayoutSetName) {
             final String packageName = resources.getResourcePackageName(
                     R.xml.keyboard_layout_set_qwerty);
-            return resources.getIdentifier(keyboardLayoutSetName, "xml", packageName);
+            return KeyboardLayoutSet.getXmlId(
+                    name -> resources.getIdentifier(name, "xml", packageName),
+                    keyboardLayoutSetName);
         }
 
         private void parseKeyboardLayoutSet(final Resources res, final int resId)
