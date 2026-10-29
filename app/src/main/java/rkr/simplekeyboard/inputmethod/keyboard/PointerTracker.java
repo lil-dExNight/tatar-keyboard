@@ -104,6 +104,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     private int mLastY;
     private int mStartX;
     //private int mStartY;
+    // Uptime of this gesture's touch down; the swipe windows compare it against event times.
     private long mStartTime;
     private boolean mCursorMoved = false;
 
@@ -625,7 +626,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             setPressedKeyGraphics(key);
             mStartX = x;
             //mStartY = y;
-            mStartTime = System.currentTimeMillis();
+            mStartTime = eventTime;
         }
         if (key == null && mKeyboard != null && OneHandedMode.exitHandleContains(
                 mKeyboard.mDockExitHandleMinX, mKeyboard.mDockExitHandleMaxX, x, y,
@@ -847,7 +848,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             //Pointer slider
             int steps = (x - mStartX) / sPointerStep;
             final int swipeIgnoreTime = Settings.getInstance().getCurrent().mKeyLongpressTimeout / MULTIPLIER_FOR_LONG_PRESS_TIMEOUT_IN_SLIDING_INPUT;
-            if (steps != 0 && mStartTime + swipeIgnoreTime < System.currentTimeMillis()) {
+            if (steps != 0 && mStartTime + swipeIgnoreTime < eventTime) {
                 mCursorMoved = true;
                 mStartX += steps * sPointerStep;
                 sListener.onMoveCursorPointer(steps);
@@ -864,7 +865,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             }
             if (WordDeleteFlick.shouldFire(x - CoordinateUtils.x(mDownCoordinates),
                     y - CoordinateUtils.y(mDownCoordinates),
-                    System.currentTimeMillis() - mStartTime, mKeyboard.mMostCommonKeyWidth)) {
+                    eventTime - mStartTime, mKeyboard.mMostCommonKeyWidth)) {
                 mWordDeleteFired = true;
                 // The release must not commit a key or delete a selection: the flick already acted.
                 mCursorMoved = true;
