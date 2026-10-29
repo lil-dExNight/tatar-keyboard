@@ -32,8 +32,12 @@ interface EmojiSuggestSource {
     /** The emoji for ([language], [normalizedWord]), or null — a miss is silent by design. */
     fun emojiFor(language: String, normalizedWord: String): String?
 
-    /** The spoken name of [emoji], or null when no name is known; the caller falls back to the glyph. */
-    fun spokenNameOf(emoji: String): String?
+    /**
+     * The spoken name of [emoji] in [language] (the asset language tag, as
+     * `EmojiSuggestIndex.assetLanguageOf` derives it from the subtype id), or null when no name
+     * is known; the caller falls back to the glyph.
+     */
+    fun spokenNameOf(language: String, emoji: String): String?
 }
 
 /**
@@ -96,7 +100,8 @@ class AssetEmojiSuggestPreparation(
         override fun emojiFor(language: String, normalizedWord: String): String? =
             table.lookup(language, normalizedWord)
 
-        override fun spokenNameOf(emoji: String): String? = names.nameOf(emoji)
+        override fun spokenNameOf(language: String, emoji: String): String? =
+            names.nameOf(emoji, language)
     }
 
     private companion object {

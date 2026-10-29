@@ -1772,12 +1772,13 @@ class SuggestionsController internal constructor(
 
     /**
      * The spoken label of a cell, or null when the cell's own text reads fine aloud. Only the emoji
-     * cell gets a label (the emoji's short name from the search index); if the source never loaded
-     * or has no name, TalkBack speaks the glyph itself.
+     * cell gets a label (the emoji's short name in the active subtype's language from the search
+     * index); if the source never loaded or has no name, TalkBack speaks the glyph itself.
      */
     private fun spokenLabelFor(cell: String?): String? {
         if (cell.isNullOrEmpty() || !isEmojiCell(cell)) return null
-        return emojiSource?.spokenNameOf(cell)
+        val language = activeLanguage ?: return null
+        return emojiSource?.spokenNameOf(EmojiSuggestIndex.assetLanguageOf(language), cell)
     }
 
     // --- Emoji suggestions --------------------------------------------------------------------

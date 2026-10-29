@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Build the emoji-search index from CLDR 44 annotations plus hand-written Tatar keywords.
+"""Build the emoji-search index from CLDR 44 annotations plus hand-written Tatar data.
 
 Input: CLDR ``annotations{,Derived}/{ru,en}.xml`` (pinned SHA-256), the panel asset
-``emoji_set_v1.txt`` and optionally ``--tt-extra`` (CLDR has no Tatar emoji annotations).
-Output: ``assets/emoji/emoji_search_v1.txt``, one ``<sequence>\\t<ru name>\\t<keywords>`` line
-per panel sequence with keywords: Russian first (search priority), then English, then Tatar.
+``emoji_set_v1.txt``, optionally ``--tt-extra`` with Tatar keywords and ``--tt-names`` with
+Tatar spoken names (CLDR 44 ships no Tatar emoji annotations: its ``tt.xml`` annotates eight
+punctuation marks and no emoji, so both Tatar channels are the project's own data).
+Output: ``assets/emoji/emoji_search_v1.txt``, one ``<sequence>\t<ru name>\t<keywords>`` line
+per panel sequence with keywords: Russian first (search priority), then English, then Tatar;
+``--tt-names`` adds a fourth field, the Tatar spoken name (empty where the file has none).
 Exits nonzero without writing output on a pin mismatch, unparseable input, a tab or newline in
-a field, coverage below the floor, a breached guardrail, or a malformed ``--tt-extra`` file.
+a field, coverage below the floor, a breached guardrail, or a malformed ``--tt-extra`` or
+``--tt-names`` file.
 """
 
 from __future__ import annotations
@@ -161,11 +165,12 @@ def read_tt_extra(
 ) -> dict[str, list[str]]:
     """Reads the hand-written Tatar keyword file; raises on any invalid line.
 
-    One line per emoji: ``<sequence>\\t<synonym>,<synonym>,...`` with the
+    One line per emoji: ``<sequence>\t<synonym>,<synonym>,...`` with the
     sequence exactly as in the panel asset (U+FE0F included where the panel has
-    it). Blank lines and ``#`` comment lines are skipped. Every sequence must
-    belong to the panel and appear once; every synonym must be non-empty,
-    lowercase, NFC and spelled from :data:`TATAR_WORD_CHARS`.
+    it). Blank lines and comment lines are skipped; a comment starts with ``#``
+    and carries no tab, so the data line of the ``#`` keycap survives. Every
+    sequence must belong to the panel and appear once; every synonym must be
+    non-empty, lowercase, NFC and spelled from :data:`TATAR_WORD_CHARS`.
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -175,7 +180,7 @@ def read_tt_extra(
     extra: dict[str, list[str]] = {}
     for lineno, raw_line in enumerate(text.split("\n"), start=1):
         line = raw_line.rstrip("\r")
-        if not line or line.startswith("#"):
+        if not line or (line.startswith("#") and "\t" not in line):
             continue
         where = f"{path.name}:{lineno}"
         if line.count("\t") != 1:
@@ -205,6 +210,57 @@ def read_tt_extra(
     return extra
 
 
+def read_tt_names(path: Path, panel_sequences: Sequence[str]) -> dict[str, str]:
+    """Reads the curated Tatar spoken-name file; raises on any invalid line.
+
+    One line per emoji: ``<sequence>\t<name>`` with the sequence exactly as in the
+    panel asset (U+FE0F included where the panel has it). Blank lines and comment
+    lines are skipped; a comment starts with ``#`` and carries no tab, so the data
+    line of the ``#`` keycap survives. Every sequence must belong to the panel
+    and appear once; every name must be non-empty, lowercase, NFC and spelled
+    from :data:`TATAR_WORD_CHARS` — the same canonical form --tt-extra enforces.
+    A name must also be unique: TalkBack reads it, so two emoji must not sound alike.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        raise EmojiSearchPackError(f"{path.name}: input is not valid UTF-8") from error
+    panel = set(panel_sequences)
+    names: dict[str, str] = {}
+    owners: dict[str, int] = {}
+    for lineno, raw_line in enumerate(text.split("\n"), start=1):
+        line = raw_line.rstrip("\r")
+        if not line or (line.startswith("#") and "\t" not in line):
+            continue
+        where = f"{path.name}:{lineno}"
+        if line.count("\t") != 1:
+            raise EmojiSearchPackError(f"{where}: expected exactly one tab")
+        sequence, name = line.split("\t")
+        if sequence not in panel:
+            raise EmojiSearchPackError(f"{where}: sequence not in the panel asset")
+        if sequence in names:
+            raise EmojiSearchPackError(f"{where}: duplicate sequence")
+        name = " ".join(name.strip().split())
+        if not name:
+            raise EmojiSearchPackError(f"{where}: no name")
+        if name != unicodedata.normalize("NFC", name) or name != name.lower():
+            raise EmojiSearchPackError(
+                f"{where}: name {name!r} is not canonical (NFC lowercase)"
+            )
+        bad = sorted(set(name) - TATAR_WORD_CHARS)
+        if bad:
+            raise EmojiSearchPackError(f"{where}: non-Tatar characters in {name!r}: {bad}")
+        if name in owners:
+            raise EmojiSearchPackError(
+                f"{where}: name {name!r} already names line {owners[name]}"
+            )
+        owners[name] = lineno
+        names[sequence] = name
+    if not names:
+        raise EmojiSearchPackError(f"{path.name}: the Tatar name file is empty")
+    return names
+
+
 def build_index(
     sequences: Sequence[str],
     sources: Sequence[tuple[dict[str, list[str]], dict[str, str]]],
@@ -213,13 +269,17 @@ def build_index(
     max_lines: int,
     min_russian_coverage: float,
     tt_extra: dict[str, list[str]] | None = None,
+    tt_names: dict[str, str] | None = None,
 ) -> SearchIndex:
     """Composes one index line per sequence that has at least one keyword.
 
     ``sources`` is ordered: Russian first (its name becomes the ranking name and
     its keywords come first), English after it. ``tt_extra`` maps panel
     sequences to hand-written Tatar synonyms; they are appended last, so they
-    never displace a Russian or English keyword.
+    never displace a Russian or English keyword. ``tt_names`` maps panel
+    sequences to curated Tatar spoken names; when it is given, every line gets
+    a fourth field with that name (empty where the file has no name for the
+    sequence), and without it the line stays three fields.
     """
     tt_extra = tt_extra or {}
     lines: list[str] = []
@@ -242,7 +302,9 @@ def build_index(
             with_russian += 1
         name = russian_names.get(key, words[0])
         line = f"{sequence}\t{name.lower()}\t{' '.join(words)}"
-        if "\n" in line or line.count("\t") != 2:
+        if tt_names is not None:
+            line += f"\t{tt_names.get(sequence, '')}"
+        if "\n" in line or line.count("\t") != (3 if tt_names is not None else 2):
             raise EmojiSearchPackError(f"malformed index line for {sequence!r}")
         lines.append(line)
 
@@ -289,6 +351,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
     build.add_argument("--panel-asset", type=Path, required=True)
     build.add_argument("--tt-extra", type=Path, default=None,
                        help="hand-written Tatar keywords: sequence<TAB>synonym,synonym,...")
+    build.add_argument("--tt-names", type=Path, default=None,
+                       help="curated Tatar spoken names: sequence<TAB>name")
     build.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -320,6 +384,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if args.tt_extra is not None
                 else None
             )
+            tt_names = (
+                read_tt_names(args.tt_names, panel_sequences)
+                if args.tt_names is not None
+                else None
+            )
             index = build_index(
                 panel_sequences,
                 (merged["ru"], merged["en"]),
@@ -327,6 +396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_lines=MAX_LINES,
                 min_russian_coverage=MIN_RUSSIAN_COVERAGE,
                 tt_extra=tt_extra,
+                tt_names=tt_names,
             )
             write_atomic(args.output, index.data)
             _print_json(
@@ -338,6 +408,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "russian_coverage": round(index.russian_coverage, 4),
                     "sequence_count": index.sequence_count,
                     "tt_extra_sequences": len(tt_extra) if tt_extra else 0,
+                    "tt_named_sequences": len(tt_names) if tt_names else 0,
                 }
             )
         else:  # pragma: no cover

@@ -54,11 +54,23 @@ class EmojiSearchTest {
             "🐶\tтолько два поля",
             "\tкот\tбез последовательности",
             "🐱\tдубль\tдубль",
-            "🐶\tсобака\tсобака dog\tлишнее поле",
+            "🐶\tсобака\tсобака dog\tлишнее поле\tпятое",
         )
         assertEquals(1, index.entryCount)
         assertTrue(EmojiSearchIndex.parse("").isEmpty)
         assertTrue(EmojiSearchIndex.parse("junk\njunk\n").isEmpty)
+    }
+
+    /** The fourth field is the Tatar name; a line without it simply has none. */
+    @Test
+    fun aLineMayCarryATatarNameOrNone() {
+        val index = indexOf(
+            "🐱\tкот\tкот кошка cat\tмәче",
+            "🐶\tсобака\tсобака dog",
+            "🌿\tтравы\tтравы зелень\t",
+        )
+        assertEquals(3, index.entryCount)
+        assertEquals("мәче", index.nameOf("🐱", "tt"))
     }
 
     // --- Matching -----------------------------------------------------------------------------
@@ -173,10 +185,11 @@ class EmojiSearchTest {
         }
         assertEquals(panelSequences.size, indexed.size)
 
-        // Every line has exactly the three fields the parser expects.
+        // Every line has exactly the four fields the parser expects (the fourth, the Tatar
+        // name, may be empty but is present).
         for (line in search.split('\n')) {
             if (line.isEmpty()) continue
-            assertEquals("bad field count in: $line", 2, line.count { it == '\t' })
+            assertEquals("bad field count in: $line", 3, line.count { it == '\t' })
         }
     }
 
@@ -228,6 +241,25 @@ class EmojiSearchTest {
         assertEquals("йөрәк", EmojiSearchIndex.normalize("ЙӨРӘК"))
         assertEquals("мәҗбур", EmojiSearchIndex.normalize("МӘҖБУР"))
         assertEquals("җаңһыр", EmojiSearchIndex.normalize("ҖАҢҺЫР"))
+    }
+
+    /**
+     * The shipped index speaks Tatar on the Tatar layout: the fourth field is the curated Tatar
+     * name (`scripts/emoji_search_tt_names.txt`, packed by `scripts/emoji_search_pack.py
+     * --tt-names`); an emoji without a name of its own is read by its Russian name.
+     */
+    @Test
+    fun theShippedIndexNamesEmojiInTatar() {
+        val assets = File(sourceRoot(), "assets/emoji")
+        val index = EmojiSearchIndex.parse(File(assets, "emoji_search_v1.txt").readText())
+        assertEquals("әтәч", index.nameOf("🐓", "tt"))
+        assertEquals("мәчет", index.nameOf("🕌", "tt"))
+        assertEquals("нумар төймәсе", index.nameOf("#️⃣", "tt"))
+        // Hearts share the Tatar word, so each keeps its distinct Russian name.
+        assertEquals("алое сердце", index.nameOf("❤️", "tt"))
+        assertEquals("синее сердце", index.nameOf("💙", "tt"))
+        // The Russian name stays the default for other languages.
+        assertEquals("петух", index.nameOf("🐓", "ru"))
     }
 
     // --- The query ----------------------------------------------------------------------------
@@ -297,17 +329,70 @@ class EmojiSearchTest {
     @Test
     fun nameOfAnswersTheShortNameWithoutASearch() {
         val index = indexOf(
-            "🐱\tкот\tкот кошка животное cat",
-            "✈️\tсамолёт\tсамолет самолёт самолета airplane",
+            "🐱\tкот\tкот кошка животное cat\tмәче",
+            "✈️\tсамолёт\tсамолет самолёт самолета airplane\tочкыч",
         )
-        assertEquals("кот", index.nameOf("🐱"))
-        assertEquals("самолёт", index.nameOf("✈️"))
+        assertEquals("кот", index.nameOf("🐱", "ru"))
+        assertEquals("самолёт", index.nameOf("✈️", "ru"))
+    }
+
+    @Test
+    fun nameOfSpeaksTatarOnTheTatarLanguage() {
+        val index = indexOf(
+            "🐱\tкот\tкот кошка животное cat\tмәче",
+            "❤️\tсердце\tсердце любовь heart\tйөрәк",
+        )
+        assertEquals("мәче", index.nameOf("🐱", "tt"))
+        assertEquals("йөрәк", index.nameOf("❤️", "tt"))
+    }
+
+    /** A line without a Tatar name (no fourth field or an empty one) speaks Russian even for tt. */
+    @Test
+    fun nameOfFallsBackToRussianWhenNoTatarNameIsKnown() {
+        val index = indexOf(
+            "🐱\tкот\tкот кошка животное cat",
+            "🌿\tтравы\tтравы зелень\t",
+        )
+        assertEquals("кот", index.nameOf("🐱", "tt"))
+        assertEquals("травы", index.nameOf("🌿", "tt"))
+    }
+
+    @Test
+    fun nameOfSpeaksRussianForOtherLanguagesAndForNull() {
+        val index = indexOf("🐱\tкот\tкот кошка животное cat\tмәче")
+        assertEquals("кот", index.nameOf("🐱", null))
+        assertEquals("кот", index.nameOf("🐱", "en"))
+    }
+
+    @Test
+    fun resultNamesFollowTheSameLanguageResolution() {
+        val index = indexOf(
+            "🐱\tкот\tкот кошка животное cat\tмәче",
+            "🐶\tсобака\tсобака животное dog",
+        )
+        assertEquals(2, index.search("животное"))
+        assertEquals("мәче", index.resultNameAt(0, "tt"))
+        // The dog has no Tatar name: the Russian one is spoken.
+        assertEquals("собака", index.resultNameAt(1, "tt"))
+        assertEquals("кот", index.resultNameAt(0, "ru"))
+        assertEquals("", index.resultNameAt(2, "tt"))
+    }
+
+    @Test
+    fun filteringKeepsTheTatarNames() {
+        val index = indexOf(
+            "🐱\tкот\tкот кошка животное cat\tмәче",
+            "🐶\tсобака\tсобака животное dog\tэт",
+        )
+        val filtered = index.filterTo(setOf("🐶"))
+        assertEquals("эт", filtered.nameOf("🐶", "tt"))
+        assertEquals(null, filtered.nameOf("🐱", "tt"))
     }
 
     @Test
     fun nameOfMissesSilentlyOnAnUnknownSequence() {
-        val index = indexOf("🐱\tкот\tкот кошка животное cat")
-        assertEquals(null, index.nameOf("🐶"))
-        assertEquals(null, EmojiSearchIndex.EMPTY.nameOf("🐱"))
+        val index = indexOf("🐱\tкот\tкот кошка животное cat\tмәче")
+        assertEquals(null, index.nameOf("🐶", "tt"))
+        assertEquals(null, EmojiSearchIndex.EMPTY.nameOf("🐱", "tt"))
     }
 }

@@ -264,7 +264,7 @@ skipped, and an unreadable file gives an empty table. They have no storage contr
 |---|---|---|---|
 | `emoji/emoji_set_v1.txt` | `#<category>` header (ASCII name), then one sequence per line | `scripts/emoji_pack.py` | `emoji/EmojiSet.kt` |
 | `emoji/emoji_skin_v1.txt` | `sequence<TAB>prefix<TAB>suffix`; toned = prefix + modifier + suffix | `scripts/emoji_skin_pack.py` | `emoji/EmojiSkinTones.kt` |
-| `emoji/emoji_search_v1.txt` | `sequence<TAB>Russian name<TAB>keywords` (space-separated, ru/en/tt) | `scripts/emoji_search_pack.py` | `emoji/EmojiSearchIndex.kt` |
+| `emoji/emoji_search_v1.txt` | `sequence<TAB>Russian name<TAB>keywords (space-separated, ru/en/tt)<TAB>Tatar name` | `scripts/emoji_search_pack.py` | `emoji/EmojiSearchIndex.kt` |
 | `emoji/emoji_suggest_v1.txt` | `language<TAB>normalized word<TAB>emoji`, sorted by (language, word) | `scripts/emoji_suggest_pack.py` | `emoji/EmojiSuggestIndex.kt` |
 | `dictionaries/*_sentstart_v1.txt` | `#` header, then `word<TAB>count`, count descending, then word | `scripts/sentstart_pack.py` | `suggestions/SentStartIndex.kt` |
 

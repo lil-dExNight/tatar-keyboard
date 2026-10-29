@@ -99,6 +99,7 @@ class EmojiSuggestIndex private constructor(
          * whose language ships no table (English) maps to a tag that simply has no entries, so the
          * lookup misses silently and no special-casing is needed at the call site.
          */
+        @JvmStatic
         fun assetLanguageOf(subtypeId: String): String = subtypeId.substringBefore('_')
 
         /**

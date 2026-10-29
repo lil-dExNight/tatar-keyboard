@@ -101,6 +101,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchIndex;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchQuery;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSkinTones;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSetSnapshot;
+import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestIndex;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSurface;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiTextUtils;
 import rkr.simplekeyboard.inputmethod.latin.emoji.RecentEmojiGate;
@@ -976,7 +977,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             @Override
             public void showEmojiSearch(final EmojiSearchIndex index) {
                 mEmojiSearchQuery = new EmojiSearchQuery();
-                mKeyboardSwitcher.showEmojiSearch(index);
+                // The search results are announced in the active subtype's language.
+                final String spokenNameLanguage = EmojiSuggestIndex.assetLanguageOf(
+                        mRichImm.getCurrentSubtype().getLocale());
+                mKeyboardSwitcher.showEmojiSearch(index, spokenNameLanguage);
                 // The letters come back with shift unlatched: a query is not a sentence.
                 mKeyboardSwitcher.requestUpdatingShiftState(NO_AUTO_CAPS,
                         getCurrentRecapitalizeState());

@@ -207,7 +207,7 @@ class SuggestionsControllerBigramAttachTest {
                 override fun emojiFor(language: String, normalizedWord: String): String? =
                     table[normalizedWord]
 
-                override fun spokenNameOf(emoji: String): String? = null
+                override fun spokenNameOf(language: String, emoji: String): String? = null
             })
         }
     }

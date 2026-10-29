@@ -521,12 +521,13 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
      * Enters the emoji search: the grid steps aside, the letter keyboard comes back and the two
      * search bands take the suggestion strip's place. The panel keeps its snapshot and its scroll,
      * so leaving the search puts back exactly the grid the user came from.
+     * {@code spokenNameLanguage} is the asset language tag the result names are announced in.
      */
-    public void showEmojiSearch(final EmojiSearchIndex index) {
+    public void showEmojiSearch(final EmojiSearchIndex index, final String spokenNameLanguage) {
         if (mCurrentInputView == null || !mEmojiPanelShown) {
             return;
         }
-        final EmojiSearchView search = mCurrentInputView.enterEmojiSearch(index);
+        final EmojiSearchView search = mCurrentInputView.enterEmojiSearch(index, spokenNameLanguage);
         if (search == null) {
             return;
         }

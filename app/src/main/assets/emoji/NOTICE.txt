@@ -60,16 +60,21 @@ only this derived index is shipped. The CLDR data remains subject to the Unicode
 Terms of Use referenced above; the application's Apache-2.0 license does not
 replace those terms.
 
-Tatar (tt) keywords cannot be derived from CLDR (release 44 ships eight
-punctuation annotations for Tatar and no emoji annotations at all), so the
-index additionally carries hand-written Tatar synonyms: the project's own
-file scripts/emoji_search_tt_extra.txt (one line per emoji: the panel
-sequence, a tab, comma-separated lowercase Tatar synonyms) is validated
+Tatar (tt) data cannot be derived from CLDR (release 44 ships eight punctuation
+annotations for Tatar and no emoji annotations at all), so the index
+additionally carries the project's own Tatar data, licensed like the project
+(Apache-2.0) and not part of the CLDR-derived content. The hand-written Tatar
+synonyms of scripts/emoji_search_tt_extra.txt (one line per emoji: the panel
+sequence, a tab, comma-separated lowercase Tatar synonyms) are appended after
+the Russian and English keywords of each line, so the CLDR-based ranking is
+unchanged. The curated Tatar spoken names of scripts/emoji_search_tt_names.txt
+(one line per emoji: the panel sequence, a tab, a lowercase Tatar name; derived
+from the first synonym of the keyword file where it covers the emoji and
+hand-translated where it does not; a name shared by several emoji is left out)
+are written as the fourth field of each line and are what TalkBack reads on the
+Tatar layout. Both files are validated
 against the panel asset and the Tatar alphabet by the same generator
-(scripts/emoji_search_pack.py, option --tt-extra) and appended after the
-Russian and English keywords of each line, so the CLDR-based ranking is
-unchanged. That file is original Tatar Keyboard project data, licensed like
-the project (Apache-2.0); it is not part of the CLDR-derived content.
+(scripts/emoji_search_pack.py, options --tt-extra and --tt-names).
 
 ---
 

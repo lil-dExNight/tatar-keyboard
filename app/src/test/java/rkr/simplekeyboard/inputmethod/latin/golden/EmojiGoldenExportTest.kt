@@ -100,8 +100,9 @@ class EmojiGoldenExportTest {
         // nameOf for every panel entry (null when the index has no line for it).
         for (c in 0 until set.categoryCount) {
             for (e in set.entriesOf(c)) {
-                val name = index.nameOf(e)
-                w.write("{\"kind\":\"name\",\"seq\":${json(e)},\"name\":${if (name == null) "null" else json(name)}}\n")
+                val name = index.nameOf(e, "ru")
+                val nameTt = index.nameOf(e, "tt")
+                w.write("{\"kind\":\"name\",\"seq\":${json(e)},\"name\":${if (name == null) "null" else json(name)},\"nameTt\":${if (nameTt == null) "null" else json(nameTt)}}\n")
             }
         }
         val queries = LinkedHashSet<String>()
@@ -110,7 +111,7 @@ class EmojiGoldenExportTest {
         for ((i, line) in lines.withIndex()) {
             if (i % 5 != 0) continue
             val fields = line.split('\t')
-            if (fields.size != 3) continue
+            if (fields.size !in 3..4) continue
             val words = LinkedHashSet<String>()
             words.addAll(fields[1].split(' '))
             words.addAll(fields[2].split(' '))

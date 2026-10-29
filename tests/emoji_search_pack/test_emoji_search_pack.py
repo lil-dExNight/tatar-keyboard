@@ -30,8 +30,9 @@ SEARCH_ASSET = ROOT / "app" / "src" / "main" / "assets" / "emoji" / "emoji_searc
 # Pins for the committed asset, in the emoji_pack pattern: a rebuild that
 # changes the shipped index must update these together with the asset.
 COMMITTED_LINE_COUNT = 1389
+COMMITTED_TATAR_NAME_COUNT = 603
 COMMITTED_ASSET_SHA256 = (
-    "b16b4a76cdeafdae5aa16a05a47f38a9cc3f91cc616eb4a7ff1f7cba849af1bf"
+    "6e4324dcbddde4a0b59b6887cc430a111b6c028a2d6e9479dc447fe8687b71cc"
 )
 
 
@@ -333,6 +334,14 @@ class ReadTtExtraTest(unittest.TestCase):
         self.assertEqual(extra[GRINNING], ["елмаю", "шатлык", "көз кысу"])
         self.assertEqual(extra[SMILING_VS16], ["бәхет"])
 
+    def test_hash_keycap_line_is_data_not_a_comment(self) -> None:
+        # The keycap sequence starts with '#'; only a '#' line without a tab is a comment.
+        keycap = seq(0x23, 0xFE0F, 0x20E3)
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_extra(Path(directory), f"{keycap}\tтөймә\n")
+            extra = pack.read_tt_extra(path, (keycap,))
+        self.assertEqual(extra[keycap], ["төймә"])
+
     def test_unknown_sequence_raises(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = self.write_extra(Path(directory), f"{UPSIDE_DOWN}\tелмаю\n")
@@ -370,6 +379,163 @@ class ReadTtExtraTest(unittest.TestCase):
             path = self.write_extra(Path(directory), "# только комментарий\n")
             with self.assertRaises(pack.EmojiSearchPackError):
                 pack.read_tt_extra(path, (GRINNING,))
+
+
+class ReadTtNamesTest(unittest.TestCase):
+    """The curated Tatar spoken-name file: fail-closed parsing."""
+
+    def write_names(self, directory: Path, text: str) -> Path:
+        path = directory / "emoji_search_tt_names.txt"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_valid_file_parses_and_skips_comments(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            path = self.write_names(
+                directory,
+                "# татарские имена, составлены вручную\n"
+                f"{GRINNING}\tелмаю\n"
+                "\n"
+                f"{SMILING_VS16}\tбәхетле бит\n",
+            )
+            names = pack.read_tt_names(path, (GRINNING, SMILING_VS16))
+        self.assertEqual(names[GRINNING], "елмаю")
+        self.assertEqual(names[SMILING_VS16], "бәхетле бит")
+
+    def test_hash_keycap_line_is_data_not_a_comment(self) -> None:
+        # The keycap sequence starts with '#'; only a '#' line without a tab is a comment.
+        keycap = seq(0x23, 0xFE0F, 0x20E3)
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_names(Path(directory), f"{keycap}\tнумар төймәсе\n")
+            names = pack.read_tt_names(path, (keycap,))
+        self.assertEqual(names[keycap], "нумар төймәсе")
+
+    def test_unknown_sequence_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_names(Path(directory), f"{UPSIDE_DOWN}\tелмаю\n")
+            with self.assertRaises(pack.EmojiSearchPackError):
+                pack.read_tt_names(path, (GRINNING, SMILING_VS16))
+
+    def test_duplicate_sequence_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_names(
+                Path(directory),
+                f"{GRINNING}\tелмаю\n{GRINNING}\tбәхет\n",
+            )
+            with self.assertRaises(pack.EmojiSearchPackError):
+                pack.read_tt_names(path, (GRINNING,))
+
+    def test_a_name_shared_by_two_emoji_raises(self) -> None:
+        # TalkBack reads the name, so two emoji must not sound alike.
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_names(
+                Path(directory),
+                f"{GRINNING}\tелмаю\n{SMILING_VS16}\tелмаю\n",
+            )
+            with self.assertRaises(pack.EmojiSearchPackError):
+                pack.read_tt_names(path, (GRINNING, SMILING_VS16))
+
+    def test_malformed_lines_raise(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            for bad in (f"{GRINNING}\n", f"{GRINNING}\t\n",
+                        f"{GRINNING}\tелмаю\tбәхет\n"):
+                path = self.write_names(directory, bad)
+                with self.assertRaises(pack.EmojiSearchPackError, msg=bad):
+                    pack.read_tt_names(path, (GRINNING,))
+
+    def test_non_canonical_or_foreign_names_raise(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            for bad in ("Елмаю", "hello", "сәләм!"):
+                path = self.write_names(directory, f"{GRINNING}\t{bad}\n")
+                with self.assertRaises(pack.EmojiSearchPackError, msg=bad):
+                    pack.read_tt_names(path, (GRINNING,))
+
+    def test_empty_file_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_names(Path(directory), "# только комментарий\n")
+            with self.assertRaises(pack.EmojiSearchPackError):
+                pack.read_tt_names(path, (GRINNING,))
+
+
+class BuildIndexTtNamesTest(unittest.TestCase):
+    """The fourth field: the Tatar spoken name, present only with --tt-names."""
+
+    def test_no_tt_names_keeps_three_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            index = build_from(Path(directory))
+        for line in index.text.splitlines():
+            self.assertEqual(line.count("\t"), 2)
+
+    def test_tt_names_add_a_fourth_field(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            index = build_from(Path(directory),
+                               tt_names={GRINNING: "елмаю"})
+        line = index.text.splitlines()[0]
+        self.assertEqual(line, EXPECTED_LINE_GRINNING + "\tелмаю")
+
+    def test_a_sequence_without_a_tt_name_gets_an_empty_fourth_field(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            index = build_from(Path(directory),
+                               tt_names={GRINNING: "елмаю"})
+        smiling = index.text.splitlines()[1]
+        self.assertEqual(smiling, EXPECTED_LINE_SMILING + "\t")
+        self.assertEqual(smiling.count("\t"), 3)
+
+    def test_tt_names_do_not_change_keywords_ranking_or_coverage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plain = build_from(Path(directory))
+            named = build_from(Path(directory), tt_names={GRINNING: "елмаю"})
+        self.assertEqual(plain.line_count, named.line_count)
+        self.assertEqual(plain.russian_coverage, named.russian_coverage)
+        plain_words = plain.text.splitlines()[0].split("\t")[2]
+        named_words = named.text.splitlines()[0].split("\t")[2]
+        self.assertEqual(plain_words, named_words)
+
+
+class CliTtNamesTest(unittest.TestCase):
+    def test_tt_names_reach_the_asset_and_json_reports_them(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            pins = write_cldr_dir(directory)
+            panel = write_panel(directory)
+            names = directory / "names.txt"
+            names.write_text(f"{GRINNING}\tелмаю\n", encoding="utf-8")
+            out = directory / "out.txt"
+            stdout = io.StringIO()
+            with patched(EXPECTED_INPUT_SHA256=pins), \
+                    contextlib.redirect_stdout(stdout), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                code = pack.main([
+                    "build", "--cldr-dir", str(directory),
+                    "--panel-asset", str(panel), "--tt-names", str(names),
+                    "--output", str(out)])
+            self.assertEqual(code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["tt_named_sequences"], 1)
+            lines = out.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(lines[0], EXPECTED_LINE_GRINNING + "\tелмаю")
+            self.assertEqual(lines[1], EXPECTED_LINE_SMILING + "\t")
+
+    def test_bad_tt_names_exits_2_without_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            pins = write_cldr_dir(directory)
+            panel = write_panel(directory)
+            names = directory / "names.txt"
+            names.write_text(f"{UPSIDE_DOWN}\tелмаю\n", encoding="utf-8")
+            out = directory / "out.txt"
+            with patched(EXPECTED_INPUT_SHA256=pins), \
+                    contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                code = pack.main([
+                    "build", "--cldr-dir", str(directory),
+                    "--panel-asset", str(panel), "--tt-names", str(names),
+                    "--output", str(out)])
+            self.assertEqual(code, 2)
+            self.assertFalse(out.exists())
 
 
 class BuildIndexTtExtraTest(unittest.TestCase):
@@ -565,11 +731,27 @@ class CommittedAssetTest(unittest.TestCase):
         self.assertEqual(len(self.search_lines), COMMITTED_LINE_COUNT)
         self.assertEqual(sha256_of(SEARCH_ASSET), COMMITTED_ASSET_SHA256)
 
-    def test_every_line_is_three_tab_separated_fields(self) -> None:
+    def test_every_line_is_four_tab_separated_fields(self) -> None:
         for line in self.search_lines:
             fields = line.split("\t")
-            self.assertEqual(len(fields), 3, msg=line[:60])
-            self.assertTrue(all(fields), msg=line[:60])
+            self.assertEqual(len(fields), 4, msg=line[:60])
+            self.assertTrue(all(fields[:3]), msg=line[:60])
+
+    def test_tatar_names_are_canonical_and_unique(self) -> None:
+        # The fourth field is the curated Tatar spoken name
+        # (scripts/emoji_search_tt_names.txt) or empty, where the emoji is read by
+        # its Russian name; a present name identifies exactly one emoji.
+        named = [line.split("\t")[3] for line in self.search_lines
+                 if line.split("\t")[3]]
+        self.assertEqual(len(named), COMMITTED_TATAR_NAME_COUNT)
+        self.assertEqual(len(named), len(set(named)))
+        for line in self.search_lines:
+            fields = line.split("\t")
+            if not fields[3]:
+                continue
+            self.assertEqual(fields[3], fields[3].lower(), msg=line[:60])
+            bad = set(fields[3]) - pack.TATAR_WORD_CHARS
+            self.assertFalse(bad, msg=f"non-Tatar characters {bad} in {line[:60]}")
 
     def test_index_never_offers_what_the_panel_cannot_draw(self) -> None:
         panel = set(self.panel_sequences)
@@ -599,7 +781,23 @@ class CommittedAssetTest(unittest.TestCase):
         # stripped it: keywords and names must never carry it.
         for line in self.search_lines:
             fields = line.split("\t")
-            self.assertNotIn("️", fields[1] + fields[2])
+            self.assertNotIn("️", fields[1] + fields[2] + fields[3])
+
+    def test_tatar_names_reached_the_committed_asset(self) -> None:
+        # Spot-check of the curated names file, including the '#' keycap whose
+        # line starts with the comment character; hearts share the Tatar word,
+        # so they carry no Tatar name.
+        expected = {
+            "❤️": "",
+            "💙": "",
+            "🐓": "әтәч",
+            "🕌": "мәчет",
+            "#️⃣": "нумар төймәсе",
+        }
+        by_sequence = {line.split("\t")[0]: line.split("\t")[3]
+                       for line in self.search_lines}
+        for sequence, name in expected.items():
+            self.assertEqual(by_sequence.get(sequence), name, msg=sequence)
 
     def test_tatar_keywords_reached_the_committed_asset(self) -> None:
         # The hand-written Tatar synonyms of scripts/emoji_search_tt_extra.txt

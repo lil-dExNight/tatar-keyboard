@@ -19,15 +19,18 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 import java.io.InputStream
 
 /**
- * The emoji-search index: an immutable, Android-free table of "sequence -> name + keywords" built
- * from `assets/emoji/emoji_search_v1.txt` (see `scripts/emoji_search_pack.py` and the NOTICE beside
- * the asset; the data is CLDR annotations, Russian first and English after it).
+ * The emoji-search index: an immutable, Android-free table of "sequence -> names + keywords"
+ * built from `assets/emoji/emoji_search_v1.txt` (see `scripts/emoji_search_pack.py` and the
+ * NOTICE beside the asset; the names and keywords are CLDR annotations, Russian first and
+ * English after it, plus the project's own Tatar data).
  *
- * The asset is data, not code: UTF-8, LF line endings, one entry per line, three tab-separated
- * fields — the sequence exactly as it appears in `emoji_set_v1.txt`, the Russian short name, and
- * the space-separated union of the Russian and English keywords, all lowercased by the generator.
- * Because field 1 comes from the panel asset, the index can only ever name emoji the panel is able
- * to draw; entries the running device has no glyph for are dropped on top of that by [filterTo].
+ * The asset is data, not code: UTF-8, LF line endings, one entry per line, four tab-separated
+ * fields — the sequence exactly as it appears in `emoji_set_v1.txt`, the Russian short name, the
+ * space-separated union of the Russian and English keywords and the Tatar synonyms, all
+ * lowercased by the generator, and the Tatar short name for TalkBack (empty only where the
+ * curated file has none). A line missing the fourth field parses as "no Tatar name". Because
+ * field 1 comes from the panel asset, the index can only ever name emoji the panel is able to
+ * draw; entries the running device has no glyph for are dropped on top of that by [filterTo].
  *
  * Matching is word-prefix: a query matches an entry when some word of its name or of its keywords
  * starts with the query. Results are ordered by how directly they matched — the name itself first,
@@ -39,6 +42,7 @@ class EmojiSearchIndex private constructor(
     private val sequences: Array<String>,
     private val names: Array<String>,
     private val keywords: Array<String>,
+    private val tatarNames: Array<String>,
 ) {
     /** Rank buckets, reused across queries so a keystroke allocates nothing. */
     private val exactRank = IntArray(MAX_RESULTS)
@@ -109,22 +113,36 @@ class EmojiSearchIndex private constructor(
     fun resultAt(position: Int): String =
         if (position in 0 until resultCount) sequences[results[position]] else ""
 
-    /** The Russian short name of the [position]-th result; used by the accessibility delegate. */
-    fun resultNameAt(position: Int): String =
-        if (position in 0 until resultCount) names[results[position]] else ""
+    /**
+     * The short name of the [position]-th result in [language]; used by the accessibility
+     * delegate. [language] is the asset language tag as `EmojiSuggestIndex.assetLanguageOf`
+     * derives it from the subtype id (`tt_RU` -> `tt`): `tt` picks the Tatar name, anything
+     * else the Russian one, and a missing Tatar name falls back to the Russian one.
+     */
+    fun resultNameAt(position: Int, language: String?): String =
+        if (position in 0 until resultCount) nameAt(results[position], language) else ""
 
     /**
-     * The Russian short name of [sequence] itself, or null when the index does not hold it. A
-     * linear scan, allocation-free; used off the keystroke path, when a strip cell that shows an
-     * emoji needs a spoken label for TalkBack.
+     * The short name of [sequence] itself in [language], or null when the index does not hold
+     * it — the same resolution as [resultNameAt]. A linear scan, allocation-free; used off the
+     * keystroke path, when a strip cell that shows an emoji needs a spoken label for TalkBack.
      */
-    fun nameOf(sequence: String): String? {
+    fun nameOf(sequence: String, language: String?): String? {
         var index = 0
         while (index < sequences.size) {
-            if (sequences[index] == sequence) return names[index]
+            if (sequences[index] == sequence) return nameAt(index, language)
             index++
         }
         return null
+    }
+
+    /** The [index]-th name in [language]: Tatar for `tt`, Russian otherwise and on a miss. */
+    private fun nameAt(index: Int, language: String?): String {
+        if (language == TATAR_LANGUAGE) {
+            val tatar = tatarNames[index]
+            if (tatar.isNotEmpty()) return tatar
+        }
+        return names[index]
     }
 
     /**
@@ -136,12 +154,14 @@ class EmojiSearchIndex private constructor(
         val keptSequences = ArrayList<String>(sequences.size)
         val keptNames = ArrayList<String>(sequences.size)
         val keptKeywords = ArrayList<String>(sequences.size)
+        val keptTatarNames = ArrayList<String>(sequences.size)
         var index = 0
         while (index < sequences.size) {
             if (sequences[index] in available) {
                 keptSequences.add(sequences[index])
                 keptNames.add(names[index])
                 keptKeywords.add(keywords[index])
+                keptTatarNames.add(tatarNames[index])
             }
             index++
         }
@@ -150,6 +170,7 @@ class EmojiSearchIndex private constructor(
             keptSequences.toTypedArray(),
             keptNames.toTypedArray(),
             keptKeywords.toTypedArray(),
+            keptTatarNames.toTypedArray(),
         )
     }
 
@@ -160,7 +181,10 @@ class EmojiSearchIndex private constructor(
         /** Upper bound on the length of a single asset line; anything longer is junk. */
         private const val MAX_LINE_CHARS = 512
 
-        val EMPTY = EmojiSearchIndex(emptyArray(), emptyArray(), emptyArray())
+        /** The asset language tag that selects the Tatar name channel. */
+        private const val TATAR_LANGUAGE = "tt"
+
+        val EMPTY = EmojiSearchIndex(emptyArray(), emptyArray(), emptyArray(), emptyArray())
 
         /** Lowercases and collapses a query the same way the generator normalized the asset. */
         fun normalize(query: String): String = query.trim().lowercase()
@@ -209,6 +233,7 @@ class EmojiSearchIndex private constructor(
             val sequences = ArrayList<String>()
             val names = ArrayList<String>()
             val keywords = ArrayList<String>()
+            val tatarNames = ArrayList<String>()
             val seen = HashSet<String>()
             for (rawLine in text.split('\n')) {
                 val line = if (rawLine.endsWith('\r')) rawLine.dropLast(1) else rawLine
@@ -216,19 +241,26 @@ class EmojiSearchIndex private constructor(
                 val firstTab = line.indexOf('\t')
                 if (firstTab <= 0) continue
                 val secondTab = line.indexOf('\t', firstTab + 1)
-                if (secondTab <= firstTab + 1 || secondTab >= line.length - 1) continue
+                if (secondTab <= firstTab + 1) continue
+                // The fourth field (the Tatar name) is optional and may be empty; a fifth field
+                // marks junk.
+                val thirdTab = line.indexOf('\t', secondTab + 1)
+                val keywordsEnd = if (thirdTab < 0) line.length else thirdTab
+                if (keywordsEnd <= secondTab + 1) continue
+                if (thirdTab >= 0 && line.indexOf('\t', thirdTab + 1) >= 0) continue
                 val sequence = line.substring(0, firstTab)
-                if (line.indexOf('\t', secondTab + 1) >= 0) continue
                 if (!seen.add(sequence)) continue
                 sequences.add(sequence)
                 names.add(line.substring(firstTab + 1, secondTab))
-                keywords.add(line.substring(secondTab + 1))
+                keywords.add(line.substring(secondTab + 1, keywordsEnd))
+                tatarNames.add(if (thirdTab < 0) "" else line.substring(thirdTab + 1))
             }
             if (sequences.isEmpty()) return EMPTY
             return EmojiSearchIndex(
                 sequences.toTypedArray(),
                 names.toTypedArray(),
                 keywords.toTypedArray(),
+                tatarNames.toTypedArray(),
             )
         }
     }

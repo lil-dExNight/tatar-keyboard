@@ -11,7 +11,7 @@ described in [ASSET-FORMATS.md](ASSET-FORMATS.md).
 | `bigrams/*.tatbigr.zlib` | `scripts/rebuild_assets.py` (runs `bigram_asset_pack.py pack`) | Leipzig sentence corpora, conversational training files, the fresh dictionaries |
 | `dictionaries/*_sentstart_v1.txt` | `scripts/sentstart_pack.py` | Leipzig sentence corpora, the bundled dictionary; the Russian table also takes the conversational training file |
 | `emoji/emoji_set_v1.txt`, `emoji_skin_v1.txt` | `scripts/emoji_pack.py`, `scripts/emoji_skin_pack.py` | Unicode Emoji 15.1 `emoji-test.txt` |
-| `emoji/emoji_search_v1.txt` | `scripts/emoji_search_pack.py` | CLDR 44 annotations (ru, en), `scripts/emoji_search_tt_extra.txt` |
+| `emoji/emoji_search_v1.txt` | `scripts/emoji_search_pack.py` | CLDR 44 annotations (ru, en), `scripts/emoji_search_tt_extra.txt`, `scripts/emoji_search_tt_names.txt` |
 | `emoji/emoji_suggest_v1.txt` | `scripts/emoji_suggest_pack.py` | `scripts/emoji_suggest_data.tsv` |
 
 ## Inputs
@@ -63,7 +63,8 @@ These inputs are in the repository:
   (`scripts/wordform_gen.py`). Its SHA-256 is pinned in `tests/wordform_gen/`.
 - `scripts/bigram_extra_heads_tat.txt`: extra Tatar bigram heads (imperatives ranked below the
   head cutoff). The rule that produced the list is in the file header; do not add words by hand.
-- `scripts/emoji_suggest_data.tsv` and `scripts/emoji_search_tt_extra.txt`: curated emoji data.
+- `scripts/emoji_suggest_data.tsv`, `scripts/emoji_search_tt_extra.txt` and
+  `scripts/emoji_search_tt_names.txt`: curated emoji data.
 
 ## `rebuild_assets.py`
 
@@ -182,6 +183,7 @@ python3 scripts/emoji_skin_pack.py build --input emoji-test.txt \
 python3 scripts/emoji_search_pack.py build --cldr-dir CLDR \
     --panel-asset app/src/main/assets/emoji/emoji_set_v1.txt \
     --tt-extra scripts/emoji_search_tt_extra.txt \
+    --tt-names scripts/emoji_search_tt_names.txt \
     --output app/src/main/assets/emoji/emoji_search_v1.txt
 python3 scripts/emoji_suggest_pack.py build --data scripts/emoji_suggest_data.tsv \
     --panel-asset app/src/main/assets/emoji/emoji_set_v1.txt \

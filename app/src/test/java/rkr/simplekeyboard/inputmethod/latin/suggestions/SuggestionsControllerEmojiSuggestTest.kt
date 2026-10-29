@@ -168,12 +168,17 @@ class SuggestionsControllerEmojiSuggestTest {
         private val names: Map<String, String> = emptyMap(),
     ) : EmojiSuggestSource {
         var lookups = 0
+        /** The language tags the strip asked the spoken name in, in order. */
+        val spokenLanguages = mutableListOf<String>()
         override fun emojiFor(language: String, normalizedWord: String): String? {
             lookups++
             return table[language to normalizedWord]
         }
 
-        override fun spokenNameOf(emoji: String): String? = names[emoji]
+        override fun spokenNameOf(language: String, emoji: String): String? {
+            spokenLanguages.add(language)
+            return names[emoji]
+        }
     }
 
     /** Records every learned-emoji event. */
@@ -225,13 +230,13 @@ class SuggestionsControllerEmojiSuggestTest {
         override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean = true
     }
 
-    private class Harness(source: EmojiSuggestSource?) {
+    private class Harness(val emojiSource: EmojiSuggestSource?) {
         val strip = FakeStrip()
         val editor = FakeEditor()
         val executor = DirectExecutorService()
         val engines = LinkedHashMap<String, FakeEngine>()
         val callbacks = LinkedHashMap<String, ResultCallback>()
-        val emojiPreparation = FakeEmojiPreparation(source)
+        val emojiPreparation = FakeEmojiPreparation(emojiSource)
         var emojiGateOn = true
 
         val controller = SuggestionsController(
@@ -789,6 +794,24 @@ class SuggestionsControllerEmojiSuggestTest {
 
         assertEquals(listOf("минем", "❤️"), h.strip.lastCells())
         assertEquals(listOf(null, "йөрәк", null, null), h.strip.labels)
+        // The name was asked in the active subtype's asset language, so the Tatar layout speaks
+        // the Tatar name (and would fall back to Russian inside the index for an unnamed emoji).
+        val spoken = (h.emojiSource as FakeEmojiSource).spokenLanguages
+        assertTrue(spoken.isNotEmpty())
+        assertEquals(setOf("tt"), spoken.toSet())
+    }
+
+    @Test
+    fun theSpokenLabelFollowsTheActiveSubtypeLanguage() {
+        val h = harnessWithMapping("ru", "сердце", "❤️", name = "сердце")
+        h.start(russian)
+        h.typeWordAndSpace("сердце")
+        h.deliver(russian, listOf("минем"))
+
+        assertEquals(listOf(null, "сердце", null, null), h.strip.labels)
+        val spoken = (h.emojiSource as FakeEmojiSource).spokenLanguages
+        assertTrue(spoken.isNotEmpty())
+        assertEquals(setOf("ru"), spoken.toSet())
     }
 
     @Test

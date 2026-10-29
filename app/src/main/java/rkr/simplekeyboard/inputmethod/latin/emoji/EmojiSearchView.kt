@@ -105,6 +105,12 @@ class EmojiSearchView @JvmOverloads constructor(
 
     private var listener: Listener? = null
     private var index: EmojiSearchIndex = EmojiSearchIndex.EMPTY
+
+    /**
+     * The asset language tag the accessibility delegate speaks result names in (`tt` picks the
+     * Tatar name, anything else the Russian one); set together with the index on entering.
+     */
+    private var spokenNameLanguage: String? = null
     private var queryText: String = ""
     private var resultCount = 0
     private var scrollX = 0
@@ -218,6 +224,11 @@ class EmojiSearchView @JvmOverloads constructor(
         setQuery("")
     }
 
+    /** Sets the language the result names are spoken in; see [spokenNameLanguage]. */
+    fun setSpokenNameLanguage(language: String?) {
+        spokenNameLanguage = language
+    }
+
     /** Re-runs the search for [query] and redraws. The query text is never sent anywhere else. */
     fun setQuery(query: String) {
         val hadResultBand = EmojiSearchLayout.showsResultBand(queryText)
@@ -239,6 +250,7 @@ class EmojiSearchView @JvmOverloads constructor(
         cancelGesture()
         listener = null
         index = EmojiSearchIndex.EMPTY
+        spokenNameLanguage = null
         queryText = ""
         resultCount = 0
         scrollX = 0
@@ -501,8 +513,8 @@ class EmojiSearchView @JvmOverloads constructor(
 
     /**
      * Virtual nodes for the query pill (so a screen reader can read back what has been typed), the
-     * close key and every visible result. A result speaks its Russian CLDR name rather than the
-     * bare sequence, because here the name is already at hand.
+     * close key and every visible result. A result speaks its short name in the bound language
+     * rather than the bare sequence, because here the name is already at hand.
      */
     private inner class EmojiSearchAccessibilityHelper :
         ExploreByTouchHelper(this@EmojiSearchView) {
@@ -558,7 +570,7 @@ class EmojiSearchView @JvmOverloads constructor(
                     )
                 }
                 virtualViewId in 0 until resultCount -> {
-                    node.contentDescription = index.resultNameAt(virtualViewId)
+                    node.contentDescription = index.resultNameAt(virtualViewId, spokenNameLanguage)
                     val left = EmojiSearchLayout.resultColumn(virtualViewId) * resultCellPx - scrollX
                     val rowTop = queryRowPx + EmojiSearchLayout.resultRow(virtualViewId) * resultRowPx
                     tempBounds.set(left, rowTop, left + resultCellPx, rowTop + resultRowPx)

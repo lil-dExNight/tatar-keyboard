@@ -239,9 +239,11 @@ public final class InputView extends FrameLayout {
      * Enters the emoji search: the panel steps aside and the two search rows take the suggestion
      * strip's place above the letter keyboard, which the caller makes visible again. The panel keeps
      * its bound snapshot and its scroll position, so {@link #leaveEmojiSearch()} puts back exactly
-     * the grid the user left.
+     * the grid the user left. {@code spokenNameLanguage} is the asset language tag the result
+     * names are announced in.
      */
-    public EmojiSearchView enterEmojiSearch(final EmojiSearchIndex index) {
+    public EmojiSearchView enterEmojiSearch(final EmojiSearchIndex index,
+            final String spokenNameLanguage) {
         final EmojiSearchView search = getOrCreateEmojiSearchView();
         if (search == null) {
             return null;
@@ -256,6 +258,7 @@ public final class InputView extends FrameLayout {
             mStripHiddenByEmojiPanel = true;
             changed = true;
         }
+        search.setSpokenNameLanguage(spokenNameLanguage);
         search.setIndex(index);
         if (search.getVisibility() != VISIBLE) {
             search.setVisibility(VISIBLE);
