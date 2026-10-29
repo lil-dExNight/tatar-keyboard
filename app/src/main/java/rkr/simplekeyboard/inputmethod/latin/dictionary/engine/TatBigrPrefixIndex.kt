@@ -1,5 +1,6 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.StoreValidationToken
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -60,7 +61,8 @@ internal fun interface PackedSuccessorSource {
  * Zero-allocation reader for one mapped TATBIGR schema-3 file, like [TdictPrefixIndex]: [open]
  * re-validates the structural invariants a lookup depends on (section arithmetic, strictly
  * increasing head indices, minimal varints, stream boundaries, the dictionary link) instead of
- * trusting `TatBigrValidator`; [predict] allocates only the result strings.
+ * trusting `TatBigrValidator`, and skips the stream walk when a store validation token for the
+ * same content matches (see [StoreValidationToken]); [predict] allocates only the result strings.
  *
  * The read: resolve the context word to its dictionary index (one binary search), binary search
  * the head-block index for the last block whose first index is ≤ the query's, stream-decode the
@@ -243,6 +245,9 @@ internal class TatBigrPrefixIndex private constructor(
             dictionary: BigramDictionary,
             expectedHeadCount: Long,
             expectedRawSize: Long,
+            // A live store token for exactly this content skips the stream walk below; the header
+            // and block-record checks always run. See [StoreValidationToken].
+            validationToken: StoreValidationToken? = null,
         ): TatBigrPrefixIndex? = try {
             require(identity.generation > 0)
             require(identity.schemaId == 3)
@@ -309,9 +314,9 @@ internal class TatBigrPrefixIndex private constructor(
                 successIdsOffset.toInt(),
             )
 
-            // Re-validate every invariant the reads above depend on for correctness, as
-            // TdictPrefixIndex.open does: block records, the whole head delta stream, the counts
-            // and every successor id, checked against the dictionary's entry count.
+            val skipStructuralWalk =
+                StoreValidationToken.matches(validationToken, identity.rawSha256, expectedRawSize)
+            // The block records, checked as in TdictPrefixIndex.open: cheap, always re-run.
             var previousFirstIndex = -1L
             var previousDeltaOffset = 0L
             var previousSuccessOffset = 0L
@@ -329,47 +334,52 @@ internal class TatBigrPrefixIndex private constructor(
                 previousSuccessOffset = successOffset
             }
 
-            var successCursor = successIdsOffset.toInt()
-            var pairTotal = 0L
-            var previousHeadIndex = -1
-            for (block in 0 until index.blockCount) {
-                val first = block * HEAD_BLOCK_SIZE
-                val blockHeads = minOf(HEAD_BLOCK_SIZE, index.headCount - first)
-                val deltaEnd = index.headDeltasOffset + (
-                    if (block + 1 < index.blockCount) index.blockDeltaOffset(block + 1)
-                    else headDeltasSize.toInt()
-                    )
-                require(successCursor.toLong() == successIdsOffset + index.blockSuccessOffset(block))
+            // The stream walk: the whole head delta stream, the counts and every successor id,
+            // checked against the dictionary's entry count. A matched token stands for the
+            // store's validation of the same content, which already proved all of it.
+            if (!skipStructuralWalk) {
+                var successCursor = successIdsOffset.toInt()
+                var pairTotal = 0L
+                var previousHeadIndex = -1
+                for (block in 0 until index.blockCount) {
+                    val first = block * HEAD_BLOCK_SIZE
+                    val blockHeads = minOf(HEAD_BLOCK_SIZE, index.headCount - first)
+                    val deltaEnd = index.headDeltasOffset + (
+                        if (block + 1 < index.blockCount) index.blockDeltaOffset(block + 1)
+                        else headDeltasSize.toInt()
+                        )
+                    require(successCursor.toLong() == successIdsOffset + index.blockSuccessOffset(block))
 
-                var cursor = index.headDeltasOffset + index.blockDeltaOffset(block)
-                var headIndex = index.blockFirstIndex(block).toLong() and MAX_U32
-                require(headIndex > previousHeadIndex.toLong() && headIndex < dictionary.entryCount)
-                for (position in 0 until blockHeads) {
-                    if (position > 0) {
-                        index.decodeVarint(cursor)
-                        require(index.varintNext <= deltaEnd)
-                        val delta = index.varintValue.toLong() and MAX_U32
-                        require(delta >= 1)
-                        cursor = index.varintNext
-                        headIndex += delta
-                        require(headIndex < dictionary.entryCount)
-                        require(headIndex > previousHeadIndex.toLong())
-                    }
-                    previousHeadIndex = headIndex.toInt()
+                    var cursor = index.headDeltasOffset + index.blockDeltaOffset(block)
+                    var headIndex = index.blockFirstIndex(block).toLong() and MAX_U32
+                    require(headIndex > previousHeadIndex.toLong() && headIndex < dictionary.entryCount)
+                    for (position in 0 until blockHeads) {
+                        if (position > 0) {
+                            index.decodeVarint(cursor)
+                            require(index.varintNext <= deltaEnd)
+                            val delta = index.varintValue.toLong() and MAX_U32
+                            require(delta >= 1)
+                            cursor = index.varintNext
+                            headIndex += delta
+                            require(headIndex < dictionary.entryCount)
+                            require(headIndex > previousHeadIndex.toLong())
+                        }
+                        previousHeadIndex = headIndex.toInt()
 
-                    val count = index.countAt(first + position)
-                    require(count >= 1)
-                    pairTotal += count
-                    repeat(count) {
-                        index.decodeVarint(successCursor)
-                        successCursor = index.varintNext
-                        require(index.varintValue.toLong() and MAX_U32 < dictionary.entryCount)
+                        val count = index.countAt(first + position)
+                        require(count >= 1)
+                        pairTotal += count
+                        repeat(count) {
+                            index.decodeVarint(successCursor)
+                            successCursor = index.varintNext
+                            require(index.varintValue.toLong() and MAX_U32 < dictionary.entryCount)
+                        }
                     }
+                    require(cursor == deltaEnd)
                 }
-                require(cursor == deltaEnd)
+                require(pairTotal == pairCount)
+                require(successCursor.toLong() == successIdsOffset + successIdsSize)
             }
-            require(pairTotal == pairCount)
-            require(successCursor.toLong() == successIdsOffset + successIdsSize)
 
             index
         } catch (_: RuntimeException) {

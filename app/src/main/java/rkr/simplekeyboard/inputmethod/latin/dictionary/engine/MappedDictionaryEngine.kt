@@ -119,6 +119,9 @@ class MappedDictionaryEngine private constructor(
                 ?: throw IllegalArgumentException("bigram attach before the dictionary is open")
             val index = TatBigrPrefixIndex.open(
                 mapped, bigramIdentity, dictionaryIndex, table.headCount, table.rawSize,
+                // The token vouches only for the file as validated; a rewritten file (length or
+                // modification time changed) gets the full walk. See StoreValidationToken.
+                validationToken = lease.validationToken?.takeIf { it.matchesFile(table.file) },
             ) ?: throw IllegalArgumentException("validated bigram layout mismatch")
             if (!resources.attachBigram(lease, catalog, mapped, index)) {
                 // The engine was destroyed meanwhile: attachBigram left the lease for us to
@@ -392,6 +395,10 @@ class MappedDictionaryEngine private constructor(
                     suffixTable,
                     fuzzyEditPolicy,
                     autocorrectMinCandidateFrequency,
+                    // The token vouches only for the file as validated; a rewritten file (length
+                    // or modification time changed) gets the full walk. See StoreValidationToken.
+                    validationToken = lease.validationToken
+                        ?.takeIf { it.matchesFile(dictionary.file) },
                 ) ?: throw IllegalArgumentException("validated dictionary layout mismatch")
                 val executor = executorFactory()
                 createdExecutor = executor

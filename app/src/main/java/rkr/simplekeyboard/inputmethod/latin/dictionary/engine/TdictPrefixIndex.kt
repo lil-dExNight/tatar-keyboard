@@ -2,6 +2,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.StoreValidationToken
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictFormat
 
 data class DictionaryIdentity(
@@ -196,7 +197,8 @@ private inline fun isValidUtf8Scalar(size: Int, byteAt: (Int) -> Int): Boolean {
 
 /**
  * Schema-2 dictionary reader. The supplied buffer must already have passed storage validation;
- * [open] re-checks the invariants lookups depend on.
+ * [open] re-checks the invariants lookups depend on, and skips the structural walk when a store
+ * validation token for the same content matches (see [StoreValidationToken]).
  *
  * [suffixTable] is the same-stem boost table, null for an engine that never boosts (the Russian
  * one). It is consulted by the exact pass only, when the typed prefix is itself a complete word.
@@ -1748,6 +1750,9 @@ internal class TdictPrefixIndex private constructor(
             // The autocorrect candidate floor of the language this dictionary serves; 0 disables
             // the frequency gate. Pinned per shipped build by AutocorrectFloorPinTest.
             autocorrectMinCandidateFrequency: Long,
+            // A live store token for exactly this content skips the structural walk below; the
+            // header and section checks always run. See [StoreValidationToken].
+            validationToken: StoreValidationToken? = null,
         ): TdictPrefixIndex? = try {
             require(identity.generation > 0)
             require(identity.schemaId == TdictFormat.SCHEMA_ID)
@@ -1796,8 +1801,9 @@ internal class TdictPrefixIndex private constructor(
                 fuzzyEditPolicy ?: FuzzyEditPolicy.DEFAULT,
                 autocorrectMinCandidateFrequency,
             )
-            // Full structural pass: the block table is canonical and every block decodes to
-            // exactly its entry count, strictly increasing words and positive frequencies.
+            val skipStructuralWalk =
+                StoreValidationToken.matches(validationToken, identity.rawSha256, expectedRawSize)
+            // The block table: canonical, strictly increasing offsets inside the file.
             require(index.blockOffset(0) == blocksOffset.toInt())
             var previousBlockOffset = index.blockOffset(0)
             for (block in 1 until blockCount) {
@@ -1806,61 +1812,68 @@ internal class TdictPrefixIndex private constructor(
                 require(offset.toLong() < fileSize)
                 previousBlockOffset = offset
             }
-            val previous = ByteArray(TdictFormat.MAX_WORD_BYTES)
-            var previousLength = -1
-            val current = ByteArray(TdictFormat.MAX_WORD_BYTES)
-            for (block in 0 until blockCount) {
-                val blockStart = index.blockOffset(block)
-                val blockEnd =
-                    if (block + 1 < blockCount) index.blockOffset(block + 1) else fileSize.toInt()
-                val inBlock = minOf(TdictFormat.BLOCK_SIZE, entryCount - block * TdictFormat.BLOCK_SIZE)
-                var cursor = blockStart
-                val firstLength = unsigned(buffer.get(cursor))
-                cursor++
-                require(firstLength >= 1 && firstLength <= TdictFormat.MAX_WORD_BYTES)
-                require(cursor + firstLength <= blockEnd)
-                val firstStart = cursor
-                cursor += firstLength
-                for (entry in 0 until inBlock) {
-                    val length: Int
-                    if (entry == 0) {
-                        for (offset in 0 until firstLength) current[offset] = buffer.get(firstStart + offset)
-                        length = firstLength
-                    } else {
-                        index.decodeVarint(cursor)
-                        val prefixLength = index.varintValue
-                        cursor = index.varintNext
-                        require(prefixLength <= firstLength)
-                        require(cursor < blockEnd)
-                        val suffixLength = unsigned(buffer.get(cursor))
-                        cursor++
-                        require(suffixLength >= 1)
-                        require(prefixLength + suffixLength <= TdictFormat.MAX_WORD_BYTES)
-                        require(cursor + suffixLength <= blockEnd)
-                        for (offset in 0 until prefixLength) current[offset] = buffer.get(firstStart + offset)
-                        for (offset in 0 until suffixLength) current[prefixLength + offset] = buffer.get(cursor + offset)
-                        cursor += suffixLength
-                        length = prefixLength + suffixLength
-                    }
-                    if (previousLength >= 0) {
-                        val shared = minOf(previousLength, length)
-                        var difference = 0
-                        for (offset in 0 until shared) {
-                            difference = unsigned(previous[offset]) - unsigned(current[offset])
-                            if (difference != 0) break
+            // The full structural pass: every block decodes to exactly its entry count, strictly
+            // increasing words and positive frequencies. A matched token stands for the store's
+            // validation of the same content, which already proved all of it.
+            if (!skipStructuralWalk) {
+                val previous = ByteArray(TdictFormat.MAX_WORD_BYTES)
+                var previousLength = -1
+                val current = ByteArray(TdictFormat.MAX_WORD_BYTES)
+                for (block in 0 until blockCount) {
+                    val blockStart = index.blockOffset(block)
+                    val blockEnd =
+                        if (block + 1 < blockCount) index.blockOffset(block + 1)
+                        else fileSize.toInt()
+                    val inBlock =
+                        minOf(TdictFormat.BLOCK_SIZE, entryCount - block * TdictFormat.BLOCK_SIZE)
+                    var cursor = blockStart
+                    val firstLength = unsigned(buffer.get(cursor))
+                    cursor++
+                    require(firstLength >= 1 && firstLength <= TdictFormat.MAX_WORD_BYTES)
+                    require(cursor + firstLength <= blockEnd)
+                    val firstStart = cursor
+                    cursor += firstLength
+                    for (entry in 0 until inBlock) {
+                        val length: Int
+                        if (entry == 0) {
+                            for (offset in 0 until firstLength) current[offset] = buffer.get(firstStart + offset)
+                            length = firstLength
+                        } else {
+                            index.decodeVarint(cursor)
+                            val prefixLength = index.varintValue
+                            cursor = index.varintNext
+                            require(prefixLength <= firstLength)
+                            require(cursor < blockEnd)
+                            val suffixLength = unsigned(buffer.get(cursor))
+                            cursor++
+                            require(suffixLength >= 1)
+                            require(prefixLength + suffixLength <= TdictFormat.MAX_WORD_BYTES)
+                            require(cursor + suffixLength <= blockEnd)
+                            for (offset in 0 until prefixLength) current[offset] = buffer.get(firstStart + offset)
+                            for (offset in 0 until suffixLength) current[prefixLength + offset] = buffer.get(cursor + offset)
+                            cursor += suffixLength
+                            length = prefixLength + suffixLength
                         }
-                        if (difference == 0) difference = previousLength - length
-                        require(difference < 0)
+                        if (previousLength >= 0) {
+                            val shared = minOf(previousLength, length)
+                            var difference = 0
+                            for (offset in 0 until shared) {
+                                difference = unsigned(previous[offset]) - unsigned(current[offset])
+                                if (difference != 0) break
+                            }
+                            if (difference == 0) difference = previousLength - length
+                            require(difference < 0)
+                        }
+                        System.arraycopy(current, 0, previous, 0, length)
+                        previousLength = length
                     }
-                    System.arraycopy(current, 0, previous, 0, length)
-                    previousLength = length
+                    for (entry in 0 until inBlock) {
+                        index.decodeVarint(cursor)
+                        require(index.varintValue != 0)
+                        cursor = index.varintNext
+                    }
+                    require(cursor == blockEnd)
                 }
-                for (entry in 0 until inBlock) {
-                    index.decodeVarint(cursor)
-                    require(index.varintValue != 0)
-                    cursor = index.varintNext
-                }
-                require(cursor == blockEnd)
             }
             index
         } catch (_: RuntimeException) {

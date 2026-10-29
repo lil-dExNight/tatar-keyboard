@@ -90,6 +90,7 @@ data class DictionaryArtifactSpec(
     companion object {
         private val FAMILY_PATTERN = Regex("[a-z][a-z0-9_]*")
 
+        // The pins between the marker pairs are rewritten by scripts/rebuild_assets.py.
         /**
          * The Tatar dictionary. The family name and the directory are frozen: changing either
          * makes every device that already inflated this file inflate it again.
@@ -279,6 +280,11 @@ class DictionaryStorageController internal constructor(
 
 class DictionaryFileLease internal constructor(
     val dictionary: PublishedDictionary,
+    /**
+     * Proof the store fully validated [dictionary]'s content in this process; null from a
+     * hand-built catalog. See [StoreValidationToken].
+     */
+    val validationToken: StoreValidationToken? = null,
     private val release: () -> Unit,
 ) : Closeable {
     private var closed = false

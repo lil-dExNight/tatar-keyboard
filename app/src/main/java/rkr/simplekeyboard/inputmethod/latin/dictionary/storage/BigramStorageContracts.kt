@@ -79,6 +79,7 @@ data class BigramArtifactSpec(
         /** Exactly what [finalFilePattern] accepts in the file name's language position. */
         private val FILE_LANGUAGE_TAG_PATTERN = Regex("[a-z]{2,3}")
 
+        // The pins between the marker pairs are rewritten by scripts/rebuild_assets.py.
         /** The Tatar bigram table; its pinned sizes, SHA-256 values and head count follow. */
         @JvmField
         val TATAR_BIGRAMS_V1 = BigramArtifactSpec(
@@ -157,6 +158,11 @@ interface PublishedBigramTableCatalog {
 
 class BigramTableLease internal constructor(
     val table: PublishedBigramTable,
+    /**
+     * Proof the store fully validated [table]'s content in this process; null from a hand-built
+     * catalog. See [StoreValidationToken].
+     */
+    val validationToken: StoreValidationToken? = null,
     private val release: () -> Unit,
 ) : Closeable {
     private var closed = false

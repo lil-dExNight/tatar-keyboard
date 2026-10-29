@@ -45,6 +45,23 @@ class AtomicBigramStoreTest {
     }
 
     @Test
+    fun activationHandsAValidationTokenForTheLeasedTable() {
+        val artifact = BigramTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("token")
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, false)
+
+        val lease = requireNotNull(harness.store.acquireLatestForActivation())
+
+        val token = requireNotNull(lease.validationToken)
+        assertTrue(token.matchesFile(lease.table.file))
+        assertTrue(
+            StoreValidationToken.matches(token, lease.table.rawSha256, lease.table.rawSize),
+        )
+        lease.close()
+    }
+
+    @Test
     fun activationAfterAnExistingFileCheckReusesThatValidation() {
         val artifact = BigramTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("reuse-existing")

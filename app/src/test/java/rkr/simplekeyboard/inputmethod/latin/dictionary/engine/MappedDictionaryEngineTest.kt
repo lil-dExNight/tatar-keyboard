@@ -589,7 +589,7 @@ class MappedDictionaryEngineTest {
         onClose: () -> Unit = {},
     ): PublishedBigramTableCatalog {
         var lease: BigramTableLease? =
-            BigramTableLease(table, onClose)
+            BigramTableLease(table, release = onClose)
         return object : PublishedBigramTableCatalog {
             override fun acquireLatestForActivation() = lease.also { lease = null }
             override fun cleanupReleasedVersions() = Unit

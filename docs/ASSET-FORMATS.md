@@ -82,7 +82,9 @@ requires:
 - each block ends exactly where the next one starts, and the last block ends at end of file.
 
 The runtime reader (`engine/TdictPrefixIndex.kt`, `open`) checks the header and the section
-arithmetic again on the memory-mapped file.
+arithmetic again on the memory-mapped file, and walks every entry unless the store hands it a
+validation token for the same content (`storage/StoreValidationToken.kt`): the token proves a
+full validation of that content already ran in this process, so the walk is skipped.
 
 **On the device.** The raw file is inflated into a temp file, fsynced, validated, and atomically
 renamed into device-protected storage under `files/dictionaries/` (Tatar) or
@@ -150,7 +152,9 @@ using the TatBigr size limits. Then:
 The validator does not have the dictionary, so it cannot check upper bounds on indices.
 `engine/TatBigrPrefixIndex.kt` (`open`) checks the header again, requires the linked SHA-256 to
 equal the raw SHA-256 of the dictionary that is actually loaded, and requires every head and
-success index to be below that dictionary's entryCount. If the table does not match the
+success index to be below that dictionary's entryCount; a store validation token for the same
+content (see the TATDICT section above) skips that stream walk, and the header and
+dictionary-link checks always run. If the table does not match the
 dictionary, next-word prediction for that language stays empty and typing is not affected.
 On the device, tables are staged, named and retained the same way as dictionaries, in
 `files/bigrams/` or `files/bigrams-ru/`, with the name

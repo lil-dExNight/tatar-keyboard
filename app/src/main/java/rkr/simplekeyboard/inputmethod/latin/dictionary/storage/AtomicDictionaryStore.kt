@@ -92,7 +92,14 @@ class AtomicDictionaryStore(
             if (previousCount == Int.MAX_VALUE) return null
             sharedState.leaseCounts[file.name] = previousCount + 1
             sharedState.validations.remove(file.name)
-            return DictionaryFileLease(published) {
+            // The validation above (run now, or recorded at publication) covered this content in
+            // this process, so the engine may skip its structural walk. See StoreValidationToken.
+            val token = StoreValidationToken.issue(
+                validated.rawSha256,
+                validated.rawSize,
+                file.lastModified(),
+            )
+            return DictionaryFileLease(published, token) {
                 synchronized(sharedState.lock) {
                     val remaining = (sharedState.leaseCounts[file.name] ?: 1) - 1
                     if (remaining <= 0) sharedState.leaseCounts.remove(file.name)

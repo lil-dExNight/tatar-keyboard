@@ -187,7 +187,9 @@ On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, 
 fsync, validate, atomic rename, directory fsync. Every process start validates the published file
 again before activating it; the first activation after that check or a publication reuses its
 result while the file keeps the recorded length and modification time, and every later activation
-validates again. `MappedDictionaryEngine` maps the file read-only
+validates again. The lease carries a process-local validation token (`StoreValidationToken`), so
+the engine's open repeats only the header and section checks and skips the structural walk the
+store already ran. `MappedDictionaryEngine` maps the file read-only
 (`FileChannel.map`) and reads it in place. The bigram table attaches lazily: publication hands the
 engine its catalog, and the engine maps and opens the table on its worker at the first next-word
 lookup, so a session that never predicts a next word never maps it. Pinned sizes and SHA-256 values

@@ -78,6 +78,40 @@ class AtomicDictionaryStoreTest {
     }
 
     @Test
+    fun activationHandsAValidationTokenForTheLeasedFile() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("token")
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, false)
+
+        val lease = requireNotNull(harness.store.acquireLatestForActivation())
+
+        val token = requireNotNull(lease.validationToken)
+        assertTrue(token.matchesFile(lease.dictionary.file))
+        assertTrue(
+            StoreValidationToken.matches(token, lease.dictionary.rawSha256, lease.dictionary.rawSize),
+        )
+        lease.close()
+    }
+
+    @Test
+    fun everyActivationHandsAValidationToken() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("token-again")
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, false)
+        requireNotNull(harness.store.acquireLatestForActivation()).close()
+
+        val lease = requireNotNull(harness.store.acquireLatestForActivation())
+
+        // The recorded publication validation was spent by the first activation, so this token
+        // comes from a fresh full validation.
+        assertEquals(2, harness.store.validationCount)
+        assertTrue(requireNotNull(lease.validationToken).matchesFile(lease.dictionary.file))
+        lease.close()
+    }
+
+    @Test
     fun aFileWithAnotherLengthAfterPublicationIsValidatedAndRejected() {
         val artifact = DictionaryTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("reuse-length")
