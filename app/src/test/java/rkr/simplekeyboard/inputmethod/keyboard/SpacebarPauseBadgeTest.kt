@@ -27,8 +27,9 @@ import org.junit.Test
  * learning is on. The fit rule is pinned: the badge never crowds the language name out — a name
  * that fits alone but not with the badge is drawn alone — and a name that fits not even alone is
  * replaced by the badge, so the pause is always visible. The view half is checked by source
- * contract (no Robolectric here): the draw is gated on the pause-learning pref alone and the
- * badge shares the language name's themed paint, so both shipped themes color it correctly.
+ * contract (no Robolectric here): the draw is gated on the cached pause-learning state (read
+ * once at attach, refreshed by a preference listener — never read per frame) and the badge
+ * shares the language name's themed paint, so both shipped themes color it correctly.
  */
 class SpacebarPauseBadgeTest {
 
@@ -147,12 +148,67 @@ class SpacebarPauseBadgeTest {
     @Test
     fun theDrawConditionIsThePauseLearningPref() {
         assertTrue(
-            "the badge must be gated on the pause-learning pref",
-            drawBody.contains("Settings.readIncognitoModeEnabled("),
+            "the badge must be gated on the cached pause-learning state",
+            drawBody.contains("final boolean learningPaused = mLearningPaused;"),
         )
         assertTrue(
             "the plan must come from SpacebarPauseBadge.drawPlan",
             drawBody.contains("SpacebarPauseBadge.drawPlan("),
+        )
+    }
+
+    /**
+     * onDraw runs per frame, so the spacebar draw path (the key-top visuals hook and everything
+     * it calls) must not touch the preferences: the pause state is read once at attach and
+     * refreshed by a listener; the draw reads only the cached field.
+     */
+    @Test
+    fun theDrawPathReadsNoPreferences() {
+        val drawPath = view.substringAfter("protected void onDrawKeyTopVisuals(")
+        for (forbidden in listOf("Settings.read", "getDeviceSharedPreferences", "SharedPreferences")) {
+            assertFalse(
+                "the spacebar draw path must not contain $forbidden",
+                drawPath.contains(forbidden),
+            )
+        }
+    }
+
+    /**
+     * The badge must still follow the toggle without a settings push into the view: the cache is
+     * read at attach and refreshed by a field-held listener (SharedPreferencesImpl keeps listeners
+     * in a WeakHashMap), which also repaints.
+     */
+    @Test
+    fun theCachedPauseStateFollowsTheToggle() {
+        val attachBody = view.substringAfter("protected void onAttachedToWindow()")
+            .substringBefore("protected void onDetachedFromWindow()")
+        val detachBody = view.substringAfter("protected void onDetachedFromWindow()")
+            .substringBefore("public MoreKeysPanel showMoreKeysKeyboard(")
+        val listenerBody = view.substringAfter("private void onLearningPauseMaybeChanged(")
+            .substringBefore("public MoreKeysPanel showMoreKeysKeyboard(")
+
+        assertTrue(
+            "the pause state must be read once at attach",
+            attachBody.contains("mLearningPaused = Settings.readIncognitoModeEnabled("),
+        )
+        assertTrue(
+            "attach must register the listener",
+            attachBody.contains("registerOnSharedPreferenceChangeListener(mLearningPauseListener)"),
+        )
+        assertTrue(
+            "detach must unregister the listener",
+            detachBody.contains("unregisterOnSharedPreferenceChangeListener(mLearningPauseListener)"),
+        )
+        assertTrue(
+            "the listener must be held in a field, not an anonymous lambda",
+            view.contains(
+                "private final SharedPreferences.OnSharedPreferenceChangeListener mLearningPauseListener",
+            ),
+        )
+        assertTrue(
+            "the listener must refresh the cache and repaint",
+            listenerBody.contains("mLearningPaused = Settings.readIncognitoModeEnabled(")
+                    && listenerBody.contains("invalidate()"),
         )
     }
 

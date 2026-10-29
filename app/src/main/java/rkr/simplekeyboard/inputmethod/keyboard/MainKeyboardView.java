@@ -21,6 +21,7 @@ package rkr.simplekeyboard.inputmethod.keyboard;
 import android.animation.AnimatorInflater;
 import android.animation.ObjectAnimator;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
@@ -83,6 +84,13 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     private final float mLanguageOnSpacebarTextRatio;
     private float mLanguageOnSpacebarTextSize;
     private final int mLanguageOnSpacebarTextColor;
+    /** Pause-learning state for the spacebar badge, cached at attach and refreshed by the
+     * listener: the draw path never reads the preferences. */
+    private boolean mLearningPaused;
+    // Held in a field, not an anonymous lambda: SharedPreferencesImpl keeps listeners in a
+    // WeakHashMap, so an unreferenced listener would be silently collected.
+    private final SharedPreferences.OnSharedPreferenceChangeListener mLearningPauseListener =
+            this::onLearningPauseMaybeChanged;
     // The minimum x-scale to fit the language name on spacebar.
     private static final float MINIMUM_XSCALE_OF_LANGUAGE_NAME = 0.8f;
 
@@ -464,17 +472,36 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         installPreviewPlacerView();
+        final SharedPreferences prefs =
+                PreferenceManagerCompat.getDeviceSharedPreferences(getContext());
+        mLearningPaused = Settings.readIncognitoModeEnabled(prefs);
+        prefs.registerOnSharedPreferenceChangeListener(mLearningPauseListener);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        PreferenceManagerCompat.getDeviceSharedPreferences(getContext())
+                .unregisterOnSharedPreferenceChangeListener(mLearningPauseListener);
         // A closing keyboard ends every fade: no stale trail at the next show, no scheduled
         // repaints of a detached view (a pending postInvalidateDelayed on a detached view is a
         // no-op, so there is nothing to cancel — the ring itself is what must not survive).
         mGlideTrail.clear();
         mGlideMotionPolicy = null;
         mDrawingPreviewPlacerView.removeAllViews();
+    }
+
+    /**
+     * Device-protected preferences changed. Reacts only to the pause-learning key; the toggle
+     * lives in this app's settings screen, which shares the process and writes on the main
+     * thread, so the badge follows it on the next frame and invalidate() is safe here.
+     */
+    private void onLearningPauseMaybeChanged(final SharedPreferences prefs, final String key) {
+        if (key != null && !Settings.PREF_INCOGNITO_MODE.equals(key)) {
+            return;
+        }
+        mLearningPaused = Settings.readIncognitoModeEnabled(prefs);
+        invalidate();
     }
 
     // Implements {@link DrawingProxy@showMoreKeysKeyboard(Key,PointerTracker)}.
@@ -789,11 +816,8 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         paint.setColor(mLanguageOnSpacebarTextColor);
         paint.setAlpha(mLanguageOnSpacebarFinalAlpha);
         // The pause-learning badge: two bars after the language name while learning is paused —
-        // the only on-surface evidence of the pause. The pref is read per draw: the toggle lives
-        // in the settings activity, and the keyboard window redraws when it shows again, so the
-        // badge follows the toggle without any settings push into the view.
-        final boolean learningPaused = Settings.readIncognitoModeEnabled(
-                PreferenceManagerCompat.getDeviceSharedPreferences(getContext()));
+        // the only on-surface evidence of the pause.
+        final boolean learningPaused = mLearningPaused;
         final float reservation = SpacebarPauseBadge.reservedWidth(mLanguageOnSpacebarTextSize);
         boolean nameFitsWithBadge = false;
         if (learningPaused && !language.isEmpty()) {
