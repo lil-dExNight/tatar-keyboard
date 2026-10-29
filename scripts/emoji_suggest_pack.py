@@ -170,7 +170,9 @@ def read_data(path: Path) -> dict[tuple[str, str], str]:
     rows: set[tuple[str, str, str]] = set()
     for lineno, raw_line in enumerate(text.split("\n"), start=1):
         line = raw_line.rstrip("\r")
-        if not line or line.startswith("#"):
+        if not line or (line.startswith("#") and "\t" not in line):
+            # A data line may begin with the # keycap sequence, so a comment is a
+            # marker line without a tab.
             continue
         where = f"{path.name}:{lineno}"
         if line.count("\t") != 2:
