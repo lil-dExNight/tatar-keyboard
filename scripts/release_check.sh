@@ -44,9 +44,10 @@ QUICK=0
 FULL=0
 CHECKS=""
 APK=""
-# Artifact checks that --checks can select; each runs on the APK alone. Version, changelog and
-# delta depend on each other and run only without --checks.
-SELECTABLE_CHECKS="size asset_pins emoji_assets tree_assets critical_resources arsc_stored dex_layout profiles permissions exported_surface no_secrets signature"
+# Artifact checks that --checks can select; each runs on the APK alone, except no_reflection,
+# which scans the main sources. Version, changelog and delta depend on each other and run only
+# without --checks.
+SELECTABLE_CHECKS="size asset_pins emoji_assets tree_assets critical_resources arsc_stored dex_layout profiles permissions exported_surface no_secrets no_reflection signature"
 
 # Prints the header comment (lines 2-22); keep the header exactly that long.
 usage() {
@@ -937,6 +938,118 @@ then
 else
     report FAIL artifact.no_secrets "найдены секретоподобные файлы/строки, лог $NO_SECRETS_LOG"
     cat "$NO_SECRETS_LOG" >&2
+fi
+fi
+
+# --- 4d. no reflection or serialization in the main sources ------------------------------------
+# app/proguard-rules.pro has no keep rules, because the code uses no reflection and no object
+# serialization: R8 is free to rename and strip everything. Any of these entry points would
+# break the release build only at runtime, so the main sources are scanned for them:
+# Class.forName, getMethod/getDeclaredMethod, ObjectInputStream/ObjectOutputStream,
+# java.io.Serializable, kotlin.reflect and the gson/jackson/kotlinx.serialization imports.
+# Exceptions live in scripts/no_reflection_allowlist.txt (a missing file means none): one entry
+# per line, either "path:line" of a specific hit or a substring of the offending line, then a
+# "# reason" comment; an entry that matches no hit fails the check.
+if want no_reflection; then
+NO_REFLECTION_LOG="$LOG_DIR/no-reflection.log"
+if python3 - >"$NO_REFLECTION_LOG" 2>&1 <<'PYEOF'
+import os
+import re
+import sys
+
+SCAN_ROOT = "app/src/main/java"
+ALLOWLIST_PATH = "scripts/no_reflection_allowlist.txt"
+
+# Substrings that mark a reflection or serialization entry point.
+MARKERS = (
+    "Class.forName",
+    "getDeclaredMethod",
+    "getMethod(",
+    "ObjectInputStream",
+    "ObjectOutputStream",
+    "java.io.Serializable",
+    "kotlin.reflect",
+    "com.google.gson",
+    "com.fasterxml",
+    "kotlinx.serialization",
+)
+
+PATH_LINE_RE = re.compile(r"^(\S+):(\d+)$")
+
+
+def load_allowlist(path):
+    """Entries: (own line, hit path, hit line, None) or (own line, None, None, substring)."""
+    entries = []
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+    except FileNotFoundError:
+        return entries
+    for number, raw in enumerate(lines, start=1):
+        body, _, reason = raw.partition("#")
+        body = body.strip()
+        if not body:
+            continue
+        if not reason.strip():
+            print(f"ALLOWLIST {path}:{number}: запись без пояснения после '#'")
+            sys.exit(2)
+        match = PATH_LINE_RE.match(body)
+        if match:
+            entries.append((number, match.group(1), int(match.group(2)), None))
+        else:
+            entries.append((number, None, None, body))
+    return entries
+
+
+def allows(entry, path, lineno, line):
+    _, entry_path, entry_line, substring = entry
+    if substring is not None:
+        return substring in line
+    return entry_path == path and entry_line == lineno
+
+
+entries = load_allowlist(ALLOWLIST_PATH)
+used = [False] * len(entries)
+scanned = 0
+problems = []
+for dirpath, dirnames, filenames in os.walk(SCAN_ROOT):
+    dirnames.sort()
+    for name in sorted(filenames):
+        path = os.path.join(dirpath, name)
+        scanned += 1
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().split("\n")
+        for lineno, line in enumerate(lines, start=1):
+            found = [marker for marker in MARKERS if marker in line]
+            if not found:
+                continue
+            allowed = False
+            for i, entry in enumerate(entries):
+                if allows(entry, path, lineno, line):
+                    used[i] = True
+                    allowed = True
+            if allowed:
+                continue
+            for marker in found:
+                problems.append(
+                    f"HIT {path}:{lineno}: найден маркер «{marker}»: {line.strip()}")
+for (number, entry_path, entry_line, substring), was_used in zip(entries, used):
+    if not was_used:
+        body = substring if substring is not None else f"{entry_path}:{entry_line}"
+        problems.append(f"ALLOWLIST {ALLOWLIST_PATH}:{number}: ни с чем не совпала: {body}")
+
+for problem in problems:
+    print(problem)
+if problems:
+    sys.exit(1)
+print(f"TOTAL 0 находок: {scanned} файлов под {SCAN_ROOT}, "
+      f"исключений в списке: {len(entries)}")
+PYEOF
+then
+    report PASS artifact.no_reflection "$(tail -1 "$NO_REFLECTION_LOG")"
+else
+    report FAIL artifact.no_reflection "рефлексия или сериализация в app/src/main/java, лог $NO_REFLECTION_LOG"
+    cat "$NO_REFLECTION_LOG" >&2
 fi
 fi
 
