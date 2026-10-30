@@ -2,3 +2,5 @@
 # (appended to the defaults from proguard-android-optimize.txt).
 # No keep rules are needed: the app has no reflection- or
 # serialization-reachable code that shrinking would break.
+# Resources looked up by name (getIdentifier) are kept by
+# res/raw/keep.xml instead, which resource shrinking reads.

@@ -11,10 +11,15 @@
 #   5. apksigner verify --print-certs                        -> signature is valid
 #
 # Run from the repository root:
-#   bash scripts/release_pack.sh [--no-sign] [--from-apk unsigned.apk] [output.apk]
+#   bash scripts/release_pack.sh [--no-sign] [--allow-dirty] [--from-apk unsigned.apk] [output.apk]
 # Default output: app/build/outputs/apk/release/app-release-zopfli.apk.
 # --from-apk packs an existing unsigned release APK and skips step 1; CI uses it to prove
 # the packing is deterministic without extra clean builds.
+# Step 1 refuses a tree whose build inputs differ from HEAD or include untracked files
+# (scripts/release-build-inputs.sh): the APK records only the HEAD commit, so an APK packed from
+# such a tree would claim code it does not contain. --allow-dirty packs anyway, for measurement
+# builds that are never released. artifact.freshness in release_check.sh rejects such an APK only
+# while the tree is still dirty; once the edits are reverted, it cannot tell the APK from a clean one.
 #
 # The output is reproducible: the unsigned AGP build, zopfli (with the pinned build-tools)
 # and apksigner v2 are all deterministic, so two runs on one tree give the same SHA-256.
@@ -31,10 +36,12 @@ mkdir -p "$LOG_DIR"
 # --no-sign stops after alignment and leaves an aligned unsigned APK. CI (no keystore)
 # uses it to pack twice and compare the bytes; local releases take the full signed path.
 NO_SIGN=0
+ALLOW_DIRTY=0
 FROM_APK=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-sign) NO_SIGN=1; shift ;;
+        --allow-dirty) ALLOW_DIRTY=1; shift ;;
         --from-apk)
             FROM_APK="${2:-}"
             if [ -z "$FROM_APK" ]; then
@@ -52,6 +59,24 @@ if [ -n "$FROM_APK" ] && [ ! -f "$FROM_APK" ]; then
 fi
 
 OUT="${1:-app/build/outputs/apk/release/app-release-zopfli.apk}"
+
+if [ -z "$FROM_APK" ]; then
+    source "$SCRIPT_DIR/release-build-inputs.sh"
+    if ! DIRTY=$(tt_dirty_build_inputs 2>&1); then
+        echo "ERROR: git status по входам сборки не отработал: $DIRTY" >&2
+        exit 1
+    fi
+    if [ -n "$DIRTY" ]; then
+        if [ "$ALLOW_DIRTY" = 1 ]; then
+            echo "WARNING: --allow-dirty: входы сборки не закоммичены, APK только для замеров, не для релиза" >&2
+        else
+            echo "ERROR: во входах сборки есть незакоммиченные изменения; APK записал бы HEAD," >&2
+            echo "       не содержа его. Закоммитьте их или передайте --allow-dirty для замерной сборки:" >&2
+            sed 's/^/       /' <<<"$DIRTY" | head -20 >&2
+            exit 1
+        fi
+    fi
+fi
 
 # Remove the output path up front. If it were a symlink, apksigner would write to its
 # target; a stale file from an earlier run could be mistaken for a fresh result after a

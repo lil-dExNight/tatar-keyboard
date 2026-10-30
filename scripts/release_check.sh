@@ -15,7 +15,7 @@
 #   --full     ./gradlew clean assembleRelease --no-build-cache first, then everything else
 #              (checks the freshly built app/build/outputs/apk/release/*.apk);
 #   --checks   only the listed artifact checks, comma-separated names without the "artifact."
-#              prefix (accepted too, it is stripped; CI: exported_surface,no_secrets);
+#              prefix (accepted too, it is stripped; CI runs the keystore-free ones);
 #              selectable: size up to freshness.
 #
 # Default APK: the newest (by mtime) app/build/outputs/apk/release/*.apk.
@@ -478,10 +478,10 @@ fi
 
 # --- 3d. critical resources: keep.xml really covers the live names in the APK -------------------
 # shrinkResources relies on app/src/main/res/raw/keep.xml, because the resource families
-# keyboard_layout_set_*/kbd_*/rows_*/rowkeys_*/row_* and the strings locale_name_*/label_* are
-# looked up by name (KeyboardLayoutSet builds "keyboard_layout_set_" +
-# subtype.getKeyboardLayoutSet() for getIdentifier; KeyboardTextsSet resolves
-# label_pause_key/label_wait_key; LocaleResourceUtils resolves locale_name_*). If keep.xml stops
+# keyboard_layout_set_*/kbd_*/rows_*/rowkeys_*/row_* and several strings are looked up by name
+# (KeyboardLayoutSet builds "keyboard_layout_set_" + subtype.getKeyboardLayoutSet() for
+# getIdentifier; KeyboardTextsSet resolves every "!string/<name>" of the keyboard XML and the text
+# tables; LocaleResourceUtils resolves locale_name_*). If keep.xml stops
 # matching the real names (renamed file, lost glob), shrinking drops the resource and only a run
 # on a device shows it. The check lists the concrete names covered by the keep.xml families from
 # the TREE and requires each one in `aapt2 dump resources` of the candidate. There is no reverse
@@ -542,6 +542,29 @@ for name in ("label_pause_key", "label_wait_key"):
         raise SystemExit(f"ERROR: строка {name} не определена в {ACTION_STRINGS}")
     want("string", name, str(ACTION_STRINGS))
 
+# Every "!string/<name>" reference, in the keyboard XML (key labels, more-keys) and in the text
+# tables under the main sources: KeyboardTextsSet resolves each one with getIdentifier at runtime,
+# so a reference that shrinking drops crashes the keyboard. Each must be defined in the default
+# res/values/ strings, otherwise the tree itself is broken.
+default_strings = set()
+for f in sorted((RES / "values").glob("*.xml")):
+    default_strings.update(re.findall(r'<string\b[^>]*\bname="([^"]+)"',
+                                      f.read_text(encoding="utf-8")))
+TEXT_REF = re.compile(r"!string/([A-Za-z0-9_]+)")
+ref_sources = [f for d in sorted(RES.glob("xml*")) if d.is_dir() for f in sorted(d.glob("*.xml"))]
+ref_sources += sorted(Path("app/src/main/java").rglob("*.java"))
+ref_sources += sorted(Path("app/src/main/java").rglob("*.kt"))
+text_refs = 0
+for f in ref_sources:
+    for name in TEXT_REF.findall(f.read_text(encoding="utf-8")):
+        if name not in default_strings:
+            raise SystemExit(f"ERROR: {f} ссылается на !string/{name}, а в res/values/ её нет")
+        want("string", name, str(f))
+        text_refs += 1
+if text_refs == 0:
+    raise SystemExit("ERROR: ни одной ссылки !string/ в res/xml*/ и исходниках — "
+                     "дерево обеднело или гейт смотрит не туда")
+
 # Every locale_name_* string under res/values*/ (LocaleResourceUtils resolves them by locale
 # name). The "locale_name_<locale>" placeholder lives in an XML comment in donottranslate.xml,
 # so only real <string ... name="..."> elements are matched.
@@ -574,7 +597,7 @@ for p in problems:
 if problems:
     sys.exit(1)
 print(f"TOTAL {len(expected)} критических ресурсов ({len(xml_families)} xml-семейств + "
-      f"label_pause_key/label_wait_key + locale_name_*) присутствуют в APK")
+      f"ссылки !string/ + locale_name_*) присутствуют в APK")
 PYEOF
 then
     report PASS artifact.critical_resources "$(tail -1 "$CRIT_RES_LOG")"
@@ -945,8 +968,11 @@ fi
 # app/proguard-rules.pro has no keep rules, because the code uses no reflection and no object
 # serialization: R8 is free to rename and strip everything. Any of these entry points would
 # break the release build only at runtime, so the main sources are scanned for them:
-# Class.forName, getMethod/getDeclaredMethod, ObjectInputStream/ObjectOutputStream,
-# java.io.Serializable, kotlin.reflect and the gson/jackson/kotlinx.serialization imports.
+# Class.forName, getMethod/getDeclaredMethod, getField/getDeclaredField,
+# getConstructor/getDeclaredConstructor, ObjectInputStream/ObjectOutputStream,
+# java.io.Serializable, kotlin.reflect, the gson/jackson/kotlinx.serialization imports, and
+# Resources.getIdentifier (a resource looked up by name survives shrinking only through
+# res/raw/keep.xml, so every call site is listed with the family it resolves).
 # Exceptions live in scripts/no_reflection_allowlist.txt (a missing file means none): one entry
 # per line, either "path:line" of a specific hit or a substring of the offending line, then a
 # "# reason" comment; an entry that matches no hit fails the check.
@@ -965,6 +991,11 @@ MARKERS = (
     "Class.forName",
     "getDeclaredMethod",
     "getMethod(",
+    "getDeclaredField",
+    "getField(",
+    "getConstructor(",
+    "getDeclaredConstructor",
+    "getIdentifier(",
     "ObjectInputStream",
     "ObjectOutputStream",
     "java.io.Serializable",
@@ -1078,12 +1109,15 @@ else
 fi
 fi
 
-# --- 5b. freshness: the candidate was built from an ancestor of HEAD ------------------------------
-# META-INF/version-control-info.textproto records the commit the APK was built from. The release
-# flow packs the APK before the release commit lands, so the recorded commit is HEAD or one of
-# its ancestors; anything else means the tree moved on past the tested artifact. Missing or
-# malformed provenance is a failure: an unbound candidate is not a release candidate.
+# --- 5b. freshness: the candidate was built from the tree being released -----------------------
+# META-INF/version-control-info.textproto records the commit the APK was built from, but not
+# whether the working tree differed from that commit then. So the check requires a clean tree under
+# the build inputs (scripts/release-build-inputs.sh) and a recorded commit that is HEAD, or an
+# ancestor whose diff to HEAD touches no build input: a later commit that changes only documents
+# or store texts keeps the packed APK valid, any code, resource or build change does not.
+# Missing or malformed provenance is a failure: an unbound candidate is not a release candidate.
 if want freshness; then
+source "$SCRIPT_DIR/release-build-inputs.sh"
 APK_REVISION=$(python3 - "$APK" <<'PYEOF'
 import re
 import sys
@@ -1105,10 +1139,20 @@ if [ -z "$APK_REVISION" ]; then
     report FAIL artifact.freshness "APK has no well-formed META-INF/version-control-info.textproto revision"
 elif ! HEAD_REVISION=$(git rev-parse HEAD 2>/dev/null) || [ -z "$HEAD_REVISION" ]; then
     report SKIP artifact.freshness "дерево не git-репозиторий, сверять не с чем"
-elif git merge-base --is-ancestor "$APK_REVISION" HEAD 2>/dev/null; then
-    report PASS artifact.freshness "APK собран из ${APK_REVISION:0:12}… — предок HEAD (${HEAD_REVISION:0:12}…)"
-else
+elif ! DIRTY=$(tt_dirty_build_inputs 2>&1); then
+    report FAIL artifact.freshness "git status по входам сборки не отработал: $DIRTY"
+elif [ -n "$DIRTY" ]; then
+    report FAIL artifact.freshness "незакоммиченные изменения во входах сборки ($(wc -l <<<"$DIRTY") путей): APK нельзя привязать к HEAD"
+    sed 's/^/       /' <<<"$DIRTY" | head -20 >&2
+elif ! git merge-base --is-ancestor "$APK_REVISION" HEAD 2>/dev/null; then
     report FAIL artifact.freshness "APK собран из ${APK_REVISION:0:12}…, а это не предок HEAD (${HEAD_REVISION:0:12}…): артефакт устарел относительно дерева"
+elif ! CHANGED=$(git diff --name-only "$APK_REVISION" HEAD -- "${TT_BUILD_INPUTS[@]}" 2>&1); then
+    report FAIL artifact.freshness "git diff ${APK_REVISION:0:12}…..HEAD не отработал: $CHANGED"
+elif [ -n "$CHANGED" ]; then
+    report FAIL artifact.freshness "после ${APK_REVISION:0:12}… изменились входы сборки ($(wc -l <<<"$CHANGED") файлов): APK не содержит HEAD"
+    sed 's/^/       /' <<<"$CHANGED" | head -20 >&2
+else
+    report PASS artifact.freshness "APK собран из ${APK_REVISION:0:12}…; входы сборки совпадают с HEAD (${HEAD_REVISION:0:12}…), дерево чистое"
 fi
 fi
 

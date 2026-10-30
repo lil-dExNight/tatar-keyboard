@@ -3,3 +3,7 @@
 # offending line, then `# reason`. Entries that match no hit fail the check, so remove an
 # entry once its hit is gone. Prefer substrings: line entries break when the file is edited
 # above the hit.
+res.getIdentifier(resourceName, null, sResourcePackageName) # locale_name_* strings: kept by res/raw/keep.xml, checked by artifact.critical_resources
+mResources.getIdentifier(name, "string", mResourcePackageName) # "!string/" key texts: kept by res/raw/keep.xml, checked by artifact.critical_resources
+resources.getIdentifier(name, "xml", packageName) # keyboard layout XML families: kept by res/raw/keep.xml, checked by artifact.critical_resources
+context.resources.getIdentifier(role, "color", "android") # framework system colors: not part of this APK, so shrinking cannot drop them
