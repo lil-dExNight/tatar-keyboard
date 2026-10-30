@@ -57,6 +57,7 @@
     <string name="spoken_description_settings">Настройки</string>
     <string name="spoken_description_dock_exit_handle">Выйти из режима одной руки</string>
     <string name="spoken_description_unknown">Неизвестный символ</string>
+    <string name="spoken_description_dot">Точка</string>
 
     <!-- Long-press (moreKeys) panel open/close announcements. -->
     <string name="spoken_open_more_keys_keyboard">Доступны дополнительные символы</string>

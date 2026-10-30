@@ -17,12 +17,16 @@
 package rkr.simplekeyboard.inputmethod.accessibility
 
 import android.content.Context
+import android.media.AudioManager
+import android.os.Build
+import android.provider.Settings
 import android.view.inputmethod.EditorInfo
 import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.keyboard.Key
 import rkr.simplekeyboard.inputmethod.keyboard.Keyboard
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardId
 import rkr.simplekeyboard.inputmethod.latin.common.Constants
+import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
 
 /**
@@ -52,6 +56,9 @@ object KeyDescriptionMapper {
     fun getDescription(context: Context, keyboard: Keyboard, key: Key): String {
         val code = key.code
 
+        if (isTypedCharacterCode(code) && obscuresPasswordKeys(context, keyboard)) {
+            return context.getString(R.string.spoken_description_dot)
+        }
         TATAR_LETTERS[code]?.let { return context.getString(it) }
         if (Character.isUpperCase(code)) {
             TATAR_LETTERS[Character.toLowerCase(code)]?.let {
@@ -114,5 +121,41 @@ object KeyDescriptionMapper {
                 ?: context.getString(R.string.spoken_description_unknown)
         }
         return context.getString(resId)
+    }
+
+    /**
+     * Whether a key types visible text into the field: a letter, digit or symbol, or an output
+     * text key. Functional keys (negative codes) and tab, space and enter reveal nothing.
+     */
+    fun isTypedCharacterCode(code: Int): Boolean = when (code) {
+        Constants.CODE_OUTPUT_TEXT -> true
+        Constants.CODE_TAB, Constants.CODE_SPACE, Constants.CODE_ENTER -> false
+        else -> code > 0
+    }
+
+    /**
+     * Whether a password key must be described as a dot. Android 7.x reads key descriptions
+     * aloud through the speaker unless the user allowed spoken passwords or wears headphones,
+     * the rule AOSP LatinIME follows there; Android 8 and later leave that decision to the
+     * screen reader, so full descriptions are given.
+     */
+    fun shouldObscurePasswordKey(
+        sdkInt: Int,
+        hiddenPasswordField: Boolean,
+        speakPasswords: Boolean,
+        headphonesOn: Boolean,
+    ): Boolean = sdkInt < Build.VERSION_CODES.O && hiddenPasswordField && !speakPasswords &&
+        !headphonesOn
+
+    @Suppress("DEPRECATION") // The setting and the headset queries are what Android 7.x offers.
+    private fun obscuresPasswordKeys(context: Context, keyboard: Keyboard): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) return false
+        val inputType = keyboard.mId.mEditorInfo?.inputType ?: return false
+        if (!InputTypeUtils.isPasswordInputType(inputType)) return false
+        val speakPasswords = Settings.Secure.getInt(
+            context.contentResolver, Settings.Secure.ACCESSIBILITY_SPEAK_PASSWORD, 0) != 0
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val headphonesOn = audio != null && (audio.isWiredHeadsetOn || audio.isBluetoothA2dpOn)
+        return shouldObscurePasswordKey(Build.VERSION.SDK_INT, true, speakPasswords, headphonesOn)
     }
 }

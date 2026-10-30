@@ -57,6 +57,7 @@
     <string name="spoken_description_settings">Көйләүләр</string>
     <string name="spoken_description_dock_exit_handle">Бер кул режимыннан чыгу</string>
     <string name="spoken_description_unknown">Билгесез символ</string>
+    <string name="spoken_description_dot">Нокта</string>
 
     <!-- Long-press (moreKeys) panel open/close announcements. -->
     <string name="spoken_open_more_keys_keyboard">Өстәмә символлар бар</string>
