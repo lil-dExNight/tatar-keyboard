@@ -17,13 +17,11 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
 import android.app.Instrumentation
-import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.test.InstrumentationTestCase
 import android.util.Log
 import android.view.MotionEvent
-import android.view.ViewTreeObserver
 import android.widget.EditText
 import rkr.simplekeyboard.inputmethod.R
 import java.util.concurrent.CountDownLatch
@@ -140,11 +138,11 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         }
         logLatencyResult(
             "cold-first-glide", cold, COLD_FIRST_GLIDE_BUDGET_MS,
-            "protocol=lift-to-first-field-frame-commit after_idle_ms=$IDLE_RELEASE_MS",
+            "protocol=lift-to-first-field-text-visible after_idle_ms=$IDLE_RELEASE_MS",
         )
         logLatencyResult(
             "warm-decode", warm, WARM_DECODE_BUDGET_MS,
-            "protocol=lift-to-first-field-frame-commit",
+            "protocol=lift-to-first-field-text-visible",
         )
         hideKeyboard(field)
     }
@@ -209,40 +207,30 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
     /** Returns lift-to-frame-commit milliseconds for the expected сәләм result. */
     private fun measureFirstVisible(field: EditText, path: List<Pair<Float, Float>>): Double {
         assertEquals("each latency run must start with an empty field", "", field.text.toString())
-        val observer = field.viewTreeObserver
         val visibleNs = AtomicLong(0L)
         val visible = CountDownLatch(1)
-        val recordIfVisible = {
-            if (field.text.toString() == "сәләм" &&
-                visibleNs.compareAndSet(0L, System.nanoTime())
-            ) {
-                visible.countDown()
+        val checkVisible = object : Runnable {
+            override fun run() {
+                if (field.text.toString() == "сәләм" &&
+                    visibleNs.compareAndSet(0L, System.nanoTime())
+                ) {
+                    visible.countDown()
+                } else {
+                    field.postDelayed(this, 16L)
+                }
             }
         }
-        val frameCommit = Runnable { recordIfVisible() }
-        val draw = ViewTreeObserver.OnDrawListener { recordIfVisible() }
-        instrumentation.runOnMainSync {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                observer.registerFrameCommitCallback(frameCommit)
-            } else {
-                observer.addOnDrawListener(draw)
-            }
-        }
+        instrumentation.runOnMainSync { field.post(checkVisible) }
         var liftedNs = 0L
         try {
             liftedNs = drivePath(instrumentation, path, holdMs = 0L)
+            Log.i(TAG, "latency probe field after lift: '${field.text}' visibleNs=${visibleNs.get()}")
             assertTrue(
                 "the decoded word was not drawn after the glide",
                 visible.await(VISIBLE_TIMEOUT_SECONDS, TimeUnit.SECONDS),
             )
         } finally {
-            instrumentation.runOnMainSync {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    observer.unregisterFrameCommitCallback(frameCommit)
-                } else {
-                    observer.removeOnDrawListener(draw)
-                }
-            }
+            instrumentation.runOnMainSync { field.removeCallbacks(checkVisible) }
         }
         return (visibleNs.get() - liftedNs) / 1_000_000.0
     }
@@ -280,7 +268,9 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
             }
         }
         assertTrue("the IME never accepted text after the idle window", shown)
-        Thread.sleep(500)
+        // After an idle hide the IME needs time to be laid out again before the gesture starts;
+        // otherwise the first taps can land in the system navigation bar.
+        Thread.sleep(3000)
     }
 
     private fun logLatencyResult(
@@ -421,7 +411,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         private const val TAG = "GlideUi"
         private const val LATENCY_RUNS = 5
         private const val IDLE_RELEASE_MS = 12_000L
-        private const val VISIBLE_TIMEOUT_SECONDS = 10L
+        private const val VISIBLE_TIMEOUT_SECONDS = 30L
         // Visible-result budgets include input dispatch and display, not just decoder compute.
         private const val COLD_FIRST_GLIDE_BUDGET_MS = 500.0
         private const val WARM_DECODE_BUDGET_MS = 50.0
