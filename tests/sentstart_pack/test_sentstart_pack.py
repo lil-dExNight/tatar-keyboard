@@ -125,6 +125,14 @@ class ReadFirstTokensTest(unittest.TestCase):
         self.assertEqual(counts.counts, Counter({"бу": 2, "ул": 1}))
         self.assertEqual(counts.rows_read, 3)
 
+    def test_repeated_input_applies_the_corpus_weight(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_tmp(
+                Path(directory), "tt_conv_train90-sentences.txt", "1\tмин килдем.\n")
+            counts = pack.read_first_tokens([path] * 10)
+        self.assertEqual(counts.counts, Counter({"мин": 10}))
+        self.assertEqual(counts.rows_read, 10)
+
     def test_hugging_punctuation_is_stripped(self) -> None:
         counts = self.parse({
             "a-sentences.txt": "1\t«Бу» — сүз.\n2\t(ул) килде.\n3\t…әмма соңгы.\n",
@@ -329,7 +337,7 @@ class CliContractTest(unittest.TestCase):
 
 
 # The shipped asset is pinned: a data change must update these numbers too.
-EXPECTED_ASSET_SHA256 = "d050ebc983b5e203c95136f92000a531e6294aec1ff0feaf38ab4dd2aa9fa8a7"
+EXPECTED_ASSET_SHA256 = "b4755e3376b6068fd85fdd829f461bc56d91a4f4ecfc0a7bd85f144c73540587"
 EXPECTED_RECORD_COUNT = 64
 
 
@@ -390,6 +398,8 @@ class CommittedAssetTest(unittest.TestCase):
         self.assertIn("CC BY 4.0", header)
         self.assertIn("tat_mixed_2015_1M", header)
         self.assertIn("tat_web_2018_1M", header)
+        self.assertIn("tt_conv_train90-sentences.txt", header)
+        self.assertIn("listed ten times", header)
 
 
 class RussianLanguageTest(unittest.TestCase):

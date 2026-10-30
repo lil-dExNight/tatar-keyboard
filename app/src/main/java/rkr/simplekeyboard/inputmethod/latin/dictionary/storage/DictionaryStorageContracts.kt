@@ -30,6 +30,8 @@ data class DictionaryArtifactSpec(
     val expectedRawSize: Long,
     val expectedRawSha256: String,
     val expectedEntryCount: Long,
+    /** The top-frequency next-word fallback, precomputed and pinned with [expectedRawSha256]. */
+    val fallbackWords: List<String> = emptyList(),
     /**
      * The next-word table of this language, or null when the language ships none. Keeping it here
      * leaves one language registry for both artifact kinds; [init] requires the language tags to
@@ -103,13 +105,14 @@ data class DictionaryArtifactSpec(
             storageDirectoryName = "dictionaries",
             generation = 1,
             assetPath = "dictionaries/tatar_top100k_v1.tdict.zlib",
-            expectedCompressedSize = 597_293,
+            expectedCompressedSize = 597_072,
             expectedCompressedSha256 =
-                "1597715c5470fdd8175efbfbf2b2b7bb952330213d851230de95da43341fb7e9",
-            expectedRawSize = 1_311_438,
+                "eecdb508ae671d6cda8104d5d4ce00a0af791bc7d4784389511aa34a555ec4e9",
+            expectedRawSize = 1_308_890,
             expectedRawSha256 =
-                "10337a8b073baaebd7baa530718dba55a360bf2be29d7e3aae17ddd31c615d00",
+                "263ac0eff1a6a7507c130ff11c852b11708714c25ce813118b3f390b9eaf1dd5",
             expectedEntryCount = 110_000,
+            fallbackWords = listOf("һәм", "белән", "да", "дә", "бу", "ул", "дип", "өчен"),
             bigrams = BigramArtifactSpec.TATAR_BIGRAMS_V1,
             sentStartAssetPath = "dictionaries/tatar_sentstart_v1.txt",
             personalAlphabet = PersonalSubtypes.TATAR_RU_ALPHABET,
@@ -138,6 +141,9 @@ data class DictionaryArtifactSpec(
             expectedRawSha256 =
                 "f05499a3b4c3c2811c6ee8e9084dfaf472951a289a20dde2ab8cb098cb5a15b2",
             expectedEntryCount = 100_000,
+            fallbackWords = listOf(
+                "я", "не", "в", "и", "что", "ты", "на", "это",
+            ),
             bigrams = BigramArtifactSpec.RUSSIAN_BIGRAMS_V1,
             sentStartAssetPath = "dictionaries/russian_sentstart_v1.txt",
             personalAlphabet = PersonalSubtypes.RUSSIAN_ALPHABET,
@@ -224,6 +230,9 @@ data class PublishedDictionary(
     val schemaId: Int,
     val formatVersion: Int,
     val rawSha256: String,
+    /** Precomputed fallback words and the dictionary SHA-256 to which their pin belongs. */
+    val fallbackWords: List<String> = emptyList(),
+    val fallbackWordsRawSha256: String? = null,
 )
 
 enum class StorageFailure {

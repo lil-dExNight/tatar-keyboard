@@ -44,14 +44,17 @@ data/dictionary/dict-accept/bonus-freq-tt.tsv.
 --------------------------------------------------------------------------------
 tatar_sentstart_v1.txt
 
-Derived from the Tatar corpora tat_mixed_2015_1M and tat_web_2018_1M.
+Derived from the Tatar corpora tat_mixed_2015_1M and tat_web_2018_1M, and
+from the conversational training stream described in the conversational
+section below (deduplicated Tatoeba + OpenSubtitles Tatar lines, with the
+held-out line ids removed). The conversational stream was counted ten times.
 Catalogue page: https://wortschatz.uni-leipzig.de/en/download/tat
 
 Changes by the Tatar Keyboard project: the sentence-initial token of every
-sentence of the two corpora was counted with the same normalization as the
-dictionary above, the counts were filtered to the words the shipped Tatar
-dictionary carries, and the top 64 were written as a plain word/frequency
-table (scripts/sentstart_pack.py).
+sentence of the two Leipzig corpora and of the conversational stream was
+counted with the same normalization as the dictionary above, the counts were
+filtered to the words the shipped Tatar dictionary carries, and the top 64
+were written as a plain word/frequency table (scripts/sentstart_pack.py).
 
 --------------------------------------------------------------------------------
 russian_top100k_v1.tdict.zlib

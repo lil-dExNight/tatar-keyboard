@@ -391,6 +391,8 @@ class AtomicDictionaryStore(
         schemaId = schemaId,
         formatVersion = formatVersion,
         rawSha256 = rawSha256,
+        fallbackWords = spec.fallbackWords,
+        fallbackWordsRawSha256 = spec.expectedRawSha256,
     )
 
     private class RetentionBlockedException : IOException()

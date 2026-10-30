@@ -31,6 +31,7 @@ from bigram_pack import (  # noqa: E402
     MAX_RAW_BYTES,
     BigramInputError,
     count_pairs,
+    measure_punctuation_recovery,
     peak_rss_bytes,
     read_shipped_vocabulary,
     select_heads,
@@ -767,6 +768,7 @@ def run_pack(
     language: coverage.Language = coverage.DEFAULT_LANGUAGE,
     extra_heads: Sequence[str] = (),
     schema: int = SCHEMA_ID_V3,
+    recover_punctuation: bool = False,
 ) -> tuple[PackResult, dict[str, object]]:
     started = time.monotonic()
     vocabulary, frequencies = read_shipped_vocabulary(asset_path, language)
@@ -785,6 +787,7 @@ def run_pack(
         shards,
         stats=[],
         alphabet=language.alphabet,
+        recover_punctuation=recover_punctuation,
     )
     if schema == SCHEMA_ID:
         result = pack_bigram_table(ordered_heads, table, successes_per_head)
@@ -827,6 +830,11 @@ def run_pack(
         "elapsed_seconds": round(time.monotonic() - started, 3),
         "shards": shards,
     }
+    if recover_punctuation:
+        report["punctuation_recovery"] = measure_punctuation_recovery(
+            train_paths, vocabulary, language.alphabet
+        )
+    report["elapsed_seconds"] = round(time.monotonic() - started, 3)
     return result, report
 
 
@@ -922,6 +930,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
     pack.add_argument("--out-compressed", required=True, type=Path)
     pack.add_argument("--report", type=Path)
     pack.add_argument(
+        "--recover-punctuation",
+        action="store_true",
+        help="strip edge punctuation before word normalization, preserving sentence boundaries",
+    )
+    pack.add_argument(
         "--language", default=coverage.DEFAULT_LANGUAGE.tag, choices=sorted(coverage.LANGUAGES)
     )
     repack = subparsers.add_parser(
@@ -961,6 +974,7 @@ def main(argv: Sequence[str] | None = None, stream: TextIO = sys.stdout) -> int:
             language,
             extra_heads,
             arguments.schema,
+            recover_punctuation=arguments.recover_punctuation,
         )
     text = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
     if arguments.report is not None:

@@ -64,6 +64,7 @@ class BigramAsset:
     successes_per_head: int
     extra_heads: str | None  # path relative to the root, if any
     train: tuple[str, ...]  # *-sentences.txt names in the corpus directory
+    recover_punctuation: bool = False
 
 
 # Tatar dictionary cutoff: the largest of 100 000 / 110 000 / 120 000 for which the dictionary
@@ -112,6 +113,8 @@ BIGRAMS = (
             "tat_web_2018_1M-sentences.txt",
             *(["tt_conv_train90-sentences.txt"] * 10),
         ),
+        # Edge punctuation retains its sentence boundaries but no longer discards whole words.
+        recover_punctuation=True,
     ),
     BigramAsset(
         tag="rus",
@@ -325,8 +328,8 @@ def build_admitted_wordforms(
 
 @dataclass(frozen=True)
 class Pins:
-    """The five values a contract pins for an asset, plus (for schema 3 bigram tables) the raw
-    SHA-256 of the linked dictionary. count is the dictionary entry count or the head count."""
+    """The values a contract pins for an asset. Dictionary pins also carry the precomputed
+    next-word fallback; schema 3 bigram pins carry the linked dictionary's raw SHA-256."""
 
     compressed_size: int
     compressed_sha256: str
@@ -334,6 +337,7 @@ class Pins:
     raw_sha256: str
     count: int
     dictionary_raw_sha256: str = ""
+    fallback_words: tuple[str, ...] = ()
 
 
 class ContractError(ValueError):
@@ -405,6 +409,17 @@ def _read_sha(block: str, field: str) -> str:
     return matches[0]
 
 
+def _read_words(block: str, field: str) -> tuple[str, ...]:
+    matches = re.findall(rf"\b{field}\s*=\s*listOf\((.*?)\)", block, re.DOTALL)
+    if len(matches) != 1:
+        raise ContractError(f"поле {field}: ожидался ровно один список, найдено {len(matches)}")
+    literals = re.findall(r'"(?:\\.|[^"\\])*"', matches[0])
+    try:
+        return tuple(json.loads(literal) for literal in literals)
+    except json.JSONDecodeError as error:
+        raise ContractError(f"поле {field}: некорректная строка") from error
+
+
 def read_pins(
     contract_path: Path, spec: str, kind: str, count_field: str, linked: bool = False
 ) -> Pins:
@@ -419,6 +434,10 @@ def read_pins(
         count=_read_number(block, count_field),
         dictionary_raw_sha256=(
             _read_sha(block, "expectedDictionaryRawSha256") if linked else ""
+        ),
+        fallback_words=(
+            _read_words(block, "fallbackWords")
+            if kind == "DictionaryArtifactSpec" else ()
         ),
     )
 
@@ -439,6 +458,19 @@ def _replace_sha(block: str, field: str, value: str) -> str:
     # the hash string is kept.
     block, count = re.subn(
         rf'(\b{field}\s*=\s*)"[0-9a-f]{{64}}"', rf'\g<1>"{value}"', block
+    )
+    if count != 1:
+        raise ContractError(f"поле {field} не заменено в блоке спецификации")
+    return block
+
+
+def _replace_words(block: str, field: str, words: tuple[str, ...]) -> str:
+    literals = ", ".join(json.dumps(word, ensure_ascii=False) for word in words)
+    block, count = re.subn(
+        rf"(\b{field}\s*=\s*)listOf\(.*?\)",
+        lambda match: f"{match.group(1)}listOf({literals})",
+        block,
+        flags=re.DOTALL,
     )
     if count != 1:
         raise ContractError(f"поле {field} не заменено в блоке спецификации")
@@ -474,6 +506,8 @@ def write_pins(
                 block, "expectedDictionaryRawSha256", pins.dictionary_raw_sha256
             )
         block = _replace_number(block, count_field, pins.count)
+        if kind == "DictionaryArtifactSpec":
+            block = _replace_words(block, "fallbackWords", pins.fallback_words)
         text = text[:start] + block + text[end:]
     _atomic_write_text(contract_path, text)
     for spec, pins in updates.items():
@@ -495,6 +529,12 @@ def measure_dictionary(asset_path: Path, tag: str) -> Pins:
         raw_size=len(raw),
         raw_sha256=hashlib.sha256(raw).hexdigest(),
         count=parsed.entry_count,
+        fallback_words=tuple(
+            word for word, _ in sorted(
+                zip(parsed.words, parsed.frequencies, strict=True),
+                key=lambda entry: (-entry[1], entry[0]),
+            )[:8]
+        ),
     )
 
 
@@ -592,6 +632,8 @@ def _pin_problems(measured: Pins, pinned: Pins) -> list[str]:
     # The schema 3 dictionary link is compared if either side carries it.
     if measured.dictionary_raw_sha256 or pinned.dictionary_raw_sha256:
         fields.append("dictionary_raw_sha256")
+    if measured.fallback_words or pinned.fallback_words:
+        fields.append("fallback_words")
     for field in fields:
         actual, expected = getattr(measured, field), getattr(pinned, field)
         if actual != expected:
@@ -1069,6 +1111,8 @@ def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: Bigra
         "--language",
         bigram.tag,
     ]
+    if bigram.recover_punctuation:
+        argv += ["--recover-punctuation"]
     if bigram.extra_heads is not None:
         argv += ["--extra-heads", str(root / bigram.extra_heads)]
     return argv

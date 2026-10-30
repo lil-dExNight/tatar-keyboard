@@ -4,7 +4,7 @@
 TEST MEASUREMENT ONLY -- no asset under app/src/main/assets is written or replaced.
 
 The stage is the one simulated by ``sim_stem_backoff.py``: between the form-keyed bigram pass
-and the after-word forms pass, when the bigram pass fills fewer cells than the strip has, the
+and the fallback, when the bigram pass fills fewer cells than the strip has, the
 committed word's stem is looked up in a stem-keyed bigram table and each successor stem is
 expanded to one surface form. The variant changes only the expansion: a successor stem is
 expanded to the successor form most often attested in training pairs whose head maps to the
@@ -124,10 +124,6 @@ class CaseAwareStemChain(suggest_chain.ChainMirror):
                 added.append(form)
                 if len(shown) >= CELL_COUNT:
                     break
-        if len(shown) < CELL_COUNT:
-            shown += suggest_chain.forms_of(
-                head, shown, CELL_COUNT - len(shown), self.frequency_of
-            )
         if len(shown) < CELL_COUNT:
             for word in self._fallback_pool:
                 if len(shown) >= CELL_COUNT:

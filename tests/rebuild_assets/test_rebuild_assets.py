@@ -81,6 +81,7 @@ DICT_BLOCK = """\
             expectedRawSha256 =
                 "{sha}",
             expectedEntryCount = 1,
+            fallbackWords = listOf(),
         )
         // </generated pins>"""
 
@@ -349,6 +350,21 @@ class CheckTest(FakeTreeTest):
         self.assertEqual("mismatch", report["dictionaries"]["tat"]["verdict"])
         self.assertTrue(report["dictionaries"]["tat"]["problems"])
 
+    def test_red_when_the_fallback_pin_does_not_match_the_dictionary(self):
+        pin_everything(self.root, self.dictionary, self.bigram)
+        contract = self.root / rebuild_assets.DICT_CONTRACT
+        text = contract.read_text(encoding="utf-8")
+        self.assertIn(f'fallbackWords = listOf("{WORDS[0]}"', text)
+        contract.write_text(text.replace(
+            f'fallbackWords = listOf("{WORDS[0]}"',
+            'fallbackWords = listOf("дус"', 1), encoding="utf-8")
+
+        code, report = self.run_check()
+
+        self.assertEqual(1, code)
+        problems = report["dictionaries"]["tat"]["problems"]
+        self.assertTrue(any("fallback_words" in problem for problem in problems), problems)
+
     def test_a_head_outside_the_dictionary_is_unrepresentable(self):
         # Schema 3 stores indices into the dictionary, so a head outside the dictionary
         # cannot be encoded: the packer fails before writing the file.
@@ -458,6 +474,7 @@ class PackArgvTest(unittest.TestCase):
         # Four successors per head (the table's K; unrelated to the number of strip cells).
         self.assertIn("--successes-per-head 4", text)
         self.assertIn("--extra-heads /root/scripts/bigram_extra_heads_tat.txt", text)
+        self.assertIn("--recover-punctuation", text)
         self.assertIn("--language tat", text)
         self.assertIn("/corpora/tat_mixed_2015_1M-sentences.txt", text)
         self.assertIn("/corpora/tat_web_2018_1M-sentences.txt", text)
@@ -471,6 +488,7 @@ class PackArgvTest(unittest.TestCase):
         self.assertIn("--heads 10000", text)
         self.assertIn("--successes-per-head 4", text)
         self.assertNotIn("--extra-heads", text)
+        self.assertNotIn("--recover-punctuation", text)
         self.assertIn("--language rus", text)
         for name in ("rus_news_2022_1M", "rus_news_2019_1M", "rus_wikipedia_2021_1M"):
             self.assertIn(f"/corpora/{name}-sentences.txt", text)

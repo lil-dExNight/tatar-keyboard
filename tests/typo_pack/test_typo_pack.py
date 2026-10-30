@@ -405,10 +405,10 @@ class CommittedInputsSmokeTest(unittest.TestCase):
     def test_real_build_matches_recorded_set_identity(self) -> None:
         typo_set, neighbor_map = pack.generate(DICTIONARY, LAYOUT_DIR)
         # The Kotlin calibration test asserts the same values; the asset rebuild rewrites both.
-        self.assertEqual(typo_set.size, 96079)
+        self.assertEqual(typo_set.size, 96072)
         self.assertEqual(
             typo_set.sha256,
-            "f75c6db263f2b619f502f235dd3081c4691d1a4870ff7bf8fefb6e47a1adbdb4",
+            "8cc4cd646de5096db95639cdbd638f99b2ee1c2bf330ba5dd58f5ad3210f0992",
         )
         self.assertEqual(typo_set.variant_p95, 3)
         self.assertEqual(len({frozenset((n, p)) for n, ps in neighbor_map.items() for p in ps}), 10)
@@ -708,33 +708,33 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
         # A dictionary rebuild rewrites all three identities; a geometry model change affects
         # only class #2 (classes #1 and #3 do not involve geometry).
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1)
-        self.assertEqual(one.size, 96079)
+        self.assertEqual(one.size, 96072)
         self.assertEqual(
-            one.sha256, "f75c6db263f2b619f502f235dd3081c4691d1a4870ff7bf8fefb6e47a1adbdb4"
+            one.sha256, "8cc4cd646de5096db95639cdbd638f99b2ee1c2bf330ba5dd58f5ad3210f0992"
         )
         two, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=2)
-        self.assertEqual(two.size, 109647)
+        self.assertEqual(two.size, 109645)
         self.assertEqual(
-            two.sha256, "858f6f10fb7c0533de26f5415db6446499512b18106fd201d5cf36d88e49d9d6"
+            two.sha256, "8c06530b642536954303f99610501163b2628c66e83db44f994033022ecc25c3"
         )
         three, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=3)
-        self.assertEqual(three.size, 109634)
+        self.assertEqual(three.size, 109632)
         self.assertEqual(
-            three.sha256, "c825e92aacfd1e8728ae3141276178c014e4c2b2e211227372a8cf287b7261a4"
+            three.sha256, "93104acbec41605a4b01d67af9ddcacde0d2b99fd17a35e54e62e3c493bbecfa"
         )
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_class1_and_class2_five_code_point_window_identities(self) -> None:
         # The second, 5-code-point window (the сцләм case).
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1, prefix_code_points=5)
-        self.assertEqual(one.size, 102516)
+        self.assertEqual(one.size, 102506)
         self.assertEqual(
-            one.sha256, "554a8dc81e089f2cd77c6032ea2b188b42231449bc3dd68de93382a3c3f78173"
+            one.sha256, "8997b58f33a74d87e76d3f5175a9f0fad4777dcb1a6d335a032d287c25d2fc56"
         )
         two, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=2, prefix_code_points=5)
-        self.assertEqual(two.size, 104989)
+        self.assertEqual(two.size, 104967)
         self.assertEqual(
-            two.sha256, "54307a8e9c12213958fec684a429f7266f99d14377cf71030b7a73a8408c926e"
+            two.sha256, "01a9a4a1b0bbddcf8bee5ca01f78177c1316dc35c5cc5480e06b3dd855ee3955"
         )
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
@@ -742,15 +742,15 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
         # The full single-substitution sets on the committed asset, both windows, over the
         # layout-derived alphabet of 39 letters.
         four3, alphabet = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=4)
-        self.assertEqual(four3.size, 109647)
+        self.assertEqual(four3.size, 109645)
         self.assertEqual(
-            four3.sha256, "6412d308bb4ec7990c659bc1166c01a6eeded62db60b77ed5e669ed26c911eb4"
+            four3.sha256, "edd860eadab9d43f4dea3b040e15c473774003b5e1f903f853d7e0d46c03edf1"
         )
         self.assertEqual(len(alphabet), 39)
         four5, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=4, prefix_code_points=5)
-        self.assertEqual(four5.size, 104989)
+        self.assertEqual(four5.size, 104967)
         self.assertEqual(
-            four5.sha256, "633de337791583cd5739e88ab7fddc7b9fd8cc56cc3fe348c3871e4023b56731"
+            four5.sha256, "12148b31ef3d40048aa9d56be20de8db78b9e4b1e28f7cc696ac779f9074b5d0"
         )
 
 

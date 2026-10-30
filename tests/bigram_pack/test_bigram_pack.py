@@ -87,6 +87,54 @@ class TokenizationAndPairingTest(unittest.TestCase):
         tokens = bigram_pack.normalized_tokens("әни \t  өйгә\n")
         self.assertEqual(["әни", "өйгә"], tokens)
 
+    def test_edge_punctuation_recovery_still_rejects_internal_punctuation(self) -> None:
+        tokens = bigram_pack.normalized_tokens(
+            "«әни», (өйгә); сүз,китап кайтты", recover_punctuation=True
+        )
+        self.assertEqual(["әни", "өйгә", None, "кайтты"], tokens)
+        self.assertEqual([("әни", "өйгә")], list(bigram_pack.iter_pairs(tokens, self.VOCABULARY)))
+
+    def test_sentence_terminal_edges_preserve_both_boundaries(self) -> None:
+        trailing = bigram_pack.normalized_tokens(
+            "әни өйгә.” кайтты", recover_punctuation=True
+        )
+        self.assertEqual(["әни", "өйгә", None, "кайтты"], trailing)
+        self.assertEqual(
+            [("әни", "өйгә")], list(bigram_pack.iter_pairs(trailing, self.VOCABULARY))
+        )
+        leading = bigram_pack.normalized_tokens(
+            "әни .өйгә кайтты", recover_punctuation=True
+        )
+        self.assertEqual(["әни", None, "өйгә", "кайтты"], leading)
+        self.assertEqual(
+            [("өйгә", "кайтты")], list(bigram_pack.iter_pairs(leading, self.VOCABULARY))
+        )
+
+    def test_punctuation_recovery_report_counts_tokens_pairs_and_boundaries(self) -> None:
+        with TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            train = directory / "train-sentences.txt"
+            train.write_text(
+                "1\tәни, өйгә\n"
+                "2\t«әни» өйгә\n"
+                "3\tәни өйгә. кайтты\n"
+                "4\tәни сүз,китап өйгә\n",
+                encoding="utf-8",
+            )
+            report = bigram_pack.measure_punctuation_recovery([train], self.VOCABULARY)
+        self.assertEqual(3, report["recovered_tokens"])
+        self.assertEqual(
+            {"comma": 1, "quote": 1, "sentence_terminal": 1},
+            report["recovered_tokens_by_class"],
+        )
+        self.assertEqual(3, report["recovered_pairs"])
+        self.assertEqual(
+            {"comma": 1, "quote": 1, "sentence_terminal": 1},
+            report["recovered_pairs_by_class"],
+        )
+        self.assertEqual(1, report["pairs_blocked_at_sentence_boundaries"])
+        self.assertEqual(1, report["internal_punctuation_tokens_rejected"])
+
 
 class MatrixShapeTest(unittest.TestCase):
     def test_seven_configurations_without_the_top_corner(self) -> None:

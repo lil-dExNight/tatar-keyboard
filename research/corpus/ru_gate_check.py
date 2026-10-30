@@ -5,7 +5,7 @@ The same rule as the Tatar round (See tt_gate_check.py), over the pinned Russian
 token coverage must improve by at least +0.5 percentage points, and the paired bootstrap CI95
 of the chain next-word top-3 rate difference must contain zero or lie above it. The Russian
 engine has no suffix rules, so both chain mirrors run with ``suffix_rules=False`` (no
-after-word forms, no same-stem boost).
+same-stem boost).
 """
 from __future__ import annotations
 

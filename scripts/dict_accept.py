@@ -511,6 +511,9 @@ def read_extra_entries(path: Path, tag: str) -> dict[str, int]:
     return out
 
 
+TATAR_CONV_SELECTION_WEIGHT = 9
+
+
 def merged_entries(tag: str, baseline: Path, top: int = 100_000,
                    extra: dict[str, int] | None = None):
     """Composition and frequencies of the new asset.
@@ -518,8 +521,9 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     Composition: shipped plus accepted words plus `extra`, nothing else. Frequency: written plus
     conversational for every word, shipped ones included; only the composition is filtered. An
     `extra` entry for an existing word keeps the existing frequency. The bonus file, when it
-    exists, adds its per-word integers on top without changing the composition. The result keeps
-    the `top` most frequent entries.
+    exists, adds its per-word integers on top without changing the composition. The Tatar cutoff
+    adds nine times the conversational frequency to the selection score only; stored frequencies
+    remain unchanged. Other languages use the stored frequency as their selection score.
     """
     shipped, _asset = load_baseline(tag, baseline)
     accepted = read_accepted(tag)
@@ -533,7 +537,11 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     for word, extra_frequency in bonus.items():
         if word in merged:
             merged[word] += extra_frequency
-    top_entries = sorted(merged.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
+    selection_weight = TATAR_CONV_SELECTION_WEIGHT if tag == "tat" else 0
+    top_entries = sorted(
+        merged.items(),
+        key=lambda kv: (-(kv[1] + selection_weight * conv.get(kv[0], 0)), kv[0]),
+    )[:top]
     return shipped, accepted, sorted(top_entries, key=lambda kv: kv[0])
 
 

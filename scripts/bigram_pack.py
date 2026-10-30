@@ -16,6 +16,7 @@ import json
 import resource
 import sys
 import time
+import unicodedata
 import zlib
 from collections import Counter
 from dataclasses import dataclass
@@ -155,35 +156,172 @@ def iter_sentences(path: Path) -> Iterator[str]:
             yield parse_sentence_row(line, path.name, line_number)
 
 
-def normalized_tokens(
-    sentence: str, alphabet: frozenset[str] = coverage.TATAR_ALPHABET
-) -> list[str | None]:
-    """Tokens of one sentence, with ``None`` wherever ``normalize_word`` rejected the token.
+SENTENCE_TERMINATORS = frozenset(".!?…。！？")
+QUOTE_CHARACTERS = frozenset("\"'«»‹›„“”‘’‚")
 
-    The ``None`` breaks adjacency, so no pair spans punctuation. "сүз," is not cleaned to "сүз":
-    the token is rejected whole, which loses the last word of each clause; the report records
-    that loss. ``alphabet`` defaults to Tatar; Russian text needs the Russian alphabet, because
-    the Tatar one is a superset and would let a stray Tatar letter through as a token.
+
+def _is_punctuation(character: str) -> bool:
+    return unicodedata.category(character).startswith("P")
+
+
+def _punctuation_class(character: str) -> str:
+    if character in SENTENCE_TERMINATORS:
+        return "sentence_terminal"
+    if character in QUOTE_CHARACTERS:
+        return "quote"
+    category = unicodedata.category(character)
+    if category in {"Ps", "Pe"}:
+        return "bracket"
+    if character == ",":
+        return "comma"
+    if character in ";:":
+        return "clause_separator"
+    if category == "Pd":
+        return "dash"
+    return "other_punctuation"
+
+
+@dataclass(frozen=True)
+class EdgeNormalizedToken:
+    """One raw token after optional edge-punctuation removal."""
+
+    word: str | None
+    punctuation_classes: tuple[str, ...]
+    sentence_boundary_before: bool
+    sentence_boundary_after: bool
+    internal_punctuation: bool
+
+
+def edge_normalized_tokens(
+    sentence: str, alphabet: frozenset[str] = coverage.TATAR_ALPHABET
+) -> list[EdgeNormalizedToken]:
+    """Strip Unicode punctuation only at token edges, then apply canonical word normalization.
+
+    Sentence-ending edge punctuation remains as boundary metadata. Punctuation left inside the
+    trimmed token is not removed, so canonical normalization still rejects the whole token.
     """
-    result: list[str | None] = []
+    result: list[EdgeNormalizedToken] = []
     for raw_token in sentence.split():
-        normalized, _reason = normalize_word(raw_token, alphabet)
-        result.append(normalized)
+        start = 0
+        end = len(raw_token)
+        leading: list[str] = []
+        trailing: list[str] = []
+        while start < end and _is_punctuation(raw_token[start]):
+            leading.append(raw_token[start])
+            start += 1
+        while end > start and _is_punctuation(raw_token[end - 1]):
+            end -= 1
+            trailing.append(raw_token[end])
+        edge_characters = leading + trailing
+        classes = tuple(sorted({_punctuation_class(character) for character in edge_characters}))
+        core = raw_token[start:end]
+        normalized, _reason = normalize_word(core, alphabet)
+        result.append(
+            EdgeNormalizedToken(
+                word=normalized,
+                punctuation_classes=classes,
+                sentence_boundary_before=any(
+                    character in SENTENCE_TERMINATORS for character in leading
+                ),
+                sentence_boundary_after=any(
+                    character in SENTENCE_TERMINATORS for character in trailing
+                ),
+                internal_punctuation=any(_is_punctuation(character) for character in core),
+            )
+        )
     return result
+
+
+def normalized_tokens(
+    sentence: str,
+    alphabet: frozenset[str] = coverage.TATAR_ALPHABET,
+    recover_punctuation: bool = False,
+) -> list[str | None]:
+    """Normalize one sentence, using ``None`` for rejected tokens and sentence boundaries.
+
+    By default, any punctuation rejects its whole token. With ``recover_punctuation``, edge
+    punctuation is removed first; hard boundaries still insert ``None`` so no pair crosses them.
+    Russian text needs the Russian alphabet because the Tatar one is a superset.
+    """
+    if not recover_punctuation:
+        return [normalize_word(token, alphabet)[0] for token in sentence.split()]
+    result: list[str | None] = []
+    for token in edge_normalized_tokens(sentence, alphabet):
+        if token.word is None:
+            result.append(None)
+            continue
+        if token.sentence_boundary_before:
+            result.append(None)
+        result.append(token.word)
+        if token.sentence_boundary_after:
+            result.append(None)
+    return result
+
+
+def _eligible_pair(
+    head: str | None, success: str | None, vocabulary: frozenset[str]
+) -> tuple[str, str] | None:
+    if head is None or success is None or head == success:
+        return None
+    if head not in vocabulary or success not in vocabulary:
+        return None
+    return head, success
 
 
 def iter_pairs(tokens: Sequence[str | None], vocabulary: frozenset[str]) -> Iterator[tuple[str, str]]:
     """Adjacent in-vocabulary pairs of one sentence, self-pairs dropped."""
     for index in range(len(tokens) - 1):
-        head = tokens[index]
-        success = tokens[index + 1]
-        if head is None or success is None:
-            continue
-        if head not in vocabulary or success not in vocabulary:
-            continue
-        if head == success:
-            continue
-        yield head, success
+        pair = _eligible_pair(tokens[index], tokens[index + 1], vocabulary)
+        if pair is not None:
+            yield pair
+
+
+def measure_punctuation_recovery(
+    paths: Sequence[Path],
+    vocabulary: frozenset[str],
+    alphabet: frozenset[str] = coverage.TATAR_ALPHABET,
+) -> dict[str, object]:
+    """Count recovered tokens and new in-vocabulary pairs by edge-punctuation class."""
+    recovered_tokens: Counter[str] = Counter()
+    recovered_pairs: Counter[str] = Counter()
+    recovered_token_total = 0
+    recovered_pair_total = 0
+    boundary_pairs_blocked = 0
+    internal_punctuation_rejected = 0
+    for path in paths:
+        for sentence in iter_sentences(path):
+            raw_tokens = sentence.split()
+            baseline = [normalize_word(token, alphabet)[0] for token in raw_tokens]
+            recovered = edge_normalized_tokens(sentence, alphabet)
+            for token in recovered:
+                if token.word is not None and token.punctuation_classes:
+                    recovered_token_total += 1
+                    recovered_tokens.update(token.punctuation_classes)
+                if token.word is None and token.internal_punctuation:
+                    internal_punctuation_rejected += 1
+            for index in range(len(recovered) - 1):
+                left = recovered[index]
+                right = recovered[index + 1]
+                candidate = _eligible_pair(left.word, right.word, vocabulary)
+                if left.sentence_boundary_after or right.sentence_boundary_before:
+                    if candidate is not None:
+                        boundary_pairs_blocked += 1
+                    continue
+                if candidate is None:
+                    continue
+                baseline_pair = _eligible_pair(baseline[index], baseline[index + 1], vocabulary)
+                if baseline_pair is not None:
+                    continue
+                recovered_pair_total += 1
+                recovered_pairs.update(set(left.punctuation_classes + right.punctuation_classes))
+    return {
+        "recovered_tokens": recovered_token_total,
+        "recovered_tokens_by_class": dict(sorted(recovered_tokens.items())),
+        "recovered_pairs": recovered_pair_total,
+        "recovered_pairs_by_class": dict(sorted(recovered_pairs.items())),
+        "pairs_blocked_at_sentence_boundaries": boundary_pairs_blocked,
+        "internal_punctuation_tokens_rejected": internal_punctuation_rejected,
+    }
 
 
 def read_shipped_vocabulary(
@@ -208,6 +346,7 @@ def count_pairs(
     shards: int,
     stats: list[CorpusStats],
     alphabet: frozenset[str] = coverage.TATAR_ALPHABET,
+    recover_punctuation: bool = False,
 ) -> dict[str, list[tuple[str, int]]]:
     """Count pairs for every head, one shard of heads per pass over the corpora.
 
@@ -221,11 +360,14 @@ def count_pairs(
             corpus = next((entry for entry in stats if entry.path == str(path)), None)
             first_pass = shard == 0
             for sentence in iter_sentences(path):
-                tokens = normalized_tokens(sentence, alphabet)
+                tokens = normalized_tokens(sentence, alphabet, recover_punctuation)
                 if corpus is not None and first_pass:
+                    raw_token_count = len(sentence.split())
                     corpus.sentences += 1
-                    corpus.tokens += len(tokens)
-                    corpus.tokens_rejected += sum(1 for token in tokens if token is None)
+                    corpus.tokens += raw_token_count
+                    corpus.tokens_rejected += raw_token_count - sum(
+                        token is not None for token in tokens
+                    )
                 for head, success in iter_pairs(tokens, vocabulary):
                     if head not in heads or hash(head) % shards != shard:
                         continue

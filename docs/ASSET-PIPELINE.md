@@ -9,7 +9,7 @@ described in [ASSET-FORMATS.md](ASSET-FORMATS.md).
 |---|---|---|
 | `dictionaries/*.tdict.zlib` | `scripts/rebuild_assets.py` (runs `dict_accept.py pack`) | release 1.8.4 baseline dictionaries, `data/dictionary/dict-accept/`, Tatar word forms |
 | `bigrams/*.tatbigr.zlib` | `scripts/rebuild_assets.py` (runs `bigram_asset_pack.py pack`) | Leipzig sentence corpora, conversational training files, the fresh dictionaries |
-| `dictionaries/*_sentstart_v1.txt` | `scripts/sentstart_pack.py` | Leipzig sentence corpora, the bundled dictionary; the Russian table also takes the conversational training file |
+| `dictionaries/*_sentstart_v1.txt` | `scripts/sentstart_pack.py` | Leipzig sentence corpora, the conversational training files, the bundled dictionary |
 | `emoji/emoji_set_v1.txt`, `emoji_skin_v1.txt` | `scripts/emoji_pack.py`, `scripts/emoji_skin_pack.py` | Unicode Emoji 15.1 `emoji-test.txt` |
 | `emoji/emoji_search_v1.txt` | `scripts/emoji_search_pack.py` | CLDR 44 annotations (ru, en), `scripts/emoji_search_tt_extra.txt`, `scripts/emoji_search_tt_names.txt` |
 | `emoji/emoji_suggest_v1.txt` | `scripts/emoji_suggest_pack.py` | `scripts/emoji_suggest_data.tsv` |
@@ -89,8 +89,10 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    it.
 2. **Dictionaries.** `dict_accept.py pack --write` merges the baseline, the accepted words and
    (for Tatar) the admitted forms. Frequencies are written plus conversational plus the bonus
-   file, when it exists. It keeps the top
-   entries (`TATAR_DICTIONARY_TOP` for Tatar, 100 000 for Russian) and writes schema 2.
+   file, when it exists. The Tatar cutoff ranks entries by their stored frequency plus nine times
+   their conversational frequency; this weight does not change the stored frequencies. Russian
+   uses the stored frequency for cutoff selection. The packer keeps the top entries
+   (`TATAR_DICTIONARY_TOP` for Tatar, 100 000 for Russian) and writes schema 2.
    `TATAR_DICTIONARY_TOP` is the largest cutoff that fits the size limits; measure again before
    you change it.
 3. **Bigram tables.** `bigram_asset_pack.py pack --schema 3` is run against the new
@@ -106,6 +108,11 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    `tests/glide_pack/` and the JVM calibration tests (`E3aRecoveryCalibrationTest`,
    `TtTypoPhaseCCalibrationTest`, `GlideRecoveryCalibrationTest`, `GlideGoldenExportTest`).
 6. **Check.** The `--check` procedure runs over all four assets.
+
+The Tatar bigram rebuild passes `--recover-punctuation`: Unicode punctuation is stripped at token
+edges before word normalization, punctuation left inside a token still rejects it, and
+sentence-terminal edges remain pair boundaries. The pack report counts recovered tokens and pairs
+by punctuation class. The Russian rebuild keeps the canonical whole-token rule.
 
 The raw tables and the JSON reports go to `--work-dir`, which defaults to
 `build/rebuild_assets/`.
@@ -190,12 +197,19 @@ python3 scripts/emoji_suggest_pack.py build --data scripts/emoji_suggest_data.ts
     --output app/src/main/assets/emoji/emoji_suggest_v1.txt
 python3 scripts/sentstart_pack.py build --language tat \
     --sentences CORPUS/tat_mixed_2015_1M-sentences.txt CORPUS/tat_web_2018_1M-sentences.txt \
+    CORPUS/tt_conv_train90-sentences.txt CORPUS/tt_conv_train90-sentences.txt \
+    CORPUS/tt_conv_train90-sentences.txt CORPUS/tt_conv_train90-sentences.txt \
+    CORPUS/tt_conv_train90-sentences.txt CORPUS/tt_conv_train90-sentences.txt \
+    CORPUS/tt_conv_train90-sentences.txt CORPUS/tt_conv_train90-sentences.txt \
+    CORPUS/tt_conv_train90-sentences.txt CORPUS/tt_conv_train90-sentences.txt \
     --dictionary app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib \
     --output app/src/main/assets/dictionaries/tatar_sentstart_v1.txt
 ```
 
-For the Russian sentence-start table, use `--language rus` with the three Russian Leipzig corpora
-plus `rus_conv_thinned60-sentences.txt`, as listed in the table's header.
+The Tatar command lists `tt_conv_train90-sentences.txt` ten times to apply the same conversational
+corpus weight as the Tatar bigram table. For the Russian sentence-start table, use `--language rus`
+with the three Russian Leipzig corpora plus `rus_conv_thinned60-sentences.txt` once, as listed in
+the table's header.
 
 ## Equivalence checks
 

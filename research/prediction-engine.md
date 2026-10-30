@@ -113,8 +113,8 @@ Open-source engines (license check: project is Apache-2.0, no GPL code, no NDK):
 The harness now covers every prerequisite the memos below reference:
 
 - Composite next-word hit measurement: `scripts/suggest_eval.py` + `TtSuggestEvalTest` measure
-  top-1/top-3 of the full chain (bigrams + after-word forms + fallback); the python mirror of
-  the chain lives in `scripts/suggest_chain.py`.
+  top-1/top-3 of the full chain (bigrams + fallback); the python mirror of the chain lives in
+  `scripts/suggest_chain.py`.
 - Typo-mutated held-out set: `scripts/typo_eval_pack.py` generates deterministic
   substitution/deletion/insertion/transposition mutations of the eval words, pinned in
   `tests/typo_eval_pack/` and mirrored by `TypoMutatedEvalTest`, which also pins the

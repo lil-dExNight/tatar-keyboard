@@ -358,6 +358,29 @@ class SelectPackContractTest(unittest.TestCase):
         self.assertEqual(set(shipped), set(RUS_WORDS))
         self.assertEqual(set(accepted), {"давай", "работала"})
 
+    def test_tatar_cutoff_weight_does_not_change_stored_frequency(self) -> None:
+        code, _ = self._run_select()
+        self.assertEqual(code, 0)
+        self._write_conv_freq()
+        (self.out_dir / "conv-freq-tt.tsv").write_text(
+            "# comment\nword\tconv_freq\nсу\t50\n", encoding="utf-8")
+        with patched(QUEUE=self.queues, OUT_DIR=self.out_dir,
+                     BASELINE_SHA256=self.pins):
+            _shipped, _accepted, entries = da.merged_entries(
+                "tat", self.baseline, top=1)
+        # су stores 200 + 50 but wins the cutoff with 200 + 50 + 9 * 50 = 700.
+        self.assertEqual(entries, [("су", 250)])
+
+    def test_russian_cutoff_still_uses_stored_frequency(self) -> None:
+        code, _ = self._run_select()
+        self.assertEqual(code, 0)
+        self._write_conv_freq()
+        with patched(QUEUE=self.queues, OUT_DIR=self.out_dir,
+                     BASELINE_SHA256=self.pins):
+            _shipped, _accepted, entries = da.merged_entries(
+                "rus", self.baseline, top=1)
+        self.assertEqual(entries, [("работаю", 500)])
+
 
 class DictAcceptCheckLiveTreeTest(unittest.TestCase):
     """dict_accept_check against the committed assets and the shipped-1.8.4 baseline."""
@@ -404,13 +427,12 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
         self.assertGreater(self.report["rus"]["words_added"], 0)
         self.assertEqual(self.report["rus"]["words_added"],
                          self.report["rus"]["words_displaced"])
-        # tat: cutoff 110 000. The added conversational words and word forms fill the extra
-        # 10 000 entries, and the bonus-frequency rerank (bonus-freq-tt.tsv) promotes more
-        # words above the old cutoff, displacing the same number from the tail:
+        # tat: conversational cutoff weighting, the bonus-frequency rerank and word forms
+        # promote entries above the old cutoff and displace the same number from the tail:
         # words_added == 10 000 + words_displaced.
         self.assertEqual(self.report["tat"]["entries_after"], 110_000)
-        self.assertEqual(self.report["tat"]["words_added"], 21_038)
-        self.assertEqual(self.report["tat"]["words_displaced"], 11_038)
+        self.assertEqual(self.report["tat"]["words_added"], 21_288)
+        self.assertEqual(self.report["tat"]["words_displaced"], 11_288)
 
     def test_mozhna_pair_shows_single_word_on_prefix(self) -> None:
         # On the prefix `можн` there is no `можно | можна` pair: the curator excluded

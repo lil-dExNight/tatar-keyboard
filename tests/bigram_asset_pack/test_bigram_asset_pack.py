@@ -637,6 +637,51 @@ class EndToEndCliTest(unittest.TestCase):
                 report["compressed_sha256"],
             )
 
+    def test_cli_pack_writes_punctuation_evidence(self) -> None:
+        with TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            asset_path = _write_asset(directory, ["әни", "өйгә", "кайтты", "зур", "матур"])
+            train = directory / "train-sentences.txt"
+            train.write_text(
+                "1\tәни, өйгә\n2\tзур матур.\n3\tәни кайтты\n4\tөйгә кайтты\n",
+                encoding="utf-8",
+            )
+            out_raw = directory / "out.tatbigr"
+            out_compressed = directory / "out.tatbigr.zlib"
+            report_path = directory / "report.json"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(PACK_SCRIPT),
+                    "pack",
+                    "--train",
+                    str(train),
+                    "--asset",
+                    str(asset_path),
+                    "--heads",
+                    "5",
+                    "--successes-per-head",
+                    "3",
+                    "--recover-punctuation",
+                    "--out-raw",
+                    str(out_raw),
+                    "--out-compressed",
+                    str(out_compressed),
+                    "--report",
+                    str(report_path),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            import json
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(2, report["punctuation_recovery"]["recovered_tokens"])
+            self.assertEqual(2, report["punctuation_recovery"]["recovered_pairs"])
+            parsed = _parse(out_raw.read_bytes(), asset_path)
+            self.assertEqual(["кайтты", "өйгә"], parsed.successes_by_head["әни"])
+
 
 V3_WORDS = ["әни", "өйгә", "кайтты", "зур", "матур"]
 

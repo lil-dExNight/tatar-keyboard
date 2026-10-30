@@ -7,8 +7,8 @@ The simulated runtime rule inserts one stage into the NEXT_WORD chain mirrored b
 ``suggest_chain.ChainMirror``: when the form-keyed bigram pass fills fewer than the strip's
 three cells, the stem of the committed word is looked up in a stem-keyed bigram table and each
 stem successor is expanded to its most frequent attested form (the dictionary frequency list
-is the attestation source). The stage sits between the bigram pass and the after-word forms
-pass; everything else in the chain is unchanged.
+is the attestation source). The stage sits between the bigram pass and the fallback; everything
+else in the chain is unchanged.
 
 Pipeline of the simulation:
 
@@ -23,8 +23,8 @@ Pipeline of the simulation:
      a token rejected by normalization breaks adjacency, both ends must be dictionary words,
      form self-pairs dropped); each end is then mapped to its stem, counts are summed over
      forms, and stem self-pairs are dropped (their expansion could only propose another form
-     of the head's own cluster, which is the after-word forms pass's job). Each stem head
-     keeps its top-4 successors, count descending then code point ascending, like the
+     of the head's own cluster). Each stem head keeps its top-4 successors, count descending
+     then code point ascending, like the
      shipped table.
   3. Both chains replay the eval set; hits are tallied per sentence so the paired bootstrap
      resamples identical sentence indices for both arms (one SplitMix64 stream, the harness
@@ -76,8 +76,8 @@ DEFAULT_CORPORA = (
 class StemBackoffChain(suggest_chain.ChainMirror):
     """The chain mirror with the simulated stem-keyed backoff stage added.
 
-    Between the form-keyed bigram pass and the after-word forms pass: when the bigram pass
-    fills fewer cells than the strip has, the successors of the head's stem are expanded to
+    Between the form-keyed bigram pass and the fallback: when the bigram pass fills fewer
+    cells than the strip has, the successors of the head's stem are expanded to
     their clusters' most frequent attested forms and appended, skipping the head itself and
     anything already shown, until the strip is full or the successors run out.
     """
@@ -120,10 +120,6 @@ class StemBackoffChain(suggest_chain.ChainMirror):
                 added.append(form)
                 if len(shown) >= CELL_COUNT:
                     break
-        if len(shown) < CELL_COUNT:
-            shown += suggest_chain.forms_of(
-                head, shown, CELL_COUNT - len(shown), self.frequency_of
-            )
         if len(shown) < CELL_COUNT:
             for word in self._fallback_pool:
                 if len(shown) >= CELL_COUNT:
