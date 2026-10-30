@@ -161,8 +161,8 @@ internal class PersonalDictionaryStore(
      * the write, so a keystroke during the write cannot show the word again; if the write fails, the
      * previous snapshot is restored, because the word is still saved.
      *
-     * The word is also purged from the quarantined file, so a later restore cannot bring it back. A
-     * quarantined file that cannot be rewritten without the word is deleted.
+     * The word is also purged from the quarantined file when that copy can be rewritten safely. A
+     * rewrite failure leaves the copy intact so its other recoverable words are not lost.
      */
     fun forget(word: String, outcome: PersonalMutationOutcome? = null) = onWorker {
         // The body runs inside a try: the worker has no UncaughtExceptionHandler, so a throw here
@@ -225,9 +225,8 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * The quarantine half of [forget]: drops the word from the quarantined file, so a later restore
-     * cannot bring it back. A file that becomes empty or cannot be rewritten is deleted, losing the
-     * other salvaged words rather than keeping a deleted one.
+     * Drops the word from the quarantined file when possible. An empty rewritten copy is deleted;
+     * a failed rewrite preserves the original bytes for recovery.
      */
     private fun purgeFromQuarantine(normalizedWord: String) {
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return
@@ -242,24 +241,18 @@ internal class PersonalDictionaryStore(
             salvage.normalizedForms[index] != normalizedWord
         }
         if (kept.size == salvage.wordCount) return // the word was not in the copy: nothing to purge
-        val rewritten = try {
+        try {
             var candidate = PersonalEntries.empty(maxEntries)
             for (index in kept) {
                 candidate = candidate.upsert(salvage.rawForms[index], salvage.normalizedForms[index])
             }
             if (candidate.isEmpty) {
                 deleteFile(directory, copy)
-                true
             } else {
                 writeBytesDurably(directory, copy, candidate.serialize(subtypeId))
-                true
             }
         } catch (_: Exception) {
-            false
-        }
-        if (!rewritten) {
-            // Could not rewrite without the deleted word: delete the file rather than keep it.
-            deleted { deleteFile(directory, copy) }
+            // Keep the original copy: the other recoverable words are still the user's data.
         }
     }
 
@@ -728,18 +721,15 @@ internal class PersonalDictionaryStore(
      * leaves most words readable, so they are kept for a restore.
      *
      * One slot per language, replaced by the next failure. Its name is neither a `.tpers` nor a temp
-     * name, so nothing validates it and [cleanupTemps] leaves it alone; [clearAll] removes it. If the
-     * move fails, the unreadable file is deleted so it does not fail validation on every start.
+     * name, so nothing validates it and [cleanupTemps] leaves it alone; [clearAll] removes it. A
+     * failed move leaves the original file untouched for a later recovery attempt.
      */
     private fun quarantine(directory: File, file: File) {
-        val moved = try {
+        try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
             fileOps.syncDirectory(directory)
-            true
         } catch (_: Exception) {
-            false
         }
-        if (!moved) runCatching { deleteFile(directory, file) }
         // Marked in both cases: the list is empty and the user did not empty it. The mark is kept
         // on disk, since the process may end before any screen shows the notice. It is one byte
         // whose existence is the message: no word, no path, no reason.
@@ -769,14 +759,11 @@ internal class PersonalDictionaryStore(
      * hashes, so the settings screen neither lists nor restores it; [clearAll] removes it.
      */
     private fun quarantinePending(directory: File, file: File) {
-        val moved = try {
+        try {
             fileOps.atomicReplace(file, File(directory, pendingQuarantineFileName()))
             fileOps.syncDirectory(directory)
-            true
         } catch (_: Exception) {
-            false
         }
-        if (!moved) runCatching { deleteFile(directory, file) }
         // Marked in both cases, with the pending channel's own mark: sharing the dictionary's
         // mark would let one channel's delivery spend the other's unshown notice.
         justQuarantined = true

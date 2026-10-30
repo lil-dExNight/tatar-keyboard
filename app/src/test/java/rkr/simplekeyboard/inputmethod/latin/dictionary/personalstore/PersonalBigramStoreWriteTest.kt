@@ -702,6 +702,50 @@ class PersonalBigramStoreWriteTest {
     }
 
     @Test
+    fun aFailedQuarantinePurgePreservesTheOriginalCopy() {
+        val directory = newPersonalDir()
+        store(directory, RecordingOps(), RealOpener).also {
+            repeat(2) { _ -> it.notePair("сәләм", "дөнья") }
+            repeat(2) { _ -> it.notePair("бәйрәм", "котлы") }
+        }
+        quarantineCorruptingChecksum(directory)
+        store(directory, RecordingOps(), RealOpener).prime()
+        val copy = File(directory, quarantineName())
+        val originalBytes = copy.readBytes()
+        val failing = object : RecordingOps() {
+            override fun atomicReplace(source: File, destination: File) {
+                if (destination.name.endsWith(".quarantine")) throw IOException("replace failed")
+                super.atomicReplace(source, destination)
+            }
+        }
+        val store = store(directory, failing, RealOpener)
+        store.restoreQuarantine()
+
+        store.forget("сәләм", "дөнья")
+
+        assertArrayEquals(originalBytes, copy.readBytes())
+        assertEquals(2, PersonalBigramQuarantineSalvage.read(copy, subtype)?.pairCount)
+    }
+
+    @Test
+    fun aFailedQuarantineRenamePreservesTheOriginalFile() {
+        val directory = newPersonalDir()
+        store(directory, RecordingOps(), RealOpener).also {
+            repeat(2) { _ -> it.notePair("сәләм", "дөнья") }
+        }
+        quarantineCorruptingChecksum(directory)
+        val originalBytes = destinationFile(directory).readBytes()
+        val failing = object : RecordingOps() {
+            override fun atomicReplace(source: File, destination: File) =
+                throw IOException("replace failed")
+        }
+
+        store(directory, failing, RealOpener).prime()
+
+        assertArrayEquals(originalBytes, destinationFile(directory).readBytes())
+    }
+
+    @Test
     fun discardQuarantineRemovesTheCopyAndNothingElse() {
         val directory = newPersonalDir()
         store(directory, RecordingOps(), RealOpener).also {

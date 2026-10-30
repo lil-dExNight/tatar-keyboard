@@ -300,19 +300,15 @@ internal class RefusedCorrectionStore(
     /**
      * Moves an unreadable file into this subtype's single quarantine slot instead of deleting it:
      * the pairs are the user's own, so a damaged file is kept next to the store rather than
-     * destroyed. The slot is one file, replaced by the next failure; if the move fails, the
-     * unreadable file is deleted so it does not fail validation on every start. No notice is
-     * raised: no screen lists the refused pairs, so there is nothing to explain it on.
+     * destroyed. The slot is one file, replaced by the next failure; a failed move leaves the
+     * original file untouched. No notice is raised because no screen lists the refused pairs.
      */
     private fun quarantine(directory: File, file: File) {
-        val moved = try {
+        try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
             fileOps.syncDirectory(directory)
-            true
         } catch (_: Exception) {
-            false
         }
-        if (!moved) runCatching { deleteFile(directory, file) }
     }
 
     private fun quarantineFileName(): String =

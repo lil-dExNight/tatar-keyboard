@@ -99,14 +99,15 @@ class PersonalLearningGatesTest {
         assertTrue("the personal dictionary setting",
             predicate.contains("Settings.readPersonalDictionaryEnabled(mDevicePrefs)"))
         assertTrue("the device has been unlocked at least once",
-            predicate.contains("userManager.isUserUnlocked()"))
+            predicate.contains("final boolean unlocked = isUserUnlocked();"))
         assertTrue("and the postal-address exclusion",
             predicate.contains("mIsPostalAddressField"))
         // The pause-learning switch is the sixth factor (the conjunction itself is the pure
-        // PersonalLearningGates, exercised by IncognitoModeTest). The pinned text matches the
-        // extracted form, in which a missing UserManager still means locked.
+        // PersonalLearningGates, exercised by IncognitoModeTest). The live helper centralizes the
+        // Direct Boot check; a missing UserManager still means locked.
+        val unlock = ime.substringAfter("private boolean isUserUnlocked()").substringBefore("}")
         assertTrue("a missing UserManager means locked, not open",
-            predicate.contains("userManager != null && userManager.isUserUnlocked()"))
+            unlock.contains("userManager != null && userManager.isUserUnlocked()"))
         assertTrue("the incognito pause",
             predicate.contains("Settings.readIncognitoModeEnabled(mDevicePrefs)"))
         assertTrue("and the conjunction is delegated to the pure gates object",

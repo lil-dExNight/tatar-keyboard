@@ -145,6 +145,8 @@ class PersonalBigramEntriesTest {
 
         val successors = model.toSnapshot("tt_RU").successorsFor("сәләм")
         assertEquals(listOf("б", "а", "в"), successors.map { it.normalizedForm })
+        assertEquals(listOf(1, 0, 0), successors.map { it.usageCount })
+        assertEquals(listOf(2, 5, 5), successors.map { it.frequencyCount })
     }
 
     @Test

@@ -43,9 +43,9 @@ import java.util.concurrent.Executor
  * between flushes. The threshold is shared with the personal dictionary: the same slip repeated
  * twice is not the user's habit yet.
  *
- * The quarantine here is the move only, with no notice: no screen lists the overlay, so a loss is
- * silent by design and the overlay simply relearns. The quarantined file keeps the unreadable
- * bytes out of the validation loop; [clearAll] removes it.
+ * The quarantined file keeps the unreadable bytes out of the validation loop; [clearAll] removes
+ * it. There is no restore path because no screen lists the overlay, and the overlay relearns.
+ * Quarantine notices follow the other personal stores' durable-mark and delivery rules.
  */
 internal class SentStartOverlayStore(
     private val subtypeId: String,
@@ -58,6 +58,7 @@ internal class SentStartOverlayStore(
     private val validator: TsentValidator = TsentValidator(),
     private val unlockGate: () -> Boolean = { true },
     private val maxEntries: Int = TsentFormat.MAX_SENTSTART_ENTRIES.toInt(),
+    private val quarantineNotice: PersonalQuarantineNotice? = null,
 ) {
     private val alphabet: Set<Int>? = PersonalSubtypes.alphabetFor(subtypeId)
 
@@ -65,6 +66,12 @@ internal class SentStartOverlayStore(
     private var entries: SentStartOverlayEntries = SentStartOverlayEntries.empty(maxEntries)
     private var loaded = false
     private var pendingCounterFlush = false
+
+    // See PersonalDictionaryStore.wholeWriteSuppressed.
+    private var wholeWriteSuppressed = false
+
+    // See PersonalDictionaryStore.justQuarantined.
+    private var justQuarantined = false
 
     // Progress towards learning, as salted truncated hashes. Held in memory and written on the
     // same boundary as the usage counters, never once per committed word.
@@ -100,9 +107,11 @@ internal class SentStartOverlayStore(
         val key = PendingCounters.keyOf(saltOrCreate() ?: return@onWorker, normalized)
         val noted = pending.note(key)
         if (noted.countOf(key) >= PendingCounters.LEARN_THRESHOLD) {
-            // Graduated: it goes into the overlay itself, and its pending trace goes away.
-            val next = entries.noted(word, normalized)
-            if (writeWhole(next)) {
+            // Graduated: it goes into the overlay itself, and its pending trace goes away. While a
+            // failed whole-file write is suppressed, no candidate is built and no write is
+            // attempted: the counter keeps accumulating in memory until the next flush.
+            val next = if (wholeWriteSuppressed) null else entries.noted(word, normalized)
+            if (next != null && writeWhole(next)) {
                 entries = next
                 publish()
                 pending = noted.without(key)
@@ -122,6 +131,8 @@ internal class SentStartOverlayStore(
      */
     fun flush() = onWorker {
         if (!open()) return@onWorker
+        // The flush boundary lifts the write suppression; see PersonalDictionaryStore.flush.
+        wholeWriteSuppressed = false
         if (pendingCounterFlush && writeWhole(entries)) pendingCounterFlush = false
         if (pendingDirty) {
             pending = pending.prunedForFlush()
@@ -157,7 +168,22 @@ internal class SentStartOverlayStore(
             deleted { deleteFile(directory, File(directory, SALT_FILE_NAME)) }
         val quarantineGone = directory != null &&
             deleted { deleteFile(directory, File(directory, quarantineFileName())) }
+        // The notice marks and the pending quarantine slot go too, outside the answer below; see
+        // PersonalDictionaryStore.clearAll.
+        if (directory != null) {
+            deleted { deleteFile(directory, File(directory, quarantineNoticeFileName())) }
+            deleted { deleteFile(directory, File(directory, pendingQuarantineNoticeFileName())) }
+            deleted { deleteFile(directory, File(directory, pendingQuarantineFileName())) }
+        }
         report(outcome, fileGone && countersGone && saltGone && quarantineGone)
+    }
+
+    /** Clears the notice marks. See [PersonalDictionaryStore.noticeDelivered]. */
+    fun noticeDelivered() = onWorker {
+        justQuarantined = false
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return@onWorker
+        deleted { deleteFile(directory, File(directory, quarantineNoticeFileName())) }
+        deleted { deleteFile(directory, File(directory, pendingQuarantineNoticeFileName())) }
     }
 
     /**
@@ -223,6 +249,13 @@ internal class SentStartOverlayStore(
             entries = SentStartOverlayEntries.empty(maxEntries)
             snapshot = SentStartOverlay.EMPTY
         }
+        // The only place the notice is raised; see PersonalDictionaryStore.open.
+        if (justQuarantined || quarantineNoticeIsMarked()) {
+            try {
+                quarantineNotice?.onQuarantined()
+            } catch (_: Exception) {
+            }
+        }
         return true
     }
 
@@ -260,38 +293,42 @@ internal class SentStartOverlayStore(
     }
 
     /**
-     * The whole-file write sequence. Returns true only when every step succeeded. On any caught
-     * failure the temp is removed and false is returned, leaving the previous file untouched. An
-     * uncaught [Error] (a simulated process death) leaves the temp for the next open to discard.
+     * The whole-file write sequence. See `PersonalDictionaryStore.writeWhole`; every result also
+     * drives [wholeWriteSuppressed] there and here.
      */
     private fun writeWhole(next: SentStartOverlayEntries): Boolean {
         val directory = directoryProvider.personalDirectory()
-        return try {
+        val written = try {
             ensureDirectory(directory)
             cleanupTemps(directory)
             val bytes = next.serialize(subtypeId)
             val required = bytes.size.toLong() + FREE_SPACE_RESERVE_BYTES
-            if (spaceProbe.usableBytes(directory) < required) return false
-            val temporary = createExclusiveTemp(directory)
-            try {
-                outputOpener.open(temporary).use { output ->
-                    output.write(bytes)
-                    output.flush()
-                    fileOps.syncFile(output.fd)
-                }
-                validator.validate(temporary, subtypeId)
-                val destination = File(directory, TsentFormat.sentStartFileName(subtypeId))
-                fileOps.atomicReplace(temporary, destination)
-                fileOps.syncDirectory(directory)
-                writeCount++
-                true
-            } catch (_: Exception) {
-                if (temporary.exists()) runCatching { fileOps.delete(temporary) }
+            if (spaceProbe.usableBytes(directory) < required) {
                 false
+            } else {
+                val temporary = createExclusiveTemp(directory)
+                try {
+                    outputOpener.open(temporary).use { output ->
+                        output.write(bytes)
+                        output.flush()
+                        fileOps.syncFile(output.fd)
+                    }
+                    validator.validate(temporary, subtypeId)
+                    val destination = File(directory, TsentFormat.sentStartFileName(subtypeId))
+                    fileOps.atomicReplace(temporary, destination)
+                    fileOps.syncDirectory(directory)
+                    writeCount++
+                    true
+                } catch (_: Exception) {
+                    if (temporary.exists()) runCatching { fileOps.delete(temporary) }
+                    false
+                }
             }
         } catch (_: Exception) {
             false
         }
+        wholeWriteSuppressed = !written
+        return written
     }
 
     /**
@@ -321,19 +358,27 @@ internal class SentStartOverlayStore(
         }
     }
 
-    /** Reads the pending counters once, alongside the overlay itself. Fail-closed to empty. */
+    /**
+     * Reads the pending counters once, alongside the overlay itself. Fail-closed to empty; a file
+     * that does not parse is set aside (see `PersonalDictionaryStore.readPending`).
+     */
     private fun readPending(directory: File) {
-        pending = try {
-            val file = File(directory, pendingFileName())
-            // Size check before the read: a file past MAX_SERIALIZED_BYTES cannot parse, and past
-            // 2 GiB readBytes() throws an OutOfMemoryError, which the catch below does not stop.
-            if (file.isFile && file.length() <= PendingCounters.MAX_SERIALIZED_BYTES) {
-                PendingCounters.parse(file.readBytes())
-            } else {
-                PendingCounters.EMPTY
-            }
+        val file = File(directory, pendingFileName())
+        // Size check before the read; see PersonalDictionaryStore.readPending.
+        if (!file.isFile || file.length() > PendingCounters.MAX_SERIALIZED_BYTES) {
+            pending = PendingCounters.EMPTY
+            return
+        }
+        val parsed = try {
+            PendingCounters.parseOrNull(file.readBytes())
         } catch (_: Exception) {
-            PendingCounters.EMPTY
+            null
+        }
+        if (parsed == null) {
+            pending = PendingCounters.EMPTY
+            quarantinePending(directory, file)
+        } else {
+            pending = parsed
         }
     }
 
@@ -368,24 +413,55 @@ internal class SentStartOverlayStore(
     }
 
     /**
-     * Moves an unreadable file into this subtype's single quarantine slot instead of deleting it,
-     * so it does not fail validation on every start. One slot per language, replaced by the next
-     * failure. There is no restore path: no screen lists the overlay, and the overlay relearns.
-     * If the move fails, the unreadable file is deleted.
+     * Moves an unreadable file into this subtype's single quarantine slot instead of deleting it.
+     * One slot per language, replaced by the next failure; a failed move leaves the original file
+     * untouched. There is no restore path: no screen lists the overlay, and the overlay relearns.
      */
     private fun quarantine(directory: File, file: File) {
-        val moved = try {
+        try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
             fileOps.syncDirectory(directory)
-            true
         } catch (_: Exception) {
-            false
         }
-        if (!moved) runCatching { deleteFile(directory, file) }
+        // Marked in both cases; see PersonalDictionaryStore.quarantine.
+        justQuarantined = true
+        runCatching {
+            writeBytesDurably(directory, File(directory, quarantineNoticeFileName()), ByteArray(1))
+        }
     }
 
     private fun quarantineFileName(): String =
         TsentFormat.sentStartFileName(subtypeId) + QUARANTINE_SUFFIX
+
+    private fun quarantineNoticeFileName(): String =
+        "quarantine-notice-sentstart-$subtypeId-s1-f1.flag"
+
+    /** Whether either on-disk notice mark exists; false on error. */
+    private fun quarantineNoticeIsMarked(): Boolean = try {
+        val directory = directoryProvider.personalDirectory()
+        File(directory, quarantineNoticeFileName()).isFile ||
+            File(directory, pendingQuarantineNoticeFileName()).isFile
+    } catch (_: Exception) {
+        false
+    }
+
+    /** Sets aside an unreadable pending file. See `PersonalDictionaryStore.quarantinePending`. */
+    private fun quarantinePending(directory: File, file: File) {
+        try {
+            fileOps.atomicReplace(file, File(directory, pendingQuarantineFileName()))
+            fileOps.syncDirectory(directory)
+        } catch (_: Exception) {
+        }
+        justQuarantined = true
+        runCatching {
+            writeBytesDurably(directory, File(directory, pendingQuarantineNoticeFileName()), ByteArray(1))
+        }
+    }
+
+    private fun pendingQuarantineFileName(): String = pendingFileName() + QUARANTINE_SUFFIX
+
+    private fun pendingQuarantineNoticeFileName(): String =
+        "quarantine-notice-sentstart-$subtypeId-s1-f1-pending.flag"
 
     private fun pendingFileName(): String = "pending-sentstart-$subtypeId-s1-f1.bin"
 

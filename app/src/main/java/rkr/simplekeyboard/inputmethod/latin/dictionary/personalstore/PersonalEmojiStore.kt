@@ -329,24 +329,18 @@ internal class PersonalEmojiStore(
             salvage.words[index] != normalizedWord || salvage.emojiClusters[index] != emoji
         }
         if (kept.size == salvage.entryCount) return // the entry was not in the copy: nothing to purge
-        val rewritten = try {
+        try {
             var candidate = PersonalEmojiEntries.empty(maxEntries)
             for (index in kept) {
                 candidate = candidate.upsert(salvage.words[index], salvage.emojiClusters[index], 1)
             }
             if (candidate.isEmpty) {
                 deleteFile(directory, copy)
-                true
             } else {
                 writeBytesDurably(directory, copy, candidate.serialize(subtypeId))
-                true
             }
         } catch (_: Exception) {
-            false
-        }
-        if (!rewritten) {
-            // Could not rewrite without the deleted entry: delete the file rather than keep it.
-            deleted { deleteFile(directory, copy) }
+            // Keep the original copy so the other recoverable entries are not lost.
         }
     }
 
@@ -568,14 +562,11 @@ internal class PersonalEmojiStore(
 
     /** Quarantines an unreadable file. See `PersonalDictionaryStore.quarantine`. */
     private fun quarantine(directory: File, file: File) {
-        val moved = try {
+        try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
             fileOps.syncDirectory(directory)
-            true
         } catch (_: Exception) {
-            false
         }
-        if (!moved) runCatching { deleteFile(directory, file) }
         // Marked in both cases; see PersonalDictionaryStore.quarantine.
         justQuarantined = true
         runCatching {
@@ -617,14 +608,11 @@ internal class PersonalEmojiStore(
 
     /** Sets aside an unreadable pending file. See `PersonalDictionaryStore.quarantinePending`. */
     private fun quarantinePending(directory: File, file: File) {
-        val moved = try {
+        try {
             fileOps.atomicReplace(file, File(directory, pendingQuarantineFileName()))
             fileOps.syncDirectory(directory)
-            true
         } catch (_: Exception) {
-            false
         }
-        if (!moved) runCatching { deleteFile(directory, file) }
         justQuarantined = true
         runCatching {
             writeBytesDurably(directory, File(directory, pendingQuarantineNoticeFileName()), ByteArray(1))

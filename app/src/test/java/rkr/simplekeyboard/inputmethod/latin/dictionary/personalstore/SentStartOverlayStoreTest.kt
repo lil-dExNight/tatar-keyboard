@@ -124,6 +124,49 @@ class SentStartOverlayStoreTest {
         assertEquals(6, onDisk.usageCounts[onDisk.normalizedForms.indexOf("сәләм")])
     }
 
+    // ---- a failed graduation write is not retried until the flush boundary ----------------------
+
+    @Test
+    fun aFailedGraduationWriteIsNotRetriedUntilTheNextFlush() {
+        val directory = newPersonalDir()
+        var replaceFails = false
+        var overlayReplacements = 0
+        val ops = object : RecordingOps() {
+            override fun atomicReplace(source: File, destination: File) {
+                if (destination.name == TsentFormat.sentStartFileName(subtype)) {
+                    overlayReplacements++
+                    if (replaceFails) throw IOException("no space left")
+                }
+                super.atomicReplace(source, destination)
+            }
+        }
+        val store = store(directory, ops = ops)
+        store.noteSentenceStart("сүзләр") // creates the salt while writes still work
+
+        replaceFails = true
+        repeat(PendingCounters.LEARN_THRESHOLD) { store.noteSentenceStart("гүзәлия") }
+        assertEquals("the graduation write was attempted once", 1, overlayReplacements)
+        assertFalse(overlayFile(directory).isFile)
+
+        repeat(3) { store.noteSentenceStart("гүзәлия") }
+        assertEquals("a suppressed write is not even attempted", 1, overlayReplacements)
+
+        replaceFails = false
+        store.flush() // the boundary: the counters reach the disk and the suppression lifts
+        assertEquals("the flush did not need another whole-file write", 1, overlayReplacements)
+        val salt = File(directory, "salt-sentstart.bin").readBytes()
+        val counters = PendingCounters.parse(pendingFile(directory).readBytes())
+        assertEquals(
+            "six commits were counted, none lost",
+            6,
+            counters.countOf(PendingCounters.keyOf(salt, "гүзәлия")),
+        )
+
+        store.noteSentenceStart("гүзәлия") // the first commit after the boundary retries
+        assertEquals(2, overlayReplacements)
+        assertEquals(listOf("гүзәлия"), store.snapshot.topWords())
+    }
+
     @Test
     fun theCommittedCasingIsKeptOnDiskAndInTheSnapshot() {
         val directory = newPersonalDir()
@@ -198,6 +241,51 @@ class SentStartOverlayStoreTest {
     // ---- quarantine, the unlock gate, erasure ----------------------------------------------------
 
     @Test
+    fun aCorruptPendingFileIsSetAsideAndAnnouncedUntilDelivered() {
+        val directory = newPersonalDir()
+        val writer = store(directory)
+        writer.noteSentenceStart("сүзләр")
+        writer.flush()
+        val pendingFile = pendingFile(directory)
+        assertTrue(pendingFile.isFile)
+        val bytes = pendingFile.readBytes()
+        bytes[0] = 'X'.code.toByte() // the magic no longer matches
+        pendingFile.writeBytes(bytes)
+
+        var notices = 0
+        val store = store(directory, quarantineNotice = { notices++ })
+        store.prime()
+
+        assertEquals("the loss is announced on the open that sets the file aside", 1, notices)
+        assertFalse("the corrupt file does not stay where the reader looks", pendingFile.exists())
+        assertArrayEquals(
+            "the bytes are set aside, not destroyed",
+            bytes,
+            File(directory, "pending-sentstart-$subtype-s1-f1.bin.quarantine").readBytes(),
+        )
+        assertTrue(
+            "the durable mark is the pending channel's own",
+            File(directory, "quarantine-notice-sentstart-$subtype-s1-f1-pending.flag").isFile,
+        )
+        assertFalse(
+            "the overlay's own mark stays down: its file is fine",
+            File(directory, "quarantine-notice-sentstart-$subtype-s1-f1.flag").exists(),
+        )
+        assertTrue("learning restarts from empty", store.snapshot.isEmpty)
+
+        // Across a process restart the mark raises the notice again, until it is delivered.
+        var nextProcess = 0
+        store(directory, quarantineNotice = { nextProcess++ }).prime()
+        assertEquals("a notice nobody has taken is still owed", 1, nextProcess)
+
+        store(directory).noticeDelivered()
+        assertFalse(File(directory, "quarantine-notice-sentstart-$subtype-s1-f1-pending.flag").exists())
+        var afterDelivery = 0
+        store(directory, quarantineNotice = { afterDelivery++ }).prime()
+        assertEquals("a delivered notice is not raised again", 0, afterDelivery)
+    }
+
+    @Test
     fun aCorruptFileIsQuarantinedAndLearningContinues() {
         val directory = newPersonalDir()
         val store = store(directory)
@@ -250,9 +338,18 @@ class SentStartOverlayStoreTest {
             val corrupt = file.readBytes().also { it[it.size - 1] = (it[it.size - 1] + 1).toByte() }
             file.writeBytes(corrupt)
         }
+        pendingFile(directory).let { file ->
+            val corrupt = file.readBytes().also { it[0] = 'X'.code.toByte() }
+            file.writeBytes(corrupt)
+        }
         val reopened = store(directory)
-        reopened.prime() // quarantines the corrupt file
+        reopened.prime() // quarantines both corrupt files
         assertTrue(File(directory, TsentFormat.sentStartFileName(subtype) + ".quarantine").isFile)
+        assertTrue(File(directory, "pending-sentstart-$subtype-s1-f1.bin.quarantine").isFile)
+        assertTrue(File(directory, "quarantine-notice-sentstart-$subtype-s1-f1.flag").isFile)
+        assertTrue(
+            File(directory, "quarantine-notice-sentstart-$subtype-s1-f1-pending.flag").isFile,
+        )
 
         var answered: Boolean? = null
         reopened.clearAll { succeeded -> answered = succeeded }
@@ -260,6 +357,26 @@ class SentStartOverlayStoreTest {
         assertEquals(true, answered)
         assertTrue(reopened.snapshot.isEmpty)
         assertEquals("every file of the feature is gone", emptyList<String>(), directory.list()!!.toList())
+    }
+
+    @Test
+    fun aFailedQuarantineRenamePreservesTheOriginalBytes() {
+        val directory = newPersonalDir()
+        val store = store(directory)
+        repeat(PendingCounters.LEARN_THRESHOLD) { store.noteSentenceStart("сәләм") }
+        store.flush()
+        val destination = overlayFile(directory)
+        val corrupt = destination.readBytes()
+        corrupt[corrupt.size - 1] = (corrupt[corrupt.size - 1].toInt() xor 0x7f).toByte()
+        destination.writeBytes(corrupt)
+        val failing = object : RecordingOps() {
+            override fun atomicReplace(source: File, destination: File) =
+                throw IOException("replace failed")
+        }
+
+        store(directory, ops = failing).prime()
+
+        assertArrayEquals(corrupt, destination.readBytes())
     }
 
     // ---- helpers ----------------------------------------------------------------------------------
@@ -274,16 +391,19 @@ class SentStartOverlayStoreTest {
         subtype: String = this.subtype,
         unlockGate: () -> Boolean = { true },
         maxEntries: Int = TsentFormat.MAX_SENTSTART_ENTRIES.toInt(),
+        ops: DurableFileOps = RecordingOps(),
+        quarantineNotice: PersonalQuarantineNotice? = null,
     ): SentStartOverlayStore = SentStartOverlayStore(
         subtypeId = subtype,
         directoryProvider = { directory },
-        fileOps = RecordingOps(),
+        fileOps = ops,
         outputOpener = PersonalOutputOpener { temp -> FileOutputStream(temp) },
         spaceProbe = SpaceProbe { Long.MAX_VALUE },
         clock = { 1000L },
         executor = directExecutor,
         unlockGate = unlockGate,
         maxEntries = maxEntries,
+        quarantineNotice = quarantineNotice,
     )
 
     private fun overlayFile(directory: File) =
@@ -293,7 +413,7 @@ class SentStartOverlayStoreTest {
         File(directory, "pending-sentstart-$subtype-s1-f1.bin")
 
     /** Performs every durable op for real; the fault matrix lives in the words store's test. */
-    private class RecordingOps : DurableFileOps {
+    private open class RecordingOps : DurableFileOps {
         override fun createNewFile(file: File): Boolean = file.createNewFile()
 
         override fun syncFile(fileDescriptor: FileDescriptor) {

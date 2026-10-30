@@ -316,18 +316,14 @@ internal class TextShortcutStore(
     /**
      * Moves an unreadable file into the single quarantine slot instead of deleting it: the pairs
      * are the user's own, so a damaged file is kept next to the store rather than destroyed. The
-     * slot is one file, replaced by the next failure; if the move fails, the unreadable file is
-     * deleted so it does not fail validation on every start.
+     * slot is one file, replaced by the next failure; a failed move leaves the original untouched.
      */
     private fun quarantine(directory: File, file: File) {
-        val moved = try {
+        try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
             fileOps.syncDirectory(directory)
-            true
         } catch (_: Exception) {
-            false
         }
-        if (!moved) runCatching { deleteFile(directory, file) }
     }
 
     private fun quarantineFileName(): String = TcutFormat.shortcutsFileName() + QUARANTINE_SUFFIX

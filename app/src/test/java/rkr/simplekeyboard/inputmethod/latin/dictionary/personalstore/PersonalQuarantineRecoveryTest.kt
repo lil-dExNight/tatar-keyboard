@@ -21,6 +21,7 @@ import java.io.FileDescriptor
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.Executor
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -297,12 +298,9 @@ class PersonalQuarantineRecoveryTest {
         assertNull("and nothing remains to inspect", inspect(store))
     }
 
-    /**
-     * When the copy cannot be rewritten without the deleted word, it is deleted outright: losing
-     * the other salvaged words is preferred over keeping a word the user was told is gone.
-     */
+    /** A failed purge keeps the original copy and all its salvageable words intact. */
     @Test
-    fun aCopyThatCannotBePurgedIsDeletedOutrightRatherThanLeftToResurrectTheWord() {
+    fun aCopyThatCannotBePurgedKeepsEveryRecoverableByte() {
         val directory = quarantinedDirectoryCorruptingChecksum()
         val ops = object : PassthroughOps() {
             override fun atomicReplace(source: File, destination: File) {
@@ -310,18 +308,19 @@ class PersonalQuarantineRecoveryTest {
                 super.atomicReplace(source, destination)
             }
         }
-        // The fault is injected through a store over the same directory: the purge's rewrite of
-        // the copy fails there, while the dictionary's own writes still succeed.
+        // The dictionary write succeeds; only rewriting the quarantined copy is faulted.
         val store = store(directory, ops = ops)
         store.restoreQuarantine()
         assertEquals(3, store.snapshot.size)
+        val originalBytes = quarantineFile(directory).readBytes()
 
         var outcome: Boolean? = null
         store.forget("бабай") { outcome = it }
 
-        assertEquals("the word is gone from the list", true, outcome)
+        assertEquals("the word is gone from the active dictionary", true, outcome)
         assertTrue(store.snapshot.indexOfNormalized("бабай") < 0)
-        assertFalse(quarantineFile(directory).exists())
+        assertArrayEquals(originalBytes, quarantineFile(directory).readBytes())
+        assertEquals(setOf("абыйлар", "бабай", "гүзәл"), salvageWords(quarantineFile(directory)).toSet())
     }
 
     // ---- the notice reaches the user, whatever happens to the process --------------------------

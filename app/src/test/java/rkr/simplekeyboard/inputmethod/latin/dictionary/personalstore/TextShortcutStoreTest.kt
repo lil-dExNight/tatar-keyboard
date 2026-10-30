@@ -261,6 +261,24 @@ class TextShortcutStoreTest {
         assertEquals("бик үк", reopenedStore(directory).snapshot.expansionFor("бик"))
     }
 
+    @Test
+    fun aFailedQuarantineRenamePreservesTheOriginalBytes() {
+        val directory = newPersonalDir()
+        store(directory).put("тк", "Татарстан")
+        val destination = destinationFile(directory)
+        val corrupt = destination.readBytes()
+        corrupt[corrupt.size - 1] = (corrupt[corrupt.size - 1].toInt() xor 0x7f).toByte()
+        destination.writeBytes(corrupt)
+        val failing = object : RecordingOps() {
+            override fun atomicReplace(source: File, destination: File) =
+                throw IOException("replace failed")
+        }
+
+        store(directory, ops = failing).prime()
+
+        assertArrayEquals(corrupt, destination.readBytes())
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     private val directExecutor = Executor { it.run() }

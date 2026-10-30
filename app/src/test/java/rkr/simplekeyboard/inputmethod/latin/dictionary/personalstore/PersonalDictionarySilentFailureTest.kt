@@ -414,15 +414,13 @@ class PersonalDictionarySilentFailureTest {
         assertEquals(0, notices)
     }
 
-    /**
-     * If the move itself fails, the unreadable file is removed (left in place it would fail
-     * validation on every start), and the user is told either way.
-     */
+    /** A failed quarantine move preserves every original byte and still raises the notice. */
     @Test
     fun theUserIsToldEvenWhenTheCopyCannotBeMade() {
         val directory = newPersonalDir()
         store(directory).addManually("абыйлар")
         corruptTheDictionary(directory)
+        val originalBytes = destinationFile(directory).readBytes()
         val cannotMove = object : PassthroughOps() {
             override fun atomicReplace(source: File, destination: File) =
                 throw IOException("no rename")
@@ -433,10 +431,8 @@ class PersonalDictionarySilentFailureTest {
         store.prime()
 
         assertEquals(1, notices)
-        assertFalse(
-            "an unreadable file left in place would fail validation on every start",
-            destinationFile(directory).exists(),
-        )
+        assertArrayEquals("a failed rename must not destroy the original",
+            originalBytes, destinationFile(directory).readBytes())
         assertTrue(store.snapshot.isEmpty)
     }
 

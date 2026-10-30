@@ -342,7 +342,7 @@ internal class PersonalBigramStore(
                 salvage.successorNormalizedForms[index] != normalizedWord
         }
         if (kept.size == salvage.pairCount) return // the pair was not in the copy: nothing to purge
-        val rewritten = try {
+        try {
             var candidate = PersonalBigramEntries.empty(maxPairs)
             for (index in kept) {
                 candidate = candidate.upsert(
@@ -354,17 +354,11 @@ internal class PersonalBigramStore(
             }
             if (candidate.isEmpty) {
                 deleteFile(directory, copy)
-                true
             } else {
                 writeBytesDurably(directory, copy, candidate.serialize(subtypeId))
-                true
             }
         } catch (_: Exception) {
-            false
-        }
-        if (!rewritten) {
-            // Could not rewrite without the deleted pair: delete the file rather than keep it.
-            deleted { deleteFile(directory, copy) }
+            // Keep the original copy so the other recoverable pairs are not lost.
         }
     }
 
@@ -593,14 +587,11 @@ internal class PersonalBigramStore(
 
     /** Quarantines an unreadable file. See `PersonalDictionaryStore.quarantine`. */
     private fun quarantine(directory: File, file: File) {
-        val moved = try {
+        try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
             fileOps.syncDirectory(directory)
-            true
         } catch (_: Exception) {
-            false
         }
-        if (!moved) runCatching { deleteFile(directory, file) }
         // Marked in both cases; see PersonalDictionaryStore.quarantine.
         justQuarantined = true
         runCatching {
@@ -624,14 +615,11 @@ internal class PersonalBigramStore(
 
     /** Sets aside an unreadable pending file. See `PersonalDictionaryStore.quarantinePending`. */
     private fun quarantinePending(directory: File, file: File) {
-        val moved = try {
+        try {
             fileOps.atomicReplace(file, File(directory, pendingQuarantineFileName()))
             fileOps.syncDirectory(directory)
-            true
         } catch (_: Exception) {
-            false
         }
-        if (!moved) runCatching { deleteFile(directory, file) }
         justQuarantined = true
         runCatching {
             writeBytesDurably(directory, File(directory, pendingQuarantineNoticeFileName()), ByteArray(1))

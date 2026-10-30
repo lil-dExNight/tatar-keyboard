@@ -24,8 +24,8 @@ import java.io.File
 /**
  * The typing path never writes a personal word:
  *
- *  - `SuggestionsController`, the class that sees every keystroke, does not reference the store
- *    package at all;
+ *  - `SuggestionsController`, the class that sees every keystroke, may use only the read-only
+ *    learning predicate from the store package, never a store or a mutation;
  *  - `LatinIME` may reach the process-wide owner for the read source and the erasure listener,
  *    but calls no mutation on it;
  *  - outside the store package, a mutation may be called only from the settings screen, where the
@@ -47,16 +47,23 @@ class PersonalDictionaryNoLiveWriteSourceContractTest {
     )
 
     @Test
-    fun theSuggestionsControllerNeverReferencesThePersonalStore() {
+    fun theSuggestionsControllerReferencesOnlyTheLearningPredicate() {
+        val predicateImport =
+            "import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore." +
+                "PersonalLearningPredicate\n"
+        val withoutPredicateImport = suggestionsController.replace(predicateImport, "")
+        // CleanRunMachine is the internal dispatcher to the no-op-by-default learning sinks;
+        // only calls that bypass it can mutate a store directly.
+        val withoutLearningSeams = withoutPredicateImport.replace("runMachine.noteAcceptedSuggestion(", "")
         for (marker in listOf(
             "PersonalDictionaryStore",
             "AndroidPersonalDictionaryStorage",
             "PersonalDictionaries",
             "personalstore",
-        )) {
+        ) + mutations) {
             assertFalse(
                 "SuggestionsController — the class that sees every keystroke — references $marker",
-                suggestionsController.contains(marker),
+                withoutLearningSeams.contains(marker),
             )
         }
     }

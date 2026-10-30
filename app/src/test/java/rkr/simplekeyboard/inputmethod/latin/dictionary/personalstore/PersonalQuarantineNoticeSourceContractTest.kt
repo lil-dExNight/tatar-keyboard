@@ -55,7 +55,7 @@ class PersonalQuarantineNoticeSourceContractTest {
     // --- quarantine, the store side --------------------------------------------------------------
 
     @Test
-    fun theUnreadableFileIsSetAsideAtTheOneSiteThatUsedToDeleteIt() {
+    fun theUnreadableFileIsSetAsideWithoutDeletingTheOriginalOnFailure() {
         // `open()` is split into the gate and the body; the validation-failure branch is in the
         // body.
         val load = bodyOf(store, "private fun load() {", "\n    /**")
@@ -70,8 +70,8 @@ class PersonalQuarantineNoticeSourceContractTest {
             quarantine.contains("fileOps.atomicReplace(file, File(directory, quarantineFileName()))"))
         assertTrue("and is durable, like every other mutation of this directory",
             quarantine.contains("fileOps.syncDirectory(directory)"))
-        assertTrue("a move that cannot happen still clears the path the reader looks at",
-            quarantine.contains("if (!moved) runCatching { deleteFile(directory, file) }"))
+        assertFalse("a failed move must preserve the original bytes",
+            quarantine.contains("deleteFile(directory, file)"))
         assertTrue("and the user is marked as owed a notice either way",
             quarantine.contains("writeBytesDurably(directory, File(directory, quarantineNoticeFileName()), ByteArray(1))"))
     }
