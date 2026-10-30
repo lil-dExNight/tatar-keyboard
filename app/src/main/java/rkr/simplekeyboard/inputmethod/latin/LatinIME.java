@@ -61,6 +61,8 @@ import android.view.inputmethod.InlineSuggestionsResponse;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import kotlin.jvm.functions.Function2;
@@ -1633,18 +1635,53 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Live lock gate for personal data, active transforms and hosted autofill content. The answer
-     * is reused for up to {@link #PRIVACY_LOCK_CACHE_MS}; {@link #mLockStateReceiver}, field start
-     * and window show drop it.
+     * Live lock gate for personal data, active transforms and hosted autofill content. An answer
+     * older than {@link #PRIVACY_LOCK_CACHE_MS} is still returned while a worker re-reads it; an
+     * invalidated one or one older than twice that is read on the calling thread.
      */
     private boolean isPrivacyLocked() {
         final long now = SystemClock.elapsedRealtime();
-        if (!mPrivacyLockValid || now - mPrivacyLockCheckedAt >= PRIVACY_LOCK_CACHE_MS) {
-            mPrivacyLocked = isKeyguardLocked() || !isUserUnlocked();
+        final long age = now - mPrivacyLockCheckedAt;
+        if (!mPrivacyLockValid || age >= 2 * PRIVACY_LOCK_CACHE_MS) {
+            mPrivacyLocked = readPrivacyLock();
             mPrivacyLockCheckedAt = now;
             mPrivacyLockValid = true;
+            mPrivacyLockGeneration++;
+        } else if (age >= PRIVACY_LOCK_CACHE_MS && !mPrivacyLockRefreshing && !mPrivacyLockClosed) {
+            refreshPrivacyLockOffThread();
         }
         return mPrivacyLocked;
+    }
+
+    private boolean readPrivacyLock() {
+        return isKeyguardLocked() || !isUserUnlocked();
+    }
+
+    /**
+     * Re-reads the lock state on a worker; the UI thread stores the answer and applies a lock. A
+     * result is dropped after a newer read on the calling thread or after onDestroy.
+     */
+    private void refreshPrivacyLockOffThread() {
+        if (mLockReadExecutor == null) {
+            mLockReadExecutor = Executors.newSingleThreadExecutor();
+        }
+        final int generation = mPrivacyLockGeneration;
+        mPrivacyLockRefreshing = true;
+        mLockReadExecutor.execute(() -> {
+            final long readAt = SystemClock.elapsedRealtime();
+            final boolean locked = readPrivacyLock();
+            mHandler.post(() -> {
+                mPrivacyLockRefreshing = false;
+                if (mPrivacyLockClosed || generation != mPrivacyLockGeneration) {
+                    return;
+                }
+                mPrivacyLocked = locked;
+                mPrivacyLockCheckedAt = readAt;
+                if (locked) {
+                    noteLiveLock();
+                }
+            });
+        });
     }
 
     /** Re-reads the lock state after a screen or unlock broadcast and applies a new lock. */
@@ -1688,10 +1725,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Active transforms and write boundaries also use isPrivacyLocked() because a session can
     // outlive the screen locking. The initial locked value closes an unevaluated session.
     private boolean mSessionKeyguardLocked = true;
-    // One system answer is reused across keystrokes: a live read on every key costs touch latency.
+    // Keystrokes read a cached answer: a system call on the UI thread per key costs touch latency.
     private boolean mPrivacyLocked;
     private boolean mPrivacyLockValid;
     private long mPrivacyLockCheckedAt;
+    private int mPrivacyLockGeneration;
+    // Set first in onDestroy: the platform's finish path asks the gate after the worker is gone.
+    private boolean mPrivacyLockClosed;
+    private boolean mPrivacyLockRefreshing;
+    private ExecutorService mLockReadExecutor;
     private static final long PRIVACY_LOCK_CACHE_MS = 1000L;
 
     /** The session's privacy-lock snapshot, for the keyboard build's settings-key clobber. */
@@ -1752,10 +1794,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * names are what the feature is for. Pause learning (incognito) blocks writes, never reads.</p>
      */
     private boolean mayLearnPersonalWords() {
+        // The setting goes first, so with learning off no commit pays for the system calls.
+        final boolean personalDictionaryOn = Settings.readPersonalDictionaryEnabled(mDevicePrefs);
+        if (!personalDictionaryOn) {
+            return false;
+        }
         final boolean unlocked = isUserUnlocked();
         return unlocked && !isKeyguardLocked() && PersonalLearningGates.mayLearn(
                 isSuggestionsEligible(),
-                Settings.readPersonalDictionaryEnabled(mDevicePrefs),
+                personalDictionaryOn,
                 unlocked,
                 mSettings.getCurrent().mInputAttributes.mIsPostalAddressField,
                 Settings.readIncognitoModeEnabled(mDevicePrefs));
@@ -1817,6 +1864,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onDestroy() {
+        mPrivacyLockClosed = true;
         // Dropped first: the listener holds this service, and the store outlives it (it is
         // process-wide). Leaving it registered would keep a destroyed IME reachable.
         PersonalDictionaries.setErasureListener(null);
@@ -1844,6 +1892,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         mSettings.onDestroy();
         unregisterReceiver(mRingerModeChangeReceiver);
         unregisterReceiver(mLockStateReceiver);
+        if (mLockReadExecutor != null) {
+            mLockReadExecutor.shutdownNow();
+        }
         super.onDestroy();
     }
 

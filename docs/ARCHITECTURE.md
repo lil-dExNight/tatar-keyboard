@@ -90,9 +90,11 @@ learning, before the first user unlock, or while the keyguard is shown (also aft
 unlock). Field start and window show refresh the lock snapshot; learning, autocorrect, text
 shortcuts, suggestion commits and glide re-check both lock states at their event and write
 boundaries, so a mid-session lock invalidates pending work and locked-period typing is not learned
-after unlock. Learning reads both states live; the other checks reuse one answer for at most
-`LatinIME.PRIVACY_LOCK_CACHE_MS`, dropped on screen and unlock broadcasts, so a lock without a
-screen change (lockdown from the power menu) is seen within that time.
+after unlock. Learning reads both states live; the other checks reuse one answer, which screen
+and unlock broadcasts, field start and window show drop. Once it is older than
+`LatinIME.PRIVACY_LOCK_CACHE_MS` a worker re-reads it while the old answer is still served; past
+twice that age the check reads on the UI thread. A lock without a screen change (lockdown from
+the power menu) is therefore seen within twice that time.
 
 **Threads.** `SuggestionsController` owns all strip state and runs on the UI thread only. Each
 language has a `LanguageSlot` with one engine, and each engine runs lookups on its own single

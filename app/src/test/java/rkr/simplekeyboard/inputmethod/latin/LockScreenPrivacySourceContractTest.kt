@@ -97,7 +97,7 @@ class LockScreenPrivacySourceContractTest {
     fun theControllerGetsALivePrivacyGate() {
         // The controller re-reads keyguard and Direct Boot state at transform and write boundaries.
         assertTrue(ime.contains("mSuggestionsController.setKeyguardGate(this::isPrivacyLocked);"))
-        assertTrue(body("private boolean isPrivacyLocked()")
+        assertTrue(body("private boolean readPrivacyLock()")
             .contains("isKeyguardLocked() || !isUserUnlocked()"))
         assertTrue(body("private boolean isUserUnlocked()")
             .contains("userManager != null && userManager.isUserUnlocked()"))
@@ -123,12 +123,31 @@ class LockScreenPrivacySourceContractTest {
         val event = body("private void onSystemLockEvent()")
         val invalidated = event.indexOf("mPrivacyLockValid = false;")
         assertTrue(invalidated in 0 until event.indexOf("noteLiveLock();"))
+        // An invalidated answer is read on the calling thread; an old one is refreshed on a worker
+        // whose result is dropped after a newer forced read. Deep sleep counts toward the age.
+        val gate = body("private boolean isPrivacyLocked()")
         assertTrue(
-            body("private boolean isPrivacyLocked()")
-                .contains("!mPrivacyLockValid || now - mPrivacyLockCheckedAt >= PRIVACY_LOCK_CACHE_MS"),
+            gate.contains(
+                "if (!mPrivacyLockValid || age >= 2 * PRIVACY_LOCK_CACHE_MS) {\n" +
+                    "            mPrivacyLocked = readPrivacyLock();",
+            ),
         )
-        // Deep sleep counts toward the reuse window, and session starts read live.
-        assertTrue(body("private boolean isPrivacyLocked()").contains("SystemClock.elapsedRealtime()"))
+        assertTrue(
+            gate.contains(
+                "age >= PRIVACY_LOCK_CACHE_MS && !mPrivacyLockRefreshing && !mPrivacyLockClosed",
+            ),
+        )
+        assertTrue(gate.contains("SystemClock.elapsedRealtime()"))
+        val refresh = body("private void refreshPrivacyLockOffThread()")
+        assertTrue(
+            refresh.contains("if (mPrivacyLockClosed || generation != mPrivacyLockGeneration) {"),
+        )
+        assertTrue(refresh.indexOf("if (locked) {") > refresh.indexOf("mPrivacyLocked = locked;"))
+        assertTrue(refresh.contains("noteLiveLock();"))
+        // After onDestroy no worker read starts: the executor is shut down there.
+        val destroy = body("public void onDestroy()")
+        assertTrue(destroy.trimStart('{').trimStart().startsWith("mPrivacyLockClosed = true;"))
+        assertTrue(destroy.contains("mLockReadExecutor.shutdownNow();"))
         assertTrue(
             ime.contains("mPrivacyLockValid = false;\n        mSessionKeyguardLocked = isPrivacyLocked();"),
         )
