@@ -28,6 +28,8 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
  * see [TdictPrefixIndex.collectFuzzy].
  * [sameLengthBonus] ranks a candidate exactly as long as its variant before that variant's
  * continuations, so the corrected word itself comes before longer words that start with it.
+ * [sameLengthBonusOnlyInDl1] leaves class #1 ranked by frequency while retaining that order in
+ * the shared DL-1 tier.
  *
  * [autocorrectClasses] are the edit classes autocorrect may draw from. The default is class #1
  * alone, and the display classes never change it implicitly.
@@ -36,6 +38,7 @@ class FuzzyEditPolicy(
     val editClasses: IntArray,
     val sameLengthBonus: Boolean,
     val autocorrectClasses: IntArray = intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
+    val sameLengthBonusOnlyInDl1: Boolean = false,
 ) {
     init {
         require(editClasses.isNotEmpty()) { "a fuzzy policy needs at least one edit class" }
@@ -72,8 +75,8 @@ class FuzzyEditPolicy(
 
         /**
          * The Russian configuration: class #1 on the always-on domain and the DL-1 tier on the
-         * empty-exact >= 4-code-point domain, without the same-length bonus, so class #1 outside
-         * the tier domain ranks exactly as under [DEFAULT].
+         * empty-exact >= 4-code-point domain. The same-length bonus applies only inside the tier,
+         * so class #1 outside that domain ranks exactly as under [DEFAULT].
          */
         @JvmField
         val RUSSIAN = FuzzyEditPolicy(
@@ -81,7 +84,8 @@ class FuzzyEditPolicy(
                 TdictPrefixIndex.EDIT_CLASS_LONG_PRESS,
                 TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
             ),
-            false,
+            true,
+            sameLengthBonusOnlyInDl1 = true,
         )
     }
 }

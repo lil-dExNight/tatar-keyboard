@@ -58,6 +58,26 @@ class EmptyPrefixProbeTest {
         override fun frequencyOf(word: String): Long = if (word in knownWords) 5L else 0L
     }
 
+    private class RangePrimary(
+        private val nonEmptyPrefixes: Set<String>,
+    ) : ClassifiedPrefixComputer, WordFrequencySource, ExactPrefixRangeChecker {
+        val rangeChecks = mutableListOf<String>()
+
+        override var lastExactCount = 0
+            private set
+
+        override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> =
+            error("the exact-only probe must not run a full lookup")
+
+        override fun frequencyOf(word: String): Long = 0L
+
+        override fun hasExactContinuation(normalizedPrefixUtf8: ImmutableUtf8Prefix): Boolean {
+            val prefix = normalizedPrefixUtf8.decodeUtf8()
+            rangeChecks += prefix
+            return prefix in nonEmptyPrefixes
+        }
+    }
+
     private fun prober(primary: ClassifiedPrefixComputer) =
         CompositePrefixComputer(primary, PersonalCandidateSource.EMPTY)
 
@@ -70,6 +90,16 @@ class EmptyPrefixProbeTest {
         assertEquals(4, found)
         // The search halved its way there instead of walking every prefix.
         assertEquals(listOf("әбит", "әб", "әби"), primary.lookedUp)
+    }
+
+    @Test
+    fun theMappedDictionaryPathUsesOnlyExactRangeChecks() {
+        val primary = RangePrimary(setOf("ә", "әб", "әби"))
+
+        val found = prober(primary).shortestEmptyProperPrefixLength("әбитләре")
+
+        assertEquals(4, found)
+        assertEquals(listOf("әбит", "әб", "әби"), primary.rangeChecks)
     }
 
     @Test

@@ -131,11 +131,11 @@ class TtTypoPhaseCCalibrationTest {
         // Identities of `python3 scripts/typo_pack.py build --edit-class 4 [--prefix-code-points 5]`
         // on the committed asset; the asset rebuild rewrites them (scripts/rebuild_assets.py).
         val class4w3 = buildSubstitutionSet(3)
-        assertEquals(109_647, class4w3.rows.size)
-        assertEquals("6412d308bb4ec7990c659bc1166c01a6eeded62db60b77ed5e669ed26c911eb4", class4w3.sha256)
+        assertEquals(109_645, class4w3.rows.size)
+        assertEquals("edd860eadab9d43f4dea3b040e15c473774003b5e1f903f853d7e0d46c03edf1", class4w3.sha256)
         val class4w5 = buildSubstitutionSet(5)
-        assertEquals(104_989, class4w5.rows.size)
-        assertEquals("633de337791583cd5739e88ab7fddc7b9fd8cc56cc3fe348c3871e4023b56731", class4w5.sha256)
+        assertEquals(104_967, class4w5.rows.size)
+        assertEquals("12148b31ef3d40048aa9d56be20de8db78b9e4b1e28f7cc696ac779f9074b5d0", class4w5.sha256)
     }
 
     @Test
@@ -457,20 +457,20 @@ class TtTypoPhaseCCalibrationTest {
         private const val SEED = 20260727L
 
         // Pins over the committed dictionary and eval set; re-pin when an input changes.
-        private const val PIN_BASE_W5 = 43_439
-        private const val PIN_CAND_W5 = 30_074
-        private const val PIN_BASE_W5_SUBSET = 98_074
-        private const val PIN_CAND_W5_SUBSET = 101_446
+        private const val PIN_BASE_W5 = 43_419
+        private const val PIN_CAND_W5 = 30_080
+        private const val PIN_BASE_W5_SUBSET = 98_071
+        private const val PIN_CAND_W5_SUBSET = 101_418
         private const val PIN_EVAL_PREFIXES_GE4 = 7_451
-        private const val PIN_EXACT_EMPTY = 1_436
-        private const val PIN_CLASS4_FILLED = 1_071
+        private const val PIN_EXACT_EMPTY = 1_406
+        private const val PIN_CLASS4_FILLED = 1_052
 
         // Pins of the same-set lift measurement.
         private const val PIN_C2_BASE_W5_WHOLE = 532
-        private const val PIN_C2_CAND_W5_WHOLE = 30_083
-        private const val PIN_C2_ACTIVE_ROWS = 101_446
+        private const val PIN_C2_CAND_W5_WHOLE = 30_089
+        private const val PIN_C2_ACTIVE_ROWS = 101_418
         private const val PIN_C2_BASE_W5_ACTIVE = 523
-        private const val PIN_C2_CAND_W5_ACTIVE = 30_074
+        private const val PIN_C2_CAND_W5_ACTIVE = 30_080
         private const val PIN_C2_BASE_W3_WHOLE = 114
         private const val PIN_C2_CAND_W3_WHOLE = 118
 

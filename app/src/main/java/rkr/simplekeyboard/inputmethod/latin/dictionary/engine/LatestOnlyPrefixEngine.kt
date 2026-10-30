@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideComputer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGeometrySink
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideIndexPrewarmer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideIndexReleaser
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
@@ -308,6 +309,28 @@ class LatestOnlyPrefixEngine internal constructor(
             true
         } catch (_: Throwable) {
             false
+        }
+    }
+
+    /**
+     * Prepares the glide word index after a gesture arms. This tokenless worker task never
+     * changes the current lookup generation and emits no result; a later decode remains
+     * authoritative if preparation fails.
+     */
+    fun prewarmGlideIndex() {
+        val target = synchronized(lock) {
+            if (state != State.ACTIVE) null else computer as? GlideIndexPrewarmer
+        } ?: return
+        try {
+            executor.execute {
+                try {
+                    target.prewarmGlideIndex()
+                } catch (_: Throwable) {
+                    // The lift-time decode retries preparation on demand.
+                }
+            }
+        } catch (_: Throwable) {
+            // The executor went away with the engine; preparation is best-effort.
         }
     }
 

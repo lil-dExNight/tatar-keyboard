@@ -14,8 +14,8 @@ import java.io.File
  *  - [FuzzyEditPolicy.TATAR]: class #1 on the always-on domain, the DL-1 tier (substitution,
  *    deletion, insertion and transposition under one rank tag, gated on an empty exact pass at
  *    >= 4 code points) on the tier domain, and the same-length bonus. Autocorrect stays class #1.
- *  - [FuzzyEditPolicy.RUSSIAN]: class #1 plus the DL-1 tier on the same gated domain, without
- *    the same-length bonus, so class #1 outside the tier domain ranks exactly as under DEFAULT.
+ *  - [FuzzyEditPolicy.RUSSIAN]: class #1 plus the DL-1 tier on the same gated domain, with the
+ *    same-length bonus only inside that tier. Class #1 outside it ranks exactly as under DEFAULT.
  *    Autocorrect stays class #1.
  */
 class TdictPrefixIndexShippedFuzzyClassesTest {
@@ -58,21 +58,22 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
             FuzzyEditPolicy.TATAR.editClasses.toList(),
         )
         assertTrue(FuzzyEditPolicy.TATAR.sameLengthBonus)
+        assertFalse(FuzzyEditPolicy.TATAR.sameLengthBonusOnlyInDl1)
     }
 
     /**
      * Source contract, part 3: the RUSSIAN policy carries class #1 (always-on domain) and
-     * EDIT_CLASS_SUBSTITUTION (the DL-1 tier on the gated domain), WITHOUT the same-length bonus,
-     * so class #1 outside the tier domain ranks exactly as under DEFAULT. Autocorrect stays
-     * class #1.
+     * EDIT_CLASS_SUBSTITUTION (the DL-1 tier on the gated domain). Its same-length bonus applies
+     * only inside the tier, leaving class #1 ranked as under DEFAULT. Autocorrect stays class #1.
      */
     @Test
-    fun theRussianPolicyRunsClassesOneAndFourWithoutTheSameLengthBonus() {
+    fun theRussianPolicyRunsClassesOneAndFourWithTierOnlySameLengthBonus() {
         assertEquals(
             listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
             FuzzyEditPolicy.RUSSIAN.editClasses.toList(),
         )
-        assertFalse(FuzzyEditPolicy.RUSSIAN.sameLengthBonus)
+        assertTrue(FuzzyEditPolicy.RUSSIAN.sameLengthBonus)
+        assertTrue(FuzzyEditPolicy.RUSSIAN.sameLengthBonusOnlyInDl1)
         assertEquals(
             listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
             FuzzyEditPolicy.RUSSIAN.autocorrectClasses.toList(),
@@ -97,7 +98,7 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
         assertEquals(listOf("китап"), lookup(index, "аита"))
     }
 
-    /** The RUSSIAN policy recovers the same gated tier case, without the same-length bonus. */
+    /** The RUSSIAN policy recovers the same gated tier case with its tier-only bonus. */
     @Test
     fun theRussianPolicyRecoversTheGatedTierCase() {
         val index = index(listOf("китап" to 10L), FuzzyEditPolicy.RUSSIAN)
@@ -105,10 +106,10 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
     }
 
     /**
-     * Outside the tier domain the RUSSIAN policy is byte-identical to DEFAULT: no same-length
-     * bonus, so class #1 ranks the same under both. "кита" has a non-empty exact pass (the tier
-     * gate is closed), "кум" is under the tier's 4-code-point floor (class #1 recovers "күмеш"
-     * through у→ү), "кү" is under the fuzzy pass floor entirely.
+     * Outside the tier domain the RUSSIAN policy is byte-identical to DEFAULT: its same-length
+     * bonus is tier-only, so class #1 ranks the same under both. "кита" has a non-empty exact
+     * pass (the tier gate is closed), "кум" is under the tier's 4-code-point floor (class #1
+     * recovers "күмеш" through у→ү), and "кү" is under the fuzzy pass floor entirely.
      */
     @Test
     fun theRussianPolicyIsByteIdenticalToDefaultOutsideTheTierDomain() {

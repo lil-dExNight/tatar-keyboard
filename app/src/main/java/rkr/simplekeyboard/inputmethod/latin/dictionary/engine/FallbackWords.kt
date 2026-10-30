@@ -24,9 +24,19 @@ fun interface TopFrequencySource {
     fun topFrequentWords(count: Int): List<String>
 }
 
+/** A top-frequency source backed by the list precomputed with its dictionary. */
+internal class PrecomputedTopFrequencySource(
+    private val words: List<String>,
+) : TopFrequencySource {
+    override fun topFrequentWords(count: Int): List<String> {
+        require(count >= 0)
+        return if (count >= words.size) words else words.subList(0, count)
+    }
+}
+
 /**
  * Top-frequency words of the engine's language that fill the strip cells a committed word's
- * NEXT_WORD answer leaves empty, after the bigram successors, the after-word forms and the emoji.
+ * NEXT_WORD answer leaves empty, after the bigram successors, learned pairs and the emoji.
  * Built per engine by a [FallbackWordsFactory] against that engine's dictionary, so each language
  * fills with its own words without a language check at the call site.
  *
@@ -42,9 +52,8 @@ fun interface FallbackWords {
 }
 
 /**
- * Builds the [FallbackWords] of one engine against that engine's own dictionary. A factory because
- * the dictionary index exists only inside engine startup — the fallback rule itself is
- * language-level and stateless.
+ * Builds the [FallbackWords] of one engine from that engine's SHA-bound, precomputed dictionary
+ * list. The fallback rule itself is language-level and stateless.
  */
 fun interface FallbackWordsFactory {
     fun createFallbackWords(dictionary: TopFrequencySource): FallbackWords

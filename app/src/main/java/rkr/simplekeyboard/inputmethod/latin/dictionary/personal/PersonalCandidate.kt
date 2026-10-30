@@ -17,11 +17,9 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
 /**
- * One personal-dictionary match: the form to show ([rawForm], as the user saved it) and the form
- * to compare by ([normalizedForm]). Duplicate detection against dictionary candidates and the
- * exact-word exclusion use the normalized form. [usageCount] is the record's usage counter, read
- * by the prefix merge's promotion rule; it defaults to the graduation threshold, the value every
- * stored word holds from the moment it is saved.
+ * One personal match: [rawForm] is shown and [normalizedForm] is compared for duplicates.
+ * [usageCount] drives prefix promotion; [frequencyCount] drives learned-pair precedence. Prefix
+ * candidates leave [frequencyCount] at zero.
  *
  * A plain class with a silent [toString], because it carries the user's word.
  */
@@ -29,6 +27,7 @@ class PersonalCandidate(
     val rawForm: String,
     val normalizedForm: String,
     val usageCount: Int = 1,
+    val frequencyCount: Int = 0,
 ) {
     /** Deliberately says nothing: the user's word must never reach a log or an exception message. */
     override fun toString(): String = "PersonalCandidate"

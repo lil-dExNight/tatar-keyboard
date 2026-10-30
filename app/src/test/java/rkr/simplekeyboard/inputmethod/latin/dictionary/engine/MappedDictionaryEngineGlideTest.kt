@@ -109,6 +109,26 @@ class MappedDictionaryEngineGlideTest {
     }
 
     @Test
+    fun armedPrewarmRunsBeforeTheLiftDecodeWithoutItsOwnResult() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val engine = startEngine(executor, published)
+        engine.updateGlideGeometry(geometry)
+
+        engine.prewarmGlideIndex()
+        assertEquals(1, executor.queueDepth)
+        assertTrue(published.isEmpty())
+        val token = requireNotNull(engine.requestGlide(1, "tt", glidePath("сәләм"), ByteArray(0)))
+        executor.runAll()
+
+        assertTrue(engine.isCurrent(token))
+        assertEquals(1, published.size)
+        assertEquals(LookupKind.GLIDE, published.single().kind)
+        assertEquals("сәләм", published.single().suggestions.first())
+        engine.destroy(1, TimeUnit.SECONDS)
+    }
+
+    @Test
     fun aNewerPrefixRequestStalesAnInFlightGlideResult() {
         val executor = ManualEngineExecutor()
         val published = mutableListOf<LookupResult>()

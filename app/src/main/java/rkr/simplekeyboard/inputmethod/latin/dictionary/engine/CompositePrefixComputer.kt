@@ -21,34 +21,10 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideComputer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGeometrySink
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideIndexPrewarmer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideIndexReleaser
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
-
-/**
- * After-word forms: word forms of the just-committed context word that fill the strip cells the
- * bigram successors leave free in a NEXT_WORD answer. The Tatar engine uses
- * `TatarSuffixRules`-backed forms; the Russian engine has none.
- */
-fun interface AfterWordForms {
-    /**
-     * Forms of [contextWord] to append after the bigram successors: disjoint from [alreadyShown],
-     * at most [maxOut], frequency descending. Empty when the word has no attested forms.
-     */
-    fun formsOf(
-        contextWord: ImmutableUtf8Prefix,
-        alreadyShown: List<String>,
-        maxOut: Int,
-    ): List<String>
-}
-
-/**
- * Builds the [AfterWordForms] of one engine against that engine's own dictionary. A factory
- * because the dictionary index exists only inside engine startup; the rules are stateless.
- */
-fun interface AfterWordFormsFactory {
-    fun createAfterWordForms(dictionary: WordFrequencySource): AfterWordForms
-}
 
 /**
  * Merges dictionary candidates and one personal-dictionary word into the four strip cells:
@@ -72,11 +48,8 @@ fun interface AfterWordFormsFactory {
 internal class CompositePrefixComputer(
     private val primary: ClassifiedPrefixComputer,
     private val personal: PersonalCandidateSource,
-    // After-word forms for NEXT_WORD answers. Null for an engine without word-form rules (the
-    // Russian one).
-    private val afterWordForms: AfterWordForms? = null,
-    // Top-frequency fill of the NEXT_WORD cells still empty after bigrams and forms. Null: no
-    // fill.
+    // Top-frequency fill of the NEXT_WORD cells still empty after bigrams and learned pairs.
+    // Null: no fill.
     private val fallbackWords: FallbackWords? = null,
     // Learned word pairs for NEXT_WORD answers and the glide bigram channel. Separate from the
     // prefix path's PersonalCandidateSource, which predict never reads. EMPTY: no learned pairs.
@@ -85,7 +58,7 @@ internal class CompositePrefixComputer(
     // personal dictionary itself (see GlideDecoderHost).
     private val glideHost: GlideDecoderHost? = null,
 ) : ContextAwarePrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer,
-    GlideGeometrySink, GlideIndexReleaser, EmptyPrefixProber {
+    GlideGeometrySink, GlideIndexPrewarmer, GlideIndexReleaser, EmptyPrefixProber {
 
     init {
         // The glide bigram channel reranks the N-best against the context word's successors:
@@ -194,17 +167,18 @@ internal class CompositePrefixComputer(
     /**
      * Next-word prediction. The prefix-path personal source ([personal]) is never read here;
      * learned word pairs come through [personalBigrams]. The chain is: bigram successors >
-     * learned pairs > word forms > fallback. A later source never displaces or duplicates an
-     * earlier one and never goes past the four strip cells:
+     * learned pairs > fallback. A later source never duplicates an earlier one and never goes
+     * past the four strip cells:
      *
-     *  - bigram successors come first and are never displaced;
      *  - learned pairs fill free cells, at most [MAX_PERSONAL_BIGRAM_CELLS], in their own order
-     *    (usage, then frequency, descending); a pair already shown as a successor is skipped, so
-     *    the bundled spelling wins;
-     *  - word forms and the fallback fill what is still free, excluding everything shown.
+     *    (usage, then frequency, descending);
+     *  - a pair with frequency at least [PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY] takes the third
+     *    cell when three or more bundled successors precede it; the fourth successor leaves the
+     *    strip. A duplicate keeps the bundled spelling;
+     *  - the fallback fills what is still free, excluding everything shown.
      *
      * With no bigram source — none attached yet, or the attach failed — only the bigram
-     * successors drop out of the chain; learned pairs, word forms and the fallback still answer.
+     * successors drop out of the chain; learned pairs and the fallback still answer.
      * A failed attach is terminal: it is consumed and never retried, so its absence costs one
      * null read per predict and nothing else. The first predict after a deferred attach was set
      * runs it inline.
@@ -212,21 +186,7 @@ internal class CompositePrefixComputer(
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
         val source = bigramSource ?: runPendingBigramAttach()
         var result = source?.predict(normalizedContextWordUtf8) ?: emptyList()
-        if (result.size < CELL_COUNT) {
-            result = withPersonalPairs(result, normalizedContextWordUtf8)
-        }
-        if (result.size < CELL_COUNT) {
-            val forms = afterWordForms
-            if (forms != null) {
-                // Broken forms leave the bigram successors intact.
-                val extras = try {
-                    forms.formsOf(normalizedContextWordUtf8, result, CELL_COUNT - result.size)
-                } catch (_: RuntimeException) {
-                    null
-                }
-                if (!extras.isNullOrEmpty()) result = result + extras
-            }
-        }
+        result = withPersonalPairs(result, normalizedContextWordUtf8)
         if (result.size < CELL_COUNT) {
             val fallback = fallbackWords
             if (fallback != null) {
@@ -259,16 +219,14 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * Adds the context word's learned pairs to the cells the bigram successors left free. Returns
-     * [result] itself, not a copy, when the feature is off, the source throws, or no pair fits.
+     * Adds learned pairs to free cells, then gives the first established pair not already visible
+     * precedence over the weakest bundled successor. Returns [result] itself when nothing changes.
      */
     private fun withPersonalPairs(
         result: List<String>,
         normalizedContextWordUtf8: ImmutableUtf8Prefix,
     ): List<String> {
         if (personalBigrams.isEmpty()) return result
-        val room = minOf(MAX_PERSONAL_BIGRAM_CELLS, CELL_COUNT - result.size)
-        if (room <= 0) return result
         val matches = try {
             personalBigrams.successorsFor(normalizedContextWordUtf8.decodeUtf8())
         } catch (_: RuntimeException) {
@@ -276,16 +234,44 @@ internal class CompositePrefixComputer(
             return result
         }
         if (matches.isEmpty()) return result
-        val extras = ArrayList<String>(room)
-        for (match in matches) {
-            if (extras.size >= room) break
-            // Shown once, and the bundled spelling wins: duplicates are compared on the
-            // normalized form, as in the prefix merge.
-            if (result.contains(match.normalizedForm)) continue
-            if (extras.contains(match.normalizedForm) || extras.contains(match.rawForm)) continue
-            extras.add(match.rawForm)
+
+        val room = minOf(MAX_PERSONAL_BIGRAM_CELLS, (CELL_COUNT - result.size).coerceAtLeast(0))
+        var merged = result
+        if (room > 0) {
+            val extras = ArrayList<String>(room)
+            for (match in matches) {
+                if (extras.size >= room) break
+                // Shown once, and the bundled spelling wins: duplicates are compared on the
+                // normalized form, as in the prefix merge.
+                if (result.contains(match.normalizedForm)) continue
+                if (extras.contains(match.normalizedForm) || extras.contains(match.rawForm)) continue
+                extras.add(match.rawForm)
+            }
+            if (!extras.isEmpty()) merged = result + extras
         }
-        return if (extras.isEmpty()) result else result + extras
+        if (result.size <= PERSONAL_BIGRAM_PRECEDENCE_INDEX) return merged
+
+        for (match in matches) {
+            if (match.frequencyCount < PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY) continue
+            var existingIndex = -1
+            for (index in merged.indices) {
+                if (merged[index] == match.normalizedForm || merged[index] == match.rawForm) {
+                    existingIndex = index
+                    break
+                }
+            }
+            if (existingIndex in 0..PERSONAL_BIGRAM_PRECEDENCE_INDEX) continue
+
+            val cells = ArrayList<String>(CELL_COUNT)
+            for (index in 0 until PERSONAL_BIGRAM_PRECEDENCE_INDEX) cells.add(merged[index])
+            cells.add(if (existingIndex >= 0) merged[existingIndex] else match.rawForm)
+            for (index in PERSONAL_BIGRAM_PRECEDENCE_INDEX until merged.size) {
+                if (cells.size >= CELL_COUNT) break
+                if (index != existingIndex) cells.add(merged[index])
+            }
+            return cells
+        }
+        return merged
     }
 
     override fun updateKeyNeighbors(table: KeyNeighborTable?) {
@@ -299,8 +285,12 @@ internal class CompositePrefixComputer(
     override fun decodeGlide(path: GlidePath, contextWord: String?): List<String> =
         glideHost?.decodeGlide(path, contextWord) ?: emptyList()
 
+    override fun prewarmGlideIndex() {
+        glideHost?.prewarmGlideIndex()
+    }
+
     /**
-     * Idle memory release: the host drops the lazily built glide word index; the next decode
+     * Idle memory release: the host drops the glide word index; the next preparation or decode
      * rebuilds it. Runs on the engine worker, like [decodeGlide].
      */
     override fun releaseGlideIndex() {
@@ -363,23 +353,28 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * The deferred empty-prefix probe (see [EmptyPrefixProber]): binary-searches the shortest
-     * proper prefix of [word] with an empty exact pass, through the primary computer, so the
-     * search sees exactly what a typed lookup would. A word the dictionary already knows is not
-     * probed at all: its own continuations make every proper prefix non-empty, so the search
-     * would burn the whole budget to answer [EmptyPrefixProber.NO_EMPTY_PREFIX].
+     * Binary-searches the shortest proper prefix of [word] with an empty exact pass. The mapped
+     * dictionary answers through its exact-only range check; other computers retain the lookup
+     * fallback. A known dictionary word needs no probes because every proper prefix continues.
      */
     override fun shortestEmptyProperPrefixLength(word: String): Int {
         val known = (primary as? WordFrequencySource)?.frequencyOf(word) ?: 0L
         if (known > 0L) return EmptyPrefixProber.NO_EMPTY_PREFIX
+        val rangeChecker = primary as? ExactPrefixRangeChecker
         var low = 1
         var high = word.length - 1
         var found = EmptyPrefixProber.NO_EMPTY_PREFIX
         while (low <= high) {
             val middle = (low + high) ushr 1
             val prefix = word.substring(0, middle).toByteArray(Charsets.UTF_8)
-            primary.lookup(ImmutableUtf8Prefix.copyOf(prefix))
-            if (primary.lastExactCount == 0) {
+            val immutablePrefix = ImmutableUtf8Prefix.copyOf(prefix)
+            val exactEmpty = if (rangeChecker != null) {
+                !rangeChecker.hasExactContinuation(immutablePrefix)
+            } else {
+                primary.lookup(immutablePrefix)
+                primary.lastExactCount == 0
+            }
+            if (exactEmpty) {
                 found = middle
                 high = middle - 1
             } else {
@@ -515,6 +510,11 @@ internal class CompositePrefixComputer(
          */
         internal const val PROMOTION_TOP_FREQUENCY_GATE = 10_000L
 
+
+        /** Minimum clean observations for a learned pair to precede a bundled successor. */
+        internal const val PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY = 5
+
+        private const val PERSONAL_BIGRAM_PRECEDENCE_INDEX = 2
 
         /**
          * Most cells learned pairs may take in one NEXT_WORD answer. With all four cells free one

@@ -242,9 +242,9 @@ class E3aRecoveryCalibrationTest {
         // Independently produced by `python3 scripts/typo_pack.py build ...` on the same committed
         // asset; equality with the JVM-built set shows both implementations build the same set.
         // The asset rebuild rewrites these pins (scripts/rebuild_assets.py).
-        private const val GENERATOR_SET_SIZE = 96_079
+        private const val GENERATOR_SET_SIZE = 96_072
         private const val GENERATOR_SET_SHA256 =
-            "f75c6db263f2b619f502f235dd3081c4691d1a4870ff7bf8fefb6e47a1adbdb4"
+            "8cc4cd646de5096db95639cdbd638f99b2ee1c2bf330ba5dd58f5ad3210f0992"
 
         // Target recovery and the chosen tolerance, in percentage points.
         private const val CONTRACT_RECOVERY_PP = 14.2

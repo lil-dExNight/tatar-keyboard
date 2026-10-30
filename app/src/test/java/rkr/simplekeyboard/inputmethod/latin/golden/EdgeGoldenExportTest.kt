@@ -155,7 +155,6 @@ class EdgeGoldenExportTest {
         val computer = CompositePrefixComputer(
             index,
             PersonalCandidateSource.EMPTY,
-            if (tatar) TatarSuffixRules.createAfterWordForms(index) else null,
             GlobalTopFrequencyFallbackFactory.createFallbackWords(index),
             PersonalBigramSource.EMPTY,
             null,

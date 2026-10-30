@@ -157,8 +157,14 @@ interface EngineHandle {
     fun containsWord(normalizedWord: String): Boolean = false
 
     /**
-     * Releases the glide word index while idle; the next decode rebuilds it. The real handle
-     * posts the drop onto the engine's serialized worker; default no-op.
+     * Enqueues glide index preparation on the engine worker after a gesture arms. This has no
+     * lookup token and emits no result. Default no-op: a fake handle has no index.
+     */
+    fun prewarmGlideIndex() {}
+
+    /**
+     * Releases the glide word index while idle; the next preparation or decode rebuilds it. The
+     * real handle posts the drop onto the engine's serialized worker; default no-op.
      */
     fun releaseGlideIndex() {}
 
@@ -222,6 +228,8 @@ class MappedEngineHandle private constructor(
 
     override fun containsWord(normalizedWord: String): Boolean = engine.containsWord(normalizedWord)
 
+    override fun prewarmGlideIndex() = engine.prewarmGlideIndex()
+
     override fun releaseGlideIndex() = engine.releaseGlideIndex()
 
     override fun destroy(timeoutMs: Long): Boolean =
@@ -238,9 +246,8 @@ class MappedEngineHandle private constructor(
          * ([SuggestionsController.engineCatalog]): the engine neither builds a second store nor
          * spawns a throwaway executor of its own.
          *
-         * [suffixRules] carries the word-form addons: the same-stem boost table of the prefix pass
-         * and the after-word forms of NEXT_WORD. The Tatar engine gets it; the Russian engine gets
-         * null and has neither.
+         * [suffixRules] carries the same-stem boost table of the prefix pass. The Tatar engine
+         * gets it; the Russian engine gets null.
          *
          * [fuzzyEditPolicy]: the Tatar engine uses [FuzzyEditPolicy.TATAR], the Russian engine
          * [FuzzyEditPolicy.RUSSIAN]; null means [FuzzyEditPolicy.DEFAULT].
@@ -273,7 +280,6 @@ class MappedEngineHandle private constructor(
                 catalog, handoff,
                 personalCandidates = personalCandidates,
                 suffixTable = suffixRules,
-                afterWordFormsFactory = suffixRules,
                 fuzzyEditPolicy = fuzzyEditPolicy,
                 fallbackWordsFactory = fallbackWordsFactory,
                 personalBigrams = personalBigrams,

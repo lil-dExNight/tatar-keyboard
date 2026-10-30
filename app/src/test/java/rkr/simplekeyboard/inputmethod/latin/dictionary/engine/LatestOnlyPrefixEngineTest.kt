@@ -7,6 +7,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideIndexPrewarmer
 import java.util.ArrayDeque
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -42,6 +43,43 @@ class LatestOnlyPrefixEngineTest {
         assertEquals(0, engine.readerCountForTest())
         assertFalse(engine.hasPendingForTest())
         assertEquals(1L, engine.suppressedStaleResultCount)
+        assertEquals(1L, engine.handoffCount)
+    }
+
+    @Test
+    fun glidePrewarmDoesNotChangeLatestOnlyTokensOrResults() {
+        val executor = ManualEngineExecutor()
+        val events = mutableListOf<String>()
+        val published = mutableListOf<LookupResult>()
+        val computer = object : PrefixComputer, GlideIndexPrewarmer {
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
+                val prefix = normalizedPrefixUtf8.decodeUtf8()
+                events += "lookup:$prefix"
+                return listOf(prefix)
+            }
+
+            override fun prewarmGlideIndex() {
+                events += "prewarm"
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity, computer, executor, ResultHandoff { published += it },
+        )
+
+        engine.request(1, "tt", utf8("old"))
+        engine.prewarmGlideIndex()
+        val latest = requireNotNull(engine.request(1, "tt", utf8("latest")))
+
+        assertTrue(engine.isCurrent(latest))
+        assertEquals(1, engine.readerCountForTest())
+        assertTrue(engine.hasPendingForTest())
+        assertEquals(0L, engine.handoffCount)
+        executor.runAll()
+
+        assertEquals(listOf("lookup:old", "lookup:latest", "prewarm"), events)
+        assertEquals(listOf(latest), published.map { it.token })
+        assertEquals(listOf("latest"), published.single().suggestions)
+        assertTrue(engine.isCurrent(latest))
         assertEquals(1L, engine.handoffCount)
     }
 
@@ -320,6 +358,57 @@ class LatestOnlyPrefixEngineTest {
         assertEquals(1, computes)
         assertEquals(0L, engine.handoffCount)
         assertEquals(1L, engine.suppressedStaleResultCount)
+    }
+
+    @Test
+    fun glidePrewarmAndLookupShareTheSerializedWorker() {
+        val executor = ExecutorServiceEngineExecutor.singleThread()
+        val prewarmEntered = CountDownLatch(1)
+        val releasePrewarm = CountDownLatch(1)
+        val lookupEntered = CountDownLatch(1)
+        val activeComputers = AtomicInteger()
+        val maximumActiveComputers = AtomicInteger()
+        val computer = object : PrefixComputer, GlideIndexPrewarmer {
+            private fun enter() {
+                val active = activeComputers.incrementAndGet()
+                maximumActiveComputers.set(maxOf(maximumActiveComputers.get(), active))
+            }
+
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
+                enter()
+                lookupEntered.countDown()
+                activeComputers.decrementAndGet()
+                return emptyList()
+            }
+
+            override fun prewarmGlideIndex() {
+                enter()
+                prewarmEntered.countDown()
+                try {
+                    check(releasePrewarm.await(2, TimeUnit.SECONDS))
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                } finally {
+                    activeComputers.decrementAndGet()
+                }
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity, computer, executor, ResultHandoff {},
+        )
+
+        try {
+            engine.prewarmGlideIndex()
+            assertTrue(prewarmEntered.await(2, TimeUnit.SECONDS))
+            engine.request(1, "tt", utf8("a"))
+            assertFalse("lookup overlapped index preparation", lookupEntered.await(100, TimeUnit.MILLISECONDS))
+            releasePrewarm.countDown()
+            assertTrue(lookupEntered.await(2, TimeUnit.SECONDS))
+            assertEquals(1, maximumActiveComputers.get())
+        } finally {
+            releasePrewarm.countDown()
+            assertTrue(engine.destroy(2, TimeUnit.SECONDS))
+        }
     }
 
     @Test

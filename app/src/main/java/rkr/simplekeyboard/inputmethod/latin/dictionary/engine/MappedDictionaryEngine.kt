@@ -72,6 +72,9 @@ class MappedDictionaryEngine private constructor(
         contextWordUtf8: ByteArray,
     ): LookupToken? = engine.requestGlide(editorSessionId, subtypeId, path, contextWordUtf8)
 
+    /** Enqueues glide index preparation on the serialized worker after a gesture arms. */
+    fun prewarmGlideIndex() = engine.prewarmGlideIndex()
+
     /**
      * Idle memory release of the glide word index. The engine posts the drop onto its serialized
      * worker (the decoder is worker-confined). Safe from any thread; no-op once destroyed.
@@ -324,12 +327,11 @@ class MappedDictionaryEngine private constructor(
          * engine until destroy; on every failure it is closed here exactly once.
          *
          * Optional per-language wiring; the Tatar engine gets all of it:
-         *  - [suffixTable], [afterWordFormsFactory]: word forms in the exact pass and in NEXT_WORD
-         *    answers; null means none;
+         *  - [suffixTable]: the same-stem boost in the exact pass; null means none;
          *  - [fuzzyEditPolicy]: typo-recovery classes; null is [FuzzyEditPolicy.DEFAULT];
          *  - [fallbackWordsFactory]: top-frequency fill of empty NEXT_WORD cells; null means none;
          *  - [personalBigrams]: learned word pairs, ranked after the bigram successors and before
-         *    the forms; [PersonalBigramSource.EMPTY] means none;
+         *    the fallback; [PersonalBigramSource.EMPTY] means none;
          *  - [glideConstants]: the glide decoder's per-language scoring constants;
          *  - [autocorrectMinCandidateFrequency]: the autocorrect candidate floor of this engine's
          *    language, from [AutocorrectPolicy].
@@ -342,7 +344,6 @@ class MappedDictionaryEngine private constructor(
             mapper: DictionaryMapper = FILE_MAPPER,
             personalCandidates: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
             suffixTable: InflectedSuffixTable? = null,
-            afterWordFormsFactory: AfterWordFormsFactory? = null,
             fuzzyEditPolicy: FuzzyEditPolicy? = null,
             fallbackWordsFactory: FallbackWordsFactory? = null,
             personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
@@ -356,7 +357,7 @@ class MappedDictionaryEngine private constructor(
             } ?: return null
             return startOwnedLease(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
-                suffixTable, afterWordFormsFactory, fuzzyEditPolicy, fallbackWordsFactory,
+                suffixTable, fuzzyEditPolicy, fallbackWordsFactory,
                 personalBigrams, glideConstants, autocorrectMinCandidateFrequency,
             )
         }
@@ -369,7 +370,6 @@ class MappedDictionaryEngine private constructor(
             mapper: DictionaryMapper,
             personalCandidates: PersonalCandidateSource,
             suffixTable: InflectedSuffixTable?,
-            afterWordFormsFactory: AfterWordFormsFactory?,
             fuzzyEditPolicy: FuzzyEditPolicy?,
             fallbackWordsFactory: FallbackWordsFactory?,
             personalBigrams: PersonalBigramSource,
@@ -400,6 +400,14 @@ class MappedDictionaryEngine private constructor(
                     validationToken = lease.validationToken
                         ?.takeIf { it.matchesFile(dictionary.file) },
                 ) ?: throw IllegalArgumentException("validated dictionary layout mismatch")
+                val fallbackSource = if (fallbackWordsFactory == null) {
+                    null
+                } else {
+                    if (dictionary.fallbackWordsRawSha256?.equals(identity.rawSha256, ignoreCase = true) != true) {
+                        throw IllegalArgumentException("fallback words do not match the dictionary")
+                    }
+                    PrecomputedTopFrequencySource(dictionary.fallbackWords)
+                }
                 val executor = executorFactory()
                 createdExecutor = executor
                 val resources = Resources(lease, catalog, mapped, index)
@@ -407,19 +415,13 @@ class MappedDictionaryEngine private constructor(
                 // because only there are both the candidate classes and the frequencies known.
                 // PrefixComputer.lookup still returns a plain List<String>.
                 //
-                // The after-word forms are created against this engine's index: a schema-3 bigram
-                // table is linked to one dictionary by raw SHA-256, and the forms must rank by the
-                // frequencies of that same dictionary.
-                //
                 // Glide: the decoder's word inventory is this engine's dictionary, extended by the
                 // host with the same [personalCandidates] the prefix merge reads, with the
                 // dictionary's cold exact-membership read as the duplicate check. Geometry arrives
                 // later through updateGlideGeometry; until then decodeGlide returns nothing.
                 val computer = CompositePrefixComputer(
-                    index, personalCandidates, afterWordFormsFactory?.createAfterWordForms(index),
-                    // The factory computes the top-frequency pool here: one linear scan of the
-                    // dictionary on this background startup thread, once per engine.
-                    fallbackWordsFactory?.createFallbackWords(index),
+                    index, personalCandidates,
+                    fallbackWordsFactory?.createFallbackWords(requireNotNull(fallbackSource)),
                     // Learned pairs are resolved per language by the caller, like the personal
                     // source above.
                     personalBigrams,

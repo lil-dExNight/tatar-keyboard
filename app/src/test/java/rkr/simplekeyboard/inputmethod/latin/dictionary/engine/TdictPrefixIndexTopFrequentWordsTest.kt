@@ -116,6 +116,30 @@ class TdictPrefixIndexTopFrequentWordsTest {
         )
     }
 
+    @Test
+    fun precomputedFallbackOutputsMatchTheDictionaryScan() {
+        val dictionaries = listOf(
+            DictionaryArtifactSpec.TATAR_TOP100K_V1 to requireNotNull(tatarIndex),
+            DictionaryArtifactSpec.RUSSIAN_TOP100K_V1 to requireNotNull(russianIndex),
+        )
+        for ((spec, index) in dictionaries) {
+            val scanned = GlobalTopFrequencyFallbackFactory.createFallbackWords(index)
+            val precomputed = GlobalTopFrequencyFallbackFactory.createFallbackWords(
+                PrecomputedTopFrequencySource(spec.fallbackWords),
+            )
+            for (context in listOf("", "кил", spec.fallbackWords.first())) {
+                val prefix = ImmutableUtf8Prefix.copyOf(context.toByteArray(Charsets.UTF_8))
+                for (shown in listOf(emptyList(), listOf(spec.fallbackWords[1]))) {
+                    assertEquals(
+                        "${spec.languageTag}: context=$context shown=$shown",
+                        scanned.fallbackWords(prefix, shown, 4),
+                        precomputed.fallbackWords(prefix, shown, 4),
+                    )
+                }
+            }
+        }
+    }
+
     companion object {
         private var tatarIndex: TdictPrefixIndex? = null
         private var russianIndex: TdictPrefixIndex? = null

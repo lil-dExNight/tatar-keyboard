@@ -22,18 +22,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The runtime Tatar suffix table — harmony classes, assimilation, membership of representative
- * suffixes, and the bounded after-word generation. Expected forms are the ones
- * `scripts/wordform_gen.py` emits for the same stems (the runtime table is the fixed single-suffix
- * inventory; chains are covered through their intermediate words).
+ * The runtime Tatar suffix table used by the same-stem prefix boost: the grouped inventory and
+ * membership of representative suffixes. Chains are covered through their intermediate words.
  */
 class TatarSuffixRulesTest {
-
-    private fun generated(stem: String, maxOut: Int = 100): List<String> {
-        val out = ArrayList<String>()
-        TatarSuffixRules.generateForms(stem, out, maxOut)
-        return out
-    }
 
     // --- Table shape ---------------------------------------------------------------------------
 
@@ -87,113 +79,4 @@ class TatarSuffixRulesTest {
         }
     }
 
-    // --- Generation: harmony classes and assimilation ------------------------------------------
-
-    @Test
-    fun backHarmonyConsonantStemGeneratesTheP0Paradigm() {
-        val forms = generated("татар")
-        for (expected in listOf(
-            "татарлар", "татарның", "татарга", "татарны", "татарда", "татардан",
-            "татары", "татарын", "татарына", "татарында", "татарыннан",
-            "татара", "татарды", "татарыр", "татарып", "татарган", "татару", "татарча",
-        )) {
-            assertTrue("missing $expected in $forms", expected in forms)
-        }
-        assertEquals(18, forms.size)
-        assertFalse("the bare stem is never a candidate", "татар" in forms)
-    }
-
-    @Test
-    fun frontHarmonyConsonantStemGeneratesFrontForms() {
-        val forms = generated("өй")
-        for (expected in listOf(
-            "өйләр", "өйнең", "өйгә", "өйне", "өйдә", "өйдән",
-            "өйе", "өйен", "өйенә", "өйендә", "өйеннән",
-            "өйә", "өйде", "өйәр", "өйеп", "өйгән", "өйү", "өйчә",
-        )) {
-            assertTrue("missing $expected in $forms", expected in forms)
-        }
-        // Back-harmony twins must not leak into a front stem's list.
-        assertFalse("өйлар" in forms)
-        assertFalse("өйга" in forms)
-    }
-
-    @Test
-    fun nasalFinalStemAssimilatesPluralAndAblative() {
-        val forms = generated("урман")
-        assertTrue("урманнар" in forms)
-        assertTrue("урманнан" in forms)
-        // ...but the locative keeps д after a nasal (урманда), and the dative never assimilates.
-        assertTrue("урманда" in forms)
-        assertTrue("урманга" in forms)
-        assertFalse("урманлар" in forms)
-        assertFalse("урмантан" in forms)
-    }
-
-    @Test
-    fun voicelessFinalStemAssimilatesDativeLocativeAblativeAndParticiple() {
-        val forms = generated("китап")
-        assertTrue("китапка" in forms)
-        assertTrue("китапта" in forms)
-        assertTrue("китаптан" in forms)
-        assertTrue("китапкан" in forms)
-        assertTrue("китапты" in forms)
-        assertFalse("китапга" in forms)
-        assertFalse("китапда" in forms)
-    }
-
-    @Test
-    fun vowelFinalStemGeneratesTheContractedAndBareVariants() {
-        val forms = generated("су")
-        for (expected in listOf(
-            "сулар", "суның", "суга", "суны", "суда", "судан",
-            // 3sg possessive is bare -ы after у (суы), and the post-3sg cases ride it
-            "суы", "суын", "суына", "суында", "суыннан",
-            // present contracts the final vowel to ый; the future of a monosyllabic vowel stem
-            // is -яр; the gerund is bare -п; the masdar of an у-final stem is -ю
-            "сый", "суды", "суяр", "суп", "суган", "сую", "суча",
-        )) {
-            assertTrue("missing $expected in $forms", expected in forms)
-        }
-    }
-
-    @Test
-    fun frontVowelFinalStemContractsPresentToNAndTakesGlideMasdar() {
-        val forms = generated("эшлә")
-        assertTrue("эшли" in forms)   // present contraction ә→и
-        assertTrue("эшләр" in forms)  // vowel-stem future is harmony-blind -р
-        assertTrue("эшләп" in forms)
-        assertTrue("эшләү" in forms)  // ә-final masdar takes -ү, not -ю
-        assertTrue("эшләсе" in forms) // 3sg -се after a vowel other than у/ү
-        assertFalse("эшләә" in forms)
-    }
-
-    @Test
-    fun mixedHarmonyLoanStemGeneratesBothVariants() {
-        val forms = generated("совет")
-        assertTrue("советлар" in forms)
-        assertTrue("советләр" in forms)
-        assertTrue("советка" in forms)
-        assertTrue("советкә" in forms)
-    }
-
-    @Test
-    fun aStemWithoutAHarmonyVowelGeneratesNothing() {
-        assertTrue(generated("кк").isEmpty())
-        assertTrue(generated("сть").isEmpty())
-    }
-
-    @Test
-    fun generationRespectsTheBoundAndNeverDuplicates() {
-        val full = generated("татар")
-        for (cap in listOf(0, 1, 5, 17, 18)) {
-            val bounded = generated("татар", maxOut = cap)
-            assertEquals(cap, bounded.size)
-            assertEquals("a bound only truncates, in order", full.take(cap), bounded)
-        }
-        // Dual-harmony stems: 36 candidate slots, duplicates (the -р future) collapse.
-        val loan = generated("совет")
-        assertEquals(loan.size, loan.distinct().size)
-        assertTrue(loan.size <= 36)
-    }
 }

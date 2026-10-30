@@ -73,6 +73,30 @@ class TdictPrefixIndexSameLengthBonusTest {
     }
 
     @Test
+    fun theRussianBonusAppliesInsideTheDl1Tier() {
+        val index = index(
+            listOf("кома" to 10L, "күмак" to 9_999L),
+            FuzzyEditPolicy.RUSSIAN,
+        )
+        assertEquals(listOf("кома", "күмак"), lookup(index, "кума"))
+    }
+
+    @Test
+    fun theRussianBonusDoesNotTouchLongPressRanking() {
+        val shortPrefixIndex = index(
+            listOf("күл" to 100L, "күләк" to 9_999L),
+            FuzzyEditPolicy.RUSSIAN,
+        )
+        assertEquals(listOf("күләк", "күл"), lookup(shortPrefixIndex, "кул"))
+
+        val exactMatchIndex = index(
+            listOf("бала" to 1L, "бәл" to 100L, "бәләк" to 9_999L),
+            FuzzyEditPolicy.RUSSIAN,
+        )
+        assertEquals(listOf("бала", "бәләк", "бәл"), lookup(exactMatchIndex, "бал"))
+    }
+
+    @Test
     fun theBonusDoesNotTouchTheExactLevel() {
         // Typed "бал": the exact continuation "бала" stays first; the same-length class #1
         // candidate "бәл" (а→ә, the variant itself) fills the next cell.

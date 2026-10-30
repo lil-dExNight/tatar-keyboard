@@ -225,7 +225,7 @@ class TatBigrPrefixIndexTest {
         // equivalence check, so the reader must serve it. The shipped table stores K = 4
         // successors per head and MAX_RESULTS reads them all.
         assertEquals(
-            listOf("дә", "монда", "һәм", "әле"),
+            listOf("монда", "әле", "дә", "һәм"),
             index.predict(ImmutableUtf8Prefix.copyOf("кил".toByteArray(Charsets.UTF_8))),
         )
     }

@@ -454,62 +454,10 @@ class CompositePrefixComputerTest {
         assertEquals(0, personalCalls)
     }
 
-    // --- after-word forms of the NEXT_WORD slot ------------------------------------------------
-
-    private fun fakeForms(forms: List<String>): AfterWordForms =
-        AfterWordForms { _, _, maxOut -> forms.take(maxOut) }
-
     @Test
-    fun formsFillTheCellsTheBigramSuccessorsLeaveFree() {
-        val computer = CompositePrefixComputer(
-            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр", "сүзем")),
-        )
-        computer.attachBigramSource(NextWordComputer { listOf("эшләгән") })
-
-        assertEquals(listOf("эшләгән", "сүзләр", "сүзем"), computer.predict(prefix("сүз")))
-    }
-
-    @Test
-    fun bigramSuccessorsAreNeverDisplacedByForms() {
-        val bigrams = listOf("эшләгән", "белән", "туры", "дөнья")
-        val computer = CompositePrefixComputer(
-            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр")),
-        )
-        computer.attachBigramSource(NextWordComputer { bigrams })
-
-        // Four successors take all four cells: the forms are never even consulted beyond the
-        // room check, and the list is the bigram list itself.
-        assertSame(bigrams, computer.predict(prefix("сүз")))
-    }
-
-    @Test
-    fun withoutFormsTheNextWordAnswerIsThePureBigramList() {
+    fun withoutAFallbackTheNextWordAnswerIsThePureBigramList() {
         val bigrams = listOf("эшләгән")
         val computer = CompositePrefixComputer(FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY)
-        computer.attachBigramSource(NextWordComputer { bigrams })
-
-        assertSame(bigrams, computer.predict(prefix("сүз")))
-    }
-
-    @Test
-    fun formsAnswerWhenNoBigramSourceIsAttached() {
-        // No table at all takes only the bigram successors out of the chain: the word forms
-        // still answer, so a language without a table (or one whose table failed to open) does
-        // not show an empty strip forever.
-        val computer = CompositePrefixComputer(
-            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр")),
-        )
-
-        assertEquals(listOf("сүзләр"), computer.predict(prefix("сүз")))
-    }
-
-    @Test
-    fun aBrokenFormsSourceLeavesTheBigramAnswerUntouched() {
-        val bigrams = listOf("эшләгән")
-        val broken = AfterWordForms { _, _, _ -> throw IllegalStateException("broken") }
-        val computer = CompositePrefixComputer(
-            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, broken,
-        )
         computer.attachBigramSource(NextWordComputer { bigrams })
 
         assertSame(bigrams, computer.predict(prefix("сүз")))
@@ -539,10 +487,13 @@ class CompositePrefixComputerTest {
 
     // --- learned word pairs in the NEXT_WORD slot ----------------------------------------------
 
-    private fun fakeBigrams(vararg pairs: Pair<String, String>): PersonalBigramSource =
+    private fun fakeBigrams(
+        vararg pairs: Pair<String, String>,
+        frequencyCount: Int = 0,
+    ): PersonalBigramSource =
         object : PersonalBigramSource {
             override fun successorsFor(normalizedContextWord: String): List<PersonalCandidate> =
-                pairs.map { PersonalCandidate(it.first, it.second) }
+                pairs.map { PersonalCandidate(it.first, it.second, frequencyCount = frequencyCount) }
 
             override fun isEmpty(): Boolean = false
         }
@@ -559,26 +510,41 @@ class CompositePrefixComputerTest {
     }
 
     @Test
-    fun staticSuccessorsAreNeverDisplacedByPersonalPairs() {
+    fun anEstablishedPersonalPairDisplacesTheWeakestStaticSuccessor() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams(
+                "да" to "да",
+                frequencyCount = CompositePrefixComputer.PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY,
+            ),
+        )
+        computer.attachBigramSource(NextWordComputer { listOf("йорт", "бакча", "капка", "дөнья") })
+
+        assertEquals(listOf("йорт", "бакча", "да", "капка"), computer.predict(prefix("өй")))
+    }
+
+    @Test
+    fun aPairBelowThePrecedenceFrequencyLeavesAFullStaticAnswerUntouched() {
         val bigrams = listOf("йорт", "бакча", "капка", "дөнья")
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            personalBigrams = fakeBigrams("да" to "да"),
+            personalBigrams = fakeBigrams(
+                "да" to "да",
+                frequencyCount = CompositePrefixComputer.PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY - 1,
+            ),
         )
         computer.attachBigramSource(NextWordComputer { bigrams })
 
-        // Four successors take all four cells: the personal source is never even consulted
-        // beyond the emptiness check, and the list is the bigram list itself.
         assertSame(bigrams, computer.predict(prefix("өй")))
     }
 
     @Test
     fun atMostThreeCellsArePersonalEvenWithAllCellsFree() {
         // The leave-room pin: with no static successor at all the personal half takes THREE cells
-        // and the forms/fallback half keeps its chance at the fourth.
+        // and the fallback keeps its chance at the fourth.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")),
+            fakeFallback(listOf("сүзләр")),
             personalBigrams = fakeBigrams(
                 "бакча" to "бакча", "капка" to "капка", "йорт" to "йорт", "эчке" to "эчке",
             ),
@@ -604,6 +570,22 @@ class CompositePrefixComputerTest {
     }
 
     @Test
+    fun anEstablishedPairDuplicateMovesTheStaticSpellingWithoutRepeatingIt() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams(
+                "Дөнья" to "дөнья",
+                frequencyCount = CompositePrefixComputer.PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY,
+            ),
+        )
+        computer.attachBigramSource(NextWordComputer { listOf("йорт", "бакча", "капка", "дөнья") })
+
+        val result = computer.predict(prefix("өй"))
+        assertEquals(listOf("йорт", "бакча", "дөнья", "капка"), result)
+        assertEquals(1, result.count { it.equals("дөнья", ignoreCase = true) })
+    }
+
+    @Test
     fun thePairCasingIsShownForAPersonalOnlyCell() {
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
@@ -616,15 +598,15 @@ class CompositePrefixComputerTest {
 
     @Test
     fun personalPairsAnswerWhenNoBigramSourceIsAttached() {
-        // The no-source chain is pairs, then forms, then the fallback: the pairs lead as they do
-        // behind the bigram successors, and each later source fills what the earlier ones left.
+        // The no-source chain is pairs, then the fallback: the pairs lead as they do behind the
+        // bigram successors, and the fallback fills what they leave free.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
+            fakeFallback(listOf("һәм")),
             fakeBigrams("бакча" to "бакча"),
         )
 
-        assertEquals(listOf("бакча", "сүзләр", "һәм"), computer.predict(prefix("өй")))
+        assertEquals(listOf("бакча", "һәм"), computer.predict(prefix("өй")))
     }
 
     @Test
@@ -645,15 +627,10 @@ class CompositePrefixComputerTest {
     }
 
     @Test
-    fun formsAndFallbackAlreadyExcludeThePersonalPairsShown() {
-        var formsSaw: List<String>? = null
+    fun fallbackAlreadyExcludesThePersonalPairsShown() {
         var fallbackSaw: List<String>? = null
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            AfterWordForms { _, alreadyShown, _ ->
-                formsSaw = alreadyShown
-                emptyList() // no forms: the fallback must be reached with the pairs excluded too
-            },
             FallbackWords { _, alreadyShown, _ ->
                 fallbackSaw = alreadyShown
                 listOf("һәм")
@@ -663,14 +640,12 @@ class CompositePrefixComputerTest {
         computer.attachBigramSource(NextWordComputer { emptyList() })
 
         computer.predict(prefix("өй"))
-        assertEquals("forms are asked to exclude everything already shown, pairs included",
-            listOf("бакча", "капка"), formsSaw)
         assertEquals(listOf("бакча", "капка"), fallbackSaw)
     }
 
     @Test
-    fun withThePersonalBigramSourceEmptyTheAnswerIsByteForByteThePreP1One() {
-        val bigrams = listOf("йорт", "бакча")
+    fun withThePersonalBigramSourceEmptyTheFullAnswerIsUnchanged() {
+        val bigrams = listOf("йорт", "бакча", "капка", "дөнья")
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
         )
@@ -681,7 +656,7 @@ class CompositePrefixComputerTest {
 
     @Test
     fun anEmptyPersonalBigramMatchSetChangesNothing() {
-        val bigrams = listOf("йорт")
+        val bigrams = listOf("йорт", "бакча", "капка", "дөнья")
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             personalBigrams = fakeBigrams(),
@@ -729,62 +704,10 @@ class CompositePrefixComputerTest {
         }
 
     @Test
-    fun theFallbackFillsTheCellsBigramsAndFormsLeaveFree() {
-        // The chain is bigram successors > after-word forms > fallback; the fallback takes the
-        // two cells the single successor and the single form leave free.
+    fun theFallbackFillsTheCellsBigramsLeaveFree() {
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм", "белән")),
-        )
-        computer.attachBigramSource(NextWordComputer { listOf("эшләгән") })
-
-        assertEquals(listOf("эшләгән", "сүзләр", "һәм", "белән"), computer.predict(prefix("сүз")))
-    }
-
-    @Test
-    fun theFallbackNeverDisplacesBigramsOrForms() {
-        val bigrams = listOf("эшләгән", "белән", "туры", "дөнья")
-        val computer = CompositePrefixComputer(
-            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
-        )
-        computer.attachBigramSource(NextWordComputer { bigrams })
-
-        // Four successors take all four cells: the forms and the fallback are never consulted
-        // beyond the room check, and the list is the bigram list itself.
-        assertSame(bigrams, computer.predict(prefix("сүз")))
-    }
-
-    @Test
-    fun theFallbackAnswersWhenNoBigramSourceIsAttached() {
-        // With no table the fallback still fills the cells the forms leave free, in the same
-        // order as behind the bigram successors.
-        val computer = CompositePrefixComputer(
-            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм", "белән", "да")),
-        )
-
-        assertEquals(listOf("сүзләр", "һәм", "белән", "да"), computer.predict(prefix("сүз")))
-    }
-
-    @Test
-    fun aBrokenFallbackLeavesTheBigramsAndFormsUntouched() {
-        val broken = FallbackWords { _, _, _ -> throw IllegalStateException("broken") }
-        val computer = CompositePrefixComputer(
-            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")), broken,
-        )
-        computer.attachBigramSource(NextWordComputer { listOf("эшләгән") })
-
-        assertEquals(listOf("эшләгән", "сүзләр"), computer.predict(prefix("сүз")))
-    }
-
-    @Test
-    fun brokenFormsDoNotTakeTheFallbackDown() {
-        val broken = AfterWordForms { _, _, _ -> throw IllegalStateException("broken") }
-        val computer = CompositePrefixComputer(
-            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            broken, fakeFallback(listOf("һәм", "белән")),
+            fakeFallback(listOf("һәм", "белән")),
         )
         computer.attachBigramSource(NextWordComputer { listOf("эшләгән") })
 
@@ -792,15 +715,38 @@ class CompositePrefixComputerTest {
     }
 
     @Test
-    fun withoutAFallbackTheNextWordAnswerIsUnchanged() {
-        val bigrams = listOf("эшләгән")
+    fun theFallbackNeverDisplacesBigrams() {
+        val bigrams = listOf("эшләгән", "белән", "туры", "дөнья")
         val computer = CompositePrefixComputer(
-            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, fakeForms(listOf("сүзләр")),
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeFallback(listOf("һәм")),
         )
         computer.attachBigramSource(NextWordComputer { bigrams })
 
-        // Only bigrams + forms, with no third source.
-        assertEquals(listOf("эшләгән", "сүзләр"), computer.predict(prefix("сүз")))
+        // Four successors take all four cells, so the answer is the bigram list itself.
+        assertSame(bigrams, computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun theFallbackAnswersWhenNoBigramSourceIsAttached() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeFallback(listOf("һәм", "белән", "да")),
+        )
+
+        assertEquals(listOf("һәм", "белән", "да"), computer.predict(prefix("сүз")))
+    }
+
+    @Test
+    fun aBrokenFallbackLeavesTheBigramsUntouched() {
+        val bigrams = listOf("эшләгән")
+        val broken = FallbackWords { _, _, _ -> throw IllegalStateException("broken") }
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY, broken,
+        )
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        assertSame(bigrams, computer.predict(prefix("сүз")))
     }
 
     @Test
@@ -827,17 +773,17 @@ class CompositePrefixComputerTest {
     // --- failed bigram attach: terminal, but the rest of the chain still answers -----------------
 
     @Test
-    fun aFailedDeferredAttachAnswersFromPairsFormsAndFallback() {
+    fun aFailedDeferredAttachAnswersFromPairsAndFallback() {
         // The attach throws (a corrupt table's open walk fails inside it): the failure is
-        // terminal for the bigram successors only — pairs, forms and the fallback still answer.
+        // terminal for the bigram successors only — pairs and the fallback still answer.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
+            fakeFallback(listOf("һәм")),
             fakeBigrams("бакча" to "бакча"),
         )
         computer.deferBigramAttach { throw IllegalStateException("table is broken") }
 
-        assertEquals(listOf("бакча", "сүзләр", "һәм"), computer.predict(prefix("өй")))
+        assertEquals(listOf("бакча", "һәм"), computer.predict(prefix("өй")))
     }
 
     @Test
@@ -846,11 +792,11 @@ class CompositePrefixComputerTest {
         // fall-through as a throwing attach.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")), fakeFallback(listOf("һәм")),
+            fakeFallback(listOf("һәм", "белән")),
         )
         computer.deferBigramAttach { }
 
-        assertEquals(listOf("сүзләр", "һәм"), computer.predict(prefix("сүз")))
+        assertEquals(listOf("һәм", "белән"), computer.predict(prefix("сүз")))
     }
 
     @Test
@@ -860,7 +806,6 @@ class CompositePrefixComputerTest {
         var attachRuns = 0
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")),
         )
         computer.deferBigramAttach {
             attachRuns++
@@ -872,16 +817,15 @@ class CompositePrefixComputerTest {
         computer.predict(prefix("бакча"))
 
         assertEquals(1, attachRuns)
-        assertEquals(listOf("сүзләр"), computer.predict(prefix("сүз")))
+        assertTrue(computer.predict(prefix("сүз")).isEmpty())
     }
 
     @Test
     fun aLateSuccessfulAttachStillFeedsTheChain() {
         // The failing case is terminal, but a deferred attach that succeeds on the first
-        // predict feeds the successors into the chain ahead of pairs and forms.
+        // predict feeds the successors into the chain ahead of pairs and the fallback.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-            fakeForms(listOf("сүзләр")),
             fakeFallback(listOf("һәм")),
             fakeBigrams("бакча" to "бакча"),
         )
@@ -889,7 +833,7 @@ class CompositePrefixComputerTest {
             computer.attachBigramSource(NextWordComputer { listOf("йорт") })
         }
 
-        assertEquals(listOf("йорт", "бакча", "сүзләр", "һәм"), computer.predict(prefix("өй")))
+        assertEquals(listOf("йорт", "бакча", "һәм"), computer.predict(prefix("өй")))
     }
 
     // --- The exact-miss verdict ------------------------------------------------------------------

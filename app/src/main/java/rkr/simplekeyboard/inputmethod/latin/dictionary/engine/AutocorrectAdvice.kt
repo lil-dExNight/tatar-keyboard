@@ -30,7 +30,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 class AutocorrectAdvice(
     /** The typed word, in the NFC lowercase form the lookup was made with. */
     val typedWord: String,
-    /** The single class #1 dictionary word [typedWord] may be replaced with (NFC lowercase). */
+    /** The single dictionary word allowed by the enabled edit classes (NFC lowercase). */
     val replacement: String,
     /** Frequency of [replacement] in the bundled dictionary, for the [minCandidateFrequency] check. */
     val frequency: Long,

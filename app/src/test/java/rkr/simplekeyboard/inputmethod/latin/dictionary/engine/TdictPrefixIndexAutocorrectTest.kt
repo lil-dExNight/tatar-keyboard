@@ -25,8 +25,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
 
 /**
  * The autocorrect rules as the index enforces them: which typed word gets a verdict at all, and
- * which candidate that verdict names. Everything here runs against the same class #1 (long-press
- * partner) variant generator the suggestion strip uses; there is no second edit-distance mechanism.
+ * which candidate that verdict names. The default uses class #1 (long-press partners); the widened
+ * arm uses the same DL-1 generators as the suggestion strip. There is no second edit mechanism.
  *
  * The frequency values below are chosen around [TEST_MIN_CANDIDATE_FREQUENCY] on
  * purpose, so the threshold is exercised as the number it actually is rather than as a symbol.
@@ -303,12 +303,56 @@ class TdictPrefixIndexAutocorrectTest {
     }
 
     @Test
+    fun everyDl1FamilyCanCorrectUnderTheWidenedPolicy() {
+        val cases = listOf(
+            "барди" to "барти", // substitution
+            "киттап" to "китап", // deletion
+            "киап" to "китап", // insertion
+            "иктап" to "китап", // transposition
+        )
+        for ((typed, expected) in cases) {
+            val widened = policyIndex(listOf(expected to 5_000L), widenedPolicy)
+            val current = policyIndex(listOf(expected to 5_000L), FuzzyEditPolicy.TATAR)
+
+            assertNull("CURRENT corrected $typed", advise(current, typed))
+            assertEquals(typed, expected, advise(widened, typed)?.replacement)
+        }
+    }
+
+    @Test
+    fun candidatesFromDifferentDl1FamiliesStillRefuseAmbiguity() {
+        // "балти" reaches "барти" by substitution and "балт" by deletion.
+        val index = policyIndex(
+            listOf("балт" to 90_000L, "барти" to 90_000L),
+            widenedPolicy,
+        )
+
+        assertNull(advise(index, "балти"))
+    }
+
+    @Test
+    fun theFrequencyFloorAppliesAfterDl1Matching() {
+        val below = EngineTestFixtures.index(
+            listOf("балт" to 410L),
+            fuzzyEditPolicy = widenedPolicy,
+            autocorrectMinCandidateFrequency = TEST_MIN_CANDIDATE_FREQUENCY,
+        ).also { it.updateKeyNeighbors(table) }
+        val atThreshold = EngineTestFixtures.index(
+            listOf("балт" to 411L),
+            fuzzyEditPolicy = widenedPolicy,
+            autocorrectMinCandidateFrequency = TEST_MIN_CANDIDATE_FREQUENCY,
+        ).also { it.updateKeyNeighbors(table) }
+
+        assertNull(advise(below, "балти"))
+        assertEquals("балт", advise(atThreshold, "балти")?.replacement)
+    }
+
+    @Test
     fun theWidenedProbeCountersAreObservable() {
-        // "әлтә" on this fixture: position 0 probes the whole dictionary (the fixture alphabet is
-        // 32 letters, so 31 probes), later positions are skipped by the empty-range narrowing
-        // (no "ә*"/"әл*"/"әлт*" words) — 31 probes exactly.
+        // Every DL-1 family probes at position 0. Later positions are skipped by empty-range
+        // narrowing because the fixture has no word starting with the typed first letter.
         val index = policyIndex(listOf("алта" to 5_000L), widenedPolicy)
         advise(index, "әлтә")
-        assertEquals(31, index.lastAutocorrectProbeCount)
+        assertEquals(65, index.lastAutocorrectProbeCount)
     }
 }

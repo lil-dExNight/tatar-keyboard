@@ -487,11 +487,11 @@ class TtDl1TierCalibrationTest {
 
         // Input pins over the committed dictionary, eval set and layout — the same identities
         // TypoMutatedEvalTest pins; re-pin when an input changes.
-        private const val PIN_SUBSTRATE_WORDS = 2_369
-        private const val PIN_SET_ROWS = 9_476
-        private const val PIN_SET_BYTES = 308_490
+        private const val PIN_SUBSTRATE_WORDS = 2_381
+        private const val PIN_SET_ROWS = 9_524
+        private const val PIN_SET_BYTES = 310_498
         private const val PIN_SET_SHA256 =
-            "83f1629717577ac0e4846f0178286d4ae3ec21cbbbe3c3def47a18af1b6bfe9a"
+            "8b60e4b146981d737b351abbbdfd478a3aaa5eedb51a8769ff0cab54c5b5636e"
         private const val PIN_EVAL_PREFIXES_GE4 = 7_451
 
         private val neighborTable = E3bTestFixtures.tatarNeighborTable()

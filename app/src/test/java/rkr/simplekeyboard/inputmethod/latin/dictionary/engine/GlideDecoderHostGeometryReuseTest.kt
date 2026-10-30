@@ -103,6 +103,25 @@ class GlideDecoderHostGeometryReuseTest {
     }
 
     @Test
+    fun armedPrewarmBuildsTheIndexOnceAndTheLiftDecodeReusesIt() {
+        val inventory = CountingInventory(
+            ListGlideInventory(listOf("сәләм" to 36L, "китап" to 200L, "алма" to 60L)),
+        )
+        val host = GlideDecoderHost(inventory)
+        val geometry = GlideTestFixtures.tatarGeometry()
+        val path = requireNotNull(GlideTestFixtures.idealPath("китап", geometry))
+
+        host.prewarmGlideIndex()
+        assertEquals(0, inventory.walks)
+        host.updateGlideGeometry(geometry)
+        host.prewarmGlideIndex()
+        host.prewarmGlideIndex()
+        assertEquals(1, inventory.walks)
+        assertEquals("китап", host.decodeGlide(path, null).first())
+        assertEquals(1, inventory.walks)
+    }
+
+    @Test
     fun printsTheWordIndexBuildTimeOnTheTatarDictionary() {
         val real = openTatarIndex()
         val inventory = TdictGlideInventory(real.index)

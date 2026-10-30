@@ -26,20 +26,17 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpe
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatBigrValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
-import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules
 import java.io.File
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
 /**
  * The NEXT_WORD strip's engine answer after a committed word, end to end on the real shipped
- * assets with the production wiring (suffix rules, TATAR fuzzy policy, after-word forms and the
- * global top-frequency fallback).
+ * assets with the production wiring (bigram successors and the global top-frequency fallback).
  *
- * `сәләм` is no bigram head and has two attested forms, so the answer is
- * `[сәләмә, сәләме, һәм, белән]`: the fallback fills the cells the bigrams and forms leave free.
- * After `сәләмә` (no successors, no forms) it is `[һәм, белән, да, дә]`, the global top words.
- * A bigram head (кил) still gets only its four stored successors
+ * `сәләм` and `сәләмә` are not bigram heads, so both answers are
+ * `[һәм, белән, да, дә]`, the global top words. A bigram head (кил) still gets only its four
+ * stored successors
  * (`TatBigrPrefixIndex.MAX_RESULTS`). The strip's visible cell count is the controller's
  * business; these pins cover the composed answer.
  */
@@ -56,17 +53,16 @@ class TtNextWordFillE2ETest {
     }
 
     @Test
-    fun committingSyalamOffersItsFormThenTheTopWords() {
-        // сәләм: no bigram successors (not a head), two attested forms — then the fill.
+    fun committingSyalamFillsAllFourCellsFromTheTopWords() {
         assertEquals(
-            listOf("сәләмә", "сәләме", "һәм", "белән"),
+            listOf("һәм", "белән", "да", "дә"),
             tatarPredict("сәләм"),
         )
     }
 
     @Test
     fun committingSyalamaFillsAllFourCellsFromTheTopWords() {
-        // сәләмә: no successors and no attested forms — the whole strip is the fill.
+        // сәләмә: no successors, so the whole strip is the fill.
         assertEquals(
             listOf("һәм", "белән", "да", "дә"),
             tatarPredict("сәләмә"),
@@ -75,12 +71,12 @@ class TtNextWordFillE2ETest {
 
     @Test
     fun aBigramHeadStillShowsOnlyItsSuccessors() {
-        // кил is a head with 4 stored successors; the strip is the four of them — no form, no
+        // кил is a head with 4 stored successors; the strip is the four of them, with no
         // fallback cell.
         // The successor дә is ALSO a top-8 word: the dedup rule is exercised here structurally
         // (it must not appear twice, and the fallback never runs at all).
         val result = tatarPredict("кил")
-        assertEquals(listOf("дә", "монда", "һәм", "әле"), result)
+        assertEquals(listOf("монда", "әле", "дә", "һәм"), result)
         assertEquals(result.distinct(), result)
         assertFalse(result.contains("да"))
     }
@@ -116,16 +112,12 @@ class TtNextWordFillE2ETest {
         fun loadCommittedAssets() {
             tatarIndex = openDictionary(DictionaryArtifactSpec.TATAR_TOP100K_V1)
             russianIndex = openDictionary(DictionaryArtifactSpec.RUSSIAN_TOP100K_V1)
-            // The production NEXT_WORD shapes: Tatar — suffix rules + after-word forms + fallback;
-            // Russian — no word-form rules, the fallback alone.
             tatarComputer = CompositePrefixComputer(
                 requireNotNull(tatarIndex), PersonalCandidateSource.EMPTY,
-                TatarSuffixRules.createAfterWordForms(requireNotNull(tatarIndex)),
                 GlobalTopFrequencyFallbackFactory.createFallbackWords(requireNotNull(tatarIndex)),
             ).also { it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V1, requireNotNull(tatarIndex))) }
             russianComputer = CompositePrefixComputer(
                 requireNotNull(russianIndex), PersonalCandidateSource.EMPTY,
-                null,
                 GlobalTopFrequencyFallbackFactory.createFallbackWords(requireNotNull(russianIndex)),
             ).also { it.attachBigramSource(openBigrams(BigramArtifactSpec.RUSSIAN_BIGRAMS_V1, requireNotNull(russianIndex))) }
         }

@@ -72,6 +72,66 @@ class MappedDictionaryEngineTest {
     }
 
     @Test
+    fun engineStartUsesThePublishedFallbackWithoutOpeningTheDictionaryScanner() {
+        val base = dictionaryFixture(1)
+        val fixture = base.copy(
+            fallbackWords = listOf("аба", "аб", "әби"),
+            fallbackWordsRawSha256 = base.rawSha256,
+        )
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        var factoryCalls = 0
+        val engine = requireNotNull(
+            MappedDictionaryEngine.start(
+                SingleLeaseCatalog(DictionaryFileLease(fixture) {}),
+                ResultHandoff { published += it },
+                executorFactory = { executor },
+                mapper = DictionaryMapper { file, _ -> ByteBuffer.wrap(file.readBytes()) },
+                fallbackWordsFactory = FallbackWordsFactory { source ->
+                    factoryCalls++
+                    assertTrue(source is PrecomputedTopFrequencySource)
+                    GlobalTopFrequencyFallbackFactory.createFallbackWords(source)
+                },
+            ),
+        )
+
+        engine.requestNextWord(1, "tt", utf8("әби"))
+        executor.runAll()
+
+        assertEquals(1, factoryCalls)
+        assertEquals(listOf("аба", "аб"), published.single().suggestions)
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun fallbackPinMismatchRejectsEngineStartBeforeCreatingTheExecutor() {
+        val fixture = dictionaryFixture(1).copy(
+            fallbackWords = listOf("аб", "аба"),
+            fallbackWordsRawSha256 = "0".repeat(64),
+        )
+        var released = false
+        var executorCreated = false
+        val catalog = RecordingCatalog(
+            lease(fixture, mutableListOf()) { released = true }, mutableListOf(),
+        ) { released }
+
+        val engine = MappedDictionaryEngine.start(
+            catalog,
+            ResultHandoff {},
+            executorFactory = {
+                executorCreated = true
+                ManualEngineExecutor()
+            },
+            mapper = DictionaryMapper { file, _ -> ByteBuffer.wrap(file.readBytes()) },
+            fallbackWordsFactory = GlobalTopFrequencyFallbackFactory,
+        )
+
+        assertNull(engine)
+        assertFalse(executorCreated)
+        assertTrue(released)
+    }
+
+    @Test
     fun productionMapperReadsFileAfterItsChannelHasBeenClosed() {
         val fixture = dictionaryFixture(1)
         val events = mutableListOf<String>()

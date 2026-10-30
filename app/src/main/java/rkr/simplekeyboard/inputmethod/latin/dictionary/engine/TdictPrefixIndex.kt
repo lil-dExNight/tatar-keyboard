@@ -36,9 +36,8 @@ fun interface InflectedSuffixTable {
 }
 
 /**
- * Exact whole-word frequency in a dictionary; after-word forms keep only generated candidates the
- * dictionary contains. [TdictPrefixIndex] is the implementation; 0 means absent (schema 2 stores
- * strictly positive frequencies).
+ * Exact whole-word frequency in a dictionary. [TdictPrefixIndex] is the implementation; 0 means
+ * absent (schema 2 stores strictly positive frequencies).
  */
 fun interface WordFrequencySource {
     fun frequencyOf(word: String): Long
@@ -118,6 +117,11 @@ internal interface ClassifiedPrefixComputer : PrefixComputer {
  */
 internal interface KeyNeighborSink {
     fun updateKeyNeighbors(table: KeyNeighborTable?)
+}
+
+/** Exact-only test for whether the exact pass has a continuation of a prefix. */
+internal fun interface ExactPrefixRangeChecker {
+    fun hasExactContinuation(normalizedPrefixUtf8: ImmutableUtf8Prefix): Boolean
 }
 
 /**
@@ -213,7 +217,7 @@ internal class TdictPrefixIndex private constructor(
     private val fuzzyPolicy: FuzzyEditPolicy,
     private val autocorrectMinCandidateFrequency: Long,
 ) : ContextBoostedPrefixComputer, KeyNeighborSink, BigramDictionary, WordFrequencySource,
-    TopFrequencySource {
+    TopFrequencySource, ExactPrefixRangeChecker {
     // Reusable per-index scratch, touched only inside lookup(), whose exclusivity is guaranteed by
     // LatestOnlyPrefixEngine serialization (at most one active worker). updateKeyNeighbors() only
     // swaps a @Volatile reference.
@@ -380,6 +384,36 @@ internal class TdictPrefixIndex private constructor(
         neighborTable = table
     }
 
+    /** Exact-pass emptiness without candidate ranking, typo recovery or autocorrect work. */
+    override fun hasExactContinuation(normalizedPrefixUtf8: ImmutableUtf8Prefix): Boolean {
+        val prefixLength = normalizedPrefixUtf8.byteCount
+        if (prefixLength == 0 ||
+            prefixLength > MAX_PREFIX_BYTES ||
+            !isValidUtf8Scalar(normalizedPrefixUtf8)
+        ) {
+            return false
+        }
+        return try {
+            for (offset in 0 until prefixLength) {
+                exactScratch[offset] = normalizedPrefixUtf8.byteAt(offset).toByte()
+            }
+            val start = lowerBound(exactScratch, prefixLength, 0)
+            if (start >= entryCount ||
+                compareWordToPrefixBlock(start, exactScratch, prefixLength) != 0
+            ) {
+                return false
+            }
+            // The exact pass excludes the typed word itself. If the lower bound is that word,
+            // only the next entry can prove that the pass would have returned a continuation.
+            if (!wordEquals(start, exactScratch, prefixLength)) return true
+            val continuation = start + 1
+            continuation < entryCount &&
+                compareWordToPrefixBlock(continuation, exactScratch, prefixLength) == 0
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
+
     /** The unarmed lookup: no context, so the exact pass keeps the pre-boost ranking. */
     override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
         contextSuccessorCount = 0
@@ -474,9 +508,9 @@ internal class TdictPrefixIndex private constructor(
      * continuation. The edit classes are [FuzzyEditPolicy.autocorrectClasses], never the display
      * set, so enabling display classes does not change autocorrect.
      *
-     * Class #1 costs one binary search per variant and scans no block. Class #4 is probe-first like
-     * the display pass: per-position narrowed no-cache probes and whole-word equality, never a
-     * range scan. Short words skip the pass entirely.
+     * Class #1 costs one binary search per variant and scans no block. The DL-1 tier is probe-first
+     * like the display pass: per-position narrowed no-cache probes and whole-word equality, never
+     * a range scan. Short words skip the pass entirely.
      */
     private fun computeAutocorrectAdvice(
         normalizedPrefixUtf8: ImmutableUtf8Prefix,
@@ -506,17 +540,40 @@ internal class TdictPrefixIndex private constructor(
             if (emitted < 0) return
         }
 
-        // Full single substitution, probe-first. Skipped once the word is already ambiguous:
-        // further probes can only add candidates, and the verdict is already no.
+        // The DL-1 tier, probe-first. Skipped once the word is already ambiguous: further probes
+        // can only add candidates, and the verdict is already no. All families share the display
+        // tier's probe budget, and any overrun drops the verdict rather than keeping a partial set.
         if (EDIT_CLASS_SUBSTITUTION in fuzzyPolicy.autocorrectClasses &&
             autocorrectMatchCount < 2
         ) {
             computeProbeRanges(codePointCount)
-            val emitted = FuzzyPrefixVariants.generateFullSubstitutionVariants(
+            var failed = FuzzyPrefixVariants.generateFullSubstitutionVariants(
                 exactScratch, prefixLength, table.nodes, autocorrectCodePointScratch,
-                autocorrectVariantScratch, MAX_FUZZY_PROBES, autocorrectProbeConsumer,
-            )
-            if (emitted < 0) return
+                autocorrectVariantScratch, MAX_FUZZY_PROBES - autocorrectProbesUsed,
+                autocorrectProbeConsumer,
+            ) < 0
+            if (!failed && autocorrectMatchCount < 2) {
+                failed = FuzzyPrefixVariants.generateDeletionVariants(
+                    exactScratch, prefixLength, autocorrectCodePointScratch,
+                    autocorrectVariantScratch, MAX_FUZZY_PROBES - autocorrectProbesUsed,
+                    autocorrectProbeConsumer,
+                ) < 0
+            }
+            if (!failed && autocorrectMatchCount < 2) {
+                failed = FuzzyPrefixVariants.generateInsertionVariants(
+                    exactScratch, prefixLength, table.nodes, autocorrectCodePointScratch,
+                    autocorrectVariantScratch, MAX_FUZZY_PROBES - autocorrectProbesUsed,
+                    autocorrectProbeConsumer,
+                ) < 0
+            }
+            if (!failed && autocorrectMatchCount < 2) {
+                failed = FuzzyPrefixVariants.generateTranspositionVariants(
+                    exactScratch, prefixLength, autocorrectCodePointScratch,
+                    autocorrectVariantScratch, MAX_FUZZY_PROBES - autocorrectProbesUsed,
+                    autocorrectProbeConsumer,
+                ) < 0
+            }
+            if (failed) return
         }
         lastAutocorrectProbeCount = autocorrectProbesUsed
 
@@ -690,10 +747,11 @@ internal class TdictPrefixIndex private constructor(
      * points, under a policy with EDIT_CLASS_SUBSTITUTION): the shared DL-1 tier — substitution,
      * deletion, insertion and transposition, one existence probe per variant, survivors scanned.
      * Every tier candidate is tagged EDIT_CLASS_SUBSTITUTION, so the same-length bonus (if the
-     * policy enables it), then frequency descending, then code point ascending decide inside the
-     * tier; the family never ranks. The tier replaces the class-#1-over-#4 priority on domain B
-     * only, and the substitution family is a superset of class #1, so no long-press candidate is
-     * lost. The strip is empty on domain B, so a wrong guess displaces nothing. Exact candidates
+     * policy enables it for this class), then frequency descending, then code point ascending
+     * decide inside the tier; the family never ranks. The tier replaces the class-#1-over-#4
+     * priority on domain B only, and the substitution family is a superset of class #1, so no
+     * long-press candidate is lost. The strip is empty on domain B, so a wrong guess displaces
+     * nothing. Exact candidates
      * always rank first and are never touched. Returns the total candidate count.
      *
      * The classes that run come from the engine's [FuzzyEditPolicy], set through [open].
@@ -936,7 +994,11 @@ internal class TdictPrefixIndex private constructor(
                 // variant itself — the correction the family aimed at (a substituted or swapped
                 // letter, a removed extra letter, a re-inserted missing one) — so it ranks before
                 // the variant's continuations without any length counting.
-                if (fuzzyPolicy.sameLengthBonus && remFirstLength == 0 && remSecondLength == 0) {
+                if (fuzzyPolicy.sameLengthBonus &&
+                    (!fuzzyPolicy.sameLengthBonusOnlyInDl1 ||
+                        fuzzyCurrentClass == EDIT_CLASS_SUBSTITUTION) &&
+                    remFirstLength == 0 && remSecondLength == 0
+                ) {
                     SCAN_TAKE_SAME_LENGTH
                 } else {
                     SCAN_TAKE
@@ -1119,8 +1181,8 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
-     * String form of [frequencyOf]. It encodes, so it is for bounded callers off the hot path (the
-     * after-word forms), never the per-keystroke scan.
+     * String form of [frequencyOf]. It encodes, so it is for bounded callers off the hot path,
+     * never the per-keystroke scan.
      */
     override fun frequencyOf(word: String): Long {
         val bytes = word.toByteArray(Charsets.UTF_8)

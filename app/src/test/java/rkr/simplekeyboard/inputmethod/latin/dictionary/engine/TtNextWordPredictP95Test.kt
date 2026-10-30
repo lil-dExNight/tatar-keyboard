@@ -24,19 +24,18 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpe
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatBigrValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
-import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules
 import java.io.File
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import kotlin.math.ceil
 
 /**
- * p95 of the full composite NEXT_WORD predict path (bigram successors, then after-word forms,
- * then the global top-frequency fallback) on the real shipped assets, wired as in production (the
- * fixture mirrors [TtNextWordFillE2ETest], which pins the answers).
+ * p95 of the full composite NEXT_WORD predict path (bigram successors, then the global
+ * top-frequency fallback) on the real shipped assets, wired as in production (the fixture mirrors
+ * [TtNextWordFillE2ETest], which pins the answers).
  *
- * The probes cover every stage: bigram heads (`сәлам`, `һәм`), a form-only context (`сәләм`) and
- * a fallback-only context (`сәләмә`). The budget is the same 5 ms as the prefix-side real-asset
+ * The probes cover bigram heads (`сәлам`, `һәм`) and fallback-only contexts (`сәләм`, `сәләмә`).
+ * The budget is the same 5 ms as the prefix-side real-asset
  * pins ([RealDictionaryPrefixIndexTest]), since prediction shares the keystroke worker.
  */
 class TtNextWordPredictP95Test {
@@ -69,9 +68,8 @@ class TtNextWordPredictP95Test {
     }
 
     companion object {
-        // Heads with stored successors (сәлам, һәм), a context with an attested form but no
-        // successors (сәләм), and one with neither (сәләмә) — see TtNextWordFillE2ETest for the
-        // pinned answers of exactly these words on these assets.
+        // Heads with stored successors (сәлам, һәм) and two without (сәләм, сәләмә) — see
+        // TtNextWordFillE2ETest for the pinned answers of these words on these assets.
         private val PROBES = listOf("сәлам", "һәм", "сәләм", "сәләмә")
 
         private var tatarComputer: CompositePrefixComputer? = null
@@ -82,7 +80,6 @@ class TtNextWordPredictP95Test {
             val index = openDictionary(DictionaryArtifactSpec.TATAR_TOP100K_V1)
             tatarComputer = CompositePrefixComputer(
                 index, PersonalCandidateSource.EMPTY,
-                TatarSuffixRules.createAfterWordForms(index),
                 GlobalTopFrequencyFallbackFactory.createFallbackWords(index),
             ).also {
                 it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V1, index))

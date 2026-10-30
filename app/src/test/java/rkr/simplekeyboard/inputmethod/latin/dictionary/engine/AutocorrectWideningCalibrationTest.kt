@@ -22,6 +22,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3aTestFixtures.rawKey
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryTestFixtures
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
@@ -32,322 +33,216 @@ import java.security.MessageDigest
 import kotlin.math.ceil
 
 /**
- * Calibration of widening the autocorrect edit classes from {1} to {1, 4} (probe-first full
- * single substitution), with the per-language frequency floor
- * ([AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT] here) and the single-candidate rule unchanged.
- * Tatar only. The widened arm is not shipped: it made false corrections that change meaning and
- * gave little recovery lift.
- *
- * The arms differ only in [FuzzyEditPolicy.autocorrectClasses]; both use the shipped Tatar display
- * configuration ({1, 4} + same-length bonus). CURRENT is autocorrect {1}, WIDENED is {1, 4}.
- * Metrics are printed as raw lines and the counts are pinned exactly.
+ * Compares long-press-only advice with a test-only full DL-1 arm in both languages. Recall,
+ * reviewed valid-OOV replacements, correctly typed words, ambiguity and host cost stay separate.
+ * Frequency floors that retain recall do not meet valid-OOV safety, so shipped policies keep
+ * long-press-only advice and autocorrect remains opt-in.
  */
 class AutocorrectWideningCalibrationTest {
+    private data class SafetyRow(val word: String, val stratum: String)
 
-    // ---- Portable deterministic primitives (bit-identical to scripts/typo_pack.py). ----
-
-    private fun fnv1a64(data: ByteArray): Long {
-        var hash = 0xCBF29CE484222325uL.toLong()
-        for (byte in data) {
-            hash = hash xor (byte.toLong() and 0xffL)
-            hash *= 0x100000001B3L
-        }
-        return hash
-    }
-
-    private fun splitmix64(seed: Long): Long {
-        var z = seed + 0x9E3779B97F4A7C15uL.toLong()
-        z = (z xor (z ushr 30)) * 0xBF58476D1CE4E5B9uL.toLong()
-        z = (z xor (z ushr 27)) * 0x94D049BB133111EBuL.toLong()
-        return z xor (z ushr 31)
-    }
-
-    private fun selectionIndex(word: String, choices: Int): Int =
-        java.lang.Long.remainderUnsigned(
-            splitmix64(SEED xor fnv1a64(word.toByteArray(Charsets.UTF_8))),
-            choices.toLong(),
-        ).toInt()
-
-    // ---- Typo-set construction (5-cp window, mirroring TtTypoPhaseCCalibrationTest). ----
-
-    private data class TypoRow(val word: String, val typoPrefixUtf8: ByteArray)
-
-    private fun buildSet(window: Int, choices: (IntArray, Int) -> IntArray): List<TypoRow> {
-        val rows = ArrayList<TypoRow>(vocabulary.size)
-        for (word in vocabulary) {
-            val codePoints = word.codePoints().toArray()
-            if (codePoints.size < window) continue
-            val positions = ArrayList<Int>()
-            val letters = ArrayList<Int>()
-            for (position in 0 until window) {
-                for (letter in choices(codePoints, position)) {
-                    positions.add(position)
-                    letters.add(letter)
-                }
-            }
-            if (positions.isEmpty()) continue
-            val choice = selectionIndex(word, positions.size)
-            val typo = codePoints.copyOf(window)
-            typo[positions[choice]] = letters[choice]
-            val prefix = StringBuilder(window)
-            for (slot in 0 until window) prefix.appendCodePoint(typo[slot])
-            rows.add(TypoRow(word, prefix.toString().toByteArray(Charsets.UTF_8)))
-        }
-        return rows
-    }
-
-    private fun buildLongPressSet(window: Int): List<TypoRow> = buildSet(window) { codePoints, position ->
-        neighborTable.longPressPartnersOf(codePoints[position]) ?: IntArray(0)
-    }
-
-    private fun buildSubstitutionSet(window: Int): List<TypoRow> = buildSet(window) { codePoints, position ->
-        var count = 0
-        for (letter in neighborTable.nodes) if (letter != codePoints[position]) count++
-        val out = IntArray(count)
-        var at = 0
-        for (letter in neighborTable.nodes) {
-            if (letter != codePoints[position]) {
-                out[at++] = letter
-            }
-        }
-        out
-    }
-
-    /**
-     * False corrections on the eval set's OOV words. Every would-fire case is printed for manual
-     * review. Also pinned: a word present in the dictionary never gets a verdict, on every eval
-     * word that is present.
-     */
+    /** Measures every reviewed Tatar row; no unreviewed eval-OOV word enters this denominator. */
     @Test
-    fun gateG1FalseCorrectionsOnEvalOovWords() {
-        val widened = requireNotNull(widenedIndex)
-        val current = requireNotNull(currentIndex)
-        var presentWords = 0
-        var currentFires = 0
-        val widenedFires = ArrayList<String>()
-        for (word in uniqueEvalWords) {
-            val bytes = word.toByteArray(Charsets.UTF_8)
-            if (widened.indexOfWord(bytes, bytes.size) >= 0) {
-                presentWords++
-                widened.lookup(ImmutableUtf8Prefix.copyOf(bytes))
-                assertNull("invariant: a dictionary word is never advised ($word)", widened.lastAutocorrectAdvice)
-                continue
+    fun falseReplacementsOnTatarValidOovWordsArePinned() {
+        fun measure(index: TdictPrefixIndex, arm: String): Map<String, Int> {
+            val counts = SAFETY_STRATA.associateWith { 0 }.toMutableMap()
+            val offenders = ArrayList<String>()
+            var measured = 0
+            for (row in safetyRows) {
+                val bytes = row.word.toByteArray(Charsets.UTF_8)
+                assertTrue("safety word entered the dictionary: ${row.word}",
+                    index.indexOfWord(bytes, bytes.size) < 0)
+                index.lookup(ImmutableUtf8Prefix.copyOf(bytes))
+                measured++
+                val advice = index.lastAutocorrectAdvice ?: continue
+                counts[row.stratum] = counts.getValue(row.stratum) + 1
+                offenders.add("${advice.typedWord}->${advice.replacement} (${advice.frequency})")
             }
-            current.lookup(ImmutableUtf8Prefix.copyOf(bytes))
-            if (current.lastAutocorrectAdvice != null) currentFires++
-            widened.lookup(ImmutableUtf8Prefix.copyOf(bytes))
-            val advice = widened.lastAutocorrectAdvice
-            if (advice != null) {
-                widenedFires.add("$word -> ${advice.replacement} (${advice.frequency})")
+            assertEquals(PIN_VALID_OOV_ROWS, measured)
+            for (stratum in SAFETY_STRATA) {
+                val words = safetyRows.count { it.stratum == stratum }
+                println("E02 safety arm=$arm stratum=$stratum words=$words false_replacements=${counts.getValue(stratum)}")
+            }
+            println("E02 safety arm=$arm valid_oov_words=$measured false_replacements=${counts.values.sum()}")
+            for (line in offenders.sorted()) println("E02 safety arm=$arm would-fire: $line")
+            return counts
+        }
+
+        val current = measure(requireNotNull(currentIndex), "tt-current")
+        val widened = measure(requireNotNull(widenedIndex), "tt-widened")
+        assertEquals(PIN_TT_CURRENT_SEEN_FORM, current.getValue("seen_form"))
+        assertEquals(PIN_TT_CURRENT_NEW_FORM, current.getValue("new_form_of_seen_stem"))
+        assertEquals(PIN_TT_CURRENT_UNSEEN_STEM, current.getValue("unseen_stem"))
+        assertEquals(PIN_TT_WIDENED_SEEN_FORM, widened.getValue("seen_form"))
+        assertEquals(PIN_TT_WIDENED_NEW_FORM, widened.getValue("new_form_of_seen_stem"))
+        assertEquals(PIN_TT_WIDENED_UNSEEN_STEM, widened.getValue("unseen_stem"))
+        assertEquals(PIN_TT_CURRENT_FIRES, current.values.sum())
+        assertEquals(PIN_TT_WIDENED_FIRES, widened.values.sum())
+    }
+
+    @Test
+    fun falseReplacementsOnRussianValidOovWordsArePinned() {
+        fun measure(index: TdictPrefixIndex, arm: String): Map<String, Int> {
+            val counts = SAFETY_STRATA.associateWith { 0 }.toMutableMap()
+            val offenders = ArrayList<String>()
+            for (row in russianSafetyRows) {
+                val bytes = row.word.toByteArray(Charsets.UTF_8)
+                assertTrue("safety word entered the dictionary: ${row.word}",
+                    index.indexOfWord(bytes, bytes.size) < 0)
+                index.lookup(ImmutableUtf8Prefix.copyOf(bytes))
+                val advice = index.lastAutocorrectAdvice ?: continue
+                counts[row.stratum] = counts.getValue(row.stratum) + 1
+                offenders.add("${advice.typedWord}->${advice.replacement} (${advice.frequency})")
+            }
+            for (stratum in SAFETY_STRATA) {
+                val words = russianSafetyRows.count { it.stratum == stratum }
+                println(
+                    "E02 safety arm=$arm stratum=$stratum words=$words " +
+                        "false_replacements=${counts.getValue(stratum)}",
+                )
+            }
+            println(
+                "E02 safety arm=$arm valid_oov_words=${russianSafetyRows.size} " +
+                    "false_replacements=${counts.values.sum()} offenders=${offenders.sorted()}",
+            )
+            return counts
+        }
+
+        val current = measure(requireNotNull(russianCurrentIndex), "ru-current")
+        val widened = measure(requireNotNull(russianWidenedIndex), "ru-widened")
+        assertEquals(PIN_RU_CURRENT_SEEN_FORM, current.getValue("seen_form"))
+        assertEquals(PIN_RU_CURRENT_NEW_FORM, current.getValue("new_form_of_seen_stem"))
+        assertEquals(PIN_RU_CURRENT_UNSEEN_STEM, current.getValue("unseen_stem"))
+        assertEquals(PIN_RU_WIDENED_SEEN_FORM, widened.getValue("seen_form"))
+        assertEquals(PIN_RU_WIDENED_NEW_FORM, widened.getValue("new_form_of_seen_stem"))
+        assertEquals(PIN_RU_WIDENED_UNSEEN_STEM, widened.getValue("unseen_stem"))
+    }
+
+    @Test
+    fun correctlyTypedDictionaryWordsAreNeverReplaced() {
+        fun verify(index: TdictPrefixIndex, words: List<String>, arm: String) {
+            var replacements = 0
+            for (word in words) {
+                index.lookup(ImmutableUtf8Prefix.copyOf(word.toByteArray(Charsets.UTF_8)))
+                if (index.lastAutocorrectAdvice != null) replacements++
+            }
+            println("E02 correct_words arm=$arm words=${words.size} replacements=$replacements")
+            assertEquals("correctly typed dictionary words were replaced in $arm", 0, replacements)
+        }
+
+        verify(requireNotNull(currentIndex), vocabulary, "tt-current")
+        verify(requireNotNull(widenedIndex), vocabulary, "tt-widened")
+        verify(requireNotNull(russianCurrentIndex), russianVocabulary, "ru-current")
+        verify(requireNotNull(russianWidenedIndex), russianVocabulary, "ru-widened")
+    }
+
+    private fun measureFullWordRecall(
+        index: TdictPrefixIndex,
+        arm: String,
+        rows: List<TypoMutatedEvalTest.EvalRow>,
+    ): Pair<Int, Int> {
+        val recovered = HashMap<String, Int>()
+        var harmful = 0
+        for (row in rows) {
+            index.lookup(ImmutableUtf8Prefix.copyOf(row.mutated.toByteArray(Charsets.UTF_8)))
+            val advice = index.lastAutocorrectAdvice ?: continue
+            if (advice.replacement == row.original) {
+                recovered[row.editClass] = (recovered[row.editClass] ?: 0) + 1
+            } else {
+                harmful++
             }
         }
+        for (editClass in listOf("sub", "del", "ins", "trans")) {
+            val classRows = rows.count { it.editClass == editClass }
+            val hits = recovered[editClass] ?: 0
+            println(
+                "E02 recall arm=$arm class=$editClass rows=$hits/$classRows " +
+                    "pct=${fmt(hits * 100.0 / classRows)}",
+            )
+        }
+        val total = recovered.values.sum()
         println(
-            "P7 G1a eval words=${uniqueEvalWords.size} present=$presentWords oov=${uniqueEvalWords.size - presentWords} " +
-                "current_fires=$currentFires widened_fires=${widenedFires.size}",
+            "E02 recall arm=$arm rows=$total/${rows.size} " +
+                "pct=${fmt(total * 100.0 / rows.size)} harmful=$harmful",
         )
-        for (line in widenedFires.sorted()) {
-            println("P7 G1a would-fire: $line")
-        }
-        assertEquals(PIN_G1A_PRESENT, presentWords)
-        assertEquals(PIN_G1A_CURRENT_FIRES, currentFires)
-        assertEquals(PIN_G1A_WIDENED_FIRES, widenedFires.size)
+        return total to harmful
     }
 
-    /**
-     * Rare-but-correct proxy: the dictionary's lowest-frequency decile at the variant level (these
-     * words are present, so this simulates "if this rare word were OOV"). A word would fire when
-     * its substitution space contains exactly one other dictionary word at or above the Tatar
-     * floor.
-     */
     @Test
-    fun gateG1FalseCorrectionsOnTheLowestFrequencyDecile() {
-        val index = requireNotNull(widenedIndex)
-        val decile = bottomDecileWords
-        val class1Fires = ArrayList<String>()
-        val class4OnlyFires = ArrayList<String>()
-        val scratch = IntArray(64)
-        val variantScratch = ByteArray(256)
-        for (word in decile) {
-            val bytes = word.toByteArray(Charsets.UTF_8)
-            val class1 = singleMatchFrequency(bytes, geometric = false, scratch, variantScratch)
-            if (class1 != null && class1 >= AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT) {
-                class1Fires.add(word)
-                continue
-            }
-            val class4 = singleMatchFrequency(bytes, geometric = true, scratch, variantScratch)
-            if (class4 != null && class4 >= AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT) {
-                class4OnlyFires.add(word)
-            }
-        }
-        println(
-            "P7 G1b decile=${decile.size} class1_fires=${class1Fires.size} " +
-                "class4only_fires=${class4OnlyFires.size}",
+    fun fullWordRecallAndHarmfulReplacementsArePinned() {
+        val tatarCurrent = measureFullWordRecall(requireNotNull(currentIndex), "tt-current", fullWordRows)
+        val tatarWidened = measureFullWordRecall(requireNotNull(widenedIndex), "tt-widened", fullWordRows)
+        val russianCurrent =
+            measureFullWordRecall(requireNotNull(russianCurrentIndex), "ru-current", russianFullWordRows)
+        val russianWidened =
+            measureFullWordRecall(requireNotNull(russianWidenedIndex), "ru-widened", russianFullWordRows)
+
+        assertEquals(PIN_TT_CURRENT_RECOVERED to PIN_TT_CURRENT_HARMFUL, tatarCurrent)
+        assertEquals(PIN_TT_WIDENED_RECOVERED to PIN_TT_WIDENED_HARMFUL, tatarWidened)
+        assertEquals(PIN_RU_CURRENT_RECOVERED to PIN_RU_CURRENT_HARMFUL, russianCurrent)
+        assertEquals(PIN_RU_WIDENED_RECOVERED to PIN_RU_WIDENED_HARMFUL, russianWidened)
+        assertTrue(tatarWidened.first * 100 >= fullWordRows.size * 25)
+        assertTrue(russianWidened.first * 100 >= russianFullWordRows.size * 25)
+    }
+
+    @Test
+    fun frequencyFloorsCannotMeetBothRecallAndValidOovSafety() {
+        val raw = inflate(DictionaryArtifactSpec.TATAR_TOP100K_V1)
+        val sortedFrequencies = vocabulary.map { requireNotNull(currentIndex).frequencyOf(it) }.sorted()
+        val expected = mapOf(
+            10_000 to Triple(3_283L, 2_960, 3),
+            5_000 to Triple(7_565L, 2_157, 3),
+            2_000 to Triple(20_010L, 1_290, 1),
+            1_000 to Triple(38_353L, 777, 0),
         )
-        for (line in (class1Fires + class4OnlyFires).sorted()) {
-            println("P7 G1b would-fire-if-oov: $line")
-        }
-        assertEquals(PIN_G1B_CLASS1_FIRES, class1Fires.size)
-        assertEquals(PIN_G1B_CLASS4ONLY_FIRES, class4OnlyFires.size)
-    }
-
-    /**
-     * Variant-level whole-word single-match frequency of [wordBytes]'s substitution space, counted
-     * as the autocorrect pass counts candidates minus the presence early-out. Returns the single
-     * match's frequency, or null for zero or >= 2 matches. [geometric] selects the class (#1
-     * long-press when false, #4 full substitution when true).
-     */
-    private fun singleMatchFrequency(
-        wordBytes: ByteArray,
-        geometric: Boolean,
-        scratch: IntArray,
-        variantScratch: ByteArray,
-    ): Long? {
-        val index = requireNotNull(widenedIndex)
-        var matches = 0
-        var matchIndex = -1
-        val emitted = if (geometric) {
-            FuzzyPrefixVariants.generateFullSubstitutionVariants(
-                wordBytes, wordBytes.size, neighborTable.nodes, scratch, variantScratch, 8_192,
-            ) { _, variant, length ->
-                if (matches > 1) return@generateFullSubstitutionVariants
-                val entry = index.indexOfWord(variant, length)
-                if (entry >= 0 && entry != matchIndex) {
-                    matches++
-                    matchIndex = entry
-                }
-            }
-        } else {
-            FuzzyPrefixVariants.generateLongPressVariants(
-                wordBytes, wordBytes.size, neighborTable, scratch, variantScratch, 64,
-            ) { variant, length ->
-                if (matches > 1) return@generateLongPressVariants
-                val entry = index.indexOfWord(variant, length)
-                if (entry >= 0 && entry != matchIndex) {
-                    matches++
-                    matchIndex = entry
-                }
-            }
-        }
-        if (emitted < 0) return null
-        if (matches != 1) return null
-        return index.frequencyOf(index.wordAt(matchIndex))
-    }
-
-    /**
-     * Autocorrect recovery at the separator on the 5-cp typo sets, same conditions for both arms:
-     * a row recovers when its typo prefix is absent from the dictionary and the advice names the
-     * original word (the Tatar floor applies).
-     */
-    @Test
-    fun gateG2RecoveryAtSeparatorOnTheTypoSets() {
-        val current = requireNotNull(currentIndex)
-        val widened = requireNotNull(widenedIndex)
-        val class1Set = buildLongPressSet(5)
-        val class4Set = buildSubstitutionSet(5)
-
-        fun measure(index: TdictPrefixIndex, rows: List<TypoRow>): Pair<Int, Int> {
-            var active = 0
+        for ((rank, pins) in expected) {
+            val floor = sortedFrequencies[sortedFrequencies.size - rank]
+            val index = openIndex(raw, WIDENED_POLICY, floor)
+                .also { it.updateKeyNeighbors(neighborTable) }
             var recovered = 0
-            for (row in rows) {
-                if (index.indexOfWord(row.typoPrefixUtf8, row.typoPrefixUtf8.size) >= 0) continue
-                active++
-                index.lookup(ImmutableUtf8Prefix.copyOf(row.typoPrefixUtf8))
-                val advice = index.lastAutocorrectAdvice
-                if (advice != null && advice.replacement == row.word) recovered++
+            for (row in fullWordRows) {
+                index.lookup(ImmutableUtf8Prefix.copyOf(row.mutated.toByteArray(Charsets.UTF_8)))
+                if (index.lastAutocorrectAdvice?.replacement == row.original) recovered++
             }
-            return active to recovered
+            val offenders = ArrayList<String>()
+            for (row in safetyRows) {
+                index.lookup(ImmutableUtf8Prefix.copyOf(row.word.toByteArray(Charsets.UTF_8)))
+                val advice = index.lastAutocorrectAdvice ?: continue
+                offenders.add("${advice.typedWord}->${advice.replacement} (${advice.frequency})")
+            }
+            println(
+                "E02 floor_rank=$rank frequency=$floor recall=$recovered/${fullWordRows.size} " +
+                    "pct=${fmt(recovered * 100.0 / fullWordRows.size)} " +
+                    "valid_oov_false=${offenders.size} offenders=${offenders.sorted()}",
+            )
+            assertEquals(pins.first, floor)
+            assertEquals(pins.second, recovered)
+            assertEquals(pins.third, offenders.size)
+            assertTrue(recovered * 100 < fullWordRows.size * 25 || offenders.isNotEmpty())
         }
-
-        val (active1Current, recovered1Current) = measure(current, class1Set)
-        val (active1Widened, recovered1Widened) = measure(widened, class1Set)
-        val (active4Current, recovered4Current) = measure(current, class4Set)
-        val (active4Widened, recovered4Widened) = measure(widened, class4Set)
-        val rate1Current = recovered1Current * 100.0 / active1Current
-        val rate1Widened = recovered1Widened * 100.0 / active1Widened
-        val rate4Current = recovered4Current * 100.0 / active4Current
-        val rate4Widened = recovered4Widened * 100.0 / active4Widened
-        val lift4 = rate4Widened - rate4Current
-
-        println(
-            "P7 G2 class1_set active=$active1Current current=${fmt(rate1Current)}% ($recovered1Current) " +
-                "widened=${fmt(rate1Widened)}% ($recovered1Widened) | " +
-                "class4_set active=$active4Current current=${fmt(rate4Current)}% ($recovered4Current) " +
-                "widened=${fmt(rate4Widened)}% ($recovered4Widened) " +
-                "lift=${fmt(lift4)}pp gate>=+5pp verdict=${if (lift4 >= 5.0) "PASS" else "BELOW"}",
-        )
-
-        assertEquals(active1Current, active1Widened)
-        assertEquals(active4Current, active4Widened)
-        assertEquals(PIN_G2_ACTIVE1, active1Current)
-        assertEquals(PIN_G2_RECOVERED1_CURRENT, recovered1Current)
-        assertEquals(PIN_G2_RECOVERED1_WIDENED, recovered1Widened)
-        assertEquals(PIN_G2_ACTIVE4, active4Current)
-        assertEquals(PIN_G2_RECOVERED4_CURRENT, recovered4Current)
-        assertEquals(PIN_G2_RECOVERED4_WIDENED, recovered4Widened)
     }
 
-    /**
-     * Multi-candidate safety: the single-candidate rule stays, so widening turns some recoverable
-     * typos into safe no-fires. Reports zero / exactly-one / multi match rates on the class-#4
-     * 5-cp set (the single-match bucket is the fire-eligible one before the floor).
-     */
+    /** Measures both arms on the same full-word samples with the existing host-time budget. */
     @Test
-    fun gateG3MultiCandidateSafetyRates() {
-        val class4Set = buildSubstitutionSet(5)
-        val scratch = IntArray(64)
-        val variantScratch = ByteArray(256)
-        var zero = 0
-        var single = 0
-        var multi = 0
-        val index = requireNotNull(widenedIndex)
-        for (row in class4Set) {
-            if (index.indexOfWord(row.typoPrefixUtf8, row.typoPrefixUtf8.size) >= 0) continue
-            var matches = 0
-            var matchIndex = -1
-            FuzzyPrefixVariants.generateFullSubstitutionVariants(
-                row.typoPrefixUtf8, row.typoPrefixUtf8.size, neighborTable.nodes, scratch,
-                variantScratch, 8_192,
-            ) { _, variant, length ->
-                if (matches > 1) return@generateFullSubstitutionVariants
-                val entry = index.indexOfWord(variant, length)
-                if (entry >= 0 && entry != matchIndex) {
-                    matches++
-                    matchIndex = entry
-                }
-            }
-            when {
-                matches == 0 -> zero++
-                matches == 1 -> single++
-                else -> multi++
-            }
-        }
-        val total = zero + single + multi
-        println(
-            "P7 G3 class4_set=$total zero=${fmt(zero * 100.0 / total)}% ($zero) " +
-                "single=${fmt(single * 100.0 / total)}% ($single) " +
-                "multi=${fmt(multi * 100.0 / total)}% ($multi)",
-        )
-        assertEquals(PIN_G3_ZERO, zero)
-        assertEquals(PIN_G3_SINGLE, single)
-        assertEquals(PIN_G3_MULTI, multi)
-    }
-
-    /**
-     * Host performance with the widened advice pass engaged: a deterministic sample of the
-     * class-#4 5-cp set (absent >= 4-cp words, so the class-#4 probes actually run), both arms.
-     */
-    @Test
-    fun gateG4HostComputeWithWidenedAutocorrect() {
-        val class4Set = buildSubstitutionSet(5)
-        val sample = class4Set.filterIndexed { index, _ -> index % 53 == 0 }
-            .map { ImmutableUtf8Prefix.copyOf(it.typoPrefixUtf8) }
-        assertTrue("the perf sample is meaningful", sample.size > 1_500)
+    fun hostP95WithWidenedAutocorrectStaysWithinBudget() {
+        val tatarSample = fullWordRows
+            .filter { it.mutated.codePointCount(0, it.mutated.length) >= 4 }
+            .filterIndexed { index, _ -> index % 5 == 0 }
+            .map { ImmutableUtf8Prefix.copyOf(it.mutated.toByteArray(Charsets.UTF_8)) }
+        val russianSample = russianFullWordRows
+            .filter { it.mutated.codePointCount(0, it.mutated.length) >= 4 }
+            .filterIndexed { index, _ -> index % 5 == 0 }
+            .map { ImmutableUtf8Prefix.copyOf(it.mutated.toByteArray(Charsets.UTF_8)) }
+        assertTrue("the Tatar perf sample is meaningful", tatarSample.size > 1_000)
+        assertTrue("the Russian perf sample is meaningful", russianSample.size > 1_000)
 
         val arms = listOf(
-            "current" to requireNotNull(currentIndex),
-            "widened" to requireNotNull(widenedIndex),
+            Triple("tt-current", requireNotNull(currentIndex), tatarSample),
+            Triple("tt-widened", requireNotNull(widenedIndex), tatarSample),
+            Triple("ru-current", requireNotNull(russianCurrentIndex), russianSample),
+            Triple("ru-widened", requireNotNull(russianWidenedIndex), russianSample),
         )
-        for ((name, index) in arms) {
+        for ((name, index, sample) in arms) {
             repeat(2) { for (prefix in sample) index.lookup(prefix) }
             val timings = LongArray(sample.size * 2)
             val probes = ArrayList<Int>(sample.size)
@@ -370,14 +265,12 @@ class AutocorrectWideningCalibrationTest {
             val p95 = timings[ceil(timings.size * 0.95).toInt() - 1] / 1_000_000.0
             val max = timings.last() / 1_000_000.0
             println(
-                "P7 G4 host policy=$name samples=${timings.size} p50=${fmtMs(p50)} ms " +
+                "E02 perf arm=$name samples=${timings.size} p50=${fmtMs(p50)} ms " +
                     "p95=${fmtMs(p95)} ms max=${fmtMs(max)} ms " +
-                    "acprobe_p95=${percentile(probes.sorted(), 0.95)} acprobe_max=${probes.maxOrNull() ?: 0} " +
-                    "consumed=$consumed",
+                    "acprobe_p95=${percentile(probes.sorted(), 0.95)} " +
+                    "acprobe_max=${probes.maxOrNull() ?: 0} consumed=$consumed",
             )
-            if (name == "widened") {
-                assertTrue("widened-advice p95=${p95}ms exceeds the 5 ms budget", p95 <= 5.0)
-            }
+            assertTrue("$name p95=${p95}ms exceeds the 5 ms budget", p95 <= 5.0)
         }
     }
 
@@ -409,20 +302,32 @@ class AutocorrectWideningCalibrationTest {
         assertNull(advice(current, "ааҗнңң"))
     }
 
+    @Test
+    fun shippedPoliciesKeepLongPressOnlyAutocorrect() {
+        assertEquals(
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
+            FuzzyEditPolicy.TATAR.autocorrectClasses.toList(),
+        )
+        assertEquals(
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
+            FuzzyEditPolicy.RUSSIAN.autocorrectClasses.toList(),
+        )
+    }
+
     /**
      * Zero-allocation contract with the widened advice pass engaged: an absent >= 4-cp word that
      * does not fire (the common path) stays within <= 8 bytes/lookup. The firing path allocates
      * the AutocorrectAdvice object itself, as the class-#1 pass does; that is out of scope.
      */
     @Test
-    fun gateG4ZeroAllocationWithWidenedAutocorrect() {
+    fun widenedAutocorrectCommonPathHasNoPerLookupAllocation() {
         val bean = ManagementFactory.getThreadMXBean() as? com.sun.management.ThreadMXBean
         org.junit.Assume.assumeTrue(bean != null && bean.isThreadAllocatedMemorySupported)
         val threadBean = bean!!
         threadBean.isThreadAllocatedMemoryEnabled = true
         val threadId = Thread.currentThread().id
 
-        // A fixture dictionary whose substitution space holds neither a strip survivor nor an
+        // A fixture dictionary whose DL-1 neighborhood holds neither a strip survivor nor an
         // autocorrect candidate for "мсмә": the widened advice pass probes (positions 0 and 1 —
         // "м*" is non-empty, "мс*" is empty) and never fires, and the strip stays empty, so the
         // measurement isolates the machinery from any result materialization.
@@ -453,8 +358,6 @@ class AutocorrectWideningCalibrationTest {
     private fun fmtMs(value: Double): String = "%.3f".format(java.util.Locale.ROOT, value)
 
     companion object {
-        private const val SEED = 20260727L
-
         // The two arms differ ONLY in the autocorrect class set; the display side of both is the
         // shipped Tatar configuration.
         private val CURRENT_POLICY = FuzzyEditPolicy(
@@ -467,33 +370,73 @@ class AutocorrectWideningCalibrationTest {
             true,
             intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
         )
+        private val RUSSIAN_WIDENED_POLICY = FuzzyEditPolicy(
+            intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+            true,
+            intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+            sameLengthBonusOnlyInDl1 = true,
+        )
 
-        // Pins over the committed assets and eval set; re-pin when an input changes.
-        private const val PIN_G1A_PRESENT = 2_413
-        private const val PIN_G1A_CURRENT_FIRES = 2
-        private const val PIN_G1A_WIDENED_FIRES = 4
-        private const val PIN_G1B_CLASS1_FIRES = 123
-        private const val PIN_G1B_CLASS4ONLY_FIRES = 165
-        private const val PIN_G2_ACTIVE1 = 99_999
-        private const val PIN_G2_RECOVERED1_CURRENT = 1_356
-        private const val PIN_G2_RECOVERED1_WIDENED = 705
-        private const val PIN_G2_ACTIVE4 = 103_348
-        private const val PIN_G2_RECOVERED4_CURRENT = 12
-        private const val PIN_G2_RECOVERED4_WIDENED = 728
-        private const val PIN_G3_ZERO = 40_183
-        private const val PIN_G3_SINGLE = 31_888
-        private const val PIN_G3_MULTI = 31_277
+        // Pins over the committed assets, generators and reviewed safety sets.
+        private const val PIN_VALID_OOV_ROWS = 175
+        private const val PIN_TT_CURRENT_SEEN_FORM = 0
+        private const val PIN_TT_CURRENT_NEW_FORM = 2
+        private const val PIN_TT_CURRENT_UNSEEN_STEM = 0
+        private const val PIN_TT_WIDENED_SEEN_FORM = 0
+        private const val PIN_TT_WIDENED_NEW_FORM = 2
+        private const val PIN_TT_WIDENED_UNSEEN_STEM = 1
+        private const val PIN_TT_CURRENT_FIRES = 2
+        private const val PIN_TT_WIDENED_FIRES = 3
+        private const val PIN_RU_CURRENT_SEEN_FORM = 0
+        private const val PIN_RU_CURRENT_NEW_FORM = 0
+        private const val PIN_RU_CURRENT_UNSEEN_STEM = 0
+        private const val PIN_RU_WIDENED_SEEN_FORM = 0
+        private const val PIN_RU_WIDENED_NEW_FORM = 0
+        private const val PIN_RU_WIDENED_UNSEEN_STEM = 2
+        private const val PIN_TT_CURRENT_RECOVERED = 8
+        private const val PIN_TT_CURRENT_HARMFUL = 14
+        private const val PIN_TT_WIDENED_RECOVERED = 2_960
+        private const val PIN_TT_WIDENED_HARMFUL = 0
+        private const val PIN_RU_CURRENT_RECOVERED = 0
+        private const val PIN_RU_CURRENT_HARMFUL = 3
+        private const val PIN_RU_WIDENED_RECOVERED = 3_223
+        private const val PIN_RU_WIDENED_HARMFUL = 0
 
+        private val SAFETY_STRATA = listOf("seen_form", "new_form_of_seen_stem", "unseen_stem")
         private val neighborTable = E3bTestFixtures.tatarNeighborTable()
+        private val russianNeighborTable = KeyNeighborTable.build(
+            "ru",
+            true,
+            listOf(
+                rawKey('й'), rawKey('ц'), rawKey('у', 'ү'), rawKey('к'), rawKey('е', 'ё'),
+                rawKey('н', 'ң'), rawKey('г', 'һ'), rawKey('ш'), rawKey('щ'), rawKey('з'),
+                rawKey('х', 'һ'), rawKey('ф'), rawKey('ы'), rawKey('в'), rawKey('а', 'ә'),
+                rawKey('п'), rawKey('р'), rawKey('о', 'ө'), rawKey('л'), rawKey('д'),
+                rawKey('ж', 'җ'), rawKey('э', 'ә'), rawKey('я'), rawKey('ч'), rawKey('с'),
+                rawKey('м'), rawKey('и'), rawKey('т'), rawKey('ь', 'ъ'), rawKey('б'), rawKey('ю'),
+            ),
+        )
         private lateinit var vocabulary: List<String>
         private lateinit var uniqueEvalWords: List<String>
-        private lateinit var bottomDecileWords: List<String>
+        private lateinit var safetyRows: List<SafetyRow>
+        private lateinit var fullWordRows: List<TypoMutatedEvalTest.EvalRow>
+        private lateinit var russianFullWordRows: List<TypoMutatedEvalTest.EvalRow>
+        private lateinit var russianSafetyRows: List<SafetyRow>
+        private lateinit var russianVocabulary: List<String>
         private var currentIndex: TdictPrefixIndex? = null
         private var widenedIndex: TdictPrefixIndex? = null
+        private var russianCurrentIndex: TdictPrefixIndex? = null
+        private var russianWidenedIndex: TdictPrefixIndex? = null
 
         @JvmStatic
         @BeforeClass
         fun loadCommittedAssets() {
+            TypoMutatedEvalTest.loadCommittedAssetsAndEvalSet()
+            fullWordRows = TypoMutatedEvalTest().buildSet(
+                TypoMutatedEvalTest.substrate,
+                TypoMutatedEvalTest.GEOMETRIC_NEIGHBORS,
+                TypoMutatedEvalTest.ALPHABET,
+            ).rows
             val raw = inflate(DictionaryArtifactSpec.TATAR_TOP100K_V1)
             vocabulary = DictionaryTestFixtures.words(raw)
             check(vocabulary.size == DictionaryArtifactSpec.TATAR_TOP100K_V1.expectedEntryCount.toInt())
@@ -505,16 +448,53 @@ class AutocorrectWideningCalibrationTest {
                 .map { it.trim() }
                 .filter { it.isNotEmpty() && !it.startsWith("#") }
             uniqueEvalWords = evalLines.flatMap { it.split(" ") }.distinct()
+            safetyRows = locate(
+                "src/test/resources/tt_valid_oov_safety_set.tsv",
+                "app/src/test/resources/tt_valid_oov_safety_set.tsv",
+            ).readLines(Charsets.UTF_8).filter { it.isNotEmpty() }.map { line ->
+                val fields = line.split("\t")
+                check(fields.size == 2) { "malformed valid-OOV safety row: $line" }
+                check(fields[0] in uniqueEvalWords) { "safety word is not held out: ${fields[0]}" }
+                check(fields[1] in SAFETY_STRATA) { "unknown safety stratum: ${fields[1]}" }
+                SafetyRow(fields[0], fields[1])
+            }
+            check(safetyRows.isNotEmpty()) { "the valid-OOV safety set is empty" }
 
             val index = openIndex(raw, CURRENT_POLICY)
-            val withFrequency = vocabulary.map { it to index.frequencyOf(it) }
-            val sortedByFrequency = withFrequency.sortedWith(
-                compareBy<Pair<String, Long>> { it.second }.thenBy { it.first },
-            )
-            bottomDecileWords = sortedByFrequency.take(vocabulary.size / 10).map { it.first }
-
             currentIndex = index.also { it.updateKeyNeighbors(neighborTable) }
             widenedIndex = openIndex(raw, WIDENED_POLICY).also { it.updateKeyNeighbors(neighborTable) }
+
+            russianFullWordRows = locate(
+                "src/test/resources/ru_typo_eval_set.tsv",
+                "app/src/test/resources/ru_typo_eval_set.tsv",
+            ).readLines(Charsets.UTF_8).filter { it.isNotEmpty() }.map { line ->
+                val fields = line.split("\t")
+                check(fields.size == 3) { "malformed typo row: $line" }
+                TypoMutatedEvalTest.EvalRow(fields[0], fields[1], fields[2])
+            }
+            russianSafetyRows = locate(
+                "src/test/resources/ru_valid_oov_safety_set.tsv",
+                "app/src/test/resources/ru_valid_oov_safety_set.tsv",
+            ).readLines(Charsets.UTF_8).filter { it.isNotEmpty() }.map { line ->
+                val fields = line.split("\t")
+                check(fields.size == 2) { "malformed valid-OOV safety row: $line" }
+                check(fields[1] in SAFETY_STRATA) { "unknown safety stratum: ${fields[1]}" }
+                SafetyRow(fields[0], fields[1])
+            }
+            val russianRaw = inflate(DictionaryArtifactSpec.RUSSIAN_TOP100K_V1)
+            russianVocabulary = DictionaryTestFixtures.words(russianRaw)
+            russianCurrentIndex = openIndex(
+                russianRaw,
+                FuzzyEditPolicy.RUSSIAN,
+                AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
+                DictionaryArtifactSpec.RUSSIAN_TOP100K_V1,
+            ).also { it.updateKeyNeighbors(russianNeighborTable) }
+            russianWidenedIndex = openIndex(
+                russianRaw,
+                RUSSIAN_WIDENED_POLICY,
+                AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
+                DictionaryArtifactSpec.RUSSIAN_TOP100K_V1,
+            ).also { it.updateKeyNeighbors(russianNeighborTable) }
         }
 
         private fun inflate(spec: DictionaryArtifactSpec): ByteArray {
@@ -522,7 +502,7 @@ class AutocorrectWideningCalibrationTest {
                 "src/main/assets/${spec.assetPath}",
                 "app/src/main/assets/${spec.assetPath}",
             )
-            val rawFile = File.createTempFile("p7-autocorrect-", ".tdict")
+            val rawFile = File.createTempFile("autocorrect-widening-", ".tdict")
             try {
                 rawFile.outputStream().use { output ->
                     TdictValidator().inflateAsset(asset.inputStream(), output, spec)
@@ -534,8 +514,12 @@ class AutocorrectWideningCalibrationTest {
             }
         }
 
-        private fun openIndex(raw: ByteArray, policy: FuzzyEditPolicy): TdictPrefixIndex {
-            val spec = DictionaryArtifactSpec.TATAR_TOP100K_V1
+        private fun openIndex(
+            raw: ByteArray,
+            policy: FuzzyEditPolicy,
+            minCandidateFrequency: Long = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+            spec: DictionaryArtifactSpec = DictionaryArtifactSpec.TATAR_TOP100K_V1,
+        ): TdictPrefixIndex {
             val identity = DictionaryIdentity(
                 spec.generation, spec.schemaId, spec.formatVersion,
                 MessageDigest.getInstance("SHA-256").digest(raw).joinToString("") { "%02x".format(it) },
@@ -543,7 +527,7 @@ class AutocorrectWideningCalibrationTest {
             return requireNotNull(
                 TdictPrefixIndex.open(
                     ByteBuffer.wrap(raw), identity, spec.expectedEntryCount, raw.size.toLong(),
-                    null, policy, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+                    null, policy, minCandidateFrequency,
                 ),
             )
         }

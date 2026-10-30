@@ -23,23 +23,27 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlideBigramRerank
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideComputer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGeometrySink
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideIndexPrewarmer
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideResult
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideWordInventory
 
 /**
- * Owns one engine's glide decode side: the lazily built [GlideDecoder] (its word index is built
- * on the first decode, on the engine worker) plus the current layout geometry.
+ * Owns one engine's glide decode side: the [GlideDecoder], its word index and the current layout
+ * geometry. An armed gesture prepares the index before lift; a decode without preparation builds
+ * it on demand.
  *
- * Threading: [decodeGlide] runs on the engine's serialized worker (decoder scratch and result
- * buffer are worker-confined); [updateGlideGeometry] is a `@Volatile` swap from the UI thread. A
- * geometry change rebuilds the decoder, because the word index's key indices only make sense
- * against the geometry they were built from. A null or empty geometry returns no candidates.
+ * Threading: [prewarmGlideIndex] and [decodeGlide] run on the engine's serialized worker (decoder
+ * scratch and result buffer are worker-confined); [updateGlideGeometry] is a `@Volatile` swap from
+ * the UI thread. A geometry change rebuilds the decoder, because the word index's key indices only
+ * make sense against the geometry they were built from. A null or empty geometry returns no
+ * candidates.
  *
- * Personal dictionary: a decode reads the personal source's current immutable snapshot (one
- * `@Volatile` read, no I/O) and rebuilds the decoder when its [PersonalDictionary.structureVersion]
- * changed. The store bumps that version only when the word set changes, so the counter republish
+ * Personal dictionary: preparation and decoding read the personal source's current immutable
+ * snapshot (one `@Volatile` read, no I/O) and rebuild the decoder when its
+ * [PersonalDictionary.structureVersion] changes. The store bumps that version only when the word
+ * set changes, so the counter republish
  * of an accepted suggestion does not rebuild the word index. An empty snapshot keeps the base
  * inventory unwrapped; [PersonalDictionary.EMPTY] stays at version 0, so the check does not churn.
  * [dictionaryMembership] is the duplicate check of the composite inventory; it runs only during
@@ -50,11 +54,11 @@ internal class GlideDecoderHost(
     private val personal: PersonalCandidateSource = PersonalCandidateSource.EMPTY,
     private val dictionaryMembership: (String) -> Boolean = { false },
     private val glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
-) : GlideComputer, GlideGeometrySink {
+) : GlideComputer, GlideGeometrySink, GlideIndexPrewarmer {
     @Volatile
     private var geometry: GlideKeyGeometry? = null
 
-    // Worker-confined: touched only inside decodeGlide.
+    // Worker-confined: touched only during index preparation and decoding.
     private var decoder: GlideDecoder? = null
     private var decoderGeometry: GlideKeyGeometry? = null
     private var decoderStructureVersion: Long = 0L
@@ -74,8 +78,8 @@ internal class GlideDecoderHost(
     }
 
     /**
-     * Drops the lazily built decoder and its [GlideWordIndex], the large structure the idle memory
-     * release (LatinIME `MSG_DEALLOCATE_MEMORY`) targets; the next [decodeGlide] rebuilds it.
+     * Drops the decoder and its [GlideWordIndex], the large structure the idle memory release
+     * (LatinIME `MSG_DEALLOCATE_MEMORY`) targets; the next preparation or decode rebuilds it.
      * Worker-confined: the caller routes this through the engine's serialized executor.
      */
     fun releaseIndex() {
@@ -84,9 +88,13 @@ internal class GlideDecoderHost(
         decoderStructureVersion = 0L
     }
 
-    override fun decodeGlide(path: GlidePath, contextWord: String?): List<String> {
-        val current = geometry ?: return emptyList()
-        if (current.isEmpty) return emptyList()
+    override fun prewarmGlideIndex() {
+        activeDecoder()?.prewarmIndex()
+    }
+
+    private fun activeDecoder(): GlideDecoder? {
+        val current = geometry ?: return null
+        if (current.isEmpty) return null
         val snapshot = personal.glideSnapshot()
         var active = decoder
         if (active == null || decoderGeometry !== current ||
@@ -100,6 +108,11 @@ internal class GlideDecoderHost(
             decoderGeometry = current
             decoderStructureVersion = snapshot.structureVersion
         }
+        return active
+    }
+
+    override fun decodeGlide(path: GlidePath, contextWord: String?): List<String> {
+        val active = activeDecoder() ?: return emptyList()
         val count = active.decode(path, result)
         if (count == 0) return emptyList()
         // The bigram channel: rerank the N-best against the committed context word. A missing or
