@@ -644,7 +644,7 @@ class PersonalizationEvalTest {
         private val PIN_GRAD_WORDS = mapOf(
             "hash.oracle" to 0, "hash.realistic" to 0, "hash.fixed" to 0,
             "chrono.oracle" to 0, "chrono.realistic" to 0, "chrono.fixed" to 0,
-            "rep.oracle" to 208, "rep.realistic" to 208, "rep.fixed" to 208,
+            "rep.oracle" to 197, "rep.realistic" to 197, "rep.fixed" to 197,
         )
         private val PIN_GRAD_PAIRS = mapOf(
             "hash.oracle" to 41, "hash.realistic" to 41, "hash.fixed" to 41,
@@ -657,12 +657,12 @@ class PersonalizationEvalTest {
             "rep.oracle" to 86_991L, "rep.realistic" to 86_991L, "rep.fixed" to 86_991L,
         )
         private val PIN_EMPTY_OBSERVATIONS = mapOf(
-            "hash.oracle" to 899L, "hash.realistic" to 899L, "hash.fixed" to 899L,
-            "chrono.oracle" to 853L, "chrono.realistic" to 853L, "chrono.fixed" to 853L,
-            "rep.oracle" to 5_097L, "rep.realistic" to 5_097L, "rep.fixed" to 5_097L,
+            "hash.oracle" to 875L, "hash.realistic" to 875L, "hash.fixed" to 875L,
+            "chrono.oracle" to 830L, "chrono.realistic" to 830L, "chrono.fixed" to 830L,
+            "rep.oracle" to 4_953L, "rep.realistic" to 4_953L, "rep.fixed" to 4_953L,
         )
         private val PIN_WORD_COMPLETIONS = mapOf(
-            "hash" to 116L, "chrono" to 97L, "rep" to 636L,
+            "hash" to 115L, "chrono" to 95L, "rep" to 603L,
         )
         private val PIN_PAIR_OBSERVATIONS = mapOf(
             "hash" to 2_209L, "chrono" to 2_173L, "rep" to 13_005L,
@@ -677,18 +677,18 @@ class PersonalizationEvalTest {
             "hash" to 1_852L, "chrono" to 1_800L, "rep" to 11_997L,
         )
         private val PIN_FIX_PROBES = mapOf(
-            "hash" to 58L, "chrono" to 43L, "rep" to 348L,
+            "hash" to 52L, "chrono" to 40L, "rep" to 342L,
         )
         private val PIN_PRIME_UNSEEN_TOKENS = mapOf(
-            "hash" to 86L, "chrono" to 73L, "rep" to 462L,
+            "hash" to 83L, "chrono" to 72L, "rep" to 447L,
         )
         private val PIN_A7_UNSEEN = mapOf(
             "hash" to listOf(0L, 0L, 0L),
             "chrono" to listOf(0L, 0L, 0L),
-            "rep" to listOf(420L, 420L, 420L),
+            "rep" to listOf(405L, 405L, 405L),
         )
 
-        private const val PIN_REP_SWEEP_L100_GRAD_WORDS = 162
+        private const val PIN_REP_SWEEP_L100_GRAD_WORDS = 152
         private const val PIN_REP_SWEEP_L100_OBSERVED = 70_377L
         private const val PIN_REP_SWEEP_L100_DROPPED = 0L
         private const val PIN_REP_SWEEP_L100_STALED = 19_105L

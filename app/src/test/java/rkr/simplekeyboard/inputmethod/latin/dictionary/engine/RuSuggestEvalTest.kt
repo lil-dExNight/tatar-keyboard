@@ -35,10 +35,9 @@ import java.nio.ByteBuffer
  * `app/src/test/resources/ru_eval_sentences.txt` (built by `scripts/make_ru_eval_set.py` from
  * Tatoeba lines whose normalized form never appears in a training corpus) and prints
  * `EVAL|metric|value` lines:
- *  - prefix top-3 and top-1 completion: for each unique word, prefixes of 1/2/3 code points
- *    are looked up in [TdictPrefixIndex] and the word must be in the top-3, respectively lead it;
- *  - bigram head coverage and next-word top-1/top-3 hit rates over adjacent pairs, via
- *    [TatBigrPrefixIndex.predict];
+ *  - prefix completion and next-word prediction report top-1, visible top-3 and engine top-4
+ *    separately, for both the plain bigram path and the production NEXT_WORD chain;
+ *  - bigram head coverage over adjacent pairs, via [TatBigrPrefixIndex.predict];
  *  - strip-empty rates: at sentence start and over typing moments (prefix moments while a word
  *    is incomplete, next-word moments over the adjacent pairs), plus the sentence-start top-3
  *    hit rate, via the sentence-start table (`russian_sentstart_v1.txt`, parsed by
@@ -57,7 +56,8 @@ class RuSuggestEvalTest {
         index.updateKeyNeighbors(null)
 
         val wordsPerLength = IntArray(4)
-        val hitsPerLength = IntArray(4)
+        val visibleTop3HitsPerLength = IntArray(4)
+        val engineTop4HitsPerLength = IntArray(4)
         val top1HitsPerLength = IntArray(4)
         for (codePoints in 1..3) {
             for (word in uniqueWords) {
@@ -66,28 +66,37 @@ class RuSuggestEvalTest {
                 val results = index.lookup(
                     ImmutableUtf8Prefix.copyOf(prefix.toByteArray(Charsets.UTF_8))
                 )
-                if (results.contains(word)) hitsPerLength[codePoints]++
+                if (results.take(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT).contains(word)) {
+                    visibleTop3HitsPerLength[codePoints]++
+                }
+                if (results.take(SuggestionStripState.CELL_COUNT).contains(word)) {
+                    engineTop4HitsPerLength[codePoints]++
+                }
                 if (results.firstOrNull() == word) top1HitsPerLength[codePoints]++
             }
         }
         for (codePoints in 1..3) {
             val words = wordsPerLength[codePoints]
-            val hits = hitsPerLength[codePoints]
+            val visibleHits = visibleTop3HitsPerLength[codePoints]
+            val engineHits = engineTop4HitsPerLength[codePoints]
             val top1Hits = top1HitsPerLength[codePoints]
-            val rate = hits * 100.0 / words
-            val top1Rate = top1Hits * 100.0 / words
             println("EVAL|prefix_cp${codePoints}_words|$words")
-            println("EVAL|prefix_cp${codePoints}_hits|$hits")
-            println("EVAL|prefix_top3_cp${codePoints}_pct|${format(rate)}")
             println("EVAL|prefix_cp${codePoints}_top1_hits|$top1Hits")
-            println("EVAL|prefix_top1_cp${codePoints}_pct|${format(top1Rate)}")
+            println("EVAL|prefix_top1_cp${codePoints}_pct|${format(ratePct(top1Hits, words))}")
+            println("EVAL|prefix_cp${codePoints}_visible_top3_hits|$visibleHits")
+            println("EVAL|prefix_visible_top3_cp${codePoints}_pct|${format(ratePct(visibleHits, words))}")
+            println("EVAL|prefix_cp${codePoints}_engine_top4_hits|$engineHits")
+            println("EVAL|prefix_engine_top4_cp${codePoints}_pct|${format(ratePct(engineHits, words))}")
         }
         assertEquals(PIN_CP1_WORDS, wordsPerLength[1])
-        assertEquals(PIN_CP1_HITS, hitsPerLength[1])
+        assertEquals(PIN_CP1_VISIBLE_TOP3_HITS, visibleTop3HitsPerLength[1])
+        assertEquals(PIN_CP1_ENGINE_TOP4_HITS, engineTop4HitsPerLength[1])
         assertEquals(PIN_CP2_WORDS, wordsPerLength[2])
-        assertEquals(PIN_CP2_HITS, hitsPerLength[2])
+        assertEquals(PIN_CP2_VISIBLE_TOP3_HITS, visibleTop3HitsPerLength[2])
+        assertEquals(PIN_CP2_ENGINE_TOP4_HITS, engineTop4HitsPerLength[2])
         assertEquals(PIN_CP3_WORDS, wordsPerLength[3])
-        assertEquals(PIN_CP3_HITS, hitsPerLength[3])
+        assertEquals(PIN_CP3_VISIBLE_TOP3_HITS, visibleTop3HitsPerLength[3])
+        assertEquals(PIN_CP3_ENGINE_TOP4_HITS, engineTop4HitsPerLength[3])
         assertEquals(PIN_CP1_TOP1_HITS, top1HitsPerLength[1])
         assertEquals(PIN_CP2_TOP1_HITS, top1HitsPerLength[2])
         assertEquals(PIN_CP3_TOP1_HITS, top1HitsPerLength[3])
@@ -104,7 +113,8 @@ class RuSuggestEvalTest {
         var pairs = 0
         var covered = 0
         var top1Hits = 0
-        var top3Hits = 0
+        var visibleHits = 0
+        var engineHits = 0
         for (line in evalLines) {
             val words = line.split(" ")
             for (position in 0 until words.size - 1) {
@@ -114,33 +124,39 @@ class RuSuggestEvalTest {
                 )
                 if (shown.isEmpty()) continue
                 covered++
-                if (shown.first() == words[position + 1]) top1Hits++
-                if (shown.contains(words[position + 1])) top3Hits++
+                val successor = words[position + 1]
+                if (shown.first() == successor) top1Hits++
+                if (shown.take(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT).contains(successor)) {
+                    visibleHits++
+                }
+                if (shown.take(SuggestionStripState.CELL_COUNT).contains(successor)) engineHits++
             }
         }
-        val coveredPct = covered * 100.0 / pairs
-        val top1Pct = top1Hits * 100.0 / pairs
-        val top3Pct = top3Hits * 100.0 / pairs
-        val top3CoveredPct = if (covered > 0) top3Hits * 100.0 / covered else 0.0
         println("EVAL|nextword_pairs|$pairs")
         println("EVAL|nextword_head_covered|$covered")
         println("EVAL|nextword_top1_hits|$top1Hits")
-        println("EVAL|nextword_top3_hits|$top3Hits")
-        println("EVAL|bigram_head_coverage_pct|${format(coveredPct)}")
-        println("EVAL|nextword_top1_hit_pct|${format(top1Pct)}")
-        println("EVAL|nextword_top3_hit_pct|${format(top3Pct)}")
-        println("EVAL|nextword_top3_hit_covered_pct|${format(top3CoveredPct)}")
+        println("EVAL|nextword_top1_hit_pct|${format(ratePct(top1Hits, pairs))}")
+        println("EVAL|nextword_visible_top3_hits|$visibleHits")
+        println("EVAL|nextword_visible_top3_hit_pct|${format(ratePct(visibleHits, pairs))}")
+        println("EVAL|nextword_visible_top3_hit_covered_pct|${format(ratePct(visibleHits, covered))}")
+        println("EVAL|nextword_engine_top4_hits|$engineHits")
+        println("EVAL|nextword_engine_top4_hit_pct|${format(ratePct(engineHits, pairs))}")
+        println("EVAL|nextword_engine_top4_hit_covered_pct|${format(ratePct(engineHits, covered))}")
+        println("EVAL|bigram_head_coverage_pct|${format(ratePct(covered, pairs))}")
 
         assertEquals(PIN_PAIRS, pairs)
         assertEquals(PIN_COVERED, covered)
         assertEquals(PIN_TOP1_HITS, top1Hits)
-        assertEquals(PIN_TOP3_HITS, top3Hits)
+        assertEquals(PIN_BIGRAM_VISIBLE_TOP3_HITS, visibleHits)
+        assertEquals(PIN_BIGRAM_ENGINE_TOP4_HITS, engineHits)
         // Exact-rate pins, a deterministic consequence of the count pins; they catch
         // formatting or rounding drift in the report itself.
-        assertEquals(PIN_COVERED_PCT, format(coveredPct))
-        assertEquals(PIN_TOP1_PCT, format(top1Pct))
-        assertEquals(PIN_TOP3_PCT, format(top3Pct))
-        assertEquals(PIN_TOP3_COVERED_PCT, format(top3CoveredPct))
+        assertEquals(PIN_COVERED_PCT, format(ratePct(covered, pairs)))
+        assertEquals(PIN_TOP1_PCT, format(ratePct(top1Hits, pairs)))
+        assertEquals(PIN_VISIBLE_TOP3_PCT, format(ratePct(visibleHits, pairs)))
+        assertEquals(PIN_VISIBLE_TOP3_COVERED_PCT, format(ratePct(visibleHits, covered)))
+        assertEquals(PIN_ENGINE_TOP4_PCT, format(ratePct(engineHits, pairs)))
+        assertEquals(PIN_ENGINE_TOP4_COVERED_PCT, format(ratePct(engineHits, covered)))
     }
 
     /**
@@ -161,19 +177,29 @@ class RuSuggestEvalTest {
         val sentStart = requireNotNull(sentStartIndex)
         val shown = sentStart.topWords(SuggestionStripState.CELL_COUNT)
         var empty = 0
-        var hits = 0
+        var top1Hits = 0
+        var visibleHits = 0
+        var engineHits = 0
         for (line in evalLines) {
             if (shown.isEmpty()) empty++
-            if (shown.contains(line.split(" ")[0])) hits++
+            val firstWord = line.split(" ")[0]
+            if (shown.firstOrNull() == firstWord) top1Hits++
+            if (shown.take(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT).contains(firstWord)) {
+                visibleHits++
+            }
+            if (shown.take(SuggestionStripState.CELL_COUNT).contains(firstWord)) engineHits++
         }
-        val emptyRate = empty * 100.0 / evalLines.size
-        val hitRate = hits * 100.0 / evalLines.size
-        println("EVAL|strip_empty_sentence_start_pct|${format(emptyRate)}")
-        println("EVAL|sentstart_top3_hits|$hits")
-        println("EVAL|sentstart_top3_hit_pct|${format(hitRate)}")
+        println("EVAL|strip_empty_sentence_start_pct|${format(ratePct(empty, evalLines.size))}")
+        println("EVAL|sentstart_top1_hits|$top1Hits")
+        println("EVAL|sentstart_top1_hit_pct|${format(ratePct(top1Hits, evalLines.size))}")
+        println("EVAL|sentstart_visible_top3_hits|$visibleHits")
+        println("EVAL|sentstart_visible_top3_hit_pct|${format(ratePct(visibleHits, evalLines.size))}")
+        println("EVAL|sentstart_engine_top4_hits|$engineHits")
+        println("EVAL|sentstart_engine_top4_hit_pct|${format(ratePct(engineHits, evalLines.size))}")
         assertEquals(0, empty)
-        assertEquals("0.0000", format(emptyRate))
-        assertEquals(PIN_SENTSTART_TOP3_HITS, hits)
+        assertEquals(PIN_SENTSTART_TOP1_HITS, top1Hits)
+        assertEquals(PIN_SENTSTART_VISIBLE_TOP3_HITS, visibleHits)
+        assertEquals(PIN_SENTSTART_ENGINE_TOP4_HITS, engineHits)
     }
 
     /**
@@ -255,8 +281,10 @@ class RuSuggestEvalTest {
         val moments = IntArray(evalLines.size)
         val baseTop1 = IntArray(evalLines.size)
         val boostTop1 = IntArray(evalLines.size)
-        val baseTop3 = IntArray(evalLines.size)
-        val boostTop3 = IntArray(evalLines.size)
+        val baseVisibleTop3 = IntArray(evalLines.size)
+        val boostVisibleTop3 = IntArray(evalLines.size)
+        val baseEngineTop4 = IntArray(evalLines.size)
+        val boostEngineTop4 = IntArray(evalLines.size)
         for (lineIndex in evalLines.indices) {
             val words = evalLines[lineIndex].split(" ")
             for (position in words.indices) {
@@ -277,18 +305,30 @@ class RuSuggestEvalTest {
                     moments[lineIndex]++
                     val base = index.lookup(query)
                     if (base.firstOrNull() == word) baseTop1[lineIndex]++
-                    if (base.contains(word)) baseTop3[lineIndex]++
+                    if (base.take(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT).contains(word)) {
+                        baseVisibleTop3[lineIndex]++
+                    }
+                    if (base.take(SuggestionStripState.CELL_COUNT).contains(word)) {
+                        baseEngineTop4[lineIndex]++
+                    }
                     val boost = index.lookup(query, ids, contextCount)
                     if (boost.firstOrNull() == word) boostTop1[lineIndex]++
-                    if (boost.contains(word)) boostTop3[lineIndex]++
+                    if (boost.take(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT).contains(word)) {
+                        boostVisibleTop3[lineIndex]++
+                    }
+                    if (boost.take(SuggestionStripState.CELL_COUNT).contains(word)) {
+                        boostEngineTop4[lineIndex]++
+                    }
                 }
             }
         }
         val totalMoments = moments.sum()
         val base1 = baseTop1.sum()
         val boost1 = boostTop1.sum()
-        val base3 = baseTop3.sum()
-        val boost3 = boostTop3.sum()
+        val baseVisible = baseVisibleTop3.sum()
+        val boostVisible = boostVisibleTop3.sum()
+        val baseEngine = baseEngineTop4.sum()
+        val boostEngine = boostEngineTop4.sum()
         // The paired CI95: one SplitMix64 stream, both arms scored on the same drawn sentence
         // indices, nearest-rank 25/975 per-mille of the per-round deltas.
         val deltas = DoubleArray(BOOTSTRAP_ROUNDS)
@@ -317,15 +357,24 @@ class RuSuggestEvalTest {
         println("EVAL|ctxboost_cp2plus_top1_delta_pp|${formatSigned(ratePct(boost1 - base1, totalMoments))}")
         println("EVAL|ctxboost_cp2plus_top1_delta_ci95_lo|${formatSigned(ciLo)}")
         println("EVAL|ctxboost_cp2plus_top1_delta_ci95_hi|${formatSigned(ciHi)}")
-        println("EVAL|ctxboost_cp2plus_top3_base_pct|${format(ratePct(base3, totalMoments))}")
-        println("EVAL|ctxboost_cp2plus_top3_boost_pct|${format(ratePct(boost3, totalMoments))}")
-        println("EVAL|ctxboost_cp2plus_top3_delta_pp|${formatSigned(ratePct(boost3 - base3, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_visible_top3_base_hits|$baseVisible")
+        println("EVAL|ctxboost_cp2plus_visible_top3_base_pct|${format(ratePct(baseVisible, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_visible_top3_boost_hits|$boostVisible")
+        println("EVAL|ctxboost_cp2plus_visible_top3_boost_pct|${format(ratePct(boostVisible, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_visible_top3_delta_pp|${formatSigned(ratePct(boostVisible - baseVisible, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_engine_top4_base_hits|$baseEngine")
+        println("EVAL|ctxboost_cp2plus_engine_top4_base_pct|${format(ratePct(baseEngine, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_engine_top4_boost_hits|$boostEngine")
+        println("EVAL|ctxboost_cp2plus_engine_top4_boost_pct|${format(ratePct(boostEngine, totalMoments))}")
+        println("EVAL|ctxboost_cp2plus_engine_top4_delta_pp|${formatSigned(ratePct(boostEngine - baseEngine, totalMoments))}")
 
         assertEquals(PIN_CTXBOOST_CP2PLUS_MOMENTS, totalMoments)
         assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS, base1)
         assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS, boost1)
-        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP3_BASE_HITS, base3)
-        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP3_BOOST_HITS, boost3)
+        assertEquals(PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_HITS, baseVisible)
+        assertEquals(PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS, boostVisible)
+        assertEquals(PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_HITS, baseEngine)
+        assertEquals(PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_HITS, boostEngine)
         // Cross-implementation pins: scripts/suggest_eval.py --language rus must print the same.
         assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT, format(ratePct(base1, totalMoments)))
         assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT, format(ratePct(boost1, totalMoments)))
@@ -334,11 +383,70 @@ class RuSuggestEvalTest {
         )
         assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO, formatSigned(ciLo))
         assertEquals(PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI, formatSigned(ciHi))
-        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP3_BASE_PCT, format(ratePct(base3, totalMoments)))
-        assertEquals(PIN_CTXBOOST_CP2PLUS_TOP3_BOOST_PCT, format(ratePct(boost3, totalMoments)))
         assertEquals(
-            PIN_CTXBOOST_CP2PLUS_TOP3_DELTA, formatSigned(ratePct(boost3 - base3, totalMoments)),
+            PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_PCT,
+            format(ratePct(baseVisible, totalMoments)),
         )
+        assertEquals(
+            PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT,
+            format(ratePct(boostVisible, totalMoments)),
+        )
+        assertEquals(
+            PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_DELTA,
+            formatSigned(ratePct(boostVisible - baseVisible, totalMoments)),
+        )
+        assertEquals(
+            PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_PCT, format(ratePct(baseEngine, totalMoments)),
+        )
+        assertEquals(
+            PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_PCT, format(ratePct(boostEngine, totalMoments)),
+        )
+        assertEquals(
+            PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_DELTA,
+            formatSigned(ratePct(boostEngine - baseEngine, totalMoments)),
+        )
+    }
+
+    /** Measures the production NEXT_WORD chain at all three reporting widths. */
+    @Test
+    fun nextWordChainHitRatesOnTheEvalSet() {
+        val chain = chainComputer()
+        val predictCache = HashMap<String, List<String>>()
+        var pairs = 0
+        var top1Hits = 0
+        var visibleHits = 0
+        var engineHits = 0
+        for (line in evalLines) {
+            val words = line.split(" ")
+            for (position in 0 until words.size - 1) {
+                pairs++
+                val shown = predictCache.getOrPut(words[position]) {
+                    chain.predict(
+                        ImmutableUtf8Prefix.copyOf(words[position].toByteArray(Charsets.UTF_8))
+                    )
+                }
+                val successor = words[position + 1]
+                if (shown.firstOrNull() == successor) top1Hits++
+                if (shown.take(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT).contains(successor)) {
+                    visibleHits++
+                }
+                if (shown.take(SuggestionStripState.CELL_COUNT).contains(successor)) engineHits++
+            }
+        }
+        println("EVAL|nextword_chain_pairs|$pairs")
+        println("EVAL|nextword_chain_top1_hits|$top1Hits")
+        println("EVAL|nextword_chain_top1_pct|${format(ratePct(top1Hits, pairs))}")
+        println("EVAL|nextword_chain_visible_top3_hits|$visibleHits")
+        println("EVAL|nextword_chain_visible_top3_pct|${format(ratePct(visibleHits, pairs))}")
+        println("EVAL|nextword_chain_engine_top4_hits|$engineHits")
+        println("EVAL|nextword_chain_engine_top4_pct|${format(ratePct(engineHits, pairs))}")
+        assertEquals(PIN_PAIRS, pairs)
+        assertEquals(PIN_CHAIN_TOP1_HITS, top1Hits)
+        assertEquals(PIN_CHAIN_VISIBLE_TOP3_HITS, visibleHits)
+        assertEquals(PIN_CHAIN_ENGINE_TOP4_HITS, engineHits)
+        assertEquals("7.8594", format(ratePct(top1Hits, pairs)))
+        assertEquals("15.7412", format(ratePct(visibleHits, pairs)))
+        assertEquals("18.6520", format(ratePct(engineHits, pairs)))
     }
 
     @Test
@@ -351,15 +459,11 @@ class RuSuggestEvalTest {
         }
     }
 
-    /**
-     * The production Russian NEXT_WORD wiring: bundled bigrams, empty personal sources and the
-     * top-frequency fallback. The Russian engine has no word-form rules, so the after-word
-     * forms slot stays null.
-     */
+    /** The production Russian NEXT_WORD wiring: bundled bigrams and the top-frequency fallback. */
     private fun chainComputer(): CompositePrefixComputer {
         val index = requireNotNull(dictionaryIndex)
         return CompositePrefixComputer(
-            index, PersonalCandidateSource.EMPTY, null,
+            index, PersonalCandidateSource.EMPTY,
             GlobalTopFrequencyFallbackFactory.createFallbackWords(index),
         ).also { it.attachBigramSource(requireNotNull(bigramIndex)) }
     }
@@ -396,17 +500,26 @@ class RuSuggestEvalTest {
         private const val PIN_PAIRS = 4_466
         private const val PIN_COVERED = 4_010
         private const val PIN_TOP1_HITS = 349
-        private const val PIN_TOP3_HITS = 794
+        private const val PIN_BIGRAM_VISIBLE_TOP3_HITS = 673
+        private const val PIN_BIGRAM_ENGINE_TOP4_HITS = 794
         private const val PIN_COVERED_PCT = "89.7895"
         private const val PIN_TOP1_PCT = "7.8146"
-        private const val PIN_TOP3_PCT = "17.7788"
-        private const val PIN_TOP3_COVERED_PCT = "19.8005"
+        private const val PIN_VISIBLE_TOP3_PCT = "15.0694"
+        private const val PIN_VISIBLE_TOP3_COVERED_PCT = "16.7830"
+        private const val PIN_ENGINE_TOP4_PCT = "17.7788"
+        private const val PIN_ENGINE_TOP4_COVERED_PCT = "19.8005"
+        private const val PIN_CHAIN_TOP1_HITS = 351
+        private const val PIN_CHAIN_VISIBLE_TOP3_HITS = 703
+        private const val PIN_CHAIN_ENGINE_TOP4_HITS = 833
         private const val PIN_CP1_WORDS = 2_218
         private const val PIN_CP2_WORDS = 2_210
         private const val PIN_CP3_WORDS = 2_179
-        private const val PIN_CP1_HITS = 90
-        private const val PIN_CP2_HITS = 425
-        private const val PIN_CP3_HITS = 880
+        private const val PIN_CP1_VISIBLE_TOP3_HITS = 67
+        private const val PIN_CP2_VISIBLE_TOP3_HITS = 354
+        private const val PIN_CP3_VISIBLE_TOP3_HITS = 768
+        private const val PIN_CP1_ENGINE_TOP4_HITS = 90
+        private const val PIN_CP2_ENGINE_TOP4_HITS = 425
+        private const val PIN_CP3_ENGINE_TOP4_HITS = 880
         private const val PIN_CP1_TOP1_HITS = 23
         private const val PIN_CP2_TOP1_HITS = 145
         private const val PIN_CP3_TOP1_HITS = 391
@@ -416,23 +529,30 @@ class RuSuggestEvalTest {
         private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 20_556
         private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 283
         private const val PIN_STRIP_EMPTY_PREFIX_PCT = "1.3767"
-        private const val PIN_SENTSTART_TOP3_HITS = 194
+        private const val PIN_SENTSTART_TOP1_HITS = 22
+        private const val PIN_SENTSTART_VISIBLE_TOP3_HITS = 187
+        private const val PIN_SENTSTART_ENGINE_TOP4_HITS = 194
         // The context boost over the cp>=2 prefix moments, cross-pinned with the ctxboost_* rows
         // of scripts/suggest_eval.py --language rus; the CI95 is the paired sentence-level
         // bootstrap (the seed and rounds are shared with scripts/suggest_chain.py).
         private const val PIN_CTXBOOST_CP2PLUS_MOMENTS = 15_636
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS = 5_968
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS = 6_270
-        private const val PIN_CTXBOOST_CP2PLUS_TOP3_BASE_HITS = 9_800
-        private const val PIN_CTXBOOST_CP2PLUS_TOP3_BOOST_HITS = 9_906
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_HITS = 9_096
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS = 9_224
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_HITS = 9_800
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_HITS = 9_906
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT = "38.1683"
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT = "40.0998"
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_DELTA = "+1.9314"
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO = "+1.5925"
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI = "+2.2991"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP3_BASE_PCT = "62.6759"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP3_BOOST_PCT = "63.3538"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP3_DELTA = "+0.6779"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_PCT = "58.1734"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT = "58.9921"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_DELTA = "+0.8186"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_PCT = "62.6759"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_PCT = "63.3538"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_DELTA = "+0.6779"
 
         // Bootstrap knobs, shared with scripts/suggest_chain.py; changing them re-pins the CI.
         private const val BOOTSTRAP_SEED = 20261001L

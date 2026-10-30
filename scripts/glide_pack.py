@@ -46,9 +46,9 @@ EXPECTED_ENTRY_COUNT = typo_pack.EXPECTED_ENTRY_COUNT
 GLIDE_SEED = 20260924
 # Word selection (mirrored bit-for-bit by the JVM calibration test): every eval-file token and
 # every dictionary word with ``splitmix64(GLIDE_SEED ^ fnv1a64(word)) % DICT_MODULUS == 0``
-# (about 1/40), each of >= 5 code points, all letters on keys or aliases of a key, present in the
+# (about 1/40), each of >= 2 code points, all letters on keys or aliases of a key, present in the
 # dictionary; the union is sorted by code point, one gesture per word.
-MIN_WORD_CODE_POINTS = 5
+MIN_WORD_CODE_POINTS = 2
 DICT_MODULUS = 40
 # Vertical model (the x model is typo_pack's): the default 5-row Tatar keyboard (kbd_tatar.xml)
 # at the default height on a 1080 px, 440 dpi reference screen. Heights are integer pixels with
@@ -83,8 +83,8 @@ _GRID_WIDTH = typo_pack._GEOMETRY_REFERENCE_WIDTH  # 100 000
 #   7. smooth wander: the per-point offset is a random walk clamped to +/-jitter (two initial
 #      draws, then an x and a y increment in +/-wander per point). Independent per-sample jitter
 #      would inflate the path length beyond what the decoder's length channel accepts.
-# A doubled letter is not a draw: the set carries both variants (see generate_set). STEP/JITTER
-# are in grid units, TSTEP in ms. LOOP_MODULUS is unused here; kept for the golden vectors.
+# A doubled letter is not a draw: the set carries no-dwell, loop and local-dwell variants (see
+# generate_set). STEP/JITTER are in grid units, TSTEP in ms. LOOP_MODULUS is kept for golden vectors.
 # The percentages and moduli are fitted to the FUTO swipe corpus (the measurements live in
 # research/glide-typing.md, the measurement script in research/corpus/futo_glide_analysis.py).
 LOOP_MODULUS = 8
@@ -118,6 +118,10 @@ TSTEP_FAST_MIN = 5  # fast persona: dt in [5, 12) ms
 TSTEP_FAST_VAR = 7
 TSTEP_SLOW_MIN = 14  # slow persona: dt in [14, 27) ms
 TSTEP_SLOW_VAR = 13
+# Dwell rows reuse the plain row's coordinates and total duration. One segment near the selected
+# key slows by this factor (with a minimum duration); the other segments share the remaining time.
+DWELL_SLOW_FACTOR = 4
+DWELL_MIN_DURATION_MS = 40
 # Context rows (the bigram channel's calibration class): after the word rows, one row per
 # selected (previous, word) pair of consecutive eval-sentence tokens. The gesture traces the
 # word; the previous token is the committed context. The pair stream (seed below) drives both
@@ -357,8 +361,8 @@ def generate_gesture(
 ) -> list[tuple[int, int, int]]:
     """One synthetic gesture for ``word`` as (x, y, t) integer samples; see the noise model.
 
-    ``draw_loop`` is the caller's choice, not a draw: the set carries both variants of a doubled
-    word, and the stream feeds the step draw first.
+    ``draw_loop`` is the caller's choice, not a draw: the set carries loop and loop-free variants,
+    and the stream feeds the step draw first.
     """
     has_double = _has_doubled_letter(word)
     stream = splitmix64(seed ^ fnv1a64(word.encode("utf-8")))
@@ -470,6 +474,61 @@ def generate_gesture(
     return sampled
 
 
+def add_dwell(
+    word: str,
+    by_letter: dict[int, _Rect],
+    points: Sequence[tuple[int, int, int]],
+    *,
+    at_double: bool,
+) -> list[tuple[int, int, int]] | None:
+    """Slow one segment at the first doubled key, or at the first key with no doubled letter.
+
+    Coordinates and total duration stay unchanged, so this varies only the local-speed evidence.
+    A word without a suitable target or enough time for the dwell has no corresponding row.
+    """
+    if len(points) < 3:
+        return None
+    letters = [ord(char.lower()) for char in word]
+    doubled = {letters[i] for i in range(1, len(letters)) if letters[i] == letters[i - 1]}
+    target = next(
+        (letter for letter in letters if (letter in doubled) == at_double),
+        None,
+    )
+    if target is None:
+        return None
+    rect = by_letter[target]
+    segment = min(
+        range(len(points) - 1),
+        key=lambda i: (
+            (points[i][0] + points[i + 1][0] - 2 * rect.center_x) ** 2
+            + (points[i][1] + points[i + 1][1] - 2 * rect.center_y) ** 2
+        ),
+    )
+    original_dt = points[segment + 1][2] - points[segment][2]
+    total = points[-1][2] - points[0][2]
+    other_original = total - original_dt
+    if original_dt <= 0 or other_original <= 0:
+        return None
+    dwell_dt = max(original_dt * DWELL_SLOW_FACTOR, DWELL_MIN_DURATION_MS)
+    other_adjusted = total - dwell_dt
+    if other_adjusted < len(points) - 2:
+        return None
+    start = points[0][2]
+    adjusted: list[tuple[int, int, int]] = []
+    for index, (x, y, timestamp) in enumerate(points):
+        after_dwell = index > segment
+        original_before = timestamp - start - (original_dt if after_dwell else 0)
+        new_timestamp = (
+            start
+            + original_before * other_adjusted // other_original
+            + (dwell_dt if after_dwell else 0)
+        )
+        adjusted.append((x, y, new_timestamp))
+    assert adjusted[-1][2] == points[-1][2]
+    assert all(b[2] > a[2] for a, b in zip(adjusted, adjusted[1:]))
+    return adjusted
+
+
 def _clamp(value: int, bound: int) -> int:
     return max(-bound, min(bound, value))
 
@@ -559,14 +618,12 @@ def generate_set(
     radius = key_radius(rects)
     rows: list[str] = []
     for word in words:
-        # A doubled word contributes both variants (the decoder scores it only against its
-        # looped path): the no-jog row first, then the jog row, from the same word stream, so
-        # the pair differs only in the detour. Both variants carry the word's persona. An alias
-        # fold (е then ё, one key) is not a doubled letter and gets no jog row.
+        # A doubled word contributes no-dwell, loop, dwell-at-double and dwell-elsewhere rows.
+        # Dwell rows reuse the no-dwell coordinates, so their only geometry-independent change is
+        # local timing. An alias fold (е then ё, one key) is not a doubled letter.
         knobs = persona_knobs(persona_of(word))
-        rows.append(
-            render_gesture(word, generate_gesture(word, by_letter, radius, seed=seed, **knobs))
-        )
+        plain = generate_gesture(word, by_letter, radius, seed=seed, **knobs)
+        rows.append(render_gesture(word, plain))
         if _has_doubled_letter(word):
             rows.append(
                 render_gesture(
@@ -574,6 +631,10 @@ def generate_set(
                     generate_gesture(word, by_letter, radius, seed=seed, draw_loop=True, **knobs),
                 )
             )
+            for at_double in (True, False):
+                dwell = add_dwell(word, by_letter, plain, at_double=at_double)
+                if dwell is not None:
+                    rows.append(render_gesture(word, dwell))
     # Context rows: one no-jog row per selected pair, after the word rows.
     for previous, word in context_pairs:
         rows.append(

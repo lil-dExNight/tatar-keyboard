@@ -3,25 +3,20 @@
 
 Mirrors, over the committed assets:
 
-* the NEXT_WORD chain of ``CompositePrefixComputer.predict`` (bigram successors, then
-  after-word forms, then the top-frequency fallback; learned word pairs stay empty in the
-  harness), with the strip's three cells;
+* the NEXT_WORD chain of ``CompositePrefixComputer.predict`` (bigram successors, then the
+  top-frequency fallback; learned word pairs stay empty in the harness), with the strip's cells;
 * the completion path of ``TdictPrefixIndex.lookup`` with typo recovery off (the eval
   configuration): exact candidates ranked frequency descending, code point ascending, with
   the same-stem boost when the prefix is itself a complete word of at least four code points;
-* ``TatarSuffixRules``: the runtime suffix table (ported verbatim, NOT the heuristic
-  ``INFLECTIONAL_SUFFIXES`` list of ``suggest_eval.py``) and the bounded harmony-aware form
-  generator, including its documented simplifications versus the build-time generator;
+* ``TatarSuffixRules``: the runtime suffix table used by the same-stem boost (ported verbatim,
+  NOT the heuristic ``INFLECTIONAL_SUFFIXES`` list of ``suggest_eval.py``);
 * the deterministic SplitMix64 resample stream and nearest-rank CI of the bootstrap lines.
 
-``ChainMirror(suffix_rules=False)`` mirrors the Russian engine instead: no suffix rules
-means no same-stem boost and no after-word forms, so NEXT_WORD is bigram successors plus the
-fallback pool only.
+``ChainMirror(suffix_rules=False)`` mirrors the Russian engine instead: no suffix rules means no
+same-stem boost. NEXT_WORD is bigram successors plus the fallback pool in both languages.
 
-Letter classes and the harmony rules are imported from ``wordform_gen.py``: the runtime
-documents them as an exact mirror of it. Everything here is BMP-only Tatar, so Python string
-length is the code-point count and string order is code point (= UTF-8 byte) order, matching
-the Kotlin ``Char``/``compareWords`` semantics.
+Everything here is BMP-only Tatar, so Python string length is the code-point count and string order
+is code point (= UTF-8 byte) order, matching the Kotlin ``Char``/``compareWords`` semantics.
 """
 from __future__ import annotations
 
@@ -34,23 +29,11 @@ from typing import Callable, Iterator, Mapping, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from typo_pack import splitmix64  # noqa: E402
-from wordform_gen import (  # noqa: E402
-    BACK,
-    FRONT,
-    NASALS,
-    VOICELESS,
-    VOWELS,
-    harmony_of,
-    harmony_variants,
-    syllable_count,
-)
 
-# Production bounds (CompositePrefixComputer / TatBigrPrefixIndex / TatarAfterWordForms /
+# Production bounds (CompositePrefixComputer / TatBigrPrefixIndex /
 # GlobalTopFrequencyFallbackFactory / TdictPrefixIndex).
 CELL_COUNT = 4
 BIGRAM_MAX_RESULTS = 4
-GENERATION_CAP = 40
-MAX_CONTEXT_BYTES = 128
 TOP_WORD_POOL = 8
 MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS = 4
 
@@ -135,100 +118,13 @@ def is_inflected_continuation(remainder: str) -> bool:
     return bool(remainder) and remainder in RUNTIME_SUFFIXES
 
 
-def generate_forms(stem: str, max_out: int = GENERATION_CAP) -> list[str]:
-    """Mirror of ``TatarSuffixRules.generateForms``: up to 18 forms per harmony variant.
-
-    Same simplifications as the runtime (no voicing exceptions, no suppletive pronouns, no
-    per-stem overrides): the caller's dictionary filter absorbs the overgeneration.
-    """
-    out: list[str] = []
-
-    def emit(form: str) -> None:
-        if len(out) < max_out and form != stem and form not in out:
-            out.append(form)
-
-    for harmony in harmony_variants(stem):
-        if len(out) >= max_out:
-            break
-        last = stem[-1]
-        vowel_final = last in VOWELS
-        a = "а" if harmony == BACK else "ә"
-        i = "ы" if harmony == BACK else "е"
-        u = "у" if harmony == BACK else "ү"
-        g = "к" if last in VOICELESS else "г"
-        d = "т" if last in VOICELESS else "д"
-        liquid = "н" if last in NASALS else "л"
-        abl = "т" if last in VOICELESS else ("н" if last in NASALS else "д")
-
-        emit(stem + liquid + a + "р")  # plural
-        emit(stem + "н" + i + "ң")  # genitive
-        emit(stem + g + a)  # dative
-        emit(stem + "н" + i)  # accusative
-        emit(stem + d + a)  # locative
-        emit(stem + abl + a + "н")  # ablative
-
-        # 3sg possessive: bare -ы/-е after consonants and у/ү, -сы/-се after other vowels.
-        possessive3 = stem + i if (not vowel_final or last in "уү") else stem + "с" + i
-        emit(possessive3)
-        # The post-3sg cases ride the possessive's own harmony.
-        emit(possessive3 + "н")
-        emit(possessive3 + "н" + a)
-        emit(possessive3 + "нд" + a)
-        emit(possessive3 + "нн" + a + "н")
-
-        # Present 3sg: -а/-ә after consonants; vowel-final stems contract to ый/и.
-        emit(stem[:-1] + ("ый" if harmony == BACK else "и") if vowel_final else stem + a)
-        emit(stem + d + i)  # past 3sg -DI
-        emit(_future_form(stem, harmony, vowel_final))
-        emit(stem + "п" if vowel_final else stem + i + "п")  # gerund -(I)п
-        emit(stem + g + a + "н")  # participle -GAn
-        # Masdar: -у/-ү, with the й-glide spelling -ю after ы/и/у/ү-final stems.
-        emit(stem + "ю" if (vowel_final and last not in "аәоөэ") else stem + u)
-        emit(stem + "ч" + a)  # derivational -чA
-    return out
 
 
-def _future_form(stem: str, harmony: str, vowel_final: bool) -> str:
-    """Mirror of the runtime's lexically split simple future."""
-    if vowel_final:
-        return stem + "яр" if syllable_count(stem) == 1 else stem + "р"
-    if syllable_count(stem) == 1:
-        vowel = "а" if harmony == BACK else "ә"
-    else:
-        vowel = "ы" if harmony == BACK else "е"
-    return stem + vowel + "р"
 
 
-def forms_of(
-    stem: str,
-    already_shown: Sequence[str],
-    max_out: int,
-    frequency_of: Callable[[str], int],
-) -> list[str]:
-    """Mirror of ``TatarAfterWordForms.formsOf``: attested forms, frequency-ranked.
 
-    Keeps generated forms that are dictionary words (frequency > 0), drops the stem, the
-    already-shown words and duplicates, ranks frequency descending then code point ascending,
-    truncated to ``max_out``.
-    """
-    if max_out <= 0:
-        return []
-    encoded = stem.encode("utf-8")
-    if not encoded or len(encoded) > MAX_CONTEXT_BYTES:
-        return []
-    generated = generate_forms(stem, GENERATION_CAP)
-    if not generated:
-        return []
-    shown = set(already_shown)
-    ranked: list[tuple[int, str]] = []
-    for form in generated:
-        if form == stem or form in shown:
-            continue
-        frequency = frequency_of(form)
-        if frequency <= 0:
-            continue
-        bisect.insort(ranked, (-frequency, form))
-    return [form for _, form in ranked[:max_out]]
+
+
 
 
 def longest_stem_with_suffix_remainder(
@@ -262,7 +158,7 @@ class ChainMirror:
     ``words`` is the dictionary in code-point order with parallel ``frequencies``;
     ``successes_by_head`` is the schema-3 bigram table in packing order. With
     ``suffix_rules=False`` the mirror matches an engine without suffix rules (the Russian
-    engine): no same-stem boost in the prefix pass and no after-word forms in NEXT_WORD.
+    engine): no same-stem boost in the prefix pass.
     """
 
     def __init__(
@@ -298,13 +194,11 @@ class ChainMirror:
         return tuple(self._successes.get(head, ()))[:BIGRAM_MAX_RESULTS]
 
     def predict_top3(self, head: str) -> list[str]:
-        """Mirror of the NEXT_WORD chain for a committed word: bigrams, forms, fallback."""
+        """Mirror of the NEXT_WORD chain for a committed word: bigrams, then fallback."""
         cached = self._predict_cache.get(head)
         if cached is not None:
             return cached
         shown = list(self._successes.get(head, ()))[:BIGRAM_MAX_RESULTS]
-        if len(shown) < CELL_COUNT and self._suffix_rules:
-            shown += forms_of(head, shown, CELL_COUNT - len(shown), self.frequency_of)
         if len(shown) < CELL_COUNT:
             for word in self._fallback_pool:
                 if len(shown) >= CELL_COUNT:
@@ -492,30 +386,31 @@ def _common_prefix_length(first: str, second: str) -> int:
 def keystroke_costs(
     lines: Sequence[str],
     next_word_top3: Callable[[str], Sequence[str]],
-    completion_top3: Callable[[str], Sequence[str]],
+    completion_top3: Callable[[str, str | None], Sequence[str]],
     mdp_lengths: Mapping[str, int],
 ) -> tuple[int, int, int]:
     """Baseline, simulated and oracle keystroke counts over the eval lines.
 
     Baseline: every code point typed, plus one space between words. Simulated: the first word
     uses completion assist; a later word costs 1 (a strip tap) when the chain shows it for
-    the previous word, else completion assist. Completion assist types code points until the
-    word enters the prefix top-3 (cost k+1 with the tap) or, when it never does, the full
-    length. Oracle: the first word costs its minimal distinguishing prefix plus the tap
-    (never more than its full length; a word without one costs the full length), and every
-    later word is a tap.
+    the previous word, else completion assist with that previous word as context. Completion
+    assist types code points until the word enters the shown cells (cost k+1 with the tap)
+    or, when it never does, the full length. Oracle: the first word costs its minimal
+    distinguishing prefix plus the tap (never more than its full length; a word without one
+    costs the full length), and every later word is a tap.
     """
-    completion_costs: dict[str, int] = {}
+    completion_costs: dict[tuple[str, str | None], int] = {}
 
-    def completion_cost(word: str) -> int:
-        cost = completion_costs.get(word)
+    def completion_cost(word: str, context: str | None) -> int:
+        key = (word, context)
+        cost = completion_costs.get(key)
         if cost is None:
             cost = len(word)
             for k in range(1, len(word)):
-                if word in completion_top3(word[:k]):
+                if word in completion_top3(word[:k], context):
                     cost = k + 1
                     break
-            completion_costs[word] = cost
+            completion_costs[key] = cost
         return cost
 
     baseline = 0
@@ -524,9 +419,11 @@ def keystroke_costs(
     for line in lines:
         words = line.split(" ")
         baseline += sum(len(word) for word in words) + len(words) - 1
-        simulated += completion_cost(words[0])
+        simulated += completion_cost(words[0], None)
         for previous, word in zip(words, words[1:]):
-            simulated += 1 if word in next_word_top3(previous) else completion_cost(word)
+            simulated += (
+                1 if word in next_word_top3(previous) else completion_cost(word, previous)
+            )
         mdp = mdp_lengths.get(words[0])
         oracle += min(len(words[0]), mdp + 1) if mdp is not None else len(words[0])
         oracle += len(words) - 1

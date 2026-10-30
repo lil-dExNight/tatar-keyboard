@@ -14,7 +14,14 @@ UTF-8/LF. The Tatar set is regenerated, never committed: its identity is the pin
 asserted by tests/typo_eval_pack and mirrored bit-for-bit by TypoMutatedEvalTest.kt. The Russian
 set is committed (``app/src/test/resources/ru_typo_eval_set.tsv``): ``build --language rus``
 regenerates it, tests/typo_eval_pack asserts the committed file is byte-identical, and
-RuTypoMutatedEvalTest.kt measures the committed rows. Exits 2 on missing or invalid input.
+RuTypoMutatedEvalTest.kt measures the committed rows. The ``safety-set`` command separately
+builds the reviewed valid-OOV sets from held-out forms absent from the pinned dictionary.
+``seen_form`` means that the exact form occurs in the filtered conversational training table;
+``new_form_of_seen_stem`` and ``unseen_stem`` cover the remaining forms. Conservative admission
+requires NFC lowercase text in the language alphabet, 3..32 code points, a vowel, and no run of
+four identical letters. These rules reject formal fragments, not subtle misspellings, so every
+admitted word also appears in the explicit native-plausibility review list below. Exits 2 on
+missing or invalid input.
 """
 
 from __future__ import annotations
@@ -23,14 +30,18 @@ import argparse
 import hashlib
 import json
 import sys
+import unicodedata
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence, TextIO
+from typing import Mapping, Sequence, TextIO
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import dict_accept  # noqa: E402
+import dictionary_coverage as coverage  # noqa: E402
+import suggest_chain  # noqa: E402
 import typo_pack  # noqa: E402
 
 
@@ -43,6 +54,72 @@ RU_TYPO_EVAL_SEED = 0x52554556
 MIN_WORD_CODE_POINTS = 3
 CLASS_TAGS = {"sub": 1, "del": 2, "ins": 3, "trans": 4}
 CLASS_NAMES = tuple(sorted(CLASS_TAGS, key=CLASS_TAGS.get))
+MIN_SAFETY_WORD_CODE_POINTS = 3
+MAX_SAFETY_WORD_CODE_POINTS = 32
+
+# Corpus attestation does not establish spelling. These held-out forms passed a separate
+# native-plausibility review; grouping documents their expected stratum on the pinned inputs.
+REVIEWED_VALID_OOV_WORDS = {
+    "tat": (
+        # Seen form in filtered conversational training.
+        "ваттыңмы", "джентльменнар", "дидемме", "ияләшәчәксең", "казымый", "күчергечне",
+        "ошадым", "сыртыңа", "сүндердеңме", "тәкъдимегезне", "шалтыраттың", "яшәдеңме",
+        # New form of a stem present in the shipped dictionary.
+        "абыйларымның", "арфам", "бергәлекләр", "берүземне", "бирешәсез", "ботинкам",
+        "визага", "газетам", "галәмче", "гипсны", "гыйбарәләренең", "гыйбарәның",
+        "дулкынлануым", "калман", "каргышына", "килмәячәксез", "кисмиләр", "кичергәнегез",
+        "комачаулыйсыз", "кондызларны", "копияны", "күзлекләре", "күкегә", "күрешүебезне",
+        "кәләшемнең", "көрәшәчәгенә", "майтаралар", "мәшгульсез", "очрарсың", "ошарсың",
+        "пастасын", "профсоюзга", "радиоң", "серегез", "синә", "сумың", "сырагыз",
+        "сөйләгезче", "тудырганым", "тумышыгыз", "тәкъдимнәремнән", "тәмамлыкка", "уйланучы",
+        "фейерверкны", "хыялланмыйм", "чыпчыкларына", "чәйләренә", "эшләмәсләр",
+        "эшләмәячәксең", "юклыгың", "яңагыннан", "җибәргәнебез", "җинаятьчеләренең",
+        "җитмәгәнне", "җиңмәс", "җәйми", "үткәргәнсең", "әкиятчесе", "өремчегә",
+        # No shipped-dictionary stem under the same suffix analysis.
+        "алданырсың", "антрополексема", "антропонимиконында", "аударма", "ахмаклыкларны",
+        "ашыгуыңны", "аңлатуыңны", "бармыйбызмы", "белештерәсем", "бетерәсеңме", "биемәгез",
+        "бикләмичә", "бушатсаң", "бүлик", "горурланыйк", "графлыгындагы", "гүрелдәү",
+        "дулкынлануымны", "дәреслегемне", "ертты", "заманчалыгы", "исемлегегезне", "иснәнеп",
+        "ишеткәннәреңнән", "йокланылган", "кабызма", "кагасыңмы", "кайсытелләрдә",
+        "кайтарылмаслык", "каралыгын", "каһвәсен", "киеренкеләндерергә", "киясезме",
+        "корычагач", "кунакханәдәме", "кыздырса", "кыландырмам", "кылтаючан", "кыткылдама",
+        "күтләкне", "күңелчәк", "көюләр", "магарыч", "магма", "масдарлар", "микродулкын",
+        "миллиметрлап", "мәгънәсендәдер", "мәхариҗ", "начарландыра", "нудист", "онытылгач",
+        "ошатыр", "пешекләгез", "пончик", "салышыйк", "сахрадагы", "серсүзегезнең", "сиземләр",
+        "сикермәгез", "суффиксы", "сөелүләр", "сөмер", "табынганлыгы", "тамгачылык", "тануымны",
+        "таңдагы", "тозагы", "тондыргыч", "торыргамы", "тыңламаучан", "тәшкиләтле",
+        "төшерүеңә", "төшмәячәгенә", "улыңмы", "хәтерләгәннәрнең", "чакыруыма", "чыштырдаган",
+        "шапылдата", "шунча", "шөгыльләнәсезме", "эшләмәячәгемне", "юешләнгән", "юлыктырды",
+        "ябылганын", "япканымны", "яратышмаган", "яшердеңме", "җау", "җимерегез", "җирәнчәк",
+        "җитмәвемне", "җылау", "җылынмады", "җырламагыз", "җәрәхәтләде", "җөмләләремнең",
+        "үлчәнми", "әйтешергә", "өйләнәсеңме", "өйрәнәсезме", "өлгерерме", "өркәчле", "өшкерә",
+    ),
+    "rus": (
+        # Seen form in filtered conversational training.
+        "гасит", "долгожданные", "задумчиво", "минному", "одесское", "пешеходными",
+        "приумножать", "расчёска", "сверхзвуковых", "стремилось", "усадила",
+        # New form of a stem with at least three other shipped-dictionary forms.
+        "арктическое", "бессмертию", "возникай", "высосав", "грубиянов", "дрозды",
+        "замещающий", "замёрзло", "злоупотребляй", "кокосовых", "комментирую", "кошмарными",
+        "молол", "мостиками", "мучением", "норвежскую", "отговорили", "переполнения",
+        "подвинулись", "подружатся", "покойны", "покрасят", "понедельников", "постригла",
+        "преступниц", "прохладные", "сменяли", "согрел", "спутаны", "стремительней",
+        "схваткой", "термометрах", "хлопотами", "шахматными",
+        # No sufficiently attested shipped-dictionary stem under the same analysis.
+        "атлетического", "безмозглость", "близорук", "боге", "бодрящего", "валенках",
+        "вздут", "вполуха", "газифицирована", "дебоширить", "дефенестрация", "добродушного",
+        "домыл", "донимая", "дословный", "жаворонком", "заверено", "замаячил", "измучила",
+        "имаджинировали", "интенсифицировать", "каталонском", "кваса", "коран", "кормящая",
+        "косинуса", "куревом", "ладожское", "лестничном", "межнациональный", "нахмурила",
+        "незаполненным", "немодное", "нерестилище", "нумизматика", "обласкан", "обхитрили",
+        "отвесил", "перекрещиваясь", "пластмассовая", "покусывать", "пражская", "предрассудок",
+        "предрождественскими", "проймёшь", "пухлая", "размышлениях", "раскритикует",
+        "распахнулась", "расщепить", "рекламирую", "рокироваться", "слюнявчик", "снюхался",
+        "созревал", "сосущий", "суеверная", "сёмга", "толпилась", "тридцатилетнюю",
+        "удивлённой", "успеваемостью", "фарминдустрию", "фундаменталистом",
+        "электрообогревателя",
+    ),
+}
 
 _RES_XML_DIR = ROOT / "app" / "src" / "main" / "res" / "xml"
 _TEST_RESOURCES_DIR = ROOT / "app" / "src" / "test" / "resources"
@@ -61,7 +138,8 @@ class LanguageSpec:
 
     ``rowkey_files`` feed the insertion alphabet; ``rows_file`` (which includes them by
     reference) feeds the geometric map. ``default_output`` is the committed set path, or None
-    when the language's set is regenerated and never committed.
+    when the language's set is regenerated and never committed. ``conv_frequency`` supplies
+    exact-form training attestation and ``safety_output`` is the committed valid-OOV set path.
     """
 
     tag: str
@@ -74,6 +152,8 @@ class LanguageSpec:
     rows_file: str
     rowkey_files: tuple[str, ...]
     default_output: Path | None
+    conv_frequency: Path
+    safety_output: Path
 
 
 TATAR = LanguageSpec(
@@ -87,6 +167,8 @@ TATAR = LanguageSpec(
     rows_file="rows_tatar.xml",
     rowkey_files=typo_pack._TATAR_ROWKEY_FILES,
     default_output=None,
+    conv_frequency=ROOT / "data" / "dictionary" / "dict-accept" / "conv-freq-tt.tsv",
+    safety_output=_TEST_RESOURCES_DIR / "tt_valid_oov_safety_set.tsv",
 )
 RUSSIAN = LanguageSpec(
     tag="rus",
@@ -103,6 +185,8 @@ RUSSIAN = LanguageSpec(
         "rowkeys_russian3.xml",
     ),
     default_output=_TEST_RESOURCES_DIR / "ru_typo_eval_set.tsv",
+    conv_frequency=ROOT / "data" / "dictionary" / "dict-accept" / "conv-freq-ru.tsv",
+    safety_output=_TEST_RESOURCES_DIR / "ru_valid_oov_safety_set.tsv",
 )
 LANGUAGES = {language.tag: language for language in (TATAR, RUSSIAN)}
 
@@ -378,6 +462,167 @@ class TypoEvalSet:
         return hashlib.sha256(self.data).hexdigest()
 
 
+@dataclass(frozen=True)
+class ValidOovSafetySet:
+    rows: tuple[tuple[str, str], ...]
+    text: str
+    data: bytes
+    stratum_counts: dict[str, int]
+
+    @property
+    def size(self) -> int:
+        return len(self.rows)
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.data).hexdigest()
+
+
+def is_native_plausible_form(word: str, language: LanguageSpec) -> bool:
+    """Apply conservative formal checks; the review list decides actual admission."""
+    if not MIN_SAFETY_WORD_CODE_POINTS <= len(word) <= MAX_SAFETY_WORD_CODE_POINTS:
+        return False
+    if word != unicodedata.normalize("NFC", word).lower():
+        return False
+    normalized, _reason = coverage.normalize_word(
+        word, coverage.language_for(language.tag).alphabet
+    )
+    if normalized != word:
+        return False
+    if not set(word) & dict_accept.VOWELS[language.tag]:
+        return False
+    return not any(character * 4 in word for character in set(word))
+
+
+def _russian_seen_stem(word: str, vocabulary: frozenset[str]) -> str | None:
+    """Return the deterministic best stem with three other attested forms, if one exists."""
+    candidates: list[tuple[int, int, str, str]] = []
+    for ending in sorted(dict_accept.RUSSIAN_ENDINGS):
+        if ending and not word.endswith(ending):
+            continue
+        stem = word[: len(word) - len(ending)] if ending else word
+        if len(stem) < dict_accept.MIN_STEM:
+            continue
+        siblings = sum(
+            other != ending and stem + other != word and stem + other in vocabulary
+            for other in dict_accept.RUSSIAN_ENDINGS
+        )
+        if siblings >= dict_accept.MIN_PARADIGM_SIBLINGS:
+            candidates.append((-siblings, -len(stem), stem, ending))
+    if not candidates:
+        return None
+    return min(candidates)[2]
+
+
+def valid_oov_stratum(
+    word: str, vocabulary: frozenset[str], seen_frequencies: Mapping[str, int],
+    language: LanguageSpec,
+) -> str:
+    """Classify an OOV form by exact training attestation, then by shipped stem evidence."""
+    if seen_frequencies.get(word, 0) > 0:
+        return suggest_chain.STRATUM_SEEN_FORM
+    if language.tag == TATAR.tag:
+        stem = suggest_chain.longest_stem_with_suffix_remainder(
+            word, lambda candidate: int(candidate in vocabulary)
+        )
+    else:
+        stem = _russian_seen_stem(word, vocabulary)
+    return (
+        suggest_chain.STRATUM_NEW_FORM
+        if stem is not None
+        else suggest_chain.STRATUM_UNSEEN_STEM
+    )
+
+
+def build_valid_oov_safety_set(
+    reviewed_words: Sequence[str],
+    dictionary_words: Sequence[str],
+    eval_words: set[str],
+    seen_frequencies: Mapping[str, int],
+    *,
+    language: LanguageSpec = TATAR,
+) -> ValidOovSafetySet:
+    """Render the reviewed OOV rows after checking provenance, filtering and stratification."""
+    if len(set(reviewed_words)) != len(reviewed_words):
+        raise typo_pack.TypoPackError("valid-OOV review list contains a duplicate")
+    vocabulary = frozenset(dictionary_words)
+    rows: list[tuple[str, str]] = []
+    for word in reviewed_words:
+        if word not in eval_words:
+            raise typo_pack.TypoPackError(f"reviewed safety word is not held out: {word}")
+        if word in vocabulary:
+            raise typo_pack.TypoPackError(f"reviewed safety word is not OOV: {word}")
+        if not is_native_plausible_form(word, language):
+            raise typo_pack.TypoPackError(f"reviewed safety word fails formal checks: {word}")
+        rows.append((word, valid_oov_stratum(word, vocabulary, seen_frequencies, language)))
+    rows.sort()
+    counts = {name: 0 for name in suggest_chain.STRATA}
+    for _word, stratum in rows:
+        counts[stratum] += 1
+    missing = [name for name, count in counts.items() if count == 0]
+    if missing:
+        raise typo_pack.TypoPackError(
+            f"valid-OOV safety set lacks strata: {', '.join(missing)}"
+        )
+    text = "".join(f"{word}\t{stratum}\n" for word, stratum in rows)
+    return ValidOovSafetySet(
+        rows=tuple(rows),
+        text=text,
+        data=text.encode("utf-8"),
+        stratum_counts=counts,
+    )
+
+
+def read_conv_frequencies(path: Path) -> dict[str, int]:
+    """Read the committed filtered training frequencies with strict row validation."""
+    if not path.is_file():
+        raise typo_pack.TypoPackError(f"conversational frequency table is missing: {path}")
+    frequencies: dict[str, int] = {}
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line or line.startswith("#") or line == "word\tconv_freq":
+            continue
+        fields = line.split("\t")
+        if len(fields) != 2 or not fields[0] or not fields[1].isascii() or not fields[1].isdigit():
+            raise typo_pack.TypoPackError(
+                f"malformed conversational frequency row: {path}:{line_number}"
+            )
+        word, value_text = fields
+        value = int(value_text)
+        if value <= 0 or word in frequencies:
+            raise typo_pack.TypoPackError(
+                f"invalid conversational frequency row: {path}:{line_number}"
+            )
+        frequencies[word] = value
+    if not frequencies:
+        raise typo_pack.TypoPackError(f"conversational frequency table is empty: {path}")
+    return frequencies
+
+
+def generate_valid_oov_safety_set(
+    eval_set_path: Path,
+    dictionary_path: Path,
+    conv_frequency_path: Path,
+    *,
+    language: LanguageSpec = TATAR,
+) -> ValidOovSafetySet:
+    """Read the pinned assets and build that language's reviewed valid-OOV safety set."""
+    dictionary_words = typo_pack.read_dictionary_words(
+        dictionary_path,
+        expected_asset_sha256=language.dictionary_asset_sha256,
+        expected_raw_sha256=language.dictionary_raw_sha256,
+        expected_entry_count=language.dictionary_entry_count,
+    )
+    return build_valid_oov_safety_set(
+        REVIEWED_VALID_OOV_WORDS[language.tag],
+        dictionary_words,
+        read_eval_words(eval_set_path),
+        read_conv_frequencies(conv_frequency_path),
+        language=language,
+    )
+
+
 def build_typo_eval_set(
     words: Sequence[str],
     geometric_map: dict[int, tuple[int, ...]],
@@ -455,6 +700,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
     build.add_argument("--dictionary", type=Path)
     build.add_argument("--layout-dir", type=Path)
     build.add_argument("--output", type=Path)
+    safety = commands.add_parser("safety-set", help="generate the reviewed valid-OOV safety set")
+    safety.add_argument("--language", default=TATAR.tag, choices=sorted(LANGUAGES))
+    safety.add_argument("--eval-set", type=Path)
+    safety.add_argument("--dictionary", type=Path)
+    safety.add_argument("--conv-frequency", type=Path)
+    safety.add_argument("--output", type=Path)
     return parser
 
 
@@ -493,6 +744,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "set_bytes": len(result.data),
                     "set_sha256": result.sha256,
                     "substrate_words": result.substrate_count,
+                }
+            )
+        elif args.command == "safety-set":
+            language = LANGUAGES[args.language]
+            eval_set = args.eval_set if args.eval_set is not None else language.eval_set
+            dictionary = (
+                args.dictionary if args.dictionary is not None else language.dictionary
+            )
+            conv_frequency = (
+                args.conv_frequency
+                if args.conv_frequency is not None
+                else language.conv_frequency
+            )
+            output = args.output if args.output is not None else language.safety_output
+            result = generate_valid_oov_safety_set(
+                eval_set, dictionary, conv_frequency, language=language
+            )
+            typo_pack.write_atomic(output, result.data)
+            _print_json(
+                {
+                    "language": language.tag,
+                    "rows": result.size,
+                    "set_bytes": len(result.data),
+                    "set_sha256": result.sha256,
+                    "stratum_counts": result.stratum_counts,
                 }
             )
         else:  # pragma: no cover

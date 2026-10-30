@@ -1,6 +1,7 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
 import com.sun.management.ThreadMXBean
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -22,6 +23,7 @@ import java.io.File
 import java.lang.management.ManagementFactory
 import java.nio.ByteBuffer
 import java.security.MessageDigest
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.sqrt
 
@@ -101,6 +103,7 @@ class GlideRecoveryCalibrationTest {
      */
     private class GeneratorGeometry(raw: List<GlideKeyGeometry.RawKey>) {
         val byLetter: Map<Int, Rect>
+        val keyLetters = raw.mapTo(HashSet()) { it.codePoint }
         val minWidth = raw.minOf { it.right - it.left }
         val radius = raw.minOf { minOf(it.right - it.left, it.bottom - it.top) }
 
@@ -119,7 +122,13 @@ class GlideRecoveryCalibrationTest {
         }
     }
 
-    private class GeneratedPath(val xs: IntArray, val ys: IntArray, val ts: IntArray, val drewLoop: Boolean) {
+    private class GeneratedPath(
+        val xs: IntArray,
+        val ys: IntArray,
+        val ts: IntArray,
+        val drewLoop: Boolean,
+        val dwellKind: Int = DWELL_NONE,
+    ) {
         /** The word of the set row this path was generated for (rows outnumber words). */
         var rowWord: String = ""
 
@@ -148,7 +157,7 @@ class GlideRecoveryCalibrationTest {
         val codePoints = word.codePoints().toArray()
         val hasDouble = hasDoubledLetter(word)
         var stream = splitmix64(streamSeed xor fnv1a64(word.toByteArray(Charsets.UTF_8)))
-        // The loop is the CALLER's decision (the set carries both variants of a doubled word), so
+        // The loop is the caller's decision (the set carries loop and loop-free variants), so
         // the stream feeds the step draw at once.
         val loop = drawLoop && hasDouble
         val stepMin = minWidth / STEP_DIVISOR
@@ -359,6 +368,55 @@ class GlideRecoveryCalibrationTest {
             streamSeed = streamSeed,
         )
 
+    /** Mirror of glide_pack.add_dwell: local timing changes, coordinates and duration do not. */
+    private fun addDwell(
+        geo: GeneratorGeometry,
+        word: String,
+        path: GeneratedPath,
+        atDouble: Boolean,
+    ): GeneratedPath? {
+        if (path.xs.size < 3) return null
+        val letters = word.codePoints().toArray().map { Character.toLowerCase(it) }
+        val doubled = HashSet<Int>()
+        for (i in 1 until letters.size) {
+            if (letters[i] == letters[i - 1]) doubled.add(letters[i])
+        }
+        val target = letters.firstOrNull { (it in doubled) == atDouble } ?: return null
+        val rect = geo.byLetter.getValue(target)
+        var segment = -1
+        var bestDistance = Long.MAX_VALUE
+        for (i in 0 until path.xs.size - 1) {
+            val dx = (path.xs[i] + path.xs[i + 1] - 2 * rect.centerX).toLong()
+            val dy = (path.ys[i] + path.ys[i + 1] - 2 * rect.centerY).toLong()
+            val distance = dx * dx + dy * dy
+            if (distance < bestDistance) {
+                bestDistance = distance
+                segment = i
+            }
+        }
+        val originalDt = path.ts[segment + 1] - path.ts[segment]
+        val total = path.ts.last() - path.ts[0]
+        val otherOriginal = total - originalDt
+        if (originalDt <= 0 || otherOriginal <= 0) return null
+        val dwellDt = maxOf(originalDt * DWELL_SLOW_FACTOR, DWELL_MIN_DURATION_MS)
+        val otherAdjusted = total - dwellDt
+        if (otherAdjusted < path.xs.size - 2) return null
+        val start = path.ts[0]
+        val adjusted = IntArray(path.ts.size)
+        for (i in path.ts.indices) {
+            val afterDwell = i > segment
+            val originalBefore = path.ts[i] - start - (if (afterDwell) originalDt else 0)
+            adjusted[i] = (start + originalBefore.toLong() * otherAdjusted / otherOriginal +
+                (if (afterDwell) dwellDt else 0)).toInt()
+        }
+        check(adjusted.last() == path.ts.last())
+        for (i in 1 until adjusted.size) check(adjusted[i] > adjusted[i - 1])
+        return GeneratedPath(
+            path.xs, path.ys, adjusted, false,
+            if (atDouble) DWELL_AT_DOUBLE else DWELL_ELSEWHERE,
+        )
+    }
+
     private fun renderSet(
         words: List<String>,
         geo: GeneratorGeometry,
@@ -367,14 +425,19 @@ class GlideRecoveryCalibrationTest {
         val rendered = StringBuilder()
         val paths = ArrayList<GeneratedPath>(words.size)
         for (word in words) {
-            // A doubled word contributes BOTH variants — the no-jog row first, then the jog row —
-            // drawn from the same word stream (mirror of glide_pack.generate_set). Both variants
-            // carry the word's persona. An alias fold (е then ё, one key) is not a doubled
-            // letter and gets no jog row.
+            // Dwell rows reuse the no-dwell coordinates and total duration (mirror of
+            // glide_pack.generate_set). An alias fold (е then ё, one key) is not a double.
             val knobs = personaKnobs(personaOf(word))
-            appendRow(word, generateGesture(geo, word, false, knobs), rendered, paths)
+            val plain = generateGesture(geo, word, false, knobs)
+            appendRow(word, plain, rendered, paths)
             if (hasDoubledLetter(word)) {
                 appendRow(word, generateGesture(geo, word, true, knobs), rendered, paths)
+                addDwell(geo, word, plain, atDouble = true)?.let {
+                    appendRow(word, it, rendered, paths)
+                }
+                addDwell(geo, word, plain, atDouble = false)?.let {
+                    appendRow(word, it, rendered, paths)
+                }
             }
         }
         // Context rows: one no-jog row per selected pair, after the word rows.
@@ -425,6 +488,10 @@ class GlideRecoveryCalibrationTest {
     fun theSyntheticSetIsByteIdenticalToTheGeneratorRun() {
         val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
         assertEquals(SET_SIZE, words.size)
+        val shortLengths = words.map { word ->
+            word.codePointCount(0, word.length)
+        }.filterTo(HashSet()) { it <= 4 }
+        assertEquals(setOf(2, 3, 4), shortLengths)
         val (rendered, _) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
         val bytes = rendered.toString().toByteArray(Charsets.UTF_8)
         assertEquals(SET_BYTES, bytes.size)
@@ -470,25 +537,20 @@ class GlideRecoveryCalibrationTest {
         val heldTop = IntArray(2)
         var trainCount = 0
         var heldCount = 0
-        // Per-class split (the doubled-letter evidence rule): plain words, doubled words whose
-        // gesture drew the loop, and doubled words whose gesture did not — the no-jog class split
-        // again by whether the undoubled twin exists in the dictionary (a twinless doubled word is
-        // the only shape candidate on its path and keeps winning, which is correct). Words with an
-        // alias letter (a long-press letter decoded on its base key) form a fifth class, so the
-        // other four keep their membership.
-        val classNames = arrayOf(
-            "plain", "doubled_jog", "doubled_nojog_twinless", "doubled_nojog_twin", "alias",
-        )
+        // Per-class split: plain words, loop and no-dwell doubled gestures (the latter split by
+        // whether an undoubled twin exists), alias letters, dwell at the doubled key, and dwell
+        // elsewhere. Dwell-elsewhere and no-dwell rows have identical geometry and total duration.
         val classHeldCount = IntArray(CLASS_COUNT)
         val classHeldTop = Array(CLASS_COUNT) { IntArray(2) }
+        val dwellTwinCount = IntArray(2)
+        val dwellTwinTop1 = IntArray(2)
         val timings = ArrayList<Long>()
         val candidates = ArrayList<Int>()
         val scored = ArrayList<Int>()
 
-        // Train pass first: it doubles as the warmup (the lazy index build happens here). The
-        // iteration unit is the SET ROW (a doubled word contributes two); the row carries its word
-        // with it.
-        for ((position, path) in paths.withIndex()) {
+        // Train pass first: it doubles as the warmup (the lazy index build happens here). Each
+        // generated variant is a separate row and carries its target word with it.
+        for (path in paths) {
             if (path.rowContext.isNotEmpty()) continue // context rows belong to the G5 gate
             val word = path.rowWord
             val heldOut = isHeldOut(word)
@@ -504,16 +566,15 @@ class GlideRecoveryCalibrationTest {
                 heldCount++
                 if (top1) heldTop[0]++
                 if (top3) heldTop[1]++
-                val clazz = when {
-                    hasAliasLetter(word) -> 4
-                    !hasDoubledLetter(word) -> 0
-                    path.drewLoop -> 1
-                    twinInDictionary(word) -> 3
-                    else -> 2
-                }
+                val clazz = recoveryClass(word, path, tatarGeneratorGeometry, vocabularySet)
                 classHeldCount[clazz]++
                 if (top1) classHeldTop[clazz][0]++
                 if (top3) classHeldTop[clazz][1]++
+                if (path.dwellKind != DWELL_NONE && twinInDictionary(word, vocabularySet)) {
+                    val dwellClass = if (path.dwellKind == DWELL_AT_DOUBLE) 0 else 1
+                    dwellTwinCount[dwellClass]++
+                    if (top1) dwellTwinTop1[dwellClass]++
+                }
                 timings.add(elapsed)
                 candidates.add(decoder.lastCandidateCount)
                 scored.add(decoder.lastScoredCount)
@@ -553,11 +614,20 @@ class GlideRecoveryCalibrationTest {
             classTop1[clazz] = classHeldTop[clazz][0].toDouble() / classHeldCount[clazz] * 100.0
             classTop3[clazz] = classHeldTop[clazz][1].toDouble() / classHeldCount[clazz] * 100.0
             println(
-                "Glide P7-8 class ${classNames[clazz]}: n=${classHeldCount[clazz]} " +
+                "Glide P7-8 class ${CLASS_NAMES[clazz]}: n=${classHeldCount[clazz]} " +
                     "top1=${fmt(classTop1[clazz])}% " +
                     "top3=${fmt(classTop3[clazz])}%",
             )
         }
+
+        val dwellTwinAtDouble = pct(dwellTwinTop1[0], dwellTwinCount[0])
+        val dwellTwinElsewhere = pct(dwellTwinTop1[1], dwellTwinCount[1])
+        println(
+            "Glide dwell twins: atDouble=${dwellTwinTop1[0]}/${dwellTwinCount[0]} " +
+                "top1=${fmt(dwellTwinAtDouble)}% elsewhere=${dwellTwinTop1[1]}/${dwellTwinCount[1]} " +
+                "top1=${fmt(dwellTwinElsewhere)}% noDwell=${classHeldTop[3][0]}/${classHeldCount[3]} " +
+                "top1=${fmt(classTop1[3])}%",
+        )
 
         assertTrue("held-out top-3 ${fmt(heldTop3)}% below the 60% gate", heldTop3 >= G1_TOP3_MIN)
         assertTrue("held-out top-1 ${fmt(heldTop1)}% below the 35% gate", heldTop1 >= G1_TOP1_MIN)
@@ -569,26 +639,32 @@ class GlideRecoveryCalibrationTest {
             assertTrue("decode p95 ${fmt(p95)}ms over the 2ms host gate", p95 <= G2_P95_MS)
         }
 
-        // Per-class tolerances of the doubled-letter evidence rule: plain words may not regress
-        // more than 1.0 pp, a no-jog doubled word must usually lose to its dictionary twin (the
-        // twin wins most of those rows), and a jog must still decode the doubled word. The pinned
-        // values describe the persona-mixed set under the shipped constants.
+        // Plain and alias classes keep their recovery floors. No-dwell twins retain their pinned
+        // ceiling; dwell must recover ambiguous doubles without changing the dwell-elsewhere control.
         assertTrue(
-            "plain top-1 regressed past the 1.0 pp tolerance (pinned 85.5856)",
-            classTop1[0] >= 85.5856 - 1.0,
+            "plain top-1 regressed past the 1.0 pp tolerance",
+            classTop1[0] >= PLAIN_TOP1_PIN - 1.0,
         )
         assertTrue(
-            "plain top-3 regressed past the 1.0 pp tolerance (pinned 93.1721)",
-            classTop3[0] >= 93.1721 - 1.0,
+            "plain top-3 regressed past the 1.0 pp tolerance",
+            classTop3[0] >= PLAIN_TOP3_PIN - 1.0,
         )
-        assertTrue(
-            "a doubled word must not win its no-jog row when the twin exists (ceiling 25%)",
-            classTop1[3] <= 25.0,
+        assertEquals(
+            "the no-dwell twin ceiling changed",
+            NO_DWELL_TWIN_TOP1_PIN, classTop1[3], 0.0001,
         )
         assertTrue(
             "doubled words must still decode when the path jogs (floor 70%)",
             classTop1[1] >= 70.0,
         )
+        assertTrue("dwell-at-double top-1 below 70%", classTop1[5] >= 70.0)
+        assertTrue("dwell-at-double twin top-1 below 70%", dwellTwinAtDouble >= 70.0)
+        assertTrue(
+            "dwell elsewhere increased false doubles",
+            dwellTwinElsewhere <= classTop1[3] + 0.0001,
+        )
+        assertTrue("alias top-1 regressed past 1 pp", classTop1[4] >= ALIAS_TOP1_PIN - 1.0)
+        assertTrue("alias top-3 regressed past 1 pp", classTop3[4] >= ALIAS_TOP3_PIN - 1.0)
         // A twinless doubled word also scores against its loop-free path, which no other word owns.
         assertTrue(
             "twinless no-jog top-1 regressed past the 1.0 pp tolerance (pinned 85.0515)",
@@ -601,10 +677,10 @@ class GlideRecoveryCalibrationTest {
     }
 
     /**
-     * The tuning surface: top-3 on the TRAIN split (every second row; the iteration unit is the set
-     * ROW, a doubled word contributes two) over a sigma grid around the shipped constants — the
-     * ported PR #1870 values (22.08 / 0.5109) included — plus a frequency-exponent row at the
-     * shipped sigmas. The constants were chosen train-side; the held-out numbers of
+     * The tuning surface: top-3 on the TRAIN split (every second generated row) over a sigma grid
+     * around the shipped constants — the ported PR #1870 values (22.08 / 0.5109) included — plus
+     * a frequency-exponent row at the shipped sigmas. The constants were chosen train-side; the
+     * held-out numbers of
      * [gatesG1AndG2OnTheRealDictionary] are the reported ones. Diagnostic only — it prints, it does
      * not assert a threshold.
      */
@@ -724,11 +800,14 @@ class GlideRecoveryCalibrationTest {
         val generatorGeometry: GeneratorGeometry,
         val words: List<String>,
         val sentences: List<String>,
+        val selectionSentences: List<String> = sentences,
     ) {
+        val wordSet: Set<String> by lazy { words.toSet() }
+
         /** The language's generated set rows, computed once per bench. */
         val paths: List<GeneratedPath> by lazy {
             renderSet(
-                selectWords(words, sentences, generatorGeometry), generatorGeometry,
+                selectWords(words, selectionSentences, generatorGeometry), generatorGeometry,
                 selectContextPairs(words, sentences, generatorGeometry),
             ).second
         }
@@ -744,14 +823,16 @@ class GlideRecoveryCalibrationTest {
 
     private fun russianBench() = LanguageBench(
         "ru", TdictGlideInventory(russianIndex!!), russianGeometry, russianGeneratorGeometry,
-        russianVocabulary, emptyList(),
+        russianVocabulary, russianEvalLines, emptyList(),
     )
 
-    /** (top1, top3) percentages of [constants] over the bench's rows, train or held-out split. */
+    /** (top1, top3) percentages over the selected split and code-point length interval. */
     private fun measureTop(
         bench: LanguageBench,
         constants: GlideDecoder.GlideConstants,
         heldOut: Boolean,
+        minCodePoints: Int = MIN_WORD_CODE_POINTS,
+        maxCodePoints: Int = Int.MAX_VALUE,
     ): DoubleArray {
         val decoder = GlideDecoder(bench.geometry, bench.inventory, constants)
         decoder.preloadIndex(bench.wordIndex)
@@ -762,6 +843,8 @@ class GlideRecoveryCalibrationTest {
         for (path in bench.paths) {
             if (path.rowContext.isNotEmpty()) continue
             if (isHeldOut(path.rowWord) != heldOut) continue
+            val length = path.rowWord.codePointCount(0, path.rowWord.length)
+            if (length < minCodePoints || length > maxCodePoints) continue
             count++
             val found = decodePath(path, decoder, reusablePath)
             if (found > 0 && decodeResult.words[0] == path.rowWord) top1++
@@ -804,7 +887,7 @@ class GlideRecoveryCalibrationTest {
                     GlideDecoder.GlideConstants(lengthStdFactor = lengthSigma),
                 )
                 println(
-                    "  ${bench.name} top-1 by word length (5-6 / 7-9 / 10+ cp), " +
+                    "  ${bench.name} top-1 by word length (2-4 / 5-6 / 7-9 / 10+ cp), " +
                         "lengthStdFactor=${if (lengthSigma.isInfinite()) "off" else lengthSigma}: " +
                         perLength.joinToString(" / ") { fmt(it) } + "%",
                 )
@@ -839,7 +922,7 @@ class GlideRecoveryCalibrationTest {
         }
     }
 
-    /** Top-1 percentages on the train rows, bucketed by word code-point length (5-6, 7-9, 10+). */
+    /** Top-1 percentages on train rows, bucketed by code-point length (2-4, 5-6, 7-9, 10+). */
     private fun measureTopPerLength(
         bench: LanguageBench,
         constants: GlideDecoder.GlideConstants,
@@ -847,45 +930,59 @@ class GlideRecoveryCalibrationTest {
         val decoder = GlideDecoder(bench.geometry, bench.inventory, constants)
         decoder.preloadIndex(bench.wordIndex)
         val reusablePath = GlidePath(1024)
-        val top = IntArray(3)
-        val count = IntArray(3)
+        val top = IntArray(4)
+        val count = IntArray(4)
         for (path in bench.paths) {
             if (path.rowContext.isNotEmpty()) continue
             if (isHeldOut(path.rowWord)) continue
             val length = path.rowWord.codePointCount(0, path.rowWord.length)
-            val bucket = if (length <= 6) 0 else if (length <= 9) 1 else 2
+            val bucket = when {
+                length <= 4 -> 0
+                length <= 6 -> 1
+                length <= 9 -> 2
+                else -> 3
+            }
             count[bucket]++
             val found = decodePath(path, decoder, reusablePath)
             if (found > 0 && decodeResult.words[0] == path.rowWord) top[bucket]++
         }
-        return DoubleArray(3) { if (count[it] == 0) 0.0 else top[it] * 100.0 / count[it] }
+        return DoubleArray(4) { if (count[it] == 0) 0.0 else top[it] * 100.0 / count[it] }
     }
 
     /**
-     * The G8 gate: the per-language constants must beat or match the one shared constant set on
-     * the held-out split of BOTH languages, top-1 and top-3. The per-language values were chosen
-     * on the train splits ([tuningSurfacePerLanguageAndLengthChannel]).
+     * G8 compares constants on 5+ cp held-out rows; 2-4 cp results are reported separately.
+     * Per-language values were chosen on [tuningSurfacePerLanguageAndLengthChannel].
      */
     @Test
     fun gatesG8PerLanguageConstants() {
         val lines = ArrayList<String>()
         var failures = 0
         for (bench in listOf(tatarBench(), russianBench())) {
-            val shared = measureTop(bench, SHARED, heldOut = true)
+            val languageConstants = if (bench.name == "tt") {
+                GlideDecoder.GlideConstants.TATAR
+            } else {
+                GlideDecoder.GlideConstants.RUSSIAN
+            }
+            val shared = measureTop(bench, SHARED, heldOut = true, minCodePoints = 5)
             val perLanguage = measureTop(
-                bench,
-                if (bench.name == "tt") {
-                    GlideDecoder.GlideConstants.TATAR
-                } else {
-                    GlideDecoder.GlideConstants.RUSSIAN
-                },
-                heldOut = true,
+                bench, languageConstants, heldOut = true, minCodePoints = 5,
             )
             println(
-                "Glide P7-10 ${bench.name} held-out: shared top1=${fmt(shared[0])}% " +
+                "Glide P7-10 ${bench.name} held-out 5+cp: shared top1=${fmt(shared[0])}% " +
                     "top3=${fmt(shared[1])}% | per-language top1=${fmt(perLanguage[0])}% " +
                     "top3=${fmt(perLanguage[1])}%",
             )
+            val shortShared = measureTop(bench, SHARED, heldOut = true, maxCodePoints = 4)
+            val shortPerLanguage = measureTop(
+                bench, languageConstants, heldOut = true, maxCodePoints = 4,
+            )
+            println(
+                "Glide P7-10 ${bench.name} held-out 2-4cp: shared top1=${fmt(shortShared[0])}% " +
+                    "top3=${fmt(shortShared[1])}% | per-language top1=${fmt(shortPerLanguage[0])}% " +
+                    "top3=${fmt(shortPerLanguage[1])}%",
+            )
+            assertTrue("${bench.name} short-word top-1 is zero", shortPerLanguage[0] > 0.0)
+            assertTrue("${bench.name} short-word top-3 is zero", shortPerLanguage[1] > 0.0)
             if (perLanguage[0] < shared[0]) {
                 failures++
                 lines.add(
@@ -968,23 +1065,140 @@ class GlideRecoveryCalibrationTest {
         )
     }
 
-    /**
-     * The B1 held-out guard: the Russian bench's held-out top-1/top-3 must be improve-or-flat
-     * against the pre-fix run. The pins carry the PRE-FIX measured values (see the printout of
-     * [gatesG8PerLanguageConstants] on the tree before the alias-fold fix).
-     */
+    /** The Russian held-out top-1/top-3 must meet the measured synthetic-set baselines. */
     @Test
     fun gatesB1RussianHeldOutIsImproveOrFlat() {
         val top = measureTop(russianBench(), GlideDecoder.GlideConstants.RUSSIAN, heldOut = true)
         println("Glide B1 ru held-out: top1=${fmt(top[0])}% top3=${fmt(top[1])}%")
         assertTrue(
-            "ru held-out top-1 ${fmt(top[0])}% regressed past the pre-fix pin",
+            "ru held-out top-1 ${fmt(top[0])}% regressed past the measured baseline",
             top[0] >= B1_RU_HELD_OUT_TOP1_PIN,
         )
         assertTrue(
-            "ru held-out top-3 ${fmt(top[1])}% regressed past the pre-fix pin",
+            "ru held-out top-3 ${fmt(top[1])}% regressed past the measured baseline",
             top[1] >= B1_RU_HELD_OUT_TOP3_PIN,
         )
+    }
+
+    private class PruningBaseline(
+        val counts: IntArray,
+        val bucketHits: IntArray,
+        val pruningHits: IntArray,
+    )
+
+    private class PruningMeasurement {
+        val counts = IntArray(CLASS_COUNT)
+        val bucketHits = IntArray(CLASS_COUNT)
+        val pruningHits = IntArray(CLASS_COUNT)
+        val rankingLosses = IntArray(CLASS_COUNT)
+    }
+
+    /** True when the target entry is in the start/end buckets selected for [path]. */
+    private fun targetInStartEndBuckets(
+        path: GlidePath,
+        entry: Int,
+        bench: LanguageBench,
+        constants: GlideDecoder.GlideConstants,
+    ): Boolean {
+        val index = bench.wordIndex
+        val sequenceStart = index.keySeqStart(entry)
+        val sequenceEnd = index.keySeqEnd(entry)
+        check(sequenceStart < sequenceEnd) { "selected word is absent from the glide index" }
+        val firstKey = index.keySeqAt(sequenceStart)
+        val lastKey = index.keySeqAt(sequenceEnd - 1)
+        val startKeys = IntArray(constants.extremityNeighbors)
+        val endKeys = IntArray(constants.extremityNeighbors)
+        val startCount = bench.geometry.findClosestKeys(path.firstX, path.firstY, startKeys)
+        val endCount = bench.geometry.findClosestKeys(path.lastX, path.lastY, endKeys)
+        var startFound = false
+        for (slot in 0 until startCount) {
+            if (startKeys[slot] == firstKey) startFound = true
+        }
+        var endFound = false
+        for (slot in 0 until endCount) {
+            if (endKeys[slot] == lastKey) endFound = true
+        }
+        if (!startFound || !endFound) return false
+        val rangeStart = index.pairRangeStart(firstKey, lastKey)
+        val rangeEnd = index.pairRangeEnd(firstKey, lastKey)
+        for (position in rangeStart until rangeEnd) {
+            if (index.pairEntryAt(position) == entry) return true
+        }
+        return false
+    }
+
+    /** True when either ideal-path variant of the target passes the decoder's length gate. */
+    private fun targetSurvivesLengthGate(
+        path: GlidePath,
+        entry: Int,
+        bench: LanguageBench,
+        constants: GlideDecoder.GlideConstants,
+    ): Boolean {
+        val index = bench.wordIndex
+        val userLength = path.length()
+        val maxDistance = constants.lengthThreshold * bench.geometry.keyRadius
+        if (abs(userLength - index.plainLengthAt(entry)) < maxDistance) return true
+        val looped = index.loopLengthAt(entry)
+        return looped >= 0f && abs(userLength - looped) < maxDistance
+    }
+
+    private fun measurePruning(bench: LanguageBench): PruningMeasurement {
+        val constants = if (bench.name == "tt") {
+            GlideDecoder.GlideConstants.TATAR
+        } else {
+            GlideDecoder.GlideConstants.RUSSIAN
+        }
+        val decoder = GlideDecoder(bench.geometry, bench.inventory, constants)
+        decoder.preloadIndex(bench.wordIndex)
+        val reusablePath = GlidePath(1024)
+        val measurement = PruningMeasurement()
+        for (path in bench.paths) {
+            if (path.rowContext.isNotEmpty() || !isHeldOut(path.rowWord)) continue
+            val word = path.rowWord
+            val clazz = recoveryClass(word, path, bench.generatorGeometry, bench.wordSet)
+            measurement.counts[clazz]++
+            val found = decodePath(path, decoder, reusablePath)
+            var top3 = false
+            for (slot in 0 until minOf(3, found)) {
+                if (decodeResult.words[slot] == word) top3 = true
+            }
+            val entry = bench.words.binarySearch(word)
+            check(entry >= 0) { "selected word is absent from the bench dictionary" }
+            if (!targetInStartEndBuckets(reusablePath, entry, bench, constants)) continue
+            measurement.bucketHits[clazz]++
+            if (!targetSurvivesLengthGate(reusablePath, entry, bench, constants)) continue
+            measurement.pruningHits[clazz]++
+            if (!top3) measurement.rankingLosses[clazz]++
+        }
+        return measurement
+    }
+
+    @Test
+    fun pruningRecallIsMeasuredPerClassOnHeldOutRows() {
+        for (bench in listOf(tatarBench(), russianBench())) {
+            val measurement = measurePruning(bench)
+            val baseline = if (bench.name == "tt") TT_PRUNING_BASELINE else RU_PRUNING_BASELINE
+            for (clazz in 0 until CLASS_COUNT) {
+                val count = measurement.counts[clazz]
+                assertTrue("${bench.name} ${CLASS_NAMES[clazz]} has no held-out rows", count > 0)
+                val bucketRecall = measurement.bucketHits[clazz] * 100.0 / count
+                val pruningRecall = measurement.pruningHits[clazz] * 100.0 / count
+                assertTrue(
+                    "${bench.name} ${CLASS_NAMES[clazz]} pruning recall is zero",
+                    pruningRecall > 0.0,
+                )
+                println(
+                    "Glide pruning ${bench.name} ${CLASS_NAMES[clazz]}: n=$count " +
+                        "bucketRecall=${fmt(bucketRecall)}% pruningRecall=${fmt(pruningRecall)}% " +
+                        "bucketLosses=${count - measurement.bucketHits[clazz]} " +
+                        "lengthGateLosses=${measurement.bucketHits[clazz] - measurement.pruningHits[clazz]} " +
+                        "rankingLosses=${measurement.rankingLosses[clazz]}",
+                )
+            }
+            assertArrayEquals("${bench.name} class sizes", baseline.counts, measurement.counts)
+            assertArrayEquals("${bench.name} bucket hits", baseline.bucketHits, measurement.bucketHits)
+            assertArrayEquals("${bench.name} pruning hits", baseline.pruningHits, measurement.pruningHits)
+        }
     }
 
     // ---- G5: the bigram channel on the glide N-best. ----
@@ -1054,6 +1268,102 @@ class GlideRecoveryCalibrationTest {
         )
     }
 
+    private fun keyFoldedWord(word: String, geometry: GlideKeyGeometry): String {
+        val folded = StringBuilder(word.length)
+        var offset = 0
+        while (offset < word.length) {
+            val codePoint = word.codePointAt(offset)
+            offset += Character.charCount(codePoint)
+            val key = geometry.keyIndexOfLetter(Character.toLowerCase(codePoint))
+            if (key < 0) return ""
+            folded.append(key.toChar())
+        }
+        return folded.toString()
+    }
+
+    private fun aliasTwinWords(bench: LanguageBench): Set<String> {
+        val firstByFold = HashMap<String, String>()
+        val twins = HashSet<String>()
+        for (word in bench.words) {
+            val folded = keyFoldedWord(word, bench.geometry)
+            if (folded.isEmpty()) continue
+            val first = firstByFold.putIfAbsent(folded, word)
+            if (first != null && first != word) {
+                twins.add(first)
+                twins.add(word)
+            }
+        }
+        return twins
+    }
+
+    @Test
+    fun russianBigramRerankIsMeasuredOnHeldOutAliasContextRows() {
+        val bench = russianBench()
+        val twins = aliasTwinWords(bench)
+        val snapshots = contextSnapshots(bench, russianBigrams!!).filter { it.heldOut }
+        val reused = GlideResult()
+        val adjusted = FloatArray(GlideDecoder.TOP_N)
+        for ((name, rows) in listOf(
+            "alias" to snapshots.filter { it.word in twins },
+            "non_alias" to snapshots.filter { it.word !in twins },
+        )) {
+            val baseline = BooleanArray(rows.size)
+            val reranked = BooleanArray(rows.size)
+            var retained = 0
+            var targetSuccessor = 0
+            var foldOutside = 0
+            var visible = 0
+            for ((index, snap) in rows.withIndex()) {
+                applyChannel(snap, false, 1f, reused, adjusted)
+                baseline[index] = top1Hit(reused, snap)
+                applyChannel(
+                    snap, true, GlideDecoder.GlideConstants.RUSSIAN.bigramRankPenalty,
+                    reused, adjusted,
+                )
+                reranked[index] = top1Hit(reused, snap)
+                val targetRank = (0 until snap.count).firstOrNull { snap.words[it] == snap.word } ?: -1
+                val targetRetained = targetRank >= 0
+                if (targetRetained) retained++
+                val foldedTarget = keyFoldedWord(snap.word, bench.geometry)
+                val foldMatch = (0 until snap.count).any {
+                    keyFoldedWord(snap.words[it]!!, bench.geometry) == foldedTarget
+                }
+                if (!targetRetained && foldMatch) foldOutside++
+                if (snap.word in snap.successors) targetSuccessor++
+                val rerankedRank = (0 until reused.count).firstOrNull { reused.words[it] == snap.word } ?: -1
+                if (rerankedRank in 1..3) visible++
+            }
+            assertTrue("Russian $name held-out context rows are missing", rows.isNotEmpty())
+            val gain = (reranked.count { it } - baseline.count { it }) * 100.0 / rows.size
+            val ci = GlideConfusionPairs.pairedGainCi(reranked, baseline)
+            val baselineHits = baseline.count { it }
+            val rerankedHits = reranked.count { it }
+            println(
+                "Glide Russian rerank $name held-out: n=${rows.size} " +
+                    "plain=${fmt(pct(baselineHits, rows.size))}% " +
+                    "rerank=${fmt(pct(rerankedHits, rows.size))}% " +
+                    "delta=${fmt(gain)}pp ci95=[${fmt(ci[0])}, ${fmt(ci[1])}]pp " +
+                    "targetRetained=$retained visibleAlternative=$visible " +
+                    "foldTwinOutside=$foldOutside targetSuccessor=$targetSuccessor",
+            )
+            if (name == "alias") {
+                assertEquals(22, rows.size)
+                assertEquals(1, baselineHits)
+                assertEquals("the existing rerank is not an accepted alias improvement", 1, rerankedHits)
+                assertTrue("the paired alias CI must not be reported as positive", ci[0] <= 0.0)
+                assertEquals(20, retained)
+                assertEquals("every retained alias target must be committed or visible", 20, visible + rerankedHits)
+                assertEquals(0, foldOutside)
+                assertEquals(0, targetSuccessor)
+            } else {
+                assertEquals(385, rows.size)
+                assertEquals(336, baselineHits)
+                assertTrue("Russian non-alias top-1 regressed", rerankedHits >= baselineHits)
+                assertEquals(338, rerankedHits)
+            }
+        }
+    }
+
     // ---- The pair-conditional variant of the bigram channel: the measurement surface. ----
 
     /**
@@ -1072,13 +1382,20 @@ class GlideRecoveryCalibrationTest {
     }
 
     /** Decodes every context row once with the plain (channel-off) decoder. */
-    private fun contextSnapshots(): List<ContextSnapshot> {
-        val decoder = sharedDecoder()
-        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
-        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
+    private fun contextSnapshots(
+        bench: LanguageBench = tatarBench(),
+        bigrams: TatBigrPrefixIndex = tatarBigrams!!,
+    ): List<ContextSnapshot> {
+        val constants = if (bench.name == "tt") {
+            GlideDecoder.GlideConstants.TATAR
+        } else {
+            GlideDecoder.GlideConstants.RUSSIAN
+        }
+        val decoder = GlideDecoder(bench.geometry, bench.inventory, constants)
+        decoder.preloadIndex(bench.wordIndex)
         val reusablePath = GlidePath(1024)
         val result = ArrayList<ContextSnapshot>()
-        for (path in paths) {
+        for (path in bench.paths) {
             if (path.rowContext.isEmpty()) continue
             val count = decodePath(path, decoder, reusablePath)
             val snapshotWords = arrayOfNulls<String>(count)
@@ -1088,7 +1405,7 @@ class GlideRecoveryCalibrationTest {
                 snapshotScores[slot] = decodeResult.scores[slot]
             }
             val successors = try {
-                tatarBigrams!!.predict(
+                bigrams.predict(
                     ImmutableUtf8Prefix.copyOf(path.rowContext.toByteArray(Charsets.UTF_8)),
                 )
             } catch (_: RuntimeException) {
@@ -1259,6 +1576,7 @@ class GlideRecoveryCalibrationTest {
         val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
         val reusablePath = GlidePath(1024)
         val realGesture = paths[paths.size / 2]
+        val dwellGesture = paths.first { it.dwellKind == DWELL_AT_DOUBLE }
         // The all-pruned path: a long zigzag whose length prunes every bucket it touches.
         val zigzag = GlidePath(1024)
         var x = 0f
@@ -1279,6 +1597,7 @@ class GlideRecoveryCalibrationTest {
 
         // Warm the lazy index, JIT and the result slots.
         perCallBytes(realGesture, 200)
+        perCallBytes(dwellGesture, 200)
         perCallBytes(null, 200)
 
         val prunedBytes = perCallBytes(null, 2_000)
@@ -1294,10 +1613,18 @@ class GlideRecoveryCalibrationTest {
             "bytes/call with results: $wordBytes (bound = ${GlideDecoder.TOP_N} strings)",
             wordBytes <= GlideDecoder.TOP_N * 256L,
         )
+        val dwellBytes = perCallBytes(dwellGesture, 2_000)
+        assertTrue("dwell path returned no candidates", decodeResult.count > 0)
+        assertTrue(
+            "dwell bytes/call with results: $dwellBytes",
+            dwellBytes <= GlideDecoder.TOP_N * 256L,
+        )
         println(
             "Glide P7-1 G3: pruned_bytes_per_call=$prunedBytes " +
-                "result_bytes_per_call=$wordBytes (results materialize <= ${GlideDecoder.TOP_N} strings) " +
-                "G3=${if (prunedBytes <= 8L && wordBytes <= GlideDecoder.TOP_N * 256L) "PASS" else "FAIL"}",
+                "result_bytes_per_call=$wordBytes dwell_result_bytes_per_call=$dwellBytes " +
+                "(results materialize <= ${GlideDecoder.TOP_N} strings) " +
+                "G3=${if (prunedBytes <= 8L && wordBytes <= GlideDecoder.TOP_N * 256L &&
+                    dwellBytes <= GlideDecoder.TOP_N * 256L) "PASS" else "FAIL"}",
         )
     }
 
@@ -1308,12 +1635,11 @@ class GlideRecoveryCalibrationTest {
         ) == 1L
 
     /** Class split: the word carries a letter that has no key of its own on the fixture. */
-    private fun hasAliasLetter(word: String): Boolean {
-        val keyLetters = GlideTestFixtures.tatarRawKeys().mapTo(HashSet()) { it.codePoint }
+    private fun hasAliasLetter(word: String, geo: GeneratorGeometry): Boolean {
         var offset = 0
         while (offset < word.length) {
             val codePoint = word.codePointAt(offset)
-            if (Character.toLowerCase(codePoint) !in keyLetters) return true
+            if (Character.toLowerCase(codePoint) !in geo.keyLetters) return true
             offset += Character.charCount(codePoint)
         }
         return false
@@ -1337,7 +1663,7 @@ class GlideRecoveryCalibrationTest {
 
     /** The undoubled twin of [word] (every doubled run collapsed once) is a dictionary word,
      * so the two compete on the same path. */
-    private fun twinInDictionary(word: String): Boolean {
+    private fun twinInDictionary(word: String, dictionary: Set<String>): Boolean {
         val twin = StringBuilder(word.length)
         var offset = 0
         while (offset < word.length) {
@@ -1348,7 +1674,22 @@ class GlideRecoveryCalibrationTest {
                 offset += Character.charCount(codePoint)
             }
         }
-        return twin.toString() in vocabularySet
+        return twin.toString() in dictionary
+    }
+
+    private fun recoveryClass(
+        word: String,
+        path: GeneratedPath,
+        geo: GeneratorGeometry,
+        dictionary: Set<String>,
+    ): Int = when {
+        path.dwellKind == DWELL_AT_DOUBLE -> 5
+        path.dwellKind == DWELL_ELSEWHERE -> 6
+        hasAliasLetter(word, geo) -> 4
+        !hasDoubledLetter(word) -> 0
+        path.drewLoop -> 1
+        twinInDictionary(word, dictionary) -> 3
+        else -> 2
     }
 
     private fun percentileNanos(sorted: List<Long>, fraction: Double): Double {
@@ -1367,7 +1708,7 @@ class GlideRecoveryCalibrationTest {
         // Bit-identical to scripts/glide_pack.py (asserted by the set SHA-256 pin below).
         private const val GLIDE_SEED = 20260924L
         private const val SPLIT_SEED = 20260925L
-        private const val MIN_WORD_CODE_POINTS = 5
+        private const val MIN_WORD_CODE_POINTS = 2
         private const val DICT_MODULUS = 40
         private const val LOOP_MODULUS = 8L
         private const val CUT_MODULUS = 3L
@@ -1395,6 +1736,11 @@ class GlideRecoveryCalibrationTest {
         private const val TSTEP_FAST_VAR = 7L
         private const val TSTEP_SLOW_MIN = 14
         private const val TSTEP_SLOW_VAR = 13L
+        private const val DWELL_SLOW_FACTOR = 4
+        private const val DWELL_MIN_DURATION_MS = 40
+        private const val DWELL_NONE = 0
+        private const val DWELL_AT_DOUBLE = 1
+        private const val DWELL_ELSEWHERE = 2
         // Context rows (the bigram channel's calibration class; mirror of glide_pack.py).
         // ---- Portable deterministic primitives (bit-identical to scripts/glide_pack.py). ----
 
@@ -1463,27 +1809,43 @@ class GlideRecoveryCalibrationTest {
         }
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts; the
-        // asset rebuild rewrites both). The set carries both variants of every doubled word
-        // (rows outnumber words).
-        private const val SET_SIZE = 4563
-        private const val SET_BYTES = 11461325
+        // asset rebuild rewrites both). Loop and eligible dwell rows make rows outnumber words.
+        private const val SET_SIZE = 5117
+        private const val SET_BYTES = 13956801
         private const val SET_SHA256 =
-            "eeae70f29590cb72021cb576a0520b808ab5bc83570ebf60abb05462828c1677"
+            "5eb32845ef22b85c7c60ab400e48dd45de14ea591930ac4db13b40ba4a82f75a"
 
         // The per-class split of gatesG1AndG2OnTheRealDictionary.
-        private const val CLASS_COUNT = 5
+        private const val CLASS_COUNT = 7
+        private val CLASS_NAMES = arrayOf(
+            "plain", "doubled_jog", "doubled_nodwell_twinless", "doubled_nodwell_twin", "alias",
+            "doubled_dwell_at_double", "doubled_dwell_elsewhere",
+        )
+        private val TT_PRUNING_BASELINE = PruningBaseline(
+            counts = intArrayOf(2395, 227, 196, 31, 21, 229, 229),
+            bucketHits = intArrayOf(2255, 206, 182, 28, 21, 212, 212),
+            pruningHits = intArrayOf(2252, 206, 182, 28, 21, 212, 212),
+        )
+        private val RU_PRUNING_BASELINE = PruningBaseline(
+            counts = intArrayOf(1109, 99, 97, 2, 35, 100, 100),
+            bucketHits = intArrayOf(1049, 92, 89, 2, 32, 92, 92),
+            pruningHits = intArrayOf(1049, 92, 89, 2, 32, 92, 92),
+        )
 
         // Recovery and host-latency gates.
         private const val G1_TOP3_MIN = 60.0
         private const val G1_TOP1_MIN = 35.0
         private const val G2_P95_MS = 2.0
+        private const val NO_DWELL_TWIN_TOP1_PIN = 6.4516
+        private const val PLAIN_TOP1_PIN = 85.9290
+        private const val PLAIN_TOP3_PIN = 93.4447
+        private const val ALIAS_TOP1_PIN = 95.2381
+        private const val ALIAS_TOP3_PIN = 100.0
 
-        // The B1 gates: the alias_doubled class floor on the Russian bench, and the pre-fix
-        // Russian held-out values the improve-or-flat guard compares against (pinned from the
-        // pre-fix tree's measurement).
+        // The B1 gates: the alias_doubled class floor and measured Russian held-out baselines.
         private const val B1_ALIAS_DOUBLED_TOP3_MIN = 90.0
-        private const val B1_RU_HELD_OUT_TOP1_PIN = 0.0
-        private const val B1_RU_HELD_OUT_TOP3_PIN = 0.0
+        private const val B1_RU_HELD_OUT_TOP1_PIN = 87.3540
+        private const val B1_RU_HELD_OUT_TOP3_PIN = 93.2555
 
         // The pair-conditional variant's selected cell on the train surface (every cell tied, so
         // the tie-break chose the wider set, the wider firing rule and the weaker penalty); the
@@ -1507,12 +1869,14 @@ class GlideRecoveryCalibrationTest {
         private var realIndex: TdictPrefixIndex? = null
         private var russianIndex: TdictPrefixIndex? = null
         private var tatarBigrams: TatBigrPrefixIndex? = null
+        private var russianBigrams: TatBigrPrefixIndex? = null
         private var sharedDecoder: GlideDecoder? = null
         private lateinit var vocabulary: List<String>
         internal var vocabularySet: Set<String> = emptySet()
         private lateinit var russianVocabulary: List<String>
         internal var russianVocabularySet: Set<String> = emptySet()
         private lateinit var evalLines: List<String>
+        private lateinit var russianEvalLines: List<String>
 
         /** The generator's geometry view of the Tatar fixture layout. */
         private val tatarGeneratorGeometry by lazy { GeneratorGeometry(GlideTestFixtures.tatarRawKeys()) }
@@ -1583,7 +1947,12 @@ class GlideRecoveryCalibrationTest {
                 "src/test/resources/tt_eval_sentences.txt",
                 "app/src/test/resources/tt_eval_sentences.txt",
             ).readLines(Charsets.UTF_8).map { it.trim() }
+            russianEvalLines = locate(
+                "src/test/resources/ru_eval_sentences.txt",
+                "app/src/test/resources/ru_eval_sentences.txt",
+            ).readLines(Charsets.UTF_8).map { it.trim() }
             tatarBigrams = loadBigramTable(BigramArtifactSpec.TATAR_BIGRAMS_V1, realIndex!!)
+            russianBigrams = loadBigramTable(BigramArtifactSpec.RUSSIAN_BIGRAMS_V1, russianIndex!!)
         }
 
         private fun loadBigramTable(

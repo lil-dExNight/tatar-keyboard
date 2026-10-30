@@ -6,10 +6,9 @@ the pipeline readers; the table is checked against the dictionary's raw SHA-256)
 the Tatar ones (``tt_eval_sentences.txt``); ``--language rus`` switches the defaults to the
 Russian assets and ``ru_eval_sentences.txt``.
 Output: ``EVAL|metric|value`` lines: eval sizes, dictionary coverage of tokens and types,
-bigram head coverage and plain-bigram next-word top-1 and top-3 hit rates; then, through the
-production-chain mirror of ``suggest_chain.py``: the full-chain next-word top-1/top-3 hit
-rates with a sentence-level bootstrap CI95 and the minimum detectable effect, completion
-top-3 and top-1 hit counts and rates at one-, two- and three-code-point prefixes, the share
+bigram head coverage and plain-bigram next-word hit rates; then, through the production-chain
+mirror of ``suggest_chain.py``: full-chain and completion top-1, visible top-3 and engine top-4
+hit counts and rates, with a sentence-level bootstrap CI95 and minimum detectable effect, the share
 of typing moments with an empty strip answer (prefix moments while a word is incomplete,
 next-word moments over the adjacent pairs), and the keystroke-savings simulation with its
 vocabulary-oracle bound. The Tatar mode additionally
@@ -210,7 +209,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         pairs.extend(zip(words, words[1:]))
     head_covered = 0
     top1_hits = 0
-    top3_hits = 0
+    visible_top3_hits = 0
+    engine_top4_hits = 0
     for head, successor in pairs:
         shown = successes_by_head.get(head)
         if not shown:
@@ -218,10 +218,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         head_covered += 1
         if successor == shown[0]:
             top1_hits += 1
-        # The table's full packed answer counts (engine-level, like the JVM pin over
-        # TatBigrPrefixIndex.predict), not only the cells the strip shows.
-        if successor in shown:
-            top3_hits += 1
+        if successor in shown[:SHOWN_RESULTS]:
+            visible_top3_hits += 1
+        if successor in shown[:suggest_chain.CELL_COUNT]:
+            engine_top4_hits += 1
 
     metrics: list[tuple[str, str]] = [
         ("eval_lines", str(len(lines))),
@@ -242,8 +242,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             ("bigram_head_coverage_pct", f"{percent(head_covered, len(pairs)):.4f}"),
             ("nextword_top1_hits", str(top1_hits)),
             ("nextword_top1_hit_pct", f"{percent(top1_hits, len(pairs)):.4f}"),
-            ("nextword_top3_hit_pct", f"{percent(top3_hits, len(pairs)):.4f}"),
-            ("nextword_top3_hit_covered_pct", f"{percent(top3_hits, head_covered):.4f}"),
+            ("nextword_visible_top3_hits", str(visible_top3_hits)),
+            ("nextword_visible_top3_hit_pct", f"{percent(visible_top3_hits, len(pairs)):.4f}"),
+            ("nextword_visible_top3_hit_covered_pct",
+             f"{percent(visible_top3_hits, head_covered):.4f}"),
+            ("nextword_engine_top4_hits", str(engine_top4_hits)),
+            ("nextword_engine_top4_hit_pct", f"{percent(engine_top4_hits, len(pairs)):.4f}"),
+            ("nextword_engine_top4_hit_covered_pct",
+             f"{percent(engine_top4_hits, head_covered):.4f}"),
         ]
     )
     metrics.extend(_chain_metrics(lines, pairs, dictionary_words, dictionary_frequencies,
@@ -269,37 +275,53 @@ def _chain_metrics(
     )
 
     chain_top1 = 0
-    chain_top3 = 0
+    chain_visible_top3 = 0
+    chain_engine_top4 = 0
     # Per-sentence counters: the bootstrap resamples whole sentences, pairs included.
-    sentence_hits: list[int] = []
+    sentence_visible_hits: list[int] = []
+    sentence_engine_hits: list[int] = []
     sentence_pairs: list[int] = []
     for line in lines:
         words = line.split(" ")
-        hits = 0
+        visible_hits = 0
+        engine_hits = 0
         for head, successor in zip(words, words[1:]):
             shown = chain.predict_top3(head)
             if shown and successor == shown[0]:
                 chain_top1 += 1
-                hits += 1
-            elif successor in shown:
-                hits += 1
-        chain_top3 += hits
-        sentence_hits.append(hits)
+            if successor in shown[:SHOWN_RESULTS]:
+                chain_visible_top3 += 1
+                visible_hits += 1
+            if successor in shown[:suggest_chain.CELL_COUNT]:
+                chain_engine_top4 += 1
+                engine_hits += 1
+        sentence_visible_hits.append(visible_hits)
+        sentence_engine_hits.append(engine_hits)
         sentence_pairs.append(len(words) - 1)
 
-    ci95_lo, ci95_hi = suggest_chain.bootstrap_rate_ci95(sentence_hits, sentence_pairs)
-    chain_rate = chain_top3 / len(pairs)
-    mde_pp = suggest_chain.minimum_detectable_effect_pp(chain_rate, len(pairs))
+    visible_ci = suggest_chain.bootstrap_rate_ci95(sentence_visible_hits, sentence_pairs)
+    engine_ci = suggest_chain.bootstrap_rate_ci95(sentence_engine_hits, sentence_pairs)
+    visible_mde = suggest_chain.minimum_detectable_effect_pp(
+        chain_visible_top3 / len(pairs), len(pairs)
+    )
+    engine_mde = suggest_chain.minimum_detectable_effect_pp(
+        chain_engine_top4 / len(pairs), len(pairs)
+    )
 
     metrics: list[tuple[str, str]] = [
         ("nextword_chain_pairs", str(len(pairs))),
         ("nextword_chain_top1_hits", str(chain_top1)),
         ("nextword_chain_top1_pct", f"{percent(chain_top1, len(pairs)):.4f}"),
-        ("nextword_chain_top3_hits", str(chain_top3)),
-        ("nextword_chain_top3_pct", f"{percent(chain_top3, len(pairs)):.4f}"),
-        ("nextword_chain_top3_ci95_lo", f"{ci95_lo:.4f}"),
-        ("nextword_chain_top3_ci95_hi", f"{ci95_hi:.4f}"),
-        ("nextword_chain_top3_mde_pp", f"{mde_pp:.4f}"),
+        ("nextword_chain_visible_top3_hits", str(chain_visible_top3)),
+        ("nextword_chain_visible_top3_pct", f"{percent(chain_visible_top3, len(pairs)):.4f}"),
+        ("nextword_chain_visible_top3_ci95_lo", f"{visible_ci[0]:.4f}"),
+        ("nextword_chain_visible_top3_ci95_hi", f"{visible_ci[1]:.4f}"),
+        ("nextword_chain_visible_top3_mde_pp", f"{visible_mde:.4f}"),
+        ("nextword_chain_engine_top4_hits", str(chain_engine_top4)),
+        ("nextword_chain_engine_top4_pct", f"{percent(chain_engine_top4, len(pairs)):.4f}"),
+        ("nextword_chain_engine_top4_ci95_lo", f"{engine_ci[0]:.4f}"),
+        ("nextword_chain_engine_top4_ci95_hi", f"{engine_ci[1]:.4f}"),
+        ("nextword_chain_engine_top4_mde_pp", f"{engine_mde:.4f}"),
     ]
     metrics.extend(_completion_metrics(unique_words, chain))
     metrics.extend(_context_boost_metrics(lines, chain))
@@ -314,16 +336,15 @@ def _chain_metrics(
 def _context_boost_metrics(
     lines: list[str], chain: suggest_chain.ChainMirror
 ) -> list[tuple[str, str]]:
-    """The context-boost rows over the prefix moments at >= 2 code points: completion top-1 of
-    the armed exact pass (the previous committed word's packed bigram successors lead) against
-    the same moments unarmed, with the sentence-level paired-bootstrap CI95, plus the top-3
-    non-regression rows. Token-occurrence weighted, like the strip-empty moments."""
+    """Measure top-1, visible top-3 and engine top-4 with and without completion context."""
     n_lines = len(lines)
     moments = [0] * n_lines
     base_top1 = [0] * n_lines
     boost_top1 = [0] * n_lines
-    base_top3 = [0] * n_lines
-    boost_top3 = [0] * n_lines
+    base_visible_top3 = [0] * n_lines
+    boost_visible_top3 = [0] * n_lines
+    base_engine_top4 = [0] * n_lines
+    boost_engine_top4 = [0] * n_lines
     for line_index, line in enumerate(lines):
         words = line.split(" ")
         for position, word in enumerate(words):
@@ -337,15 +358,21 @@ def _context_boost_metrics(
                     base_top1[line_index] += 1
                 if boost and boost[0] == word:
                     boost_top1[line_index] += 1
-                if word in base:
-                    base_top3[line_index] += 1
-                if word in boost:
-                    boost_top3[line_index] += 1
+                if word in base[:SHOWN_RESULTS]:
+                    base_visible_top3[line_index] += 1
+                if word in boost[:SHOWN_RESULTS]:
+                    boost_visible_top3[line_index] += 1
+                if word in base[:suggest_chain.CELL_COUNT]:
+                    base_engine_top4[line_index] += 1
+                if word in boost[:suggest_chain.CELL_COUNT]:
+                    boost_engine_top4[line_index] += 1
     total = sum(moments)
     base1 = sum(base_top1)
     boost1 = sum(boost_top1)
-    base3 = sum(base_top3)
-    boost3 = sum(boost_top3)
+    base_visible = sum(base_visible_top3)
+    boost_visible = sum(boost_visible_top3)
+    base_engine = sum(base_engine_top4)
+    boost_engine = sum(boost_engine_top4)
     ci_lo, ci_hi = suggest_chain.paired_delta_ci95(base_top1, boost_top1, moments)
     return [
         ("ctxboost_cp2plus_moments", str(total)),
@@ -356,41 +383,52 @@ def _context_boost_metrics(
         ("ctxboost_cp2plus_top1_delta_pp", f"{percent(boost1 - base1, total):+.4f}"),
         ("ctxboost_cp2plus_top1_delta_ci95_lo", f"{ci_lo:+.4f}"),
         ("ctxboost_cp2plus_top1_delta_ci95_hi", f"{ci_hi:+.4f}"),
-        ("ctxboost_cp2plus_top3_base_hits", str(base3)),
-        ("ctxboost_cp2plus_top3_base_pct", f"{percent(base3, total):.4f}"),
-        ("ctxboost_cp2plus_top3_boost_hits", str(boost3)),
-        ("ctxboost_cp2plus_top3_boost_pct", f"{percent(boost3, total):.4f}"),
-        ("ctxboost_cp2plus_top3_delta_pp", f"{percent(boost3 - base3, total):+.4f}"),
+        ("ctxboost_cp2plus_visible_top3_base_hits", str(base_visible)),
+        ("ctxboost_cp2plus_visible_top3_base_pct", f"{percent(base_visible, total):.4f}"),
+        ("ctxboost_cp2plus_visible_top3_boost_hits", str(boost_visible)),
+        ("ctxboost_cp2plus_visible_top3_boost_pct", f"{percent(boost_visible, total):.4f}"),
+        ("ctxboost_cp2plus_visible_top3_delta_pp",
+         f"{percent(boost_visible - base_visible, total):+.4f}"),
+        ("ctxboost_cp2plus_engine_top4_base_hits", str(base_engine)),
+        ("ctxboost_cp2plus_engine_top4_base_pct", f"{percent(base_engine, total):.4f}"),
+        ("ctxboost_cp2plus_engine_top4_boost_hits", str(boost_engine)),
+        ("ctxboost_cp2plus_engine_top4_boost_pct", f"{percent(boost_engine, total):.4f}"),
+        ("ctxboost_cp2plus_engine_top4_delta_pp",
+         f"{percent(boost_engine - base_engine, total):+.4f}"),
     ]
 
 
 def _completion_metrics(
     unique_words: set[str], chain: suggest_chain.ChainMirror
 ) -> list[tuple[str, str]]:
-    """Per-prefix-length completion: top-3 and top-1 hit counts and rates, one to three
-    code-point prefixes over the unique eval words. The same-stem boost needs a four-code-point
-    prefix, so these prefixes never engage it."""
+    """Measure top-1, visible top-3 and engine top-4 at one-to-three-code-point prefixes."""
     metrics: list[tuple[str, str]] = []
     for length in (1, 2, 3):
         words = 0
-        top3_hits = 0
+        visible_top3_hits = 0
+        engine_top4_hits = 0
         top1_hits = 0
         for word in unique_words:
             if len(word) < length:
                 continue
             words += 1
             shown = chain.prefix_top3(word[:length])
-            if word in shown:
-                top3_hits += 1
+            if word in shown[:SHOWN_RESULTS]:
+                visible_top3_hits += 1
+            if word in shown[:suggest_chain.CELL_COUNT]:
+                engine_top4_hits += 1
             if shown and shown[0] == word:
                 top1_hits += 1
         metrics.extend(
             [
                 (f"prefix_cp{length}_words", str(words)),
-                (f"prefix_cp{length}_hits", str(top3_hits)),
-                (f"prefix_top3_cp{length}_pct", f"{percent(top3_hits, words):.4f}"),
                 (f"prefix_cp{length}_top1_hits", str(top1_hits)),
                 (f"prefix_top1_cp{length}_pct", f"{percent(top1_hits, words):.4f}"),
+                (f"prefix_cp{length}_visible_top3_hits", str(visible_top3_hits)),
+                (f"prefix_visible_top3_cp{length}_pct",
+                 f"{percent(visible_top3_hits, words):.4f}"),
+                (f"prefix_cp{length}_engine_top4_hits", str(engine_top4_hits)),
+                (f"prefix_engine_top4_cp{length}_pct", f"{percent(engine_top4_hits, words):.4f}"),
             ]
         )
     return metrics
@@ -429,7 +467,7 @@ def _strip_empty_metrics(
 def _strata_metrics(
     lines: list[str], unique_words: set[str], chain: suggest_chain.ChainMirror
 ) -> list[tuple[str, str]]:
-    """Per-stratum counts, cp3 completion top-3 rates and chain top-3 next-word rates."""
+    """Measure visible top-3 and engine top-4 completion and next-word rates per stratum."""
     stratum_by_word = {
         word: suggest_chain.lemma_stratum(word, chain.frequency_of)
         for word in sorted(unique_words)
@@ -438,33 +476,48 @@ def _strata_metrics(
     for stratum in suggest_chain.STRATA:
         words = [word for word, label in stratum_by_word.items() if label == stratum]
         cp3_words = 0
-        cp3_hits = 0
+        cp3_visible_hits = 0
+        cp3_engine_hits = 0
         for word in words:
             if len(word) < STRATUM_PREFIX_CODE_POINTS:
                 continue
             cp3_words += 1
-            if word in chain.prefix_top3(word[:STRATUM_PREFIX_CODE_POINTS]):
-                cp3_hits += 1
+            shown = chain.prefix_top3(word[:STRATUM_PREFIX_CODE_POINTS])
+            if word in shown[:SHOWN_RESULTS]:
+                cp3_visible_hits += 1
+            if word in shown[:suggest_chain.CELL_COUNT]:
+                cp3_engine_hits += 1
         stratum_pairs = 0
-        stratum_hits = 0
+        stratum_visible_hits = 0
+        stratum_engine_hits = 0
         for line in lines:
             line_words = line.split(" ")
             for head, successor in zip(line_words, line_words[1:]):
                 if stratum_by_word[head] != stratum:
                     continue
                 stratum_pairs += 1
-                if successor in chain.predict_top3(head):
-                    stratum_hits += 1
+                shown = chain.predict_top3(head)
+                if successor in shown[:SHOWN_RESULTS]:
+                    stratum_visible_hits += 1
+                if successor in shown[:suggest_chain.CELL_COUNT]:
+                    stratum_engine_hits += 1
         metrics.extend(
             [
                 (f"stratum_{stratum}_words", str(len(words))),
                 (f"stratum_{stratum}_cp3_words", str(cp3_words)),
-                (f"stratum_{stratum}_cp3_hits", str(cp3_hits)),
-                (f"stratum_{stratum}_cp3_pct", f"{percent(cp3_hits, cp3_words):.4f}"),
+                (f"stratum_{stratum}_cp3_visible_top3_hits", str(cp3_visible_hits)),
+                (f"stratum_{stratum}_cp3_visible_top3_pct",
+                 f"{percent(cp3_visible_hits, cp3_words):.4f}"),
+                (f"stratum_{stratum}_cp3_engine_top4_hits", str(cp3_engine_hits)),
+                (f"stratum_{stratum}_cp3_engine_top4_pct",
+                 f"{percent(cp3_engine_hits, cp3_words):.4f}"),
                 (f"stratum_{stratum}_pairs", str(stratum_pairs)),
-                (f"stratum_{stratum}_top3_hits", str(stratum_hits)),
-                (f"stratum_{stratum}_top3_pct",
-                 f"{percent(stratum_hits, stratum_pairs):.4f}"),
+                (f"stratum_{stratum}_visible_top3_hits", str(stratum_visible_hits)),
+                (f"stratum_{stratum}_visible_top3_pct",
+                 f"{percent(stratum_visible_hits, stratum_pairs):.4f}"),
+                (f"stratum_{stratum}_engine_top4_hits", str(stratum_engine_hits)),
+                (f"stratum_{stratum}_engine_top4_pct",
+                 f"{percent(stratum_engine_hits, stratum_pairs):.4f}"),
             ]
         )
     return metrics
@@ -480,14 +533,22 @@ def _keystroke_metrics(
     the oracle do not depend on the strip width.
     """
     mdp_lengths = suggest_chain.minimal_distinguishing_prefix_lengths(sorted(unique_words))
+
+    def completion(prefix: str, context: str | None, cells: int) -> list[str]:
+        successors = chain.packed_successors(context) if context is not None else ()
+        return chain.prefix_top3(prefix, successors)[:cells]
+
     baseline, simulated, oracle = suggest_chain.keystroke_costs(
         lines,
         lambda head: chain.predict_top3(head)[:SHOWN_RESULTS],
-        lambda prefix: chain.prefix_top3(prefix)[:SHOWN_RESULTS],
+        lambda prefix, context: completion(prefix, context, SHOWN_RESULTS),
         mdp_lengths,
     )
     _, simulated4, _ = suggest_chain.keystroke_costs(
-        lines, chain.predict_top3, chain.prefix_top3, mdp_lengths
+        lines,
+        lambda head: chain.predict_top3(head)[:suggest_chain.CELL_COUNT],
+        lambda prefix, context: completion(prefix, context, suggest_chain.CELL_COUNT),
+        mdp_lengths,
     )
     return [
         ("ks_baseline_keys", str(baseline)),

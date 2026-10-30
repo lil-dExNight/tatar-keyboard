@@ -210,10 +210,17 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
         }
         Thread.sleep(20)
         val last = centers.last()
+        val upTime = SystemClock.uptimeMillis()
         tracker.processMotionEvent(
-            event(MotionEvent.ACTION_UP, last.first, last.second, SystemClock.uptimeMillis()),
-            keyDetector,
+            event(MotionEvent.ACTION_UP, last.first, last.second, upTime), keyDetector,
         )
+        if (recordedGlides.isNotEmpty()) {
+            val path = recordedGlides.last()
+            val lastIndex = path.size - 1
+            assertEquals(last.first.toInt().toFloat(), path.xs[lastIndex], 0f)
+            assertEquals(last.second.toInt().toFloat(), path.ys[lastIndex], 0f)
+            assertEquals((upTime - downTime).toFloat(), path.ts[lastIndex] - path.ts[0], 0f)
+        }
     }
 
     private fun buildKeyboard(): Keyboard {

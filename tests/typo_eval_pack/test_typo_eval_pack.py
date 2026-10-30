@@ -22,6 +22,8 @@ RU_DICTIONARY = (
 )
 RU_EVAL_SET = ROOT / "app" / "src" / "test" / "resources" / "ru_eval_sentences.txt"
 RU_COMMITTED_SET = ROOT / "app" / "src" / "test" / "resources" / "ru_typo_eval_set.tsv"
+TT_SAFETY_SET = ROOT / "app" / "src" / "test" / "resources" / "tt_valid_oov_safety_set.tsv"
+RU_SAFETY_SET = ROOT / "app" / "src" / "test" / "resources" / "ru_valid_oov_safety_set.tsv"
 
 
 def load_module(name: str, path: Path):
@@ -266,14 +268,14 @@ class CommittedSetIdentityTest(unittest.TestCase):
 
     def test_set_identity(self) -> None:
         result = self.result
-        self.assertEqual(result.substrate_count, 2369)
-        self.assertEqual(result.size, 9476)
+        self.assertEqual(result.substrate_count, 2381)
+        self.assertEqual(result.size, 9524)
         self.assertEqual(
-            result.class_counts, {"sub": 2369, "del": 2369, "ins": 2369, "trans": 2369}
+            result.class_counts, {"sub": 2381, "del": 2381, "ins": 2381, "trans": 2381}
         )
-        self.assertEqual(len(result.data), 308490)
+        self.assertEqual(len(result.data), 310498)
         self.assertEqual(
-            result.sha256, "83f1629717577ac0e4846f0178286d4ae3ec21cbbbe3c3def47a18af1b6bfe9a"
+            result.sha256, "8b60e4b146981d737b351abbbdfd478a3aaa5eedb51a8769ff0cab54c5b5636e"
         )
 
     def test_every_class_is_present(self) -> None:
@@ -289,6 +291,132 @@ class CommittedSetIdentityTest(unittest.TestCase):
     def test_two_full_builds_are_byte_identical(self) -> None:
         again = pack.generate(EVAL_SET, DICTIONARY, LAYOUT_DIR)
         self.assertEqual(self.result.data, again.data)
+
+
+class NativePlausibilityFilterTest(unittest.TestCase):
+    def test_accepts_normalized_words_with_a_vowel(self) -> None:
+        self.assertTrue(pack.is_native_plausible_form("бала", pack.TATAR))
+        self.assertTrue(pack.is_native_plausible_form("расчёска", pack.RUSSIAN))
+
+    def test_rejects_formal_fragments_and_unnormalized_text(self) -> None:
+        for word in ("ббб", "аааа", "Бала", "bala", "е\u0308", "а" * 33):
+            with self.subTest(word=word):
+                self.assertFalse(pack.is_native_plausible_form(word, pack.TATAR))
+        self.assertFalse(pack.is_native_plausible_form("бәла", pack.RUSSIAN))
+
+
+class BuildValidOovSafetySetTest(unittest.TestCase):
+    def test_tatar_rows_cover_all_strata(self) -> None:
+        reviewed = ["хатаң", "балам", "аударма"]
+        result = pack.build_valid_oov_safety_set(
+            reviewed, ["бала"], set(reviewed), {"хатаң": 3}, language=pack.TATAR
+        )
+        self.assertEqual(
+            result.rows,
+            (
+                ("аударма", "unseen_stem"),
+                ("балам", "new_form_of_seen_stem"),
+                ("хатаң", "seen_form"),
+            ),
+        )
+        self.assertEqual(
+            result.stratum_counts,
+            {"seen_form": 1, "new_form_of_seen_stem": 1, "unseen_stem": 1},
+        )
+
+    def test_russian_rows_cover_all_strata(self) -> None:
+        reviewed = ["гасит", "дрозды", "вполуха"]
+        dictionary = ["дрозд", "дрозда", "дрозду", "дроздом", "дрозде"]
+        result = pack.build_valid_oov_safety_set(
+            reviewed, dictionary, set(reviewed), {"гасит": 3}, language=pack.RUSSIAN
+        )
+        self.assertEqual(
+            result.stratum_counts,
+            {"seen_form": 1, "new_form_of_seen_stem": 1, "unseen_stem": 1},
+        )
+
+    def test_rejects_a_dictionary_word(self) -> None:
+        with self.assertRaisesRegex(typo_pack.TypoPackError, "not OOV"):
+            pack.build_valid_oov_safety_set(
+                ["хатаң"], ["хатаң"], {"хатаң"}, {"хатаң": 3}, language=pack.TATAR
+            )
+
+    def test_rejects_a_word_outside_the_held_out_set(self) -> None:
+        with self.assertRaisesRegex(typo_pack.TypoPackError, "not held out"):
+            pack.build_valid_oov_safety_set(
+                ["хатаң"], [], set(), {"хатаң": 3}, language=pack.TATAR
+            )
+
+    def test_rejects_duplicates(self) -> None:
+        with self.assertRaisesRegex(typo_pack.TypoPackError, "duplicate"):
+            pack.build_valid_oov_safety_set(
+                ["хатаң", "хатаң"], [], {"хатаң"}, {"хатаң": 3}, language=pack.TATAR
+            )
+
+    def test_requires_every_stratum(self) -> None:
+        with self.assertRaisesRegex(typo_pack.TypoPackError, "lacks strata"):
+            pack.build_valid_oov_safety_set(
+                ["хатаң"], [], {"хатаң"}, {"хатаң": 3}, language=pack.TATAR
+            )
+
+
+class ConvFrequencyReaderTest(unittest.TestCase):
+    def test_reads_comments_header_and_positive_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "conv.tsv"
+            path.write_text("# comment\nword\tconv_freq\nбала\t3\n", encoding="utf-8")
+            self.assertEqual(pack.read_conv_frequencies(path), {"бала": 3})
+
+    def test_rejects_a_duplicate_word(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "conv.tsv"
+            path.write_text("бала\t3\nбала\t4\n", encoding="utf-8")
+            with self.assertRaises(typo_pack.TypoPackError):
+                pack.read_conv_frequencies(path)
+
+
+class TatarValidOovSafetySetIdentityTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.result = pack.generate_valid_oov_safety_set(
+            EVAL_SET, DICTIONARY, pack.TATAR.conv_frequency, language=pack.TATAR
+        )
+
+    def test_set_identity_and_strata(self) -> None:
+        self.assertEqual(self.result.size, 175)
+        self.assertEqual(len(self.result.data), 6157)
+        self.assertEqual(
+            self.result.sha256, "e843019198ef8df8d9d4feef1895e3048dbd842e1fc3c0820d7dce8caaa2761d"
+        )
+        self.assertEqual(
+            self.result.stratum_counts,
+            {"seen_form": 12, "new_form_of_seen_stem": 59, "unseen_stem": 104},
+        )
+
+    def test_committed_file_is_byte_identical(self) -> None:
+        self.assertEqual(TT_SAFETY_SET.read_bytes(), self.result.data)
+
+
+class RussianValidOovSafetySetIdentityTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.result = pack.generate_valid_oov_safety_set(
+            RU_EVAL_SET, RU_DICTIONARY, pack.RUSSIAN.conv_frequency, language=pack.RUSSIAN
+        )
+
+    def test_set_identity_and_strata(self) -> None:
+        self.assertEqual(self.result.size, 110)
+        self.assertEqual(len(self.result.data), 3884)
+        self.assertEqual(
+            self.result.sha256, "8057871b0db8f8e863807cb47cf2f7d5015f3a20f168451b25354bf2c0e7bb17"
+        )
+        self.assertEqual(
+            self.result.stratum_counts,
+            {"seen_form": 11, "new_form_of_seen_stem": 34, "unseen_stem": 65},
+        )
+
+    def test_committed_file_is_byte_identical(self) -> None:
+        self.assertEqual(RU_SAFETY_SET.read_bytes(), self.result.data)
 
 
 class CliTest(unittest.TestCase):
@@ -323,13 +451,13 @@ class CliTest(unittest.TestCase):
             code, stdout = self.run_cli(out)
             self.assertEqual(code, 0)
             report = json.loads(stdout)
-            self.assertEqual(report["rows"], 9476)
+            self.assertEqual(report["rows"], 9524)
             self.assertEqual(
                 report["set_sha256"],
-                "83f1629717577ac0e4846f0178286d4ae3ec21cbbbe3c3def47a18af1b6bfe9a",
+                "8b60e4b146981d737b351abbbdfd478a3aaa5eedb51a8769ff0cab54c5b5636e",
             )
-            self.assertEqual(report["set_bytes"], 308490)
-            self.assertEqual(report["substrate_words"], 2369)
+            self.assertEqual(report["set_bytes"], 310498)
+            self.assertEqual(report["substrate_words"], 2381)
             self.assertEqual(hashlib.sha256(out.read_bytes()).hexdigest(), report["set_sha256"])
 
     def test_a_missing_eval_set_exits_two_without_output(self) -> None:
@@ -493,6 +621,26 @@ class RussianCliTest(unittest.TestCase):
                 {"sub": 2051, "del": 2051, "ins": 2051, "trans": 2051},
             )
             self.assertEqual(hashlib.sha256(out.read_bytes()).hexdigest(), report["set_sha256"])
+
+    def test_russian_safety_set_builds_from_the_language_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "safety.tsv"
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+                code = pack.main(["safety-set", "--language", "rus", "--output", str(out)])
+            self.assertEqual(code, 0)
+            report = json.loads(stdout.getvalue())
+            self.assertEqual(report["rows"], 110)
+            self.assertEqual(
+                report["stratum_counts"],
+                {"seen_form": 11, "new_form_of_seen_stem": 34, "unseen_stem": 65},
+            )
+            self.assertEqual(report["set_bytes"], 3884)
+            self.assertEqual(
+                report["set_sha256"],
+                "8057871b0db8f8e863807cb47cf2f7d5015f3a20f168451b25354bf2c0e7bb17",
+            )
+            self.assertEqual(out.read_bytes(), RU_SAFETY_SET.read_bytes())
 
     def test_tatar_build_without_an_output_exits_two(self) -> None:
         # The Tatar set is regenerated, never committed, so it has no default output path.

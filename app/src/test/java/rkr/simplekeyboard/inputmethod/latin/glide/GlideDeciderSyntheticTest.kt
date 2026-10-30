@@ -11,9 +11,9 @@ import org.junit.Test
  * performs) and the arm verdicts are counted over a (distance x velocity x window) threshold
  * grid around the shipped constants. Populations: tap-with-tremor (must never arm), the fast
  * tap with a slip past one key width (the false-arm class), deliberate glide onsets (arm floor
- * in [TRUE_ONSET_ARM_FLOOR]), and slow two-key drags. The printout carries the retune rule, the
- * shipped-point rates are pinned as the baseline, and the shipped point is held to the retune
- * gates (slip false-arm within [RETUNE_FALSE_ARM_GATE], onsets arming).
+ * in [TRUE_ONSET_ARM_FLOOR]), geometrically short high-speed onsets that enter another letter
+ * key, and slow two-key drags. The printout carries the retune rule, the shipped-point rates are
+ * pinned as the baseline, and both onset paths are held to their arm and false-arm gates.
  */
 class GlideDeciderSyntheticTest {
 
@@ -74,6 +74,120 @@ class GlideDeciderSyntheticTest {
         assertTrue("the grid printout lacks the verdict line", GRID.rendered.contains("-> $token"))
     }
 
+    @Test
+    fun shortOnsetsArmAtLeast99PercentAtTheShippedPoint() {
+        assertTrue(
+            "short onsets armed ${pct(GRID.shipped.shortOnsetArm)}, " +
+                "below the ${pct(TRUE_ONSET_ARM_FLOOR)} floor",
+            GRID.shipped.shortOnsetArm >= TRUE_ONSET_ARM_FLOOR,
+        )
+        assertEquals(0.0, GRID.legacyShortOnsetArm, 0.0)
+    }
+
+    @Test
+    fun shortOnsetRequiresHighSpeedAndEntryOntoAnotherLetterKey() {
+        val noKeyEntry = thresholdDecider(1.5f, 0.10f, 500L)
+        noKeyEntry.onDown(1000f, 1000f, 0L, eligible = true)
+        assertEquals(
+            GlideGestureDecider.State.TRACKING,
+            noKeyEntry.onMove(1050f, 1000f, 20L, enteredDifferentLetterKey = false),
+        )
+
+        val slowEntry = thresholdDecider(1.5f, 0.10f, 500L)
+        slowEntry.onDown(1000f, 1000f, 0L, eligible = true)
+        assertEquals(
+            GlideGestureDecider.State.TRACKING,
+            slowEntry.onMove(1050f, 1000f, 100L, enteredDifferentLetterKey = true),
+        )
+
+        val fastEntry = thresholdDecider(1.5f, 0.10f, 500L)
+        fastEntry.onDown(1000f, 1000f, 0L, eligible = true)
+        assertEquals(
+            GlideGestureDecider.State.ARMED,
+            fastEntry.onMove(1050f, 1000f, 20L, enteredDifferentLetterKey = true),
+        )
+    }
+
+    @Test
+    fun shortWordsSeparateArmingLossFromDecoderRanking() {
+        val cases = listOf(
+            "фы" to true,
+            "фыф" to true,
+            "фыфы" to true,
+            "аз" to true,
+            "аза" to true,
+            "азак" to true,
+        )
+        assertEquals(
+            setOf(2, 3, 4),
+            cases.map { it.first.codePointCount(0, it.first.length) }.toSet(),
+        )
+        val geometry = GlideTestFixtures.tatarGeometry()
+        val decoder = GlideDecoder(
+            geometry,
+            ListGlideInventory(
+                cases.mapIndexed { index, case -> case.first to (cases.size - index).toLong() },
+            ),
+        )
+        var decoderTop1 = 0
+        var decoderTop3 = 0
+        var armedTop1 = 0
+        var armedTop3 = 0
+        for ((word, expectedArm) in cases) {
+            val path = requireNotNull(GlideTestFixtures.idealPath(word, geometry))
+            val decoderRank = decodeRank(decoder, path, word)
+            if (decoderRank == 1) decoderTop1++
+            if (decoderRank in 1..3) decoderTop3++
+
+            val decider = deciderForGeometry(geometry)
+            decider.onDown(path.xs[0], path.ys[0], path.ts[0].toLong(), eligible = true)
+            var previousKey = geometry.keyIndexOfLetter(
+                Character.toLowerCase(word.codePointAt(0)),
+            )
+            var letterOffset = Character.charCount(word.codePointAt(0))
+            for (index in 1 until path.size) {
+                val codePoint = word.codePointAt(letterOffset)
+                val key = geometry.keyIndexOfLetter(Character.toLowerCase(codePoint))
+                decider.onMove(
+                    path.xs[index],
+                    path.ys[index],
+                    path.ts[index].toLong(),
+                    enteredDifferentLetterKey = key != previousKey,
+                )
+                previousKey = key
+                letterOffset += Character.charCount(codePoint)
+            }
+            val armed = decider.isArmed
+            decider.onUpOrCancel()
+            val endToEndRank = if (armed) decodeRank(decoder, path, word) else 0
+            if (endToEndRank == 1) armedTop1++
+            if (endToEndRank in 1..3) armedTop3++
+            println(
+                "Glide short word $word: cp=${word.codePointCount(0, word.length)} " +
+                    "decoderRank=$decoderRank " +
+                    "armed=$armed endToEndRank=$endToEndRank",
+            )
+            assertEquals("arming $word", expectedArm, armed)
+        }
+        println(
+            "Glide short-word coverage: decoder_top1=$decoderTop1 decoder_top3=$decoderTop3 " +
+                "arm_to_decode_top1=$armedTop1 arm_to_decode_top3=$armedTop3",
+        )
+        assertEquals("decoder-only top-1", cases.size, decoderTop1)
+        assertEquals("decoder-only top-3", cases.size, decoderTop3)
+        assertEquals("arm-to-decode top-1", cases.size, armedTop1)
+        assertEquals("arm-to-decode top-3", cases.size, armedTop3)
+    }
+
+    private fun decodeRank(decoder: GlideDecoder, path: GlidePath, word: String): Int {
+        val result = GlideResult()
+        val count = decoder.decode(path, result)
+        for (slot in 0 until count) {
+            if (result.words[slot] == word) return slot + 1
+        }
+        return 0
+    }
+
     private companion object {
 
         // Fixture scale shared with GlideGestureDeciderTest: 100 px keys on the 440 dpi
@@ -91,6 +205,7 @@ class GlideDeciderSyntheticTest {
         const val TREMOR_COUNT = 600
         const val SLIP_COUNT = 2000
         const val ONSET_COUNT = 3000
+        const val SHORT_ONSET_COUNT = 3000
         const val DRAG_COUNT = 800
 
         // Trace model ranges: speeds in dp/s, lengths in key widths, times in ms.
@@ -112,6 +227,11 @@ class GlideDeciderSyntheticTest {
         const val ONSET_MAX_BEND_DEG = 25.0
         const val ONSET_BEND_MIN_FRACTION = 0.4
         const val ONSET_BEND_MAX_FRACTION = 0.7
+
+        const val SHORT_ONSET_MIN_DP_PER_S = 500.0
+        const val SHORT_ONSET_MAX_DP_PER_S = 1200.0
+        const val SHORT_ONSET_MIN_KEY_WIDTHS = 0.55
+        const val SHORT_ONSET_MAX_KEY_WIDTHS = 1.45
 
         const val DRAG_MIN_DP_PER_S = 20.0
         const val DRAG_MAX_DP_PER_S = 70.0
@@ -145,7 +265,12 @@ class GlideDeciderSyntheticTest {
         val GRID: GridResult by lazy { runGrid() }
 
         /** One generated touch: the down at index 0, then move samples in time order. */
-        private class Trace(val xs: FloatArray, val ys: FloatArray, val ts: LongArray) {
+        private class Trace(
+            val xs: FloatArray,
+            val ys: FloatArray,
+            val ts: LongArray,
+            val entersDifferentLetterKey: Boolean,
+        ) {
             val size: Int get() = ts.size
         }
 
@@ -169,7 +294,12 @@ class GlideDeciderSyntheticTest {
         }
 
         /** Accumulates one trace: the down in the constructor, then [move] samples. */
-        private class TraceBuilder(x: Float, y: Float, t: Long) {
+        private class TraceBuilder(
+            x: Float,
+            y: Float,
+            t: Long,
+            private val entersDifferentLetterKey: Boolean = false,
+        ) {
             private val xs = ArrayList<Float>()
             private val ys = ArrayList<Float>()
             private val ts = ArrayList<Long>()
@@ -184,7 +314,12 @@ class GlideDeciderSyntheticTest {
                 ts.add(t)
             }
 
-            fun build(): Trace = Trace(xs.toFloatArray(), ys.toFloatArray(), ts.toLongArray())
+            fun build(): Trace = Trace(
+                xs.toFloatArray(),
+                ys.toFloatArray(),
+                ts.toLongArray(),
+                entersDifferentLetterKey,
+            )
         }
 
         /** Arm verdicts of one grid point, one rate per population. */
@@ -192,6 +327,7 @@ class GlideDeciderSyntheticTest {
             val tremorArm: Double,
             val slipArm: Double,
             val onsetArm: Double,
+            val shortOnsetArm: Double,
             val dragArm: Double,
         ) {
             val onsetMiss: Double get() = 1.0 - onsetArm
@@ -214,6 +350,7 @@ class GlideDeciderSyntheticTest {
         private class GridResult(
             val points: List<GridPoint>,
             val shipped: Rates,
+            val legacyShortOnsetArm: Double,
             val rendered: String,
         )
 
@@ -221,6 +358,7 @@ class GlideDeciderSyntheticTest {
             val tremor: List<Trace>,
             val slip: List<Trace>,
             val onsets: List<Trace>,
+            val shortOnsets: List<Trace>,
             val drags: List<Trace>,
         )
 
@@ -231,6 +369,7 @@ class GlideDeciderSyntheticTest {
                 slip = List(SLIP_COUNT) { slipTrace(rng) },
                 onsets = List(ONSET_COUNT) { onsetTrace(rng) },
                 drags = List(DRAG_COUNT) { dragTrace(rng) },
+                shortOnsets = List(SHORT_ONSET_COUNT) { shortOnsetTrace(rng) },
             )
         }
 
@@ -260,7 +399,9 @@ class GlideDeciderSyntheticTest {
             val speed = dpPerSecondToPxPerMs(rng.uniform(SLIP_MIN_DP_PER_S, SLIP_MAX_DP_PER_S))
             val length = rng.uniform(SLIP_MIN_KEY_WIDTHS, SLIP_MAX_KEY_WIDTHS) * KEY_WIDTH_PX
             val angle = rng.uniform(0.0, TWO_PI)
-            return straightTrace(rng, speed, length, angle, period)
+            return straightTrace(
+                rng, speed, length, angle, period, entersDifferentLetterKey = true,
+            )
         }
 
         /** A deliberate glide onset: fast, well past one key width, with a slight mid-onset bend. */
@@ -274,13 +415,30 @@ class GlideDeciderSyntheticTest {
             return straightTrace(rng, speed, length, angle, period, bendFraction, bendRad)
         }
 
+        /** A sub-threshold glide onset with high speed and entry onto another letter key. */
+        private fun shortOnsetTrace(rng: Rng): Trace {
+            val period = rng.pick(SAMPLE_PERIODS_MS)
+            val speed = dpPerSecondToPxPerMs(
+                rng.uniform(SHORT_ONSET_MIN_DP_PER_S, SHORT_ONSET_MAX_DP_PER_S),
+            )
+            val length = rng.uniform(
+                SHORT_ONSET_MIN_KEY_WIDTHS, SHORT_ONSET_MAX_KEY_WIDTHS,
+            ) * KEY_WIDTH_PX
+            val angle = rng.uniform(0.0, TWO_PI)
+            return straightTrace(
+                rng, speed, length, angle, period, entersDifferentLetterKey = true,
+            )
+        }
+
         /** A slow two-key drag, far below the glide velocity band. */
         private fun dragTrace(rng: Rng): Trace {
             val period = rng.pick(SAMPLE_PERIODS_MS)
             val speed = dpPerSecondToPxPerMs(rng.uniform(DRAG_MIN_DP_PER_S, DRAG_MAX_DP_PER_S))
             val length = rng.uniform(DRAG_MIN_KEY_WIDTHS, DRAG_MAX_KEY_WIDTHS) * KEY_WIDTH_PX
             val angle = rng.uniform(0.0, TWO_PI)
-            return straightTrace(rng, speed, length, angle, period)
+            return straightTrace(
+                rng, speed, length, angle, period, entersDifferentLetterKey = true,
+            )
         }
 
         /**
@@ -296,10 +454,13 @@ class GlideDeciderSyntheticTest {
             periodMs: Int,
             bendFraction: Double = Double.NaN,
             bendRad: Double = 0.0,
+            entersDifferentLetterKey: Boolean = false,
         ): Trace {
             val downX = rng.uniform(DOWN_MIN_PX, DOWN_MAX_PX)
             val downY = rng.uniform(DOWN_MIN_PX, DOWN_MAX_PX)
-            val trace = TraceBuilder(downX.toFloat(), downY.toFloat(), 0L)
+            val trace = TraceBuilder(
+                downX.toFloat(), downY.toFloat(), 0L, entersDifferentLetterKey,
+            )
             val dirX = StrictMath.cos(angleRad)
             val dirY = StrictMath.sin(angleRad)
             val bendDirX = StrictMath.cos(angleRad + bendRad)
@@ -329,8 +490,8 @@ class GlideDeciderSyntheticTest {
                 lastT = t
                 t += periodMs
             }
-            // The terminal sample lands exactly at the length; the up follows right after.
-            val endT = maxOf(lastT + 1, (lengthPx / speedPxPerMs).toLong())
+            // Round the terminal time up so the shortened last segment cannot invent a speed spike.
+            val endT = maxOf(lastT + 1, StrictMath.ceil(lengthPx / speedPxPerMs).toLong())
             trace.move(positionX(lengthPx).toFloat(), positionY(lengthPx).toFloat(), endT)
             return trace.build()
         }
@@ -339,16 +500,31 @@ class GlideDeciderSyntheticTest {
         private fun dpPerSecondToPxPerMs(speedDpPerS: Double): Double =
             speedDpPerS / 1000.0 * DENSITY_PX_PER_DP
 
+        /** Shipped thresholds expressed in the reference geometry's coordinate units. */
+        private fun deciderForGeometry(geometry: GlideKeyGeometry) = GlideGestureDecider(
+            distanceThresholdPx = GlideGestureDecider.DISTANCE_THRESHOLD_KEY_WIDTHS * geometry.keyRadius,
+            velocityThresholdPxPerMs = GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS *
+                DENSITY_PX_PER_DP * geometry.keyRadius / KEY_WIDTH_PX,
+            maxDetectTimeMs = GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS,
+            slopPx = GlideGestureDecider.DEFAULT_SLOP_KEY_WIDTH_FRACTION * geometry.keyRadius,
+            shortOnsetVelocityThresholdPxPerMs =
+                GlideGestureDecider.SHORT_ONSET_VELOCITY_THRESHOLD_DP_PER_MS *
+                DENSITY_PX_PER_DP * geometry.keyRadius / KEY_WIDTH_PX,
+        )
+
         /** The decider as PointerTracker wires it, with the thresholds moved to one grid point. */
         private fun thresholdDecider(
             distanceKeyWidths: Float,
             velocityDpPerMs: Float,
             windowMs: Long,
+            shortOnsetVelocityThresholdPxPerMs: Float =
+                GlideGestureDecider.SHORT_ONSET_VELOCITY_THRESHOLD_DP_PER_MS * DENSITY_PX_PER_DP,
         ) = GlideGestureDecider(
             distanceThresholdPx = distanceKeyWidths * KEY_WIDTH_PX,
             velocityThresholdPxPerMs = velocityDpPerMs * DENSITY_PX_PER_DP,
             maxDetectTimeMs = windowMs,
             slopPx = SLOP_PX,
+            shortOnsetVelocityThresholdPxPerMs = shortOnsetVelocityThresholdPxPerMs,
         )
 
         /**
@@ -360,7 +536,11 @@ class GlideDeciderSyntheticTest {
             decider.onDown(trace.xs[0], trace.ys[0], trace.ts[0], eligible = true)
             var armed = false
             for (i in 1 until trace.size) {
-                when (decider.onMove(trace.xs[i], trace.ys[i], trace.ts[i])) {
+                when (
+                    decider.onMove(
+                        trace.xs[i], trace.ys[i], trace.ts[i], trace.entersDifferentLetterKey,
+                    )
+                ) {
                     GlideGestureDecider.State.ARMED -> {
                         armed = true
                         break
@@ -393,6 +573,7 @@ class GlideDeciderSyntheticTest {
                             tremorArm = armRate(decider, populations.tremor),
                             slipArm = armRate(decider, populations.slip),
                             onsetArm = armRate(decider, populations.onsets),
+                            shortOnsetArm = armRate(decider, populations.shortOnsets),
                             dragArm = armRate(decider, populations.drags),
                         )
                         val point = GridPoint(distance, velocity, window, rates)
@@ -402,12 +583,26 @@ class GlideDeciderSyntheticTest {
                 }
             }
             val shippedRates = requireNotNull(shipped) { "the grid must contain the shipped point" }
-            val rendered = render(points, shippedRates, populations)
+            val legacyShortOnsetArm = armRate(
+                thresholdDecider(
+                    GlideGestureDecider.DISTANCE_THRESHOLD_KEY_WIDTHS,
+                    GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS,
+                    GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS,
+                    shortOnsetVelocityThresholdPxPerMs = Float.MAX_VALUE,
+                ),
+                populations.shortOnsets,
+            )
+            val rendered = render(points, shippedRates, legacyShortOnsetArm, populations)
             println(rendered)
-            return GridResult(points, shippedRates, rendered)
+            return GridResult(points, shippedRates, legacyShortOnsetArm, rendered)
         }
 
-        private fun render(points: List<GridPoint>, shipped: Rates, populations: Populations): String {
+        private fun render(
+            points: List<GridPoint>,
+            shipped: Rates,
+            legacyShortOnsetArm: Double,
+            populations: Populations,
+        ): String {
             val out = StringBuilder()
             out.appendLine("Glide decider synthetic arm-rate grid:")
             out.appendLine(
@@ -416,16 +611,20 @@ class GlideDeciderSyntheticTest {
             )
             out.appendLine(
                 "  populations: tremor=${populations.tremor.size} slip=${populations.slip.size} " +
-                    "onsets=${populations.onsets.size} drags=${populations.drags.size}",
+                    "onsets=${populations.onsets.size} shortOnsets=${populations.shortOnsets.size} " +
+                    "drags=${populations.drags.size}",
             )
             out.appendLine(
                 "  shipped point: distance=${GlideGestureDecider.DISTANCE_THRESHOLD_KEY_WIDTHS}kw " +
                     "velocity=${GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS}dp/ms " +
+                    "shortVelocity=${GlideGestureDecider.SHORT_ONSET_VELOCITY_THRESHOLD_DP_PER_MS}dp/ms " +
                     "window=${GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS}ms",
             )
             out.appendLine(
                 "  shipped rates: tremorArm=${pct(shipped.tremorArm)} " +
                     "slipFalseArm=${pct(shipped.slipArm)} onsetArm=${pct(shipped.onsetArm)} " +
+                    "shortOnsetArm=${pct(shipped.shortOnsetArm)} " +
+                    "legacyShortOnsetArm=${pct(legacyShortOnsetArm)} " +
                     "onsetMiss=${pct(shipped.onsetMiss)} dragArm=${pct(shipped.dragArm)}",
             )
             val verdict =
@@ -435,11 +634,12 @@ class GlideDeciderSyntheticTest {
                     "gate -> $verdict",
             )
             out.appendLine(
-                "  grid (distanceKw velocityDpPerMs windowMs): tremorArm slipArm onsetArm onsetMiss dragArm",
+                "  grid (distanceKw velocityDpPerMs windowMs): " +
+                    "tremorArm slipArm onsetArm shortOnsetArm onsetMiss dragArm",
             )
             for (point in points) {
                 out.appendLine(
-                    "    d=%4.2fkw v=%6.3f w=%4d: %s %s %s %s %s%s".format(
+                    "    d=%4.2fkw v=%6.3f w=%4d: %s %s %s %s %s %s%s".format(
                         Locale.ROOT,
                         point.distanceKeyWidths,
                         point.velocityDpPerMs,
@@ -447,6 +647,7 @@ class GlideDeciderSyntheticTest {
                         pct(point.rates.tremorArm),
                         pct(point.rates.slipArm),
                         pct(point.rates.onsetArm),
+                        pct(point.rates.shortOnsetArm),
                         pct(point.rates.onsetMiss),
                         pct(point.rates.dragArm),
                         if (point.isShipped) "  <- shipped" else "",

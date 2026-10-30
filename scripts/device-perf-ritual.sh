@@ -62,6 +62,18 @@
 #      markers by cookie, writes the durations to suggest-lookup-ms.txt and
 #      holds p95 to SUGGEST_BUDGET_MS. Zero slices is a FAIL: the gate is the
 #      capture itself.
+#   first-suggestion) cold first suggestion: a fresh process and try-it field,
+#      one Tatar key, ACTION_UP eventTimeNano -> FrameCompleted of the first
+#      InputMethod frame whose IntendedVsync follows the applied lookup. Five
+#      cold runs produce a median and p95; the lookup must have a completed
+#      TT#suggestLookup slice, so a key press without a visible answer is not a
+#      valid sample.
+#   first-glide) cold first glide after a 12 s keyboard-hidden idle window and
+#      warm decode, five runs each in GlideUiDeviceTest. The test injects the
+#      real сәләм gesture and records ACTION_UP -> the try-it field's first
+#      frame commit containing the decoded word. The script streams its two
+#      budgeted RESULT lines into result.txt. This leg needs the debug
+#      androidTest APK; without an installed runner it reports SKIP.
 #   battery) opt-in, never interleaved with the USB-power perf legs: it
 #      simulates the unplugged state (`dumpsys battery unplug`, restored on
 #      exit). Idle protocol: keyboard hidden, batterystats reset, then a
@@ -103,15 +115,16 @@
 #                     online device, else the POCO C71 serial)
 #   --pkg <package>   package under test (default org.tatarkeyboard.ime.debug)
 #   --outdir <path>   evidence directory (default build/device-perf-ritual)
-#   --legs <list>     comma-separated subset of cold,pss,frames,warm,touch,suggest
-#                     and the opt-in battery,uimode,fontscale (default: the six
-#                     non-opt-in legs)
+#   --legs <list>     comma-separated subset of cold,pss,frames,warm,touch,suggest,
+#                     first-suggestion,first-glide and the opt-in battery,uimode,
+#                     fontscale (default: the eight non-opt-in legs)
 #   --cold-runs <n>   recorded cold-start iterations (default 5)
 #   --cold-warmup <n> discarded cold-start iterations before them (default 1)
 #   --cold-trigger <tap|switch>  cold-start trigger (default: tap for a
 #                     debuggable package, switch otherwise)
 #   --frame-runs <n>  frame-stat runs (default 3)
 #   --warm-runs <n>   warm-show iterations (default 5)
+#   --first-suggestion-runs <n>  cold first-suggestion iterations (default 5)
 #   --battery-seconds <n>  idle window of the battery leg (default 150)
 #   --enable-suggestions-ui  turn suggestions on through the settings screen
 #                     instead of the run-as pref write
@@ -126,12 +139,13 @@ set -uo pipefail
 SERIAL="${ANDROID_SERIAL:-}"
 PKG="org.tatarkeyboard.ime.debug"
 OUTDIR=""
-LEGS="cold,pss,frames,warm,touch,suggest"
+LEGS="cold,pss,frames,warm,touch,suggest,first-suggestion,first-glide"
 COLD_RUNS=5
 COLD_WARMUP=1
 COLD_TRIGGER=""
 FRAME_RUNS=3
 WARM_RUNS=5
+FIRST_SUGGESTION_RUNS=5
 BATTERY_SECONDS=150
 SUGGESTIONS_UI=0
 ADB="${ADB:-$HOME/Android/Sdk/platform-tools/adb}"
@@ -147,6 +161,7 @@ while [ $# -gt 0 ]; do
         --cold-trigger) COLD_TRIGGER="$2"; shift 2 ;;
         --frame-runs) FRAME_RUNS="$2"; shift 2 ;;
         --warm-runs) WARM_RUNS="$2"; shift 2 ;;
+        --first-suggestion-runs) FIRST_SUGGESTION_RUNS="$2"; shift 2 ;;
         --battery-seconds) BATTERY_SECONDS="$2"; shift 2 ;;
         --enable-suggestions-ui) SUGGESTIONS_UI=1; shift ;;
         *) echo "unknown flag: $1" >&2; exit 2 ;;
@@ -162,6 +177,7 @@ COLD_BUDGET_MS=400
 WARM_BUDGET_MS=150
 TOUCH_BUDGET_MS=5
 SUGGEST_BUDGET_MS=32
+FIRST_SUGGESTION_BUDGET_MS=400
 FRAME_BUDGET_MS=16.7
 JANK_BUDGET_PCT=1.0
 PSS_BUDGET_DEBUG_KB=114000
@@ -625,12 +641,13 @@ pss_point() { # pss_point <scenario>
 
 # framestats parser: window section by name, columns by header name.
 # Modes: durations -> "n p50 p90 p95"; firstframe -> FrameCompleted of the first
-# row; jank -> "total janky percent" from the section's "Janky frames" line.
-framestats() { # framestats <file> <window-regex> durations|firstframe|jank
-    python3 - "$1" "$2" "$3" <<'PYEOF'
+# row; firstafter -> FrameCompleted of the first row whose IntendedVsync is at
+# or after the supplied monotonic ns; jank -> "total janky percent".
+framestats() { # framestats <file> <window-regex> <mode> [after-ns]
+    python3 - "$1" "$2" "$3" "${4:-0}" <<'PYEOF'
 import re
 import sys
-path, window, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+path, window, mode, after_ns = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 text = open(path, encoding="utf-8", errors="replace").read()
 match = re.search(rf"^Window: .*{window}.*$", text, re.M)
 if not match:
@@ -661,6 +678,11 @@ if not header or not rows:
 done_i, vsync_i = header.index("FrameCompleted"), header.index("IntendedVsync")
 if mode == "firstframe":
     print(rows[0][done_i])
+elif mode == "firstafter":
+    row = next((r for r in rows if int(r[done_i]) > 0 and int(r[vsync_i]) >= after_ns), None)
+    if row is None:
+        sys.exit(f"no frame with IntendedVsync >= {after_ns}")
+    print(row[done_i])
 else:
     durs = sorted((int(r[done_i]) - int(r[vsync_i])) / 1e6 for r in rows)
     def pct(p):
@@ -771,6 +793,43 @@ n = len(durations)
 p50 = durations[n // 2] if n % 2 else (durations[n // 2 - 1] + durations[n // 2]) / 2
 p95 = durations[min(n - 1, int(0.95 * n))]
 print(f"{n} {p50:.2f} {p95:.2f}")
+PYEOF
+}
+
+# Monotonic end time of the first complete async slice. The clock-sync marker
+# aligns atrace seconds with CLOCK_MONOTONIC, the clock used by framestats.
+trace_async_end() { # trace_async_end <trace-file> <section-name>
+    python3 - "$1" "$2" <<'PYEOF'
+import re
+import sys
+path, section = sys.argv[1], sys.argv[2]
+line_re = re.compile(r"^\s*\S+-(\d+)\s+(?:\(\s*[\d-]+\)\s+)?\[\d+\]\s+\S+\s+([\d.]+): "
+                     r"tracing_mark_write: (.*)$")
+offset = None
+open_slices = {}
+ends = []
+for line in open(path, encoding="utf-8", errors="replace"):
+    m = line_re.match(line)
+    if not m:
+        continue
+    ts, body = float(m.group(2)), m.group(3).strip()
+    if body.startswith("trace_event_clock_sync: parent_ts="):
+        offset = ts - float(body.split("=", 1)[1])
+        continue
+    parts = body.split("|")
+    if len(parts) != 4 or parts[2] != section:
+        continue
+    key = (parts[1], parts[3])
+    if parts[0] == "S":
+        open_slices[key] = ts
+    elif parts[0] == "F" and key in open_slices:
+        open_slices.pop(key)
+        ends.append(ts)
+if offset is None:
+    sys.exit("no trace_event_clock_sync marker")
+if not ends:
+    sys.exit(f"no complete async slices named {section}")
+print(round((min(ends) - offset) * 1e9))
 PYEOF
 }
 
@@ -1154,6 +1213,112 @@ if leg_on suggest; then
         hide_keyboard || true
     else
         result FAIL suggest "keyboard or tt layout not ready over SetupActivity"
+    fi
+fi
+
+# ── leg: cold first suggestion (key ACTION_UP -> first visible strip frame) ──
+
+if leg_on first-suggestion; then
+    select_ours
+    # Pre-stage tt before the cold runs. In a release build the layout probe
+    # types a key, which must not become the measured first lookup.
+    if ! raise_keyboard_over_setup || ! globe_to tt; then
+        result FAIL first-suggestion "keyboard or tt layout not ready over SetupActivity"
+    else
+        first_suggestions=()
+        first_suggestion_skips=0
+        for i in $(seq 1 "$FIRST_SUGGESTION_RUNS"); do
+            hide_keyboard || true
+            if ! kill_app; then
+                first_suggestion_skips=$((first_suggestion_skips + 1))
+                log "first-suggestion $i: kill failed"
+                select_ours
+                continue
+            fi
+            select_ours
+            if ! raise_keyboard_over_setup; then
+                first_suggestion_skips=$((first_suggestion_skips + 1))
+                log "first-suggestion $i: keyboard did not raise"
+                continue
+            fi
+            SHELL dumpsys gfxinfo "$PKG" reset >/dev/null 2>&1
+            if ! trace_start -a "$PKG"; then
+                first_suggestion_skips=$((first_suggestion_skips + 1))
+                log "first-suggestion $i: atrace did not start"
+                continue
+            fi
+            # One с tap has known dictionary completions. No warm-up key or
+            # layout probe follows the process kill.
+            read -r tap_x tap_y <<<"$(script_points tt "с")"
+            SHELL input tap "$tap_x" "$tap_y" </dev/null >/dev/null 2>&1
+            sleep 12
+            trace_stop "$OUTDIR/first-suggestion-trace-$i.txt"
+            SHELL dumpsys gfxinfo "$PKG" framestats > "$OUTDIR/first-suggestion-framestats-$i.txt" 2>/dev/null
+            SHOT "first-suggestion-$i.png"
+            applied=$(trace_async_end "$OUTDIR/first-suggestion-trace-$i.txt" "TT#suggestLookup" 2>/dev/null || true)
+            frame=""
+            [ -n "$applied" ] && frame=$(framestats "$OUTDIR/first-suggestion-framestats-$i.txt" "InputMethod" firstafter "$applied" 2>/dev/null || true)
+            up=""
+            [ -n "$frame" ] && up=$(trace_input "$OUTDIR/first-suggestion-trace-$i.txt" tapup "$frame" 2>/dev/null || true)
+            if [ -z "$applied" ] || [ -z "$frame" ] || [ -z "$up" ]; then
+                first_suggestion_skips=$((first_suggestion_skips + 1))
+                log "first-suggestion $i: no data (applied='${applied:-}' frame='${frame:-}' tap_up='${up:-}')"
+                continue
+            fi
+            ms=$(python3 -c "print(f'{($frame - $up) / 1e6:.1f}')")
+            first_suggestions+=("$ms")
+            log "first-suggestion $i: ${ms} ms"
+        done
+        hide_keyboard || true
+        if [ ${#first_suggestions[@]} -ge 3 ]; then
+            read -r n med p95 mn mx <<<"$(printf '%s\n' "${first_suggestions[@]}" | stats)"
+            result INFO first-suggestion "runs=$n skips=$first_suggestion_skips median_ms=$med p95_ms=$p95 min_ms=$mn max_ms=$mx values_ms=$(IFS=,; echo "${first_suggestions[*]}") budget_ms=$FIRST_SUGGESTION_BUDGET_MS over_budget=$(gt "$p95" "$FIRST_SUGGESTION_BUDGET_MS") build=$BUILD host=setup-try-it protocol=cold-key-up-to-first-frame-after-lookup"
+        else
+            result FAIL first-suggestion "only ${#first_suggestions[@]} valid runs of $FIRST_SUGGESTION_RUNS"
+        fi
+    fi
+fi
+
+# ── leg: first glide after idle and warm decode (on-screen device test) ──────
+
+if leg_on first-glide; then
+    select_ours
+    hide_keyboard || true
+    runner=$(SHELL pm list instrumentation 2>/dev/null | tr -d '\r' \
+        | grep -F " (target=$PKG)" | head -1 | grep -oP '^instrumentation:\K\S+' || true)
+    if [ -z "$runner" ]; then
+        result SKIP first-glide "no installed instrumentation targets $PKG; install its androidTest APK"
+    else
+        glide_test="rkr.simplekeyboard.inputmethod.latin.glide.GlideUiDeviceTest#testFirstVisibleGlideAfterIdleAndWarmDecode"
+        log "first-glide: running $glide_test"
+        SHELL am instrument -w -r -e class "$glide_test" "$runner" \
+            > "$OUTDIR/first-glide-instrumentation.txt" 2>&1
+        instrument_rc=$?
+        cold_results=0
+        warm_results=0
+        while IFS= read -r status; do
+            status="${status%$'\r'}"
+            case "$status" in
+                "INSTRUMENTATION_STATUS: tt_perf_result=RESULT|"*)
+                    metric=${status#*tt_perf_result=}
+                    case "$metric" in
+                        "RESULT|INFO|cold-first-glide|"*"budget_ms="*"over_budget="*)
+                            cold_results=$((cold_results + 1)) ;;
+                        "RESULT|INFO|warm-decode|"*"budget_ms="*"over_budget="*)
+                            warm_results=$((warm_results + 1)) ;;
+                        *) continue ;;
+                    esac
+                    echo "$metric"
+                    echo "$metric" >> "$RESULTS"
+                    ;;
+            esac
+        done < "$OUTDIR/first-glide-instrumentation.txt"
+        if [ "$instrument_rc" != 0 ] || [ "$cold_results" != 1 ] || [ "$warm_results" != 1 ] \
+                || ! grep -q '^INSTRUMENTATION_CODE: -1' "$OUTDIR/first-glide-instrumentation.txt"; then
+            result FAIL first-glide "runner=$runner rc=$instrument_rc cold_results=$cold_results warm_results=$warm_results; see first-glide-instrumentation.txt"
+        fi
+        select_ours
+        hide_keyboard || true
     fi
 fi
 

@@ -33,6 +33,7 @@ import android.widget.EditText
 import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.latin.InputView
+import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView
 
@@ -247,6 +248,95 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
                 "per StateListDrawable state toggle, bounded at $BOARD_TOGGLE_FLOOR_BOUND " +
                 "(see the class KDoc) — anything above it is ours",
             boardThread <= BOARD_TOGGLE_FLOOR_BOUND,
+        )
+    }
+
+    fun testSameKeyboardSkipsLayoutButKeyboardChangeRequestsIt() {
+        prepareField()
+        setupLiveViewsAndWarmUp()
+
+        onMain {
+            val view = keyboardView!!
+            val original = requireNotNull(view.keyboard)
+            val width = view.width
+            val height = view.height
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY),
+            )
+            view.layout(view.left, view.top, view.left + width, view.top + height)
+            assertFalse("the settled fixture must not already need layout", view.isLayoutRequested)
+
+            view.setKeyboard(original)
+            assertFalse("rebinding the same visual inputs must not request layout",
+                view.isLayoutRequested)
+
+            val (lower, shifted) = alphabetKeyboards(view)
+            val changed = if (original === lower) shifted else lower
+            view.setKeyboard(changed)
+            assertTrue("a different keyboard must still request layout", view.isLayoutRequested)
+        }
+    }
+
+    fun testColorRefreshIsExplicitAndInvalidatesTheBoard() {
+        prepareField()
+        setupLiveViewsAndWarmUp()
+        val prefs = PreferenceManagerCompat.getDeviceSharedPreferences(instrumentation.targetContext)
+        val hadColor = prefs.contains(Settings.PREF_KEYBOARD_COLOR)
+        val savedColor = prefs.getInt(Settings.PREF_KEYBOARD_COLOR, 0)
+        try {
+            onMain {
+                val view = keyboardView!!
+                val oldColor = customColor(view)
+                val newColor = if (oldColor == 0xff123456.toInt()) 0xff654321.toInt()
+                else 0xff123456.toInt()
+                prefs.edit().putInt(Settings.PREF_KEYBOARD_COLOR, newColor).commit()
+
+                view.setKeyboard(requireNotNull(view.keyboard))
+                assertEquals("a same-keyboard rebind must not re-read theme preferences",
+                    oldColor, customColor(view))
+
+                KeyboardSwitcher.getInstance().updateKeyboardTheme()
+                assertEquals("explicit theme invalidation must refresh the cached color",
+                    newColor, customColor(view))
+                assertTrue("a changed color must redraw every key", invalidateAllKeys(view))
+            }
+        } finally {
+            onMain {
+                if (hadColor) {
+                    prefs.edit().putInt(Settings.PREF_KEYBOARD_COLOR, savedColor).commit()
+                } else {
+                    prefs.edit().remove(Settings.PREF_KEYBOARD_COLOR).commit()
+                }
+                KeyboardSwitcher.getInstance().updateKeyboardTheme()
+            }
+        }
+    }
+
+    fun testCapitalizedBoardRedrawReusesKeyDrawParams() {
+        prepareField()
+        setupLiveViewsAndWarmUp()
+        val view = keyboardView!!
+        val board = boardCanvas!!
+
+        onMain {
+            val (lower, shifted) = alphabetKeyboards(view)
+            // Warm both directions, then leave a fully invalidated shifted board ready to draw.
+            for (keyboard in listOf(lower, shifted, lower)) {
+                view.setKeyboard(keyboard)
+                view.invalidateAllKeys()
+                view.onDraw(board)
+            }
+            view.setKeyboard(shifted)
+            view.invalidateAllKeys()
+        }
+        measureWindow("capitalization", 1) { view.onDraw(board) }
+
+        assertTrue(
+            "the warmed capitalization redraw allocated $lastWindowThreadDelta objects; " +
+                "the shift background's platform state toggle is bounded at " +
+                "$CAPITALIZATION_TOGGLE_FLOOR_BOUND",
+            lastWindowThreadDelta <= CAPITALIZATION_TOGGLE_FLOOR_BOUND,
         )
     }
 
@@ -536,6 +626,33 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
         }
     }
 
+    private fun alphabetKeyboards(view: MainKeyboardView): Pair<Keyboard, Keyboard> {
+        val id = requireNotNull(view.keyboard).mId
+        val layouts = KeyboardLayoutSet.Builder(view.context, id.mEditorInfo)
+            .setKeyboardTheme(id.mThemeId)
+            .setKeyboardGeometry(id.mWidth, id.mHeight, id.mBottomOffset)
+            .setSubtype(id.mSubtype)
+            .setLanguageSwitchKeyEnabled(id.mLanguageSwitchKeyEnabled)
+            .setNoSettingsKey(id.mClobberSettingsKey)
+            .setShowSpecialChars(id.mShowMoreKeys)
+            .setShowNumberRow(id.mShowNumberRow)
+            .setShowEmojiKey(id.mShowEmojiKey)
+            .setOneHandedSide(id.mOneHandedSide)
+            .build()
+        return layouts.getKeyboard(KeyboardId.ELEMENT_ALPHABET) to
+            layouts.getKeyboard(KeyboardId.ELEMENT_ALPHABET_MANUAL_SHIFTED)
+    }
+
+    private fun customColor(view: KeyboardView): Int =
+        KeyboardView::class.java.getDeclaredField("mCustomColor").apply {
+            isAccessible = true
+        }.getInt(view)
+
+    private fun invalidateAllKeys(view: KeyboardView): Boolean =
+        KeyboardView::class.java.getDeclaredField("mInvalidateAllKeys").apply {
+            isAccessible = true
+        }.getBoolean(view)
+
     private fun findLetterKeys(view: MainKeyboardView, letters: CharArray): Array<Key> {
         val keyboard = requireNotNull(view.keyboard) { "the live keyboard view has no keyboard" }
         val sorted = keyboard.sortedKeys
@@ -703,6 +820,7 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
         // states. At most two toggles per press/release cycle. The bound leaves no room for one new object per draw.
         // Same-state redraws, blits and the strip stay asserted at zero.
         private const val BOARD_TOGGLE_FLOOR_BOUND = 24L
+        private const val CAPITALIZATION_TOGGLE_FLOOR_BOUND = 4L
 
         private val PRESSED_STATE = intArrayOf(android.R.attr.state_pressed)
         private val RELEASED_STATE = intArrayOf()

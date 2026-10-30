@@ -64,7 +64,7 @@ class PrimitiveGoldenVectorTest(unittest.TestCase):
 
     def test_seed_and_knobs_are_the_pinned_constants(self) -> None:
         self.assertEqual(pack.GLIDE_SEED, 20260924)
-        self.assertEqual(pack.MIN_WORD_CODE_POINTS, 5)
+        self.assertEqual(pack.MIN_WORD_CODE_POINTS, 2)
         self.assertEqual(pack.DICT_MODULUS, 40)
         self.assertEqual(pack.LOOP_MODULUS, 8)
         self.assertEqual(pack.CUT_MODULUS, 3)
@@ -138,19 +138,25 @@ class WordSelectionTest(unittest.TestCase):
         return path
 
     def test_selection_rules(self) -> None:
-        # "абагá" is not mappable (á has no key), "аб" is too short, "вгд" is eligible only
-        # via the dictionary-thinning draw; the eval token must be a dictionary word.
-        words = ["абваг", "абвагд", "бвгда", "вгдае", "гдаеб", "аб", "вгд"]
+        # "абагá" is not mappable (á has no key), "ж" is too short, and eval tokens must be
+        # dictionary words. The dictionary draw admits words of every eligible length.
+        words = [
+            "абваг", "абвагд", "бвгда", "вгдае", "гдаеб", "аб", "вгд", "гдае", "ж", "абагá",
+        ]
         with tempfile.TemporaryDirectory() as directory:
             eval_path = self._eval_file(
-                Path(directory), ["абваг бвгда жэюя", "# comment", ""]
+                Path(directory), ["абваг бвгда жэюя абагá", "# comment", ""]
             )
             selected = pack.select_words(
                 words, eval_path, FIXTURE_LETTERS, seed=pack.GLIDE_SEED, dict_modulus=1
             )
-        # modulus=1 takes every mappable >= 5-cp dictionary word; the eval adds nothing new
-        # (its tokens are either already selected or absent from the dictionary).
-        self.assertEqual(selected, ["абваг", "абвагд", "бвгда", "вгдае", "гдаеб"])
+        # modulus=1 takes every mappable dictionary word of at least two code points; the eval
+        # adds nothing new (its tokens are either already selected or absent from the dictionary).
+        self.assertEqual(
+            selected,
+            ["аб", "абваг", "абвагд", "бвгда", "вгд", "вгдае", "гдае", "гдаеб"],
+        )
+        self.assertEqual({2, 3, 4}, {len(word) for word in selected if len(word) < 5})
 
     def test_selection_is_sorted_and_unique(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -168,7 +174,7 @@ class WordSelectionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             eval_path = self._eval_file(Path(directory), ["жэюя"])
             with self.assertRaises(pack.GlidePackError):
-                # Nothing is >= 5 code points and mappable.
+                # No word has the minimum length and a mappable letter sequence.
                 pack.select_words(["жэюя"], eval_path, FIXTURE_LETTERS)
 
     def test_guardrail_raises(self) -> None:
@@ -280,8 +286,7 @@ class NoiseModelTest(unittest.TestCase):
 
     def test_doubled_letter_can_draw_the_loop(self) -> None:
         # The loop machinery: a doubled letter with draw_loop=True contributes the 4 corners
-        # (3 extra vertices). The loop is the CALLER's decision, and generate_set emits
-        # both variants of a doubled word — the no-jog row first, then the jog row.
+        # (3 extra vertices). The loop is the caller's decision; generate_set also adds dwell rows.
         plain = pack._ideal_vertices("абба", FIXTURE_BY_LETTER, False)[0]
         looped = pack._ideal_vertices("абба", FIXTURE_BY_LETTER, True)[0]
         self.assertEqual(len(plain), 4)
@@ -294,14 +299,29 @@ class NoiseModelTest(unittest.TestCase):
         plain_word = pack.generate_gesture("абва", FIXTURE_BY_LETTER, FIXTURE_RADIUS, draw_loop=True)
         plain_word_default = pack.generate_gesture("абва", FIXTURE_BY_LETTER, FIXTURE_RADIUS)
         self.assertEqual(plain_word, plain_word_default)
-        # The set carries both rows of a doubled word, no-jog first.
+        # This fast-persona path is too short for the minimum dwell while preserving total
+        # duration, so only the no-dwell and loop rows join the ordinary word.
         rendered, _ = pack.generate_set(["абваг", "абба"], FIXTURE_RECTS)
         rows = rendered.splitlines()
         self.assertEqual(len(rows), 3)
         self.assertTrue(rows[0].startswith("абваг\t"))
-        self.assertTrue(rows[1].startswith("абба\t"))
-        self.assertTrue(rows[2].startswith("абба\t"))
+        self.assertTrue(all(row.startswith("абба\t") for row in rows[1:]))
         self.assertNotEqual(rows[1], rows[2])
+
+    def test_dwell_changes_only_local_timing(self) -> None:
+        plain = pack.generate_gesture("абба", FIXTURE_BY_LETTER, FIXTURE_RADIUS)
+        at_double = pack.add_dwell("абба", FIXTURE_BY_LETTER, plain, at_double=True)
+        elsewhere = pack.add_dwell("абба", FIXTURE_BY_LETTER, plain, at_double=False)
+        self.assertIsNotNone(at_double)
+        self.assertIsNotNone(elsewhere)
+        for dwell in (at_double, elsewhere):
+            self.assertEqual([(x, y) for x, y, _ in dwell], [(x, y) for x, y, _ in plain])
+            self.assertEqual(dwell[-1][2], plain[-1][2])
+            self.assertNotEqual(dwell, plain)
+            slow = max(range(len(dwell) - 1), key=lambda i: dwell[i + 1][2] - dwell[i][2])
+            self.assertGreaterEqual(dwell[slow + 1][2] - dwell[slow][2], pack.DWELL_MIN_DURATION_MS)
+        self.assertNotEqual(at_double, elsewhere)
+        self.assertIsNone(pack.add_dwell("аа", FIXTURE_BY_LETTER, plain, at_double=False))
 
     def test_render_format_is_pinned(self) -> None:
         points = [(1, 2, 0), (30, 40, 8)]
@@ -399,11 +419,11 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         context_pairs = pack.select_context_pairs(words, EVAL_WORDS, letters)
         _, data = pack.generate_set(selected, rects, aliases=aliases, context_pairs=context_pairs)
         # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values; the
-        # asset rebuild rewrites both. The set carries both variants of every doubled word, so
-        # there are more rows than words.
-        self.assertEqual(len(selected), 4563)
-        self.assertEqual(len(data), 11461325)
-        self.assertEqual(sha256_bytes(data), "eeae70f29590cb72021cb576a0520b808ab5bc83570ebf60abb05462828c1677")
+        # asset rebuild rewrites both. Loop and eligible dwell rows make rows outnumber words.
+        self.assertEqual(len(selected), 5117)
+        self.assertEqual(len(data), 13956801)
+        self.assertEqual(sha256_bytes(data), "5eb32845ef22b85c7c60ab400e48dd45de14ea591930ac4db13b40ba4a82f75a")
+        self.assertEqual({2, 3, 4}, {len(word) for word in selected if len(word) < 5})
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_tatar_layout_aliases_are_the_hard_sign_and_yo(self) -> None:

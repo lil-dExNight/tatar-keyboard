@@ -17,12 +17,19 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
 import android.app.Instrumentation
+import android.os.Build
+import android.os.Bundle
+import android.os.SystemClock
 import android.test.InstrumentationTestCase
 import android.util.Log
 import android.view.MotionEvent
-import android.os.SystemClock
+import android.view.ViewTreeObserver
 import android.widget.EditText
 import rkr.simplekeyboard.inputmethod.R
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.ceil
 
 /**
  * Glide through the real on-screen keyboard (the host enables the debug IME and makes it
@@ -103,6 +110,45 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
             lifted == "сәлләм")
     }
 
+    /** Measures lift-to-first-visible-word after idle index release and while warm. */
+    fun testFirstVisibleGlideAfterIdleAndWarmDecode() {
+        val field = prepareField()
+        val path = listOf(
+            234f to 1396f, // с
+            60f to 1110f, // ә
+            491f to 1301f, // л
+            60f to 1110f, // ә
+            297f to 1396f, // м
+        )
+
+        // Populate the index so every cold sample below measures a real idle
+        // release rather than the process's very first glide.
+        measureFirstVisible(field, path)
+        val cold = ArrayList<Double>(LATENCY_RUNS)
+        repeat(LATENCY_RUNS) {
+            clearField(field)
+            hideKeyboard(field)
+            Thread.sleep(IDLE_RELEASE_MS)
+            showKeyboard(field)
+            cold += measureFirstVisible(field, path)
+        }
+
+        val warm = ArrayList<Double>(LATENCY_RUNS)
+        repeat(LATENCY_RUNS) {
+            clearField(field)
+            warm += measureFirstVisible(field, path)
+        }
+        logLatencyResult(
+            "cold-first-glide", cold, COLD_FIRST_GLIDE_BUDGET_MS,
+            "protocol=lift-to-first-field-frame-commit after_idle_ms=$IDLE_RELEASE_MS",
+        )
+        logLatencyResult(
+            "warm-decode", warm, WARM_DECODE_BUDGET_MS,
+            "protocol=lift-to-first-field-frame-commit",
+        )
+        hideKeyboard(field)
+    }
+
     /** The shared warm-up: the activity, the focused field, the live engine. */
     private fun prepareField(): EditText {
         val instrumentation = getInstrumentation()
@@ -110,7 +156,10 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         val activity = instrumentation.startActivitySync(
             android.content.Intent()
                 .setClassName(context, "rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity")
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                .addFlags(
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK,
+                ),
         )
         startedActivity = activity // tearDown finishes it, so the next start creates a fresh one
         val field = activity.findViewById<EditText>(R.id.setup_test_field)
@@ -156,6 +205,103 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         Thread.sleep(9000)
         return field
     }
+
+    /** Returns lift-to-frame-commit milliseconds for the expected сәләм result. */
+    private fun measureFirstVisible(field: EditText, path: List<Pair<Float, Float>>): Double {
+        assertEquals("each latency run must start with an empty field", "", field.text.toString())
+        val observer = field.viewTreeObserver
+        val visibleNs = AtomicLong(0L)
+        val visible = CountDownLatch(1)
+        val recordIfVisible = {
+            if (field.text.toString() == "сәләм" &&
+                visibleNs.compareAndSet(0L, System.nanoTime())
+            ) {
+                visible.countDown()
+            }
+        }
+        val frameCommit = Runnable { recordIfVisible() }
+        val draw = ViewTreeObserver.OnDrawListener { recordIfVisible() }
+        instrumentation.runOnMainSync {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                observer.registerFrameCommitCallback(frameCommit)
+            } else {
+                observer.addOnDrawListener(draw)
+            }
+        }
+        var liftedNs = 0L
+        try {
+            liftedNs = drivePath(instrumentation, path, holdMs = 0L)
+            assertTrue(
+                "the decoded word was not drawn after the glide",
+                visible.await(VISIBLE_TIMEOUT_SECONDS, TimeUnit.SECONDS),
+            )
+        } finally {
+            instrumentation.runOnMainSync {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    observer.unregisterFrameCommitCallback(frameCommit)
+                } else {
+                    observer.removeOnDrawListener(draw)
+                }
+            }
+        }
+        return (visibleNs.get() - liftedNs) / 1_000_000.0
+    }
+
+    private fun clearField(field: EditText) {
+        instrumentation.runOnMainSync { field.text.clear() }
+        Thread.sleep(500)
+    }
+
+    /** Hides the IME so its idle timer releases the glide index. */
+    private fun hideKeyboard(field: EditText) {
+        var hidden = false
+        instrumentation.runOnMainSync {
+            val imm = field.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                as android.view.inputmethod.InputMethodManager
+            hidden = imm.hideSoftInputFromWindow(field.windowToken, 0)
+        }
+        assertTrue("the keyboard must hide before the idle window", hidden)
+        Thread.sleep(500)
+    }
+
+    /** Taps the field and waits for the IME without typing a warm-up key. */
+    private fun showKeyboard(field: EditText) {
+        val location = IntArray(2)
+        field.getLocationOnScreen(location)
+        tap(instrumentation, location[0] + field.width / 2f, location[1] + field.height / 2f)
+        val imm = field.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+            as android.view.inputmethod.InputMethodManager
+        var shown = false
+        for (attempt in 0 until 20) {
+            Thread.sleep(500)
+            if (imm.isAcceptingText) {
+                shown = true
+                break
+            }
+        }
+        assertTrue("the IME never accepted text after the idle window", shown)
+        Thread.sleep(500)
+    }
+
+    private fun logLatencyResult(
+        check: String,
+        samples: List<Double>,
+        budgetMs: Double,
+        protocol: String,
+    ) {
+        val sorted = samples.sorted()
+        val n = sorted.size
+        val median = if (n % 2 == 1) sorted[n / 2] else (sorted[n / 2 - 1] + sorted[n / 2]) / 2
+        val p95 = sorted[ceil(n * 0.95).toInt() - 1]
+        val values = samples.joinToString(",") { fmt(it) }
+        val line = "RESULT|INFO|$check|runs=$n median_ms=${fmt(median)} p95_ms=${fmt(p95)} " +
+            "min_ms=${fmt(sorted.first())} max_ms=${fmt(sorted.last())} values_ms=$values " +
+            "budget_ms=${fmt(budgetMs)} over_budget=${p95 > budgetMs} build=debug $protocol"
+        Log.i(TAG, line)
+        instrumentation.sendStatus(0, Bundle().apply { putString("tt_perf_result", line) })
+    }
+
+    private fun fmt(value: Double): String = String.format(java.util.Locale.ROOT, "%.3f", value)
 
     private fun driveUiGesture(holdMs: Long) {
         val field = prepareField()
@@ -230,7 +376,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         instrumentation: Instrumentation,
         path: List<Pair<Float, Float>>,
         holdMs: Long,
-    ) {
+    ): Long {
         val downTime = SystemClock.uptimeMillis()
         inject(instrumentation, MotionEvent.ACTION_DOWN, path[0], downTime)
         if (holdMs > 0) Thread.sleep(holdMs)
@@ -244,7 +390,10 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
                 inject(instrumentation, MotionEvent.ACTION_MOVE, x to y, SystemClock.uptimeMillis())
             }
         }
-        inject(instrumentation, MotionEvent.ACTION_UP, path.last(), SystemClock.uptimeMillis())
+        val upTime = SystemClock.uptimeMillis()
+        val liftedNs = System.nanoTime()
+        inject(instrumentation, MotionEvent.ACTION_UP, path.last(), upTime)
+        return liftedNs
     }
 
     /** One tap on the keyboard's own delete key (bottom-right of the letters block). */
@@ -270,5 +419,11 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
 
     companion object {
         private const val TAG = "GlideUi"
+        private const val LATENCY_RUNS = 5
+        private const val IDLE_RELEASE_MS = 12_000L
+        private const val VISIBLE_TIMEOUT_SECONDS = 10L
+        // Visible-result budgets include input dispatch and display, not just decoder compute.
+        private const val COLD_FIRST_GLIDE_BUDGET_MS = 500.0
+        private const val WARM_DECODE_BUDGET_MS = 50.0
     }
 }

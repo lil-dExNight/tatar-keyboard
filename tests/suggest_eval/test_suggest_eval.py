@@ -20,9 +20,9 @@ clean CI checkout. Those tests SKIP with an explicit reason when the inputs are 
 pin and format tests above never skip, so a corrupted committed file fails everywhere.
 
 A second block covers the pure functions of ``scripts/suggest_chain.py`` (the production-chain
-mirror): the runtime suffix table port, the form generator, the chain composition, the
-bootstrap sampler against golden SplitMix64 vectors, the lemma-strata predicate and the
-keystroke simulator, all on tiny synthetic fixtures that need no assets. A third block covers
+mirror): the runtime suffix table port, the chain composition, the bootstrap sampler against
+golden SplitMix64 vectors, the lemma-strata predicate and the keystroke simulator, all on tiny
+synthetic fixtures that need no assets. A third block covers
 the completion-by-prefix-length and strip-empty report rows of ``scripts/suggest_eval.py``
 over the same kind of fixture.
 """
@@ -211,48 +211,6 @@ class SuffixTableTest(unittest.TestCase):
         self.assertFalse(suggest_chain.is_inflected_continuation("xyz"))
 
 
-class GenerateFormsTest(unittest.TestCase):
-    """The form generator port: order, harmony variants, dedup against the stem."""
-
-    def test_back_vowel_stem_full_list(self) -> None:
-        self.assertEqual(
-            [
-                "балалар", "баланың", "балага", "баланы", "балада", "баладан",
-                "баласы", "баласын", "баласына", "баласында", "баласыннан",
-                "балый", "балады", "балар", "балап", "балаган", "балау", "балача",
-            ],
-            suggest_chain.generate_forms("бала"),
-        )
-
-    def test_vowel_stem_contracts_present_and_drops_the_stem_itself(self) -> None:
-        forms = suggest_chain.generate_forms("ди")
-        self.assertNotIn("ди", forms)  # the contracted present equals the stem: skipped
-        self.assertIn("дияр", forms)  # monosyllabic vowel stem takes -яр
-        self.assertIn("дию", forms)  # и-final takes the й-glide masdar
-        self.assertIn("диде", forms)
-        self.assertEqual(17, len(forms))
-
-    def test_mixed_harmony_stem_generates_both_variants(self) -> None:
-        forms = suggest_chain.generate_forms("китап")
-        self.assertEqual(36, len(forms))
-        self.assertIn("китаплар", forms)
-        self.assertIn("китапләр", forms)
-        self.assertIn("китапка", forms)  # voiceless-final dative, back
-        self.assertIn("китапкә", forms)  # and front
-        self.assertIn("китапу", forms)
-        self.assertIn("китапү", forms)
-
-    def test_stem_without_harmony_vowel_generates_nothing(self) -> None:
-        self.assertEqual([], suggest_chain.generate_forms("ппп"))
-
-    def test_forms_of_filters_and_ranks_by_frequency(self) -> None:
-        frequencies = {"балалар": 5, "балага": 9, "баласы": 7}
-        forms = suggest_chain.forms_of(
-            "бала", ["балага"], 3, lambda word: frequencies.get(word, 0)
-        )
-        self.assertEqual(["баласы", "балалар"], forms)
-
-
 class ChainMirrorTest(unittest.TestCase):
     """The chain composition and the completion mirror on a synthetic dictionary."""
 
@@ -267,11 +225,11 @@ class ChainMirrorTest(unittest.TestCase):
     def test_bigram_successes_come_first_and_truncate_to_four(self) -> None:
         self.assertEqual(["син", "китап", "дие", "сәләм"], self.mirror().predict_top3("мин"))
 
-    def test_forms_fill_free_cells_before_the_fallback(self) -> None:
-        self.assertEqual(["балалар", "мин", "син", "китап"], self.mirror().predict_top3("бала"))
+    def test_fallback_fills_free_cells(self) -> None:
+        self.assertEqual(["мин", "син", "китап", "сәләм"], self.mirror().predict_top3("бала"))
 
     def test_fallback_excludes_the_committed_word_and_the_shown(self) -> None:
-        # No bigrams, no attested forms: the pool fills, minus the head itself.
+        # No bigrams: the pool fills, minus the head itself.
         self.assertEqual(["мин", "син", "сәләм", "бала"], self.mirror().predict_top3("китап"))
         # One bigram successor; the pool fills the rest minus the successor.
         self.assertEqual(["мин", "син", "китап", "сәләм"], self.mirror().predict_top3("дие"))
@@ -336,7 +294,7 @@ class CompletionMetricsTest(unittest.TestCase):
 
     WORDS = ChainMirrorTest.WORDS + ["яя"]
 
-    def test_top3_and_top1_rows_by_prefix_length(self) -> None:
+    def test_top1_visible_top3_and_engine_top4_rows(self) -> None:
         mirror = suggest_chain.ChainMirror(
             ChainMirrorTest.WORDS, ChainMirrorTest.FREQUENCIES, ChainMirrorTest.BIGRAMS
         )
@@ -344,21 +302,27 @@ class CompletionMetricsTest(unittest.TestCase):
         self.assertEqual(
             [
                 ("prefix_cp1_words", "13"),
-                ("prefix_cp1_hits", "12"),
-                ("prefix_top3_cp1_pct", "92.3077"),
                 ("prefix_cp1_top1_hits", "6"),
                 ("prefix_top1_cp1_pct", "46.1538"),
+                ("prefix_cp1_visible_top3_hits", "11"),
+                ("prefix_visible_top3_cp1_pct", "84.6154"),
+                ("prefix_cp1_engine_top4_hits", "12"),
+                ("prefix_engine_top4_cp1_pct", "92.3077"),
                 ("prefix_cp2_words", "13"),
-                ("prefix_cp2_hits", "12"),
-                ("prefix_top3_cp2_pct", "92.3077"),
                 ("prefix_cp2_top1_hits", "7"),
                 ("prefix_top1_cp2_pct", "53.8462"),
+                ("prefix_cp2_visible_top3_hits", "11"),
+                ("prefix_visible_top3_cp2_pct", "84.6154"),
+                ("prefix_cp2_engine_top4_hits", "12"),
+                ("prefix_engine_top4_cp2_pct", "92.3077"),
                 # "яя" is shorter than three code points and drops out of the cp3 denominator.
                 ("prefix_cp3_words", "12"),
-                ("prefix_cp3_hits", "8"),
-                ("prefix_top3_cp3_pct", "66.6667"),
                 ("prefix_cp3_top1_hits", "4"),
                 ("prefix_top1_cp3_pct", "33.3333"),
+                ("prefix_cp3_visible_top3_hits", "7"),
+                ("prefix_visible_top3_cp3_pct", "58.3333"),
+                ("prefix_cp3_engine_top4_hits", "8"),
+                ("prefix_engine_top4_cp3_pct", "66.6667"),
             ],
             metrics,
         )
@@ -467,7 +431,7 @@ class KeystrokeSimulatorTest(unittest.TestCase):
         def next_word_top3(head: str) -> list[str]:
             return {"аб": ["б"]}.get(head, [])
 
-        def completion_top3(prefix: str) -> list[str]:
+        def completion_top3(prefix: str, context: str | None) -> list[str]:
             return {"а": ["аб"]}.get(prefix, [])
 
         mdp = suggest_chain.minimal_distinguishing_prefix_lengths(["аб", "б"])
@@ -480,6 +444,21 @@ class KeystrokeSimulatorTest(unittest.TestCase):
         self.assertEqual(8, baseline)
         self.assertEqual(6, simulated)
         self.assertEqual(5, oracle)
+
+    def test_completion_cache_key_includes_previous_word(self) -> None:
+        calls = []
+
+        def completion(prefix: str, context: str | None) -> list[str]:
+            calls.append((prefix, context))
+            return ["абв"] if prefix == "а" and context == "y" else []
+
+        mdp = suggest_chain.minimal_distinguishing_prefix_lengths(["абв", "x", "y"])
+        baseline, simulated, _ = suggest_chain.keystroke_costs(
+            ["x абв", "x абв", "y абв"], lambda head: [], completion, mdp
+        )
+        self.assertEqual(15, baseline)
+        self.assertEqual(11, simulated)
+        self.assertEqual([("а", "x"), ("аб", "x"), ("а", "y")], calls)
 
 
 class FullEvalRecomputeTest(unittest.TestCase):
@@ -509,41 +488,57 @@ class FullEvalRecomputeTest(unittest.TestCase):
 
     def test_tatar_pins(self) -> None:
         table = self.tables["tat"]
-        self.assertEqual(table["dict_word_coverage_tokens_pct"], "95.3327")
+        self.assertEqual(table["dict_word_coverage_tokens_pct"], "95.5576")
         self.assertEqual(table["bigram_head_coverage_pct"], "85.0750")
-        self.assertEqual(table["nextword_chain_top1_pct"], "7.1972")
-        self.assertEqual(table["nextword_chain_top3_pct"], "14.9712")
+        self.assertEqual(table["nextword_chain_top1_pct"], "8.4198")
+        self.assertEqual(table["nextword_chain_visible_top3_hits"], "635")
+        self.assertEqual(table["nextword_chain_visible_top3_pct"], "14.6482")
+        self.assertEqual(table["nextword_chain_engine_top4_hits"], "727")
+        self.assertEqual(table["nextword_chain_engine_top4_pct"], "16.7705")
         self.assertEqual(table["prefix_top1_cp1_pct"], "0.9782")
         self.assertEqual(table["prefix_top1_cp2_pct"], "5.1581")
         self.assertEqual(table["prefix_top1_cp3_pct"], "15.1875")
-        self.assertEqual(table["strip_empty_prefix_pct"], "2.1258")
+        self.assertEqual(table["prefix_visible_top3_cp3_pct"], "29.2655")
+        self.assertEqual(table["prefix_engine_top4_cp3_pct"], "33.9327")
+        self.assertEqual(table["strip_empty_prefix_pct"], "2.0370")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
         # The shipped default strip shows three cells; the fourth-cell arm is the opt-in setting.
-        self.assertEqual(table["ks_pct"], "34.2584")
-        self.assertEqual(table["ks_cells4_pct"], "36.7815")
+        self.assertEqual(table["ks_simulated_keys"], "21659")
+        self.assertEqual(table["ks_pct"], "35.0204")
+        self.assertEqual(table["ks_cells4_simulated_keys"], "20916")
+        self.assertEqual(table["ks_cells4_pct"], "37.2495")
         # The context boost (the armed exact pass) over the cp>=2 prefix moments; the JVM pins
         # in TtSuggestEvalTest assert the same values on the real index.
         self.assertEqual(table["ctxboost_cp2plus_moments"], "18338")
-        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "34.2186")
-        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "36.0508")
-        self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+1.8323")
-        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+1.4943")
-        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+2.1713")
-        self.assertEqual(table["ctxboost_cp2plus_top3_base_pct"], "54.5152")
-        self.assertEqual(table["ctxboost_cp2plus_top3_boost_pct"], "55.5459")
+        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "34.3113")
+        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "36.3398")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+2.0286")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+1.6772")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+2.4015")
+        self.assertEqual(table["ctxboost_cp2plus_visible_top3_base_pct"], "50.8180")
+        self.assertEqual(table["ctxboost_cp2plus_visible_top3_boost_pct"], "52.3994")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "54.6515")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "56.0039")
 
     def test_russian_pins(self) -> None:
         table = self.tables["rus"]
         self.assertEqual(table["dict_word_coverage_tokens_pct"], "97.5485")
         self.assertEqual(table["bigram_head_coverage_pct"], "89.7895")
         self.assertEqual(table["nextword_chain_top1_pct"], "7.8594")
-        self.assertEqual(table["nextword_chain_top3_pct"], "18.6520")
+        self.assertEqual(table["nextword_chain_visible_top3_hits"], "703")
+        self.assertEqual(table["nextword_chain_visible_top3_pct"], "15.7412")
+        self.assertEqual(table["nextword_chain_engine_top4_hits"], "833")
+        self.assertEqual(table["nextword_chain_engine_top4_pct"], "18.6520")
         self.assertEqual(table["prefix_top1_cp1_pct"], "1.0370")
         self.assertEqual(table["prefix_top1_cp2_pct"], "6.5611")
         self.assertEqual(table["prefix_top1_cp3_pct"], "17.9440")
+        self.assertEqual(table["prefix_visible_top3_cp3_pct"], "35.2455")
+        self.assertEqual(table["prefix_engine_top4_cp3_pct"], "40.3855")
         self.assertEqual(table["strip_empty_prefix_pct"], "1.3767")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
-        self.assertEqual(table["ks_pct"], "37.5623")
+        self.assertEqual(table["ks_simulated_keys"], "18981")
+        self.assertEqual(table["ks_pct"], "37.7427")
+        self.assertEqual(table["ks_cells4_simulated_keys"], "18181")
         self.assertEqual(table["ks_cells4_pct"], "40.3667")
         # The context boost over the cp>=2 prefix moments; RuSuggestEvalTest pins the same values.
         self.assertEqual(table["ctxboost_cp2plus_moments"], "15636")
@@ -552,8 +547,10 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+1.9314")
         self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+1.5925")
         self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+2.2991")
-        self.assertEqual(table["ctxboost_cp2plus_top3_base_pct"], "62.6759")
-        self.assertEqual(table["ctxboost_cp2plus_top3_boost_pct"], "63.3538")
+        self.assertEqual(table["ctxboost_cp2plus_visible_top3_base_pct"], "58.1734")
+        self.assertEqual(table["ctxboost_cp2plus_visible_top3_boost_pct"], "58.9921")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "62.6759")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "63.3538")
 
 
 if __name__ == "__main__":

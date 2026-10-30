@@ -531,15 +531,17 @@ def personal_candidates(model: PersonalModel, prefix: str) -> list[str]:
     return matches
 
 
-def merged_strip(engine: Engine, model: PersonalModel, prefix: str) -> list[str]:
-    """CompositePrefixComputer.merge over the eval-configuration lookup (typo recovery off,
-    so the dictionary list is all-exact) and the personal candidates of [prefix].
+def merged_strip(
+    engine: Engine, model: PersonalModel, prefix: str, context: str | None = None
+) -> list[str]:
+    """Merge the context-armed exact lookup with personal completion candidates.
 
     A personal word that duplicates a dictionary candidate only restyles the cell; the
     harness stores normalized == raw forms, so that case changes nothing and returns the
     dictionary list, as production does.
     """
-    dictionary = engine.chain.prefix_top3(prefix)
+    successors = engine.chain.packed_successors(context) if context is not None else ()
+    dictionary = engine.chain.prefix_top3(prefix, successors)
     personal_only = None
     for match in personal_candidates(model, prefix):
         if match not in dictionary:
@@ -571,7 +573,7 @@ def pair_successors(model: PersonalModel, context: str) -> list[tuple[str, int, 
 
 def personalized_predict(engine: Engine, model: PersonalModel, head: str) -> list[str]:
     """CompositePrefixComputer.predict: bigram successors, then learned pairs in their
-    at-most-3 free cells (a pair already shown is skipped), then word forms, then fallback."""
+    at-most-3 free cells (a pair already shown is skipped), then fallback."""
     result = list(engine.successes.get(head, ()))[:BIGRAM_MAX_RESULTS]
     if len(result) < CELL_COUNT:
         room = min(MAX_PERSONAL_BIGRAM_CELLS, CELL_COUNT - len(result))
@@ -583,10 +585,6 @@ def personalized_predict(engine: Engine, model: PersonalModel, head: str) -> lis
                 continue
             extras.append(word)
         result = result + extras
-    if len(result) < CELL_COUNT and engine.suffix_rules:
-        result = result + suggest_chain.forms_of(
-            head, result, CELL_COUNT - len(result), engine.chain.frequency_of
-        )
     if len(result) < CELL_COUNT:
         for word in engine.fallback_pool:
             if len(result) >= CELL_COUNT:
@@ -621,9 +619,11 @@ class MeasureStats:
         # Next-word counters.
         self.nw_pairs = 0
         self.nw_pers_top1 = 0
-        self.nw_pers_top3 = 0
+        self.nw_pers_visible_top3 = 0
+        self.nw_pers_engine_top4 = 0
         self.nw_disp_top1 = 0
-        self.nw_disp_top3 = 0
+        self.nw_disp_visible_top3 = 0
+        self.nw_disp_engine_top4 = 0
         self.nw_learned_head_pairs = 0
         self.nw_true_learned = 0
         self.nw_true_learned_shown = 0
@@ -636,9 +636,11 @@ class MeasureStats:
         self.gwt_nw_tapped = 0
         self.comp_typed = dict.fromkeys(COMPLETION_PREFIX_LENGTHS, 0)
         self.comp_top1 = dict.fromkeys(COMPLETION_PREFIX_LENGTHS, 0)
-        self.comp_top3 = dict.fromkeys(COMPLETION_PREFIX_LENGTHS, 0)
+        self.comp_visible_top3 = dict.fromkeys(COMPLETION_PREFIX_LENGTHS, 0)
+        self.comp_engine_top4 = dict.fromkeys(COMPLETION_PREFIX_LENGTHS, 0)
         self.comp_ctrl_top1_hits = 0
-        self.comp_ctrl_top3_hits = 0
+        self.comp_ctrl_visible_top3_hits = 0
+        self.comp_ctrl_engine_top4_hits = 0
         self.comp_accept = 0
         self.comp_accept_top1 = 0
         self.comp_never = 0
@@ -694,12 +696,16 @@ def measure_walk(
                 disp = displace_predict(engine, model, previous)
                 if pers and word == pers[0]:
                     stats.nw_pers_top1 += 1
-                if word in pers:
-                    stats.nw_pers_top3 += 1
+                if word in pers[:suggest_eval.SHOWN_RESULTS]:
+                    stats.nw_pers_visible_top3 += 1
+                if word in pers[:CELL_COUNT]:
+                    stats.nw_pers_engine_top4 += 1
                 if disp and word == disp[0]:
                     stats.nw_disp_top1 += 1
-                if word in disp:
-                    stats.nw_disp_top3 += 1
+                if word in disp[:suggest_eval.SHOWN_RESULTS]:
+                    stats.nw_disp_visible_top3 += 1
+                if word in disp[:CELL_COUNT]:
+                    stats.nw_disp_engine_top4 += 1
                 if pair_successors(model, previous):
                     stats.nw_learned_head_pairs += 1
                 if (previous, word) in model.pairs:
@@ -726,20 +732,27 @@ def measure_walk(
                 strips_pers: list[list[str]] = []
                 strips_ctrl: list[list[str]] = []
                 hit_prefix: int | None = None
+                successors = (
+                    engine.chain.packed_successors(previous) if previous is not None else ()
+                )
                 for k in range(1, len(word)):
-                    strip_pers = merged_strip(engine, model, word[:k])
+                    strip_pers = merged_strip(engine, model, word[:k], previous)
                     if is_graduated:
-                        strip_ctrl = engine.chain.prefix_top3(word[:k])
+                        strip_ctrl = engine.chain.prefix_top3(word[:k], successors)
                         if k in stats.comp_typed:
                             stats.comp_typed[k] += 1
                             if strip_pers and strip_pers[0] == word:
                                 stats.comp_top1[k] += 1
-                            if word in strip_pers:
-                                stats.comp_top3[k] += 1
+                            if word in strip_pers[:suggest_eval.SHOWN_RESULTS]:
+                                stats.comp_visible_top3[k] += 1
+                            if word in strip_pers[:CELL_COUNT]:
+                                stats.comp_engine_top4[k] += 1
                         if strip_ctrl and strip_ctrl[0] == word:
                             stats.comp_ctrl_top1_hits += 1
-                        if word in strip_ctrl:
-                            stats.comp_ctrl_top3_hits += 1
+                        if word in strip_ctrl[:suggest_eval.SHOWN_RESULTS]:
+                            stats.comp_ctrl_visible_top3_hits += 1
+                        if word in strip_ctrl[:CELL_COUNT]:
+                            stats.comp_ctrl_engine_top4_hits += 1
                         strips_pers.append(strip_pers)
                         strips_ctrl.append(strip_ctrl)
                     if word in strip_pers:
@@ -748,8 +761,8 @@ def measure_walk(
                 if is_graduated:
                     if hit_prefix is None and len(word) > 1:
                         # The full-word strip is still painted before the separator.
-                        strips_pers.append(merged_strip(engine, model, word))
-                        strips_ctrl.append(engine.chain.prefix_top3(word))
+                        strips_pers.append(merged_strip(engine, model, word, previous))
+                        strips_ctrl.append(engine.chain.prefix_top3(word, successors))
                     changes_pers = _strip_changes(strips_pers)
                     stats.reord_changes_pers += changes_pers
                     stats.reord_changes_ctrl += _strip_changes(strips_ctrl)
@@ -779,11 +792,12 @@ def measure_walk(
 # --------------------------------------------------------------------------------------
 def chain_counters(
     chain: suggest_chain.ChainMirror, lines: Sequence[str]
-) -> tuple[int, int, int]:
-    """(pairs, top-1 hits, top-3 hits) of the production NEXT_WORD chain over [lines]."""
+) -> tuple[int, int, int, int]:
+    """Return pairs, top-1, visible top-3 and engine top-4 NEXT_WORD hits."""
     pairs = 0
     top1 = 0
-    top3 = 0
+    visible_top3 = 0
+    engine_top4 = 0
     for line in lines:
         words = line.split(" ")
         for head, successor in zip(words, words[1:]):
@@ -791,22 +805,29 @@ def chain_counters(
             pairs += 1
             if shown and successor == shown[0]:
                 top1 += 1
-            if successor in shown:
-                top3 += 1
-    return pairs, top1, top3
+            if successor in shown[:suggest_eval.SHOWN_RESULTS]:
+                visible_top3 += 1
+            if successor in shown[:CELL_COUNT]:
+                engine_top4 += 1
+    return pairs, top1, visible_top3, engine_top4
 
 
 def split_control(
     engine: Engine, lines: Sequence[str]
-) -> tuple[int, int, int, int, int, int]:
+) -> tuple[int, int, int, int, int, int, int]:
     """The dictionary-only control of one measure stream: chain counters and keystrokes."""
-    pairs, top1, top3 = chain_counters(engine.chain, lines)
+    pairs, top1, visible_top3, engine_top4 = chain_counters(engine.chain, lines)
     unique_words = sorted({word for line in lines for word in line.split(" ")})
     mdp_lengths = suggest_chain.minimal_distinguishing_prefix_lengths(unique_words)
+
+    def completion(prefix: str, context: str | None) -> list[str]:
+        successors = engine.chain.packed_successors(context) if context is not None else ()
+        return engine.chain.prefix_top3(prefix, successors)
+
     baseline, simulated, oracle = suggest_chain.keystroke_costs(
-        lines, engine.chain.predict_top3, engine.chain.prefix_top3, mdp_lengths
+        lines, engine.chain.predict_top3, completion, mdp_lengths
     )
-    return pairs, top1, top3, baseline, simulated, oracle
+    return pairs, top1, visible_top3, engine_top4, baseline, simulated, oracle
 
 
 def empty_store_churn_check(engine: Engine, lines: Sequence[str]) -> tuple[int, int]:
@@ -818,13 +839,15 @@ def empty_store_churn_check(engine: Engine, lines: Sequence[str]) -> tuple[int, 
     for line in lines:
         words = line.split(" ")
         for position, word in enumerate(words):
+            previous = words[position - 1] if position > 0 else None
+            successors = engine.chain.packed_successors(previous) if previous is not None else ()
             for k in range(1, len(word)):
                 checks += 1
-                if merged_strip(engine, model, word[:k]) != engine.chain.prefix_top3(word[:k]):
+                personalized = merged_strip(engine, model, word[:k], previous)
+                if personalized != engine.chain.prefix_top3(word[:k], successors):
                     mismatches += 1
-            if position > 0:
+            if previous is not None:
                 checks += 1
-                previous = words[position - 1]
                 if personalized_predict(engine, model, previous) != engine.chain.predict_top3(
                     previous
                 ):
@@ -852,12 +875,16 @@ def run(
         out.append((name, str(value)))
 
     # Dictionary-only control over the whole eval set: the pinned chain counters.
-    control_pairs, control_top1, control_top3 = chain_counters(engine.chain, lines)
+    control_pairs, control_top1, control_visible, control_engine = chain_counters(
+        engine.chain, lines
+    )
     emit("control.eval_pairs", control_pairs)
     emit("control.chain_top1_hits", control_top1)
-    emit("control.chain_top3_hits", control_top3)
     emit("control.chain_top1_pct", _pct(control_top1, control_pairs))
-    emit("control.chain_top3_pct", _pct(control_top3, control_pairs))
+    emit("control.chain_visible_top3_hits", control_visible)
+    emit("control.chain_visible_top3_pct", _pct(control_visible, control_pairs))
+    emit("control.chain_engine_top4_hits", control_engine)
+    emit("control.chain_engine_top4_pct", _pct(control_engine, control_pairs))
 
     for split in SPLITS:
         prime_lines, measure_lines = split_streams(split, lines)
@@ -889,14 +916,16 @@ def run(
         emit(f"{split}.prime_unseen_words", len(unseen))
         emit(f"{split}.prime_unseen_tokens", prime_unseen_tokens)
 
-        ctrl_pairs, ctrl_top1, ctrl_top3, ks_base, ks_sim, ks_oracle = split_control(
-            engine, measure_lines
+        ctrl_pairs, ctrl_top1, ctrl_visible, ctrl_engine, ks_base, ks_sim, ks_oracle = (
+            split_control(engine, measure_lines)
         )
         emit(f"{split}.ctrl.nw_pairs", ctrl_pairs)
         emit(f"{split}.ctrl.nw_top1_hits", ctrl_top1)
-        emit(f"{split}.ctrl.nw_top3_hits", ctrl_top3)
         emit(f"{split}.ctrl.nw_top1_pct", _pct(ctrl_top1, ctrl_pairs))
-        emit(f"{split}.ctrl.nw_top3_pct", _pct(ctrl_top3, ctrl_pairs))
+        emit(f"{split}.ctrl.nw_visible_top3_hits", ctrl_visible)
+        emit(f"{split}.ctrl.nw_visible_top3_pct", _pct(ctrl_visible, ctrl_pairs))
+        emit(f"{split}.ctrl.nw_engine_top4_hits", ctrl_engine)
+        emit(f"{split}.ctrl.nw_engine_top4_pct", _pct(ctrl_engine, ctrl_pairs))
         emit(f"{split}.ctrl.ks_baseline_keys", ks_base)
         emit(f"{split}.ctrl.ks_simulated_keys", ks_sim)
         emit(f"{split}.ctrl.ks_oracle_keys", ks_oracle)
@@ -956,11 +985,20 @@ def run(
             for k in COMPLETION_PREFIX_LENGTHS:
                 emit(f"{prefix}.comp_cp{k}_typed", walk.comp_typed[k])
                 emit(f"{prefix}.comp_cp{k}_top1", walk.comp_top1[k])
-                emit(f"{prefix}.comp_cp{k}_top3", walk.comp_top3[k])
                 emit(f"{prefix}.comp_cp{k}_top1_pct", _pct(walk.comp_top1[k], walk.comp_typed[k]))
-                emit(f"{prefix}.comp_cp{k}_top3_pct", _pct(walk.comp_top3[k], walk.comp_typed[k]))
+                emit(f"{prefix}.comp_cp{k}_visible_top3", walk.comp_visible_top3[k])
+                emit(
+                    f"{prefix}.comp_cp{k}_visible_top3_pct",
+                    _pct(walk.comp_visible_top3[k], walk.comp_typed[k]),
+                )
+                emit(f"{prefix}.comp_cp{k}_engine_top4", walk.comp_engine_top4[k])
+                emit(
+                    f"{prefix}.comp_cp{k}_engine_top4_pct",
+                    _pct(walk.comp_engine_top4[k], walk.comp_typed[k]),
+                )
             emit(f"{prefix}.comp_ctrl_top1_hits", walk.comp_ctrl_top1_hits)
-            emit(f"{prefix}.comp_ctrl_top3_hits", walk.comp_ctrl_top3_hits)
+            emit(f"{prefix}.comp_ctrl_visible_top3_hits", walk.comp_ctrl_visible_top3_hits)
+            emit(f"{prefix}.comp_ctrl_engine_top4_hits", walk.comp_ctrl_engine_top4_hits)
             emit(f"{prefix}.comp_accept", walk.comp_accept)
             emit(f"{prefix}.comp_accept_pct", _pct(walk.comp_accept, walk.gwt_typed))
             emit(
@@ -969,12 +1007,28 @@ def run(
             emit(f"{prefix}.comp_never", walk.comp_never)
             emit(f"{prefix}.nw_pairs", walk.nw_pairs)
             emit(f"{prefix}.nw_pers_top1", walk.nw_pers_top1)
-            emit(f"{prefix}.nw_pers_top3", walk.nw_pers_top3)
             emit(f"{prefix}.nw_pers_top1_pct", _pct(walk.nw_pers_top1, walk.nw_pairs))
-            emit(f"{prefix}.nw_pers_top3_pct", _pct(walk.nw_pers_top3, walk.nw_pairs))
+            emit(f"{prefix}.nw_pers_visible_top3", walk.nw_pers_visible_top3)
+            emit(
+                f"{prefix}.nw_pers_visible_top3_pct",
+                _pct(walk.nw_pers_visible_top3, walk.nw_pairs),
+            )
+            emit(f"{prefix}.nw_pers_engine_top4", walk.nw_pers_engine_top4)
+            emit(
+                f"{prefix}.nw_pers_engine_top4_pct",
+                _pct(walk.nw_pers_engine_top4, walk.nw_pairs),
+            )
             emit(f"{prefix}.nw_disp_top1", walk.nw_disp_top1)
-            emit(f"{prefix}.nw_disp_top3", walk.nw_disp_top3)
-            emit(f"{prefix}.nw_disp_top3_pct", _pct(walk.nw_disp_top3, walk.nw_pairs))
+            emit(f"{prefix}.nw_disp_visible_top3", walk.nw_disp_visible_top3)
+            emit(
+                f"{prefix}.nw_disp_visible_top3_pct",
+                _pct(walk.nw_disp_visible_top3, walk.nw_pairs),
+            )
+            emit(f"{prefix}.nw_disp_engine_top4", walk.nw_disp_engine_top4)
+            emit(
+                f"{prefix}.nw_disp_engine_top4_pct",
+                _pct(walk.nw_disp_engine_top4, walk.nw_pairs),
+            )
             emit(f"{prefix}.nw_learned_head_pairs", walk.nw_learned_head_pairs)
             emit(f"{prefix}.nw_true_learned", walk.nw_true_learned)
             emit(f"{prefix}.nw_true_learned_shown", walk.nw_true_learned_shown)

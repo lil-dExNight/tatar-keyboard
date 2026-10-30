@@ -4,9 +4,9 @@
 What is pinned and why:
 
 * The dictionary-only control of the full eval set must reproduce the pinned chain counters
-  of ``TtSuggestEvalTest`` (4335 pairs, 312 top-1, 649 top-3), and the repetition split's
-  control keystrokes must reproduce the pinned fourth-cell keystroke counters
-  (33332/21072/8311): the harness taps every composed cell — the personalization arms are
+  of ``TtSuggestEvalTest`` (4335 pairs, 365 top-1, 727 engine top-4), and the repetition
+  split's control keystrokes must reproduce the pinned fourth-cell keystroke counters
+  (33332/20916/8311): the harness taps every composed cell — the personalization arms are
   compared at the widest strip — and stands on the same mirror as ``suggest_eval.py``.
 * Graduation counters per split (hash/chrono/rep) and observation arm (oracle/realistic/
   fixed) are pinned exactly; the JVM mirror ``PersonalizationEvalTest`` pins the same
@@ -47,10 +47,11 @@ suggest_chain = load_module("suggest_chain", ROOT / "scripts" / "suggest_chain.p
 
 # Pins of the committed assets and eval set (see TtSuggestEvalTest).
 PIN_CONTROL_PAIRS = 4_335
-PIN_CONTROL_TOP1 = 312
-PIN_CONTROL_TOP3 = 649
+PIN_CONTROL_TOP1 = 365
+PIN_CONTROL_VISIBLE_TOP3 = 635
+PIN_CONTROL_ENGINE_TOP4 = 727
 PIN_REP_CTRL_KS_BASELINE = 33_332
-PIN_REP_CTRL_KS_SIMULATED = 21_072
+PIN_REP_CTRL_KS_SIMULATED = 20_916
 PIN_REP_CTRL_KS_ORACLE = 8_311
 
 # Graduation-counter pins per split and arm; PersonalizationEvalTest.kt pins the same
@@ -59,7 +60,7 @@ PIN_REP_CTRL_KS_ORACLE = 8_311
 PIN_GRAD_WORDS = {
     ("hash", "oracle"): 0, ("hash", "realistic"): 0, ("hash", "fixed"): 0,
     ("chrono", "oracle"): 0, ("chrono", "realistic"): 0, ("chrono", "fixed"): 0,
-    ("rep", "oracle"): 208, ("rep", "realistic"): 208, ("rep", "fixed"): 208,
+    ("rep", "oracle"): 197, ("rep", "realistic"): 197, ("rep", "fixed"): 197,
 }
 PIN_GRAD_PAIRS = {
     ("hash", "oracle"): 41, ("hash", "realistic"): 41, ("hash", "fixed"): 41,
@@ -72,30 +73,32 @@ PIN_OBSERVED_LOOKUPS = {
     ("rep", "oracle"): 86_991, ("rep", "realistic"): 86_991, ("rep", "fixed"): 86_991,
 }
 PIN_EMPTY_OBSERVATIONS = {
-    ("hash", "oracle"): 899, ("hash", "realistic"): 899, ("hash", "fixed"): 899,
-    ("chrono", "oracle"): 853, ("chrono", "realistic"): 853, ("chrono", "fixed"): 853,
-    ("rep", "oracle"): 5_097, ("rep", "realistic"): 5_097, ("rep", "fixed"): 5_097,
+    ("hash", "oracle"): 875, ("hash", "realistic"): 875, ("hash", "fixed"): 875,
+    ("chrono", "oracle"): 830, ("chrono", "realistic"): 830, ("chrono", "fixed"): 830,
+    ("rep", "oracle"): 4_953, ("rep", "realistic"): 4_953, ("rep", "fixed"): 4_953,
 }
 PIN_WORD_COMPLETIONS = {
-    "hash": 116, "chrono": 97, "rep": 636,
+    "hash": 115, "chrono": 95, "rep": 603,
 }
 PIN_PAIR_OBSERVATIONS = {
     "hash": 2_209, "chrono": 2_173, "rep": 13_005,
 }
-PIN_FIX_PROBES = {"hash": 58, "chrono": 43, "rep": 348}
-PIN_PRIME_UNSEEN_TOKENS = {"hash": 86, "chrono": 73, "rep": 462}
-PIN_A7_UNSEEN = {"hash": (0, 0, 0), "chrono": (0, 0, 0), "rep": (420, 420, 420)}
+PIN_FIX_PROBES = {"hash": 52, "chrono": 40, "rep": 342}
+PIN_PRIME_UNSEEN_TOKENS = {"hash": 83, "chrono": 72, "rep": 447}
+PIN_A7_UNSEEN = {"hash": (0, 0, 0), "chrono": (0, 0, 0), "rep": (405, 405, 405)}
 # The realistic-arm sweep on the repetition split: the timeline parity channel.
 PIN_REP_SWEEP = {
-    100: (162, 70_377, 0, 19_105),  # (grad_words, observed, dropped, staled)
+    100: (152, 70_377, 0, 19_105),  # (grad_words, observed, dropped, staled)
     200: (0, 0, 28_247, 71_749),
 }
 # Measure-side pins of the repetition split (oracle arm).
-PIN_REP_COMP_ACCEPT = 210
-PIN_REP_COMP_CP2_TOP3 = 82
-PIN_REP_NW_PERS_TOP3 = 651
-PIN_REP_KS_PERS_KEYS = 20_135
-PIN_REP_REORD_PROMO_1 = 212
+PIN_REP_COMP_ACCEPT = 199
+PIN_REP_COMP_CP2_VISIBLE_TOP3 = 86
+PIN_REP_COMP_CP2_ENGINE_TOP4 = 86
+PIN_REP_NW_PERS_VISIBLE_TOP3 = 637
+PIN_REP_NW_PERS_ENGINE_TOP4 = 729
+PIN_REP_KS_PERS_KEYS = 20_021
+PIN_REP_REORD_PROMO_1 = 201
 
 _OUTPUT: dict[str, str] | None = None
 
@@ -369,12 +372,14 @@ class MeasureWalkTest(unittest.TestCase):
         self.assertEqual(2, walk.gwt_typed)
         self.assertEqual(0, walk.gwt_nw_tapped)
         self.assertEqual(3, walk.nw_pairs)
-        self.assertEqual(1, walk.nw_pers_top3)  # the pair cell x after app
+        self.assertEqual(1, walk.nw_pers_visible_top3)  # the pair cell x after app
+        self.assertEqual(1, walk.nw_pers_engine_top4)
         self.assertEqual(1, walk.nw_true_learned)
         self.assertEqual(1, walk.nw_true_learned_shown)
         self.assertEqual(0, walk.nw_true_learned_suppressed)
         self.assertEqual(2, walk.comp_typed[1])
-        self.assertEqual(2, walk.comp_top3[1])
+        self.assertEqual(2, walk.comp_visible_top3[1])
+        self.assertEqual(2, walk.comp_engine_top4[1])
         self.assertEqual(0, walk.comp_top1[1])  # zr leads the exact pass
         self.assertEqual(2, walk.comp_accept)
         self.assertEqual(0, walk.comp_accept_top1)
@@ -389,7 +394,12 @@ class HarnessAcceptanceTest(unittest.TestCase):
     def test_dictionary_only_control_reproduces_the_pinned_chain_counters(self):
         self.assertEqual(PIN_CONTROL_PAIRS, metric_int("control.eval_pairs"))
         self.assertEqual(PIN_CONTROL_TOP1, metric_int("control.chain_top1_hits"))
-        self.assertEqual(PIN_CONTROL_TOP3, metric_int("control.chain_top3_hits"))
+        self.assertEqual(
+            PIN_CONTROL_VISIBLE_TOP3, metric_int("control.chain_visible_top3_hits")
+        )
+        self.assertEqual(
+            PIN_CONTROL_ENGINE_TOP4, metric_int("control.chain_engine_top4_hits")
+        )
         self.assertEqual(PIN_REP_CTRL_KS_BASELINE, metric_int("rep.ctrl.ks_baseline_keys"))
         self.assertEqual(PIN_REP_CTRL_KS_SIMULATED, metric_int("rep.ctrl.ks_simulated_keys"))
         self.assertEqual(PIN_REP_CTRL_KS_ORACLE, metric_int("rep.ctrl.ks_oracle_keys"))
@@ -465,13 +475,30 @@ class HarnessAcceptanceTest(unittest.TestCase):
                 # Graduation implies out-of-vocabulary: the dictionary-only control can
                 # never show a graduated word.
                 self.assertEqual(
-                    0, metric_int(f"{split}.{arm}.comp_ctrl_top3_hits"), f"{split}.{arm}"
+                    0,
+                    metric_int(f"{split}.{arm}.comp_ctrl_visible_top3_hits"),
+                    f"{split}.{arm}",
+                )
+                self.assertEqual(
+                    0,
+                    metric_int(f"{split}.{arm}.comp_ctrl_engine_top4_hits"),
+                    f"{split}.{arm}",
                 )
 
     def test_measure_side_pins_of_the_repetition_split(self):
         self.assertEqual(PIN_REP_COMP_ACCEPT, metric_int("rep.oracle.comp_accept"))
-        self.assertEqual(PIN_REP_COMP_CP2_TOP3, metric_int("rep.oracle.comp_cp2_top3"))
-        self.assertEqual(PIN_REP_NW_PERS_TOP3, metric_int("rep.oracle.nw_pers_top3"))
+        self.assertEqual(
+            PIN_REP_COMP_CP2_VISIBLE_TOP3, metric_int("rep.oracle.comp_cp2_visible_top3")
+        )
+        self.assertEqual(
+            PIN_REP_COMP_CP2_ENGINE_TOP4, metric_int("rep.oracle.comp_cp2_engine_top4")
+        )
+        self.assertEqual(
+            PIN_REP_NW_PERS_VISIBLE_TOP3, metric_int("rep.oracle.nw_pers_visible_top3")
+        )
+        self.assertEqual(
+            PIN_REP_NW_PERS_ENGINE_TOP4, metric_int("rep.oracle.nw_pers_engine_top4")
+        )
         self.assertEqual(PIN_REP_KS_PERS_KEYS, metric_int("rep.oracle.ks_pers_keys"))
         self.assertEqual(PIN_REP_REORD_PROMO_1, metric_int("rep.oracle.reord_promo_1"))
 

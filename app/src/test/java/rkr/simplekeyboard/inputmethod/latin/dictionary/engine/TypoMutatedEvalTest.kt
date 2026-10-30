@@ -24,25 +24,17 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryTestFixtures
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
+import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules
 import java.io.File
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
 /**
- * The typo-mutated held-out eval set of `scripts/typo_eval_pack.py`, rebuilt on the JVM
- * bit-for-bit (same FNV-1a / SplitMix64 stream, same per-class mutation primitives), then two
- * measurements with the production-wired Tatar index (suffix rules + the TATAR fuzzy policy):
- *
- *  - the recovery baseline: for each mutated string, whether its original word makes the top-3
- *    of the completion lookup, per edit class, with the layout-derived neighbor table and
- *    without it (the exact-only control);
- *  - the autocorrect false-trigger gate: the autocorrect decision over every correctly typed
- *    substrate word must never name a replacement.
- *
- * The set identity and the per-class hit counts are pinned exactly; re-pin when the dictionary,
- * the eval set, the layout or the ranking change. The engine recovers all four edit classes
- * (substitutions, deletions, insertions and transpositions).
+ * Rebuilds the Python typo set and measures the production-wired Tatar index.
+ * Positive recall is reported per edit class with layout neighbors and with the exact-only
+ * control. Separate safety measurements cover correctly typed dictionary words and every
+ * reviewed valid-OOV row by lemma stratum. Set identities and measured counts are pinned.
  */
 class TypoMutatedEvalTest {
 
@@ -150,9 +142,10 @@ class TypoMutatedEvalTest {
 
     // ---- The mutated set. ----
 
-    private data class EvalRow(val original: String, val editClass: String, val mutated: String)
+    internal data class EvalRow(val original: String, val editClass: String, val mutated: String)
+    private data class SafetyRow(val word: String, val stratum: String)
 
-    private class MutatedSet(val rows: List<EvalRow>, val text: String) {
+    internal class MutatedSet(val rows: List<EvalRow>, val text: String) {
         val bytes: Int get() = text.toByteArray(Charsets.UTF_8).size
         val sha256: String
             get() = MessageDigest.getInstance("SHA-256")
@@ -171,7 +164,7 @@ class TypoMutatedEvalTest {
         return a.size - b.size
     }
 
-    private fun buildSet(
+    internal fun buildSet(
         words: List<String>,
         geometric: Map<Int, IntArray>,
         alphabet: IntArray,
@@ -301,54 +294,101 @@ class TypoMutatedEvalTest {
         assertEquals(PIN_SET_SHA256, set.sha256)
 
         // The hit path is the completion path: TdictPrefixIndex.lookup returns the strip cells
-        // (at most MAX_RESULTS = 3), exact candidates first, typo-recovery candidates only in
+        // (at most MAX_RESULTS = 4), exact candidates first, typo-recovery candidates only in
         // cells the exact pass left empty. The production arm carries the layout-derived neighbor
         // table (KeyNeighborTableBuilder.fromKeyboard on device, the equivalent fixture here);
         // the control arm has no table, so only the exact pass runs.
         index.updateKeyNeighbors(neighborTable)
-        val hitsWithFuzzy = countHits(index, set.rows)
+        val withFuzzy = countHits(index, set.rows)
         index.updateKeyNeighbors(null)
-        val hitsExactOnly = countHits(index, set.rows)
+        val exactOnly = countHits(index, set.rows)
 
         val rowsPerClass = set.rows.groupingBy { it.editClass }.eachCount()
-        var totalHits = 0
-        var totalExactHits = 0
+        var totalTop1 = 0
+        var totalVisible = 0
+        var totalEngine = 0
+        var totalExactTop1 = 0
+        var totalExactVisible = 0
+        var totalExactEngine = 0
         for ((className, _) in CLASS_TAGS) {
             val classRows = rowsPerClass.getValue(className)
-            val hits = hitsWithFuzzy.getValue(className)
-            val exactHits = hitsExactOnly.getValue(className)
-            totalHits += hits
-            totalExactHits += exactHits
+            val top1 = withFuzzy.top1PerClass.getValue(className)
+            val visible = withFuzzy.visibleTop3PerClass.getValue(className)
+            val engine = withFuzzy.engineTop4PerClass.getValue(className)
+            val exactTop1 = exactOnly.top1PerClass.getValue(className)
+            val exactVisible = exactOnly.visibleTop3PerClass.getValue(className)
+            val exactEngine = exactOnly.engineTop4PerClass.getValue(className)
+            totalTop1 += top1
+            totalVisible += visible
+            totalEngine += engine
+            totalExactTop1 += exactTop1
+            totalExactVisible += exactVisible
+            totalExactEngine += exactEngine
             println("EVAL|typo_${className}_rows|$classRows")
-            println("EVAL|typo_${className}_top3_hits|$hits")
-            println("EVAL|typo_${className}_top3_pct|${format(hits * 100.0 / classRows)}")
-            println("EVAL|typo_${className}_top3_hits_exactonly|$exactHits")
+            println("EVAL|typo_${className}_top1_hits|$top1")
+            println("EVAL|typo_${className}_top1_pct|${format(top1 * 100.0 / classRows)}")
+            println("EVAL|typo_${className}_visible_top3_hits|$visible")
+            println("EVAL|typo_${className}_visible_top3_pct|${format(visible * 100.0 / classRows)}")
+            println("EVAL|typo_${className}_engine_top4_hits|$engine")
+            println("EVAL|typo_${className}_engine_top4_pct|${format(engine * 100.0 / classRows)}")
+            println("EVAL|typo_${className}_top1_hits_exactonly|$exactTop1")
+            println("EVAL|typo_${className}_visible_top3_hits_exactonly|$exactVisible")
+            println("EVAL|typo_${className}_engine_top4_hits_exactonly|$exactEngine")
+            assertTrue(top1 <= visible && visible <= engine)
         }
         println("EVAL|typo_total_rows|${set.rows.size}")
-        println("EVAL|typo_total_top3_hits|$totalHits")
-        println("EVAL|typo_total_top3_pct|${format(totalHits * 100.0 / set.rows.size)}")
-        println("EVAL|typo_total_top3_hits_exactonly|$totalExactHits")
+        println("EVAL|typo_total_top1_hits|$totalTop1")
+        println("EVAL|typo_total_top1_pct|${format(totalTop1 * 100.0 / set.rows.size)}")
+        println("EVAL|typo_total_visible_top3_hits|$totalVisible")
+        println("EVAL|typo_total_visible_top3_pct|${format(totalVisible * 100.0 / set.rows.size)}")
+        println("EVAL|typo_total_engine_top4_hits|$totalEngine")
+        println("EVAL|typo_total_engine_top4_pct|${format(totalEngine * 100.0 / set.rows.size)}")
+        println("EVAL|typo_total_top1_hits_exactonly|$totalExactTop1")
+        println("EVAL|typo_total_visible_top3_hits_exactonly|$totalExactVisible")
+        println("EVAL|typo_total_engine_top4_hits_exactonly|$totalExactEngine")
 
-        assertEquals(PIN_SUB_HITS, hitsWithFuzzy.getValue("sub"))
-        assertEquals(PIN_DEL_HITS, hitsWithFuzzy.getValue("del"))
-        assertEquals(PIN_INS_HITS, hitsWithFuzzy.getValue("ins"))
-        assertEquals(PIN_TRANS_HITS, hitsWithFuzzy.getValue("trans"))
-        assertEquals(PIN_SUB_HITS_EXACTONLY, hitsExactOnly.getValue("sub"))
-        assertEquals(PIN_DEL_HITS_EXACTONLY, hitsExactOnly.getValue("del"))
-        assertEquals(PIN_INS_HITS_EXACTONLY, hitsExactOnly.getValue("ins"))
-        assertEquals(PIN_TRANS_HITS_EXACTONLY, hitsExactOnly.getValue("trans"))
+        assertEquals(PIN_SUB_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("sub"))
+        assertEquals(PIN_DEL_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("del"))
+        assertEquals(PIN_INS_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("ins"))
+        assertEquals(PIN_TRANS_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("trans"))
+        assertEquals(PIN_SUB_ENGINE_TOP4_HITS_EXACTONLY, exactOnly.engineTop4PerClass.getValue("sub"))
+        assertEquals(PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY, exactOnly.engineTop4PerClass.getValue("del"))
+        assertEquals(PIN_INS_ENGINE_TOP4_HITS_EXACTONLY, exactOnly.engineTop4PerClass.getValue("ins"))
+        assertEquals(PIN_TRANS_ENGINE_TOP4_HITS_EXACTONLY, exactOnly.engineTop4PerClass.getValue("trans"))
     }
 
-    private fun countHits(index: TdictPrefixIndex, rows: List<EvalRow>): Map<String, Int> {
-        val hits = HashMap<String, Int>()
-        for ((className, _) in CLASS_TAGS) hits[className] = 0
+    private class HitCount(
+        val top1PerClass: Map<String, Int>,
+        val visibleTop3PerClass: Map<String, Int>,
+        val engineTop4PerClass: Map<String, Int>,
+    )
+
+    private fun countHits(index: TdictPrefixIndex, rows: List<EvalRow>): HitCount {
+        val top1 = HashMap<String, Int>()
+        val visible = HashMap<String, Int>()
+        val engine = HashMap<String, Int>()
+        for ((className, _) in CLASS_TAGS) {
+            top1[className] = 0
+            visible[className] = 0
+            engine[className] = 0
+        }
         for (row in rows) {
             val results = index.lookup(
                 ImmutableUtf8Prefix.copyOf(row.mutated.toByteArray(Charsets.UTF_8))
             )
-            if (results.contains(row.original)) hits[row.editClass] = hits.getValue(row.editClass) + 1
+            if (results.firstOrNull() == row.original) {
+                top1[row.editClass] = top1.getValue(row.editClass) + 1
+            }
+            if (results.take(SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT)
+                .contains(row.original)
+            ) {
+                visible[row.editClass] = visible.getValue(row.editClass) + 1
+            }
+            if (results.take(SuggestionStripState.CELL_COUNT).contains(row.original)) {
+                engine[row.editClass] = engine.getValue(row.editClass) + 1
+            }
         }
-        return hits
+        return HitCount(top1, visible, engine)
     }
 
     // ---- The autocorrect false-trigger gate. ----
@@ -387,6 +427,69 @@ class TypoMutatedEvalTest {
         )
     }
 
+    @Test
+    fun validOovSafetySetMatchesItsPins() {
+        val index = requireNotNull(tatarIndex)
+        assertEquals(PIN_VALID_OOV_ROWS, safetyRows.size)
+        assertEquals(PIN_VALID_OOV_ROWS, safetyRows.map { it.word }.distinct().size)
+        assertEquals(PIN_VALID_OOV_SET_BYTES, safetyText.toByteArray(Charsets.UTF_8).size)
+        assertEquals(PIN_VALID_OOV_SET_SHA256, sha256(safetyText))
+        val counts = safetyRows.groupingBy { it.stratum }.eachCount()
+        assertEquals(PIN_VALID_OOV_SEEN_FORM_WORDS, counts.getValue("seen_form"))
+        assertEquals(PIN_VALID_OOV_NEW_FORM_WORDS, counts.getValue("new_form_of_seen_stem"))
+        assertEquals(PIN_VALID_OOV_UNSEEN_STEM_WORDS, counts.getValue("unseen_stem"))
+        for (row in safetyRows) {
+            val bytes = row.word.toByteArray(Charsets.UTF_8)
+            assertTrue("safety word entered the dictionary: ${row.word}",
+                index.indexOfWord(bytes, bytes.size) < 0)
+        }
+    }
+
+    /** Measures every valid-OOV row; no corpus form is excluded from the denominator. */
+    @Test
+    fun autocorrectFalseReplacementsOnValidOovWords() {
+        val index = requireNotNull(tatarIndex)
+        index.updateKeyNeighbors(neighborTable)
+        val replacements = HashMap<String, Int>()
+        for (stratum in SAFETY_STRATA) replacements[stratum] = 0
+        val offenders = ArrayList<String>()
+        var measured = 0
+        for (row in safetyRows) {
+            val bytes = row.word.toByteArray(Charsets.UTF_8)
+            assertTrue("safety word entered the dictionary: ${row.word}",
+                index.indexOfWord(bytes, bytes.size) < 0)
+            index.lookup(ImmutableUtf8Prefix.copyOf(bytes))
+            measured++
+            val advice = index.lastAutocorrectAdvice ?: continue
+            replacements[row.stratum] = replacements.getValue(row.stratum) + 1
+            offenders.add("${advice.typedWord}->${advice.replacement}")
+        }
+        for (stratum in SAFETY_STRATA) {
+            val words = safetyRows.count { it.stratum == stratum }
+            println("EVAL|autocorrect_valid_oov_${stratum}_words|$words")
+            println("EVAL|autocorrect_valid_oov_${stratum}_false_replacements|${replacements.getValue(stratum)}")
+        }
+        val total = replacements.values.sum()
+        println("EVAL|autocorrect_valid_oov_words|$measured")
+        println("EVAL|autocorrect_valid_oov_false_replacements|$total")
+        println("EVAL|autocorrect_valid_oov_false_replacement_pct|${format(total * 100.0 / measured)}")
+        if (offenders.isNotEmpty()) {
+            println("EVAL|autocorrect_valid_oov_false_replacement_examples|${offenders.joinToString(",")}")
+        }
+        assertEquals(PIN_VALID_OOV_ROWS, measured)
+        assertEquals(PIN_VALID_OOV_SEEN_FORM_FALSE_REPLACEMENTS, replacements.getValue("seen_form"))
+        assertEquals(PIN_VALID_OOV_NEW_FORM_FALSE_REPLACEMENTS,
+            replacements.getValue("new_form_of_seen_stem"))
+        assertEquals(PIN_VALID_OOV_UNSEEN_STEM_FALSE_REPLACEMENTS,
+            replacements.getValue("unseen_stem"))
+        assertEquals(PIN_VALID_OOV_FALSE_REPLACEMENTS, total)
+    }
+
+    private fun sha256(text: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(text.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
     private fun format(value: Double): String = "%.4f".format(java.util.Locale.ROOT, value)
 
     private fun unsigned(decimal: String): Long = java.lang.Long.parseUnsignedLong(decimal)
@@ -403,7 +506,7 @@ class TypoMutatedEvalTest {
 
         // The geometric key-neighbor relation of the Tatar layout, pasted from
         // scripts/typo_pack.py's read_layout_geometric_map (neighbor lists sorted ascending).
-        private val GEOMETRIC_NEIGHBORS: Map<Int, IntArray> = mapOf(
+        internal val GEOMETRIC_NEIGHBORS: Map<Int, IntArray> = mapOf(
             0x0430 to intArrayOf(0x043A, 0x0441), // "а" -> "кс"
             0x0431 to intArrayOf(0x0434), // "б" -> "д"
             0x0432 to intArrayOf(0x0443, 0x0447), // "в" -> "уч"
@@ -444,28 +547,43 @@ class TypoMutatedEvalTest {
         )
 
         // Pins over the committed dictionary, eval set and layout; re-pin when an input changes.
-        private const val PIN_SUBSTRATE_WORDS = 2_369
-        private const val PIN_SET_ROWS = 9_476
-        private const val PIN_SET_BYTES = 308_490
+        private const val PIN_SUBSTRATE_WORDS = 2_381
+        private const val PIN_SET_ROWS = 9_524
+        private const val PIN_SET_BYTES = 310_498
         private const val PIN_SET_SHA256 =
-            "83f1629717577ac0e4846f0178286d4ae3ec21cbbbe3c3def47a18af1b6bfe9a"
+            "8b60e4b146981d737b351abbbdfd478a3aaa5eedb51a8769ff0cab54c5b5636e"
 
         // Measured baseline recovery counts (the production arm, then the exact-only control).
-        private const val PIN_SUB_HITS = 2_181
-        private const val PIN_DEL_HITS = 1_829
-        private const val PIN_INS_HITS = 2_328
-        private const val PIN_TRANS_HITS = 2_165
-        private const val PIN_SUB_HITS_EXACTONLY = 0
-        private const val PIN_DEL_HITS_EXACTONLY = 349
-        private const val PIN_INS_HITS_EXACTONLY = 0
-        private const val PIN_TRANS_HITS_EXACTONLY = 0
+        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_194
+        private const val PIN_DEL_ENGINE_TOP4_HITS = 1_841
+        private const val PIN_INS_ENGINE_TOP4_HITS = 2_340
+        private const val PIN_TRANS_ENGINE_TOP4_HITS = 2_177
+        private const val PIN_SUB_ENGINE_TOP4_HITS_EXACTONLY = 0
+        private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 349
+        private const val PIN_INS_ENGINE_TOP4_HITS_EXACTONLY = 0
+        private const val PIN_TRANS_ENGINE_TOP4_HITS_EXACTONLY = 0
         private const val PIN_AUTOCORRECT_FALSE_TRIGGERS = 0
 
+        private const val PIN_VALID_OOV_ROWS = 175
+        private const val PIN_VALID_OOV_SET_BYTES = 6_157
+        private const val PIN_VALID_OOV_SET_SHA256 =
+            "e843019198ef8df8d9d4feef1895e3048dbd842e1fc3c0820d7dce8caaa2761d"
+        private const val PIN_VALID_OOV_SEEN_FORM_WORDS = 12
+        private const val PIN_VALID_OOV_NEW_FORM_WORDS = 59
+        private const val PIN_VALID_OOV_UNSEEN_STEM_WORDS = 104
+        private const val PIN_VALID_OOV_SEEN_FORM_FALSE_REPLACEMENTS = 0
+        private const val PIN_VALID_OOV_NEW_FORM_FALSE_REPLACEMENTS = 2
+        private const val PIN_VALID_OOV_UNSEEN_STEM_FALSE_REPLACEMENTS = 0
+        private const val PIN_VALID_OOV_FALSE_REPLACEMENTS = 2
+
+        private val SAFETY_STRATA = listOf("seen_form", "new_form_of_seen_stem", "unseen_stem")
         private val neighborTable = E3bTestFixtures.tatarNeighborTable()
-        private val ALPHABET: IntArray get() = neighborTable.nodes
+        internal val ALPHABET: IntArray get() = neighborTable.nodes
         private var tatarIndex: TdictPrefixIndex? = null
         private lateinit var vocabulary: List<String>
-        private lateinit var substrate: List<String>
+        internal lateinit var substrate: List<String>
+        private lateinit var safetyText: String
+        private lateinit var safetyRows: List<SafetyRow>
 
         @JvmStatic
         @BeforeClass
@@ -515,6 +633,18 @@ class TypoMutatedEvalTest {
             substrate = vocabulary.filter { word ->
                 word.codePointCount(0, word.length) >= MIN_WORD_CODE_POINTS && word in evalWords
             }
+            safetyText = locate(
+                "src/test/resources/tt_valid_oov_safety_set.tsv",
+                "app/src/test/resources/tt_valid_oov_safety_set.tsv",
+            ).readText(Charsets.UTF_8)
+            safetyRows = safetyText.split("\n").filter { it.isNotEmpty() }.map { line ->
+                val fields = line.split("\t")
+                check(fields.size == 2) { "malformed valid-OOV safety row: $line" }
+                check(fields[0] in evalWords) { "safety word is not held out: ${fields[0]}" }
+                check(fields[1] in SAFETY_STRATA) { "unknown safety stratum: ${fields[1]}" }
+                SafetyRow(fields[0], fields[1])
+            }
+            check(safetyRows.isNotEmpty()) { "the valid-OOV safety set is empty" }
         }
 
         private fun locate(vararg paths: String): File =
