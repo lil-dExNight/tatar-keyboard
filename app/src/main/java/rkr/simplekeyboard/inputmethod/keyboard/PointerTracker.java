@@ -80,7 +80,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     private static DrawingProxy sDrawingProxy;
     private static TimerProxy sTimerProxy;
-    private static KeyboardActionListener sListener = KeyboardActionListener.EMPTY_LISTENER;
+    private static KeyboardActionListener sListener = KeyboardActionListener.Adapter.EMPTY_LISTENER;
     private static PointerTracker sSpaceTrackpadOwner;
 
     private final SpaceTrackpadState mSpaceTrackpadState = new SpaceTrackpadState();
@@ -379,6 +379,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         return mKeyDetector.detectHitKey(x, y);
     }
 
+    @SuppressWarnings("ReferenceEquality") // The same Key object, not Key.equals (layout values).
     private void setReleasedKeyGraphics(final Key key, final boolean withAnimation) {
         if (key == null) {
             return;
@@ -408,6 +409,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         }
     }
 
+    @SuppressWarnings("ReferenceEquality") // The same Key object, not Key.equals (layout values).
     private void setPressedKeyGraphics(final Key key) {
         if (key == null) {
             return;
@@ -749,6 +751,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
      * carries raw view-local coordinates (the detector's hysteresis correction is for hit
      * testing, not for where the finger was seen).
      */
+    @SuppressWarnings("ReferenceEquality") // The same Key object, not Key.equals (layout values).
     private void updateGlideFeedback(final int x, final int y, final long eventTime,
             final Key key) {
         sDrawingProxy.onGlideTrailPoint(x, y, eventTime);
@@ -868,6 +871,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         }
     }
 
+    @SuppressWarnings("ReferenceEquality") // The same Key object, not Key.equals (layout values).
     private void onMoveEventInternal(final int x, final int y, final long eventTime) {
         if (mDockExitGesture) {
             // The strip tracks nothing: a move past the slop only cancels the tap.
@@ -1221,6 +1225,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         endGlideFeedback();
     }
 
+    @SuppressWarnings("ReferenceEquality") // The same Key object, not Key.equals (layout values).
     private boolean isMajorEnoughMoveToBeOnNewKey(final int x, final int y, final Key newKey) {
         final Key curKey = mCurrentKey;
         if (newKey == curKey) {

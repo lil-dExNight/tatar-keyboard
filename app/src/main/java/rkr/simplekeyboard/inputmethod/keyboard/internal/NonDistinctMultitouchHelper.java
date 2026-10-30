@@ -33,6 +33,7 @@ public final class NonDistinctMultitouchHelper {
     private Key mOldKey;
     private int[] mLastCoords = CoordinateUtils.newInstance();
 
+    @SuppressWarnings("ReferenceEquality") // The same Key object, not Key.equals (layout values).
     public void processMotionEvent(final MotionEvent me, final KeyDetector keyDetector) {
         final int pointerCount = me.getPointerCount();
         final int oldPointerCount = mOldPointerCount;

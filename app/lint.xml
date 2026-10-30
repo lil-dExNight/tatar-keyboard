@@ -9,7 +9,9 @@
          DiscouragedApi: getIdentifier() by name is how the AOSP fork looks up locale/layout resources.
          StaticFieldLeak: the KeyboardSwitcher singleton lives exactly as long as the IME process.
          InflateParams: the IME input view is inflated without a parent by design.
-         RedundantLabel, Overdraw, UseRequiresApi, UsableSpace, TextFields, Autofill, LabelFor,
+         RedundantLabel, Overdraw, UseRequiresApi, TextFields, Autofill, LabelFor,
          ClickableViewAccessibility: cosmetic findings in legacy views, not actionable.
-         VectorPath (reported, not baselined): the launcher icon path is long but is drawn once per layout. -->
+         VectorPath (reported, not baselined): the launcher icon path is long but is drawn once per layout.
+         AndroidGradlePluginVersion, NewerVersionAvailable (reported, not baselined): a build tool
+         upgrade comes with a dependency verification refresh; newer error_prone_core needs JDK 21. -->
 </lint>

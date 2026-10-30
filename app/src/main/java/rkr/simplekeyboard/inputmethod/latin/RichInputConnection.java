@@ -919,6 +919,7 @@ public final class RichInputConnection {
     /**
      * @return whether there is a selection currently active.
      */
+    @SuppressWarnings("MissingSummary") // Upstream javadoc, kept unedited.
     public boolean hasSelection() {
         return mExpectedSelEnd != mExpectedSelStart;
     }

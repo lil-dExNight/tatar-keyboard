@@ -17,6 +17,7 @@
 
 package rkr.simplekeyboard.inputmethod.keyboard;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.util.AttributeSet;
@@ -64,6 +65,7 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
         this(context, attrs, R.attr.moreKeysKeyboardViewStyle);
     }
 
+    @SuppressLint("CustomViewStyleable") // Reads the shared key attributes, like KeyboardView.
     public MoreKeysKeyboardView(final Context context, final AttributeSet attrs,
             final int defStyle) {
         super(context, attrs, defStyle);
@@ -168,6 +170,7 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
     }
 
     @Override
+    @SuppressWarnings("ReferenceEquality") // The same Key object, not Key.equals (layout values).
     public void onMoveEvent(final int x, final int y, final int pointerId) {
         if (mActivePointerId != pointerId) {
             return;
@@ -220,6 +223,7 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
         return super.selectLabelColor(key, params);
     }
 
+    @SuppressWarnings("ReferenceEquality") // The same Key object, not Key.equals (layout values).
     private Key detectKey(int x, int y) {
         final Key oldKey = mCurrentKey;
         final Key newKey = mKeyDetector.detectHitKey(x, y);

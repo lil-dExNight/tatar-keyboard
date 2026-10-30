@@ -1,5 +1,6 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.AssetManager
 import android.system.Os
@@ -32,7 +33,7 @@ object AndroidDictionaryStorageFactory {
                 context.assets.open(spec.assetPath, AssetManager.ACCESS_STREAMING)
             },
             clock = StorageClock(System::currentTimeMillis),
-            spaceProbe = SpaceProbe(File::getUsableSpace),
+            spaceProbe = AndroidSpaceProbe,
             fileOps = AndroidDurableFileOps,
             supportedArtifacts = listOf(artifact),
         )
@@ -41,6 +42,15 @@ object AndroidDictionaryStorageFactory {
             store,
         )
     }
+}
+
+/**
+ * The one production [SpaceProbe]: the free space the app may write to now. Clearable cache is not
+ * counted, since claiming it would need `StorageManager.allocateBytes` (API 26+) before each write.
+ */
+@SuppressLint("UsableSpace")
+internal object AndroidSpaceProbe : SpaceProbe {
+    override fun usableBytes(directory: File): Long = directory.usableSpace
 }
 
 /**

@@ -213,7 +213,7 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         mAltCodeKeyWhileTypingFadeinAnimator = loadObjectAnimator(
                 altCodeKeyWhileTypingFadeinAnimatorResId, this);
 
-        mKeyboardActionListener = KeyboardActionListener.EMPTY_LISTENER;
+        mKeyboardActionListener = KeyboardActionListener.Adapter.EMPTY_LISTENER;
 
         mLanguageOnSpacebarHorizontalMargin = (int)getResources().getDimension(
                 R.dimen.config_language_on_spacebar_horizontal_margin);

@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 import android.content.Context
 import android.os.UserManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidDurableFileOps
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidSpaceProbe
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executor
@@ -50,7 +51,7 @@ internal object AndroidPersonalDictionaryStorage {
             directoryProvider = { File(appContext.noBackupFilesDir, PERSONAL_DIRECTORY_NAME) },
             fileOps = AndroidDurableFileOps,
             outputOpener = { temp -> FileOutputStream(temp) },
-            spaceProbe = { directory -> directory.usableSpace },
+            spaceProbe = AndroidSpaceProbe,
             clock = { System.currentTimeMillis() },
             executor = executor,
             unlockGate = { userManager?.isUserUnlocked ?: false },
@@ -76,7 +77,7 @@ internal object AndroidPersonalDictionaryStorage {
             directoryProvider = { File(appContext.noBackupFilesDir, PERSONAL_DIRECTORY_NAME) },
             fileOps = AndroidDurableFileOps,
             outputOpener = { temp -> FileOutputStream(temp) },
-            spaceProbe = { directory -> directory.usableSpace },
+            spaceProbe = AndroidSpaceProbe,
             clock = { System.currentTimeMillis() },
             executor = executor,
             contextMembership = contextMembership,

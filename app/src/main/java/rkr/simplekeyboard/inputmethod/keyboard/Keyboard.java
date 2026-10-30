@@ -150,6 +150,7 @@ public class Keyboard {
         }
     }
 
+    @SuppressWarnings("ReferenceEquality") // The same Key object, not Key.equals (layout values).
     public boolean hasKey(final Key aKey) {
         if (mKeyCache.indexOfValue(aKey) >= 0) {
             return true;

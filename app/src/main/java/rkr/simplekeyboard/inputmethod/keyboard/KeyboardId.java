@@ -122,6 +122,7 @@ public final class KeyboardId {
     }
 
     /** Renamed off `equals` so it cannot be read as an overload of {@link Object#equals}. */
+    @SuppressWarnings("ReferenceEquality") // Identity fast path of the value comparison.
     private boolean equalsId(final KeyboardId other) {
         if (other == this)
             return true;

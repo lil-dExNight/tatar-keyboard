@@ -121,7 +121,7 @@ class GlidePointerDeviceTest : InstrumentationTestCase() {
     }
 
     override fun tearDown() {
-        PointerTracker.setKeyboardActionListener(KeyboardActionListener.EMPTY_LISTENER)
+        PointerTracker.setKeyboardActionListener(KeyboardActionListener.Adapter.EMPTY_LISTENER)
         PointerTracker.cancelAllPointerTrackers()
         PointerTracker.setGlideAvailable(false)
         val prefs = rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat

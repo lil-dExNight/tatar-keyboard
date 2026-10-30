@@ -21,9 +21,11 @@
 <!-- for the Input Method Manager. -->
 
 <input-method xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:tools="http://schemas.android.com/tools"
         android:settingsActivity="rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity"
         android:supportsSwitchingToNextInputMethod="true"
-        android:supportsInlineSuggestions="true">
+        android:supportsInlineSuggestions="true"
+        tools:targetApi="30">
     <subtype android:icon="@drawable/ic_ime_switcher"
         android:imeSubtypeMode="keyboard"
         android:isAsciiCapable="true" />

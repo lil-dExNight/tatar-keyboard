@@ -14,6 +14,7 @@
 
 package rkr.simplekeyboard.inputmethod.keyboard
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Resources
 import android.os.Build
@@ -73,6 +74,8 @@ object DynamicThemePalette {
         return result
     }
 
+    // The role table holds framework color names, probed once per process.
+    @SuppressLint("DiscouragedApi")
     private fun resolves(context: Context, role: String): Boolean {
         val id = context.resources.getIdentifier(role, "color", "android")
         if (id == 0) {

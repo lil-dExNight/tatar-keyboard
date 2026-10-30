@@ -21,6 +21,7 @@ import android.os.UserManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TextShortcutSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TextShortcuts
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidDurableFileOps
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidSpaceProbe
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -60,7 +61,7 @@ object TextShortcutStores {
                     },
                     fileOps = AndroidDurableFileOps,
                     outputOpener = { temp -> FileOutputStream(temp) },
-                    spaceProbe = { directory -> directory.usableSpace },
+                    spaceProbe = AndroidSpaceProbe,
                     clock = { System.currentTimeMillis() },
                     executor = PersonalDictionaries.sharedStoreExecutor(),
                     unlockGate = { userManager?.isUserUnlocked ?: false },

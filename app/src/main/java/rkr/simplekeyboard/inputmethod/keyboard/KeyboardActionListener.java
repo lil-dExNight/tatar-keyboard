@@ -114,9 +114,13 @@ public interface KeyboardActionListener {
      */
     default void onDockExitHandleLongPress() {}
 
-    KeyboardActionListener EMPTY_LISTENER = new Adapter();
-
     class Adapter implements KeyboardActionListener {
+        /**
+         * The no-op listener. It lives here, not in the interface: an interface with default
+         * methods is initialized with its implementors, and a constant there would cycle.
+         */
+        public static final KeyboardActionListener EMPTY_LISTENER = new Adapter();
+
         @Override
         public void onPressKey(int primaryCode, int repeatCount, boolean isSinglePointer) {}
         @Override

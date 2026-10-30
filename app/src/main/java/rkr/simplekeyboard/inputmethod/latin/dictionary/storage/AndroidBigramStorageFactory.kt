@@ -26,7 +26,7 @@ object AndroidBigramStorageFactory {
                 context.assets.open(spec.assetPath, AssetManager.ACCESS_STREAMING)
             },
             clock = StorageClock(System::currentTimeMillis),
-            spaceProbe = SpaceProbe(File::getUsableSpace),
+            spaceProbe = AndroidSpaceProbe,
             fileOps = AndroidDurableFileOps,
             supportedArtifacts = listOf(artifact),
         )

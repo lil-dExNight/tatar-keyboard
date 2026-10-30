@@ -16,6 +16,7 @@
 
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.Context
 import android.os.Build
@@ -37,6 +38,8 @@ import rkr.simplekeyboard.inputmethod.latin.InputView
  * the platform's render service refuses a spec without it, and an empty render means no inline
  * content and no dropdown fallback.
  */
+// @RequiresApi lives in androidx.annotation, which the app does not depend on.
+@SuppressLint("UseRequiresApi")
 @TargetApi(Build.VERSION_CODES.R)
 object InlineAutofillBinder {
 

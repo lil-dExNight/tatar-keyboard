@@ -70,6 +70,7 @@ public final class TypefaceUtils {
         }
     }
 
+    @SuppressWarnings("ReferenceEquality") // Identity against the platform Typeface constants.
     private static int getCharGeometryCacheKey(final char referenceChar, final Paint paint) {
         final int labelSize = (int)paint.getTextSize();
         final Typeface face = paint.getTypeface();

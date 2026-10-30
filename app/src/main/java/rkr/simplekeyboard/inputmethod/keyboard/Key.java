@@ -442,6 +442,7 @@ public class Key implements Comparable<Key> {
         });
     }
 
+    @SuppressWarnings("ReferenceEquality") // Identity fast path of the value comparison.
     private boolean equalsInternal(final Key o) {
         if (this == o) return true;
         return o.mX == mX
