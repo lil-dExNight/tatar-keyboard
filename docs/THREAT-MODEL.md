@@ -192,7 +192,8 @@ Resolved, with the control that keeps them closed:
   pinned by `RecentClipControllerTest` and `LockScreenPrivacySourceContractTest`.
 - **A field session could outlive its initial lock snapshot.** Window show refreshes eligibility;
   learning, autocorrect, shortcuts, suggestion commits and glide re-check keyguard and user unlock
-  at commit boundaries. Locked-period input is invalidated rather than learned after unlock, and
+  at commit boundaries (learning reads live; the other checks reuse one answer for at most
+  `LatinIME.PRIVACY_LOCK_CACHE_MS`, dropped on screen and unlock broadcasts). Locked-period input is invalidated rather than learned after unlock, and
   inline-autofill children are dropped on hide or lock with late responses and inflates refused;
   pinned by the controller transition tests and `InlineAutofillSourceContractTest`.
 - **Text-shortcut expansions admitted bidi/format characters.** Rejected with

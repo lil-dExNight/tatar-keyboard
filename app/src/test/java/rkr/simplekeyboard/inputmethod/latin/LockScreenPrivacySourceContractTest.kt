@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,17 +31,15 @@ import org.junit.Test
  */
 class LockScreenPrivacySourceContractTest {
 
-    private val ime by lazy {
+    private val mainRoot by lazy {
         val roots = listOf(File("src/main"), File("app/src/main"))
-        val root = roots.firstOrNull(File::isDirectory)
+        roots.firstOrNull(File::isDirectory)
             ?: error("cannot locate app/src/main from ${File(".").absolutePath}")
-        File(root, "java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java").readText()
     }
-    private val receiver by lazy {
-        File("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/SystemBroadcastReceiver.java")
-            .readText()
+    private val ime by lazy {
+        File(mainRoot, "java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java").readText()
     }
-    private val manifest by lazy { File("app/src/main/AndroidManifest.xml").readText() }
+    private val manifest by lazy { File(mainRoot, "AndroidManifest.xml").readText() }
 
     /** The body of the method whose declaration contains [signature], by brace matching. */
     private fun body(signature: String): String {
@@ -106,11 +105,36 @@ class LockScreenPrivacySourceContractTest {
 
     @Test
     fun lockTransitionsAreBroadcastDriven() {
-        for (action in listOf("SCREEN_OFF", "SCREEN_ON", "USER_PRESENT")) {
-            assertTrue(manifest.contains("android.intent.action.$action"))
+        // Screen and unlock broadcasts reach only a receiver registered at runtime.
+        val create = body("public void onCreate()")
+        for (action in listOf("SCREEN_OFF", "SCREEN_ON", "USER_PRESENT", "USER_UNLOCKED")) {
+            assertTrue(action, create.contains("lockFilter.addAction(Intent.ACTION_$action);"))
+            assertFalse(action, manifest.contains("android.intent.action.$action"))
         }
-        assertTrue(receiver.contains("LatinIME.onSystemLockEvent()"))
-        assertTrue(ime.contains("static void onSystemLockEvent()"))
-        assertTrue(body("private boolean isPrivacyLocked()").contains("PRIVACY_LOCK_CACHE_MS"))
+        assertTrue(create.contains("registerReceiver(mLockStateReceiver, lockFilter);"))
+        assertTrue(
+            ime.substringAfter("mLockStateReceiver = new BroadcastReceiver() {")
+                .substringBefore("};").contains("onSystemLockEvent();"),
+        )
+        assertTrue(
+            body("public void onDestroy()").contains("unregisterReceiver(mLockStateReceiver);"),
+        )
+        // A broadcast drops the reused answer before it re-applies the lock.
+        val event = body("private void onSystemLockEvent()")
+        val invalidated = event.indexOf("mPrivacyLockValid = false;")
+        assertTrue(invalidated in 0 until event.indexOf("noteLiveLock();"))
+        assertTrue(
+            body("private boolean isPrivacyLocked()")
+                .contains("!mPrivacyLockValid || now - mPrivacyLockCheckedAt >= PRIVACY_LOCK_CACHE_MS"),
+        )
+        // Deep sleep counts toward the reuse window, and session starts read live.
+        assertTrue(body("private boolean isPrivacyLocked()").contains("SystemClock.elapsedRealtime()"))
+        assertTrue(
+            ime.contains("mPrivacyLockValid = false;\n        mSessionKeyguardLocked = isPrivacyLocked();"),
+        )
+        assertTrue(
+            body("public void onWindowShown()")
+                .contains("mPrivacyLockValid = false;\n        final boolean locked = isPrivacyLocked();"),
+        )
     }
 }

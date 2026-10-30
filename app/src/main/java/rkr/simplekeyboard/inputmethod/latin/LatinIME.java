@@ -154,7 +154,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         RichInputMethodManager.SubtypeChangedListener {
     static final String TAG = LatinIME.class.getSimpleName();
     private static final boolean TRACE = false;
-    private static LatinIME sInstance;
 
     private static final int EXTENDED_TOUCHABLE_REGION_HEIGHT = 100;
     private static final int PENDING_IMS_CALLBACK_DURATION_MILLIS = 800;
@@ -452,7 +451,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             KeyboardSwitcher.init(this);
             AudioAndHapticFeedbackManager.init(this);
             super.onCreate();
-            sInstance = this;
 
             // SettingsValues are first built by onStartInputViewInternal, against the real
             // field: a build here would use a null EditorInfo and be rebuilt there anyway.
@@ -470,6 +468,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             final IntentFilter filter = new IntentFilter();
             filter.addAction(AudioManager.RINGER_MODE_CHANGED_ACTION);
             registerReceiver(mRingerModeChangeReceiver, filter);
+
+            // Screen and unlock broadcasts reach only runtime receivers, never the manifest one.
+            final IntentFilter lockFilter = new IntentFilter();
+            lockFilter.addAction(Intent.ACTION_SCREEN_OFF);
+            lockFilter.addAction(Intent.ACTION_SCREEN_ON);
+            lockFilter.addAction(Intent.ACTION_USER_PRESENT);
+            lockFilter.addAction(Intent.ACTION_USER_UNLOCKED);
+            registerReceiver(mLockStateReceiver, lockFilter);
         } finally {
             Trace.endSection();
         }
@@ -1627,23 +1633,24 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Live lock gate for personal data, active transforms and hosted autofill content. Screen
-     * broadcasts drive transitions; the short TTL is only a fallback for missed events.
+     * Live lock gate for personal data, active transforms and hosted autofill content. The answer
+     * is reused for up to {@link #PRIVACY_LOCK_CACHE_MS}; {@link #mLockStateReceiver}, field start
+     * and window show drop it.
      */
     private boolean isPrivacyLocked() {
-        final long now = SystemClock.uptimeMillis();
-        if (now - mPrivacyLockCheckedAt >= PRIVACY_LOCK_CACHE_MS) {
+        final long now = SystemClock.elapsedRealtime();
+        if (!mPrivacyLockValid || now - mPrivacyLockCheckedAt >= PRIVACY_LOCK_CACHE_MS) {
             mPrivacyLocked = isKeyguardLocked() || !isUserUnlocked();
             mPrivacyLockCheckedAt = now;
+            mPrivacyLockValid = true;
         }
         return mPrivacyLocked;
     }
 
-    static void onSystemLockEvent() {
-        if (sInstance != null) {
-            sInstance.mPrivacyLockCheckedAt = 0L;
-            sInstance.noteLiveLock();
-        }
+    /** Re-reads the lock state after a screen or unlock broadcast and applies a new lock. */
+    private void onSystemLockEvent() {
+        mPrivacyLockValid = false;
+        noteLiveLock();
     }
 
     private void clearInlineAutofill() {
@@ -1681,7 +1688,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Active transforms and write boundaries also use isPrivacyLocked() because a session can
     // outlive the screen locking. The initial locked value closes an unevaluated session.
     private boolean mSessionKeyguardLocked = true;
+    // One system answer is reused across keystrokes: a live read on every key costs touch latency.
     private boolean mPrivacyLocked;
+    private boolean mPrivacyLockValid;
     private long mPrivacyLockCheckedAt;
     private static final long PRIVACY_LOCK_CACHE_MS = 1000L;
 
@@ -1834,7 +1843,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
         mSettings.onDestroy();
         unregisterReceiver(mRingerModeChangeReceiver);
-        sInstance = null;
+        unregisterReceiver(mLockStateReceiver);
         super.onDestroy();
     }
 
@@ -2088,6 +2097,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             return;
         }
 
+        // A session starts from a live read: the reused answer may predate a sleep.
+        mPrivacyLockValid = false;
         mSessionKeyguardLocked = isPrivacyLocked();
 
         // The first start builds the settings now (onCreate skips the build) and skips the
@@ -2268,6 +2279,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     public void onWindowShown() {
         super.onWindowShown();
         mInlineAutofillHidden = false;
+        mPrivacyLockValid = false;
         final boolean locked = isPrivacyLocked();
         final boolean changed = locked != mSessionKeyguardLocked;
         mSessionKeyguardLocked = locked;
@@ -3092,6 +3104,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             if (action.equals(AudioManager.RINGER_MODE_CHANGED_ACTION)) {
                 AudioAndHapticFeedbackManager.getInstance().onRingerModeChanged();
             }
+        }
+    };
+
+    // Delivered on the main thread, like every other caller of isPrivacyLocked().
+    private final BroadcastReceiver mLockStateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(final Context context, final Intent intent) {
+            onSystemLockEvent();
         }
     };
 
