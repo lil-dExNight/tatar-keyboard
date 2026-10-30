@@ -16,7 +16,9 @@
 
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
+import android.content.ClipDescription
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -46,6 +48,25 @@ class RecentClipCellTest {
         val cell = RecentClipCell(scheduler) { now }.apply {
             onExpired = { expirations++ }
         }
+    }
+
+    @Test
+    fun aClipMarkedSensitiveIsNeverOffered() {
+        val extras = mapOf(RecentClipCell.EXTRA_IS_SENSITIVE to true)
+        assertFalse(RecentClipCell.mayOfferClip { extras[it] ?: false })
+    }
+
+    @Test
+    fun aClipWithoutTheSensitiveMarkMayBeOffered() {
+        assertTrue(RecentClipCell.mayOfferClip { false })
+        val unrelated = mapOf("android.content.extra.OTHER" to true)
+        assertTrue(RecentClipCell.mayOfferClip { unrelated[it] ?: false })
+    }
+
+    @Test
+    fun theSensitiveKeyIsThePlatformsOwn() {
+        // A compile-time constant of the API 33 stubs, inlined here, so no Android runtime runs.
+        assertEquals(ClipDescription.EXTRA_IS_SENSITIVE, RecentClipCell.EXTRA_IS_SENSITIVE)
     }
 
     @Test

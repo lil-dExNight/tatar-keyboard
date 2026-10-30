@@ -43,6 +43,7 @@ class OnboardingSuggestionsOfferTest {
         override fun isInputViewShownWithWindowToken(): Boolean = true
         override fun editorAllowsSuggestions(): Boolean = true
         override fun isUserUnlocked(): Boolean = true
+        override fun isKeyguardLocked(): Boolean = false
         override fun isAnotherDialogShowing(): Boolean = false
         override fun isImeSuppressedByHardwareKeyboard(): Boolean = false
         override fun isInDraggingFinger(): Boolean = false

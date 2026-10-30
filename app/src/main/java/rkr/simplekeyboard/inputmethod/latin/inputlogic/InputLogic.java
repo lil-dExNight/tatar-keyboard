@@ -266,9 +266,11 @@ public final class InputLogic {
                 onSettingsKeyPressed();
                 break;
             case Constants.CODE_PASTE:
-                // Before the paste, so the text change it causes already sees a dirty run.
-                mLatinIME.onBeforeClipboardPaste();
-                mConnection.pasteClipboard();
+                // Before the paste, so the text change it causes already sees a dirty run; the
+                // lock screen gets no paste.
+                if (mLatinIME.onBeforeClipboardPaste()) {
+                    mConnection.pasteClipboard();
+                }
                 break;
             case Constants.CODE_SELECT_ALL:
                 mConnection.performContextMenuAction(android.R.id.selectAll);
@@ -280,7 +282,10 @@ public final class InputLogic {
                 mConnection.performContextMenuAction(android.R.id.copy);
                 break;
             case Constants.CODE_PASTE_CONTEXT_MENU:
-                mConnection.performContextMenuAction(android.R.id.paste);
+                // The editor reads the clipboard here, so the same lock check applies.
+                if (mLatinIME.onBeforeClipboardPaste()) {
+                    mConnection.performContextMenuAction(android.R.id.paste);
+                }
                 break;
             case Constants.CODE_CURSOR_LEFT:
                 moveCursorFromEditMenu(-1);

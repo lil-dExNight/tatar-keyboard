@@ -56,6 +56,12 @@ interface OfferEnvironment {
     /** False before the user has unlocked the device (direct boot). */
     fun isUserUnlocked(): Boolean
 
+    /**
+     * The keyguard is shown (a lock-screen quick reply, for example): whoever holds the locked
+     * phone must not be able to turn suggestions on for its owner.
+     */
+    fun isKeyguardLocked(): Boolean
+
     /** Another dialog (the subtype picker, or one of these two) is already on screen. */
     fun isAnotherDialogShowing(): Boolean
 
@@ -212,7 +218,7 @@ class SuggestionsOfferController(
             unavailableMessagePending = false
             return
         }
-        // Any of the seven environment conditions only defers: the message stays pending.
+        // Any environment condition only defers: the message stays pending.
         if (!isEnvironmentReady()) return
         unavailableMessagePending = false
         unavailableMessageShown = true
@@ -220,7 +226,7 @@ class SuggestionsOfferController(
     }
 
     /**
-     * The seven conditions for a modal dialog over the IME window, shared by the offer and the
+     * The conditions for a modal dialog over the IME window, shared by the offer and the
      * message. The offer's own conditions (setting off, flag unspent) are checked by its caller.
      */
     private fun isEnvironmentReady(): Boolean =
@@ -228,6 +234,7 @@ class SuggestionsOfferController(
             environment.isInputViewShownWithWindowToken() &&
             environment.editorAllowsSuggestions() &&
             environment.isUserUnlocked() &&
+            !environment.isKeyguardLocked() &&
             !environment.isAnotherDialogShowing() &&
             !environment.isImeSuppressedByHardwareKeyboard() &&
             !environment.isInDraggingFinger()

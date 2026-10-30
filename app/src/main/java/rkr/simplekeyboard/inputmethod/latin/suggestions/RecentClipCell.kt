@@ -127,6 +127,20 @@ internal class RecentClipCell(
         /** Cap on the cell's display text, in code points, before the ellipsis. */
         const val MAX_CELL_CODE_POINTS = 40
 
+        /**
+         * The clip-description extra a source app sets on a password or other secret it copies.
+         * Spelled out because the platform constant appears only in API 33.
+         */
+        const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
+
+        /**
+         * Whether a clip may become the cell's offer: never when its source marked it sensitive.
+         * [readBooleanExtra] reads one boolean extra of the clip description, false when absent.
+         */
+        @JvmStatic
+        fun mayOfferClip(readBooleanExtra: (String) -> Boolean): Boolean =
+            !readBooleanExtra(EXTRA_IS_SENSITIVE)
+
         private const val ELLIPSIS = "…"
     }
 }

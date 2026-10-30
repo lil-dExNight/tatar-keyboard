@@ -42,6 +42,7 @@ import android.os.Bundle;
 import android.os.Debug;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.PersistableBundle;
 import android.os.SystemClock;
 import android.os.Trace;
 import android.os.UserManager;
@@ -135,6 +136,7 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferEnvironment;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferFlagStore;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferPresenter;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.PersonalEmojiSink;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.RecentClipCell;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.ResultCallback;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.StripSurface;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState;
@@ -1115,6 +1117,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 // A service that cannot be reached counts as locked: not showing the offer is the
                 // accepted failure direction, showing it twice is not.
                 return userManager != null && userManager.isUserUnlocked();
+            }
+
+            @Override
+            public boolean isKeyguardLocked() {
+                return mSessionKeyguardLocked || isPrivacyLocked();
             }
 
             @Override
@@ -2281,13 +2288,20 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     /**
      * Mirrors the current primary clip into the controller's RAM-only holder: plain text only
-     * (a URI or an intent in the clip is not text and is never coerced into some), blank clears.
+     * (a URI or an intent in the clip is not text and is never coerced into some), blank clears,
+     * and a clip its source marked sensitive clears too.
      * The clip's own set-time travels with it, so the strip's freshness rule measures from the
      * copy, not from the keyboard's show. Nothing is logged; the text is never named here.
      */
     private void capturePrimaryClipForOffer() {
         final SuggestionsController controller = mSuggestionsController;
         if (controller == null || mClipboardManager == null) {
+            return;
+        }
+        // The clipboard is never read on the lock screen; the session answer fails closed until
+        // the next show.
+        if (mSessionKeyguardLocked || isPrivacyLocked()) {
+            controller.onPrimaryClipChanged(null, 0L);
             return;
         }
         final ClipData clip;
@@ -2301,6 +2315,13 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (clip == null || clip.getItemCount() < 1
                 || !(clip.getDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN)
                         || clip.getDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML))) {
+            controller.onPrimaryClipChanged(null, 0L);
+            return;
+        }
+        // A password manager marks the secrets it copies; the cell would show them in clear.
+        final PersistableBundle clipExtras = clip.getDescription().getExtras();
+        if (!RecentClipCell.mayOfferClip(
+                key -> clipExtras != null && clipExtras.getBoolean(key, false))) {
             controller.onPrimaryClipChanged(null, 0L);
             return;
         }
@@ -2981,11 +3002,18 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
     }
 
-    /** Called by the paste key right before it inserts the clipboard; nothing pasted is learned. */
-    public void onBeforeClipboardPaste() {
+    /**
+     * Called by the paste key and the edit-menu paste before the clipboard is read; nothing pasted
+     * is learned. False while the keyguard is shown: then neither pastes anything.
+     */
+    public boolean onBeforeClipboardPaste() {
+        if (noteLiveLock()) {
+            return false;
+        }
         if (mSuggestionsController != null) {
             mSuggestionsController.onClipboardPaste();
         }
+        return true;
     }
 
     /**

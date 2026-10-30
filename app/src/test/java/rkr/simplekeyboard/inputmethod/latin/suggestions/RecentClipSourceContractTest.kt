@@ -105,6 +105,37 @@ class RecentClipSourceContractTest {
     }
 
     @Test
+    fun theClipboardIsNeverReadWhileLocked() {
+        // Both the show-time read and the change listener go through this method, so one gate
+        // before the clipboard read covers every lock-screen path.
+        val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
+        val gate = capture.indexOf("if (mSessionKeyguardLocked || isPrivacyLocked()) {")
+        val read = capture.indexOf("mClipboardManager.getPrimaryClip()")
+        assertTrue("the lock gate runs before the clipboard read", gate in 0 until read)
+        assertTrue("a locked read clears the held offer",
+            capture.substring(gate, read).contains("controller.onPrimaryClipChanged(null, 0L);"))
+        val latinIme = latinImeSource()
+        assertTrue("the change listener reads through the gated method",
+            latinIme.substringAfter("public void onPrimaryClipChanged() {")
+                .substringBefore("}").contains("capturePrimaryClipForOffer();"))
+    }
+
+    @Test
+    fun aSensitiveClipClearsTheOfferBeforeItsTextIsRead() {
+        val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
+        val extras = capture.indexOf("clip.getDescription().getExtras()")
+        val gate = capture.indexOf("if (!RecentClipCell.mayOfferClip(")
+        val textRead = capture.indexOf("clip.getItemAt(0).getText()")
+        assertTrue("the sensitive mark is read from the clip description", extras >= 0)
+        assertTrue("the gate runs before the clip text is read", gate in extras until textRead)
+        assertTrue("the gate reads the extra with a false default",
+            capture.contains("clipExtras.getBoolean(key, false)"))
+        val afterGate = capture.substring(gate, textRead)
+        assertTrue("a sensitive clip clears the held offer",
+            afterGate.contains("controller.onPrimaryClipChanged(null, 0L);"))
+    }
+
+    @Test
     fun oversizedClipsAreRejectedBeforeMaterializationAndBinderCommit() {
         val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
         val captureGuard = capture.indexOf(

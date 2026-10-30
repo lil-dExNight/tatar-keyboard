@@ -46,6 +46,7 @@ class SuggestionsOfferControllerTest {
         var editorForbidsPersonalizedLearning = false
 
         var userUnlocked = true
+        var keyguardLocked = false
         var anotherDialogShowing = false
         var imeSuppressedByHardwareKeyboard = false
         var inDraggingFinger = false
@@ -62,6 +63,7 @@ class SuggestionsOfferControllerTest {
         override fun editorAllowsSuggestions(): Boolean =
             editorInputTypeAllowsSuggestions && !editorForbidsPersonalizedLearning
         override fun isUserUnlocked(): Boolean = userUnlocked
+        override fun isKeyguardLocked(): Boolean = keyguardLocked
         override fun isAnotherDialogShowing(): Boolean = anotherDialogShowing
         override fun isImeSuppressedByHardwareKeyboard(): Boolean = imeSuppressedByHardwareKeyboard
         override fun isInDraggingFinger(): Boolean = inDraggingFinger
@@ -293,6 +295,7 @@ class SuggestionsOfferControllerTest {
             { it.editorInputTypeAllowsSuggestions = false },
             { it.editorForbidsPersonalizedLearning = true },
             { it.userUnlocked = false },
+            { it.keyguardLocked = true },
             { it.anotherDialogShowing = true },
             { it.imeSuppressedByHardwareKeyboard = true },
             { it.inDraggingFinger = true },
@@ -308,6 +311,22 @@ class SuggestionsOfferControllerTest {
             assertEquals(0, h.flags.spendCount)
             assertTrue(h.controller.isOfferPending())
         }
+    }
+
+    @Test
+    fun theLockScreenNeverShowsTheOfferAndTheNextUnlockedFieldDoes() {
+        val h = Harness()
+        h.environment.keyguardLocked = true
+
+        h.controller.onKeyPressCommitted(Constants.CODE_SPACE, isWordSeparator = true)
+
+        assertEquals(0, h.presenter.offerCount)
+        assertEquals(0, h.flags.spendCount)
+        assertEquals("a lock-screen field is not even read", 0, h.environment.textReads)
+
+        h.environment.keyguardLocked = false
+        h.controller.onKeyPressCommitted(Constants.CODE_SPACE, isWordSeparator = true)
+        assertEquals(1, h.presenter.offerCount)
     }
 
     @Test
@@ -379,7 +398,7 @@ class SuggestionsOfferControllerTest {
 
     @Test
     fun anIncognitoFieldDefersTheUnavailableMessageInsteadOfShowingIt() {
-        // The second dialog goes through the same seven conditions, so it is covered too.
+        // The second dialog goes through the same environment conditions, so it is covered too.
         val h = Harness()
         h.environment.suggestionsSettingEnabled = true
         h.makeFieldIncognito()

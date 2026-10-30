@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -91,6 +92,30 @@ class LockScreenPrivacySourceContractTest {
             .substringBefore("};")
         assertTrue(gate.contains("isKeyguardLocked()"))
         assertTrue(gate.contains("Settings.readIncognitoModeEnabled(mDevicePrefs)"))
+    }
+
+    @Test
+    fun theSuggestionsOfferIsClosedOnTheLockScreen() {
+        // The offer's "Enable" writes the suggestions setting, which the lock screen must not do.
+        val offerGate = body("public boolean isKeyguardLocked()")
+        assertTrue(offerGate.contains("return mSessionKeyguardLocked || isPrivacyLocked();"))
+    }
+
+    @Test
+    fun thePasteKeyReadsNoClipboardOnTheLockScreen() {
+        val before = body("public boolean onBeforeClipboardPaste()")
+        assertTrue(before.trimStart('{').trimStart()
+            .startsWith("if (noteLiveLock()) {\n            return false;"))
+        val inputLogic = File(mainRoot,
+            "java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java").readText()
+        assertTrue(inputLogic.contains(
+            "if (mLatinIME.onBeforeClipboardPaste()) {\n                    mConnection.pasteClipboard();"))
+        assertTrue(inputLogic.contains(
+            "if (mLatinIME.onBeforeClipboardPaste()) {\n" +
+                "                    mConnection.performContextMenuAction(android.R.id.paste);"))
+        // Every context-menu paste sits behind the gate.
+        assertEquals(1, inputLogic.split("performContextMenuAction(android.R.id.paste)").size - 1)
+        assertFalse(inputLogic.contains("mLatinIME.onBeforeClipboardPaste();"))
     }
 
     @Test
