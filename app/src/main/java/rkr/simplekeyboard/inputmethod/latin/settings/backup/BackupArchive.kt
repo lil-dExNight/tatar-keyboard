@@ -36,7 +36,7 @@ class VerifiedPersonalFile(
     val bytes: ByteArray,
 )
 
-/** An archive that passed every check: the schema-filtered settings and the validated personal files. */
+/** A verified archive. User archives have schema-filtered settings; private snapshots keep all keys. */
 class VerifiedBackup(
     val preferences: Map<String, Any>,
     val personalFiles: List<VerifiedPersonalFile>,
@@ -112,7 +112,17 @@ object BackupArchive {
      * Reads and fully verifies [archiveBytes]. See the class doc for the gate list.
      * @throws BackupValidationException on any violation.
      */
-    fun readAndVerify(archiveBytes: ByteArray): VerifiedBackup {
+    fun readAndVerify(archiveBytes: ByteArray): VerifiedBackup =
+        readAndVerify(archiveBytes, preserveAllPreferences = false)
+
+    /** Reads a private journal snapshot without dropping preferences unknown to the archive schema. */
+    internal fun readAndVerifySnapshot(archiveBytes: ByteArray): VerifiedBackup =
+        readAndVerify(archiveBytes, preserveAllPreferences = true)
+
+    private fun readAndVerify(
+        archiveBytes: ByteArray,
+        preserveAllPreferences: Boolean,
+    ): VerifiedBackup {
         if (archiveBytes.size.toLong() > BackupFormat.MAX_ARCHIVE_BYTES) fail("archive too large")
         val entries = readEntries(archiveBytes)
 
@@ -139,7 +149,9 @@ object BackupArchive {
         val settingsBytes = entries.remove(BackupFormat.SETTINGS_PATH)
             ?: fail("settings entry is missing")
         val preferences = try {
-            BackupPreferenceSchema.applyTo(BackupPreferencesXml.parse(settingsBytes))
+            val parsed = BackupPreferencesXml.parse(settingsBytes)
+            val known = BackupPreferenceSchema.applyTo(parsed)
+            if (preserveAllPreferences) parsed else known
         } catch (e: BackupPreferencesXml.PreferencesXmlException) {
             fail("settings document is invalid")
         }

@@ -346,6 +346,22 @@ class PersonalDictionaryScreenSourceContractTest {
     }
 
     @Test
+    fun savedDataCoversDisabledLanguagesButManualAdditionUsesEnabledOnes() {
+        val enumeration = host.substringAfter("private fun personalSubtypeIds()")
+            .substringBefore("private fun targetSubtypeForAddedWord(")
+        assertTrue(enumeration.contains("DictionaryArtifactSpec.ALL.map { it.languageTag }"))
+        assertFalse(enumeration.substringBefore("private fun enabledPersonalSubtypeIds()")
+            .contains("getEnabledSubtypes"))
+        assertTrue(enumeration.substringAfter("private fun enabledPersonalSubtypeIds()")
+            .contains("getEnabledSubtypes(true)"))
+
+        val screen = host.substringAfter("private fun buildPersonalDictionaryScreen()")
+            .substringBefore("private fun usageRow(")
+        assertTrue(screen.contains("showAddPersonalWordDialog(controller, enabledPersonalSubtypeIds())"))
+        assertTrue(screen.contains("showErasePersonalDictionaryDialog(controller, pairController, emojiController,\n                        subtypeIds)"))
+    }
+
+    @Test
     fun everySectionOpensWithItsTrueCountsAndClosesWithItsOwnClearAll() {
         val screen = host.substringAfter("private fun buildPersonalDictionaryScreen()")
             .substringBefore("private fun usageRow(")

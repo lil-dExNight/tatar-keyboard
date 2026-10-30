@@ -31,6 +31,7 @@ import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.RestrictionsManager;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Rect;
@@ -74,6 +75,7 @@ import rkr.simplekeyboard.inputmethod.keyboard.KeyboardId;
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardSwitcher;
 import rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView;
 import rkr.simplekeyboard.inputmethod.keyboard.PointerTracker;
+import rkr.simplekeyboard.inputmethod.keyboard.SpaceTrackpadState;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.inputlogic.InputLogic;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec;
@@ -170,6 +172,13 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     private AlertDialog mOptionsDialog;
 
+    // Editor positions captured for the live space-trackpad gesture; -1 means no selection anchor.
+    private int mSpaceTrackpadAnchor = -1;
+    private int mSpaceTrackpadActiveEdge = -1;
+    private int mSpaceTrackpadInitialStart = -1;
+    private int mSpaceTrackpadInitialEnd = -1;
+    private boolean mSpaceTrackpadMoved;
+
     // Optional opt-in Tatar suggestions controller. Null until set up in onCreate().
     // Package-visible for the extracted service helpers (LatinImeAutocorrect & co.).
     SuggestionsController mSuggestionsController;
@@ -177,6 +186,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // The last strip cell count pushed from loadSettings(): re-applied to every new input view,
     // whose strip starts at the default count.
     private int mStripCellCount = SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT;
+
+    // Window callbacks, rather than isInputViewShown(), govern autofill freshness: the first
+    // response of a new field may legitimately arrive before the first show.
+    private boolean mInlineAutofillHidden;
 
     // The recent-clip cell's clipboard ears. The listener is registered only while the input view
     // is shown (see onWindowShown/onWindowHidden); the clip text itself lives in the controller's
@@ -241,6 +254,20 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             this::onSuggestionsSettingMaybeChanged;
 
     public final UIHandler mHandler = new UIHandler(this);
+
+    private final RichInputConnection.EditorCacheReloadScheduler mEditorCacheReloadScheduler =
+            new RichInputConnection.EditorCacheReloadScheduler(
+                    new RichInputConnection.EditorCacheReloadScheduler.Backend() {
+                        @Override
+                        public void postDelayed(final Runnable runnable, final long delayMillis) {
+                            mHandler.postDelayed(runnable, delayMillis);
+                        }
+
+                        @Override
+                        public void removeCallbacks(final Runnable runnable) {
+                            mHandler.removeCallbacks(runnable);
+                        }
+                    }, this::reloadEditorTextCacheIfAllowed);
 
     public static final class UIHandler extends LeakGuardHandlerWrapper<LatinIME> {
         // No message id may be 0: Handler.post(Runnable) enqueues a message with what == 0, and
@@ -753,7 +780,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                     && PersonalSubtypes.TATAR_RU.equals(dictionaryArtifact.getLanguageTag());
             final TatarSuffixRules suffixRules = tatarEngine ? TatarSuffixRules.INSTANCE : null;
             // Typo recovery policy: the Tatar engine uses FuzzyEditPolicy.TATAR; the Russian
-            // engine uses FuzzyEditPolicy.RUSSIAN (the DL-1 tier without the same-length bonus,
+            // engine uses FuzzyEditPolicy.RUSSIAN (same-length bonus only inside the DL-1 tier,
             // so class #1 outside the tier domain ranks exactly as before).
             final FuzzyEditPolicy fuzzyEditPolicy =
                     tatarEngine ? FuzzyEditPolicy.TATAR : FuzzyEditPolicy.RUSSIAN;
@@ -785,6 +812,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // Russian personal dictionary.
         mSuggestionsController.setCompletionSink(PersonalLearning.sinkFor(
                 this, this::activeDictionarySubtype, this::mayLearnPersonalWords));
+        mSuggestionsController.setCompletionLearningPredicate(this::mayLearnPersonalWords);
         // Word pairs, under the same predicate.
         mSuggestionsController.setPairCompletionSink(PersonalBigramLearning.sinkFor(
                 this, this::activeDictionarySubtype, this::mayLearnPersonalWords));
@@ -810,9 +838,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // Emoji suggestions: read live the same way.
         mSuggestionsController.setEmojiSuggestGate(
                 () -> mSettings.getCurrent().mEmojiSuggestEnabled);
-        // The recent-clip cell re-reads the keyguard state at the offer and at the tap: the
-        // session's eligibility snapshot can predate the screen locking.
-        mSuggestionsController.setKeyguardGate(this::isKeyguardLocked);
+        // Active transforms and learning re-read both lock states; the field-start snapshot can
+        // predate a mid-session lock or a Direct Boot transition.
+        mSuggestionsController.setKeyguardGate(this::isPrivacyLocked);
         // A tap on the strip's emoji cell updates the recent emoji. Wired to the recents-only
         // onStripEmojiInserted, not onEmojiInserted: the controller already reports the tap to the
         // learned-emoji sink (see onStripEmojiInserted).
@@ -1168,7 +1196,20 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // A tap on the one-handed mode's freed dock strip returns the keyboard to full width.
     @Override
     public void onDockExitHandleTap() {
-        mDevicePrefs.edit().putInt(Settings.PREF_ONE_HANDED_SIDE, OneHandedMode.SIDE_OFF).apply();
+        setOneHandedSide(OneHandedMode.SIDE_OFF);
+    }
+
+    private void setOneHandedSide(final int side) {
+        final RestrictionsManager manager = (RestrictionsManager) getSystemService(
+                Context.RESTRICTIONS_SERVICE);
+        final Bundle restrictions = manager == null ? null : manager.getApplicationRestrictions();
+        if (restrictions != null && restrictions.containsKey(Settings.PREF_ONE_HANDED_SIDE)) {
+            return;
+        }
+        if (side == Settings.readOneHandedSide(mDevicePrefs)) {
+            return;
+        }
+        mDevicePrefs.edit().putInt(Settings.PREF_ONE_HANDED_SIDE, side).apply();
         loadKeyboard();
     }
 
@@ -1191,13 +1232,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 DialogUtils.getPlatformDialogThemeContext(this))
                 .setTitle(R.string.one_handed_mode)
                 .setItems(labels, (di, which) -> {
-                    final int side = OneHandedMode.SIDES.get(which);
-                    if (side != Settings.readOneHandedSide(mDevicePrefs)) {
-                        mDevicePrefs.edit()
-                                .putInt(Settings.PREF_ONE_HANDED_SIDE, side)
-                                .apply();
-                        loadKeyboard();
-                    }
+                    setOneHandedSide(OneHandedMode.SIDES.get(which));
                 })
                 .create();
         dialog.setCancelable(true);
@@ -1582,13 +1617,54 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         return keyguardManager == null || keyguardManager.isKeyguardLocked();
     }
 
-    // The keyguard state of the current field's session, read once per onStartInputViewInternal
-    // instead of once per consumer: each live read is a binder call. Fail-closed until the first
-    // field starts. A session can outlive the locking of the screen; the recent-clip and
-    // recent-emoji gates keep reading isKeyguardLocked() live for exactly that case.
+    /** A missing UserManager keeps credential-protected features closed. */
+    private boolean isUserUnlocked() {
+        final UserManager userManager = getSystemService(UserManager.class);
+        return userManager != null && userManager.isUserUnlocked();
+    }
+
+    /** Live lock gate for personal data, active transforms and hosted autofill content. */
+    private boolean isPrivacyLocked() {
+        return isKeyguardLocked() || !isUserUnlocked();
+    }
+
+    private void clearInlineAutofill() {
+        final InputView inputView = getInputViewForSuggestions();
+        if (inputView != null) {
+            inputView.hideInlineAutofillStrip();
+        }
+    }
+
+    /** Rebuilds lock-dependent keyboard and suggestion state after a live transition. */
+    private void onSessionLockStateChanged() {
+        loadKeyboard();
+        if (mSuggestionsController != null) {
+            updateKeyNeighbors();
+            mSuggestionsController.onSubtypeChanged(
+                    isSuggestionsEligible(), activeDictionarySubtype(), isGlideEligible());
+        }
+    }
+
+    /** Records a live lock and drops hosted content before the event reaches any transform. */
+    private boolean noteLiveLock() {
+        if (!isPrivacyLocked()) {
+            return false;
+        }
+        final boolean changed = !mSessionKeyguardLocked;
+        mSessionKeyguardLocked = true;
+        clearInlineAutofill();
+        if (changed) {
+            onSessionLockStateChanged();
+        }
+        return true;
+    }
+
+    // Refreshed at field start and window show for keyboard construction and strip eligibility.
+    // Active transforms and write boundaries also use isPrivacyLocked() because a session can
+    // outlive the screen locking. The initial locked value closes an unevaluated session.
     private boolean mSessionKeyguardLocked = true;
 
-    /** The session's keyguard snapshot, for the keyboard build's settings-key clobber. */
+    /** The session's privacy-lock snapshot, for the keyboard build's settings-key clobber. */
     public boolean isKeyguardLockedForSession() {
         return mSessionKeyguardLocked;
     }
@@ -1646,10 +1722,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * names are what the feature is for. Pause learning (incognito) blocks writes, never reads.</p>
      */
     private boolean mayLearnPersonalWords() {
-        final UserManager userManager = getSystemService(UserManager.class);
-        // A missing UserManager means locked, not open.
-        final boolean unlocked = userManager != null && userManager.isUserUnlocked();
-        return PersonalLearningGates.mayLearn(
+        final boolean unlocked = isUserUnlocked();
+        return unlocked && !isKeyguardLocked() && PersonalLearningGates.mayLearn(
                 isSuggestionsEligible(),
                 Settings.readPersonalDictionaryEnabled(mDevicePrefs),
                 unlocked,
@@ -1724,6 +1798,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         PersonalEmojiDictionaries.setQuarantineListener(null);
         TextShortcutStores.setErasureListener(null);
         // The clipboard listener goes too: the clipboard is never listened to without a window.
+        mEditorCacheReloadScheduler.cancel();
         mHandler.removeCallbacks(mRegisterRecentClipListener);
         unregisterRecentClipListener();
         if (mSuggestionsController != null) {
@@ -1830,11 +1905,13 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onStartInputView(final EditorInfo editorInfo, final boolean restarting) {
+        mEditorCacheReloadScheduler.cancel();
         mHandler.onStartInputView(editorInfo, restarting);
     }
 
     @Override
     public void onFinishInputView(final boolean finishingInput) {
+        mEditorCacheReloadScheduler.cancel();
         // A hide that keeps the session keeps the selection (see clearTextCaches).
         if (finishingInput) {
             mInputLogic.clearCaches();
@@ -1847,6 +1924,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onFinishInput() {
+        mEditorCacheReloadScheduler.cancel();
         mHandler.onFinishInput();
     }
 
@@ -1854,13 +1932,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * Inline autofill (API 30+): the platform asks for the strip's presentation specs when the
      * focused field supports inline suggestions. The system never calls this below R, and the
      * gate keeps the binder's API-30 classes from loading on older releases. The request is
-     * created after the field's startInput, so the EditorInfo here is the field's own; a missing
-     * one refuses the request.
+     * created after the field's startInput, so the EditorInfo here is the field's own. A missing
+     * field, a shown keyguard or a locked user refuses the request.
      */
     @Override
     public InlineSuggestionsRequest onCreateInlineSuggestionsRequest(final Bundle uiExtras) {
+        final boolean keyguardLocked = isKeyguardLocked();
+        final boolean userUnlocked = isUserUnlocked();
+        if (keyguardLocked || !userUnlocked) {
+            noteLiveLock();
+        }
         final EditorInfo editorInfo = getCurrentInputEditorInfo();
-        if (editorInfo == null || !InlineAutofillGate.mayHost(Build.VERSION.SDK_INT)) {
+        if (editorInfo == null || !InlineAutofillGate.mayHost(
+                Build.VERSION.SDK_INT, keyguardLocked, userUnlocked)) {
             return null;
         }
         final InputView inputView = getInputViewForSuggestions();
@@ -1873,8 +1957,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * The response half of inline autofill. An empty response is the platform's clear signal for
      * the previous field's session (delivered at the next field's startInput), so it reaches the
      * surface before any gate: the gate reads the new field and must not strand the old field's
-     * content. A non-empty response is fail-closed — a field that cannot be proven live (no
-     * current EditorInfo) hosts nothing. The content itself is never read, only hosted.
+     * content. A non-empty response also requires a live field, an unlocked user and no keyguard;
+     * after a hide, only a response delivered after the next show can host. The content itself is
+     * never read, only hosted.
      */
     @Override
     public boolean onInlineSuggestionsResponse(final InlineSuggestionsResponse response) {
@@ -1887,10 +1972,22 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
         if (InlineAutofillBinder.isEmpty(response)) {
             inputView.hideInlineAutofillStrip();
+            noteLiveLock();
             return false;
         }
+        final boolean keyguardLocked = isKeyguardLocked();
+        final boolean userUnlocked = isUserUnlocked();
+        if (keyguardLocked || !userUnlocked) {
+            noteLiveLock();
+        }
         final EditorInfo editorInfo = getCurrentInputEditorInfo();
-        if (editorInfo == null || !InlineAutofillGate.mayHost(Build.VERSION.SDK_INT)) {
+        if (editorInfo == null || mInlineAutofillHidden || !InlineAutofillGate.mayHost(
+                Build.VERSION.SDK_INT, keyguardLocked, userUnlocked)) {
+            // A hidden or locked surface keeps no hosted credentials. Only a response delivered
+            // after a visible, unlocked return may start another inline session.
+            if (mInlineAutofillHidden || keyguardLocked || !userUnlocked) {
+                inputView.hideInlineAutofillStrip();
+            }
             return false;
         }
         return InlineAutofillBinder.hostResponse(this, inputView, response);
@@ -1969,7 +2066,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             return;
         }
 
-        mSessionKeyguardLocked = isKeyguardLocked();
+        mSessionKeyguardLocked = isPrivacyLocked();
 
         // The first start builds the settings now (onCreate skips the build) and skips the
         // reload below: it would rebuild from the same EditorInfo and configuration.
@@ -2124,7 +2221,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             return;
         }
         final CharSequence text = clip.getItemAt(0).getText();
-        if (text == null) {
+        // The direct-paste limit also bounds this offer, before toString() materializes the text.
+        if (!RichInputConnection.shouldCommitPasteDirectly(text)) {
             controller.onPrimaryClipChanged(null, 0L);
             return;
         }
@@ -2147,6 +2245,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onWindowShown() {
         super.onWindowShown();
+        mInlineAutofillHidden = false;
+        final boolean locked = isPrivacyLocked();
+        final boolean changed = locked != mSessionKeyguardLocked;
+        mSessionKeyguardLocked = locked;
+        if (locked) {
+            clearInlineAutofill();
+        }
+        if (changed) {
+            onSessionLockStateChanged();
+        }
         mHandler.post(mRegisterRecentClipListener);
         if (isInputViewShown())
             LatinImeSoftInputWindow.setNavigationBarColor(this);
@@ -2155,6 +2263,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onWindowHidden() {
         super.onWindowHidden();
+        // Hosted autofill content never survives a hide; returning requires a new response.
+        mInlineAutofillHidden = true;
+        clearInlineAutofill();
+        mEditorCacheReloadScheduler.cancel();
         mHandler.removeCallbacks(mRegisterRecentClipListener);
         unregisterRecentClipListener();
         // Close the emoji search and panel, or the next show would bring back a search whose
@@ -2186,9 +2298,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     void onFinishInputViewInternal(final boolean finishingInput) {
         super.onFinishInputView(finishingInput);
         if (finishingInput) {
-            // The field is done: its inline-autofill session ends with it. A plain window hide
-            // (finishingInput false) keeps the session — the hosted views re-render when the
-            // window comes back, and the next field's startInput brings the platform's clear.
+            // The field is done: its inline-autofill session ends with it. Window hide clears
+            // independently in onWindowHidden, including hides that keep the field session.
             final InputView inputView = getInputViewForSuggestions();
             if (inputView != null) {
                 inputView.hideInlineAutofillStrip();
@@ -2264,12 +2375,25 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // Privacy: a password field's text is never re-read (see onStartInputViewInternal).
             // The shift update below uses the local cache, so it runs either way.
             if (!isCurrentFieldPasswordField()) {
-                mInputLogic.reloadTextCache();
+                if (externalMove) {
+                    mEditorCacheReloadScheduler.reloadNow();
+                } else {
+                    mEditorCacheReloadScheduler.onExpectedSelectionChange();
+                }
+            } else {
+                mEditorCacheReloadScheduler.cancel();
             }
 
             mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),
                     getCurrentRecapitalizeState());
         }
+    }
+
+    private void reloadEditorTextCacheIfAllowed() {
+        if (!isInputViewShown() || isCurrentFieldPasswordField()) {
+            return;
+        }
+        mInputLogic.reloadTextCache();
     }
 
     @Override
@@ -2431,6 +2555,113 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         onSuggestionsAffectingCursorMove();
     }
 
+    private boolean canUseSpaceTrackpad() {
+        return SpaceTrackpadState.canStart(mInputLogic.mConnection.hasCursorPosition(),
+                isCurrentFieldPasswordField(), mSettings.getCurrent().mSpaceSwipeEnabled);
+    }
+
+    @Override
+    public boolean onSpaceTrackpadStart() {
+        if (!canUseSpaceTrackpad()) {
+            return false;
+        }
+        final RichInputConnection connection = mInputLogic.mConnection;
+        mSpaceTrackpadInitialStart = connection.getExpectedSelectionStart();
+        mSpaceTrackpadInitialEnd = connection.getExpectedSelectionEnd();
+        mSpaceTrackpadActiveEdge = mSpaceTrackpadInitialEnd;
+        mSpaceTrackpadAnchor = -1;
+        mSpaceTrackpadMoved = false;
+        return true;
+    }
+
+    @Override
+    public void onSpaceTrackpadMove(int steps, final boolean selecting) {
+        if (steps == 0 || !canUseSpaceTrackpad()) {
+            return;
+        }
+        if (TextUtils.getLayoutDirectionFromLocale(getCurrentLayoutLocale())
+                == View.LAYOUT_DIRECTION_RTL) {
+            steps = -steps;
+        }
+        if (!selecting) {
+            final int previousStart = mInputLogic.mConnection.getExpectedSelectionStart();
+            final int previousEnd = mInputLogic.mConnection.getExpectedSelectionEnd();
+            if (mInputLogic.mConnection.hasSelection() && mSpaceTrackpadActiveEdge >= 0) {
+                mInputLogic.mConnection.setSelection(
+                        mSpaceTrackpadActiveEdge, mSpaceTrackpadActiveEdge);
+            }
+            onMoveCursorPointer(steps);
+            mSpaceTrackpadActiveEdge = mInputLogic.mConnection.getExpectedSelectionEnd();
+            mSpaceTrackpadMoved |= previousStart
+                    != mInputLogic.mConnection.getExpectedSelectionStart()
+                    || previousEnd != mSpaceTrackpadActiveEdge;
+            return;
+        }
+        if (mSpaceTrackpadAnchor < 0) {
+            onSpaceTrackpadSelectionStart();
+            if (mSpaceTrackpadAnchor < 0) {
+                return;
+            }
+        }
+        final RichInputConnection connection = mInputLogic.mConnection;
+        final int activeEdge = mSpaceTrackpadActiveEdge;
+        final int anchor = mSpaceTrackpadAnchor;
+        final boolean rightSidePointer = activeEdge >= anchor;
+        final int unicodeSteps = connection.getUnicodeSteps(steps, rightSidePointer);
+        if (unicodeSteps == 0) {
+            return;
+        }
+        int newActiveEdge = activeEdge + unicodeSteps;
+        if ((activeEdge >= anchor && newActiveEdge < anchor)
+                || (activeEdge <= anchor && newActiveEdge > anchor)) {
+            newActiveEdge = anchor;
+        }
+        if (newActiveEdge == activeEdge) {
+            return;
+        }
+        connection.setSelection(Math.min(anchor, newActiveEdge),
+                Math.max(anchor, newActiveEdge));
+        mSpaceTrackpadActiveEdge = newActiveEdge;
+        mSpaceTrackpadMoved = true;
+        LatinImeKeyFeedback.hapticTickFeedback();
+        onSuggestionsAffectingCursorMove();
+    }
+
+    @Override
+    public void onSpaceTrackpadSelectionStart() {
+        if (!canUseSpaceTrackpad()) {
+            return;
+        }
+        final RichInputConnection connection = mInputLogic.mConnection;
+        final int anchor = connection.getExpectedSelectionEnd();
+        mSpaceTrackpadAnchor = anchor;
+        mSpaceTrackpadActiveEdge = anchor;
+    }
+
+    @Override
+    public void onSpaceTrackpadSelectionEnd() {
+        // Keep the selected range when the anchoring finger lifts. A later cursor move collapses
+        // it at the active edge; finishing without another move leaves the exact range selected.
+        mSpaceTrackpadAnchor = -1;
+    }
+
+    @Override
+    public void onSpaceTrackpadFinish(final boolean cancelled) {
+        final RichInputConnection connection = mInputLogic.mConnection;
+        if (cancelled && mSpaceTrackpadInitialStart >= 0 && mSpaceTrackpadInitialEnd >= 0
+                && connection.hasCursorPosition() && !isCurrentFieldPasswordField()) {
+            connection.setSelection(mSpaceTrackpadInitialStart, mSpaceTrackpadInitialEnd);
+        }
+        mSpaceTrackpadAnchor = -1;
+        mSpaceTrackpadActiveEdge = -1;
+        mSpaceTrackpadInitialStart = -1;
+        mSpaceTrackpadInitialEnd = -1;
+        if (mSpaceTrackpadMoved || cancelled) {
+            onUpWithSpacePointerActive();
+        }
+        mSpaceTrackpadMoved = false;
+    }
+
     @Override
     public void onMoveDeletePointer(int steps) {
         if (mInputLogic.mConnection.hasCursorPosition()) {
@@ -2479,10 +2710,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public void onUpWithSpacePointerActive() {
-        // Privacy: a password field's text is never re-read (see onStartInputViewInternal).
-        if (!isCurrentFieldPasswordField()) {
-            mInputLogic.reloadTextCache();
-        }
+        mEditorCacheReloadScheduler.reloadNow();
         // Only reached after an actual cursor slide, and the reload lands asynchronously, so the
         // strip must not keep offering candidates bound to the pre-slide cache.
         onSuggestionsAffectingCursorMove();
@@ -2545,13 +2773,30 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onCodeInput(final int codePoint, final int x, final int y,
             final boolean isKeyRepeat) {
-        final Event event = createSoftwareKeypressEvent(getCodePointForKeyboard(codePoint), isKeyRepeat);
-        onEvent(event);
+        switch (codePoint) {
+            case Constants.CODE_INPUT_METHOD_PICKER:
+                showInputMethodPicker();
+                return;
+            case Constants.CODE_ONE_HANDED_LEFT:
+                setOneHandedSide(OneHandedMode.SIDE_LEFT);
+                return;
+            case Constants.CODE_ONE_HANDED_RIGHT:
+                setOneHandedSide(OneHandedMode.SIDE_RIGHT);
+                return;
+            case Constants.CODE_ONE_HANDED_FULL:
+                setOneHandedSide(OneHandedMode.SIDE_OFF);
+                return;
+            default:
+                final Event event = createSoftwareKeypressEvent(
+                        getCodePointForKeyboard(codePoint), isKeyRepeat);
+                onEvent(event);
+        }
     }
 
     // This method is public for testability of LatinIME, but also in the future it should
     // completely replace #onCodeInput.
     public void onEvent(final Event event) {
+        noteLiveLock();
         if (LatinImeEmojiSearch.maybeRouteToEmojiSearch(this, event)) {
             return;
         }
@@ -2604,6 +2849,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Called from PointerTracker through the KeyboardActionListener interface
     @Override
     public void onTextInput(final String rawText) {
+        noteLiveLock();
         // TODO: have the keyboard pass the correct key code when we need it.
         final Event event = Event.createSoftwareTextEvent(rawText, Constants.CODE_OUTPUT_TEXT);
         final InputTransaction completeInputTransaction =
@@ -2620,6 +2866,18 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 getCurrentRecapitalizeState());
     }
 
+    /** Starts engine index preparation when PointerTracker arms a glide. */
+    @Override
+    public void onGlideArmed() {
+        if (noteLiveLock()) {
+            return;
+        }
+        final SuggestionsController controller = mSuggestionsController;
+        if (controller != null) {
+            controller.onGlideArmed();
+        }
+    }
+
     /**
      * A glide gesture completed on the letter keys. The controller decodes the path on the engine
      * worker and commits the result; the path is copied before this call returns. A no-op with
@@ -2629,6 +2887,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onGlideInput(
             final rkr.simplekeyboard.inputmethod.latin.glide.GlidePath path) {
+        if (noteLiveLock()) {
+            return;
+        }
         final SuggestionsController controller = mSuggestionsController;
         if (controller != null) {
             controller.onGlideInput(path);

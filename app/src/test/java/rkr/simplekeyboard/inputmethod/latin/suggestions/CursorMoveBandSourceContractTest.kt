@@ -83,9 +83,9 @@ class CursorMoveBandSourceContractTest {
             externalMove.occurrencesOf("mSuggestionsController.onSelectionChanged()"),
         )
         assertEquals(
-            "an external move must refetch the text cache, which is what asks for the band back",
+            "an external move must refetch immediately, which is what asks for the band back",
             1,
-            externalMove.occurrencesOf("mInputLogic.reloadTextCache()"),
+            externalMove.occurrencesOf("mEditorCacheReloadScheduler.reloadNow()"),
         )
         val refresh = javaBody(ime, "private void refreshSuggestionBandAfterCursorMove()")
         assertTrue(

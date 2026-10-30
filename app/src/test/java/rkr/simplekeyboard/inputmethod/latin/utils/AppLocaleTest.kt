@@ -23,27 +23,25 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The app-locale policy: the app's own screens (Setup,
- * Settings) default to TATAR — system tt → tt, system ru → ru, anything else
- * (English included) → tt. The mapping half is pure and tested directly; the
- * Android half (createConfigurationContext) is pinned at source level like the
- * other contract tests, because a JVM has no real Resources.
+ * App screens and keyboard chrome use the system resolution for tt, ru and en;
+ * unsupported system languages are forced to English. The pure mapping is tested directly;
+ * Android wrapping is pinned at source level because a JVM has no real Resources.
  */
 class AppLocaleTest {
 
     @Test
-    fun russianAndTatarSystemsKeepTheirOwnResolution() {
-        assertNull("ru resolves to values-ru on its own", AppLocale.forcedLocaleFor("ru"))
-        assertNull("tt resolves to values-tt on its own", AppLocale.forcedLocaleFor("tt"))
+    fun shippedSystemLanguagesKeepTheirOwnResolution() {
+        for (language in listOf("tt", "ru", "en")) {
+            assertNull("$language resolves to shipped resources on its own",
+                AppLocale.forcedLocaleFor(language))
+        }
     }
 
     @Test
-    fun everyOtherSystemLanguageIsForcedToTatar() {
-        // English included: the resource fallback (values/) being English does NOT make
-        // English the app default; the default is Tatar.
-        for (language in listOf("en", "de", "tr", "zh", "ar", "")) {
-            assertEquals("system '$language' must land on Tatar",
-                "tt", AppLocale.forcedLocaleFor(language)?.language)
+    fun unsupportedSystemLanguagesAreForcedToEnglish() {
+        for (language in listOf("de", "tr", "zh", "ar", "")) {
+            assertEquals("system '$language' must land on English",
+                "en", AppLocale.forcedLocaleFor(language)?.language)
         }
     }
 

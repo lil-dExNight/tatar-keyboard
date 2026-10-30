@@ -84,6 +84,7 @@ class PersonalLearningRunTest {
         val completions = mutableListOf<String>()
         val accepted = mutableListOf<String>()
         var flushes = 0
+        var keyguardLocked = false
         var callback: ResultCallback? = null
         val controller = SuggestionsController(
             strip, editor, UiPoster { it.run() },
@@ -92,6 +93,7 @@ class PersonalLearningRunTest {
         )
 
         init {
+            controller.setKeyguardGate(KeyguardGate { keyguardLocked })
             controller.setCompletionSink(object : WordCompletionSink {
                 override fun onCleanCompletion(word: String) {
                     completions.add(word)
@@ -330,6 +332,35 @@ class PersonalLearningRunTest {
         h.controller.onFinishInput()
         assertEquals(1, h.flushes)
         assertTrue("an unfinished word is not a completed one", h.completions.isEmpty())
+    }
+
+    @Test
+    fun aLockedSessionEndDoesNotFlushPersonalWrites() {
+        val h = Harness()
+        h.type("гүз")
+        h.type("гүзәлия")
+
+        h.keyguardLocked = true
+        h.controller.onFinishInput()
+
+        assertEquals(0, h.flushes)
+        assertTrue(h.completions.isEmpty())
+    }
+
+    @Test
+    fun typingDuringLockIsNotLearnedAfterUnlock() {
+        val h = Harness()
+        h.witnessABoundary()
+        h.keyguardLocked = true
+        h.type("гүз")
+        h.type("гүзәлия")
+        h.endWord()
+
+        h.keyguardLocked = false
+        h.controller.onFinishInput()
+
+        assertTrue(h.completions.isEmpty())
+        assertTrue(h.accepted.isEmpty())
     }
 
     @Test

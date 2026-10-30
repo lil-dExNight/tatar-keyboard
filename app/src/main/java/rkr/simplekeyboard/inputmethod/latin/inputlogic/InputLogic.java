@@ -926,7 +926,7 @@ public final class InputLogic {
      * @return {@code true} if the text was committed, {@code false} otherwise (no edit).
      */
     public boolean commitClipText(final String text) {
-        if (TextUtils.isEmpty(text)) {
+        if (!RichInputConnection.shouldCommitPasteDirectly(text)) {
             return false;
         }
         mConnection.beginBatchEdit();

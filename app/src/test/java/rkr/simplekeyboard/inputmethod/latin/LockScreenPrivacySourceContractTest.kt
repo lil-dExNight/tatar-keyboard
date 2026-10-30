@@ -64,16 +64,21 @@ class LockScreenPrivacySourceContractTest {
 
     @Test
     fun theStripAndGlideAreOffWhileTheKeyguardIsLocked() {
-        // The predicates read the session's snapshot, refreshed from the live check at every
-        // field start; the snapshot starts locked, so an unevaluated session stays closed.
+        // The predicates read the session's snapshot, refreshed at field start and window show;
+        // the snapshot starts locked, so an unevaluated session stays closed.
         assertTrue(body("private boolean isSuggestionsEligible(final boolean")
             .contains("!mSessionKeyguardLocked"))
         assertTrue(body("private boolean isGlideEligible()").contains("!mSessionKeyguardLocked"))
         assertTrue(ime.contains("private boolean mSessionKeyguardLocked = true;"))
         assertTrue(body("void onStartInputViewInternal(final EditorInfo")
-            .contains("mSessionKeyguardLocked = isKeyguardLocked()"))
-        // Learning goes through the strip's eligibility, so it inherits the check.
-        assertTrue(body("private boolean mayLearnPersonalWords()").contains("isSuggestionsEligible()"))
+            .contains("mSessionKeyguardLocked = isPrivacyLocked()"))
+        assertTrue(body("public void onWindowShown()")
+            .contains("mSessionKeyguardLocked = locked"))
+        // Learning combines the field predicate with live keyguard and Direct Boot checks.
+        val learning = body("private boolean mayLearnPersonalWords()")
+        assertTrue(learning.contains("isSuggestionsEligible()"))
+        assertTrue(learning.contains("!isKeyguardLocked()"))
+        assertTrue(learning.contains("isUserUnlocked()"))
     }
 
     @Test
@@ -85,10 +90,12 @@ class LockScreenPrivacySourceContractTest {
     }
 
     @Test
-    fun theRecentClipCellGetsALiveKeyguardGate() {
-        // The strip's eligibility is computed once per session, but a session can outlive the
-        // locking of the screen, so the recent-clip cell re-reads the keyguard through a live gate
-        // (the controller side of the contract is pinned in RecentClipSourceContractTest).
-        assertTrue(ime.contains("mSuggestionsController.setKeyguardGate(this::isKeyguardLocked);"))
+    fun theControllerGetsALivePrivacyGate() {
+        // The controller re-reads keyguard and Direct Boot state at transform and write boundaries.
+        assertTrue(ime.contains("mSuggestionsController.setKeyguardGate(this::isPrivacyLocked);"))
+        assertTrue(body("private boolean isPrivacyLocked()")
+            .contains("isKeyguardLocked() || !isUserUnlocked()"))
+        assertTrue(body("private boolean isUserUnlocked()")
+            .contains("userManager != null && userManager.isUserUnlocked()"))
     }
 }

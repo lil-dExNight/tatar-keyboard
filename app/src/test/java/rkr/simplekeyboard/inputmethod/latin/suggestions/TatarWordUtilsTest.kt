@@ -240,14 +240,27 @@ class TatarWordUtilsTest {
     }
 
     @Test
+    fun sentenceStartAcceptsClosingQuotesAndBracketsAfterEndingPunctuation() {
+        val contexts = listOf(
+            "сүз.» ", "сүз!” ", "сүз?\" ", "(сүз.) ", "[сүз!] ", "{сүз?} ",
+            "«(нәрсә?!)»  ",
+        )
+        for (text in contexts) {
+            assertTrue("'$text' is a sentence start", TatarWordUtils.isSentenceStartContext(text))
+        }
+    }
+
+    @Test
     fun sentenceStartIsFalseAfterAWordOrOtherPunctuation() {
         assertFalse(TatarWordUtils.isSentenceStartContext("яз сүз "))
         assertFalse(TatarWordUtils.isSentenceStartContext("сүз, "))
         assertFalse(TatarWordUtils.isSentenceStartContext("сүз: "))
         assertFalse(TatarWordUtils.isSentenceStartContext("сүз» ")) // closing quote, no period
-        assertFalse(TatarWordUtils.isSentenceStartContext("сүз.» ")) // quote after the period
-        assertFalse(TatarWordUtils.isSentenceStartContext("(сүз.) "))
+        assertFalse(TatarWordUtils.isSentenceStartContext("(сүз) "))
+        assertFalse(TatarWordUtils.isSentenceStartContext("сүз,» "))
         assertFalse(TatarWordUtils.isSentenceStartContext("5. ")) // a number, not a sentence end
+        assertFalse(TatarWordUtils.isSentenceStartContext("5.» "))
+        assertFalse(TatarWordUtils.isSentenceStartContext("(5.) "))
     }
 
     @Test
@@ -703,11 +716,22 @@ class TatarWordUtilsTest {
     fun aGlideStartsASentenceOnlyAfterSentenceEndingMarksThatGetTheSpace() {
         assertTrue(TatarWordUtils.glideStartsSentence("сүз.", false))
         assertTrue(TatarWordUtils.glideStartsSentence("сүз?!", false))
+        assertTrue(TatarWordUtils.glideStartsSentence("сүз.»", false))
+        assertTrue(TatarWordUtils.glideStartsSentence("сүз?\"", false))
+        assertTrue(TatarWordUtils.glideStartsSentence("(сүз.)", false))
+        assertTrue(TatarWordUtils.glideStartsSentence("[сүз!]", false))
         assertFalse("a comma is not a sentence end", TatarWordUtils.glideStartsSentence("сүз,", true))
         assertFalse("a word gets the space but starts no sentence",
             TatarWordUtils.glideStartsSentence("сүз", true))
+        assertFalse("a closing quote alone is not a sentence end",
+            TatarWordUtils.glideStartsSentence("сүз»", true))
+        assertFalse("a closing bracket alone is not a sentence end",
+            TatarWordUtils.glideStartsSentence("(сүз)", true))
         assertFalse("a number with a period is not a sentence end",
             TatarWordUtils.glideStartsSentence("5.", false))
+        assertFalse("closers do not turn a number into a sentence end",
+            TatarWordUtils.glideStartsSentence("(5.)", false))
+        assertFalse(TatarWordUtils.glideStartsSentence("5.»", false))
         assertFalse("a typed space already stands there; the keyboard shift covers it",
             TatarWordUtils.glideStartsSentence("сүз. ", true))
         assertFalse("no space is prepended at a field start",

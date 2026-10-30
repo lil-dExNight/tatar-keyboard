@@ -21,8 +21,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The inline-autofill field gate: the API floor is 30; password fields host chips like any
- *  other field — the content comes from the user's own autofill service and is only hosted. */
+/** Inline autofill requires API 30, no keyguard and a user unlocked after Direct Boot. */
 class InlineAutofillGateTest {
 
     @Test
@@ -36,5 +35,15 @@ class InlineAutofillGateTest {
     @Test
     fun belowTheFloorNothingIsHosted() {
         assertFalse(InlineAutofillGate.mayHost(24))
+    }
+
+    @Test
+    fun lockAndDirectBootTransitionsRequireAnUnlockedReturn() {
+        assertTrue(InlineAutofillGate.mayHost(30, keyguardLocked = false, userUnlocked = true))
+        assertFalse(InlineAutofillGate.mayHost(30, keyguardLocked = true, userUnlocked = true))
+        assertFalse(InlineAutofillGate.mayHost(30, keyguardLocked = false, userUnlocked = false))
+        assertFalse(InlineAutofillGate.mayHost(30, keyguardLocked = true, userUnlocked = false))
+        assertTrue(InlineAutofillGate.mayHost(30, keyguardLocked = false, userUnlocked = true))
+        assertFalse(InlineAutofillGate.mayHost(29, keyguardLocked = false, userUnlocked = true))
     }
 }

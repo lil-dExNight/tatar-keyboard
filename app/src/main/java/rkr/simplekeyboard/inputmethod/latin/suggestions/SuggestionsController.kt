@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 import android.content.Context
 import android.os.Handler
+import rkr.simplekeyboard.inputmethod.keyboard.KeyboardSwitcher
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.EmptyPrefixProber
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
@@ -32,6 +33,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TextShortcutSour
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramPreparationResult
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearningPredicate
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PreparationResult
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog
 import rkr.simplekeyboard.inputmethod.latin.emoji.AssetEmojiSuggestPreparation
@@ -41,6 +43,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestSource
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureSink
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -66,7 +69,7 @@ interface StripSurface {
 
     /**
      * The visible cell count (the user's fourth-cell setting), pushed when LatinIME (re)loads the
-     * settings. The strip re-splits its full width among the visible cells; a cell past the count
+     * settings. The strip re-splits its dock content rectangle; a cell past the count
      * keeps its content but stays inert. Default no-op.
      */
     fun setVisibleCellCount(cells: Int) {}
@@ -128,9 +131,9 @@ class SuggestionsController internal constructor(
     private val executorFactory: () -> ExecutorService?,
     private val preparationFactory: (ExecutorService, String) -> DictionaryPreparation?,
     initialDictionaryReady: Boolean,
-    // Trailing defaults (bigram, emoji, sentence-start, tracer): the test constructors below pass
-    // none of them, which is also how a missing asset behaves; only the production constructor
-    // passes real wiring.
+    // Trailing defaults (bigram, emoji, sentence-start, tracer, clip timer): the test constructors
+    // pass none of them, which is also how a missing asset behaves; only production passes all
+    // real wiring.
     private val bigramPreparationFactory: (ExecutorService, String) -> BigramPreparation? =
         { _, _ -> null },
     private val emojiSuggestPreparationFactory: (ExecutorService) -> EmojiSuggestPreparation? =
@@ -140,6 +143,9 @@ class SuggestionsController internal constructor(
         { _, _ -> null },
     // Perfetto tracing of the lookup round trip; DISABLED in plain-JVM tests (no android.os.Trace).
     private val lookupTracer: LookupTracer = LookupTracer.DISABLED,
+    private val recentClipScheduler: RecentClipExpiryScheduler? = null,
+    private val oneHandedSide: () -> Int = { OneHandedMode.SIDE_OFF },
+    private val listenToDockChanges: Boolean = false,
 ) {
     /** Production entry point. */
     constructor(
@@ -170,6 +176,12 @@ class SuggestionsController internal constructor(
             }
         },
         LookupTracer.ATRACE,
+        RecentClipExpiryScheduler { delayMillis, task -> uiHandler.postDelayed(task, delayMillis) },
+        {
+            KeyboardSwitcher.getInstance().keyboard?.mId?.mOneHandedSide
+                ?: OneHandedMode.SIDE_OFF
+        },
+        true,
     )
 
     /** Test entry point: injects a synchronous poster + executor and pre-marks the dictionary. */
@@ -193,6 +205,7 @@ class SuggestionsController internal constructor(
         engineFactory: (ResultCallback) -> EngineHandle?,
         backgroundExecutor: ExecutorService,
         dictionaryReady: Boolean,
+        oneHandedSide: () -> Int = { OneHandedMode.SIDE_OFF },
     ) : this(
         strip,
         editor,
@@ -201,6 +214,7 @@ class SuggestionsController internal constructor(
         { backgroundExecutor },
         { _, _ -> null },
         dictionaryReady,
+        oneHandedSide = oneHandedSide,
     )
 
     private var executor: ExecutorService? = null
@@ -245,6 +259,11 @@ class SuggestionsController internal constructor(
         // The test entry points seed readiness without naming a language; they mean the default
         // one.
         if (initialDictionaryReady) slotFor(DEFAULT_LANGUAGE).dictionaryReady = true
+        if (listenToDockChanges) {
+            KeyboardSwitcher.getInstance().setOneHandedSideChangedListener {
+                onOneHandedSideChanged()
+            }
+        }
     }
 
     /** The slot of [subtypeId], created on first mention. Creating one costs no I/O. */
@@ -326,6 +345,9 @@ class SuggestionsController internal constructor(
     /** The word a backspace right now would delete whole (the lift-committed or its replacement). */
     private var glideCommittedWord: String? = null
 
+    /** The word to report when the current glide correction window closes without undo. */
+    private var pendingGlideWordAcceptance: String? = null
+
     /** Whether [glideCommittedWord]'s commit prepended a leading space; the undo deletes the
      * space with the word exactly when the commit added it. */
     private var glideCommitPrependedSpace: Boolean = false
@@ -379,11 +401,12 @@ class SuggestionsController internal constructor(
     // when the active answer held no exact candidate at all, a non-empty companion exact pass
     // leads instead ([companionLeadArmed]).
     //
-    // [bandBaseCells] is what is on the strip right now, in strip order and already re-cased (the
-    // strings handed to [StripSurface.showSuggestions]). Outside the lead case the companion's
-    // candidates are appended to this list, never mixed into it, so no cell of the current
-    // language ever changes.
+    // [bandBaseCells] is what is on the strip right now, in logical ranked order and already
+    // re-cased. Outside the lead case the companion's candidates are appended to this list, never
+    // mixed into it, so no cell of the current language ever changes.
     private var bandBaseCells: List<String> = emptyList()
+    private var bandEmphasizedCell = SuggestionStripState.NO_CELL
+    private var bandRanked = true
 
     /**
      * The visible strip cell count (the user's fourth-cell setting), pushed by LatinIME at every
@@ -532,22 +555,33 @@ class SuggestionsController internal constructor(
      * The recent-clip cell's RAM-only holder; see [RecentClipCell]. Nothing about the clip is ever
      * persisted or learned from.
      */
-    private var recentClip = RecentClipCell()
+    private var recentClip = RecentClipCell(recentClipScheduler).also {
+        it.onExpired = ::onRecentClipExpired
+    }
 
     /**
-     * The live keyguard state, re-read at the clip cell's offer and tap: [eligible] is a
-     * session-start snapshot that can predate the screen locking. Fail-closed (locked) until wired.
+     * Live lock state for learning, transforms and the clip cell. LatinIME wires this before the
+     * first input session; the default keeps the controller usable in isolated JVM tests.
      */
-    private var keyguardGate: KeyguardGate = KeyguardGate { true }
+    private var keyguardGate: KeyguardGate = KeyguardGate { false }
+
+    /** Live write eligibility; probes are useful only when their completion may be learned. */
+    private var completionLearningPredicate = PersonalLearningPredicate { true }
 
     /** Test seam: a fresh clip cell with a drivable clock, so the freshness window is testable. */
     internal fun replaceRecentClipCellForTest(cell: RecentClipCell) {
         recentClip = cell
+        cell.onExpired = ::onRecentClipExpired
     }
 
     /** Set once by LatinIME. Kept out of the constructor so the test entry points stay unchanged. */
     fun setCompletionSink(sink: WordCompletionSink) {
         runMachine.completionSink = sink
+    }
+
+    /** Supplies the same live predicate as the completion sink, without duplicating its rules. */
+    fun setCompletionLearningPredicate(predicate: PersonalLearningPredicate) {
+        completionLearningPredicate = predicate
     }
 
     /** Set once by LatinIME, for the same reason as [setCompletionSink]. */
@@ -673,6 +707,17 @@ class SuggestionsController internal constructor(
         recentClip.clear()
     }
 
+    /** Removes an expired clip without disturbing a band that has since taken its place. */
+    private fun onRecentClipExpired() {
+        if (displayedSessionId == sessionId
+            && displayedPrefix == null && displayedContextWord == null
+            && displayedGlideAlternativesFor == null
+            && bandBaseCells.size == 1
+        ) {
+            clearToReservedBand()
+        }
+    }
+
     /**
      * Registers the tap listener and deliberately nothing else: the background executor, the
      * storage controller and the dictionary are created on first actual need, so a keyboard start
@@ -773,8 +818,14 @@ class SuggestionsController internal constructor(
     }
 
     fun onTextChanged() {
+        if (destroyed) return
+        if (keyguardGate.isLocked()) {
+            suspendForLock()
+            return
+        }
         revertCellDisplayed = false
         revertWindow.advance(sessionId)
+        acceptPendingGlideWord()
         // The glide whole-word undo lives exactly one text change: any other edit closes it, and
         // the alternatives strip is re-derived below with the rest of the strip state.
         glideCommittedWord = null
@@ -852,11 +903,21 @@ class SuggestionsController internal constructor(
      * clean-run machine; an engine that cannot run the probe resolves it at once.
      */
     private fun requestDeferredEmptyPrefixProbe(word: String) {
+        if (!completionLearningPredicate.mayLearn()) {
+            runMachine.resolveDeferredEmptyProbe(word, EmptyPrefixProber.NO_EMPTY_PREFIX)
+            return
+        }
         val engine = usableEngine()
         val accepted = engine != null && engine.requestEmptyPrefixProbe(
             TatarWordUtils.normalizeForLookup(word),
         ) { shortestEmptyPrefixLength ->
-            uiPoster.post { runMachine.resolveDeferredEmptyProbe(word, shortestEmptyPrefixLength) }
+            uiPoster.post {
+                runMachine.resolveDeferredEmptyProbe(
+                    word,
+                    if (keyguardGate.isLocked()) EmptyPrefixProber.NO_EMPTY_PREFIX
+                    else shortestEmptyPrefixLength,
+                )
+            }
         }
         if (!accepted) {
             runMachine.resolveDeferredEmptyProbe(word, EmptyPrefixProber.NO_EMPTY_PREFIX)
@@ -941,16 +1002,17 @@ class SuggestionsController internal constructor(
     }
 
     fun onFinishInput() {
+        val locked = keyguardGate.isLocked()
         runMachine.markRunDirty()
+        if (locked) pendingGlideWordAcceptance = null
         // The replacement state never outlives the editor session.
         clearRevertState()
         refusedCorrections.clear()
-        // The one boundary where the personal dictionary and learned pairs write what they have
-        // accumulated; see [CleanRunMachine.onInputFinished].
-        runMachine.onInputFinished()
-        // Learned emoji flush at the same boundary; the sink decides whether anything may be
-        // written.
-        personalEmojiSink?.onInputFinished()
+        if (!locked) {
+            // The sinks re-check their own write gates; a locked session never reaches them here.
+            runMachine.onInputFinished()
+            personalEmojiSink?.onInputFinished()
+        }
         sessionId++
         displayedPrefix = null
         displayedContextWord = null
@@ -1166,6 +1228,9 @@ class SuggestionsController internal constructor(
         // Set the guard first so an engine start that publishes after this point (posted onto the
         // UI thread from the background executor) is torn down instead of orphaned.
         destroyed = true
+        if (listenToDockChanges) {
+            KeyboardSwitcher.getInstance().setOneHandedSideChangedListener(null)
+        }
         clearRevertState()
         displayedPrefix = null
         displayedContextWord = null
@@ -1734,25 +1799,45 @@ class SuggestionsController internal constructor(
     private fun showBand(
         cells: List<String>,
         emphasizedCell: Int = SuggestionStripState.NO_CELL,
+        ranked: Boolean = true,
     ) {
         // Every composition already caps at the visible count; this is the fail-safe for the one
         // place a wider list could slip through (a retained glide list outliving a narrower push).
         val shown = if (cells.size <= bandCapacity) cells else cells.subList(0, bandCapacity)
         bandBaseCells = shown
-        strip.showSuggestions(shown[0], shown.getOrNull(1), shown.getOrNull(2), shown.getOrNull(3))
+        bandEmphasizedCell = emphasizedCell
+        bandRanked = ranked
+        // The logical ranking never changes. Only its physical cells mirror, across the whole
+        // visible grid so even a lone top candidate lands beside the right thumb. Undo, recent
+        // clip and emoji-only offers keep their documented cell order.
+        val mirrored = ranked && oneHandedSide() == OneHandedMode.SIDE_RIGHT
+        val first = shown.getOrNull(if (mirrored) bandCapacity - 1 else 0)
+        val second = shown.getOrNull(if (mirrored) bandCapacity - 2 else 1)
+        val third = shown.getOrNull(if (mirrored) bandCapacity - 3 else 2)
+        val fourth = shown.getOrNull(if (mirrored) bandCapacity - 4 else 3)
+        strip.showSuggestions(first ?: "", second, third, fourth)
         // The emphasis travels with the words it marks, in the same publication. It runs before
         // the spoken labels: setEmphasis triggers the view's one display rebuild, and the label
         // lookup reads the emoji index, which can fail. A label failure then leaves a consistent
         // strip with missing labels, which the next publication re-sends.
         strip.setEmphasizedCell(
-            if (emphasizedCell < shown.size) emphasizedCell else SuggestionStripState.NO_CELL
+            if (emphasizedCell in shown.indices) {
+                if (mirrored) bandCapacity - 1 - emphasizedCell else emphasizedCell
+            } else {
+                SuggestionStripState.NO_CELL
+            }
         )
         strip.setSpokenCellLabels(
-            spokenLabelFor(shown[0]),
-            spokenLabelFor(shown.getOrNull(1)),
-            spokenLabelFor(shown.getOrNull(2)),
-            spokenLabelFor(shown.getOrNull(3)),
+            spokenLabelFor(first),
+            spokenLabelFor(second),
+            spokenLabelFor(third),
+            spokenLabelFor(fourth),
         )
+    }
+
+    internal fun onOneHandedSideChanged() {
+        if (destroyed || !bandRanked || bandBaseCells.isEmpty()) return
+        showBand(bandBaseCells, bandEmphasizedCell)
     }
 
     /**
@@ -1929,7 +2014,7 @@ class SuggestionsController internal constructor(
      * means PREFIX only, an empty one NEXT_WORD or nothing, never both on one strip.
      */
     private fun requestCurrentPrefix() {
-        if (!eligible) return
+        if (!eligible || keyguardGate.isLocked()) return
         val activeEngine = usableEngine()
         if (activeEngine == null) {
             // Text events can arrive while preparation/start is still in flight. Do not show the
@@ -2025,7 +2110,7 @@ class SuggestionsController internal constructor(
             // An empty context at a sentence boundary is a sentence start. A fresh clip the user
             // has just copied is the stronger signal, so its cell outranks the generic sentence
             // starters; without a clip the sentence-start table answers synchronously. No engine
-            // request is issued either way, so bigram successors and after-word forms do not
+            // request is issued either way, so bigram successors and learned pairs do not
             // appear. Anywhere else: no context word, no prediction.
             if (maybeShowRecentClip()) return
             if (requestSentenceStart()) return
@@ -2073,6 +2158,19 @@ class SuggestionsController internal constructor(
 
     // --- Glide typing -----------------------------------------------------------------------------
 
+    /** Prepares the active engine's index when a glide arms; taps never reach this entry point. */
+    fun onGlideArmed() {
+        if (destroyed) return
+        if (keyguardGate.isLocked()) {
+            suspendForLock()
+            return
+        }
+        if (!glideEligible || !glideGate.isOn()) return
+        val activeEngine = usableEngine() ?: return
+        releaseGlideIndexesExcept(activeLanguage)
+        activeEngine.prewarmGlideIndex()
+    }
+
     /**
      * A glide gesture completed on the letter keys (PointerTracker via LatinIME, UI thread).
      * Requests the decode on the engine worker; nothing is shown during the gesture (one decode at
@@ -2090,8 +2188,12 @@ class SuggestionsController internal constructor(
      * One binding at a time: the other two are dropped here.
      */
     fun onGlideInput(path: GlidePath) {
-        if (destroyed || !glideEligible) return
-        if (!glideGate.isOn()) return
+        if (destroyed) return
+        if (keyguardGate.isLocked()) {
+            suspendForLock()
+            return
+        }
+        if (!glideEligible || !glideGate.isOn()) return
         val activeEngine = usableEngine() ?: return
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) {
             glideRefusalFeedback.onGlideRefused()
@@ -2156,18 +2258,17 @@ class SuggestionsController internal constructor(
      * initial capital, as a typed space would have shifted the keyboard. With zero
      * candidates nothing is committed. With exactly one there are no alternatives; with
      * suggestions on the strip is then derived afresh as if the word had been typed (the
-     * committed word is the trailing word), with suggestions off it stays hidden.
+     * committed word is the trailing word), with suggestions off it stays hidden. An empty decode
+     * commits nothing and gives one refusal tick.
      *
      * A refused commit (see [EditorSurface.commitGlideWord]) gives the [GlideRefusalFeedback] tick.
      * With the glide strip allowed ([glideStripAllowed]) and no letter after the cursor (a stale
      * or unknown cache), the strip shows the top candidates bound to [REFUSED_GLIDE]; a tap on one
      * goes through the glide commit path again against the live text ([onTap]).
      *
-     * Learning: a lift-committed word behaves like a tapped suggestion. The run is marked dirty,
-     * the new boundary is trusted for pairs, and the word is reported as an accepted suggestion
-     * (not as an accepted prediction). A later alternative counts the same way. Neither the
-     * replacement nor the one-backspace undo rolls back the usage bump, as on the tap path, which
-     * keeps the undo paths free of counter arithmetic.
+     * Learning: the run is marked dirty and the new boundary is trusted for pairs immediately.
+     * Word usage stays pending while the correction window is open. An alternative replaces the
+     * pending word, undo cancels it, and any other close reports one accepted suggestion.
      */
     private fun applyGlideResult(suggestions: List<String>) {
         previewKeepTypedCell = null
@@ -2176,6 +2277,7 @@ class SuggestionsController internal constructor(
             displayedGlideAlternativesFor = null
             bandBaseCells = emptyList()
             showEmptyBand()
+            glideRefusalFeedback.onGlideRefused()
             return
         }
         var casing = glideShiftGate.glideCasing()
@@ -2224,10 +2326,11 @@ class SuggestionsController internal constructor(
         // trusted for pairs, as on the tap path.
         runMachine.markRunDirty()
         runMachine.trustPairBoundary()
-        // The lift-commit is the acceptance: a saved personal word's usage counter moves (in
-        // memory; the file is written at the session boundary). The sink applies the learning
-        // predicate, so this also runs with suggestions off.
-        runMachine.noteAcceptedSuggestion(committed)
+        // A new committed glide closes the previous word's correction window.
+        acceptPendingGlideWord()
+        // The sink applies its learning predicate when this pending word is accepted, including
+        // with suggestions off. The file is still written only at the session boundary.
+        pendingGlideWordAcceptance = committed
         // One backspace right after the lift deletes the whole committed word. The undo word
         // tracks the editor (it moves to an alternative if one replaces it), and the leading space
         // goes with the word exactly when the commit added it.
@@ -2392,7 +2495,8 @@ class SuggestionsController internal constructor(
      * switch. Read live: a gesture starts under one configuration and its decode lands under
      * another.
      */
-    private fun glideStripAllowed(): Boolean = eligible || (glideEligible && glideGate.isOn())
+    private fun glideStripAllowed(): Boolean =
+        !keyguardGate.isLocked() && (eligible || (glideEligible && glideGate.isOn()))
 
     /**
      * Takes off the strip whatever it is still painting, once the candidates behind it have been
@@ -2471,7 +2575,7 @@ class SuggestionsController internal constructor(
         requestSessionId = NO_SESSION
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = false
-        showBand(listOf(offer))
+        showBand(listOf(offer), ranked = false)
         return true
     }
 
@@ -2482,6 +2586,8 @@ class SuggestionsController internal constructor(
         suggestions: List<String>,
         kind: LookupKind,
     ) {
+        // A result that arrives after locking must neither paint personal content nor commit glide.
+        if (keyguardGate.isLocked()) return
         // A GLIDE result is gated by the glide gate, not the suggestions setting: with suggestions
         // off the lift-commit must still land.
         if (!eligible && !(kind == LookupKind.GLIDE && glideEligible)) return
@@ -2619,7 +2725,7 @@ class SuggestionsController internal constructor(
                 displayedGlideAlternativesFor = null
                 displayedContextWord = pendingContextWord
                 displayedSessionId = sessionId
-                showBand(listOf(emoji))
+                showBand(listOf(emoji), ranked = false)
             }
             requestCompanionFill(LookupKind.NEXT_WORD, pendingContextWord)
             return
@@ -2672,7 +2778,7 @@ class SuggestionsController internal constructor(
      * live on one side of the decision only.
      */
     fun maybeAutocorrectBeforeSeparator(separatorCodePoint: Int): Boolean {
-        if (destroyed || !eligible) return false
+        if (destroyed || !eligible || keyguardGate.isLocked()) return false
         if (!autocorrectGate.isOn()) return false
         val activeEngine = usableEngine() ?: return false
         if (!editor.hasKnownCursor()) return false
@@ -2723,7 +2829,7 @@ class SuggestionsController internal constructor(
      * included. A shortcut undone earlier in this field session is not expanded again.
      */
     fun maybeExpandShortcutBeforeSeparator(separatorCodePoint: Int): Boolean {
-        if (destroyed || !eligible) return false
+        if (destroyed || !eligible || keyguardGate.isLocked()) return false
         val source = shortcutSource ?: return false
         if (!editor.hasKnownCursor()) return false
         if (editor.hasLetterAfterCursor()) return false
@@ -2780,6 +2886,10 @@ class SuggestionsController internal constructor(
      * a refused undo cannot be retried and the second backspace deletes a character like any other.
      */
     fun maybeRevertAutocorrect(): Boolean {
+        if (keyguardGate.isLocked()) {
+            if (!destroyed) suspendForLock()
+            return false
+        }
         val replacement = revertWindow.take() ?: return false
         return revertNow(replacement)
     }
@@ -2790,7 +2900,7 @@ class SuggestionsController internal constructor(
      * cannot be retried.
      */
     private fun revertNow(replacement: RevertWindow.Replacement): Boolean {
-        if (destroyed || !eligible) return false
+        if (destroyed || !eligible || keyguardGate.isLocked()) return false
         if (replacement.sessionId != sessionId) return false
         // A correction's undo dies with the autocorrect switch; a shortcut expansion's does not
         // (the pair is the user's own setting, there is no switch to consult).
@@ -2829,7 +2939,7 @@ class SuggestionsController internal constructor(
      */
     private fun maybeShowRevertCell(): Boolean {
         val replacement = revertWindow.peek() ?: return false
-        if (destroyed || !eligible) return false
+        if (destroyed || !eligible || keyguardGate.isLocked()) return false
         if (replacement.requiresAutocorrectGate && !autocorrectGate.isOn()) return false
         previewKeepTypedCell = null
         displayedPrefix = null
@@ -2838,7 +2948,7 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         requestSessionId = NO_SESSION
         displayedSessionId = sessionId
-        showBand(listOf(revertCellDecorator.decorate(replacement.typedForm)))
+        showBand(listOf(revertCellDecorator.decorate(replacement.typedForm)), ranked = false)
         // TalkBack reads the bare typed word, not the quotation marks of the display form.
         strip.setSpokenCellLabels(replacement.typedForm, null, null, null)
         revertCellDisplayed = true
@@ -2858,7 +2968,8 @@ class SuggestionsController internal constructor(
      * a subtype change, a selection change, a tap, a setting change. A refused preview is dropped
      * too, since each of these also ends the word occurrence it was scoped to.
      */
-    private fun clearRevertState() {
+    private fun clearRevertState(preserveGlideAcceptance: Boolean = false) {
+        if (!preserveGlideAcceptance) acceptPendingGlideWord()
         revertWindow.clear()
         revertCellDisplayed = false
         suppressedPreviewWord = null
@@ -2871,7 +2982,39 @@ class SuggestionsController internal constructor(
         glideRescueCandidates = emptyList()
     }
 
+    private fun acceptPendingGlideWord() {
+        val word = pendingGlideWordAcceptance ?: return
+        pendingGlideWordAcceptance = null
+        runMachine.noteAcceptedSuggestion(word)
+    }
+
+    /** Invalidates every learning and transform path without ending ordinary typing. */
+    private fun suspendForLock() {
+        runMachine.markRunDirty()
+        pendingGlideWordAcceptance = null
+        clearRevertState()
+        refusedCorrections.clear()
+        recentClip.clear()
+        pendingGlidePathForSink = null
+        sessionId++
+        requestSessionId = NO_SESSION
+        displayedSessionId = NO_SESSION
+        displayedPrefix = null
+        displayedContextWord = null
+        displayedGlideAlternativesFor = null
+        bandBaseCells = emptyList()
+        bandHasActiveLanguageWord = false
+        clearCompanionRequest()
+        endLookupTrace()
+        strip.hideSuggestions()
+        activeSlot()?.engine?.finishInput()
+    }
+
     private fun onTap(suggestion: String) {
+        if (keyguardGate.isLocked()) {
+            if (!destroyed) suspendForLock()
+            return
+        }
         // A tap on the keep-typed cell of an open undo window reverts the replacement, exactly like
         // the one backspace would. The window, not the strip's bindings, is the state: it is taken
         // before the editor is asked, so a refused undo cannot be retried, and whatever happens the
@@ -2948,9 +3091,11 @@ class SuggestionsController internal constructor(
         // Same for the revert window's N-best: a tap on a glide alternative keeps the gesture's
         // candidates, so the undo of the replacement can still re-bind the rescue strip.
         val glideUndoCandidatesBeforeTap = glideUndoCandidates
+        val isGlideAlternativeTap = displayedSessionId == sessionId &&
+            displayedGlideAlternativesFor?.let { it != REFUSED_GLIDE } == true
         // An accepted suggestion is not the user spelling the word out: the run stops counting.
         runMachine.markRunDirty()
-        clearRevertState()
+        clearRevertState(preserveGlideAcceptance = isGlideAlternativeTap)
         if (displayedSessionId != sessionId) {
             // Nothing bound to the current session is displayed (e.g. the text changed and the old
             // candidates were invalidated): a tap must be a no-op and must never commit.
@@ -3069,15 +3214,15 @@ class SuggestionsController internal constructor(
             bandBaseCells = emptyList()
             clearCompanionRequest()
             showEmptyBand()
-            runMachine.noteAcceptedSuggestion(suggestion)
+            pendingGlideWordAcceptance = suggestion
             runMachine.trustPairBoundary()
             requestCurrentPrefix()
         } else if (glideAlternativesFor != null) {
             // A tap on a glide alternative replaces the just-committed glide word in the editor,
             // which re-checks that the committed word still stands right before the cursor. The
             // leading space stays as committed. The run stays dirty (markRunDirty above), the
-            // alternative counts as the accepted suggestion, the trusted pair boundary moves to
-            // it, and the strip refreshes for it.
+            // alternative replaces the pending word, the trusted pair boundary moves to it, and
+            // the strip refreshes for it.
             if (editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion,
                     glidePrependedSpace)) {
                 suggestionTapFeedback.onSuggestionTap()
@@ -3090,9 +3235,12 @@ class SuggestionsController internal constructor(
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
                 showEmptyBand()
-                runMachine.noteAcceptedSuggestion(suggestion)
+                pendingGlideWordAcceptance = suggestion
                 runMachine.trustPairBoundary()
                 requestCurrentPrefix()
+            } else {
+                // The original word still stands after its correction window was closed.
+                acceptPendingGlideWord()
             }
         }
     }
@@ -3131,9 +3279,19 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         // The undo belongs to glide typing, so it follows the glide gate and works with
         // suggestions off.
-        if (destroyed || !glideEligible) return false
-        if (!editor.hasKnownCursor()) return false
-        if (!editor.deleteGlideLiftedWord(word, prependedSpace)) return false
+        if (keyguardGate.isLocked()) {
+            pendingGlideWordAcceptance = null
+            return false
+        }
+        if (destroyed || !glideEligible || !editor.hasKnownCursor()) {
+            acceptPendingGlideWord()
+            return false
+        }
+        if (!editor.deleteGlideLiftedWord(word, prependedSpace)) {
+            acceptPendingGlideWord()
+            return false
+        }
+        pendingGlideWordAcceptance = null
         // The word the outstanding request (if any) was issued for is gone: invalidate the
         // request generation so its late result cannot repaint over the rescue strip, exactly as
         // in [clearToReservedBand].

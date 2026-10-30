@@ -26,8 +26,8 @@ import android.view.ViewGroup
  * The strip surface while an inline-autofill session owns it: up to four equal cells, each
  * holding one content view the system inflates. A plain [ViewGroup] — the API-30 autofill types
  * never appear here, so this class loads on any API level; it is inflated only from the gated
- * binder path. The word strip's rendering is untouched: while this host is visible,
- * [SuggestionStripView] is GONE, and the host's children draw themselves.
+ * binder path. Cells keep their platform order inside the docked content rectangle. While this
+ * host is visible, [SuggestionStripView] is GONE, and the host's children draw themselves.
  */
 class InlineAutofillStripView @JvmOverloads constructor(
     context: Context,
@@ -38,17 +38,31 @@ class InlineAutofillStripView @JvmOverloads constructor(
      * session it belongs to ended (the field switched meanwhile) is refused by [hostCell].
      */
     private var sessionId = NO_SESSION
+    private var nextSessionId = 1
 
     private val stripHeightPx = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP,
         SuggestionStripState.STRIP_HEIGHT_DP.toFloat(),
         resources.displayMetrics,
     ).toInt()
+    // A zero right edge means the full measured width, matching SuggestionStripState.
+    private var dockContentLeftPx = 0
+    private var dockContentRightPx = 0
+
+    /** Keeps platform cells in strip order inside the docked key-grid span. */
+    fun setDockContentBounds(leftPx: Int, rightPx: Int) {
+        if (dockContentLeftPx == leftPx && dockContentRightPx == rightPx) return
+        dockContentLeftPx = leftPx
+        dockContentRightPx = rightPx
+        requestLayout()
+    }
 
     /** Starts a fresh session: stale content goes, and the returned id owns the coming inflates. */
     fun beginSession(): Int {
         removeAllViews()
-        sessionId++
+        sessionId = nextSessionId
+        nextSessionId++
+        if (nextSessionId == NO_SESSION) nextSessionId = 1
         return sessionId
     }
 
@@ -92,19 +106,38 @@ class InlineAutofillStripView @JvmOverloads constructor(
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         val width = right - left
         val height = bottom - top
+        val contentLeft = contentLeft(width)
+        val contentRight = contentRight(width)
         var cell = 0
         while (cell < childCount) {
             val child = getChildAt(cell)
             if (child.visibility != GONE) {
-                val cellLeft = width * cell / InlineStripSpecs.CELL_COUNT
-                child.layout(cellLeft, 0, cellLeft + cellWidth(cell, width), height)
+                child.layout(
+                    InlineStripSpecs.cellLeftPx(cell, contentLeft, contentRight),
+                    0,
+                    InlineStripSpecs.cellRightPx(cell, contentLeft, contentRight),
+                    height,
+                )
             }
             cell++
         }
     }
 
-    private fun cellWidth(cell: Int, widthPx: Int): Int =
-        widthPx * (cell + 1) / InlineStripSpecs.CELL_COUNT - widthPx * cell / InlineStripSpecs.CELL_COUNT
+    private fun contentLeft(widthPx: Int): Int =
+        dockContentLeftPx.coerceIn(0, widthPx.coerceAtLeast(0))
+
+    private fun contentRight(widthPx: Int): Int {
+        if (widthPx <= 0) return 0
+        if (dockContentRightPx <= 0) return widthPx
+        return dockContentRightPx.coerceIn(contentLeft(widthPx), widthPx)
+    }
+
+    private fun cellWidth(cell: Int, widthPx: Int): Int {
+        val contentLeft = contentLeft(widthPx)
+        val contentRight = contentRight(widthPx)
+        return InlineStripSpecs.cellRightPx(cell, contentLeft, contentRight) -
+            InlineStripSpecs.cellLeftPx(cell, contentLeft, contentRight)
+    }
 
     private companion object {
         const val NO_SESSION = 0

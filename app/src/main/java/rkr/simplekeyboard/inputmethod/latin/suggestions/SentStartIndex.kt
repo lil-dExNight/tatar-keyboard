@@ -21,7 +21,7 @@ import java.io.InputStream
 /**
  * The sentence-start table: an immutable, Android-free, frequency-ordered list of the words Tatar
  * sentences most often start with, read from `assets/dictionaries/tatar_sentstart_v1.txt` (built
- * by `scripts/sentstart_pack.py`; Leipzig-derived data, CC BY 4.0, see the NOTICE beside it).
+ * by `scripts/sentstart_pack.py`; corpus sources and licenses are in the NOTICE beside it).
  *
  * Format: UTF-8, LF line endings, a `#` comment header, then one `word<TAB>freq` row per record,
  * sorted by frequency descending, then word ascending. The file order is the ranking, so a lookup

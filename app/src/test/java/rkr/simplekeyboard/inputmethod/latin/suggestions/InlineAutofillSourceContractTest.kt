@@ -47,12 +47,15 @@ class InlineAutofillSourceContractTest {
         // is the field's own and both entry points can afford to be fail-closed.
         val request = methodBody(latinIme,
             "public InlineSuggestionsRequest onCreateInlineSuggestionsRequest(final Bundle uiExtras)")
-        assertTrue(request.contains("InlineAutofillGate.mayHost(Build.VERSION.SDK_INT"))
+        assertTrue(request.contains("InlineAutofillGate.mayHost("))
+        assertTrue(request.contains("keyguardLocked, userUnlocked"))
         assertTrue(request.contains("editorInfo == null"))
         val response = methodBody(latinIme,
             "public boolean onInlineSuggestionsResponse(final InlineSuggestionsResponse response)")
-        assertTrue(response.contains("InlineAutofillGate.mayHost(Build.VERSION.SDK_INT"))
+        assertTrue(response.contains("InlineAutofillGate.mayHost("))
+        assertTrue(response.contains("keyguardLocked, userUnlocked"))
         assertTrue(response.contains("editorInfo == null"))
+        assertTrue(response.contains("mInlineAutofillHidden"))
         assertTrue(response.contains("return false"))
     }
 
@@ -64,7 +67,7 @@ class InlineAutofillSourceContractTest {
         // The empty response is the platform's session-end signal: it clears the surface BEFORE
         // the gate, which reads the new field and must not strand the old field's content.
         val clearAt = response.indexOf("hideInlineAutofillStrip()")
-        val gateAt = response.indexOf("InlineAutofillGate.mayHost(Build.VERSION.SDK_INT")
+        val gateAt = response.indexOf("InlineAutofillGate.mayHost(")
         assertTrue("the clear and the gate both run", clearAt >= 0 && gateAt >= 0)
         assertTrue("the clear precedes the gate", clearAt < gateAt)
         // onStartInputView has no end hook of its own: it would kill a response that legitimately
@@ -76,6 +79,28 @@ class InlineAutofillSourceContractTest {
         val finishView = methodBody(latinIme,
             "void onFinishInputViewInternal(final boolean finishingInput)")
         assertTrue(finishView.contains("hideInlineAutofillStrip()"))
+    }
+
+    @Test
+    fun hideAndLockDropChildrenAndRejectLateInflates() {
+        val latinIme = latinImeSource()
+        val hidden = methodBody(latinIme, "public void onWindowHidden()")
+        assertTrue(hidden.contains("mInlineAutofillHidden = true"))
+        assertTrue(hidden.contains("clearInlineAutofill()"))
+        val shown = methodBody(latinIme, "public void onWindowShown()")
+        assertTrue(shown.contains("mInlineAutofillHidden = false"))
+        assertTrue(shown.contains("isPrivacyLocked()"))
+        assertTrue(shown.contains("clearInlineAutofill()"))
+
+        val host = File(suggestionsDir(), "InlineAutofillStripView.kt").readText()
+        val end = methodBody(host, "fun endSession()")
+        assertTrue(end.contains("sessionId = NO_SESSION"))
+        assertTrue(end.contains("removeAllViews()"))
+        val begin = methodBody(host, "fun beginSession(): Int")
+        assertTrue("a fresh response never reuses the ended session's id",
+            begin.contains("sessionId = nextSessionId"))
+        val hostCell = methodBody(host, "fun hostCell(forSession: Int, view: View)")
+        assertTrue(hostCell.contains("forSession != sessionId"))
     }
 
     @Test
@@ -133,7 +158,8 @@ class InlineAutofillSourceContractTest {
     @Test
     fun theSpecMathMirrorsTheStripCellBoundaries() {
         val specs = File(suggestionsDir(), "InlineStripSpecs.kt").readText()
-        assertTrue(specs.contains("stripWidthPx * cell / CELL_COUNT"))
+        assertTrue(specs.contains("cellLeftPx(cell, 0, stripWidthPx)"))
+        assertTrue(specs.contains("cellRightPx(cell, 0, stripWidthPx)"))
         assertTrue(specs.contains("const val CELL_COUNT = SuggestionStripState.CELL_COUNT"))
     }
 

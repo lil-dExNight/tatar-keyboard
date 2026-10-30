@@ -32,9 +32,9 @@ object InlineStripSpecs {
     class CellSizePx(val widthPx: Int, val heightPx: Int)
 
     /**
-     * The strip width to promise: the measured strip when it has been laid out, else the display
-     * width. The request can arrive before the input view exists (a cold start straight into an
-     * autofill field), and the strip always spans the full window, which is the display's width.
+     * The content width to promise: the measured docked span when known, else the display width.
+     * The request can arrive before the input view or keyboard exists (a cold start straight into
+     * an autofill field); the full display is the only honest fallback then.
      */
     fun effectiveStripWidthPx(measuredStripWidthPx: Int, displayWidthPx: Int): Int =
         if (measuredStripWidthPx > 0) measuredStripWidthPx else displayWidthPx
@@ -50,21 +50,27 @@ object InlineStripSpecs {
         val cells = ArrayList<CellSizePx>(CELL_COUNT)
         var cell = 0
         while (cell < CELL_COUNT) {
-            val left = stripWidthPx * cell / CELL_COUNT
-            val right = stripWidthPx * (cell + 1) / CELL_COUNT
+            val left = cellLeftPx(cell, 0, stripWidthPx)
+            val right = cellRightPx(cell, 0, stripWidthPx)
             cells.add(CellSizePx(right - left, stripHeightPx))
             cell++
         }
         return cells
     }
+
+    /** Ordered cell boundaries inside the docked content rectangle; autofill never mirrors. */
+    fun cellLeftPx(cell: Int, contentLeftPx: Int, contentRightPx: Int): Int =
+        contentLeftPx + (contentRightPx - contentLeftPx) * cell / CELL_COUNT
+
+    fun cellRightPx(cell: Int, contentLeftPx: Int, contentRightPx: Int): Int =
+        cellLeftPx(cell + 1, contentLeftPx, contentRightPx)
 }
 
 /**
  * The field-level gate of the inline-autofill path. The API floor is 30: the platform classes do
- * not exist below it, and the system never calls the entry points there. Password fields host
- * chips like any other field — login forms are the feature's main use: the content comes from
- * the user's own autofill service through the platform, and the keyboard hosts the view without
- * ever reading it.
+ * not exist below it, and the system never calls the entry points there. Keyguard and Direct Boot
+ * close hosting even on a supported API. Password fields otherwise host chips like any other
+ * field: the content comes from the user's own autofill service and is never read by the keyboard.
  */
 object InlineAutofillGate {
     const val MIN_API_LEVEL = 30
@@ -76,4 +82,9 @@ object InlineAutofillGate {
      */
     @JvmStatic
     fun mayHost(apiLevel: Int): Boolean = apiLevel >= MIN_API_LEVEL
+
+    /** Lock and Direct Boot gates applied to both platform entry points. */
+    @JvmStatic
+    fun mayHost(apiLevel: Int, keyguardLocked: Boolean, userUnlocked: Boolean): Boolean =
+        mayHost(apiLevel) && !keyguardLocked && userUnlocked
 }

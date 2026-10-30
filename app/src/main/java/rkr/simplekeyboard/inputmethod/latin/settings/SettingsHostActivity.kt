@@ -47,6 +47,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStores
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.SentStartOverlays
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupCoordinator
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupFormat
@@ -123,7 +124,7 @@ class SettingsHostActivity : Activity() {
     internal var detailLocale: String? = null
     internal var restrictionKeys: Set<String> = emptySet()
 
-    /** The SAF backup runner, built on first use and shut down with the activity. */
+    /** The SAF backup runner, started here for journal recovery and shut down with the activity. */
     private var backupCoordinatorInstance: BackupCoordinator? = null
 
     /**
@@ -164,8 +165,7 @@ class SettingsHostActivity : Activity() {
         }
 
     override fun attachBaseContext(newBase: Context) {
-        // Tatar is the app's UI default (see AppLocale): Russian and Tatar systems
-        // resolve on their own, everything else is wrapped into Tatar here.
+        // Apply the app locale policy before the activity loads its resources.
         super.attachBaseContext(AppLocale.wrap(newBase))
     }
 
@@ -199,6 +199,8 @@ class SettingsHostActivity : Activity() {
         AudioAndHapticFeedbackManager.init(this)
         RichInputMethodManager.init(this)
         richImm = RichInputMethodManager.getInstance()
+        // A process may have died between two import mutations; restore its journaled old state.
+        backupCoordinator()
 
         scrollView = findViewById(R.id.settings_scroll)
         contentView = findViewById(R.id.settings_content)
@@ -429,6 +431,8 @@ class SettingsHostActivity : Activity() {
                 if (isFinishing || isDestroyed) return@importFrom
                 val messageRes = when (result) {
                     BackupImportResult.IMPORTED -> R.string.backup_import_done
+                    BackupImportResult.IMPORTED_PRIVACY_CHANGED ->
+                        R.string.backup_import_privacy_changed
                     BackupImportResult.INVALID_FILE -> R.string.backup_import_failed_invalid
                     BackupImportResult.WRITE_FAILED -> R.string.backup_import_failed_write
                 }
@@ -439,7 +443,7 @@ class SettingsHostActivity : Activity() {
         }
     }
 
-    /** Lazily built, so an activity that never opens the backup screen never starts the worker. */
+    /** Returns the activity's one backup worker, creating it for recovery or a transfer. */
     private fun backupCoordinator(): BackupCoordinator {
         backupCoordinatorInstance?.let { return it }
         val created = BackupCoordinator(this, prefs)
@@ -466,22 +470,30 @@ class SettingsHostActivity : Activity() {
         var glideRow: View? = null
         rows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, true,
                 R.string.tatar_suggestions, R.string.tatar_suggestions_summary) { checked ->
-            // Rows disabled here get no disabledReason, so until the screen is rebuilt they
-            // ignore taps instead of explaining why they are dimmed.
             personalDictionaryRow?.let {
-                setRowEnabled(it, checked && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY))
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY),
+                        disabledReason(isRestricted(Settings.PREF_PERSONAL_DICTIONARY),
+                                R.string.row_needs_suggestions))
             }
             incognitoRow?.let {
-                setRowEnabled(it, checked && !isRestricted(Settings.PREF_INCOGNITO_MODE))
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_INCOGNITO_MODE),
+                        disabledReason(isRestricted(Settings.PREF_INCOGNITO_MODE),
+                                R.string.row_needs_suggestions))
             }
             autocorrectRow?.let {
-                setRowEnabled(it, checked && !isRestricted(Settings.PREF_TATAR_AUTOCORRECT))
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_TATAR_AUTOCORRECT),
+                        disabledReason(isRestricted(Settings.PREF_TATAR_AUTOCORRECT),
+                                R.string.row_needs_suggestions))
             }
             emojiSuggestRow?.let {
-                setRowEnabled(it, checked && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS))
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
+                        disabledReason(isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
+                                R.string.row_needs_suggestions))
             }
             fourthCellRow?.let {
-                setRowEnabled(it, checked && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL))
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
+                        disabledReason(isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
+                                R.string.row_needs_suggestions))
             }
             glideRow?.let {
                 // Glide typing does not depend on the master switch; only the MDM restriction
@@ -544,7 +556,9 @@ class SettingsHostActivity : Activity() {
                 R.string.show_language_switch_key,
                 R.string.show_language_switch_key_summary) { checked ->
             imeSwitchRow?.let {
-                setRowEnabled(it, checked && !isRestricted(Settings.PREF_ENABLE_IME_SWITCH))
+                setRowEnabled(it, checked && !isRestricted(Settings.PREF_ENABLE_IME_SWITCH),
+                        disabledReason(isRestricted(Settings.PREF_ENABLE_IME_SWITCH),
+                                R.string.row_needs_language_switch))
             }
         })
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
@@ -644,7 +658,7 @@ class SettingsHostActivity : Activity() {
                 }))
 
         val addRow = actionRow(R.string.personal_dictionary_add) {
-            showAddPersonalWordDialog(controller, subtypeIds)
+            showAddPersonalWordDialog(controller, enabledPersonalSubtypeIds())
         }
         addCard(listOf(addRow))
         setRowEnabled(addRow, Settings.readPersonalDictionaryEnabled(prefs)
@@ -975,18 +989,23 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
-    /** Subtypes whose words the screen shows: every enabled one, in the order the system lists them. */
+    /** Every supported personal-store language, including languages currently disabled. */
     private fun personalSubtypeIds(): List<String> =
-            richImm.getEnabledSubtypes(true).map { it.locale }.distinct()
+            DictionaryArtifactSpec.ALL.map { it.languageTag }.distinct()
+
+    /** Enabled languages eligible for a manually added word. */
+    private fun enabledPersonalSubtypeIds(): List<String> =
+            richImm.getEnabledSubtypes(true).map { it.locale }
+                    .filter { PersonalSubtypes.isSupported(it) }.distinct()
 
     /**
-     * The store a hand-added word goes into: the current keyboard language if it has a personal
-     * dictionary, otherwise the first enabled subtype that does. The screen lists every language
-     * separately, so a wrong guess stays visible and fixable.
+     * The store a hand-added word goes into: the current keyboard language if it is enabled and
+     * supported, otherwise the first enabled supported language.
      */
     private fun targetSubtypeForAddedWord(subtypeIds: List<String>): String? {
         val current = richImm.currentSubtype?.locale
-        if (current != null && PersonalSubtypes.alphabetFor(current) != null) return current
+        if (current != null && current in subtypeIds
+                && PersonalSubtypes.alphabetFor(current) != null) return current
         return subtypeIds.firstOrNull { PersonalSubtypes.alphabetFor(it) != null }
     }
 
@@ -1282,12 +1301,9 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * The "Text shortcuts" screen: the user's own (shortcut → expansion) pairs, one row each
-     * (expansion as the title, shortcut as the summary), an "Add shortcut…" row and a delete action
-     * per row. Fully usable with every learning switch off: the pairs are managed content, not
-     * learned content, and removing them must always be possible. The store is read only through
-     * the published snapshot of its process-wide owner (file work runs on the personal-store
-     * worker); an unreadable store (device locked, file moved aside) publishes an empty snapshot.
+     * The "Text shortcuts" screen: each row opens a prefilled editor, with deletion as a separate
+     * confirmed action. The pairs are managed content, so editing and removal remain available
+     * with every learning switch off. The list reads the store's published snapshot.
      */
     private fun buildTextShortcutsScreen() {
         val controller = TextShortcutsScreenController(this)
@@ -1295,7 +1311,7 @@ class SettingsHostActivity : Activity() {
 
         addCard(listOf(textRow(getString(R.string.text_shortcuts_intro))))
         addCard(listOf(actionRow(R.string.text_shortcuts_add) {
-            showAddTextShortcutDialog(controller)
+            showTextShortcutDialog(controller)
         }))
 
         if (pairs.isEmpty) {
@@ -1305,19 +1321,23 @@ class SettingsHostActivity : Activity() {
         val rows = ArrayList<View>()
         for (index in 0 until pairs.size) {
             val shortcut = pairs.shortcutAt(index)
-            rows.add(linkRow(pairs.expansionAt(index), shortcut) {
-                showDeleteTextShortcutDialog(controller, shortcut)
+            val expansion = pairs.expansionAt(index)
+            rows.add(linkRow(expansion, shortcut) {
+                showTextShortcutDialog(controller, shortcut, expansion)
             }.also { it.findViewById<View>(R.id.row_chevron).visibility = View.GONE })
         }
         addCard(rows)
     }
 
     /**
-     * The add dialog: one field for the shortcut, one for the expansion. Both carry the private
-     * input flags, like the personal-dictionary fields, and the dialog window is secured for the
-     * same reason.
+     * Adds a pair or edits the selected pair's expansion. Both fields carry the private input
+     * flags, and the dialog window is secured because it contains the user's own text.
      */
-    private fun showAddTextShortcutDialog(controller: TextShortcutsScreenController) {
+    private fun showTextShortcutDialog(
+            controller: TextShortcutsScreenController,
+            originalShortcut: String? = null,
+            originalExpansion: String? = null) {
+        val editing = originalShortcut != null && originalExpansion != null
         val column = LinearLayout(this)
         column.orientation = LinearLayout.VERTICAL
         val shortcutField =
@@ -1328,28 +1348,70 @@ class SettingsHostActivity : Activity() {
         applyPrivateInputFlags(expansionField)
         shortcutField.setHint(R.string.text_shortcuts_shortcut_hint)
         expansionField.setHint(R.string.text_shortcuts_expansion_hint)
+        if (editing) {
+            shortcutField.setText(originalShortcut)
+            expansionField.setText(originalExpansion)
+            // Expansion editing cannot accidentally rename or remove a second pair.
+            shortcutField.isEnabled = false
+        }
         column.addView(shortcutField)
         column.addView(expansionField)
         currentDialog?.dismiss()
-        currentDialog = AlertDialog.Builder(this)
-                .setTitle(R.string.text_shortcuts_add_title)
+        val builder = AlertDialog.Builder(this)
+                .setTitle(if (editing) R.string.text_shortcuts_edit_title
+                        else R.string.text_shortcuts_add_title)
                 .setView(column)
                 .setPositiveButton(R.string.text_shortcuts_add_action) { _, _ ->
-                    val accepted = controller.addPair(
-                            shortcutField.text.toString(), expansionField.text.toString()) { saved ->
-                        afterTextShortcutMutation(saved, R.string.text_shortcuts_save_failed)
-                    }
-                    if (!accepted) {
-                        Toast.makeText(this, R.string.text_shortcuts_add_rejected,
-                                Toast.LENGTH_SHORT).show()
-                    }
+                    saveTextShortcut(controller, shortcutField.text.toString(),
+                            expansionField.text.toString(), replaceExisting = editing)
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+        if (editing) {
+            builder.setNeutralButton(R.string.text_shortcuts_delete) { _, _ ->
+                showDeleteTextShortcutDialog(controller, requireNotNull(originalShortcut))
+            }
+        }
+        currentDialog = builder.create().also { dialog ->
+            DialogUtils.filterObscuredTouches(dialog)
+            DialogUtils.securePersonalContent(dialog)
+            dialog.show()
+        }
+    }
+
+    /** Starts a write only after any required replacement confirmation. */
+    private fun saveTextShortcut(
+            controller: TextShortcutsScreenController,
+            shortcut: String,
+            expansion: String,
+            replaceExisting: Boolean) {
+        val result = controller.addPair(shortcut, expansion, replaceExisting) { saved ->
+            afterTextShortcutMutation(saved, R.string.text_shortcuts_save_failed)
+        }
+        when (result) {
+            TextShortcutSaveResult.INVALID -> Toast.makeText(this,
+                    R.string.text_shortcuts_add_rejected, Toast.LENGTH_SHORT).show()
+            TextShortcutSaveResult.CONFIRM_REPLACEMENT ->
+                showReplaceTextShortcutDialog(controller, shortcut, expansion)
+            TextShortcutSaveResult.NO_CHANGE ->
+                afterTextShortcutMutation(true, R.string.text_shortcuts_save_failed)
+            TextShortcutSaveResult.WRITE_STARTED -> Unit
+        }
+    }
+
+    /** Confirms replacing the expansion already stored for the normalized shortcut. */
+    private fun showReplaceTextShortcutDialog(
+            controller: TextShortcutsScreenController, shortcut: String, expansion: String) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.text_shortcuts_replace_title)
+                .setMessage(getString(R.string.text_shortcuts_replace_confirm, shortcut.trim()))
+                .setPositiveButton(R.string.text_shortcuts_replace_action) { _, _ ->
+                    saveTextShortcut(controller, shortcut, expansion, replaceExisting = true)
                 }
                 .setNegativeButton(android.R.string.cancel, null)
                 .create()
                 .also { dialog ->
                     DialogUtils.filterObscuredTouches(dialog)
-                    // The fields take the user's own texts by hand: the dialog's own window needs
-                    // FLAG_SECURE, because the activity-wide one does not cover dialog windows.
                     DialogUtils.securePersonalContent(dialog)
                     dialog.show()
                 }

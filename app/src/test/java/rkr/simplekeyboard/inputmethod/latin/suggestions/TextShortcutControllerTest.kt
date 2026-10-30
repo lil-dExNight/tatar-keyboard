@@ -182,6 +182,7 @@ class TextShortcutControllerTest {
         val sink = RecordingSink()
         val pairSink = RecordingPairSink()
         val shortcuts = mutableMapOf<String, String>()
+        var keyguardLocked = false
 
         /** Every pair the persisted refused-corrections sink was told; must stay empty here. */
         val refused = mutableListOf<Pair<String, String>>()
@@ -198,6 +199,7 @@ class TextShortcutControllerTest {
         init {
             controller.setCompletionSink(sink)
             controller.setPairCompletionSink(pairSink)
+            controller.setKeyguardGate(KeyguardGate { keyguardLocked })
             controller.setShortcutSource(TextShortcutSource { word -> shortcuts[word] })
             controller.setRefusedCorrectionSink(RefusedCorrectionSink { typedWord, replacement ->
                 refused.add(typedWord to replacement)
@@ -458,6 +460,37 @@ class TextShortcutControllerTest {
 
         assertTrue(h.sink.completions.isEmpty())
         assertEquals(listOf("Татарстан" to "дөнья"), h.pairSink.pairs)
+    }
+
+    @Test
+    fun aMidSessionLockBlocksShortcutExpansion() {
+        val h = Harness()
+        h.start()
+        h.shortcuts["тк"] = "Татарстан"
+        h.typeWord("тк")
+
+        h.keyguardLocked = true
+        h.separator(' ')
+
+        assertEquals("тк ", h.editor.before)
+        assertTrue(h.editor.edits.isEmpty())
+        assertTrue(h.sink.completions.isEmpty())
+    }
+
+    @Test
+    fun aShortcutCellPaintedBeforeLockCannotCommitAfterIt() {
+        val h = Harness()
+        h.start()
+        h.shortcuts["тк"] = "Татарстан"
+        h.typeWord("тк")
+
+        h.keyguardLocked = true
+        h.tap("Татарстан")
+        h.keyguardLocked = false
+        h.tap("Татарстан")
+
+        assertEquals("тк", h.editor.before)
+        assertTrue(h.editor.edits.isEmpty())
     }
 
     @Test

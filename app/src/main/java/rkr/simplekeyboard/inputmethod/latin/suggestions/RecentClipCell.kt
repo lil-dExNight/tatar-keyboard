@@ -16,6 +16,11 @@
 
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
+/** Schedules clip expiry on the UI thread; the generation check lives in [RecentClipCell]. */
+internal fun interface RecentClipExpiryScheduler {
+    fun schedule(delayMillis: Long, task: Runnable)
+}
+
 /**
  * The in-memory holder behind the strip's recent-clip cell: the one freshest text clip the system
  * clipboard held while the keyboard's input view was shown, with the moment it was set.
@@ -28,11 +33,14 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
  * `ClipboardManager` listener lives in LatinIME.
  */
 internal class RecentClipCell(
+    private val scheduler: RecentClipExpiryScheduler? = null,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
     /** The full clip text as offered, or null when there is nothing fresh to offer. */
     private var clipText: String? = null
     private var setAtMillis: Long = 0L
+    private var generation = 0L
+    internal var onExpired: () -> Unit = {}
 
     /**
      * Records the clipboard's new state: [text] is the clip's plain text (null or blank when the
@@ -40,16 +48,18 @@ internal class RecentClipCell(
      * clip timestamp where available, the event's own moment otherwise).
      */
     fun noteClip(text: String?, setAtMillis: Long) {
-        if (text.isNullOrBlank()) {
-            clear()
-            return
-        }
+        clear()
+        if (text.isNullOrBlank()) return
+        val age = clock() - setAtMillis
+        if (age < 0 || age > TTL_MILLIS) return
         clipText = text
         this.setAtMillis = setAtMillis
+        scheduleExpiry(generation, TTL_MILLIS - age + 1)
     }
 
-    /** Drops the held clip: the input view hid, or the cell's tap consumed it. */
+    /** Drops the held clip and invalidates any timer that belongs to it. */
     fun clear() {
+        generation++
         clipText = null
         setAtMillis = 0L
     }
@@ -84,8 +94,27 @@ internal class RecentClipCell(
     private fun freshText(): String? {
         val text = clipText ?: return null
         val age = clock() - setAtMillis
-        if (age < 0 || age > TTL_MILLIS) return null
+        if (age < 0 || age > TTL_MILLIS) {
+            clear()
+            return null
+        }
         return text
+    }
+
+    private fun scheduleExpiry(expectedGeneration: Long, delayMillis: Long) {
+        scheduler?.schedule(delayMillis, Runnable { expire(expectedGeneration) })
+    }
+
+    private fun expire(expectedGeneration: Long) {
+        if (generation != expectedGeneration) return
+        val age = clock() - setAtMillis
+        if (age in 0..TTL_MILLIS) {
+            // A wall-clock correction can make the real deadline later than the timer's deadline.
+            scheduleExpiry(expectedGeneration, TTL_MILLIS - age + 1)
+            return
+        }
+        clear()
+        onExpired()
     }
 
     companion object {

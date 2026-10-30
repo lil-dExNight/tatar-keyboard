@@ -34,7 +34,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictiona
  * The sentence-start band: at the start of the field, or after sentence-ending punctuation and
  * space(s), the slot shows the top of ITS language's sentence-start table, answered synchronously
  * from the loaded table with NO engine request (a sentence boundary resets the context: no bigram
- * successors, no after-word forms, no fallback). The cells are shown AND committed capitalized; the
+ * successors, no learned pairs, no fallback). The cells are shown AND committed capitalized; the
  * table is per language through the artifact registry, so the Russian slot answers from the Russian
  * table; non-final punctuation (`, ; :`) keeps the word before it as an ordinary NEXT_WORD context,
  * pinned end-to-end through the REAL extraction. A subtype with no table stays silent.

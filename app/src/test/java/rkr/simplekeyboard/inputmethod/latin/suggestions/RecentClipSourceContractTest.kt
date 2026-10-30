@@ -83,7 +83,9 @@ class RecentClipSourceContractTest {
         // appear. The one field is the cell.
         val controller = File(sourceRoot(),
             "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt").readText()
-        assertTrue(controller.contains("private var recentClip = RecentClipCell()"))
+        assertTrue(controller.contains("private var recentClip = RecentClipCell(recentClipScheduler)"))
+        assertTrue(controller.contains(
+            "RecentClipExpiryScheduler { delayMillis, task -> uiHandler.postDelayed(task, delayMillis) }"))
         assertFalse(controller.contains("clipDirectory"))
     }
 
@@ -100,6 +102,26 @@ class RecentClipSourceContractTest {
         assertTrue(tap.contains("keyguardGate.isLocked()"))
         // The tap re-checks the clip's freshness before committing: a stale cell is a dead cell.
         assertTrue(tap.contains("recentClip.fullTextForCommit()"))
+    }
+
+    @Test
+    fun oversizedClipsAreRejectedBeforeMaterializationAndBinderCommit() {
+        val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
+        val captureGuard = capture.indexOf(
+            "if (!RichInputConnection.shouldCommitPasteDirectly(text))")
+        val materialization = capture.indexOf("text.toString()")
+        assertTrue("the clipboard CharSequence is sized before it becomes a String",
+            captureGuard in 0 until materialization)
+
+        val inputLogic = File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java").readText()
+        val commit = methodBody(inputLogic, "public boolean commitClipText(final String text)")
+        val commitGuard = commit.indexOf(
+            "if (!RichInputConnection.shouldCommitPasteDirectly(text))")
+        val batch = commit.indexOf("mConnection.beginBatchEdit();")
+        val binderCommit = commit.indexOf("mConnection.commitText(")
+        assertTrue("an oversized clip cannot open a batch or reach commitText",
+            commitGuard in 0 until batch && batch < binderCommit)
     }
 
     @Test

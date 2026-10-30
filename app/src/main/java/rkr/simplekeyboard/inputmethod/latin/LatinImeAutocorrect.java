@@ -16,9 +16,11 @@
 
 package rkr.simplekeyboard.inputmethod.latin;
 
+import android.view.inputmethod.EditorInfo;
 import rkr.simplekeyboard.inputmethod.event.Event;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils;
+import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils;
 
 /**
  * The separator-time hooks of {@link LatinIME#onEvent}, which run before the input logic sees the
@@ -40,17 +42,21 @@ final class LatinImeAutocorrect {
      * commit, and the separator then takes the ordinary path (auto-space, double-space, shift).
      *
      * <p>The code point must be a word separator of the current layout and an autocorrect
-     * separator ({@link TatarWordUtils#isAutocorrectSeparator}: space or punctuation). Enter and Tab
-     * are left alone. The controller decides whether anything is replaced. The text
-     * shortcut (the user's own pair) is tried before the statistical correction.
+     * separator ({@link TatarWordUtils#isAutocorrectSeparator}: space or punctuation), or Enter
+     * with {@link EditorInfo#IME_ACTION_NONE}, which the input logic turns into a real newline.
+     * Other editor actions and Tab are left alone. The controller decides whether anything is
+     * replaced. The text shortcut (the user's own pair) is tried before the statistical correction.
      */
     static void maybeAutocorrectTatarWord(final LatinIME ime, final Event event) {
         if (ime.mSuggestionsController == null) {
             return;
         }
         final int codePoint = event.mCodePoint;
-        if (codePoint == Event.NOT_A_CODE_POINT
-                || !TatarWordUtils.isAutocorrectSeparator(codePoint)
+        if (codePoint == Event.NOT_A_CODE_POINT) {
+            return;
+        }
+        final boolean insertsNewline = codePoint == Constants.CODE_ENTER && enterInsertsNewline(ime);
+        if ((!TatarWordUtils.isAutocorrectSeparator(codePoint) && !insertsNewline)
                 || !ime.mSettings.getCurrent().isWordSeparator(codePoint)) {
             return;
         }
@@ -58,6 +64,14 @@ final class LatinImeAutocorrect {
             return;
         }
         ime.mSuggestionsController.maybeAutocorrectBeforeSeparator(codePoint);
+    }
+
+    /** True only where the input logic's Enter branch commits a newline instead of an action. */
+    private static boolean enterInsertsNewline(final LatinIME ime) {
+        final EditorInfo editorInfo = ime.getCurrentInputEditorInfo();
+        return editorInfo != null
+                && InputTypeUtils.getImeOptionsActionIdFromEditorInfo(editorInfo)
+                        == EditorInfo.IME_ACTION_NONE;
     }
 
     /**

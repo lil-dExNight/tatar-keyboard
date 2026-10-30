@@ -87,7 +87,8 @@ class MotionPolicySourceContractTest {
         assertTrue(point.contains("mGlideMotionPolicy = MotionPolicy.of(getContext());"))
         // The live trail under the finger is feedback, not decoration: the feed and its
         // invalidate stay outside the gate.
-        assertTrue(point.contains("mGlideTrail.addPoint(x, y, (float) eventTime);"))
+        assertTrue(point.contains(
+            "mGlideTrail.addPoint(x, y, (float) (eventTime - mGlideTrailStartTime));"))
         assertFalse("the feed itself is never gated", point.contains("getAnimationsEnabled"))
     }
 
@@ -97,7 +98,7 @@ class MotionPolicySourceContractTest {
             .substringBefore("protected void onAttachedToWindow()")
         val gate = end.indexOf("!motionPolicy.getAnimationsEnabled()")
         val clear = end.indexOf("mGlideTrail.clear();")
-        val fade = end.indexOf("mGlideTrail.startFadeOut((float) SystemClock.uptimeMillis());")
+        val fade = end.indexOf("mGlideTrail.startFadeOut(")
         assertTrue("the lift consults the cached policy", gate >= 0)
         assertTrue("a zero scale clears the ring instantly", clear > gate)
         assertTrue("otherwise the fade runs as before", fade > clear)

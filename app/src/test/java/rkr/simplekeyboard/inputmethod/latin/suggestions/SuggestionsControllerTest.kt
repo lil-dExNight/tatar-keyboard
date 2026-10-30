@@ -29,6 +29,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupToken
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ManualEngineExecutor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ResultHandoff
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 
@@ -142,6 +143,7 @@ class SuggestionsControllerTest {
         var nextToken: Any? = TOKEN
         var isCurrentResult: Boolean = true
         var finishCount = 0
+        var prewarmCount = 0
         var destroyCount = 0
         var destroyResult: Boolean = true
 
@@ -174,6 +176,10 @@ class SuggestionsControllerTest {
 
         override fun finishInput() {
             finishCount++
+        }
+
+        override fun prewarmGlideIndex() {
+            prewarmCount++
         }
 
         override fun destroy(timeoutMs: Long): Boolean {
@@ -236,7 +242,10 @@ class SuggestionsControllerTest {
         override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean = true
     }
 
-    private class Harness(dictionaryReady: Boolean = true) {
+    private class Harness(
+        dictionaryReady: Boolean = true,
+        oneHandedSide: Int = OneHandedMode.SIDE_OFF,
+    ) {
         val strip = FakeStrip()
         val editor = FakeEditor()
         val engine = FakeEngine()
@@ -244,6 +253,7 @@ class SuggestionsControllerTest {
         var capturedCallback: ResultCallback? = null
         var factoryCalls = 0
         var factoryResult: EngineHandle? = engine
+        var dockSide = oneHandedSide
 
         val controller = SuggestionsController(
             strip,
@@ -256,6 +266,7 @@ class SuggestionsControllerTest {
             },
             executor,
             dictionaryReady,
+            { dockSide },
         )
     }
 
@@ -285,6 +296,20 @@ class SuggestionsControllerTest {
         assertEquals(1, h.factoryCalls)
         assertNotNull(h.strip.listener)
         assertNotNull(h.capturedCallback)
+    }
+
+    @Test
+    fun glideIndexPrewarmsAtArmingWithoutStartingLookupOrPrewarmingAtStart() {
+        val h = Harness()
+        h.controller.setGlideGate(GlideGate { true })
+        h.controller.onStartInput(eligible = true)
+
+        assertEquals(0, h.engine.prewarmCount)
+        h.controller.onGlideArmed()
+
+        assertEquals(1, h.engine.prewarmCount)
+        assertTrue(h.engine.requestedPrefixes.isEmpty())
+        assertTrue(h.engine.requestedContexts.isEmpty())
     }
 
     @Test
@@ -435,6 +460,53 @@ class SuggestionsControllerTest {
         assertEquals(listOf("сүзләр", "сүзлек", "сүзсез", "сүзчән"), h.strip.shown.single())
         // The push reached the strip surface too.
         assertEquals(SuggestionStripState.CELL_COUNT, h.strip.visibleCells)
+    }
+
+    @Test
+    fun rankedBandsMirrorOnlyForTheRightDockAtBothVisibleCounts() {
+        val candidates = listOf("сүзләр", "сүзлек", "сүзсез", "сүзчән")
+        for (cells in listOf(
+            SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT,
+            SuggestionStripState.CELL_COUNT,
+        )) {
+            for (side in listOf(OneHandedMode.SIDE_LEFT, OneHandedMode.SIDE_RIGHT)) {
+                val h = Harness(oneHandedSide = side)
+                h.controller.setStripCellCount(cells)
+                h.controller.onStartInput(eligible = true)
+                h.editor.word = "сүз"
+                h.controller.onTextChanged()
+
+                h.capturedCallback!!.onResult(
+                    FakeEngine.TOKEN,
+                    candidates,
+                    LookupKind.PREFIX,
+                )
+
+                val ranked = candidates.take(cells)
+                val physical = if (side == OneHandedMode.SIDE_RIGHT) ranked.reversed() else ranked
+                assertEquals(
+                    "cells=$cells side=$side",
+                    physical + List(SuggestionStripState.CELL_COUNT - cells) { null },
+                    h.strip.shown.single(),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun rightDockPutsALoneLeadingCandidateInTheThumbCell() {
+        val h = Harness(oneHandedSide = OneHandedMode.SIDE_RIGHT)
+        h.controller.onStartInput(eligible = true)
+        h.editor.word = "сүз"
+        h.controller.onTextChanged()
+
+        h.capturedCallback!!.onResult(
+            FakeEngine.TOKEN,
+            listOf("сүзләр"),
+            LookupKind.PREFIX,
+        )
+
+        assertEquals(listOf("", null, "сүзләр", null), h.strip.shown.single())
     }
 
     @Test
@@ -1563,12 +1635,12 @@ class SuggestionsControllerTest {
         assertEquals(1, h.strip.shown.size)
     }
 
-    // --- After-word forms through the real engine ------------------------------------------------
+    // --- Next-word continuations through the real engine ------------------------------------------
     //
-    // The merge itself is pinned in CompositePrefixComputerTest and TatarAfterWordFormsTest; what
-    // is proven here is the full path the user sees: committed word + space -> engine worker ->
-    // strip cells (bigram successors first, then the forms) -> tap commits through the NEXT_WORD
-    // insertion path. The handle drives a real LatestOnlyPrefixEngine over a fixture dictionary and
+    // The merge itself is pinned in CompositePrefixComputerTest; what is proven here is the full
+    // path the user sees: committed word + space -> engine worker -> bigram successors in the strip
+    // -> tap commits through the NEXT_WORD insertion path. The handle drives a real
+    // LatestOnlyPrefixEngine over a fixture dictionary and
     // a fixture bigram table, with the executor run inline so the answer lands synchronously — a
     // shape the controller already digests (SuggestionsControllerBigramAttachTest).
 
@@ -1598,18 +1670,10 @@ class SuggestionsControllerTest {
         h: Harness,
         bigramSuccessors: List<String>,
     ): RealNextWordEngineHandle {
-        val dictionary = EngineTestFixtures.index(
-            listOf(
-                "татар" to 134_412L,
-                "татарлар" to 12_085L,
-                "татарның" to 2_752L,
-                "татарча" to 9_093L,
-            ),
-        )
+        val dictionary = EngineTestFixtures.index(listOf("татар" to 134_412L))
         val computer = CompositePrefixComputer(
             dictionary,
             PersonalCandidateSource.EMPTY,
-            TatarSuffixRules.createAfterWordForms(dictionary),
         )
         computer.attachBigramSource(
             EngineTestFixtures.bigramIndex(listOf("татар" to bigramSuccessors)),
@@ -1629,7 +1693,7 @@ class SuggestionsControllerTest {
     }
 
     @Test
-    fun committedTatarWordPlusSpaceOffersItsInflectionsAfterTheBigramSuccessors() {
+    fun committedTatarWordPlusSpaceOffersItsBigramSuccessors() {
         val h = Harness()
         h.factoryResult = realTatarNextWordEngine(h, listOf("белән"))
         h.controller.onStartInput(eligible = true)
@@ -1638,18 +1702,15 @@ class SuggestionsControllerTest {
         h.editor.nextWordContext = "татар"
         h.controller.onTextChanged()
 
-        // The bigram successor keeps the lead; the strip cells it leaves free carry the forms of
-        // татар, frequency-ranked (12 085 > 9 093 > the unshown татарның 2 752).
-        assertEquals(listOf("белән", "татарлар", "татарча", null), h.strip.shown.last())
+        assertEquals(listOf("белән", null, null, null), h.strip.shown.last())
 
-        // A form cell commits exactly like a predicted word: the NEXT_WORD insertion path.
-        h.strip.listener!!.onTap("татарча")
-        assertEquals(listOf("татар" to "татарча"), h.editor.predictedCommits)
+        h.strip.listener!!.onTap("белән")
+        assertEquals(listOf("татар" to "белән"), h.editor.predictedCommits)
         assertTrue(h.editor.commits.isEmpty())
     }
 
     @Test
-    fun bigramSuccessorsTakingAllThreeCellsLeaveNoRoomForForms() {
+    fun bigramSuccessorsTakingAllThreeCellsAreShownInOrder() {
         val h = Harness()
         // The fourth successor is composed but not shown at the default three cells.
         h.factoryResult = realTatarNextWordEngine(h, listOf("белән", "дип", "туры", "үзем"))

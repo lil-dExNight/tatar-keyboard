@@ -27,9 +27,25 @@ import org.junit.Test
  */
 class RecentClipCellTest {
 
+    private class FakeScheduler : RecentClipExpiryScheduler {
+        val tasks = mutableListOf<Runnable>()
+
+        override fun schedule(delayMillis: Long, task: Runnable) {
+            tasks.add(task)
+        }
+
+        fun run(index: Int) {
+            tasks[index].run()
+        }
+    }
+
     private class Harness {
         var now = 10_000_000L
-        val cell = RecentClipCell { now }
+        val scheduler = FakeScheduler()
+        var expirations = 0
+        val cell = RecentClipCell(scheduler) { now }.apply {
+            onExpired = { expirations++ }
+        }
     }
 
     @Test
@@ -127,5 +143,39 @@ class RecentClipCellTest {
         h.cell.noteClip("икенче", h.now)
 
         assertEquals("икенче", h.cell.offerText())
+    }
+
+    @Test
+    fun theExpiryTimerClearsTheClipAndNotifiesTheStrip() {
+        val h = Harness()
+        h.cell.noteClip("сәләм", h.now)
+        h.now += RecentClipCell.TTL_MILLIS + 1
+
+        h.scheduler.run(0)
+
+        assertNull(h.cell.offerText())
+        assertNull(h.cell.fullTextForCommit())
+        assertEquals(1, h.expirations)
+    }
+
+    @Test
+    fun anOlderTimerCannotClearANewerClipGeneration() {
+        val h = Harness()
+        val firstSetAt = h.now
+        h.cell.noteClip("беренче", firstSetAt)
+        h.now += 1_000L
+        h.cell.noteClip("икенче", h.now)
+
+        h.now = firstSetAt + RecentClipCell.TTL_MILLIS + 1
+        h.scheduler.run(0)
+
+        assertEquals("икенче", h.cell.offerText())
+        assertEquals(0, h.expirations)
+
+        h.now += 1_000L
+        h.scheduler.run(1)
+
+        assertNull(h.cell.fullTextForCommit())
+        assertEquals(1, h.expirations)
     }
 }

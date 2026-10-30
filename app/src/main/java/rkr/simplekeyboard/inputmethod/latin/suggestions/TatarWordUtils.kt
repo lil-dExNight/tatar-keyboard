@@ -172,14 +172,13 @@ object TatarWordUtils {
     /**
      * True when the cursor sits where a new sentence begins: the text before it is the start of
      * the field, ends in a line break followed by zero or more U+0020, or ends in a run of
-     * sentence-ending punctuation ('.', '!', '?', '…') followed by one or more U+0020.
+     * sentence-ending punctuation ('.', '!', '?', '…'), optional closing quotes or brackets, and
+     * one or more U+0020.
      *
      * A detector only: the bigram table is still never consulted at these positions (a sentence
-     * boundary resets the context). Anything else before the space run (a word, a comma, a quote,
-     * a closing parenthesis) is not a sentence start. The punctuation run must directly follow a
-     * letter ("сүз. ", "нәрсә?! ") or open the field: "5. " is a number, not a sentence end.
-     * Closing quotes after the period ("сүз.» ") are a known miss; over-matching would offer
-     * sentence starts mid-sentence, which is worse.
+     * boundary resets the context). Anything else before the space run (a word, a comma, or an
+     * opening quote) is not a sentence start. The punctuation run must directly follow a letter
+     * ("сүз. ", "нәрсә?! ") or open the field: "5. " and "5.» " are numbers, not sentence ends.
      *
      * [cacheReachedTextStart] works as in [extractNextWordContext]: an empty or all-spaces cache,
      * and a punctuation run touching index 0, count only when the cache provably reached the text
@@ -211,10 +210,16 @@ object TatarWordUtils {
         if (textBeforeCursor[separatorStart - 1] == '\n') return true
         if (separatorStart == length) return false // no trailing U+0020 run at all
         var punctStart = separatorStart
+        while (punctStart > 0) {
+            val codePoint = Character.codePointBefore(textBeforeCursor, punctStart)
+            if (!isSentenceClosingPunctuationAt(textBeforeCursor, punctStart, codePoint)) break
+            punctStart -= Character.charCount(codePoint)
+        }
+        val closingEnd = punctStart
         while (punctStart > 0 && isSentenceEndingPunctuation(textBeforeCursor[punctStart - 1])) {
             punctStart--
         }
-        if (punctStart == separatorStart) return false // the space run follows no sentence end
+        if (punctStart == closingEnd) return false // closers alone are not a sentence end
         if (punctStart == 0) return cacheReachedTextStart // the run opens the field, or hides a cut
         return Character.isLetter(textBeforeCursor[punctStart - 1])
     }
@@ -242,6 +247,11 @@ object TatarWordUtils {
         return isSentenceStartContext(
             textBeforeCursor.subSequence(0, end - word.length), cacheReachedTextStart)
     }
+
+    /** A closing quote or bracket that may follow sentence-ending punctuation. */
+    private fun isSentenceClosingPunctuationAt(text: CharSequence, end: Int, codePoint: Int): Boolean =
+        codePoint == ')'.code || codePoint == ']'.code || codePoint == '}'.code ||
+            isClosingQuoteAt(text, end)
 
     /** The four sentence-ending characters: '.', '!', '?', '…' (U+2026). */
     private fun isSentenceEndingPunctuation(ch: Char): Boolean =
@@ -483,9 +493,9 @@ object TatarWordUtils {
      * reason they hug it there.
      *
      * Enter and Tab are not separators here, although they arrive as code points ('\n', '\t')
-     * listed in `symbols_word_separators` ([Character.isWhitespace] would include them). Enter may
-     * perform an editor action, so a replacement just before it would edit a field being submitted,
-     * usually with no field left to undo in.
+     * listed in `symbols_word_separators` ([Character.isWhitespace] would include them). The event
+     * hook admits Enter separately only with `IME_ACTION_NONE`, where the input logic inserts a
+     * newline; Send, Done, Next, Search, other editor actions and Tab never replace a word.
      *
      * The caller also requires a word separator of the live layout
      * (`SettingsValues.isWordSeparator`); both conditions must hold.

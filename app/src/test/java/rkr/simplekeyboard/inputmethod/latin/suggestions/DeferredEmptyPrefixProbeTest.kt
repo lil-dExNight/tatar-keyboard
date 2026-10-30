@@ -316,6 +316,19 @@ class DeferredEmptyPrefixProbeTest {
     }
 
     @Test
+    fun learningOffSkipsTheProbeEvenWithALearningSinkInstalled() {
+        val h = newHarness()
+        h.controller.setCompletionLearningPredicate { false }
+        h.witnessBoundary()
+
+        h.type("үтәли")
+        h.endWord()
+
+        assertTrue(h.engine.events.none { it.startsWith("probe:") })
+        assertTrue(h.completions.isEmpty())
+    }
+
+    @Test
     fun withoutALearningSinkNoProbeEverRuns() {
         val h = newHarness(withSink = false)
         h.witnessBoundary()

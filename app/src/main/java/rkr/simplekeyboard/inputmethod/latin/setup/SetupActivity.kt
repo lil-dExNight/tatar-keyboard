@@ -108,8 +108,7 @@ class SetupActivity : Activity() {
     }
 
     override fun attachBaseContext(newBase: Context) {
-        // Tatar is the app's UI default (see AppLocale): Russian and Tatar systems
-        // resolve on their own, everything else is wrapped into Tatar here.
+        // Apply the app locale policy before the activity loads its resources.
         super.attachBaseContext(AppLocale.wrap(newBase))
     }
 

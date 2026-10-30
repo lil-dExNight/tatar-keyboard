@@ -32,7 +32,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
  * Contract of the bundled sentence-start table (`assets/dictionaries/tatar_sentstart_v1.txt`): the
  * frequency-ranked table of Tatar sentence-initial words built by `scripts/sentstart_pack.py`. This
  * test pins the data side the way `EmojiSuggestAssetTest` pins the emoji table: a `#` header
- * carrying the Leipzig attribution, `word<TAB>freq` rows sorted by (frequency desc, word asc),
+ * carrying the source attribution, `word<TAB>freq` rows sorted by (frequency desc, word asc),
  * every word in the Tatar alphabet and in the exact normalized form the dictionary is keyed by, and
  * — the packer's strict filter — every word present in the bundled Tatar dictionary. The record
  * count and the SHA-256 are pinned exactly: a data change must re-pin them.
@@ -80,7 +80,7 @@ class TatarSentStartAssetTest {
     }
 
     @Test
-    fun theHeaderCarriesTheLeipzigAttribution() {
+    fun theHeaderCarriesTheSourceAttribution() {
         val header = assetFile().readText().split('\n')
             .filter { it.startsWith("#") }
             .joinToString("\n")
@@ -88,6 +88,8 @@ class TatarSentStartAssetTest {
         assertTrue(header.contains("CC BY 4.0"))
         assertTrue(header.contains("tat_mixed_2015_1M"))
         assertTrue(header.contains("tat_web_2018_1M"))
+        assertTrue(header.contains("tt_conv_train90-sentences.txt"))
+        assertTrue(header.contains("listed ten times"))
     }
 
     @Test
@@ -163,6 +165,6 @@ class TatarSentStartAssetTest {
         // rebuilds it.
         const val EXPECTED_RECORD_COUNT = 64
         const val EXPECTED_ASSET_SHA256 =
-            "d050ebc983b5e203c95136f92000a531e6294aec1ff0feaf38ab4dd2aa9fa8a7"
+            "b4755e3376b6068fd85fdd829f461bc56d91a4f4ecfc0a7bd85f144c73540587"
     }
 }

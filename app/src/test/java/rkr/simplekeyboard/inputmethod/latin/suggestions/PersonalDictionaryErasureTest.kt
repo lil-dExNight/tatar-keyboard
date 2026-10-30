@@ -19,7 +19,6 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 import java.io.File
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
@@ -168,9 +167,9 @@ class PersonalDictionaryErasureTest {
 
     @Test
     fun erasingCoversEveryLanguageNotOnlyTheOneInView() {
-        // Erase-all takes the full list of subtypes and loops over it; the screen hands it every
-        // enabled subtype, not the active one. Asserted by source: the loop needs Context and cannot
-        // run off-device.
+        // Erase-all takes the full list of supported languages and loops over it, including
+        // languages currently disabled. Asserted by source: the loop needs Context and cannot run
+        // off-device.
         val controller = File(sourceRoot(),
             "java/rkr/simplekeyboard/inputmethod/latin/settings/PersonalDictionaryScreenController.kt")
             .readText()
@@ -186,9 +185,14 @@ class PersonalDictionaryErasureTest {
 
         val host = File(sourceRoot(),
             "java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt").readText()
-        assertTrue("the screen collects ALL enabled subtypes",
-            host.contains("richImm.getEnabledSubtypes(true).map { it.locale }.distinct()"))
-        assertFalse("not just the current one",
-            host.contains("richImm.getCurrentSubtype()"))
+        val screen = host.substringAfter("private fun buildPersonalDictionaryScreen()")
+            .substringBefore("private fun addPersonalQuarantineCards(")
+        assertTrue("the screen builds the erase target from every supported language",
+            screen.contains("val subtypeIds = personalSubtypeIds()"))
+        val eraseCall = screen.substringAfter("showErasePersonalDictionaryDialog(")
+            .substringBefore(")")
+        assertTrue("that complete list reaches erase-all", eraseCall.contains("subtypeIds"))
+        assertTrue("disabled languages are included too",
+            host.contains("DictionaryArtifactSpec.ALL.map { it.languageTag }.distinct()"))
     }
 }

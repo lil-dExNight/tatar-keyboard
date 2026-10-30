@@ -210,6 +210,7 @@ class AutocorrectControllerTest {
         val sink = RecordingSink()
         val pairSink = RecordingPairSink()
         var autocorrectEnabled = autocorrectOn
+        var keyguardLocked = false
 
         /** False reproduces a build that never calls the autocorrect entry points at all. */
         private val wired = wireAutocorrect
@@ -234,6 +235,7 @@ class AutocorrectControllerTest {
             controller.setCompletionSink(sink)
             controller.setPairCompletionSink(pairSink)
             controller.setAutocorrectGate { autocorrectEnabled }
+            controller.setKeyguardGate(KeyguardGate { keyguardLocked })
             if (wireRefused) {
                 controller.setRefusedCorrectionSink(RefusedCorrectionSink { typedWord, replacement ->
                     refusedCounts.merge(typedWord to replacement, 1, Int::plus)
@@ -307,6 +309,38 @@ class AutocorrectControllerTest {
         // word plus one separator. The auto-space of the tap path is the separator the user typed.
         assertEquals(tapped.editor.before, corrected.editor.before)
         assertEquals("китап ", corrected.editor.before)
+    }
+
+    @Test
+    fun aMidSessionLockBlocksTheSeparatorCorrection() {
+        val h = Harness()
+        h.start()
+        h.advise("китәп", "китап")
+        h.typeWord("китәп")
+
+        h.keyguardLocked = true
+        h.separator(' ')
+
+        assertEquals("китәп ", h.editor.before)
+        assertTrue(h.editor.edits.isEmpty())
+    }
+
+    @Test
+    fun aLockedBackspaceDoesNotRevertOrSaveTheUndoForLater() {
+        val h = Harness()
+        h.start()
+        h.advise("китәп", "китап")
+        h.typeWord("китәп")
+        h.separator(' ')
+
+        h.keyguardLocked = true
+        h.backspace()
+        assertEquals("китап", h.editor.before)
+        h.keyguardLocked = false
+        h.backspace()
+
+        assertEquals("кита", h.editor.before)
+        assertEquals(listOf("replace:китәп->китап"), h.editor.edits)
     }
 
     @Test
@@ -490,6 +524,21 @@ class AutocorrectControllerTest {
         h.backspace()
 
         assertEquals("китәп,", h.editor.before)
+    }
+
+    @Test
+    fun theUndoAlsoWorksAfterANewlineSeparator() {
+        val h = Harness()
+        h.start()
+        h.advise("китәп", "китап")
+        h.typeWord("китәп")
+        h.separator('\n')
+        assertEquals("китап\n", h.editor.before)
+
+        h.backspace()
+
+        assertEquals("китәп\n", h.editor.before)
+        assertEquals(listOf("replace:китәп->китап", "revert:китап\n->китәп\n"), h.editor.edits)
     }
 
     @Test

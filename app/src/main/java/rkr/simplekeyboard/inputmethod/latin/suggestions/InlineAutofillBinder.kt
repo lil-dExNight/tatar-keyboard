@@ -102,9 +102,8 @@ object InlineAutofillBinder {
     ): Boolean {
         val suggestions = response.inlineSuggestions ?: return false
         if (suggestions.isEmpty()) return false
-        // The sizes come from the word strip's width (0 before its first layout, in which case the
-        // display width stands in): the host itself is inflated by the show below and has no honest
-        // width to read yet.
+        // The sizes come from the strip's docked content width (0 before honest geometry exists,
+        // when the display width stands in): the host itself is inflated by the show below.
         val cells = InlineStripSpecs.cellSizesPx(
             InlineStripSpecs.effectiveStripWidthPx(
                 inputView.stripWidthPx,

@@ -116,6 +116,11 @@ public final class Constants {
     // Paste through the editor's own context-menu action, unlike CODE_PASTE which measures the
     // clip first: the keyboard never sees the clip data.
     public static final int CODE_PASTE_CONTEXT_MENU = -20;
+    // Keyboard-owned globe menu actions. These switch surfaces or layouts without editing text.
+    public static final int CODE_INPUT_METHOD_PICKER = -21;
+    public static final int CODE_ONE_HANDED_LEFT = -22;
+    public static final int CODE_ONE_HANDED_RIGHT = -23;
+    public static final int CODE_ONE_HANDED_FULL = -24;
 
     public static boolean isLetterCode(final int code) {
         return code >= CODE_SPACE;
@@ -141,6 +146,10 @@ public final class Constants {
         case CODE_CURSOR_LEFT: return "cursorLeft";
         case CODE_CURSOR_RIGHT: return "cursorRight";
         case CODE_PASTE_CONTEXT_MENU: return "pasteContextMenu";
+        case CODE_INPUT_METHOD_PICKER: return "inputMethodPicker";
+        case CODE_ONE_HANDED_LEFT: return "oneHandedLeft";
+        case CODE_ONE_HANDED_RIGHT: return "oneHandedRight";
+        case CODE_ONE_HANDED_FULL: return "oneHandedFull";
         case CODE_UNSPECIFIED: return "unspec";
         case CODE_TAB: return "tab";
         case CODE_ENTER: return "enter";

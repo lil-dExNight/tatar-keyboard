@@ -32,9 +32,12 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmo
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalMutationOutcome
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStores
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.TextShortcutStores
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidDurableFileOps
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -70,19 +73,25 @@ internal class BackupCoordinator(
     /** Writes the archive to the user-picked [uri]; [onFinished] arrives on the UI thread. */
     fun exportTo(uri: Uri, onFinished: (Boolean) -> Unit) {
         executor.execute {
+            var documentTouched = false
             val written = try {
                 if (!userUnlocked) {
                     false
                 } else {
                     val bytes = BackupTransfer.export(target)
-                    appContext.contentResolver.openOutputStream(uri, "w")?.use { output ->
-                        output.write(bytes)
-                    } != null
+                    if (bytes == null) {
+                        false
+                    } else {
+                        documentTouched = true
+                        appContext.contentResolver.openOutputStream(uri, "w")?.use { output ->
+                            output.write(bytes)
+                        } != null
+                    }
                 }
             } catch (_: Exception) {
                 false
             }
-            if (!written) {
+            if (!written && documentTouched) {
                 // A failed write may have left a partial document behind; remove it when the
                 // provider allows, so no truncated archive masquerades as a backup.
                 runCatching { DocumentsContract.deleteDocument(appContext.contentResolver, uri) }
@@ -138,10 +147,11 @@ internal class BackupCoordinator(
 
         override fun readPreferences(): Map<String, Any?> = HashMap(prefs.all)
 
-        override fun personalFileNames(): List<String> = try {
-            personalDirectory().list()?.toList() ?: emptyList()
-        } catch (_: Exception) {
-            emptyList()
+        override fun personalFileNames(): List<String> {
+            val directory = personalDirectory()
+            if (!directory.exists()) return emptyList()
+            return directory.list()?.toList()
+                ?: throw java.io.IOException("cannot list personal directory")
         }
 
         override fun readPersonalFile(fileName: String): ByteArray? = try {
@@ -208,6 +218,50 @@ internal class BackupCoordinator(
             return true
         }
 
+        override fun readImportJournal(): ByteArray? {
+            val file = importJournalFile()
+            if (!file.exists()) return null
+            if (!file.isFile || file.length() > BackupImportJournal.MAX_SERIALIZED_BYTES) {
+                throw IOException("cannot read import journal")
+            }
+            return file.readBytes()
+        }
+
+        override fun writeImportJournal(bytes: ByteArray): Boolean {
+            val directory = appContext.noBackupFilesDir
+            val temporary = File(directory, "${importJournalFile().name}.tmp")
+            return try {
+                if (temporary.exists() && !AndroidDurableFileOps.delete(temporary)) return false
+                FileOutputStream(temporary).use { output ->
+                    output.write(bytes)
+                    output.flush()
+                    AndroidDurableFileOps.syncFile(output.fd)
+                }
+                AndroidDurableFileOps.atomicReplace(temporary, importJournalFile())
+                AndroidDurableFileOps.syncDirectory(directory)
+                true
+            } catch (_: Exception) {
+                if (temporary.exists()) runCatching { AndroidDurableFileOps.delete(temporary) }
+                false
+            }
+        }
+
+        override fun clearImportJournal(): Boolean {
+            val file = importJournalFile()
+            return try {
+                if (file.exists()) {
+                    if (!AndroidDurableFileOps.delete(file) && file.exists()) return false
+                    AndroidDurableFileOps.syncDirectory(appContext.noBackupFilesDir)
+                }
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        private fun importJournalFile(): File =
+            File(appContext.noBackupFilesDir, "backup-import-journal.bin")
+
         private fun personalDirectory(): File =
             File(appContext.noBackupFilesDir, AndroidPersonalDictionaryStorage.PERSONAL_DIRECTORY_NAME)
 
@@ -221,6 +275,12 @@ internal class BackupCoordinator(
             }
         } catch (_: Exception) {
             0
+        }
+    }
+
+    init {
+        executor.execute {
+            if (userUnlocked) BackupTransfer.recoverPending(target)
         }
     }
 }

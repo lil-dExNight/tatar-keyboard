@@ -749,12 +749,12 @@ class GlideEndToEndTest {
     }
 
     @Test
-    fun aLiftThatDecodesToNothingCommitsNothing() {
+    fun aLiftThatDecodesToNothingTicksOnceAndCommitsNothing() {
         val h = Harness()
         h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
         h.start()
         // A gesture far below the keyboard (every key is above it): no candidate's location channel
-        // survives — the decode is empty, nothing is committed.
+        // survives — the decode is empty, so the refusal ticks once and nothing is committed.
         val path = GlidePath()
         var x = 5_000f
         for (i in 0 until 40) {
@@ -764,6 +764,7 @@ class GlideEndToEndTest {
         h.controller.onGlideInput(path)
         assertEquals("", h.editor.text)
         assertTrue(h.editor.predictedCommits.isEmpty())
+        assertEquals(1, h.ticks)
     }
 
     @Test
@@ -809,7 +810,7 @@ class GlideEndToEndTest {
         assertEquals("", h.editor.text)
     }
 
-    // --- Glide-triggered learning: the commit counts as an acceptance ---------------------------
+    // --- Glide-triggered learning: the surviving word counts when correction closes ------------
 
     /** Records the word sink's acceptance events; membership is the store side's business. */
     private class RecordingWordSink : WordCompletionSink {
@@ -821,7 +822,7 @@ class GlideEndToEndTest {
     }
 
     @Test
-    fun theLiftCommitAnnouncesAnAcceptedSuggestionToTheWordSink() {
+    fun ordinaryContinuationAnnouncesTheTopCandidateOnce() {
         val h = Harness()
         val sink = RecordingWordSink()
         h.controller.setCompletionSink(sink)
@@ -829,13 +830,17 @@ class GlideEndToEndTest {
         h.start()
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertEquals("сәләм", h.editor.text)
-        // The lift-commit IS the acceptance — the sink hears the committed word exactly as if it
-        // had been tapped in the strip.
+        assertTrue(sink.accepted.isEmpty())
+
+        h.editor.text += "б"
+        h.controller.onTextChanged()
+        assertEquals(listOf("сәләм"), sink.accepted)
+        h.controller.onFinishInput()
         assertEquals(listOf("сәләм"), sink.accepted)
     }
 
     @Test
-    fun anAlternativeReplacementAnnouncesTheAlternative() {
+    fun anAlternativeReplacementAnnouncesOnlyTheAlternative() {
         val h = Harness()
         val sink = RecordingWordSink()
         h.controller.setCompletionSink(sink)
@@ -844,8 +849,10 @@ class GlideEndToEndTest {
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         h.strip.listener!!.onTap("сәлләм")
         assertEquals("сәлләм", h.editor.text)
-        // The lift counted the top-1; the explicit replacement counts the alternative.
-        assertEquals(listOf("сәләм", "сәлләм"), sink.accepted)
+        assertTrue(sink.accepted.isEmpty())
+
+        h.controller.onFinishInput()
+        assertEquals(listOf("сәлләм"), sink.accepted)
     }
 
     @Test
@@ -863,11 +870,12 @@ class GlideEndToEndTest {
         h.editor.text += "б"
         h.engines.getValue(PersonalSubtypes.TATAR_RU).deliverHeldGlide()
         assertEquals("таб", h.editor.text)
+        h.controller.onFinishInput()
         assertTrue(sink.accepted.isEmpty())
     }
 
     @Test
-    fun theUndoDoesNotRollBackTheAcceptance() {
+    fun undoCancelsThePendingAcceptance() {
         val h = Harness()
         val sink = RecordingWordSink()
         h.controller.setCompletionSink(sink)
@@ -876,13 +884,13 @@ class GlideEndToEndTest {
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertTrue(h.controller.maybeUndoGlideCommit())
         assertEquals("", h.editor.text)
-        // Pinned imprecision: the undo deletes the word from the editor, not its use record —
-        // the tap path lives with the same rule (a bump survives a later backspace).
-        assertEquals(listOf("сәләм"), sink.accepted)
+        h.controller.onTextChanged()
+        h.controller.onFinishInput()
+        assertTrue(sink.accepted.isEmpty())
     }
 
     @Test
-    fun theLiftCommitAnnouncesWithTheSuggestionsMasterOff() {
+    fun ordinaryContinuationAnnouncesWithTheSuggestionsMasterOff() {
         val h = Harness()
         val sink = RecordingWordSink()
         h.controller.setCompletionSink(sink)
@@ -890,8 +898,24 @@ class GlideEndToEndTest {
         h.start(eligible = false, glideEligible = true)
         h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
         assertEquals("сәләм", h.editor.text)
-        // The commit is typing, not a suggestion — and the learning event fires anyway; the
-        // predicate on the sink's side (LatinIME) is the only gate.
+        assertTrue(sink.accepted.isEmpty())
+
+        h.editor.text += "б"
+        h.controller.onTextChanged()
+        assertEquals(listOf("сәләм"), sink.accepted)
+    }
+
+    @Test
+    fun sessionFinishAnnouncesThePendingAcceptanceOnce() {
+        val h = Harness()
+        val sink = RecordingWordSink()
+        h.controller.setCompletionSink(sink)
+        h.controller.updateGlideGeometry(GlideTestFixtures.tatarGeometry())
+        h.start()
+        h.controller.onGlideInput(GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!)
+        assertTrue(sink.accepted.isEmpty())
+
+        h.controller.onFinishInput()
         assertEquals(listOf("сәләм"), sink.accepted)
     }
 
@@ -1362,18 +1386,15 @@ class GlideEndToEndTest {
         fun loadCommittedAssets() {
             tatarIndex = openDictionary(DictionaryArtifactSpec.TATAR_TOP100K_V1)
             russianIndex = openDictionary(DictionaryArtifactSpec.RUSSIAN_TOP100K_V1)
-            // The production NEXT_WORD shapes (see TtNextWordFillE2ETest): Tatar — suffix rules +
-            // forms + fallback + bigrams; Russian — no word forms.
+            // The production NEXT_WORD shapes (see TtNextWordFillE2ETest): bigrams and fallback.
             tatarComputer = CompositePrefixComputer(
                 tatarIndex, PersonalCandidateSource.EMPTY,
-                TatarSuffixRules.createAfterWordForms(tatarIndex),
                 GlobalTopFrequencyFallbackFactory.createFallbackWords(tatarIndex),
             ).also {
                 it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V1, tatarIndex))
             }
             russianComputer = CompositePrefixComputer(
                 russianIndex, PersonalCandidateSource.EMPTY,
-                null,
                 GlobalTopFrequencyFallbackFactory.createFallbackWords(russianIndex),
             )
         }

@@ -22,6 +22,7 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 
@@ -151,7 +152,10 @@ class RevertCellControllerTest {
         override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean = true
     }
 
-    private class Harness(autocorrectOn: Boolean = true) {
+    private class Harness(
+        autocorrectOn: Boolean = true,
+        oneHandedSide: Int = OneHandedMode.SIDE_OFF,
+    ) {
         val strip = FakeStrip()
         val editor = FakeEditor()
         val engine = FakeEngine()
@@ -164,6 +168,7 @@ class RevertCellControllerTest {
             { resultCallback -> engine.apply { callback = resultCallback } },
             DirectExecutorService(),
             true,
+            { oneHandedSide },
         )
 
         init {
@@ -218,6 +223,18 @@ class RevertCellControllerTest {
 
         assertEquals("китап ", h.editor.before)
         assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
+    }
+
+    @Test
+    fun rightDockKeepsTheUndoCellInDocumentedOrder() {
+        val h = Harness(oneHandedSide = OneHandedMode.SIDE_RIGHT)
+        h.start()
+        h.advise("китәп", "китап")
+        h.typeWord("китәп")
+        h.separator(' ')
+
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
+        assertEquals(listOf("китәп", null, null, null), h.strip.spokenLabels)
     }
 
     @Test

@@ -121,6 +121,28 @@ class AutocorrectSourceContractTest {
     }
 
     @Test
+    fun enterUsesAutocorrectOnlyWhenItCommitsANewline() {
+        val hook = firstFile(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinImeAutocorrect.java",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinImeAutocorrect.java",
+        ).readText()
+        val separator = methodBody(hook, "static void maybeAutocorrectTatarWord(")
+        val enter = methodBody(hook, "private static boolean enterInsertsNewline(")
+
+        assertTrue(separator.contains("codePoint == Constants.CODE_ENTER && enterInsertsNewline(ime)"))
+        assertEquals("Tab has no autocorrect admission path", 0,
+            separator.occurrencesOf("Constants.CODE_TAB"))
+        assertTrue(enter.contains("editorInfo != null"))
+        assertTrue(enter.contains("InputTypeUtils.getImeOptionsActionIdFromEditorInfo(editorInfo)"))
+        assertTrue(enter.contains("== EditorInfo.IME_ACTION_NONE"))
+
+        // The input logic uses the same editor-info classification: only NONE reaches text input.
+        val input = methodBody(inputLogicSource(), "private void handleNonFunctionalEvent(")
+        assertTrue(input.contains("InputTypeUtils.getImeOptionsActionIdFromEditorInfo(editorInfo)"))
+        assertTrue(input.contains("EditorInfo.IME_ACTION_NONE != imeOptionsActionId"))
+    }
+
+    @Test
     fun theAutocorrectSeamsAreTheOnlyWayTheControllerEditsTextForD3() {
         // The controller owns the decision and none of the mechanics: everything it does to the
         // text goes through the two editor seams, so a second edit path cannot appear here unseen.

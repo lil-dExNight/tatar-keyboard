@@ -23,9 +23,24 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TextShortcuts
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.TextShortcutFilter
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.TextShortcutStores
 
+internal enum class TextShortcutSaveResult { INVALID, CONFIRM_REPLACEMENT, NO_CHANGE, WRITE_STARTED }
+
+/** Decides whether a validated pair is new, unchanged, or replaces an existing expansion. */
+internal fun textShortcutSaveDecision(
+    pairs: TextShortcuts,
+    shortcut: String,
+    expansion: String,
+    replaceExisting: Boolean,
+): TextShortcutSaveResult {
+    val existing = pairs.expansionFor(shortcut) ?: return TextShortcutSaveResult.WRITE_STARTED
+    if (existing == expansion) return TextShortcutSaveResult.NO_CHANGE
+    return if (replaceExisting) TextShortcutSaveResult.WRITE_STARTED
+    else TextShortcutSaveResult.CONFIRM_REPLACEMENT
+}
+
 /**
  * Everything the "Text shortcuts" screen does to the saved pairs, away from the view code: read
- * the snapshot, add and remove pairs.
+ * the snapshot, save and remove pairs.
  *
  * Every mutation goes to the process-wide [TextShortcutStores] owner, which runs it on the shared
  * personal-store worker; the screen does no file I/O and holds no second writer. A removal also
@@ -42,17 +57,27 @@ internal class TextShortcutsScreenController(
     fun pairs(): TextShortcuts = TextShortcutStores.snapshotFor(context)
 
     /**
-     * Saves one pair typed on the screen (an existing shortcut's expansion is replaced). Returns
-     * false at once when either side is not eligible under the same content filter the store
-     * applies. `true` means "worth saving", not "saved": whether the pair reached the disk arrives
-     * later through [onSaved] on the UI thread.
+     * Validates and saves one pair. A different existing expansion requires [replaceExisting];
+     * an unchanged pair performs no write. Disk completion arrives through [onSaved] on the UI
+     * thread only for [TextShortcutSaveResult.WRITE_STARTED].
      */
-    fun addPair(shortcut: String, expansion: String, onSaved: (Boolean) -> Unit): Boolean {
-        val acceptedShortcut = TextShortcutFilter.acceptedShortcut(shortcut) ?: return false
-        val acceptedExpansion = TextShortcutFilter.acceptedExpansion(expansion) ?: return false
-        TextShortcutStores.storeFor(context)
-            .put(acceptedShortcut, acceptedExpansion) { saved -> uiPoster { onSaved(saved) } }
-        return true
+    fun addPair(
+        shortcut: String,
+        expansion: String,
+        replaceExisting: Boolean = false,
+        onSaved: (Boolean) -> Unit,
+    ): TextShortcutSaveResult {
+        val acceptedShortcut = TextShortcutFilter.acceptedShortcut(shortcut)
+            ?: return TextShortcutSaveResult.INVALID
+        val acceptedExpansion = TextShortcutFilter.acceptedExpansion(expansion)
+            ?: return TextShortcutSaveResult.INVALID
+        val decision = textShortcutSaveDecision(
+            pairs(), acceptedShortcut, acceptedExpansion, replaceExisting)
+        if (decision == TextShortcutSaveResult.WRITE_STARTED) {
+            TextShortcutStores.storeFor(context)
+                .put(acceptedShortcut, acceptedExpansion) { saved -> uiPoster { onSaved(saved) } }
+        }
+        return decision
     }
 
     /**

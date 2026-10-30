@@ -141,8 +141,13 @@ class PersonalDictionarySettingsTest {
         assertTrue("it is disabled while Tatar suggestions are off", hostSource.contains(
             "Settings.readTatarSuggestionsEnabled(prefs)\n" +
                 "                        && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY)"))
-        assertTrue("and it follows the switch live", hostSource.contains(
-            "setRowEnabled(it, checked && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY))"))
+        val callback = hostSource.substringAfter("personalDictionaryRow?.let {")
+            .substringBefore("incognitoRow?.let {")
+        assertTrue("and it follows the switch live",
+            callback.contains("checked && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY)"))
+        assertTrue("with the same live explanation as on construction",
+            callback.contains("disabledReason(isRestricted(Settings.PREF_PERSONAL_DICTIONARY)") &&
+                callback.contains("R.string.row_needs_suggestions"))
     }
 
     @Test

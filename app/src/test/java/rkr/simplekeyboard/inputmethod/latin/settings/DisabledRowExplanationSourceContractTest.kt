@@ -119,6 +119,32 @@ class DisabledRowExplanationSourceContractTest {
     }
 
     @Test
+    fun liveMasterSwitchCallbacksKeepTheLocalizedExplanations() {
+        val host = source(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt",
+        )
+        for ((row, key) in listOf(
+            "personalDictionaryRow" to "PREF_PERSONAL_DICTIONARY",
+            "incognitoRow" to "PREF_INCOGNITO_MODE",
+            "autocorrectRow" to "PREF_TATAR_AUTOCORRECT",
+            "emojiSuggestRow" to "PREF_EMOJI_SUGGESTIONS",
+            "fourthCellRow" to "PREF_STRIP_FOURTH_CELL",
+        )) {
+            val callback = host.substringAfter("$row?.let {").substringBefore("\n            }")
+            assertTrue("$row must explain its live state",
+                callback.contains("disabledReason(isRestricted(Settings.$key)") &&
+                    callback.contains("R.string.row_needs_suggestions"))
+            assertTrue("$row still follows the master value",
+                callback.contains("checked && !isRestricted(Settings.$key)"))
+        }
+        val imeCallback = host.substringAfter("imeSwitchRow?.let {")
+            .substringBefore("\n            }")
+        assertTrue(imeCallback.contains(
+            "disabledReason(isRestricted(Settings.PREF_ENABLE_IME_SWITCH)"))
+        assertTrue(imeCallback.contains("R.string.row_needs_language_switch"))
+    }
+
+    @Test
     fun theExplanationsExistInAllThreeLocales() {
         for (folder in listOf("values", "values-ru", "values-tt")) {
             val strings = source("src/main/res/$folder/strings.xml")

@@ -29,6 +29,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictiona
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestSource
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 import java.io.File
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.ExecutorService
@@ -230,7 +231,10 @@ class SuggestionsControllerEmojiSuggestTest {
         override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean = true
     }
 
-    private class Harness(val emojiSource: EmojiSuggestSource?) {
+    private class Harness(
+        val emojiSource: EmojiSuggestSource?,
+        private val oneHandedSide: Int = OneHandedMode.SIDE_OFF,
+    ) {
         val strip = FakeStrip()
         val editor = FakeEditor()
         val executor = DirectExecutorService()
@@ -252,6 +256,7 @@ class SuggestionsControllerEmojiSuggestTest {
             false,
             { _: ExecutorService, _: String -> null },
             { _: ExecutorService -> emojiPreparation },
+            oneHandedSide = { oneHandedSide },
         )
 
         init {
@@ -292,12 +297,13 @@ class SuggestionsControllerEmojiSuggestTest {
         word: String,
         emoji: String,
         name: String? = null,
+        oneHandedSide: Int = OneHandedMode.SIDE_OFF,
     ): Harness {
         val source = FakeEmojiSource(
             mapOf(language to word to emoji),
             if (name == null) emptyMap() else mapOf(emoji to name),
         )
-        return Harness(source)
+        return Harness(source, oneHandedSide)
     }
 
     // --- The fill rule -------------------------------------------------------------------------
@@ -357,6 +363,38 @@ class SuggestionsControllerEmojiSuggestTest {
         h.deliver(tatar, emptyList())
 
         assertEquals(listOf("❤️"), h.strip.lastCells())
+    }
+
+    @Test
+    fun rightDockKeepsAnEmojiOnlyBandInDocumentedOrder() {
+        val h = harnessWithMapping(
+            "tt",
+            "йөрәк",
+            "❤️",
+            oneHandedSide = OneHandedMode.SIDE_RIGHT,
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, emptyList())
+
+        assertEquals(listOf("❤️", null, null, null), h.strip.shown.last())
+    }
+
+    @Test
+    fun rightDockMirrorsWordsAndEmojiTailWithTheirSpokenLabels() {
+        val h = harnessWithMapping(
+            "tt",
+            "йөрәк",
+            "❤️",
+            name = "heart",
+            oneHandedSide = OneHandedMode.SIDE_RIGHT,
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем", "тибә"))
+
+        assertEquals(listOf("❤️", "тибә", "минем", null), h.strip.shown.last())
+        assertEquals(listOf("heart", null, null, null), h.strip.labels)
     }
 
     @Test

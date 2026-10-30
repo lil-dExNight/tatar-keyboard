@@ -49,6 +49,27 @@ class InlineStripSpecsTest {
     }
 
     @Test
+    fun dockedAutofillCellsKeepTheirOrderOnEitherSide() {
+        for ((contentLeft, contentRight) in listOf(0 to 612, 108 to 720)) {
+            val lefts = (0 until InlineStripSpecs.CELL_COUNT).map { cell ->
+                InlineStripSpecs.cellLeftPx(cell, contentLeft, contentRight)
+            }
+            val rights = (0 until InlineStripSpecs.CELL_COUNT).map { cell ->
+                InlineStripSpecs.cellRightPx(cell, contentLeft, contentRight)
+            }
+
+            assertEquals(
+                listOf(contentLeft, contentLeft + 153, contentLeft + 306, contentLeft + 459),
+                lefts,
+            )
+            assertEquals(
+                listOf(contentLeft + 153, contentLeft + 306, contentLeft + 459, contentRight),
+                rights,
+            )
+        }
+    }
+
+    @Test
     fun aNonPositiveDimensionPromisesNothing() {
         assertTrue(InlineStripSpecs.cellSizesPx(0, 44).isEmpty())
         assertTrue(InlineStripSpecs.cellSizesPx(300, 0).isEmpty())

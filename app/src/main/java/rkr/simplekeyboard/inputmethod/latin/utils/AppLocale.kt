@@ -21,25 +21,20 @@ import android.content.res.Configuration
 import java.util.Locale
 
 /**
- * The locale policy of the app's own screens (SetupActivity, SettingsHostActivity). This is
- * a Tatar keyboard, so the UI default is Tatar, not the English resource fallback:
- *
+ * The locale policy of the app's own screens and keyboard chrome:
  *  - system language tt → Tatar   (Android resolves values-tt on its own)
  *  - system language ru → Russian (Android resolves values-ru on its own)
- *  - anything else, English included → Tatar (forced by [wrap])
+ *  - system language en → English (Android resolves values/ on its own)
+ *  - anything else → English (forced by [wrap])
  *
- * The English strings (values/) stay as the resource fallback.
- *
- * Mechanism: a [Context.createConfigurationContext] wrap in `attachBaseContext` of each
- * app-screen activity. Only the language is overridden (night mode, font scale and the rest
- * are copied); the process-wide default locale and the IME process are not touched.
+ * [wrap] overrides only the language in the base context; the process-wide default is unchanged.
  */
 object AppLocale {
 
     /** System languages whose resolution already lands on a shipped translation. */
-    private val PASSTHROUGH_LANGUAGES = setOf("ru", "tt")
+    private val PASSTHROUGH_LANGUAGES = setOf("en", "ru", "tt")
 
-    private val TATAR = Locale("tt")
+    private val ENGLISH = Locale.ENGLISH
 
     /**
      * The locale the app screens must be forced into for a given system language,
@@ -47,13 +42,11 @@ object AppLocale {
      * and no wrap is needed. Pure and JVM-testable; [wrap] is its Android half.
      */
     fun forcedLocaleFor(systemLanguage: String): Locale? =
-        if (systemLanguage in PASSTHROUGH_LANGUAGES) null else TATAR
+        if (systemLanguage in PASSTHROUGH_LANGUAGES) null else ENGLISH
 
     /**
-     * The base context for an app-screen activity: [newBase] itself when the system
-     * language is Russian or Tatar, otherwise a configuration context forced to Tatar.
-     * The first system locale decides — a list like [en, tt] still means the user's
-     * phone speaks English, and per the policy above that maps to Tatar.
+     * Returns [newBase] for English, Russian and Tatar systems, or a context forced to English.
+     * The first system locale decides, so a list like [de, tt] maps to English.
      */
     fun wrap(newBase: Context): Context {
         val locales = newBase.resources.configuration.locales

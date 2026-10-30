@@ -73,6 +73,23 @@ class EditorTextCachePrivacySourceContractTest {
     }
 
     @Test
+    fun reloadTimersStopAtEditorAndWindowBoundaries() {
+        val ime = read(LATIN_IME)
+        for (signature in listOf(
+            "\n    public void onStartInputView(final EditorInfo editorInfo",
+            "\n    public void onFinishInputView(final boolean finishingInput)",
+            "\n    public void onFinishInput()",
+            "\n    public void onWindowHidden()",
+            "\n    public void onDestroy()",
+        )) {
+            assertTrue(
+                "${signature.trim()} must cancel pending cache reloads",
+                javaBody(ime, signature).contains("mEditorCacheReloadScheduler.cancel();"),
+            )
+        }
+    }
+
+    @Test
     fun passwordFieldsAreNeverReReadFromTheEditor() {
         val ime = read(LATIN_IME)
         // The field-start reload: password fields take the clear-instead-of-reload branch, and
@@ -87,11 +104,21 @@ class EditorTextCachePrivacySourceContractTest {
                 startView.indexOf("reloadTextCache(editorInfo, restarting)"),
         )
 
-        // The two later reload paths (external cursor move, space-slide release) are gated too.
+        // All delayed and immediate reloads funnel through one callback that checks the current
+        // field again when the timer fires, rather than trusting the field that scheduled it.
+        val reloadCallback = javaBody(ime, "private void reloadEditorTextCacheIfAllowed()")
+        val guard = reloadCallback.indexOf("!isInputViewShown() || isCurrentFieldPasswordField()")
+        val reload = reloadCallback.indexOf("mInputLogic.reloadTextCache();")
+        assertTrue("the reload callback must check visibility and password state", guard >= 0)
+        assertTrue("the reload callback must reload ordinary visible fields", reload >= 0)
+        assertTrue("the reload callback guard must precede the reload", guard < reload)
+
         val updateSelection = javaBody(ime, "public void onUpdateSelection(final int oldSelStart")
-        assertGuardedReload(updateSelection, "onUpdateSelection")
+        assertTrue(updateSelection.contains("if (!isCurrentFieldPasswordField())"))
+        assertTrue(updateSelection.contains("mEditorCacheReloadScheduler.reloadNow();"))
+        assertTrue(updateSelection.contains("mEditorCacheReloadScheduler.onExpectedSelectionChange();"))
         val spaceSlide = javaBody(ime, "public void onUpWithSpacePointerActive()")
-        assertGuardedReload(spaceSlide, "onUpWithSpacePointerActive")
+        assertTrue(spaceSlide.contains("mEditorCacheReloadScheduler.reloadNow();"))
     }
 
     @Test
@@ -109,14 +136,6 @@ class EditorTextCachePrivacySourceContractTest {
     }
 
     // --- helpers ---------------------------------------------------------------------------------
-
-    private fun assertGuardedReload(body: String, name: String) {
-        val guard = body.indexOf("if (!isCurrentFieldPasswordField())")
-        val reload = body.indexOf("mInputLogic.reloadTextCache();")
-        assertTrue("$name must gate its cache reload on the password check", guard >= 0)
-        assertTrue("$name must still reload for ordinary fields", reload >= 0)
-        assertTrue("$name: the guard must precede the reload", guard < reload)
-    }
 
     /** The body of the Java method whose signature starts with [signatureStart]. */
     private fun javaBody(source: String, signatureStart: String): String {

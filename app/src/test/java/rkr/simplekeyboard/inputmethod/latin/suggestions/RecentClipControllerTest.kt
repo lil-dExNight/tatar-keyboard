@@ -23,6 +23,7 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
@@ -151,6 +152,18 @@ class RecentClipControllerTest {
         override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean = true
     }
 
+    private class FakeScheduler : RecentClipExpiryScheduler {
+        val tasks = mutableListOf<Runnable>()
+
+        override fun schedule(delayMillis: Long, task: Runnable) {
+            tasks.add(task)
+        }
+
+        fun run(index: Int) {
+            tasks[index].run()
+        }
+    }
+
     /** Records what learning was told, so "a clip teaches nothing" is checkable. */
     private class RecordingSink : WordCompletionSink {
         val completions = mutableListOf<String>()
@@ -168,7 +181,9 @@ class RecentClipControllerTest {
         }
     }
 
-    private class Harness {
+    private class Harness(
+        private val oneHandedSide: Int = OneHandedMode.SIDE_OFF,
+    ) {
         var now = 10_000_000L
         /** The live keyguard state the controller's gate reads; false = unlocked. */
         var keyguardLocked = false
@@ -180,6 +195,8 @@ class RecentClipControllerTest {
         val engine = FakeEngine()
         val sink = RecordingSink()
         val pairSink = RecordingPairSink()
+        val scheduler = FakeScheduler()
+        val clipCell = RecentClipCell(scheduler) { now }
 
         val controller = SuggestionsController(
             strip,
@@ -198,12 +215,13 @@ class RecentClipControllerTest {
                     null
                 }
             },
+            oneHandedSide = { oneHandedSide },
         )
 
         init {
             controller.setCompletionSink(sink)
             controller.setPairCompletionSink(pairSink)
-            controller.replaceRecentClipCellForTest(RecentClipCell { now })
+            controller.replaceRecentClipCellForTest(clipCell)
             controller.setKeyguardGate(KeyguardGate { keyguardLocked })
         }
 
@@ -265,6 +283,16 @@ class RecentClipControllerTest {
     @Test
     fun aFreshClipIsOfferedAtAnEmptyIdlePosition() {
         val h = Harness()
+        h.clip("сәләм дөнья")
+
+        h.start()
+
+        assertEquals(listOf("сәләм дөнья", null, null, null), h.strip.lastBand())
+    }
+
+    @Test
+    fun rightDockKeepsTheRecentClipInDocumentedOrder() {
+        val h = Harness(oneHandedSide = OneHandedMode.SIDE_RIGHT)
         h.clip("сәләм дөнья")
 
         h.start()
@@ -343,6 +371,39 @@ class RecentClipControllerTest {
         h.clip("икенче")
 
         assertEquals(listOf("икенче", null, null, null), h.strip.lastBand())
+    }
+
+    @Test
+    fun anIdleClipDisappearsWhenItsTimerExpires() {
+        val h = Harness()
+        h.clip("сәләм")
+        h.start()
+        assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
+        h.now += RecentClipCell.TTL_MILLIS + 1
+
+        h.scheduler.run(0)
+
+        assertEquals("reserve", h.strip.events.last())
+        assertEquals(1, h.strip.bands.size)
+        assertNull(h.clipCell.fullTextForCommit())
+    }
+
+    @Test
+    fun anOlderTimerLeavesTheNewerPaintedClipAlone() {
+        val h = Harness()
+        val firstSetAt = h.now
+        h.clip("беренче")
+        h.start()
+        h.now += 1_000L
+        h.clip("икенче")
+        assertEquals(listOf("икенче", null, null, null), h.strip.lastBand())
+
+        h.now = firstSetAt + RecentClipCell.TTL_MILLIS + 1
+        h.scheduler.run(0)
+
+        assertEquals("икенче", h.clipCell.fullTextForCommit())
+        assertEquals(listOf("икенче", null, null, null), h.strip.lastBand())
+        assertEquals("show", h.strip.events.last())
     }
 
     @Test
