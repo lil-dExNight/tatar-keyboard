@@ -5,6 +5,9 @@ pluginManagement {
         mavenCentral()
     }
 }
+// No build requests a Java toolchain: every build runs on the JDK that runs Gradle. A
+// toolchain block would let this resolver download a JDK, which dependency verification does
+// not cover, so adding one needs its own review.
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }

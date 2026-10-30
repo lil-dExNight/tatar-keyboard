@@ -75,6 +75,14 @@ android {
         includeInApk = false
         includeInBundle = false
     }
+    // The keyboard loads tt, ru and en resources whatever the system language, and the app
+    // screens may be forced into English, so an App Bundle keeps every language in the base
+    // split. APK builds are unaffected.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
     packagingOptions {
         // kotlin-stdlib metadata for the compiler's built-ins; unused at runtime
         // because the app has no kotlin-reflect.
