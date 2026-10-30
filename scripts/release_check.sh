@@ -1094,7 +1094,7 @@ try:
         text = zf.read("META-INF/version-control-info.textproto").decode("utf-8")
 except (KeyError, UnicodeDecodeError, zipfile.BadZipFile):
     sys.exit(0)
-revision_lines = [line for line in text.splitlines() if line.startswith("revision:")]
+revision_lines = [line.strip() for line in text.splitlines() if line.strip().startswith("revision:")]
 if len(revision_lines) == 1:
     match = re.fullmatch(r'revision: "([0-9a-f]{7,40})"', revision_lines[0])
     if match:

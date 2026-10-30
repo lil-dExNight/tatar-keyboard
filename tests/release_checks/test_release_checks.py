@@ -84,6 +84,18 @@ class ReleaseProvenanceTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, output)
         self.assertIn("RESULT|PASS|artifact.freshness|", output)
 
+    def test_the_agp_indented_revision_passes(self) -> None:
+        provenance = (
+            "repositories {\n"
+            "    system: GIT\n"
+            f'    revision: "{self.revision}"\n'
+            "}\n"
+        ).encode()
+        result = self.run_release_check(self.write_apk("indented.apk", provenance))
+        output = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("RESULT|PASS|artifact.freshness|", output)
+
 
 class ExplicitApkPathTest(unittest.TestCase):
     def setUp(self) -> None:
