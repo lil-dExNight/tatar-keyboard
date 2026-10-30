@@ -32,11 +32,16 @@ internal object EmojiDisplaySnapshots {
     const val RECENT_CATEGORY_NAME = "recent"
 
     /** Every sequence the base snapshot can draw; used to drop recents absent from the set. */
-    fun availableSequences(base: EmojiSetSnapshot): Set<String> {
+    fun availableSequences(base: EmojiSetSnapshot): Set<String> =
+        availableSequences(base, EmojiSkinTones.EMPTY)
+
+    /** Every base and toned sequence accepted by recents, recording and search. */
+    fun availableSequences(base: EmojiSetSnapshot, tones: EmojiSkinTones): Set<String> {
         val set = HashSet<String>()
         for (category in 0 until base.categoryCount) {
             set.addAll(base.entriesOf(category))
         }
+        if (!tones.isEmpty) set.addAll(tones.allTonedSequences())
         return set
     }
 

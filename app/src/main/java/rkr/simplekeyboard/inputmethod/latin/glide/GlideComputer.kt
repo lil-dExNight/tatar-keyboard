@@ -35,10 +35,15 @@ fun interface GlideGeometrySink {
     fun updateGlideGeometry(geometry: GlideKeyGeometry?)
 }
 
+/** Builds the glide word index on the engine worker after a gesture arms. */
+fun interface GlideIndexPrewarmer {
+    fun prewarmGlideIndex()
+}
+
 /**
  * Drops the lazily built glide word index so a long-hidden keyboard does not hold derived data;
- * the index is rebuilt from the dictionary on the next decode. The decoder is worker-confined,
- * so the engine posts this through its serialized executor, never on the calling (UI) thread.
+ * the next armed gesture rebuilds it. The decoder is worker-confined, so the engine posts this
+ * through its serialized executor, never on the calling (UI) thread.
  */
 fun interface GlideIndexReleaser {
     fun releaseGlideIndex()

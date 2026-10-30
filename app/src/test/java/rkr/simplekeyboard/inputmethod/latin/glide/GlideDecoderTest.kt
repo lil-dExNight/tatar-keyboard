@@ -2,7 +2,6 @@ package rkr.simplekeyboard.inputmethod.latin.glide
 
 import com.sun.management.ThreadMXBean
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -60,6 +59,52 @@ class GlideDecoderTest {
             previous = codePoint
         }
         return path
+    }
+
+    private fun denseIdealPath(word: String, sampleCount: Int, capacity: Int): GlidePath {
+        val sparse = idealPath(word)
+        val xs = FloatArray(sampleCount)
+        val ys = FloatArray(sampleCount)
+        GlideResampler.resample(sparse.xs, sparse.ys, sparse.size, xs, ys, sampleCount)
+        val path = GlidePath(capacity)
+        val duration = sparse.ts[sparse.size - 1] - sparse.ts[0]
+        for (i in 0 until sampleCount) {
+            path.addPoint(xs[i], ys[i], duration * i / (sampleCount - 1))
+        }
+        return path
+    }
+
+    /** Adds one slow segment at [letter], preserving the path coordinates and total duration. */
+    private fun dwellPath(word: String, letter: Char): GlidePath {
+        val base = denseIdealPath(word, 256, 256)
+        val key = geometry.keyIndexOfLetter(letter.code)
+        val centerX = geometry.centerX(key)
+        val centerY = geometry.centerY(key)
+        var segment = 0
+        var bestDistance = Float.MAX_VALUE
+        for (i in 0 until base.size - 1) {
+            val dx = (base.xs[i] + base.xs[i + 1]) * 0.5f - centerX
+            val dy = (base.ys[i] + base.ys[i + 1]) * 0.5f - centerY
+            val distance = dx * dx + dy * dy
+            if (distance < bestDistance) {
+                bestDistance = distance
+                segment = i
+            }
+        }
+        val originalDt = base.ts[segment + 1] - base.ts[segment]
+        val total = base.ts[base.size - 1] - base.ts[0]
+        val otherOriginal = total - originalDt
+        val dwellDt = maxOf(originalDt * 4f, 40f)
+        val otherAdjusted = total - dwellDt
+        val result = GlidePath(base.size)
+        for (i in 0 until base.size) {
+            val afterDwell = i > segment
+            val originalBefore = base.ts[i] - base.ts[0] - (if (afterDwell) originalDt else 0f)
+            val timestamp = base.ts[0] + originalBefore * otherAdjusted / otherOriginal +
+                (if (afterDwell) dwellDt else 0f)
+            result.addPoint(base.xs[i], base.ys[i], timestamp)
+        }
+        return result
     }
 
     private fun decodeWords(decoder: GlideDecoder, path: GlidePath): List<String> {
@@ -123,6 +168,31 @@ class GlideDecoderTest {
         assertEquals("the no-loop path decodes to the plain word", "сәләм", noLoop[0])
         val withJog = decodeWords(decoder, idealPath("сәлләм", withLoop = true))
         assertEquals("the jog path decodes to the doubled word", "сәлләм", withJog[0])
+    }
+
+    @Test
+    fun dwellAtDoubleSupportsTheTwinButDwellElsewhereDoesNot() {
+        val decoder = decoderOf(
+            listOf(
+                "алла" to 7466L,
+                "ала" to 36L,
+            ),
+        )
+        assertEquals("ала", decodeWords(decoder, idealPath("алла"))[0])
+        assertEquals("алла", decodeWords(decoder, dwellPath("алла", 'л'))[0])
+        assertEquals("ала", decodeWords(decoder, dwellPath("алла", 'а'))[0])
+        assertEquals("алла", decodeWords(decoder, idealPath("алла", withLoop = true))[0])
+    }
+
+    @Test
+    fun dwellEvidenceIsRelativeToTheGesturesOwnSpeed() {
+        val decoder = decoderOf(listOf("алла" to 7466L, "ала" to 36L))
+        val dwell = dwellPath("алла", 'л')
+        val scaled = GlidePath(dwell.size)
+        for (i in 0 until dwell.size) {
+            scaled.addPoint(dwell.xs[i], dwell.ys[i], dwell.ts[i] * 4f)
+        }
+        assertEquals("алла", decodeWords(decoder, scaled)[0])
     }
 
     @Test
@@ -245,13 +315,73 @@ class GlideDecoderTest {
     }
 
     @Test
-    fun pathBuffersDropPointsBeyondCapacity() {
-        val path = GlidePath()
-        repeat(GlidePath.MAX_POINTS) { assertTrue(path.addPoint(it.toFloat(), 0f, it.toFloat())) }
-        assertFalse(path.addPoint(0f, 0f, 0f))
-        assertEquals(GlidePath.MAX_POINTS, path.size)
-        path.clear()
-        assertEquals(0, path.size)
+    fun gestureRelativeEventTimesGiveIdenticalResultsAtEveryUptimeOffset() {
+        val decoder = decoderOf(
+            listOf("сәләм" to 36L, "салым" to 7_466L, "китап" to 200L),
+        )
+        val relative = denseIdealPath("сәләм", 129, 129)
+        val expected = GlideResult()
+        for ((index, offset) in longArrayOf(0L, 1L shl 24, 1L shl 27, 1L shl 30).withIndex()) {
+            val path = GlidePath(relative.size)
+            for (i in 0 until relative.size) {
+                val eventTime = relative.ts[i].toLong()
+                path.addPoint(relative.xs[i], relative.ys[i], offset + eventTime, offset)
+            }
+            if (index == 0) {
+                decoder.decode(path, expected)
+                assertTrue(expected.count > 0)
+                continue
+            }
+            val actual = GlideResult()
+            decoder.decode(path, actual)
+            assertEquals(expected.count, actual.count)
+            for (i in 0 until actual.count) {
+                assertEquals(expected.words[i], actual.words[i])
+                assertEquals(expected.scores[i].toBits(), actual.scores[i].toBits())
+            }
+        }
+    }
+
+    @Test
+    fun denseOverflowPathsTrackUntruncatedWordsScoresAndEndpoints() {
+        val decoder = decoderOf(
+            listOf(
+                "сәләм" to 36L,
+                "салым" to 7_466L,
+                "китап" to 200L,
+                "алла" to 30L,
+                "алма" to 60L,
+            ),
+        )
+        for (sampleCount in intArrayOf(513, 1_024, 2_048)) {
+            val reference = denseIdealPath("сәләм", sampleCount, sampleCount)
+            val thinned = GlidePath()
+            reference.copyInto(thinned)
+            val expected = GlideResult()
+            val actual = GlideResult()
+            decoder.decode(reference, expected)
+            decoder.decode(thinned, actual)
+            assertTrue(expected.count > 0)
+            assertEquals(expected.count, actual.count)
+            for (i in 0 until actual.count) {
+                assertEquals(expected.words[i], actual.words[i])
+                assertEquals(
+                    "score delta at $sampleCount samples",
+                    expected.scores[i],
+                    actual.scores[i],
+                    expected.scores[i] * 0.01f,
+                )
+            }
+            assertEquals(reference.xs[0], thinned.xs[0], 0f)
+            assertEquals(reference.ys[0], thinned.ys[0], 0f)
+            assertEquals(reference.xs[sampleCount - 1], thinned.xs[thinned.size - 1], 0f)
+            assertEquals(reference.ys[sampleCount - 1], thinned.ys[thinned.size - 1], 0f)
+            assertEquals(
+                reference.ts[sampleCount - 1] - reference.ts[0],
+                thinned.ts[thinned.size - 1] - thinned.ts[0],
+                0f,
+            )
+        }
     }
 
     // Zero-allocation rule on the fixture: the decode machinery allocates nothing after warmup; the

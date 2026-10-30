@@ -33,6 +33,23 @@ class RichInputConnectionRobustnessTest {
 
     private val window = Constants.EDITOR_CONTENTS_CACHE_SIZE
 
+    private fun seq(vararg codePoints: Int): String {
+        val builder = StringBuilder()
+        for (codePoint in codePoints) builder.appendCodePoint(codePoint)
+        return builder.toString()
+    }
+
+    private fun emojiClusters(): List<String> = listOf(
+        seq(0x2764, 0xFE0E),
+        seq(0x2764, 0xFE0F),
+        seq(0x1F44D, 0x1F3FD),
+        seq(0x1F1F7, 0x1F1FA),
+        seq(0x0031, 0xFE0F, 0x20E3),
+        seq(0x0023, 0x20E3),
+        seq(0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F466),
+        seq(0x1F3F4, 0xE0067, 0xE0062, 0xE0065, 0xE006E, 0xE0067, 0xE007F),
+    )
+
     // --- The before-cursor cache is bounded ----------------------------------------------------
 
     @Test
@@ -233,5 +250,122 @@ class RichInputConnectionRobustnessTest {
 
         connection.applyTextAroundCursor("аб", 0, 0)
         assertEquals(1, connection.getUnicodeSteps(1, false))
+    }
+
+    // --- Emoji grapheme matrices ---------------------------------------------------------------
+
+    @Test
+    fun everyEmojiClusterIsOneBackwardStep() {
+        val connection = RichInputConnection(null)
+        for (cluster in emojiClusters()) {
+            connection.onBeforeCursorCacheReloaded("а$cluster")
+            assertEquals("backward ${cluster.codePoints().toArray().toList()}",
+                -cluster.length, connection.getUnicodeSteps(-1, false))
+        }
+    }
+
+    @Test
+    fun everyEmojiClusterIsOneForwardStep() {
+        val connection = RichInputConnection(null)
+        for (cluster in emojiClusters()) {
+            connection.applyTextAroundCursor("${cluster}б", 0, 0)
+            assertEquals("forward ${cluster.codePoints().toArray().toList()}",
+                cluster.length, connection.getUnicodeSteps(1, false))
+        }
+    }
+
+    @Test
+    fun aRunOfEmojiClustersAndCyrillicHasOnlyWholeClusterStops() {
+        val connection = RichInputConnection(null)
+        val text = emojiClusters().joinToString("") + "ә"
+        val utf16Length = text.length
+        val clusterCount = emojiClusters().size + 1
+
+        connection.onBeforeCursorCacheReloaded(text)
+        assertEquals(-utf16Length, connection.getUnicodeSteps(-clusterCount, false))
+        assertEquals("the final Cyrillic letter remains one ordinary step",
+            -1, connection.getUnicodeSteps(-1, false))
+
+        connection.applyTextAroundCursor(text, 0, 0)
+        assertEquals(utf16Length, connection.getUnicodeSteps(clusterCount, false))
+    }
+
+    @Test
+    fun regionalIndicatorsPairFromTheStartOfTheRunInBothDirections() {
+        val connection = RichInputConnection(null)
+        val three = seq(0x1F1E6, 0x1F1E7, 0x1F1E8)
+
+        connection.onBeforeCursorCacheReloaded(three)
+        assertEquals("the odd trailing indicator is alone", -2,
+            connection.getUnicodeSteps(-1, false))
+        assertEquals("the remaining pair and the odd indicator cover the run", -6,
+            connection.getUnicodeSteps(-2, false))
+
+        connection.applyTextAroundCursor(three, 0, 0)
+        assertEquals("the first two indicators form the flag", 4,
+            connection.getUnicodeSteps(1, false))
+        assertEquals(6, connection.getUnicodeSteps(2, false))
+    }
+
+    @Test
+    fun spaceSlideAndDeleteSwipeUseTheSameClusterBoundariesInsideSelections() {
+        val connection = RichInputConnection(null)
+        for (cluster in emojiClusters()) {
+            connection.applyTextAroundCursor(cluster, 0, cluster.length)
+            assertEquals("space-slide selection contraction", -cluster.length,
+                connection.getUnicodeSteps(-1, true))
+            assertEquals("delete-swipe selection expansion", cluster.length,
+                connection.getUnicodeSteps(1, false))
+        }
+    }
+
+    @Test
+    fun aCachedTailBeginningWithAJoinerKeepsEveryEmojiClusterWhole() {
+        val connection = RichInputConnection(null)
+        for (cluster in emojiClusters()) {
+            connection.onBeforeCursorCacheReloaded("‍$cluster")
+            assertEquals(-cluster.length - 1, connection.getUnicodeSteps(-1, false))
+        }
+    }
+
+    @Test
+    fun aCachedHeadEndingWithAJoinerKeepsTheClusterWhole() {
+        val connection = RichInputConnection(null)
+        val cluster = seq(0x1F469, 0x1F3FD, 0x200D, 0x1F4BB)
+        connection.applyTextAroundCursor("$cluster‍", 0, 0)
+
+        assertEquals(cluster.length + 1, connection.getUnicodeSteps(1, false))
+    }
+
+    @Test
+    fun malformedSurrogatesAreSingleStepsAndDoNotConsumeTheirNeighbors() {
+        val connection = RichInputConnection(null)
+        for (malformed in listOf("\uD83D", "\uDE00")) {
+            connection.onBeforeCursorCacheReloaded("а$malformed")
+            assertEquals(-1, connection.getUnicodeSteps(-1, false))
+
+            connection.applyTextAroundCursor("${malformed}б", 0, 0)
+            assertEquals(1, connection.getUnicodeSteps(1, false))
+        }
+
+        val cjk = seq(0x20000)
+        connection.onBeforeCursorCacheReloaded(cjk)
+        assertEquals(-2, connection.getUnicodeSteps(-1, false))
+        connection.applyTextAroundCursor(cjk, 0, 0)
+        assertEquals(2, connection.getUnicodeSteps(1, false))
+    }
+
+    @Test
+    fun ordinaryCyrillicStillMovesOneCodeUnitPerStep() {
+        val connection = RichInputConnection(null)
+        val text = "аәөүҗңһя"
+
+        connection.onBeforeCursorCacheReloaded(text)
+        assertEquals(-1, connection.getUnicodeSteps(-1, false))
+        assertEquals(-text.length, connection.getUnicodeSteps(-text.length, false))
+
+        connection.applyTextAroundCursor(text, 0, 0)
+        assertEquals(1, connection.getUnicodeSteps(1, false))
+        assertEquals(text.length, connection.getUnicodeSteps(text.length, false))
     }
 }

@@ -170,8 +170,12 @@ class IncognitoModeTest {
     fun theSwitchSitsBesideThePersonalDictionaryRowAndFollowsTheSuggestionsSwitch() {
         assertTrue("the row exists on the Preferences screen",
             host.contains("switchRow(Settings.PREF_INCOGNITO_MODE, false,"))
+        val callback = host.substringAfter("incognitoRow?.let {").substringBefore("autocorrectRow?.let {")
         assertTrue("it is greyed while suggestions are off — the learning it pauses lives there",
-            host.contains("setRowEnabled(it, checked && !isRestricted(Settings.PREF_INCOGNITO_MODE))"))
+            callback.contains("checked && !isRestricted(Settings.PREF_INCOGNITO_MODE)"))
+        assertTrue("and its live disabled state keeps the explanation",
+            callback.contains("disabledReason(isRestricted(Settings.PREF_INCOGNITO_MODE)") &&
+                callback.contains("R.string.row_needs_suggestions"))
         val prefs = host.substringAfter("private fun buildPreferencesScreen()")
             .substringBefore("private fun buildPersonalDictionaryScreen()")
         val personalIndex = prefs.indexOf("Settings.PREF_PERSONAL_DICTIONARY, false,")

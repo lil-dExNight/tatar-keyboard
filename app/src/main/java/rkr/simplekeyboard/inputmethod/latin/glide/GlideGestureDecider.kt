@@ -33,7 +33,12 @@ import kotlin.math.sqrt
  * PointerTracker, converts the density-dependent and key-width-relative values), so this
  * class stays unit-pure and JVM-testable.
  *
- * Unlike the reference, the window and the velocity are measured from the first sample that
+ * A separate short-onset path arms below the ordinary distance only when the sample enters a
+ * different letter key and its sample-to-sample velocity exceeds 0.45 dp/ms. PointerTracker
+ * supplies the key-entry verdict before legacy sliding-key commit. The ordinary 1.5-key-width
+ * threshold is unchanged.
+ *
+ * Unlike the reference, the ordinary window and velocity are measured from the first sample that
  * leaves a small slop around the touch-down point, not from the touch-down itself. Otherwise a
  * finger that rests on the first key before moving is rejected forever. While no sample leaves
  * the slop the machine stays TRACKING regardless of elapsed time. The distance threshold is
@@ -49,6 +54,8 @@ class GlideGestureDecider(
     private val velocityThresholdPxPerMs: Float,
     private val maxDetectTimeMs: Long = DEFAULT_MAX_DETECT_TIME_MS,
     private val slopPx: Float = 0f,
+    private val shortOnsetVelocityThresholdPxPerMs: Float = velocityThresholdPxPerMs *
+        (SHORT_ONSET_VELOCITY_THRESHOLD_DP_PER_MS / VELOCITY_THRESHOLD_DP_PER_MS),
 ) {
     enum class State { IDLE, TRACKING, ARMED, REJECTED }
 
@@ -60,6 +67,9 @@ class GlideGestureDecider(
 
     private var downX = 0f
     private var downY = 0f
+    private var lastX = 0f
+    private var lastY = 0f
+    private var lastTimeMs = 0L
     // The first-move anchor: set by the first sample that leaves the slop. Meaningless before.
     private var anchorTimeMs = 0L
     private var anchored = false
@@ -71,14 +81,36 @@ class GlideGestureDecider(
     fun onDown(x: Float, y: Float, timeMs: Long, eligible: Boolean) {
         downX = x
         downY = y
+        lastX = x
+        lastY = y
+        lastTimeMs = timeMs
         anchored = false
         anchorTimeMs = timeMs
         state = if (eligible) State.TRACKING else State.REJECTED
     }
 
-    /** Feeds one move sample (historical batch points included, in time order). */
-    fun onMove(x: Float, y: Float, timeMs: Long): State {
+    /**
+     * Feeds one move sample (historical batch points included, in time order).
+     * [enteredDifferentLetterKey] is true only when this sample enters a new letter key.
+     */
+    fun onMove(
+        x: Float,
+        y: Float,
+        timeMs: Long,
+        enteredDifferentLetterKey: Boolean = false,
+    ): State {
         if (state != State.TRACKING) return state
+        var fastShortOnset = false
+        val moveElapsed = timeMs - lastTimeMs
+        if (enteredDifferentLetterKey && moveElapsed > 0L) {
+            val moveDx = x - lastX
+            val moveDy = y - lastY
+            val moveVelocity = sqrt(moveDx * moveDx + moveDy * moveDy) / moveElapsed.toFloat()
+            fastShortOnset = moveVelocity > shortOnsetVelocityThresholdPxPerMs
+        }
+        lastX = x
+        lastY = y
+        lastTimeMs = timeMs
         val dx = x - downX
         val dy = y - downY
         val distance = sqrt(dx * dx + dy * dy)
@@ -94,7 +126,9 @@ class GlideGestureDecider(
             state = State.REJECTED
             return state
         }
-        if (distance > distanceThresholdPx &&
+        if (fastShortOnset) {
+            state = State.ARMED
+        } else if (distance > distanceThresholdPx &&
             distance / max(elapsed, 1L).toFloat() > velocityThresholdPxPerMs
         ) {
             state = State.ARMED
@@ -120,6 +154,9 @@ class GlideGestureDecider(
 
         /** FlorisBoard's velocity threshold: 0.10 dp/ms. */
         const val VELOCITY_THRESHOLD_DP_PER_MS = 0.10f
+
+        /** High-speed floor for a short onset that has entered a different letter key. */
+        const val SHORT_ONSET_VELOCITY_THRESHOLD_DP_PER_MS = 0.45f
 
         /**
          * The distance threshold as a fraction of the key width (the caller passes the px).

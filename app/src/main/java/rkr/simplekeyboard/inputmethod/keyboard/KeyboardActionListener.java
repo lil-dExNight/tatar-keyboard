@@ -86,6 +86,16 @@ public interface KeyboardActionListener {
     void onUpWithDeletePointerActive();
     void onUpWithSpacePointerActive();
 
+    /** Starts a long-press space trackpad only when the editor supports absolute selection. */
+    boolean onSpaceTrackpadStart();
+    void onSpaceTrackpadMove(int steps, boolean selecting);
+    void onSpaceTrackpadSelectionStart();
+    void onSpaceTrackpadSelectionEnd();
+    void onSpaceTrackpadFinish(boolean cancelled);
+
+    /** Called once when a touch becomes an armed glide; ordinary taps never emit it. */
+    default void onGlideArmed() {}
+
     /**
      * Called when a glide gesture completes. {@code path} is the owning PointerTracker's live
      * buffer, valid only during this call: a receiver that forwards the gesture to the engine
@@ -131,5 +141,17 @@ public interface KeyboardActionListener {
         public void onUpWithDeletePointerActive() {}
         @Override
         public void onUpWithSpacePointerActive() {}
+        @Override
+        public boolean onSpaceTrackpadStart() {
+            return false;
+        }
+        @Override
+        public void onSpaceTrackpadMove(int steps, boolean selecting) {}
+        @Override
+        public void onSpaceTrackpadSelectionStart() {}
+        @Override
+        public void onSpaceTrackpadSelectionEnd() {}
+        @Override
+        public void onSpaceTrackpadFinish(boolean cancelled) {}
     }
 }

@@ -23,8 +23,8 @@ package rkr.simplekeyboard.inputmethod.keyboard.internal
  * Paint and the Canvas calls.
  *
  * Unlike [rkr.simplekeyboard.inputmethod.latin.glide.GlidePath] (the decoder's input, which
- * drops points past its capacity because a truncated path still decodes), the trail overwrites
- * the oldest point when full: for a cosmetic layer a stale tail pixel is worse than a dropped one.
+ * thins interior points when full), the trail overwrites the oldest point: for a cosmetic layer
+ * a stale tail pixel is worse than a dropped one.
  *
  * The tail fades by age relative to the newest recorded point, not to a wall clock: the view
  * redraws only when a new point arrives, so "now" and the newest sample are the same instant,
@@ -32,9 +32,9 @@ package rkr.simplekeyboard.inputmethod.keyboard.internal
  * new points, no invalidates), as in the reference keyboards.
  *
  * After the lift, [startFadeOut] freezes the ring and the draw alpha decays to zero over
- * [FADE_OUT_MS] of wall time (the view passes SystemClock in; this is the class's only
- * wall-clock input). A new gesture's first point clears the fading ring ([addPoint] resets the
- * fade); [isFadeDone] tells the view when to stop re-invalidating.
+ * [FADE_OUT_MS]. The view passes elapsed gesture time from SystemClock. A new gesture's first
+ * point clears the fading ring ([addPoint] resets the fade); [isFadeDone] tells the view when to
+ * stop re-invalidating.
  *
  * Zero-allocation after construction: parallel primitive arrays, index arithmetic only.
  */
@@ -53,7 +53,7 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY, val maxAlpha: Int = MAX_A
     var fadingOut = false
         private set
 
-    /** Wall-clock millisecond the fade started at (view: SystemClock.uptimeMillis as float). */
+    /** Gesture-relative millisecond when the fade started. */
     private var fadeStartMs = 0f
 
     /**

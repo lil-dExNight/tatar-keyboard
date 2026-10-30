@@ -66,6 +66,8 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
      */
     private int mKeyboardBottomOffset;
     private InputView mCurrentInputView;
+    private int mOneHandedSide = -1;
+    private Runnable mOneHandedSideChangedListener;
     private boolean mEmojiPanelShown;
     private boolean mEmojiSearchShown;
 
@@ -110,6 +112,9 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         if (themeUpdated && mKeyboardView != null) {
             mLatinIME.setInputView(onCreateInputView());
         } else {
+            if (mKeyboardView != null) {
+                mKeyboardView.updateKeyboardTheme();
+            }
             syncDynamicThemeListener();
         }
     }
@@ -121,6 +126,8 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         if (mKeyboardView != null && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             // Live color pallet reloading doesn't work, need to rerender the View
             mLatinIME.setInputView(onCreateInputView());
+        } else if (mKeyboardView != null) {
+            mKeyboardView.updateKeyboardTheme();
         }
     }
 
@@ -231,6 +238,9 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         final Keyboard oldKeyboard = keyboardView.getKeyboard();
         final Keyboard newKeyboard = mKeyboardLayoutSet.getKeyboard(keyboardId);
         keyboardView.setKeyboard(newKeyboard);
+        if (mCurrentInputView != null) {
+            mCurrentInputView.setDockContent(newKeyboard);
+        }
         // Suppress the key preview popup in password fields so typed characters are not
         // exposed on screen, regardless of the user preference.
         keyboardView.setKeyPreviewPopupEnabled(
@@ -242,6 +252,17 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         final int languageOnSpacebarFormatType = LanguageOnSpacebarUtils
                 .getLanguageOnSpacebarFormatType(newKeyboard.mId.mSubtype);
         keyboardView.startDisplayLanguageOnSpacebar(subtypeChanged, languageOnSpacebarFormatType);
+        final int oneHandedSide = newKeyboard.mId.mOneHandedSide;
+        if (mOneHandedSide != oneHandedSide) {
+            mOneHandedSide = oneHandedSide;
+            if (mOneHandedSideChangedListener != null) {
+                mOneHandedSideChangedListener.run();
+            }
+        }
+    }
+
+    public void setOneHandedSideChangedListener(final Runnable listener) {
+        mOneHandedSideChangedListener = listener;
     }
 
     public Keyboard getKeyboard() {

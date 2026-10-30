@@ -23,6 +23,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 
 class SuggestionStripStateTest {
     private val width = 300
@@ -74,6 +75,67 @@ class SuggestionStripStateTest {
         assertEquals(2, state.onUp(activePointer, 250f, 20f, 400, height))
         assertTrue(state.onDown(activePointer, 350f, 20f, 400, height))
         assertEquals(3, state.onUp(activePointer, 350f, 20f, 400, height))
+    }
+
+    @Test
+    fun leftAndRightDocksShareOneCellGridForThreeAndFourCells() {
+        val state = SuggestionStripState()
+        val fullWidth = 720
+        state.setSuggestions("бер", "ике", "өч", "дүрт")
+
+        for (cells in listOf(
+            SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT,
+            SuggestionStripState.CELL_COUNT,
+        )) {
+            state.setVisibleCellCount(cells)
+            for (side in listOf(OneHandedMode.SIDE_LEFT, OneHandedMode.SIDE_RIGHT)) {
+                val paddings = OneHandedMode.dockPaddingsPx(fullWidth, side)
+                val contentLeft = paddings[0]
+                val contentRight = fullWidth - paddings[1]
+                assertTrue(state.setContentBounds(contentLeft, contentRight))
+
+                assertEquals(contentLeft, state.cellLeft(0, fullWidth))
+                assertEquals(contentRight, state.cellRight(cells - 1, fullWidth))
+                for (cell in 0 until cells) {
+                    val left = state.cellLeft(cell, fullWidth)
+                    val right = state.cellRight(cell, fullWidth)
+                    assertEquals(left, state.cellBoundary(cell, fullWidth))
+                    assertEquals(cell, state.cellAt((left + right - 1) / 2f, 20f, fullWidth, height))
+                    if (cell + 1 < cells) {
+                        assertEquals(right, state.cellLeft(cell + 1, fullWidth))
+                    }
+                }
+                if (contentLeft > 0) {
+                    assertEquals(
+                        SuggestionStripState.NO_CELL,
+                        state.cellAt(0f, 20f, fullWidth, height),
+                    )
+                }
+                if (contentRight < fullWidth) {
+                    assertEquals(
+                        SuggestionStripState.NO_CELL,
+                        state.cellAt((fullWidth - 1).toFloat(), 20f, fullWidth, height),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun dockGeometryChangeCancelsAnActiveGesture() {
+        val state = SuggestionStripState()
+        state.setSuggestions("бер", "ике", "өч", null)
+        state.setContentBounds(0, 612)
+        assertTrue(state.onDown(activePointer, 50f, 20f, 720, height))
+        assertEquals(0, state.pressedCell())
+
+        assertTrue(state.setContentBounds(108, 720))
+        assertEquals(SuggestionStripState.NO_CELL, state.pressedCell())
+        assertEquals(
+            SuggestionStripState.NO_CELL,
+            state.onUp(activePointer, 50f, 20f, 720, height),
+        )
+        assertFalse(state.setContentBounds(108, 720))
     }
 
     @Test

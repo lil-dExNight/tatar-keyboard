@@ -110,6 +110,8 @@
     <key-style
         latin:styleName="languageSwitchKeyStyle"
         latin:keySpec="!icon/language_switch_key|!code/key_language_switch"
+        latin:moreKeys="!fixedColumnOrder!3,!hasLabels!,!string/change_keyboard|!code/key_input_method_picker,!string/globe_menu_emoji|!code/key_emoji,!string/one_handed_mode_left|!code/key_one_handed_left,!string/one_handed_mode_right|!code/key_one_handed_right,!string/one_handed_mode_full|!code/key_one_handed_full"
+        latin:keyLabelFlags="hasPopupHint"
         latin:keyActionFlags="noKeyPreview|altCodeWhileTyping|enableLongPress"
         latin:altCode="!code/key_space" />
     <key-style

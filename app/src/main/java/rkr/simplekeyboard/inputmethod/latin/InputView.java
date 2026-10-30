@@ -26,6 +26,7 @@ import android.view.ViewStub;
 import android.widget.FrameLayout;
 
 import rkr.simplekeyboard.inputmethod.R;
+import rkr.simplekeyboard.inputmethod.keyboard.Keyboard;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelView;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchIndex;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchView;
@@ -47,6 +48,9 @@ public final class InputView extends FrameLayout {
      * because the strip is inflated lazily: a strip created after the push still gets the count.
      */
     private int mStripVisibleCellCount = SuggestionStripState.DEFAULT_VISIBLE_CELL_COUNT;
+    // Remembered for both lazily inflated strip surfaces; zero right means the view's full width.
+    private int mStripContentLeftPx;
+    private int mStripContentRightPx;
 
     /**
      * Set while the emoji panel hid a visible suggestion strip, so {@link #hideEmojiPanel()} can
@@ -90,12 +94,26 @@ public final class InputView extends FrameLayout {
         }
         final SuggestionStripView strip = (SuggestionStripView) inflated;
         strip.setVisibleCellCount(mStripVisibleCellCount);
+        strip.setDockContentBounds(mStripContentLeftPx, mStripContentRightPx);
         mSuggestionStripView = strip;
         return strip;
     }
 
     public SuggestionStripView getSuggestionStripView() {
         return mSuggestionStripView;
+    }
+
+    /** Aligns both strip surfaces with the key grid without resizing their full-width views. */
+    public void setDockContent(final Keyboard keyboard) {
+        mStripContentLeftPx = keyboard.mDockContentMinX;
+        mStripContentRightPx = keyboard.mDockContentMaxX;
+        if (mSuggestionStripView != null) {
+            mSuggestionStripView.setDockContentBounds(mStripContentLeftPx, mStripContentRightPx);
+        }
+        if (mInlineAutofillStripView != null) {
+            mInlineAutofillStripView.setDockContentBounds(
+                    mStripContentLeftPx, mStripContentRightPx);
+        }
     }
 
     /**
@@ -115,21 +133,31 @@ public final class InputView extends FrameLayout {
             return null;
         }
         mInlineAutofillStripView = (InlineAutofillStripView) inflated;
+        mInlineAutofillStripView.setDockContentBounds(
+                mStripContentLeftPx, mStripContentRightPx);
         return mInlineAutofillStripView;
     }
 
     /**
-     * The strip's measured width for the inline presentation specs, or 0 when neither strip
-     * surface has been laid out yet; the caller falls back to the display width.
+     * The strip's docked content width for inline presentation specs, or 0 when neither the
+     * surfaces nor the keyboard have supplied honest geometry yet.
      */
     public int getStripWidthPx() {
         if (mSuggestionStripView != null && mSuggestionStripView.getWidth() > 0) {
-            return mSuggestionStripView.getWidth();
+            return dockContentWidth(mSuggestionStripView.getWidth());
         }
         if (mInlineAutofillStripView != null && mInlineAutofillStripView.getWidth() > 0) {
-            return mInlineAutofillStripView.getWidth();
+            return dockContentWidth(mInlineAutofillStripView.getWidth());
         }
-        return 0;
+        return mStripContentRightPx > mStripContentLeftPx
+                ? mStripContentRightPx - mStripContentLeftPx : 0;
+    }
+
+    private int dockContentWidth(final int viewWidth) {
+        final int left = Math.max(0, Math.min(mStripContentLeftPx, viewWidth));
+        final int right = mStripContentRightPx <= 0 ? viewWidth
+                : Math.max(left, Math.min(mStripContentRightPx, viewWidth));
+        return right - left;
     }
 
     /**

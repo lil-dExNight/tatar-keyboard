@@ -412,14 +412,23 @@ class EmojiPanelController internal constructor(
                 } catch (_: Throwable) {
                     EmojiSkinTones.EMPTY
                 }
-                uiPoster.post { onPrepared(built, tones) }
+                val available = if (built.isEmpty) {
+                    emptySet()
+                } else {
+                    EmojiDisplaySnapshots.availableSequences(built, tones)
+                }
+                uiPoster.post { onPrepared(built, tones, available) }
             }
         } catch (_: Throwable) {
             finishUnavailable()
         }
     }
 
-    private fun onPrepared(built: EmojiSetSnapshot, tones: EmojiSkinTones) {
+    private fun onPrepared(
+        built: EmojiSetSnapshot,
+        tones: EmojiSkinTones,
+        available: Set<String>,
+    ) {
         if (destroyed) return
         if (built.isEmpty) {
             finishUnavailable()
@@ -427,13 +436,7 @@ class EmojiPanelController internal constructor(
         }
         snapshot = built
         skinTones = tones
-        // The recents may hold a toned pick, so the set they are checked against has to know the
-        // toned forms too — otherwise a skin-toned emoji would be silently dropped from "recent".
-        availableSequences = if (tones.isEmpty) {
-            EmojiDisplaySnapshots.availableSequences(built)
-        } else {
-            EmojiDisplaySnapshots.availableSequences(built) + tones.allTonedSequences()
-        }
+        availableSequences = available
         if (!tones.isEmpty) surface.bindSkinTones(tones)
         preparation = EmojiPanelPreparation.READY
         if (pendingShow) {

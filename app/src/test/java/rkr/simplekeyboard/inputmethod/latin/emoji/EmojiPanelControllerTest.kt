@@ -46,6 +46,16 @@ class EmojiPanelControllerTest {
         }
     }
 
+    private class RecordingList(private val values: List<String>) : AbstractList<String>() {
+        var readCount = 0
+        override val size: Int get() = values.size
+
+        override fun get(index: Int): String {
+            readCount++
+            return values[index]
+        }
+    }
+
     /** Queues submitted work so a test can drive the PREPARING window explicitly. */
     private class ManualExecutor : AbstractExecutorService() {
         private val tasks = ArrayDeque<Runnable>()
@@ -127,6 +137,30 @@ class EmojiPanelControllerTest {
         assertEquals(0, executor.queued)
         assertEquals(1, source.buildCount)
         assertEquals(2, surface.showCount)
+    }
+
+    @Test
+    fun availabilityIsBuiltBeforeTheResultReachesTheUiPoster() {
+        val entries = RecordingList(listOf("A", "B"))
+        val snapshot = EmojiSetSnapshot(listOf("smileys"), listOf(entries))
+        val executor = ManualExecutor()
+        val postedToUi = ArrayDeque<Runnable>()
+        val controller = EmojiPanelController(
+            FakeSurface(),
+            EmojiUiPoster { postedToUi.addLast(it) },
+            { executor },
+            { CountingSource(snapshot) },
+        )
+
+        controller.onEmojiKeyPressed()
+        executor.runAll()
+
+        val readsAfterWorker = entries.readCount
+        assertTrue("the worker must enumerate every emoji", readsAfterWorker > 0)
+        assertEquals(1, postedToUi.size)
+        postedToUi.removeFirst().run()
+        assertEquals("the UI callback must only publish the prepared set",
+            readsAfterWorker, entries.readCount)
     }
 
     // --- The single latest-only deferred show --------------------------------------------------

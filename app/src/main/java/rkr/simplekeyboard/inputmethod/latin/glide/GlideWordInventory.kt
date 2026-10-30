@@ -22,9 +22,9 @@ package rkr.simplekeyboard.inputmethod.latin.glide
  * Implementations serve NFC lowercase words with strictly positive frequencies and are
  * immutable for the lifetime of a decoder.
  *
- * [forEachWord] builds the index: it runs once per decoder, lazily and off the UI thread, so it
- * may walk cold storage. [wordAt] materializes results on the engine worker, for the few
- * winning entries of a decode.
+ * [forEachWord] builds the index: it runs once per decoder during armed preparation or an
+ * unprepared decode, off the UI thread, so it may walk cold storage. [wordAt] materializes
+ * results on the engine worker, for the few winning entries of a decode.
  */
 interface GlideWordInventory {
     val entryCount: Int

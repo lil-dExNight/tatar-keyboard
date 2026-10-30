@@ -120,6 +120,9 @@ class OneHandedExitHandleTest {
     fun anEmptySpanContainsNothing() {
         assertFalse(OneHandedMode.exitHandleContains(0, 0, 0, 100, 500))
         assertFalse(OneHandedMode.exitHandleContains(0, 0, 650, 100, 500))
+        assertFalse(OneHandedMode.exitHandleContains(20, 10, 15, 100, 500))
+        assertFalse(OneHandedMode.exitHandleContains(0, 100, 50, 0, 0))
+        assertFalse(OneHandedMode.exitHandleContains(0, 100, 50, 0, -1))
     }
 
     // --- The registration (source contracts) -----------------------------------------------------
@@ -143,6 +146,80 @@ class OneHandedExitHandleTest {
         val params = source("java/rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardParams.java")
         assertTrue(params.contains("public int mDockExitHandleMinX"))
         assertTrue(params.contains("public int mDockExitHandleMaxX"))
+    }
+
+    @Test
+    fun accessibilityHandleHasAStableIdWithoutRenumberingKeys() {
+        val delegate = source("java/rkr/simplekeyboard/inputmethod/accessibility/KeyboardAccessibilityDelegate.kt")
+        assertTrue(delegate.contains("const val DOCK_EXIT_HANDLE_ID = Int.MAX_VALUE"))
+        val visible = delegate.substringAfter("override fun getVisibleVirtualViews(")
+            .substringBefore("override fun onPopulateNodeForVirtualView(")
+        assertTrue(visible.contains("virtualViewIds.add(i)"))
+        assertTrue(visible.contains("if (dockExitHandleKeyboard() != null)"))
+        assertTrue(visible.contains("virtualViewIds.add(DOCK_EXIT_HANDLE_ID)"))
+        assertTrue(visible.indexOf("virtualViewIds.add(i)") < visible.indexOf("virtualViewIds.add(DOCK_EXIT_HANDLE_ID)"))
+
+        val hit = delegate.substringAfter("override fun getVirtualViewAt(")
+            .substringBefore("override fun getVisibleVirtualViews(")
+        assertTrue(hit.contains("if (dockExitHandleContains(x, y)) return DOCK_EXIT_HANDLE_ID"))
+        assertTrue(hit.contains("val index = sortedKeys().indexOf(key)"))
+        assertTrue(hit.contains("return if (index >= 0) index else INVALID_ID"))
+    }
+
+    @Test
+    fun accessibilityHandleBoundsAndActionsMatchTheDockTouchPath() {
+        val delegate = source("java/rkr/simplekeyboard/inputmethod/accessibility/KeyboardAccessibilityDelegate.kt")
+        val populate = delegate.substringAfter("override fun onPopulateNodeForVirtualView(")
+            .substringBefore("private fun performDockExitHandleAction(")
+        val handle = populate.substringAfter("if (virtualViewId == DOCK_EXIT_HANDLE_ID)")
+            .substringBefore("val keys = sortedKeys()")
+        assertTrue(handle.contains("R.string.spoken_description_dock_exit_handle"))
+        assertTrue(handle.contains("keyboard.mDockExitHandleMinX + keyboardView.paddingLeft"))
+        assertTrue(handle.contains("keyboard.mDockExitHandleMaxX + keyboardView.paddingLeft"))
+        assertTrue(handle.contains("keyboardView.paddingTop"))
+        assertTrue(handle.contains("keyboardView.paddingTop + keyboard.mOccupiedHeight"))
+        assertTrue(handle.contains("AccessibilityNodeInfo.ACTION_CLICK"))
+        assertTrue(handle.contains("AccessibilityNodeInfo.ACTION_LONG_CLICK"))
+        assertTrue(handle.contains("node.isClickable = true"))
+        assertTrue(handle.contains("node.isLongClickable = true"))
+
+        val perform = delegate.substringAfter("private fun performDockExitHandleAction(")
+            .substringBefore("override fun onPerformActionForVirtualView(")
+        assertTrue(perform.contains("MotionEvent.ACTION_DOWN"))
+        assertTrue(perform.contains("MotionEvent.ACTION_UP"))
+        assertTrue(perform.contains("MotionEvent.ACTION_CANCEL"))
+        assertTrue(perform.contains("keyboardView.processMotionEvent(down)"))
+        assertTrue(perform.contains("keyboardView.processMotionEvent(end)"))
+        assertTrue(perform.contains("PointerTracker.getPointerTracker(0).onLongPressed()"))
+
+        val tracker = source("java/rkr/simplekeyboard/inputmethod/keyboard/PointerTracker.java")
+        assertTrue(tracker.contains("sListener.onDockExitHandleTap();"))
+        assertTrue(tracker.contains("sListener.onDockExitHandleLongPress();"))
+    }
+
+    @Test
+    fun accessibilityHandleRejectsEmptyAndDegenerateStates() {
+        val delegate = source("java/rkr/simplekeyboard/inputmethod/accessibility/KeyboardAccessibilityDelegate.kt")
+        val geometry = delegate.substringAfter("private fun dockExitHandleKeyboard()")
+            .substringBefore("private fun dockExitHandleContains(")
+        assertTrue(geometry.contains("it.mDockExitHandleMinX < it.mDockExitHandleMaxX"))
+        assertTrue(geometry.contains("it.mOccupiedHeight > 0"))
+        val perform = delegate.substringAfter("private fun performDockExitHandleAction(")
+            .substringBefore("override fun onPerformActionForVirtualView(")
+        assertTrue(perform.contains("dockExitHandleKeyboard() ?: return false"))
+        val populate = delegate.substringAfter("if (virtualViewId == DOCK_EXIT_HANDLE_ID)")
+            .substringBefore("val keys = sortedKeys()")
+        assertTrue(populate.contains("if (keyboard == null)"))
+        assertTrue(populate.contains("tempBounds.set(0, 0, 1, 1)"))
+    }
+
+    @Test
+    fun accessibilityHandleDescriptionIsLocalized() {
+        for (dir in listOf("values", "values-ru", "values-tt")) {
+            val strings = source("res/$dir/strings-a11y.xml")
+            assertTrue("$dir missing dock exit description",
+                strings.contains("\"spoken_description_dock_exit_handle\""))
+        }
     }
 
     /** The geometry must stay Android-free so this suite keeps running it on the plain JVM. */

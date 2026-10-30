@@ -32,18 +32,24 @@ import rkr.simplekeyboard.inputmethod.keyboard.KeyDetector
 import rkr.simplekeyboard.inputmethod.keyboard.Keyboard
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardId
 import rkr.simplekeyboard.inputmethod.keyboard.MainKeyboardView
+import rkr.simplekeyboard.inputmethod.keyboard.PointerTracker
+import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 
 /**
- * ExploreByTouchHelper implementation: exposes each keyboard key as a virtual accessibility
- * node. Virtual view id = index of the key in keyboard.getSortedKeys(). Descriptions come
- * from KeyDescriptionMapper; ACTION_CLICK synthesizes a DOWN/UP MotionEvent pair at the
- * key's visible center into MainKeyboardView.processMotionEvent, so TalkBack input rides
- * the regular touch path (shift state machine, haptics, preview) exactly like a finger.
+ * Exposes keyboard keys and the one-handed exit handle as virtual accessibility nodes. Ordinary
+ * key ids are indices in keyboard.getSortedKeys(); the handle uses a separate stable id. Key
+ * descriptions come from KeyDescriptionMapper. Activation synthesizes motion events into
+ * MainKeyboardView.processMotionEvent, so TalkBack uses the regular touch path and its existing
+ * KeyboardActionListener callbacks.
  */
 class KeyboardAccessibilityDelegate(
     private val keyboardView: MainKeyboardView,
     private val keyDetector: KeyDetector,
 ) : ExploreByTouchHelper(keyboardView) {
+
+    private companion object {
+        const val DOCK_EXIT_HANDLE_ID = Int.MAX_VALUE
+    }
 
     private val tempBounds = Rect()
     private val accessibilityManager = keyboardView.context
@@ -65,6 +71,21 @@ class KeyboardAccessibilityDelegate(
 
     private fun sortedKeys(): List<Key> =
         keyboardView.keyboard?.sortedKeys ?: emptyList()
+
+    private fun dockExitHandleKeyboard(): Keyboard? = keyboardView.keyboard?.takeIf {
+        it.mDockExitHandleMinX < it.mDockExitHandleMaxX && it.mOccupiedHeight > 0
+    }
+
+    private fun dockExitHandleContains(x: Float, y: Float): Boolean {
+        val keyboard = dockExitHandleKeyboard() ?: return false
+        return OneHandedMode.exitHandleContains(
+            keyboard.mDockExitHandleMinX,
+            keyboard.mDockExitHandleMaxX,
+            x.toInt() - keyboardView.paddingLeft,
+            y.toInt() - keyboardView.paddingTop,
+            keyboard.mOccupiedHeight,
+        )
+    }
 
     /**
      * Announces shift-mode changes (AOSP spoken_description_shiftmode_*
@@ -108,6 +129,7 @@ class KeyboardAccessibilityDelegate(
     }
 
     override fun getVirtualViewAt(x: Float, y: Float): Int {
+        if (dockExitHandleContains(x, y)) return DOCK_EXIT_HANDLE_ID
         val key = keyDetector.detectHitKey(x.toInt(), y.toInt()) ?: return INVALID_ID
         val index = sortedKeys().indexOf(key)
         return if (index >= 0) index else INVALID_ID
@@ -120,12 +142,38 @@ class KeyboardAccessibilityDelegate(
                 virtualViewIds.add(i)
             }
         }
+        if (dockExitHandleKeyboard() != null) {
+            virtualViewIds.add(DOCK_EXIT_HANDLE_ID)
+        }
     }
 
     override fun onPopulateNodeForVirtualView(
         virtualViewId: Int,
         node: AccessibilityNodeInfo,
     ) {
+        if (virtualViewId == DOCK_EXIT_HANDLE_ID) {
+            val keyboard = dockExitHandleKeyboard()
+            if (keyboard == null) {
+                node.contentDescription = ""
+                tempBounds.set(0, 0, 1, 1)
+            } else {
+                node.className = android.widget.Button::class.java.name
+                node.contentDescription = cachedString(R.string.spoken_description_dock_exit_handle)
+                tempBounds.set(
+                    keyboard.mDockExitHandleMinX + keyboardView.paddingLeft,
+                    keyboardView.paddingTop,
+                    keyboard.mDockExitHandleMaxX + keyboardView.paddingLeft,
+                    keyboardView.paddingTop + keyboard.mOccupiedHeight,
+                )
+                node.addAction(AccessibilityNodeInfo.ACTION_CLICK)
+                node.addAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
+                node.isClickable = true
+                node.isLongClickable = true
+                node.isEnabled = true
+            }
+            node.setBoundsInParent(tempBounds)
+            return
+        }
         val keys = sortedKeys()
         val key = keys.getOrNull(virtualViewId)
         val keyboard = keyboardView.keyboard
@@ -157,11 +205,47 @@ class KeyboardAccessibilityDelegate(
         if (Build.VERSION.SDK_INT >= 29) node.isTextEntryKey = true
     }
 
+    /** Reuses the dock touch path, including its tap and long-press listener callbacks. */
+    private fun performDockExitHandleAction(action: Int): Boolean {
+        val longClick = when (action) {
+            AccessibilityNodeInfo.ACTION_CLICK -> false
+            AccessibilityNodeInfo.ACTION_LONG_CLICK -> true
+            else -> return false
+        }
+        val keyboard = dockExitHandleKeyboard() ?: return false
+        val x = keyboard.mDockExitHandleMinX +
+            (keyboard.mDockExitHandleMaxX - keyboard.mDockExitHandleMinX) / 2 +
+            keyboardView.paddingLeft
+        val y = keyboard.mOccupiedHeight / 2 + keyboardView.paddingTop
+        val eventTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(eventTime, eventTime, MotionEvent.ACTION_DOWN, x.toFloat(), y.toFloat(), 0)
+        keyboardView.processMotionEvent(down)
+        down.recycle()
+        if (longClick) {
+            PointerTracker.getPointerTracker(0).onLongPressed()
+        }
+        val endAction = if (longClick) MotionEvent.ACTION_CANCEL else MotionEvent.ACTION_UP
+        val end = MotionEvent.obtain(eventTime, eventTime, endAction, x.toFloat(), y.toFloat(), 0)
+        keyboardView.processMotionEvent(end)
+        end.recycle()
+        return true
+    }
+
     override fun onPerformActionForVirtualView(
         virtualViewId: Int,
         action: Int,
         arguments: android.os.Bundle?,
     ): Boolean {
+        if (virtualViewId == DOCK_EXIT_HANDLE_ID) {
+            if (!performDockExitHandleAction(action)) return false
+            val eventType = if (action == AccessibilityNodeInfo.ACTION_LONG_CLICK) {
+                AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
+            } else {
+                AccessibilityEvent.TYPE_VIEW_CLICKED
+            }
+            sendEventForVirtualView(DOCK_EXIT_HANDLE_ID, eventType)
+            return true
+        }
         if (action != AccessibilityNodeInfo.ACTION_CLICK) return false
         val key = sortedKeys().getOrNull(virtualViewId)?.takeUnless { it.isSpacer } ?: return false
         // Visible center of the key in view coordinates (mHitbox is private in the fork;

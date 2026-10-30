@@ -32,8 +32,8 @@ import org.w3c.dom.Element
  *
  * The geometry math (scale, dock paddings, the fifth-row floor, left/right symmetry) is pure and
  * tested directly; the wiring (the pref's path into the keyboard builder, the strip's hitbox
- * caps, the full-width strip and panel) is pinned at the source level — this project's JVM suite
- * runs without Robolectric on purpose.
+ * caps, the full-width surface views and docked strip cells) is pinned at the source level — this
+ * project's JVM suite runs without Robolectric on purpose.
  */
 class OneHandedModeTest {
 
@@ -271,8 +271,9 @@ class OneHandedModeTest {
     }
 
     @Test
-    fun theSuggestionStripAndTheEmojiPanelStayFullWidth() {
+    fun theSuggestionAndEmojiSurfaceViewsStayFullWidth() {
         // Both are siblings of the keyboard view in the input view, not part of the key grid.
+        // The suggestion and autofill cells use the dock rectangle inside their full-width views.
         for (layout in listOf("layout/input_view.xml", "layout-v28/input_view.xml")) {
             val root = parse(File(sourceRoot(), "res/$layout"))
             val stubs = descendants(root).filter {

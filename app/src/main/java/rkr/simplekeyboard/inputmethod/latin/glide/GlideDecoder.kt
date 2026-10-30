@@ -20,7 +20,7 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
- * The glide decoder: a SHARK2-style two-channel statistical classifier over the dictionary.
+ * The glide decoder: a SHARK2-style statistical classifier over the dictionary.
  *
  * The algorithm follows the AnySoftKeyboard PR #1870 parameter study (Etienne Desticourt's
  * write-up) as implemented by FlorisBoard's `StatisticalGlideTypingClassifier` (Apache-2.0,
@@ -39,9 +39,11 @@ import kotlin.math.sqrt
  *     over the resampled paths, Gaussian with [GlideConstants.shapeStd]) x location distance
  *     (absolute pointwise L1/2, Gaussian with [GlideConstants.locationStdFactor] x key radius)
  *     x a frequency weight. The location sigma widens when the gesture is faster than the
- *     candidate's normative duration (the speed channel, see [scoreVariant]; timestamps are the
- *     only input). The confidence competes for the top-N; cheap fail-fast checks
- *     (frequency alone, then shape alone) skip the expensive channels when a candidate cannot
+ *     candidate's normative duration (the speed channel, see [scoreVariant]). A per-key dwell
+ *     mask marks locally slow segments relative to the gesture's average speed; dwell at a doubled
+ *     letter admits the plain ideal path and applies a likelihood ratio. The confidence competes
+ *     for the top-N; cheap fail-fast checks (frequency alone, then shape alone) skip the expensive
+ *     channels when a candidate cannot
  *     reach the current k-th worst score.
  *
  * Scoring is one fused loop: the ideal path's arc-equidistant points are produced on the fly
@@ -84,6 +86,12 @@ class GlideDecoder(
         val normativeSpeedRadiiPerMs: Float = 0.016f,
         /** Widening cap of the location sigma under a fast gesture; 1f disables the adaptation. */
         val speedWidenMax: Float = 1.5f,
+        /** Minimum duration of a slow segment that can contribute to the per-key dwell mask. */
+        val dwellMinDurationMs: Float = 30f,
+        /** A segment dwells when its speed is below this fraction of the whole gesture's speed. */
+        val dwellSpeedRatio: Float = 0.5f,
+        /** Likelihood ratio for a doubled candidate when its doubled key carries dwell evidence. */
+        val doubledDwellLikelihoodRatio: Float = 4f,
         /**
          * Hard cutoff of the location channel, in UNWIDENED sigmas: a candidate whose mean
          * per-point location distance lies past it is out, whatever the speed channel did to the
@@ -143,6 +151,11 @@ class GlideDecoder(
         wordIndex = index
     }
 
+    /** Builds the index without decoding a path. */
+    internal fun prewarmIndex() {
+        index()
+    }
+
     private fun index(): GlideWordIndex {
         wordIndex?.let { return it }
         return synchronized(this) {
@@ -168,6 +181,10 @@ class GlideDecoder(
     // The extremity-pruning merge arms: 2 nearest start keys x 2 nearest end keys.
     private val mergeEnd = IntArray(constants.extremityNeighbors * constants.extremityNeighbors)
     private val mergeCursor = IntArray(constants.extremityNeighbors * constants.extremityNeighbors)
+    private val dwellMask = LongArray((geometry.keyCount + 63) ushr 6)
+    private val dwellKey = IntArray(1)
+    private var dwellMaskValid = false
+    private var dwellMaskAny = false
 
     // Test-only observability, worker-confined like the decode itself: candidates visited after
     // extremity pruning and candidates fully scored (the fail-fast checks skip the rest).
@@ -186,6 +203,8 @@ class GlideDecoder(
         out.reset()
         lastCandidateCount = 0
         lastScoredCount = 0
+        dwellMaskValid = false
+        dwellMaskAny = false
         if (path.size < 2 || geometry.isEmpty) return 0
         val index = index()
         if (index.wordCount == 0) return 0
@@ -282,7 +301,7 @@ class GlideDecoder(
                 continue
             }
             topCount = scoreCandidate(
-                index, entry, topCount, shapeFactor, locationFactor,
+                path, index, entry, topCount, shapeFactor, locationFactor,
                 shapeInvTwoSigmaSq, locationInvTwoSigmaSq, maxChannelProduct,
                 userDurationMs, normativeSpeed, locationCutoff, userLength, lengthInvTwoSigmaSq,
             )
@@ -301,6 +320,7 @@ class GlideDecoder(
      * into the top-N when it beats the current k-th worst. Returns the new top count.
      */
     private fun scoreCandidate(
+        path: GlidePath,
         index: GlideWordIndex,
         entry: Int,
         topCount: Int,
@@ -317,8 +337,14 @@ class GlideDecoder(
     ): Int {
         val samples = constants.sampleCount
         val frequencyRatio = index.frequencyAt(entry).toDouble() / index.maxFrequency
-        val frequencyWeight =
+        var frequencyWeight =
             (constants.frequencyWeight * Math.pow(frequencyRatio, constants.frequencyExponent.toDouble())).toFloat()
+        // Dwell is alternative evidence to a loop: it lets the doubled candidate use its plain
+        // path even when the undoubled twin exists, and supplies an independent likelihood ratio.
+        val doubled = index.loopLengthAt(entry) >= 0f
+        val dwellAtDouble = doubled &&
+            hasDwellAtDouble(path, index, entry, userDurationMs, userLength)
+        if (dwellAtDouble) frequencyWeight *= constants.doubledDwellLikelihoodRatio
         // Fail-fast #1: even a perfect shape and location cannot lift this candidate past the
         // current k-th worst when its frequency weight is too low.
         if (topCount == TOP_N &&
@@ -326,17 +352,15 @@ class GlideDecoder(
         ) {
             return topCount
         }
-        // A word with a doubled letter scores against its looped ideal path, so the doubled letter
-        // needs a loop or dwell in the user path: its plain variant equals the undoubled twin's
-        // path, and frequency alone would pick between the two words. When no indexed word owns
-        // that plain path (the twin bit), the word also scores against it and keeps the better.
-        val doubled = index.loopLengthAt(entry) >= 0f
+        // Without dwell, a doubled word with an indexed twin scores only against its looped path:
+        // its plain variant equals the twin's path, so frequency alone must not choose between
+        // them. A twinless doubled word always keeps the better of its plain and looped paths.
         var best = scoreVariant(
             index, entry, topCount, doubled, shapeFactor, locationFactor,
             shapeInvTwoSigmaSq, locationInvTwoSigmaSq, frequencyWeight, samples,
             userDurationMs, normativeSpeed, locationCutoff, userLength, lengthInvTwoSigmaSq,
         )
-        if (doubled && index.isTwinlessAt(entry)) {
+        if (doubled && (index.isTwinlessAt(entry) || dwellAtDouble)) {
             val plain = scoreVariant(
                 index, entry, topCount, false, shapeFactor, locationFactor,
                 shapeInvTwoSigmaSq, locationInvTwoSigmaSq, frequencyWeight, samples,
@@ -365,6 +389,54 @@ class GlideDecoder(
         topScores[slot] = best
         topEntries[slot] = entry
         return newCount
+    }
+
+    /** True when a doubled letter of [entry] is on a key marked by the gesture's dwell mask. */
+    private fun hasDwellAtDouble(
+        path: GlidePath,
+        index: GlideWordIndex,
+        entry: Int,
+        userDurationMs: Float,
+        userLength: Float,
+    ): Boolean {
+        if (!dwellMaskValid) buildDwellMask(path, userDurationMs, userLength)
+        if (!dwellMaskAny) return false
+        for (position in index.keySeqStart(entry) + 1 until index.keySeqEnd(entry)) {
+            if (!index.sameLetterAsPreviousAt(position)) continue
+            val key = index.keySeqAt(position)
+            if ((dwellMask[key ushr 6] ushr (key and 63)) and 1L != 0L) return true
+        }
+        return false
+    }
+
+    /** Marks keys at slow segments, using the gesture's own average speed as the reference. */
+    private fun buildDwellMask(path: GlidePath, userDurationMs: Float, userLength: Float) {
+        dwellMaskValid = true
+        dwellMask.fill(0L)
+        if (userDurationMs <= 0f || !userDurationMs.isFinite() ||
+            userLength <= 0f || !userLength.isFinite()
+        ) {
+            return
+        }
+        val averageSpeed = userLength / userDurationMs
+        if (averageSpeed <= 0f || !averageSpeed.isFinite()) return
+        for (i in 0 until path.size - 1) {
+            val duration = path.ts[i + 1] - path.ts[i]
+            if (duration < constants.dwellMinDurationMs) continue
+            val dx = path.xs[i + 1] - path.xs[i]
+            val dy = path.ys[i + 1] - path.ys[i]
+            val dwellDistance = averageSpeed * duration * constants.dwellSpeedRatio
+            if (dx * dx + dy * dy >= dwellDistance * dwellDistance) continue
+            val found = geometry.findClosestKeys(
+                (path.xs[i] + path.xs[i + 1]) * 0.5f,
+                (path.ys[i] + path.ys[i + 1]) * 0.5f,
+                dwellKey,
+            )
+            if (found == 0) continue
+            val key = dwellKey[0]
+            dwellMask[key ushr 6] = dwellMask[key ushr 6] or (1L shl (key and 63))
+            dwellMaskAny = true
+        }
     }
 
     /**

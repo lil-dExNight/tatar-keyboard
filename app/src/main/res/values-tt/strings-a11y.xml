@@ -55,6 +55,7 @@
     <string name="spoken_description_language_switch">Тел алыштыру</string>
     <string name="spoken_description_emoji">Эмодзи</string>
     <string name="spoken_description_settings">Көйләүләр</string>
+    <string name="spoken_description_dock_exit_handle">Бер кул режимыннан чыгу</string>
     <string name="spoken_description_unknown">Билгесез символ</string>
 
     <!-- Long-press (moreKeys) panel open/close announcements. -->

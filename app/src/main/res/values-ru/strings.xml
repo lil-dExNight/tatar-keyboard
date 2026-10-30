@@ -55,6 +55,8 @@
     <string name="one_handed_mode_off">Выкл</string>
     <string name="one_handed_mode_left">Слева</string>
     <string name="one_handed_mode_right">Справа</string>
+    <string name="one_handed_mode_full">Во всю ширину</string>
+    <string name="globe_menu_emoji">Эмодзи</string>
     <string name="prefs_bottom_offset_portrait_settings">Сдвиг снизу</string>
     <string name="keyboard_color">Установить пользовательский цвет клавиатуры</string>
     <string name="show_special_chars">Показать специальные символы</string>
@@ -94,10 +96,14 @@
     <string name="text_shortcuts_intro">Наберите сокращение и поставьте пробел или знак препинания — оно заменится на сохранённый текст. Удобно для длинных татарских суффиксов и частых фраз. Нажмите стирание сразу после, чтобы вернуть сокращение.</string>
     <string name="text_shortcuts_add">Добавить сокращение\u2026</string>
     <string name="text_shortcuts_add_title">Новое сокращение</string>
+    <string name="text_shortcuts_edit_title">Изменить сокращение</string>
     <string name="text_shortcuts_shortcut_hint">Сокращение (только буквы)</string>
     <string name="text_shortcuts_expansion_hint">Текст для подстановки</string>
     <string name="text_shortcuts_add_action">Сохранить</string>
     <string name="text_shortcuts_add_rejected">Эту пару нельзя сохранить: сокращение — от 1 до 32 букв, текст — от 1 до 140 знаков в одну строку.</string>
+    <string name="text_shortcuts_replace_title">Заменить существующее сокращение?</string>
+    <string name="text_shortcuts_replace_confirm">Для «%1$s» уже сохранён другой текст. Заменить его?</string>
+    <string name="text_shortcuts_replace_action">Заменить</string>
     <string name="text_shortcuts_delete">Удалить</string>
     <string name="text_shortcuts_delete_title">Удалить сокращение «%1$s»?</string>
     <string name="text_shortcuts_empty">Пока нет ни одного сокращения.</string>
@@ -264,6 +270,7 @@
     <string name="backup_export_done">Файл резервной копии записан.</string>
     <string name="backup_export_failed">Не удалось записать файл резервной копии.</string>
     <string name="backup_import_done">Резервная копия импортирована.</string>
+    <string name="backup_import_privacy_changed">Резервная копия импортирована. Личный словарь или пауза обучения изменились; проверьте эти настройки.</string>
     <string name="backup_import_failed_invalid">Этот файл — не резервная копия этой клавиатуры. Ничего не изменено.</string>
     <string name="backup_import_failed_write">Не удалось завершить импорт. Часть данных могла быть уже заменена.</string>
     <string name="backup_no_app">На устройстве нет приложения для выбора файлов.</string>

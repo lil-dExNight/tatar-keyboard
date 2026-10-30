@@ -1,10 +1,14 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
+import com.sun.management.ThreadMXBean
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
+import java.lang.management.ManagementFactory
 import java.text.Normalizer
 
 /** Unit tests for [GlideWordIndex]: bucketing, ideal lengths, skips, memory estimate. */
@@ -16,7 +20,7 @@ class GlideWordIndexTest {
         GlideWordIndex.build(ListGlideInventory(entries), geometry)
 
     @Test
-    fun pairBucketsPartitionTheIndexedWordsInDictionaryOrder() {
+    fun pairBucketsPartitionTheIndexedWords() {
         val entries = listOf(
             "сәләм" to 100L,
             "салым" to 50L,
@@ -26,18 +30,15 @@ class GlideWordIndexTest {
         val index = index(entries)
         assertEquals(4, index.wordCount)
         assertEquals(0, index.skippedWordCount)
-        // Every entry appears in exactly one bucket, in ascending entry order per bucket.
+        // Every entry appears in exactly one bucket.
         val seen = sortedSetOf<Int>()
         val keyCount = geometry.keyCount
         for (start in 0 until keyCount) {
             for (end in 0 until keyCount) {
-                var previous = -1
                 for (position in index.pairRangeStart(start, end) until index.pairRangeEnd(start, end)) {
                     val entry = index.pairEntryAt(position)
                     assertTrue(entry in 0 until 4)
                     assertTrue(seen.add(entry))
-                    assertTrue(entry > previous)
-                    previous = entry
                 }
             }
         }
@@ -163,6 +164,68 @@ class GlideWordIndexTest {
         for (key in 64..126) {
             assertEquals(key, index.keySeqAt(index.keySeqStart(0) + key - 64))
         }
+    }
+
+    @Test
+    fun bucketOrderMatchesTheStableFrequencySort() {
+        val entries = List(96) { entry ->
+            val word = buildString {
+                append('а')
+                for (bit in 0 until 7) append(if (entry and (1 shl bit) == 0) 'л' else 'м')
+                append('а')
+            }
+            val frequency = when (entry % 9) {
+                0 -> 4_000_000_000L
+                1, 2, 3 -> 50L
+                else -> (entry * 97L % 10_000L) + 1L
+            }
+            word to frequency
+        }
+        val frequencies = IntArray(entries.size) { entries[it].second.toInt() }
+        val expected = IntArray(entries.size) { it }
+        for (i in 1 until expected.size) {
+            val entry = expected[i]
+            val frequency = frequencies[entry]
+            var j = i - 1
+            while (j >= 0 &&
+                (frequencies[expected[j]] < frequency ||
+                    (frequencies[expected[j]] == frequency && expected[j] > entry))
+            ) {
+                expected[j + 1] = expected[j]
+                j--
+            }
+            expected[j + 1] = entry
+        }
+
+        val index = index(entries)
+        val key = geometry.keyIndexOfLetter('а'.code)
+        val actual = IntArray(entries.size) {
+            index.pairEntryAt(index.pairRangeStart(key, key) + it)
+        }
+        assertArrayEquals(expected, actual)
+    }
+
+    @Test
+    fun bucketSortAllocatesOneScratchBoundedByTheLargestBucket() {
+        val bean = ManagementFactory.getThreadMXBean() as? ThreadMXBean
+        assumeTrue(bean != null && bean.isThreadAllocatedMemorySupported)
+        val threadBean = bean!!
+        threadBean.isThreadAllocatedMemoryEnabled = true
+        val threadId = Thread.currentThread().id
+        val bucketSize = 48
+        val bucketCount = 12
+        val entries = IntArray(bucketSize * bucketCount) { (it * 37) % (bucketSize * bucketCount) }
+        val offsets = IntArray(bucketCount + 1) { it * bucketSize }
+        val frequencies = IntArray(entries.size) { it * 17 % 101 }
+
+        repeat(100) { GlideWordIndex.sortPairBuckets(entries, offsets, frequencies) }
+        val before = threadBean.getThreadAllocatedBytes(threadId)
+        repeat(1_000) { GlideWordIndex.sortPairBuckets(entries, offsets, frequencies) }
+        val bytesPerSort = (threadBean.getThreadAllocatedBytes(threadId) - before) / 1_000
+        assertTrue(
+            "sort bytes/call: $bytesPerSort",
+            bytesPerSort <= bucketSize * 4L + 64L,
+        )
     }
 
     /** The first [count] code points the geometry's letter filter keeps unchanged. */

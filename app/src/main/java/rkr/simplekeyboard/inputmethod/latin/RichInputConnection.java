@@ -38,6 +38,7 @@ import java.util.concurrent.Executors;
 
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.common.StringUtils;
+import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiTextUtils;
 import rkr.simplekeyboard.inputmethod.latin.settings.SpacingAndPunctuations;
 import rkr.simplekeyboard.inputmethod.latin.utils.CapsModeUtils;
 
@@ -253,7 +254,6 @@ public final class RichInputConnection {
     }
 
     /**
-     * Reload coalescing: {@code onUpdateSelection} asks for a reload (IPC) on every cursor move.
      * At most one reload is in flight; requests arriving meanwhile set
      * {@link #mReloadRequestedWhileInFlight} and produce one follow-up in
      * {@link #finishReloadTextCache}. Both flags are confined to the UI thread.
@@ -408,6 +408,82 @@ public final class RichInputConnection {
         if (mReloadRequestedWhileInFlight) {
             mReloadRequestedWhileInFlight = false;
             reloadTextCache();
+        }
+    }
+
+    /**
+     * Coalesces own selection reports into a settled reload, with a heartbeat while reports keep
+     * arriving. All methods and callbacks run on the UI thread.
+     */
+    /* package */ static final class EditorCacheReloadScheduler {
+        /* package */ static final long SETTLE_DELAY_MS = 200L;
+        /* package */ static final long HEARTBEAT_MS = 1000L;
+
+        /* package */ interface Backend {
+            void postDelayed(Runnable runnable, long delayMillis);
+            void removeCallbacks(Runnable runnable);
+        }
+
+        private final Backend mBackend;
+        private final Runnable mReload;
+        private boolean mTypingActive;
+        private boolean mSettlePosted;
+        private boolean mHeartbeatPosted;
+
+        private final Runnable mSettle;
+        private final Runnable mHeartbeat;
+
+        /* package */ EditorCacheReloadScheduler(final Backend backend, final Runnable reload) {
+            mBackend = backend;
+            mReload = reload;
+            mSettle = () -> {
+                mSettlePosted = false;
+                reloadNow();
+            };
+            mHeartbeat = () -> {
+                mHeartbeatPosted = false;
+                if (!mTypingActive) {
+                    return;
+                }
+                mReload.run();
+                if (mTypingActive) {
+                    postHeartbeat();
+                }
+            };
+        }
+
+        /* package */ void onExpectedSelectionChange() {
+            if (!mTypingActive) {
+                mTypingActive = true;
+                postHeartbeat();
+            }
+            if (mSettlePosted) {
+                mBackend.removeCallbacks(mSettle);
+            }
+            mBackend.postDelayed(mSettle, SETTLE_DELAY_MS);
+            mSettlePosted = true;
+        }
+
+        /* package */ void reloadNow() {
+            cancel();
+            mReload.run();
+        }
+
+        /* package */ void cancel() {
+            mTypingActive = false;
+            if (mSettlePosted) {
+                mBackend.removeCallbacks(mSettle);
+                mSettlePosted = false;
+            }
+            if (mHeartbeatPosted) {
+                mBackend.removeCallbacks(mHeartbeat);
+                mHeartbeatPosted = false;
+            }
+        }
+
+        private void postHeartbeat() {
+            mBackend.postDelayed(mHeartbeat, HEARTBEAT_MS);
+            mHeartbeatPosted = true;
         }
     }
 
@@ -703,9 +779,9 @@ public final class RichInputConnection {
 
     /**
      * Whether the IME commits the clip itself: only a non-empty clip shorter than
-     * {@link #MAX_DIRECT_PASTE_CHARS}. Package-private and Android-free for the JVM tests.
+     * {@link #MAX_DIRECT_PASTE_CHARS}. Android-free for the JVM tests.
      */
-    /* package */ static boolean shouldCommitPasteDirectly(final CharSequence pasteData) {
+    public static boolean shouldCommitPasteDirectly(final CharSequence pasteData) {
         return pasteData != null && pasteData.length() > 0
                 && pasteData.length() < MAX_DIRECT_PASTE_CHARS;
     }
@@ -852,51 +928,39 @@ public final class RichInputConnection {
     }
 
     /**
-     * Some chars, such as emoji consist of 2 chars (surrogate pairs). We should treat them as one character.
-     * Some chars are joined with ZERO WIDTH JOINER (U+200D), pairs need to be counted
+     * Converts a requested number of cursor steps to UTF-16 offsets. Emoji clusters, including
+     * modifiers, flags, keycaps, joiners and tags, are indivisible; malformed surrogates remain
+     * single-code-unit steps.
      */
     public int getUnicodeSteps(int chars, boolean rightSidePointer) {
         int steps = 0;
+        final boolean hasSelection = hasSelection() || mTextSelection.length() > 0;
         if (chars < 0) {
-            CharSequence charsBeforeCursor = rightSidePointer && hasSelection() ?
-                    getSelectedText() :
-                    mTextBeforeCursor;
+            final CharSequence text = rightSidePointer && hasSelection
+                    ? getSelectedText() : mTextBeforeCursor;
             // length() == 0, not isEmpty(): CharSequence.isEmpty() exists only from API 35 and
             // minSdk is 24.
-            if (charsBeforeCursor == null || charsBeforeCursor.length() == 0) {
+            if (text == null || text.length() == 0) {
                 return chars;
             }
-            for (int i = charsBeforeCursor.length() - 1; i >= 0 && chars < 0; i--, steps--) {
-                // i >= 1 so a window that starts with a ZWJ at index 0 is not split mid-cluster.
-                if (i >= 1 && charsBeforeCursor.charAt(i - 1) == '\u200d') {
-                    continue;
-                }
-                if (charsBeforeCursor.charAt(i) == '\u200d') {
-                    continue;
-                }
-                if (Character.isSurrogate(charsBeforeCursor.charAt(i)) &&
-                        !Character.isHighSurrogate(charsBeforeCursor.charAt(i))) {
-                    continue;
-                }
+            int end = text.length();
+            while (chars < 0 && end > 0) {
+                final int length = EmojiTextUtils.cursorClusterLengthEndingAt(text, end);
+                end -= length;
+                steps -= length;
                 chars++;
             }
         } else if (chars > 0) {
-            CharSequence charsAfterCursor = !rightSidePointer && hasSelection() ?
-                    getSelectedText() :
-                    mTextAfterCursor;
-            if (charsAfterCursor == null || charsAfterCursor.length() == 0) {
+            final CharSequence text = !rightSidePointer && hasSelection
+                    ? getSelectedText() : mTextAfterCursor;
+            if (text == null || text.length() == 0) {
                 return chars;
             }
-            for (int i = 0; i < charsAfterCursor.length() && chars > 0; i++, steps++) {
-                if (i < charsAfterCursor.length() - 1 && charsAfterCursor.charAt(i + 1) == '\u200d') {
-                    continue;
-                }
-                if (charsAfterCursor.charAt(i) == '\u200d') {
-                    continue;
-                }
-                if (Character.isHighSurrogate(charsAfterCursor.charAt(i))) {
-                    continue;
-                }
+            int start = 0;
+            while (chars > 0 && start < text.length()) {
+                final int length = EmojiTextUtils.cursorClusterLengthStartingAt(text, start);
+                start += length;
+                steps += length;
                 chars--;
             }
         }

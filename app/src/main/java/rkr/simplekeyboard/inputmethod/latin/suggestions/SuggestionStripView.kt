@@ -189,11 +189,19 @@ class SuggestionStripView @JvmOverloads constructor(
 
     /**
      * The visible cell count (the user's fourth-cell setting), pushed by the strip's owner. A
-     * change re-splits the full width, so the ellipsized texts are rebuilt against the new cell
-     * widths and the accessibility nodes are re-described.
+     * change re-splits the content rectangle, so the ellipsized texts are rebuilt against the new
+     * cell widths and the accessibility nodes are re-described.
      */
     fun setVisibleCellCount(count: Int) {
         if (!state.setVisibleCellCount(count)) return
+        rebuildDisplaySuggestions()
+        accessibilityHelper.invalidateRoot()
+        invalidate()
+    }
+
+    /** Uses the docked key-grid span for every cell boundary and hit test. */
+    fun setDockContentBounds(leftPx: Int, rightPx: Int) {
+        if (!state.setContentBounds(leftPx, rightPx)) return
         rebuildDisplaySuggestions()
         accessibilityHelper.invalidateRoot()
         invalidate()
@@ -362,7 +370,7 @@ class SuggestionStripView @JvmOverloads constructor(
         val separatorBottom = height - separatorTop
         var separator = 1
         while (separator < state.visibleCellCount()) {
-            val x = state.cellLeft(separator, width).toFloat()
+            val x = state.cellBoundary(separator, width).toFloat()
             canvas.drawLine(x, separatorTop, x, separatorBottom, decorationPaint)
             separator++
         }

@@ -55,6 +55,10 @@ class KeyboardCodesSetTest {
         "key_cut" to Constants.CODE_CUT,
         "key_copy" to Constants.CODE_COPY,
         "key_paste_context_menu" to Constants.CODE_PASTE_CONTEXT_MENU,
+        "key_input_method_picker" to Constants.CODE_INPUT_METHOD_PICKER,
+        "key_one_handed_left" to Constants.CODE_ONE_HANDED_LEFT,
+        "key_one_handed_right" to Constants.CODE_ONE_HANDED_RIGHT,
+        "key_one_handed_full" to Constants.CODE_ONE_HANDED_FULL,
     )
 
     @Test

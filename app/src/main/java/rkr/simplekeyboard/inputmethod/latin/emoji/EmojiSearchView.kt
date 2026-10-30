@@ -386,6 +386,21 @@ class EmojiSearchView @JvmOverloads constructor(
     /** Widest scroll offset that still shows content; the strip never scrolls past its last column. */
     private fun maxScrollX(): Int = EmojiSearchLayout.maxScrollX(resultCount, resultCellPx, width)
 
+    private fun canScrollResults(): Boolean =
+        width > 0 && resultCellPx > 0 && maxScrollX() > 0
+
+    /** Scrolls one result viewport for an accessibility action; true when the offset changes. */
+    private fun scrollOneViewport(forward: Boolean): Boolean {
+        if (!canScrollResults()) return false
+        val maxScroll = maxScrollX()
+        val next = (scrollX + if (forward) width else -width).coerceIn(0, maxScroll)
+        if (next == scrollX) return false
+        scrollX = next
+        invalidate()
+        invalidateAccessibilityRootIfExploring()
+        return true
+    }
+
     private fun targetAt(x: Float, y: Float): Int {
         if (x < 0f || x >= width || y < 0f || y >= height) return NO_TARGET
         if (y < queryRowPx) {
@@ -433,6 +448,7 @@ class EmojiSearchView @JvmOverloads constructor(
                     if (next != scrollX) {
                         scrollX = next
                         invalidate()
+                        invalidateAccessibilityRootIfExploring()
                     }
                     return true
                 }
@@ -533,7 +549,7 @@ class EmojiSearchView @JvmOverloads constructor(
         override fun getVisibleVirtualViews(virtualViewIds: MutableList<Int>) {
             virtualViewIds.add(QUERY_ID)
             virtualViewIds.add(CLOSE_ID)
-            if (resultCount == 0 || resultCellPx <= 0) return
+            if (resultCount == 0 || resultCellPx <= 0 || resultRowPx <= 0 || width <= 0) return
             // Position order is the column-major fill order, so listing the visible columns in
             // order also lists the positions in order.
             var column = EmojiSearchLayout.firstVisibleColumn(scrollX, resultCellPx)
@@ -544,6 +560,15 @@ class EmojiSearchView @JvmOverloads constructor(
                     if (position < resultCount) virtualViewIds.add(position)
                 }
                 column++
+            }
+        }
+
+        override fun onPopulateNodeForHost(node: AccessibilityNodeInfo) {
+            node.className = View::class.java.name
+            if (canScrollResults()) {
+                node.isScrollable = true
+                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                node.addAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
             }
         }
 
@@ -603,5 +628,15 @@ class EmojiSearchView @JvmOverloads constructor(
             sendEventForVirtualView(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED)
             return true
         }
+    }
+
+    override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
+        when (action) {
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD ->
+                if (scrollOneViewport(forward = true)) return true
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD ->
+                if (scrollOneViewport(forward = false)) return true
+        }
+        return super.performAccessibilityAction(action, arguments)
     }
 }

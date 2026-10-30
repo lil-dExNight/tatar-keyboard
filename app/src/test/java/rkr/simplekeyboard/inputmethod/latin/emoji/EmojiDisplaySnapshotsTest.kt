@@ -35,6 +35,18 @@ class EmojiDisplaySnapshotsTest {
     }
 
     @Test
+    fun availableSequencesWithTonesIsBaseUnionPlusEveryTone() {
+        val tones = EmojiSkinTones.parse("A\tA\t\nC\tC\t\n")
+        val expected = EmojiDisplaySnapshots.availableSequences(base) + tones.allTonedSequences()
+
+        assertEquals(expected, EmojiDisplaySnapshots.availableSequences(base, tones))
+        assertEquals(
+            EmojiDisplaySnapshots.availableSequences(base),
+            EmojiDisplaySnapshots.availableSequences(base, EmojiSkinTones.EMPTY),
+        )
+    }
+
+    @Test
     fun emptyRecentsReturnTheBaseSnapshotUnchanged() {
         // No Recent tab exists for an empty list: the same instance comes back.
         assertSame(base, EmojiDisplaySnapshots.withRecents(base, emptyList()))

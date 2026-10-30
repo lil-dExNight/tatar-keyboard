@@ -55,6 +55,7 @@
     <string name="spoken_description_language_switch">Сменить язык</string>
     <string name="spoken_description_emoji">Эмодзи</string>
     <string name="spoken_description_settings">Настройки</string>
+    <string name="spoken_description_dock_exit_handle">Выйти из режима одной руки</string>
     <string name="spoken_description_unknown">Неизвестный символ</string>
 
     <!-- Long-press (moreKeys) panel open/close announcements. -->

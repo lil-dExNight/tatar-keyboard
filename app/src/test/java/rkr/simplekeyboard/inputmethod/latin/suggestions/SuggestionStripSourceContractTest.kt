@@ -230,9 +230,18 @@ class SuggestionStripSourceContractTest {
         val showBandBody = controller.substringAfter("private fun showBand(")
             .substringBefore("    /**")
         assertTrue(showBandBody.contains("strip.setEmphasizedCell("))
-        // The marker travels with the words, truncated bands included: a marker past the visible
-        // cells is dropped, not painted onto a cell that is not there.
-        assertTrue(showBandBody.contains("if (emphasizedCell < shown.size) emphasizedCell"))
+        // Ranked bands mirror across the visible grid only for the right dock. The emphasis is a
+        // logical rank too, so it makes the same trip to its physical cell; an out-of-range marker
+        // is dropped rather than painted onto a cell that is not there.
+        assertTrue(showBandBody.contains(
+            "val mirrored = ranked && oneHandedSide() == OneHandedMode.SIDE_RIGHT"))
+        assertTrue(showBandBody.contains("shown.getOrNull(if (mirrored) bandCapacity - 1 else 0)"))
+        assertTrue(showBandBody.contains("shown.getOrNull(if (mirrored) bandCapacity - 2 else 1)"))
+        assertTrue(showBandBody.contains("shown.getOrNull(if (mirrored) bandCapacity - 3 else 2)"))
+        assertTrue(showBandBody.contains("shown.getOrNull(if (mirrored) bandCapacity - 4 else 3)"))
+        assertTrue(showBandBody.contains("if (emphasizedCell in shown.indices)"))
+        assertTrue(showBandBody.contains(
+            "if (mirrored) bandCapacity - 1 - emphasizedCell else emphasizedCell"))
         // The emphasis (which runs the publication's one display rebuild in the view) goes BEFORE
         // the spoken labels: the label lookup reads the emoji index and can fail, and between words
         // and emphasis it would leave the band half-published.

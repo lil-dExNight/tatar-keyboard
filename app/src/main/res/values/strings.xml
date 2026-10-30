@@ -106,6 +106,8 @@
     <string name="one_handed_mode_off">Off</string>
     <string name="one_handed_mode_left">Left</string>
     <string name="one_handed_mode_right">Right</string>
+    <string name="one_handed_mode_full">Full width</string>
+    <string name="globe_menu_emoji">Emoji</string>
     <string name="prefs_bottom_offset_portrait_settings">Bottom offset</string>
     <string name="keyboard_color">Set custom keyboard color</string>
     <string name="show_special_chars">Show special characters</string>
@@ -170,6 +172,7 @@
     <string name="text_shortcuts_add">Add shortcut\u2026</string>
     <!-- Title of the add-shortcut dialog -->
     <string name="text_shortcuts_add_title">New shortcut</string>
+    <string name="text_shortcuts_edit_title">Edit shortcut</string>
     <!-- Hint of the shortcut field in the add-shortcut dialog. Letters only, because the shortcut must be typeable as one word. -->
     <string name="text_shortcuts_shortcut_hint">Shortcut (letters only)</string>
     <!-- Hint of the expansion field in the add-shortcut dialog -->
@@ -178,6 +181,9 @@
     <string name="text_shortcuts_add_action">Save</string>
     <!-- Shown when the typed pair cannot be saved. States both content rules. -->
     <string name="text_shortcuts_add_rejected">This pair cannot be saved: the shortcut is 1 to 32 letters, and the text is 1 to 140 characters on one line.</string>
+    <string name="text_shortcuts_replace_title">Replace existing shortcut?</string>
+    <string name="text_shortcuts_replace_confirm">A different expansion is already saved for \u201c%1$s\u201d. Replace it?</string>
+    <string name="text_shortcuts_replace_action">Replace</string>
     <!-- Action that removes one saved shortcut pair -->
     <string name="text_shortcuts_delete">Delete</string>
     <!-- Title of the dialog confirming removal of one pair. %1$s is the shortcut itself. -->
@@ -423,6 +429,7 @@
     <string name="backup_export_failed">Could not write the backup file.</string>
     <!-- Shown when the picked file was imported. -->
     <string name="backup_import_done">The backup is imported.</string>
+    <string name="backup_import_privacy_changed">The backup is imported. Personal dictionary or pause learning changed; review those settings.</string>
     <!-- Shown when the picked file failed any check. Nothing was changed, and the message says so. -->
     <string name="backup_import_failed_invalid">This file is not a backup of this keyboard. Nothing was changed.</string>
     <!-- Shown when a valid file could not be stored completely. -->

@@ -19,7 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 /**
  * Pure, fixed-size state and hit geometry for the Canvas strip. The strip holds up to
  * [CELL_COUNT] cells; [visibleCellCount] of them are drawn and tappable (the user's fourth-cell
- * setting), and the full width splits among the visible ones.
+ * setting), and the docked content rectangle splits among the visible ones.
  */
 internal class SuggestionStripState {
     private val suggestions = arrayOfNulls<String>(CELL_COUNT)
@@ -31,6 +31,9 @@ internal class SuggestionStripState {
     private var emphasizedCell = NO_CELL
     /** The cells that are drawn and tappable; the rest keep their content but stay inert. */
     private var visibleCellCount = DEFAULT_VISIBLE_CELL_COUNT
+    // The docked key-grid span in view coordinates. A zero right edge means the view's full width.
+    private var contentLeftPx = 0
+    private var contentRightPx = 0
 
     fun setSuggestions(first: String?, second: String?, third: String?, fourth: String?): Boolean {
         var changed = setSuggestion(0, first)
@@ -45,7 +48,7 @@ internal class SuggestionStripState {
 
     fun clear(): Boolean = setSuggestions(null, null, null, null)
 
-    /** The count the strip draws and hit-tests; the full width splits among these cells. */
+    /** The count the strip draws and hit-tests; the content rectangle splits among these cells. */
     fun visibleCellCount(): Int = visibleCellCount
 
     /**
@@ -57,6 +60,18 @@ internal class SuggestionStripState {
         val clamped = count.coerceIn(1, CELL_COUNT)
         if (clamped == visibleCellCount) return false
         visibleCellCount = clamped
+        cancelGesture()
+        return true
+    }
+
+    /**
+     * Restricts cells to the docked key-grid span. The view remains full width, but its freed dock
+     * area draws no cells and accepts no touches. A geometry change cancels the active gesture.
+     */
+    fun setContentBounds(leftPx: Int, rightPx: Int): Boolean {
+        if (contentLeftPx == leftPx && contentRightPx == rightPx) return false
+        contentLeftPx = leftPx
+        contentRightPx = rightPx
         cancelGesture()
         return true
     }
@@ -106,9 +121,12 @@ internal class SuggestionStripState {
         if (!x.isFinite() || !y.isFinite()) {
             return NO_CELL
         }
-        if (x < 0f || x >= width.toFloat() || y < 0f || y >= height.toFloat()
-            || width <= 0 || height <= 0
-        ) {
+        if (width <= 0 || height <= 0 || y < 0f || y >= height.toFloat()) {
+            return NO_CELL
+        }
+        val contentLeft = contentLeft(width)
+        val contentRight = contentRight(width)
+        if (x < contentLeft.toFloat() || x >= contentRight.toFloat()) {
             return NO_CELL
         }
         var cell = 0
@@ -119,9 +137,23 @@ internal class SuggestionStripState {
         return visibleCellCount - 1
     }
 
-    fun cellLeft(cell: Int, width: Int): Int = width * cell / visibleCellCount
+    private fun contentLeft(width: Int): Int = contentLeftPx.coerceIn(0, width.coerceAtLeast(0))
 
-    fun cellRight(cell: Int, width: Int): Int = width * (cell + 1) / visibleCellCount
+    private fun contentRight(width: Int): Int {
+        if (width <= 0) return 0
+        if (contentRightPx <= 0) return width
+        return contentRightPx.coerceIn(contentLeft(width), width)
+    }
+
+    /** A visual cell boundary; separators use the same grid as text, touch and accessibility. */
+    fun cellBoundary(boundary: Int, width: Int): Int {
+        val left = contentLeft(width)
+        return left + (contentRight(width) - left) * boundary / visibleCellCount
+    }
+
+    fun cellLeft(cell: Int, width: Int): Int = cellBoundary(cell, width)
+
+    fun cellRight(cell: Int, width: Int): Int = cellBoundary(cell + 1, width)
 
     fun onDown(pointerId: Int, x: Float, y: Float, width: Int, height: Int): Boolean {
         val cell = cellAt(x, y, width, height)

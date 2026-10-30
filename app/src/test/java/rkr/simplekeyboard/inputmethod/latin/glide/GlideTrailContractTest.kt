@@ -38,7 +38,7 @@ class GlideTrailContractTest {
         var count = 0
         var from = 0
         while (true) {
-            val at = trackerSource.indexOf("updateGlideFeedback(x, y, eventTime);", from)
+            val at = trackerSource.indexOf("updateGlideFeedback(x, y, eventTime,", from)
             if (at < 0) break
             count++
             from = at + 1
@@ -47,14 +47,16 @@ class GlideTrailContractTest {
 
         val move = methodBody("onMoveEventInternal")
         val armed = move.indexOf("mGlideDecider.isArmed()")
-        val addPoint = move.indexOf("mGlidePath.addPoint(x, y, (float) eventTime);", armed)
-        val feedback = move.indexOf("updateGlideFeedback(x, y, eventTime);", armed)
-        val spaceSwipe = move.indexOf("Constants.CODE_SPACE")
-        assertTrue("the armed branch must feed the trail", feedback in addPoint until spaceSwipe)
+        val addPoint = move.indexOf("mGlidePath.addPoint(x, y, eventTime, mGlideStartTime);", armed)
+        val feedback = move.indexOf(
+            "updateGlideFeedback(x, y, eventTime, mKeyDetector.detectHitKey(x, y));", armed)
+        val armedReturn = move.indexOf("return;", armed)
+        assertTrue("the armed branch must feed the trail", feedback in addPoint until armedReturn)
 
         val arm = move.indexOf("armGlide();")
-        val armFeedback = move.indexOf("updateGlideFeedback(x, y, eventTime);", arm)
-        assertTrue("the just-armed point feeds the trail too", armFeedback in arm until spaceSwipe)
+        val armFeedback = move.indexOf("updateGlideFeedback(x, y, eventTime, newKey);", arm)
+        val armReturn = move.indexOf("return;", arm)
+        assertTrue("the just-armed point feeds the trail too", armFeedback in arm until armReturn)
     }
 
     @Test
@@ -112,18 +114,20 @@ class GlideTrailContractTest {
             draw.contains("postInvalidateDelayed(FADE_FRAME_MS)"))
         assertTrue("a spent fade clears the ring and stops the schedule",
             draw.contains("mGlideTrail.isFadeDone(nowMs)"))
-        assertTrue("the wall clock enters only for the fade",
-            draw.contains("(float) SystemClock.uptimeMillis()"))
+        assertTrue("fade frames subtract the gesture origin before narrowing",
+            draw.contains("(float) (SystemClock.uptimeMillis() - mGlideTrailStartTime)"))
 
         // The feed and the drain.
         val point = viewSource.substringAfter("public void onGlideTrailPoint(")
-        assertTrue(point.contains("mGlideTrail.addPoint(x, y, (float) eventTime);"))
+        assertTrue(point.contains("mGlideTrailStartTime = eventTime;"))
+        assertTrue(point.contains(
+            "mGlideTrail.addPoint(x, y, (float) (eventTime - mGlideTrailStartTime));"))
         assertTrue(point.contains("invalidate();"))
         val endView = viewSource.substringAfter("public void onGlideTrailEnd()")
         assertTrue("an empty trail is a no-op (no per-keystroke invalidate)",
             endView.contains("if (mGlideTrail.isEmpty())"))
         assertTrue("the lift starts the fade instead of erasing the trail",
-            endView.contains("mGlideTrail.startFadeOut((float) SystemClock.uptimeMillis());"))
+            endView.contains("SystemClock.uptimeMillis() - mGlideTrailStartTime"))
         // A closing keyboard ends every fade.
         val detach = viewSource.substringAfter("protected void onDetachedFromWindow()")
             .substringBefore("mDrawingPreviewPlacerView.removeAllViews();")

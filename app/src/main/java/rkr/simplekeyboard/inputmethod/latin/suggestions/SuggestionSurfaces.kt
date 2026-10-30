@@ -233,9 +233,8 @@ fun interface EmojiSuggestGate {
 }
 
 /**
- * Reads the live keyguard state (true = locked). The strip's eligibility is a session-start
- * snapshot and a session can outlive the locking of the screen, so the recent-clip cell — a piece
- * of the user's clipboard — re-reads this gate at the offer and at the tap.
+ * Reads live keyguard and Direct Boot state (true = locked). Field eligibility can predate a lock,
+ * so learning, transforms and clipboard offers re-check this gate at their commit boundaries.
  */
 fun interface KeyguardGate {
     fun isLocked(): Boolean

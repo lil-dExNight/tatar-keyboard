@@ -60,6 +60,10 @@ public final class KeyboardCodesSet {
         "key_cut",
         "key_copy",
         "key_paste_context_menu",
+        "key_input_method_picker",
+        "key_one_handed_left",
+        "key_one_handed_right",
+        "key_one_handed_full",
     };
 
     // Must stay index-for-index parallel to ID_TO_NAME: getCode() looks a name up in ID_TO_NAME
@@ -88,6 +92,10 @@ public final class KeyboardCodesSet {
         Constants.CODE_CUT,
         Constants.CODE_COPY,
         Constants.CODE_PASTE_CONTEXT_MENU,
+        Constants.CODE_INPUT_METHOD_PICKER,
+        Constants.CODE_ONE_HANDED_LEFT,
+        Constants.CODE_ONE_HANDED_RIGHT,
+        Constants.CODE_ONE_HANDED_FULL,
     };
 
     static {

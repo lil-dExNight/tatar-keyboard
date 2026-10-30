@@ -162,6 +162,28 @@ class EmojiSearchLayoutTest {
         assertEquals(0, EmojiSearchLayout.firstVisibleColumn(-10, 54))
     }
 
+    @Test
+    fun theLastResultIsFullyVisibleAtTheScrollLimit() {
+        val cell = 54
+        val width = 300
+        val scroll = EmojiSearchLayout.maxScrollX(60, cell, width)
+        val position = 59
+        val left = EmojiSearchLayout.resultColumn(position) * cell - scroll
+        val row = EmojiSearchLayout.resultRow(position)
+        assertEquals(246, left)
+        assertEquals(width, left + cell)
+        assertEquals(1, row)
+        assertEquals(46 + cell, 46 + row * cell)
+        assertEquals(46 + 2 * cell, 46 + row * cell + cell)
+    }
+
+    @Test
+    fun scrollingHasNoLimitWhenResultsOrCellsAreEmpty() {
+        assertEquals(0, EmojiSearchLayout.maxScrollX(0, 54, 300))
+        assertEquals(0, EmojiSearchLayout.maxScrollX(60, 0, 300))
+        assertEquals(0, EmojiSearchLayout.maxScrollX(2, 54, 300))
+    }
+
     // --- The caret sits at the end of the text ------------------------------------------------
 
     /**
@@ -252,6 +274,7 @@ class EmojiSearchLayoutTest {
             "result nodes must be guarded by the result count",
             visible.contains("if (resultCount == 0"),
         )
+        assertTrue(visible.contains("resultCellPx <= 0 || resultRowPx <= 0 || width <= 0"))
     }
 
     // --- A query of spaces is not a query -----------------------------------------------------
@@ -370,8 +393,11 @@ class EmojiSearchLayoutTest {
         assertTrue(hit.contains("EmojiSearchLayout.resultPosition(column, row)"))
         assertTrue(hit.contains("EmojiSearchLayout.RESULT_ROWS"))
         val node = bodyOf("override fun onPopulateNodeForVirtualView", "override fun onPerformActionForVirtualView")
+        assertTrue(node.contains("index.resultNameAt(virtualViewId, spokenNameLanguage)"))
         assertTrue(node.contains("EmojiSearchLayout.resultColumn(virtualViewId)"))
         assertTrue(node.contains("EmojiSearchLayout.resultRow(virtualViewId)"))
+        assertTrue(node.contains("* resultCellPx - scrollX"))
+        assertTrue(node.contains("rowTop + resultRowPx"))
     }
 
     /** The scroll limit is the band's columns, not its cells: two rows share one scroll offset. */
@@ -386,6 +412,53 @@ class EmojiSearchLayoutTest {
             "the scroll limit still multiplies cells by the result count",
             limit.contains("resultCount * resultCellPx"),
         )
+    }
+
+    @Test
+    fun accessibilityActionsScrollBothWaysOnlyWhenContentOverflows() {
+        val host = bodyOf("override fun onPopulateNodeForHost", "override fun onPopulateNodeForVirtualView")
+        assertTrue(host.contains("if (canScrollResults())"))
+        assertTrue(host.contains("node.isScrollable = true"))
+        assertTrue(host.contains("AccessibilityNodeInfo.ACTION_SCROLL_FORWARD"))
+        assertTrue(host.contains("AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD"))
+
+        val guard = bodyOf("private fun canScrollResults", "private fun scrollOneViewport")
+        assertTrue(guard.contains("width > 0 && resultCellPx > 0 && maxScrollX() > 0"))
+        val scroll = bodyOf("private fun scrollOneViewport", "private fun targetAt")
+        assertTrue(scroll.contains("if (!canScrollResults()) return false"))
+        assertTrue(scroll.contains("if (forward) width else -width"))
+        assertTrue(scroll.contains(".coerceIn(0, maxScroll)"))
+        assertTrue(scroll.contains("if (next == scrollX) return false"))
+
+        val perform = view.substringAfter("override fun performAccessibilityAction(action: Int")
+        assertTrue(perform.contains("AccessibilityNodeInfo.ACTION_SCROLL_FORWARD"))
+        assertTrue(perform.contains("AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD"))
+        assertTrue(perform.contains("scrollOneViewport(forward = true)"))
+        assertTrue(perform.contains("scrollOneViewport(forward = false)"))
+    }
+
+    @Test
+    fun everyScrollChangeInvalidatesTheVirtualNodeTree() {
+        val touch = bodyOf("override fun onTouchEvent", "override fun onVisibilityChanged")
+        val touchChange = touch.substringAfter("if (next != scrollX)").substringBefore("return true")
+        assertTrue(touchChange.contains("scrollX = next"))
+        assertTrue(touchChange.contains("invalidateAccessibilityRootIfExploring()"))
+
+        val accessibilityScroll = bodyOf("private fun scrollOneViewport", "private fun targetAt")
+        assertTrue(accessibilityScroll.contains("scrollX = next"))
+        assertTrue(accessibilityScroll.contains("invalidateAccessibilityRootIfExploring()"))
+
+        val resetBodies = listOf(
+            bodyOf("fun setQuery(query: String)", "fun release()"),
+            bodyOf("fun release()", "override fun onMeasure"),
+        )
+        for (body in resetBodies) {
+            assertTrue(body.contains("scrollX = 0"))
+            assertTrue(body.contains("invalidateAccessibilityRootIfExploring()"))
+        }
+        val gate = bodyOf("private fun invalidateAccessibilityRootIfExploring", "private inner class")
+        assertTrue(gate.contains("accessibilityManager.isTouchExplorationEnabled"))
+        assertTrue(gate.contains("accessibilityHelper.invalidateRoot()"))
     }
 
     /** The no-results message centers on the whole band, not on the first row of two. */

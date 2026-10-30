@@ -122,8 +122,7 @@ class EditMenuLayoutTest {
     @Test
     fun theKeyboardTextsResolveThroughTheAppLocalePolicy() {
         // The keyboard's !string/ texts (this menu's labels included) resolve against a context
-        // wrapped by AppLocale: Tatar unless the system already speaks tt/ru, like the app
-        // screens. Both KeyboardTextsSet feeds carry the wrap.
+        // wrapped by AppLocale, like the app screens. Both KeyboardTextsSet feeds carry the wrap.
         val builder = File(projectRoot(), "app/src/main/java/rkr/simplekeyboard/inputmethod/keyboard/internal/KeyboardBuilder.java").readText()
         val switcher = File(projectRoot(), "app/src/main/java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardSwitcher.java").readText()
         assertTrue(builder.contains("mTextsSet.setLocale(params.mId.getLocale(), AppLocale.INSTANCE.wrap(mContext))"))

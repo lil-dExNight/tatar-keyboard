@@ -251,12 +251,12 @@ class InputConnectionBinderContractTest {
 
     @Test
     fun theCacheIsReloadedAtExactlyTheKnownBoundaries() {
-        // Cursor moves (external or self-caused — the reload revalidates the cache against the
-        // editor's ground truth) and the space-slide release. The password gating of both is
-        // EditorTextCachePrivacySourceContractTest's pin.
+        // External moves use the same immediate callback as space-slide release. Own selection
+        // reports reach it after settling or on the active-typing heartbeat. The callback's
+        // password gating is EditorTextCachePrivacySourceContractTest's pin.
         assertEquals(
-            "a reload per onUpdateSelection and per space-slide release, nowhere else",
-            2, occurrences(latinIme, "mInputLogic.reloadTextCache();"),
+            "all selection-driven reloads share one guarded callback",
+            1, occurrences(latinIme, "mInputLogic.reloadTextCache();"),
         )
         assertEquals(
             "the field-start reload takes the EditorInfo parcel",

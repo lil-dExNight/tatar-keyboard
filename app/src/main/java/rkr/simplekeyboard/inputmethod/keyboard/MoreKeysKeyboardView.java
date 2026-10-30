@@ -29,6 +29,7 @@ import android.view.accessibility.AccessibilityManager;
 import rkr.simplekeyboard.inputmethod.R;
 import rkr.simplekeyboard.inputmethod.accessibility.MoreKeysKeyboardAccessibilityDelegate;
 import rkr.simplekeyboard.inputmethod.keyboard.internal.KeyDrawParams;
+import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager;
 import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.common.CoordinateUtils;
 
@@ -171,9 +172,12 @@ public class MoreKeysKeyboardView extends KeyboardView implements MoreKeysPanel 
         if (mActivePointerId != pointerId) {
             return;
         }
-        final boolean hasOldKey = (mCurrentKey != null);
+        final Key oldKey = mCurrentKey;
         mCurrentKey = detectKey(x, y);
-        if (hasOldKey && mCurrentKey == null) {
+        if (mCurrentKey != null && mCurrentKey != oldKey) {
+            AudioAndHapticFeedbackManager.getInstance().performTickFeedback();
+        }
+        if (oldKey != null && mCurrentKey == null) {
             // A more keys keyboard is canceled when detecting no key.
             mController.onCancelMoreKeysPanel();
         }

@@ -21,8 +21,9 @@ package rkr.simplekeyboard.inputmethod.latin.settings
  * background, stays free of key hitboxes, and answers only the exit handle — a tap there returns
  * to full width, a long-press opens the side picker. The dock is pure geometry — the keyboard
  * builder adds the freed width to the side padding opposite the grid — so keys, hit boxes and
- * the balloon clamp band follow on their own, while the suggestion strip and the emoji panel sit
- * outside the key grid and keep the full width. Stored as the `pref_one_handed_side` int and
+ * the balloon clamp band follow on their own. Strip views stay full width but their cells use
+ * the key-grid content span; the emoji panel stays full width. Stored as the
+ * `pref_one_handed_side` int and
  * applied on the keyboard's next rebuild, like the keyboard-height preset.
  *
  * Pure value holder with no Android imports, so the math is unit-tested on the JVM.

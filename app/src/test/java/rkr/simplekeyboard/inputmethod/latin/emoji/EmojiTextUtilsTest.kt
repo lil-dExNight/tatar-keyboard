@@ -32,6 +32,8 @@ class EmojiTextUtilsTest {
 
     private fun length(text: String): Int = EmojiTextUtils.trailingEmojiClusterLength(text)
 
+    private fun leadingLength(text: String): Int = EmojiTextUtils.leadingEmojiClusterLength(text)
+
     // --- One test per cluster class that a single backspace must delete whole. ---
 
     @Test
@@ -109,6 +111,41 @@ class EmojiTextUtilsTest {
         )
     }
 
+    @Test
+    fun everyClusterClassHasTheSameForwardAndBackwardLength() {
+        val clusters = listOf(
+            seq(0x2764, 0xFE0E),
+            seq(0x2764, 0xFE0F),
+            seq(0x1F44D, 0x1F3FD),
+            seq(0x1F1F7, 0x1F1FA),
+            seq(0x0031, 0xFE0F, 0x20E3),
+            seq(0x0023, 0x20E3),
+            seq(0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F466),
+            seq(0x1F3F4, 0xE0067, 0xE0062, 0xE0065, 0xE006E, 0xE0067, 0xE007F),
+        )
+        for (cluster in clusters) {
+            assertEquals(cluster.length, length(cluster))
+            assertEquals(cluster.length, leadingLength(cluster))
+        }
+    }
+
+    @Test
+    fun regionalIndicatorRunsKeepTheirParityWhenMeasuredBackward() {
+        val three = seq(0x1F1E6, 0x1F1E7, 0x1F1E8)
+        assertEquals(2, length(three))
+        assertEquals(4, leadingLength(three))
+
+        val four = seq(0x1F1E6, 0x1F1E7, 0x1F1E8, 0x1F1E9)
+        assertEquals(4, length(four))
+        assertEquals(4, leadingLength(four))
+    }
+
+    @Test
+    fun aJoinerAtTheStartOfACachedTailStaysWithTheEmoji() {
+        val emoji = seq(0x1F469, 0x1F3FD)
+        assertEquals(emoji.length + 1, length("‍$emoji"))
+    }
+
     // --- Characterization: non-emoji text deletes as many char as the plain code-point path. ---
 
     @Test
@@ -150,23 +187,27 @@ class EmojiTextUtilsTest {
     @Test
     fun emptyInputReturnsZero() {
         assertEquals(0, length(""))
+        assertEquals(0, leadingLength(""))
     }
 
     @Test
     fun loneHighSurrogateReturnsZero() {
         // A truncated surrogate pair is not an emoji; the old path deletes its single char.
         assertEquals(0, length("\uD83D"))
+        assertEquals(0, leadingLength("\uD83D"))
     }
 
     @Test
     fun loneLowSurrogateReturnsZero() {
         assertEquals(0, length("\uDE00"))
+        assertEquals(0, leadingLength("\uDE00"))
     }
 
     @Test
     fun nonEmojiSupplementaryCodePointReturnsZero() {
         // U+20000 (CJK Extension B) is a supplementary letter, not an emoji.
         assertEquals(0, length(seq(0x20000)))
+        assertEquals(0, leadingLength(seq(0x20000)))
     }
 
     // --- The 32-char cap. ---
@@ -186,6 +227,7 @@ class EmojiTextUtilsTest {
         val chain = zwjChain(11)
         assertEquals(32, chain.length)
         assertEquals(32, length(chain))
+        assertEquals(32, leadingLength(chain))
     }
 
     @Test
@@ -194,6 +236,7 @@ class EmojiTextUtilsTest {
         val chain = zwjChain(12)
         assertEquals(35, chain.length)
         assertEquals(0, length(chain))
+        assertEquals(0, leadingLength(chain))
     }
 
     @Test
@@ -205,6 +248,7 @@ class EmojiTextUtilsTest {
         builder.appendCodePoint(0xE007F)
         assertEquals(44, builder.length)
         assertEquals(0, length(builder.toString()))
+        assertEquals(0, leadingLength(builder.toString()))
     }
 
     // --- extractContextBeforeEmoji: the word a picked emoji was co-used with. ---

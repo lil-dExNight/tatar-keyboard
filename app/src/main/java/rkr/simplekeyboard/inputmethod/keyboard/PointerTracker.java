@@ -81,6 +81,10 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     private static DrawingProxy sDrawingProxy;
     private static TimerProxy sTimerProxy;
     private static KeyboardActionListener sListener = KeyboardActionListener.EMPTY_LISTENER;
+    private static PointerTracker sSpaceTrackpadOwner;
+
+    private final SpaceTrackpadState mSpaceTrackpadState = new SpaceTrackpadState();
+    private boolean mIsSpaceTrackpadSecondary;
 
     // Whether the current field and layout can decode a glide; set by the IME. Without it a slide
     // is ordinary sliding key input. UI thread only.
@@ -159,8 +163,10 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     // by setKeyDetectorInner once the keyboard — and with it the key width — is known.
     private GlideGestureDecider mGlideDecider =
             new GlideGestureDecider(Float.MAX_VALUE, 0f,
-                    GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS, Float.MAX_VALUE);
+                    GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS, Float.MAX_VALUE, Float.MAX_VALUE);
     private GlidePath mGlidePath;
+    // Down time of the current gesture; path timestamps are relative to this Long origin.
+    private long mGlideStartTime;
     // The key lit up under the gliding finger (graphics only: no preview, no haptics, no
     // listener callbacks). Null whenever no glide is armed.
     private Key mGlideHoveredKey;
@@ -333,16 +339,16 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         }
         mKeyDetector = keyDetector;
         mKeyboard = keyboard;
-        // The glide decider's distance threshold is a key-width fraction and the velocity
-        // threshold is 0.10 dp/ms, both converted to pixels here. The first-move anchor slop
-        // is a quarter of the key width, so a resting finger does not start the detection
-        // clock.
+        // The glide decider's distance threshold is a key-width fraction and its velocity
+        // thresholds are converted from dp/ms here. The first-move anchor slop is a quarter of
+        // the key width, so a resting finger does not start the detection clock.
+        final float density = Resources.getSystem().getDisplayMetrics().density;
         mGlideDecider = new GlideGestureDecider(
                 keyboard.mMostCommonKeyWidth * GlideGestureDecider.DISTANCE_THRESHOLD_KEY_WIDTHS,
-                GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS
-                        * Resources.getSystem().getDisplayMetrics().density,
+                GlideGestureDecider.VELOCITY_THRESHOLD_DP_PER_MS * density,
                 GlideGestureDecider.DEFAULT_MAX_DETECT_TIME_MS,
-                keyboard.mMostCommonKeyWidth * GlideGestureDecider.DEFAULT_SLOP_KEY_WIDTH_FRACTION);
+                keyboard.mMostCommonKeyWidth * GlideGestureDecider.DEFAULT_SLOP_KEY_WIDTH_FRACTION,
+                GlideGestureDecider.SHORT_ONSET_VELOCITY_THRESHOLD_DP_PER_MS * density);
         // Mark that keyboard layout has been changed.
         mKeyboardLayoutHasBeenChanged = true;
         // Keep {@link #mCurrentKey} that comes from previous keyboard. The key preview of
@@ -357,7 +363,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     @Override
     public boolean isInCursorMove() {
-        return mCursorMoved;
+        return mCursorMoved || mSpaceTrackpadState.isActive();
     }
 
     public Key getKey() {
@@ -538,6 +544,19 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             }
         }
 
+        final PointerTracker trackpadOwner = sSpaceTrackpadOwner;
+        if (trackpadOwner != null && trackpadOwner != this) {
+            final boolean wasSelecting = trackpadOwner.mSpaceTrackpadState.isSelecting();
+            if (trackpadOwner.mSpaceTrackpadState.onSecondaryPointerDown(mPointerId)) {
+                if (!wasSelecting) {
+                    sListener.onSpaceTrackpadSelectionStart();
+                }
+                onSpaceTrackpadSecondaryDownEventInternal(x, y, eventTime);
+                sPointerTrackerQueue.add(this);
+                return;
+            }
+        }
+
         final Key key = getKeyOn(x, y);
         if (key != null && key.isModifier()) {
             // Before processing a down event of modifier key, all pointers already being
@@ -599,6 +618,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         // swipe callbacks for a gesture that never swiped.
         mCursorMoved = false;
         mWordDeleteFired = false;
+        mIsSpaceTrackpadSecondary = false;
         mDockExitGesture = false;
         mDockExitTapEligible = false;
         resetKeySelectionByDraggingFinger();
@@ -662,11 +682,47 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             } else {
                 path.clear();
             }
-            // The path buffer stores float timestamps (GlidePath.ts): the decoder reads gesture
-            // deltas, which are milliseconds apart, so the float's 24-bit mantissa is exact where
-            // it matters. The long-to-float narrowing is written as an explicit cast.
-            path.addPoint(x, y, (float) eventTime);
+            mGlideStartTime = eventTime;
+            path.addPoint(x, y, eventTime, mGlideStartTime);
         }
+    }
+
+    private void onSpaceTrackpadSecondaryDownEventInternal(final int x, final int y,
+            final long eventTime) {
+        CoordinateUtils.set(mDownCoordinates, x, y);
+        mLastX = x;
+        mLastY = y;
+        mCurrentKey = null;
+        mCurrentRepeatingKeyCode = Constants.NOT_A_CODE;
+        mKeyboardLayoutHasBeenChanged = false;
+        mIsTrackingForActionDisabled = true;
+        mIsSpaceTrackpadSecondary = true;
+        mCursorMoved = false;
+        mWordDeleteFired = false;
+        mDockExitGesture = false;
+        mDockExitTapEligible = false;
+        resetKeySelectionByDraggingFinger();
+        mGlideDecider.onDown(x, y, eventTime, false /* eligible */);
+        if (mGlidePath != null) {
+            mGlidePath.clear();
+        }
+    }
+
+    private void onSpaceTrackpadSecondaryUp(final int pointerId) {
+        if (mSpaceTrackpadState.onSecondaryPointerUp(pointerId)) {
+            sListener.onSpaceTrackpadSelectionEnd();
+        }
+    }
+
+    private void finishSpaceTrackpad(final boolean cancelled) {
+        if (!mSpaceTrackpadState.isActive()) {
+            return;
+        }
+        mSpaceTrackpadState.finish();
+        if (sSpaceTrackpadOwner == this) {
+            sSpaceTrackpadOwner = null;
+        }
+        sListener.onSpaceTrackpadFinish(cancelled);
     }
 
     /** The glide decider is live for this pointer (undecided or armed). */
@@ -682,6 +738,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     private void armGlide() {
         sTimerProxy.cancelKeyTimersOf(this);
         setReleasedKeyGraphics(mCurrentKey, true /* withAnimation */);
+        sListener.onGlideArmed();
     }
 
     /**
@@ -692,9 +749,9 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
      * carries raw view-local coordinates (the detector's hysteresis correction is for hit
      * testing, not for where the finger was seen).
      */
-    private void updateGlideFeedback(final int x, final int y, final long eventTime) {
+    private void updateGlideFeedback(final int x, final int y, final long eventTime,
+            final Key key) {
         sDrawingProxy.onGlideTrailPoint(x, y, eventTime);
-        final Key key = mKeyDetector.detectHitKey(x, y);
         if (key != mGlideHoveredKey) {
             if (mGlideHoveredKey != null) {
                 sDrawingProxy.onKeyReleased(mGlideHoveredKey, false /* withAnimation */);
@@ -822,6 +879,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             return;
         }
         final Key oldKey = mCurrentKey;
+        Key newKey = null;
+        boolean glideKeyDetected = false;
 
         // Glide branches, deliberately ahead of every other MOVE branch: an armed glide feeds
         // the path only (the space/delete swipe branches must not hijack it mid-path), and an
@@ -831,17 +890,30 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         // glide); a cursor swipe that already started (mCursorMoved) can no longer become a
         // glide.
         if (mGlideDecider.isArmed()) {
-            mGlidePath.addPoint(x, y, (float) eventTime); // explicit narrowing — see onDownEvent
-            updateGlideFeedback(x, y, eventTime);
+            mGlidePath.addPoint(x, y, eventTime, mGlideStartTime);
+            updateGlideFeedback(x, y, eventTime, mKeyDetector.detectHitKey(x, y));
             return;
         }
         if (mGlideDecider.isTracking() && !mCursorMoved) {
-            mGlidePath.addPoint(x, y, (float) eventTime);
-            if (mGlideDecider.onMove(x, y, eventTime) == GlideGestureDecider.State.ARMED) {
+            mGlidePath.addPoint(x, y, eventTime, mGlideStartTime);
+            newKey = onMoveKey(x, y);
+            glideKeyDetected = true;
+            final boolean enteredDifferentLetterKey = newKey != null && newKey != oldKey
+                    && Character.isLetter(newKey.getCode());
+            if (mGlideDecider.onMove(x, y, eventTime, enteredDifferentLetterKey)
+                    == GlideGestureDecider.State.ARMED) {
                 armGlide();
-                updateGlideFeedback(x, y, eventTime);
+                updateGlideFeedback(x, y, eventTime, newKey);
                 return;
             }
+        }
+
+        if (mSpaceTrackpadState.isActive()) {
+            final int steps = mSpaceTrackpadState.onMove(x, sPointerStep);
+            if (steps != 0) {
+                sListener.onSpaceTrackpadMove(steps, mSpaceTrackpadState.isSelecting());
+            }
+            return;
         }
 
         if (oldKey != null && oldKey.getCode() == Constants.CODE_SPACE && Settings.getInstance().getCurrent().mSpaceSwipeEnabled) {
@@ -884,7 +956,9 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             return;
         }
 
-        final Key newKey = onMoveKey(x, y);
+        if (!glideKeyDetected) {
+            newKey = onMoveKey(x, y);
+        }
         if (newKey != null) {
             if (oldKey != null && isMajorEnoughMoveToBeOnNewKey(x, y, newKey)) {
                 dragFingerFromOldKeyToNewKey(newKey, x, y, eventTime, oldKey);
@@ -905,6 +979,16 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             printTouchEvent("onUpEvent  :", x, y, eventTime);
         }
 
+        if (mIsSpaceTrackpadSecondary) {
+            final PointerTracker trackpadOwner = sSpaceTrackpadOwner;
+            if (trackpadOwner != null && trackpadOwner != this) {
+                trackpadOwner.onSpaceTrackpadSecondaryUp(mPointerId);
+            }
+            onUpEventInternal(x, y, eventTime);
+            sPointerTrackerQueue.remove(this);
+            mIsSpaceTrackpadSecondary = false;
+            return;
+        }
         if (mCurrentKey != null && mCurrentKey.isModifier()) {
             // Before processing an up event of modifier key, all pointers already being
             // tracked should be released.
@@ -912,7 +996,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         } else {
             sPointerTrackerQueue.releaseAllPointersOlderThan(this, eventTime);
         }
-        onUpEventInternal(x, y);
+        onUpEventInternal(x, y, eventTime);
         sPointerTrackerQueue.remove(this);
     }
 
@@ -926,11 +1010,11 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         }
         // A phantom up cancels a glide instead of delivering it.
         mGlideDecider.cancelGlide();
-        onUpEventInternal(mLastX, mLastY);
+        onUpEventInternal(mLastX, mLastY, eventTime);
         cancelTrackingForAction();
     }
 
-    private void onUpEventInternal(final int x, final int y) {
+    private void onUpEventInternal(final int x, final int y, final long eventTime) {
         sTimerProxy.cancelKeyTimersOf(this);
         if (mDockExitGesture) {
             final boolean fire = mDockExitTapEligible && mKeyboard != null
@@ -963,10 +1047,17 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         // An armed glide delivers its path and never commits a key. A cancelled glide
         // (multi-touch, phantom up, cancelTrackingForAction) delivers nothing.
         if (armedGlide) {
+            // The lift belongs to the decoded path; an exact duplicate of the last MOVE is a no-op.
+            mGlidePath.addPoint(x, y, eventTime, mGlideStartTime);
             if (!mIsTrackingForActionDisabled) {
                 sListener.onGlideInput(mGlidePath);
             }
             mGlidePath.clear();
+            return;
+        }
+
+        if (mSpaceTrackpadState.isActive()) {
+            finishSpaceTrackpad(mIsTrackingForActionDisabled);
             return;
         }
 
@@ -1060,8 +1151,15 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             return;
         }
         final int code = key.getCode();
-        if (code == Constants.CODE_SPACE || code == Constants.CODE_LANGUAGE_SWITCH) {
-            // Long pressing the space key invokes IME switcher dialog.
+        if (code == Constants.CODE_SPACE && mSpaceTrackpadState.onLongPressed(
+                mLastX, sListener.onSpaceTrackpadStart())) {
+            sSpaceTrackpadOwner = this;
+            sTimerProxy.cancelKeyTimersOf(this);
+            setReleasedKeyGraphics(key, true /* withAnimation */);
+            return;
+        }
+        if (code == Constants.CODE_SPACE) {
+            // Without a known editable cursor, preserve the space key's IME picker fallback.
             if (sListener.onCustomRequest(Constants.CUSTOM_CODE_SHOW_INPUT_METHOD_PICKER)) {
                 cancelKeyTracking();
                 sListener.onReleaseKey(code, false /* withSliding */);
@@ -1103,6 +1201,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
 
     private void onCancelEventInternal() {
         sTimerProxy.cancelKeyTimersOf(this);
+        finishSpaceTrackpad(true /* cancelled */);
+        mIsSpaceTrackpadSecondary = false;
         mDockExitGesture = false;
         mDockExitTapEligible = false;
         setReleasedKeyGraphics(mCurrentKey, true /* withAnimation */);

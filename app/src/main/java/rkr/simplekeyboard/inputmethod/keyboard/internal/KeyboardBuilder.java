@@ -304,8 +304,7 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
                     R.styleable.Keyboard_Key_maxMoreKeysColumn, 5);
 
             params.mIconsSet.loadIcons(mResources, mContext.getTheme());
-            // Keyboard chrome text follows the app's locale policy (Tatar unless the system
-            // already speaks tt/ru), not the bare system locale.
+            // Keyboard chrome text follows AppLocale's policy, not the bare system locale.
             params.mTextsSet.setLocale(params.mId.getLocale(), AppLocale.INSTANCE.wrap(mContext));
         } finally {
             keyAttr.recycle();

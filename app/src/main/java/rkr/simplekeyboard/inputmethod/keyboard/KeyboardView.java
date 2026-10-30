@@ -35,7 +35,7 @@ import android.util.AttributeSet;
 import android.view.View;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 
 import rkr.simplekeyboard.inputmethod.R;
@@ -102,10 +102,14 @@ public class KeyboardView extends View {
     // Main keyboard
     // TODO: Consider having a dummy keyboard object to make this @NonNull
     private Keyboard mKeyboard;
-    private final KeyDrawParams mKeyDrawParams = new KeyDrawParams();
-    /** Per-key draw params cache; key attrs are immutable after keyboard construction,
-     * so cloned params are cached to keep the draw path allocation-free. */
-    private final HashMap<Key, KeyDrawParams> mKeyDrawParamsCache = new HashMap<>();
+    private KeyDrawParams mKeyDrawParams = new KeyDrawParams();
+    private int mKeyDrawParamsKeyHeight;
+    private KeyVisualAttributes mKeyDrawParamsKeyboardAttributes;
+    private boolean mKeyDrawParamsInitialized;
+    /** Key attributes are immutable, and identity prevents equal keys with different attributes
+     * from sharing a cache entry. */
+    private final IdentityHashMap<Key, KeyDrawParams> mKeyDrawParamsCache =
+            new IdentityHashMap<>();
 
     // Drawing
     /** True if all keys should be drawn */
@@ -163,6 +167,7 @@ public class KeyboardView extends View {
         keyAttr.recycle();
 
         mPaint.setAntiAlias(true);
+        updateKeyboardTheme();
     }
 
     private static void blendAlpha(final Paint paint, final int alpha) {
@@ -179,16 +184,42 @@ public class KeyboardView extends View {
      * @param keyboard the keyboard to display in this view
      */
     public void setKeyboard(final Keyboard keyboard) {
+        if (mKeyboard == keyboard) {
+            return;
+        }
         mKeyboard = keyboard;
         final int keyHeight = keyboard.mMostCommonKeyHeight;
-        mKeyDrawParams.updateParams(keyHeight, mKeyVisualAttributes);
-        mKeyDrawParams.updateParams(keyHeight, keyboard.mKeyVisualAttributes);
-        mKeyDrawParamsCache.clear();
-        final SharedPreferences prefs = PreferenceManagerCompat.getDeviceSharedPreferences(getContext());
-        mCustomColor = Settings.readKeyboardColor(prefs, getContext());
-        mTheme = Settings.getKeyboardTheme(getContext());
+        final KeyVisualAttributes keyboardAttributes = keyboard.mKeyVisualAttributes;
+        if (!mKeyDrawParamsInitialized || mKeyDrawParamsKeyHeight != keyHeight
+                || mKeyDrawParamsKeyboardAttributes != keyboardAttributes) {
+            // Start from the view defaults so an omitted attribute cannot retain another
+            // keyboard's value. Equal visual inputs retain all per-key entries across shifts.
+            mKeyDrawParams = new KeyDrawParams();
+            mKeyDrawParams.updateParams(keyHeight, mKeyVisualAttributes);
+            mKeyDrawParams.updateParams(keyHeight, keyboardAttributes);
+            mKeyDrawParamsKeyHeight = keyHeight;
+            mKeyDrawParamsKeyboardAttributes = keyboardAttributes;
+            mKeyDrawParamsInitialized = true;
+            mKeyDrawParamsCache.clear();
+        }
         invalidateAllKeys();
         requestLayout();
+    }
+
+    /** Re-reads theme preferences only at view creation and explicit theme invalidation. */
+    final void updateKeyboardTheme() {
+        final SharedPreferences prefs = PreferenceManagerCompat.getDeviceSharedPreferences(
+                getContext());
+        final int customColor = Settings.readKeyboardColor(prefs, getContext());
+        final KeyboardTheme theme = Settings.getKeyboardTheme(getContext());
+        if (mTheme != null && mCustomColor == customColor && mTheme.equals(theme)) {
+            return;
+        }
+        mCustomColor = customColor;
+        mTheme = theme;
+        if (mKeyboard != null) {
+            invalidateAllKeys();
+        }
     }
 
     /**

@@ -67,6 +67,7 @@ class SuggestionTapFeedbackTest {
 
         /** True models the commit path refusing a glide (a stale cache that never reloaded). */
         var glideCommitsRefused: Boolean = false
+        var clipCommitsRefused: Boolean = false
 
         override fun cachedWordBeforeCursor(): String =
             TatarWordUtils.extractTrailingWord(before)
@@ -126,6 +127,7 @@ class SuggestionTapFeedbackTest {
         }
 
         override fun commitClipText(text: String): Boolean {
+            if (clipCommitsRefused) return false
             edits.add("clip:$text")
             before += text
             return true
@@ -175,6 +177,9 @@ class SuggestionTapFeedbackTest {
 
         /** The N-best the next glide request answers, top candidate first. */
         var glideCandidates: List<String> = emptyList()
+        var glideRequests = 0
+        var holdGlide = false
+        private var heldGlide: (() -> Unit)? = null
         var callback: ResultCallback? = null
         private var lastPrefix: String = ""
 
@@ -207,9 +212,20 @@ class SuggestionTapFeedbackTest {
             path: GlidePath,
             contextWordUtf8: ByteArray,
         ): Any? {
+            glideRequests++
             val token = Any()
-            callback?.onResult(token, glideCandidates, LookupKind.GLIDE)
+            if (holdGlide) {
+                heldGlide = { callback?.onResult(token, glideCandidates, LookupKind.GLIDE) }
+            } else {
+                callback?.onResult(token, glideCandidates, LookupKind.GLIDE)
+            }
             return token
+        }
+
+        fun deliverHeldGlide() {
+            val deliver = requireNotNull(heldGlide)
+            heldGlide = null
+            deliver()
         }
 
         override fun isCurrent(token: Any): Boolean = true
@@ -432,6 +448,20 @@ class SuggestionTapFeedbackTest {
     }
 
     @Test
+    fun aClipTapTicksNeverWhenTheEditorRejectsTheCommit() {
+        val h = Harness()
+        h.clip("сәләм")
+        h.start()
+        h.editor.clipCommitsRefused = true
+
+        h.tap("сәләм")
+
+        assertEquals(0, h.ticks)
+        assertTrue(h.editor.edits.isEmpty())
+        assertEquals("", h.editor.before)
+    }
+
+    @Test
     fun aClipTapUnderTheLockTicksNever() {
         val h = Harness()
         h.clip("сәләм дөнья")
@@ -447,6 +477,35 @@ class SuggestionTapFeedbackTest {
     }
 
     // --- glide alternative and refused-glide candidate ----------------------------------------------
+
+    @Test
+    fun aMidSessionLockDoesNotStartAGlideDecode() {
+        val h = Harness()
+        h.start()
+        h.engine.glideCandidates = listOf("сәләм")
+
+        h.keyguardLocked = true
+        h.glide()
+
+        assertEquals(0, h.engine.glideRequests)
+        assertTrue(h.editor.edits.isEmpty())
+        assertEquals(0, h.ticks)
+    }
+
+    @Test
+    fun aGlideResultArrivingAfterLockCommitsNothing() {
+        val h = Harness()
+        h.start()
+        h.engine.glideCandidates = listOf("сәләм")
+        h.engine.holdGlide = true
+        h.glide()
+
+        h.keyguardLocked = true
+        h.engine.deliverHeldGlide()
+
+        assertTrue(h.editor.edits.isEmpty())
+        assertEquals(0, h.ticks)
+    }
 
     @Test
     fun aGlideAlternativeTapTicksExactlyOnce() {

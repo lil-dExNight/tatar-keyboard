@@ -19,10 +19,10 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
 
 /**
- * Pure, Android-free text helper that measures the trailing emoji grapheme cluster so a single
- * backspace deletes it whole: no lone variation selector, half flag or base without its skin-tone
- * modifier is left behind. It covers composite classes (skin tone, ZWJ, flags, tags) the panel
- * grid does not show, because such text also arrives from other keyboards and from pasted content.
+ * Pure, Android-free text helper that measures emoji grapheme clusters in either direction so
+ * backspace and cursor gestures never leave a lone variation selector, half flag or base without
+ * its skin-tone modifier. It covers composite classes (skin tone, ZWJ, flags, tags) the panel grid
+ * does not show, because such text also arrives from other keyboards and from pasted content.
  *
  * The measurement runs on the keystroke path, including backspace auto-repeat, so it allocates
  * nothing: it walks the [CharSequence] by index with [Character.codePointBefore]. It reads only the
@@ -71,12 +71,9 @@ object EmojiTextUtils {
     fun trailingEmojiClusterLength(text: CharSequence): Int =
         trailingEmojiClusterLengthEndingAt(text, text.length)
 
-    /**
-     * The [trailingEmojiClusterLength] measurement of the prefix `text[0, end)` — the identical
-     * walk, bounded so a caller peeling a RUN of trailing clusters never re-reads the tail it
-     * already stripped.
-     */
-    private fun trailingEmojiClusterLengthEndingAt(text: CharSequence, end: Int): Int {
+    /** Returns the trailing emoji cluster length in `text[0, end)`, or `0` for ordinary text. */
+    @JvmStatic
+    fun trailingEmojiClusterLengthEndingAt(text: CharSequence, end: Int): Int {
         if (end == 0) return 0
         // Recognise the emoji element that ends the text. A negative result means the tail is
         // ordinary text, so we hand deletion straight back to the code-point path.
@@ -85,14 +82,99 @@ object EmojiTextUtils {
         // Walk back over any ZWJ-joined elements sitting in front of it (couples, families, roles).
         while (start >= 1 && text[start - 1].code == ZWJ) {
             val previous = emojiElementStart(text, start - 1)
-            // An orphan ZWJ with no emoji element before it is left in place with its joiner.
-            if (previous < 0) break
+            if (previous < 0) {
+                // A cached tail can begin with the joiner of a cluster whose base was cut off.
+                if (start == 1) {
+                    start = 0
+                    break
+                }
+                return 0
+            }
             start = previous
             if (end - start > MAX_CLUSTER_CHARS) return 0
         }
         val clusterLength = end - start
         if (clusterLength > MAX_CLUSTER_CHARS) return 0
         return clusterLength
+    }
+
+    /** Returns the emoji cluster length at the start of [text], or `0` for ordinary text. */
+    @JvmStatic
+    fun leadingEmojiClusterLength(text: CharSequence): Int =
+        leadingEmojiClusterLengthStartingAt(text, 0)
+
+    /** Returns the emoji cluster length in `text[start, length)`, or `0` for ordinary text. */
+    @JvmStatic
+    fun leadingEmojiClusterLengthStartingAt(text: CharSequence, start: Int): Int {
+        var end = emojiElementEnd(text, start)
+        if (end < 0) return 0
+        if (end - start > MAX_CLUSTER_CHARS) return 0
+        while (end < text.length && text[end].code == ZWJ) {
+            val next = emojiElementEnd(text, end + 1)
+            if (next < 0) {
+                // A cached head can end with the joiner of a cluster whose next element was cut off.
+                if (end + 1 == text.length && end + 1 - start <= MAX_CLUSTER_CHARS) {
+                    return end + 1 - start
+                }
+                // Let the caller's ordinary-ZWJ path handle a non-emoji join.
+                return 0
+            }
+            end = next
+            if (end - start > MAX_CLUSTER_CHARS) return 0
+        }
+        return end - start
+    }
+
+    /** Returns one backward cursor step: an emoji cluster or a code point with its ZWJ joins. */
+    @JvmStatic
+    fun cursorClusterLengthEndingAt(text: CharSequence, end: Int): Int {
+        if (end <= 0 || end > text.length) return 0
+        val emojiLength = trailingEmojiClusterLengthEndingAt(text, end)
+        if (emojiLength > 0) return emojiLength
+        var i = end - 1
+        while (i >= 0) {
+            if (end - i > MAX_CLUSTER_CHARS) {
+                return Character.charCount(Character.codePointBefore(text, end))
+            }
+            val current = text[i]
+            if ((i > 0 && text[i - 1].code == ZWJ) || current.code == ZWJ) {
+                i--
+                continue
+            }
+            if (Character.isLowSurrogate(current) && i > 0
+                && Character.isHighSurrogate(text[i - 1])) {
+                i--
+                continue
+            }
+            break
+        }
+        return end - maxOf(i, 0)
+    }
+
+    /** Returns one forward cursor step: an emoji cluster or a code point with its ZWJ joins. */
+    @JvmStatic
+    fun cursorClusterLengthStartingAt(text: CharSequence, start: Int): Int {
+        if (start < 0 || start >= text.length) return 0
+        val emojiLength = leadingEmojiClusterLengthStartingAt(text, start)
+        if (emojiLength > 0) return emojiLength
+        var i = start
+        while (i < text.length) {
+            if (i - start >= MAX_CLUSTER_CHARS) {
+                return Character.charCount(Character.codePointAt(text, start))
+            }
+            val current = text[i]
+            if ((i + 1 < text.length && text[i + 1].code == ZWJ) || current.code == ZWJ) {
+                i++
+                continue
+            }
+            if (Character.isHighSurrogate(current) && i + 1 < text.length
+                && Character.isLowSurrogate(text[i + 1])) {
+                i++
+                continue
+            }
+            break
+        }
+        return i + 1 - start
     }
 
     /**
@@ -127,6 +209,48 @@ object EmojiTextUtils {
             TatarWordUtils.extractTrailingWord(remainder)
         }
         return word.ifEmpty { null }
+    }
+
+    /** Reads one emoji element forward, returning its exclusive end or `-1` for ordinary text. */
+    private fun emojiElementEnd(text: CharSequence, start: Int): Int {
+        if (start < 0 || start >= text.length) return -1
+        val first = Character.codePointAt(text, start)
+        val firstEnd = start + Character.charCount(first)
+
+        if (isKeycapBase(first)) {
+            var end = firstEnd
+            if (end < text.length && Character.codePointAt(text, end) == VS16) end++
+            if (end < text.length && Character.codePointAt(text, end) == KEYCAP) return end + 1
+        }
+        if (firstEnd < text.length) {
+            val next = Character.codePointAt(text, firstEnd)
+            if (next == VS15 || next == VS16) return firstEnd + 1
+        }
+        if (isRegionalIndicator(first)) {
+            if (firstEnd < text.length) {
+                val next = Character.codePointAt(text, firstEnd)
+                if (isRegionalIndicator(next)) return firstEnd + Character.charCount(next)
+            }
+            return firstEnd
+        }
+        if (!isEmojiBase(first)) return -1
+
+        if (firstEnd < text.length) {
+            val next = Character.codePointAt(text, firstEnd)
+            if (isSkinToneModifier(next)) return firstEnd + Character.charCount(next)
+            if (isTagChar(next) || next == TAG_TERMINATOR) {
+                var end = firstEnd
+                while (end < text.length) {
+                    val tag = Character.codePointAt(text, end)
+                    if (!isTagChar(tag)) break
+                    end += Character.charCount(tag)
+                }
+                if (end < text.length && Character.codePointAt(text, end) == TAG_TERMINATOR) {
+                    return end + Character.charCount(TAG_TERMINATOR)
+                }
+            }
+        }
+        return firstEnd
     }
 
     /**
@@ -199,14 +323,17 @@ object EmojiTextUtils {
         return end - 2
     }
 
-    /** A flag is a pair of regional indicators; a lone indicator stands as its own element. */
+    /** Regional indicators pair from the start of their run, including when measured backward. */
     private fun regionalIndicatorStart(text: CharSequence, end: Int): Int {
-        val i = end - 2 // every regional indicator is supplementary.
-        if (i > 0) {
+        var count = 1
+        var i = end - 2 // every regional indicator is supplementary.
+        while (i > 0) {
             val previous = Character.codePointBefore(text, i)
-            if (isRegionalIndicator(previous)) return i - 2
+            if (!isRegionalIndicator(previous)) break
+            count++
+            i -= Character.charCount(previous)
         }
-        return end - 2
+        return if (count % 2 == 0) end - 4 else end - 2
     }
 
     private fun isSkinToneModifier(codePoint: Int): Boolean = codePoint in 0x1F3FB..0x1F3FF

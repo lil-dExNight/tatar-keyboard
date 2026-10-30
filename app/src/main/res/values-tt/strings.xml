@@ -55,6 +55,8 @@
     <string name="one_handed_mode_off">Сүндерелгән</string>
     <string name="one_handed_mode_left">Сулда</string>
     <string name="one_handed_mode_right">Уңда</string>
+    <string name="one_handed_mode_full">Тулы киңлек</string>
+    <string name="globe_menu_emoji">Эмодзи</string>
     <string name="prefs_bottom_offset_portrait_settings">Астан чигенеш</string>
     <string name="keyboard_color">Төймәсарга үз төсен кую</string>
     <string name="show_special_chars">Махсус символларны күрсәтү</string>
@@ -94,10 +96,14 @@
     <string name="text_shortcuts_intro">Кыскартманы язып, аннан буш урын яки тыныш билгесе басыгыз — ул сакланган текстка әйләнә. Озын татарча өстәлмәләр һәм еш язылган җөмләләр өчен кулай. Кыскартманы кире кайтару өчен шундук бетерү төймәсенә басыгыз.</string>
     <string name="text_shortcuts_add">Кыскартма өстәү\u2026</string>
     <string name="text_shortcuts_add_title">Яңа кыскартма</string>
+    <string name="text_shortcuts_edit_title">Кыскартманы үзгәртү</string>
     <string name="text_shortcuts_shortcut_hint">Кыскартма (хәрефләр генә)</string>
     <string name="text_shortcuts_expansion_hint">Алыштырыла торган текст</string>
     <string name="text_shortcuts_add_action">Саклау</string>
     <string name="text_shortcuts_add_rejected">Бу парны сакларга ярамый: кыскартма — 1 дән 32 гә кадәр хәреф, текст — бер юлда 1 дән 140 ка кадәр билге булырга тиеш.</string>
+    <string name="text_shortcuts_replace_title">Сакланган кыскартманы алыштырыргамы?</string>
+    <string name="text_shortcuts_replace_confirm">«%1$s» өчен башка текст инде сакланган. Аны алыштырыргамы?</string>
+    <string name="text_shortcuts_replace_action">Алыштыру</string>
     <string name="text_shortcuts_delete">Бетерү</string>
     <string name="text_shortcuts_delete_title">«%1$s» кыскартмасын бетерергәме?</string>
     <string name="text_shortcuts_empty">Кыскартмалар әле юк.</string>
@@ -234,6 +240,7 @@
     <string name="backup_export_done">Күчермә файлы языылды.</string>
     <string name="backup_export_failed">Күчермә файлын язып булмады.</string>
     <string name="backup_import_done">Күчермә йөкләнде.</string>
+    <string name="backup_import_privacy_changed">Күчермә йөкләнде. Шәхси сүзлек яки өйрәнү тәнәфесе үзгәрде; бу көйләүләрне тикшерегез.</string>
     <string name="backup_import_failed_invalid">Бу файл клавиатураның күчермәсе түгел. Бернәрсә дә үзгәртелмәде.</string>
     <string name="backup_import_failed_write">Йөкләүне тәмамлап булмады. Мәгълүматның бер өлеше инде алыштырылган булырга мөмкин.</string>
     <string name="backup_no_app">Бу җиһазда файл сайлый торган кушымта юк.</string>

@@ -21,11 +21,11 @@ import kotlin.math.sqrt
 /**
  * A recorded glide path: fixed-capacity parallel point buffers (x, y, t) that never allocate
  * after construction. `x`/`y` are pixel (or grid-unit) coordinates in the keyboard's coordinate
- * space; `t` is the sample timestamp in milliseconds — the decoder reads only the gesture's total
- * duration from it (the speed channel).
+ * space; `t` is the sample timestamp in milliseconds — the decoder reads total duration for the
+ * speed channel and segment durations for the per-key dwell mask.
  *
- * Points past the capacity are dropped ([addPoint] returns false); the leading [MAX_POINTS]
- * samples cover far more finger travel than any real word.
+ * On overflow, the interior point with the smallest arc-length reduction is removed. This keeps
+ * the buffer bounded while preserving the first point, last point and total gesture duration.
  *
  * An instance is confined to one thread (the decoder's is the engine worker), so the buffers
  * need no synchronization.
@@ -39,13 +39,20 @@ class GlidePath(val capacity: Int = MAX_POINTS) {
         private set
 
     /**
-     * Appends one sample; returns false and drops the point when the buffer is full or the
-     * sample is not finite (a NaN/Infinity coordinate would corrupt every distance the decoder
-     * measures on this path).
+     * Appends one sample, thinning an interior point first when full. Returns false for a
+     * non-finite sample or zero capacity.
      */
     fun addPoint(x: Float, y: Float, t: Float): Boolean {
         if (!x.isFinite() || !y.isFinite() || !t.isFinite()) return false
-        if (size >= capacity) return false
+        if (size >= capacity) {
+            when (size) {
+                0 -> return false
+                // These capacities cannot retain an interior sample; keep whichever ends fit.
+                1 -> size = 0
+                2 -> size = 1
+                else -> thinOnePoint()
+            }
+        }
         xs[size] = x
         ys[size] = y
         ts[size] = t
@@ -53,23 +60,59 @@ class GlidePath(val capacity: Int = MAX_POINTS) {
         return true
     }
 
+    /** Records a relative timestamp in Long precision and skips an exact duplicate of the last sample. */
+    fun addPoint(x: Float, y: Float, eventTime: Long, gestureStartTime: Long): Boolean {
+        val t = (eventTime - gestureStartTime).toFloat()
+        val last = size - 1
+        if (last >= 0 && xs[last] == x && ys[last] == y && ts[last] == t) return false
+        return addPoint(x, y, t)
+    }
+
+    /** Removes the interior point whose removal least reduces the polyline's arc length. */
+    private fun thinOnePoint() {
+        var removal = 1
+        var lowestCost = Float.POSITIVE_INFINITY
+        for (i in 1 until size - 1) {
+            val beforeX = xs[i] - xs[i - 1]
+            val beforeY = ys[i] - ys[i - 1]
+            val afterX = xs[i + 1] - xs[i]
+            val afterY = ys[i + 1] - ys[i]
+            val directX = xs[i + 1] - xs[i - 1]
+            val directY = ys[i + 1] - ys[i - 1]
+            val cost = sqrt(beforeX * beforeX + beforeY * beforeY) +
+                sqrt(afterX * afterX + afterY * afterY) -
+                sqrt(directX * directX + directY * directY)
+            if (cost < lowestCost) {
+                lowestCost = cost
+                removal = i
+            }
+        }
+        val count = size - removal - 1
+        System.arraycopy(xs, removal + 1, xs, removal, count)
+        System.arraycopy(ys, removal + 1, ys, removal, count)
+        System.arraycopy(ts, removal + 1, ts, removal, count)
+        size--
+    }
+
     fun clear() {
         size = 0
     }
 
     /**
-     * Copies the recorded points into [target] (its previous content is discarded) and returns
-     * the number of points copied (capped at the target's capacity). Used when a glide path
-     * crosses a thread boundary: the tracker's buffer is live, so the receiver snapshots it.
+     * Copies into [target], discarding its previous content and using its thinning rule when
+     * smaller. Used to snapshot the tracker's live buffer before it crosses a thread boundary.
      */
     fun copyInto(target: GlidePath): Int {
         target.clear()
-        val count = minOf(size, target.capacity)
-        System.arraycopy(xs, 0, target.xs, 0, count)
-        System.arraycopy(ys, 0, target.ys, 0, count)
-        System.arraycopy(ts, 0, target.ts, 0, count)
-        target.size = count
-        return count
+        if (size > target.capacity) {
+            for (i in 0 until size) target.addPoint(xs[i], ys[i], ts[i])
+            return target.size
+        }
+        System.arraycopy(xs, 0, target.xs, 0, size)
+        System.arraycopy(ys, 0, target.ys, 0, size)
+        System.arraycopy(ts, 0, target.ts, 0, size)
+        target.size = size
+        return size
     }
 
     /** Total arc length of the polyline through the recorded points. */

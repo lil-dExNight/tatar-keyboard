@@ -35,8 +35,8 @@ class GlideTouchIntegrationContractTest {
         assertTrue("armed branch must precede the space swipe branch", armed < spaceSwipe)
         assertTrue("tracking branch must precede the space swipe branch", tracking < spaceSwipe)
         assertTrue("armed branch must precede the delete swipe branch", armed < deleteSwipe)
-        // An armed MOVE feeds the path (with an explicit float cast) and returns.
-        assertTrue(move.contains("mGlidePath.addPoint(x, y, (float) eventTime);"))
+        // An armed MOVE feeds the path with a gesture-relative timestamp and returns.
+        assertTrue(move.contains("mGlidePath.addPoint(x, y, eventTime, mGlideStartTime);"))
         // A cursor swipe that already started can no longer become a glide.
         assertTrue(move.contains("mGlideDecider.isTracking() && !mCursorMoved"))
     }
@@ -69,8 +69,10 @@ class GlideTouchIntegrationContractTest {
             "delivery must be guarded against a cancelled tracker",
             up.contains("if (!mIsTrackingForActionDisabled)"),
         )
+        val lift = up.indexOf("mGlidePath.addPoint(x, y, eventTime, mGlideStartTime);")
         val deliver = up.indexOf("sListener.onGlideInput(mGlidePath);")
         val sendKey = up.indexOf("detectAndSendKey(currentKey, mKeyX, mKeyY);")
+        assertTrue("lift-off sample must precede glide delivery", lift in armedCheck until deliver)
         assertTrue("glide delivery missing", deliver >= 0)
         assertTrue("delivery must precede (and return before) the key commit", deliver < sendKey)
     }
@@ -80,7 +82,7 @@ class GlideTouchIntegrationContractTest {
         assertTrue(trackerSource.contains("cancelArmedGlideTrackersExcept(mPointerId);"))
         val phantom = methodBody("onPhantomUpEvent")
         val cancel = phantom.indexOf("mGlideDecider.cancelGlide();")
-        val up = phantom.indexOf("onUpEventInternal(mLastX, mLastY);")
+        val up = phantom.indexOf("onUpEventInternal(mLastX, mLastY, eventTime);")
         assertTrue("phantom up must cancel the glide", cancel >= 0)
         assertTrue("the cancel must precede the up handling", cancel < up)
     }
@@ -90,6 +92,7 @@ class GlideTouchIntegrationContractTest {
         val arm = methodBody("armGlide")
         assertTrue(arm.contains("sTimerProxy.cancelKeyTimersOf(this);"))
         assertTrue(arm.contains("setReleasedKeyGraphics(mCurrentKey, true"))
+        assertTrue(arm.contains("sListener.onGlideArmed();"))
         // The in-flight timer callbacks carry the armed guard.
         assertTrue(methodBody("onLongPressed").contains("if (mGlideDecider.isArmed())"))
         assertTrue(methodBody("onKeyRepeat").contains("if (mGlideDecider.isArmed())"))
@@ -119,6 +122,10 @@ class GlideTouchIntegrationContractTest {
         assertTrue(down.contains("mGlideTypingEnabled"))
         assertTrue(down.contains("Character.isLetter(key.getCode())"))
         assertTrue(down.contains("mGlideDecider.onDown(x, y, eventTime, glideEligible);"))
+        assertTrue(down.contains("mGlideStartTime = eventTime;"))
+        assertTrue(down.contains("path.addPoint(x, y, eventTime, mGlideStartTime);"))
+        assertFalse("key down must not prewarm the glide index", down.contains("onGlideArmed"))
+        assertFalse(trackerSource.contains("mGlidePath.addPoint(x, y, (float) eventTime)"))
         val gate = down.substringAfter("final boolean glideEligible").substringBefore(";")
         assertTrue("a glide arms only where it can be decoded", gate.contains("sGlideAvailable"))
         assertTrue("a glide never starts on the symbols pages",
@@ -147,13 +154,16 @@ class GlideTouchIntegrationContractTest {
             "app/src/main/java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardActionListener.java",
         )
         assertTrue(listener.contains("default void onGlideInput("))
+        assertTrue(listener.contains("default void onGlideArmed()"))
         val latinIme = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
         )
         assertTrue(latinIme.contains("public void onGlideInput("))
+        assertTrue(latinIme.contains("public void onGlideArmed()"))
         // The receiver forwards to the suggestions controller.
         assertTrue(latinIme.contains("controller.onGlideInput(path);"))
+        assertTrue(latinIme.contains("controller.onGlideArmed();"))
         assertTrue(latinIme.contains("setGlideGate("))
         assertTrue(latinIme.contains("setGlideShiftStateGate("))
         val shiftGate = latinIme.substringAfter("setGlideShiftStateGate(").substringBefore("});")
@@ -264,11 +274,11 @@ class GlideTouchIntegrationContractTest {
         val refused = apply.substringAfter("if (commitResult == EditorSurface.GLIDE_COMMIT_REFUSED) {")
             .substringBefore("runMachine.markRunDirty()")
         assertTrue("a refused commit ticks", refused.contains("glideRefusalFeedback.onGlideRefused()"))
-        // The strip side of a glide result — the alternates, the refused gesture's candidates —
-        // rides the glide gate, not the suggestions switch.
-        assertTrue("the glide strip gate is the glide switch, not the suggestions switch",
+        // The strip side rides the glide switch, not the suggestions switch, and closes on lock.
+        assertTrue("the glide strip gate includes the live lock and glide switch",
             controller.contains(
-                "private fun glideStripAllowed(): Boolean = eligible || (glideEligible && glideGate.isOn())"))
+                "private fun glideStripAllowed(): Boolean =\n" +
+                    "        !keyguardGate.isLocked() && (eligible || (glideEligible && glideGate.isOn()))"))
         val noCandidates = refused.indexOf("if (!glideStripAllowed() || editor.hasLetterAfterCursor()) return")
         assertTrue("a letter after the cursor at the result shows no candidates", noCandidates >= 0)
         assertTrue("a stale or unknown cache binds its candidates",

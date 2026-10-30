@@ -126,6 +126,8 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     // The system animator scale, read once with the gesture's first trail point and dropped at
     // the lift; {@link #onGlideTrailEnd} consults it, so the draw pass never re-reads it.
     private MotionPolicy mGlideMotionPolicy;
+    // Shared origin for trail samples and fade frames; subtraction stays in Long precision.
+    private long mGlideTrailStartTime;
 
     private final KeyDetector mKeyDetector;
     private final NonDistinctMultitouchHelper mNonDistinctMultitouchHelper;
@@ -436,13 +438,12 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     // Implements {@link DrawingProxy#onGlideTrailPoint(float,float,long)}.
     @Override
     public void onGlideTrailPoint(final float x, final float y, final long eventTime) {
-        // Explicit narrowing: gesture deltas are milliseconds apart, so the float's 24-bit
-        // mantissa is exact where the trail's fade math reads it (same argument as GlidePath).
         if (mGlideMotionPolicy == null) {
             // Once per gesture, never per frame: the lift consults this instance.
             mGlideMotionPolicy = MotionPolicy.of(getContext());
+            mGlideTrailStartTime = eventTime;
         }
-        mGlideTrail.addPoint(x, y, (float) eventTime);
+        mGlideTrail.addPoint(x, y, (float) (eventTime - mGlideTrailStartTime));
         invalidate();
     }
 
@@ -464,7 +465,8 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         }
         // The lift fades the trail out over GlideTrail.FADE_OUT_MS instead of erasing it
         // instantly; the fade drives its own bounded re-invalidation from the draw pass.
-        mGlideTrail.startFadeOut((float) SystemClock.uptimeMillis());
+        mGlideTrail.startFadeOut(
+                (float) (SystemClock.uptimeMillis() - mGlideTrailStartTime));
         invalidate();
     }
 
@@ -695,9 +697,8 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     }
 
     private void drawGlideTrail(final Canvas canvas) {
-        // The wall clock enters here and only here: the fade-out is a wall-time animation, while
-        // the tail's own fade math stays sample-relative (see GlideTrail's class doc).
-        final float nowMs = (float) SystemClock.uptimeMillis();
+        // The fade reads wall time at the lift and here; all fade math uses gesture-relative time.
+        final float nowMs = (float) (SystemClock.uptimeMillis() - mGlideTrailStartTime);
         if (mGlideTrail.isFadeDone(nowMs)) {
             // The fade ran out: drop the ring and let this frame paint without it.
             mGlideTrail.clear();

@@ -20,7 +20,8 @@ import kotlin.math.sqrt
 
 /**
  * The per-dictionary glide index: a start/end key-pair index over the inventory's words, built
- * once (lazily, on the first decode, on the engine worker) and immutable afterwards. It makes
+ * once on the engine worker, when a gesture arms or when an unprepared decode needs it, and
+ * immutable afterwards. It makes
  * extremity pruning (the two keys nearest the gesture's start x the two nearest its end) a
  * range lookup instead of a dictionary scan.
  *
@@ -37,7 +38,7 @@ import kotlin.math.sqrt
  *    doubled-letter loop detour (-1 when the word has no doubled letter) — the length channel
  *    of the pruner is then two float reads per candidate;
  *  - [pairOffsets]/[pairEntries]: CSR buckets keyed by firstKey x lastKey, entry indices in
- *    dictionary order;
+ *    frequency-descending order with dictionary-order ties;
  *  - [twinless]: a bit per entry, set on a word with a doubled letter whose collapsed key
  *    sequence is no other indexed word, so its plain path belongs to nobody else.
  *
@@ -225,25 +226,7 @@ class GlideWordIndex private constructor(
                     idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, true)
                 if (loopLength >= 0f) loopLengths[entry] = loopLength
             }
-            // Insertion sort within each bucket: buckets average ~80 entries and the pass is
-            // once per dictionary, off every hot path.
-            for (pair in 0 until keyCount * keyCount) {
-                val from = pairOffsets[pair]
-                val to = pairOffsets[pair + 1]
-                for (i in from + 1 until to) {
-                    val entry = pairEntries[i]
-                    val frequency = frequencies[entry]
-                    var j = i - 1
-                    while (j >= from &&
-                        (frequencies[pairEntries[j]] < frequency ||
-                            (frequencies[pairEntries[j]] == frequency && pairEntries[j] > entry))
-                    ) {
-                        pairEntries[j + 1] = pairEntries[j]
-                        j--
-                    }
-                    pairEntries[j + 1] = entry
-                }
-            }
+            sortPairBuckets(pairEntries, pairOffsets, frequencies)
             val twinless = twinlessBits(keySeqStarts, keySeqPool, loopLengths, entryCount)
             return GlideWordIndex(
                 wordCount, skipped, maxFrequency, keyCount, keySeqStarts, keySeqPool,
@@ -251,6 +234,57 @@ class GlideWordIndex private constructor(
                 pairEntries, twinless,
             )
         }
+
+        /** Sorts every bucket by frequency descending, with entry index as the stable tie-break. */
+        internal fun sortPairBuckets(
+            pairEntries: IntArray,
+            pairOffsets: IntArray,
+            frequencies: IntArray,
+        ) {
+            var largestBucket = 0
+            for (pair in 0 until pairOffsets.size - 1) {
+                largestBucket = maxOf(largestBucket, pairOffsets[pair + 1] - pairOffsets[pair])
+            }
+            if (largestBucket < 2) return
+            val scratch = IntArray(largestBucket)
+            for (pair in 0 until pairOffsets.size - 1) {
+                stableMergeSort(
+                    pairEntries, scratch, frequencies, pairOffsets[pair], pairOffsets[pair + 1],
+                )
+            }
+        }
+
+        private fun stableMergeSort(
+            entries: IntArray,
+            scratch: IntArray,
+            frequencies: IntArray,
+            from: Int,
+            to: Int,
+        ) {
+            if (to - from < 2) return
+            val middle = (from + to) ushr 1
+            stableMergeSort(entries, scratch, frequencies, from, middle)
+            stableMergeSort(entries, scratch, frequencies, middle, to)
+            if (!precedes(entries[middle], entries[middle - 1], frequencies)) return
+
+            var left = from
+            var right = middle
+            var output = 0
+            while (left < middle && right < to) {
+                if (precedes(entries[right], entries[left], frequencies)) {
+                    scratch[output++] = entries[right++]
+                } else {
+                    scratch[output++] = entries[left++]
+                }
+            }
+            while (left < middle) scratch[output++] = entries[left++]
+            while (right < to) scratch[output++] = entries[right++]
+            for (i in 0 until output) entries[from + i] = scratch[i]
+        }
+
+        private fun precedes(left: Int, right: Int, frequencies: IntArray): Boolean =
+            frequencies[left] > frequencies[right] ||
+                (frequencies[left] == frequencies[right] && left < right)
 
         /**
          * The twin bit set. Every indexed entry without a doubled letter goes into an
