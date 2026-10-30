@@ -11,6 +11,19 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [3.11.1] — 2026-10-30
+
+### Fixed
+
+- With the personal dictionary on, each keystroke and suggestion-strip tap now reads the lock state once instead of once per learning check, so key handling does less work per tap. Locking still stops learning at the next keystroke.
+
+### Security
+
+- The suggestion strip no longer offers a copied clip that its source app marked as sensitive, such as a password or card number copied from a password manager.
+- On the lock screen the keyboard no longer reads the clipboard, neither for the paste key nor for the copied-clip cell, the edit-menu paste does nothing, and the one-time "turn on suggestions" offer no longer appears.
+- On Android 7.0 and 7.1, TalkBack now reads character keys in password fields as "dot" unless spoken passwords are allowed in the system settings or headphones are connected.
+- An import interrupted by a restart is now rolled back the next time the keyboard starts, not only when the settings open; "Erase everything saved" also deletes the import journal, so the rollback cannot restore erased words, and a damaged journal no longer blocks later backups.
+
 ## [3.11.0] — 2026-10-30
 
 ### Changed
@@ -28,10 +41,6 @@ These hold for every release and are not repeated in the entries below:
 ### Security
 
 - Locking the device now stops learning, autocorrect, text shortcuts and glide immediately, even when the editor stays open. Inline-autofill content is removed on hide or lock and is not restored without a new response.
-- The suggestion strip no longer offers a copied clip that its source app marked as sensitive, such as a password or card number copied from a password manager.
-- On the lock screen the keyboard no longer reads the clipboard, neither for the paste key nor for the copied-clip cell, the edit-menu paste does nothing, and the one-time "turn on suggestions" offer no longer appears.
-- On Android 7.0 and 7.1, TalkBack now reads character keys in password fields as "dot" unless spoken passwords are allowed in the system settings or headphones are connected.
-- An import interrupted by a restart is now rolled back the next time the keyboard starts, not only when the settings open; "Erase everything saved" also deletes the import journal, so the rollback cannot restore erased words, and a damaged journal no longer blocks later backups.
 
 ## [3.10.0] — 2026-10-29
 

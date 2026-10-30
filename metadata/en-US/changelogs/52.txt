@@ -1,0 +1,5 @@
+• Copied text that a password manager marks as sensitive is not offered above the keyboard
+• On the lock screen the keyboard does not read the clipboard and paste does nothing
+• On Android 7.0 and 7.1 TalkBack reads password keys as "dot"
+• An interrupted backup import is rolled back when the keyboard next starts; "Erase everything saved" also erases the import journal
+• Less work per keystroke with the personal dictionary on

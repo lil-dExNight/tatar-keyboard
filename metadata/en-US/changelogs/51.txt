@@ -1,6 +1,5 @@
 • Better Tatar next-word suggestions around punctuation and sentence boundaries
-• More reliable glide typing, with feedback for unrecognized words
-• Locking the device stops learning, autocorrect, shortcuts, glide and paste at once
-• Passwords that a password manager marks as sensitive are not shown above the keyboard
-• TalkBack can exit one-handed mode or choose a side
-• Failed backup restores roll back completely; autocorrect works before Enter
+• More reliable glide typing, with complete gesture paths and feedback for unrecognized words
+• Locking the device immediately stops learning, autocorrect, text shortcuts and glide; inline autofill content is cleared
+• TalkBack can use the one-handed mode control to return to full width or choose a side
+• Failed backup restores now roll back completely; autocorrect works before Enter
