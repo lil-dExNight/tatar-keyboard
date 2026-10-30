@@ -39,7 +39,9 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
    autocorrect, glide whole-word undo, and autocorrect before a separator. Then the event goes to
    `InputLogic.onCodeInput`.
 4. `InputLogic` edits text only through `RichInputConnection`, which wraps the platform
-   `InputConnection` and caches the text around the cursor.
+   `InputConnection` and caches the text around the cursor. Backspace, space-slide and delete-swipe
+   share allocation-free emoji-cluster boundaries, including variation selectors, skin tones,
+   regional-indicator pairs, keycaps, ZWJ sequences and tags.
 5. After the transaction `LatinIME` updates the shift state, calls
    `SuggestionsController.onTextChanged()` and `KeyboardSwitcher.onEvent`.
 
@@ -84,7 +86,11 @@ the app's languages and, when the system allows it, moves to the next input meth
 Suggestions for Tatar and Russian are on by default for new installs
 (`Settings.PREF_TATAR_SUGGESTIONS`; the personal dictionary and autocorrection stay off until
 enabled) and never run in password fields, in fields that disallow suggestions or personalized
-learning, or while the keyguard is shown (`LatinIME.isKeyguardLocked`, also after the first unlock).
+learning, before the first user unlock, or while the keyguard is shown (also after the first
+unlock). Field start and window show refresh the lock snapshot; learning, autocorrect, text
+shortcuts, suggestion commits and glide re-check both lock states at their event and write
+boundaries, so a mid-session lock invalidates pending work and locked-period typing is not learned
+after unlock.
 
 **Threads.** `SuggestionsController` owns all strip state and runs on the UI thread only. Each
 language has a `LanguageSlot` with one engine, and each engine runs lookups on its own single
@@ -108,7 +114,11 @@ the shared learning gates) leads, then the static table (`SentStartIndex`,
 **Strip.** `SuggestionStripView` is one Canvas view with up to four cells
 (`SuggestionStripState.CELL_COUNT`): three are visible by default, the fourth-cell setting widens
 the strip to all four (`SuggestionStripState.visibleCellCount`; the engines always compose four
-candidates and the controller truncates the band). A tap commits the word with a space; a punctuation mark that
+candidates and the controller truncates the band). Cells fill the keyboard's dock content
+rectangle. A right dock mirrors only ranked bands across the visible grid, putting the leading
+candidate nearest the right thumb; undo, recent-clip and emoji-only offers keep their documented
+order. Drawing, hit testing and accessibility use `SuggestionStripState`'s shared geometry. A tap
+commits the word with a space; a punctuation mark that
 attaches to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ",
 "сүз?! "), tracked by the cursor position in `InputLogic`. A space typed there is swallowed and
 counts as the first space of a double-space period. Two quick spaces give a period only in a
@@ -119,14 +129,17 @@ slide, delete swipe, word-delete flick, the edit menu's arrows) drop this state
 
 **Inline autofill** (API 30+, advertised in `method.xml`). A field that supports inline
 suggestions takes the strip over: `LatinIME.onCreateInlineSuggestionsRequest` answers with one
-presentation spec per cell (`InlineStripSpecs` — the cells' exact sizes, min equal to max), and
+presentation spec per cell (`InlineStripSpecs` — the cells' exact sizes, min equal to max). Specs
+and hosted cells use the dock content rectangle and keep platform order.
 `LatinIME.onInlineSuggestionsResponse` hosts the platform's content views in
 `InlineAutofillStripView`, a container inflated only then (`InlineAutofillBinder` keeps every
 autofill class behind the API gate). While a session is up the word strip is GONE but keeps
-updating, so the platform's session end — an empty response at the next field's startInput — puts
-current words back (`InputView.hideInlineAutofillStrip`). Password fields host chips like any
-other field — login forms are the feature's main use (`InlineAutofillGate` is an API-level gate),
-and a response arriving while the emoji panel owns the surface is refused instead of hosted.
+updating. An empty response, field finish or window hide empties the host and puts current words
+back (`InputView.hideInlineAutofillStrip`). Responses require an unlocked user and no keyguard;
+a response while hidden is refused, and after a return only a newly delivered response can host
+content. A late inflate from an ended session is rejected. Password fields host chips like any
+other field — login forms are the feature's main use — and a response arriving while the emoji
+panel owns the surface is refused instead of hosted.
 
 **Word completion** (`CompositePrefixComputer.lookup`): exact dictionary candidates by frequency,
 then at most one personal-dictionary word not already shown, then typo-recovery candidates. The
@@ -143,9 +156,9 @@ an empty exact pass at a long enough prefix both shipped engines run the shared 
 the Tatar policy adds a same-length bonus, the Russian one does not).
 
 **Next-word prediction** (`CompositePrefixComputer.predict`): bigram successors, then learned word
-pairs (at most `MAX_PERSONAL_BIGRAM_CELLS`), then word forms of the context word (Tatar,
-`TatarSuffixRules`), then the dictionary's most frequent words (`FallbackWords`). A later source
-never displaces or duplicates an earlier one. With emoji suggestions on, the last cell holds an
+pairs (at most `MAX_PERSONAL_BIGRAM_CELLS`), then the dictionary's most frequent words
+(`FallbackWords`). A later source never displaces or duplicates an earlier one. With emoji
+suggestions on, the last cell holds an
 emoji for the context word: a learned emoji first, else the static table (`EmojiSuggestIndex`).
 
 **Autocorrect** (opt-in `PREF_TATAR_AUTOCORRECT`, requires suggestions). The lookup that fills the
@@ -166,14 +179,17 @@ content with its own screen.
 its expansion in the first cell; a space or punctuation replaces the word through the same
 separator-time commit path as autocorrect, so the same undo window covers it. A tap on the cell
 commits like an accepted suggestion. An expansion is never learned from, and an undone expansion
-is not offered again in the same field session.
+is not offered again in the same field session. A settings row opens a prefilled expansion editor;
+deletion and replacement of an existing normalized shortcut each require their own confirmation.
 
 **Recent-clip cell.** While the strip is otherwise idle (an empty prefix and no next-word context)
 and the clipboard holds a fresh text clip, the strip's first cell offers the clip's first line,
 truncated; a tap commits the full clip text (`InputLogic.commitClipText`). The clip is held in
-memory only (`RecentClipCell`, freshness window), never written to disk, never learned from and
-never offered where suggestions may not run; the clipboard listener is registered only while the
-input view is shown (`LatinIME.onWindowShown`/`onWindowHidden`).
+memory only (`RecentClipCell`), never written to disk or learned from. A generation-stamped timer
+clears the text and removes the painted cell at the freshness deadline. The direct-paste size
+limit rejects oversized clips before text materialization and before the editor commit. The
+clipboard listener is registered only while the input view is shown, and the cell is never offered
+where suggestions may not run (`LatinIME.onWindowShown`/`onWindowHidden`).
 
 ## Bundled dictionaries
 
@@ -226,16 +242,21 @@ with no counters, no pending hashes and no learning.
   a full disk costs one failed write per input session instead of one per typed word; pending
   counters keep accumulating in memory meanwhile.
 - **Quarantine.** A file that fails validation is moved aside, not deleted; the settings screen
-  tells the user and can restore what is readable. A pending-counters file that fails to parse is
-  moved aside the same way, into its own slot with its own notice mark; it holds only salted
-  hashes, so the screen neither lists nor restores it.
+  tells the user and can restore what is readable. A failed move preserves the original file, and
+  a failed purge rewrite preserves the original quarantined copy. Pending counters use their own
+  quarantine slot and notice mark; they hold only salted hashes and are not listed or restored.
 - **Pause learning** (`PREF_INCOGNITO_MODE`) stops all writes; saved entries keep appearing.
 - **Backup restore.** `replaceAll` swaps a store's file for bytes from a backup archive (or deletes
   it) on the store's worker, re-validating first, and re-publishes the snapshot, so an import takes
-  effect in the live process. Pending counters and the salt survive a restore; quarantined copies
-  are left to their own flow.
+  effect in the live process. Import validates the archive and every recognized current file,
+  writes a durable journal of the old and new states, then applies the new state through those
+  owners. A failure rolls the old state back; reopening settings recovers an interrupted journal.
+  Pending counters and the salt survive a restore, and quarantined copies stay in their own flow.
+  Export fails before writing if any recognized personal file cannot be read and validated.
+  Import reports personal-dictionary and pause-learning switch changes.
 
-Settings screens list, delete and erase entries.
+Settings screens list, delete and erase entries for every supported language, including disabled
+ones. Manual word addition still targets an enabled language.
 
 ## Glide typing
 

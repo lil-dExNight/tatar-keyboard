@@ -11,6 +11,24 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [3.11.0] — 2026-10-30
+
+### Changed
+
+- Tatar next-word suggestions learn from words next to commas, quotes and other edge punctuation without joining sentences, improving held-out visible top-3 prediction by 1.8 points.
+
+### Fixed
+
+- Sentence-start suggestions and glide capitalization now recognize closing quotes and brackets after sentence-ending punctuation; numeric and other non-sentence contexts remain unchanged.
+- Autocorrect now applies before Enter inserts a real newline, with the same one-backspace undo. Send, Done, Next, Search, other editor actions and Tab keep their existing behavior.
+- Glide paths now include lift-off and retain both ends of long gestures without timestamp drift; an unrecognized glide gives one feedback tick and inserts nothing.
+- TalkBack can now use the one-handed mode exit handle to return to full width or open the side picker.
+- Backup import is transactional: a failed or interrupted restore rolls back to the complete previous settings and learned content instead of leaving a mixture of old and imported data.
+
+### Security
+
+- Locking the device now stops learning, autocorrect, text shortcuts and glide immediately, even when the editor stays open. Inline-autofill content is removed on hide or lock and is not restored without a new response.
+
 ## [3.10.0] — 2026-10-29
 
 ### Added

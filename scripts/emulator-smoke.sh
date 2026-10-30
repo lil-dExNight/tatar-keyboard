@@ -611,34 +611,33 @@ sleep 1
 switch_and_check tt tatar
 SHOT smoke-tt-back.png
 
-# ── word forms after a committed tt word + space ──
+# ── next-word continuations after a committed tt word + space ──
 # Tap-and-read, not pixel diff: uiautomator does not see the IME window, so the
 # strip content is proven by tapping a cell and reading the try-it field.
 # Two probes against the bundled assets (the bigram table stores up to four
 # successors per head; the strip shows three by default):
 #  1. татар is a bigram head whose first three successors (теле, телен, дәүләт)
 #     fill the whole strip, so cell 2 (index 1) must commit телен: bigram
-#     successors take priority and neither word forms nor the fallback run
-#     (CompositePrefixComputer). Any other word fails.
-#  2. сәләм is not a head, so its one attested after-word form (сәләмә) comes
-#     first and the global top words fill the rest (һәм, белән): cell 1
-#     (index 0) must commit сәләмә, proving word forms come before the fill.
+#     successors take priority and the fallback does not run (CompositePrefixComputer).
+#     Any other word fails.
+#  2. сәләм is not a head, so the global top words fill the strip: cell 1
+#     (index 0) must commit һәм.
 wf=$(type_tt_and_tap_cell2 "татар" tatar "$STRIP_CELL1")
 wf_mid="${wf%$'\t'*}"
 wf_after="${wf#*$'\t'}"
 w2=$(second_word_after "$wf_after" "татар")
 if [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "__NOFIELD__" ]; then
-    result FAIL wordform-tt-татар "try-it field not in the dump"
+    result FAIL nextword-tt-татар "try-it field not in the dump"
 elif ! echo "$wf_mid" | grep -qE 'татар $'; then
-    result FAIL wordform-tt-татар "татар did not commit; field: '$wf_mid'"
+    result FAIL nextword-tt-татар "татар did not commit; field: '$wf_mid'"
 elif [ "$SUGGESTIONS" != on ]; then
-    result SKIP wordform-tt-татар "suggestions not enabled (non-debuggable package)"
+    result SKIP nextword-tt-татар "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "$wf_mid" ]; then
-    result FAIL wordform-tt-татар "cell-2 tap committed nothing; field: '$wf_after'"
+    result FAIL nextword-tt-татар "cell-2 tap committed nothing; field: '$wf_after'"
 elif [ "$w2" = "телен" ]; then
-    result PASS wordform-tt-татар "cell 2 = телен: the successors fill the whole strip (pinned)"
+    result PASS nextword-tt-татар "cell 2 = телен: the successors fill the whole strip (pinned)"
 else
-    result FAIL wordform-tt-татар "cell 2 committed '$w2' (expected телен from the pinned successor row); field: '$wf_after'"
+    result FAIL nextword-tt-татар "cell 2 committed '$w2' (expected телен from the pinned successor row); field: '$wf_after'"
 fi
 
 wf=$(type_tt_and_tap_cell2 "сәләм" syalam "$STRIP_CELL0")
@@ -646,24 +645,23 @@ wf_mid="${wf%$'\t'*}"
 wf_after="${wf#*$'\t'}"
 w2=$(second_word_after "$wf_after" "сәләм")
 if [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "__NOFIELD__" ]; then
-    result FAIL wordform-tt-сәләм "try-it field not in the dump"
+    result FAIL nextword-tt-сәләм "try-it field not in the dump"
 elif ! echo "$wf_mid" | grep -qE 'сәләм $'; then
-    result FAIL wordform-tt-сәләм "сәләм did not commit; field: '$wf_mid'"
+    result FAIL nextword-tt-сәләм "сәләм did not commit; field: '$wf_mid'"
 elif [ "$SUGGESTIONS" != on ]; then
-    result SKIP wordform-tt-сәләм "suggestions not enabled (non-debuggable package)"
+    result SKIP nextword-tt-сәләм "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "$wf_mid" ]; then
-    result FAIL wordform-tt-сәләм "cell-1 tap committed nothing; field: '$wf_after'"
-elif [ "$w2" = "сәләмә" ]; then
-    result PASS wordform-tt-сәләм "cell 1 = сәләмә: the after-word form leads the fill (pinned)"
+    result FAIL nextword-tt-сәләм "cell-1 tap committed nothing; field: '$wf_after'"
+elif [ "$w2" = "һәм" ]; then
+    result PASS nextword-tt-сәләм "cell 1 = һәм: the global fallback leads a headless answer (pinned)"
 else
-    result FAIL wordform-tt-сәләм "cell 1 committed '$w2' (expected сәләмә); field: '$wf_after'"
+    result FAIL nextword-tt-сәләм "cell 1 committed '$w2' (expected һәм); field: '$wf_after'"
 fi
 
 # ── next-word predictions right after an accepted suggestion ──
-# The сәләм probe's cell-1 tap committed сәләмә with a trailing space, and the tap
-# itself must re-issue the NEXT_WORD lookup without waiting for a keystroke.
-# сәләмә is not a bigram head and has no word forms, so the strip is the top-word
-# fill [һәм, белән, да]: a second tap on cell 1 (index 0) must commit һәм.
+# The сәләм probe's cell-1 tap committed һәм with a trailing space, and the tap itself must
+# re-issue the NEXT_WORD lookup without waiting for a keystroke. һәм is a bigram head whose first
+# successor is башка, so a second tap on cell 1 (index 0) must commit башка.
 if [ "$SUGGESTIONS" != on ]; then
     result SKIP tap-followup-tt-сәләм "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "__NOFIELD__" ] || [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "$wf_mid" ]; then
@@ -678,10 +676,10 @@ else
         result FAIL tap-followup-tt-сәләм "try-it field not in the dump"
     elif [ "$wf_again" = "$wf_after" ]; then
         result FAIL tap-followup-tt-сәләм "strip stayed empty after the accepted suggestion; field: '$wf_again'"
-    elif [ "$w3" = "һәм" ]; then
-        result PASS tap-followup-tt-сәләм "cell 1 of the follow-up band = һәм: predictions for the accepted word without a keystroke"
+    elif [ "$w3" = "башка" ]; then
+        result PASS tap-followup-tt-сәләм "cell 1 of the follow-up band = башка: predictions for the accepted word without a keystroke"
     else
-        result FAIL tap-followup-tt-сәләм "follow-up cell 1 committed '$w3' (expected һәм from the fill); field: '$wf_again'"
+        result FAIL tap-followup-tt-сәләм "follow-up cell 1 committed '$w3' (expected башка from the successors); field: '$wf_again'"
     fi
 fi
 

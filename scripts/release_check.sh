@@ -16,7 +16,7 @@
 #              (checks the freshly built app/build/outputs/apk/release/*.apk);
 #   --checks   only the listed artifact checks, comma-separated names without the "artifact."
 #              prefix (accepted too, it is stripped; CI: exported_surface,no_secrets);
-#              selectable: size up to signature.
+#              selectable: size up to freshness.
 #
 # Default APK: the newest (by mtime) app/build/outputs/apk/release/*.apk.
 # The script writes only build output: logs go to build/release_check/, and --full
@@ -47,7 +47,7 @@ APK=""
 # Artifact checks that --checks can select; each runs on the APK alone, except no_reflection,
 # which scans the main sources. Version, changelog and delta depend on each other and run only
 # without --checks.
-SELECTABLE_CHECKS="size asset_pins emoji_assets tree_assets critical_resources arsc_stored dex_layout profiles permissions exported_surface no_secrets no_reflection signature"
+SELECTABLE_CHECKS="size asset_pins emoji_assets tree_assets critical_resources arsc_stored dex_layout profiles permissions exported_surface no_secrets no_reflection signature freshness"
 
 # Prints the header comment (lines 2-22); keep the header exactly that long.
 usage() {
@@ -1081,9 +1081,9 @@ fi
 # --- 5b. freshness: the candidate was built from an ancestor of HEAD ------------------------------
 # META-INF/version-control-info.textproto records the commit the APK was built from. The release
 # flow packs the APK before the release commit lands, so the recorded commit is HEAD or one of
-# its ancestors; anything else means the tree moved on past the tested artifact. Runs whenever
-# --checks did not narrow the run (default, --quick and an explicit APK path all count).
-if [ -z "$CHECKS" ]; then
+# its ancestors; anything else means the tree moved on past the tested artifact. Missing or
+# malformed provenance is a failure: an unbound candidate is not a release candidate.
+if want freshness; then
 APK_REVISION=$(python3 - "$APK" <<'PYEOF'
 import re
 import sys
@@ -1091,16 +1091,18 @@ import zipfile
 
 try:
     with zipfile.ZipFile(sys.argv[1]) as zf:
-        text = zf.read("META-INF/version-control-info.textproto").decode("utf-8", "replace")
-except (KeyError, zipfile.BadZipFile):
+        text = zf.read("META-INF/version-control-info.textproto").decode("utf-8")
+except (KeyError, UnicodeDecodeError, zipfile.BadZipFile):
     sys.exit(0)
-match = re.search(r'revision: "([0-9a-f]{7,40})"', text)
-if match:
-    print(match.group(1))
+revision_lines = [line for line in text.splitlines() if line.startswith("revision:")]
+if len(revision_lines) == 1:
+    match = re.fullmatch(r'revision: "([0-9a-f]{7,40})"', revision_lines[0])
+    if match:
+        print(match.group(1))
 PYEOF
 )
 if [ -z "$APK_REVISION" ]; then
-    report SKIP artifact.freshness "в APK нет META-INF/version-control-info.textproto с revision"
+    report FAIL artifact.freshness "APK has no well-formed META-INF/version-control-info.textproto revision"
 elif ! HEAD_REVISION=$(git rev-parse HEAD 2>/dev/null) || [ -z "$HEAD_REVISION" ]; then
     report SKIP artifact.freshness "дерево не git-репозиторий, сверять не с чем"
 elif git merge-base --is-ancestor "$APK_REVISION" HEAD 2>/dev/null; then

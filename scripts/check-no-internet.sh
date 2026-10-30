@@ -30,6 +30,10 @@ REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 # resolve against the repository root, so the script works from any directory.
 if [ "$#" -ge 1 ]; then
     APK="$1"
+    if [ ! -f "$APK" ] || [ ! -r "$APK" ]; then
+        echo "ERROR: explicit APK is not a readable regular file: $APK" >&2
+        exit 2
+    fi
 else
     APK="$REPO_ROOT/app/build/outputs/apk/debug/app-debug.apk"
 fi

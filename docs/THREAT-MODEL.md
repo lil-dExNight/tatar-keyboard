@@ -173,7 +173,6 @@ are listed after the table with the control that keeps them closed.
 | No scrollbars in settings | Style decision (`android:scrollbars="none"` in `settings_screen.xml`) | A design pass |
 | error-prone `ClassInitializationDeadlock` on `KeyboardActionListener.EMPTY_LISTENER` | Unreachable in practice: both classes are initialized only on the UI thread | Initialization moves off the UI thread |
 | Generic confirmation dialogs (clear all, erase, discard quarantined file) have no `FLAG_SECURE` | They show no personal content, so a capture reveals nothing | A dialog showing personal content without `DialogUtils.securePersonalContent` (pinned by `DialogObscuredTouchContractTest`) |
-| A field session started while unlocked keeps its suggestion strip if the device locks without the editor restarting input | The strip's eligibility is computed at each field start and language change; learning and recent emoji re-check the keyguard at every write and read, and the recent-clip cell re-reads it at the offer and at the tap, so nothing is learned, recorded or offered after the lock; the strip shows what the same field showed a moment earlier | A platform change that keeps an editor bound across the keyguard |
 | A host that blocks `getSurroundingText` parks the single cache-reload thread | Typing and local edit tracking keep working; the reload is off the UI thread so there is no ANR; the next answer re-syncs | A reload watchdog |
 | The setup wizard's step 1 launches the system input-method settings with an implicit intent | A malicious app can only add a chooser entry next to the system one; nothing is learned and the wizard keeps no state | A decision to launch it package-explicit |
 | No suggestions or glide typing on the lock screen, even from the bundled dictionaries | The strip would also carry learned words and pairs; separating bundled from learned candidates in every engine source is disproportionate for lock-screen replies | User demand for lock-screen suggestions |
@@ -191,6 +190,11 @@ Resolved, with the control that keeps them closed:
   settings-side personal dialogs; pinned by `DialogObscuredTouchContractTest`.
 - **The recent-clip cell never re-read the keyguard.** It re-reads at the offer and at the tap;
   pinned by `RecentClipControllerTest` and `LockScreenPrivacySourceContractTest`.
+- **A field session could outlive its initial lock snapshot.** Window show refreshes eligibility;
+  learning, autocorrect, shortcuts, suggestion commits and glide re-check keyguard and user unlock
+  at commit boundaries. Locked-period input is invalidated rather than learned after unlock, and
+  inline-autofill children are dropped on hide or lock with late responses and inflates refused;
+  pinned by the controller transition tests and `InlineAutofillSourceContractTest`.
 - **Text-shortcut expansions admitted bidi/format characters.** Rejected with
   `Character.FORMAT`; pinned by `TcutValidatorTest`.
 - **Hostile-host edges.** The recapitalize cap measures the processed string, a cache reload can
@@ -198,9 +202,10 @@ Resolved, with the control that keeps them closed:
   catch `RuntimeException` like every other system read; pinned by `HostileHostRobustnessTest`
   and `RichInputConnectionRobustnessContractTest`.
 - **Silent-pass holes in the release scripts.** `check-no-internet.sh` hard-errors on a missing
-  manifest, `--checks` is whitespace-normalized, the secrets scan covers the current token
-  prefixes, and `artifact.freshness` binds the candidate APK's recorded commit to an ancestor of
-  HEAD.
+  manifest and on an explicitly supplied missing, unreadable or non-file APK, while source-only
+  mode still skips an absent default APK. `--checks` is whitespace-normalized, the secrets scan
+  covers the current token prefixes, and `artifact.freshness` requires well-formed provenance and
+  binds its recorded commit to an ancestor of HEAD.
 - **The log-safety scan missed `latin/` root and three packages.** Extended, and `TRACE = false`
   is pinned by `LogSafetySourceContractTest`.
 - **A pending-counter file with an absurd serial stalled learning.** Fail-closed bound; pinned
