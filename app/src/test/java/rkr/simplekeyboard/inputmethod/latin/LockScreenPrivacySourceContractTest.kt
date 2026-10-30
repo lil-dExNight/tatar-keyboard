@@ -82,8 +82,34 @@ class LockScreenPrivacySourceContractTest {
         // Learning combines the field predicate with live keyguard and Direct Boot checks.
         val learning = body("private boolean mayLearnPersonalWords()")
         assertTrue(learning.contains("isSuggestionsEligible()"))
-        assertTrue(learning.contains("!isKeyguardLocked()"))
+        assertTrue(learning.contains("!mLearningKeyguardScope.isLocked(mLiveKeyguardRead)"))
         assertTrue(learning.contains("isUserUnlocked()"))
+        // The keyguard read behind it is the live system call, never the cached privacy gate.
+        assertTrue(ime.contains("private final BooleanSupplier mLiveKeyguardRead = this::isKeyguardLocked;"))
+    }
+
+    @Test
+    fun learningKeepsOneKeyguardReadOnlyWithinOneInputEvent() {
+        // Each dispatch that can reach a learning sink opens the scope and closes it in finally,
+        // so a kept answer never outlives the event that read it.
+        for (signature in listOf(
+            "public void onEvent(final Event event)",
+            "public void onTextInput(final String rawText)",
+        )) {
+            val dispatch = body(signature)
+            val open = dispatch.indexOf("mLearningKeyguardScope.open();\n        try {")
+            val close = dispatch.indexOf("} finally {\n            mLearningKeyguardScope.close();")
+            assertTrue(signature, open >= 0 && close > open)
+        }
+        val tap = ime.substringAfter("strip.setOnSuggestionClickListener((cellId, suggestion) -> {")
+            .substringBefore("});")
+        val tapOpen = tap.indexOf("mLearningKeyguardScope.open();")
+        val tapCall = tap.indexOf("listener.onTap(suggestion);")
+        val tapClose = tap.indexOf("mLearningKeyguardScope.close();")
+        assertTrue(tapOpen in 0 until tapCall && tapCall < tapClose && tap.contains("finally"))
+        // Nothing else opens a scope: engine callbacks, the session-end flush and emoji panel
+        // picks read live.
+        assertEquals(3, ime.split("mLearningKeyguardScope.open();").size - 1)
     }
 
     @Test

@@ -65,6 +65,7 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import kotlin.jvm.functions.Function2;
 
@@ -88,6 +89,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSo
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.LearningKeyguardScope;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramDictionaries;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaries;
@@ -573,8 +575,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 if (strip == null) {
                     return;
                 }
-                strip.setOnSuggestionClickListener(
-                        (cellId, suggestion) -> listener.onTap(suggestion));
+                strip.setOnSuggestionClickListener((cellId, suggestion) -> {
+                    mLearningKeyguardScope.open();
+                    try {
+                        listener.onTap(suggestion);
+                    } finally {
+                        mLearningKeyguardScope.close();
+                    }
+                });
                 // The long press is wired next to the tap, on the same strip instance, so a
                 // lazily created strip gets both or neither.
                 strip.setOnSuggestionLongPressListener(
@@ -1812,13 +1820,18 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             return false;
         }
         final boolean unlocked = isUserUnlocked();
-        return unlocked && !isKeyguardLocked() && PersonalLearningGates.mayLearn(
+        return unlocked && !mLearningKeyguardScope.isLocked(mLiveKeyguardRead)
+                && PersonalLearningGates.mayLearn(
                 isSuggestionsEligible(),
                 personalDictionaryOn,
                 unlocked,
                 mSettings.getCurrent().mInputAttributes.mIsPostalAddressField,
                 Settings.readIncognitoModeEnabled(mDevicePrefs));
     }
+
+    // Learning reads the keyguard live, once per input event: see LearningKeyguardScope.
+    private final LearningKeyguardScope mLearningKeyguardScope = new LearningKeyguardScope();
+    private final BooleanSupplier mLiveKeyguardRead = this::isKeyguardLocked;
 
     // The key-neighbor table for typo recovery, derived from the live keyboard and cached by
     // KeyboardId so the same layout is not rebuilt on every onStartInput.
@@ -2907,22 +2920,28 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // This method is public for testability of LatinIME, but also in the future it should
     // completely replace #onCodeInput.
     public void onEvent(final Event event) {
-        noteLiveLock();
-        if (LatinImeEmojiSearch.maybeRouteToEmojiSearch(this, event)) {
-            return;
+        mLearningKeyguardScope.open();
+        try {
+            noteLiveLock();
+            if (LatinImeEmojiSearch.maybeRouteToEmojiSearch(this, event)) {
+                return;
+            }
+            if (LatinImeAutocorrect.maybeRevertTatarAutocorrection(this, event)) {
+                return;
+            }
+            if (LatinImeGlide.maybeUndoGlideCommit(this, event)) {
+                return;
+            }
+            LatinImeAutocorrect.maybeAutocorrectTatarWord(this, event);
+            final InputTransaction completeInputTransaction =
+                    mInputLogic.onCodeInput(mSettings.getCurrent(), event);
+            updateStateAfterInputTransaction(completeInputTransaction);
+            maybeOfferTatarSuggestions(event);
+            mKeyboardSwitcher.onEvent(
+                    event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+        } finally {
+            mLearningKeyguardScope.close();
         }
-        if (LatinImeAutocorrect.maybeRevertTatarAutocorrection(this, event)) {
-            return;
-        }
-        if (LatinImeGlide.maybeUndoGlideCommit(this, event)) {
-            return;
-        }
-        LatinImeAutocorrect.maybeAutocorrectTatarWord(this, event);
-        final InputTransaction completeInputTransaction =
-                mInputLogic.onCodeInput(mSettings.getCurrent(), event);
-        updateStateAfterInputTransaction(completeInputTransaction);
-        maybeOfferTatarSuggestions(event);
-        mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
     }
 
     /**
@@ -2960,13 +2979,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Called from PointerTracker through the KeyboardActionListener interface
     @Override
     public void onTextInput(final String rawText) {
-        noteLiveLock();
-        // TODO: have the keyboard pass the correct key code when we need it.
-        final Event event = Event.createSoftwareTextEvent(rawText, Constants.CODE_OUTPUT_TEXT);
-        final InputTransaction completeInputTransaction =
-                mInputLogic.onTextInput(mSettings.getCurrent(), event);
-        updateStateAfterInputTransaction(completeInputTransaction);
-        mKeyboardSwitcher.onEvent(event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+        mLearningKeyguardScope.open();
+        try {
+            noteLiveLock();
+            // TODO: have the keyboard pass the correct key code when we need it.
+            final Event event = Event.createSoftwareTextEvent(rawText, Constants.CODE_OUTPUT_TEXT);
+            final InputTransaction completeInputTransaction =
+                    mInputLogic.onTextInput(mSettings.getCurrent(), event);
+            updateStateAfterInputTransaction(completeInputTransaction);
+            mKeyboardSwitcher.onEvent(
+                    event, getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+        } finally {
+            mLearningKeyguardScope.close();
+        }
     }
 
     // Called from PointerTracker through the KeyboardActionListener interface
