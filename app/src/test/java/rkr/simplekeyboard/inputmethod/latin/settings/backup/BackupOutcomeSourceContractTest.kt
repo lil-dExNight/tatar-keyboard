@@ -59,6 +59,20 @@ class BackupOutcomeSourceContractTest {
         assertTrue(write.contains("backup_import_failed_write"))
     }
 
+    @Test
+    fun clearingTheJournalAlsoDeletesTheTemporaryCopy() {
+        // A write cut short leaves the temporary copy, which holds the same personal states.
+        val coordinator = source(
+            "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupCoordinator.kt")
+        val write = coordinator.substringAfter("override fun writeImportJournal(")
+            .substringBefore("override fun clearImportJournal(")
+        assertTrue(write.contains("val temporary = importJournalTemporaryFile()"))
+        val clear = coordinator.substringAfter("override fun clearImportJournal(")
+            .substringBefore("private fun importJournalFile()")
+        assertTrue(clear.contains("listOf(importJournalTemporaryFile(), importJournalFile())"))
+        assertTrue(clear.contains("if (!AndroidDurableFileOps.delete(file) && file.exists()) return false"))
+    }
+
     private fun source(relative: String): String {
         return listOf(File("src/main", relative), File("app/src/main", relative))
             .firstOrNull(File::isFile)?.readText() ?: error("cannot locate $relative")

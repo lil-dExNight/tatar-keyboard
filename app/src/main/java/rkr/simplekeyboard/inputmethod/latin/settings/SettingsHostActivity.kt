@@ -1210,22 +1210,30 @@ class SettingsHostActivity : Activity() {
                     // "Erase all" covers all five stores, so no learned word, pair, emoji, refused
                     // correction or sentence-initial word keeps working afterwards. The stores
                     // answer independently; success is reported only when every file of every
-                    // language is gone.
-                    controller.eraseAll(subtypeIds) { wordsErased ->
-                        pairController.eraseAll(subtypeIds) { pairsErased ->
-                            emojiController.eraseAll(subtypeIds) { emojiErased ->
-                                eraseRefusedCorrections(subtypeIds) { refusalsErased ->
-                                    eraseSentStartOverlays(subtypeIds) { overlayErased ->
-                                        // Erasing takes the copies with it, so all three cards are
-                                        // re-read rather than repainted from an answer that is now
-                                        // out of date.
-                                        personalQuarantines = null
-                                        personalPairQuarantines = null
-                                        personalEmojiQuarantines = null
-                                        afterPersonalMutation(
-                                                wordsErased && pairsErased && emojiErased
-                                                        && refusalsErased && overlayErased,
-                                                R.string.personal_dictionary_erase_failed)
+                    // language is gone. The import journal goes first, after any rollback queued
+                    // before it: it holds a full copy, and a later rollback would restore it, so
+                    // a journal that stays on disk stops the erase and the user retries.
+                    backupCoordinator().discardPendingImport { journalErased ->
+                        if (!journalErased) {
+                            afterPersonalMutation(false, R.string.personal_dictionary_erase_failed)
+                            return@discardPendingImport
+                        }
+                        controller.eraseAll(subtypeIds) { wordsErased ->
+                            pairController.eraseAll(subtypeIds) { pairsErased ->
+                                emojiController.eraseAll(subtypeIds) { emojiErased ->
+                                    eraseRefusedCorrections(subtypeIds) { refusalsErased ->
+                                        eraseSentStartOverlays(subtypeIds) { overlayErased ->
+                                            // Erasing takes the copies with it, so all three cards
+                                            // are re-read rather than repainted from an answer that
+                                            // is now out of date.
+                                            personalQuarantines = null
+                                            personalPairQuarantines = null
+                                            personalEmojiQuarantines = null
+                                            afterPersonalMutation(
+                                                    wordsErased && pairsErased && emojiErased
+                                                            && refusalsErased && overlayErased,
+                                                    R.string.personal_dictionary_erase_failed)
+                                        }
                                     }
                                 }
                             }

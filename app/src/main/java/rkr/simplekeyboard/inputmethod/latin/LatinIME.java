@@ -117,6 +117,7 @@ import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode;
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsValues;
+import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupCoordinator;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.EditorSurface;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.EngineHandle;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy;
@@ -480,6 +481,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             lockFilter.addAction(Intent.ACTION_USER_PRESENT);
             lockFilter.addAction(Intent.ACTION_USER_UNLOCKED);
             registerReceiver(mLockStateReceiver, lockFilter);
+            // A process death between two import writes leaves a journal: roll it back now,
+            // not when the settings screen next opens. Before the first unlock the worker
+            // finds no readable storage and returns; the unlock broadcast retries.
+            BackupCoordinator.recoverInterruptedImport(this, mDevicePrefs);
         } finally {
             Trace.endSection();
         }
@@ -3191,6 +3196,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         @Override
         public void onReceive(final Context context, final Intent intent) {
             onSystemLockEvent();
+            if (Intent.ACTION_USER_UNLOCKED.equals(intent.getAction())) {
+                BackupCoordinator.recoverInterruptedImport(LatinIME.this, mDevicePrefs);
+            }
         }
     };
 

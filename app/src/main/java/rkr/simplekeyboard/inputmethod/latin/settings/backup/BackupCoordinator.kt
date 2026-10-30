@@ -137,6 +137,21 @@ internal class BackupCoordinator(
         }
     }
 
+    /**
+     * Deletes the interrupted-import journal on the backup worker, after any recovery queued
+     * before it; [onFinished] gets whether no journal is left, on the UI thread.
+     */
+    fun discardPendingImport(onFinished: (Boolean) -> Unit) {
+        executor.execute {
+            val discarded = try {
+                userUnlocked && BackupTransfer.discardPending(target)
+            } catch (_: Exception) {
+                false
+            }
+            uiPoster { onFinished(discarded) }
+        }
+    }
+
     fun shutdown() {
         executor.shutdown()
     }
@@ -229,7 +244,7 @@ internal class BackupCoordinator(
 
         override fun writeImportJournal(bytes: ByteArray): Boolean {
             val directory = appContext.noBackupFilesDir
-            val temporary = File(directory, "${importJournalFile().name}.tmp")
+            val temporary = importJournalTemporaryFile()
             return try {
                 if (temporary.exists() && !AndroidDurableFileOps.delete(temporary)) return false
                 FileOutputStream(temporary).use { output ->
@@ -247,12 +262,15 @@ internal class BackupCoordinator(
         }
 
         override fun clearImportJournal(): Boolean {
-            val file = importJournalFile()
+            // The temporary copy left by a write cut short holds the same old and new states.
             return try {
-                if (file.exists()) {
+                var deleted = false
+                for (file in listOf(importJournalTemporaryFile(), importJournalFile())) {
+                    if (!file.exists()) continue
                     if (!AndroidDurableFileOps.delete(file) && file.exists()) return false
-                    AndroidDurableFileOps.syncDirectory(appContext.noBackupFilesDir)
+                    deleted = true
                 }
+                if (deleted) AndroidDurableFileOps.syncDirectory(appContext.noBackupFilesDir)
                 true
             } catch (_: Exception) {
                 false
@@ -261,6 +279,9 @@ internal class BackupCoordinator(
 
         private fun importJournalFile(): File =
             File(appContext.noBackupFilesDir, "backup-import-journal.bin")
+
+        private fun importJournalTemporaryFile(): File =
+            File(appContext.noBackupFilesDir, "${importJournalFile().name}.tmp")
 
         private fun personalDirectory(): File =
             File(appContext.noBackupFilesDir, AndroidPersonalDictionaryStorage.PERSONAL_DIRECTORY_NAME)
@@ -281,6 +302,18 @@ internal class BackupCoordinator(
     init {
         executor.execute {
             if (userUnlocked) BackupTransfer.recoverPending(target)
+        }
+    }
+
+    companion object {
+        /**
+         * Rolls back an import that a process death interrupted, on a worker that ends after it.
+         * The keyboard calls it at start and at unlock, so a half-applied import does not stay
+         * live until the settings screen next opens.
+         */
+        @JvmStatic
+        fun recoverInterruptedImport(context: Context, prefs: SharedPreferences) {
+            BackupCoordinator(context, prefs).shutdown()
         }
     }
 }

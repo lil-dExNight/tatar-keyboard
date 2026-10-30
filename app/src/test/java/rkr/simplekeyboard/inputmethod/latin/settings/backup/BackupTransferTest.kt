@@ -269,6 +269,54 @@ class BackupTransferTest {
     }
 
     @Test
+    fun aDiscardedJournalCannotBringErasedDataBack() {
+        val fixture = newTransactionFixture("erase-after-death")
+        fixture.target.crashAfterMutation = 1
+        try {
+            BackupTransfer.import(fixture.target, fixture.archive)
+            throw AssertionError("the import did not inject process death")
+        } catch (_: SimulatedProcessDeath) {
+        }
+        assertTrue(fixture.target.hasJournal())
+
+        // "Erase everything saved": the journal goes first, then every store file.
+        val erased = StoreBackedTarget(fixture.target.directory)
+        assertTrue(BackupTransfer.discardPending(erased))
+        for (name in erased.storeFileNames()) {
+            assertTrue(name, File(erased.directory, name).delete())
+        }
+        assertFalse(erased.hasJournal())
+
+        // A recovery queued after the erase finds nothing to restore.
+        assertTrue(BackupTransfer.recoverPending(erased))
+        assertEquals(emptyList<String>(), erased.storeFileNames())
+    }
+
+    @Test
+    fun aJournalThatFailsValidationIsDiscardedAndDoesNotBlockTheNextImport() {
+        val source = StoreBackedTarget(temporaryFolder.newFolder("corrupt-journal-source"))
+        BackupTestStores.wordStore(source.directory, "tt_RU").addManually("абыйлар")
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("corrupt-journal"))
+        assertTrue(destination.writeImportJournal(byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
+
+        assertTrue(BackupTransfer.recoverPending(destination))
+        assertFalse(destination.hasJournal())
+        assertEquals(BackupImportResult.IMPORTED, BackupTransfer.import(destination, archive))
+        assertTrue(BackupTransfer.export(destination) != null)
+    }
+
+    @Test
+    fun aJournalThatCannotBeReadIsKeptForAnotherAttempt() {
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("unreadable-journal"))
+        assertTrue(destination.writeImportJournal(byteArrayOf(1, 2, 3)))
+        destination.failJournalReads = true
+
+        assertFalse(BackupTransfer.recoverPending(destination))
+        assertTrue("an I/O failure is not proof the journal is bad", destination.hasJournal())
+    }
+
+    @Test
     fun successfulImportPreservesPendingCountersSaltAndQuarantine() {
         val fixture = newTransactionFixture("preserved-state")
         val before = directorySnapshot(fixture.target.directory)
@@ -416,8 +464,12 @@ class BackupTransferTest {
             return true
         }
 
-        override fun readImportJournal(): ByteArray? =
-            if (journalFile.isFile) journalFile.readBytes() else null
+        var failJournalReads = false
+
+        override fun readImportJournal(): ByteArray? {
+            if (failJournalReads) throw IOException("journal read refused")
+            return if (journalFile.isFile) journalFile.readBytes() else null
+        }
 
         override fun writeImportJournal(bytes: ByteArray): Boolean {
             journalFile.writeBytes(bytes)

@@ -195,4 +195,38 @@ class PersonalDictionaryErasureTest {
         assertTrue("disabled languages are included too",
             host.contains("DictionaryArtifactSpec.ALL.map { it.languageTag }.distinct()"))
     }
+
+    @Test
+    fun eraseAllDeletesTheImportJournalBeforeTheStoresAndStopsWhenItStays() {
+        // The journal holds a full copy of the personal data; the discard runs on the backup
+        // worker, behind any rollback queued at screen open, and only then do the stores erase.
+        // A journal that stays on disk would roll the erase back later, so the erase stops.
+        val host = File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt").readText()
+        val dialog = host.substringAfter("private fun showErasePersonalDictionaryDialog(")
+            .substringBefore(".setNegativeButton(")
+        val discard = dialog.indexOf("backupCoordinator().discardPendingImport { journalErased ->")
+        val firstStore = dialog.indexOf("controller.eraseAll(subtypeIds)")
+        assertTrue(discard in 0 until firstStore)
+        val stop = dialog.indexOf("if (!journalErased) {")
+        assertTrue("a failed discard is checked before any store erases", stop in discard until firstStore)
+        assertTrue("and reports the failure without touching the stores",
+            dialog.substring(stop, firstStore).contains(
+                "afterPersonalMutation(false, R.string.personal_dictionary_erase_failed)\n" +
+                    "                            return@discardPendingImport"))
+        assertTrue(dialog.contains("&& refusalsErased && overlayErased,"))
+    }
+
+    @Test
+    fun theKeyboardRollsBackAnInterruptedImportAtStartAndAtUnlock() {
+        val ime = File(sourceRoot(), "java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java")
+            .readText()
+        val create = ime.substringAfter("public void onCreate() {").substringBefore("\n    }\n")
+        assertTrue(create.contains("BackupCoordinator.recoverInterruptedImport(this, mDevicePrefs);"))
+        val receiver = ime.substringAfter("mLockStateReceiver = new BroadcastReceiver() {")
+            .substringBefore("};")
+        assertTrue(receiver.contains("Intent.ACTION_USER_UNLOCKED.equals(intent.getAction())"))
+        assertTrue(receiver.contains(
+            "BackupCoordinator.recoverInterruptedImport(LatinIME.this, mDevicePrefs);"))
+    }
 }

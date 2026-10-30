@@ -145,7 +145,11 @@ internal object BackupTransfer {
         }
     }
 
-    /** Rolls back an interrupted import. False leaves its journal in place for another attempt. */
+    /**
+     * Rolls back an interrupted import. A read or apply failure returns false and keeps the
+     * journal for another attempt; a journal that fails validation can never be applied, so it
+     * is deleted instead of blocking every later export and import.
+     */
     @Synchronized
     fun recoverPending(target: BackupTarget): Boolean {
         val bytes = try {
@@ -155,6 +159,8 @@ internal object BackupTransfer {
         } ?: return true
         val journal = try {
             BackupImportJournal.read(bytes)
+        } catch (_: BackupValidationException) {
+            return discardPending(target)
         } catch (_: Exception) {
             return false
         }
@@ -169,6 +175,17 @@ internal object BackupTransfer {
         } catch (_: Exception) {
             false
         }
+    }
+
+    /**
+     * Deletes the interrupted-import journal without applying it. "Erase everything saved" calls
+     * this, so a rollback that runs after the erase cannot bring the erased data back.
+     */
+    @Synchronized
+    fun discardPending(target: BackupTarget): Boolean = try {
+        target.clearImportJournal()
+    } catch (_: Exception) {
+        false
     }
 
     /** Reads and validates every recognized current file so rollback cannot discard its bytes. */

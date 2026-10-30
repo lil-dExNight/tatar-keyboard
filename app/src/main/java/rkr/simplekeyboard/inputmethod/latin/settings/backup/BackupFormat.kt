@@ -50,7 +50,10 @@ import rkr.simplekeyboard.inputmethod.latin.settings.Settings
  * learned content).
  */
 object BackupFormat {
-    /** The only archive format this build reads and writes. */
+    /**
+     * The only archive format this build reads and writes. The import journal stores archives too,
+     * and recovery deletes a journal it cannot read, so a bump must still read the previous format.
+     */
     const val FORMAT_VERSION = 1
 
     /** The value of the manifest's `package` field: a format-level identity, not the install id. */
