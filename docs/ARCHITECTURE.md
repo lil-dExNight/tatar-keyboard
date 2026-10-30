@@ -192,8 +192,11 @@ truncated; a tap commits the full clip text (`InputLogic.commitClipText`). The c
 memory only (`RecentClipCell`), never written to disk or learned from. A generation-stamped timer
 clears the text and removes the painted cell at the freshness deadline. The direct-paste size
 limit rejects oversized clips before text materialization and before the editor commit. The
-clipboard listener is registered only while the input view is shown, and the cell is never offered
-where suggestions may not run (`LatinIME.onWindowShown`/`onWindowHidden`).
+clipboard listener is registered only while the input view is shown, the clipboard is not read
+while the session or the live keyguard check says locked (`LatinIME.capturePrimaryClipForOffer`),
+and the cell is never offered where suggestions may not run (`LatinIME.onWindowShown`/
+`onWindowHidden`) or for a clip its source app marked sensitive
+(`ClipDescription.EXTRA_IS_SENSITIVE`, `RecentClipCell.mayOfferClip`).
 
 ## Bundled dictionaries
 
@@ -232,9 +235,10 @@ with no counters, no pending hashes and no learning.
 - **Learning gates.** `PersonalLearningGates.mayLearn`: suggestions eligible for the field (which
   excludes `IME_FLAG_NO_PERSONALIZED_LEARNING`), personal dictionary on, user unlocked since boot,
   not a postal-address field, learning not paused. `CleanRunMachine` reports only cleanly typed
-  words and pairs; the paste key marks the run dirty (`SuggestionsController.onClipboardPaste`).
-  A word counts as unknown to the dictionary when the exact pass for one of its proper prefixes
-  was empty, whatever typo recovery showed (`CompositePrefixComputer.lastExactMissPrefix`). A pair is learned only where the first word
+  words and pairs; the paste key and the edit-menu paste mark the run dirty
+  (`SuggestionsController.onClipboardPaste`). A word counts as unknown to the dictionary when the
+  exact pass for one of its proper prefixes was empty, whatever typo recovery showed
+  (`CompositePrefixComputer.lastExactMissPrefix`). A pair is learned only where the first word
   would be the next-word context of the second, so never across a sentence end, a line break, a
   number or an emoji.
 - **Pending counters.** An entry is saved in plain text only after
@@ -254,7 +258,10 @@ with no counters, no pending hashes and no learning.
   it) on the store's worker, re-validating first, and re-publishes the snapshot, so an import takes
   effect in the live process. Import validates the archive and every recognized current file,
   writes a durable journal of the old and new states, then applies the new state through those
-  owners. A failure rolls the old state back; reopening settings recovers an interrupted journal.
+  owners. A failure rolls the old state back. An interrupted journal is rolled back when the
+  keyboard starts or the user unlocks (`BackupCoordinator.recoverInterruptedImport`) and when
+  settings open; a journal that fails validation is deleted, and erase-all deletes the journal
+  before the stores.
   Pending counters and the salt survive a restore, and quarantined copies stay in their own flow.
   Export fails before writing if any recognized personal file cannot be read and validated.
   Import reports personal-dictionary and pause-learning switch changes.
@@ -348,7 +355,11 @@ saved words out of screenshots and recent apps. Enterprise restrictions
 - `LatinIME` is `directBootAware`: bundled dictionaries and preferences are device-protected and
   readable before the first unlock; personal data and recents are credential-protected. While the
   keyguard is shown, before or after the first unlock, there is no suggestion strip, no glide
-  typing, no Recent tab and no learning.
+  typing, no Recent tab, no clipboard paste from the paste key or the edit menu, no suggestions
+  offer and no learning. The learning predicate reads the keyguard live once per input event
+  (`LearningKeyguardScope`).
+- On Android 7.x, TalkBack hears password-field character keys as a dot unless spoken passwords
+  are allowed or headphones are on (`KeyDescriptionMapper.shouldObscurePasswordKey`).
 - Every binary reader validates before use and rejects bad input; personal words are never logged.
 
 Details and the risk register: [THREAT-MODEL.md](THREAT-MODEL.md).

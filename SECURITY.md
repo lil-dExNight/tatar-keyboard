@@ -27,7 +27,9 @@ release notes after the fix ships.
 - **High** — learned personal data (personal dictionary, learned pairs,
   learned emoji) exposed across a context boundary: readable by another app,
   written from password/`NO_PERSONALIZED_LEARNING` fields, or restored onto a
-  device it did not originate from.
+  device it did not originate from through an OS backup or transfer channel.
+  The backup file the user exports and imports through the settings screen is
+  the intended path between devices and is not such a channel.
 - **Normal** — local robustness issues with no data exposure (parser
   crashes on corrupt files, denial of service against the IME itself).
 
