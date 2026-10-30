@@ -11,9 +11,9 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
-## [3.11.1] — 2026-10-30
+## [3.11.1] — 2026-10-31
 
-### Fixed
+### Changed
 
 - With the personal dictionary on, each keystroke and suggestion-strip tap now reads the lock state once instead of once per learning check, so key handling does less work per tap. Locking still stops learning at the next keystroke.
 
