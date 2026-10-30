@@ -36,6 +36,11 @@ class LockScreenPrivacySourceContractTest {
             ?: error("cannot locate app/src/main from ${File(".").absolutePath}")
         File(root, "java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java").readText()
     }
+    private val receiver by lazy {
+        File("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/SystemBroadcastReceiver.java")
+            .readText()
+    }
+    private val manifest by lazy { File("app/src/main/AndroidManifest.xml").readText() }
 
     /** The body of the method whose declaration contains [signature], by brace matching. */
     private fun body(signature: String): String {
@@ -97,5 +102,15 @@ class LockScreenPrivacySourceContractTest {
             .contains("isKeyguardLocked() || !isUserUnlocked()"))
         assertTrue(body("private boolean isUserUnlocked()")
             .contains("userManager != null && userManager.isUserUnlocked()"))
+    }
+
+    @Test
+    fun lockTransitionsAreBroadcastDriven() {
+        for (action in listOf("SCREEN_OFF", "SCREEN_ON", "USER_PRESENT")) {
+            assertTrue(manifest.contains("android.intent.action.$action"))
+        }
+        assertTrue(receiver.contains("LatinIME.onSystemLockEvent()"))
+        assertTrue(ime.contains("static void onSystemLockEvent()"))
+        assertTrue(body("private boolean isPrivacyLocked()").contains("PRIVACY_LOCK_CACHE_MS"))
     }
 }

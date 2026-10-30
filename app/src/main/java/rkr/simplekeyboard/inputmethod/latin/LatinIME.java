@@ -42,6 +42,7 @@ import android.os.Bundle;
 import android.os.Debug;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.SystemClock;
 import android.os.Trace;
 import android.os.UserManager;
 import android.text.InputType;
@@ -153,6 +154,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         RichInputMethodManager.SubtypeChangedListener {
     static final String TAG = LatinIME.class.getSimpleName();
     private static final boolean TRACE = false;
+    private static LatinIME sInstance;
 
     private static final int EXTENDED_TOUCHABLE_REGION_HEIGHT = 100;
     private static final int PENDING_IMS_CALLBACK_DURATION_MILLIS = 800;
@@ -450,6 +452,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             KeyboardSwitcher.init(this);
             AudioAndHapticFeedbackManager.init(this);
             super.onCreate();
+            sInstance = this;
 
             // SettingsValues are first built by onStartInputViewInternal, against the real
             // field: a build here would use a null EditorInfo and be rebuilt there anyway.
@@ -1623,9 +1626,24 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         return userManager != null && userManager.isUserUnlocked();
     }
 
-    /** Live lock gate for personal data, active transforms and hosted autofill content. */
+    /**
+     * Live lock gate for personal data, active transforms and hosted autofill content. Screen
+     * broadcasts drive transitions; the short TTL is only a fallback for missed events.
+     */
     private boolean isPrivacyLocked() {
-        return isKeyguardLocked() || !isUserUnlocked();
+        final long now = SystemClock.uptimeMillis();
+        if (now - mPrivacyLockCheckedAt >= PRIVACY_LOCK_CACHE_MS) {
+            mPrivacyLocked = isKeyguardLocked() || !isUserUnlocked();
+            mPrivacyLockCheckedAt = now;
+        }
+        return mPrivacyLocked;
+    }
+
+    static void onSystemLockEvent() {
+        if (sInstance != null) {
+            sInstance.mPrivacyLockCheckedAt = 0L;
+            sInstance.noteLiveLock();
+        }
     }
 
     private void clearInlineAutofill() {
@@ -1663,6 +1681,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Active transforms and write boundaries also use isPrivacyLocked() because a session can
     // outlive the screen locking. The initial locked value closes an unevaluated session.
     private boolean mSessionKeyguardLocked = true;
+    private boolean mPrivacyLocked;
+    private long mPrivacyLockCheckedAt;
+    private static final long PRIVACY_LOCK_CACHE_MS = 1000L;
 
     /** The session's privacy-lock snapshot, for the keyboard build's settings-key clobber. */
     public boolean isKeyguardLockedForSession() {
@@ -1813,6 +1834,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
         mSettings.onDestroy();
         unregisterReceiver(mRingerModeChangeReceiver);
+        sInstance = null;
         super.onDestroy();
     }
 

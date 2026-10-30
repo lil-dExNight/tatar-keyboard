@@ -39,6 +39,10 @@ public final class SystemBroadcastReceiver extends BroadcastReceiver {
             Log.i(TAG, "System locale changed");
             RichInputMethodManager.getInstance().reloadSubtypes(context);
             LocaleResourceUtils.onLocalChange(context);
+        } else if (Intent.ACTION_SCREEN_OFF.equals(intentAction)
+                || Intent.ACTION_SCREEN_ON.equals(intentAction)
+                || Intent.ACTION_USER_PRESENT.equals(intentAction)) {
+            LatinIME.onSystemLockEvent();
         }
     }
 }
