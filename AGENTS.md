@@ -33,7 +33,8 @@ Device quirks:
 
 - HyperOS silently switches the system keyboard when the package that owns the default IME is
   force-stopped. Do not force-stop it in test loops; the scripts use `run-as <pkg> kill -9`, or,
-  for a release package, select another keyboard and then `am kill <pkg>`.
+  for a release package, select another keyboard, go home (`SetupActivity` runs in the IME
+  process, and `am kill` spares a process with a visible activity), then `am kill <pkg>`.
 - The baseline profile generator refuses physical devices unless the instrumentation argument
   `ttAllowPhysicalDevice=true` is set.
 - Emulator: `<sdk>/emulator/emulator -avd tt_suggest_a14 -no-window &`, `adb` in

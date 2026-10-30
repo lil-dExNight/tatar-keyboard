@@ -389,9 +389,10 @@ wait_keyboard() { # wait_keyboard <seconds> -> 0 if mInputShown=true in time
 # when the package of the selected IME is force-stopped).
 # - debuggable: run-as kill -9; the IME selection stays and the next field focus
 #   starts the process.
-# - otherwise: select the neutral IME, then `am kill`, which only reaches a
-#   process the system no longer binds. The neutral IME stays selected; callers
-#   select ours again when they need it (`ime set` starts the process at once).
+# - otherwise: select the neutral IME, go home, then `am kill`, which only
+#   reaches a process the system no longer binds and that shows no activity
+#   (SetupActivity runs in the IME process). The neutral IME stays selected;
+#   callers select ours again and raise their own host activity.
 # `kill_app deselect` takes the second path for any package.
 kill_app() {
     local pid
@@ -401,6 +402,7 @@ kill_app() {
         SHELL "run-as $PKG kill -9 $pid" >/dev/null 2>&1
     else
         [ "$(current_ime)" = "$IME_ID" ] && SHELL ime set "$NEUTRAL_IME" >/dev/null 2>&1
+        SHELL input keyevent KEYCODE_HOME >/dev/null 2>&1
         sleep 1
         SHELL am kill "$PKG" >/dev/null 2>&1
     fi
