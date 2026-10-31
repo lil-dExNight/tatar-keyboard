@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -24,6 +25,7 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidate
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideBigramRerank
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideTestFixtures
 import rkr.simplekeyboard.inputmethod.latin.glide.ListGlideInventory
@@ -112,7 +114,7 @@ class CompositePrefixComputerTest {
     }
 
     @Test
-    fun withThePersonalDictionaryOffTheResultIsByteForByteTheE3Result() {
+    fun withThePersonalDictionaryOffTheResultIsThePrimaryListItself() {
         val dictionary = listOf("гүзәллек", "гүзәлләр", "гүзәллеге")
         val result = CompositePrefixComputer(
             FakePrimary(dictionary, lastExactCount = 2), PersonalCandidateSource.EMPTY,
@@ -407,6 +409,36 @@ class CompositePrefixComputerTest {
     }
 
     @Test
+    fun predictReportsWhetherItRanWithoutTheBigramTable() {
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            FallbackWords { _, _, _ -> listOf("һәм", "бу") },
+        )
+
+        // Before any attach the answer is the fallback alone, and the verdict says so.
+        assertEquals(listOf("һәм", "бу"), computer.predict(prefix("өй")))
+        assertTrue(computer.lastNextWordWithoutTable)
+
+        // A deferred attach runs inside the next predict: that answer has the table.
+        computer.deferBigramAttach { computer.attachBigramSource(NextWordComputer { emptyList() }) }
+        computer.predict(prefix("өй"))
+        assertFalse(computer.lastNextWordWithoutTable)
+
+        computer.clearLookupVerdicts()
+        assertFalse(computer.lastNextWordWithoutTable)
+    }
+
+    @Test
+    fun aFailedDeferredAttachLeavesTheAnswerReportedWithoutTheTable() {
+        val computer = CompositePrefixComputer(FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY)
+        computer.deferBigramAttach { throw IllegalStateException("corrupt table") }
+
+        computer.predict(prefix("өй"))
+
+        assertTrue(computer.lastNextWordWithoutTable)
+    }
+
+    @Test
     fun predictDelegatesToTheAttachedBigramSourceAfterAttachment() {
         val computer = CompositePrefixComputer(FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY)
         var receivedContext: String? = null
@@ -692,6 +724,32 @@ class CompositePrefixComputerTest {
         assertEquals(
             "алла",
             computerWith(fakeBigrams("алла" to "алла")).decodeGlide(path, "кук")[0],
+        )
+    }
+
+    /**
+     * A context word with a thousand learned pairs: the glide channel reads only the strongest
+     * [CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS] of them, so the bundled successors
+     * keep their ranks and the list fits the ranks the rerank reads.
+     */
+    @Test
+    fun theGlideChannelCapsTheLearnedPairsAheadOfTheBundledSuccessors() {
+        val learned = (0 until 1000).map { "сүз$it" to "сүз$it" }.toTypedArray()
+        val host = GlideDecoderHost(ListGlideInventory(listOf("ала" to 36L)))
+        CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams(*learned), glideHost = host,
+        ).also { it.attachBigramSource(NextWordComputer { listOf("ала", "алма") }) }
+
+        val successors = host.bigramSuccessorsProvider("кук")
+
+        assertEquals(
+            listOf("сүз0", "сүз1", "сүз2", "сүз3", "ала", "алма"),
+            successors,
+        )
+        assertTrue(
+            CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS + TatBigrPrefixIndex.MAX_RESULTS <=
+                GlideBigramRerank.MAX_RANKED_SUCCESSORS,
         )
     }
 

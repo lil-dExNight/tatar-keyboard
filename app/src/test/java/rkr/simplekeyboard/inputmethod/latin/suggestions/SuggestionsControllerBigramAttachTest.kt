@@ -36,6 +36,7 @@ class SuggestionsControllerBigramAttachTest {
         var reserveCount = 0
         var hideCount = 0
         val shown = mutableListOf<List<String?>>()
+        var tap: SuggestionTapListener? = null
 
         override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
             shown += listOf(first, second, third, fourth)
@@ -49,7 +50,9 @@ class SuggestionsControllerBigramAttachTest {
             hideCount++
         }
 
-        override fun setTapListener(listener: SuggestionTapListener) {}
+        override fun setTapListener(listener: SuggestionTapListener) {
+            tap = listener
+        }
     }
 
     private class FakeEditor : EditorSurface {
@@ -63,6 +66,13 @@ class SuggestionsControllerBigramAttachTest {
         override fun hasKnownCursor(): Boolean = true
         override fun hasLetterAfterCursor(): Boolean = false
         override fun cachedNextWordContext(): String = context
+
+        /** A predicted-word commit lands like the real editor's: the word becomes the context. */
+        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
+            if (expectedContextWord != context) return false
+            context = suggestion
+            return true
+        }
     }
 
     /** Records call ORDER across every tracked method, so tests can assert relative sequencing. */
@@ -84,7 +94,14 @@ class SuggestionsControllerBigramAttachTest {
          * be dropped as not-yet-expected — an artifact of the fake, not of the controller.
          */
         var synchronousAnswers: Boolean = true
+
+        /** What [nextWordWithoutTable] reports for the answers delivered from now on. */
+        var answersWithoutTable: Boolean = false
+
+        /** True = only the newest token is current, like the real latest-only engine. */
+        var latestOnly: Boolean = false
         private var lastToken: Any? = null
+        val nextWordTokens = mutableListOf<Any>()
         val requestedContexts = mutableListOf<ByteArray>()
 
         override fun request(editorSessionId: Long, subtypeId: String, prefixUtf8: ByteArray): Any? {
@@ -97,6 +114,7 @@ class SuggestionsControllerBigramAttachTest {
             requestedContexts += contextWordUtf8
             val token = Any()
             lastToken = token
+            nextWordTokens += token
             // The real engine answering instantly (table attached — or not attached yet, which is
             // exactly the same empty list from the controller's side): the controller must digest
             // a synchronous delivery too.
@@ -114,7 +132,13 @@ class SuggestionsControllerBigramAttachTest {
             handedCatalog = catalog
         }
 
-        override fun isCurrent(token: Any): Boolean = true
+        /** The answer to the NEXT_WORD request [token], delivered late. */
+        fun deliverNextWord(token: Any, suggestions: List<String>) {
+            callback?.onResult(token, suggestions, LookupKind.NEXT_WORD)
+        }
+
+        override fun nextWordWithoutTable(): Boolean = answersWithoutTable
+        override fun isCurrent(token: Any): Boolean = !latestOnly || token === lastToken
         override fun finishInput() {}
         override fun destroy(timeoutMs: Long): Boolean = true
     }
@@ -418,6 +442,90 @@ class SuggestionsControllerBigramAttachTest {
 
         assertEquals(1, engine.requestedContexts.size)
         assertEquals(listOf("дә", "үзем", "бу", null), strip.shown.last())
+    }
+
+    // --- A strip of words predicted without the table (learned pairs and the fallback) --------
+
+    @Test
+    fun fallbackStripPredictedBeforeTheTableIsReRequestedWhenTheTableArrives() {
+        val strip = FakeStrip()
+        val editor = FakeEditor()
+        val engine = FakeEngine().apply {
+            nextWordAnswer = listOf("һәм", "бу", "да")
+            answersWithoutTable = true
+        }
+        val bigramTable = PendingBigramPreparation()
+        val controller = controller(strip, editor, engine, DirectExecutorService()) { bigramTable }
+
+        controller.onStartInput(eligible = true)
+        // The field opened on "мин " before the table was published: the engine answered with its
+        // top-frequency fallback, which is a strip of active-language words.
+        editor.context = "мин"
+        controller.onTextChanged()
+        assertEquals(listOf("һәм", "бу", "да", null), strip.shown.last())
+
+        engine.nextWordAnswer = listOf("дә", "үзем", "бу")
+        engine.answersWithoutTable = false
+        bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
+
+        assertEquals(2, engine.requestedContexts.size)
+        assertEquals(listOf("дә", "үзем", "бу", null), strip.shown.last())
+    }
+
+    @Test
+    fun aRepeatedTextEventDoesNotReRequestAStripPredictedWithoutTheTable() {
+        val strip = FakeStrip()
+        val editor = FakeEditor()
+        val engine = FakeEngine().apply {
+            nextWordAnswer = listOf("һәм", "бу", "да")
+            answersWithoutTable = true
+        }
+        val controller = controller(strip, editor, engine, DirectExecutorService()) {
+            PendingBigramPreparation()
+        }
+
+        controller.onStartInput(eligible = true)
+        editor.context = "мин"
+        controller.onTextChanged()
+        controller.onTextChanged()
+
+        // Only the table's arrival bypasses the duplicate check; an unchanged editor does not.
+        assertEquals(1, engine.requestedContexts.size)
+        assertEquals(1, strip.shown.size)
+    }
+
+    @Test
+    fun aTapBeforeTheRepairAnswerKeepsTheTappedWordAndDropsTheLateAnswer() {
+        val strip = FakeStrip()
+        val editor = FakeEditor()
+        val engine = FakeEngine().apply {
+            nextWordAnswer = listOf("һәм", "бу", "да")
+            answersWithoutTable = true
+            latestOnly = true
+        }
+        val bigramTable = PendingBigramPreparation()
+        val controller = controller(strip, editor, engine, DirectExecutorService()) { bigramTable }
+
+        controller.onStartInput(eligible = true)
+        editor.context = "мин"
+        controller.onTextChanged()
+        engine.synchronousAnswers = false
+        engine.answersWithoutTable = false
+        bigramTable.completeWith(BigramPreparationResult.Published(fakeTable(), alreadyPresent = false))
+        val repairToken = engine.nextWordTokens.last()
+        assertEquals(2, engine.requestedContexts.size)
+        // The fallback cells stay bound while the repair is in flight, so a tap still commits the
+        // word the user saw.
+        assertEquals(listOf("һәм", "бу", "да", null), strip.shown.last())
+
+        requireNotNull(strip.tap).onTap("бу")
+        assertEquals("бу", editor.context)
+        assertEquals(3, engine.requestedContexts.size)
+
+        // The repair's answer was for "мин": the tap's own lookup superseded it.
+        val shownBefore = strip.shown.size
+        engine.deliverNextWord(repairToken, listOf("дә", "үзем", "бу"))
+        assertEquals(shownBefore, strip.shown.size)
     }
 
     /** Two warm languages, one bigram preparation each, resolved by the test on demand. */

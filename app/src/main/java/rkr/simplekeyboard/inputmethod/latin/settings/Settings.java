@@ -475,8 +475,8 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
 
     /**
      * Glide typing is independent of the suggestions switch: its own toggle only. With suggestions
-     * off the lift still commits the word (that is typing, not a suggestion) and the strip shows
-     * nothing.
+     * off the lift still commits the word (typing, not a suggestion) and the strip shows only the
+     * gesture's own candidates.
      */
     public static boolean readGlideTypingEnabled(final SharedPreferences prefs) {
         return readBooleanTolerant(prefs, PREF_GLIDE_TYPING, true);

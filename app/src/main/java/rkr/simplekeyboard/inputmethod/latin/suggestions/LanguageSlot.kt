@@ -38,17 +38,22 @@ internal class LanguageSlot(val subtypeId: String) {
     @Volatile
     var dictionaryReady: Boolean = false
 
-    // Read by [SuggestionsController.engineContainsWord] from the personal store's worker thread,
-    // hence `@Volatile`; the handle behind it is safe for cross-thread membership reads.
+    // Read from the personal store's worker and from the other language's engine worker (the
+    // autocorrect companion check), hence `@Volatile`; membership reads are thread-safe.
     @Volatile
     var engine: EngineHandle? = null
     var starting: Boolean = false
 
     // Set when preparation is requested. Never cleared after a Published result (the engine is
-    // restarted from the already published file); cleared only when the last result was
-    // Unavailable and the setting has gone OFF -> ON again. Nothing below de-duplicates requests.
+    // restarted from the already published file). After an Unavailable result it is cleared once
+    // by the next eligible input start ([preparationRetryUsed]), and again only when the setting
+    // goes OFF -> ON. Nothing below de-duplicates requests.
     var preparationRequested: Boolean = false
     var lastPreparationUnavailable: Boolean = false
+
+    // True once the input-start retry after an Unavailable result was spent; an OFF -> ON
+    // transition of the setting restores it.
+    var preparationRetryUsed: Boolean = false
 
     // Provenance of the outstanding request, so an Unavailable result can tell the two callers
     // of requestPreparationIfNeeded apart. Only a request made because the user turned the
@@ -56,7 +61,9 @@ internal class LanguageSlot(val subtypeId: String) {
     var preparationRequestedByExplicitEnable: Boolean = false
 
     // Set when the setting goes ON -> OFF. The blocking engine teardown is deferred to the next
-    // lifecycle boundary so it does not block the UI thread inside the settings handler.
+    // lifecycle boundary so it does not block the UI thread inside the settings handler. Read by
+    // the companion lexicon on another engine's worker, hence `@Volatile`.
+    @Volatile
     var releasePending: Boolean = false
 
     // True once a deferred release was attempted at a boundary and refused. The engine has

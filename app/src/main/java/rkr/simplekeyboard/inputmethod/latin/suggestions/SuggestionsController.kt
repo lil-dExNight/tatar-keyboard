@@ -20,6 +20,7 @@ import android.content.Context
 import android.os.Handler
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardSwitcher
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.CompanionLexicon
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.EmptyPrefixProber
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
@@ -40,6 +41,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.AssetEmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestIndex
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestSource
+import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiTextUtils
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureSink
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
@@ -384,9 +386,10 @@ class SuggestionsController internal constructor(
     // keyboard. Remembered and re-pushed like [keyNeighbors]. Null disables glide.
     private var glideGeometry: GlideKeyGeometry? = null
 
-    // The path of the latest gesture awaiting a decode result, for the debug recorder's sink.
-    // Overwritten by every new gesture; the latest-only engine never answers for a superseded
-    // one, so the sink always sees the path that produced the committed word.
+    // A copy of the latest gesture's path awaiting a decode result, for the debug recorder's sink;
+    // null while no sink is installed. A copy because PointerTracker clears its live buffer right
+    // after the hand-off. Overwritten by every new gesture; the latest-only engine never answers
+    // for a superseded one, so the sink always sees the path that produced the committed word.
     private var pendingGlidePathForSink: GlidePath? = null
 
     // Whether the strip the active language painted for [pendingContextWord] holds at least one
@@ -395,6 +398,11 @@ class SuggestionsController internal constructor(
     // bigram table issues ([onBigramTableReady]). A fresh NEXT_WORD request clears it;
     // [applyNextWordResult] sets it from the answer it painted.
     private var bandHasActiveLanguageWord: Boolean = false
+
+    // Whether those words were predicted while the engine had no bigram table attached: learned
+    // pairs and the fallback only. The engine reports it with the answer; a ready table re-requests
+    // such a strip. Read only while [bandHasActiveLanguageWord] is true.
+    private var bandWordsWithoutTable: Boolean = false
 
     // --- Language priority. The layout the user chose owns the strip; the other (companion)
     // language fills the cells that language left empty, from the end — with one exception:
@@ -802,7 +810,9 @@ class SuggestionsController internal constructor(
             strip.setTapListener(SuggestionTapListener { suggestion -> onTap(suggestion) })
         }
         // Becoming eligible is the second of the two events that may request preparation; the flag
-        // keeps every later start from queueing another one.
+        // keeps every later start from queueing another one, except the single retry after a
+        // failed attempt.
+        retryFailedPreparationAtInputStart()
         requestPreparationIfNeeded()
         // A warm engine has no publication callback in this new editor session. Re-request the
         // cached prefix now so changing fields never requires an extra keystroke. Capture readiness
@@ -1188,10 +1198,12 @@ class SuggestionsController internal constructor(
                 slot.releasePending = false
             }
             if (slot.lastPreparationUnavailable) {
-                // The single reset point of the requested flag: the last attempt ended Unavailable
-                // and a new OFF -> ON transition has now been observed.
+                // The reset point of the requested flag besides the one retry at input start: the
+                // last attempt ended Unavailable and a new OFF -> ON transition has now been
+                // observed, which also restores the retry.
                 slot.preparationRequested = false
                 slot.lastPreparationUnavailable = false
+                slot.preparationRetryUsed = false
             }
         }
         setActiveLanguage(subtypeId)
@@ -1304,10 +1316,10 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Requests background preparation at most once per enable cycle, creating the background
-     * executor and the storage controller on the way if they do not exist yet. Called from every
-     * path that can make suggestions wanted; the flag, not the callers, is what keeps the count at
-     * one.
+     * Requests background preparation at most once per enable cycle (plus the one retry after a
+     * failure, see [onPreparationResult]), creating the background executor and the storage
+     * controller on the way if they do not exist yet. Called from every path that can make
+     * suggestions wanted; the flag, not the callers, is what keeps the count down.
      */
     private fun requestPreparationIfNeeded(explicitEnable: Boolean = false) {
         if (destroyed) return
@@ -1336,13 +1348,9 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Handles a preparation result on the UI owner.
-     *
-     * [PreparationResult.Unavailable] is terminal for the current enable cycle: the strip stays
-     * GONE, plain typing is untouched and nothing is logged. Only a fresh OFF -> ON transition of
-     * the setting can clear the flag and allow another attempt. The user is shown nothing either,
-     * with one exception — a request the user made themselves gets the one-shot message of
-     * [DictionaryUnavailableListener].
+     * Handles a preparation result on the UI owner. After [PreparationResult.Unavailable] the strip
+     * stays GONE; the next eligible [onStartInput] retries once, and only an explicit enable shows
+     * the one-shot message of [DictionaryUnavailableListener].
      */
     private fun onPreparationResult(slot: LanguageSlot, result: PreparationResult) {
         if (destroyed) return
@@ -1360,6 +1368,18 @@ class SuggestionsController internal constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Re-opens the preparation of the active language once after a failed attempt, so a transient
+     * storage failure does not leave suggestions off until the setting is toggled.
+     */
+    private fun retryFailedPreparationAtInputStart() {
+        val slot = activeSlot() ?: return
+        if (!slot.lastPreparationUnavailable || slot.preparationRetryUsed) return
+        slot.preparationRetryUsed = true
+        slot.preparationRequested = false
+        slot.lastPreparationUnavailable = false
     }
 
     /** Lazily built storage seam; null means no dictionary and no engine. */
@@ -1397,9 +1417,10 @@ class SuggestionsController internal constructor(
      * answering an empty list.
      *
      * The catalog's arrival must repair one race: a NEXT_WORD request that ran before the catalog
-     * arrived got an empty list, and nothing would ask again until the next keystroke (a field
-     * opened on a draft ending in "слово " would show an empty strip). [onBigramTableReady]
-     * re-derives the strip on the UI thread, guarded to the NEXT_WORD moment of the lost request.
+     * arrived got no table successors (an empty list, or only learned pairs and the top-frequency
+     * fallback), and nothing would ask again until the next keystroke (a field opened on a draft
+     * ending in "слово " would show an empty or generic strip). [onBigramTableReady] re-derives the
+     * strip on the UI thread, guarded to the NEXT_WORD moment of the lost request.
      */
     private fun maybePrepareBigramTable(slot: LanguageSlot, handle: EngineHandle) {
         val preparation = bigramPreparationSeam(slot) ?: return
@@ -1428,10 +1449,10 @@ class SuggestionsController internal constructor(
      * destroyed controller; and the live editor state, re-derived through [EditorSurface] like on
      * the tap path, must still be the NEXT_WORD moment of the outstanding request.
      *
-     * The last guard checks what the strip shows: an emoji-only strip and one filled by the
-     * companion language still deserve the re-request. Only a strip that already holds an
-     * active-language word is left alone. A context the table has no answer for comes back empty
-     * again.
+     * The last guard checks what the strip shows: an emoji-only strip, one filled by the companion
+     * language and one whose words the engine predicted with no table attached still deserve the
+     * re-request. Only active-language words predicted with the table are left alone. A context the
+     * table has no answer for comes back as before.
      *
      * A catalog arriving for a non-active slot goes to [onCompanionBigramTableReady].
      */
@@ -1447,8 +1468,11 @@ class SuggestionsController internal constructor(
         if (editor.cachedWordBeforeCursor().isNotEmpty()) return
         val context = editor.cachedNextWordContext()
         if (context.isEmpty() || context != pendingContextWord) return
-        if (bandHasActiveLanguageWord) return
-        requestCurrentPrefix()
+        if (bandHasActiveLanguageWord && !bandWordsWithoutTable) return
+        // The shown cells stay bound and tappable until the answer, as on every async update: a
+        // tap or keystroke meanwhile issues a newer lookup, so the latest-only engine drops this
+        // one, and a publication cancels a press in progress (SuggestionStripState.setSuggestions).
+        requestCurrentPrefix(afterBigramTable = true)
     }
 
     /**
@@ -1544,6 +1568,8 @@ class SuggestionsController internal constructor(
             return
         }
         slot.engine = handle
+        // The lexicon reads the companion live, so a companion that warms up later counts at once.
+        handle.setCompanionLexicon(companionLexiconFor(slot))
         // Started after the engine is assigned, so the bigram table cannot delay publication.
         // Regardless of `eligible`: the engine stays warm across an ineligible editor, and the
         // deferred attach has no visible effect.
@@ -1644,15 +1670,30 @@ class SuggestionsController internal constructor(
      * languages are read from [DictionaryArtifactSpec.ALL] in order, so the registry, not the
      * slot map's iteration order, decides which language answers.
      */
-    private fun companionSlotForFill(): LanguageSlot? {
-        val active = activeLanguage ?: return null
+    private fun companionSlotForFill(): LanguageSlot? = activeLanguage?.let(::companionSlotFor)
+
+    /**
+     * The slot that fills the strip next to [subtypeId]: the first other language of
+     * [DictionaryArtifactSpec.ALL] with a live engine and no pending release. Thread-safe: it
+     * reads only the concurrent [slots] and `@Volatile` slot fields.
+     */
+    private fun companionSlotFor(subtypeId: String): LanguageSlot? {
         for (spec in DictionaryArtifactSpec.ALL) {
-            if (spec.languageTag == active) continue
+            if (spec.languageTag == subtypeId) continue
             val slot = slots[spec.languageTag] ?: continue
             if (slot.releasePending) continue
             if (slot.engine != null) return slot
         }
         return null
+    }
+
+    /**
+     * What [slot]'s engine checks on its worker before it advises a correction: membership in
+     * the dictionary of the language that fills the strip next to it. A cold companion answers
+     * false, as it fills nothing.
+     */
+    private fun companionLexiconFor(slot: LanguageSlot) = CompanionLexicon { normalizedWord ->
+        companionSlotFor(slot.subtypeId)?.engine?.containsWord(normalizedWord) == true
     }
 
     /**
@@ -1887,13 +1928,22 @@ class SuggestionsController internal constructor(
             maybePrepareEmojiSuggest()
         }
         val normalized = TatarWordUtils.normalizeForLookup(contextWord)
-        personalEmojiSource?.emojiFor(normalized)?.let { return it }
+        personalEmojiSource?.emojiFor(normalized)?.let { learned ->
+            if (learnedEmojiDrawable(learned)) return learned
+        }
         val source = emojiSource ?: return null
         return source.emojiFor(
             EmojiSuggestIndex.assetLanguageOf(language),
             normalized,
         )
     }
+
+    /**
+     * A learned emoji with a skin tone is offered only once the loaded table confirms the font
+     * draws that tone (a backup from another device may carry one it does not); any other passes.
+     */
+    private fun learnedEmojiDrawable(emoji: String): Boolean =
+        !EmojiTextUtils.hasSkinTone(emoji) || emojiSource?.canDraw(emoji) == true
 
     /**
      * Appends the emoji cell to the end of the current NEXT_WORD strip, like [applyNextWordResult]
@@ -2013,7 +2063,7 @@ class SuggestionsController internal constructor(
      * word's casing). An empty prefix falls through to [requestNextWordContext]: a non-empty prefix
      * means PREFIX only, an empty one NEXT_WORD or nothing, never both on one strip.
      */
-    private fun requestCurrentPrefix() {
+    private fun requestCurrentPrefix(afterBigramTable: Boolean = false) {
         if (!eligible || keyguardGate.isLocked()) return
         val activeEngine = usableEngine()
         if (activeEngine == null) {
@@ -2044,7 +2094,7 @@ class SuggestionsController internal constructor(
         // different word, including none, is a new occurrence.
         if (word != suppressedPreviewWord) suppressedPreviewWord = null
         if (word.isEmpty()) {
-            requestNextWordContext(activeEngine)
+            requestNextWordContext(activeEngine, afterBigramTable)
             return
         }
         // Mixed capitalization has no defined display form, so it yields 0 results. Classified on
@@ -2104,7 +2154,7 @@ class SuggestionsController internal constructor(
      * Mirrors the PREFIX path (change detection, session stamping, clear on a null token) without
      * the casing gate: the context word's casing is never carried into the shown or inserted form.
      */
-    private fun requestNextWordContext(activeEngine: EngineHandle) {
+    private fun requestNextWordContext(activeEngine: EngineHandle, afterBigramTable: Boolean) {
         val context = editor.cachedNextWordContext()
         if (context.isEmpty()) {
             // An empty context at a sentence boundary is a sentence start. A fresh clip the user
@@ -2119,11 +2169,11 @@ class SuggestionsController internal constructor(
         }
         // Duplicate suppression as in the PREFIX path, plus bandHasActiveLanguageWord: an
         // emoji-only strip also carries displayedContextWord, and skipping the re-request that
-        // onCompanionBigramTableReady sends for it would leave the cells empty. With an
-        // active-language word on the strip the readiness handler never re-requests, so the skip is
-        // safe.
+        // onCompanionBigramTableReady sends for it would leave the cells empty. The one
+        // active-language strip onBigramTableReady re-requests, words predicted without the table,
+        // comes with afterBigramTable and bypasses the skip.
         if (context == displayedContextWord && displayedSessionId == sessionId
-            && bandHasActiveLanguageWord
+            && bandHasActiveLanguageWord && !afterBigramTable
         ) return
         if (context != displayedContextWord) {
             displayedContextWord = null
@@ -2199,7 +2249,12 @@ class SuggestionsController internal constructor(
             glideRefusalFeedback.onGlideRefused()
             return
         }
-        pendingGlidePathForSink = path
+        // Release builds install no sink, so they never pay for the copy.
+        pendingGlidePathForSink = if (GlideGestureSink.current == null) {
+            null
+        } else {
+            GlidePath(path.size).also { path.copyInto(it) }
+        }
         val trailingWord = editor.cachedWordBeforeCursor()
         val cursor = editor.cursorPosition()
         val context = editor.cachedNextWordContext()
@@ -2422,6 +2477,7 @@ class SuggestionsController internal constructor(
         displayedContextWord = SENTENCE_START_CONTEXT
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = true
+        bandWordsWithoutTable = false
         requestSessionId = NO_SESSION
         clearCompanionRequest()
         showBand(cells)
@@ -2734,6 +2790,8 @@ class SuggestionsController internal constructor(
         displayedContextWord = pendingContextWord
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = true
+        // Read with this answer, after the currency guards of applyResult.
+        bandWordsWithoutTable = usableEngine()?.nextWordWithoutTable() == true
         val wordCap = if (emoji == null) {
             bandCapacity
         } else {

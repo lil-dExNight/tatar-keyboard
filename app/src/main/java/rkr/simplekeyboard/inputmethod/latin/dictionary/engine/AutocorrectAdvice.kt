@@ -42,6 +42,15 @@ class AutocorrectAdvice(
 }
 
 /**
+ * Exact whole-word membership in the companion language's bundled dictionary, asked on the
+ * engine worker before a verdict is published: a word of the other language the user writes in
+ * is not a typo. Must be safe to call off the UI thread.
+ */
+fun interface CompanionLexicon {
+    fun containsWord(normalizedWord: String): Boolean
+}
+
+/**
  * The autocorrect thresholds, in one place, read by both sides of the decision: the index
  * (which prunes work with them) and the controller (which re-checks them before it edits text).
  * The word length is shared; the candidate frequency floor is per language, derived from each

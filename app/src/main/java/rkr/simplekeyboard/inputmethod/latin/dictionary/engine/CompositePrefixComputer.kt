@@ -89,8 +89,11 @@ internal class CompositePrefixComputer(
             if (personal.isEmpty()) {
                 bundled
             } else {
-                val merged = ArrayList<String>(personal.size + bundled.size)
-                for (candidate in personal) merged.add(candidate.normalizedForm)
+                // The learned pairs are capped so they cannot push the bundled successors past
+                // the ranks the rerank reads (GlideBigramRerank.MAX_RANKED_SUCCESSORS).
+                val learned = minOf(personal.size, MAX_GLIDE_LEARNED_SUCCESSORS)
+                val merged = ArrayList<String>(learned + bundled.size)
+                for (index in 0 until learned) merged.add(personal[index].normalizedForm)
                 for (word in bundled) if (!merged.contains(word)) merged.add(word)
                 merged
             }
@@ -99,11 +102,19 @@ internal class CompositePrefixComputer(
 
     /**
      * The autocorrect verdict as it leaves the engine: the primary's, unless the typed word is in
-     * the personal dictionary. Written by the worker after each lookup, read on the UI thread.
+     * the personal dictionary or in the companion language's dictionary. Written by the worker
+     * after each lookup, read on the UI thread.
      */
     @Volatile
     var lastAutocorrectAdvice: AutocorrectAdvice? = null
         private set
+
+    /**
+     * The companion language's dictionary, consulted on the worker for each verdict; null when no
+     * companion is wired. Set from the UI thread.
+     */
+    @Volatile
+    var companionLexicon: CompanionLexicon? = null
 
     /**
      * The normalized prefix of the newest lookup whose exact pass found no dictionary word
@@ -123,11 +134,21 @@ internal class CompositePrefixComputer(
     var lastExactCount: Int = 0
         private set
 
+    /**
+     * True when the newest [predict] ran with no bigram table attached (none yet, or the attach
+     * failed), so its words are learned pairs and the fallback only. Written by the worker, read
+     * on the UI thread with that lookup's result.
+     */
+    @Volatile
+    var lastNextWordWithoutTable: Boolean = false
+        private set
+
     /** Drops the current verdicts; called when the engine idles or is torn down. */
     fun clearLookupVerdicts() {
         lastAutocorrectAdvice = null
         lastExactMissPrefix = null
         lastExactCount = 0
+        lastNextWordWithoutTable = false
     }
 
     // Scratch of the context-armed lookup: the previous committed word's packed bigram successors
@@ -185,6 +206,7 @@ internal class CompositePrefixComputer(
      */
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
         val source = bigramSource ?: runPendingBigramAttach()
+        lastNextWordWithoutTable = source == null
         var result = source?.predict(normalizedContextWordUtf8) ?: emptyList()
         result = withPersonalPairs(result, normalizedContextWordUtf8)
         if (result.size < CELL_COUNT) {
@@ -335,7 +357,8 @@ internal class CompositePrefixComputer(
         normalizedPrefixUtf8: ImmutableUtf8Prefix,
         dictionary: List<String>,
     ): List<String> {
-        lastAutocorrectAdvice = withoutPersonalWords(primary.lastAutocorrectAdvice)
+        lastAutocorrectAdvice =
+            withoutCompanionWords(withoutPersonalWords(primary.lastAutocorrectAdvice))
         // Decoded only on an empty exact pass, which the learning rule needs whatever typo
         // recovery added after it.
         lastExactMissPrefix =
@@ -397,6 +420,21 @@ internal class CompositePrefixComputer(
         if (personal.isEmpty()) return advice
         return try {
             if (personal.containsNormalized(advice.typedWord)) null else advice
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+
+    /**
+     * A word that is an exact entry of the companion language's dictionary is never
+     * autocorrected: it is a word of that language, not a typo. Asked only when a verdict exists,
+     * so an ordinary lookup costs nothing; a failing lexicon gives no advice.
+     */
+    private fun withoutCompanionWords(advice: AutocorrectAdvice?): AutocorrectAdvice? {
+        if (advice == null) return null
+        val lexicon = companionLexicon ?: return advice
+        return try {
+            if (lexicon.containsWord(advice.typedWord)) null else advice
         } catch (_: RuntimeException) {
             null
         }
@@ -521,5 +559,11 @@ internal class CompositePrefixComputer(
          * is always left for word forms and the fallback.
          */
         internal const val MAX_PERSONAL_BIGRAM_CELLS = 3
+
+        /**
+         * Most learned pairs the glide bigram channel reads per context word: as many as the
+         * bundled table answers, so both fit the ranks the rerank reads.
+         */
+        internal const val MAX_GLIDE_LEARNED_SUCCESSORS = TatBigrPrefixIndex.MAX_RESULTS
     }
 }

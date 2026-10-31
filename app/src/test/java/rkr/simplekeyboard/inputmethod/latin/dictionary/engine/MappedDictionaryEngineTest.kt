@@ -580,6 +580,32 @@ class MappedDictionaryEngineTest {
     }
 
     @Test
+    fun nextWordAnswerReportsWhetherTheBigramTableWasAttached() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val engine = requireNotNull(startWithDictionaryOnly(executor, published))
+
+        engine.requestNextWord(1, "tt", utf8("аб"))
+        executor.runAll()
+        assertTrue(engine.lastNextWordWithoutTable)
+
+        engine.deferBigramAttach(object : PublishedBigramTableCatalog {
+            private var lease: BigramTableLease? =
+                BigramTableLease(bigramFixture(listOf("аб" to listOf("аба")))) {}
+
+            override fun acquireLatestForActivation(): BigramTableLease? = lease.also { lease = null }
+
+            override fun cleanupReleasedVersions() = Unit
+        })
+        engine.requestNextWord(2, "tt", utf8("аб"))
+        executor.runAll()
+
+        assertEquals(listOf("аба"), published.last().suggestions)
+        assertFalse(engine.lastNextWordWithoutTable)
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+    }
+
+    @Test
     fun deferredBigramAttachFailsClosedOnCorruptTableAndIsTerminal() {
         val executor = ManualEngineExecutor()
         val published = mutableListOf<LookupResult>()

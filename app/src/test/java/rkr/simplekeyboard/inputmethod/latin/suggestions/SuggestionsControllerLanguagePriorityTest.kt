@@ -23,6 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.CompanionLexicon
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
@@ -40,7 +41,8 @@ import java.util.concurrent.TimeUnit
  * other language may only fill the cells that language left empty, from the end.
  *
  * Everything here is about the DISPLAY. Autocorrect, the personal-dictionary run and the
- * empty-result observation stay with the current language alone, and that is asserted too.
+ * empty-result observation stay with the current language alone, and that is asserted too; the
+ * only exception is that a correction is withheld for a word the other language's dictionary has.
  */
 class SuggestionsControllerLanguagePriorityTest {
 
@@ -113,7 +115,16 @@ class SuggestionsControllerLanguagePriorityTest {
         val nextWordRequests = mutableListOf<String>()
         var advice: AutocorrectAdvice? = null
         var adviceReads = 0
+        /** This engine's dictionary, for the companion lexicon of the other language. */
+        val words = mutableSetOf<String>()
+        var receivedLexicon: CompanionLexicon? = null
         private var current: Any? = null
+
+        override fun containsWord(normalizedWord: String): Boolean = normalizedWord in words
+
+        override fun setCompanionLexicon(lexicon: CompanionLexicon?) {
+            receivedLexicon = lexicon
+        }
 
         override fun request(editorSessionId: Long, subtypeId: String, prefixUtf8: ByteArray): Any? {
             prefixRequests.add(String(prefixUtf8, Charsets.UTF_8))
@@ -364,7 +375,7 @@ class SuggestionsControllerLanguagePriorityTest {
     }
 
     @Test
-    fun autocorrectNeverConsultsTheOtherLanguage() {
+    fun autocorrectNeverTakesTheOtherLanguagesAdvice() {
         val h = Harness()
         h.warmBoth(tatar)
         h.controller.setAutocorrectGate { true }
@@ -379,6 +390,57 @@ class SuggestionsControllerLanguagePriorityTest {
         assertFalse(h.controller.maybeAutocorrectBeforeSeparator(' '.code))
         assertEquals(emptyList<Pair<String, String>>(), h.editor.replaced)
         assertEquals(0, h.engine(russian).adviceReads)
+    }
+
+    /**
+     * The one thing autocorrect takes from the other language: each engine gets a lexicon that
+     * answers from the dictionary of the language filling the strip next to it, so its worker
+     * withholds a correction of a word that language knows.
+     */
+    @Test
+    fun eachEngineChecksItsVerdictAgainstTheOtherLanguagesDictionary() {
+        val h = Harness()
+        h.warmBoth(tatar)
+        h.engine(russian).words += "мама"
+        h.engine(tatar).words += "әни"
+
+        val tatarLexicon = requireNotNull(h.engine(tatar).receivedLexicon)
+        val russianLexicon = requireNotNull(h.engine(russian).receivedLexicon)
+        assertTrue(tatarLexicon.containsWord("мама"))
+        assertFalse(tatarLexicon.containsWord("әни"))
+        assertTrue(russianLexicon.containsWord("әни"))
+        assertFalse(russianLexicon.containsWord("мама"))
+    }
+
+    @Test
+    fun aColdOtherLanguageProtectsNoWord() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true, subtypeId = tatar)
+
+        val tatarLexicon = requireNotNull(h.engine(tatar).receivedLexicon)
+        assertFalse(tatarLexicon.containsWord("мама"))
+
+        // The other language warms later: the lexicon reads it live.
+        h.controller.onSubtypeChanged(eligible = true, subtypeId = russian)
+        h.engine(russian).words += "мама"
+        h.controller.onSubtypeChanged(eligible = true, subtypeId = tatar)
+        assertTrue(tatarLexicon.containsWord("мама"))
+    }
+
+    @Test
+    fun aReleasedOtherLanguageProtectsNoWord() {
+        val h = Harness()
+        // Glide off, so turning suggestions off schedules every engine's release.
+        h.controller.onStartInput(eligible = true, subtypeId = tatar, glideEligible = false)
+        h.controller.onSubtypeChanged(eligible = true, subtypeId = russian, glideEligible = false)
+        h.controller.onSubtypeChanged(eligible = true, subtypeId = tatar, glideEligible = false)
+        h.engine(russian).words += "мама"
+        val tatarLexicon = requireNotNull(h.engine(tatar).receivedLexicon)
+        assertTrue(tatarLexicon.containsWord("мама"))
+
+        h.controller.onSuggestionsSettingDisabled()
+
+        assertFalse(tatarLexicon.containsWord("мама"))
     }
 
     @Test

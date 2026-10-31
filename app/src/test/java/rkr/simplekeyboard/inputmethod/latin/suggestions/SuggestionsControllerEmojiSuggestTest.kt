@@ -167,6 +167,7 @@ class SuggestionsControllerEmojiSuggestTest {
     private class FakeEmojiSource(
         private val table: Map<Pair<String, String>, String>,
         private val names: Map<String, String> = emptyMap(),
+        private val undrawable: Set<String> = emptySet(),
     ) : EmojiSuggestSource {
         var lookups = 0
         /** The language tags the strip asked the spoken name in, in order. */
@@ -180,6 +181,8 @@ class SuggestionsControllerEmojiSuggestTest {
             spokenLanguages.add(language)
             return names[emoji]
         }
+
+        override fun canDraw(emoji: String): Boolean = emoji !in undrawable
     }
 
     /** Records every learned-emoji event. */
@@ -691,6 +694,59 @@ class SuggestionsControllerEmojiSuggestTest {
     }
 
     // --- Learned emoji: the word→emoji co-usage source and sink ----------------------------------
+
+    /** A thumbs-up with the darkest skin tone, as a backup from another device could carry. */
+    private val tonedThumb = "\uD83D\uDC4D\uD83C\uDFFF"
+
+    @Test
+    fun aLearnedTonedEmojiTheFontCannotDrawYieldsToTheStaticOne() {
+        val source = FakeEmojiSource(mapOf(("tt" to "йөрәк") to "❤️"), undrawable = setOf(tonedThumb))
+        val h = Harness(source)
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word -> if (word == "йөрәк") tonedThumb else null },
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+
+        assertEquals(listOf("минем", "❤️"), h.strip.lastCells())
+    }
+
+    @Test
+    fun aLearnedTonedEmojiTheFontDrawsIsOffered() {
+        val h = Harness(FakeEmojiSource(mapOf(("tt" to "йөрәк") to "❤️")))
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word -> if (word == "йөрәк") tonedThumb else null },
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+
+        assertEquals(listOf("минем", tonedThumb), h.strip.lastCells())
+    }
+
+    @Test
+    fun aLearnedTonedEmojiWaitsForTheTableButAnUntonedOneDoesNot() {
+        val h = Harness(FakeEmojiSource(emptyMap()))
+        h.emojiPreparation.deferred = true
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word ->
+                when (word) {
+                    "йөрәк" -> tonedThumb
+                    "кит" -> "🌙"
+                    else -> null
+                }
+            },
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+        assertEquals(listOf("минем"), h.strip.lastCells())
+
+        h.typeWordAndSpace("кит")
+        h.deliver(tatar, listOf("минем"))
+        assertEquals(listOf("минем", "🌙"), h.strip.lastCells())
+    }
 
     @Test
     fun theLearnedEmojiOverridesTheStaticOneInTheTailCell() {

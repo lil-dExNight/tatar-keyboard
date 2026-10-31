@@ -24,6 +24,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.BigramTableIdentit
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatBigrValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureSink
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideTestFixtures
@@ -628,7 +629,7 @@ class GlideEndToEndTest {
         // The top-1 of the Russian decode is committed on lift (NO trailing space); the
         // alternatives show the rest.
         assertTrue(h.editor.text.isNotEmpty())
-        assertFalse("P7-7: a glide commits no auto-space", h.editor.text.endsWith(" "))
+        assertFalse("a glide commits no auto-space", h.editor.text.endsWith(" "))
         assertTrue(h.strip.shown.isNotEmpty())
     }
 
@@ -1371,6 +1372,45 @@ class GlideEndToEndTest {
         h.glideSalam()
         assertEquals("сүз", h.editor.text)
         assertEquals(1, h.ticks)
+    }
+
+    /**
+     * PointerTracker clears its live path buffer right after onGlideInput returns, while the
+     * gesture sink reads the path only when the decode result arrives: the sink must get the
+     * gesture's points, not the emptied buffer.
+     */
+    @Test
+    fun theGestureSinkGetsThePathAfterTheTrackerClearedItsBuffer() {
+        val h = tatarHarnessWith("")
+        val received = mutableListOf<Pair<Int, String?>>()
+        var receivedXs = FloatArray(0)
+        GlideGestureSink.current = object : GlideGestureSink {
+            override fun onGlideGesture(
+                path: GlidePath,
+                keyRadiusPx: Float,
+                layoutId: String,
+                decodedTop1: String?,
+            ) {
+                received.add(path.size to decodedTop1)
+                receivedXs = path.xs.copyOf(path.size)
+            }
+        }
+        try {
+            h.tatarEngine().holdGlide = true
+            val live = GlideTestFixtures.idealPath("сәләм", GlideTestFixtures.tatarGeometry())!!
+            val pointCount = live.size
+            val expectedXs = live.xs.copyOf(pointCount)
+            h.controller.onGlideInput(live)
+            // The tracker's reset of its buffer, as at the end of onUpEventInternal.
+            live.clear()
+            h.tatarEngine().deliverHeldGlide()
+
+            assertEquals(listOf(pointCount to "сәләм"), received)
+            assertTrue(pointCount >= 2)
+            assertTrue(expectedXs.contentEquals(receivedXs))
+        } finally {
+            GlideGestureSink.current = null
+        }
     }
 
     // --- Real assets -----------------------------------------------------------------------------

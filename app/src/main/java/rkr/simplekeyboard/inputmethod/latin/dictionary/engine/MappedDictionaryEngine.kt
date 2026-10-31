@@ -182,6 +182,13 @@ class MappedDictionaryEngine private constructor(
     val lastExactCount: Int
         get() = computer.lastExactCount
 
+    /**
+     * True when the newest completed NEXT_WORD lookup ran with no bigram table attached. Read
+     * with that lookup's result, as with [exactMissPrefix].
+     */
+    val lastNextWordWithoutTable: Boolean
+        get() = computer.lastNextWordWithoutTable
+
     fun finishInput() {
         // Idling the engine invalidates the generation, so the verdicts computed for it go too.
         computer.clearLookupVerdicts()
@@ -207,6 +214,11 @@ class MappedDictionaryEngine private constructor(
     }
 
     fun updateKeyNeighbors(table: KeyNeighborTable?) = engine.updateKeyNeighbors(table)
+
+    /** The companion dictionary the autocorrect verdict is checked against; see [CompanionLexicon]. */
+    fun setCompanionLexicon(lexicon: CompanionLexicon?) {
+        computer.companionLexicon = lexicon
+    }
 
     /** Pushes the live layout geometry into the glide decode side (null disables glide typing). */
     fun updateGlideGeometry(geometry: GlideKeyGeometry?) = engine.updateGlideGeometry(geometry)

@@ -1,6 +1,7 @@
 package rkr.simplekeyboard.inputmethod.latin.glide
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Unit tests for [GlideBigramRerank]: the rank penalty, the absent rule, stability, the no-ops. */
@@ -60,5 +61,46 @@ class GlideBigramRerankTest {
         val result = resultOf("китап" to 1000f, "сәләм" to 1000f)
         GlideBigramRerank.rerank(result, emptyList(), 2f, FloatArray(GlideDecoder.TOP_N))
         assertEquals(listOf("китап", "сәләм"), wordsOf(result))
+    }
+
+    /**
+     * A context word with a thousand learned successors: only the first
+     * [GlideBigramRerank.MAX_RANKED_SUCCESSORS] rank, so the penalty stays finite and a much
+     * better shape still beats the top successor once the gap exceeds the largest penalty.
+     */
+    @Test
+    fun aLongSuccessorListKeepsThePenaltyBounded() {
+        val successors = ArrayList<String>()
+        successors.add("сәләм")
+        for (index in 1 until 1000) successors.add("сүз$index")
+        successors.add("алма")
+        val penalty = 3f
+        val maxPenalty = Math.pow(penalty.toDouble(), GlideBigramRerank.MAX_RANKED_SUCCESSORS.toDouble())
+        // китап is absent; сәләм is the first successor, scored worse than the largest penalty
+        // allows; алма sits far past the ranked successors and counts as absent.
+        val result = resultOf(
+            "китап" to 1000f,
+            "сәләм" to (1000.0 * maxPenalty * 2).toFloat(),
+            "алма" to 1100f,
+        )
+        val adjusted = FloatArray(GlideDecoder.TOP_N)
+        GlideBigramRerank.rerank(result, successors, penalty, adjusted)
+
+        for (slot in 0 until result.count) {
+            assertTrue("adjusted score $slot is ${adjusted[slot]}", adjusted[slot].isFinite())
+        }
+        assertEquals(listOf("китап", "алма", "сәләм"), wordsOf(result))
+    }
+
+    @Test
+    fun aShortListRanksExactlyAsBefore() {
+        // Up to the cap the absent rank is the list size, as for the bundled table's answer.
+        val result = resultOf("китап" to 1000f, "сәләм" to 1500f, "алма" to 1900f)
+        GlideBigramRerank.rerank(
+            result, listOf("алма", "сәләм", "a", "b", "c", "d", "e", "f"), 2f,
+            FloatArray(GlideDecoder.TOP_N),
+        )
+        // adjusted: китап 1000 x 2^8, сәләм 1500 x 2, алма 1900
+        assertEquals(listOf("алма", "сәләм", "китап"), wordsOf(result))
     }
 }

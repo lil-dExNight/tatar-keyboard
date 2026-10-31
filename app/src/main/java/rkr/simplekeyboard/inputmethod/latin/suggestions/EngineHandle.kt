@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.CompanionLexicon
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FallbackWordsFactory
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy
@@ -117,6 +118,12 @@ interface EngineHandle {
     fun updateKeyNeighbors(table: KeyNeighborTable?) {}
 
     /**
+     * Hands over the companion language's dictionary membership, which the engine's worker
+     * checks before it publishes an autocorrect verdict. Default no-op: a fake handle ignores it.
+     */
+    fun setCompanionLexicon(lexicon: CompanionLexicon?) {}
+
+    /**
      * The autocorrect verdict of the newest completed lookup, or null when nothing may be replaced.
      * Read on the UI thread when a word separator is pressed; no request or token is needed, since
      * the lookup behind the current strip produced it. Default null: never autocorrects.
@@ -137,6 +144,12 @@ interface EngineHandle {
      * are ever reported.
      */
     fun lastExactCount(): Int = 0
+
+    /**
+     * True when the newest completed NEXT_WORD lookup ran with no bigram table attached. Read on
+     * the UI thread with the lookup's result. Default false: every answer counts as complete.
+     */
+    fun nextWordWithoutTable(): Boolean = false
 
     /**
      * Enqueues the deferred empty-prefix probe of a cleanly completed word (see
@@ -217,11 +230,16 @@ class MappedEngineHandle private constructor(
 
     override fun updateKeyNeighbors(table: KeyNeighborTable?) = engine.updateKeyNeighbors(table)
 
+    override fun setCompanionLexicon(lexicon: CompanionLexicon?) =
+        engine.setCompanionLexicon(lexicon)
+
     override fun autocorrectAdvice(): AutocorrectAdvice? = engine.autocorrectAdvice
 
     override fun exactMissPrefix(): String? = engine.exactMissPrefix
 
     override fun lastExactCount(): Int = engine.lastExactCount
+
+    override fun nextWordWithoutTable(): Boolean = engine.lastNextWordWithoutTable
 
     override fun requestEmptyPrefixProbe(word: String, callback: (Int) -> Unit): Boolean =
         engine.requestEmptyPrefixProbe(word, callback)

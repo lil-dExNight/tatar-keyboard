@@ -17,10 +17,12 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LongPressTestFixtures.rawKey
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules
@@ -197,6 +199,45 @@ class MixEvalTest {
             ratePct(correctAll, casesAll) >= GATE_LEAD_PCT,
         )
     }
+
+    /**
+     * Words of one shipped dictionary that the other language's engine alone autocorrects into
+     * its own word (one long-press partner away). With the companion lexicon, the first
+     * dictionary's exact membership, none of them gets advice.
+     */
+    @Test
+    fun theCompanionLexiconKeepsTheOtherLanguagesWordsUncorrected() {
+        val tatar = requireNotNull(tatarIndex)
+        val russian = requireNotNull(russianIndex)
+        // (active index, its layout table, companion index, word of the companion language)
+        val cases = listOf(
+            CrossCase(tatar, tatarTable, russian, "кузен", "күзен"),
+            CrossCase(tatar, tatarTable, russian, "телами", "теләми"),
+            CrossCase(tatar, tatarTable, russian, "халате", "халәте"),
+            CrossCase(russian, russianTable, tatar, "җизни", "жизни"),
+            CrossCase(russian, russianTable, tatar, "сөтен", "сотен"),
+        )
+        for (case in cases) {
+            case.active.updateKeyNeighbors(case.table)
+            val computer = CompositePrefixComputer(case.active, PersonalCandidateSource.EMPTY)
+            computer.lookup(prefixOf(case.word))
+            assertEquals(
+                "the active engine alone corrects ${case.word}",
+                case.correctionAlone, computer.lastAutocorrectAdvice?.replacement,
+            )
+            computer.companionLexicon = CompanionLexicon(case.companion::containsWordCold)
+            computer.lookup(prefixOf(case.word))
+            assertNull("${case.word} is a companion word", computer.lastAutocorrectAdvice)
+        }
+    }
+
+    private class CrossCase(
+        val active: TdictPrefixIndex,
+        val table: KeyNeighborTable,
+        val companion: TdictPrefixIndex,
+        val word: String,
+        val correctionAlone: String,
+    )
 
     private class MixLine(val expectedLead: String, val sentence: String)
 

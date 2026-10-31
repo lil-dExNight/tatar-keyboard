@@ -22,12 +22,20 @@ package rkr.simplekeyboard.inputmethod.latin.glide
  * committed word. The bundled schema-3 table stores successors in count order without counts, so
  * the probability reads off the rank: each rank halves it, and the Gaussian bump over that
  * log-spaced ladder is an exponential penalty per rank — score x [rankPenalty]^rank, with an
- * absent candidate one rank past the last successor.
+ * absent candidate one rank past the last successor. Only the first [MAX_RANKED_SUCCESSORS]
+ * successors rank, so the largest penalty is [rankPenalty]^[MAX_RANKED_SUCCESSORS].
  *
  * The channel touches only the current gesture's N-best and the previous committed word; it never
  * revises committed text.
  */
 object GlideBigramRerank {
+
+    /**
+     * The successors that may rank: room for the bundled table's answer and as many learned pairs
+     * ahead of it. A longer list would let one successor outweigh any shape score and overflow
+     * the float penalty.
+     */
+    const val MAX_RANKED_SUCCESSORS = 8
 
     /**
      * Reorders [result]'s slots in place by the adjusted scores, stable on ties. [adjusted] is
@@ -37,8 +45,16 @@ object GlideBigramRerank {
     fun rerank(result: GlideResult, successors: List<String>, rankPenalty: Float, adjusted: FloatArray) {
         val count = result.count
         if (count <= 1 || rankPenalty <= 1f || successors.isEmpty()) return
+        val ranked = minOf(successors.size, MAX_RANKED_SUCCESSORS)
         for (slot in 0 until count) {
-            val rank = successors.indexOf(result.words[slot]).let { if (it < 0) successors.size else it }
+            var rank = ranked
+            val word = result.words[slot]
+            for (index in 0 until ranked) {
+                if (successors[index] == word) {
+                    rank = index
+                    break
+                }
+            }
             var penalty = 1f
             repeat(rank) { penalty *= rankPenalty }
             adjusted[slot] = result.scores[slot] * penalty
