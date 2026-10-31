@@ -22,7 +22,7 @@ import kotlin.math.ceil
  *    including the typo path and the cold reads (whole-word membership, glide inventory walk).
  *  - [perLookupLatencyAndAllocationStayWithinTheShippedBoundForBothStrategies]: p50/p95 over the
  *    22 review prefixes and 5 typo probes under the Tatar fuzzy policy, both held to the 5 ms host
- *    bound, with equal per-lookup allocation.
+ *    bound, with equal steady-state allocation per lookup round.
  *  - [coldLoadCostOfBothStrategiesIsRecorded]: acquisition + `open()` medians, print-only and
  *    warm-cache on the host; the cold-read and PSS measurements belong to
  *    `DictionaryIoStrategyInstrumentationTest` on a device.
@@ -68,22 +68,59 @@ class DictionaryIoStrategyCalibrationTest {
 
     @Test
     fun perLookupLatencyAndAllocationStayWithinTheShippedBoundForBothStrategies() {
-        val allocPerLookup = LinkedHashMap<String, Long>()
         for ((strategy, index) in strategies()) {
-            measureWorkload(index, strategy, "review", reviewPrefixes(), allocPerLookup)
-            measureWorkload(index, strategy, "typo", TYPO_PROBES, null)
+            measureWorkload(index, strategy, "review", reviewPrefixes())
+            measureWorkload(index, strategy, "typo", TYPO_PROBES)
         }
         // The lookup path allocates the same result objects regardless of where the dictionary
-        // bytes live; the thread-local allocation counter is exact for identical executed paths,
-        // so any delta here means the strategies' hot paths diverged.
-        val heapAlloc = allocPerLookup.getValue("heap")
-        val mappedAlloc = allocPerLookup.getValue("mmap")
-        println("O7 host io-strategy alloc-review heap=$heapAlloc mmap=$mappedAlloc bytes/lookup")
-        assertEquals(
-            "per-lookup allocation diverged between io strategies (heap=$heapAlloc mmap=$mappedAlloc)",
-            heapAlloc,
-            mappedAlloc,
-        )
+        // bytes live, so the steady-state bytes of one identical round must match exactly; any
+        // delta means the strategies' hot paths diverged.
+        val bean = requireNotNull(allocationBean()) { "the host JVM reports no thread allocation" }
+        for ((workload, prefixes) in listOf("review" to reviewPrefixes(), "typo" to TYPO_PROBES)) {
+            val allocated = steadyStateRoundAllocation(bean, prefixes)
+            val heapAlloc = allocated.getValue("heap")
+            val mappedAlloc = allocated.getValue("mmap")
+            println(
+                "io-strategy host alloc workload=$workload heap=$heapAlloc mmap=$mappedAlloc " +
+                    "bytes per round of ${prefixes.size * LOOKUPS_PER_PREFIX} lookups",
+            )
+            assertEquals(
+                "$workload allocation diverged between io strategies " +
+                    "(heap=$heapAlloc mmap=$mappedAlloc bytes per round)",
+                heapAlloc,
+                mappedAlloc,
+            )
+        }
+    }
+
+    /**
+     * Fewest bytes one round of [prefixesCp] lookups allocates, per strategy, over interleaved
+     * rounds after both are warm. Compiling or deoptimizing code only adds bytes (interpreted
+     * frames skip escape analysis), so the minimum is the compiled path's exact cost.
+     */
+    private fun steadyStateRoundAllocation(
+        bean: com.sun.management.ThreadMXBean,
+        prefixesCp: List<String>,
+    ): Map<String, Long> {
+        val prefixes = prefixesCp.map { ImmutableUtf8Prefix.copyOf(it.toByteArray(Charsets.UTF_8)) }
+        val lookups = prefixes.size * LOOKUPS_PER_PREFIX
+        val threadId = Thread.currentThread().id
+        val minimum = LinkedHashMap<String, Long>()
+        var consumed = 0L
+        repeat(ALLOCATION_ROUNDS) {
+            for ((strategy, index) in strategies()) {
+                val before = bean.getThreadAllocatedBytes(threadId)
+                for (sample in 0 until lookups) {
+                    val results = index.lookup(prefixes[sample % prefixes.size])
+                    // Indexed, so the harness itself allocates no iterator.
+                    for (slot in results.indices) consumed = consumed * 31 + results[slot].length
+                }
+                val allocated = bean.getThreadAllocatedBytes(threadId) - before
+                minimum[strategy] = minOf(minimum[strategy] ?: Long.MAX_VALUE, allocated)
+            }
+        }
+        assertTrue(consumed != Long.MIN_VALUE)
+        return minimum
     }
 
     /**
@@ -131,7 +168,7 @@ class DictionaryIoStrategyCalibrationTest {
         acquireMapped.sort()
         openMapped.sort()
         println(
-            "O7 host io-strategy cold-load (warm page cache, medians of $REPS) " +
+            "io-strategy host cold-load (warm page cache, medians of $REPS) " +
                 "acquireHeap=${fmt(median(acquireHeap))} ms openHeap=${fmt(median(openHeap))} ms " +
                 "acquireMmap=${fmt(median(acquireMapped))} ms openMmap=${fmt(median(openMapped))} ms " +
                 "consumed=$consumed",
@@ -139,7 +176,7 @@ class DictionaryIoStrategyCalibrationTest {
         // The analytic heap footprint: the heap strategy pins the whole dictionary in the
         // anonymous heap; the mmap strategy's bytes live in evictable file-backed pages.
         println(
-            "O7 host io-strategy load-footprint heapBytes=${spec.expectedRawSize} " +
+            "io-strategy host load-footprint heapBytes=${spec.expectedRawSize} " +
                 "mmapHeapBytes=0 rawSize=${file.length()}",
         )
     }
@@ -154,13 +191,9 @@ class DictionaryIoStrategyCalibrationTest {
         strategy: String,
         workload: String,
         prefixesCp: List<String>,
-        allocPerLookup: MutableMap<String, Long>?,
     ) {
         val prefixes = prefixesCp.map { ImmutableUtf8Prefix.copyOf(it.toByteArray(Charsets.UTF_8)) }
         repeat(500) { index.lookup(prefixes[it % prefixes.size]) }
-        val bean = allocationBean()
-        val threadId = Thread.currentThread().id
-        val allocatedBefore = bean?.getThreadAllocatedBytes(threadId) ?: -1L
         val timings = LongArray(2_000)
         var consumed = 0L
         for (sample in timings.indices) {
@@ -170,23 +203,14 @@ class DictionaryIoStrategyCalibrationTest {
             timings[sample] = System.nanoTime() - started
             for (result in results) consumed = consumed * 31 + result.length
         }
-        val allocatedAfter = bean?.getThreadAllocatedBytes(threadId) ?: -1L
         timings.sort()
         val medianNanos = timings[timings.size / 2]
         val p95Nanos = timings[ceil(timings.size * 0.95).toInt() - 1]
         val maxNanos = timings.last()
-        val allocText: String
-        if (allocatedBefore >= 0 && allocatedAfter >= allocatedBefore) {
-            val perLookup = (allocatedAfter - allocatedBefore) / timings.size
-            allocPerLookup?.put(strategy, perLookup)
-            allocText = " allocPerLookup=$perLookup"
-        } else {
-            allocText = " allocPerLookup=n/a"
-        }
         println(
-            "O7 host io-strategy compute strategy=$strategy workload=$workload " +
-                "median=${fmt(medianNanos)} ms p95=${fmt(p95Nanos)} ms max=${fmt(maxNanos)} ms" +
-                "$allocText consumed=$consumed",
+            "io-strategy host compute strategy=$strategy workload=$workload " +
+                "median=${fmt(medianNanos)} ms p95=${fmt(p95Nanos)} ms max=${fmt(maxNanos)} ms " +
+                "consumed=$consumed",
         )
         assertTrue(
             "$strategy/$workload p95=${p95Nanos / 1_000_000.0}ms exceeds the shipped 5 ms host bound",
@@ -206,11 +230,13 @@ class DictionaryIoStrategyCalibrationTest {
     }
 
     companion object {
-        // The typo workload, inlined as in FuzzyLookupComputeInstrumentationTest: the target case at
-        // 3/4/5 code points, "сйл", and the 10-code-point "сцләмәтлек", the heaviest reader of the
-        // dictionary bytes.
+        // The typo workload, inlined as in FuzzyLookupComputeInstrumentationTest: the target case
+        // at 3/4/5 code points, "сйл", and the 10-code-point "сцләмәтлек", the heaviest reader of
+        // the dictionary bytes.
         private val TYPO_PROBES = listOf("сцл", "сцлә", "сцләм", "сйл", "сцләмәтлек")
         private const val REPS = 21
+        private const val ALLOCATION_ROUNDS = 8
+        private const val LOOKUPS_PER_PREFIX = 40
 
         private var rawFile: File? = null
         private var identity: DictionaryIdentity? = null
@@ -225,7 +251,7 @@ class DictionaryIoStrategyCalibrationTest {
                 "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
             )
             val spec = DictionaryArtifactSpec.TATAR_TOP100K_V1
-            val file = File.createTempFile("o7-io-strategy-", ".tdict")
+            val file = File.createTempFile("io-strategy-", ".tdict")
             rawFile = file
             asset.inputStream().use { input ->
                 file.outputStream().use { output -> TdictValidator().inflateAsset(input, output, spec) }
