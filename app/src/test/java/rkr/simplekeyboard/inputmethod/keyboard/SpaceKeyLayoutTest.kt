@@ -151,7 +151,7 @@ class SpaceKeyLayoutTest {
     }
 
     @Test
-    fun phoneDisabledToggleIsIdenticalToPreE2() {
+    fun phoneWithTheEmojiKeyOffKeepsTheClassicSpaceRow() {
         val s = switchElement(spaceFile("key_space_5kw.xml"))
         assertEquals(
             listOf(Key(LANG, null), Key(SPACE, 30.0), Key(ZWNJ_KEY, null)),
@@ -172,7 +172,7 @@ class SpaceKeyLayoutTest {
     }
 
     @Test
-    fun tabletDisabledToggleIsIdenticalToPreE2() {
+    fun tabletWithTheEmojiKeyOffKeepsTheClassicSpaceRow() {
         val s = switchElement(spaceFile("key_space_7kw.xml"))
         assertEquals(
             listOf(Key(LANG, null), Key(SPACE, 45.0), Key(ZWNJ_KEY, null)),

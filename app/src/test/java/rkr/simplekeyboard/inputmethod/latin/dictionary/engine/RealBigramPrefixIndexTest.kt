@@ -36,7 +36,7 @@ class RealBigramPrefixIndexTest {
         val medianNanos = timings[timings.size / 2]
         val p95Nanos = timings[ceil(timings.size * 0.95).toInt() - 1]
         println(
-            "E5c bigram compute median=${"%.3f".format(java.util.Locale.ROOT, medianNanos / 1_000_000.0)} ms " +
+            "bigram compute median=${"%.3f".format(java.util.Locale.ROOT, medianNanos / 1_000_000.0)} ms " +
                 "p95=${"%.3f".format(java.util.Locale.ROOT, p95Nanos / 1_000_000.0)} ms consumed=$consumed",
         )
         assertTrue("p95=${p95Nanos / 1_000_000.0}ms", p95Nanos <= 5_000_000L)
@@ -81,7 +81,7 @@ class RealBigramPrefixIndexTest {
             timings.sort()
             val p95Nanos = timings[ceil(timings.size * 0.95).toInt() - 1]
             println(
-                "E5c bigram request-to-handoff p95=" +
+                "bigram request-to-handoff p95=" +
                     "${"%.3f".format(java.util.Locale.ROOT, p95Nanos / 1_000_000.0)} ms",
             )
             assertTrue(
@@ -121,7 +121,7 @@ class RealBigramPrefixIndexTest {
                 "src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
                 "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
             )
-            val dictRawFile = File.createTempFile("e5c-real-dict-", ".tdict")
+            val dictRawFile = File.createTempFile("real-dict-", ".tdict")
             val dictionary: TdictPrefixIndex
             try {
                 dictRawFile.outputStream().use { output ->
@@ -150,7 +150,7 @@ class RealBigramPrefixIndexTest {
                 "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
             )
             val spec = BigramArtifactSpec.TATAR_BIGRAMS_V1
-            val rawFile = File.createTempFile("e5c-real-bigrams-", ".tatbigr")
+            val rawFile = File.createTempFile("real-bigrams-", ".tatbigr")
             try {
                 rawFile.outputStream().use { output ->
                     TatBigrValidator().inflateAsset(asset.inputStream(), output, spec)

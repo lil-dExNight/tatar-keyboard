@@ -37,19 +37,19 @@ import kotlin.math.sqrt
  * correctly-rounded double on both sides), and the byte-identity of the render is pinned by
  * SHA-256 — the same pin `tests/glide_pack/` asserts python-side.
  *
- * Gates (the G1/G2 constants below):
- *  - G1: top-3 recovery >= 60 %, top-1 >= 35 % on the HELD-OUT split;
- *  - G2: host decode p95 <= 2 ms at the survivor counts the pruner produces (asserted on
+ * Gates (the RECOVERY_* and HOST_P95_MS constants below):
+ *  - recovery: top-3 recovery >= 60 %, top-1 >= 35 % on the HELD-OUT split;
+ *  - latency: host decode p95 <= 2 ms at the survivor counts the pruner produces (asserted on
  *    developer hosts; skipped under `CI` where runner load makes wall-clock bounds flaky);
- *  - G3: zero allocations after warmup in the decode path (the result strings are the only
- *    allocation, bounded per candidate).
+ *  - allocation: zero allocations after warmup in the decode path (the result strings are the
+ *    only allocation, bounded per candidate).
  *
- * The memo gates live alongside: [gatesG4SpeedAdaptationOnTheRealDictionary] (the speed channel
- * beats the unadapted decoder on the fast-persona class), [gatesG8PerLanguageConstants] (the
+ * Further gates live alongside: [gatesSpeedAdaptationOnTheRealDictionary] (the speed channel
+ * beats the unadapted decoder on the fast-persona class), [gatesPerLanguageConstants] (the
  * per-language constants never lose to the shared set on either language),
- * [gatesG5BigramChannel] (the bigram channel beats the plain decode on held-out context rows)
- * and the B1 pair [gatesB1AliasDoubledClassOnTheRussianBench] /
- * [gatesB1RussianHeldOutIsImproveOrFlat] (alias-folded words decode without a loop; the Russian
+ * [gatesBigramChannel] (the bigram channel beats the plain decode on held-out context rows)
+ * and the alias-fold pair [gatesAliasDoubledClassOnTheRussianBench] /
+ * [gatesRussianHeldOutIsImproveOrFlat] (alias-folded words decode without a loop; the Russian
  * held-out split is improve-or-flat).
  * The tuning surfaces print and never assert.
  * The train/held-out split is deterministic (a per-word SplitMix64 bit): constants are tuned
@@ -516,7 +516,7 @@ class GlideRecoveryCalibrationTest {
             }
         }
         println(
-            "Glide P7-1 index: words=${index.wordCount} skipped=${index.skippedWordCount} " +
+            "Glide index: words=${index.wordCount} skipped=${index.skippedWordCount} " +
                 "maxFrequency=${index.maxFrequency} retainedBytes≈${index.retainedByteEstimate} " +
                 "usedBuckets=$usedBuckets/${keyCount * keyCount} maxBucket=$maxBucket " +
                 "buildMs=${"%.1f".format(java.util.Locale.ROOT, buildMs)}",
@@ -527,7 +527,7 @@ class GlideRecoveryCalibrationTest {
     }
 
     @Test
-    fun gatesG1AndG2OnTheRealDictionary() {
+    fun gatesRecoveryAndLatencyOnTheRealDictionary() {
         val decoder = sharedDecoder()
         val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
         val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
@@ -551,7 +551,8 @@ class GlideRecoveryCalibrationTest {
         // Train pass first: it doubles as the warmup (the lazy index build happens here). Each
         // generated variant is a separate row and carries its target word with it.
         for (path in paths) {
-            if (path.rowContext.isNotEmpty()) continue // context rows belong to the G5 gate
+            // Context rows belong to the bigram-channel gate.
+            if (path.rowContext.isNotEmpty()) continue
             val word = path.rowWord
             val heldOut = isHeldOut(word)
             val started = System.nanoTime()
@@ -598,12 +599,13 @@ class GlideRecoveryCalibrationTest {
         val scoredP95 = percentileInt(scored.sorted(), 0.95)
 
         println(
-            "Glide P7-1 calibration: set=${words.size} train=$trainCount heldOut=$heldCount " +
+            "Glide calibration: set=${words.size} train=$trainCount heldOut=$heldCount " +
                 "train_top1=${fmt(trainTop1)}% train_top3=${fmt(trainTop3)}% " +
                 "heldout_top1=${fmt(heldTop1)}% heldout_top3=${fmt(heldTop3)}% " +
-                "G1(top3>=60,top1>=35)=${if (heldTop3 >= G1_TOP3_MIN && heldTop1 >= G1_TOP1_MIN) "PASS" else "FAIL"} " +
+                "recovery(top3>=60,top1>=35)=" +
+                "${if (heldTop3 >= RECOVERY_TOP3_MIN && heldTop1 >= RECOVERY_TOP1_MIN) "PASS" else "FAIL"} " +
                 "decodeMs_p50=${fmt(p50)} decodeMs_p95=${fmt(p95)} decodeMs_max=${fmt(max)} " +
-                "G2(p95<=2ms)=${if (p95 <= G2_P95_MS) "PASS" else "FAIL"} " +
+                "latency(p95<=2ms)=${if (p95 <= HOST_P95_MS) "PASS" else "FAIL"} " +
                 "candidates_p95=$candidateP95 candidates_max=$candidateMax scored_p95=$scoredP95",
         )
         // The per-class printout of the doubled-letter evidence rule.
@@ -614,7 +616,7 @@ class GlideRecoveryCalibrationTest {
             classTop1[clazz] = classHeldTop[clazz][0].toDouble() / classHeldCount[clazz] * 100.0
             classTop3[clazz] = classHeldTop[clazz][1].toDouble() / classHeldCount[clazz] * 100.0
             println(
-                "Glide P7-8 class ${CLASS_NAMES[clazz]}: n=${classHeldCount[clazz]} " +
+                "Glide class ${CLASS_NAMES[clazz]}: n=${classHeldCount[clazz]} " +
                     "top1=${fmt(classTop1[clazz])}% " +
                     "top3=${fmt(classTop3[clazz])}%",
             )
@@ -629,14 +631,16 @@ class GlideRecoveryCalibrationTest {
                 "top1=${fmt(classTop1[3])}%",
         )
 
-        assertTrue("held-out top-3 ${fmt(heldTop3)}% below the 60% gate", heldTop3 >= G1_TOP3_MIN)
-        assertTrue("held-out top-1 ${fmt(heldTop1)}% below the 35% gate", heldTop1 >= G1_TOP1_MIN)
-        // G2 is a wall-clock budget: asserted on developer hosts, skipped on shared CI runners
-        // whose CPU scheduling makes any millisecond bound flaky. The measurement stays in the
-        // printout above either way, and on-device latency is asserted by
+        assertTrue("held-out top-3 ${fmt(heldTop3)}% below the 60% gate",
+            heldTop3 >= RECOVERY_TOP3_MIN)
+        assertTrue("held-out top-1 ${fmt(heldTop1)}% below the 35% gate",
+            heldTop1 >= RECOVERY_TOP1_MIN)
+        // The latency gate is a wall-clock budget: asserted on developer hosts, skipped on shared
+        // CI runners whose CPU scheduling makes any millisecond bound flaky. The measurement stays
+        // in the printout above either way, and on-device latency is asserted by
         // GlideDeviceInstrumentationTest.
         if (System.getenv("CI") == null) {
-            assertTrue("decode p95 ${fmt(p95)}ms over the 2ms host gate", p95 <= G2_P95_MS)
+            assertTrue("decode p95 ${fmt(p95)}ms over the 2ms host gate", p95 <= HOST_P95_MS)
         }
 
         // Plain and alias classes keep their recovery floors. No-dwell twins retain their pinned
@@ -681,8 +685,8 @@ class GlideRecoveryCalibrationTest {
      * around the shipped constants — the ported PR #1870 values (22.08 / 0.5109) included — plus
      * a frequency-exponent row at the shipped sigmas. The constants were chosen train-side; the
      * held-out numbers of
-     * [gatesG1AndG2OnTheRealDictionary] are the reported ones. Diagnostic only — it prints, it does
-     * not assert a threshold.
+     * [gatesRecoveryAndLatencyOnTheRealDictionary] are the reported ones. Diagnostic only — it
+     * prints, it does not assert a threshold.
      */
     @Test
     fun tuningSurfaceOnTheTrainSplit() {
@@ -712,7 +716,7 @@ class GlideRecoveryCalibrationTest {
 
         val shapeStds = listOf(5.52f, 8.28f, 11.04f, 16.56f, 22.08f)
         val locationFactors = listOf(0.1277f, 0.18f, 0.2555f, 0.5109f)
-        println("Glide P7-1 tuning surface (train split, top-3 %, gamma = shipped 0.25):")
+        println("Glide tuning surface (train split, top-3 %, gamma = shipped 0.25):")
         println("shapeStd\\locFactor " + locationFactors.joinToString(" ") { "%8.4f".format(it) })
         for (shapeStd in shapeStds) {
             val row = StringBuilder("%13.2f ".format(java.util.Locale.ROOT, shapeStd))
@@ -745,7 +749,7 @@ class GlideRecoveryCalibrationTest {
     /**
      * The speed-channel tuning surface: top-1 on the TRAIN split per persona class over the
      * (normative speed x widen cap) grid, diagnostic only. The shipped values were chosen here;
-     * the held-out gate is [gatesG4SpeedAdaptationOnTheRealDictionary].
+     * the held-out gate is [gatesSpeedAdaptationOnTheRealDictionary].
      */
     @Test
     fun tuningSurfaceSpeedChannelOnTheTrainSplit() {
@@ -771,7 +775,7 @@ class GlideRecoveryCalibrationTest {
             return DoubleArray(3) { if (count[it] == 0) 0.0 else top[it].toDouble() / count[it] * 100.0 }
         }
 
-        println("Glide P7-1 speed surface (train split, top-1 % per persona normal/fast/slow):")
+        println("Glide speed surface (train split, top-1 % per persona normal/fast/slow):")
         for (speed in listOf(0.012f, 0.016f, 0.02f, 0.024f, 0.03f)) {
             val row = StringBuilder("normative=%6.3f ".format(java.util.Locale.ROOT, speed))
             for (widen in listOf(1.0f, 1.5f, 2.0f, 3.0f)) {
@@ -790,7 +794,7 @@ class GlideRecoveryCalibrationTest {
         }
     }
 
-    // ---- G8: per-language constants and the length channel. ----
+    // ---- Per-language constants and the length channel. ----
 
     /** One language's calibration inputs: dictionary inventory, layout and generator geometry. */
     private inner class LanguageBench(
@@ -859,16 +863,16 @@ class GlideRecoveryCalibrationTest {
     }
 
     /**
-     * The G8 tuning surface: on each language's TRAIN rows — the length-channel sigma grid at the
-     * shipped sigmas, the sigma grid at the chosen length sigma, and the top-1 split by word
-     * length (the short-vs-long bias the length channel targets). Diagnostic only; the gate is
-     * [gatesG8PerLanguageConstants].
+     * The per-language tuning surface: on each language's TRAIN rows — the length-channel sigma
+     * grid at the shipped sigmas, the sigma grid at the chosen length sigma, and the top-1 split
+     * by word length (the short-vs-long bias the length channel targets). Diagnostic only; the
+     * gate is [gatesPerLanguageConstants].
      */
     @Test
     fun tuningSurfacePerLanguageAndLengthChannel() {
         val lengthSigmas = listOf(Float.POSITIVE_INFINITY, 6f, 4f, 3f, 2f)
         for (bench in listOf(tatarBench(), russianBench())) {
-            println("Glide P7-10 ${bench.name} length-channel surface (train split, top-1 / top-3 %):")
+            println("Glide ${bench.name} length-channel surface (train split, top-1 / top-3 %):")
             for (lengthSigma in lengthSigmas) {
                 val top = measureTop(
                     bench,
@@ -892,7 +896,7 @@ class GlideRecoveryCalibrationTest {
                         perLength.joinToString(" / ") { fmt(it) } + "%",
                 )
             }
-            println("Glide P7-10 ${bench.name} sigma grid (train split, top-1 %):")
+            println("Glide ${bench.name} sigma grid (train split, top-1 %):")
             val shapeStds = listOf(6.9f, 8.28f, 9.66f, 11.04f)
             val locationFactors = listOf(0.09f, 0.11f, 0.1277f, 0.15f, 0.18f)
             val lengthSigmas2 = listOf(4f, 6f)
@@ -950,11 +954,12 @@ class GlideRecoveryCalibrationTest {
     }
 
     /**
-     * G8 compares constants on 5+ cp held-out rows; 2-4 cp results are reported separately.
-     * Per-language values were chosen on [tuningSurfacePerLanguageAndLengthChannel].
+     * The per-language gate compares constants on 5+ cp held-out rows; 2-4 cp results are
+     * reported separately. Per-language values were chosen on
+     * [tuningSurfacePerLanguageAndLengthChannel].
      */
     @Test
-    fun gatesG8PerLanguageConstants() {
+    fun gatesPerLanguageConstants() {
         val lines = ArrayList<String>()
         var failures = 0
         for (bench in listOf(tatarBench(), russianBench())) {
@@ -968,7 +973,7 @@ class GlideRecoveryCalibrationTest {
                 bench, languageConstants, heldOut = true, minCodePoints = 5,
             )
             println(
-                "Glide P7-10 ${bench.name} held-out 5+cp: shared top1=${fmt(shared[0])}% " +
+                "Glide ${bench.name} held-out 5+cp: shared top1=${fmt(shared[0])}% " +
                     "top3=${fmt(shared[1])}% | per-language top1=${fmt(perLanguage[0])}% " +
                     "top3=${fmt(perLanguage[1])}%",
             )
@@ -977,7 +982,7 @@ class GlideRecoveryCalibrationTest {
                 bench, languageConstants, heldOut = true, maxCodePoints = 4,
             )
             println(
-                "Glide P7-10 ${bench.name} held-out 2-4cp: shared top1=${fmt(shortShared[0])}% " +
+                "Glide ${bench.name} held-out 2-4cp: shared top1=${fmt(shortShared[0])}% " +
                     "top3=${fmt(shortShared[1])}% | per-language top1=${fmt(shortPerLanguage[0])}% " +
                     "top3=${fmt(shortPerLanguage[1])}%",
             )
@@ -1001,7 +1006,7 @@ class GlideRecoveryCalibrationTest {
         assertTrue(lines.joinToString("; "), failures == 0)
     }
 
-    // ---- B1: the alias-fold class (the ё-family) on the Russian bench. ----
+    // ---- The alias-fold class (the ё-family) on the Russian bench. ----
 
     /**
      * The word has two adjacent DIFFERENT letters mapping to one key rectangle (a letter and its
@@ -1024,14 +1029,14 @@ class GlideRecoveryCalibrationTest {
     }
 
     /**
-     * The B1 gate: every Russian dictionary word whose adjacent letters fold to one key through
-     * an alias must decode from its PLAIN gesture (the user draws no loop for a word without a
-     * doubled letter). The bench's thinned selection contains none of these words, so the class
-     * seeds itself from the whole vocabulary; the gesture for a seed word is its set row (the
-     * word's persona, no jog).
+     * The alias-fold gate: every Russian dictionary word whose adjacent letters fold to one key
+     * through an alias must decode from its PLAIN gesture (the user draws no loop for a word
+     * without a doubled letter). The bench's thinned selection contains none of these words, so
+     * the class seeds itself from the whole vocabulary; the gesture for a seed word is its set
+     * row (the word's persona, no jog).
      */
     @Test
-    fun gatesB1AliasDoubledClassOnTheRussianBench() {
+    fun gatesAliasDoubledClassOnTheRussianBench() {
         val bench = russianBench()
         val seeds = russianVocabulary.filter { isAliasFolded(it, bench.generatorGeometry) }
         assertTrue("the Russian dictionary must seed the alias_doubled class", seeds.isNotEmpty())
@@ -1056,27 +1061,27 @@ class GlideRecoveryCalibrationTest {
         val top1Pct = top1 * 100.0 / seeds.size
         val top3Pct = top3 * 100.0 / seeds.size
         println(
-            "Glide B1 alias_doubled: n=${seeds.size} top1=${fmt(top1Pct)}% top3=${fmt(top3Pct)}% " +
+            "Glide alias_doubled: n=${seeds.size} top1=${fmt(top1Pct)}% top3=${fmt(top3Pct)}% " +
                 "words=$seeds",
         )
         assertTrue(
             "alias_doubled top-3 ${fmt(top3Pct)}% below the 90% gate",
-            top3Pct >= B1_ALIAS_DOUBLED_TOP3_MIN,
+            top3Pct >= ALIAS_DOUBLED_TOP3_MIN,
         )
     }
 
     /** The Russian held-out top-1/top-3 must meet the measured synthetic-set baselines. */
     @Test
-    fun gatesB1RussianHeldOutIsImproveOrFlat() {
+    fun gatesRussianHeldOutIsImproveOrFlat() {
         val top = measureTop(russianBench(), GlideDecoder.GlideConstants.RUSSIAN, heldOut = true)
-        println("Glide B1 ru held-out: top1=${fmt(top[0])}% top3=${fmt(top[1])}%")
+        println("Glide ru held-out: top1=${fmt(top[0])}% top3=${fmt(top[1])}%")
         assertTrue(
             "ru held-out top-1 ${fmt(top[0])}% regressed past the measured baseline",
-            top[0] >= B1_RU_HELD_OUT_TOP1_PIN,
+            top[0] >= RU_HELD_OUT_TOP1_PIN,
         )
         assertTrue(
             "ru held-out top-3 ${fmt(top[1])}% regressed past the measured baseline",
-            top[1] >= B1_RU_HELD_OUT_TOP3_PIN,
+            top[1] >= RU_HELD_OUT_TOP3_PIN,
         )
     }
 
@@ -1201,7 +1206,7 @@ class GlideRecoveryCalibrationTest {
         }
     }
 
-    // ---- G5: the bigram channel on the glide N-best. ----
+    // ---- The bigram channel on the glide N-best. ----
 
     /**
      * Top-1 on the context rows of one split with the channel at [rankPenalty] (1f: off — the
@@ -1236,12 +1241,12 @@ class GlideRecoveryCalibrationTest {
     }
 
     /**
-     * The G5 tuning surface: context-row top-1 on the TRAIN split over the rank-penalty grid.
-     * Diagnostic only; the gate is [gatesG5BigramChannel].
+     * The bigram-channel tuning surface: context-row top-1 on the TRAIN split over the
+     * rank-penalty grid. Diagnostic only; the gate is [gatesBigramChannel].
      */
     @Test
     fun tuningSurfaceBigramChannelOnTheTrainSplit() {
-        println("Glide P7-12 bigram channel (train context rows, top-1 %):")
+        println("Glide bigram channel (train context rows, top-1 %):")
         for (penalty in listOf(1.0f, 1.25f, 1.5f, 2.0f, 3.0f, 4.0f)) {
             val (top1, count) = contextRowTop1(penalty, heldOut = false)
             println("  rankPenalty=%4.2f top1=%s%% (n=%d)".format(java.util.Locale.ROOT, penalty, fmt(top1), count))
@@ -1249,16 +1254,17 @@ class GlideRecoveryCalibrationTest {
     }
 
     /**
-     * The G5 gate: on the HELD-OUT context rows the channel (the shipped rank penalty) must beat
-     * the plain decode's top-1. Non-context rows never see the channel (no context word), so they
-     * are unchanged by construction — [gatesG1AndG2OnTheRealDictionary] covers them.
+     * The bigram-channel gate: on the HELD-OUT context rows the channel (the shipped rank
+     * penalty) must beat the plain decode's top-1. Non-context rows never see the channel (no
+     * context word), so they are unchanged by construction —
+     * [gatesRecoveryAndLatencyOnTheRealDictionary] covers them.
      */
     @Test
-    fun gatesG5BigramChannel() {
+    fun gatesBigramChannel() {
         val (without, count) = contextRowTop1(1.0f, heldOut = true)
         val (with, _) = contextRowTop1(GlideDecoder.GlideConstants.TATAR.bigramRankPenalty, heldOut = true)
         println(
-            "Glide P7-12 bigram channel held-out: top1_without=${fmt(without)}% " +
+            "Glide bigram channel held-out: top1_without=${fmt(without)}% " +
                 "top1_with=${fmt(with)}% (n=$count)",
         )
         assertTrue(
@@ -1461,10 +1467,10 @@ class GlideRecoveryCalibrationTest {
             if (top1Hit(reused, snap)) blanket++
         }
         println(
-            "Glide P7-13 train context rows n=${snapshots.size}: plain=${fmt(pct(plain, snapshots.size))}% " +
+            "Glide train context rows n=${snapshots.size}: plain=${fmt(pct(plain, snapshots.size))}% " +
                 "blanket=${fmt(pct(blanket, snapshots.size))}%",
         )
-        println("Glide P7-13 pair-conditional surface (train context rows, top-1 %, firing rate %):")
+        println("Glide pair-conditional surface (train context rows, top-1 %, firing rate %):")
         for (setName in listOf("union", "mutual")) {
             val keys = if (setName == "union") pairs.union else pairs.mutual
             for (rankOneOnly in listOf(false, true)) {
@@ -1500,13 +1506,13 @@ class GlideRecoveryCalibrationTest {
     }
 
     /**
-     * The G4 gate: the speed-adaptive location sigma (the shipped constants) must beat the
-     * unadapted decoder on the fast-persona class of the held-out split, with no regression on
-     * the other persona classes. The constants were chosen on the train split
+     * The speed-adaptation gate: the speed-adaptive location sigma (the shipped constants) must
+     * beat the unadapted decoder on the fast-persona class of the held-out split, with no
+     * regression on the other persona classes. The constants were chosen on the train split
      * ([tuningSurfaceSpeedChannelOnTheTrainSplit]).
      */
     @Test
-    fun gatesG4SpeedAdaptationOnTheRealDictionary() {
+    fun gatesSpeedAdaptationOnTheRealDictionary() {
         val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
         val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
         val reusablePath = GlidePath(1024)
@@ -1543,7 +1549,7 @@ class GlideRecoveryCalibrationTest {
             unadaptedTop1[persona] =
                 personaUnadaptedTop[persona].toDouble() / personaCount[persona] * 100.0
             println(
-                "Glide P7-9 persona ${personaNames[persona]}: n=${personaCount[persona]} " +
+                "Glide persona ${personaNames[persona]}: n=${personaCount[persona]} " +
                     "top1_adapted=${fmt(adaptedTop1[persona])}% " +
                     "top1_unadapted=${fmt(unadaptedTop1[persona])}%",
             )
@@ -1564,7 +1570,7 @@ class GlideRecoveryCalibrationTest {
     }
 
     @Test
-    fun gateG3ZeroAllocationsAfterWarmupOnTheRealDictionary() {
+    fun gateZeroAllocationsAfterWarmupOnTheRealDictionary() {
         val bean = ManagementFactory.getThreadMXBean() as? ThreadMXBean
         assumeTrue(bean != null && bean.isThreadAllocatedMemorySupported)
         val threadBean = bean!!
@@ -1620,10 +1626,10 @@ class GlideRecoveryCalibrationTest {
             dwellBytes <= GlideDecoder.TOP_N * 256L,
         )
         println(
-            "Glide P7-1 G3: pruned_bytes_per_call=$prunedBytes " +
+            "Glide allocation: pruned_bytes_per_call=$prunedBytes " +
                 "result_bytes_per_call=$wordBytes dwell_result_bytes_per_call=$dwellBytes " +
                 "(results materialize <= ${GlideDecoder.TOP_N} strings) " +
-                "G3=${if (prunedBytes <= 8L && wordBytes <= GlideDecoder.TOP_N * 256L &&
+                "allocation=${if (prunedBytes <= 8L && wordBytes <= GlideDecoder.TOP_N * 256L &&
                     dwellBytes <= GlideDecoder.TOP_N * 256L) "PASS" else "FAIL"}",
         )
     }
@@ -1815,7 +1821,7 @@ class GlideRecoveryCalibrationTest {
         private const val SET_SHA256 =
             "5eb32845ef22b85c7c60ab400e48dd45de14ea591930ac4db13b40ba4a82f75a"
 
-        // The per-class split of gatesG1AndG2OnTheRealDictionary.
+        // The per-class split of gatesRecoveryAndLatencyOnTheRealDictionary.
         private const val CLASS_COUNT = 7
         private val CLASS_NAMES = arrayOf(
             "plain", "doubled_jog", "doubled_nodwell_twinless", "doubled_nodwell_twin", "alias",
@@ -1833,19 +1839,20 @@ class GlideRecoveryCalibrationTest {
         )
 
         // Recovery and host-latency gates.
-        private const val G1_TOP3_MIN = 60.0
-        private const val G1_TOP1_MIN = 35.0
-        private const val G2_P95_MS = 2.0
+        private const val RECOVERY_TOP3_MIN = 60.0
+        private const val RECOVERY_TOP1_MIN = 35.0
+        private const val HOST_P95_MS = 2.0
         private const val NO_DWELL_TWIN_TOP1_PIN = 6.4516
         private const val PLAIN_TOP1_PIN = 85.9290
         private const val PLAIN_TOP3_PIN = 93.4447
         private const val ALIAS_TOP1_PIN = 95.2381
         private const val ALIAS_TOP3_PIN = 100.0
 
-        // The B1 gates: the alias_doubled class floor and measured Russian held-out baselines.
-        private const val B1_ALIAS_DOUBLED_TOP3_MIN = 90.0
-        private const val B1_RU_HELD_OUT_TOP1_PIN = 87.3540
-        private const val B1_RU_HELD_OUT_TOP3_PIN = 93.2555
+        // The alias-fold gates: the alias_doubled class floor and the measured Russian held-out
+        // baselines.
+        private const val ALIAS_DOUBLED_TOP3_MIN = 90.0
+        private const val RU_HELD_OUT_TOP1_PIN = 87.3540
+        private const val RU_HELD_OUT_TOP3_PIN = 93.2555
 
         // The pair-conditional variant's selected cell on the train surface (every cell tied, so
         // the tie-break chose the wider set, the wider firing rule and the weaker penalty); the
@@ -1854,8 +1861,8 @@ class GlideRecoveryCalibrationTest {
         internal const val PAIR_RANK_ONE_ONLY = false
         internal const val PAIR_RANK_PENALTY = 1.5f
 
-        // The pre-G8 shared constant set (one set serving both languages): the G8 gate compares
-        // the per-language constants against it on each language's held-out split.
+        // The shared constant set (one set serving both languages): the per-language gate
+        // compares the per-language constants against it on each language's held-out split.
         private val SHARED = GlideDecoder.GlideConstants(
             shapeStd = 11.04f,
             locationStdFactor = 0.18f,
@@ -2003,7 +2010,7 @@ class GlideRecoveryCalibrationTest {
             minedPairsCache?.let { return it }
             val mined = GlideConfusionPairs.mine(TdictGlideInventory(realIndex!!), geometry)
             println(
-                "Glide P7-13 mining: union=${mined.union.size} mutual=${mined.mutual.size} pairs",
+                "Glide mining: union=${mined.union.size} mutual=${mined.mutual.size} pairs",
             )
             minedPairsCache = mined
             return mined

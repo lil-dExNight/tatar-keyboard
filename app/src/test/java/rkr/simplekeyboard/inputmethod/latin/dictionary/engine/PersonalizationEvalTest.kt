@@ -540,7 +540,7 @@ class PersonalizationEvalTest {
     }
 
     @Test
-    fun a7CoverageGateOnUnseenStemTokens() {
+    fun coverageGateOnUnseenStemTokens() {
         val index = requireNotNull(dictionaryIndex)
         for (split in SPLITS) {
             val (prime, _) = splitStreams(split, evalLines)
@@ -574,15 +574,15 @@ class PersonalizationEvalTest {
             val oracle = coveredByArm.getValue(Arm.ORACLE)
             val realistic = coveredByArm.getValue(Arm.REALISTIC)
             val fixed = coveredByArm.getValue(Arm.FIXED)
-            emit("$split.a7.oracle_unseen_tokens", oracle)
-            emit("$split.a7.realistic_unseen_tokens", realistic)
-            emit("$split.a7.fixed_unseen_tokens", fixed)
+            emit("$split.unseen_stem.oracle_unseen_tokens", oracle)
+            emit("$split.unseen_stem.realistic_unseen_tokens", realistic)
+            emit("$split.unseen_stem.fixed_unseen_tokens", fixed)
             emit("$split.prime_unseen_tokens", unseenTokens)
             val rhsX1000 = realistic * 1000 + 900 * (oracle - realistic)
-            emit("$split.a7.rhs_x1000", rhsX1000)
-            emit("$split.a7.gate_pass", if (fixed * 1000 >= rhsX1000) 1 else 0)
+            emit("$split.unseen_stem.rhs_x1000", rhsX1000)
+            emit("$split.unseen_stem.gate_pass", if (fixed * 1000 >= rhsX1000) 1 else 0)
             assertEquals(split, PIN_PRIME_UNSEEN_TOKENS.getValue(split), unseenTokens)
-            assertEquals(split, PIN_A7_UNSEEN.getValue(split), listOf(oracle, realistic, fixed))
+            assertEquals(split, PIN_UNSEEN_STEM.getValue(split), listOf(oracle, realistic, fixed))
             assertTrue("$split: deferred-observation gate", fixed * 1000 >= rhsX1000)
         }
     }
@@ -682,7 +682,7 @@ class PersonalizationEvalTest {
         private val PIN_PRIME_UNSEEN_TOKENS = mapOf(
             "hash" to 83L, "chrono" to 72L, "rep" to 447L,
         )
-        private val PIN_A7_UNSEEN = mapOf(
+        private val PIN_UNSEEN_STEM = mapOf(
             "hash" to listOf(0L, 0L, 0L),
             "chrono" to listOf(0L, 0L, 0L),
             "rep" to listOf(405L, 405L, 405L),

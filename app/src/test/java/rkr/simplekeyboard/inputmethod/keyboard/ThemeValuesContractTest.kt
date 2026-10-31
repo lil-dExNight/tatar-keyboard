@@ -48,40 +48,40 @@ class ThemeValuesContractTest {
     }
 
     @Test
-    fun w1TheLightKeyShadowIsThirtyPercentBlack() {
+    fun theLightKeyShadowIsThirtyPercentBlack() {
         val colors = projectFile("src/main/res/values/colors.xml").readText()
-        assertEquals("W1: light key shadow", "#4D000000", colorValue(colors, "tatar_key_shadow"))
+        assertEquals("light key shadow", "#4D000000", colorValue(colors, "tatar_key_shadow"))
     }
 
     @Test
-    fun w1TheDarkKeyShadowIsUnchanged() {
+    fun theDarkKeyShadowIsUnchanged() {
         val night = projectFile("src/main/res/values-night/colors.xml").readText()
         assertEquals("dark shadow stays 0.70", "#B3000000", colorValue(night, "tatar_key_shadow"))
     }
 
     @Test
-    fun w2TheLightFunctionalKeyMatchesTheReference() {
+    fun theLightFunctionalKeyMatchesTheReference() {
         val colors = projectFile("src/main/res/values/colors.xml").readText()
-        assertEquals("W2: functional key", "#ABB1BA", colorValue(colors, "tatar_key_functional"))
+        assertEquals("functional key", "#ABB1BA", colorValue(colors, "tatar_key_functional"))
     }
 
     @Test
-    fun w3TheSpacebarLanguageLabelStaysOpaque() {
+    fun theSpacebarLanguageLabelStaysOpaque() {
         val config = projectFile("src/main/res/values/config-common.xml").readText()
         val open = "<integer name=\"config_language_on_spacebar_final_alpha\">"
         val start = config.indexOf(open)
         assertTrue("alpha integer missing", start >= 0)
         val value = config.substring(start + open.length, config.indexOf("</integer>", start))
-        assertEquals("W3: final alpha", "255", value)
+        assertEquals("final alpha", "255", value)
     }
 
     @Test
-    fun w6HapticsDoNotOverrideTheSystemSetting() {
+    fun hapticsDoNotOverrideTheSystemSetting() {
         val source = projectFile(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/AudioAndHapticFeedbackManager.java",
         ).readText()
         assertFalse(
-            "W6: the global-setting override must be gone",
+            "the global-setting override must be gone",
             source.contains("FLAG_IGNORE_GLOBAL_SETTING"),
         )
         assertTrue(
@@ -91,7 +91,7 @@ class ThemeValuesContractTest {
     }
 
     @Test
-    fun w6TheKeyboardOwnToggleStillGatesVibration() {
+    fun theKeyboardOwnToggleStillGatesVibration() {
         val source = projectFile(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/AudioAndHapticFeedbackManager.java",
         ).readText()

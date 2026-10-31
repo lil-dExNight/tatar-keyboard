@@ -20,7 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
-import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3aTestFixtures.rawKey
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LongPressTestFixtures.rawKey
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState

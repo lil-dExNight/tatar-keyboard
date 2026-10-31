@@ -37,7 +37,7 @@ PREFIX_CODE_POINTS = 3
 
 # 64-bit FNV-1a and SplitMix64 constants. The selection is a pure function of (seed,
 # word) via these two portable primitives so the JVM test reproduces every choice
-# bit-for-bit (see E3aRecoveryCalibrationTest.kt).
+# bit-for-bit (see LongPressRecoveryCalibrationTest.kt).
 _MASK64 = (1 << 64) - 1
 _FNV_OFFSET_BASIS = 0xCBF29CE484222325
 _FNV_PRIME = 0x100000001B3

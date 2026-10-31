@@ -10,11 +10,11 @@ import org.junit.Test
  * points), the probe-first cost shape (one probe per variant, scans only for survivors), the
  * shared budgets (exceeding one drops the whole fuzzy level), and the ranking inside the tier
  * (one class tag for every family: the same-length bonus, then frequency). The calibration on
- * the real asset lives in [TtTypoPhaseCCalibrationTest]; the policy pins in
+ * the real asset lives in [TtFullSubstitutionCalibrationTest]; the policy pins in
  * [TdictPrefixIndexShippedFuzzyClassesTest].
  */
-class TdictPrefixIndexPhaseCTest {
-    private val table = E3bTestFixtures.tatarNeighborTable()
+class TdictPrefixIndexDl1TierTest {
+    private val table = TatarLayoutTestFixtures.tatarNeighborTable()
 
     private fun index(
         entries: List<Pair<String, Long>>,
@@ -97,7 +97,7 @@ class TdictPrefixIndexPhaseCTest {
             }
             codePoint++
         }
-        letters.add(E3aTestFixtures.rawKey('у', 'ү'))
+        letters.add(LongPressTestFixtures.rawKey('у', 'ү'))
         val huge = KeyNeighborTable.build("tt_RU", true, letters)
         assertTrue(
             "premise: the synthetic alphabet overflows the probe budget",

@@ -8,7 +8,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
  * Building a fixture from explicit key descriptors is a test concern; production still derives the
  * table from the live layout (`KeyNeighborTableBuilder.fromKeyboard`).
  */
-internal object E3aTestFixtures {
+internal object LongPressTestFixtures {
     /** The Tatar long-press pairs (а↔ә, о↔ө, у↔ү, ж↔җ, н↔ң, г↔һ, х↔һ, е↔ё, ь↔ъ, э↔ә). */
     fun tatarNeighborTable(subtypeId: String = "tt_RU"): KeyNeighborTable =
         KeyNeighborTable.build(

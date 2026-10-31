@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FuzzyPrefixVariantsTest {
-    private val table = E3aTestFixtures.tatarNeighborTable()
+    private val table = LongPressTestFixtures.tatarNeighborTable()
     private val codePointScratch = IntArray(64)
     private val variantScratch = ByteArray(256)
 

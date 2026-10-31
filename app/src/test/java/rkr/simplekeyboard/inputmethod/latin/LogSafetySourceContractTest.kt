@@ -134,7 +134,7 @@ class LogSafetySourceContractTest {
         }
         assertEquals(
             "the DEBUG* flag set in the input pipeline drifted; every flag guards logs and must" +
-                " stay a compile-time false — review the class KDoc finding before touching this",
+                " stay a compile-time false — read the class KDoc before touching this",
             EXPECTED_DEBUG_FLAG_COUNT,
             declarations.size,
         )

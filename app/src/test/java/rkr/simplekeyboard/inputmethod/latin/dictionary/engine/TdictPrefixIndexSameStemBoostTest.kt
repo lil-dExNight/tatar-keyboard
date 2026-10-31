@@ -252,7 +252,7 @@ class TdictPrefixIndexSameStemBoostTest {
         val medianMillis = timings[timings.size / 2] / 1_000_000.0
         val p95Millis = timings[ceil(timings.size * 0.95).toInt() - 1] / 1_000_000.0
         println(
-            "P3 boosted compute median=${"%.3f".format(java.util.Locale.ROOT, medianMillis)} ms " +
+            "same-stem boosted compute median=${"%.3f".format(java.util.Locale.ROOT, medianMillis)} ms " +
                 "p95=${"%.3f".format(java.util.Locale.ROOT, p95Millis)} ms consumed=$consumed",
         )
         assertTrue("boosted p95=${p95Millis}ms", timings[ceil(timings.size * 0.95).toInt() - 1] <= 5_000_000L)
@@ -272,7 +272,7 @@ class TdictPrefixIndexSameStemBoostTest {
         ): TdictPrefixIndex {
             val asset = listOf(File("src/main/$assetPath"), File("app/src/main/$assetPath"))
                 .firstOrNull(File::isFile) ?: error("cannot locate $assetPath")
-            val rawFile = File.createTempFile("p3-boost-", ".tdict")
+            val rawFile = File.createTempFile("same-stem-boost-", ".tdict")
             try {
                 rawFile.outputStream().use { output ->
                     TdictValidator().inflateAsset(asset.inputStream(), output, spec)

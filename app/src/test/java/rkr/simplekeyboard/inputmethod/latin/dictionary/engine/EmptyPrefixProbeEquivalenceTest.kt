@@ -125,7 +125,7 @@ class EmptyPrefixProbeEquivalenceTest {
                     ),
                 )
                 index.updateKeyNeighbors(
-                    if (tatar) E3bTestFixtures.tatarNeighborTable() else russianNeighborTable(),
+                    if (tatar) TatarLayoutTestFixtures.tatarNeighborTable() else russianNeighborTable(),
                 )
                 return index
             } finally {

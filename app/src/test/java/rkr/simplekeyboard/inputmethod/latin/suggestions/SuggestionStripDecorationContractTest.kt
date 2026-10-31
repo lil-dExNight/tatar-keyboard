@@ -86,7 +86,7 @@ class SuggestionStripDecorationContractTest {
     @Test
     fun theCellTextIsEighteenDp() {
         assertTrue(
-            "W4: 17dp -> 18dp",
+            "the cell text is 18dp",
             viewSource().contains("private const val TEXT_SIZE_DP = 18f"),
         )
     }

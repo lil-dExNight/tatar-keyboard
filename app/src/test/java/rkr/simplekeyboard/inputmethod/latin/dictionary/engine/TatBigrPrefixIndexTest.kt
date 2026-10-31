@@ -260,7 +260,7 @@ class TatBigrPrefixIndexTest {
                 "src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
                 "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
             )
-            val rawFile = java.io.File.createTempFile("e5c-real-dict-", ".tdict")
+            val rawFile = java.io.File.createTempFile("real-dict-", ".tdict")
             try {
                 rawFile.outputStream().use { output ->
                     TdictValidator().inflateAsset(asset.inputStream(), output, spec)

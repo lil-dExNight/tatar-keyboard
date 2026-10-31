@@ -39,8 +39,8 @@ import kotlin.math.ceil
  *     root there is no `drop_caches`, so later repetitions hit a warm page cache; rep 1 is
  *     logged separately as the closest cold value.
  *  3. Lookup p50/p95/max over the review prefixes and typo probes of
- *     [E3bComputeInstrumentationTest], both fuzzy policies with the neighbor table, for each
- *     strategy; p95 must stay within the same 5.0 ms bound.
+ *     [FuzzyLookupComputeInstrumentationTest], both fuzzy policies with the neighbor table, for
+ *     each strategy; p95 must stay within the same 5.0 ms bound.
  *
  * Run on an idle device with the screen on:
  *
@@ -57,7 +57,7 @@ class DictionaryIoStrategyInstrumentationTest : InstrumentationTestCase() {
     fun testColdLoadLookupAndPssOfBothIoStrategies() {
         val context = instrumentation.targetContext
         val spec = DictionaryArtifactSpec.TATAR_TOP100K_V1
-        val rawFile = File.createTempFile("o7-io-strategy-", ".tdict", context.cacheDir)
+        val rawFile = File.createTempFile("io-strategy-", ".tdict", context.cacheDir)
         try {
             context.assets.open(spec.assetPath).use { input ->
                 rawFile.outputStream().use { output ->
@@ -81,8 +81,8 @@ class DictionaryIoStrategyInstrumentationTest : InstrumentationTestCase() {
             val withHeap = pssWithHeapIndex(rawFile, identity, spec)
             Log.i(
                 TAG,
-                "O7 device pss kB (total/dalvik/other) baseline=$baseline mmapLoaded=$withMmap " +
-                    "afterMmapRelease=$afterMmapRelease heapLoaded=$withHeap " +
+                "io-strategy device pss kB (total/dalvik/other) baseline=$baseline " +
+                    "mmapLoaded=$withMmap afterMmapRelease=$afterMmapRelease heapLoaded=$withHeap " +
                     "rawBytes=${validated.rawSize}",
             )
 
@@ -110,7 +110,7 @@ class DictionaryIoStrategyInstrumentationTest : InstrumentationTestCase() {
             }
             Log.i(
                 TAG,
-                "O7 device cold-load rep1 acquireHeap=${fmt(acquireHeap[0])} ms " +
+                "io-strategy device cold-load rep1 acquireHeap=${fmt(acquireHeap[0])} ms " +
                     "openHeap=${fmt(openHeap[0])} ms acquireMmap=${fmt(acquireMapped[0])} ms " +
                     "openMmap=${fmt(openMapped[0])} ms",
             )
@@ -120,26 +120,28 @@ class DictionaryIoStrategyInstrumentationTest : InstrumentationTestCase() {
             openMapped.sort()
             Log.i(
                 TAG,
-                "O7 device cold-load warm-medians ($REPS reps, no drop_caches) " +
+                "io-strategy device cold-load warm-medians ($REPS reps, no drop_caches) " +
                     "acquireHeap=${fmt(median(acquireHeap))} ms openHeap=${fmt(median(openHeap))} ms " +
                     "acquireMmap=${fmt(median(acquireMapped))} ms " +
                     "openMmap=${fmt(median(openMapped))} ms consumed=$consumed",
             )
 
             // 3. Lookup latency: both policies, both strategies, identical workloads, with the
-            // neighbor table engaged as in E3bComputeInstrumentationTest.
-            val neighborTable = E3bComputeInstrumentationTest().offlineModelNeighborTable()
+            // neighbor table engaged as in FuzzyLookupComputeInstrumentationTest.
+            val neighborTable = FuzzyLookupComputeInstrumentationTest().offlineModelNeighborTable()
             val heapBytes = rawFile.readBytes()
             val mappedBytes =
                 MappedDictionaryEngine.FILE_MAPPER.mapReadOnly(rawFile, validated.rawSize)
-            for ((policyName, policy) in E3bComputeInstrumentationTest.POLICIES) {
+            val reviewPrefixes = FuzzyLookupComputeInstrumentationTest.REVIEW_PREFIXES
+            val typoProbes = FuzzyLookupComputeInstrumentationTest.TYPO_PROBES
+            for ((policyName, policy) in FuzzyLookupComputeInstrumentationTest.POLICIES) {
                 val heapIndex =
                     openIndex(ByteBuffer.wrap(heapBytes), identity, spec, policy, neighborTable)
                 val mappedIndex = openIndex(mappedBytes, identity, spec, policy, neighborTable)
-                measure(heapIndex, "heap", policyName, E3bComputeInstrumentationTest.REVIEW_PREFIXES)
-                measure(mappedIndex, "mmap", policyName, E3bComputeInstrumentationTest.REVIEW_PREFIXES)
-                measure(heapIndex, "heap", "$policyName-typo", E3bComputeInstrumentationTest.TYPO_PROBES)
-                measure(mappedIndex, "mmap", "$policyName-typo", E3bComputeInstrumentationTest.TYPO_PROBES)
+                measure(heapIndex, "heap", policyName, reviewPrefixes)
+                measure(mappedIndex, "mmap", policyName, reviewPrefixes)
+                measure(heapIndex, "heap", "$policyName-typo", typoProbes)
+                measure(mappedIndex, "mmap", "$policyName-typo", typoProbes)
             }
         } finally {
             rawFile.delete()
@@ -169,12 +171,12 @@ class DictionaryIoStrategyInstrumentationTest : InstrumentationTestCase() {
         val max = timings.last() / 1_000_000.0
         Log.i(
             TAG,
-            "O7 device compute strategy=$strategy policy=$policyName p50=${fmt(p50)} ms " +
+            "io-strategy device compute strategy=$strategy policy=$policyName p50=${fmt(p50)} ms " +
                 "p95=${fmt(p95)} ms max=${fmt(max)} ms samples=${timings.size} consumed=$consumed",
         )
         assertTrue(
-            "O7 $strategy/$policyName p95=$p95 ms exceeds the conservative 5.0 ms bound " +
-                "(the E3b fail-closed constant)",
+            "io-strategy $strategy/$policyName p95=$p95 ms exceeds the conservative 5.0 ms bound " +
+                "(the bound of FuzzyLookupComputeInstrumentationTest)",
             p95 <= 5.0,
         )
     }

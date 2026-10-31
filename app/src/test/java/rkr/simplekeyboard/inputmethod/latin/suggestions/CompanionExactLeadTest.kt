@@ -20,7 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3aTestFixtures.rawKey
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LongPressTestFixtures.rawKey
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes

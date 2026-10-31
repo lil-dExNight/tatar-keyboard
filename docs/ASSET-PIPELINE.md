@@ -105,8 +105,8 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
 5. **Calibration pins.** The typo-recovery and glide calibration sets are deterministic
    functions of the Tatar dictionary, so their identities change with it. The rebuild
    regenerates the sets and rewrites the pinned identities in `tests/typo_pack/`,
-   `tests/glide_pack/` and the JVM calibration tests (`E3aRecoveryCalibrationTest`,
-   `TtTypoPhaseCCalibrationTest`, `GlideRecoveryCalibrationTest`, `GlideGoldenExportTest`).
+   `tests/glide_pack/` and the JVM calibration tests (`LongPressRecoveryCalibrationTest`,
+   `TtFullSubstitutionCalibrationTest`, `GlideRecoveryCalibrationTest`, `GlideGoldenExportTest`).
 6. **Check.** The `--check` procedure runs over all four assets.
 
 The Tatar bigram rebuild passes `--recover-punctuation`: Unicode punctuation is stripped at token

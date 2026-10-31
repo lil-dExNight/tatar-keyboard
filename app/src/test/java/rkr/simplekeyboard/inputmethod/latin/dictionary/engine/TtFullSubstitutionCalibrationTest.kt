@@ -44,7 +44,7 @@ import kotlin.math.ceil
  *
  * Metrics are printed as raw lines and the counts are pinned exactly.
  */
-class TtTypoPhaseCCalibrationTest {
+class TtFullSubstitutionCalibrationTest {
 
     // ---- Portable deterministic primitives (bit-identical to scripts/typo_pack.py). ----
 
@@ -125,7 +125,7 @@ class TtTypoPhaseCCalibrationTest {
     }
 
     @Test
-    fun thePhaseCSetsAreByteIdenticalToTheGeneratorRuns() {
+    fun theClass4SetsAreByteIdenticalToTheGeneratorRuns() {
         // The alphabet of the offline model is exactly the engine-side node set.
         assertEquals(39, neighborTable.nodes.size)
         // Identities of `python3 scripts/typo_pack.py build --edit-class 4 [--prefix-code-points 5]`
@@ -139,7 +139,7 @@ class TtTypoPhaseCCalibrationTest {
     }
 
     @Test
-    fun gateG1CRecoveryUnderTheActivationCondition() {
+    fun gateRecoveryUnderTheActivationCondition() {
         val baseline = requireNotNull(defaultIndex)
         val candidate = requireNotNull(tatarIndex)
         val class1Bonus = requireNotNull(class1BonusIndex)
@@ -169,14 +169,14 @@ class TtTypoPhaseCCalibrationTest {
         }
         val ratioW5 = candW5.rate / baseW5.rate
 
-        // Raw calibration lines (grep target: "PhaseC recovery@3").
+        // Raw calibration lines (grep target: "full-substitution recovery@3").
         println(
-            "PhaseC recovery@3 window=3cp activation=never class4_set=${class4w3.rows.size} " +
+            "full-substitution recovery@3 window=3cp activation=never class4_set=${class4w3.rows.size} " +
                 "identical_to_{1}+bonus=$identicalW3 probes=0 " +
                 "verdict=${if (identicalW3 == class4w3.rows.size) "GATE-HELD" else "GATE-LEAKED"}",
         )
         println(
-            "PhaseC recovery@3 window=5cp " +
+            "full-substitution recovery@3 window=5cp " +
                 "baseline(class1-only, class1 set, exact==0)=${fmt(baseW5.rate)}% (${baseW5.recovered}/${baseW5.total}) " +
                 "candidate(classes1+4+bonus, class4 set, exact==0)=${fmt(candW5.rate)}% (${candW5.recovered}/${candW5.total}) " +
                 "ratio=${fmt(ratioW5)}x gate>=1.5x verdict=${if (ratioW5 >= 1.5) "PASS" else "BELOW"} " +
@@ -184,7 +184,7 @@ class TtTypoPhaseCCalibrationTest {
                 "visited_p95=${candW5.visitedP95} visited_max=${candW5.visitedMax} " +
                 "probe_p95=${candW5.probeP95} probe_max=${candW5.probeMax} over_budget=${candW5.overBudget} " +
                 "whole_set=${fmt(candW5Whole * 100.0 / class4w5.rows.size)}% ($candW5Whole/${class4w5.rows.size}) " +
-                "phaseB_class2_whole_set=38.4641%",
+                "class2_policy_whole_set=38.4641%",
         )
 
         assertEquals("class #4 must be inert at 3 code points", class4w3.rows.size, identicalW3)
@@ -201,7 +201,7 @@ class TtTypoPhaseCCalibrationTest {
      * gate uses the whole-set share; the activation subset (exact pass empty) is reported too.
      */
     @Test
-    fun gateG1C2SameSetLift() {
+    fun gateSameSetLift() {
         val baseline = requireNotNull(defaultIndex)
         val candidate = requireNotNull(tatarIndex)
         val class4w3 = buildSubstitutionSet(3)
@@ -238,9 +238,9 @@ class TtTypoPhaseCCalibrationTest {
             if (candidate.lookup(query).contains(row.word)) candW3Whole++
         }
 
-        // Raw calibration line (grep target: "PhaseC2 lift").
+        // Raw calibration line (grep target: "full-substitution lift").
         println(
-            "PhaseC2 lift window=5cp set=class4 whole_set: " +
+            "full-substitution lift window=5cp set=class4 whole_set: " +
                 "baseline=${fmt(baseW5Whole * 100.0 / total)}% ($baseW5Whole) " +
                 "candidate=${fmt(candW5Whole * 100.0 / total)}% ($candW5Whole) " +
                 "lift=${fmt(liftWhole)}pp gate>=+10pp verdict=${if (liftWhole >= 10.0) "PASS" else "BELOW"} | " +
@@ -249,14 +249,14 @@ class TtTypoPhaseCCalibrationTest {
                 "window=3cp baseline=$baseW3Whole candidate=$candW3Whole (gate inert)",
         )
 
-        assertEquals(PIN_C2_BASE_W5_WHOLE, baseW5Whole)
-        assertEquals(PIN_C2_CAND_W5_WHOLE, candW5Whole)
-        assertEquals(PIN_C2_ACTIVE_ROWS, activeRows)
-        assertEquals(PIN_C2_BASE_W5_ACTIVE, baseW5Active)
-        assertEquals(PIN_C2_CAND_W5_ACTIVE, candW5Active)
-        assertEquals(PIN_C2_BASE_W3_WHOLE, baseW3Whole)
-        assertEquals(PIN_C2_CAND_W3_WHOLE, candW3Whole)
-        assertTrue("G1-C2: the same-set lift must be at least +10 pp", liftWhole >= 10.0)
+        assertEquals(PIN_LIFT_BASE_W5_WHOLE, baseW5Whole)
+        assertEquals(PIN_LIFT_CAND_W5_WHOLE, candW5Whole)
+        assertEquals(PIN_LIFT_ACTIVE_ROWS, activeRows)
+        assertEquals(PIN_LIFT_BASE_W5_ACTIVE, baseW5Active)
+        assertEquals(PIN_LIFT_CAND_W5_ACTIVE, candW5Active)
+        assertEquals(PIN_LIFT_BASE_W3_WHOLE, baseW3Whole)
+        assertEquals(PIN_LIFT_CAND_W3_WHOLE, candW3Whole)
+        assertTrue("the same-set lift must be at least +10 pp", liftWhole >= 10.0)
     }
 
     /**
@@ -266,7 +266,7 @@ class TtTypoPhaseCCalibrationTest {
      * otherwise empty strip is normal IME behavior.
      */
     @Test
-    fun gateG2CPrecisionOnGenuinelyEmptyStrips() {
+    fun gatePrecisionOnGenuinelyEmptyStrips() {
         val baseline = requireNotNull(defaultIndex)
         val candidate = requireNotNull(tatarIndex)
         var emptyExact = 0
@@ -287,24 +287,24 @@ class TtTypoPhaseCCalibrationTest {
         }
         val activationRate = emptyExact * 100.0 / evalPrefixes.size
         val fillShare = class4Filled * 100.0 / emptyExact
-        // Raw calibration line (grep target: "PhaseC precision").
+        // Raw calibration line (grep target: "full-substitution precision").
         println(
-            "PhaseC precision eval_prefixes_>=4cp=${evalPrefixes.size} exact_empty=$emptyExact " +
+            "full-substitution precision eval_prefixes_>=4cp=${evalPrefixes.size} exact_empty=$emptyExact " +
                 "(${fmt(activationRate)}%) class4_filled=$class4Filled (${fmt(fillShare)}% of empty) " +
                 "gate: activation<=25% verdict=${if (activationRate <= 25.0) "PASS" else "ABOVE"} " +
-                "(fill rate reported, no threshold — G2-C2)",
+                "(fill rate reported, no threshold)",
         )
         assertEquals(PIN_EVAL_PREFIXES_GE4, evalPrefixes.size)
         assertEquals(PIN_EXACT_EMPTY, emptyExact)
         assertEquals(PIN_CLASS4_FILLED, class4Filled)
         assertTrue(
-            "G2-C2: class #4 must activate only on genuinely empty strips (<= 25 % of >= 4-cp prefixes)",
+            "class #4 must activate only on genuinely empty strips (<= 25 % of >= 4-cp prefixes)",
             activationRate <= 25.0,
         )
     }
 
     @Test
-    fun gateG3CHostComputeWithClass4Engaged() {
+    fun gateHostComputeWithClass4Engaged() {
         val class4w5 = buildSubstitutionSet(5)
         // Deterministic sample of the set: every 53rd row (~2 000 prefixes).
         val sample = class4w5.rows.filterIndexed { index, _ -> index % 53 == 0 }
@@ -338,9 +338,9 @@ class TtTypoPhaseCCalibrationTest {
             val p50 = timings[timings.size / 2] / 1_000_000.0
             val p95 = timings[ceil(timings.size * 0.95).toInt() - 1] / 1_000_000.0
             val max = timings.last() / 1_000_000.0
-            // Raw calibration line (grep target: "PhaseC perf").
+            // Raw calibration line (grep target: "full-substitution perf").
             println(
-                "PhaseC perf host window=5cp policy=$name samples=${timings.size} " +
+                "full-substitution perf host window=5cp policy=$name samples=${timings.size} " +
                     "p50=${fmtMs(p50)} ms p95=${fmtMs(p95)} ms max=${fmtMs(max)} ms " +
                     "probe_p95=${percentile(probes.sorted(), 0.95)} probe_max=${probes.maxOrNull() ?: 0} " +
                     "consumed=$consumed",
@@ -466,15 +466,15 @@ class TtTypoPhaseCCalibrationTest {
         private const val PIN_CLASS4_FILLED = 1_052
 
         // Pins of the same-set lift measurement.
-        private const val PIN_C2_BASE_W5_WHOLE = 532
-        private const val PIN_C2_CAND_W5_WHOLE = 30_089
-        private const val PIN_C2_ACTIVE_ROWS = 101_418
-        private const val PIN_C2_BASE_W5_ACTIVE = 523
-        private const val PIN_C2_CAND_W5_ACTIVE = 30_080
-        private const val PIN_C2_BASE_W3_WHOLE = 114
-        private const val PIN_C2_CAND_W3_WHOLE = 118
+        private const val PIN_LIFT_BASE_W5_WHOLE = 532
+        private const val PIN_LIFT_CAND_W5_WHOLE = 30_089
+        private const val PIN_LIFT_ACTIVE_ROWS = 101_418
+        private const val PIN_LIFT_BASE_W5_ACTIVE = 523
+        private const val PIN_LIFT_CAND_W5_ACTIVE = 30_080
+        private const val PIN_LIFT_BASE_W3_WHOLE = 114
+        private const val PIN_LIFT_CAND_W3_WHOLE = 118
 
-        private val neighborTable = E3bTestFixtures.tatarNeighborTable()
+        private val neighborTable = TatarLayoutTestFixtures.tatarNeighborTable()
         private lateinit var vocabulary: List<String>
         private lateinit var evalPrefixes: List<String>
         private var defaultIndex: TdictPrefixIndex? = null

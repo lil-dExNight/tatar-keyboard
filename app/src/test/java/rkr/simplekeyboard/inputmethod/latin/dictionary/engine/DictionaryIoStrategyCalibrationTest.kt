@@ -206,7 +206,7 @@ class DictionaryIoStrategyCalibrationTest {
     }
 
     companion object {
-        // The typo workload, inlined as in E3bComputeInstrumentationTest: the target case at
+        // The typo workload, inlined as in FuzzyLookupComputeInstrumentationTest: the target case at
         // 3/4/5 code points, "сйл", and the 10-code-point "сцләмәтлек", the heaviest reader of the
         // dictionary bytes.
         private val TYPO_PROBES = listOf("сцл", "сцлә", "сцләм", "сйл", "сцләмәтлек")
@@ -266,7 +266,7 @@ class DictionaryIoStrategyCalibrationTest {
                 buffer, identity, spec.expectedEntryCount, spec.expectedRawSize,
                 null, FuzzyEditPolicy.TATAR, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
             ),
-        ).also { it.updateKeyNeighbors(E3bTestFixtures.tatarNeighborTable()) }
+        ).also { it.updateKeyNeighbors(TatarLayoutTestFixtures.tatarNeighborTable()) }
 
         private fun allocationBean(): com.sun.management.ThreadMXBean? {
             val bean = ManagementFactory.getThreadMXBean()

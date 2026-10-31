@@ -577,7 +577,7 @@ class TypoMutatedEvalTest {
         private const val PIN_VALID_OOV_FALSE_REPLACEMENTS = 2
 
         private val SAFETY_STRATA = listOf("seen_form", "new_form_of_seen_stem", "unseen_stem")
-        private val neighborTable = E3bTestFixtures.tatarNeighborTable()
+        private val neighborTable = TatarLayoutTestFixtures.tatarNeighborTable()
         internal val ALPHABET: IntArray get() = neighborTable.nodes
         private var tatarIndex: TdictPrefixIndex? = null
         private lateinit var vocabulary: List<String>

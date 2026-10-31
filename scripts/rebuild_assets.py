@@ -872,8 +872,8 @@ CALIBRATION_TYPO_SETS = ((1, 3), (2, 3), (3, 3), (4, 3), (1, 5), (2, 5), (4, 5))
 TYPO_PACK_TEST = Path("tests/typo_pack/test_typo_pack.py")
 GLIDE_PACK_TEST = Path("tests/glide_pack/test_glide_pack.py")
 JVM_TESTS_DIR = Path("app/src/test/java/rkr/simplekeyboard/inputmethod/latin")
-E3A_TEST = JVM_TESTS_DIR / "dictionary/engine/E3aRecoveryCalibrationTest.kt"
-PHASE_C_TEST = JVM_TESTS_DIR / "dictionary/engine/TtTypoPhaseCCalibrationTest.kt"
+LONG_PRESS_CALIBRATION_TEST = JVM_TESTS_DIR / "dictionary/engine/LongPressRecoveryCalibrationTest.kt"
+FULL_SUBSTITUTION_CALIBRATION_TEST = JVM_TESTS_DIR / "dictionary/engine/TtFullSubstitutionCalibrationTest.kt"
 GLIDE_CALIBRATION_TEST = JVM_TESTS_DIR / "glide/GlideRecoveryCalibrationTest.kt"
 GLIDE_GOLDEN_TEST = JVM_TESTS_DIR / "golden/GlideGoldenExportTest.kt"
 
@@ -1035,7 +1035,7 @@ def _calibration_pin_sites(
             ],
         ),
         (
-            E3A_TEST,
+            LONG_PRESS_CALIBRATION_TEST,
             None,
             [
                 (r"GENERATOR_SET_SIZE = ([\d_]+)", size[(1, 3)]),
@@ -1043,7 +1043,7 @@ def _calibration_pin_sites(
             ],
         ),
         (
-            PHASE_C_TEST,
+            FULL_SUBSTITUTION_CALIBRATION_TEST,
             None,
             [
                 (r"assertEquals\(([\d_]+), class4w3\.rows\.size\)", size[(4, 3)]),

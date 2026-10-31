@@ -35,7 +35,7 @@ import kotlin.math.ceil
  * `android.test.InstrumentationTestRunner` and `android.test.InstrumentationTestCase` come with
  * the SDK, so no androidx.test artifact has to be downloaded.
  */
-class E3bComputeInstrumentationTest : InstrumentationTestCase() {
+class FuzzyLookupComputeInstrumentationTest : InstrumentationTestCase() {
 
     fun testComputeP50P95MaxOverReviewPrefixes() {
         val context = instrumentation.targetContext
@@ -70,8 +70,9 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
         val max = timings.last() / 1_000_000.0
         Log.i(
             TAG,
-            "PhaseC device compute $label p50=${fmt(p50)} ms p95=${fmt(p95)} ms max=${fmt(max)} ms " +
-                "samples=${timings.size} consumed=$consumed totalProbes=$probes maxProbes=$maxProbes",
+            "fuzzy lookup device compute $label p50=${fmt(p50)} ms p95=${fmt(p95)} ms " +
+                "max=${fmt(max)} ms samples=${timings.size} consumed=$consumed " +
+                "totalProbes=$probes maxProbes=$maxProbes",
         )
         // Only the typo-probe labels ("typo-default", "typo-tatar") have a device budget,
         // p95 <= 3.5 ms; the assert uses 5.0 ms to avoid flakes. The review-prefix labels have
@@ -89,7 +90,7 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
 
     private fun inflateTatarDictionary(context: android.content.Context): ByteArray {
         val spec = DictionaryArtifactSpec.TATAR_TOP100K_V1
-        val rawFile = File.createTempFile("e3b-compute-", ".tdict", context.cacheDir)
+        val rawFile = File.createTempFile("fuzzy-lookup-compute-", ".tdict", context.cacheDir)
         try {
             context.assets.open(spec.assetPath).use { input ->
                 rawFile.outputStream().use { output -> TdictValidator().inflateAsset(input, output, spec) }
@@ -134,7 +135,7 @@ class E3bComputeInstrumentationTest : InstrumentationTestCase() {
         )
 
     companion object {
-        private const val TAG = "E3bCompute"
+        private const val TAG = "FuzzyLookupCompute"
 
         internal val POLICIES = listOf(
             "default" to FuzzyEditPolicy.DEFAULT,

@@ -37,7 +37,7 @@ import kotlin.math.ceil
  * counts how often each word's typo prefix puts the word in the top three. A SHA-256 match with
  * the generator's run shows both build the same set; the recovery number is printed.
  */
-class E3aRecoveryCalibrationTest {
+class LongPressRecoveryCalibrationTest {
 
     // ---- Portable deterministic primitives (must match scripts/typo_pack.py bit-for-bit). ----
 
@@ -170,9 +170,9 @@ class E3aRecoveryCalibrationTest {
         val deltaPp = recovery * 100 - CONTRACT_RECOVERY_PP
         val withinTolerance = kotlin.math.abs(deltaPp) <= TOLERANCE_PP
 
-        // Raw calibration line (grep target: "E3a recovery@3").
+        // Raw calibration line (grep target: "long-press recovery@3").
         println(
-            "E3a recovery@3 class#1 seed=$SEED prefix_cp=$PREFIX_CODE_POINTS set=$total " +
+            "long-press recovery@3 class#1 seed=$SEED prefix_cp=$PREFIX_CODE_POINTS set=$total " +
                 "recovered=$recovered recovery@3=${format(recovery * 100)}% " +
                 "baseline_exact_only=${format(baseline * 100)}% " +
                 "fuzzy_fired=$fuzzyFired recovery@3_when_fuzzy_fired=${format(conditional * 100)}% " +
@@ -217,7 +217,7 @@ class E3aRecoveryCalibrationTest {
             // with exactly the exact-only result.
             assertEquals(exact, fuzzy.take(exact.size))
             val added = fuzzy.drop(exact.size)
-            println("E3a fuzzy-delta\t$prefix\texact=${exact.joinToString("|")}\tadded=${added.joinToString("|")}")
+            println("long-press fuzzy-delta\t$prefix\texact=${exact.joinToString("|")}\tadded=${added.joinToString("|")}")
         }
     }
 
@@ -250,7 +250,7 @@ class E3aRecoveryCalibrationTest {
         private const val CONTRACT_RECOVERY_PP = 14.2
         private const val TOLERANCE_PP = 1.0
 
-        private val neighborTable = E3aTestFixtures.tatarNeighborTable()
+        private val neighborTable = LongPressTestFixtures.tatarNeighborTable()
         private var realIndex: TdictPrefixIndex? = null
         private lateinit var vocabulary: List<String>
 
@@ -262,7 +262,7 @@ class E3aRecoveryCalibrationTest {
                 "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
             )
             val spec = DictionaryArtifactSpec.TATAR_TOP100K_V1
-            val rawFile = File.createTempFile("e3a-recovery-", ".tdict")
+            val rawFile = File.createTempFile("long-press-recovery-", ".tdict")
             try {
                 rawFile.outputStream().use { output ->
                     TdictValidator().inflateAsset(asset.inputStream(), output, spec)

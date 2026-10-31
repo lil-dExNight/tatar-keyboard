@@ -15,7 +15,7 @@ import org.junit.Test
  * spans the tier: a correction always precedes the continuations of its own and other variants.
  */
 class TdictPrefixIndexSameLengthBonusTest {
-    private val table = E3bTestFixtures.tatarNeighborTable()
+    private val table = TatarLayoutTestFixtures.tatarNeighborTable()
 
     /** Class #1 with the bonus on: isolates the bonus from the class enablement. */
     private val bonusPolicy = FuzzyEditPolicy(intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS), true)

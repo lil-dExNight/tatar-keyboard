@@ -143,7 +143,7 @@ class AutocorrectSourceContractTest {
     }
 
     @Test
-    fun theAutocorrectSeamsAreTheOnlyWayTheControllerEditsTextForD3() {
+    fun theAutocorrectSeamsAreTheOnlyWayTheControllerEditsText() {
         // The controller owns the decision and none of the mechanics: everything it does to the
         // text goes through the two editor seams, so a second edit path cannot appear here unseen.
         val controller = firstFile(

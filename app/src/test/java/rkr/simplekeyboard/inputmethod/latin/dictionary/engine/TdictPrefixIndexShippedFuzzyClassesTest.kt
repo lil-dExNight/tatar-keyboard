@@ -19,7 +19,7 @@ import java.io.File
  *    Autocorrect stays class #1.
  */
 class TdictPrefixIndexShippedFuzzyClassesTest {
-    private val table = E3bTestFixtures.tatarNeighborTable()
+    private val table = TatarLayoutTestFixtures.tatarNeighborTable()
 
     private fun index(
         entries: List<Pair<String, Long>>,

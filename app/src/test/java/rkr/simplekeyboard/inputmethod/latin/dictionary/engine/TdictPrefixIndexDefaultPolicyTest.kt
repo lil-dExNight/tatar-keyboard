@@ -9,8 +9,8 @@ import org.junit.Test
  * [FuzzyEditPolicy.DEFAULT] (class #1 long-press partner only; no shipped engine runs it), with
  * the full Tatar alphabet table.
  */
-class TdictPrefixIndexE3bTest {
-    private val table = E3bTestFixtures.tatarNeighborTable()
+class TdictPrefixIndexDefaultPolicyTest {
+    private val table = TatarLayoutTestFixtures.tatarNeighborTable()
 
     private fun index(entries: List<Pair<String, Long>>, withTable: Boolean = true): TdictPrefixIndex {
         val index = EngineTestFixtures.index(entries)
@@ -63,7 +63,7 @@ class TdictPrefixIndexE3bTest {
             "tt_RU", true,
             listOf(
                 KeyNeighborTable.RawKey('к'.code, fakePartners),
-                E3aTestFixtures.rawKey('о'), E3aTestFixtures.rawKey('т'),
+                LongPressTestFixtures.rawKey('о'), LongPressTestFixtures.rawKey('т'),
             ),
         )
         assertEquals(257, overloaded.longPressPartnersOf('к'.code)!!.size)
@@ -71,7 +71,7 @@ class TdictPrefixIndexE3bTest {
             "tt_RU", true,
             listOf(
                 KeyNeighborTable.RawKey('к'.code, intArrayOf('з'.code)),
-                E3aTestFixtures.rawKey('о'), E3aTestFixtures.rawKey('т'),
+                LongPressTestFixtures.rawKey('о'), LongPressTestFixtures.rawKey('т'),
             ),
         )
         val index = EngineTestFixtures.index(listOf("зот" to 5L))

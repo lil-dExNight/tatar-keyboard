@@ -8,10 +8,10 @@ import org.junit.Test
 /**
  * Edit class #4: full single substitution over the layout's typeable alphabet. Direct generator
  * tests; the engine-level behavior (activation gate, probe-first budgets, ranking) is in
- * [TdictPrefixIndexPhaseCTest] and the calibration in [TtTypoPhaseCCalibrationTest].
+ * [TdictPrefixIndexDl1TierTest] and the calibration in [TtFullSubstitutionCalibrationTest].
  */
-class FuzzyPrefixVariantsPhaseCTest {
-    private val alphabet = E3bTestFixtures.tatarNeighborTable().nodes
+class FuzzyPrefixVariantsFullSubstitutionTest {
+    private val alphabet = TatarLayoutTestFixtures.tatarNeighborTable().nodes
     private val codePointScratch = IntArray(64)
     private val variantScratch = ByteArray(256)
 

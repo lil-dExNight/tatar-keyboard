@@ -89,7 +89,7 @@ class GlideDeviceInstrumentationTest : InstrumentationTestCase() {
         val max = timings.last() / 1_000_000.0
         Log.i(
             TAG,
-            "P7-4 device glide decode p50=${fmt(p50)} ms p95=${fmt(p95)} ms max=${fmt(max)} ms " +
+            "device glide decode p50=${fmt(p50)} ms p95=${fmt(p95)} ms max=${fmt(max)} ms " +
                 "samples=${timings.size} consumed=$consumed gate=p95<=5.0ms " +
                 "verdict=${if (p95 <= 5.0) "PASS" else "FAIL"}",
         )
@@ -127,7 +127,7 @@ class GlideDeviceInstrumentationTest : InstrumentationTestCase() {
         val warmAvgMs = warmTotalNs / 100.0 / 1_000_000.0
         Log.i(
             TAG,
-            "O2 glide index rebuild: coldFirstDecode=${fmt(coldMs)} ms warmAvg=${fmt(warmAvgMs)} ms count=$count",
+            "glide index rebuild: coldFirstDecode=${fmt(coldMs)} ms warmAvg=${fmt(warmAvgMs)} ms count=$count",
         )
     }
 

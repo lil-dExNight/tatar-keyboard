@@ -10,7 +10,7 @@ import java.lang.management.ManagementFactory
 import kotlin.math.abs
 
 class TdictPrefixIndexFuzzyTest {
-    private val table = E3aTestFixtures.tatarNeighborTable()
+    private val table = LongPressTestFixtures.tatarNeighborTable()
 
     private fun index(entries: List<Pair<String, Long>>, withTable: Boolean = true): TdictPrefixIndex {
         val index = EngineTestFixtures.index(entries)
@@ -72,7 +72,7 @@ class TdictPrefixIndexFuzzyTest {
 
     // Rule 4 (characterization): with no fuzzy candidates the order is exactly the exact-only one.
     @Test
-    fun withNoNeighborTableTheResultIsByteForByteTheD1Result() {
+    fun withNoNeighborTableTheResultIsByteForByteTheExactOnlyResult() {
         val entries = listOf(
             "бал" to 50L,
             "бала" to 10L,
@@ -190,7 +190,7 @@ class TdictPrefixIndexFuzzyTest {
         threadBean.isThreadAllocatedMemoryEnabled = true
         val threadId = Thread.currentThread().id
 
-        val tatarTable = E3bTestFixtures.tatarNeighborTable()
+        val tatarTable = TatarLayoutTestFixtures.tatarNeighborTable()
         val index = EngineTestFixtures.index(
             listOf("мин" to 5L, "син" to 5L),
             fuzzyEditPolicy = FuzzyEditPolicy.TATAR,

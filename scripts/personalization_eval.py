@@ -1061,11 +1061,11 @@ def run(
         realistic_cov = coverage_by_arm["realistic"]
         fixed_cov = coverage_by_arm["fixed"]
         rhs_x1000 = realistic_cov * 1000 + 900 * (oracle_cov - realistic_cov)
-        emit(f"{split}.a7.oracle_unseen_tokens", oracle_cov)
-        emit(f"{split}.a7.realistic_unseen_tokens", realistic_cov)
-        emit(f"{split}.a7.fixed_unseen_tokens", fixed_cov)
-        emit(f"{split}.a7.rhs_x1000", rhs_x1000)
-        emit(f"{split}.a7.gate_pass", 1 if fixed_cov * 1000 >= rhs_x1000 else 0)
+        emit(f"{split}.unseen_stem.oracle_unseen_tokens", oracle_cov)
+        emit(f"{split}.unseen_stem.realistic_unseen_tokens", realistic_cov)
+        emit(f"{split}.unseen_stem.fixed_unseen_tokens", fixed_cov)
+        emit(f"{split}.unseen_stem.rhs_x1000", rhs_x1000)
+        emit(f"{split}.unseen_stem.gate_pass", 1 if fixed_cov * 1000 >= rhs_x1000 else 0)
 
         if split == "hash":
             checks, mismatches = empty_store_churn_check(engine, measure_lines)
@@ -1117,8 +1117,8 @@ def run(
                     rhs_x1000 = realistic_cov * 1000 + 900 * (oracle_cov - realistic_cov)
                     emit(f"{cell}.fixed_grad_words", len(fixed_graduated))
                     emit(f"{cell}.fixed_grad_unseen_tokens", fixed_cov)
-                    emit(f"{cell}.a7_rhs_x1000", rhs_x1000)
-                    emit(f"{cell}.a7_pass", 1 if fixed_cov * 1000 >= rhs_x1000 else 0)
+                    emit(f"{cell}.unseen_stem_rhs_x1000", rhs_x1000)
+                    emit(f"{cell}.unseen_stem_pass", 1 if fixed_cov * 1000 >= rhs_x1000 else 0)
 
     return [f"PERS|{name}|{value}" for name, value in out]
 

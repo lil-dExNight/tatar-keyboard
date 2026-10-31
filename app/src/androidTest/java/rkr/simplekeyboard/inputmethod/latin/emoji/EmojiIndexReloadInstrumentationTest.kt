@@ -86,7 +86,7 @@ class EmojiIndexReloadInstrumentationTest : InstrumentationTestCase() {
 
         Log.i(
             TAG,
-            "O2 emoji reload: searchParse=${fmt(searchMs)} ms (entries=$searchEntries) " +
+            "emoji reload: searchParse=${fmt(searchMs)} ms (entries=$searchEntries) " +
                 "suggestParseAndProbe=${fmt(suggestMs)} ms (entries=$suggestEntries, drawable=$drawable) " +
                 "suggestParseRemembered=${fmt(rememberedMs)} ms (entries=$rememberedEntries)",
         )

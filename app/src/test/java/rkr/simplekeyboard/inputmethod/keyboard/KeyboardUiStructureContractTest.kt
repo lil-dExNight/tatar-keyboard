@@ -47,7 +47,7 @@ class KeyboardUiStructureContractTest {
     // ----- Settings screen transitions -----
 
     @Test
-    fun b1PushAndPopSetTheTransitionDirection() {
+    fun pushAndPopSetTheTransitionDirection() {
         val host = source(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt",
         )
@@ -67,7 +67,7 @@ class KeyboardUiStructureContractTest {
     }
 
     @Test
-    fun b1TheTransitionRespectsTheSystemAnimationScale() {
+    fun theTransitionRespectsTheSystemAnimationScale() {
         val body = source(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt",
         ).substringAfter("private fun playScreenTransition()")
@@ -89,7 +89,7 @@ class KeyboardUiStructureContractTest {
     // ----- Action key -----
 
     @Test
-    fun b2AnActionKeyIsAccentFilledWithItsOwnGlyphColour() {
+    fun anActionKeyIsAccentFilledWithItsOwnGlyphColor() {
         val normal = source("src/main/res/drawable/tatar_key_normal.xml")
         val active = normal.substringAfter("<item android:state_active=\"true\">")
             .substringBefore("<item android:state_checkable=")
@@ -111,7 +111,7 @@ class KeyboardUiStructureContractTest {
     }
 
     @Test
-    fun b2APlainReturnStaysFunctionalWhileTheImeActionsGoAccent() {
+    fun aPlainReturnStaysFunctionalWhileTheImeActionsGoAccent() {
         val enter = source("src/main/res/xml/key_styles_enter.xml")
         assertTrue(
             "defaultEnterKeyStyle is functional",
@@ -137,7 +137,7 @@ class KeyboardUiStructureContractTest {
     // ----- More-keys panel -----
 
     @Test
-    fun b3ThePanelUsesTheKeySurfaceAndAnAccentSelection() {
+    fun thePanelUsesTheKeySurfaceAndAnAccentSelection() {
         assertTrue(
             "panel surface = key surface",
             source("src/main/res/values/themes-tatar.xml")
@@ -168,7 +168,7 @@ class KeyboardUiStructureContractTest {
     // ----- Suggestion strip height -----
 
     @Test
-    fun b4TheStripIsFortyFourDpEverywhere() {
+    fun theStripIsFortyFourDpEverywhere() {
         assertTrue(
             source("src/main/java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripState.kt")
                 .contains("const val STRIP_HEIGHT_DP = 44"),
@@ -181,7 +181,7 @@ class KeyboardUiStructureContractTest {
     }
 
     @Test
-    fun b4TheSmokeTestWasRecalibrated() {
+    fun theSmokeTestTapsTheStripCellCenters() {
         val smoke = project("../scripts/emulator-smoke.sh").let { candidate ->
             if (candidate.isFile) candidate.readText()
             else listOf(File("scripts/emulator-smoke.sh"), File("../scripts/emulator-smoke.sh"))
@@ -196,7 +196,7 @@ class KeyboardUiStructureContractTest {
     // ----- Key press feedback -----
 
     @Test
-    fun b5ALetterKeyWithABalloonDoesNotDarken() {
+    fun aLetterKeyWithABalloonDoesNotDarken() {
         val body = source(
             "src/main/java/rkr/simplekeyboard/inputmethod/keyboard/MainKeyboardView.java",
         ).substringAfter("public void onKeyPressed(final Key key, final boolean withPreview)")
@@ -214,7 +214,7 @@ class KeyboardUiStructureContractTest {
     }
 
     @Test
-    fun b5TheGlideHighlightIsUntouched() {
+    fun theGlideHighlightIsUntouched() {
         val tracker = source(
             "src/main/java/rkr/simplekeyboard/inputmethod/keyboard/PointerTracker.java",
         ).substringAfter("private void updateGlideFeedback(")
@@ -228,14 +228,14 @@ class KeyboardUiStructureContractTest {
     // ----- Preview balloon -----
 
     @Test
-    fun b6TheDropletHonoursThePaddingContract() {
+    fun theDropletHonorsThePaddingContract() {
         // height 122dp, bottom padding 60dp, neck 5dp -> the neck ends 67dp down, which is where
         // the parent key's top edge sits (keyPreviewOffset 55dp below the drawable's bottom).
         assertEquals(67f, KeyPreviewBalloonDrawable.neckBottomOf(122f, 60f, 5f), 0.001f)
     }
 
     @Test
-    fun b6TheDropletReplacesTheRectangleAndAllocatesOnlyOnBoundsChange() {
+    fun theDropletReplacesTheRectangleAndAllocatesOnlyOnBoundsChange() {
         val choreographer = source(
             "src/main/java/rkr/simplekeyboard/inputmethod/keyboard/internal/KeyPreviewChoreographer.java",
         )
@@ -258,7 +258,7 @@ class KeyboardUiStructureContractTest {
     // ----- Platform dialog -----
 
     @Test
-    fun b7ThePlatformDialogCarriesTheCardStyle() {
+    fun thePlatformDialogCarriesTheCardStyle() {
         val theme = source("src/main/res/values/platform-theme.xml")
         assertTrue("card background", theme.contains("<item name=\"android:windowBackground\">@drawable/app_dialog_bg</item>"))
         assertTrue("centered title", theme.substringAfter("name=\"AppDialogTitle\"").contains("center"))

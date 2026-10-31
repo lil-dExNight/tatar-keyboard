@@ -59,7 +59,7 @@ class KeyPreviewDismissAnimatorSourceContractTest {
             drawParams.contains("ObjectAnimator.ofFloat(target, View.SCALE_Y"),
         )
         assertFalse(
-            "AnimatorInflater was the finding: an XML parse on every key press",
+            "AnimatorInflater costs an XML parse on every key press",
             drawParams.contains("AnimatorInflater.loadAnimator"),
         )
         assertFalse(

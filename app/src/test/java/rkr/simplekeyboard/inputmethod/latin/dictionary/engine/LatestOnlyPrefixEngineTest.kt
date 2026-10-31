@@ -428,7 +428,7 @@ class LatestOnlyPrefixEngineTest {
                 if (launchBoundaryRequest.compareAndSet(true, false)) {
                     val thread = Thread({
                         engine.request(1, "tt", utf8("boundary"))
-                    }, "d1d-boundary-request")
+                    }, "boundary-request")
                     requester.set(thread)
                     thread.start()
                     thread.join(1_000)
@@ -489,7 +489,7 @@ class LatestOnlyPrefixEngineTest {
                 repeat(250) { request ->
                     engine.request(caller.toLong(), "tt-$caller", utf8("$caller-$request"))
                 }
-            }, "d1d-burst-$caller").apply(Thread::start)
+            }, "burst-$caller").apply(Thread::start)
         }
         callers.forEach { it.join(2_000) }
         assertTrue(callers.none(Thread::isAlive))
@@ -594,7 +594,7 @@ class LatestOnlyPrefixEngineTest {
         ) { releases.incrementAndGet() }
         val outcomes = Collections.synchronizedList(mutableListOf<Boolean>())
         val destroyers = (0 until 8).map { index ->
-            Thread({ outcomes += engine.destroy(2, TimeUnit.SECONDS) }, "d1d-destroy-$index")
+            Thread({ outcomes += engine.destroy(2, TimeUnit.SECONDS) }, "destroy-$index")
                 .apply { start() }
         }
         destroyers.forEach { it.join(3_000) }
@@ -928,7 +928,7 @@ class LatestOnlyPrefixEngineTest {
                         engine.requestNextWord(caller.toLong(), "tt-$caller", utf8("$caller-$request"))
                     }
                 }
-            }, "e5c-mixed-burst-$caller").apply(Thread::start)
+            }, "mixed-burst-$caller").apply(Thread::start)
         }
         callers.forEach { it.join(2_000) }
         assertTrue(callers.none(Thread::isAlive))

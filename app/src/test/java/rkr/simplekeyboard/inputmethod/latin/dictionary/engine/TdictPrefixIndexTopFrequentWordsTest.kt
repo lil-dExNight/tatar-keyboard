@@ -70,7 +70,7 @@ class TdictPrefixIndexTopFrequentWordsTest {
     @Test
     fun theScanDoesNotChangeAnyLookupResult() {
         val index = EngineTestFixtures.index(entries)
-        index.updateKeyNeighbors(E3bTestFixtures.tatarNeighborTable())
+        index.updateKeyNeighbors(TatarLayoutTestFixtures.tatarNeighborTable())
         val before = index.lookup(ImmutableUtf8Prefix.copyOf("ба".toByteArray(Charsets.UTF_8)))
         index.topFrequentWords(8)
         val after = index.lookup(ImmutableUtf8Prefix.copyOf("ба".toByteArray(Charsets.UTF_8)))

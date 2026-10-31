@@ -20,7 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
-import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3aTestFixtures.rawKey
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LongPressTestFixtures.rawKey
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules
@@ -280,7 +280,7 @@ class MixEvalTest {
                 "src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib",
                 "app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib",
             )
-            tatarTable = E3bTestFixtures.tatarNeighborTable()
+            tatarTable = TatarLayoutTestFixtures.tatarNeighborTable()
             russianTable = KeyNeighborTable.build("ru", true, RUSSIAN_LAYOUT_KEYS)
         }
 

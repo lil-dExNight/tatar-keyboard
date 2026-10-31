@@ -50,7 +50,7 @@ class RealDictionaryPrefixIndexTest {
         val p95Nanos = timings[ceil(timings.size * 0.95).toInt() - 1]
         val medianMillis = medianNanos / 1_000_000.0
         val p95Millis = p95Nanos / 1_000_000.0
-        println("D1d compute median=${"%.3f".format(java.util.Locale.ROOT, medianMillis)} ms p95=${"%.3f".format(java.util.Locale.ROOT, p95Millis)} ms consumed=$consumed")
+        println("real dictionary compute median=${"%.3f".format(java.util.Locale.ROOT, medianMillis)} ms p95=${"%.3f".format(java.util.Locale.ROOT, p95Millis)} ms consumed=$consumed")
         assertTrue("p95=${p95Millis}ms", p95Nanos <= 5_000_000L)
         assertTrue(consumed != Long.MIN_VALUE)
     }
@@ -72,7 +72,7 @@ class RealDictionaryPrefixIndexTest {
         timings.sort()
         val p95Nanos = timings[ceil(timings.size * 0.95).toInt() - 1]
         println(
-            "D1d max one-letter к fanout p95=" +
+            "real dictionary max one-letter к fanout p95=" +
                 "${"%.3f".format(java.util.Locale.ROOT, p95Nanos / 1_000_000.0)} ms " +
                 "consumed=$consumed",
         )
@@ -83,7 +83,7 @@ class RealDictionaryPrefixIndexTest {
      * The same p95 measurement over the 22 review prefixes, with the shipped Tatar fuzzy policy
      * (classes #1 + #4 + same-length bonus) and the layout-derived neighbor table. Most prefixes
      * fill all three cells from the exact pass, so this measures the common typing path with the
-     * fuzzy pass enabled; the typo-set p95 lives in [TtTypoPhaseCCalibrationTest].
+     * fuzzy pass enabled; the typo-set p95 lives in [TtFullSubstitutionCalibrationTest].
      */
     @Test
     fun computeP95WithTheTatarFuzzyPolicyOverReviewPrefixesIsAtMostFiveMilliseconds() {
@@ -144,7 +144,7 @@ class RealDictionaryPrefixIndexTest {
             timings.sort()
             val p95Nanos = timings[ceil(timings.size * 0.95).toInt() - 1]
             println(
-                "D1d request-to-handoff p95=" +
+                "real dictionary request-to-handoff p95=" +
                     "${"%.3f".format(java.util.Locale.ROOT, p95Nanos / 1_000_000.0)} ms",
             )
             assertTrue(
@@ -178,7 +178,7 @@ class RealDictionaryPrefixIndexTest {
                 "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
             )
             val spec = DictionaryArtifactSpec.TATAR_TOP100K_V1
-            val rawFile = File.createTempFile("d1d-real-", ".tdict")
+            val rawFile = File.createTempFile("real-dict-", ".tdict")
             try {
                 rawFile.outputStream().use { output ->
                     TdictValidator().inflateAsset(asset.inputStream(), output, spec)
@@ -207,7 +207,7 @@ class RealDictionaryPrefixIndexTest {
                     null,
                     FuzzyEditPolicy.TATAR,
                     AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
-                )?.also { it.updateKeyNeighbors(E3bTestFixtures.tatarNeighborTable()) }
+                )?.also { it.updateKeyNeighbors(TatarLayoutTestFixtures.tatarNeighborTable()) }
                 check(tatarPolicyIndex != null)
             } finally {
                 rawFile.delete()

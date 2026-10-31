@@ -80,7 +80,7 @@ class DurableFileOpsAtomicReplaceContractTest {
 
         try {
             ops.atomicRename(source, destination)
-            fail("atomicRename must reject an existing destination (D1b semantics)")
+            fail("atomicRename must reject an existing destination")
         } catch (expected: IOException) {
             assertTrue(expected.message.orEmpty().contains("already exists"))
         }

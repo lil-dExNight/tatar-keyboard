@@ -1,17 +1,18 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
-import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3aTestFixtures.rawKey
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LongPressTestFixtures.rawKey
 
 /**
  * Shared fixture: the full Tatar alphabet keyboard (all 37 letter keys of `rows_tatar.xml`, in
- * layout order) with the long-press partners of `rowkeys_tatar*.xml`. Unlike [E3aTestFixtures],
- * which lists only the letters its tests use, the node set here is the complete layout alphabet
- * that edit class #4 substitutes from.
+ * layout order) with the long-press partners of `rowkeys_tatar*.xml`. Unlike
+ * [LongPressTestFixtures], which lists only the letters its tests use, the node set here is the
+ * complete layout alphabet that edit class #4 substitutes from.
  *
  * Production derives the table from the live keyboard (`KeyNeighborTableBuilder.fromKeyboard`);
- * no production source carries a Cyrillic literal (asserted by [E3bEngineSourceContractTest]).
+ * no production source carries a Cyrillic literal (asserted by
+ * [EngineLayoutLiteralSourceContractTest]).
  */
-internal object E3bTestFixtures {
+internal object TatarLayoutTestFixtures {
     fun tatarNeighborTable(subtypeId: String = "tt_RU"): KeyNeighborTable =
         KeyNeighborTable.build(
             subtypeId,

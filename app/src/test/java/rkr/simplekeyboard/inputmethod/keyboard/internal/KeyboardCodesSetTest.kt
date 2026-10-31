@@ -83,7 +83,7 @@ class KeyboardCodesSetTest {
     }
 
     @Test
-    fun everyCodeNameUsedInResXmlKeepsItsPreE2Code() {
+    fun everyCodeNameUsedInResXmlKeepsItsExpectedCode() {
         val regex = Regex("!code/([a-z_]+)")
         val used = sortedSetOf<String>()
         resRoot().walkTopDown()

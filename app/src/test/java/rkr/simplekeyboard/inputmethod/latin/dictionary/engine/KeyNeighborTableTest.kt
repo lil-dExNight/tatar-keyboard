@@ -11,7 +11,7 @@ class KeyNeighborTableTest {
     @Test
     fun onlyTheAlphabetElementIsAValidSource() {
         // Same keys, non-alphabet element: the whole table is empty and holds no pair or node.
-        val keys = listOf(E3aTestFixtures.rawKey('а', 'ә'))
+        val keys = listOf(LongPressTestFixtures.rawKey('а', 'ә'))
         val table = KeyNeighborTable.build("tt_RU", false, keys)
         assertTrue(table.isEmpty)
         assertEquals(0, table.letterKeyCount)
@@ -21,7 +21,7 @@ class KeyNeighborTableTest {
 
     @Test
     fun longPressPairsAreSymmetrizedAndDeduplicated() {
-        val table = E3aTestFixtures.tatarNeighborTable()
+        val table = LongPressTestFixtures.tatarNeighborTable()
         // Forward direction taken straight from the layout.
         assertArrayEquals(intArrayOf('ә'.code), table.longPressPartnersOf('а'.code))
         // Reverse direction added by symmetrization; two declarations of "ә" collapse to one node
@@ -36,7 +36,7 @@ class KeyNeighborTableTest {
 
     @Test
     fun everyFifthRowLetterBecomesANode() {
-        val table = E3aTestFixtures.tatarNeighborTable()
+        val table = LongPressTestFixtures.tatarNeighborTable()
         for (letter in listOf('ә', 'ө', 'ү', 'җ', 'ң', 'һ')) {
             assertTrue("missing node $letter", table.nodes.contains(letter.code))
         }
@@ -46,11 +46,11 @@ class KeyNeighborTableTest {
     fun codesAreFoldedToNfcLowercaseAndNonLetterKeysDropped() {
         val keys = listOf(
             // Upper-case base + upper-case partner: folded to "а" / "ә".
-            E3aTestFixtures.rawKey('А'.code, 'Ә'.code),
+            LongPressTestFixtures.rawKey('А'.code, 'Ә'.code),
             // Space is a valid code point but not a letter -> dropped.
-            E3aTestFixtures.rawKey(' '.code),
+            LongPressTestFixtures.rawKey(' '.code),
             // A negative special key code (e.g. CODE_DELETE) is not a code point -> dropped.
-            E3aTestFixtures.rawKey(-5),
+            LongPressTestFixtures.rawKey(-5),
         )
         val table = KeyNeighborTable.build("tt_RU", true, keys)
         assertEquals(1, table.letterKeyCount)
@@ -63,13 +63,13 @@ class KeyNeighborTableTest {
     fun theTatarLayoutHasThirtySevenLetterKeysAndThirtyNineNodes() {
         // 37 = 6 + 11 + 11 + 9 letter keys; the node set also carries the two more-key-only
         // letters ё and ъ, which are not keys of their own.
-        val table = E3bTestFixtures.tatarNeighborTable()
+        val table = TatarLayoutTestFixtures.tatarNeighborTable()
         assertEquals(37, table.letterKeyCount)
         assertEquals(39, table.nodes.size)
     }
 
     @Test
     fun tableCarriesItsSubtypeId() {
-        assertEquals("tt_RU", E3aTestFixtures.tatarNeighborTable().subtypeId)
+        assertEquals("tt_RU", LongPressTestFixtures.tatarNeighborTable().subtypeId)
     }
 }

@@ -494,7 +494,7 @@ class TtDl1TierCalibrationTest {
             "8b60e4b146981d737b351abbbdfd478a3aaa5eedb51a8769ff0cab54c5b5636e"
         private const val PIN_EVAL_PREFIXES_GE4 = 7_451
 
-        private val neighborTable = E3bTestFixtures.tatarNeighborTable()
+        private val neighborTable = TatarLayoutTestFixtures.tatarNeighborTable()
         private val ALPHABET: IntArray get() = neighborTable.nodes
         private var tatarIndex: TdictPrefixIndex? = null
         private lateinit var vocabulary: List<String>

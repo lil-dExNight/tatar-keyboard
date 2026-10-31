@@ -28,10 +28,10 @@ import org.junit.Test
  */
 class TdictPrefixIndexEditClassRankingTest {
     // The full Tatar alphabet keyboard.
-    private val tatarTable = E3bTestFixtures.tatarNeighborTable()
+    private val tatarTable = TatarLayoutTestFixtures.tatarNeighborTable()
 
-    // The reduced letter set of [E3aTestFixtures], with the same long-press partners.
-    private val longPressOnlyTable = E3aTestFixtures.tatarNeighborTable()
+    // The reduced letter set of [LongPressTestFixtures], with the same long-press partners.
+    private val longPressOnlyTable = LongPressTestFixtures.tatarNeighborTable()
 
     private fun index(
         entries: List<Pair<String, Long>>,
@@ -113,7 +113,7 @@ class TdictPrefixIndexEditClassRankingTest {
      * TdictPrefixIndexFuzzyTest.withinTheFuzzyLevelOrderIsFrequencyDescendingThenCodePointAscending.
      */
     @Test
-    fun withASingleEditClassTheOrderMatchesE3a() {
+    fun withASingleEditClassTheOrderMatchesTheLongPressOnlyOrder() {
         val index = index(
             listOf(
                 "күл" to 50L,

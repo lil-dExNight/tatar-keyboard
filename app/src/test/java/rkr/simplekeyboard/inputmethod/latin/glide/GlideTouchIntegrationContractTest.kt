@@ -372,13 +372,13 @@ class GlideTouchIntegrationContractTest {
         assertTrue("the leading-space rule decides the prepend",
             glideCommit.contains("TatarWordUtils.glideNeedsLeadingSpace(beforeCursor)"))
         assertTrue("the leading space prepends", glideCommit.contains("AUTO_SPACE + suggestion"))
-        assertFalse("the P7-5 auto-space is gone from the glide commit",
+        assertFalse("the trailing auto-space is gone from the glide commit",
             glideCommit.contains("suggestion + AUTO_SPACE"))
         assertFalse("the glide commit must NOT require a sentence start for an empty context",
             glideCommit.contains("isSentenceStartContext"))
         val predictedCommit = inputLogic.substringAfter("public boolean commitPredictedWord(")
             .substringBefore("private static boolean endsWith(final CharSequence text, final String suffix)")
-        assertTrue("the prediction commit keeps its P4 sentence-start guard",
+        assertTrue("the prediction commit keeps its sentence-start guard",
             predictedCommit.contains("isSentenceStartContext"))
         assertTrue("the prediction path keeps its auto-space (typed suggestions unchanged)",
             predictedCommit.contains("suggestion + AUTO_SPACE"))

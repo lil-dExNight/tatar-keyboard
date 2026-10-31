@@ -22,7 +22,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
-import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.E3aTestFixtures.rawKey
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LongPressTestFixtures.rawKey
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryTestFixtures
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
@@ -61,10 +61,10 @@ class AutocorrectWideningCalibrationTest {
             assertEquals(PIN_VALID_OOV_ROWS, measured)
             for (stratum in SAFETY_STRATA) {
                 val words = safetyRows.count { it.stratum == stratum }
-                println("E02 safety arm=$arm stratum=$stratum words=$words false_replacements=${counts.getValue(stratum)}")
+                println("widening safety arm=$arm stratum=$stratum words=$words false_replacements=${counts.getValue(stratum)}")
             }
-            println("E02 safety arm=$arm valid_oov_words=$measured false_replacements=${counts.values.sum()}")
-            for (line in offenders.sorted()) println("E02 safety arm=$arm would-fire: $line")
+            println("widening safety arm=$arm valid_oov_words=$measured false_replacements=${counts.values.sum()}")
+            for (line in offenders.sorted()) println("widening safety arm=$arm would-fire: $line")
             return counts
         }
 
@@ -97,12 +97,12 @@ class AutocorrectWideningCalibrationTest {
             for (stratum in SAFETY_STRATA) {
                 val words = russianSafetyRows.count { it.stratum == stratum }
                 println(
-                    "E02 safety arm=$arm stratum=$stratum words=$words " +
+                    "widening safety arm=$arm stratum=$stratum words=$words " +
                         "false_replacements=${counts.getValue(stratum)}",
                 )
             }
             println(
-                "E02 safety arm=$arm valid_oov_words=${russianSafetyRows.size} " +
+                "widening safety arm=$arm valid_oov_words=${russianSafetyRows.size} " +
                     "false_replacements=${counts.values.sum()} offenders=${offenders.sorted()}",
             )
             return counts
@@ -126,7 +126,9 @@ class AutocorrectWideningCalibrationTest {
                 index.lookup(ImmutableUtf8Prefix.copyOf(word.toByteArray(Charsets.UTF_8)))
                 if (index.lastAutocorrectAdvice != null) replacements++
             }
-            println("E02 correct_words arm=$arm words=${words.size} replacements=$replacements")
+            println(
+                "widening correct_words arm=$arm words=${words.size} replacements=$replacements",
+            )
             assertEquals("correctly typed dictionary words were replaced in $arm", 0, replacements)
         }
 
@@ -156,13 +158,13 @@ class AutocorrectWideningCalibrationTest {
             val classRows = rows.count { it.editClass == editClass }
             val hits = recovered[editClass] ?: 0
             println(
-                "E02 recall arm=$arm class=$editClass rows=$hits/$classRows " +
+                "widening recall arm=$arm class=$editClass rows=$hits/$classRows " +
                     "pct=${fmt(hits * 100.0 / classRows)}",
             )
         }
         val total = recovered.values.sum()
         println(
-            "E02 recall arm=$arm rows=$total/${rows.size} " +
+            "widening recall arm=$arm rows=$total/${rows.size} " +
                 "pct=${fmt(total * 100.0 / rows.size)} harmful=$harmful",
         )
         return total to harmful
@@ -211,8 +213,8 @@ class AutocorrectWideningCalibrationTest {
                 offenders.add("${advice.typedWord}->${advice.replacement} (${advice.frequency})")
             }
             println(
-                "E02 floor_rank=$rank frequency=$floor recall=$recovered/${fullWordRows.size} " +
-                    "pct=${fmt(recovered * 100.0 / fullWordRows.size)} " +
+                "widening floor_rank=$rank frequency=$floor " +
+                    "recall=$recovered/${fullWordRows.size} pct=${fmt(recovered * 100.0 / fullWordRows.size)} " +
                     "valid_oov_false=${offenders.size} offenders=${offenders.sorted()}",
             )
             assertEquals(pins.first, floor)
@@ -265,7 +267,7 @@ class AutocorrectWideningCalibrationTest {
             val p95 = timings[ceil(timings.size * 0.95).toInt() - 1] / 1_000_000.0
             val max = timings.last() / 1_000_000.0
             println(
-                "E02 perf arm=$name samples=${timings.size} p50=${fmtMs(p50)} ms " +
+                "widening perf arm=$name samples=${timings.size} p50=${fmtMs(p50)} ms " +
                     "p95=${fmtMs(p95)} ms max=${fmtMs(max)} ms " +
                     "acprobe_p95=${percentile(probes.sorted(), 0.95)} " +
                     "acprobe_max=${probes.maxOrNull() ?: 0} consumed=$consumed",
@@ -403,7 +405,7 @@ class AutocorrectWideningCalibrationTest {
         private const val PIN_RU_WIDENED_HARMFUL = 0
 
         private val SAFETY_STRATA = listOf("seen_form", "new_form_of_seen_stem", "unseen_stem")
-        private val neighborTable = E3bTestFixtures.tatarNeighborTable()
+        private val neighborTable = TatarLayoutTestFixtures.tatarNeighborTable()
         private val russianNeighborTable = KeyNeighborTable.build(
             "ru",
             true,

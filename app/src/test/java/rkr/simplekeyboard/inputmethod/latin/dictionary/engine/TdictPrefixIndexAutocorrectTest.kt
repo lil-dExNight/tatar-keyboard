@@ -38,7 +38,7 @@ class TdictPrefixIndexAutocorrectTest {
      */
     private val TEST_MIN_CANDIDATE_FREQUENCY = 411L
 
-    private val table = E3aTestFixtures.tatarNeighborTable()
+    private val table = LongPressTestFixtures.tatarNeighborTable()
 
     private fun index(
         entries: List<Pair<String, Long>>,

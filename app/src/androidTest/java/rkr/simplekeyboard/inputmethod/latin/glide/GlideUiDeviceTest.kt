@@ -314,7 +314,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         val lifted = field.text.toString()
         Log.i(TAG, "field right after the lift: '$lifted'")
         assertTrue(
-            "P7-8: the no-loop path commits the PLAIN word with NO auto-space, was '$lifted'",
+            "the no-loop path commits the PLAIN word with NO auto-space, was '$lifted'",
             lifted == "сәләм",
         )
 

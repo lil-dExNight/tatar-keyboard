@@ -85,7 +85,7 @@ PIN_PAIR_OBSERVATIONS = {
 }
 PIN_FIX_PROBES = {"hash": 52, "chrono": 40, "rep": 342}
 PIN_PRIME_UNSEEN_TOKENS = {"hash": 83, "chrono": 72, "rep": 447}
-PIN_A7_UNSEEN = {"hash": (0, 0, 0), "chrono": (0, 0, 0), "rep": (405, 405, 405)}
+PIN_UNSEEN_STEM = {"hash": (0, 0, 0), "chrono": (0, 0, 0), "rep": (405, 405, 405)}
 # The realistic-arm sweep on the repetition split: the timeline parity channel.
 PIN_REP_SWEEP = {
     100: (152, 70_377, 0, 19_105),  # (grad_words, observed, dropped, staled)
@@ -444,14 +444,14 @@ class HarnessAcceptanceTest(unittest.TestCase):
             # On clean streams the completion-time probe sees the same monotone predicate,
             # so the fixed arm matches the oracle arm exactly.
             self.assertEqual(oracle, fixed, split)
-            self.assertEqual(1, metric_int(f"{split}.a7.gate_pass"), split)
-            oracle_unseen, realistic_unseen, fixed_unseen = PIN_A7_UNSEEN[split]
+            self.assertEqual(1, metric_int(f"{split}.unseen_stem.gate_pass"), split)
+            oracle_unseen, realistic_unseen, fixed_unseen = PIN_UNSEEN_STEM[split]
             self.assertEqual(
                 (oracle_unseen, realistic_unseen, fixed_unseen),
                 (
-                    metric_int(f"{split}.a7.oracle_unseen_tokens"),
-                    metric_int(f"{split}.a7.realistic_unseen_tokens"),
-                    metric_int(f"{split}.a7.fixed_unseen_tokens"),
+                    metric_int(f"{split}.unseen_stem.oracle_unseen_tokens"),
+                    metric_int(f"{split}.unseen_stem.realistic_unseen_tokens"),
+                    metric_int(f"{split}.unseen_stem.fixed_unseen_tokens"),
                 ),
                 split,
             )
@@ -466,7 +466,7 @@ class HarnessAcceptanceTest(unittest.TestCase):
             self.assertEqual(observed, metric_int(f"{cell}.observed_lookups"), cell)
             self.assertEqual(dropped, metric_int(f"{cell}.dropped_lookups"), cell)
             self.assertEqual(staled, metric_int(f"{cell}.staled_lookups"), cell)
-            self.assertEqual(1, metric_int(f"{cell}.a7_pass"), cell)
+            self.assertEqual(1, metric_int(f"{cell}.unseen_stem_pass"), cell)
 
     def test_structural_zero_churn_gates(self):
         self.assertEqual(0, metric_int("hash.empty_store.strip_mismatches"))

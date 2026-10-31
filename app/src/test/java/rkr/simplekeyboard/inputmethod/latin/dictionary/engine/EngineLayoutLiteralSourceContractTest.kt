@@ -13,7 +13,7 @@ import java.io.File
  * This test asserts the engine sources — and that single crossing — carry no Cyrillic literal at
  * all, so a hard-coded letter or key pair cannot slip in unseen.
  */
-class E3bEngineSourceContractTest {
+class EngineLayoutLiteralSourceContractTest {
     @Test
     fun engineSourcesCarryNoCyrillicLiteralOrHardCodedKeyPair() {
         val files = engineSources()
