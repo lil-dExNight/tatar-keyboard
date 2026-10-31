@@ -339,6 +339,12 @@ def select_heads(frequencies: dict[str, int], count: int) -> list[str]:
     return [word for word, _frequency in ordered[:count]]
 
 
+def head_shard(head: str, shards: int) -> int:
+    """The counting pass of `head`: a CRC-32 of its UTF-8 bytes, the same in every process
+    (the built-in str hash changes per process unless PYTHONHASHSEED is fixed)."""
+    return zlib.crc32(head.encode("utf-8")) % shards
+
+
 def count_pairs(
     paths: Sequence[Path],
     heads: frozenset[str],
@@ -369,11 +375,13 @@ def count_pairs(
                         token is not None for token in tokens
                     )
                 for head, success in iter_pairs(tokens, vocabulary):
-                    if head not in heads or hash(head) % shards != shard:
+                    if head not in heads:
                         continue
-                    counts.setdefault(head, Counter())[success] += 1
                     if corpus is not None and first_pass:
                         corpus.pairs += 1
+                    if head_shard(head, shards) != shard:
+                        continue
+                    counts.setdefault(head, Counter())[success] += 1
         for head, successes in counts.items():
             table[head] = sorted(
                 successes.items(), key=lambda item: (-item[1], item[0])

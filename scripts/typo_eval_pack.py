@@ -125,11 +125,10 @@ _RES_XML_DIR = ROOT / "app" / "src" / "main" / "res" / "xml"
 _TEST_RESOURCES_DIR = ROOT / "app" / "src" / "test" / "resources"
 _DICTIONARIES_DIR = ROOT / "app" / "src" / "main" / "assets" / "dictionaries"
 
-# The Russian bundled dictionary identity, mirroring
-# DictionaryStorageContracts.RUSSIAN_TOP100K_V1.
-_RUSSIAN_ASSET_SHA256 = "273f1a6928f74fdbd7f0fda4490978124b3748160ac283d0b51e8c913fea5fde"
-_RUSSIAN_RAW_SHA256 = "f05499a3b4c3c2811c6ee8e9084dfaf472951a289a20dde2ab8cb098cb5a15b2"
-_RUSSIAN_ENTRY_COUNT = 100_000
+# The Russian bundled dictionary identity, read from its storage contract like the Tatar one.
+_RUSSIAN_ASSET_SHA256, _RUSSIAN_RAW_SHA256, _RUSSIAN_ENTRY_COUNT = typo_pack.dictionary_pins(
+    spec="RUSSIAN_TOP100K_V1"
+)
 
 
 @dataclass(frozen=True)

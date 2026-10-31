@@ -904,15 +904,68 @@ class RealTreeTest(unittest.TestCase):
         self.assertEqual(2, report["bigrams"]["rus"]["drift"]["missing_top_heads"])
         self.assertEqual(0, report["bigrams"]["rus"]["drift"]["unexpected_heads"])
 
-    def test_calibration_pin_propagation_is_a_noop_on_the_committed_tree(self):
-        # The rebuild rewrites the typo/glide set pins from the fresh dictionary; on the
-        # committed tree everything must already match, so nothing is written.
-        dictionary = rebuild_assets.measure_dictionary(
-            REPOSITORY_ROOT / "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
-            "tat")
-        self.assertEqual(
-            [], rebuild_assets.propagate_calibration_pins(REPOSITORY_ROOT, dictionary))
+    @classmethod
+    def calibration_pins(cls):
+        """The calibration pins over the committed dictionary, measured once per run."""
+        if not hasattr(cls, "_calibration_pins"):
+            dictionary = rebuild_assets.measure_dictionary(
+                REPOSITORY_ROOT / "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib",
+                "tat")
+            cls._calibration_pins = rebuild_assets.measure_calibration_pins(
+                REPOSITORY_ROOT, dictionary)
+        return cls._calibration_pins
 
+    def calibration_sites(self):
+        """Repo-relative path -> bytes of every file holding calibration pins."""
+        sites = {site[0] for site in rebuild_assets._calibration_pin_sites(self.calibration_pins())}
+        return {path: (REPOSITORY_ROOT / path).read_bytes() for path in sorted(sites)}
+
+    def copy_with_a_stale_pin(self, root, files):
+        """Copies `files` under `root` with one stale pin; returns (path, stale, original)."""
+        for path, data in files.items():
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_bytes(data)
+        path = rebuild_assets.LONG_PRESS_CALIBRATION_TEST
+        original = files[path].decode("utf-8")
+        literal = f"GENERATOR_SET_SIZE = {self.calibration_pins().typo[(1, 3)][0]:_}"
+        self.assertEqual(1, original.count(literal))
+        stale = original.replace(literal, "GENERATOR_SET_SIZE = 1_000")
+        (root / path).write_text(stale, encoding="utf-8")
+        return path, stale, original
+
+    def test_committed_calibration_pins_match_and_the_check_writes_nothing(self):
+        # The rebuild rewrites the typo and glide set pins from the fresh dictionary. Here the
+        # pins are only computed and compared: the committed tree must already match them.
+        pins = self.calibration_pins()
+        before = self.calibration_sites()
+
+        self.assertEqual({}, rebuild_assets.calibration_pin_updates(REPOSITORY_ROOT, pins))
+
+        # A stale pin is reported with its corrected text, and the stale file stays as it is.
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path, stale, original = self.copy_with_a_stale_pin(root, before)
+
+            self.assertEqual(
+                {path: original}, rebuild_assets.calibration_pin_updates(root, pins))
+            self.assertEqual(stale, (root / path).read_text(encoding="utf-8"))
+        self.assertEqual(before, self.calibration_sites())
+
+    def test_propagation_rewrites_only_the_stale_file(self):
+        pins = self.calibration_pins()
+        before = self.calibration_sites()
+        saved = rebuild_assets.measure_calibration_pins
+        rebuild_assets.measure_calibration_pins = lambda root, dictionary: pins
+        self.addCleanup(setattr, rebuild_assets, "measure_calibration_pins", saved)
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path, _stale, original = self.copy_with_a_stale_pin(root, before)
+
+            self.assertEqual(
+                [str(path)], rebuild_assets.propagate_calibration_pins(root, None))
+            self.assertEqual(original, (root / path).read_text(encoding="utf-8"))
+            self.assertEqual([], rebuild_assets.propagate_calibration_pins(root, None))
+        self.assertEqual(before, self.calibration_sites())
 
 if __name__ == "__main__":
     unittest.main()

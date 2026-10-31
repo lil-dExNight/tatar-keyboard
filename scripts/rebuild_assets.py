@@ -67,9 +67,8 @@ class BigramAsset:
     recover_punctuation: bool = False
 
 
-# Tatar dictionary cutoff: the largest of 100 000 / 110 000 / 120 000 for which the dictionary
-# with admitted word forms stays within the compressed and raw size budgets (120 000 does not
-# fit; at 100 000 no word form makes the cut). Re-measure before changing it.
+# Tatar dictionary cutoff; at 100 000 no admitted word form makes the cut. The release APK size
+# limit is the only size limit, so run release_check.sh after changing it.
 TATAR_DICTIONARY_TOP = 110_000
 
 DICTIONARIES = (
@@ -102,8 +101,8 @@ BIGRAMS = (
         # Heads below the H cutoff, added by the rule described in the file header.
         extra_heads="scripts/bigram_extra_heads_tat.txt",
         # Two Leipzig corpora plus the conversational input: deduplicated Tatoeba +
-        # OpenSubtitles tt lines with id % 10 != 1 (the rest is the conversational held-out
-        # set). The conversational file is listed ten times — a weight, not an error:
+        # OpenSubtitles tt lines with id % 10 != 1 (the rest is left out of bigram training).
+        # The conversational file is listed ten times — a weight, not an error:
         # repetition scales its pair counts, lifting its share of the training token mass
         # from a few percent to about a tenth. The file is built with
         # research/corpus/make_conv_train.py and an id filter and placed in --corpus-dir by
@@ -142,8 +141,10 @@ BIGRAMS = (
 #
 # The Tatar dictionary includes generated word forms (scripts/wordform_gen.py) that are attested
 # in the pipeline frequency sources: the Leipzig *-words.txt of the two corpora that train the
-# Tatar bigram table, plus the committed conv-freq-tt.tsv. tat_news_2015_1M is left out on
-# purpose: it is the frozen written held-out set for evaluation and must not shape shipped data.
+# Tatar bigram table, plus the committed conv-freq-tt.tsv. tat_news_2015_1M is not read: its word
+# frequencies are already in the baseline dictionary, and research/corpus/tt_merge_sim.py uses its
+# sentences as a development set. The held-out Tatar set is
+# app/src/test/resources/tt_eval_sentences.txt.
 WORDFORM_EXCEPTIONS = Path("scripts/wordform_exceptions_tat.tsv")
 WORDFORM_FREQUENCY_SOURCES = (
     "tat_mixed_2015_1M-words.txt",
@@ -872,8 +873,10 @@ CALIBRATION_TYPO_SETS = ((1, 3), (2, 3), (3, 3), (4, 3), (1, 5), (2, 5), (4, 5))
 TYPO_PACK_TEST = Path("tests/typo_pack/test_typo_pack.py")
 GLIDE_PACK_TEST = Path("tests/glide_pack/test_glide_pack.py")
 JVM_TESTS_DIR = Path("app/src/test/java/rkr/simplekeyboard/inputmethod/latin")
-LONG_PRESS_CALIBRATION_TEST = JVM_TESTS_DIR / "dictionary/engine/LongPressRecoveryCalibrationTest.kt"
-FULL_SUBSTITUTION_CALIBRATION_TEST = JVM_TESTS_DIR / "dictionary/engine/TtFullSubstitutionCalibrationTest.kt"
+LONG_PRESS_CALIBRATION_TEST = (
+    JVM_TESTS_DIR / "dictionary/engine/LongPressRecoveryCalibrationTest.kt")
+FULL_SUBSTITUTION_CALIBRATION_TEST = (
+    JVM_TESTS_DIR / "dictionary/engine/TtFullSubstitutionCalibrationTest.kt")
 GLIDE_CALIBRATION_TEST = JVM_TESTS_DIR / "glide/GlideRecoveryCalibrationTest.kt"
 GLIDE_GOLDEN_TEST = JVM_TESTS_DIR / "golden/GlideGoldenExportTest.kt"
 
@@ -957,12 +960,10 @@ def _function_region(text: str, name: str) -> tuple[int, int]:
 
 
 def _rewrite_pin_literals(
-    path: Path, region: str | None, literals: Sequence[tuple[str, object]]
-) -> bool:
-    """Rewrite group 1 of every pattern in `path`; each must match exactly once (inside the
-    named python method when `region` is given). Writes only on change; returns whether the
-    file changed."""
-    text = path.read_text(encoding="utf-8")
+    path: Path, text: str, region: str | None, literals: Sequence[tuple[str, object]]
+) -> str:
+    """`text` with group 1 of every pattern replaced; each pattern must match exactly once
+    (inside the named python method when `region` is given). Pure: writes nothing."""
     start, end = _function_region(text, region) if region is not None else (0, len(text))
     body = text[start:end]
     for pattern, value in literals:
@@ -975,10 +976,7 @@ def _rewrite_pin_literals(
         new = _reformat_like(old, value) if isinstance(value, int) else value
         if old != new:
             body = body[: matches[0].start(1)] + new + body[matches[0].end(1):]
-    if body == text[start:end]:
-        return False
-    _atomic_write_text(path, text[:start] + body + text[end:])
-    return True
+    return text[:start] + body + text[end:]
 
 
 def _calibration_pin_sites(
@@ -1073,14 +1071,29 @@ def _calibration_pin_sites(
     ]
 
 
-def propagate_calibration_pins(root: Path, dictionary: Pins) -> list[str]:
-    """Rewrite the pinned calibration-set identities; return the changed repo-relative paths."""
-    pins = measure_calibration_pins(root, dictionary)
-    changed = []
+def calibration_pin_updates(root: Path, pins: CalibrationPins) -> dict[Path, str]:
+    """The new text of every calibration test file whose pinned literals differ from `pins`,
+    keyed by its repo-relative path. Reads only; an empty result means every pin matches."""
+    texts: dict[Path, str] = {}
     for relative, region, literals in _calibration_pin_sites(pins):
-        if _rewrite_pin_literals(root / relative, region, literals):
-            changed.append(str(relative))
-    return changed
+        current = texts.get(relative)
+        if current is None:
+            current = (root / relative).read_text(encoding="utf-8")
+        texts[relative] = _rewrite_pin_literals(root / relative, current, region, literals)
+    return {
+        relative: text
+        for relative, text in texts.items()
+        if text != (root / relative).read_text(encoding="utf-8")
+    }
+
+
+def propagate_calibration_pins(root: Path, dictionary: Pins) -> list[str]:
+    """Rewrite the pinned calibration-set identities; return the changed repo-relative paths.
+    Only the rebuild calls this; the tests use calibration_pin_updates, which writes nothing."""
+    updates = calibration_pin_updates(root, measure_calibration_pins(root, dictionary))
+    for relative, text in updates.items():
+        _atomic_write_text(root / relative, text)
+    return [str(relative) for relative in updates]
 
 
 # --- rebuild ----------------------------------------------------------------------------------

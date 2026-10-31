@@ -10,6 +10,7 @@ import json
 import sys
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 
 
@@ -500,15 +501,13 @@ class LanguageSpecTest(unittest.TestCase):
             pack.RUSSIAN.rowkey_files,
             ("rowkeys_russian1.xml", "rowkeys_russian2.xml", "rowkeys_russian3.xml"),
         )
+        # The pins come from the storage contract and describe the committed asset bytes.
+        asset = RU_DICTIONARY.read_bytes()
+        raw = zlib.decompress(asset)
+        self.assertEqual(pack.RUSSIAN.dictionary_asset_sha256, hashlib.sha256(asset).hexdigest())
+        self.assertEqual(pack.RUSSIAN.dictionary_raw_sha256, hashlib.sha256(raw).hexdigest())
         self.assertEqual(
-            pack.RUSSIAN.dictionary_asset_sha256,
-            "273f1a6928f74fdbd7f0fda4490978124b3748160ac283d0b51e8c913fea5fde",
-        )
-        self.assertEqual(
-            pack.RUSSIAN.dictionary_raw_sha256,
-            "f05499a3b4c3c2811c6ee8e9084dfaf472951a289a20dde2ab8cb098cb5a15b2",
-        )
-        self.assertEqual(pack.RUSSIAN.dictionary_entry_count, 100_000)
+            pack.RUSSIAN.dictionary_entry_count, int.from_bytes(raw[16:20], "little"))
         self.assertIsNone(pack.TATAR.default_output)
         self.assertEqual(pack.RUSSIAN.default_output, RU_COMMITTED_SET)
 

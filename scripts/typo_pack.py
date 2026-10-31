@@ -85,8 +85,10 @@ _PINS_MARKER_OPEN = "// <generated pins>"
 _PINS_MARKER_CLOSE = "// </generated pins>"
 
 
-def _tatar_dictionary_pins(contract: Path = _CONTRACT) -> tuple[str, str, int]:
-    """(asset SHA-256, raw SHA-256, entry count) of the Tatar dictionary, from the contract."""
+def dictionary_pins(
+    contract: Path = _CONTRACT, spec: str = _CONTRACT_SPEC
+) -> tuple[str, str, int]:
+    """(asset SHA-256, raw SHA-256, entry count) of the dictionary `spec`, from the contract."""
     try:
         text = contract.read_text(encoding="utf-8")
     except OSError as error:
@@ -111,11 +113,11 @@ def _tatar_dictionary_pins(contract: Path = _CONTRACT) -> tuple[str, str, int]:
     marked = [
         text[start:end]
         for start, end in regions
-        if f"val {_CONTRACT_SPEC} = DictionaryArtifactSpec(" in text[start:end]
+        if f"val {spec} = DictionaryArtifactSpec(" in text[start:end]
     ]
     if len(marked) != 1:
         raise TypoPackError(
-            f"{_CONTRACT_SPEC}: expected exactly one marked spec block in {contract}, "
+            f"{spec}: expected exactly one marked spec block in {contract}, "
             f"found {len(marked)}"
         )
     block = marked[0]
@@ -124,7 +126,7 @@ def _tatar_dictionary_pins(contract: Path = _CONTRACT) -> tuple[str, str, int]:
         matches = re.findall(pattern, block)
         if len(matches) != 1:
             raise TypoPackError(
-                f"{_CONTRACT_SPEC}: expected one match of {pattern!r}, found {len(matches)}"
+                f"{spec}: expected one match of {pattern!r}, found {len(matches)}"
             )
         return matches[0]
 
@@ -134,7 +136,7 @@ def _tatar_dictionary_pins(contract: Path = _CONTRACT) -> tuple[str, str, int]:
     return asset_sha256, raw_sha256, entry_count
 
 
-EXPECTED_ASSET_SHA256, EXPECTED_RAW_SHA256, EXPECTED_ENTRY_COUNT = _tatar_dictionary_pins()
+EXPECTED_ASSET_SHA256, EXPECTED_RAW_SHA256, EXPECTED_ENTRY_COUNT = dictionary_pins()
 
 
 # --------------------------------------------------------------------------------------
@@ -1066,15 +1068,15 @@ def create_argument_parser() -> argparse.ArgumentParser:
         type=int,
         choices=(1, 2, 3, 4),
         default=1,
-        help="1 = long-press partner (default), 2 = geometric neighbour, 3 = adjacent "
-        "transposition, 4 = full single substitution over the layout alphabet (Phase C)",
+        help="1 = long-press partner (default), 2 = geometric neighbor, 3 = adjacent "
+        "transposition, 4 = full single substitution over the layout alphabet",
     )
     build.add_argument(
         "--prefix-code-points",
         type=int,
         default=PREFIX_CODE_POINTS,
         help="typo window in Unicode code points (default %(default)s = the engine's "
-        "MIN_FUZZY_PREFIX_CODE_POINTS; TT-TYPO-NEXT Phase B also calibrates a 5-cp window)",
+        "MIN_FUZZY_PREFIX_CODE_POINTS; the calibration tests also use a 5-cp window)",
     )
     return parser
 

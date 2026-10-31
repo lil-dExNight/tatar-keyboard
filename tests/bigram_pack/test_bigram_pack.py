@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import zlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -183,6 +184,26 @@ class HeldOutDenominatorTest(unittest.TestCase):
             [bigram_pack.CorpusStats(path=str(path), sha256="")],
         )
         return configuration
+
+    def test_pair_counts_and_corpus_stats_do_not_depend_on_the_shards(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "train-sentences.txt"
+            path.write_text(
+                "1\tәни өйгә кайтты\n2\tәни өйгә китап\n3\tкитап әни кайтты\n",
+                encoding="utf-8",
+            )
+            results = []
+            for shards in (1, 2, 3, 8):
+                stats = [bigram_pack.CorpusStats(path=str(path), sha256="")]
+                table = bigram_pack.count_pairs(
+                    [path], frozenset(self.vocabulary), self.vocabulary, shards, stats)
+                results.append((dict(sorted(table.items())), stats[0].to_dict()))
+        for shards_result in results[1:]:
+            self.assertEqual(results[0], shards_result)
+        # Every in-vocabulary pair counts once: two in each of the three sentences.
+        self.assertEqual(6, results[0][1]["pairs"])
+        # The shard of a head is a fixed function of its bytes, not of the process.
+        self.assertEqual(zlib.crc32("әни".encode("utf-8")) % 8, bigram_pack.head_shard("әни", 8))
 
     def test_a_sentence_start_is_not_an_event(self) -> None:
         with TemporaryDirectory() as directory:
