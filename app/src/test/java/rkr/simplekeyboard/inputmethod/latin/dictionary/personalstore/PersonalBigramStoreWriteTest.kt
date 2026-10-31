@@ -441,10 +441,10 @@ class PersonalBigramStoreWriteTest {
         assertTrue(store.snapshot.indexOfPair("бәйрәм", "котлы") >= 0)
     }
 
-    // ---- an unreadable pending file is set aside, with its own notice mark ----------------------
+    // ---- an unreadable pending file is set aside, with no notice -------------------------------
 
     @Test
-    fun aCorruptPendingFileIsSetAsideAndAnnouncedUntilDelivered() {
+    fun aCorruptPendingFileIsSetAsideWithoutANotice() {
         val directory = newPersonalDir()
         val writer = store(directory, RecordingOps(), RealOpener)
         writer.notePair("сәләм", "дөнья")
@@ -459,16 +459,16 @@ class PersonalBigramStoreWriteTest {
         val store = store(directory, RecordingOps(), RealOpener, quarantineNotice = { notices++ })
         store.prime()
 
-        assertEquals("the loss is announced on the open that sets the file aside", 1, notices)
+        assertEquals("the counters relearn by themselves, so nothing is announced", 0, notices)
         assertFalse("the corrupt file does not stay where the reader looks", pendingFile.exists())
         assertArrayEquals(
             "the bytes are set aside, not destroyed",
             bytes,
             File(directory, "pending-bigrams-$subtype-s1-f1.bin.quarantine").readBytes(),
         )
-        assertTrue(
-            "the durable mark is the pending channel's own",
-            File(directory, "quarantine-notice-bigrams-$subtype-s1-f1-pending.flag").isFile,
+        assertFalse(
+            "no notice mark is written for the pending counters",
+            File(directory, "quarantine-notice-bigrams-$subtype-s1-f1-pending.flag").exists(),
         )
         assertFalse(
             "the pairs' own mark stays down: their file is fine",
@@ -476,23 +476,48 @@ class PersonalBigramStoreWriteTest {
         )
         assertTrue("learning restarts from empty", store.snapshot.isEmpty)
 
-        // The pending slot holds hashes, not pairs the settings screen could restore.
+        // The pending slot holds hashes, not entries the settings screen could restore.
         var inspected = false
         var report: PersonalQuarantineReport? = null
         store.inspectQuarantine { inspected = true; report = it }
         assertTrue(inspected)
         assertNull(report)
 
-        // Across a process restart the mark raises the notice again, until it is delivered.
+        // A pending-counter mark already on disk raises nothing either.
+        File(directory, "quarantine-notice-bigrams-$subtype-s1-f1-pending.flag").writeBytes(ByteArray(1))
         var nextProcess = 0
         store(directory, RecordingOps(), RealOpener, quarantineNotice = { nextProcess++ }).prime()
-        assertEquals("a notice nobody has taken is still owed", 1, nextProcess)
+        assertEquals("a pending-counter mark owes the user nothing", 0, nextProcess)
+    }
 
-        store(directory, RecordingOps(), RealOpener).noticeDelivered()
-        assertFalse(File(directory, "quarantine-notice-bigrams-$subtype-s1-f1-pending.flag").exists())
-        var afterDelivery = 0
-        store(directory, RecordingOps(), RealOpener, quarantineNotice = { afterDelivery++ }).prime()
-        assertEquals("a delivered notice is not raised again", 0, afterDelivery)
+    @Test
+    fun noticeDeliveredDeletesALeftoverPendingCounterMark() {
+        val directory = newPersonalDir()
+        val store = store(directory, RecordingOps(), RealOpener)
+        store.prime()
+        val mark = File(directory, "quarantine-notice-bigrams-$subtype-s1-f1-pending.flag")
+        mark.writeBytes(ByteArray(1))
+
+        store.noticeDelivered()
+
+        assertFalse("the leftover pending-counter mark is removed", mark.exists())
+    }
+
+    @Test
+    fun clearAllDeletesALeftoverPendingCounterMark() {
+        val directory = newPersonalDir()
+        val store = store(directory, RecordingOps(), RealOpener)
+        repeat(2) { store.notePair("сәләм", "дөнья") }
+        assertTrue(destinationFile(directory).isFile)
+        val mark = File(directory, "quarantine-notice-bigrams-$subtype-s1-f1-pending.flag")
+        mark.writeBytes(ByteArray(1))
+
+        var outcome: Boolean? = null
+        store.clearAll { outcome = it }
+
+        assertEquals(true, outcome)
+        assertFalse(destinationFile(directory).exists())
+        assertFalse("the leftover pending-counter mark is removed", mark.exists())
     }
 
     // ---- the context-membership gate at graduation ----------------------------------------------

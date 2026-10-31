@@ -53,7 +53,7 @@ class PersonalDictionaryReadPathPrivacyTest {
     }
 
     @Test
-    fun theReadOnlyPhaseContainsNoWriteApi() {
+    fun theReadPathContainsNoWriteApi() {
         val source = personalSources()
         listOf(
             "FileOutputStream",

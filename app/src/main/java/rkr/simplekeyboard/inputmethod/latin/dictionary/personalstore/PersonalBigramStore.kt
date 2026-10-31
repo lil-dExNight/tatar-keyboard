@@ -57,6 +57,9 @@ internal class PersonalBigramStore(
     private var loaded = false
     private var counterFlushPending = false
 
+    // See PersonalDictionaryStore.loadFailed.
+    private var loadFailed = false
+
     // See PersonalDictionaryStore.wholeWriteSuppressed.
     private var wholeWriteSuppressed = false
 
@@ -207,12 +210,14 @@ internal class PersonalBigramStore(
         pendingDirty = false
         salt = null
         snapshot = PersonalBigramDictionary.EMPTY
-        loaded = true
         if (!unlockGate()) {
-            // The files are untouched, so this is a failure.
+            // The files are untouched, so the store is not loaded and this is a failure.
+            loaded = false
             report(outcome, false)
             return@onWorker
         }
+        loaded = true
+        loadFailed = false
         // Independent deletions, as in PersonalDictionaryStore.clearAll.
         val storeGone = deleted { deleteFile() }
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
@@ -263,6 +268,7 @@ internal class PersonalBigramStore(
         counterFlushPending = false
         snapshot = PersonalBigramDictionary.EMPTY
         loaded = false
+        loadFailed = false
         open()
         return true
     }
@@ -383,7 +389,10 @@ internal class PersonalBigramStore(
     }
 
     /** Opens the store on its worker. See [PersonalDictionaryStore.prime]. */
-    fun prime() = onWorker { open() }
+    fun prime(outcome: PersonalMutationOutcome? = null) = onWorker {
+        loadFailed = false
+        report(outcome, open())
+    }
 
     /** Test hook: runs [block] on the store's executor (so tests can drive the serialized owner). */
     fun runOnWorker(block: () -> Unit) = onWorker(block)
@@ -424,14 +433,19 @@ internal class PersonalBigramStore(
     /** Opens the directory once. See `PersonalDictionaryStore.open`. */
     private fun open(): Boolean {
         if (loaded) return true
-        if (!unlockGate()) return false
-        loaded = true
+        if (loadFailed || !unlockGate()) return false
         try {
             load()
         } catch (_: Exception) {
             entries = PersonalBigramEntries.empty(maxPairs)
+            pending = PendingCounters.EMPTY
+            pendingDirty = false
+            counterFlushPending = false
             snapshot = PersonalBigramDictionary.EMPTY
+            loadFailed = true
+            return false
         }
+        loaded = true
         // The only place the notice is raised; see PersonalDictionaryStore.open.
         if (justQuarantined || quarantineNoticeIsMarked()) {
             try {
@@ -456,10 +470,14 @@ internal class PersonalBigramStore(
             snapshot = PersonalBigramDictionary.EMPTY
             return
         }
-        val validated = try {
-            validator.validate(file, subtypeId)
-        } catch (_: Exception) {
-            null
+        // A read error propagates to [open]; see PersonalDictionaryStore.load.
+        val bytes = PersonalFileReads.readCapped(file, TpersbFormat.MAX_FILE_SIZE)
+        val validated = bytes?.let {
+            try {
+                validator.validate(it, subtypeId)
+            } catch (_: Exception) {
+                null
+            }
         }
         if (validated == null) {
             quarantine(directory, file)
@@ -536,7 +554,7 @@ internal class PersonalBigramStore(
     }
 
     /**
-     * Reads the pending counters once, alongside the store itself. Fail-closed to empty; a file
+     * Reads the pending counters once, alongside the store itself. A read error propagates; a file
      * that does not parse is set aside (see `PersonalDictionaryStore.readPending`).
      */
     private fun readPending(directory: File) {
@@ -546,8 +564,9 @@ internal class PersonalBigramStore(
             pending = PendingCounters.EMPTY
             return
         }
+        val bytes = file.readBytes()
         val parsed = try {
-            PendingCounters.parseOrNull(file.readBytes())
+            PendingCounters.parseOrNull(bytes)
         } catch (_: Exception) {
             null
         }
@@ -604,30 +623,25 @@ internal class PersonalBigramStore(
 
     private fun quarantineNoticeFileName(): String = "quarantine-notice-bigrams-$subtypeId-s1-f1.flag"
 
-    /** Whether either on-disk notice mark exists; false on error. */
+    /** Whether the on-disk notice mark exists; false on error. */
     private fun quarantineNoticeIsMarked(): Boolean = try {
-        val directory = directoryProvider.personalDirectory()
-        File(directory, quarantineNoticeFileName()).isFile ||
-            File(directory, pendingQuarantineNoticeFileName()).isFile
+        File(directoryProvider.personalDirectory(), quarantineNoticeFileName()).isFile
     } catch (_: Exception) {
         false
     }
 
-    /** Sets aside an unreadable pending file. See `PersonalDictionaryStore.quarantinePending`. */
+    /** Sets aside an unreadable pending file, with no notice. See `PersonalDictionaryStore.quarantinePending`. */
     private fun quarantinePending(directory: File, file: File) {
         try {
             fileOps.atomicReplace(file, File(directory, pendingQuarantineFileName()))
             fileOps.syncDirectory(directory)
         } catch (_: Exception) {
         }
-        justQuarantined = true
-        runCatching {
-            writeBytesDurably(directory, File(directory, pendingQuarantineNoticeFileName()), ByteArray(1))
-        }
     }
 
     private fun pendingQuarantineFileName(): String = pendingFileName() + QUARANTINE_SUFFIX
 
+    /** A pending-counter notice mark. See `PersonalDictionaryStore.pendingQuarantineNoticeFileName`. */
     private fun pendingQuarantineNoticeFileName(): String =
         "quarantine-notice-bigrams-$subtypeId-s1-f1-pending.flag"
 

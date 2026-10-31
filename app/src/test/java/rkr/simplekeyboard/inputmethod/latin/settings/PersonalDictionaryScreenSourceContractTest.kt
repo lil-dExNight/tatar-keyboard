@@ -346,6 +346,19 @@ class PersonalDictionaryScreenSourceContractTest {
     }
 
     @Test
+    fun eraseEverythingIsOfferedWheneverAnyPersonalFileExists() {
+        val screen = host.substringAfter("private fun buildPersonalDictionaryScreen()")
+            .substringBefore("private fun usageRow(")
+        assertTrue("the screen asks the store worker whether any file exists",
+            screen.contains("PersonalErasure.hasSavedFiles(this) { found ->"))
+        assertTrue("and offers the erase row on that answer too, not only on the listed counts",
+            screen.contains("if (content.totalCount > 0 || personalSearchQuery.isNotEmpty() || savedFiles == true) {"))
+        val after = host.substringAfter("private fun afterPersonalMutation(")
+            .substringBefore("\n    /**")
+        assertTrue("a finished mutation asks again", after.contains("personalSavedFiles = null"))
+    }
+
+    @Test
     fun savedDataCoversDisabledLanguagesButManualAdditionUsesEnabledOnes() {
         val enumeration = host.substringAfter("private fun personalSubtypeIds()")
             .substringBefore("private fun targetSubtypeForAddedWord(")
@@ -358,7 +371,7 @@ class PersonalDictionaryScreenSourceContractTest {
         val screen = host.substringAfter("private fun buildPersonalDictionaryScreen()")
             .substringBefore("private fun usageRow(")
         assertTrue(screen.contains("showAddPersonalWordDialog(controller, enabledPersonalSubtypeIds())"))
-        assertTrue(screen.contains("showErasePersonalDictionaryDialog(controller, pairController, emojiController,\n                        subtypeIds)"))
+        assertTrue(screen.contains("showErasePersonalDictionaryDialog(subtypeIds)"))
     }
 
     @Test

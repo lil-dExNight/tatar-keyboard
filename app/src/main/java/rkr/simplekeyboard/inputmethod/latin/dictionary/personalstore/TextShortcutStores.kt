@@ -91,6 +91,10 @@ object TextShortcutStores {
     internal fun replaceAll(context: Context, bytes: ByteArray?, outcome: PersonalMutationOutcome) =
         storeFor(context).replaceAll(bytes, outcome)
 
+    /** Opens the store for the backup. See [PersonalDictionaries.prime]. */
+    internal fun prime(context: Context, outcome: PersonalMutationOutcome) =
+        storeFor(context).prime(outcome)
+
     @JvmStatic
     fun setErasureListener(listener: Runnable?) {
         erasureListener = listener

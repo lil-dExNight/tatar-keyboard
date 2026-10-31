@@ -74,7 +74,7 @@ class PersonalDictionaryNoLiveWriteSourceContractTest {
             latinIme.contains("PersonalDictionaries.sourceFor("))
         for (mutation in mutations) {
             assertFalse(
-                "the typing path must not write: LatinIME calls $mutation — learning is E4c",
+                "the typing path must not write: LatinIME calls $mutation",
                 latinIme.contains(mutation),
             )
         }

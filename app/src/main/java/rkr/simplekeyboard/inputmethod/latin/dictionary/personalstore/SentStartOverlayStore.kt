@@ -30,22 +30,13 @@ import java.security.SecureRandom
 import java.util.concurrent.Executor
 
 /**
- * The serialized owner of one subtype's `.tsent` sentence-initial overlay file.
- *
- * Threading, the whole-file write sequence (exclusive temp → write → flush → fsync file →
- * re-validate → atomic replace → fsync directory) and the fail-closed rule are the personal
- * stores' shared ones; the shared explanations live in [PersonalDictionaryStore]. The UI thread
- * does no I/O, no checksum, no read and no write; readers see the published immutable
- * [SentStartOverlay] snapshot.
+ * The serialized owner of one subtype's `.tsent` sentence-initial overlay file. Threading, the
+ * whole-file write sequence, quarantine, notices and failure handling are those of
+ * [PersonalDictionaryStore]; readers see the published immutable [SentStartOverlay] [snapshot].
  *
  * A word is written in plaintext only after [PendingCounters.LEARN_THRESHOLD] sentence-initial
- * commits; until then only a salted truncated hash exists (see [PendingCounters]), in memory
- * between flushes. The threshold is shared with the personal dictionary: the same slip repeated
- * twice is not the user's habit yet.
- *
- * The quarantined file keeps the unreadable bytes out of the validation loop; [clearAll] removes
- * it. There is no restore path because no screen lists the overlay, and the overlay relearns.
- * Quarantine notices follow the other personal stores' durable-mark and delivery rules.
+ * commits (see [noteSentenceStart]); until then only a salted truncated hash exists, in memory
+ * between flushes.
  */
 internal class SentStartOverlayStore(
     private val subtypeId: String,
@@ -66,6 +57,9 @@ internal class SentStartOverlayStore(
     private var entries: SentStartOverlayEntries = SentStartOverlayEntries.empty(maxEntries)
     private var loaded = false
     private var pendingCounterFlush = false
+
+    // See PersonalDictionaryStore.loadFailed.
+    private var loadFailed = false
 
     // See PersonalDictionaryStore.wholeWriteSuppressed.
     private var wholeWriteSuppressed = false
@@ -152,13 +146,15 @@ internal class SentStartOverlayStore(
         pendingDirty = false
         salt = null
         snapshot = SentStartOverlay.EMPTY
-        loaded = true
         if (!unlockGate()) {
-            // Memory is empty but the files are untouched and come back on the next start, so this
-            // is reported as a failure.
+            // Memory is empty but the files are untouched and come back on the next open, so the
+            // store is not loaded and this is reported as a failure.
+            loaded = false
             report(outcome, false)
             return@onWorker
         }
+        loaded = true
+        loadFailed = false
         // Independent deletions: a failure on one must not skip the others.
         val fileGone = deleted { deleteFile() }
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
@@ -190,7 +186,10 @@ internal class SentStartOverlayStore(
      * Opens the store on its worker if it is not open yet, publishing the snapshot the strip will
      * read. Safe to call from any thread: the file read runs on the executor.
      */
-    fun prime() = onWorker { open() }
+    fun prime() = onWorker {
+        loadFailed = false
+        open()
+    }
 
     /** Test hook: runs [block] on the store's executor (so tests can drive the serialized owner). */
     fun runOnWorker(block: () -> Unit) = onWorker(block)
@@ -234,21 +233,25 @@ internal class SentStartOverlayStore(
     }
 
     /**
-     * Opens the directory once: honors the unlock gate (before the first unlock the path is
-     * inaccessible, so the feature stays empty), removes stale temps, reads the file, and
-     * quarantines an unreadable file (see [quarantine]) with an empty snapshot. Returns true once
-     * loaded.
+     * Opens the directory once, after the unlock gate: removes stale temps, reads the file and
+     * quarantines one that fails validation (see [quarantine]). Returns true once loaded; any other
+     * failure leaves the store not loaded, as in `PersonalDictionaryStore.open`.
      */
     private fun open(): Boolean {
         if (loaded) return true
-        if (!unlockGate()) return false
-        loaded = true
+        if (loadFailed || !unlockGate()) return false
         try {
             load()
         } catch (_: Exception) {
             entries = SentStartOverlayEntries.empty(maxEntries)
+            pending = PendingCounters.EMPTY
+            pendingDirty = false
+            pendingCounterFlush = false
             snapshot = SentStartOverlay.EMPTY
+            loadFailed = true
+            return false
         }
+        loaded = true
         // The only place the notice is raised; see PersonalDictionaryStore.open.
         if (justQuarantined || quarantineNoticeIsMarked()) {
             try {
@@ -272,10 +275,14 @@ internal class SentStartOverlayStore(
             snapshot = SentStartOverlay.EMPTY
             return
         }
-        val validated = try {
-            validator.validate(file, subtypeId)
-        } catch (_: Exception) {
-            null
+        // A read error propagates to [open]; see PersonalDictionaryStore.load.
+        val bytes = PersonalFileReads.readCapped(file, TsentFormat.MAX_FILE_SIZE)
+        val validated = bytes?.let {
+            try {
+                validator.validate(it, subtypeId)
+            } catch (_: Exception) {
+                null
+            }
         }
         if (validated == null) {
             quarantine(directory, file)
@@ -359,7 +366,7 @@ internal class SentStartOverlayStore(
     }
 
     /**
-     * Reads the pending counters once, alongside the overlay itself. Fail-closed to empty; a file
+     * Reads the pending counters once, alongside the overlay itself. A read error propagates; a file
      * that does not parse is set aside (see `PersonalDictionaryStore.readPending`).
      */
     private fun readPending(directory: File) {
@@ -369,8 +376,9 @@ internal class SentStartOverlayStore(
             pending = PendingCounters.EMPTY
             return
         }
+        val bytes = file.readBytes()
         val parsed = try {
-            PendingCounters.parseOrNull(file.readBytes())
+            PendingCounters.parseOrNull(bytes)
         } catch (_: Exception) {
             null
         }
@@ -436,30 +444,25 @@ internal class SentStartOverlayStore(
     private fun quarantineNoticeFileName(): String =
         "quarantine-notice-sentstart-$subtypeId-s1-f1.flag"
 
-    /** Whether either on-disk notice mark exists; false on error. */
+    /** Whether the on-disk notice mark exists; false on error. */
     private fun quarantineNoticeIsMarked(): Boolean = try {
-        val directory = directoryProvider.personalDirectory()
-        File(directory, quarantineNoticeFileName()).isFile ||
-            File(directory, pendingQuarantineNoticeFileName()).isFile
+        File(directoryProvider.personalDirectory(), quarantineNoticeFileName()).isFile
     } catch (_: Exception) {
         false
     }
 
-    /** Sets aside an unreadable pending file. See `PersonalDictionaryStore.quarantinePending`. */
+    /** Sets aside an unreadable pending file, with no notice. See `PersonalDictionaryStore.quarantinePending`. */
     private fun quarantinePending(directory: File, file: File) {
         try {
             fileOps.atomicReplace(file, File(directory, pendingQuarantineFileName()))
             fileOps.syncDirectory(directory)
         } catch (_: Exception) {
         }
-        justQuarantined = true
-        runCatching {
-            writeBytesDurably(directory, File(directory, pendingQuarantineNoticeFileName()), ByteArray(1))
-        }
     }
 
     private fun pendingQuarantineFileName(): String = pendingFileName() + QUARANTINE_SUFFIX
 
+    /** A pending-counter notice mark. See `PersonalDictionaryStore.pendingQuarantineNoticeFileName`. */
     private fun pendingQuarantineNoticeFileName(): String =
         "quarantine-notice-sentstart-$subtypeId-s1-f1-pending.flag"
 

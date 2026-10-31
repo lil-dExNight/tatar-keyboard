@@ -19,7 +19,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
@@ -69,31 +68,6 @@ internal class PersonalEmojiScreenController(
     fun clearEmoji(subtypeId: String, onCleared: (Boolean) -> Unit) {
         PersonalEmojiDictionaries.storeFor(context, subtypeId)
             .clearAll { cleared -> uiPoster { onCleared(cleared) } }
-        PersonalEmojiDictionaries.notifyErased()
-    }
-
-    /**
-     * Erases the learned emoji of all languages, as part of the screen's global "Erase all".
-     * [onErased] gets `true` only when every language's files went away, like the words erasure.
-     */
-    fun eraseAll(subtypeIds: List<String>, onErased: (Boolean) -> Unit) {
-        val targets = subtypeIds.filter { PersonalSubtypes.alphabetFor(it) != null }
-        if (targets.isEmpty()) {
-            PersonalEmojiDictionaries.notifyErased()
-            uiPoster { onErased(true) }
-            return
-        }
-        // Atomic counter, as in PersonalDictionaryScreenController.eraseAll.
-        val remaining = AtomicInteger(targets.size)
-        val everythingGone = AtomicBoolean(true)
-        for (subtypeId in targets) {
-            PersonalEmojiDictionaries.storeFor(context, subtypeId).clearAll { erased ->
-                if (!erased) everythingGone.set(false)
-                if (remaining.decrementAndGet() == 0) {
-                    uiPoster { onErased(everythingGone.get()) }
-                }
-            }
-        }
         PersonalEmojiDictionaries.notifyErased()
     }
 

@@ -46,14 +46,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The Android side of the backup: reads and writes the user-picked document (SAF needs no
  * permission), wires [BackupTransfer] to the live stores, and answers on the UI thread.
  *
- * Both directions run on one dedicated worker. Importing writes each personal file through its
- * owning store (`replaceAll` on the store's own worker, awaited here), so a restore cannot race a
- * learning write, and the store re-reads and re-publishes its snapshot right away — the open
- * keyboard picks the imported words up without a restart. Settings are applied through the
- * SharedPreferences editor, so every listener (the IME's Settings singleton among them) reloads;
- * device policy is then re-read, so a managed restriction wins over an imported value.
- *
- * Nothing here logs, and no callback carries content: the answers are a boolean for export and a
+ * Both directions run on one dedicated worker. Personal files and settings are written through
+ * their live owners (see the target's `replacePersonalFile` and `replacePreferences`). Nothing
+ * here logs, and no callback carries content: the answers are a boolean for export and a
  * [BackupImportResult] for import.
  */
 internal class BackupCoordinator(
@@ -179,26 +174,55 @@ internal class BackupCoordinator(
             null
         }
 
+        override fun openPersonalStore(fileName: String): Boolean {
+            val (kind, subtypeId) = BackupFormat.classifyPersonalFileName(fileName) ?: return false
+            return awaitStore { outcome ->
+                when (kind) {
+                    BackupFormat.PersonalKind.WORDS ->
+                        PersonalDictionaries.prime(appContext, subtypeId, outcome)
+                    BackupFormat.PersonalKind.PAIRS ->
+                        PersonalBigramDictionaries.prime(appContext, subtypeId, outcome)
+                    BackupFormat.PersonalKind.EMOJI ->
+                        PersonalEmojiDictionaries.prime(appContext, subtypeId, outcome)
+                    BackupFormat.PersonalKind.REFUSED ->
+                        RefusedCorrectionStores.prime(appContext, subtypeId, outcome)
+                    BackupFormat.PersonalKind.SHORTCUTS ->
+                        TextShortcutStores.prime(appContext, outcome)
+                }
+            }
+        }
+
+        /**
+         * Goes through the owning store's `replaceAll` on that store's worker, awaited here, so a
+         * restore cannot race a learning write and the store re-reads and re-publishes its
+         * snapshot at once: the open keyboard picks the imported words up without a restart.
+         */
         override fun replacePersonalFile(fileName: String, bytes: ByteArray?): Boolean {
             val (kind, subtypeId) = BackupFormat.classifyPersonalFileName(fileName) ?: return false
+            return awaitStore { outcome ->
+                when (kind) {
+                    BackupFormat.PersonalKind.WORDS ->
+                        PersonalDictionaries.replaceAll(appContext, subtypeId, bytes, outcome)
+                    BackupFormat.PersonalKind.PAIRS ->
+                        PersonalBigramDictionaries.replaceAll(appContext, subtypeId, bytes, outcome)
+                    BackupFormat.PersonalKind.EMOJI ->
+                        PersonalEmojiDictionaries.replaceAll(appContext, subtypeId, bytes, outcome)
+                    BackupFormat.PersonalKind.REFUSED ->
+                        RefusedCorrectionStores.replaceAll(appContext, subtypeId, bytes, outcome)
+                    BackupFormat.PersonalKind.SHORTCUTS ->
+                        TextShortcutStores.replaceAll(appContext, bytes, outcome)
+                }
+            }
+        }
+
+        /** Hands [request] an outcome, then waits on this worker for the store's answer. */
+        private fun awaitStore(request: (PersonalMutationOutcome) -> Unit): Boolean {
             val done = CountDownLatch(1)
             val succeeded = AtomicBoolean(false)
-            val outcome = PersonalMutationOutcome { ok ->
+            request(PersonalMutationOutcome { ok ->
                 succeeded.set(ok)
                 done.countDown()
-            }
-            when (kind) {
-                BackupFormat.PersonalKind.WORDS ->
-                    PersonalDictionaries.replaceAll(appContext, subtypeId, bytes, outcome)
-                BackupFormat.PersonalKind.PAIRS ->
-                    PersonalBigramDictionaries.replaceAll(appContext, subtypeId, bytes, outcome)
-                BackupFormat.PersonalKind.EMOJI ->
-                    PersonalEmojiDictionaries.replaceAll(appContext, subtypeId, bytes, outcome)
-                BackupFormat.PersonalKind.REFUSED ->
-                    RefusedCorrectionStores.replaceAll(appContext, subtypeId, bytes, outcome)
-                BackupFormat.PersonalKind.SHORTCUTS ->
-                    TextShortcutStores.replaceAll(appContext, bytes, outcome)
-            }
+            })
             return try {
                 done.await()
                 succeeded.get()
@@ -208,6 +232,10 @@ internal class BackupCoordinator(
             }
         }
 
+        /**
+         * Goes through the SharedPreferences editor, so every listener (the IME's Settings among
+         * them) reloads; device policy is then re-read, so a managed restriction wins.
+         */
         override fun replacePreferences(values: Map<String, Any?>): Boolean {
             val editor = prefs.edit()
             editor.clear()

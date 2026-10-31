@@ -90,6 +90,10 @@ object PersonalEmojiDictionaries {
         outcome: PersonalMutationOutcome,
     ) = storeFor(context, subtypeId).replaceAll(bytes, outcome)
 
+    /** Opens one language's store for the backup. See [PersonalDictionaries.prime]. */
+    internal fun prime(context: Context, subtypeId: String, outcome: PersonalMutationOutcome) =
+        storeFor(context, subtypeId).prime(outcome)
+
     @JvmStatic
     fun setErasureListener(listener: Runnable?) {
         erasureListener = listener

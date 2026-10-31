@@ -73,6 +73,10 @@ object RefusedCorrectionStores {
         outcome: PersonalMutationOutcome,
     ) = storeFor(context, subtypeId).replaceAll(bytes, outcome)
 
+    /** Opens one language's store for the backup. See [PersonalDictionaries.prime]. */
+    internal fun prime(context: Context, subtypeId: String, outcome: PersonalMutationOutcome) =
+        storeFor(context, subtypeId).prime(outcome)
+
     /**
      * The factory wiring: what [AndroidPersonalDictionaryStorage.create] assembles for the words
      * store — the same credential-protected `noBackupFilesDir`, durable ops and unlock gate.

@@ -130,12 +130,12 @@ class PersonalQuarantineScreenSourceContractTest {
                 assertTrue("$qualifier/$quantity: the number is in it", text.contains("%1\$d"))
             }
         }
-        assertTrue("and the English says the rest is damaged, in every form",
+        assertTrue("and the English says the rest is lost, in every form",
             pluralForms("values", "personal_dictionary_quarantine_partial")
-                .all { it.value.lowercase().contains("damaged") })
+                .all { it.value.lowercase().contains("lost") })
         assertFalse("while the whole-copy wording claims no loss",
             pluralForms("values", "personal_dictionary_quarantine_whole")
-                .any { it.value.lowercase().contains("damaged") })
+                .any { it.value.lowercase().contains("lost") })
 
         // A count that reads "1 words" makes a person doubt the sentence beside it, and the sentence
         // beside it is the one saying part of their words is gone.
@@ -214,7 +214,7 @@ class PersonalQuarantineScreenSourceContractTest {
     @Test
     fun everyActionOnTheCopyMakesTheScreenAskAgain() {
         assertEquals(
-            "restore, discard, erase-all and the U7 per-language clear: four actions, four invalidations",
+            "restore, discard, erase-all and the per-language clear: four actions, four invalidations",
             4,
             Regex(Regex.escape("personalQuarantines = null")).findAll(host).count(),
         )
@@ -253,8 +253,8 @@ class PersonalQuarantineScreenSourceContractTest {
     @Test
     fun theNoticeOffersTheActionThatNowExists() {
         val english = stringValue("values", "personal_dictionary_unreadable")
-        assertTrue("it still says the list is empty", english.contains("empty"))
-        assertTrue("and now says a copy was kept", english.lowercase().contains("copy"))
+        assertTrue("it says only part may come back",
+            english.lowercase().contains("restore what is left"))
         assertTrue("and where to go", english.contains("Saved words"))
         for (forbidden in listOf("file", "path", "error", "tpers", "/")) {
             assertFalse("the notice must not name '$forbidden'", english.lowercase().contains(forbidden))

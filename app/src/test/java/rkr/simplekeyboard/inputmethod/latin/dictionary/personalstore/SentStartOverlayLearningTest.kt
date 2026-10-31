@@ -124,8 +124,9 @@ class SentStartOverlayLearningTest {
         )
         assertTrue(
             "the erase-all covers the overlay store",
-            File(sourceRoot(), "java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt")
-                .readText().contains("SentStartOverlays.storeFor(this, subtypeId).clearAll"),
+            File(sourceRoot(),
+                "java/rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/PersonalErasure.kt")
+                .readText().contains("SentStartOverlays.storeFor(appContext, subtypeId).clearAll"),
         )
     }
 

@@ -170,18 +170,18 @@ class PersonalDictionaryErasureTest {
         // Erase-all takes the full list of supported languages and loops over it, including
         // languages currently disabled. Asserted by source: the loop needs Context and cannot run
         // off-device.
-        val controller = File(sourceRoot(),
-            "java/rkr/simplekeyboard/inputmethod/latin/settings/PersonalDictionaryScreenController.kt")
+        val erasure = File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/PersonalErasure.kt")
             .readText()
         // The call also takes a completion callback: the screen may not repaint or claim success
         // before the erasure has actually run.
         assertTrue("erase-all iterates every subtype it is given",
-            controller.contains("fun eraseAll(subtypeIds: List<String>,"))
+            erasure.contains("fun eraseEverything(context: Context, subtypeIds: List<String>,"))
         assertTrue("the list it loops over is derived from ALL of them",
-            controller.contains("val targets = subtypeIds.filter"))
-        assertTrue(controller.contains("for (subtypeId in targets)"))
-        assertTrue("and it notifies the IME so the band unbinds",
-            controller.contains("PersonalDictionaries.notifyErased()"))
+            erasure.contains("for (subtypeId in subtypeIds.filter { PersonalSubtypes.isSupported(it) }"))
+        assertTrue("and it notifies the IME so the strip unbinds",
+            erasure.contains("PersonalDictionaries.notifyErased()") &&
+                erasure.contains("TextShortcutStores.notifyErased()"))
 
         val host = File(sourceRoot(),
             "java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt").readText()
@@ -206,15 +206,21 @@ class PersonalDictionaryErasureTest {
         val dialog = host.substringAfter("private fun showErasePersonalDictionaryDialog(")
             .substringBefore(".setNegativeButton(")
         val discard = dialog.indexOf("backupCoordinator().discardPendingImport { journalErased ->")
-        val firstStore = dialog.indexOf("controller.eraseAll(subtypeIds)")
-        assertTrue(discard in 0 until firstStore)
+        val recents = dialog.indexOf("EmojiPanelController.clearRecents(this) { recentsCleared ->")
+        val firstStore = dialog.indexOf("PersonalErasure.eraseEverything(this, subtypeIds)")
+        assertTrue("the journal goes first", discard >= 0 && discard < recents)
+        assertTrue("then the recent emoji, whose answer the stores' erase waits for",
+            recents in 0 until firstStore)
         val stop = dialog.indexOf("if (!journalErased) {")
         assertTrue("a failed discard is checked before any store erases", stop in discard until firstStore)
         assertTrue("and reports the failure without touching the stores",
             dialog.substring(stop, firstStore).contains(
                 "afterPersonalMutation(false, R.string.personal_dictionary_erase_failed)\n" +
                     "                            return@discardPendingImport"))
-        assertTrue(dialog.contains("&& refusalsErased && overlayErased,"))
+        // Success needs both answers: the stores' and the recent emoji's.
+        assertTrue(dialog.contains("val erasedAll = erased && recentsCleared"))
+        assertTrue(dialog.contains("afterPersonalMutation(erasedAll,\n" +
+            "                                                R.string.personal_dictionary_erase_failed)"))
     }
 
     @Test

@@ -110,6 +110,13 @@ object PersonalDictionaries {
         outcome: PersonalMutationOutcome,
     ) = storeFor(context, subtypeId).replaceAll(bytes, outcome)
 
+    /**
+     * Opens the store for [subtypeId] on its worker, so a damaged file is quarantined the usual
+     * way; [outcome] is told whether the store is loaded. The backup calls it before reading.
+     */
+    internal fun prime(context: Context, subtypeId: String, outcome: PersonalMutationOutcome) =
+        storeFor(context, subtypeId).prime(outcome)
+
     @JvmStatic
     fun setErasureListener(listener: Runnable?) {
         erasureListener = listener

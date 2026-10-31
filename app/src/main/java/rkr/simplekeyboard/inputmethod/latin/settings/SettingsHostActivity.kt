@@ -44,9 +44,8 @@ import rkr.simplekeyboard.inputmethod.keyboard.KeyboardTheme
 import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
 import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalErasure
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
-import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStores
-import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.SentStartOverlays
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupCoordinator
@@ -152,6 +151,12 @@ class SettingsHostActivity : Activity() {
     private var personalEmojiQuarantines: Map<String, PersonalQuarantineReport>? = null
 
     /**
+     * Whether the personal directory holds any file, or null while not read yet. Read on the
+     * store worker like [personalQuarantines]; reset on every start and finished mutation.
+     */
+    private var personalSavedFiles: Boolean? = null
+
+    /**
      * Clears the keyboard layout cache when a layout-affecting pref changes. Everything else
      * reaches the live keyboard through the Settings singleton's own listener on the same file.
      */
@@ -222,6 +227,7 @@ class SettingsHostActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        personalSavedFiles = null
         // Rebuild the visible screen every time the activity returns to the
         // foreground: the language list, enabled-layout summaries and restriction
         // state are re-read, so external changes are picked up.
@@ -272,6 +278,8 @@ class SettingsHostActivity : Activity() {
             return
         }
         detailLocale = detail
+        // A repaint of the same screen keeps the answer; arriving from another screen re-reads it.
+        if (screen != currentScreen) personalSavedFiles = null
         currentScreen = screen
         restrictionKeys = Settings.readStringSetTolerant(prefs, Settings.ACTIVE_RESTRICTIONS, null)
                 ?: emptySet()
@@ -355,7 +363,7 @@ class SettingsHostActivity : Activity() {
 
 
     /**
-     * The "Backup and export" screen: one explanation row and the two actions. The explanation
+     * The "Backup" screen: one explanation row and the two actions. The explanation
      * says plainly what the file holds — the learned words among them — and that it is not
      * encrypted, because the file is the one artifact of this app the user carries around
      * themselves. The actions launch the system file picker; everything else happens in
@@ -743,10 +751,23 @@ class SettingsHostActivity : Activity() {
             }))
         }
 
-        if (content.totalCount > 0 || personalSearchQuery.isNotEmpty()) {
+        // Offered whenever the personal folder holds anything, including what this screen does not
+        // list (text shortcuts, refused corrections, sentence starts, pending counters, copies).
+        val savedFiles = personalSavedFiles
+        if (savedFiles == null) {
+            PersonalErasure.hasSavedFiles(this) { found ->
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    personalSavedFiles = found
+                    if (found && currentScreen == Screen.PERSONAL_DICTIONARY) {
+                        showScreen(Screen.PERSONAL_DICTIONARY)
+                    }
+                }
+            }
+        }
+        if (content.totalCount > 0 || personalSearchQuery.isNotEmpty() || savedFiles == true) {
             addCard(listOf(actionRow(R.string.personal_dictionary_erase_all) {
-                showErasePersonalDictionaryDialog(controller, pairController, emojiController,
-                        subtypeIds)
+                showErasePersonalDictionaryDialog(subtypeIds)
             }))
         }
     }
@@ -1198,42 +1219,36 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
-    private fun showErasePersonalDictionaryDialog(
-            controller: PersonalDictionaryScreenController,
-            pairController: PersonalBigramScreenController,
-            emojiController: PersonalEmojiScreenController, subtypeIds: List<String>) {
+    private fun showErasePersonalDictionaryDialog(subtypeIds: List<String>) {
         currentDialog?.dismiss()
         currentDialog = AlertDialog.Builder(this)
                 .setTitle(R.string.personal_dictionary_erase_all)
                 .setMessage(R.string.personal_dictionary_erase_confirm)
                 .setPositiveButton(R.string.personal_dictionary_erase_action) { _, _ ->
-                    // "Erase all" covers all five stores, so no learned word, pair, emoji, refused
-                    // correction or sentence-initial word keeps working afterwards. The stores
-                    // answer independently; success is reported only when every file of every
-                    // language is gone. The import journal goes first, after any rollback queued
-                    // before it: it holds a full copy, and a later rollback would restore it, so
-                    // a journal that stays on disk stops the erase and the user retries.
+                    // The import journal goes first, after any rollback queued before it: it holds
+                    // a full copy, and a later rollback would restore it, so a journal that stays
+                    // on disk stops the erase and the user retries. Then the recent emoji are
+                    // cleared, then every personal store of every language (words, pairs, emoji,
+                    // refused corrections, sentence starts, text shortcuts) is cleared and the
+                    // personal directory swept, even when the recents failed. Success means the
+                    // directory is empty and the recent-emoji file is absent or empty.
                     backupCoordinator().discardPendingImport { journalErased ->
                         if (!journalErased) {
                             afterPersonalMutation(false, R.string.personal_dictionary_erase_failed)
                             return@discardPendingImport
                         }
-                        controller.eraseAll(subtypeIds) { wordsErased ->
-                            pairController.eraseAll(subtypeIds) { pairsErased ->
-                                emojiController.eraseAll(subtypeIds) { emojiErased ->
-                                    eraseRefusedCorrections(subtypeIds) { refusalsErased ->
-                                        eraseSentStartOverlays(subtypeIds) { overlayErased ->
-                                            // Erasing takes the copies with it, so all three cards
-                                            // are re-read rather than repainted from an answer that
-                                            // is now out of date.
-                                            personalQuarantines = null
-                                            personalPairQuarantines = null
-                                            personalEmojiQuarantines = null
-                                            afterPersonalMutation(
-                                                    wordsErased && pairsErased && emojiErased
-                                                            && refusalsErased && overlayErased,
-                                                    R.string.personal_dictionary_erase_failed)
-                                        }
+                        EmojiPanelController.clearRecents(this) { recentsCleared ->
+                            runOnUiThread {
+                                PersonalErasure.eraseEverything(this, subtypeIds) { erased ->
+                                    runOnUiThread {
+                                        // Erasing takes the copies with it, so all three cards are
+                                        // re-read rather than repainted from an out-of-date answer.
+                                        personalQuarantines = null
+                                        personalPairQuarantines = null
+                                        personalEmojiQuarantines = null
+                                        val erasedAll = erased && recentsCleared
+                                        afterPersonalMutation(erasedAll,
+                                                R.string.personal_dictionary_erase_failed)
                                     }
                                 }
                             }
@@ -1249,57 +1264,13 @@ class SettingsHostActivity : Activity() {
     }
 
     /**
-     * The erase-all half of the refused-corrections store: no screen lists the refused pairs, so
-     * the store's erasure rides the words screen's global action. The answer discipline is the
-     * screen controllers' own: `true` only when every language's file is really gone.
-     */
-    private fun eraseRefusedCorrections(subtypeIds: List<String>, onErased: (Boolean) -> Unit) {
-        val targets = subtypeIds.filter { PersonalSubtypes.isSupported(it) }
-        if (targets.isEmpty()) {
-            runOnUiThread { onErased(true) }
-            return
-        }
-        val remaining = java.util.concurrent.atomic.AtomicInteger(targets.size)
-        val everythingGone = java.util.concurrent.atomic.AtomicBoolean(true)
-        for (subtypeId in targets) {
-            RefusedCorrectionStores.storeFor(this, subtypeId).clearAll { erased ->
-                if (!erased) everythingGone.set(false)
-                if (remaining.decrementAndGet() == 0) {
-                    runOnUiThread { onErased(everythingGone.get()) }
-                }
-            }
-        }
-    }
-
-    /**
-     * The erase-all half of the sentence-initial overlay stores, like [eraseRefusedCorrections]:
-     * no screen lists the overlay, so its erasure rides the same global action.
-     */
-    private fun eraseSentStartOverlays(subtypeIds: List<String>, onErased: (Boolean) -> Unit) {
-        val targets = subtypeIds.filter { PersonalSubtypes.isSupported(it) }
-        if (targets.isEmpty()) {
-            runOnUiThread { onErased(true) }
-            return
-        }
-        val remaining = java.util.concurrent.atomic.AtomicInteger(targets.size)
-        val everythingGone = java.util.concurrent.atomic.AtomicBoolean(true)
-        for (subtypeId in targets) {
-            SentStartOverlays.storeFor(this, subtypeId).clearAll { erased ->
-                if (!erased) everythingGone.set(false)
-                if (remaining.decrementAndGet() == 0) {
-                    runOnUiThread { onErased(everythingGone.get()) }
-                }
-            }
-        }
-    }
-
-    /**
      * Reacts to a finished personal-store mutation. The list is repainted only now, because it
      * reads the published snapshot, which does not exist yet when the dialog closes. A failed
      * mutation shows a message (the subsystem does not log); it names no word, file or cause.
      */
     private fun afterPersonalMutation(succeeded: Boolean, failureMessageRes: Int) {
         if (isFinishing || isDestroyed) return
+        personalSavedFiles = null
         if (!succeeded) {
             Toast.makeText(this, failureMessageRes, Toast.LENGTH_LONG).show()
         }
@@ -1513,11 +1484,9 @@ class SettingsHostActivity : Activity() {
     // ---------------------------------------------------------------------
 
     /**
-     * Confirmation dialog for "Clear recent emoji", kept in [currentDialog] and torn down in
-     * [onDestroy] like the other dialogs, so a rotation never leaks the window. The erase goes to
-     * [EmojiPanelController.clearRecents], which updates the live keyboard when one exists in this
-     * process and otherwise replaces the medium directly, off the UI thread. This screen never
-     * reads the recents content.
+     * Confirmation dialog for "Clear recent emoji", kept in [currentDialog] and dismissed in
+     * [onDestroy], so a rotation never leaks the window. The erase goes to
+     * [EmojiPanelController.clearRecents]; a failed one shows a message. Never reads the recents.
      */
     private fun showClearRecentEmojiDialog() {
         currentDialog?.dismiss()
@@ -1525,7 +1494,13 @@ class SettingsHostActivity : Activity() {
                 .setTitle(R.string.clear_recent_emoji)
                 .setMessage(R.string.clear_recent_emoji_confirm)
                 .setPositiveButton(R.string.clear_recent_emoji_action) { _, _ ->
-                    EmojiPanelController.clearRecents(this)
+                    EmojiPanelController.clearRecents(this) { cleared ->
+                        runOnUiThread {
+                            if (cleared || isFinishing || isDestroyed) return@runOnUiThread
+                            Toast.makeText(this, R.string.clear_recent_emoji_failed,
+                                    Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 }
                 .setNegativeButton(android.R.string.cancel, null)
                 .create()

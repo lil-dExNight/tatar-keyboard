@@ -29,28 +29,14 @@ import java.security.SecureRandom
 import java.util.concurrent.Executor
 
 /**
- * The serialized owner of one subtype's personal `.tpers` file.
+ * The serialized owner of one subtype's personal `.tpers` file. Every mutation is an event on the
+ * single [executor], where all in-memory state lives; each successful one publishes an immutable
+ * [PersonalDictionary] through the `@Volatile` [snapshot]. The UI thread does no I/O.
  *
- * Every mutation is an event on the single background [executor], so all in-memory state lives on
- * one worker and never on the UI thread. After each SUCCESSFUL mutation a fresh immutable
- * [PersonalDictionary] snapshot is published through the `@Volatile` [snapshot] reference; the
- * engine's worker thread reads it. The UI thread does no I/O, no checksum, no read and no write.
- *
- * Whole-file write only, in a fixed sequence: exclusive temp in the same directory →
- * write → flush → fsync file → RE-VALIDATE the written bytes → atomic replace → fsync directory.
- * A partial temp never becomes the main file; any failure leaves the previous valid file untouched;
- * temp garbage is removed when the store next opens the directory. A failed write suppresses the
- * learning path's retries until the next flush boundary or a successful write, so a full disk
- * costs one failed write per input session, not one per typed word; pending counters keep
- * accumulating in memory meanwhile.
- *
- * Fail-closed everywhere: a caught exception (including the unlock gate closing the
- * credential-protected path before the first unlock) drops the mutation and leaves the feature
- * empty rather than throwing. Nothing here logs, and no message carries the user's word or the
- * file path.
- *
- * [PersonalBigramStore] and [PersonalEmojiStore] follow the same design; the shared explanations
- * live here.
+ * A caught exception, the closed unlock gate included, drops the mutation instead of throwing. Only
+ * a file that fails validation is quarantined; any other load failure leaves the store not loaded
+ * ([open]). Nothing here logs, and no message carries the user's word or the file path. The other
+ * personal stores follow this design, and the shared explanations live here and on [writeWhole].
  */
 internal class PersonalDictionaryStore(
     private val subtypeId: String,
@@ -72,14 +58,17 @@ internal class PersonalDictionaryStore(
     private var loaded = false
     private var pendingCounterFlush = false
 
+    // Set when the last load failed without a validation verdict (an I/O error), lifted by
+    // [prime], [clearAll] and [replaceAll]: until then [open] answers false without touching disk.
+    private var loadFailed = false
+
     // Set by a failed whole-file write, lifted by the next flush boundary or a successful write:
     // while set, the learning path keeps graduated words in the pending counters instead of
     // retrying the write on every completion (see [writeWhole]).
     private var wholeWriteSuppressed = false
 
-    // Set when this session quarantined a file (the dictionary or the pending counters), until
-    // the notice has been raised. The durable halves of the same mark are the files
-    // [quarantineNoticeFileName] and [pendingQuarantineNoticeFileName] name.
+    // Set when this session quarantined the dictionary file, until the notice has been raised.
+    // The durable half of the same mark is the file [quarantineNoticeFileName] names.
     private var justQuarantined = false
 
     // Progress towards learning, as salted truncated hashes. Held in memory and written on the
@@ -269,13 +258,15 @@ internal class PersonalDictionaryStore(
         pendingDirty = false
         salt = null
         publishLoaded(PersonalDictionary.EMPTY)
-        loaded = true
         if (!unlockGate()) {
-            // Memory is empty but the files are untouched and come back on the next start, so this
-            // is reported as a failure.
+            // Memory is empty but the files are untouched and come back on the next open, so the
+            // store is not loaded and this is reported as a failure.
+            loaded = false
             report(outcome, false)
             return@onWorker
         }
+        loaded = true
+        loadFailed = false
         // Independent deletions: a failure on one must not skip the others. A surviving salt would
         // keep the pending hashes valid, and half-learned words would come back.
         val dictionaryGone = deleted { deleteFile() }
@@ -341,6 +332,7 @@ internal class PersonalDictionaryStore(
         pendingCounterFlush = false
         publishLoaded(PersonalDictionary.EMPTY)
         loaded = false
+        loadFailed = false
         open()
         return true
     }
@@ -460,9 +452,13 @@ internal class PersonalDictionaryStore(
 
     /**
      * Opens the store on its worker if it is not open yet, publishing the snapshot the engine will
-     * read. Safe to call from any thread: the file read runs on the executor.
+     * read; a load that failed before is tried again. [outcome] is told whether the store is now
+     * loaded. Safe to call from any thread.
      */
-    fun prime() = onWorker { open() }
+    fun prime(outcome: PersonalMutationOutcome? = null) = onWorker {
+        loadFailed = false
+        report(outcome, open())
+    }
 
     /** Test hook: runs [block] on the store's executor (so tests can drive the serialized owner). */
     fun runOnWorker(block: () -> Unit) = onWorker(block)
@@ -530,20 +526,25 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * Opens the directory once: honors the unlock gate (before the first unlock the path is
-     * inaccessible, so the feature stays empty), removes stale temps, reads the file, and quarantines
-     * an unreadable file (see [quarantine]) with an empty snapshot. Returns true once loaded.
+     * Opens the directory once, after the unlock gate: removes stale temps, reads the file and
+     * quarantines one that fails validation (see [quarantine]). Returns true once loaded; any other
+     * failure keeps the store not loaded and refusing writes until [prime] tries again.
      */
     private fun open(): Boolean {
         if (loaded) return true
-        if (!unlockGate()) return false
-        loaded = true
+        if (loadFailed || !unlockGate()) return false
         try {
             load()
         } catch (_: Exception) {
             entries = PersonalEntries.empty(maxEntries)
+            pending = PendingCounters.EMPTY
+            pendingDirty = false
+            pendingCounterFlush = false
             publishLoaded(PersonalDictionary.EMPTY)
+            loadFailed = true
+            return false
         }
+        loaded = true
         // The only place the notice is raised. Every open passes here, both after a quarantine now
         // and when a previous process left the mark, so an unannounced loss is announced at the next
         // open. `justQuarantined` covers the case where the mark could not be written.
@@ -571,10 +572,14 @@ internal class PersonalDictionaryStore(
             publishLoaded(PersonalDictionary.EMPTY)
             return
         }
-        val validated = try {
-            validator.validate(file, subtypeId)
-        } catch (_: Exception) {
-            null
+        // A read error propagates to [open]; only the bytes that were read are judged here.
+        val bytes = PersonalFileReads.readCapped(file, TpersFormat.MAX_FILE_SIZE)
+        val validated = bytes?.let {
+            try {
+                validator.validate(it, subtypeId)
+            } catch (_: Exception) {
+                null
+            }
         }
         if (validated == null) {
             quarantine(directory, file)
@@ -587,14 +592,17 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * The whole-file write sequence. Returns true only when every step succeeded. On any caught
-     * failure the temp is removed and false is returned, leaving the previous file untouched. An
-     * uncaught [Error] (a simulated process death) leaves the temp for the next open to discard.
+     * The whole-file write sequence: exclusive temp in the same directory → write → flush → fsync
+     * file → re-validate the written bytes → atomic replace → fsync directory. Returns true only
+     * when every step succeeded. On any caught failure the temp is removed and false is returned,
+     * leaving the previous file untouched. An uncaught [Error] (a simulated process death) leaves
+     * the temp for the next open to discard.
      *
      * Every result also drives [wholeWriteSuppressed]: a failure suppresses the learning path's
-     * retries until the next flush boundary, a success lifts the suppression at once. Callers the
-     * user asked directly (add, forget, restore) always attempt their write, so their answer
-     * stays honest.
+     * retries until the next flush boundary, a success lifts the suppression at once, so a full
+     * disk costs one failed write per input session while the pending counters keep accumulating
+     * in memory. Callers the user asked directly (add, forget, restore) always attempt their
+     * write, so their answer stays honest.
      */
     private fun writeWhole(candidate: PersonalEntries): Boolean {
         val directory = directoryProvider.personalDirectory()
@@ -658,9 +666,9 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * Reads the pending counters once, alongside the dictionary itself. Fail-closed to empty; a
-     * file that does not parse is set aside with the dictionary's notice flow (see
-     * [quarantinePending]) instead of being silently dropped.
+     * Reads the pending counters once, alongside the dictionary itself. A file that does not parse
+     * is set aside (see [quarantinePending]) instead of being silently dropped; a read error
+     * propagates to [open].
      */
     private fun readPending(directory: File) {
         val file = File(directory, pendingFileName())
@@ -672,8 +680,9 @@ internal class PersonalDictionaryStore(
             pending = PendingCounters.EMPTY
             return
         }
+        val bytes = file.readBytes()
         val parsed = try {
-            PendingCounters.parseOrNull(file.readBytes())
+            PendingCounters.parseOrNull(bytes)
         } catch (_: Exception) {
             null
         }
@@ -744,19 +753,17 @@ internal class PersonalDictionaryStore(
 
     private fun quarantineNoticeFileName(): String = "quarantine-notice-$subtypeId-s1-f1.flag"
 
-    /** Whether either on-disk notice mark (the dictionary's or the pending counters') exists. */
+    /** Whether the dictionary's on-disk notice mark exists; false on error. */
     private fun quarantineNoticeIsMarked(): Boolean = try {
-        val directory = directoryProvider.personalDirectory()
-        File(directory, quarantineNoticeFileName()).isFile ||
-            File(directory, pendingQuarantineNoticeFileName()).isFile
+        File(directoryProvider.personalDirectory(), quarantineNoticeFileName()).isFile
     } catch (_: Exception) {
         false
     }
 
     /**
-     * Moves an unreadable pending file into this subtype's single pending quarantine slot and
-     * marks that the user is owed a notice, mirroring [quarantine]. The slot holds only salted
-     * hashes, so the settings screen neither lists nor restores it; [clearAll] removes it.
+     * Moves an unreadable pending file into this subtype's single pending quarantine slot. No
+     * notice: the slot holds only salted hashes that nothing restores, and the counters relearn by
+     * themselves. [clearAll] removes the slot.
      */
     private fun quarantinePending(directory: File, file: File) {
         try {
@@ -764,16 +771,14 @@ internal class PersonalDictionaryStore(
             fileOps.syncDirectory(directory)
         } catch (_: Exception) {
         }
-        // Marked in both cases, with the pending channel's own mark: sharing the dictionary's
-        // mark would let one channel's delivery spend the other's unshown notice.
-        justQuarantined = true
-        runCatching {
-            writeBytesDurably(directory, File(directory, pendingQuarantineNoticeFileName()), ByteArray(1))
-        }
     }
 
     private fun pendingQuarantineFileName(): String = pendingFileName() + QUARANTINE_SUFFIX
 
+    /**
+     * A pending-counter notice mark. Nothing raises a notice from it; [clearAll] and
+     * [noticeDelivered] remove one left on disk.
+     */
     private fun pendingQuarantineNoticeFileName(): String =
         "quarantine-notice-$subtypeId-s1-f1-pending.flag"
 

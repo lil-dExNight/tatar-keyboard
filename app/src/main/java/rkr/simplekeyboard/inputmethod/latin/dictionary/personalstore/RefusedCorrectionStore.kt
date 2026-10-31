@@ -28,26 +28,13 @@ import java.io.IOException
 import java.util.concurrent.Executor
 
 /**
- * The serialized owner of one subtype's `.tref` refused-corrections file.
- *
- * Every mutation is an event on the single background [executor], so all in-memory state lives on
- * one worker and never on the UI thread. After each SUCCESSFUL mutation a fresh immutable
- * [RefusedCorrections] snapshot is published through the `@Volatile` [snapshot] reference; the
- * autocorrect paths read it. The UI thread does no I/O, no checksum, no read and no write.
- *
- * Whole-file write only, in the same fixed sequence as the other personal stores: exclusive temp in
- * the same directory → write → flush → fsync file → RE-VALIDATE the written bytes → atomic
- * replace → fsync directory. A partial temp never becomes the main file; any failure leaves the
- * previous valid file untouched; temp garbage is removed when the store next opens the directory.
- *
- * Fail-closed everywhere: a caught exception (including the unlock gate closing the
- * credential-protected path before the first unlock) drops the mutation and leaves the feature
- * empty rather than throwing. Nothing here logs, and no message carries the user's text or the
- * file path.
+ * The serialized owner of one subtype's `.tref` refused-corrections file. Threading, the whole-file
+ * write sequence, quarantine, failure handling and the no-logging rule are those of
+ * [PersonalDictionaryStore]; the autocorrect paths read the published [snapshot].
  *
  * There are no pending counters and no salt: a refusal is recorded only when the learning predicate
- * already allowed it, and a refused pair suppresses — it is never shown back as a suggestion, so a
- * half-learned refusal carries no privacy weight the threshold hash dance would lift.
+ * already allowed it, and a refused pair only suppresses a correction and is never shown back as a
+ * suggestion, so a half-learned refusal carries no privacy weight a salted threshold would lift.
  */
 internal class RefusedCorrectionStore(
     private val subtypeId: String,
@@ -64,6 +51,9 @@ internal class RefusedCorrectionStore(
     // Worker-confined state (touched only on [executor]).
     private var pairs: RefusedCorrections = RefusedCorrections.EMPTY
     private var loaded = false
+
+    // See PersonalDictionaryStore.loadFailed.
+    private var loadFailed = false
 
     /** Count of physical `.tref` writes performed; a test counter. */
     @Volatile
@@ -104,11 +94,14 @@ internal class RefusedCorrectionStore(
     fun clearAll(outcome: PersonalMutationOutcome? = null) = onWorker {
         pairs = RefusedCorrections.EMPTY
         snapshot = RefusedCorrections.EMPTY
-        loaded = true
         if (!unlockGate()) {
+            // The files are untouched, so the store is not loaded and this is a failure.
+            loaded = false
             report(outcome, false)
             return@onWorker
         }
+        loaded = true
+        loadFailed = false
         // Independent deletions: a failure on one must not skip the other. A surviving quarantined
         // copy holds the same pairs, so a copy left behind is a failed erasure.
         val fileGone = deleted { deleteFile() }
@@ -150,15 +143,19 @@ internal class RefusedCorrectionStore(
         pairs = RefusedCorrections.EMPTY
         snapshot = RefusedCorrections.EMPTY
         loaded = false
+        loadFailed = false
         open()
         return true
     }
 
     /**
      * Opens the store on its worker if it is not open yet, publishing the snapshot the autocorrect
-     * paths will read. Safe to call from any thread: the file read runs on the executor.
+     * paths will read; a load that failed before is tried again. See [PersonalDictionaryStore.prime].
      */
-    fun prime() = onWorker { open() }
+    fun prime(outcome: PersonalMutationOutcome? = null) = onWorker {
+        loadFailed = false
+        report(outcome, open())
+    }
 
     /** Test hook: runs [block] on the store's executor (so tests can drive the serialized owner). */
     fun runOnWorker(block: () -> Unit) = onWorker(block)
@@ -197,20 +194,22 @@ internal class RefusedCorrectionStore(
     }
 
     /**
-     * Opens the directory once: honors the unlock gate (before the first unlock the path is
-     * inaccessible, so the feature stays empty), removes stale temps, reads the file, and moves an
-     * unreadable file aside (see [quarantine]) with an empty snapshot. Returns true once loaded.
+     * Opens the directory once, after the unlock gate: removes stale temps, reads the file and
+     * moves one that fails validation aside (see [quarantine]). Returns true once loaded; any other
+     * failure leaves the store not loaded, as in `PersonalDictionaryStore.open`.
      */
     private fun open(): Boolean {
         if (loaded) return true
-        if (!unlockGate()) return false
-        loaded = true
+        if (loadFailed || !unlockGate()) return false
         try {
             load()
         } catch (_: Exception) {
             pairs = RefusedCorrections.EMPTY
             snapshot = RefusedCorrections.EMPTY
+            loadFailed = true
+            return false
         }
+        loaded = true
         return true
     }
 
@@ -227,10 +226,14 @@ internal class RefusedCorrectionStore(
             snapshot = RefusedCorrections.EMPTY
             return
         }
-        val validated = try {
-            validator.validate(file, subtypeId)
-        } catch (_: Exception) {
-            null
+        // A read error propagates to [open]; see PersonalDictionaryStore.load.
+        val bytes = PersonalFileReads.readCapped(file, TrefFormat.MAX_FILE_SIZE)
+        val validated = bytes?.let {
+            try {
+                validator.validate(it, subtypeId)
+            } catch (_: Exception) {
+                null
+            }
         }
         if (validated == null) {
             quarantine(directory, file)

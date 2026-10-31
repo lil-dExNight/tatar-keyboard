@@ -103,8 +103,8 @@ internal class PersonalScreenContent(
  * The performance limit is a cap on rows: `SettingsHostActivity` builds the screen imperatively in
  * a `ScrollView` without view reuse and rebuilds it in `onStart`, and the app has no androidx
  * dependency (no `RecyclerView`), so the list must not grow without bound. Every language and all
- * three stores are shown, because "erase all" deletes the files of every language and store: the
- * screen never erases anything it does not show.
+ * three listed stores are shown. "Erase everything saved" also removes what is not listed here
+ * (text shortcuts, refused corrections, sentence starts); its dialog names every kind.
  */
 internal object PersonalDictionaryScreenModel {
 

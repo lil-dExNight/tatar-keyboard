@@ -37,6 +37,12 @@ internal interface BackupTarget {
     fun readPersonalFile(fileName: String): ByteArray?
 
     /**
+     * Opens the live store that owns [fileName] and waits for it, so the store's own open moves a
+     * damaged file to quarantine. Returns whether the store is loaded.
+     */
+    fun openPersonalStore(fileName: String): Boolean
+
+    /**
      * Replaces one personal store file ([bytes] null deletes it) and refreshes its live store.
      * Returns whether the disk now matches the request.
      */
@@ -64,13 +70,14 @@ internal enum class BackupImportResult { IMPORTED, IMPORTED_PRIVACY_CHANGED, INV
 internal object BackupTransfer {
 
     /**
-     * Builds the archive for [target], or returns null when recovery fails or any recognized
-     * personal file cannot be read and validated. The caller must not write an archive then.
+     * Builds the archive for [target], or null when recovery fails, a store stays not loaded or a
+     * recognized personal file fails to read or validate; the caller must not write an archive then.
      * Unclassified files, recent emoji, pending counters and salts are outside the backup format.
      */
     @Synchronized
     fun export(target: BackupTarget): ByteArray? {
         if (!recoverPending(target)) return null
+        if (!openPersonalStores(target)) return null
         val preferences = target.readPreferences()
             .filterKeys { it !in BackupFormat.INTERNAL_PREFERENCE_KEYS }
         val personal = ArrayList<VerifiedPersonalFile>()
@@ -90,6 +97,7 @@ internal object BackupTransfer {
     /**
      * Restores [archiveBytes] as one transaction. The journal holds both complete states before
      * the first mutation; a failed apply rolls back, and deleting the journal commits the import.
+     * A store that stays not loaded refuses the import before the journal is written.
      */
     @Synchronized
     fun import(target: BackupTarget, archiveBytes: ByteArray): BackupImportResult {
@@ -99,6 +107,7 @@ internal object BackupTransfer {
         } catch (e: BackupValidationException) {
             return BackupImportResult.INVALID_FILE
         }
+        if (!openPersonalStores(target)) return BackupImportResult.WRITE_FAILED
         val before = try {
             readCurrentState(target)
         } catch (_: Exception) {
@@ -184,6 +193,19 @@ internal object BackupTransfer {
     @Synchronized
     fun discardPending(target: BackupTarget): Boolean = try {
         target.clearImportJournal()
+    } catch (_: Exception) {
+        false
+    }
+
+    /**
+     * Opens the store of every recognized personal file, so a damaged one is quarantined before
+     * anything reads it. False when a store stays not loaded: its file was never judged.
+     */
+    private fun openPersonalStores(target: BackupTarget): Boolean = try {
+        target.personalFileNames()
+            .filter { BackupFormat.classifyPersonalFileName(it) != null }
+            .sorted()
+            .all { target.openPersonalStore(it) }
     } catch (_: Exception) {
         false
     }

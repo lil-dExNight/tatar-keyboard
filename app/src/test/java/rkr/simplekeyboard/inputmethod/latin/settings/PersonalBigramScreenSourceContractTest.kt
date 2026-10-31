@@ -100,22 +100,24 @@ class PersonalBigramScreenSourceContractTest {
         val clearPairs = bodyOf(host, "private fun showClearPersonalPairsDialog(", "\n    /**")
         assertTrue("the destructive action asks first",
             clearPairs.contains("R.string.personal_dictionary_clear_pairs_confirm"))
-        // And the global erase covers ALL FIVE stores — an "erase everything" that left the
-        // pairs, the learned emoji, the refused corrections or the sentence-initial overlay
+        // The global erase covers every store: an "erase everything" that left the pairs, the
+        // learned emoji, the refused corrections, the sentence starts or the text shortcuts
         // behind would be contradicted by the suggestions.
         val erase = bodyOf(host, "private fun showErasePersonalDictionaryDialog(", "\n    /**")
-        assertTrue("the words half", erase.contains("controller.eraseAll(subtypeIds)"))
-        assertTrue("the pairs half", erase.contains("pairController.eraseAll(subtypeIds)"))
-        assertTrue("and the emoji third", erase.contains("emojiController.eraseAll(subtypeIds)"))
-        assertTrue("and the refused corrections fourth",
-            erase.contains("eraseRefusedCorrections(subtypeIds)"))
-        assertTrue("and the sentence-initial overlay fifth",
-            erase.contains("eraseSentStartOverlays(subtypeIds)"))
-        assertTrue("reported as one honest answer",
-            erase.contains("afterPersonalMutation(")
-                && erase.contains("wordsErased && pairsErased && emojiErased")
-                && erase.contains("&& refusalsErased")
-                && erase.contains("&& overlayErased"))
+        assertTrue("the erase goes through the one wiring of every store",
+            erase.contains("PersonalErasure.eraseEverything(this, subtypeIds)"))
+        val wiring = mainFile(
+            "rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/PersonalErasure.kt")
+        for (owner in listOf("PersonalDictionaries", "PersonalBigramDictionaries",
+                "PersonalEmojiDictionaries", "RefusedCorrectionStores", "SentStartOverlays")) {
+            assertTrue("$owner is erased",
+                wiring.contains("$owner.storeFor(appContext, subtypeId).clearAll(it)"))
+        }
+        assertTrue("and the text shortcuts too",
+            wiring.contains("TextShortcutStores.storeFor(appContext).clearAll(it)"))
+        assertTrue("reported as one honest answer, the recent emoji included",
+            erase.contains("val erasedAll = erased && recentsCleared")
+                && erase.contains("afterPersonalMutation(erasedAll,"))
         assertTrue("with all three quarantine cards re-read",
             erase.contains("personalQuarantines = null")
                 && erase.contains("personalPairQuarantines = null")
@@ -125,10 +127,10 @@ class PersonalBigramScreenSourceContractTest {
     @Test
     fun everyPairOutcomeIsMarshalledOntoTheUiThread() {
         assertTrue(pairController.contains("private val uiPoster: (Runnable) -> Unit"))
-        // Six entry points, eight exits: removePair, clearPairs, restoreQuarantine and
-        // discardQuarantine answer once each; eraseAll and quarantines answer on both of their
-        // branches (nothing to do, and the counted fan-out). Every one ends on the UI thread.
-        assertEquals("no answer may be left on the store's worker", 8,
+        // Five entry points, six exits: removePair, clearPairs, restoreQuarantine and
+        // discardQuarantine answer once each; quarantines answers on both of its branches
+        // (nothing to do, and the counted fan-out). Every one ends on the UI thread.
+        assertEquals("no answer may be left on the store's worker", 6,
             Regex("uiPoster \\{").findAll(pairController).count())
     }
 
@@ -200,12 +202,11 @@ class PersonalBigramScreenSourceContractTest {
     @Test
     fun thePredicatesRejectTheShapesTheyReplaced() {
         val eraseWithoutThePairs = """
-            controller.eraseAll(subtypeIds) { erased ->
-                afterPersonalMutation(erased, R.string.personal_dictionary_erase_failed)
-            }
+            stores.add(PersonalErasable { PersonalDictionaries.storeFor(appContext, subtypeId).clearAll(it) })
         """.trimIndent()
         assertFalse("a global erase that forgets the pairs must not satisfy the check",
-            eraseWithoutThePairs.contains("pairController.eraseAll(subtypeIds)"))
+            eraseWithoutThePairs.contains(
+                "PersonalBigramDictionaries.storeFor(appContext, subtypeId).clearAll(it)"))
 
         val deleteWithoutTheStore = "controller.removePair(row.subtypeId) { }  // deletes a file"
         assertFalse("a removal that bypasses the store must not satisfy the check",

@@ -20,7 +20,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
@@ -128,33 +127,6 @@ internal class PersonalDictionaryScreenController(
     fun clearWords(subtypeId: String, onCleared: (Boolean) -> Unit) {
         PersonalDictionaries.storeFor(context, subtypeId)
             .clearAll { cleared -> uiPoster { onCleared(cleared) } }
-        PersonalDictionaries.notifyErased()
-    }
-
-    /**
-     * Erases the personal dictionaries of all languages, not only the one in view. [onErased] gets
-     * `true` only when every language's files went away; a partial erasure reported as success
-     * would show an empty list while the words come back at the next process start.
-     */
-    fun eraseAll(subtypeIds: List<String>, onErased: (Boolean) -> Unit) {
-        val targets = subtypeIds.filter { PersonalSubtypes.alphabetFor(it) != null }
-        if (targets.isEmpty()) {
-            PersonalDictionaries.notifyErased()
-            uiPoster { onErased(true) }
-            return
-        }
-        // All outcomes arrive on the one store worker, in sequence; the counter is atomic anyway so
-        // the invariant does not depend on that staying true.
-        val remaining = AtomicInteger(targets.size)
-        val everythingGone = AtomicBoolean(true)
-        for (subtypeId in targets) {
-            PersonalDictionaries.storeFor(context, subtypeId).clearAll { erased ->
-                if (!erased) everythingGone.set(false)
-                if (remaining.decrementAndGet() == 0) {
-                    uiPoster { onErased(everythingGone.get()) }
-                }
-            }
-        }
         PersonalDictionaries.notifyErased()
     }
 }

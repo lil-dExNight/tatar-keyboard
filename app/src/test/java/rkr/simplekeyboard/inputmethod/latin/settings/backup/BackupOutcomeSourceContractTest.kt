@@ -35,6 +35,29 @@ class BackupOutcomeSourceContractTest {
         assertTrue(export.contains("if (!written && documentTouched)"))
     }
 
+    /** Each kind is opened through its owning store, and the answer is awaited, not assumed. */
+    @Test
+    fun everyKindIsOpenedThroughItsOwningStore() {
+        val coordinator = source(
+            "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupCoordinator.kt")
+        val open = coordinator.substringAfter("override fun openPersonalStore(")
+            .substringBefore("override fun replacePersonalFile(")
+        for (call in listOf(
+            "PersonalDictionaries.prime(appContext, subtypeId, outcome)",
+            "PersonalBigramDictionaries.prime(appContext, subtypeId, outcome)",
+            "PersonalEmojiDictionaries.prime(appContext, subtypeId, outcome)",
+            "RefusedCorrectionStores.prime(appContext, subtypeId, outcome)",
+            "TextShortcutStores.prime(appContext, outcome)",
+        )) {
+            assertTrue(call, open.contains(call))
+        }
+        assertTrue(open.contains("return awaitStore { outcome ->"))
+        val await = coordinator.substringAfter("private fun awaitStore(")
+            .substringBefore("override fun replacePreferences(")
+        assertTrue(await.contains("done.await()"))
+        assertTrue(await.contains("succeeded.get()"))
+    }
+
     @Test
     fun privacyChangesHaveALocalizedImportOutcome() {
         val host = source("java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt")
@@ -71,6 +94,19 @@ class BackupOutcomeSourceContractTest {
             .substringBefore("private fun importJournalFile()")
         assertTrue(clear.contains("listOf(importJournalTemporaryFile(), importJournalFile())"))
         assertTrue(clear.contains("if (!AndroidDurableFileOps.delete(file) && file.exists()) return false"))
+    }
+
+    /** The file holds every personal store the import replaces, so both texts name each of them. */
+    @Test
+    fun theBackupTextsNameEverythingTheFileHolds() {
+        val english = source("res/values/strings.xml")
+        for (name in listOf("backup_contents_note", "backup_import_confirm_message")) {
+            val text = Regex("""<string name="$name">(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)
+                .find(english)?.groupValues?.get(1)?.lowercase() ?: error("$name missing")
+            for (kind in listOf("settings", "saved words", "word pairs", "emoji", "text shortcuts", "corrections")) {
+                assertTrue("$name must name $kind", text.contains(kind))
+            }
+        }
     }
 
     private fun source(relative: String): String {

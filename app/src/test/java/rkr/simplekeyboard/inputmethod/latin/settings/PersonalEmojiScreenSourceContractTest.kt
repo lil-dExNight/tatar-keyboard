@@ -122,22 +122,24 @@ class PersonalEmojiScreenSourceContractTest {
                 && clearing.contains(".clearAll"))
         assertTrue("and the band is unbound at once",
             clearing.contains("PersonalEmojiDictionaries.notifyErased()"))
-        // The global erase covers ALL FIVE stores — an "erase everything" that left the learned
-        // emoji, the refused corrections or the sentence-initial overlay behind would be
-        // contradicted by the suggestions.
+        // The global erase covers every store: an "erase everything" that left the pairs, the
+        // learned emoji, the refused corrections, the sentence starts or the text shortcuts
+        // behind would be contradicted by the suggestions.
         val erase = bodyOf(host, "private fun showErasePersonalDictionaryDialog(", "\n    /**")
-        assertTrue("the words half", erase.contains("controller.eraseAll(subtypeIds)"))
-        assertTrue("the pairs half", erase.contains("pairController.eraseAll(subtypeIds)"))
-        assertTrue("and the emoji third", erase.contains("emojiController.eraseAll(subtypeIds)"))
-        assertTrue("and the refused corrections fourth",
-            erase.contains("eraseRefusedCorrections(subtypeIds)"))
-        assertTrue("and the sentence-initial overlay fifth",
-            erase.contains("eraseSentStartOverlays(subtypeIds)"))
-        assertTrue("reported as one honest answer",
-            erase.contains("afterPersonalMutation(")
-                && erase.contains("wordsErased && pairsErased && emojiErased")
-                && erase.contains("&& refusalsErased")
-                && erase.contains("&& overlayErased"))
+        assertTrue("the erase goes through the one wiring of every store",
+            erase.contains("PersonalErasure.eraseEverything(this, subtypeIds)"))
+        val wiring = mainFile(
+            "rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/PersonalErasure.kt")
+        for (owner in listOf("PersonalDictionaries", "PersonalBigramDictionaries",
+                "PersonalEmojiDictionaries", "RefusedCorrectionStores", "SentStartOverlays")) {
+            assertTrue("$owner is erased",
+                wiring.contains("$owner.storeFor(appContext, subtypeId).clearAll(it)"))
+        }
+        assertTrue("and the text shortcuts too",
+            wiring.contains("TextShortcutStores.storeFor(appContext).clearAll(it)"))
+        assertTrue("reported as one honest answer, the recent emoji included",
+            erase.contains("val erasedAll = erased && recentsCleared")
+                && erase.contains("afterPersonalMutation(erasedAll,"))
         assertTrue("with all three quarantine cards re-read",
             erase.contains("personalQuarantines = null")
                 && erase.contains("personalPairQuarantines = null")
@@ -147,10 +149,10 @@ class PersonalEmojiScreenSourceContractTest {
     @Test
     fun everyEmojiOutcomeIsMarshalledOntoTheUiThread() {
         assertTrue(emojiController.contains("private val uiPoster: (Runnable) -> Unit"))
-        // Six entry points, eight exits: removeEntry, clearEmoji, restoreQuarantine and
-        // discardQuarantine answer once each; eraseAll and quarantines answer on both of their
-        // branches (nothing to do, and the counted fan-out). Every one ends on the UI thread.
-        assertEquals("no answer may be left on the store's worker", 8,
+        // Five entry points, six exits: removeEntry, clearEmoji, restoreQuarantine and
+        // discardQuarantine answer once each; quarantines answers on both of its branches
+        // (nothing to do, and the counted fan-out). Every one ends on the UI thread.
+        assertEquals("no answer may be left on the store's worker", 6,
             Regex("uiPoster \\{").findAll(emojiController).count())
     }
 
@@ -204,10 +206,10 @@ class PersonalEmojiScreenSourceContractTest {
                 assertFalse("$name must not name '$word'", english.lowercase().contains(word))
             }
         }
-        assertTrue("the global erase now says all four kinds of content",
+        assertTrue("the global erase names every kind of content",
             stringValue("values", "personal_dictionary_erase_confirm").let {
                 it.contains("word") && it.contains("pair") && it.contains("emoji")
-                    && it.contains("correction")
+                    && it.contains("correction") && it.contains("shortcut")
             })
         for (name in listOf("personal_emoji_count",
                 "personal_emoji_quarantine_partial", "personal_emoji_quarantine_whole")) {
@@ -225,15 +227,12 @@ class PersonalEmojiScreenSourceContractTest {
     @Test
     fun thePredicatesRejectTheShapesTheyReplaced() {
         val eraseWithoutTheEmoji = """
-            controller.eraseAll(subtypeIds) { wordsErased ->
-                pairController.eraseAll(subtypeIds) { pairsErased ->
-                    afterPersonalMutation(wordsErased && pairsErased,
-                            R.string.personal_dictionary_erase_failed)
-                }
-            }
+            stores.add(PersonalErasable { PersonalDictionaries.storeFor(appContext, subtypeId).clearAll(it) })
+            stores.add(PersonalErasable { PersonalBigramDictionaries.storeFor(appContext, subtypeId).clearAll(it) })
         """.trimIndent()
         assertFalse("a global erase that forgets the emoji must not satisfy the check",
-            eraseWithoutTheEmoji.contains("emojiController.eraseAll(subtypeIds)"))
+            eraseWithoutTheEmoji.contains(
+                "PersonalEmojiDictionaries.storeFor(appContext, subtypeId).clearAll(it)"))
 
         val deleteWithoutTheStore = "controller.removeEntry(row.subtypeId) { }  // deletes a file"
         assertFalse("a removal that bypasses the store must not satisfy the check",

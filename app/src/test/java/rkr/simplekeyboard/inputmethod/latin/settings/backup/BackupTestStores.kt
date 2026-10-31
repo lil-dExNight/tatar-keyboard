@@ -22,6 +22,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TcutFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TrefFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramStore
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDirectoryProvider
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaryStore
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEmojiStore
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalOutputOpener
@@ -62,22 +63,32 @@ internal object BackupTestStores {
 
     val realOpener = PersonalOutputOpener { temp -> FileOutputStream(temp) }
 
-    fun wordStore(directory: File, subtypeId: String): PersonalDictionaryStore =
+    fun wordStore(
+        directory: File,
+        subtypeId: String,
+        ops: DurableFileOps = realOps,
+        directoryProvider: PersonalDirectoryProvider = PersonalDirectoryProvider { directory },
+    ): PersonalDictionaryStore =
         PersonalDictionaryStore(
             subtypeId = subtypeId,
-            directoryProvider = { directory },
-            fileOps = realOps,
+            directoryProvider = directoryProvider,
+            fileOps = ops,
             outputOpener = realOpener,
             spaceProbe = SpaceProbe { Long.MAX_VALUE },
             clock = { 1000L },
             executor = directExecutor,
         )
 
-    fun pairStore(directory: File, subtypeId: String): PersonalBigramStore =
+    fun pairStore(
+        directory: File,
+        subtypeId: String,
+        ops: DurableFileOps = realOps,
+        directoryProvider: PersonalDirectoryProvider = PersonalDirectoryProvider { directory },
+    ): PersonalBigramStore =
         PersonalBigramStore(
             subtypeId = subtypeId,
-            directoryProvider = { directory },
-            fileOps = realOps,
+            directoryProvider = directoryProvider,
+            fileOps = ops,
             outputOpener = realOpener,
             spaceProbe = SpaceProbe { Long.MAX_VALUE },
             clock = { 1000L },
@@ -85,11 +96,16 @@ internal object BackupTestStores {
             contextMembership = { _, _ -> true },
         )
 
-    fun emojiStore(directory: File, subtypeId: String): PersonalEmojiStore =
+    fun emojiStore(
+        directory: File,
+        subtypeId: String,
+        ops: DurableFileOps = realOps,
+        directoryProvider: PersonalDirectoryProvider = PersonalDirectoryProvider { directory },
+    ): PersonalEmojiStore =
         PersonalEmojiStore(
             subtypeId = subtypeId,
-            directoryProvider = { directory },
-            fileOps = realOps,
+            directoryProvider = directoryProvider,
+            fileOps = ops,
             outputOpener = realOpener,
             spaceProbe = SpaceProbe { Long.MAX_VALUE },
             clock = { 1000L },
@@ -117,11 +133,16 @@ internal object BackupTestStores {
         return File(directory, TpersemFormat.personalEmojiFileName(subtypeId)).readBytes()
     }
 
-    fun refusedStore(directory: File, subtypeId: String): RefusedCorrectionStore =
+    fun refusedStore(
+        directory: File,
+        subtypeId: String,
+        ops: DurableFileOps = realOps,
+        directoryProvider: PersonalDirectoryProvider = PersonalDirectoryProvider { directory },
+    ): RefusedCorrectionStore =
         RefusedCorrectionStore(
             subtypeId = subtypeId,
-            directoryProvider = { directory },
-            fileOps = realOps,
+            directoryProvider = directoryProvider,
+            fileOps = ops,
             outputOpener = realOpener,
             spaceProbe = SpaceProbe { Long.MAX_VALUE },
             clock = { 1000L },
@@ -135,10 +156,14 @@ internal object BackupTestStores {
         return File(directory, TrefFormat.refusedCorrectionsFileName(subtypeId)).readBytes()
     }
 
-    fun shortcutStore(directory: File): TextShortcutStore =
+    fun shortcutStore(
+        directory: File,
+        ops: DurableFileOps = realOps,
+        directoryProvider: PersonalDirectoryProvider = PersonalDirectoryProvider { directory },
+    ): TextShortcutStore =
         TextShortcutStore(
-            directoryProvider = { directory },
-            fileOps = realOps,
+            directoryProvider = directoryProvider,
+            fileOps = ops,
             outputOpener = realOpener,
             spaceProbe = SpaceProbe { Long.MAX_VALUE },
             clock = { 1000L },

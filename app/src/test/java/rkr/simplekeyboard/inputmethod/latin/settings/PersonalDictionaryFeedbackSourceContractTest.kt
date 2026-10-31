@@ -71,9 +71,9 @@ class PersonalDictionaryFeedbackSourceContractTest {
         assertTrue("adding takes the outcome", add.contains("controller.addWord(subtypeId, field.text.toString()) { saved ->"))
         assertTrue("removing takes the outcome",
             remove.contains("controller.removeWord(row.subtypeId, row.normalizedForm) { removed ->"))
-        // The global erase answers once per store, so its lambda names
-        // the words half; the pairs half arrives in the nested call.
-        assertTrue("erasing takes the outcome", erase.contains("controller.eraseAll(subtypeIds) { wordsErased ->"))
+        // The global erase answers once, for every store together.
+        assertTrue("erasing takes the outcome",
+            erase.contains("PersonalErasure.eraseEverything(this, subtypeIds) { erased ->"))
 
         // And each one routes it into the single place that decides what the user sees.
         for (handler in listOf(add, remove, erase)) {
@@ -146,20 +146,21 @@ class PersonalDictionaryFeedbackSourceContractTest {
     fun everyOutcomeIsMarshalledOntoTheUiThread() {
         // The store answers on its own worker; a Toast and a repaint may not happen there.
         assertTrue(screenController.contains("private val uiPoster: (Runnable) -> Unit"))
-        // Seven entry points, nine exits: eraseAll and quarantines each answer on both of their
-        // branches (nothing to do, and the counted fan-out). Every one of them ends on the UI
-        // thread.
-        assertEquals("no answer may be left on the store's worker", 9,
+        // Six entry points, seven exits: quarantines answers on both of its branches (nothing to
+        // do, and the counted fan-out). Every one of them ends on the UI thread.
+        assertEquals("no answer may be left on the store's worker", 7,
             Regex("uiPoster \\{").findAll(screenController).count())
     }
 
     @Test
     fun eraseAllReportsSuccessOnlyWhenEveryLanguageIsActuallyGone() {
-        val erase = bodyOf(screenController, "fun eraseAll(", "\n}")
-        assertTrue("one answer is produced from all of them, not one per language",
-            erase.contains("remaining.decrementAndGet() == 0"))
-        assertTrue("and any single failure sinks the whole answer",
-            erase.contains("if (!erased) everythingGone.set(false)"))
+        val eraser = File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/PersonalEraseAll.kt")
+            .readText()
+        assertTrue("any single store failure sinks the whole answer",
+            eraser.contains("store.clearAll { cleared -> if (!cleared) everyStoreCleared.set(false) }"))
+        assertTrue("and so does any file left in the directory",
+            eraser.contains("answer(onFinished, everyStoreCleared.get() && swept)"))
     }
 
     // --- the IME's own "Forget word" ------------------------------------------------------------

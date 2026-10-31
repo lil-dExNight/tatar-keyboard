@@ -27,26 +27,12 @@ import java.io.IOException
 import java.util.concurrent.Executor
 
 /**
- * The serialized owner of the single `.tcut` text-shortcut file.
- *
- * Every mutation is an event on the single background [executor], so all in-memory state lives on
- * one worker and never on the UI thread. After each SUCCESSFUL mutation a fresh immutable
- * [TextShortcuts] snapshot is published through the `@Volatile` [snapshot] reference; the
- * suggestion strip reads it. The UI thread does no I/O, no checksum, no read and no write.
- *
- * Whole-file write only, in the same fixed sequence as the personal-dictionary store: exclusive
- * temp in the same directory → write → flush → fsync file → RE-VALIDATE the written bytes →
- * atomic replace → fsync directory. A partial temp never becomes the main file; any failure leaves
- * the previous valid file untouched; temp garbage is removed when the store next opens the
- * directory.
- *
- * Fail-closed everywhere: a caught exception (including the unlock gate closing the
- * credential-protected path before the first unlock) drops the mutation and leaves the feature
- * empty rather than throwing. Nothing here logs, and no message carries the user's text or the
- * file path.
+ * The serialized owner of the single `.tcut` text-shortcut file. Threading, the whole-file write
+ * sequence, quarantine, failure handling and the no-logging rule are those of
+ * [PersonalDictionaryStore]; the suggestion strip reads the published [snapshot].
  *
  * There are no usage counters, no pending hashes and no learning: pairs enter only from the
- * settings screen, so the store is much smaller than the personal-dictionary one.
+ * settings screen.
  */
 internal class TextShortcutStore(
     private val directoryProvider: PersonalDirectoryProvider,
@@ -62,6 +48,9 @@ internal class TextShortcutStore(
     // Worker-confined state (touched only on [executor]).
     private var pairs: TextShortcuts = TextShortcuts.EMPTY
     private var loaded = false
+
+    // See PersonalDictionaryStore.loadFailed.
+    private var loadFailed = false
 
     /** Count of physical `.tcut` writes performed; a test counter. */
     @Volatile
@@ -144,9 +133,45 @@ internal class TextShortcutStore(
 
     /**
      * Opens the store on its worker if it is not open yet, publishing the snapshot the strip will
-     * read. Safe to call from any thread: the file read runs on the executor.
+     * read; a load that failed before is tried again. See [PersonalDictionaryStore.prime].
      */
-    fun prime() = onWorker { open() }
+    fun prime(outcome: PersonalMutationOutcome? = null) = onWorker {
+        loadFailed = false
+        report(outcome, open())
+    }
+
+    /**
+     * Erases every pair: empties memory and deletes the file and any quarantined copy. [outcome]
+     * is told whether both are really gone; before the first unlock they cannot be reached, so the
+     * erasure is reported as failed and the store reads the disk again at its next open.
+     */
+    fun clearAll(outcome: PersonalMutationOutcome? = null) = onWorker {
+        pairs = TextShortcuts.EMPTY
+        snapshot = TextShortcuts.EMPTY
+        if (!unlockGate()) {
+            loaded = false
+            report(outcome, false)
+            return@onWorker
+        }
+        loaded = true
+        loadFailed = false
+        // Independent deletions: a quarantined copy holds the same pairs, so it must go even when
+        // the main file cannot be removed, and a copy left behind is a failed erasure.
+        val fileGone = try {
+            deleteFile()
+            true
+        } catch (_: Exception) {
+            false
+        }
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
+        val quarantineGone = directory != null && try {
+            deleteFile(directory, File(directory, quarantineFileName()))
+            true
+        } catch (_: Exception) {
+            false
+        }
+        report(outcome, fileGone && quarantineGone)
+    }
 
     /**
      * The backup restore: replace the whole store from the archive's bytes (already validated by
@@ -175,6 +200,7 @@ internal class TextShortcutStore(
         }
         // Re-read the disk state: the published snapshot now matches the imported file (or none).
         loaded = false
+        loadFailed = false
         open()
         return true
     }
@@ -233,20 +259,22 @@ internal class TextShortcutStore(
     }
 
     /**
-     * Opens the directory once: honors the unlock gate (before the first unlock the path is
-     * inaccessible, so the feature stays empty), removes stale temps, reads the file, and moves an
-     * unreadable file aside (see [quarantine]) with an empty snapshot. Returns true once loaded.
+     * Opens the directory once, after the unlock gate: removes stale temps, reads the file and
+     * moves one that fails validation aside (see [quarantine]). Returns true once loaded; any other
+     * failure leaves the store not loaded, as in `PersonalDictionaryStore.open`.
      */
     private fun open(): Boolean {
         if (loaded) return true
-        if (!unlockGate()) return false
-        loaded = true
+        if (loadFailed || !unlockGate()) return false
         try {
             load()
         } catch (_: Exception) {
             pairs = TextShortcuts.EMPTY
             snapshot = TextShortcuts.EMPTY
+            loadFailed = true
+            return false
         }
+        loaded = true
         return true
     }
 
@@ -263,10 +291,14 @@ internal class TextShortcutStore(
             snapshot = TextShortcuts.EMPTY
             return
         }
-        val validated = try {
-            validator.validate(file)
-        } catch (_: Exception) {
-            null
+        // A read error propagates to [open]; see PersonalDictionaryStore.load.
+        val bytes = PersonalFileReads.readCapped(file, TcutFormat.MAX_FILE_SIZE)
+        val validated = bytes?.let {
+            try {
+                validator.validate(it)
+            } catch (_: Exception) {
+                null
+            }
         }
         if (validated == null) {
             quarantine(directory, file)

@@ -241,7 +241,7 @@ class SentStartOverlayStoreTest {
     // ---- quarantine, the unlock gate, erasure ----------------------------------------------------
 
     @Test
-    fun aCorruptPendingFileIsSetAsideAndAnnouncedUntilDelivered() {
+    fun aCorruptPendingFileIsSetAsideWithoutANotice() {
         val directory = newPersonalDir()
         val writer = store(directory)
         writer.noteSentenceStart("сүзләр")
@@ -256,16 +256,16 @@ class SentStartOverlayStoreTest {
         val store = store(directory, quarantineNotice = { notices++ })
         store.prime()
 
-        assertEquals("the loss is announced on the open that sets the file aside", 1, notices)
+        assertEquals("the counters relearn by themselves, so nothing is announced", 0, notices)
         assertFalse("the corrupt file does not stay where the reader looks", pendingFile.exists())
         assertArrayEquals(
             "the bytes are set aside, not destroyed",
             bytes,
             File(directory, "pending-sentstart-$subtype-s1-f1.bin.quarantine").readBytes(),
         )
-        assertTrue(
-            "the durable mark is the pending channel's own",
-            File(directory, "quarantine-notice-sentstart-$subtype-s1-f1-pending.flag").isFile,
+        assertFalse(
+            "no notice mark is written for the pending counters",
+            File(directory, "quarantine-notice-sentstart-$subtype-s1-f1-pending.flag").exists(),
         )
         assertFalse(
             "the overlay's own mark stays down: its file is fine",
@@ -273,16 +273,11 @@ class SentStartOverlayStoreTest {
         )
         assertTrue("learning restarts from empty", store.snapshot.isEmpty)
 
-        // Across a process restart the mark raises the notice again, until it is delivered.
+        // A pending-counter mark already on disk raises nothing either.
+        File(directory, "quarantine-notice-sentstart-$subtype-s1-f1-pending.flag").writeBytes(ByteArray(1))
         var nextProcess = 0
         store(directory, quarantineNotice = { nextProcess++ }).prime()
-        assertEquals("a notice nobody has taken is still owed", 1, nextProcess)
-
-        store(directory).noticeDelivered()
-        assertFalse(File(directory, "quarantine-notice-sentstart-$subtype-s1-f1-pending.flag").exists())
-        var afterDelivery = 0
-        store(directory, quarantineNotice = { afterDelivery++ }).prime()
-        assertEquals("a delivered notice is not raised again", 0, afterDelivery)
+        assertEquals("a pending-counter mark owes the user nothing", 0, nextProcess)
     }
 
     @Test
@@ -347,9 +342,8 @@ class SentStartOverlayStoreTest {
         assertTrue(File(directory, TsentFormat.sentStartFileName(subtype) + ".quarantine").isFile)
         assertTrue(File(directory, "pending-sentstart-$subtype-s1-f1.bin.quarantine").isFile)
         assertTrue(File(directory, "quarantine-notice-sentstart-$subtype-s1-f1.flag").isFile)
-        assertTrue(
-            File(directory, "quarantine-notice-sentstart-$subtype-s1-f1-pending.flag").isFile,
-        )
+        // A pending-counter mark is never written, but one found on disk goes with the rest.
+        File(directory, "quarantine-notice-sentstart-$subtype-s1-f1-pending.flag").writeBytes(ByteArray(1))
 
         var answered: Boolean? = null
         reopened.clearAll { succeeded -> answered = succeeded }

@@ -209,6 +209,26 @@ class EmojiRecentAndFlingSourceContractTest {
         assertTrue(onDestroy.contains("currentDialog?.dismiss()"))
     }
 
+    @Test
+    fun aFailedClearShowsAMessageOnTheUiThreadOnlyWhileTheActivityLives() {
+        // clearRecents answers on the store's worker, so the answer is moved to the UI thread and
+        // dropped once the activity is finishing or destroyed; only a false answer shows a message.
+        val method = settings.substringAfter("private fun showClearRecentEmojiDialog() {")
+            .substringBefore("\n    }")
+        val answer = method.substringAfter("EmojiPanelController.clearRecents(this) { cleared ->")
+        assertTrue("the clear must take an answer callback", answer != method)
+        val onUi = answer.substringAfter("runOnUiThread {")
+        assertTrue("the answer must be handled on the UI thread", onUi != answer)
+        val guard = "if (cleared || isFinishing || isDestroyed) return@runOnUiThread"
+        assertTrue(onUi.contains(guard))
+        assertTrue(onUi.substringAfter(guard).contains("R.string.clear_recent_emoji_failed"))
+        for (folder in listOf("values", "values-ru", "values-tt")) {
+            val strings = File(sourceRoot(), "res/$folder/strings.xml").readText()
+            assertTrue("$folder is missing clear_recent_emoji_failed",
+                strings.contains("<string name=\"clear_recent_emoji_failed\">"))
+        }
+    }
+
     // --- The emoji package writes no log, stdout or network ------------------------------------
 
     @Test

@@ -214,7 +214,8 @@ class PersonalQuarantineNoticeSourceContractTest {
         for (forbidden in listOf("file", "path", "error", "tpers", "/")) {
             assertFalse("the notice must not name '$forbidden'", english.lowercase().contains(forbidden))
         }
-        assertTrue("it says the list is empty", english.contains("empty"))
+        assertTrue("it says where to go and that only part may come back",
+            english.contains("Saved words") && english.contains("restore what is left"))
     }
 
     private fun stringValue(qualifier: String, name: String): String {

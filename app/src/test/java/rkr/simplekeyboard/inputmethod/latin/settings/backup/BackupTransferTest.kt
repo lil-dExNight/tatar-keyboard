@@ -19,14 +19,19 @@ package rkr.simplekeyboard.inputmethod.latin.settings.backup
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TcutFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaryStore
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDirectoryProvider
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalMutationOutcome
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -37,8 +42,9 @@ import java.util.zip.ZipOutputStream
 /**
  * The two transfer directions over a [BackupTarget]: export → import round-trips byte-equal into
  * a fresh tree, a restore replaces (a local file absent from the archive is deleted), the internal
- * preference keys never cross, an unreadable recognized local file fails the whole export, and
- * an invalid archive writes nothing at all.
+ * preference keys never cross, both directions open the stores first (a damaged file goes to
+ * quarantine; a store that stays not loaded fails the transfer), and an invalid archive writes
+ * nothing at all.
  *
  * One leg runs against targets backed by real stores, so the live reload is proven too: after an
  * import the store's published snapshot holds the imported words and not the old ones.
@@ -121,12 +127,94 @@ class BackupTransferTest {
     }
 
     @Test
-    fun exportFailsInsteadOfSkippingACorruptRecognizedFile() {
+    fun exportFailsInsteadOfSkippingACorruptFileItsStoreCouldNotSetAside() {
         val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
         BackupTestStores.wordStore(source.directory, "tt_RU").addManually("абыйлар")
         File(source.directory, TpersFormat.personalFileName("ru")).writeBytes(ByteArray(100) { 7 })
+        source.failQuarantineMoves = true
 
         assertNull(BackupTransfer.export(source))
+        assertTrue("the corrupt file is still in place",
+            File(source.directory, TpersFormat.personalFileName("ru")).isFile)
+    }
+
+    // ---- a damaged file whose store has not opened yet ---------------------------------------------
+
+    @Test
+    fun exportOpensTheStoresFirstSoADamagedFileGoesToQuarantine() {
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        BackupTestStores.wordStore(source.directory, "tt_RU").addManually("абыйлар")
+        BackupTestStores.writeShortcuts(source.directory, "бб", "бик булды")
+        val damagedWords = File(source.directory, TpersFormat.personalFileName("ru"))
+        damagedWords.writeBytes(ByteArray(100) { 7 })
+        val damagedPairs = File(source.directory, TpersbFormat.personalBigramsFileName("tt_RU"))
+        damagedPairs.writeBytes(ByteArray(80) { 5 })
+
+        val archive = BackupTransfer.export(source)
+
+        assertNotNull("the damaged files no longer fail the export", archive)
+        assertEquals(
+            listOf(TpersFormat.personalFileName("tt_RU"), TcutFormat.shortcutsFileName()).sorted(),
+            BackupArchive.readAndVerify(archive!!).personalFiles
+                .map { BackupFormat.personalFileName(it.kind, it.subtypeId) }.sorted(),
+        )
+        assertTrue("every store with a file was opened", source.openedStores.containsAll(listOf(
+            damagedWords.name, damagedPairs.name, TpersFormat.personalFileName("tt_RU"),
+            TcutFormat.shortcutsFileName())))
+        assertFalse(damagedWords.exists())
+        assertArrayEquals("the store set the damaged bytes aside, as on any open",
+            ByteArray(100) { 7 }, File(source.directory, damagedWords.name + ".quarantine").readBytes())
+        assertArrayEquals(ByteArray(80) { 5 },
+            File(source.directory, damagedPairs.name + ".quarantine").readBytes())
+        assertTrue("and owes the user its usual notice",
+            File(source.directory, "quarantine-notice-ru-s1-f1.flag").isFile)
+    }
+
+    @Test
+    fun importOpensTheStoresFirstSoADamagedFileGoesToQuarantine() {
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        BackupTestStores.wordStore(source.directory, "tt_RU").addManually("абыйлар")
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
+        val damaged = File(destination.directory, TpersFormat.personalFileName("ru"))
+        damaged.writeBytes(ByteArray(100) { 7 })
+
+        assertEquals(BackupImportResult.IMPORTED, BackupTransfer.import(destination, archive))
+
+        assertEquals(listOf("абыйлар"),
+            destination.liveWordStores.getValue("tt_RU").snapshot.lookupRawForms("а"))
+        assertFalse(damaged.exists())
+        assertArrayEquals("the quarantined copy is kept for a restore",
+            ByteArray(100) { 7 }, File(destination.directory, damaged.name + ".quarantine").readBytes())
+        assertFalse(destination.hasJournal())
+    }
+
+    @Test
+    fun exportFailsWhenAStoreStaysNotLoaded() {
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        BackupTestStores.wordStore(source.directory, "tt_RU").addManually("абыйлар")
+        source.failStoreOpens = true
+
+        assertNull("a store that could not read its file must not be skipped",
+            BackupTransfer.export(source))
+    }
+
+    @Test
+    fun importRefusesBeforeChangingAnythingWhenAStoreStaysNotLoaded() {
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        source.preferences["auto_cap"] = true
+        BackupTestStores.wordStore(source.directory, "tt_RU").addManually("абыйлар")
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
+        destination.preferences["auto_cap"] = false
+        BackupTestStores.wordStore(destination.directory, "ru").addManually("китап")
+        val before = directorySnapshot(destination.directory)
+        destination.failStoreOpens = true
+
+        assertEquals(BackupImportResult.WRITE_FAILED, BackupTransfer.import(destination, archive))
+        assertDirectoryState("a store that stays not loaded", before, destination.directory)
+        assertEquals(mapOf<String, Any?>("auto_cap" to false), destination.preferences)
+        assertFalse("nothing was journaled", destination.hasJournal())
     }
 
     @Test
@@ -420,6 +508,13 @@ class BackupTransferTest {
         val liveWordStores = HashMap<String, PersonalDictionaryStore>()
         var failReads = false
         var failWrites = false
+
+        /** Every store opened for [openPersonalStore] fails its read with an I/O error. */
+        var failStoreOpens = false
+
+        /** A store's open cannot move a damaged file aside, so the file stays in place. */
+        var failQuarantineMoves = false
+        val openedStores = ArrayList<String>()
         var failAfterMutation: Int? = null
         var crashAfterMutation: Int? = null
         private var mutationCount = 0
@@ -432,6 +527,36 @@ class BackupTransferTest {
         override fun readPersonalFile(fileName: String): ByteArray? =
             if (failReads) null else
                 File(directory, fileName).let { if (it.isFile) it.readBytes() else null }
+
+        override fun openPersonalStore(fileName: String): Boolean {
+            val (kind, subtypeId) = BackupFormat.classifyPersonalFileName(fileName) ?: return false
+            openedStores += fileName
+            val provider = PersonalDirectoryProvider {
+                if (failStoreOpens) throw IOException("injected read failure") else directory
+            }
+            val ops = if (failQuarantineMoves) QuarantineMoveFails else BackupTestStores.realOps
+            var loaded = false
+            val outcome = PersonalMutationOutcome { ok -> loaded = ok }
+            when (kind) {
+                BackupFormat.PersonalKind.WORDS ->
+                    if (failStoreOpens || failQuarantineMoves) {
+                        BackupTestStores.wordStore(directory, subtypeId, ops, provider).prime(outcome)
+                    } else {
+                        liveWordStores.getOrPut(subtypeId) {
+                            BackupTestStores.wordStore(directory, subtypeId)
+                        }.prime(outcome)
+                    }
+                BackupFormat.PersonalKind.PAIRS ->
+                    BackupTestStores.pairStore(directory, subtypeId, ops, provider).prime(outcome)
+                BackupFormat.PersonalKind.EMOJI ->
+                    BackupTestStores.emojiStore(directory, subtypeId, ops, provider).prime(outcome)
+                BackupFormat.PersonalKind.REFUSED ->
+                    BackupTestStores.refusedStore(directory, subtypeId, ops, provider).prime(outcome)
+                BackupFormat.PersonalKind.SHORTCUTS ->
+                    BackupTestStores.shortcutStore(directory, ops, provider).prime(outcome)
+            }
+            return loaded
+        }
 
         override fun replacePersonalFile(fileName: String, bytes: ByteArray?): Boolean {
             if (failWrites) return false
@@ -497,6 +622,14 @@ class BackupTransferTest {
         fun storeFileNames(): List<String> = personalFileNames()
             .filter { BackupFormat.classifyPersonalFileName(it) != null }
             .sorted()
+    }
+
+    /** Real file operations, except that nothing can be moved into a quarantine slot. */
+    private object QuarantineMoveFails : DurableFileOps by BackupTestStores.realOps {
+        override fun atomicReplace(source: File, destination: File) {
+            if (destination.name.endsWith(".quarantine")) throw IOException("injected move failure")
+            BackupTestStores.realOps.atomicReplace(source, destination)
+        }
     }
 
     private fun sha256(bytes: ByteArray): String =
