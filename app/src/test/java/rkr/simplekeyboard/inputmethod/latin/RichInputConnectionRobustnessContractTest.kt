@@ -56,7 +56,7 @@ class RichInputConnectionRobustnessContractTest {
     }
 
     private val reloadBody by lazy {
-        bodyOf("public void reloadTextCache() {", "private void finishReloadTextCache()")
+        bodyOf("public void reloadTextCache() {", "/* package */ void finishReloadTextCache()")
     }
 
     // --- Paste fallback ---------------------------------------------------------------------
@@ -90,7 +90,7 @@ class RichInputConnectionRobustnessContractTest {
         assertTrue("and mutates nothing before it", guard in 0 until mutation)
 
         // replaceText: the connection is refreshed BEFORE the cache is rewritten.
-        val refresh = replaceTextBody.indexOf("mIC = mLatinIME.getCurrentInputConnection();")
+        val refresh = replaceTextBody.indexOf("refreshConnection();")
         val replaceGuard = replaceTextBody.indexOf("if (!isConnected()) {")
         val cacheWrite = replaceTextBody.indexOf("mTextAfterCursor = text +")
         assertTrue("replaceText refreshes the connection", refresh >= 0)
@@ -98,7 +98,7 @@ class RichInputConnectionRobustnessContractTest {
         assertTrue("before the cache mutation", replaceGuard in 0 until cacheWrite)
 
         // pasteClipboard: the context-menu fallback checks the refreshed connection.
-        val pasteRefresh = pasteBody.indexOf("mIC = mLatinIME.getCurrentInputConnection();")
+        val pasteRefresh = pasteBody.indexOf("refreshConnection();")
         val pasteGuard = pasteBody.indexOf("if (!isConnected()) {")
         val contextMenu = pasteBody.indexOf("mIC.performContextMenuAction(android.R.id.paste);")
         assertTrue("pasteClipboard refreshes the connection", pasteRefresh >= 0)
@@ -133,13 +133,13 @@ class RichInputConnectionRobustnessContractTest {
         )
         val background = reloadBody.indexOf("mBackgroundThread.execute(")
         val preIpcCheck = reloadBody.indexOf("Selection range modified before the reload reached the editor.")
-        val surroundingIpc = reloadBody.indexOf("mIC.getSurroundingText(")
-        val beforeIpc = reloadBody.indexOf("mIC.getTextBeforeCursor(")
+        val surroundingIpc = reloadBody.indexOf("ic.getSurroundingText(")
+        val beforeIpc = reloadBody.indexOf("ic.getTextBeforeCursor(")
         assertTrue("the background task exists", background >= 0)
         assertTrue("the staleness check precedes the S+ IPC", background < preIpcCheck && preIpcCheck < surroundingIpc)
         assertTrue("and the pre-S IPC", preIpcCheck < beforeIpc)
 
-        val finishBody = bodyOf("private void finishReloadTextCache()", "\n    public ")
+        val finishBody = bodyOf("/* package */ void finishReloadTextCache()", "\n    public ")
         assertTrue("the completion clears the flag", finishBody.contains("mReloadInFlight = false;"))
         assertTrue(
             "and the folded request produces exactly one follow-up",
@@ -148,6 +148,57 @@ class RichInputConnectionRobustnessContractTest {
     }
 
     // --- Reload threading -------------------------------------------------------------------
+
+    @Test
+    fun everyReloadAsksThePasswordGateAndTheWorkerReadsOnlyTheCapturedConnection() {
+        // The gate sits in the reload itself, so the coalesced follow-up that
+        // finishReloadTextCache runs is checked like every other request.
+        val gate = reloadBody.indexOf("if (ic == null || !mHost.mayReadEditorText()) {")
+        val coalesce = reloadBody.indexOf("if (mReloadInFlight) {")
+        assertTrue("the reload asks the password gate before anything else", gate in 0 until coalesce)
+        val finishBody = bodyOf("/* package */ void finishReloadTextCache()", "\n    public ")
+        assertTrue("the follow-up goes through the gated reload", finishBody.contains("reloadTextCache();"))
+        assertFalse("the follow-up never bypasses it", finishBody.contains("mIC"))
+
+        // The worker must not read mIC: the UI thread rebinds it at the next field start, and a
+        // late worker would then read the new field (a password field) instead.
+        val worker = reloadBody.substringAfter("mBackgroundThread.execute(() -> {")
+        assertFalse("the worker reads only the captured connection", worker.contains("mIC"))
+        assertFalse(worker.contains("isConnected()"))
+
+        // A cache clear drops a request folded in before it, so no follow-up outlives a field
+        // switch or a hide.
+        val clearBody = bodyOf("public void clearTextCaches()", "\n    }\n")
+        assertTrue(clearBody.contains("mReloadRequestedWhileInFlight = false;"))
+    }
+
+    @Test
+    fun everyUnbatchedEditorCallReReadsTheBoundConnectionFirst() {
+        // A password field start reloads nothing, so each call outside a batch must re-read the
+        // bound field itself; RichInputConnectionBindingTest drives the calls a JVM can build
+        // (sendKeyEvent needs a real KeyEvent, so it is pinned here only).
+        val bodies = mapOf(
+            "commitText" to bodyOf("public void commitText(", "/* package */ void appendToTextBeforeCursor"),
+            "replaceText" to replaceTextBody,
+            "deleteTextBeforeCursor" to
+                bodyOf("public void deleteTextBeforeCursor(", "public void deleteSelectedText()"),
+            "performEditorAction" to
+                bodyOf("public void performEditorAction(", "public void performContextMenuAction("),
+            "performContextMenuAction" to bodyOf("public void performContextMenuAction(",
+                "private static final int MAX_DIRECT_PASTE_CHARS"),
+            "pasteClipboard" to pasteBody,
+            "sendKeyEvent" to bodyOf("public void sendKeyEvent(", "public void setSelection("),
+            "setSelection" to bodyOf("public void setSelection(", "public int getExpectedSelectionStart()"),
+        )
+        for ((name, body) in bodies) {
+            val refresh = body.indexOf("refreshConnection();")
+            val call = body.indexOf("mIC.")
+            assertTrue("$name re-reads the bound connection", refresh >= 0)
+            assertTrue("$name re-reads it before its editor call", refresh < call)
+        }
+        val refreshBody = bodyOf("private void refreshConnection()", "\n    }\n")
+        assertTrue("a batch keeps its own connection", refreshBody.contains("if (mNestLevel == 0) {"))
+    }
 
     @Test
     fun theBackgroundSectionNeverWritesTheCache() {
@@ -195,7 +246,7 @@ class RichInputConnectionRobustnessContractTest {
             )
         }
         // The S+ apply: the re-check sits before the window write.
-        val sPlusApply = reloadBody.substringAfter("mIC.getSurroundingText(")
+        val sPlusApply = reloadBody.substringAfter("ic.getSurroundingText(")
         val recheck = sPlusApply.indexOf(recheckCall)
         val write = sPlusApply.indexOf("setTextAroundCursor(textAroundCursor);")
         assertTrue("the S+ apply re-checks before writing", recheck in 0 until write)
@@ -225,7 +276,7 @@ class RichInputConnectionRobustnessContractTest {
         // RuntimeException-only (the binder's failure surface), pinned to the wrapper by
         // BatchEditPairingContractTest.
         assertTrue(
-            "the S8 catch degrades a hostile editor's throw to the bare completion",
+            "the reload catch degrades a hostile editor's throw to the bare completion",
             reloadBody.contains("} catch (final RuntimeException e) {"),
         )
     }
@@ -293,14 +344,8 @@ class RichInputConnectionRobustnessContractTest {
             bodyOf("public void setSelection(", "public int getExpectedSelectionStart()"),
         )
         for ((index, body) in bodies.withIndex()) {
-            val calls = mutableListOf<Int>()
-            var at = 0
-            while (true) {
-                at = body.indexOf("mIC.", at)
-                if (at < 0) break
-                calls.add(at)
-                at += 4
-            }
+            // The reload's worker calls the connection it captured, a local named ic.
+            val calls = Regex("\\b(?:mIC|ic)\\.").findAll(body).map { it.range.first }.toList()
             assertTrue("body #$index holds at least one editor call", calls.isNotEmpty())
             for (call in calls) {
                 val openTry = body.lastIndexOf("try {", call)
@@ -324,7 +369,7 @@ class RichInputConnectionRobustnessContractTest {
         val hasClip = pasteBody.indexOf("clipboard.hasPrimaryClip()")
         val getClip = pasteBody.indexOf("clipboard.getPrimaryClip()")
         val catchOpen = pasteBody.indexOf("catch (final RuntimeException e)")
-        val refresh = pasteBody.indexOf("mIC = mLatinIME.getCurrentInputConnection();")
+        val refresh = pasteBody.indexOf("refreshConnection();")
         assertTrue("the clipboard reads sit in a try", tryOpen in 0 until hasClip && hasClip < getClip)
         assertTrue("with a RuntimeException catch after them", getClip < catchOpen)
         assertTrue("and the editor-paste fallback still follows", catchOpen in 0 until refresh)

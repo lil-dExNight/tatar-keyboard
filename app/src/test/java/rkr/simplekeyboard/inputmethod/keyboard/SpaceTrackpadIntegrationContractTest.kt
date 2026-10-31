@@ -66,6 +66,37 @@ class SpaceTrackpadIntegrationContractTest {
     }
 
     @Test
+    fun theCloseCancelAbandonsTheTrackpadWithoutRestoringASelection() {
+        // The queue's close-path cancel calls abandonSpaceTrackpad (PointerTrackerQueueTest); the
+        // tracker's side ends the state and the owner and never tells the listener, so no
+        // saved selection is restored into the next field.
+        val abandon = tracker.substringAfter("public void abandonSpaceTrackpad()")
+            .substringBefore("\n    }\n")
+        assertTrue(abandon.contains("mSpaceTrackpadState.finish();"))
+        assertTrue(abandon.contains("sSpaceTrackpadOwner = null;"))
+        assertFalse(abandon.contains("sListener"))
+    }
+
+    @Test
+    fun theFieldStartForgetsTheTrackpadsSavedSelection() {
+        val start = ime.substringAfter("void onStartInputViewInternal(final EditorInfo editorInfo")
+            .substringBefore("\n    }\n")
+        val reset = start.indexOf("resetSpaceTrackpad();")
+        val closing = start.indexOf("mainKeyboardView.closing();")
+        assertTrue("the field start resets the trackpad", reset >= 0)
+        assertTrue("before the keyboard closes its gestures", reset < closing)
+
+        val resetBody = ime.substringAfter("private void resetSpaceTrackpad()")
+            .substringBefore("\n    }\n")
+        assertTrue(resetBody.contains("mSpaceTrackpadInitialStart = -1;"))
+        assertTrue(resetBody.contains("mSpaceTrackpadInitialEnd = -1;"))
+        val finish = ime.substringAfter("public void onSpaceTrackpadFinish(final boolean cancelled)")
+            .substringBefore("private void resetSpaceTrackpad()")
+        assertTrue("the restore needs a saved selection from this field start",
+            finish.contains("cancelled && mSpaceTrackpadInitialStart >= 0"))
+    }
+
+    @Test
     fun editorEntryRequiresKnownNonPasswordCursor() {
         val gate = ime.substringAfter("private boolean canUseSpaceTrackpad()")
             .substringBefore("public boolean onSpaceTrackpadStart()")

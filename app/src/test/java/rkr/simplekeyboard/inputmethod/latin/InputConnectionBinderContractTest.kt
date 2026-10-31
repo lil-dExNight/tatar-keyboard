@@ -97,16 +97,16 @@ class InputConnectionBinderContractTest {
     @Test
     fun theOnlyEditorReadsAreTheCoalescedBackgroundReload() {
         val reloadBody = bodyOf(
-            connection, "public void reloadTextCache() {", "private void finishReloadTextCache()")
+            connection, "public void reloadTextCache() {", "/* package */ void finishReloadTextCache()")
         for (read in listOf(
-            "mIC.getSurroundingText(",
-            "mIC.getTextBeforeCursor(",
-            "mIC.getTextAfterCursor(",
-            "mIC.getSelectedText(",
+            "ic.getSurroundingText(",
+            "ic.getTextBeforeCursor(",
+            "ic.getTextAfterCursor(",
+            "ic.getSelectedText(",
         )) {
             assertEquals("$read exists exactly once in the tree's single IC holder",
                 1, occurrences(connection, read))
-            assertTrue("$read lives inside the coalesced background reload (F8/F10)",
+            assertTrue("$read lives inside the coalesced background reload",
                 reloadBody.contains(read))
         }
         // The one payload-bearing call is bounded in both directions by the cache window; the
@@ -114,7 +114,7 @@ class InputConnectionBinderContractTest {
         assertTrue(
             "the surrounding-text window stays bounded by EDITOR_CONTENTS_CACHE_SIZE",
             reloadBody.contains(
-                "mIC.getSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE, " +
+                "ic.getSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE, " +
                     "Constants.EDITOR_CONTENTS_CACHE_SIZE, 0)"),
         )
         // The AOSP trap: InputConnection#getCursorCapsMode is a binder read. Caps come from the
@@ -132,8 +132,8 @@ class InputConnectionBinderContractTest {
         assertTrue("the S+ branch fills the cache from the already-delivered parcel",
             body.contains(".getInitialSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE"))
         assertFalse("a binder read at field start is a waste — the parcel carries the text",
-            body.contains("mIC.getSurroundingText("))
-        assertFalse(body.contains("mIC.getTextBeforeCursor("))
+            body.contains(".getSurroundingText("))
+        assertFalse(body.contains(".getTextBeforeCursor("))
     }
 
     // --- The write inventory — a new editor call site must fail this test ---------------------

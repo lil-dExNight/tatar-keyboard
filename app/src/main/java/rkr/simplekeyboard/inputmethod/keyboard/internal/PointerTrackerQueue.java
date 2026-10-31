@@ -31,6 +31,8 @@ public final class PointerTrackerQueue {
         boolean isInCursorMove();
         void onPhantomUpEvent(long eventTime);
         void cancelTrackingForAction();
+        /** Ends an active space trackpad without restoring the selection it started from. */
+        void abandonSpaceTrackpad();
     }
 
     private static final int INITIAL_CAPACITY = 10;
@@ -234,6 +236,9 @@ public final class PointerTrackerQueue {
             for (int index = 0; index < arraySize; index++) {
                 final Element element = expandableArray.get(index);
                 element.cancelTrackingForAction();
+                // This cancel closes the keyboard or switches the field, so a trackpad must not
+                // outlive it: a later up would restore the old selection into the new field.
+                element.abandonSpaceTrackpad();
             }
             // Cancelled trackers leave the queue. Otherwise a cancel with no following up event
             // would keep them forever, inflating the active-pointer count and delivering phantom

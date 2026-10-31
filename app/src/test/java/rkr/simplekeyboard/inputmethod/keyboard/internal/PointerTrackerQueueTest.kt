@@ -52,6 +52,10 @@ class PointerTrackerQueueTest {
             log.add("cancel:$name")
         }
 
+        override fun abandonSpaceTrackpad() {
+            log.add("abandon:$name")
+        }
+
         override fun toString() = name
     }
 
@@ -87,12 +91,43 @@ class PointerTrackerQueueTest {
 
         queue.cancelAllPointerTrackers()
 
-        assertEquals(listOf("cancel:a", "cancel:b", "cancel:c"), log)
+        assertEquals(
+            listOf("cancel:a", "abandon:a", "cancel:b", "abandon:b", "cancel:c", "abandon:c"),
+            log,
+        )
         assertEquals("cancelled trackers leave the queue", 0, queue.size())
 
         // Nothing lingers to receive a later phantom up.
         queue.releaseAllPointers(42L)
-        assertEquals("no phantom ups reach evicted trackers", 3, log.size)
+        assertEquals("no phantom ups reach evicted trackers", 6, log.size)
+    }
+
+    @Test
+    fun theCloseCancelAbandonsEveryTrackpadWithoutAPhantomUp() {
+        // The close path (field switch, hide) evicts trackers whose fingers may still be down.
+        // An active trackpad must end here: its later up would otherwise run the cancel finish,
+        // which restores the selection saved in the previous field.
+        val (queue, log, elements) = fixture()
+        elements.forEach(queue::add)
+
+        queue.cancelAllPointerTrackers()
+
+        for (name in listOf("a", "b", "c")) {
+            assertTrue("$name is abandoned", log.contains("abandon:$name"))
+        }
+        assertFalse("the close cancel delivers no phantom up", log.any { it.startsWith("phantom:") })
+    }
+
+    @Test
+    fun theActionCancelKeepsTheTrackpadFinishOnItsPhantomUp() {
+        // ACTION_CANCEL in the same field: the phantom up runs the tracker's own cancel finish,
+        // which may restore the starting selection there. Nothing is abandoned first.
+        val (queue, log, elements) = fixture()
+        elements.forEach(queue::add)
+
+        queue.cancelAllPointerTrackers(9L)
+
+        assertFalse(log.any { it.startsWith("abandon:") })
     }
 
     @Test

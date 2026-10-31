@@ -95,8 +95,8 @@ class BatchEditPairingContractTest {
     fun catchesLiveOnlyAtTheEditorBoundaryAndOnlyForRuntimeException() {
         val inputLogic = files.getValue("InputLogic")
         assertFalse(
-            "InputLogic: S8's catches live in the wrapper alone — InputLogic reaches the " +
-                "editor only through RichInputConnection (O6), so a catch here would be dead " +
+            "InputLogic: the editor catches live in the wrapper alone — InputLogic reaches the " +
+                "editor only through RichInputConnection, so a catch here would be dead " +
                 "code pretending to be a guard",
             Regex("\\bcatch\\s*\\(").containsMatchIn(inputLogic),
         )

@@ -37,7 +37,7 @@ public final class SystemBroadcastReceiver extends BroadcastReceiver {
         final String intentAction = intent.getAction();
         if (Intent.ACTION_LOCALE_CHANGED.equals(intentAction)) {
             Log.i(TAG, "System locale changed");
-            RichInputMethodManager.getInstance().reloadSubtypes(context);
+            RichInputMethodManager.reloadSubtypesIfInitialized(context);
             LocaleResourceUtils.onLocalChange(context);
         }
     }

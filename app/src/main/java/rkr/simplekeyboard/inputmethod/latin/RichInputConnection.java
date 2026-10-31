@@ -95,13 +95,63 @@ public final class RichInputConnection {
      */
     private boolean mCacheReachedTextStart = false;
 
+    /** What this class needs from the service; a seam for the JVM tests. */
+    /* package */ interface EditorHost {
+        /** The bound field's connection, or null. A local read: no IPC, no text. */
+        InputConnection getCurrentInputConnection();
+
+        /** Whether the bound field's text may be read into the cache (never a password field). */
+        boolean mayReadEditorText();
+
+        /** Called by every edit: typing settles the language-cycle order. */
+        void resetSubtypeCycleOrder();
+    }
+
+    /** The host of a wrapper without a service: no connection, no reads. */
+    private static final EditorHost NO_EDITOR = new EditorHost() {
+        @Override
+        public InputConnection getCurrentInputConnection() {
+            return null;
+        }
+
+        @Override
+        public boolean mayReadEditorText() {
+            return false;
+        }
+
+        @Override
+        public void resetSubtypeCycleOrder() {
+        }
+    };
+
     private final LatinIME mLatinIME;
+    private final EditorHost mHost;
     private InputConnection mIC;
     private int mNestLevel;
     private final ExecutorService mBackgroundThread;
 
     public RichInputConnection(final LatinIME latinIME) {
+        this(latinIME, latinIME == null ? NO_EDITOR : new EditorHost() {
+            @Override
+            public InputConnection getCurrentInputConnection() {
+                return latinIME.getCurrentInputConnection();
+            }
+
+            @Override
+            public boolean mayReadEditorText() {
+                return latinIME.mayReadEditorText();
+            }
+
+            @Override
+            public void resetSubtypeCycleOrder() {
+                RichInputMethodManager.getInstance().resetSubtypeCycleOrder();
+            }
+        });
+    }
+
+    /* package */ RichInputConnection(final LatinIME latinIME, final EditorHost host) {
         mLatinIME = latinIME;
+        mHost = host;
         mIC = null;
         mNestLevel = 0;
         mBackgroundThread = Executors.newSingleThreadExecutor();
@@ -111,9 +161,28 @@ public final class RichInputConnection {
         return mIC != null;
     }
 
+    /**
+     * Binds the connection of the field that starts now without reading any of its text, for a
+     * password field, whose cache is never reloaded.
+     */
+    public void onStartInput() {
+        mIC = mHost.getCurrentInputConnection();
+    }
+
+    /**
+     * Every editor call starts here. Outside a batch edit the connection is re-read from the
+     * service, so a call never reaches a field that is no longer bound; inside one the batch's own
+     * connection stays, so the batch opens and closes on one editor.
+     */
+    private void refreshConnection() {
+        if (mNestLevel == 0) {
+            mIC = mHost.getCurrentInputConnection();
+        }
+    }
+
     public void beginBatchEdit() {
         if (++mNestLevel == 1) {
-            mIC = mLatinIME.getCurrentInputConnection();
+            mIC = mHost.getCurrentInputConnection();
             if (isConnected()) {
                 try {
                     mIC.beginBatchEdit();
@@ -228,7 +297,11 @@ public final class RichInputConnection {
      * Reload the cached text from the EditorInfo.
      */
     public void reloadTextCache(final EditorInfo editorInfo, final boolean restarting) {
-        mIC = mLatinIME.getCurrentInputConnection();
+        refreshConnection();
+        // The same gate as every reload: the field-start parcel is the field's text too.
+        if (!mHost.mayReadEditorText()) {
+            return;
+        }
 
         if (mExpectedSelStart != INVALID_CURSOR_POSITION && mExpectedSelEnd != INVALID_CURSOR_POSITION
             && !restarting) {
@@ -273,8 +346,11 @@ public final class RichInputConnection {
      * Reload the cached text from the InputConnection.
      */
     public void reloadTextCache() {
-        mIC = mLatinIME.getCurrentInputConnection();
-        if (!isConnected()) {
+        refreshConnection();
+        final InputConnection ic = mIC;
+        // Every reload, a coalesced follow-up included, asks the gate: a password field's text is
+        // never read. The worker reads only this captured connection.
+        if (ic == null || !mHost.mayReadEditorText()) {
             return;
         }
         if (mReloadInFlight) {
@@ -292,9 +368,6 @@ public final class RichInputConnection {
         mBackgroundThread.execute(() -> {
             boolean applyPosted = false;
             try {
-                if (!isConnected()) {
-                    return;
-                }
                 // Check for staleness before the IPC: a reload the selection has already moved
                 // past never touches the editor.
                 if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd)) {
@@ -303,7 +376,7 @@ public final class RichInputConnection {
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     final SurroundingText textAroundCursor =
-                            mIC.getSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE, Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+                            ic.getSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE, Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
                     // Apply on the UI thread, where the expected selection is mutated, so the
                     // re-check there cannot race with those mutations.
                     mLatinIME.mHandler.post(() -> {
@@ -320,7 +393,7 @@ public final class RichInputConnection {
                     });
                     applyPosted = true;
                 } else {
-                    final CharSequence textBeforeCursor = mIC.getTextBeforeCursor(Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+                    final CharSequence textBeforeCursor = ic.getTextBeforeCursor(Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
                     if (expectedSelStart != mExpectedSelStart) {
                         Log.w(TAG, "Selection start modified before thread completion.");
                         return;
@@ -340,7 +413,7 @@ public final class RichInputConnection {
                     }
                     final String beforeCursor = textBeforeCursor.toString();
 
-                    final CharSequence textAfterCursor = mIC.getTextAfterCursor(Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+                    final CharSequence textAfterCursor = ic.getTextAfterCursor(Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
                     if (expectedSelEnd != mExpectedSelEnd) {
                         Log.w(TAG, "Selection end modified before thread completion.");
                         return;
@@ -353,7 +426,7 @@ public final class RichInputConnection {
 
                     final String selection;
                     if (hasSelection()) {
-                        final CharSequence textSelection = mIC.getSelectedText(0);
+                        final CharSequence textSelection = ic.getSelectedText(0);
                         if (expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd) {
                             Log.w(TAG, "Selection range modified before thread completion.");
                             return;
@@ -401,9 +474,10 @@ public final class RichInputConnection {
 
     /**
      * UI-thread completion of every background reload, applied or not: clears the in-flight flag
-     * and runs the single follow-up reload that coalesced requests folded into.
+     * and runs the single follow-up reload that coalesced requests folded into. Package-private
+     * for the JVM tests.
      */
-    private void finishReloadTextCache() {
+    /* package */ void finishReloadTextCache() {
         mReloadInFlight = false;
         if (mReloadRequestedWhileInFlight) {
             mReloadRequestedWhileInFlight = false;
@@ -512,6 +586,8 @@ public final class RichInputConnection {
         Log.i(TAG, "Clearing editor caches.");
         // Voids every reload captured before this moment; see mCacheGeneration.
         mCacheGeneration++;
+        // A request folded in before the clear belongs to the old field or the hidden window.
+        mReloadRequestedWhileInFlight = false;
         mTextBeforeCursor = "";
         mTextSelection = "";
         mTextAfterCursor = "";
@@ -526,7 +602,7 @@ public final class RichInputConnection {
      * @param newCursorPosition The new cursor position around the text.
      */
     public void commitText(final CharSequence text, final int newCursorPosition) {
-        RichInputMethodManager.getInstance().resetSubtypeCycleOrder();
+        mHost.resetSubtypeCycleOrder();
         appendToTextBeforeCursor(text);
         // TODO: the following is exceedingly error-prone. Right now when the cursor is in the
         // middle of the composing word mComposingText only holds the part of the composing text
@@ -535,6 +611,7 @@ public final class RichInputConnection {
             mExpectedSelStart += text.length();
             mExpectedSelEnd = mExpectedSelStart;
         }
+        refreshConnection();
         if (isConnected()) {
             try {
                 mIC.commitText(text, newCursorPosition);
@@ -583,7 +660,7 @@ public final class RichInputConnection {
      * @return the caps modes that should be on as a set of bits
      */
     public int getCursorCapsMode(final int inputType, final SpacingAndPunctuations spacingAndPunctuations) {
-        mIC = mLatinIME.getCurrentInputConnection();
+        refreshConnection();
         if (!isConnected()) {
             return Constants.TextUtils.CAP_MODE_OFF;
         }
@@ -673,13 +750,13 @@ public final class RichInputConnection {
 
         // Refresh and check the connection before changing the cache, so a dead editor does not
         // leave the cache describing an edit that never happened.
-        mIC = mLatinIME.getCurrentInputConnection();
+        refreshConnection();
         if (!isConnected()) {
             return;
         }
         mTextAfterCursor = text + textAfterCursor.substring(numCharsSelected);
 
-        RichInputMethodManager.getInstance().resetSubtypeCycleOrder();
+        mHost.resetSubtypeCycleOrder();
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -709,6 +786,7 @@ public final class RichInputConnection {
             mExpectedSelEnd = mExpectedSelStart;
         }
 
+        refreshConnection();
         if (isConnected()) {
             try {
                 mIC.deleteSurroundingText(numChars, 0);
@@ -744,7 +822,7 @@ public final class RichInputConnection {
     }
 
     public void performEditorAction(final int actionId) {
-        mIC = mLatinIME.getCurrentInputConnection();
+        refreshConnection();
         if (isConnected()) {
             try {
                 mIC.performEditorAction(actionId);
@@ -760,7 +838,7 @@ public final class RichInputConnection {
      * a paste lands straight from the editor.
      */
     public void performContextMenuAction(final int id) {
-        mIC = mLatinIME.getCurrentInputConnection();
+        refreshConnection();
         if (isConnected()) {
             try {
                 mIC.performContextMenuAction(id);
@@ -809,7 +887,7 @@ public final class RichInputConnection {
 
         // Refresh the connection first: the field can hold a stale or null one from an earlier
         // batch.
-        mIC = mLatinIME.getCurrentInputConnection();
+        refreshConnection();
         if (!isConnected()) {
             return;
         }
@@ -821,7 +899,7 @@ public final class RichInputConnection {
     }
 
     public void sendKeyEvent(final KeyEvent keyEvent) {
-        RichInputMethodManager.getInstance().resetSubtypeCycleOrder();
+        mHost.resetSubtypeCycleOrder();
         if (keyEvent.getAction() == KeyEvent.ACTION_DOWN) {
             // This method is only called for enter or backspace when speaking to old applications
             // (target SDK <= 15 (Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1)), or for digits.
@@ -858,6 +936,7 @@ public final class RichInputConnection {
                 break;
             }
         }
+        refreshConnection();
         if (isConnected()) {
             try {
                 mIC.sendKeyEvent(keyEvent);
@@ -895,10 +974,11 @@ public final class RichInputConnection {
             mTextAfterCursor = textRange.substring(end - textStart);
         }
 
-        RichInputMethodManager.getInstance().resetSubtypeCycleOrder();
+        mHost.resetSubtypeCycleOrder();
 
         mExpectedSelStart = start;
         mExpectedSelEnd = end;
+        refreshConnection();
         if (isConnected()) {
             try {
                 mIC.setSelection(start, end);

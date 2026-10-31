@@ -1639,6 +1639,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         return editorInfo != null && isPasswordField(editorInfo);
     }
 
+    /** The check every editor text reload asks first: never a password field's text. */
+    boolean mayReadEditorText() {
+        return !isCurrentFieldPasswordField();
+    }
+
     /**
      * Whether the keyguard is shown (lock screen quick reply, PIN entry), also after the first
      * unlock. Nothing learned is shown or learned there. A missing KeyguardManager counts as locked.
@@ -2200,6 +2205,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // Note: This call should be done by InputMethodService?
         updateFullscreenMode();
 
+        // The trackpad's saved selection belongs to the previous start: a cancel after this
+        // point must not restore it into the field that starts now.
+        resetSpaceTrackpad();
+
         // In some cases the input connection has not been reset yet and we can't access it. In
         // this case we will need to call loadKeyboard() later, when it's accessible, so that we
         // can go into the correct mode, so we need to do some housekeeping here.
@@ -2214,7 +2223,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 // Privacy: a password field's text is never read into the cache. Clearing also
                 // evicts the previous field's text (a field switch skips onFinishInputView).
                 // Typed text still reaches the cache through local edits, so auto-caps works.
+                // The new field's connection is bound without a read.
                 mInputLogic.clearCaches();
+                mInputLogic.mConnection.onStartInput();
             } else {
                 // Some applications call onStartInputView without updating EditorInfo. In these
                 // cases selection will be incorrect.
@@ -2776,13 +2787,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 && connection.hasCursorPosition() && !isCurrentFieldPasswordField()) {
             connection.setSelection(mSpaceTrackpadInitialStart, mSpaceTrackpadInitialEnd);
         }
+        final boolean moved = mSpaceTrackpadMoved;
+        resetSpaceTrackpad();
+        if (moved || cancelled) {
+            onUpWithSpacePointerActive();
+        }
+    }
+
+    /** Forgets the trackpad's saved and current positions. */
+    private void resetSpaceTrackpad() {
         mSpaceTrackpadAnchor = -1;
         mSpaceTrackpadActiveEdge = -1;
         mSpaceTrackpadInitialStart = -1;
         mSpaceTrackpadInitialEnd = -1;
-        if (mSpaceTrackpadMoved || cancelled) {
-            onUpWithSpacePointerActive();
-        }
         mSpaceTrackpadMoved = false;
     }
 

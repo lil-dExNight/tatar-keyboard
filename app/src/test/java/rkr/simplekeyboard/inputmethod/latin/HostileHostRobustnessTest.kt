@@ -36,8 +36,9 @@ import rkr.simplekeyboard.inputmethod.latin.common.Constants
  * run out of memory, or corrupt its state. This suite drives the real [RichInputConnection]
  * through the Android-free seams [RichInputConnectionRobustnessTest] uses
  * (`RichInputConnection(null)` plus the package-private surface), plus a fake [InputConnection]
- * injected into the private `mIC` field for the throwing-binder cases. The structural pins live in
- * [RichInputConnectionRobustnessContractTest] and `inputlogic/BatchEditPairingContractTest.kt`;
+ * bound through the host seam or the private `mIC` field for the throwing-binder cases. The
+ * structural pins live in [RichInputConnectionRobustnessContractTest] and
+ * `inputlogic/BatchEditPairingContractTest.kt`;
  * the suggestion-side start/finish churn is in `suggestions/HostileHostSuggestionChurnTest.kt`.
  *
  * Covered host behavior:
@@ -135,7 +136,7 @@ class HostileHostRobustnessTest {
 
         connection.appendToTextBeforeCursor("ю")
 
-        assertEquals("the F3 append bound re-converges the window at the next keystroke",
+        assertEquals("the append bound re-converges the window at the next keystroke",
             window, connection.cachedTextBeforeCursor.length)
 
         // A truncation boundary leaves a window whose tail is a mid-word cluster: х‍б is ONE
@@ -263,8 +264,7 @@ class HostileHostRobustnessTest {
     fun aThrowingDeleteSurroundingTextDoesNotEscapeAndTheNextDeleteLands() {
         val editor = FakeInputConnection()
         editor.deleteFailuresBeforeSuccess = 1
-        val connection = RichInputConnection(null)
-        injectEditor(connection, editor)
+        val connection = RichInputConnection(null, hostOf(editor))
         connection.onBeforeCursorCacheReloaded("сүз")
         connection.updateSelection(3, 3)
 
@@ -372,10 +372,16 @@ class HostileHostRobustnessTest {
 
     // --- Reflection seam ----------------------------------------------------------------------------
 
+    /** A host whose bound field is [editor]; every call outside a batch re-reads it. */
+    private fun hostOf(editor: InputConnection) = object : RichInputConnection.EditorHost {
+        override fun getCurrentInputConnection() = editor
+        override fun mayReadEditorText() = false
+        override fun resetSubtypeCycleOrder() {}
+    }
+
     /**
-     * The fake-editor injection. `RichInputConnection` refreshes `mIC` from the live `LatinIME`
-     * in most methods, but the driven paths (`deleteTextBeforeCursor`, `endBatchEdit`) read the
-     * field directly — exactly the field the framework-facing refresh would have written.
+     * The fake-editor injection for `endBatchEdit`, which closes the batch on the connection the
+     * batch opened with (the field `beginBatchEdit` writes) and never re-reads the host.
      */
     private fun injectEditor(connection: RichInputConnection, editor: InputConnection) {
         val field = RichInputConnection::class.java.getDeclaredField("mIC")

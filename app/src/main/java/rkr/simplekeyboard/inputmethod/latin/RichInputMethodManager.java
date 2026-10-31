@@ -115,6 +115,16 @@ public class RichInputMethodManager {
     }
 
     /**
+     * Reloads the subtypes if the manager is initialized. A cold process (a broadcast that starts
+     * it before any keyboard or settings screen) has nothing to reload: init reads them fresh.
+     */
+    public static void reloadSubtypesIfInitialized(final Context context) {
+        if (sInstance.isInitialized()) {
+            sInstance.reloadSubtypes(context);
+        }
+    }
+
+    /**
      * Add a listener to be called when the virtual subtype changes.
      * @param listener the listener to call when the subtype changes.
      */

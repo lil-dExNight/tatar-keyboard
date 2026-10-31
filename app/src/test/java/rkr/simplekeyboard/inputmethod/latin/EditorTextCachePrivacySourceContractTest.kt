@@ -97,6 +97,14 @@ class EditorTextCachePrivacySourceContractTest {
         val startView = javaBody(ime, "void onStartInputViewInternal(final EditorInfo editorInfo")
         assertTrue(startView.contains("if (isPasswordField(editorInfo))"))
         assertTrue(startView.contains("mInputLogic.clearCaches();"))
+        // The password field's connection is bound at its start without a read, so the first
+        // typed letter cannot go to the previous field's connection.
+        assertTrue(startView.contains(
+            "mInputLogic.clearCaches();\n                mInputLogic.mConnection.onStartInput();"))
+        // RichInputConnection's reloads ask this gate first, so a reload that bypasses
+        // reloadEditorTextCacheIfAllowed (the coalesced follow-up) still skips password fields.
+        assertTrue(javaBody(ime, "boolean mayReadEditorText()")
+            .contains("return !isCurrentFieldPasswordField();"))
         assertTrue(startView.contains("mInputLogic.mConnection.reloadTextCache(editorInfo, restarting)"))
         assertTrue(
             "the password check must precede the reload",

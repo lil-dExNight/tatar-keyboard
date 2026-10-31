@@ -727,6 +727,14 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         sListener.onSpaceTrackpadFinish(cancelled);
     }
 
+    @Override
+    public void abandonSpaceTrackpad() {
+        mSpaceTrackpadState.finish();
+        if (sSpaceTrackpadOwner == this) {
+            sSpaceTrackpadOwner = null;
+        }
+    }
+
     /** The glide decider is live for this pointer (undecided or armed). */
     /* package */ boolean isGlideGestureActive() {
         return mGlideDecider.isTracking() || mGlideDecider.isArmed();
