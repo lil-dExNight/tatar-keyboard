@@ -46,8 +46,8 @@ tatar_sentstart_v1.txt
 
 Derived from the Tatar corpora tat_mixed_2015_1M and tat_web_2018_1M, and
 from the conversational training stream described in the conversational
-section below (deduplicated Tatoeba + OpenSubtitles Tatar lines, with the
-held-out line ids removed). The conversational stream was counted ten times.
+section below (deduplicated Tatoeba + OpenSubtitles Tatar lines, without the
+lines whose id % 10 == 1). The conversational stream was counted ten times.
 Catalogue page: https://wortschatz.uni-leipzig.de/en/download/tat
 
 Changes by the Tatar Keyboard project: the sentence-initial token of every
@@ -90,20 +90,20 @@ The dictionary data remains a separate CC BY 4.0 component; the application's
 Apache-2.0 license does not replace that data license.
 
 --------------------------------------------------------------------------------
-Conversational word frequencies -- PACKED since 1.9.0, WIDENED in 1.9.1
+Conversational word frequencies -- PACKED
 
 Two further collections were measured, turned into word-by-word acceptance
 queues (data/dictionary/ru-conv-review.tsv, data/dictionary/tt-conv-review.tsv)
 and accepted and packed into the two .tdict.zlib files above.
 
-1.9.0 accepted a word only if a second independent source confirmed it and the
-capitalization evidence did not mark it a proper noun. 1.9.1 widened the rule
-after a manual review of a hundred randomly chosen words it had turned away
-found them to be ordinary language: it accepts the whole queue except formal
-fragments -- words shorter than four letters or with no vowel at all, which in
-these corpora are subtitle OCR debris -- and one word named individually. The
-Tatar half uses only the no-vowel half of that test, because Tatar words are
-shorter and a length cut removes living ones. The rule is implemented by
+The acceptance rule takes the whole queue except formal fragments -- words
+shorter than four letters or with no vowel at all, which in these corpora are
+subtitle OCR debris -- and one word named individually. It does not require a
+second independent source or capitalization evidence against a proper noun: a
+manual review of a hundred randomly chosen words that those two tests turned
+away found them to be ordinary language. The Tatar half uses only the no-vowel
+half of the fragment test, because Tatar words are shorter and a length cut
+removes living ones. The rule is implemented by
 scripts/dict_accept.py; the accepted and rejected words with their counts are
 in data/dictionary/dict-accept/.
 

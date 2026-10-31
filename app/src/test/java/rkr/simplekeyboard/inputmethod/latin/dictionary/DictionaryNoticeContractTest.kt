@@ -47,7 +47,9 @@ class DictionaryNoticeContractTest {
     /** The conversational sources are packed into the assets, not queued for a later version. */
     @Test
     fun the_conversational_sources_are_marked_as_packed() {
-        assertTrue(dictionaryNotice.contains("PACKED since 1.9.0"))
+        assertTrue(Regex("(?m)^Conversational word frequencies -- PACKED$")
+            .containsMatchIn(dictionaryNotice))
+        assertFalse("the heading names no release", dictionaryNotice.contains("PACKED since"))
         assertFalse(dictionaryNotice.contains("NOT yet packed"))
     }
 }

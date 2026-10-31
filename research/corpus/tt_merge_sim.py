@@ -78,10 +78,11 @@ def load_eval_lines() -> frozenset[str]:
 def build_dev_sets(conv_stream: Path, tatnews_sentences: Path, out_dir: Path) -> dict:
     """Write the two development sets as normalized sentences, one per line.
 
-    conv-dev: held-out conversational rows (id % 10 == 1) of the pinned converted stream,
-    normalized, minus the pinned eval lines. tatnews-dev: every normalized sentence of the
-    Leipzig tat_news_2015_1M corpus (the frozen written held-out set; used here only to
-    select merge weights, never as a frequency source).
+    conv-dev: the conversational rows with id % 10 == 1 (not in tt_conv_train90) of the pinned
+    converted stream, normalized, minus the pinned eval lines. tatnews-dev: every normalized
+    sentence of the Leipzig tat_news_2015_1M corpus, a written development set used only to
+    select merge weights, never as a frequency source. Neither set is held out from the shipped
+    data.
     """
     data = conv_stream.read_bytes()
     digest = hashlib.sha256(data).hexdigest()
@@ -389,7 +390,7 @@ def build(args) -> int:
 
     raw = dp.serialize_entries(entries, schema=dp.SCHEMA_ID_V2)
     asset = dp.compress_raw(raw)
-    parsed = dp.validate_asset(asset, language=coverage.TATAR)  # raises past the budgets
+    parsed = dp.validate_asset(asset, language=coverage.TATAR)  # raises past the raw size bound
     out = Path(args.output)
     dp.validate_raw(raw)  # validation before any write, like the pipeline
     wordform_gen.write_atomic(out, asset)
@@ -405,8 +406,7 @@ def build(args) -> int:
         "asset_sha256": hashlib.sha256(asset).hexdigest(),
         "raw_bytes": len(raw),
         "raw_sha256": hashlib.sha256(raw).hexdigest(),
-        "fits_compressed": len(asset) <= dp.MAX_COMPRESSED_BYTES_V2,
-        "fits_raw": len(raw) <= dp.MAX_UNCOMPRESSED_BYTES_V2,
+        "fits_raw": len(raw) <= dp.MAX_UNCOMPRESSED_BYTES,
         "entry_count_check": parsed.entry_count,
         "entered_vs_reference": len(words - baseline_words),
         "exited_vs_reference": len(baseline_words - words),

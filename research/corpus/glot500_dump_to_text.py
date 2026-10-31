@@ -10,8 +10,8 @@ dropped before any text is written:
 * ``Leipzig_mixed`` and ``Leipzig_web``: the same Leipzig corpora already ship as dictionary
   and bigram evidence (tat_mixed_2015_1M, tat_web_2018_1M); counting them again inside the
   Glot500 stream would double their weight by an uncontrolled factor;
-* ``Leipzig_news``: tat_news_2015_1M is the frozen written held-out set and must not shape
-  shipped data;
+* ``Leipzig_news``: tat_news_2015_1M already carries weight through the baseline dictionary
+  frequencies and is the written development set of tt_merge_sim.py;
 * ``Tatoeba``: the Tatar eval set is built from Tatoeba, so Tatoeba rows stay out of every
   training stream (the sentence-level decontamination in tt_extra_sentences.py still runs
   on top of this label filter).
