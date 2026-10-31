@@ -13,10 +13,10 @@ To enable the keyboard:
 
 <b>Word suggestions and next-word prediction (Tatar and Russian):</b>
 
-* As you type, up to three completions appear in the strip above the keyboard — tap to insert
+* As you type, up to three completions appear in the strip above the keyboard (four with the "Four suggestions" setting) — tap to insert
 * After a finished word, the strip predicts what comes next: type «мин » and see дә · аны · бу
 * Optional autocorrect: a mistyped word is fixed when you type a space; one tap on backspace undoes it
-* Suggestions are opt-in (off until you turn them on) and never shown in password or other private fields
+* Suggestions are on by default, can be switched off in settings, and are never shown in password or other private fields
 * The dictionaries live on your device — 100,000 word forms per language, plus conversational forms from open subtitle and sentence corpora
 
 <b>Emoji:</b>
@@ -30,6 +30,8 @@ To enable the keyboard:
 
 * Optional (off by default): remembers words you type so they can be suggested later
 * Every saved word is visible and erasable in settings, per language
+* "Erase everything saved" deletes saved words, word pairs, learned emoji, recent emoji, text shortcuts and corrections at once
+* "Pause learning" stops the keyboard from remembering anything new without erasing what is saved
 
 <b>Everyday typing:</b>
 

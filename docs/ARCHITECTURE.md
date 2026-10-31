@@ -20,7 +20,7 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 | `latin/dictionary/engine/` | `LatestOnlyPrefixEngine`, `MappedDictionaryEngine`, `CompositePrefixComputer`, `TdictPrefixIndex`, `TatBigrPrefixIndex`, typo recovery |
 | `latin/dictionary/storage/` | asset publishing (`AtomicDictionaryStore`, `AtomicBigramStore`), validators, artifact specs and pins |
 | `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TcutFormat`, `TrefFormat`), validators, snapshots |
-| `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, text shortcuts, refused corrections), learning gates, pending counters, quarantine |
+| `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, sentence starts, refused corrections, text shortcuts), learning gates, pending counters, quarantine, erase-all (`PersonalErasure`, `PersonalEraseAll`) |
 | `latin/glide/` | glide decoder, gesture detector, path and key geometry |
 | `latin/emoji/` | emoji panel, search, skin tones, recents, emoji suggestions |
 | `latin/settings/`, `latin/setup/` | settings screens, onboarding |
@@ -34,6 +34,10 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
    sliding, long press, key repeat, the space-bar cursor swipe, the delete-key swipes (a drag
    selects text to delete, a fast left flick deletes the last word) and glide detection, and
    reports through `KeyboardActionListener` (`onCodeInput`, `onTextInput`, `onGlideInput`, ...).
+   A space-bar trackpad that is still active when the keyboard closes or the field changes ends
+   without restoring the selection it started from
+   (`PointerTrackerQueue.Element.abandonSpaceTrackpad`), and every field start forgets the saved
+   selection (`LatinIME.resetSpaceTrackpad`); a cancel inside the same field still restores it.
 3. `LatinIME` implements that interface. `onCodeInput` builds an `Event` for `LatinIME.onEvent`,
    which first runs its hooks: emoji search (keys grow the search query instead of the text), undo
    autocorrect, glide whole-word undo, and autocorrect before a separator. Then the event goes to
@@ -50,10 +54,19 @@ Protections (in `RichInputConnection` and `InputLogic` unless noted):
 
 - every editor call catches `RuntimeException` (a dead host throws `DeadObjectException`) and
   degrades silently; the next cache reload re-syncs;
+- outside a batch edit, every editor call first re-reads the bound field's connection from the
+  service (`RichInputConnection.refreshConnection`, a local read with no IPC), so a call never
+  reaches a field that is no longer bound; a batch keeps the connection it began on, so it opens
+  and closes on one editor. The service side sits behind the package-private `EditorHost` seam;
 - batch edits close in `finally`;
 - host answers are cut to `Constants.EDITOR_CONTENTS_CACHE_SIZE` characters; a `SurroundingText`
   with an out-of-range selection empties the cache; negative or inverted selections are normalized;
-- cache reloads are coalesced (at most one in flight) and applied on the UI thread;
+- cache reloads are coalesced (at most one in flight) and applied on the UI thread. Both
+  `reloadTextCache` methods ask `EditorHost.mayReadEditorText()` (no password field) before any
+  read, which covers the field-start fill, the coalesced follow-up and the reload a refused glide
+  commit requests; a password field start binds the connection without reading
+  (`RichInputConnection.onStartInput`). The background reader reads only the connection captured
+  at that check, and clearing the caches also drops a follow-up request folded in before it;
 - the end of an input session drops the cached text and the selection; a hide that keeps the
   session drops only the text, so the next show re-reads it from the editor instead of the
   session's first `EditorInfo`;
@@ -80,6 +93,9 @@ languages, `Settings.PREF_ENABLED_SUBTYPES` stores the enabled ones, `RichInputM
 the current one. The globe key (`Constants.CODE_LANGUAGE_SWITCH`) goes through `InputLogic` to
 `LatinIME.switchToNextSubtype()` and `RichInputMethodManager.switchToNextInputMethod`, which cycles
 the app's languages and, when the system allows it, moves to the next input method after the last.
+On `ACTION_LOCALE_CHANGED`, `SystemBroadcastReceiver` reloads the language list only when the
+manager is already initialized (`RichInputMethodManager.reloadSubtypesIfInitialized`); a process
+the broadcast starts cold reads the list fresh at init.
 
 ## Suggestions
 
@@ -98,7 +114,9 @@ the power menu) is therefore seen within twice that time.
 
 **Threads.** `SuggestionsController` owns all strip state and runs on the UI thread only. Each
 language has a `LanguageSlot` with one engine, and each engine runs lookups on its own single
-worker thread. A separate executor starts engines and prepares dictionaries. Switching language
+worker thread. A separate executor starts engines and prepares dictionaries. A failed preparation
+is retried once, at the next eligible input start (`LanguageSlot.preparationRetryUsed`); after a
+second failure the language waits for the suggestions setting to go off and on. Switching language
 idles the old engine instead of tearing it down. `LatinIME` publishes the new layout's key-neighbor
 table and glide geometry before the switch, and the engine that becomes active is handed both
 (`SuggestionsController.setActiveLanguage`).
@@ -145,28 +163,61 @@ content. A late inflate from an ended session is rejected. Password fields host 
 other field — login forms are the feature's main use — and a response arriving while the emoji
 panel owns the surface is refused instead of hosted.
 
-**Word completion** (`CompositePrefixComputer.lookup`): exact dictionary candidates by frequency,
-then at most one personal-dictionary word not already shown, then typo-recovery candidates. The
-exact pass carries the previous committed word (the `EditorSurface` cache read, by the next-word
-context rule): candidates among its packed bigram successors rank first, frequency order kept,
-then the same-stem and other tracks (`TatBigrPrefixIndex.collectSuccessorIds` hands the packed
-successor ids over without decoding strings). A graduated personal word leads the strip when the
-exact pass is empty or the dictionary's top exact candidate is below
-`CompositePrefixComputer.PROMOTION_TOP_FREQUENCY_GATE`. Typo
-recovery (`TdictPrefixIndex.collectFuzzy`, configured by `FuzzyEditPolicy`) uses edit class #1
-(long-press partner, from the layout's `moreKeys` via `KeyNeighborTable`) for every language; on
-an empty exact pass at a long enough prefix both shipped engines run the shared DL-1 tier
-(substitution, deletion, insertion and transposition under one rank tag, ranked by frequency;
-the Tatar policy adds a same-length bonus, the Russian one does not).
+**Word completion** (`CompositePrefixComputer.lookup`): the dictionary's exact candidates, at
+most one personal-dictionary word that the dictionary did not return, then typo-recovery
+candidates. The exact pass carries the previous committed word (the `EditorSurface` cache read, by
+the next-word context rule) and orders its candidates in three tracks, each by frequency: the
+previous word's packed bigram successors (`TatBigrPrefixIndex.collectSuccessorIds` hands the ids
+over without decoding strings), then same-stem forms (Tatar only, when the typed prefix is itself
+a word of at least four code points), then the rest. With exact candidates the personal word
+takes the second cell (`[exact0, personal, exact1, exact2]`). It takes the first cell when the
+exact pass is empty, or when it is promoted: its usage is at least
+`CompositePrefixComputer.PROMOTION_MIN_USAGE` and the dictionary's top exact candidate is below
+`PROMOTION_TOP_FREQUENCY_GATE`. A personal word that duplicates a dictionary candidate only
+changes how that cell is spelled.
 
-**Next-word prediction** (`CompositePrefixComputer.predict`): bigram successors, then learned word
-pairs (at most `MAX_PERSONAL_BIGRAM_CELLS`), then the dictionary's most frequent words
-(`FallbackWords`). A later source never displaces or duplicates an earlier one. With emoji
-suggestions on, the last cell holds an
-emoji for the context word: a learned emoji first, else the static table (`EmojiSuggestIndex`).
+Typo recovery (`TdictPrefixIndex.collectFuzzy`, configured per engine by `FuzzyEditPolicy`) runs
+edit class #1 (long-press partner, from the layout's `moreKeys` via `KeyNeighborTable`) for every
+language. When the exact pass is empty and the prefix has at least four code points, both shipped
+engines also run the shared DL-1 tier (substitution, deletion, insertion and transposition under
+one rank tag, ranked by frequency). Both apply the same-length bonus, which ranks a candidate as
+long as its variant before that variant's continuations: the Tatar policy in class #1 and in the
+tier, the Russian policy inside the tier only (`FuzzyEditPolicy.sameLengthBonusOnlyInDl1`).
+
+**Next-word prediction** (`CompositePrefixComputer.predict`): the bundled bigram successors (at
+most four), then learned word pairs in the cells left free (at most `MAX_PERSONAL_BIGRAM_CELLS`;
+a duplicate keeps the bundled spelling), then the dictionary's most frequent words
+(`FallbackWords`), excluding everything shown. One learned pair may displace a bundled successor:
+with three or more successors, the first pair observed at least
+`PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY` times and not already in the first three cells takes
+the third cell, and the fourth successor leaves the strip. Without a bigram table (not attached
+yet, or the attach failed) predict still answers with learned pairs and the fallback; only the
+bundled successors and the completion's context track are missing. The engine reports such an
+answer (`EngineHandle.nextWordWithoutTable`), and when the table attaches later,
+`SuggestionsController.onBigramTableReady` asks again if the strip still shows that NEXT_WORD
+moment and holds no active-language word or only words predicted without the table. With emoji
+suggestions on, the last cell holds an emoji for the context word: a learned emoji first, else the
+static table (`EmojiSuggestIndex`).
+
+**Companion language.** The layout the user chose owns the strip; the companion, the first other
+language of `DictionaryArtifactSpec.ALL` whose engine is warm and not pending release, may fill
+what the active language left. A companion engine is never prepared for this, so it answers only
+for a language already used since the keyboard started. For PREFIX the companion is asked after
+the active answer, when that answer's exact pass was empty or cells are free. Its candidates fill
+the free cells from the end of the active ones, or from the first cell after an empty active
+answer. After an empty active exact pass the lead rule is armed: a non-empty companion exact pass
+leads and the active typo-recovery candidates fill the cells it leaves; an empty one only fills
+free cells. For NEXT_WORD the companion is asked when cells are free and its words go before the
+emoji cell. Companion PREFIX cells take the typed casing, duplicates are dropped by shown form,
+and the companion gets no previous-word context; its typo recovery uses the active layout's
+neighbor table. It is never asked for a glide, a sentence start, an autocorrect preview strip or a
+text-shortcut strip.
 
 **Autocorrect** (opt-in `PREF_TATAR_AUTOCORRECT`, requires suggestions). The lookup that fills the
-strip also yields an `AutocorrectAdvice` from edit class #1. On a space or punctuation
+strip also yields an `AutocorrectAdvice` from edit class #1. The engine withholds it, on its
+worker, for a word in the personal dictionary and for an exact entry of the companion's dictionary
+(`CompanionLexicon`, which reads the companion live, so it protects only while that engine is
+warm). On a space or punctuation
 `LatinImeAutocorrect` has the controller replace the word before the separator reaches
 `InputLogic`; one backspace right after undoes it (`RevertWindow`). While the undo window is open,
 the strip's first cell offers the typed word back in quotes (a tap reverts, like the backspace).
@@ -217,20 +268,21 @@ store already ran. `MappedDictionaryEngine` maps the file read-only
 engine its catalog, and the engine maps and opens the table on its worker at the first next-word
 lookup, so a session that never predicts a next word never maps it. Pinned sizes and SHA-256 values
 are in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. Without a usable dictionary a
-language has no suggestions; without its bigram table only next-word prediction is empty.
+language has no suggestions; without its bigram table next-word prediction has no bundled
+successors (see **Next-word prediction** above).
 
 ## Personal dictionary
 
-Opt-in (`PREF_PERSONAL_DICTIONARY`). Three stores per language share one worker thread
-(`PersonalDictionaries.sharedStoreExecutor()`): `PersonalDictionaryStore` (`.tpers`, learned
-words), `PersonalBigramStore` (`.tpersb`, learned word pairs) and `PersonalEmojiStore` (`.tpersem`,
-learned emoji). A fourth per-language store, `RefusedCorrectionStore` (`.tref`), holds the refused
-corrections of the autocorrect undo; it has no pending counters and no salt (a refusal is recorded
-only under the learning predicate, and it suppresses instead of suggesting). Files live in the
-credential-protected `noBackupFilesDir`. The text-shortcut store
-(`TextShortcutStore`, `.tcut`, one list for all layouts, managed on its own settings screen) shares
-the same directory and worker but holds managed content: pairs enter only from the settings screen,
-with no counters, no pending hashes and no learning.
+Opt-in (`PREF_PERSONAL_DICTIONARY`). The per-language stores share one worker thread
+(`PersonalDictionaries.sharedStoreExecutor()`): `PersonalDictionaryStore` (`.tpers`, learned words),
+`PersonalBigramStore` (`.tpersb`, learned word pairs), `PersonalEmojiStore` (`.tpersem`, learned
+emoji) and `SentStartOverlayStore` (`.tsent`, sentence-initial words). `RefusedCorrectionStore`
+(`.tref`, per language) holds the refused corrections of the autocorrect undo; it has no pending
+counters and no salt (a refusal is recorded only under the learning predicate, and it suppresses
+instead of suggesting). Files live in the credential-protected `noBackupFilesDir/personal/`. The
+text-shortcut store (`TextShortcutStore`, `.tcut`, one list for all layouts, managed on its own
+settings screen) shares the same directory and worker but holds managed content: pairs enter only
+from the settings screen, with no counters, no pending hashes and no learning.
 
 - **Learning gates.** `PersonalLearningGates.mayLearn`: suggestions eligible for the field (which
   excludes `IME_FLAG_NO_PERSONALIZED_LEARNING`), personal dictionary on, user unlocked since boot,
@@ -249,10 +301,28 @@ with no counters, no pending hashes and no learning.
   suppresses the learning path's retries until the next flush boundary or a successful write, so
   a full disk costs one failed write per input session instead of one per typed word; pending
   counters keep accumulating in memory meanwhile.
-- **Quarantine.** A file that fails validation is moved aside, not deleted; the settings screen
-  tells the user and can restore what is readable. A failed move preserves the original file, and
-  a failed purge rewrite preserves the original quarantined copy. Pending counters use their own
-  quarantine slot and notice mark; they hold only salted hashes and are not listed or restored.
+- **Loading.** A store opens on its worker after the unlock gate. Reading and validation fail
+  apart (`PersonalFileReads`): a read that throws (an I/O error) leaves the store not loaded, with
+  an empty snapshot, no learning and no writes, so the file on disk is never overwritten from
+  empty memory; the next `prime()` tries again. Words and pairs prime at engine creation, on each
+  repaint of the "Saved words" screen and before a backup; learned emoji and refused corrections
+  on each strip query; sentence starts at each sentence start; text shortcuts once on the strip's
+  first lookup, on their own settings screen and before a backup. A `clearAll` before the first unlock also leaves the store not loaded.
+- **Quarantine.** Only a file that fails validation, or exceeds its size cap, is moved aside, not
+  deleted; the settings screen tells the user once and can restore what is readable. A failed
+  move preserves the original file, and a failed purge rewrite preserves the original quarantined
+  copy. A pending-counter file that does not parse moves to its own slot
+  (`pending-*.bin.quarantine`) with no notice: it holds only salted hashes that relearn by
+  themselves, and it is neither listed nor restored.
+- **Erase everything saved** (`PersonalErasure`, `PersonalEraseAll`). The settings screen first
+  deletes the import journal and its temp (if either stays, the erase stops), then clears the recent
+  emoji, then has every store of every supported language (words, pairs, emoji, sentence starts,
+  refused corrections) and the text-shortcut store run its `clearAll` (memory, file and whichever
+  pending counters, salt, quarantined copy and notice marks it keeps), and finally sweeps whatever
+  is left in the personal directory, queued behind those erasures on the store worker and without
+  following links out of it. Success means every store reported success, the directory is empty and
+  the recent-emoji file is absent or empty. The row is offered whenever the directory holds any file
+  (`PersonalErasure.hasSavedFiles`), also when the screen lists nothing.
 - **Pause learning** (`PREF_INCOGNITO_MODE`) stops all writes; saved entries keep appearing.
 - **Backup restore.** `replaceAll` swaps a store's file for bytes from a backup archive (or deletes
   it) on the store's worker, re-validating first, and re-publishes the snapshot, so an import takes
@@ -261,10 +331,15 @@ with no counters, no pending hashes and no learning.
   owners. A failure rolls the old state back. An interrupted journal is rolled back when the
   keyboard starts or the user unlocks (`BackupCoordinator.recoverInterruptedImport`) and when
   settings open; a journal that fails validation is deleted, and erase-all deletes the journal
-  before the stores.
-  Pending counters and the salt survive a restore, and quarantined copies stay in their own flow.
-  Export fails before writing if any recognized personal file cannot be read and validated.
-  Import reports personal-dictionary and pause-learning switch changes.
+  before the stores. Export and import first prime the store of every recognized personal file
+  on the store worker (`BackupTarget.openPersonalStore`), so a damaged file is quarantined by its
+  own store and left out of the export; a store left not loaded makes export fail and import
+  refuse before the journal is written. The archive holds the settings (minus the restriction
+  cache), words, pairs, learned emoji, refused corrections and text shortcuts; sentence starts,
+  recent emoji, pending counters, salts and quarantined copies stay out. Pending counters and the
+  salt survive a restore, and quarantined copies stay in their own flow. Export also fails before
+  writing if any recognized personal file cannot be read and validated. Import reports
+  personal-dictionary and pause-learning switch changes.
 
 Settings screens list, delete and erase entries for every supported language, including disabled
 ones. Manual word addition still targets an enabled language.
@@ -272,17 +347,22 @@ ones. Manual word addition still targets an enabled language.
 ## Glide typing
 
 On by default (`PREF_GLIDE_TYPING`), for Tatar and Russian. `GlideGestureDecider` in
-`PointerTracker` decides whether a touch is a glide; `GlideTrail` draws the trail. A glide arms
-only on an alphabet keyboard where the field and layout can decode it
+`PointerTracker` decides whether a touch is a glide; `GlideTrail` draws the trail. A glide arms only
+on an alphabet keyboard where the field and layout can decode it
 (`PointerTracker.setGlideAvailable`, set from the glide geometry); elsewhere, English and the
-symbols pages included, a slide is ordinary sliding key input. On lift the path
-goes to `SuggestionsController.onGlideInput` and to the engine as a `GLIDE` request; nothing is
-decoded while the finger moves. `GlideDecoder` is a SHARK2-style statistical classifier (shape and
-location channels plus a frequency weight), ported with attribution from FlorisBoard's
+symbols pages included, a slide is ordinary sliding key input. On lift the path goes to
+`SuggestionsController.onGlideInput` and to the engine as a `GLIDE` request; nothing is decoded
+while the finger moves. `GlideDecoder` is a SHARK2-style statistical classifier (shape and location
+channels plus a frequency weight), ported with attribution from FlorisBoard's
 `StatisticalGlideTypingClassifier`. Its word index is built lazily on the engine worker
-(`GlideDecoderHost`); only one language keeps an index in memory. The top word is committed on
-lift (`InputLogic.commitGlideWord`); the other candidates appear in the strip and a tap replaces
-the word. The strip side is gated on the glide switch, not the suggestions switch — the
+(`GlideDecoderHost`); only one language keeps an index in memory. The top word is committed on lift
+(`InputLogic.commitGlideWord`); the other candidates appear in the strip and a tap replaces the
+word. The decode's N-best is reranked by the previous committed word (`GlideBigramRerank`): the
+successor list holds at most `CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS` learned pairs
+ahead of the bundled successors, only its first `GlideBigramRerank.MAX_RANKED_SUCCESSORS` entries
+rank, each rank applies the configured rank penalty once more, and an unranked word gets the penalty
+of one rank past the last, so a long successor list can neither outweigh every shape score nor
+overflow the penalty. The strip side is gated on the glide switch, not the suggestions switch — the
 candidates are corrections of the gesture — so they also appear with suggestions off, while
 typed-text suggestions stay off. The word takes the shift state: shift capitalizes it, Caps Lock
 types it in capitals.
@@ -335,8 +415,12 @@ the alternates, this strip is gated on the glide switch and also appears with su
 swaps them and `EmojiPanelController` loads data in the background from `assets/emoji/`: the set
 (`EmojiSet`), search names (`EmojiSearchIndex`, shown in `EmojiSearchView` in place of the strip)
 and skin tones (`EmojiSkinTones`). No emoji font is shipped; `GlyphProbe` drops entries the system
-font cannot draw. Recents (`RecentEmojiStore`) are credential-protected, hidden while the keyguard
-is shown and not recorded while learning is paused (`RecentEmojiGateState`). The panel opens from
+font cannot draw. Skin-tone bases are probed once per process in the background
+(`EmojiToneVerdicts`, shared with the strip's emoji cell): a base whose toned form the font cannot
+draw gets no tone picker, and none of its toned forms is recorded in or shown from recents or
+offered as a learned emoji. Recents (`RecentEmojiStore`) record only sequences the panel's set
+holds, are credential-protected, hidden while the keyguard is shown and not recorded while
+learning is paused (`RecentEmojiGateState`). The panel opens from
 the emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
 
 ## Settings

@@ -31,7 +31,9 @@ paths below are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/la
 Assets: `assets/dictionaries/{tatar,russian}_top100k_v1.tdict.zlib`. The `top100k` in the name
 is frozen for compatibility; the real entry count is pinned in `expectedEntryCount`. Constants:
 `SCHEMA_ID = 2`, `FORMAT_VERSION = 1`, `HEADER_SIZE = 72`, `BLOCK_SIZE = 8`,
-`MAX_WORD_BYTES = 128`, and the size limits `MAX_COMPRESSED_SIZE` and `MAX_RAW_SIZE`.
+`MAX_WORD_BYTES = 128`, and `MAX_RAW_SIZE`. `MAX_RAW_SIZE` is a safety bound on the inflated
+file and the in-memory validation buffer, not a size budget. There is no separate compressed-size
+cap; inflation is bounded by the pinned compressed size (see Validation below).
 
 | Offset | Size | Field | Required value |
 |---:|---:|---|---|
@@ -64,8 +66,9 @@ on a code-point boundary, so it never splits a character. Entry `i` is in block 
 position `i % 8`. The bigram tables depend on this index-based access.
 
 **Validation** (`storage/TdictValidator.kt`). `inflateAsset` accepts a single zlib stream with
-no preset dictionary and no trailing or concatenated data, within the size limits. The
-compressed size, compressed SHA-256 and raw size must equal the pins. `validateRaw` then
+no preset dictionary and no trailing or concatenated data. It stops as soon as the input exceeds
+the pinned compressed size or the output exceeds `MAX_RAW_SIZE`. The compressed size, compressed
+SHA-256 and raw size must equal the pins. `validateRaw` then
 requires:
 
 - the file length equals the pinned raw size, and the header constants equal the spec;
@@ -136,7 +139,8 @@ Four sections follow the header, with no padding between them:
    and does not re-rank them.
 
 **Validation** (`storage/TatBigrValidator.kt`). Inflation follows the same rules as for TATDICT,
-using the TatBigr size limits. Then:
+except that the input is bounded by `TatBigrFormat.MAX_COMPRESSED_SIZE` and the output by
+`TatBigrFormat.MAX_RAW_SIZE`. Then:
 
 - the header constants, headCount (non-zero, equal to the pin) and the linked dictionary SHA-256
   equal the spec, and the reserved bytes are zero;
@@ -155,7 +159,9 @@ equal the raw SHA-256 of the dictionary that is actually loaded, and requires ev
 success index to be below that dictionary's entryCount; a store validation token for the same
 content (see the TATDICT section above) skips that stream walk, and the header and
 dictionary-link checks always run. If the table does not match the
-dictionary, next-word prediction for that language stays empty and typing is not affected.
+dictionary, the language runs without it: next-word prediction has no table successors and
+answers from learned word pairs and the most frequent dictionary words only, word completion
+loses the previous-word boost, and typing is not affected.
 On the device, tables are staged, named and retained the same way as dictionaries, in
 `files/bigrams/` or `files/bigrams-ru/`, with the name
 `<family>-<fileLanguageTag>-v<generation:6>-s3-f1-<rawSha256>.tatbigr`.
@@ -216,7 +222,9 @@ by usage, then frequency, then key.
 Error messages are constants and never contain user text. A write goes to a `.tmp` file that is
 then atomically renamed over the target. A file that fails validation is moved to the language's
 single quarantine slot, `<file name>.quarantine`, and the store starts empty. The quarantined file
-can later be restored or discarded. The same directory also holds the pending learning counters
+can later be restored or discarded. A file that cannot be read at all (an I/O error, as opposed
+to content that fails validation) stays where it is and is never overwritten; the store stays
+not loaded until a later open reads it. The same directory also holds the pending learning counters
 (salted, truncated word hashes), their salt and the quarantine notice flags. Those files belong to
 `personalstore/` and are not covered here.
 
