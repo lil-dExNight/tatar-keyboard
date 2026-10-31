@@ -49,9 +49,7 @@ def main():
         "delta_asset_bytes": len(asset) - len(shipped_asset),
         "delta_raw_bytes": len(raw) - len(shipped_raw),
         "entry_count": len(entries),
-        "format_limit_compressed": dp.MAX_COMPRESSED_BYTES,
         "format_limit_raw": dp.MAX_UNCOMPRESSED_BYTES,
-        "fits_compressed": len(asset) <= dp.MAX_COMPRESSED_BYTES,
         "fits_raw": len(raw) <= dp.MAX_UNCOMPRESSED_BYTES,
     }
     (OUT / f"testasset_{tag}.tdict.zlib").write_bytes(asset)

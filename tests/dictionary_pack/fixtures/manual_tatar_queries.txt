@@ -1,4 +1,4 @@
-# Freely selected Tatar prefixes for the D1a automated project self-review.
+# Freely selected Tatar prefixes whose top completions are reviewed in tt-query-review.tsv.
 сә
 рәх
 исәнм

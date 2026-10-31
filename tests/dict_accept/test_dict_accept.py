@@ -331,7 +331,7 @@ class SelectPackContractTest(unittest.TestCase):
         result = json.loads(stdout)
         for tag in ("rus", "tat"):
             self.assertFalse(result[tag]["written"])
-            self.assertTrue(result[tag]["fits_compressed"])
+            self.assertNotIn("fits_compressed", result[tag])
             self.assertTrue(result[tag]["fits_raw"])
             self.assertEqual(len(result[tag]["sha256_after"]), 64)
 

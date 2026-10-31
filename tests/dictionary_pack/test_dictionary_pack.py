@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import random
 import re
 import struct
 import subprocess
@@ -40,6 +41,22 @@ RUSSIAN_REVIEW = ROOT / "data" / "dictionary" / "ru-query-review.tsv"
 # first build).
 RUSSIAN_REVIEW_DATE = "2026-10-28"
 TATAR_REVIEW_DATE = "2026-10-28"
+
+
+CONTRACT = (
+    ROOT / "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/dictionary/storage"
+    / "DictionaryStorageContracts.kt"
+)
+
+
+def contract_entry_count(spec: str) -> int:
+    """The pinned entry count of `spec` in the storage contract, which the rebuild rewrites."""
+    text = CONTRACT.read_text(encoding="utf-8")
+    block = re.search(rf"val {spec} = DictionaryArtifactSpec\((.*?)\n        \)", text, re.DOTALL)
+    assert block is not None, spec
+    count = re.search(r"expectedEntryCount = ([\d_]+),", block.group(1))
+    assert count is not None, spec
+    return int(count.group(1).replace("_", ""))
 
 
 def load_module(name: str, path: Path):
@@ -114,7 +131,7 @@ class DictionaryPackTest(unittest.TestCase):
             FIXTURES / "synthetic_b-words.txt",
         ]
 
-    def test_d0_normalization_is_reused(self) -> None:
+    def test_coverage_normalization_is_reused(self) -> None:
         frequencies = pack._read_frequencies(self.fixture_paths())
         self.assertEqual(frequencies["әпә"], 13)
         self.assertEqual(frequencies["йорт"], 10)
@@ -238,11 +255,32 @@ class DictionaryPackTest(unittest.TestCase):
         with self.assertRaises(pack.DictionaryFormatError):
             pack.validate_raw(rechecksum(bytes(zeroed)))
 
-    def test_schema_v2_budget_constants_are_tighter_than_v1(self) -> None:
-        self.assertEqual(600_000, pack.MAX_COMPRESSED_BYTES_V2)
-        self.assertEqual(1_400_000, pack.MAX_UNCOMPRESSED_BYTES_V2)
-        self.assertLess(pack.MAX_COMPRESSED_BYTES_V2, pack.MAX_COMPRESSED_BYTES)
-        self.assertLess(pack.MAX_UNCOMPRESSED_BYTES_V2, pack.MAX_UNCOMPRESSED_BYTES)
+    def test_raw_bound_equals_the_kotlin_reader_bound(self) -> None:
+        contracts = CONTRACT.read_text(encoding="utf-8")
+        reader = re.search(r"const val MAX_RAW_SIZE = ([\d_]+)L", contracts)
+        self.assertIsNotNone(reader)
+        self.assertEqual(int(reader.group(1).replace("_", "")), pack.MAX_UNCOMPRESSED_BYTES)
+        self.assertNotIn("MAX_COMPRESSED_SIZE", contracts)
+
+    def test_large_dictionary_has_no_compressed_size_limit(self) -> None:
+        # Random 40-letter words compress poorly: this asset is far larger than the shipped one.
+        rng = random.Random(7)
+        letters = sorted(coverage.TATAR_ALPHABET)
+        words: set[str] = set()
+        while len(words) < 24_000:
+            words.add("".join(rng.choice(letters) for _ in range(40)))
+        entries = sorted((word, rng.randint(1, 1_000_000)) for word in words)
+        for schema in (pack.SCHEMA_ID, pack.SCHEMA_ID_V2):
+            with self.subTest(schema=schema):
+                raw = pack.serialize_entries(entries, schema=schema)
+                asset = pack.compress_raw(raw)
+                self.assertGreater(len(asset), 900_000)
+                parsed = pack.validate_asset(asset, expected_count=len(entries))
+                self.assertEqual(raw, parsed.raw)
+                self.assertEqual(len(entries), pack.repack_asset(asset, schema=schema)
+                                 .parsed.entry_count)
+        self.assertFalse(hasattr(pack, "MAX_COMPRESSED_BYTES"))
+        self.assertFalse(hasattr(pack, "MAX_COMPRESSED_BYTES_V2"))
 
     def test_repeated_and_permuted_builds_are_identical(self) -> None:
         first = pack.build_dictionary(self.fixture_paths(), 10)
@@ -403,10 +441,9 @@ class DictionaryPackTest(unittest.TestCase):
             pack.validate_raw(b"x" * pack.MAX_UNCOMPRESSED_BYTES)
         with self.assertRaises(pack.DictionaryBudgetError):
             pack.validate_raw(b"x" * (pack.MAX_UNCOMPRESSED_BYTES + 1))
+        # The compressed size has no limit: a large non-zlib blob is a format error.
         with self.assertRaises(pack.DictionaryFormatError):
-            pack.validate_asset(b"x" * pack.MAX_COMPRESSED_BYTES)
-        with self.assertRaises(pack.DictionaryBudgetError):
-            pack.validate_asset(b"x" * (pack.MAX_COMPRESSED_BYTES + 1))
+            pack.validate_asset(b"x" * 1_000_000)
         bomb = zlib.compress(b"x" * (pack.MAX_UNCOMPRESSED_BYTES + 1), 9)
         with self.assertRaises(pack.DictionaryBudgetError):
             pack.validate_asset(bomb)
@@ -497,8 +534,8 @@ class DictionaryPackTest(unittest.TestCase):
 
     def test_committed_asset_provenance_notice_and_review(self) -> None:
         asset = ASSET.read_bytes()
-        # 110 000 entries: the cutoff leaves room for the admitted generated word forms.
-        parsed = pack.validate_asset(asset, expected_count=110_000)
+        parsed = pack.validate_asset(
+            asset, expected_count=contract_entry_count("TATAR_TOP100K_V1"))
         # The pins of the shipped (schema 2) asset live in the Kotlin contract.
         contract = (
             ROOT
@@ -524,9 +561,8 @@ class DictionaryPackTest(unittest.TestCase):
         self.assertEqual(
             frozenset("әөүҗңһ"), coverage.TATAR_ALPHABET - coverage.RUSSIAN_ALPHABET
         )
-        # One budget for the format, not one per language.
-        self.assertEqual(700_000, pack.MAX_COMPRESSED_BYTES)
-        self.assertEqual(2_936_012, pack.MAX_UNCOMPRESSED_BYTES)
+        # One raw size bound for the format, not one per language.
+        self.assertEqual(8_388_608, pack.MAX_UNCOMPRESSED_BYTES)
         self.assertFalse(hasattr(pack, "LANGUAGE_BUDGETS"))
 
     def test_russian_alphabet_filters_tatar_letters_hyphens_and_latin(self) -> None:
@@ -564,7 +600,8 @@ class DictionaryPackTest(unittest.TestCase):
     def test_committed_russian_asset_provenance_notice_and_review(self) -> None:
         asset = RUSSIAN_ASSET.read_bytes()
         parsed = pack.validate_asset(
-            asset, expected_count=100_000, language=coverage.RUSSIAN
+            asset, expected_count=contract_entry_count("RUSSIAN_TOP100K_V1"),
+            language=coverage.RUSSIAN,
         )
         asset_sha = hashlib.sha256(asset).hexdigest()
         raw_sha = hashlib.sha256(parsed.raw).hexdigest()
@@ -600,7 +637,8 @@ class DictionaryPackTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         asset = RUSSIAN_ASSET.read_bytes()
         parsed = pack.validate_asset(
-            asset, expected_count=100_000, language=coverage.RUSSIAN
+            asset, expected_count=contract_entry_count("RUSSIAN_TOP100K_V1"),
+            language=coverage.RUSSIAN,
         )
         self.assertIn(hashlib.sha256(asset).hexdigest(), spec)
         self.assertIn(hashlib.sha256(parsed.raw).hexdigest(), spec)

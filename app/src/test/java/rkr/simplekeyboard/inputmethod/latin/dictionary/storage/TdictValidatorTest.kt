@@ -40,14 +40,17 @@ class TdictValidatorTest {
             )
         }
 
-        val validated = validator.validateRaw(
-            rawFile,
-            DictionaryArtifactSpec.TATAR_TOP100K_V1,
-        )
+        val spec = DictionaryArtifactSpec.TATAR_TOP100K_V1
+        val validated = validator.validateRaw(rawFile, spec)
 
-        // Pins of the committed dictionary; re-pin when the asset is rebuilt.
-        assertEquals(110_000, validated.entryCount)
-        assertEquals(1_308_890, validated.rawSize)
+        // The contract pins, which rebuild_assets.py rewrites, and the file's own header agree.
+        val header = ByteBuffer.wrap(rawFile.readBytes(), 0, TdictFormat.HEADER_SIZE)
+            .order(ByteOrder.LITTLE_ENDIAN)
+        assertEquals(spec.expectedEntryCount, validated.entryCount)
+        assertEquals(spec.expectedEntryCount, header.getInt(16).toLong() and TdictFormat.MAX_U32)
+        assertEquals(spec.expectedRawSize, validated.rawSize)
+        assertEquals(spec.expectedRawSize, header.getInt(36).toLong() and TdictFormat.MAX_U32)
+        assertEquals(spec.expectedRawSha256, validated.rawSha256)
     }
 
     @Test
@@ -88,7 +91,22 @@ class TdictValidatorTest {
     }
 
     @Test
-    fun rejectsCompressedAndRawCaps() {
+    fun acceptsAssetsFarLargerThanTheShippedDictionary() {
+        // Incompressible bytes: both sizes exceed the shipped dictionary several times over.
+        val raw = ByteArray(2_000_000).also { java.util.Random(7).nextBytes(it) }
+        val compressed = DictionaryTestFixtures.compress(raw)
+        val spec = DictionaryTestFixtures.spec(
+            32, raw, compressed, maxRawSize = TdictFormat.MAX_RAW_SIZE,
+        )
+
+        val inflated = validator.inflateAsset(compressed.inputStream(), ByteArrayOutputStream(), spec)
+
+        assertTrue(inflated.compressedSize > 1_000_000)
+        assertEquals(raw.size.toLong(), inflated.rawSize)
+    }
+
+    @Test
+    fun rejectsInputBeyondThePinsAndTheRawBound() {
         val artifact = DictionaryTestFixtures.artifact()
         val oversizedCompressed = ByteArray(128) { it.toByte() }
         val compressedSpec = DictionaryArtifactSpec(
@@ -102,7 +120,6 @@ class TdictValidatorTest {
             expectedRawSize = artifact.raw.size.toLong(),
             expectedRawSha256 = DictionaryTestFixtures.sha256(artifact.raw),
             expectedEntryCount = 3,
-            maxCompressedSize = 64,
         )
         assertValidationFails { inflate(oversizedCompressed, compressedSpec) }
 

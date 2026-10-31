@@ -37,26 +37,23 @@ HEADER_SIZE = 72
 CHECKSUM_OFFSET = 40
 CHECKSUM_SIZE = 32
 MAX_U32 = 0xFFFF_FFFF
-# One size budget per schema, shared by all languages: Russian words are only slightly longer
-# than Tatar ones, so both dictionaries fit the same caps.
-MAX_COMPRESSED_BYTES = 700_000
-MAX_UNCOMPRESSED_BYTES = 2_936_012
+# Raw size bound of both schemas, equal to TdictFormat.MAX_RAW_SIZE: a safety bound that stops a
+# corrupt or hostile zlib stream from inflating without limit, not a size budget. The compressed
+# size has no limit of its own; the release APK size limit covers it.
+MAX_UNCOMPRESSED_BYTES = 8_388_608
 # Schema 2: block front coding (K = 8, which gave the smallest zlib size and the least decode
 # work on both shipped dictionaries), u8 lengths instead of u32 offsets, varint frequencies.
-# Lossless: words, order and frequencies are the same as in schema 1. The budgets leave about
-# 10 % (compressed) and 20 % (raw) headroom over the shipped dictionaries.
+# Lossless: words, order and frequencies are the same as in schema 1.
 SCHEMA_ID_V2 = 2
 FORMAT_VERSION_V2 = 1
 BLOCK_SIZE_V2 = 8
 MAX_WORD_BYTES_V2 = 128
-MAX_COMPRESSED_BYTES_V2 = 600_000
-MAX_UNCOMPRESSED_BYTES_V2 = 1_400_000
 DEFAULT_COUNT = 100_000
 DEFAULT_CUTOFFS = (50_000, 100_000, 150_000)
 COMPRESSION_LEVEL = 9
 COMPRESSION_WBITS = 15
 COMPRESSION_MEM_LEVEL = 9
-GENERATOR_VERSION = f"d1a-gen-1+zlib-{zlib.ZLIB_RUNTIME_VERSION}"
+GENERATOR_VERSION = f"tdict-gen-1+zlib-{zlib.ZLIB_RUNTIME_VERSION}"
 AUTOMATED_REVIEWER = "automated (dictionary_pack.py query-audit)"
 AUTOMATED_REVIEW_DATE = "2026-07-21"
 
@@ -76,7 +73,7 @@ class DictionaryFormatError(DictionaryPackError):
 
 
 class DictionaryBudgetError(DictionaryPackError):
-    """Compressed or uncompressed size budget breach (exit 4)."""
+    """Raw size above MAX_UNCOMPRESSED_BYTES (exit 4)."""
 
 
 class DictionaryQualityError(DictionaryPackError):
@@ -403,11 +400,7 @@ def compress_raw(raw: bytes) -> bytes:
 def decompress_asset(
     asset: bytes, language: coverage.Language = coverage.DEFAULT_LANGUAGE
 ) -> bytes:
-    max_compressed, max_uncompressed = MAX_COMPRESSED_BYTES, MAX_UNCOMPRESSED_BYTES
-    if len(asset) > max_compressed:
-        raise DictionaryBudgetError(
-            f"compressed asset is {len(asset)} bytes; limit is {max_compressed}"
-        )
+    max_uncompressed = MAX_UNCOMPRESSED_BYTES
     decompressor = zlib.decompressobj(wbits=COMPRESSION_WBITS)
     try:
         raw = decompressor.decompress(asset, max_uncompressed + 1)
@@ -438,12 +431,10 @@ def validate_raw(
     expected_count: int | None = None,
     language: coverage.Language = coverage.DEFAULT_LANGUAGE,
 ) -> ParsedDictionary:
-    # The larger of the two schema caps: exceeding it is a BudgetError whatever schema the
-    # header declares (the schema 1 validator applies its own lower limit itself).
-    if len(raw) > max(MAX_UNCOMPRESSED_BYTES, MAX_UNCOMPRESSED_BYTES_V2):
+    if len(raw) > MAX_UNCOMPRESSED_BYTES:
         raise DictionaryBudgetError(
             f"uncompressed dictionary is {len(raw)} bytes; "
-            f"limit is {max(MAX_UNCOMPRESSED_BYTES, MAX_UNCOMPRESSED_BYTES_V2)}"
+            f"limit is {MAX_UNCOMPRESSED_BYTES}"
         )
     if len(raw) < HEADER_SIZE:
         raise DictionaryFormatError("raw dictionary is shorter than its header")
@@ -461,7 +452,7 @@ def _validate_header(
     schema_id: int,
     format_version: int,
 ) -> tuple[int, int, int, int, int, int, bytes]:
-    """Header checks shared by both schemas: budget, magic, versions, checksum.
+    """Header checks shared by both schemas: size bound, magic, versions, checksum.
 
     Returns (entry_count, field20, field24, field28, field32, file_size, checksum). Fields
     20-32 mean different things in each schema; the calling validator checks their layout.
@@ -539,7 +530,7 @@ def _validate_raw_v2(
         blocks_size,
         file_size,
         _checksum,
-    ) = _validate_header(raw, MAX_UNCOMPRESSED_BYTES_V2, SCHEMA_ID_V2, FORMAT_VERSION_V2)
+    ) = _validate_header(raw, MAX_UNCOMPRESSED_BYTES, SCHEMA_ID_V2, FORMAT_VERSION_V2)
     if expected_count is not None and entry_count != expected_count:
         raise DictionaryFormatError(
             f"expected {expected_count} entries, found {entry_count}"
@@ -770,27 +761,13 @@ def _validate_raw_v1(
     )
 
 
-def _schema_caps(schema_id: int) -> tuple[int, int]:
-    """(max_compressed, max_uncompressed) for the schema."""
-    if schema_id == SCHEMA_ID_V2:
-        return MAX_COMPRESSED_BYTES_V2, MAX_UNCOMPRESSED_BYTES_V2
-    return MAX_COMPRESSED_BYTES, MAX_UNCOMPRESSED_BYTES
-
-
 def validate_asset(
     asset: bytes,
     expected_count: int | None = None,
     language: coverage.Language = coverage.DEFAULT_LANGUAGE,
 ) -> ParsedDictionary:
     raw = decompress_asset(asset, language)
-    parsed = validate_raw(raw, expected_count, language)
-    schema_id = struct.unpack_from("<H", raw, 8)[0]
-    max_compressed, _ = _schema_caps(schema_id)
-    if len(asset) > max_compressed:
-        raise DictionaryBudgetError(
-            f"compressed asset is {len(asset)} bytes; limit is {max_compressed}"
-        )
-    return parsed
+    return validate_raw(raw, expected_count, language)
 
 
 def build_dictionary(
@@ -804,11 +781,6 @@ def build_dictionary(
     raw = serialize_entries(entries, language, schema=schema)
     parsed = validate_raw(raw, expected_count=count, language=language)
     asset = compress_raw(raw)
-    max_compressed, _ = _schema_caps(schema)
-    if len(asset) > max_compressed:
-        raise DictionaryBudgetError(
-            f"compressed asset is {len(asset)} bytes; limit is {max_compressed}"
-        )
     reparsed = validate_asset(asset, expected_count=count, language=language)
     if reparsed.raw != raw:
         raise DictionaryFormatError("zlib round trip changed the raw dictionary")
@@ -832,11 +804,6 @@ def repack_asset(
     if reparsed.words != parsed.words or reparsed.frequencies != parsed.frequencies:
         raise DictionaryFormatError("repack changed the dictionary content")
     new_asset = compress_raw(raw)
-    max_compressed, _ = _schema_caps(schema)
-    if len(new_asset) > max_compressed:
-        raise DictionaryBudgetError(
-            f"compressed asset is {len(new_asset)} bytes; limit is {max_compressed}"
-        )
     if validate_asset(new_asset, language=language).raw != raw:
         raise DictionaryFormatError("zlib round trip changed the raw dictionary")
     return BuiltDictionary(raw, new_asset, reparsed, parsed.frequencies[-1])
@@ -1068,7 +1035,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
             "--language",
             choices=sorted(coverage.LANGUAGES),
             default=coverage.DEFAULT_LANGUAGE.tag,
-            help="alphabet and size budget to use (default: tat)",
+            help="alphabet to use (default: tat)",
         )
 
     build = commands.add_parser("build", help="build raw and zlib dictionary outputs")

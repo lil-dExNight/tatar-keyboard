@@ -151,8 +151,8 @@ internal object DictionaryTestFixtures {
         raw: ByteArray,
         compressed: ByteArray = compress(raw),
         expectedRawSize: Long = raw.size.toLong(),
-        maxCompressedSize: Long = 600_000,
-        maxRawSize: Long = 1_400_000,
+        // Below TdictFormat.MAX_RAW_SIZE so the decompression-bomb probes stay fast.
+        maxRawSize: Long = 1_048_576,
         family: String = "tatar_top100k",
         languageTag: String = "tt_RU",
         storageDirectoryName: String = "dictionaries",
@@ -162,13 +162,12 @@ internal object DictionaryTestFixtures {
         storageDirectoryName = storageDirectoryName,
         generation = generation,
         assetPath = "fixture-$generation.zlib",
-        expectedCompressedSize = minOf(compressed.size.toLong(), maxCompressedSize),
+        expectedCompressedSize = compressed.size.toLong(),
         expectedCompressedSha256 = sha256(compressed),
         expectedRawSize = expectedRawSize,
         expectedRawSha256 = sha256(raw),
         expectedEntryCount = ByteBuffer.wrap(raw, 16, 4)
             .order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xffff_ffffL,
-        maxCompressedSize = maxCompressedSize,
         maxRawSize = maxRawSize,
     )
 

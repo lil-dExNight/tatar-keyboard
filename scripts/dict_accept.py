@@ -580,8 +580,7 @@ def pack(args) -> int:
             "raw_bytes_before": len(before_raw),
             "raw_bytes_after": len(raw),
             "raw_bytes_delta": len(raw) - len(before_raw),
-            "fits_compressed": len(asset) <= dp.MAX_COMPRESSED_BYTES_V2,
-            "fits_raw": len(raw) <= dp.MAX_UNCOMPRESSED_BYTES_V2,
+            "fits_raw": len(raw) <= dp.MAX_UNCOMPRESSED_BYTES,
             "sha256_before": hashlib.sha256(before).hexdigest(),
             "sha256_after": hashlib.sha256(asset).hexdigest(),
             "raw_sha256_after": hashlib.sha256(raw).hexdigest(),
@@ -645,8 +644,8 @@ def main(argv=None) -> int:
                     help="собрать только один язык; второй ассет не читается и не пишется")
     pk.add_argument("--extra-entries", default=None, metavar="TSV",
                     help="дополнительные записи слово<TAB>частота, вливаемые в состав "
-                         "(с 2026-09-20 — допущенные словоформы татарского, TT-SUGGESTIONS "
-                         "P2); требует --only, потому что записи поязыковые")
+                         "(допущенные словоформы татарского); требует --only, потому что "
+                         "записи поязыковые")
     pk.add_argument("--top", type=int, default=100_000,
                     help="размер отсечки состава (по умолчанию %(default)s); требует --only, "
                          "если отличается от умолчания")

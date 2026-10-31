@@ -56,31 +56,16 @@ class TatBigrValidatorTest {
 
     @Test
     fun acceptsCommittedTatarBigramAssetWithFrozenProvenance() {
-        val validated = validateCommitted(
-            "tatar_bigrams_v1.tatbigr.zlib",
-            BigramArtifactSpec.TATAR_BIGRAMS_V1,
-        )
-
-        // Pins of the committed schema-3 table (packed at K = 4 successors per head); re-pin when
-        // the asset is rebuilt.
-        assertEquals(12_739, validated.headCount)
-        assertEquals(166_789, validated.rawSize)
-        assertEquals(50_714, validated.pairCount)
-        assertEquals(9_124, validated.successVocabularyCount)
+        assertCommittedCounts("tatar_bigrams_v1.tatbigr.zlib", BigramArtifactSpec.TATAR_BIGRAMS_V1)
     }
 
-    /** The committed Russian table validates against its spec; its counts are pinned too. */
+    /** The committed Russian table validates against its spec, with the same count checks. */
     @Test
     fun acceptsCommittedRussianBigramAssetWithFrozenProvenance() {
-        val validated = validateCommitted(
+        assertCommittedCounts(
             "russian_bigrams_v1.tatbigr.zlib",
             BigramArtifactSpec.RUSSIAN_BIGRAMS_V1,
         )
-
-        assertEquals(9_998, validated.headCount)
-        assertEquals(131_662, validated.rawSize)
-        assertEquals(39_949, validated.pairCount)
-        assertEquals(4_712, validated.successVocabularyCount)
     }
 
     @Test
@@ -361,16 +346,41 @@ class TatBigrValidatorTest {
             },
         )
 
-    private fun validateCommitted(
-        assetFileName: String,
-        spec: BigramArtifactSpec,
-    ): ValidatedBigramTable {
+    /**
+     * Validates a committed table and checks its counts against the contract pins and against an
+     * independent decode of the success-id section, so a rebuilt table needs no test edit.
+     */
+    private fun assertCommittedCounts(assetFileName: String, spec: BigramArtifactSpec) {
         val asset = locateCommittedAsset(assetFileName).readBytes()
         val rawFile = temporaryFolder.newFile("${spec.fileLanguageTag}.tatbigr")
         rawFile.outputStream().use { output ->
             validator.inflateAsset(asset.inputStream(), output, spec)
         }
-        return validator.validateRaw(rawFile, spec)
+        val validated = validator.validateRaw(rawFile, spec)
+
+        val raw = rawFile.readBytes()
+        val header = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        val successIdsOffset = header.getInt(44)
+        val successIdsEnd = successIdsOffset + header.getInt(48)
+        val successIds = ArrayList<Long>()
+        var position = successIdsOffset
+        while (position < successIdsEnd) {
+            var value = 0L
+            var shift = 0
+            do {
+                val byte = raw[position++].toInt() and 0xff
+                value = value or ((byte and 0x7f).toLong() shl shift)
+                shift += 7
+            } while (byte and 0x80 != 0)
+            successIds += value
+        }
+
+        assertEquals(spec.expectedHeadCount, validated.headCount)
+        assertEquals(spec.expectedRawSize, validated.rawSize)
+        assertEquals(successIds.size.toLong(), validated.pairCount)
+        assertEquals(header.getInt(20).toLong(), validated.pairCount)
+        assertEquals(successIds.toSet().size.toLong(), validated.successVocabularyCount)
+        assertTrue(validated.successVocabularyCount < validated.pairCount)
     }
 
     private fun locateCommittedAsset(assetFileName: String): File {

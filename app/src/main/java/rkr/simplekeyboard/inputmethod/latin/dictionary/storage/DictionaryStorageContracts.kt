@@ -52,7 +52,6 @@ data class DictionaryArtifactSpec(
     val personalAlphabet: Set<Int>? = null,
     val schemaId: Int = TdictFormat.SCHEMA_ID,
     val formatVersion: Int = TdictFormat.FORMAT_VERSION,
-    val maxCompressedSize: Long = TdictFormat.MAX_COMPRESSED_SIZE,
     val maxRawSize: Long = TdictFormat.MAX_RAW_SIZE,
 ) {
     init {
@@ -62,7 +61,7 @@ data class DictionaryArtifactSpec(
         require(FAMILY_PATTERN.matches(storageDirectoryName.replace('-', '_')))
         require(assetPath.isNotBlank())
         require(sentStartAssetPath == null || sentStartAssetPath.isNotBlank())
-        require(expectedCompressedSize in 1..maxCompressedSize)
+        require(expectedCompressedSize > 0)
         require(expectedRawSize in TdictFormat.HEADER_SIZE.toLong()..maxRawSize)
         require(expectedEntryCount > 0)
         require(expectedCompressedSha256.isSha256())
@@ -325,8 +324,7 @@ internal object TdictFormat {
     // size and bounded decode work (at most 7 words per access).
     const val BLOCK_SIZE = 8
     const val MAX_WORD_BYTES = 128
-    // Size limits: the shipped assets plus headroom comparable to schema 1.
-    const val MAX_COMPRESSED_SIZE = 600_000L
-    const val MAX_RAW_SIZE = 1_400_000L
+    // A safety bound on the inflated file and the validation buffer, not a size budget.
+    const val MAX_RAW_SIZE = 8_388_608L
     const val MAX_U32 = 0xffff_ffffL
 }

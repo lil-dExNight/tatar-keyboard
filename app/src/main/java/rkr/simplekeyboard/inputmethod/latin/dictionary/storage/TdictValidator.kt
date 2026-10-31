@@ -55,8 +55,8 @@ class TdictValidator {
                         throw DictionaryValidationException("truncated zlib stream")
                     }
                     compressedSize += count
-                    if (compressedSize > spec.maxCompressedSize) {
-                        throw DictionaryValidationException("compressed size limit exceeded")
+                    if (compressedSize > spec.expectedCompressedSize) {
+                        throw DictionaryValidationException("unexpected compressed size")
                     }
                     compressedDigest.update(inputBuffer, 0, count)
                     inflater.setInput(inputBuffer, 0, count)

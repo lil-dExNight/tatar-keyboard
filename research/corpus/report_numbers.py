@@ -93,9 +93,8 @@ def main() -> None:
                   f"{num(by['merged_raw_bytes'])} Б распакован")
             print(f"  дельта               {by['delta_asset_bytes']:+} Б сжат / "
                   f"{by['delta_raw_bytes']:+} Б распакован")
-            print(f"  потолки формата      {num(by['format_limit_compressed'])} / "
-                  f"{num(by['format_limit_raw'])}; влезает: "
-                  f"{by['fits_compressed']} / {by['fits_raw']}")
+            print(f"  потолок распаковки   {num(by['format_limit_raw'])}; "
+                  f"влезает: {by['fits_raw']}")
 
         section(f"{tag}: живой случай (нижняя граница)")
         if live:

@@ -157,11 +157,10 @@ def build(args) -> int:
         "asset_sha256": hashlib.sha256(asset).hexdigest(),
         "raw_bytes": len(raw),
         "raw_sha256": hashlib.sha256(raw).hexdigest(),
-        "fits_compressed": len(asset) <= dp.MAX_COMPRESSED_BYTES_V2,
-        "fits_raw": len(raw) <= dp.MAX_UNCOMPRESSED_BYTES_V2,
+        "fits_raw": len(raw) <= dp.MAX_UNCOMPRESSED_BYTES,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
-    return 0 if report["fits_compressed"] and report["fits_raw"] else 1
+    return 0 if report["fits_raw"] else 1
 
 
 # --- gate -------------------------------------------------------------------------------------
