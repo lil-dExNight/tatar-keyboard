@@ -64,14 +64,53 @@ class EmojiSkinTones private constructor(
     }
 
     /** Every toned form of every base; used to widen the set the recents are allowed to record. */
-    fun allTonedSequences(): Set<String> {
-        val out = HashSet<String>(prefixes.size * TONE_COUNT * 2)
-        for (base in bases.keys) {
+    fun allTonedSequences(): Set<String> = tonedSequencesOf(bases.keys)
+
+    /** Every toned form of each of [baseSequences] that is a base of this table. */
+    internal fun tonedSequencesOf(baseSequences: Collection<String>): Set<String> {
+        val out = HashSet<String>(baseSequences.size * TONE_COUNT * 2)
+        for (base in baseSequences) {
+            if (!bases.containsKey(base)) continue
             for (variant in 1..TONE_COUNT) {
                 out.add(variantAt(base, variant))
             }
         }
         return out
+    }
+
+    /**
+     * The bases whose [PROBED_VARIANT] the font cannot draw (a probe error counts as "cannot").
+     * One probe per base: a font that draws one tone of an emoji draws all five.
+     */
+    internal fun basesWithoutToneGlyph(probe: GlyphProbe): Set<String> {
+        val rejected = HashSet<String>()
+        for (base in bases.keys) {
+            val drawable = try {
+                probe.hasGlyph(variantAt(base, PROBED_VARIANT))
+            } catch (_: Throwable) {
+                false
+            }
+            if (!drawable) rejected.add(base)
+        }
+        return rejected
+    }
+
+    /** This table without the [rejected] bases; this instance itself when none of them is here. */
+    internal fun without(rejected: Set<String>): EmojiSkinTones {
+        if (rejected.none { bases.containsKey(it) }) return this
+        val keptBases = HashMap<String, Int>()
+        val keptPrefixes = ArrayList<String>()
+        val keptSuffixes = ArrayList<String>()
+        // Index order is the asset's line order; keep it.
+        val ordered = bases.entries.sortedBy { it.value }
+        for ((sequence, index) in ordered) {
+            if (sequence in rejected) continue
+            keptBases[sequence] = keptPrefixes.size
+            keptPrefixes.add(prefixes[index])
+            keptSuffixes.add(suffixes[index])
+        }
+        if (keptPrefixes.isEmpty()) return EMPTY
+        return EmojiSkinTones(keptBases, keptPrefixes.toTypedArray(), keptSuffixes.toTypedArray())
     }
 
     companion object {
@@ -80,6 +119,12 @@ class EmojiSkinTones private constructor(
 
         /** Variants offered on a long press: the neutral cell plus the five tones. */
         const val VARIANT_COUNT = TONE_COUNT + 1
+
+        /** The tone the font probe checks for a base (the first modifier, U+1F3FB). */
+        const val PROBED_VARIANT = 1
+
+        /** The packed table in the APK's assets. */
+        internal const val ASSET_PATH = "emoji/emoji_skin_v1.txt"
 
         private const val FIRST_MODIFIER = 0x1F3FB
 

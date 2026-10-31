@@ -125,6 +125,9 @@ class EmojiPanelController internal constructor(
     private val recentStoreFactory: () -> RecentEmojiStore? = { null },
     private val searchIndexSourceFactory: () -> EmojiSearchIndexSource? = { null },
     private val skinToneSourceFactory: () -> EmojiSkinToneSource? = { null },
+    // The font probe of the toned forms; null leaves the tone table unfiltered.
+    private val toneProbeFactory: () -> GlyphProbe? = { null },
+    private val toneVerdicts: EmojiToneVerdicts = EmojiToneVerdicts(),
 ) {
     /** Production entry point. */
     constructor(
@@ -152,6 +155,9 @@ class EmojiPanelController internal constructor(
         },
         { AssetSearchIndexSource(context.applicationContext) },
         { AssetSkinToneSource(context.applicationContext) },
+        // Constructed on the background preparation only; see PaintGlyphProbe.
+        { PaintGlyphProbe(Paint()) },
+        EmojiToneVerdicts.PROCESS,
     ) {
         setLive(this)
     }
@@ -353,19 +359,32 @@ class EmojiPanelController internal constructor(
         }
     }
 
-    /** Erases the recents on the executor, then refreshes any shown panel on the UI thread. */
-    private fun requestClearRecents() {
-        val store = recentStore ?: return
-        val backgroundExecutor = backgroundExecutor() ?: return
+    /**
+     * Erases the recents on the executor, then refreshes any shown panel on the UI thread.
+     * [onFinished] runs once with [RecentEmojiStore.clear]'s answer, on the executor, or with false
+     * on the calling thread when the erase cannot be queued.
+     */
+    internal fun requestClearRecents(onFinished: (Boolean) -> Unit) {
+        val store = recentStore
+        val backgroundExecutor = backgroundExecutor()
+        if (store == null || backgroundExecutor == null) {
+            onFinished(false)
+            return
+        }
         try {
-            backgroundExecutor.execute {
-                store.clear()
-                val base = snapshot
-                if (base != null) {
-                    uiPoster.post { if (!destroyed) surface.refreshAfterRecentsCleared(base) }
+            backgroundExecutor.execute(ClearRecentsTask(onFinished) {
+                val cleared = store.clear()
+                try {
+                    val base = snapshot
+                    if (base != null) {
+                        uiPoster.post { if (!destroyed) surface.refreshAfterRecentsCleared(base) }
+                    }
+                } catch (_: Throwable) {
                 }
-            }
+                cleared
+            })
         } catch (_: Throwable) {
+            onFinished(false)
         }
     }
 
@@ -374,8 +393,25 @@ class EmojiPanelController internal constructor(
         pendingShow = false
         pendingSearch = false
         if (liveInstance === this) setLive(null)
-        executor?.shutdownNow()
+        executor?.shutdownNow()?.forEach { (it as? ClearRecentsTask)?.dropped() }
         executor = null
+    }
+
+    /** A recents erase that answers exactly once: with the erase result, or false if dropped. */
+    private class ClearRecentsTask(
+        private val onFinished: (Boolean) -> Unit,
+        private val erase: () -> Boolean,
+    ) : Runnable {
+        override fun run() {
+            var cleared = false
+            try {
+                cleared = erase()
+            } finally {
+                onFinished(cleared)
+            }
+        }
+
+        fun dropped() = onFinished(false)
     }
 
     private fun startPreparation() {
@@ -406,9 +442,10 @@ class EmojiPanelController internal constructor(
                     EmojiSetSnapshot.EMPTY
                 }
                 // The tone table rides along on the same background pass; a failure to read it only
-                // costs the long-press variants, never the panel.
+                // costs the long-press variants, never the panel. Bases whose tones the font
+                // cannot draw leave the table here, so they get no picker and no toned recents.
                 val tones = try {
-                    skinSource?.load() ?: EmojiSkinTones.EMPTY
+                    toneVerdicts.drawable(skinSource?.load() ?: EmojiSkinTones.EMPTY, toneProbeFactory)
                 } catch (_: Throwable) {
                     EmojiSkinTones.EMPTY
                 }
@@ -514,29 +551,29 @@ class EmojiPanelController internal constructor(
         }
 
         /**
-         * Clears the recent-emoji medium. When the IME exists in this process the erase is routed to
-         * the live controller so its in-memory list and any open panel are updated too; otherwise the
-         * medium is replaced directly. Both paths call the single storage method
-         * [RecentEmojiStore.clear]. Never touches the UI thread's editor and never reads the list.
+         * Clears the recents through [RecentEmojiStore.clear]: via the live controller when the IME
+         * runs in this process (its list and open panel update too), else directly. [onFinished]
+         * gets the answer on the store's worker, or false at once when the erase cannot be queued.
          */
         @JvmStatic
-        fun clearRecents(context: Context) {
+        fun clearRecents(context: Context, onFinished: (Boolean) -> Unit = {}) {
             val live = liveInstance
             if (live != null) {
-                live.requestClearRecents()
+                live.requestClearRecents(onFinished)
                 return
             }
-            clearStandalone(context.applicationContext)
+            clearStandalone(context.applicationContext, onFinished)
         }
 
-        private fun clearStandalone(appContext: Context) {
+        private fun clearStandalone(appContext: Context, onFinished: (Boolean) -> Unit) {
             val standaloneExecutor = try {
                 Executors.newSingleThreadExecutor()
             } catch (_: Throwable) {
+                onFinished(false)
                 return
             }
             try {
-                standaloneExecutor.execute {
+                standaloneExecutor.execute(ClearRecentsTask(onFinished) {
                     val gate = RecentEmojiGate {
                         val userManager = appContext.getSystemService(Context.USER_SERVICE) as? UserManager
                         // Clearing records nothing, so only the path gate matters here.
@@ -548,14 +585,16 @@ class EmojiPanelController internal constructor(
                             incognito = false,
                         )
                     }
-                    RecentEmojiStore(
+                    val cleared = RecentEmojiStore(
                         RecentEmojiFileProvider { File(appContext.noBackupFilesDir, RECENT_EMOJI_FILE_NAME) },
                         AtomicRecentEmojiFileOps,
                         gate,
                     ).clear()
-                }
+                    cleared
+                })
             } catch (_: Throwable) {
-                // Nothing to clean up on the UI side.
+                // The task was never queued, so it will not answer.
+                onFinished(false)
             } finally {
                 standaloneExecutor.shutdown()
             }
@@ -592,14 +631,10 @@ private class AssetSnapshotSource(private val context: Context) : EmojiSnapshotS
 private class AssetSkinToneSource(private val context: Context) : EmojiSkinToneSource {
     override fun load(): EmojiSkinTones =
         try {
-            context.assets.open(ASSET_PATH).use { input -> EmojiSkinTones.parse(input) }
+            context.assets.open(EmojiSkinTones.ASSET_PATH).use { input -> EmojiSkinTones.parse(input) }
         } catch (_: Throwable) {
             EmojiSkinTones.EMPTY
         }
-
-    private companion object {
-        const val ASSET_PATH = "emoji/emoji_skin_v1.txt"
-    }
 }
 
 /**

@@ -336,6 +336,18 @@ object EmojiTextUtils {
         return if (count % 2 == 0) end - 4 else end - 2
     }
 
+    /** True when [sequence] carries a skin-tone modifier (U+1F3FB–U+1F3FF). Allocation-free. */
+    @JvmStatic
+    fun hasSkinTone(sequence: CharSequence): Boolean {
+        var i = 0
+        while (i < sequence.length) {
+            val codePoint = Character.codePointAt(sequence, i)
+            if (isSkinToneModifier(codePoint)) return true
+            i += Character.charCount(codePoint)
+        }
+        return false
+    }
+
     private fun isSkinToneModifier(codePoint: Int): Boolean = codePoint in 0x1F3FB..0x1F3FF
 
     private fun isRegionalIndicator(codePoint: Int): Boolean = codePoint in 0x1F1E6..0x1F1FF

@@ -29,12 +29,15 @@ import org.junit.Test
  */
 class RecentEmojiStoreTest {
 
-    /** An in-memory medium that counts reads and writes and can be told to fail a read. */
+    /** An in-memory medium that counts reads and writes and can be told to fail a read or write. */
     private class FakeFileOps : RecentEmojiFileOps {
         var content: String? = null
         var readCount = 0
         var writeCount = 0
         var throwOnRead = false
+
+        /** A write that leaves the previous medium in place, like a failed atomic replace. */
+        var failWrites = false
 
         override fun read(file: File): String? {
             readCount++
@@ -44,8 +47,10 @@ class RecentEmojiStoreTest {
 
         override fun writeAtomic(file: File, content: String) {
             writeCount++
-            this.content = content
+            if (!failWrites) this.content = content
         }
+
+        override fun isAbsentOrEmpty(file: File): Boolean = content.isNullOrEmpty()
     }
 
     private class FakeGate(var state: RecentEmojiGateState) : RecentEmojiGate {
@@ -203,7 +208,7 @@ class RecentEmojiStoreTest {
         store.recordUse("B", available)
         assertTrue(store.isDirty())
 
-        store.clear()
+        assertTrue(store.clear())
         assertEquals("", ops.content)
         assertFalse(store.isDirty())
         val writesAfterClear = ops.writeCount
@@ -220,7 +225,22 @@ class RecentEmojiStoreTest {
     fun clearOnAbsentMediumDoesNotThrow() {
         val ops = FakeFileOps() // content == null: absent medium
         val store = storeWith(ops, FakeGate(open))
-        store.clear() // must not throw
+        assertTrue(store.clear()) // must not throw; nothing is left
+        assertTrue(store.currentRecents(setOf("A")).isEmpty())
+    }
+
+    @Test
+    fun aFailedWriteAnswersThatTheMediumWasNotCleared() {
+        val ops = FakeFileOps().apply {
+            content = "A"
+            failWrites = true
+        }
+        val store = storeWith(ops, FakeGate(open))
+
+        assertFalse(store.clear())
+        assertEquals("A", ops.content)
+        // The in-memory list is still cleared, so no hide writes the old entries back.
+        assertFalse(store.isDirty())
         assertTrue(store.currentRecents(setOf("A")).isEmpty())
     }
 
@@ -228,8 +248,8 @@ class RecentEmojiStoreTest {
     fun clearWhileLockedTouchesNothing() {
         val ops = FakeFileOps().apply { content = "A" }
         val store = storeWith(ops, FakeGate(open.copy(userUnlocked = false)))
-        store.clear()
-        // Locked device: the path is never touched, so no write happens.
+        // Locked device: the path is never touched, so no write happens and nothing is confirmed.
+        assertFalse(store.clear())
         assertEquals(0, ops.writeCount)
         assertFalse(store.isDirty())
     }
@@ -256,5 +276,27 @@ class RecentEmojiStoreTest {
         val store = storeWith(ops, FakeGate(open))
         // Only A survives in the current snapshot; B is dropped.
         assertEquals(listOf("A"), store.currentRecents(setOf("A")))
+    }
+
+    // --- Sequences outside the drawable set ----------------------------------------------------
+
+    @Test
+    fun aSequenceAbsentFromTheSetIsNeitherRecordedNorWritten() {
+        val ops = FakeFileOps().apply { content = "A" }
+        val store = storeWith(ops, FakeGate(open))
+        store.recordUse("T", setOf("A"))
+        assertFalse(store.isDirty())
+        store.flushOnHide()
+        assertEquals(0, ops.writeCount)
+        assertEquals("A", ops.content)
+    }
+
+    @Test
+    fun anEntryRecordedBeforeTheSetWasKnownIsHiddenOnceTheSetLacksIt() {
+        val ops = FakeFileOps()
+        val store = storeWith(ops, FakeGate(open))
+        store.recordUse("T", emptySet())
+        assertEquals(listOf("T"), store.currentRecents(emptySet()))
+        assertTrue(store.currentRecents(setOf("A")).isEmpty())
     }
 }

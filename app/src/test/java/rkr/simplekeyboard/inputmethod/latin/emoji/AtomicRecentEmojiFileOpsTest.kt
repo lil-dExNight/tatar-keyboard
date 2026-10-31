@@ -18,7 +18,9 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -59,5 +61,20 @@ class AtomicRecentEmojiFileOpsTest {
     @Test
     fun anAbsentMediumAnswersNull() {
         assertNull(AtomicRecentEmojiFileOps.read(File(temporaryFolder.root, "never-written.txt")))
+    }
+
+    @Test
+    fun onlyAnAbsentOrEmptyMediumCountsAsCleared() {
+        val file = File(temporaryFolder.root, "recent_emoji.txt")
+        assertTrue(AtomicRecentEmojiFileOps.isAbsentOrEmpty(file))
+
+        AtomicRecentEmojiFileOps.writeAtomic(file, "😀")
+        assertFalse(AtomicRecentEmojiFileOps.isAbsentOrEmpty(file))
+
+        AtomicRecentEmojiFileOps.writeAtomic(file, "")
+        assertTrue(AtomicRecentEmojiFileOps.isAbsentOrEmpty(file))
+
+        // A directory in the medium's place is not an empty medium.
+        assertFalse(AtomicRecentEmojiFileOps.isAbsentOrEmpty(temporaryFolder.newFolder("recent_dir")))
     }
 }

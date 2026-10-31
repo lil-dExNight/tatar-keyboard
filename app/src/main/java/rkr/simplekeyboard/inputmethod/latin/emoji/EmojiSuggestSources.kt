@@ -38,6 +38,12 @@ interface EmojiSuggestSource {
      * is known; the caller falls back to the glyph.
      */
     fun spokenNameOf(language: String, emoji: String): String?
+
+    /**
+     * False when the font is known not to draw [emoji] (a skin tone it lacks for that emoji); the
+     * strip then skips a learned emoji. Allocation-free. Default true.
+     */
+    fun canDraw(emoji: String): Boolean = true
 }
 
 /**
@@ -90,18 +96,38 @@ class AssetEmojiSuggestPreparation(
         // spoken labels (TalkBack then reads the glyph itself), never the feature. The index is
         // the process-wide [SharedEmojiSearchIndex]: the panel search reads the same asset.
         val names = SharedEmojiSearchIndex.of(appContext).get()
-        return LoadedEmojiSuggestSource(filtered, names)
+        probeToneGlyphs()
+        return LoadedEmojiSuggestSource(filtered, names, EmojiToneVerdicts.PROCESS)
+    }
+
+    /**
+     * Runs the process's skin-tone probe unless the panel already did, so a learned toned emoji
+     * is checked even when the panel was never opened. An unreadable table leaves it unknown.
+     */
+    private fun probeToneGlyphs() {
+        if (EmojiToneVerdicts.PROCESS.isKnown) return
+        try {
+            val tones = appContext.assets.open(EmojiSkinTones.ASSET_PATH).use { stream ->
+                EmojiSkinTones.parse(stream)
+            }
+            EmojiToneVerdicts.PROCESS.drawable(tones) { PaintGlyphProbe(Paint()) }
+        } catch (_: Throwable) {
+            // The verdicts stay unknown: a learned toned emoji is then offered as learned.
+        }
     }
 
     private class LoadedEmojiSuggestSource(
         private val table: EmojiSuggestIndex,
         private val names: EmojiSearchIndex,
+        private val toneVerdicts: EmojiToneVerdicts,
     ) : EmojiSuggestSource {
         override fun emojiFor(language: String, normalizedWord: String): String? =
             table.lookup(language, normalizedWord)
 
         override fun spokenNameOf(language: String, emoji: String): String? =
             names.nameOf(emoji, language)
+
+        override fun canDraw(emoji: String): Boolean = !toneVerdicts.isUndrawableToned(emoji)
     }
 
     private companion object {

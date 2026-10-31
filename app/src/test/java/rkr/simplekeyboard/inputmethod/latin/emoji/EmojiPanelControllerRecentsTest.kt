@@ -63,11 +63,13 @@ class EmojiPanelControllerRecentsTest {
     private class FakeFileOps : RecentEmojiFileOps {
         var content: String? = null
         var writeCount = 0
+        var failWrites = false
         override fun read(file: File): String? = content
         override fun writeAtomic(file: File, content: String) {
             writeCount++
-            this.content = content
+            if (!failWrites) this.content = content
         }
+        override fun isAbsentOrEmpty(file: File): Boolean = content.isNullOrEmpty()
     }
 
     private val grin = "\uD83D\uDE00"
@@ -85,7 +87,7 @@ class EmojiPanelControllerRecentsTest {
 
     private fun controllerWith(
         surface: FakeSurface,
-        executor: ManualExecutor,
+        executor: ManualExecutor?,
         ops: FakeFileOps,
     ): EmojiPanelController {
         val store = RecentEmojiStore(RecentEmojiFileProvider { File("recent_emoji_controller_test") }, ops, openGate)
@@ -121,6 +123,90 @@ class EmojiPanelControllerRecentsTest {
         // Persisted exactly once on hide, and it carries the inserted emoji.
         assertEquals(1, ops.writeCount)
         assertTrue(ops.content!!.contains(grin))
+    }
+
+    @Test
+    fun clearingAnswersOnTheExecutorWithTheStoresResult() {
+        val surface = FakeSurface()
+        val executor = ManualExecutor()
+        val ops = FakeFileOps().apply { content = grin }
+        val controller = controllerWith(surface, executor, ops)
+        val answers = ArrayList<Boolean>()
+
+        controller.requestClearRecents { answers.add(it) }
+        // Queued like every store operation: no answer on the calling thread.
+        assertTrue(answers.isEmpty())
+        executor.runAll()
+
+        assertEquals(listOf(true), answers)
+        assertEquals("", ops.content)
+    }
+
+    @Test
+    fun aClearThatLeavesTheMediumInPlaceAnswersFalse() {
+        val executor = ManualExecutor()
+        val ops = FakeFileOps().apply {
+            content = grin
+            failWrites = true
+        }
+        val controller = controllerWith(FakeSurface(), executor, ops)
+        val answers = ArrayList<Boolean>()
+
+        controller.requestClearRecents { answers.add(it) }
+        executor.runAll()
+
+        assertEquals(listOf(false), answers)
+    }
+
+    @Test
+    fun aClearThatCannotBeQueuedAnswersFalseAtOnce() {
+        val ops = FakeFileOps().apply { content = grin }
+        val controller = controllerWith(FakeSurface(), null, ops)
+        val answers = ArrayList<Boolean>()
+
+        controller.requestClearRecents { answers.add(it) }
+
+        assertEquals(listOf(false), answers)
+        assertEquals(grin, ops.content)
+    }
+
+    @Test
+    fun aClearDroppedByShutdownAnswersFalseOnce() {
+        val executor = ManualExecutor()
+        val ops = FakeFileOps().apply { content = grin }
+        val controller = controllerWith(FakeSurface(), executor, ops)
+        val answers = ArrayList<Boolean>()
+
+        controller.requestClearRecents { answers.add(it) }
+        controller.onDestroy()
+        executor.runAll()
+
+        assertEquals(listOf(false), answers)
+        assertEquals(grin, ops.content)
+    }
+
+    @Test
+    fun aClearWhoseRefreshThrowsStillAnswers() {
+        val executor = ManualExecutor()
+        val ops = FakeFileOps().apply { content = grin }
+        val store = RecentEmojiStore(RecentEmojiFileProvider { File("recent_emoji_controller_test") }, ops, openGate)
+        var posterGone = false
+        val controller = EmojiPanelController(
+            FakeSurface(),
+            EmojiUiPoster { if (posterGone) throw IllegalStateException("poster gone") else it.run() },
+            { executor },
+            { EmojiSnapshotSource { base } },
+            { store },
+        )
+        controller.onEmojiKeyPressed()
+        executor.runAll()
+        posterGone = true
+        val answers = ArrayList<Boolean>()
+
+        controller.requestClearRecents { answers.add(it) }
+        executor.runAll()
+
+        assertEquals(listOf(true), answers)
     }
 
     @Test

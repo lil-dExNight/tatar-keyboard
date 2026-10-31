@@ -35,6 +35,9 @@ interface RecentEmojiFileOps {
 
     /** Atomically replaces the medium with [content]. Called only off the UI thread. */
     fun writeAtomic(file: File, content: String)
+
+    /** True when the medium is absent or empty; false when it holds data or cannot be checked. */
+    fun isAbsentOrEmpty(file: File): Boolean
 }
 
 /** The environment gate, re-read on every store operation (so it is honoured on the executor). */
@@ -110,12 +113,13 @@ internal class RecentEmojiStore(
 
     /**
      * The current recents, honouring the unlock gate for the first read. Empty while the keyguard
-     * is shown; the list itself is kept for the moment the device is unlocked.
+     * is shown; the list itself is kept for the moment the device is unlocked. Entries absent from
+     * a non-empty [available] are not returned (one recorded before the panel's set was known).
      */
     fun currentRecents(available: Set<String>): List<String> {
         if (!gate.current().allowsDisplay) return emptyList()
         ensureLoaded(available)
-        return recents.entries
+        return if (available.isEmpty()) recents.entries else recents.filteredTo(available).entries
     }
 
     private fun ensureLoaded(available: Set<String>) {
@@ -134,10 +138,11 @@ internal class RecentEmojiStore(
     /**
      * Records a use of [sequence]. Gated by [RecentEmojiGateState.allowsRecording], re-read here
      * before any mutation of the in-memory list, so a closed gate never grows the list by even one
-     * entry.
+     * entry. A sequence absent from a non-empty [available] is not recorded.
      */
     fun recordUse(sequence: String, available: Set<String>) {
         if (!gate.current().allowsRecording) return
+        if (available.isNotEmpty() && sequence !in available) return
         // allowsRecording implies unlocked, so this reads the existing medium before appending.
         ensureLoaded(available)
         val next = recents.used(sequence)
@@ -165,20 +170,22 @@ internal class RecentEmojiStore(
     }
 
     /**
-     * Clears the recents: zeroes the in-memory list, resets the changed flag, and replaces the
-     * medium with an empty one via the same write path as an ordinary save. An absent or locked
-     * medium makes the replacement a no-op — no exception, no crash — and the reset flag means the
-     * next hide performs no save, so erased entries never resurrect from memory.
+     * Empties the in-memory list, the changed flag (so no hide resurrects it) and the medium. True
+     * only when the medium is absent or empty afterwards; a locked path is left untouched and
+     * answers false. Never throws, never logs.
      */
-    fun clear() {
+    fun clear(): Boolean {
         recents = RecentEmojiList.EMPTY
         loaded = true
         dirty = false
-        if (!gate.current().allowsPathAccess) return
-        try {
-            fileOps.writeAtomic(fileProvider.file(), "")
+        return try {
+            if (!gate.current().allowsPathAccess) return false
+            val file = fileProvider.file()
+            fileOps.writeAtomic(file, "")
+            fileOps.isAbsentOrEmpty(file)
         } catch (_: Throwable) {
-            // Absent/locked medium: nothing to clear. Never crash, never log.
+            // Never crash, never log; the caller reports the failure.
+            false
         }
     }
 
@@ -215,6 +222,13 @@ internal object AtomicRecentEmojiFileOps : RecentEmojiFileOps {
             }
         } catch (_: Throwable) {
             null
+        }
+
+    override fun isAbsentOrEmpty(file: File): Boolean =
+        try {
+            !file.exists() || (file.isFile && file.length() == 0L)
+        } catch (_: Throwable) {
+            false
         }
 
     override fun writeAtomic(file: File, content: String) {
