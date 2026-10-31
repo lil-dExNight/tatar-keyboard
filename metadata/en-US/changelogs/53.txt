@@ -1,0 +1,5 @@
+• Shorter, simpler settings texts; "Incognito mode" is now "Pause learning", "Backup and export" is now "Backup"
+• "Erase everything saved" also erases text shortcuts and recent emoji
+• Autocorrect leaves words of your other language alone once you have typed in it
+• Password fields: letters typed right after another field no longer get lost, and the text is never read
+• Fixes for storage read errors, emoji skin tones, glide typing and next-word predictions

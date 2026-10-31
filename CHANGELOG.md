@@ -11,6 +11,34 @@ These hold for every release and are not repeated in the entries below:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+## [3.12.0] — 2026-10-31
+
+### Changed
+
+- Settings and setup texts are shorter and simpler in English, Russian and Tatar. "Incognito mode" is now "Pause learning", "Backup and export" is now "Backup", and its actions are "Save to a file…" and "Restore from a file…".
+- The Tatar interface calls the keyboard «клавиатура» and glide typing «Шудырып язу».
+- Autocorrect no longer changes a word that is in the dictionary of the other language (Tatar or Russian), as long as that language has been used since the keyboard started.
+- If a bundled dictionary cannot be prepared, the keyboard tries once more the next time a text field opens, instead of leaving suggestions off until the setting is switched off and on.
+- Emoji whose skin-tone versions the system font cannot draw no longer offer a skin-tone picker, and such toned emoji no longer appear in recents, search or the suggestion strip.
+
+### Fixed
+
+- Letters typed in a password field right after another field now land in the password field when "Capital letters" is off.
+- Changing the system language no longer crashes the keyboard app when the change starts it in the background.
+- Moving the cursor with the space bar no longer puts the old selection into a new field when the field changes or the keyboard closes during the gesture.
+- With many learned word pairs after the previous word, those pairs no longer outweigh the gesture shape in glide typing.
+- Next-word predictions shown before the next-word table finished loading are refreshed once it is ready, without another keystroke.
+- "Erase everything saved" is offered whenever the keyboard's personal folder holds anything, including content the screen does not list such as text shortcuts, and reports a failure when anything is left.
+- A storage read error no longer lets a later save replace your saved words, word pairs, learned emoji, sentence starts, refused corrections or text shortcuts: the file stays untouched and is read again later.
+- Saving or restoring a backup no longer fails because of a damaged file of saved content that the keyboard had not opened yet: the file is set aside as usual and the backup goes ahead without it.
+- The "could not be read" notice no longer appears for the keyboard's internal learning counters, which relearn by themselves.
+- "Clear recent emoji" now shows a message when the list could not be cleared.
+
+### Security
+
+- A password field's text is never read into the keyboard's memory, not even by a cache reload that was queued before the password field opened.
+- "Erase everything saved" now also deletes text shortcuts, recent emoji and every leftover file in the keyboard's personal folder, such as quarantined copies and notice marks.
+
 ## [3.11.1] — 2026-10-31
 
 ### Changed
