@@ -1104,7 +1104,7 @@ if leg_on frames; then
                 if [ "$n" -lt 32 ]; then
                     result FAIL "frames-run-$run" "only n=$n frames for a 32-event script — taps not landing"
                 else
-                    result INFO frames "run=$run n=$n p50_ms=$p50 p90_ms=$p90 p95_ms=$p95 budget_ms=$FRAME_BUDGET_MS over_budget=$(gt "$p95" "$FRAME_BUDGET_MS") build=$BUILD protocol=O2-2 script=32-event-tt window=InputMethod"
+                    result INFO frames "run=$run n=$n p50_ms=$p50 p90_ms=$p90 p95_ms=$p95 budget_ms=$FRAME_BUDGET_MS over_budget=$(gt "$p95" "$FRAME_BUDGET_MS") build=$BUILD protocol=gfxinfo-reset-then-script script=32-event-tt window=InputMethod"
                 fi
             fi
             jank=$(framestats "$OUTDIR/frames-run$run.txt" "InputMethod" jank 2>/dev/null || true)

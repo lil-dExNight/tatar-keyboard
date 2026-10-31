@@ -68,7 +68,7 @@ check_backup_apk() {
     der_id=$(grep -F ":dataExtractionRules(" <<<"$manifest_tree" | sed -nE 's/.*=@(0x[0-9a-fA-F]+).*/\1/p' | head -1)
     if [ -z "$der_id" ]; then
         echo "ERROR: android:dataExtractionRules reference missing from built manifest in $apk" >&2
-        echo "       (it is the only thing closing device-to-device transfer on API 31+; E2b-3)" >&2
+        echo "       (it is the only thing closing device-to-device transfer on API 31+)" >&2
         exit 1
     fi
     # fullBackupContent is dead once allowBackup is false (Auto Backup never runs);
@@ -76,7 +76,7 @@ check_backup_apk() {
     fbc_id=$(grep -F ":fullBackupContent(" <<<"$manifest_tree" | sed -nE 's/.*=@(0x[0-9a-fA-F]+).*/\1/p' | head -1 || true)
     if [ -n "$fbc_id" ]; then
         echo "ERROR: android:fullBackupContent reference present in built manifest in $apk" >&2
-        echo "       (dead with allowBackup=false; removed in phase 3a — remove it again)" >&2
+        echo "       (it is dead with allowBackup=false and must stay removed)" >&2
         exit 1
     fi
     echo "Backup: manifest references dataExtractionRules=@$der_id (fullBackupContent absent as intended)"

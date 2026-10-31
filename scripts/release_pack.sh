@@ -218,6 +218,9 @@ if info.compress_type != zipfile.ZIP_STORED:
 print(f'resources.arsc: STORED, {info.file_size} B')
 PYEOF
 
+# The clean build in step 1 deletes build/, so the output directory is created only now.
+mkdir -p -- "$(dirname -- "$OUT")"
+
 # --- 4. signing (v2 only, as in the AGP build) -------------------------------------------------
 
 if [ "$NO_SIGN" = 1 ]; then

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -208,6 +209,29 @@ class ReleasePackDirtyTreeTest(unittest.TestCase):
         self.assertIn("build-tools", output)
 
 
+class ReleasePackOutputTest(unittest.TestCase):
+    """Packing from an existing APK with stub build-tools, to check where the output lands."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.repo = FixtureRepository(Path(self.temporary_directory.name))
+        # zipalign -f -z 4 IN OUT copies; zipalign -c 4 FILE accepts.
+        self.repo.tool(
+            "zipalign", '#!/bin/sh\nif [ "$1" = "-f" ]; then cp "$4" "$5"; fi\nexit 0\n')
+        self.repo.environment["TT_BUILD_TOOLS_VERSION"] = "fixture"
+        self.unsigned = self.repo.root.parent / "unsigned.apk"
+        with zipfile.ZipFile(self.unsigned, "w") as apk:
+            apk.writestr(zipfile.ZipInfo("resources.arsc"), b"arsc")
+
+    def test_an_output_in_a_missing_directory_is_written(self) -> None:
+        output = self.repo.root / "build" / "measure" / "out.apk"
+        result = self.repo.run(
+            "release_pack.sh", "--no-sign", "--from-apk", str(self.unsigned), str(output))
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(self.unsigned.read_bytes(), output.read_bytes())
+
+
 class CriticalResourcesTest(unittest.TestCase):
     """artifact.critical_resources against a fake aapt2 dump of a fixture tree."""
 
@@ -344,6 +368,121 @@ class ExplicitApkPathTest(unittest.TestCase):
         apk.chmod(0)
         self.addCleanup(apk.chmod, 0o600)
         self.assert_hard_error(apk)
+
+
+class ReleaseGateTest(unittest.TestCase):
+    """The default mode runs every repository gate; the gate commands are stubs here."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.repo = FixtureRepository(Path(self.temporary_directory.name))
+        self.repo.write(
+            "gradlew",
+            "#!/bin/sh\nmkdir -p app/build/test-results/stub\n"
+            "echo '<testsuite tests=\"1\" failures=\"0\" errors=\"0\"/>' "
+            "> app/build/test-results/stub/TEST-stub.xml\n",
+        )
+        (self.repo.root / "gradlew").chmod(0o755)
+        self.repo.write("scripts/run_python_tests.sh", "echo 'Ran 1 tests'\n")
+        self.repo.write("scripts/check-no-internet.sh", "exit 0\n")
+        self.repo.write("scripts/rebuild_assets.py", "")
+        self.repo.write("tests/stub/test_stub.py", "")
+        self.apk = self.repo.apk("candidate.apk", None)
+
+    def gate_line(self, hygiene_exit: int) -> str:
+        self.repo.write(
+            "scripts/text_hygiene_check.py", f"import sys\nsys.exit({hygiene_exit})\n")
+        result = self.repo.run("release_check.sh", str(self.apk))
+        lines = [line for line in result.stdout.splitlines() if "gates.text_hygiene" in line]
+        self.assertEqual(1, len(lines), result.stdout + result.stderr)
+        return lines[0].split()[0]
+
+    def test_text_hygiene_findings_fail_the_release_check(self) -> None:
+        self.assertEqual("FAIL", self.gate_line(1))
+
+    def test_clean_text_hygiene_passes_its_gate(self) -> None:
+        self.assertEqual("PASS", self.gate_line(0))
+
+    def test_quick_mode_skips_the_gate(self) -> None:
+        result = self.repo.run("release_check.sh", "--quick", str(self.apk))
+        self.assertRegex(result.stdout, r"SKIP\s+gates\.text_hygiene")
+
+
+class ContinuousIntegrationChecksTest(unittest.TestCase):
+    """CI runs the keystore-free artifact checks on the unsigned release APK."""
+
+    # The selectable checks that need the release key or a committed tree with the APK's
+    # recorded commit; every other selectable check runs in CI.
+    LOCAL_ONLY = {"signature", "freshness"}
+
+    def setUp(self) -> None:
+        self.workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        script = RELEASE_CHECK.read_text(encoding="utf-8")
+        selectable = re.search(r'^SELECTABLE_CHECKS="([^"]+)"$', script, re.MULTILINE)
+        self.assertIsNotNone(selectable)
+        self.selectable = set(selectable.group(1).split())
+        self.size_limit = re.search(r"^APK_SIZE_LIMIT=(\d+)$", script, re.MULTILINE)
+        self.assertIsNotNone(self.size_limit)
+
+    def ci_checks(self) -> list[str]:
+        lists = re.findall(r"release_check\.sh --checks (\S+) ", self.workflow)
+        self.assertEqual(1, len(lists), lists)
+        return lists[0].split(",")
+
+    def test_ci_runs_every_keystore_free_check(self) -> None:
+        checks = self.ci_checks()
+        self.assertEqual(len(checks), len(set(checks)), checks)
+        self.assertLessEqual(self.LOCAL_ONLY, self.selectable)
+        self.assertEqual(self.selectable - self.LOCAL_ONLY, set(checks))
+        self.assertIn("python3 scripts/rebuild_assets.py --check --allow-known-drift", self.workflow)
+
+    def test_the_size_limit_lives_only_in_the_release_checker(self) -> None:
+        self.assertIn("size", self.ci_checks())
+        self.assertNotIn(self.size_limit.group(1), self.workflow)
+
+
+class SuggestionsDefaultInScriptsTest(unittest.TestCase):
+    """The device scripts agree with the word-suggestions default in Settings.java."""
+
+    SETTINGS = ROOT / "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/Settings.java"
+    SMOKE = ROOT / "scripts" / "emulator-smoke.sh"
+    GENERATOR = (ROOT / "baselineprofile/src/main/java/org/tatarkeyboard/baselineprofile"
+                 / "ImeBaselineProfileGenerator.java")
+
+    def test_word_suggestions_default_on(self) -> None:
+        settings = self.SETTINGS.read_text(encoding="utf-8")
+        self.assertRegex(
+            settings, r"readBooleanTolerant\(prefs, PREF_TATAR_SUGGESTIONS, true\)")
+
+    def test_no_script_says_they_are_off_by_default(self) -> None:
+        for path in (self.SMOKE, self.GENERATOR):
+            text = " ".join(path.read_text(encoding="utf-8").split())
+            self.assertNotRegex(text, r"(?i)suggestions are off by default", path.name)
+            self.assertIn("on by default", text, path.name)
+
+    def test_smoke_probes_do_not_skip_a_non_debuggable_package(self) -> None:
+        smoke = self.SMOKE.read_text(encoding="utf-8")
+        self.assertNotIn("suggestions not enabled (non-debuggable package)", smoke)
+        self.assertNotIn("SUGGESTIONS=off", smoke)
+        # The emoji grid y assumes the visible strip in every mode.
+        self.assertRegex(smoke, r"(?m)^GRID_CELL0_Y=0\.6877$")
+
+
+class DictionaryNoticeTest(unittest.TestCase):
+    """NOTICE.txt beside the bundled dictionaries describes the conversational stream exactly."""
+
+    NOTICE = ROOT / "app/src/main/assets/dictionaries/NOTICE.txt"
+
+    def test_the_left_out_tatar_lines_are_not_called_held_out(self) -> None:
+        notice = " ".join(self.NOTICE.read_text(encoding="utf-8").split())
+        self.assertNotIn("held-out", notice)
+        self.assertIn("without the lines whose id % 10 == 1", notice)
+
+    def test_the_acceptance_rule_is_stated_without_release_numbers(self) -> None:
+        notice = self.NOTICE.read_text(encoding="utf-8")
+        self.assertNotIn("WIDENED", notice)
+        self.assertNotRegex(notice, r"(?m)^1\.9\.[01] ")
 
 
 if __name__ == "__main__":

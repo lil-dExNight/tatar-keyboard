@@ -205,6 +205,7 @@ elif [ "$QUICK" -eq 1 ]; then
     report SKIP gates.python_tests "--quick"
     report SKIP gates.no_internet "--quick"
     report SKIP gates.asset_rebuild_check "--quick"
+    report SKIP gates.text_hygiene "--quick"
 else
     # JVM tests; counts come from the JUnit XML reports (app/build/test-results/*/).
     # --rerun-tasks forces a real run instead of an up-to-date skip. calibrationTest carries
@@ -256,13 +257,21 @@ else
     fi
 
     # Assets against their pins and bigram table heads against the dictionaries, through the
-    # same entry point CI uses, not only indirectly through the pins extracted from the APK below.
+    # same command CI runs, not only indirectly through the pins extracted from the APK below.
     if run_logged "$LOG_DIR/asset-rebuild-check.log" \
             python3 scripts/rebuild_assets.py --check --allow-known-drift; then
         report PASS gates.asset_rebuild_check "пины и связки согласованы, лог $LOG_DIR/asset-rebuild-check.log"
     else
         report FAIL gates.asset_rebuild_check "расхождение, лог $LOG_DIR/asset-rebuild-check.log"
         tail -20 "$LOG_DIR/asset-rebuild-check.log" >&2 || true
+    fi
+
+    # Writing rules for comments and Markdown, the same command CI runs.
+    if run_logged "$LOG_DIR/text-hygiene.log" python3 scripts/text_hygiene_check.py; then
+        report PASS gates.text_hygiene "замечаний нет, лог $LOG_DIR/text-hygiene.log"
+    else
+        report FAIL gates.text_hygiene "замечания, лог $LOG_DIR/text-hygiene.log"
+        tail -20 "$LOG_DIR/text-hygiene.log" >&2 || true
     fi
 fi
 

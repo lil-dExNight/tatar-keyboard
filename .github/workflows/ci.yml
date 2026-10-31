@@ -56,6 +56,11 @@ jobs:
       - name: Run python packer tests
         run: bash scripts/run_python_tests.sh
 
+      # The bundled dictionaries and bigram tables against their pins, through the command
+      # line that scripts/release_check.sh also runs; needs no corpora.
+      - name: Check bundled assets against their pins
+        run: python3 scripts/rebuild_assets.py --check --allow-known-drift
+
       # Writing rules for comments and Markdown; exceptions in scripts/text_hygiene_allowlist.txt.
       - name: Check text hygiene
         run: python3 scripts/text_hygiene_check.py
@@ -73,16 +78,22 @@ jobs:
       - name: Build release APK (unsigned)
         run: ./gradlew assembleRelease
 
-      # Hard budget: 3 MiB = 3145728 bytes, byte-exact via stat.
-      - name: Check release APK size (≤ 3 MiB)
-        run: test $(stat -c%s app/build/outputs/apk/release/app-release-unsigned.apk) -le 3145728
-
-      # The release checks that need no keystore: the exported components against the golden
-      # set, no keystore, private key or token in the tracked tree or the APK, exactly the
-      # VIBRATE permission, the resources read by name surviving shrinking, no reflection entry
-      # point in the sources, and an uncompressed resources.arsc.
-      - name: Check exported surface, secrets, permissions and shrinking (release APK)
-        run: bash scripts/release_check.sh --checks exported_surface,no_secrets,permissions,critical_resources,no_reflection,arsc_stored app/build/outputs/apk/release/app-release-unsigned.apk
+      # The release checks that need no keystore: the APK size limit, the bundled dictionaries
+      # and bigram tables against their pins, the emoji, dictionary and bigram assets byte for
+      # byte against the tree, the exported components against the golden set, no keystore,
+      # private key or token in the tracked tree or the APK, exactly the VIBRATE permission,
+      # the resources read by name surviving shrinking, no reflection entry point in the
+      # sources, an uncompressed resources.arsc, the startup dex split with the baseline
+      # profile, and the profile rules resolved through this build's R8 mapping.
+      # The size limit is the release limit applied to the AGP APK, a stricter bound: the
+      # released APK is smaller, because zopfli recompression saves more than the v2 signing
+      # block adds.
+      # The signature and freshness checks stay local: they need the release key, or a clean
+      # tree with the commit recorded in the APK. The version, store changelog and dist/ delta
+      # checks cannot be selected with --checks and run only in a local run without --checks;
+      # the delta also needs dist/.
+      - name: Check size, assets, exported surface, secrets, permissions, shrinking and profiles (release APK)
+        run: bash scripts/release_check.sh --checks size,asset_pins,emoji_assets,tree_assets,exported_surface,no_secrets,permissions,critical_resources,no_reflection,arsc_stored,dex_layout,profiles app/build/outputs/apk/release/app-release-unsigned.apk
 
       # Both levels: source manifest + aapt2 dump permissions on the built APK. Checked on
       # debug and release, since the release merged manifest could differ if a

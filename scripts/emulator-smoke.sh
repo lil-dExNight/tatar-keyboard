@@ -30,10 +30,14 @@
 #     the field (it appears as &#...; in the XML dump);
 #   - keyboard up is dumpsys input_method mInputShown=true (see keyboard_shown).
 #
-# Suggestions are off by default. On a debuggable package the pref is written via
-# run-as before the app starts, then the process is force-stopped, because a live
-# process keeps the old prefs in memory and does not re-read the file. Force-stopping
-# the selected IME resets default_input_method, so `ime set` must run after force-stop.
+# Word suggestions are on by default. On a debuggable package the script still writes
+# the pref via run-as before the app starts, because a reused AVD keeps the value of an
+# earlier session; then the process is force-stopped, because a live process keeps the
+# old prefs in memory and does not re-read the file. Force-stopping the selected IME
+# resets default_input_method, so `ime set` must run after force-stop. On a
+# non-debuggable package the suggestion probes rely on the default, so they fail if
+# suggestions were turned off on that AVD; the learned-emoji probe needs run-as and is
+# skipped.
 #
 # The pref write goes straight into the package's shared_prefs, bypassing the
 # SharedPreferences API. Only pref_tatar_suggestions and
@@ -261,10 +265,13 @@ SHELL ime list -s > "$OUTDIR/ime-list.txt" 2>&1 || true
 
 # Enable suggestions through the pref BEFORE the app first reads its settings.
 # Read the current prefs file, change or add only our two keys and keep the rest;
-# if there is no file yet (clean AVD), write a minimal stub.
-SUGGESTIONS=off
+# if there is no file yet (clean AVD), write a minimal stub. PREFS_ACCESS=1 means the
+# prefs file was written via run-as, so later steps can read and seed it too.
+RUN_AS=0
+PREFS_ACCESS=0
 PREFS_PATH="/data/user_de/0/$PKG/shared_prefs/${PKG}_preferences.xml"
 if A shell "run-as $PKG true" >/dev/null 2>&1; then
+    RUN_AS=1
     # `|| true`: on a clean AVD (or with -no-snapshot-save discarding every
     # previous session) the prefs file does not exist yet and run-as cat exits
     # non-zero; with pipefail + set -e that would kill the script before the
@@ -297,23 +304,24 @@ sys.stdout.write(xml)
 PYEOF
     if A shell "run-as $PKG sh -c 'mkdir -p \$(dirname $PREFS_PATH) && cat > $PREFS_PATH'" \
         < "$OUTDIR/prefs-new.xml"; then
-        SUGGESTIONS=on
+        PREFS_ACCESS=1
     fi
 fi
-if [ "$SUGGESTIONS" = on ]; then
+if [ "$PREFS_ACCESS" = 1 ]; then
     result PASS suggestions-enabled "pref_tatar_suggestions=true через run-as"
+elif [ "$RUN_AS" = 1 ]; then
+    result FAIL suggestions-enabled "run-as works, but writing $PREFS_PATH failed"
 else
-    result SKIP suggestions-enabled "пакет не debuggable, opt-in поток не автоматизирован"
+    result SKIP suggestions-enabled "package not debuggable: the pref is not written, the probes rely on the default (on)"
 fi
 
 # First grid cell of the emoji panel (x=0.059 = first column center, 8 columns across the
-# full width). The y depends on the mode because the panel top moves with the suggestion
-# strip: strip visible (debuggable + suggestions on) -> panel top 1297, first section
-# header 1418-1500, row 0 center 1568 px ~ 0.6877; strip hidden (release) -> panel top
-# 1418, row 0 center 1689 px ~ 0.7408. Row 0 is always an emoji cell whatever the recents
-# state: with recents it is the recents row, without them the first Smileys row. A single
-# y between the two modes would land on the second section header when recents exist.
-if [ "$SUGGESTIONS" = on ]; then GRID_CELL0_Y=0.6877; else GRID_CELL0_Y=0.7408; fi
+# full width). The panel top moves with the suggestion strip, which is visible because
+# suggestions are on: panel top 1297, first section header 1418-1500, row 0 center
+# 1568 px ~ 0.6877 (with suggestions off the strip is hidden and row 0 moves to ~ 0.7408).
+# Row 0 is always an emoji cell whatever the recents state: with recents it is the recents
+# row, without them the first Smileys row.
+GRID_CELL0_Y=0.6877
 
 # A live process keeps the old prefs in memory, so stop it. Force-stopping the
 # selected IME resets default_input_method, so the IME is selected again AFTER.
@@ -330,7 +338,7 @@ else
 fi
 
 read_pref() {                                # read_pref <name> -> value or ""
-    [ "$SUGGESTIONS" = on ] || { echo ""; return; }
+    [ "$PREFS_ACCESS" = 1 ] || { echo ""; return; }
     A shell "run-as $PKG cat $PREFS_PATH" 2>/dev/null | tr -d '\r' \
         | grep -oP "name=\"$1\"[^>]*>\\K[^<]*" | head -1 || true
 }
@@ -419,8 +427,6 @@ typed_checks() {
     fi
     if [ -n "$nosuggest" ]; then
         result SKIP "suggest-${tag}-${word}" "у en нет словаря в ассетах — подсказок не бывает by design"
-    elif [ "$SUGGESTIONS" != on ]; then
-        result SKIP "suggest-${tag}-${word}" "подсказки не включены (не debuggable)"
     elif [ "$HAVE_MAGICK" != 1 ]; then
         result SKIP "suggest-${tag}-${word}" "нет ImageMagick для пиксельной дельты полосы"
     else
@@ -495,9 +501,8 @@ PYEOF
 }
 
 # type_tt_and_tap_cell2 <word> <tag> [cell]: type <word> + space on the tt layout,
-# screenshot the strip, tap the given suggestion cell (only when suggestions
-# are on; default the last cell), read the field again. Stdout: field-after-space <TAB>
-# field-after-tap.
+# screenshot the strip, tap the given suggestion cell (default the last cell), read the
+# field again. Stdout: field-after-space <TAB> field-after-tap.
 type_tt_and_tap_cell2() {
     local word="$1" tag="$2" cell="${3:-$STRIP_CELL2}" coords mid after
     coords=$(tt_word_coords "$word")
@@ -506,13 +511,9 @@ type_tt_and_tap_cell2() {
     sleep 2                              # the NEXT_WORD answer is asynchronous
     mid=$(field_text)
     SHOT "smoke-wordform-${tag}.png"
-    if [ "$SUGGESTIONS" = on ]; then
-        TAPF ${cell%,*} ${cell#*,}
-        sleep 1
-        after=$(field_text)
-    else
-        after="$mid"
-    fi
+    TAPF ${cell%,*} ${cell#*,}
+    sleep 1
+    after=$(field_text)
     printf '%s\t%s\n' "$mid" "$after"
 }
 
@@ -557,7 +558,7 @@ probe_layout() {                           # -> tatar|russian|qwerty|""
 
 switch_and_check() {                         # $1 tag, $2 expected layout
     local tag="$1" want="$2" pref="" tap cur=""
-    if [ "$SUGGESTIONS" = on ]; then
+    if [ "$PREFS_ACCESS" = 1 ]; then
         for tap in 1 2 3; do
             TAPF ${GLOBE%,*} ${GLOBE#*,}
             for _ in $(seq 1 8); do
@@ -630,8 +631,6 @@ if [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "__NOFIELD__" ]; then
     result FAIL nextword-tt-татар "try-it field not in the dump"
 elif ! echo "$wf_mid" | grep -qE 'татар $'; then
     result FAIL nextword-tt-татар "татар did not commit; field: '$wf_mid'"
-elif [ "$SUGGESTIONS" != on ]; then
-    result SKIP nextword-tt-татар "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "$wf_mid" ]; then
     result FAIL nextword-tt-татар "cell-2 tap committed nothing; field: '$wf_after'"
 elif [ "$w2" = "телен" ]; then
@@ -648,8 +647,6 @@ if [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "__NOFIELD__" ]; then
     result FAIL nextword-tt-сәләм "try-it field not in the dump"
 elif ! echo "$wf_mid" | grep -qE 'сәләм $'; then
     result FAIL nextword-tt-сәләм "сәләм did not commit; field: '$wf_mid'"
-elif [ "$SUGGESTIONS" != on ]; then
-    result SKIP nextword-tt-сәләм "suggestions not enabled (non-debuggable package)"
 elif [ "$wf_after" = "$wf_mid" ]; then
     result FAIL nextword-tt-сәләм "cell-1 tap committed nothing; field: '$wf_after'"
 elif [ "$w2" = "һәм" ]; then
@@ -662,9 +659,7 @@ fi
 # The сәләм probe's cell-1 tap committed һәм with a trailing space, and the tap itself must
 # re-issue the NEXT_WORD lookup without waiting for a keystroke. һәм is a bigram head whose first
 # successor is башка, so a second tap on cell 1 (index 0) must commit башка.
-if [ "$SUGGESTIONS" != on ]; then
-    result SKIP tap-followup-tt-сәләм "suggestions not enabled (non-debuggable package)"
-elif [ "$wf_after" = "__NOFIELD__" ] || [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "$wf_mid" ]; then
+if [ "$wf_after" = "__NOFIELD__" ] || [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "$wf_mid" ]; then
     result SKIP tap-followup-tt-сәләм "the сәләм probe above already failed; nothing to follow up on"
 else
     sleep 2                          # the follow-up NEXT_WORD answer is asynchronous
@@ -688,8 +683,8 @@ before_emoji=$(field_text)
 LONGPRESSF ${COMMA%,*} ${COMMA#*,}
 sleep 2
 SHOT smoke-emoji-panel.png
-# Tap the first grid cell at GRID_CELL0_Y (set above; depends on whether the suggestion
-# strip shifts the panel top). The panel has no separate search bar (search is a cell in
+# Tap the first grid cell at GRID_CELL0_Y (set above for the visible suggestion strip).
+# The panel has no separate search bar (search is a cell in
 # the tab row), so the grid starts right below the tabs: gridTop = panel top + 121.
 TAPF 0.059 "$GRID_CELL0_Y"
 sleep 1
@@ -813,8 +808,8 @@ fi
 #   - the probe's prefs are seeded via run-as like the suggestions pref, but only here:
 #     personal dictionary ON (default off) + emoji suggestions ON (default on, seeded so a
 #     reused AVD with it off still works), so every earlier probe runs with unchanged prefs.
-if [ "$SUGGESTIONS" != on ]; then
-    result SKIP learned-emoji-tt "suggestions not enabled (non-debuggable package)"
+if [ "$PREFS_ACCESS" != 1 ]; then
+    result SKIP learned-emoji-tt "prefs cannot be seeded via run-as"
 else
     # force-stop first: a live process could flush its in-memory counters over the files
     # the rm below deletes. Then the learned store is removed (a reused AVD may have one),

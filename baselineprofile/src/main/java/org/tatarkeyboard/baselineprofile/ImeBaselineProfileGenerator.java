@@ -48,9 +48,9 @@ import kotlin.Unit;
  *   <li>glide "сәлам" in one stroke and commit the glide candidate;</li>
  *   <li>open the emoji panel (long-press comma) and commit an emoji.</li>
  * </ul>
- * Word suggestions are off by default, so the first iteration turns them on through the
- * settings UI (the release APK is not debuggable, so prefs cannot be seeded via run-as).
- * Emoji suggestions and glide typing are on by default.
+ * Word suggestions, emoji suggestions and glide typing are on by default; a reused emulator
+ * may have word suggestions off, so the first iteration checks the switch in the settings UI
+ * (the release APK is not debuggable, so prefs cannot be seeded via run-as).
  *
  * Run: ./gradlew :app:generateBaselineProfile on a connected API 34 emulator (device
  * pinning: see baselineprofile/build.gradle).
@@ -78,7 +78,7 @@ public class ImeBaselineProfileGenerator {
     public BaselineProfileRule baselineProfileRule = new BaselineProfileRule();
 
     // Iterations share this test instance, and the pref survives the force-stop
-    // in killProcess() — enabling once per generation run is enough.
+    // in killProcess(), so checking once per generation run is enough.
     private boolean mSuggestionsEnsured;
 
     @Test
@@ -213,8 +213,8 @@ public class ImeBaselineProfileGenerator {
 
         // Glide: one continuous polyline over the letter keys of "сәлам". The finger never
         // lifts, which arms GlideGestureDecider; the decode runs on the engine worker and
-        // the candidates appear in the strip. Glide typing is on by default; it only needs
-        // word suggestions, enabled above.
+        // the candidates appear in the strip. Glide typing is on by default and does not
+        // depend on the suggestions switch.
         device.swipe(new android.graphics.Point[]{
                 point(device, KeyGeom.KEY_S),
                 point(device, KeyGeom.KEY_AE),
@@ -246,9 +246,9 @@ public class ImeBaselineProfileGenerator {
     }
 
     /**
-     * Turns on PREF_TATAR_SUGGESTIONS once per run through SettingsActivity → Preferences.
-     * Rows are found by resource id (the UI is localized), and the row is clicked only when
-     * its Switch is off: the pref survives force-stop and a reused emulator may have it on.
+     * Makes sure PREF_TATAR_SUGGESTIONS is on, once per run, through SettingsActivity →
+     * Preferences. Rows are found by resource id (the UI is localized); the row is clicked only
+     * when its Switch is off, which happens on a reused emulator where it was turned off.
      */
     private void ensureSuggestionsEnabled(MacrobenchmarkScope scope, UiDevice device) {
         if (mSuggestionsEnsured) {
