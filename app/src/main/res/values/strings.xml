@@ -25,7 +25,7 @@
     <string name="sound_on_keypress">Sound on keypress</string>
 
     <!-- Option to control whether or not to show a popup with a larger font on each key press. -->
-    <string name="popup_on_keypress">Popup on keypress</string>
+    <string name="popup_on_keypress">Show pressed key</string>
 
     <!-- Settings screen title for preferences [CHAR LIMIT=33]-->
     <string name="settings_screen_preferences">Preferences</string>
@@ -44,9 +44,9 @@
     <string name="settings_system_default">System default</string>
 
     <!-- Option to enable auto capitalization of sentences -->
-    <string name="auto_cap">Auto-capitalization</string>
+    <string name="auto_cap">Capital letters</string>
     <!-- Description for option to enable auto capitalization of sentences -->
-    <string name="auto_cap_summary">Capitalize the first word of each sentence</string>
+    <string name="auto_cap_summary">Start each sentence with a capital letter</string>
 
     <!-- Preference for input language selection -->
     <string name="select_language">Languages</string>
@@ -69,10 +69,10 @@
     <string name="keyboard_theme_dynamic">Dynamic (Material You)</string>
     <!-- Explanation in the theme picker dialog: the dynamic entry reads the wallpaper palette
          on Android 12+ and silently keeps the classic palette on older versions. -->
-    <string name="keyboard_theme_dynamic_summary">Dynamic follows the wallpaper colors on Android 12 and later; on older versions it keeps the Classic palette.</string>
+    <string name="keyboard_theme_dynamic_summary">Dynamic uses your wallpaper colors (Android 12 and later).</string>
     <!-- Toast after a different theme is picked: the change recolors the keyboard, not this
          screen, and lands the next time the keyboard opens. -->
-    <string name="keyboard_theme_applies_on_next_show">The theme applies to the keyboard the next time it opens</string>
+    <string name="keyboard_theme_applies_on_next_show">The new theme shows the next time the keyboard opens</string>
 
     <!-- Title of the button to add a language in the settings dialog [CHAR LIMIT=15] -->
     <string name="add">Add</string>
@@ -81,9 +81,9 @@
 
     <!-- Title of the settings for keypress vibration duration [CHAR LIMIT=35] -->
     <!-- Title of the settings for keypress sound volume [CHAR LIMIT=35] -->
-    <string name="prefs_keypress_sound_volume_settings">Keypress sound volume</string>
+    <string name="prefs_keypress_sound_volume_settings">Key sound volume</string>
     <!-- Title of the settings for key long press delay [CHAR LIMIT=35] -->
-    <string name="prefs_key_longpress_timeout_settings">Key long press delay</string>
+    <string name="prefs_key_longpress_timeout_settings">Long press time</string>
 
     <!-- Title of the button to revert to the default value of the device in the settings dialog [CHAR LIMIT=15] -->
     <string name="button_default">Default</string>
@@ -109,38 +109,38 @@
     <string name="one_handed_mode_full">Full width</string>
     <string name="globe_menu_emoji">Emoji</string>
     <string name="prefs_bottom_offset_portrait_settings">Bottom offset</string>
-    <string name="keyboard_color">Set custom keyboard color</string>
+    <string name="keyboard_color">Keyboard color</string>
     <string name="show_special_chars">Show special characters</string>
     <!-- Description for option to show extra characters; only affects layouts with extra
          character variants (e.g. QWERTY), not the Tatar or Russian layouts -->
-    <string name="show_special_chars_summary">Extra symbols on some layouts (QWERTY and others)</string>
+    <string name="show_special_chars_summary">Extra symbols on some layouts</string>
     <!-- Settings screen title for key press feedback summaries [CHAR LIMIT=65] -->
     <string name="vibrate_on_keypress_summary">Short vibration on every key press</string>
     <string name="sound_on_keypress_summary">Click sound on every key press</string>
-    <string name="popup_on_keypress_summary">Show the enlarged character above the key (off in password fields)</string>
-    <string name="show_number_row_summary">Extra row with digits above the letters</string>
-    <string name="show_language_switch_key">Show language switch key</string>
+    <string name="popup_on_keypress_summary">A larger letter appears above the key</string>
+    <string name="show_number_row_summary">Digits above the letters</string>
+    <string name="show_language_switch_key">Show globe key</string>
     <!-- Description for option to show the language switch key -->
-    <string name="show_language_switch_key_summary">Key for switching between keyboard languages</string>
+    <string name="show_language_switch_key_summary">Switches the keyboard language</string>
     <string name="pref_use_on_screen">Show on-screen keyboard</string>
-    <string name="pref_use_on_screen_summary">Show on-screen keyboard while using physical keyboard</string>
+    <string name="pref_use_on_screen_summary">Also when a physical keyboard is connected</string>
     <string name="pref_enable_ime_switch">Switch to other keyboards</string>
     <!-- Description for option to also switch to other input methods with the language key -->
-    <string name="pref_enable_ime_switch_summary">The language key also switches to other keyboard apps</string>
-    <string name="show_number_row">Show separate number row</string>
+    <string name="pref_enable_ime_switch_summary">The globe key also opens other keyboards</string>
+    <string name="show_number_row">Number row</string>
     <string name="show_emoji_key">Show emoji key</string>
     <!-- Description for option to show the emoji key next to the space bar -->
-    <string name="show_emoji_key_summary">Opens the emoji panel: a key of its own next to the space bar, or a long press on the comma key when the language switch key is shown</string>
-    <string name="space_swipe">Space swipe cursor move</string>
+    <string name="show_emoji_key_summary">A key next to the space bar</string>
+    <string name="space_swipe">Move cursor with space bar</string>
     <!-- Description for option to move the cursor by swiping on the space bar -->
-    <string name="space_swipe_summary">Swipe the space bar to move the cursor</string>
-    <string name="delete_swipe">Delete swipe</string>
+    <string name="space_swipe_summary">Slide along the space bar</string>
+    <string name="delete_swipe">Delete by sliding</string>
     <!-- Description for option to delete more text by swiping on the delete key -->
-    <string name="delete_swipe_summary">Swipe the delete key to delete more text</string>
+    <string name="delete_swipe_summary">Slide from the delete key to erase more</string>
     <!-- Option to show word suggestions above the keyboard while typing -->
     <string name="tatar_suggestions">Word suggestions</string>
     <!-- Description for the word suggestions option -->
-    <string name="tatar_suggestions_summary">Show suggested and predicted words above the keyboard as you type, in Tatar and in Russian</string>
+    <string name="tatar_suggestions_summary">Words appear above the keyboard as you type</string>
     <!-- Title of the one-time dialog offering to turn word suggestions on -->
     <!-- Shown when the user taps a row that is dimmed because the switch it depends on
          is off. Names the switch, so the next tap goes to the right place. -->
@@ -149,25 +149,25 @@
     <string name="row_locked_by_admin">Locked by your device administrator</string>
     <string name="tatar_suggestions_offer_title">Turn on word suggestions?</string>
     <!-- Body of the one-time dialog offering to turn word suggestions on -->
-    <string name="tatar_suggestions_offer_message">Suggested and predicted words can appear above the keyboard as you type, in Tatar and in Russian. The word lists stay on your device and no internet connection is used.</string>
+    <string name="tatar_suggestions_offer_message">Words will appear above the keyboard as you type. Everything stays on your phone.</string>
     <!-- Button that turns word suggestions on -->
     <string name="tatar_suggestions_offer_enable">Turn on</string>
     <!-- Button that declines the offer to turn word suggestions on -->
     <string name="tatar_suggestions_offer_dismiss">Not now</string>
     <!-- Message shown once when word suggestions could not be turned on -->
-    <string name="tatar_suggestions_unavailable">Word suggestions could not be turned on right now. You can try again later.</string>
+    <string name="tatar_suggestions_unavailable">Could not turn on word suggestions. Try again later.</string>
     <!-- Option to replace a misspelled word with a dictionary word when a separator is typed -->
-    <string name="tatar_autocorrect">Autocorrect words</string>
+    <string name="tatar_autocorrect">Autocorrect</string>
     <!-- Description for the autocorrection option. Says plainly that text already typed is changed and how to undo it. -->
-    <string name="tatar_autocorrect_summary">Fix a misspelled word when you type a space or punctuation. Press backspace right after to get back what you typed.</string>
+    <string name="tatar_autocorrect_summary">Fixes typos. Press delete right after to undo</string>
     <!-- Display form of the strip's keep-typed cell: the word as typed, in quotes. %1$s is the word. Tapping the cell puts the typed word back. -->
     <string name="autocorrect_revert_cell">\u201c%1$s\u201d</string>
     <!-- Title of the text-shortcuts screen and of the row leading to it -->
     <string name="text_shortcuts_screen">Text shortcuts</string>
     <!-- Description beside the row leading to the text-shortcuts screen -->
-    <string name="text_shortcuts_summary">Replace a short word you type with a longer saved text, when you type a space or punctuation after it</string>
+    <string name="text_shortcuts_summary">A short word turns into a longer text</string>
     <!-- Opening note of the text-shortcuts screen. Says plainly when an expansion fires and that it can be undone. -->
-    <string name="text_shortcuts_intro">Type a shortcut and a space or punctuation, and it becomes the longer text — for example a long Tatar suffix or a fixed phrase. Press backspace right after to get the shortcut back.</string>
+    <string name="text_shortcuts_intro">Type a shortcut and a space, and it turns into the full text. Press delete right after to undo.</string>
     <!-- Row that opens the dialog for adding one shortcut pair -->
     <string name="text_shortcuts_add">Add shortcut\u2026</string>
     <!-- Title of the add-shortcut dialog -->
@@ -176,13 +176,13 @@
     <!-- Hint of the shortcut field in the add-shortcut dialog. Letters only, because the shortcut must be typeable as one word. -->
     <string name="text_shortcuts_shortcut_hint">Shortcut (letters only)</string>
     <!-- Hint of the expansion field in the add-shortcut dialog -->
-    <string name="text_shortcuts_expansion_hint">Text it expands to</string>
+    <string name="text_shortcuts_expansion_hint">Full text</string>
     <!-- Affirmative button of the add-shortcut dialog -->
     <string name="text_shortcuts_add_action">Save</string>
     <!-- Shown when the typed pair cannot be saved. States both content rules. -->
-    <string name="text_shortcuts_add_rejected">This pair cannot be saved: the shortcut is 1 to 32 letters, and the text is 1 to 140 characters on one line.</string>
-    <string name="text_shortcuts_replace_title">Replace existing shortcut?</string>
-    <string name="text_shortcuts_replace_confirm">A different expansion is already saved for \u201c%1$s\u201d. Replace it?</string>
+    <string name="text_shortcuts_add_rejected">Cannot save. The shortcut must be letters only (up to 32), and the text one line (up to 140 characters).</string>
+    <string name="text_shortcuts_replace_title">Replace shortcut?</string>
+    <string name="text_shortcuts_replace_confirm">\u201c%1$s\u201d already has a different text. Replace it?</string>
     <string name="text_shortcuts_replace_action">Replace</string>
     <!-- Action that removes one saved shortcut pair -->
     <string name="text_shortcuts_delete">Delete</string>
@@ -196,28 +196,28 @@
     <string name="text_shortcuts_delete_failed">Could not delete the shortcut. It is still saved.</string>
     <!-- Option to show a matching emoji in the suggestion strip after a finished word -->
     <string name="emoji_suggestions">Emoji suggestions</string>
-    <!-- Description for the emoji suggestions option. Says plainly that tapping the emoji only adds it and never changes the typed word. -->
-    <string name="emoji_suggestions_summary">Show a matching emoji above the keyboard when you finish a word, in Tatar and in Russian. Tapping it only adds the emoji — the typed word stays.</string>
+    <!-- Description for the emoji suggestions option -->
+    <string name="emoji_suggestions_summary">An emoji appears after a finished word</string>
     <!-- Option to widen the suggestion strip from three cells to four -->
-    <string name="strip_fourth_cell">Fourth suggestion cell</string>
+    <string name="strip_fourth_cell">Four suggestions</string>
     <!-- Description for the fourth suggestion cell option -->
-    <string name="strip_fourth_cell_summary">Show four suggestions above the keyboard instead of three. The cells get narrower.</string>
+    <string name="strip_fourth_cell_summary">Show four words instead of three</string>
     <!-- Option to type words by sliding a finger over the letters instead of tapping each -->
     <string name="glide_typing">Glide typing</string>
-    <!-- Description for the glide typing option. Says plainly which languages it works for and that nothing changes when it is off. -->
-    <string name="glide_typing_summary">Type a word by sliding your finger over its letters without lifting it, in Tatar and in Russian. Everything is recognized on this device.</string>
+    <!-- Description for the glide typing option -->
+    <string name="glide_typing_summary">Slide your finger over the letters to type a word</string>
     <!-- Option to remember words the user types and suggest them later -->
     <string name="personal_dictionary">Personal dictionary</string>
-    <!-- Description for the personal dictionary option. Says plainly that words are saved on the device and that turning the option off keeps what was already saved. -->
-    <string name="personal_dictionary_summary">Remember words you type and suggest them later. Saved on this device only. Turning this off keeps what is already saved — erase it on the Personal dictionary screen.</string>
+    <!-- Description for the personal dictionary option -->
+    <string name="personal_dictionary_summary">Remember the words you type</string>
     <!-- Option to pause learning of personal words, word pairs and emoji and the recording of recent emoji. ON means nothing new is learned or recorded; what is already saved keeps appearing. -->
-    <string name="incognito_mode">Incognito mode</string>
-    <!-- Description for the incognito option. Says that learning of words, word pairs and emoji and the recording of recent emoji pause, and that saved content stays visible. -->
-    <string name="incognito_mode_summary">Pause learning new words, word pairs and emoji, and stop adding to recent emoji. What is already saved keeps appearing. Turning this off resumes learning.</string>
+    <string name="incognito_mode">Pause learning</string>
+    <!-- Description for the pause-learning option -->
+    <string name="incognito_mode_summary">Nothing new is remembered</string>
     <!-- Entry row leading to the screen with the words the keyboard has saved -->
     <string name="personal_dictionary_screen">Saved words</string>
     <!-- Hint of the search field on the personal dictionary screen -->
-    <string name="personal_dictionary_search_hint">Search saved words</string>
+    <string name="personal_dictionary_search_hint">Search</string>
     <!-- Row that opens a dialog for adding one word by hand -->
     <string name="personal_dictionary_add">Add word\u2026</string>
     <!-- Hint of the text field in the add-word dialog -->
@@ -225,9 +225,9 @@
     <!-- Affirmative button of the add-word dialog -->
     <string name="personal_dictionary_add_action">Add</string>
     <!-- Shown when the typed word cannot go into the Tatar personal dictionary -->
-    <string name="personal_dictionary_add_rejected">This word cannot be saved: use 3 to 24 Tatar letters, without digits or punctuation.</string>
+    <string name="personal_dictionary_add_rejected">Cannot save. Use 3 to 24 Tatar letters only.</string>
     <!-- Shown when the typed word cannot go into the Russian personal dictionary -->
-    <string name="personal_dictionary_add_rejected_ru">This word cannot be saved: use 3 to 24 Russian letters, without digits or punctuation.</string>
+    <string name="personal_dictionary_add_rejected_ru">Cannot save. Use 3 to 24 Russian letters only.</string>
     <!-- Action that removes one saved word -->
     <string name="personal_dictionary_delete">Delete</string>
     <!-- Title of the dialog confirming removal of one word. %1$s is the word itself. -->
@@ -248,139 +248,141 @@
         <item quantity="other">%1$d uses</item>
     </plurals>
     <!-- Small note atop the personal dictionary screen while learning is paused (incognito). -->
-    <string name="personal_dictionary_learning_paused">Learning is paused while incognito mode is on. What is already saved still appears.</string>
+    <string name="personal_dictionary_learning_paused">Learning is paused.</string>
     <!-- Action inside one language's words card: erase every saved word of that language -->
     <string name="personal_dictionary_clear_words">Clear all words</string>
     <!-- Body of the per-language clear-words confirmation. %1$s is the language name. -->
-    <string name="personal_dictionary_clear_words_confirm">Remove every saved word in %1$s? This cannot be undone.</string>
+    <string name="personal_dictionary_clear_words_confirm">Delete all saved words in %1$s? This cannot be undone.</string>
     <!-- Action inside one language's pairs card: erase every learned word pair of that language -->
     <string name="personal_dictionary_clear_pairs">Clear all word pairs</string>
     <!-- Body of the per-language clear-pairs confirmation. %1$s is the language name. -->
-    <string name="personal_dictionary_clear_pairs_confirm">Remove every learned word pair in %1$s? This cannot be undone.</string>
+    <string name="personal_dictionary_clear_pairs_confirm">Delete all word pairs in %1$s? This cannot be undone.</string>
     <!-- Title of the dialog confirming removal of one pair. %1$s is the context word, %2$s the word that followed it — the pair reads "A → B", exactly like its row on the screen. -->
     <string name="personal_dictionary_pair_forget_title">Forget \u201c%1$s → %2$s\u201d?</string>
     <!-- Shown when a pair the user asked to remove is still saved -->
-    <string name="personal_dictionary_pair_delete_failed">Could not remove the pair. It is still saved.</string>
-    <!-- Row and dialog title for erasing every saved word and word pair of every language -->
+    <string name="personal_dictionary_pair_delete_failed">Could not delete the pair. It is still saved.</string>
+    <!-- Row and dialog title for erasing everything the keyboard has saved, in every language -->
     <string name="personal_dictionary_erase_all">Erase everything saved</string>
-    <!-- Body of the erase-everything dialog. Names all four stores: the learned pairs, emoji and refused corrections go with the words. -->
-    <string name="personal_dictionary_erase_confirm">Remove every word, word pair, learned emoji and refused word correction saved on this device, in all languages? This cannot be undone.</string>
+    <!-- Body of the erase-everything dialog. Names every kind of saved content it removes. -->
+    <string name="personal_dictionary_erase_confirm">Delete all saved words, word pairs, learned emoji, sentence starts, recent emoji, text shortcuts and corrections? This cannot be undone.</string>
     <!-- Affirmative button of the erase-everything dialog. Names the action instead of OK because it is destructive and irreversible. -->
     <string name="personal_dictionary_erase_action">Erase</string>
     <!-- Shown when nothing has been saved yet -->
-    <string name="personal_dictionary_empty">No saved words yet. Words you type are saved here once the personal dictionary is on.</string>
+    <string name="personal_dictionary_empty">No saved words. Turn on Personal dictionary to save the words you type.</string>
     <!-- Shown when the search matches nothing -->
-    <string name="personal_dictionary_no_matches">No words match your search.</string>
+    <string name="personal_dictionary_no_matches">Nothing found.</string>
     <!-- Says how many of the matching words are actually listed. %1$d is shown, %2$d is the total. -->
-    <string name="personal_dictionary_shown_of_total">Showing %1$d of %2$d. Use search to narrow the list.</string>
+    <string name="personal_dictionary_shown_of_total">Showing %1$d of %2$d. Use search to find more.</string>
     <!-- Shown when a word the user asked to save was not written. Names no file, code or cause. -->
     <string name="personal_dictionary_save_failed">Could not save the word. Try again.</string>
     <!-- Shown when a word the user asked to remove is still saved -->
-    <string name="personal_dictionary_delete_failed">Could not remove the word. It is still saved.</string>
+    <string name="personal_dictionary_delete_failed">Could not delete the word. It is still saved.</string>
     <!-- Shown when erasing every saved word did not remove everything -->
-    <string name="personal_dictionary_erase_failed">Could not erase everything. Some saved words are still on this device.</string>
-    <!-- Shown once when the saved words could not be read, so the list appears empty -->
-    <string name="personal_dictionary_unreadable">Saved words could not be read, so the list is empty. A copy was kept \u2014 open Saved words to bring back what can still be read.</string>
-    <!-- Shown once when the learned word pairs could not be read, so next-word predictions from them stop -->
-    <string name="personal_bigrams_unreadable">Learned word pairs could not be read, so predictions from them stop. A copy was kept on this device.</string>
-    <!-- Shown once when the learned emoji could not be read, so suggestions from them stop -->
-    <string name="personal_emoji_unreadable">Learned emoji could not be read, so suggestions from them stop. A copy was kept on this device.</string>
+    <string name="personal_dictionary_erase_failed">Could not erase everything. Some of it is still saved.</string>
+    <!-- Shown once when the saved words could not be read and were set aside -->
+    <string name="personal_dictionary_unreadable">Saved words could not be read. Open Saved words to restore what is left.</string>
+    <!-- Shown once when the learned word pairs could not be read and were set aside -->
+    <string name="personal_bigrams_unreadable">Word pairs could not be read. Open Saved words to restore what is left.</string>
+    <!-- Shown once when the learned emoji could not be read and were set aside -->
+    <string name="personal_emoji_unreadable">Learned emoji could not be read. Open Saved words to restore what is left.</string>
     <!-- Title of the card offering the kept copy of words that could not be read. Says what happened, not why. -->
     <string name="personal_dictionary_quarantine_title">Words that could not be read</string>
     <!-- Beside the title when part of the copy is damaged. The count is what was read; the text also says that the rest is damaged, so a partial recovery never looks complete. -->
     <plurals name="personal_dictionary_quarantine_partial">
-        <item quantity="one">%1$d word can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
-        <item quantity="other">%1$d words can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
+        <item quantity="one">%1$d word can be restored. The rest is lost.</item>
+        <item quantity="other">%1$d words can be restored. The rest is lost.</item>
     </plurals>
     <!-- Beside the title when the whole copy could be read -->
     <plurals name="personal_dictionary_quarantine_whole">
-        <item quantity="one">%1$d word can be brought back.</item>
-        <item quantity="other">%1$d words can be brought back.</item>
+        <item quantity="one">%1$d word can be restored.</item>
+        <item quantity="other">%1$d words can be restored.</item>
     </plurals>
     <!-- Beside the title when nothing at all could be read out of the copy. The card is still shown so the user can delete the copy. -->
-    <string name="personal_dictionary_quarantine_none">None of these words can be brought back. The copy is still on this device.</string>
+    <string name="personal_dictionary_quarantine_none">No words can be restored.</string>
     <!-- Action that puts the readable words back into the saved list -->
-    <string name="personal_dictionary_quarantine_restore">Bring the words back</string>
+    <string name="personal_dictionary_quarantine_restore">Restore the words</string>
     <!-- Action that removes the kept copy -->
-    <string name="personal_dictionary_quarantine_discard">Delete the copy</string>
+    <string name="personal_dictionary_quarantine_discard">Delete them</string>
     <!-- Body of the confirmation dialog for deleting the kept copy -->
-    <string name="personal_dictionary_quarantine_discard_confirm">Remove the copy of the words that could not be read? This cannot be undone.</string>
-    <!-- Shown when bringing the words back did not happen. Says where the words are now. -->
-    <string name="personal_dictionary_quarantine_restore_failed">Could not bring the words back. They are still only in the copy.</string>
+    <string name="personal_dictionary_quarantine_discard_confirm">Delete the words that could not be read? This cannot be undone.</string>
+    <!-- Shown when bringing the words back did not happen -->
+    <string name="personal_dictionary_quarantine_restore_failed">Could not restore the words. Try again.</string>
     <!-- Shown when the copy could not be removed -->
-    <string name="personal_dictionary_quarantine_discard_failed">Could not delete the copy. It is still on this device.</string>
+    <string name="personal_dictionary_quarantine_discard_failed">Could not delete them. Try again.</string>
     <!-- Title of the card offering the kept copy of word pairs that could not be read. Says what happened, not why. -->
     <string name="personal_bigrams_quarantine_title">Word pairs that could not be read</string>
     <!-- Beside the title when part of the pairs copy is damaged. Says the count and the damage together, like the words card. -->
     <plurals name="personal_bigrams_quarantine_partial">
-        <item quantity="one">%1$d pair can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
-        <item quantity="other">%1$d pairs can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
+        <item quantity="one">%1$d pair can be restored. The rest is lost.</item>
+        <item quantity="other">%1$d pairs can be restored. The rest is lost.</item>
     </plurals>
     <!-- Beside the title when the whole pairs copy could be read -->
     <plurals name="personal_bigrams_quarantine_whole">
-        <item quantity="one">%1$d pair can be brought back.</item>
-        <item quantity="other">%1$d pairs can be brought back.</item>
+        <item quantity="one">%1$d pair can be restored.</item>
+        <item quantity="other">%1$d pairs can be restored.</item>
     </plurals>
     <!-- Beside the title when nothing at all could be read out of the pairs copy. The card is still shown so the user can delete the copy. -->
-    <string name="personal_bigrams_quarantine_none">None of these pairs can be brought back. The copy is still on this device.</string>
+    <string name="personal_bigrams_quarantine_none">No pairs can be restored.</string>
     <!-- Action that puts the readable pairs back into the learned list -->
-    <string name="personal_bigrams_quarantine_restore">Bring the pairs back</string>
+    <string name="personal_bigrams_quarantine_restore">Restore the pairs</string>
     <!-- Action that removes the kept pairs copy -->
-    <string name="personal_bigrams_quarantine_discard">Delete the copy</string>
+    <string name="personal_bigrams_quarantine_discard">Delete them</string>
     <!-- Body of the confirmation dialog for deleting the kept pairs copy -->
-    <string name="personal_bigrams_quarantine_discard_confirm">Remove the copy of the word pairs that could not be read? This cannot be undone.</string>
-    <!-- Shown when bringing the pairs back did not happen. Says where the pairs are now. -->
-    <string name="personal_bigrams_quarantine_restore_failed">Could not bring the pairs back. They are still only in the copy.</string>
+    <string name="personal_bigrams_quarantine_discard_confirm">Delete the word pairs that could not be read? This cannot be undone.</string>
+    <!-- Shown when bringing the pairs back did not happen -->
+    <string name="personal_bigrams_quarantine_restore_failed">Could not restore the pairs. Try again.</string>
     <!-- Shown when the pairs copy could not be removed -->
-    <string name="personal_bigrams_quarantine_discard_failed">Could not delete the copy. It is still on this device.</string>
+    <string name="personal_bigrams_quarantine_discard_failed">Could not delete them. Try again.</string>
     <!-- Count of learned word → emoji entries at the head of one language's emoji card -->
     <plurals name="personal_emoji_count">
         <item quantity="one">%1$d learned emoji</item>
         <item quantity="other">%1$d learned emoji</item>
     </plurals>
     <!-- Action inside one language's emoji card: erase every learned emoji of that language -->
-    <string name="personal_emoji_clear">Clear all learned emoji</string>
+    <string name="personal_emoji_clear">Clear all emoji</string>
     <!-- Body of the per-language clear-emoji confirmation. %1$s is the language name. -->
-    <string name="personal_emoji_clear_confirm">Remove every learned emoji in %1$s? This cannot be undone.</string>
+    <string name="personal_emoji_clear_confirm">Delete all learned emoji in %1$s? This cannot be undone.</string>
     <!-- Title of the confirmation that forgets one learned word → emoji entry. %1$s is the word, %2$s the emoji. -->
     <string name="personal_emoji_forget_title">Forget \u201c%1$s → %2$s\u201d?</string>
     <!-- Shown when the entry could not be removed -->
-    <string name="personal_emoji_delete_failed">Could not remove the emoji entry. It is still saved.</string>
+    <string name="personal_emoji_delete_failed">Could not delete the emoji. It is still saved.</string>
     <!-- Title of the card offering the kept copy of learned emoji that could not be read. Says what happened, not why. -->
-    <string name="personal_emoji_quarantine_title">Learned emoji that could not be read</string>
+    <string name="personal_emoji_quarantine_title">Emoji that could not be read</string>
     <!-- Beside the title when part of the emoji copy is damaged. Says the count and the damage together, like the words card. -->
     <plurals name="personal_emoji_quarantine_partial">
-        <item quantity="one">%1$d emoji can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
-        <item quantity="other">%1$d emoji can be brought back. The rest of the copy is damaged and cannot be recovered.</item>
+        <item quantity="one">%1$d emoji can be restored. The rest is lost.</item>
+        <item quantity="other">%1$d emoji can be restored. The rest is lost.</item>
     </plurals>
     <!-- Beside the title when the whole emoji copy could be read -->
     <plurals name="personal_emoji_quarantine_whole">
-        <item quantity="one">%1$d emoji can be brought back.</item>
-        <item quantity="other">%1$d emoji can be brought back.</item>
+        <item quantity="one">%1$d emoji can be restored.</item>
+        <item quantity="other">%1$d emoji can be restored.</item>
     </plurals>
     <!-- Beside the title when nothing at all could be read out of the emoji copy. The card is still shown so the user can delete the copy. -->
-    <string name="personal_emoji_quarantine_none">None of these emoji can be brought back. The copy is still on this device.</string>
+    <string name="personal_emoji_quarantine_none">No emoji can be restored.</string>
     <!-- Action that puts the readable emoji back into the learned list -->
-    <string name="personal_emoji_quarantine_restore">Bring the emoji back</string>
+    <string name="personal_emoji_quarantine_restore">Restore the emoji</string>
     <!-- Action that removes the kept emoji copy -->
-    <string name="personal_emoji_quarantine_discard">Delete the copy</string>
+    <string name="personal_emoji_quarantine_discard">Delete them</string>
     <!-- Body of the confirmation dialog for deleting the kept emoji copy -->
-    <string name="personal_emoji_quarantine_discard_confirm">Remove the copy of the learned emoji that could not be read? This cannot be undone.</string>
-    <!-- Shown when bringing the emoji back did not happen. Says where the emoji are now. -->
-    <string name="personal_emoji_quarantine_restore_failed">Could not bring the emoji back. They are still only in the copy.</string>
+    <string name="personal_emoji_quarantine_discard_confirm">Delete the emoji that could not be read? This cannot be undone.</string>
+    <!-- Shown when bringing the emoji back did not happen -->
+    <string name="personal_emoji_quarantine_restore_failed">Could not restore the emoji. Try again.</string>
     <!-- Shown when the emoji copy could not be removed -->
-    <string name="personal_emoji_quarantine_discard_failed">Could not delete the copy. It is still on this device.</string>
+    <string name="personal_emoji_quarantine_discard_failed">Could not delete them. Try again.</string>
     <!-- Title of the settings item and its confirmation dialog that erases recently used emoji -->
     <string name="clear_recent_emoji">Clear recent emoji</string>
     <!-- Body of the confirmation dialog that erases recently used emoji -->
-    <string name="clear_recent_emoji_confirm">Remove all recently used emoji stored on this device? This cannot be undone.</string>
+    <string name="clear_recent_emoji_confirm">Clear the list of recent emoji?</string>
     <!-- Affirmative button of the clear-recent-emoji dialog. Names the action instead of OK because it is destructive and irreversible. -->
     <string name="clear_recent_emoji_action">Clear</string>
+    <!-- Shown when the recent emoji could not be cleared -->
+    <string name="clear_recent_emoji_failed">Could not clear recent emoji. Try again.</string>
     <!-- Title of the preference item that opens the keyboard languages screen -->
     <string name="keyboard_languages">Keyboard languages</string>
     <!-- Summary of the preference item that opens the keyboard languages screen -->
     <string name="keyboard_languages_summary">Add or remove languages</string>
-    <string name="user_languages">Enabled keyboard languages</string>
+    <string name="user_languages">Your languages</string>
     <string name="add_language">Add language</string>
     <string name="remove_language">Remove language</string>
     <string name="generic_language_layouts"><xliff:g id="LANGUAGE_NAME" example="English (US)">%s</xliff:g> keyboard layouts</string>
@@ -388,7 +390,7 @@
     <string name="privacy_policy">Privacy Policy</string>
     <string name="license">License</string>
     <!-- Shown when a long press lands on a word the keyboard did not learn from you. The word itself is never named: the message can appear over any app. -->
-    <string name="personal_dictionary_not_saved">This word comes from the built-in dictionary. Only words the keyboard saved from your own typing can be forgotten.</string>
+    <string name="personal_dictionary_not_saved">This word is from the built-in dictionary. Only words learned from your typing can be forgotten.</string>
     <!-- Shown when the emoji key or the panel's search cell has nothing to open. Names no file and no cause. -->
     <string name="emoji_unavailable">Emoji are not available right now. Restarting the keyboard may help.</string>
     <!-- Shown when a link row is tapped and no app on the device can open links. -->
@@ -396,7 +398,7 @@
     <!-- Shown when nothing has been saved yet AND the personal dictionary is already on, so there is nothing for the person to switch. -->
     <string name="personal_dictionary_empty_ready">No saved words yet. Words you type will appear here.</string>
     <!-- Shown when a long press asks to forget a word while saved words are switched off. Names the switch, because turning it on is the only thing the person can do about it. -->
-    <string name="personal_dictionary_off_nothing_to_forget">Saved words are off, so there is nothing to forget. Turn on Personal dictionary in the keyboard settings to have the words you type remembered.</string>
+    <string name="personal_dictionary_off_nothing_to_forget">Personal dictionary is off. Turn it on in the keyboard settings to save the words you type.</string>
     <!-- Title of the settings row and screen holding the legal links. -->
     <string name="settings_screen_legal">Legal information</string>
     <!-- The text-editing menu on a long press of the Enter key. The labels sit on keys in the
@@ -409,31 +411,31 @@
     <string name="edit_menu_cursor_right">Cursor right</string>
 
     <!-- Title of the settings row and screen for the user-run backup to a file. -->
-    <string name="settings_screen_backup">Backup and export</string>
+    <string name="settings_screen_backup">Backup</string>
     <!-- Summary under the root-screen row. -->
-    <string name="settings_screen_backup_summary">Save settings and learned words to a file, or load them back — useful when switching to a new phone</string>
-    <!-- The explanation at the top of the backup screen. Says plainly that the file carries the
-         learned words, that it is not encrypted, and that it goes only where the person puts it. -->
-    <string name="backup_contents_note">A backup file holds your settings and everything the keyboard has learned: your saved words, learned word pairs, learned emoji and your text shortcuts. The file is not encrypted: anyone who can open it can read those words. It is written only where you choose, and the keyboard never uploads it anywhere.</string>
+    <string name="settings_screen_backup_summary">Save to a file or restore from one</string>
+    <!-- The note at the top of the backup screen: the file carries the saved words, and anyone
+         who has the file can read them. -->
+    <string name="backup_contents_note">The file holds your settings, saved words, word pairs, learned emoji, text shortcuts and corrections. Anyone who has the file can read them.</string>
     <!-- Action that writes the backup file through the system file picker. -->
-    <string name="backup_export_action">Export to a file…</string>
+    <string name="backup_export_action">Save to a file…</string>
     <!-- Action that restores a backup file, and title of its confirmation dialog. -->
-    <string name="backup_import_action">Import from a file…</string>
+    <string name="backup_import_action">Restore from a file…</string>
     <!-- Body of the import confirmation: a restore replaces what is on this device. -->
-    <string name="backup_import_confirm_message">Replace the current settings, saved words, learned word pairs, learned emoji and text shortcuts with the contents of the file? What is on this device now will be lost. This cannot be undone.</string>
+    <string name="backup_import_confirm_message">Replace your settings, saved words, word pairs, learned emoji, text shortcuts and corrections with the ones in the file? This cannot be undone.</string>
     <!-- Affirmative button of the import dialog. Names the action because it is destructive. -->
     <string name="backup_import_confirm_action">Replace</string>
     <!-- Shown when the backup file was written. -->
-    <string name="backup_export_done">The backup file is written.</string>
+    <string name="backup_export_done">Backup saved.</string>
     <!-- Shown when the backup file could not be written. Names no path and no cause. -->
-    <string name="backup_export_failed">Could not write the backup file.</string>
+    <string name="backup_export_failed">Could not save the backup.</string>
     <!-- Shown when the picked file was imported. -->
-    <string name="backup_import_done">The backup is imported.</string>
-    <string name="backup_import_privacy_changed">The backup is imported. Personal dictionary or pause learning changed; review those settings.</string>
+    <string name="backup_import_done">Backup restored.</string>
+    <string name="backup_import_privacy_changed">Backup restored. Check the Personal dictionary and Pause learning settings.</string>
     <!-- Shown when the picked file failed any check. Nothing was changed, and the message says so. -->
-    <string name="backup_import_failed_invalid">This file is not a backup of this keyboard. Nothing was changed.</string>
-    <!-- Shown when a valid file could not be stored completely. -->
-    <string name="backup_import_failed_write">Could not finish the import. Parts of the data may have been replaced already.</string>
+    <string name="backup_import_failed_invalid">This is not a backup of this keyboard. Nothing was changed.</string>
+    <!-- Shown when a valid file could not be stored; a started restore is rolled back. -->
+    <string name="backup_import_failed_write">Could not restore the backup. Try again.</string>
     <!-- Shown when no app on the device can pick or create a file. -->
     <string name="backup_no_app">No app on this device can pick files.</string>
 </resources>

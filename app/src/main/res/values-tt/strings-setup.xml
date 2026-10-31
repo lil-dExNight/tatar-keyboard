@@ -18,22 +18,22 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="setup_subtitle">Ике генә адым — һәм татарча яза аласыз</string>
 
-    <string name="setup_step1_title">Төймәсарны кабызу</string>
-    <string name="setup_step1_instruction">Системаның төймәсарлар исемлегендә „<xliff:g id="KEYBOARD_NAME" example="Tatar Keyboard">%s</xliff:g>“ төймәсарын кабызыгыз</string>
-    <string name="setup_step1_note">Android бу кисәтүне һәр чит төймәсарны кабызганда күрсәтә. Бу төймәсар тулысынча интернетсыз эшли: аның INTERNET рөхсәте юк, язганыгыз җиһаздан чыкмый.</string>
-    <string name="setup_step1_button">Төймәсарны кабызу</string>
+    <string name="setup_step1_title">Клавиатураны кабызыгыз</string>
+    <string name="setup_step1_instruction">Исемлектә „<xliff:g id="KEYBOARD_NAME" example="Tatar Keyboard">%s</xliff:g>“ клавиатурасын кабызыгыз</string>
+    <string name="setup_step1_note">Android мондый кисәтүне һәр өстәмә клавиатура өчен күрсәтә. Бу клавиатура интернетсыз эшли: сез язганнар телефоныгызда кала.</string>
+    <string name="setup_step1_button">Кабызу</string>
 
-    <string name="setup_step2_title">Төймәсарны сайлау</string>
-    <string name="setup_step2_instruction">Бу төймәсарны хәзерге язу ысулы итеп сайлагыз</string>
-    <string name="setup_step2_button">Төймәсарны сайлау</string>
+    <string name="setup_step2_title">Клавиатураны сайлагыз</string>
+    <string name="setup_step2_instruction">Аны төп клавиатура итеп куегыз</string>
+    <string name="setup_step2_button">Сайлау</string>
 
     <string name="setup_done_title">Әзер!</string>
-    <string name="setup_done_hint">Суйрып язу да эшли: бармагыгызны күтәрмәстән хәрефләр буйлап суйрыгыз</string>
-    <string name="setup_test_field_hint">Сынап карагыз: „сәләм“ сүзен суйрыгыз,\n„бел“ дип языгыз — тәкъдимнәр пәйда була</string>
+    <string name="setup_done_hint">Шудырып та язып була: бармакны хәрефләр буйлап йөртегез</string>
+    <string name="setup_test_field_hint">Сынап карагыз: „сәләм“ буйлап шудырыгыз\nяки „бел“ дип языгыз</string>
     <string name="setup_done_button">Көйләүләрне ачу</string>
 
     <string name="setup_step_status_done">Адым үтәлгән</string>
     <string name="setup_step_status_pending">Адым әле үтәлмәгән</string>
 
-    <string name="setup_error_no_settings">Көйләүләрне ачыгыз һәм бу төймәсарны төймәсарлар исемлегендә кулдан кабызыгыз</string>
+    <string name="setup_error_no_settings">Телефон көйләүләрен ачыгыз һәм бу клавиатураны шунда кабызыгыз</string>
 </resources>

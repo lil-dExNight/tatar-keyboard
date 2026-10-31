@@ -29,24 +29,24 @@
     <string name="setup_step_status_pending">Step not done yet</string>
 
     <!-- Shown only if the device has no input-method settings screen. -->
-    <string name="setup_error_no_settings">Open Settings and turn on this keyboard in the keyboard list manually</string>
+    <string name="setup_error_no_settings">Open the phone settings and turn on this keyboard there</string>
 
-    <string name="setup_step1_title">Enable the keyboard</string>
-    <string name="setup_step1_instruction">Turn on “<xliff:g id="KEYBOARD_NAME" example="Tatar Keyboard">%s</xliff:g>” in the system keyboard list</string>
+    <string name="setup_step1_title">Turn on the keyboard</string>
+    <string name="setup_step1_instruction">Turn on “<xliff:g id="KEYBOARD_NAME" example="Tatar Keyboard">%s</xliff:g>” in the list of keyboards</string>
     <!-- Pre-arms the standard data-collection warning Android shows when the
          enable toggle is flipped; the offline promise is the core product fact. -->
-    <string name="setup_step1_note">Android shows this warning for every third-party keyboard. This one works fully offline: it has no INTERNET permission, so nothing you type ever leaves the device.</string>
-    <string name="setup_step1_button">Enable keyboard</string>
+    <string name="setup_step1_note">Android shows a warning for every keyboard you add. This one works without the internet: what you type stays on your phone.</string>
+    <string name="setup_step1_button">Turn on</string>
 
-    <string name="setup_step2_title">Select the keyboard</string>
-    <string name="setup_step2_instruction">Choose this keyboard as your current input method</string>
-    <string name="setup_step2_button">Select keyboard</string>
+    <string name="setup_step2_title">Choose the keyboard</string>
+    <string name="setup_step2_instruction">Make it the keyboard you type with</string>
+    <string name="setup_step2_button">Choose</string>
 
     <string name="setup_done_title">Done!</string>
-    <string name="setup_done_hint">Glide typing works too: slide across the letters without lifting your finger</string>
+    <string name="setup_done_hint">You can also type by sliding over the letters</string>
     <!-- Hint doubles as the TalkBack label of the try-it field: glide one Tatar
          word, then type one and watch the strip answer. The words are Tatar on
          purpose in every locale — they are the product's point. -->
-    <string name="setup_test_field_hint">Try it: slide across “сәләм”,\nthen type “бел” and watch the strip fill</string>
+    <string name="setup_test_field_hint">Try it: slide over “сәләм”\nor type “бел”</string>
     <string name="setup_done_button">Open settings</string>
 </resources>

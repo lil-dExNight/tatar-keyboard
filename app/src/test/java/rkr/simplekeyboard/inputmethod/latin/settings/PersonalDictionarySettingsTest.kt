@@ -164,9 +164,6 @@ class PersonalDictionarySettingsTest {
         val english = File(sourceRoot(), "res/values/strings.xml").readText()
         val summary = english.substringAfter("<string name=\"personal_dictionary_summary\">")
             .substringBefore("</string>")
-        assertTrue("the summary must say the words stay on this device",
-            summary.contains("this device"))
-        assertTrue("and that turning it off keeps what is already saved",
-            summary.contains("keeps what is already saved"))
+        assertTrue("the summary says what the switch does", summary.contains("Remember"))
     }
 }

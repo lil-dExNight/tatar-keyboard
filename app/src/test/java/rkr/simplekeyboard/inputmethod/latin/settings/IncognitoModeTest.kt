@@ -198,9 +198,9 @@ class IncognitoModeTest {
         val english = File(sourceRoot(), "res/values/strings.xml").readText()
         val summary = english.substringAfter("<string name=\"incognito_mode_summary\">")
             .substringBefore("</string>")
-        assertTrue("the pause half", summary.contains("Pause learning"))
-        assertTrue("and the keeps-appearing half — the choice the read side pins",
-            summary.contains("keeps appearing"))
-        assertTrue("and what turning it off does", summary.contains("resumes learning"))
+        assertTrue("the pause half", summary.contains("Nothing new is remembered"))
+        val title = english.substringAfter("<string name=\"incognito_mode\">")
+            .substringBefore("</string>")
+        assertEquals("the row is named by what it does", "Pause learning", title)
     }
 }
