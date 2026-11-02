@@ -180,7 +180,7 @@
     <!-- Affirmative button of the add-shortcut dialog -->
     <string name="text_shortcuts_add_action">Save</string>
     <!-- Shown when the typed pair cannot be saved. States both content rules. -->
-    <string name="text_shortcuts_add_rejected">Cannot save. The shortcut must be letters only (up to 32), and the text one line (up to 140 characters).</string>
+    <string name="text_shortcuts_add_rejected">Cannot save. The shortcut must be letters only (up to 32), and the text must be one line (up to 140 characters).</string>
     <string name="text_shortcuts_replace_title">Replace shortcut?</string>
     <string name="text_shortcuts_replace_confirm">\u201c%1$s\u201d already has a different text. Replace it?</string>
     <string name="text_shortcuts_replace_action">Replace</string>

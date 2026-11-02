@@ -17,7 +17,6 @@
 ** limitations under the License.
 */
 -->
-<!-- Machine-assisted translation; review by a native speaker welcome. -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="vibrate_on_keypress">Төймәгә баскач тибрәнү</string>
     <string name="sound_on_keypress">Төймәгә баскач тавыш</string>

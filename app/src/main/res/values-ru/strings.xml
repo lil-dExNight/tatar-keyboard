@@ -19,30 +19,30 @@
  -->
 
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="vibrate_on_keypress">"Виброотклик клавиш"</string>
-    <string name="sound_on_keypress">"Звук клавиш"</string>
+    <string name="vibrate_on_keypress">Виброотклик клавиш</string>
+    <string name="sound_on_keypress">Звук клавиш</string>
     <string name="popup_on_keypress">Показывать нажатую клавишу</string>
-    <string name="settings_screen_preferences">"Настройки"</string>
+    <string name="settings_screen_preferences">Настройки</string>
     <string name="settings_screen_key_press">Нажатие клавиши</string>
     <string name="settings_screen_appearance">Внешний вид</string>
-    <string name="settings_screen_theme">"Тема"</string>
+    <string name="settings_screen_theme">Тема</string>
     <string name="keyboard_theme_classic">Классическая</string>
     <string name="keyboard_theme_dynamic">Динамическая (Material You)</string>
-    <string name="keyboard_theme_dynamic_summary">«Динамическая» берёт цвета обоев (Android 12 и новее).</string>
+    <string name="keyboard_theme_dynamic_summary">«Динамическая» использует цвета обоев (Android 12 и новее).</string>
     <string name="keyboard_theme_applies_on_next_show">Новая тема появится при следующем открытии клавиатуры</string>
     <string name="settings_back">Назад</string>
-    <string name="abbreviation_unit_milliseconds">"<xliff:g id="MILLISECONDS">%d</xliff:g> мс"</string>
-    <string name="settings_system_default">"По умолчанию"</string>
+    <string name="abbreviation_unit_milliseconds"><xliff:g id="MILLISECONDS">%d</xliff:g> мс</string>
+    <string name="settings_system_default">По умолчанию</string>
     <string name="auto_cap">Заглавные буквы</string>
     <string name="auto_cap_summary">Начинать предложение с заглавной буквы</string>
-    <string name="select_language">"Язык"</string>
-    <string name="locale_name_en_US">"Английский (США)"</string>
+    <string name="select_language">Язык</string>
+    <string name="locale_name_en_US">Английский (США)</string>
  
-    <string name="add">"Добавить"</string>
-    <string name="remove">"Удалить"</string>
+    <string name="add">Добавить</string>
+    <string name="remove">Удалить</string>
     <string name="prefs_keypress_sound_volume_settings">Громкость звука клавиш</string>
     <string name="prefs_key_longpress_timeout_settings">Время долгого нажатия</string>
-    <string name="button_default">"По умолчанию"</string>
+    <string name="button_default">По умолчанию</string>
     <string name="prefs_keyboard_height_settings">Высота клавиатуры</string>
     <string name="keyboard_height_compact">Компактная</string>
     <string name="keyboard_height_default">По умолчанию</string>
