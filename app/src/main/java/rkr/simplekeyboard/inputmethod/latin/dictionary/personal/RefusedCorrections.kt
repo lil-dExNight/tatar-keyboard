@@ -30,7 +30,8 @@ import java.security.MessageDigest
  * the exact pair only: a different replacement proposed for the same typed word still fires, and so
  * does the same replacement for a different typed word.
  *
- * Every mutation returns a new instance; nothing is changed in place. The store keeps one instance
+ * Immutable; see [rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEntries].
+ * The store keeps one instance
  * as its worker-side model and publishes it to readers as-is, so there is no separate snapshot
  * type. A plain class without a generated `toString`, because it carries the user's text.
  */

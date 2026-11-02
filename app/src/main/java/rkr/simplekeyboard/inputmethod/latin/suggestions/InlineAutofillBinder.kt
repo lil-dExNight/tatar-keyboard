@@ -31,8 +31,8 @@ import rkr.simplekeyboard.inputmethod.latin.InputView
 /**
  * The API-30 half of inline autofill: request construction and response hosting. Every autofill
  * framework type lives behind this object, and callers reach it only under an API-level check, so
- * on older releases none of those classes ever load. The content itself never enters our code:
- * the platform hands us views and we host them.
+ * on older releases none of those classes ever loads. The content never enters this code:
+ * the platform supplies the views and this object hosts them.
  *
  * Every spec carries the style bundle with the `androidx.autofill.inline.ui.version` handshake:
  * the platform's render service refuses a spec without it, and an empty render means no inline

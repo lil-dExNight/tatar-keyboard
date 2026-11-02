@@ -27,7 +27,8 @@ import java.text.Normalizer
  * shortcut's UTF-8 bytes ascending (unsigned) — the exact order `TcutValidator` enforces on disk.
  * The shortcut is the lookup key as the user typed it (NFC, case kept); the expansion is verbatim.
  *
- * Every mutation returns a new instance; nothing is changed in place. The store keeps one instance
+ * Immutable; see [rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalEntries].
+ * The store keeps one instance
  * as its worker-side model and publishes it to readers as-is, so there is no separate snapshot
  * type. A plain class without a generated `toString`, because it carries the user's text.
  */

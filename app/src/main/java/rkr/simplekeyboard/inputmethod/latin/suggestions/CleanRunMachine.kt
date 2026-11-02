@@ -104,7 +104,7 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
             runWord = ""
             runClean = true
             // A completed boundary is a position the pair machine trusts: whatever state the run
-            // that just ended was in, the NEXT word grows from nothing under our eyes.
+            // that just ended was in, the NEXT word starts from an empty run.
             pairRunClean = true
             sentStartRunClean = true
             runEmptyResultPrefixLength = NO_EMPTY_RESULT

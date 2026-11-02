@@ -29,14 +29,12 @@ import java.security.SecureRandom
 import java.util.concurrent.Executor
 
 /**
- * The serialized owner of one subtype's personal `.tpers` file. Every mutation is an event on the
- * single [executor], where all in-memory state lives; each successful one publishes an immutable
+ * The serialized owner of one subtype's personal `.tpers` file: every mutation is an event on
+ * the single [executor], where the in-memory state lives; each success publishes an immutable
  * [PersonalDictionary] through the `@Volatile` [snapshot]. The UI thread does no I/O.
  *
- * A caught exception, the closed unlock gate included, drops the mutation instead of throwing. Only
- * a file that fails validation is quarantined; any other load failure leaves the store not loaded
- * ([open]). Nothing here logs, and no message carries the user's word or the file path. The other
- * personal stores follow this design, and the shared explanations live here and on [writeWhole].
+ * A caught exception, the closed unlock gate included, drops the mutation. Only a validation
+ * failure is quarantined; other load failures leave the store not loaded. Nothing here logs.
  */
 internal class PersonalDictionaryStore(
     private val subtypeId: String,

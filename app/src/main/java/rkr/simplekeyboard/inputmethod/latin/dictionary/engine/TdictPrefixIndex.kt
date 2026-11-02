@@ -133,8 +133,8 @@ internal fun interface ExactPrefixRangeChecker {
 internal interface EmptyPrefixProber {
     /**
      * Length (UTF-16 units) of the shortest PROPER prefix of [word] whose exact pass is empty, or
-     * [NO_EMPTY_PREFIX]. Exact-pass emptiness is monotone in prefix length — a prefix no
-     * dictionary word continues dooms every longer one — so a binary search needs
+     * [NO_EMPTY_PREFIX]. Exact-pass emptiness is monotone in prefix length: a prefix no
+     * dictionary word continues dooms every longer one, so a binary search needs
      * ≤ ⌈log2|w|⌉ lookups. Runs on the engine worker; the published lookup verdicts are not
      * touched, so the probe is invisible to the strip and to autocorrect.
      */
@@ -744,7 +744,7 @@ internal class TdictPrefixIndex private constructor(
      * activation domains. Domain A (a non-empty exact pass, or a prefix under
      * [MIN_SUBSTITUTION_PREFIX_CODE_POINTS] code points): edit class #1 (long-press partner)
      * exactly. Domain B (an empty exact pass at >= [MIN_SUBSTITUTION_PREFIX_CODE_POINTS] code
-     * points, under a policy with EDIT_CLASS_SUBSTITUTION): the shared DL-1 tier — substitution,
+     * points, under a policy with EDIT_CLASS_SUBSTITUTION): the shared DL-1 tier: substitution,
      * deletion, insertion and transposition, one existence probe per variant, survivors scanned.
      * Every tier candidate is tagged EDIT_CLASS_SUBSTITUTION, so the same-length bonus (if the
      * policy enables it for this class), then frequency descending, then code point ascending
@@ -970,7 +970,7 @@ internal class TdictPrefixIndex private constructor(
         val start = lowerBound(variantBytes, variantLength, 0)
         val end = upperBound(variantBytes, variantLength, start)
         // The exact-word exclusion compares against the TYPED word, not the variant that
-        // selected the range — hence exactScratch/fuzzyPrefixLength here. The remainder is
+        // selected the range, hence exactScratch/fuzzyPrefixLength here. The remainder is
         // measured against the VARIANT's length: a deletion or insertion variant is one code
         // point off the typed prefix's, and its own match must empty the remainder.
         scanBlockRange(
@@ -991,8 +991,8 @@ internal class TdictPrefixIndex private constructor(
                     return@scanBlockRange SCAN_SKIP
                 }
                 // Same-length bonus. A candidate with an empty remainder past the variant is the
-                // variant itself — the correction the family aimed at (a substituted or swapped
-                // letter, a removed extra letter, a re-inserted missing one) — so it ranks before
+                // variant itself, the correction the family aimed at (a substituted or swapped
+                // letter, a removed extra letter, a re-inserted missing one), so it ranks before
                 // the variant's continuations without any length counting.
                 if (fuzzyPolicy.sameLengthBonus &&
                     (!fuzzyPolicy.sameLengthBonusOnlyInDl1 ||
@@ -1381,7 +1381,7 @@ internal class TdictPrefixIndex private constructor(
     /** End of word [index] inside [blockWordBytes]; the block is cached by [cachedWordStart]. */
     private fun cachedWordEnd(index: Int): Int = blockWordStarts[index % TdictFormat.BLOCK_SIZE + 1]
 
-    /** Decodes block [block] — words and frequencies — into the per-lookup block cache. */
+    /** Decodes block [block], words and frequencies, into the per-lookup block cache. */
     private fun ensureBlock(block: Int) {
         if (block == cachedBlock) return
         val count = minOf(TdictFormat.BLOCK_SIZE, entryCount - block * TdictFormat.BLOCK_SIZE)

@@ -56,17 +56,15 @@ import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
 
 /**
- * View-based settings screens, built as grouped cards from the row_link / row_switch /
- * row_value layouts without android.preference. One activity swaps pages inside one scaffold
- * ([R.layout.settings_screen]) with a manual back stack, so system back and the back chevron
- * behave like separate activities. Prefs are device-protected ([PreferenceManagerCompat]);
- * enterprise restrictions ([Settings.ACTIVE_RESTRICTIONS]) disable rows; theme-affecting toggles
- * rebuild the open keyboard live; content is rebuilt on every [onStart]. OS backup stays off for
- * the whole app (res/xml/data_extraction_rules.xml), so no backup is requested on changes; the
- * user-facing SAF export/import is its own screen ([Screen.BACKUP]).
- * [Screen.LANGUAGE_DETAIL] is the one parameterized screen: its locale lives in [detailLocale].
- * Row builders and some screens are `internal` extensions in `SettingsRows.kt`,
- * `SettingsLanguagesScreens.kt` and `SettingsKeyPressScreen.kt`.
+ * View-based settings screens built from the row_link / row_switch / row_value layouts.
+ * One activity swaps pages inside [R.layout.settings_screen] with a manual back stack, so
+ * system back and the back chevron behave like separate activities. Prefs are device-protected
+ * ([PreferenceManagerCompat]); enterprise restrictions ([Settings.ACTIVE_RESTRICTIONS]) disable
+ * rows; theme toggles rebuild the open keyboard live; content is rebuilt on every [onStart].
+ * OS backup stays off (res/xml/data_extraction_rules.xml); the SAF export/import has its own
+ * screen ([Screen.BACKUP]), and [Screen.LANGUAGE_DETAIL] is the one parameterized page
+ * ([detailLocale]). Row builders live in SettingsRows.kt, SettingsLanguagesScreens.kt and
+ * SettingsKeyPressScreen.kt.
  */
 class SettingsHostActivity : Activity() {
 

@@ -107,18 +107,14 @@ interface OfferPresenter {
  * Decides whether and when the user is offered Tatar suggestions, and whether the one-shot
  * "could not be turned on" message is shown.
  *
- * Two independent one-shot events live here:
- * - the **offer**: shown at most once per installation, after the user commits a first word of at
- *   least [MIN_WORD_LETTERS] letters with the Tatar subtype active. The durable flag is spent only
- *   when the presenter reports the dialog shown, so a show that fails in the environment (no view
- *   or window token) keeps the offer pending for the next qualifying word, and a crash between the
- *   show and the write re-shows it once (showing it twice in a crash window is acceptable;
- *   burning it unseen is not);
- * - the **unavailable message**: shown at most once per process, only for a preparation an explicit
- *   enable asked for. Deferred, not dropped, when the surroundings are wrong; they are re-checked
- *   in the method that shows it.
+ * Two one-shot events live here:
+ * - the offer: once per installation, after the first word of at least [MIN_WORD_LETTERS]
+ *   letters with the Tatar subtype active; the durable flag is spent only when the dialog
+ *   showed, so a failed show keeps it pending.
+ * - the unavailable message: once per process, only for an explicit enable, deferred rather
+ *   than dropped while the surroundings are wrong.
  *
- * All methods are called on the UI thread.
+ * All methods run on the UI thread.
  */
 class SuggestionsOfferController(
     private val environment: OfferEnvironment,

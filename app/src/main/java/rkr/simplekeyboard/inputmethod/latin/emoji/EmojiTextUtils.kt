@@ -76,7 +76,7 @@ object EmojiTextUtils {
     fun trailingEmojiClusterLengthEndingAt(text: CharSequence, end: Int): Int {
         if (end == 0) return 0
         // Recognise the emoji element that ends the text. A negative result means the tail is
-        // ordinary text, so we hand deletion straight back to the code-point path.
+        // ordinary text, so deletion falls back to the code-point path.
         var start = emojiElementStart(text, end)
         if (start < 0) return 0
         // Walk back over any ZWJ-joined elements sitting in front of it (couples, families, roles).

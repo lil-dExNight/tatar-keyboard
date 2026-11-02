@@ -47,7 +47,7 @@ object TatarWordUtils {
      * is accepted: in NFD "й" is "и" + U+0306 and "ё" is "е" + U+0308, and
      * those marks are not letters, so a letters-only scan would cut the word short — or return ""
      * when the decomposed letter is the last thing typed. All three mark categories continue the
-     * run: Mn covers the Cyrillic/Latin canonical decompositions we actually see, Mc appears in the
+     * run: Mn covers the Cyrillic/Latin canonical decompositions that occur in practice, Mc appears in the
      * canonical decompositions of other scripts, and Me only ever decorates a preceding base. None
      * of them can stand alone, so none of them is a word boundary.
      *

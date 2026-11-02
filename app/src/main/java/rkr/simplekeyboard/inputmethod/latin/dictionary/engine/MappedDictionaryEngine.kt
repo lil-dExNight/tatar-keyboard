@@ -127,8 +127,8 @@ class MappedDictionaryEngine private constructor(
                 validationToken = lease.validationToken?.takeIf { it.matchesFile(table.file) },
             ) ?: throw IllegalArgumentException("validated bigram layout mismatch")
             if (!resources.attachBigram(lease, catalog, mapped, index)) {
-                // The engine was destroyed meanwhile: attachBigram left the lease for us to
-                // close, as in the failure path below; do not publish into a dead computer.
+                // The engine was destroyed meanwhile: attachBigram leaves the lease to the
+                // caller, as in the failure path below; do not publish into a dead computer.
                 throw AttachRacedDestroy()
             }
             computer.attachBigramSource(index)

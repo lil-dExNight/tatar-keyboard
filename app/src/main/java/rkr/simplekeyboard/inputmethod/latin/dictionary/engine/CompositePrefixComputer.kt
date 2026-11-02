@@ -31,7 +31,7 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
  *
  *  1. exact dictionary candidates, in their order (frequency descending, then code point);
  *  2. at most one personal-only word: index 0 when there are no exact candidates, index 1
- *     otherwise (it pushes the fourth exact candidate out of the strip) — and index 0 even with
+ *     otherwise (it pushes the fourth exact candidate out of the strip); index 0, even with
  *     exact candidates when the word is promoted (usage at least [PROMOTION_MIN_USAGE] and the
  *     top exact candidate below [PROMOTION_TOP_FREQUENCY_GATE]);
  *  3. typo-recovery candidates, in their own order.
@@ -198,7 +198,7 @@ internal class CompositePrefixComputer(
      *    strip. A duplicate keeps the bundled spelling;
      *  - the fallback fills what is still free, excluding everything shown.
      *
-     * With no bigram source — none attached yet, or the attach failed — only the bigram
+     * With no bigram source (none attached yet, or the attach failed), only the bigram
      * successors drop out of the chain; learned pairs and the fallback still answer.
      * A failed attach is terminal: it is consumed and never retried, so its absence costs one
      * null read per predict and nothing else. The first predict after a deferred attach was set

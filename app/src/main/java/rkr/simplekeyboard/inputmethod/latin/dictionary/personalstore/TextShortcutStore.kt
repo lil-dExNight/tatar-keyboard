@@ -346,7 +346,7 @@ internal class TextShortcutStore(
     }
 
     /**
-     * Moves an unreadable file into the single quarantine slot instead of deleting it: the pairs
+     * Moves an unreadable file into the single quarantine slot; see [RefusedCorrectionStore]. The pairs
      * are the user's own, so a damaged file is kept next to the store rather than destroyed. The
      * slot is one file, replaced by the next failure; a failed move leaves the original untouched.
      */

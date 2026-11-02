@@ -342,7 +342,7 @@ internal class SentStartOverlayStore(
      * The salt for the pending hashes: random bytes in this store's own salt file, created on
      * first use and deleted by [clearAll], so erasing one feature does not invalidate another's
      * progress. Returns null when it can be neither read nor created; then nothing is counted
-     * (no learning rather than unsalted keys).
+     * (see [PersonalDictionaryStore.saltOrCreate]).
      */
     private fun saltOrCreate(): ByteArray? {
         salt?.let { return it }

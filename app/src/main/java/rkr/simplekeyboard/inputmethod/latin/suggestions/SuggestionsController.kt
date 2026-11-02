@@ -112,18 +112,11 @@ fun interface PersonalEmojiSink {
 /**
  * Drives Tatar prefix suggestions from IME lifecycle callbacks.
  *
- * Threading: every public method must be called on the UI thread. The single-thread background
- * executor is used only for the (blocking) engine start and dictionary preparation. Engine results
- * arrive on a worker thread via [ResultCallback] and are re-marshaled onto [uiPoster] before any
- * state is touched. Dictionary-readiness notifications are likewise marshaled onto [uiPoster] so
- * every mutation of controller state happens on the single serialized UI owner.
- *
- * Eligibility (opt-in setting, tt_RU subtype, editor allows suggestions, known cursor) is computed
- * by LatinIME and passed in via [onStartInput]/[onSubtypeChanged]/[onSuggestionsSettingEnabled];
- * dictionary readiness is tracked internally.
- *
- * Nothing is built eagerly: the background executor, the storage controller and the dictionary
- * itself only come into existence once suggestions are actually wanted.
+ * Every public method runs on the UI thread. The single-thread executor serves engine start and
+ * dictionary preparation, and worker results are re-marshaled onto [uiPoster] before any state
+ * changes. Eligibility (opt-in setting, tt_RU subtype, editor allows suggestions, known cursor)
+ * arrives from LatinIME; dictionary readiness is tracked here. Nothing is built eagerly: the
+ * executor, the storage controller and the dictionary appear only once suggestions are wanted.
  */
 class SuggestionsController internal constructor(
     private val strip: StripSurface,
@@ -233,7 +226,7 @@ class SuggestionsController internal constructor(
     /**
      * The subtype whose dictionary is currently selected, or null when the active subtype ships
      * none. This is the ONE place the choice of dictionary is made; everything downstream —
-     * storage directory, engine, personal store, lookup key — follows from it.
+     * storage directory, engine, personal store, lookup key, follows from it.
      */
     private var activeLanguage: String? = DEFAULT_LANGUAGE
 
@@ -364,7 +357,7 @@ class SuggestionsController internal constructor(
 
     // --- Glide undo rescue. A successful whole-word undo arms these; the next [onTextChanged]
     // (the backspace path fires it right after the undo) binds the candidates to the position the
-    // undo emptied, but only while the editor still shows exactly that state — any other edit
+    // undo emptied, but only while the editor still shows exactly that state; any other edit
     // drops them and the strip derives as usual. Empty candidates mean "not armed".
     private var glideRescueCandidates: List<String> = emptyList()
     private var glideRescueTrailingWord: String = ""
@@ -405,7 +398,7 @@ class SuggestionsController internal constructor(
     private var bandWordsWithoutTable: Boolean = false
 
     // --- Language priority. The layout the user chose owns the strip; the other (companion)
-    // language fills the cells that language left empty, from the end — with one exception:
+    // language fills the cells that language left empty, from the end, with one exception:
     // when the active answer held no exact candidate at all, a non-empty companion exact pass
     // leads instead ([companionLeadArmed]).
     //
@@ -689,7 +682,7 @@ class SuggestionsController internal constructor(
 
     /**
      * The system clipboard changed while the keyboard's input view was shown (LatinIME's primary
-     * clip listener). [clipText] is the clip's plain text — null or blank when it holds none —
+     * clip listener). [clipText] is the clip's plain text (null or blank when it holds none);
      * and [setAtMillis] when the clip was set. Held in RAM only ([RecentClipCell]); when the strip
      * currently shows the clip cell this replaces or clears, the strip is re-derived at once, or a
      * stale clip would stay on screen as a dead cell.
@@ -847,7 +840,7 @@ class SuggestionsController internal constructor(
         val deferredProbeWord = runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
         // A glide undo armed its rescue candidates and this text change is the deletion itself
         // (the backspace path fires onTextChanged right after the undo). They re-bind to the
-        // position the undo emptied — but only while the editor still shows exactly that state;
+        // position the undo emptied, but only while the editor still shows exactly that state;
         // any other edit drops them and the strip derives as usual. The binding is the
         // refused-glide one: a tap commits at the live cursor through the glide commit path.
         val rescue = glideRescueCandidates
@@ -1427,7 +1420,7 @@ class SuggestionsController internal constructor(
         try {
             preparation.prepare { result ->
                 // Runs on the background executor. Passing the catalog to the engine does no I/O —
-                // the engine maps and opens the table lazily, on its own worker — so only the
+                // the engine maps and opens the table lazily, on its own worker, so only the
                 // re-derivation is posted through uiPoster.
                 if (result is BigramPreparationResult.Published) {
                     handle.deferBigramAttach(preparation.catalog())
@@ -1575,7 +1568,7 @@ class SuggestionsController internal constructor(
         // deferred attach has no visible effect.
         maybePrepareBigramTable(slot, handle)
         if (slot !== activeSlot()) {
-            // The user switched language while this engine was starting. Keep it — warm and idle —
+            // The user switched language while this engine was starting. Keep it, warm and idle,
             // for the moment they switch back, and leave the strip to whatever the language they
             // are actually typing in is doing. As a companion it can be asked for fill lookups
             // right away, so it gets the live layout's key-neighbor table now (its typo recovery
@@ -1746,7 +1739,7 @@ class SuggestionsController internal constructor(
      *
      * Every guard leaves the strip as the active language painted it. The key ones: the result must
      * belong to the one outstanding companion lookup, its text must still be the text under the
-     * cursor, and — outside the armed lead case — the base cells are copied first, so no candidate
+     * cursor; outside the armed lead case the base cells are copied first, so no candidate
      * of the active language is displaced or reordered.
      */
     private fun applyCompanionResult(
@@ -2304,7 +2297,7 @@ class SuggestionsController internal constructor(
      * then shows the remaining candidates as alternatives bound to the committed word; a tap on
      * one replaces the committed word ([onTap]). The commit is typing, so it lands with
      * suggestions off too; the strip then still shows the alternatives while the glide gate is
-     * open ([glideStripAllowed]) — they are corrections of the gesture, not typed-text
+     * open ([glideStripAllowed]): they are corrections of the gesture, not typed-text
      * suggestions.
      *
      * Casing follows the prefix path's display rule, taken from the shift gate (a gesture types
@@ -2421,7 +2414,7 @@ class SuggestionsController internal constructor(
      * Paints the sentence-start strip synchronously when the position is a sentence start: the
      * table is static and the overlay is a published snapshot, so there is no engine request,
      * token or callback. Returns false (the caller then shows the reserved empty strip) when the
-     * position is not a sentence start, or when neither source has anything to offer — the active
+     * position is not a sentence start, or when neither source has anything to offer, the active
      * language ships no table (the artifact registry decides) and holds no learned words, or the
      * table is missing, broken or still loading and the overlay is empty.
      *
@@ -2536,7 +2529,7 @@ class SuggestionsController internal constructor(
 
     /**
      * Paints the empty strip: reserved (visible, no words) with the suggestions setting on,
-     * hidden with it off — with the setting off the strip exists only while glide candidates
+     * hidden with it off; with the setting off the strip exists only while glide candidates
      * ride it ([glideStripAllowed]), so an empty strip is never shown there.
      */
     private fun showEmptyBand() {
@@ -2545,7 +2538,7 @@ class SuggestionsController internal constructor(
 
     /**
      * Whether the strip may show glide candidates: always with the suggestions setting on, and
-     * with it off while glide typing is on and field-eligible — the alternates of a committed
+     * with it off while glide typing is on and field-eligible: the alternates of a committed
      * glide, the candidates of a refused one and the undo's rescue strip are corrections of the
      * gesture, not typed-text suggestions, so the glide switch gates them, not the suggestions
      * switch. Read live: a gesture starts under one configuration and its decode lands under
@@ -2683,7 +2676,7 @@ class SuggestionsController internal constructor(
         // of the autocorrect preview (an explicit pair outranks a statistical correction) and of
         // the ordinary completions, which keep the remaining cells. The strip stays PREFIX-bound,
         // so a tap on the expansion commits it like any accepted suggestion (with the auto-space);
-        // no companion fill — the strip belongs to the user's pair.
+        // no companion fill: the strip belongs to the user's pair.
         val expansion = shortcutExpansionFor(pendingPrefix)
         if (expansion != null) {
             previewKeepTypedCell = null
@@ -2814,8 +2807,8 @@ class SuggestionsController internal constructor(
      * the word it finishes. Returns true when the trailing word was actually replaced.
      *
      * Called before the separator reaches the input logic on purpose. At this instant the editor is
-     * in exactly the state an accepted suggestion needs — a trailing word, a collapsed cursor right
-     * after it — so the replacement is the same single delete + commit, with the same re-checks, and
+     * in exactly the state an accepted suggestion needs: a trailing word, a collapsed cursor right
+     * after it, so the replacement is the same single delete + commit, with the same re-checks, and
      * the separator afterwards travels the ordinary path untouched (auto-space, the double-space
      * gesture and the shift update all behave as they always did).
      *
@@ -2878,7 +2871,7 @@ class SuggestionsController internal constructor(
      * The text-shortcut counterpart of [maybeAutocorrectBeforeSeparator]: a separator about to
      * finish a word the user saved as a shortcut replaces it with the saved expansion. Runs first
      * (an explicit user pair outranks a statistical correction), and is not gated on the
-     * autocorrect switch — the pair is the user's own setting. Everything else mirrors the
+     * autocorrect switch; the pair is the user's own setting. Everything else mirrors the
      * correction path: the same eligibility and cursor checks, the same single commit through
      * [EditorSurface.replaceTypedWord], and the same armed undo window, so one backspace (or the
      * keep-typed cell) restores the shortcut.
@@ -2973,7 +2966,7 @@ class SuggestionsController internal constructor(
             val normalizedTyped = TatarWordUtils.normalizeForLookup(replacement.typedForm)
             refuseCorrection(normalizedTyped)
             // A statistical correction's undo also counts towards the cross-session refusal; a
-            // shortcut expansion's does not — that pair is the user's own setting, managed on its
+            // shortcut expansion's does not; that pair is the user's own setting, managed on its
             // screen, not a counter's business. The inserted form folds back to the dictionary
             // form the advice named, so record and lookup keys agree.
             if (replacement.requiresAutocorrectGate) {
