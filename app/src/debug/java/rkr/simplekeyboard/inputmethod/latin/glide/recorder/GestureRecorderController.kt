@@ -20,19 +20,17 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import java.io.File
-import java.util.concurrent.CopyOnWriteArrayList
+import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 
 /**
  * The Android shell of the gesture recorder (debug builds only). Resolves the storage directory
- * (a single directory inside the base, credential-protected `noBackupFilesDir` — the buffer
- * never writes anywhere else), persists the consent and armed flags in a debug-only preference
- * file, and fans the armed state out to the persistent indicator.
+ * (a single directory inside the base, credential-protected `noBackupFilesDir`; the buffer
+ * never writes anywhere else) and persists the consent and armed flags in a debug-only
+ * preference file.
  *
- * The keyboard-side wiring is the integration's seam: it feeds the prompt pool from the active
- * engine's top-frequency read on every layout change ([setPromptWords]) and hands every finished
- * glide gesture to [onGlideGesture] together with the decode's top candidate. Nothing here reads
+ * The debug Application creates this controller, installs the glide sink and publishes both
+ * dictionaries' top-frequency lists at process start ([setPromptWords]). Nothing here reads
  * field text.
  */
 object GestureRecorderController {
@@ -48,7 +46,6 @@ object GestureRecorderController {
     @Volatile private var appContext: Context? = null
     @Volatile private var prefs: SharedPreferences? = null
     @Volatile private var recorder: GestureRecorder? = null
-    private val armedListeners = CopyOnWriteArrayList<(Boolean) -> Unit>()
 
     /**
      * The persisted intent to be armed. Arming needs the prompt pool, which arrives with the
@@ -56,7 +53,6 @@ object GestureRecorderController {
      * consent and that publish, and across process restarts.
      */
     private var wantArmed = false
-    private var lastNotifiedArmed = false
 
     /** Initializes the singleton; idempotent. Safe to call from any entry point. */
     @Synchronized
@@ -98,19 +94,12 @@ object GestureRecorderController {
         prefs?.edit()?.putBoolean(KEY_ARMED, armed)?.apply()
         val rec = ready() ?: return
         if (armed) rec.setArmed(true) else rec.setArmed(false)
-        notifyArmed(rec.armed)
-    }
-
-    private fun notifyArmed(armed: Boolean) {
-        if (armed == lastNotifiedArmed) return
-        lastNotifiedArmed = armed
-        for (listener in armedListeners) listener.invoke(armed)
     }
 
     /**
-     * The keyboard's layout publish: [layoutId] names the layout (for example "tt"), [words] is
-     * that language's bundled-dictionary top-frequency read. Called on every layout change.
-     * Completes a pending arm once the prompt pool exists.
+     * A prompt-pool publish: [layoutId] names the layout (for example "tt"), [words] is that
+     * language's bundled-dictionary top-frequency read. The debug Application publishes both
+     * pools at process start. Completes a pending arm once the pool exists.
      */
     @Synchronized
     fun setPromptWords(layoutId: String, words: List<String>) {
@@ -118,7 +107,6 @@ object GestureRecorderController {
         rec.setPromptSource(GesturePromptSource(words.take(GesturePromptSource.PROMPT_POOL_SIZE)))
         if (wantArmed) {
             rec.setArmed(true)
-            notifyArmed(rec.armed)
         }
     }
 
@@ -143,21 +131,6 @@ object GestureRecorderController {
     fun recordCount(): Int = ready()?.recordCount() ?: 0
 
     fun discardAll(): Boolean = ready()?.discardAll() ?: false
-
-    /** The ring buffer's file, served to the share sheet by [GestureRecorderExportProvider]. */
-    fun recordsFile(): File? {
-        val app = appContext ?: return null
-        return File(File(app.noBackupFilesDir, DIRECTORY_NAME), GestureRingBuffer.FILE_NAME)
-    }
-
-    /** Registers [listener] for armed-state changes (the persistent indicator's hook). */
-    fun addArmedListener(listener: (Boolean) -> Unit) {
-        armedListeners.add(listener)
-    }
-
-    fun removeArmedListener(listener: (Boolean) -> Unit) {
-        armedListeners.remove(listener)
-    }
 
     /** The share-sheet export: hands the ring buffer file to the user's chosen target. */
     fun shareRecords(activity: Activity) {

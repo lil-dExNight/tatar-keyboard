@@ -32,8 +32,10 @@ import android.widget.TextView
  * controls. Debug builds only, never exported.
  *
  * Arming is impossible without the dialog: [GestureRecorderController.grantConsentAndArm] is the
- * only arming path, and it is called only from the dialog's accept button here. The strings are
- * inlined English on purpose — this screen is a lab tool and ships in no locale.
+ * only arming path, and it is called only from the dialog's accept button here. Nothing in the
+ * app starts this screen; open it with
+ * `adb shell am start -n org.tatarkeyboard.ime.debug/rkr.simplekeyboard.inputmethod.latin.glide.recorder.GestureRecorderActivity`.
+ * The strings are inlined English on purpose: this screen is a lab tool and ships in no locale.
  */
 class GestureRecorderActivity : Activity() {
 
@@ -100,8 +102,8 @@ class GestureRecorderActivity : Activity() {
             .setTitle("Gesture collection (debug)")
             .setMessage(
                 "This debug build can record glide traces of prompted words for decoder " +
-                    "calibration. While armed, a red recording banner stays visible on the " +
-                    "keyboard.\n\n" +
+                    "calibration. While armed, this screen shows the ARMED status and the " +
+                    "current prompt.\n\n" +
                     "Each record contains exactly: the prompt word (a dictionary word, never " +
                     "anything you typed), the trace resampled to 50 points in key-radius " +
                     "units, per-point timing, the layout id, the screen density bucket, and " +
