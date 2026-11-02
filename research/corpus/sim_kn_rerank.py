@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack-time Kneser-Ney successor re-ranking: discount tuning and offline gate measurement.
 
-TEST MEASUREMENT ONLY -- no asset under app/src/main/assets is written or replaced.
+Measurement only; no asset under app/src/main/assets is written or replaced.
 
 The shipped schema-3 table keeps each head's top-4 successors in count order. The re-rank
 permutes those kept successors by interpolated Kneser-Ney score (``make_kn_ranker`` below);
@@ -9,12 +9,12 @@ the successor sets stay exactly as packed.
 
 ``tune`` fixes the discount on the training side only: leave-one-out log-likelihood of the
 counted training pairs over a fixed grid, one number per grid point. The argmax is the
-pre-registered discount; record it before running ``eval``.
+chosen discount; fix it before running ``eval``.
 
 ``eval --discount D`` replays the pinned eval set through two chains -- the shipped table as
 packed (baseline arm) and the same successor sets re-ranked with discount D (KN arm) -- and
 reports chain top-3 and top-1 rates per arm plus the paired bootstrap CI95 of the deltas
-(one SplitMix64 stream, the harness seed and round count). The pre-registered gate: chain
+(one SplitMix64 stream, the harness seed and round count). The acceptance gate: chain
 top-3 delta >= +0.3 pp with the CI95 lower bound above zero, chain top-1 not regressed.
 
 The training stream mirrors the shipped table's pack stream (corpus list and conversational

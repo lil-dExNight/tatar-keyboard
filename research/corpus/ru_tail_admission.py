@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Russian dictionary tail admission: candidate pool, candidate asset, paired gate measurement.
 
-The follow-up to the rejected Taiga rerank (research/prediction-engine.md): instead of
+The follow-up to the rejected Taiga rerank: instead of
 re-ranking inside the fixed composition, grow the composition by admitting words that are
 attested in the training corpora but absent from the shipped dictionary.
 

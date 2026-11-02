@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Merge simulation for the Taiga social-media ingestion into the Russian dictionary.
 
-The Russian round of the corpus-ingestion experiment (research/prediction-engine.md, memo
-P3); the Tatar round is tt_merge_sim.py, whose ranking and coverage functions this script
-reuses. Builds candidate Russian dictionaries OUTSIDE the asset tree and measures them,
+The Russian round of the corpus-ingestion experiment; the Tatar round is tt_merge_sim.py,
+whose ranking and coverage functions this script reuses. Builds candidate Russian dictionaries OUTSIDE the asset tree and measures them,
 without touching the shipped pipeline. Re-rank only: the Russian composition is the 1.8.4
 baseline plus the accepted words (Russian has no word-form stage), and the bonus mechanism
 re-weights composition words but never adds new ones, so there are no admission variants to
@@ -169,7 +168,7 @@ def build_pool(args) -> int:
 
 BONUS_TSV_HEAD = """\
 # Bonus frequencies of Russian dictionary pool words from the Taiga social-media segment
-# (the corpus-ingestion experiment of research/prediction-engine.md, memo P3).
+# (the corpus-ingestion experiment).
 #
 # The pipeline merge stays exact integer arithmetic: the bonus of a pool word is
 #   max(1, round(base + sum_s W_s * freq_s(w) * T_base / T_s)) - base

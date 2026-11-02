@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-registered gate measurement for the extra-corpus ingestion experiment (memo P3).
+"""Gate measurement for the extra-corpus ingestion experiment.
 
 Compares the committed Tatar assets with a candidate dictionary (built outside the asset
 tree by tt_merge_sim.py) plus the bigram table repacked against it from the same training

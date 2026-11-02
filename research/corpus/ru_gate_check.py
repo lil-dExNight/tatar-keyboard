@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Pre-registered gate measurement for the Taiga social-media ingestion (memo P3, Russian).
+"""Gate measurement for the Taiga social-media ingestion, Russian.
 
-The same rule as the Tatar round (See tt_gate_check.py), over the pinned Russian eval set:
+The same rule as the Tatar round, over the pinned Russian eval set:
 token coverage must improve by at least +0.5 percentage points, and the paired bootstrap CI95
 of the chain next-word top-3 rate difference must contain zero or lie above it. The Russian
 engine has no suffix rules, so both chain mirrors run with ``suffix_rules=False`` (no

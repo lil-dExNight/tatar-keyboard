@@ -85,8 +85,8 @@ _GRID_WIDTH = typo_pack._GEOMETRY_REFERENCE_WIDTH  # 100 000
 #      would inflate the path length beyond what the decoder's length channel accepts.
 # A doubled letter is not a draw: the set carries no-dwell, loop and local-dwell variants (see
 # generate_set). STEP/JITTER are in grid units, TSTEP in ms. LOOP_MODULUS is kept for golden vectors.
-# The percentages and moduli are fitted to the FUTO swipe corpus (the measurements live in
-# research/glide-typing.md, the measurement script in research/corpus/futo_glide_analysis.py).
+# The percentages and moduli are fitted to the FUTO swipe corpus by
+# research/corpus/futo_glide_analysis.py.
 LOOP_MODULUS = 8
 CUT_MODULUS = 3  # measured: about a third of real interior vertices are materially cut
 CUT_DIVISOR = 20  # cut moves V by (P+Q-2V)/20; measured depth p90 = 0.48..0.71 radii by angle

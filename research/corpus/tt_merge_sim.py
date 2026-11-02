@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge simulation for the extra-corpus ingestion experiment (research memo P3).
+"""Merge simulation for the extra-corpus ingestion experiment.
 
 Builds candidate Tatar dictionaries OUTSIDE the asset tree and measures them, without
 touching the shipped pipeline. Three composition variants, all at the shipped cutoff:
@@ -289,8 +289,7 @@ def token_coverage(entries: list[tuple[str, int]], dev_path: Path) -> tuple[floa
 
 
 BONUS_TSV_HEAD = """\
-# Bonus frequencies of Tatar dictionary pool words from the extra corpora (the corpus-ingestion
-# experiment of research/prediction-engine.md, memo P3).
+# Bonus frequencies of Tatar dictionary pool words from the extra corpora.
 #
 # The pipeline merge stays exact integer arithmetic: the bonus of a pool word is
 #   max(1, round(base + sum_s W_s * freq_s(w) * T_base / T_s)) - base

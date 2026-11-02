@@ -22,3 +22,5 @@ bilingual.
 
 - `data/` holds inputs of the asset pipeline and test data (dictionary review and acceptance tables).
 - `docs/` holds Markdown only; run evidence (screenshots, logs, dumps) goes to `build/`.
+- `research/corpus/` holds the corpus measurement scripts named in ASSET-PIPELINE.md; corpus
+  data is not committed.
