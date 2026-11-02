@@ -2,20 +2,11 @@
 
 ![CI](https://github.com/lil-dExNight/tatar-keyboard/actions/workflows/ci.yml/badge.svg)
 
-A native Android keyboard with a Tatar Cyrillic layout: the standard ЙЦУКЕН plus a dedicated, always-visible fifth row for **ә ө ү җ ң һ**. Word suggestions, next-word prediction, glide typing and an emoji panel all work on the device. The app has no INTERNET permission; CI checks this on every commit. The app is open source under Apache-2.0.
-
-## About
-
-**Tatar Keyboard** is an Android keyboard for the Tatar language. The standard ЙЦУКЕН layout
-plus a dedicated, always-visible fifth row for **ә ө ү җ ң һ**: every one of the 39 letters
-of the Tatar alphabet is a single tap away. In some keyboards the Tatar letters sit behind a
-long press.
+A native Android keyboard for the Tatar language: the standard ЙЦУКЕН layout plus a dedicated, always-visible fifth row for **ә ө ү җ ң һ**. Word suggestions, next-word prediction, glide typing and an emoji panel all work on the device. The app has no INTERNET permission; CI checks this on every commit. Open source under Apache-2.0.
 
 ## О проекте
 
-**Tatar Keyboard** — татарская клавиатура для Android. Стандартная раскладка ЙЦУКЕН плюс отдельный видимый пятый ряд татарских букв **ә ө ү җ ң һ**: ничего не нужно зажимать и искать, все 39 букв татарского алфавита доступны одним нажатием. В некоторых клавиатурах татарские буквы доступны только долгим нажатием.
-
-Клавиатура рассчитана на недорогие телефоны и работу без интернета.
+Татарская клавиатура для Android. Стандартная раскладка ЙЦУКЕН плюс отдельный видимый пятый ряд татарских букв **ә ө ү җ ң һ** — все 39 букв татарского алфавита набираются одним нажатием.
 
 ### Возможности
 
@@ -39,7 +30,7 @@ long press.
 
 1. Скачайте APK из [GitHub Releases](https://github.com/lil-dExNight/tatar-keyboard/releases) репозитория [lil-dExNight/tatar-keyboard](https://github.com/lil-dExNight/tatar-keyboard).
 2. Разрешите установку из неизвестных источников (система спросит сама).
-3. Откройте приложение — онбординг из двух шагов проведёт через включение и выбор клавиатуры.
+3. Откройте приложение — начальная настройка из двух шагов проведёт через включение и выбор клавиатуры.
 
 **Требования:** Android 7.0+ (minSdk 24).
 
@@ -48,14 +39,6 @@ long press.
 **Ничего не уходит с устройства.** В манифесте приложения нет разрешения INTERNET, поэтому само приложение ничего никуда не отправляет: всё, что вы печатаете, обрабатывается только на устройстве. CI проверяет манифест и собранный APK на каждом коммите. Та же проверка подтверждает, что данные приложения исключены из резервного копирования и переноса на новое устройство (`allowBackup=false`); поэтому настройки клавиатуры на новом устройстве нужно задать заново. Нет аналитики, рекламных SDK и Firebase.
 
 Локально клавиатура сохраняет только то, что нужно для работы подсказок: до 24 недавно использованных эмодзи, текстовые сокращения, которые вы добавили сами, и, если вы включите личный словарь (по умолчанию выключен), набранные вами слова, пары слов, изученные эмодзи, слова, с которых вы начинаете предложения, и исправления, которые вы дважды отменили. Всё это лежит во внутренней папке, которая расшифровывается только после разблокировки устройства, и не попадает в облачную резервную копию. «Стереть всё сохранённое» на экране «Сохранённые слова» удаляет всё это разом; недавние эмодзи можно стереть и отдельно («Очистить недавние эмодзи»). Резервную копию в файл клавиатура делает только по вашей команде («Резервная копия» → «Сохранить в файл…»). Подробности — в [PRIVACY.md](PRIVACY.md) (на английском).
-
-### Сборка из исходников
-
-Требуется JDK 17 и Android SDK. Файл `gradle/wrapper/gradle-wrapper.jar` намеренно не хранится в репозитории — восстановите его командой `gradle wrapper` (Gradle 9.6) или скачайте из официального тега [gradle/gradle v9.6.0](https://github.com/gradle/gradle/blob/v9.6.0/gradle/wrapper/gradle-wrapper.jar) (CI делает так же, с проверкой sha256). Затем:
-
-```
-./gradlew assembleDebug
-```
 
 ### Лицензия
 
