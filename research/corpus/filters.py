@@ -20,9 +20,8 @@ Filters, in the order applied:
    subtitle corpus are overwhelmingly typos, transliteration and OCR noise.
 
 4. PROFANITY -- an explicit stop list, applied last so its effect is reportable separately.
-   The list is deliberately short and covers unambiguous obscene roots; it is not a
-   morality filter on ordinary rude words, it exists so the keyboard never SUGGESTS an
-   obscenity the user did not already type.
+   The list is short and covers unambiguous obscene roots; it exists so the keyboard never
+   suggests an obscenity the user did not already type.
 """
 from __future__ import annotations
 import re
@@ -38,13 +37,13 @@ PROFANITY_ROOTS = {
             "еби", "ебл", "ебн", "ебт", "заеб", "уеб", "разъеб", "разьеб", "въеб", "выеб",
             "поеб", "перееб", "бляд", "мудак", "пидор", "пидар", "гондон",
             "сука", "суки", "сукин", "херн", "залуп", "дроч", "пиздец"),
-    # NOTE: roots "манда" and "муда" are deliberately ABSENT. Measured false positives:
-    # "манда" convicts мандарин/мандарины (and would convict мандат), "муда" convicts
-    # мудрость-adjacent forms. A root that costs ordinary words is not worth the obscenity
-    # it catches, because the obscenity is also caught by the fuller roots kept above.
-    # NOTE: "сука" is deliberately ABSENT from the Tatar list. Tatar "сука" is a plough and
-    # "сукалар" is an ordinary verb form; the Russian root convicts them wrongly. In the Tatar
-    # corpora the root caught only such false positives.
+    # Roots "манда" and "муда" are absent: measured false positives. "манда" convicts
+    # мандарин/мандарины (and would convict мандат), "муда" convicts the wisdom forms. A
+    # root that costs ordinary words is not worth the obscenity it catches, because the
+    # obscenity is also caught by the fuller roots kept above.
+    # "сука" is absent from the Tatar list: Tatar "сука" is a plough and "сукалар" is an
+    # ordinary verb form; the Russian root convicts them wrongly. In the Tatar corpora the
+    # root caught only such false positives.
     "tat": ("хуй", "пизд", "еба", "ёб", "бляд", "мудак", "пидор"),
 }
 

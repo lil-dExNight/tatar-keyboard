@@ -1,436 +1,434 @@
-# ОТКЛОНЕНО машинной приёмкой. Миссия tt-dict-widen, отчёт — docs/DICT-WIDEN.md.
-# Ручной вычитки не было и не будет: оператор 2026-08-24 заменил её машинным правилом, а
-# затем, посмотрев сто случайных отклонённых, снял и планку второго источника.
+# Words REJECTED by the machine acceptance rule.
 #
-# ПРАВИЛО 1.9.1: принимается ВСЁ, кроме формальных обрывков и слов, исключённых оператором.
-#   fragment         — формальный обрывок: короче 4 букв или без единой гласной (аеиоуыэюяё)
-#   operator-excluded — оператор назвал слово поимённо: можна
-# Прежняя планка 1.9.0 больше не решает судьбу слова, но считается и записана меткой, чтобы
-# происхождение строки было видно файлом:
-#   two-corpora      — встречается и в OpenSubtitles, и в Tatoeba
-#   shipped-word     — уже стоит в поставляемом словаре (в очереди таких нет по построению)
-#   shipped-paradigm — русский: основа стоит в поставляемом словаре ещё в >= 3 формах
-#   operator-widened — прежняя планка отклоняла (single-source или cap_ratio >= 0.50),
-#                      принято решением оператора; прежняя причина стоит в rule_detail
+# The rule accepts every queue word except formal fragments and words excluded by hand:
+#   fragment          - a formal fragment: shorter than 4 letters or without a vowel (аеиоуыэюяё)
+#   operator-excluded - named by hand: можно
+# The older second-source bar no longer decides a word but is still computed and recorded in
+# the rule column, so every row keeps its origin:
+#   two-corpora       - seen in both OpenSubtitles and Tatoeba
+#   shipped-word      - already in the shipped dictionary (the queue holds none by construction)
+#   shipped-paradigm  - Russian: the stem has 3 or more forms in the shipped dictionary
+#   operator-widened  - the older bar refused it (single source, or cap_ratio >= 0.50) and the
+#                       word was accepted by hand; the older reason is in rule_detail
 #
-# Колонки — те же, что в очереди, плюс rule и rule_detail. Отклонённые НЕ удалены: изменить
-# правило и перезапустить `python3 scripts/dict_accept.py select` — одна команда.
+# The columns are the queue columns plus rule and rule_detail. Rejected rows stay in
+# rejected-*.tsv: change the rule and rerun `python3 scripts/dict_accept.py select`.
 word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	enters_top100k	rule	rule_detail
-ме	2124	19092	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.77	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-щрн	1065	9263	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-нб	868	7407	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-фп	653	5869	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-бш	542	4541	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-йо	424	4043	0	OpenSubtitles	risk-accepted:no-grant	0.38	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-кбй	412	3560	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-иб	405	3580	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-мн	389	3609	0	OpenSubtitles	risk-accepted:no-grant	0.62	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-мпх	305	2636	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-гйб	286	2306	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рпх	273	2316	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-фзн	258	2456	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-бяе	242	2385	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-фпн	237	2150	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-бхфь	219	2131	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	ни одной гласной; прежнее правило: single-source
-фпх	217	1825	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ьфй	206	1730	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-упх	201	1894	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-дем	199	1932	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-уе	189	1856	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-брь	189	1372	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-нмх	177	1681	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ть	176	1352	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-йаи	166	1527	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ёй	161	1454	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-бнр	151	1289	0	OpenSubtitles	risk-accepted:no-grant	0.61	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-уфп	148	1483	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-бн	145	1354	0	OpenSubtitles	risk-accepted:no-grant	0.34	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-бюя	144	1237	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-мет	136	1044	0	OpenSubtitles	risk-accepted:no-grant	0.13	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-фзт	134	1029	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-фй	130	1301	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-соу	129	1111	0	OpenSubtitles	risk-accepted:no-grant	0.43	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-тгм	127	1018	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кх	126	1145	6	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.68	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-лиа	119	1024	0	OpenSubtitles	risk-accepted:no-grant	0.56	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-але	118	950	0	OpenSubtitles	risk-accepted:no-grant	0.60	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-поу	115	959	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-циа	111	1017	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ун	109	869	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-бюл	107	1068	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-мр	107	951	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.54	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-тьы	104	1037	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-вь	104	898	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-дн	103	890	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-мбт	102	970	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-блль	102	839	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-фпхт	101	821	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-едю	100	905	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ето	100	827	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-зто	99	796	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-апо	96	769	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-убт	93	861	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-оти	93	744	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-эн	92	751	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.79	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-тоу	88	725	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-мйб	85	884	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-янм	85	697	0	OpenSubtitles	risk-accepted:no-grant	0.08	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кй	80	780	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-рщт	79	687	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-мь	79	587	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-чт	79	580	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-пй	78	679	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-яс	75	710	0	OpenSubtitles	risk-accepted:no-grant	0.29	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-ами	75	644	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.76	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-нбй	73	635	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-тук	73	566	0	OpenSubtitles	risk-accepted:no-grant	0.46	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-даа	72	671	0	OpenSubtitles	risk-accepted:no-grant	0.15	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-хот	71	651	0	OpenSubtitles	risk-accepted:no-grant	0.54	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ша	70	453	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-вай	69	693	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-цде	68	754	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-нуу	67	443	0	OpenSubtitles	risk-accepted:no-grant	0.45	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кьфй	66	539	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-эля	65	783	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-егю	65	657	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-даш	65	590	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-фйт	64	570	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-зая	62	398	0	OpenSubtitles	risk-accepted:no-grant	0.14	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ая	61	628	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.62	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-гер	61	510	0	OpenSubtitles	risk-accepted:no-grant	0.39	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-бип	61	467	0	OpenSubtitles	risk-accepted:no-grant	0.13	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-вьы	60	712	0	OpenSubtitles	risk-accepted:no-grant	0.18	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-дог	60	635	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.60	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-тру	60	426	0	OpenSubtitles	risk-accepted:no-grant	0.73	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ууу	59	592	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.51	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ндхм	59	551	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	ни одной гласной; прежнее правило: proper-noun-evidence
-юр	59	483	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-кис	59	456	0	OpenSubtitles	risk-accepted:no-grant	0.46	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-еуэ	58	503	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-хат	58	314	0	OpenSubtitles	risk-accepted:no-grant	0.71	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-айс	56	500	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.78	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-йи	55	494	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-хоп	53	586	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.50	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-бь	53	501	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-вог	52	429	0	OpenSubtitles	risk-accepted:no-grant	0.66	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-уфз	50	355	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кбль	49	454	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-баш	48	498	0	OpenSubtitles	risk-accepted:no-grant	0.60	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-вфнм	48	478	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-вфхм	48	396	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-вое	47	351	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-зай	47	333	0	OpenSubtitles	risk-accepted:no-grant	0.12	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-мзн	46	354	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ьфбн	45	267	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-пек	44	447	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.79	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-мьнп	44	340	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	ни одной гласной; прежнее правило: single-source
-люб	42	451	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.64	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-мьы	42	383	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-уно	42	377	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.71	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-дей	42	370	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.64	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-тым	42	213	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-дбю	41	369	0	OpenSubtitles	risk-accepted:no-grant	0.38	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кам	41	323	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ало	41	301	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.75	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-аты	41	280	0	OpenSubtitles	risk-accepted:no-grant	0.21	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-нян	40	416	0	OpenSubtitles	risk-accepted:no-grant	0.35	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рою	40	370	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.71	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-нэ	40	320	0	OpenSubtitles	risk-accepted:no-grant	0.37	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-ьчй	40	298	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-щмм	40	295	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ась	40	272	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.80	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ке	39	418	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.62	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-чиа	39	414	0	OpenSubtitles	risk-accepted:no-grant	0.80	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-фру	39	361	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-йа	39	314	0	OpenSubtitles	risk-accepted:no-grant	0.52	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-лё	39	300	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-рсйн	39	267	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	ни одной гласной; прежнее правило: single-source
-кхм	38	310	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-бнглнфмн	38	301	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	ни одной гласной; прежнее правило: proper-noun-evidence
-лхм	36	368	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-уу	36	365	0	OpenSubtitles	risk-accepted:no-grant	0.23	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-мня	36	323	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-йюм	36	279	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-нркхвмн	36	267	0	OpenSubtitles	risk-accepted:no-grant	0.46	yes	fragment	ни одной гласной; прежнее правило: single-source
-зо	35	366	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-брль	35	306	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	ни одной гласной; прежнее правило: single-source
-псйх	35	272	0	OpenSubtitles	risk-accepted:no-grant	0.51	yes	fragment	ни одной гласной; прежнее правило: proper-noun-evidence
-дас	34	292	0	OpenSubtitles	risk-accepted:no-grant	0.63	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-фак	34	230	0	OpenSubtitles	risk-accepted:no-grant	0.35	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кои	33	336	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-най	33	253	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.80	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-шш	33	235	0	OpenSubtitles	risk-accepted:no-grant	0.08	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-ьлб	33	212	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-тов	32	353	0	OpenSubtitles	risk-accepted:no-grant	0.18	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-вю	32	302	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-хдх	32	285	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ням	32	268	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-пом	32	264	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ярл	31	266	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рйп	31	244	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-уау	31	239	0	OpenSubtitles	risk-accepted:no-grant	0.18	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-еб	31	225	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-зум	30	377	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.64	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-тгс	30	334	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-пуф	30	312	0	OpenSubtitles	risk-accepted:no-grant	0.15	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кри	30	288	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-бос	30	231	0	OpenSubtitles	risk-accepted:no-grant	0.39	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ве	30	226	0	OpenSubtitles	risk-accepted:no-grant	0.34	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-рщ	30	222	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-бэм	30	175	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-боа	29	307	0	OpenSubtitles	risk-accepted:no-grant	0.48	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ома	29	299	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.77	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-кьнщ	29	293	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-хммм	29	284	0	OpenSubtitles	risk-accepted:no-grant	0.18	yes	fragment	ни одной гласной; прежнее правило: single-source
-рют	29	283	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ови	29	255	0	OpenSubtitles	risk-accepted:no-grant	0.12	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-аде	29	245	0	OpenSubtitles	risk-accepted:no-grant	0.59	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-мит	29	244	0	OpenSubtitles	risk-accepted:no-grant	0.65	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-бкьмб	29	225	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-тра	29	212	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-пок	29	202	0	OpenSubtitles	risk-accepted:no-grant	0.57	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-бур	28	366	0	OpenSubtitles	risk-accepted:no-grant	0.19	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-жо	28	338	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-стгм	28	338	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	ни одной гласной; прежнее правило: single-source
-рбйдйь	28	287	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-шоб	28	252	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-можна	28	229	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.01	yes	operator-excluded	исключено оператором поимённо (прежнее правило: two-corpora)
-рпэ	28	220	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-яюм	28	217	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-лгм	28	215	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-гал	28	199	0	OpenSubtitles	risk-accepted:no-grant	0.62	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-днм	28	196	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-бра	27	255	0	OpenSubtitles	risk-accepted:no-grant	0.17	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кэб	27	242	0	OpenSubtitles	risk-accepted:no-grant	0.21	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рае	27	236	0	OpenSubtitles	risk-accepted:no-grant	0.41	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-пио	27	227	0	OpenSubtitles	risk-accepted:no-grant	0.52	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-кес	27	203	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-поз	27	139	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-фбн	26	269	0	OpenSubtitles	risk-accepted:no-grant	0.62	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-нал	26	252	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-вфх	26	247	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ды	26	242	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-яз	26	220	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-йхл	26	217	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-фщн	26	217	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-лнлнйн	26	194	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-гы	26	161	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-жщю	26	148	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-эйн	26	142	0	OpenSubtitles	risk-accepted:no-grant	0.63	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-тек	25	294	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.75	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-яки	25	248	0	OpenSubtitles	risk-accepted:no-grant	0.63	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-наю	25	246	0	OpenSubtitles	risk-accepted:no-grant	0.50	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-бьы	25	229	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-уоу	25	220	0	OpenSubtitles	risk-accepted:no-grant	0.09	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-йн	25	212	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-тре	25	181	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-мюд	25	175	0	OpenSubtitles	risk-accepted:no-grant	0.54	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-осо	25	172	0	OpenSubtitles	risk-accepted:no-grant	0.63	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-есу	25	152	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-вэ	25	142	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-уфб	24	276	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-пам	24	232	0	OpenSubtitles	risk-accepted:no-grant	0.32	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-пси	24	201	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-сы	24	179	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-дщ	24	173	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-ав	24	157	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.76	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-рьщ	24	153	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-мьлйт	24	130	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	ни одной гласной; прежнее правило: single-source
-мис	23	283	0	OpenSubtitles	risk-accepted:no-grant	0.35	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кат	23	269	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-пх	23	248	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-гй	23	222	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-жи	23	201	0	OpenSubtitles	risk-accepted:no-grant	0.54	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-гот	23	179	0	OpenSubtitles	risk-accepted:no-grant	0.36	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-иет	23	164	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-гип	23	163	0	OpenSubtitles	risk-accepted:no-grant	0.64	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-фуа	23	161	0	OpenSubtitles	risk-accepted:no-grant	0.56	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ики	23	145	0	OpenSubtitles	risk-accepted:no-grant	0.44	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-пум	23	123	0	OpenSubtitles	risk-accepted:no-grant	0.30	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-бхфьт	22	261	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	ни одной гласной; прежнее правило: single-source
-ецы	22	225	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-аъ	22	209	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-фее	22	191	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ще	22	181	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-бюь	22	174	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-еше	22	167	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-яй	22	160	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-бея	22	128	0	OpenSubtitles	risk-accepted:no-grant	0.67	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-лхп	22	128	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-яне	21	289	0	OpenSubtitles	risk-accepted:no-grant	0.73	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-мхйрн	21	236	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	ни одной гласной; прежнее правило: proper-noun-evidence
-зав	21	230	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ый	21	206	0	OpenSubtitles	risk-accepted:no-grant	0.75	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-дэп	21	203	0	OpenSubtitles	risk-accepted:no-grant	0.13	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-зек	21	197	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-яшм	21	191	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-пре	21	188	0	OpenSubtitles	risk-accepted:no-grant	0.43	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-уд	21	168	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-ёлб	21	166	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-бол	21	155	0	OpenSubtitles	risk-accepted:no-grant	0.49	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кьрпйпт	21	155	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-рет	21	132	0	OpenSubtitles	risk-accepted:no-grant	0.23	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-сям	20	239	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рьнфб	20	237	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-яви	20	211	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-лиф	20	203	0	OpenSubtitles	risk-accepted:no-grant	0.65	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-дру	20	186	0	OpenSubtitles	risk-accepted:no-grant	0.55	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ама	20	174	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-эк	20	157	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.73	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-чес	20	155	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ьлпй	20	142	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-нй	20	126	0	OpenSubtitles	risk-accepted:no-grant	0.19	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-зна	20	125	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рплль	20	114	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-жу	19	222	0	OpenSubtitles	risk-accepted:no-grant	0.75	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-бмхг	19	215	0	OpenSubtitles	risk-accepted:no-grant	0.14	yes	fragment	ни одной гласной; прежнее правило: single-source
-пыс	19	203	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-аха	19	202	0	OpenSubtitles	risk-accepted:no-grant	0.17	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-лпйрьн	19	196	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	ни одной гласной; прежнее правило: single-source
-муа	19	171	0	OpenSubtitles	risk-accepted:no-grant	0.14	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-мнцх	19	167	0	OpenSubtitles	risk-accepted:no-grant	0.50	yes	fragment	ни одной гласной; прежнее правило: proper-noun-evidence
-бэд	19	166	0	OpenSubtitles	risk-accepted:no-grant	0.80	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ьмщт	19	159	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-илл	19	155	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-мах	19	150	0	OpenSubtitles	risk-accepted:no-grant	0.36	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-хин	19	137	0	OpenSubtitles	risk-accepted:no-grant	0.75	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-буу	19	117	0	OpenSubtitles	risk-accepted:no-grant	0.61	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-тла	18	266	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рпйпт	18	240	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-ерт	18	230	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-таг	18	210	0	OpenSubtitles	risk-accepted:no-grant	0.64	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-бт	18	197	0	OpenSubtitles	risk-accepted:no-grant	0.29	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-еж	18	190	0	OpenSubtitles	risk-accepted:no-grant	0.13	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-вил	18	169	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.63	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-цпсь	18	165	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	ни одной гласной; прежнее правило: single-source
-ное	18	160	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.65	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-мбмь	18	154	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	ни одной гласной; прежнее правило: single-source
-нё	18	154	0	OpenSubtitles	risk-accepted:no-grant	0.62	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-хил	18	142	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.78	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-хип	18	141	0	OpenSubtitles	risk-accepted:no-grant	0.71	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-иии	18	123	0	OpenSubtitles	risk-accepted:no-grant	0.14	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-тчк	18	114	0	OpenSubtitles	risk-accepted:no-grant	0.31	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-миз	17	195	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-оох	17	193	0	OpenSubtitles	risk-accepted:no-grant	0.27	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ёчщ	17	185	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-унд	17	181	0	OpenSubtitles	risk-accepted:no-grant	0.20	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-акр	17	174	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-сру	17	171	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-има	17	161	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.59	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-дет	17	160	0	OpenSubtitles	risk-accepted:no-grant	0.09	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рум	17	160	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-чсьнйб	17	143	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-ше	17	141	0	OpenSubtitles	risk-accepted:no-grant	0.54	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-янй	17	141	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-сиг	17	136	0	OpenSubtitles	risk-accepted:no-grant	0.73	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-рсбгмбфйкь	17	124	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-вфс	17	123	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ны	17	123	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-еее	17	121	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-буп	17	111	0	OpenSubtitles	risk-accepted:no-grant	0.41	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кий	16	247	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-жа	16	217	0	OpenSubtitles	risk-accepted:no-grant	0.27	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-што	16	175	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-тэг	16	158	0	OpenSubtitles	risk-accepted:no-grant	0.57	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-гут	16	154	0	OpenSubtitles	risk-accepted:no-grant	0.27	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ити	16	145	0	OpenSubtitles	risk-accepted:no-grant	0.59	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-брп	16	124	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ьрщт	16	121	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-паф	16	111	0	OpenSubtitles	risk-accepted:no-grant	0.20	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-буи	16	110	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.60	no	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-юсб	16	107	0	OpenSubtitles	risk-accepted:no-grant	0.02	no	fragment	короче 4 букв (3); прежнее правило: single-source
-деи	15	180	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.68	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ому	15	165	0	OpenSubtitles	risk-accepted:no-grant	0.58	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-рсьгмбфб	15	162	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-нар	15	159	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-кьфщ	15	157	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-фай	15	157	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ешё	15	152	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-сис	15	152	0	OpenSubtitles	risk-accepted:no-grant	0.51	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-тоб	15	152	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-аби	15	151	0	OpenSubtitles	risk-accepted:no-grant	0.75	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-бхфьн	15	147	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	ни одной гласной; прежнее правило: single-source
-шм	15	147	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-очу	15	140	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-мяб	15	137	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-гик	15	122	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кьрпйпн	15	122	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-хэш	15	114	0	OpenSubtitles	risk-accepted:no-grant	0.46	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ика	15	113	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-сея	15	112	0	OpenSubtitles	risk-accepted:no-grant	0.31	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-хрьсчпхн	15	110	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	ни одной гласной; прежнее правило: single-source
-ие	14	206	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-вою	14	173	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-вок	14	148	0	OpenSubtitles	risk-accepted:no-grant	0.48	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рьнщ	14	141	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-цнрнбш	14	140	0	OpenSubtitles	risk-accepted:no-grant	0.57	yes	fragment	ни одной гласной; прежнее правило: proper-noun-evidence
-ине	14	137	0	OpenSubtitles	risk-accepted:no-grant	0.45	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-шэф	14	130	0	OpenSubtitles	risk-accepted:no-grant	0.27	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-пну	14	125	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-иву	14	123	0	OpenSubtitles	risk-accepted:no-grant	0.50	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-яф	14	122	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-дйкь	14	120	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-вао	14	117	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кьрпйб	14	109	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	ни одной гласной; прежнее правило: single-source
-чсьнп	14	107	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	ни одной гласной; прежнее правило: single-source
-пе	13	152	0	OpenSubtitles	risk-accepted:no-grant	0.39	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-куй	13	138	5	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.65	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-дои	13	136	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.73	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-оне	13	123	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-дхп	13	120	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-мож	13	115	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-яву	13	105	0	OpenSubtitles	risk-accepted:no-grant	0.43	no	fragment	короче 4 букв (3); прежнее правило: single-source
-рее	13	104	0	OpenSubtitles	risk-accepted:no-grant	0.27	no	fragment	короче 4 букв (3); прежнее правило: single-source
-лнпрх	13	103	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	ни одной гласной; прежнее правило: single-source
-био	12	197	0	OpenSubtitles	risk-accepted:no-grant	0.42	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-цто	12	132	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-эи	12	130	0	OpenSubtitles	risk-accepted:no-grant	0.33	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-яде	12	123	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ёнб	12	122	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-кия	12	116	0	OpenSubtitles	risk-accepted:no-grant	0.56	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ев	12	115	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-таи	12	114	0	OpenSubtitles	risk-accepted:no-grant	0.44	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-нэй	12	113	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-вфсм	12	109	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	ни одной гласной; прежнее правило: single-source
-осм	12	107	0	OpenSubtitles	risk-accepted:no-grant	0.06	no	fragment	короче 4 букв (3); прежнее правило: single-source
-ора	11	183	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.56	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ния	11	141	0	OpenSubtitles	risk-accepted:no-grant	0.61	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-хто	11	137	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-уб	11	132	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	короче 4 букв (2); прежнее правило: single-source
-цэ	11	130	0	OpenSubtitles	risk-accepted:no-grant	0.73	yes	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-фуу	11	123	0	OpenSubtitles	risk-accepted:no-grant	0.41	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-аъд	11	122	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-лхмср	11	122	0	OpenSubtitles	risk-accepted:no-grant	0.80	yes	fragment	ни одной гласной; прежнее правило: proper-noun-evidence
-дро	11	118	0	OpenSubtitles	risk-accepted:no-grant	0.60	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-внм	11	116	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-деа	11	111	0	OpenSubtitles	risk-accepted:no-grant	0.51	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-рбт	11	109	0	OpenSubtitles	risk-accepted:no-grant	0.01	no	fragment	короче 4 букв (3); прежнее правило: single-source
-ант	11	108	0	OpenSubtitles	risk-accepted:no-grant	0.66	no	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-рсьгмб	11	105	0	OpenSubtitles	risk-accepted:no-grant	0.02	no	fragment	ни одной гласной; прежнее правило: single-source
-амо	10	129	0	OpenSubtitles	risk-accepted:no-grant	0.65	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-орк	10	127	0	OpenSubtitles	risk-accepted:no-grant	0.30	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ать	10	120	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-уюм	10	120	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ном	10	117	0	OpenSubtitles	risk-accepted:no-grant	0.56	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-кви	10	115	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-рое	10	113	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-дую	10	107	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	короче 4 букв (3); прежнее правило: single-source
-тои	10	106	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.71	no	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ог	10	104	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.79	no	fragment	короче 4 букв (2); прежнее правило: proper-noun-evidence
-аза	10	103	0	OpenSubtitles	risk-accepted:no-grant	0.72	no	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-даи	10	103	0	OpenSubtitles	risk-accepted:no-grant	0.76	no	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-мьллпн	10	103	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	ни одной гласной; прежнее правило: single-source
-арй	9	157	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-рав	9	142	0	OpenSubtitles	risk-accepted:no-grant	0.59	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-вои	9	133	0	OpenSubtitles	risk-accepted:no-grant	0.10	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-ссу	9	110	0	OpenSubtitles	risk-accepted:no-grant	0.01	no	fragment	короче 4 букв (3); прежнее правило: single-source
-гиг	9	104	0	OpenSubtitles	risk-accepted:no-grant	0.45	no	fragment	короче 4 букв (3); прежнее правило: single-source
-гео	8	141	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-ьнс	8	114	0	OpenSubtitles	risk-accepted:no-grant	0.50	yes	fragment	короче 4 букв (3); прежнее правило: proper-noun-evidence
-нэб	8	113	0	OpenSubtitles	risk-accepted:no-grant	0.38	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-збттй	7	117	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	ни одной гласной; прежнее правило: single-source
-стг	7	104	0	OpenSubtitles	risk-accepted:no-grant	0.37	no	fragment	короче 4 букв (3); прежнее правило: single-source
-анг	6	117	0	OpenSubtitles	risk-accepted:no-grant	0.30	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-реб	6	116	0	OpenSubtitles	risk-accepted:no-grant	0.19	yes	fragment	короче 4 букв (3); прежнее правило: single-source
-бьл	6	110	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	короче 4 букв (3); прежнее правило: single-source
-охх	6	108	0	OpenSubtitles	risk-accepted:no-grant	0.38	no	fragment	короче 4 букв (3); прежнее правило: single-source
+ме	2124	19092	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.77	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+щрн	1065	9263	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+нб	868	7407	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+фп	653	5869	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+бш	542	4541	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+йо	424	4043	0	OpenSubtitles	risk-accepted:no-grant	0.38	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+кбй	412	3560	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+иб	405	3580	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+мн	389	3609	0	OpenSubtitles	risk-accepted:no-grant	0.62	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+мпх	305	2636	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+гйб	286	2306	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рпх	273	2316	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+фзн	258	2456	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+бяе	242	2385	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+фпн	237	2150	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+бхфь	219	2131	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	no vowel; previous rule: single-source
+фпх	217	1825	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ьфй	206	1730	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+упх	201	1894	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+дем	199	1932	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+уе	189	1856	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+брь	189	1372	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+нмх	177	1681	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ть	176	1352	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+йаи	166	1527	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ёй	161	1454	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+бнр	151	1289	0	OpenSubtitles	risk-accepted:no-grant	0.61	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+уфп	148	1483	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+бн	145	1354	0	OpenSubtitles	risk-accepted:no-grant	0.34	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+бюя	144	1237	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+мет	136	1044	0	OpenSubtitles	risk-accepted:no-grant	0.13	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+фзт	134	1029	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+фй	130	1301	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+соу	129	1111	0	OpenSubtitles	risk-accepted:no-grant	0.43	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+тгм	127	1018	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кх	126	1145	6	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.68	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+лиа	119	1024	0	OpenSubtitles	risk-accepted:no-grant	0.56	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+але	118	950	0	OpenSubtitles	risk-accepted:no-grant	0.60	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+поу	115	959	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+циа	111	1017	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ун	109	869	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+бюл	107	1068	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+мр	107	951	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.54	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+тьы	104	1037	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+вь	104	898	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+дн	103	890	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+мбт	102	970	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+блль	102	839	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+фпхт	101	821	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+едю	100	905	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ето	100	827	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+зто	99	796	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+апо	96	769	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+убт	93	861	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+оти	93	744	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+эн	92	751	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.79	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+тоу	88	725	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+мйб	85	884	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+янм	85	697	0	OpenSubtitles	risk-accepted:no-grant	0.08	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кй	80	780	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+рщт	79	687	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+мь	79	587	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+чт	79	580	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+пй	78	679	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+яс	75	710	0	OpenSubtitles	risk-accepted:no-grant	0.29	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+ами	75	644	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.76	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+нбй	73	635	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+тук	73	566	0	OpenSubtitles	risk-accepted:no-grant	0.46	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+даа	72	671	0	OpenSubtitles	risk-accepted:no-grant	0.15	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+хот	71	651	0	OpenSubtitles	risk-accepted:no-grant	0.54	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ша	70	453	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+вай	69	693	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+цде	68	754	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+нуу	67	443	0	OpenSubtitles	risk-accepted:no-grant	0.45	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кьфй	66	539	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+эля	65	783	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+егю	65	657	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+даш	65	590	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+фйт	64	570	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+зая	62	398	0	OpenSubtitles	risk-accepted:no-grant	0.14	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ая	61	628	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.62	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+гер	61	510	0	OpenSubtitles	risk-accepted:no-grant	0.39	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+бип	61	467	0	OpenSubtitles	risk-accepted:no-grant	0.13	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+вьы	60	712	0	OpenSubtitles	risk-accepted:no-grant	0.18	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+дог	60	635	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.60	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+тру	60	426	0	OpenSubtitles	risk-accepted:no-grant	0.73	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ууу	59	592	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.51	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ндхм	59	551	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	no vowel; previous rule: proper-noun-evidence
+юр	59	483	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+кис	59	456	0	OpenSubtitles	risk-accepted:no-grant	0.46	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+еуэ	58	503	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+хат	58	314	0	OpenSubtitles	risk-accepted:no-grant	0.71	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+айс	56	500	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.78	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+йи	55	494	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+хоп	53	586	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.50	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+бь	53	501	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+вог	52	429	0	OpenSubtitles	risk-accepted:no-grant	0.66	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+уфз	50	355	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кбль	49	454	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+баш	48	498	0	OpenSubtitles	risk-accepted:no-grant	0.60	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+вфнм	48	478	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+вфхм	48	396	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+вое	47	351	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+зай	47	333	0	OpenSubtitles	risk-accepted:no-grant	0.12	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+мзн	46	354	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ьфбн	45	267	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+пек	44	447	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.79	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+мьнп	44	340	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	no vowel; previous rule: single-source
+люб	42	451	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.64	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+мьы	42	383	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+уно	42	377	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.71	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+дей	42	370	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.64	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+тым	42	213	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+дбю	41	369	0	OpenSubtitles	risk-accepted:no-grant	0.38	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кам	41	323	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ало	41	301	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.75	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+аты	41	280	0	OpenSubtitles	risk-accepted:no-grant	0.21	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+нян	40	416	0	OpenSubtitles	risk-accepted:no-grant	0.35	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рою	40	370	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.71	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+нэ	40	320	0	OpenSubtitles	risk-accepted:no-grant	0.37	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+ьчй	40	298	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+щмм	40	295	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ась	40	272	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.80	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ке	39	418	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.62	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+чиа	39	414	0	OpenSubtitles	risk-accepted:no-grant	0.80	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+фру	39	361	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+йа	39	314	0	OpenSubtitles	risk-accepted:no-grant	0.52	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+лё	39	300	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+рсйн	39	267	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	no vowel; previous rule: single-source
+кхм	38	310	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+бнглнфмн	38	301	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	no vowel; previous rule: proper-noun-evidence
+лхм	36	368	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+уу	36	365	0	OpenSubtitles	risk-accepted:no-grant	0.23	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+мня	36	323	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+йюм	36	279	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+нркхвмн	36	267	0	OpenSubtitles	risk-accepted:no-grant	0.46	yes	fragment	no vowel; previous rule: single-source
+зо	35	366	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+брль	35	306	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	no vowel; previous rule: single-source
+псйх	35	272	0	OpenSubtitles	risk-accepted:no-grant	0.51	yes	fragment	no vowel; previous rule: proper-noun-evidence
+дас	34	292	0	OpenSubtitles	risk-accepted:no-grant	0.63	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+фак	34	230	0	OpenSubtitles	risk-accepted:no-grant	0.35	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кои	33	336	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+най	33	253	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.80	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+шш	33	235	0	OpenSubtitles	risk-accepted:no-grant	0.08	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+ьлб	33	212	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+тов	32	353	0	OpenSubtitles	risk-accepted:no-grant	0.18	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+вю	32	302	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+хдх	32	285	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ням	32	268	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+пом	32	264	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ярл	31	266	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рйп	31	244	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+уау	31	239	0	OpenSubtitles	risk-accepted:no-grant	0.18	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+еб	31	225	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+зум	30	377	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.64	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+тгс	30	334	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+пуф	30	312	0	OpenSubtitles	risk-accepted:no-grant	0.15	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кри	30	288	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+бос	30	231	0	OpenSubtitles	risk-accepted:no-grant	0.39	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ве	30	226	0	OpenSubtitles	risk-accepted:no-grant	0.34	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+рщ	30	222	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+бэм	30	175	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+боа	29	307	0	OpenSubtitles	risk-accepted:no-grant	0.48	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ома	29	299	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.77	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+кьнщ	29	293	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+хммм	29	284	0	OpenSubtitles	risk-accepted:no-grant	0.18	yes	fragment	no vowel; previous rule: single-source
+рют	29	283	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ови	29	255	0	OpenSubtitles	risk-accepted:no-grant	0.12	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+аде	29	245	0	OpenSubtitles	risk-accepted:no-grant	0.59	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+мит	29	244	0	OpenSubtitles	risk-accepted:no-grant	0.65	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+бкьмб	29	225	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+тра	29	212	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+пок	29	202	0	OpenSubtitles	risk-accepted:no-grant	0.57	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+бур	28	366	0	OpenSubtitles	risk-accepted:no-grant	0.19	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+жо	28	338	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+стгм	28	338	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	no vowel; previous rule: single-source
+рбйдйь	28	287	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+шоб	28	252	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+можна	28	229	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.01	yes	operator-excluded	excluded by name (previous rule: two-corpora)
+рпэ	28	220	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+яюм	28	217	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+лгм	28	215	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+гал	28	199	0	OpenSubtitles	risk-accepted:no-grant	0.62	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+днм	28	196	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+бра	27	255	0	OpenSubtitles	risk-accepted:no-grant	0.17	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кэб	27	242	0	OpenSubtitles	risk-accepted:no-grant	0.21	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рае	27	236	0	OpenSubtitles	risk-accepted:no-grant	0.41	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+пио	27	227	0	OpenSubtitles	risk-accepted:no-grant	0.52	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+кес	27	203	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+поз	27	139	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+фбн	26	269	0	OpenSubtitles	risk-accepted:no-grant	0.62	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+нал	26	252	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+вфх	26	247	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ды	26	242	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+яз	26	220	0	OpenSubtitles	risk-accepted:no-grant	0.79	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+йхл	26	217	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+фщн	26	217	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+лнлнйн	26	194	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+гы	26	161	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+жщю	26	148	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+эйн	26	142	0	OpenSubtitles	risk-accepted:no-grant	0.63	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+тек	25	294	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.75	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+яки	25	248	0	OpenSubtitles	risk-accepted:no-grant	0.63	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+наю	25	246	0	OpenSubtitles	risk-accepted:no-grant	0.50	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+бьы	25	229	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+уоу	25	220	0	OpenSubtitles	risk-accepted:no-grant	0.09	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+йн	25	212	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+тре	25	181	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+мюд	25	175	0	OpenSubtitles	risk-accepted:no-grant	0.54	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+осо	25	172	0	OpenSubtitles	risk-accepted:no-grant	0.63	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+есу	25	152	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+вэ	25	142	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+уфб	24	276	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+пам	24	232	0	OpenSubtitles	risk-accepted:no-grant	0.32	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+пси	24	201	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+сы	24	179	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+дщ	24	173	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+ав	24	157	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.76	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+рьщ	24	153	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+мьлйт	24	130	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	no vowel; previous rule: single-source
+мис	23	283	0	OpenSubtitles	risk-accepted:no-grant	0.35	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кат	23	269	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+пх	23	248	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+гй	23	222	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+жи	23	201	0	OpenSubtitles	risk-accepted:no-grant	0.54	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+гот	23	179	0	OpenSubtitles	risk-accepted:no-grant	0.36	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+иет	23	164	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+гип	23	163	0	OpenSubtitles	risk-accepted:no-grant	0.64	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+фуа	23	161	0	OpenSubtitles	risk-accepted:no-grant	0.56	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ики	23	145	0	OpenSubtitles	risk-accepted:no-grant	0.44	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+пум	23	123	0	OpenSubtitles	risk-accepted:no-grant	0.30	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+бхфьт	22	261	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	no vowel; previous rule: single-source
+ецы	22	225	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+аъ	22	209	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+фее	22	191	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ще	22	181	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+бюь	22	174	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+еше	22	167	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+яй	22	160	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+бея	22	128	0	OpenSubtitles	risk-accepted:no-grant	0.67	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+лхп	22	128	0	OpenSubtitles	risk-accepted:no-grant	0.72	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+яне	21	289	0	OpenSubtitles	risk-accepted:no-grant	0.73	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+мхйрн	21	236	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	no vowel; previous rule: proper-noun-evidence
+зав	21	230	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ый	21	206	0	OpenSubtitles	risk-accepted:no-grant	0.75	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+дэп	21	203	0	OpenSubtitles	risk-accepted:no-grant	0.13	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+зек	21	197	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+яшм	21	191	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+пре	21	188	0	OpenSubtitles	risk-accepted:no-grant	0.43	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+уд	21	168	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+ёлб	21	166	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+бол	21	155	0	OpenSubtitles	risk-accepted:no-grant	0.49	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кьрпйпт	21	155	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+рет	21	132	0	OpenSubtitles	risk-accepted:no-grant	0.23	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+сям	20	239	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рьнфб	20	237	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+яви	20	211	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+лиф	20	203	0	OpenSubtitles	risk-accepted:no-grant	0.65	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+дру	20	186	0	OpenSubtitles	risk-accepted:no-grant	0.55	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ама	20	174	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+эк	20	157	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.73	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+чес	20	155	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ьлпй	20	142	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+нй	20	126	0	OpenSubtitles	risk-accepted:no-grant	0.19	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+зна	20	125	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рплль	20	114	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+жу	19	222	0	OpenSubtitles	risk-accepted:no-grant	0.75	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+бмхг	19	215	0	OpenSubtitles	risk-accepted:no-grant	0.14	yes	fragment	no vowel; previous rule: single-source
+пыс	19	203	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+аха	19	202	0	OpenSubtitles	risk-accepted:no-grant	0.17	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+лпйрьн	19	196	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	no vowel; previous rule: single-source
+муа	19	171	0	OpenSubtitles	risk-accepted:no-grant	0.14	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+мнцх	19	167	0	OpenSubtitles	risk-accepted:no-grant	0.50	yes	fragment	no vowel; previous rule: proper-noun-evidence
+бэд	19	166	0	OpenSubtitles	risk-accepted:no-grant	0.80	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ьмщт	19	159	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+илл	19	155	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+мах	19	150	0	OpenSubtitles	risk-accepted:no-grant	0.36	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+хин	19	137	0	OpenSubtitles	risk-accepted:no-grant	0.75	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+буу	19	117	0	OpenSubtitles	risk-accepted:no-grant	0.61	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+тла	18	266	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рпйпт	18	240	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+ерт	18	230	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+таг	18	210	0	OpenSubtitles	risk-accepted:no-grant	0.64	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+бт	18	197	0	OpenSubtitles	risk-accepted:no-grant	0.29	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+еж	18	190	0	OpenSubtitles	risk-accepted:no-grant	0.13	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+вил	18	169	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.63	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+цпсь	18	165	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	no vowel; previous rule: single-source
+ное	18	160	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.65	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+мбмь	18	154	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	no vowel; previous rule: single-source
+нё	18	154	0	OpenSubtitles	risk-accepted:no-grant	0.62	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+хил	18	142	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.78	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+хип	18	141	0	OpenSubtitles	risk-accepted:no-grant	0.71	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+иии	18	123	0	OpenSubtitles	risk-accepted:no-grant	0.14	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+тчк	18	114	0	OpenSubtitles	risk-accepted:no-grant	0.31	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+миз	17	195	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+оох	17	193	0	OpenSubtitles	risk-accepted:no-grant	0.27	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ёчщ	17	185	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+унд	17	181	0	OpenSubtitles	risk-accepted:no-grant	0.20	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+акр	17	174	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+сру	17	171	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+има	17	161	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.59	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+дет	17	160	0	OpenSubtitles	risk-accepted:no-grant	0.09	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рум	17	160	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+чсьнйб	17	143	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+ше	17	141	0	OpenSubtitles	risk-accepted:no-grant	0.54	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+янй	17	141	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+сиг	17	136	0	OpenSubtitles	risk-accepted:no-grant	0.73	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+рсбгмбфйкь	17	124	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+вфс	17	123	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ны	17	123	0	OpenSubtitles	risk-accepted:no-grant	0.74	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+еее	17	121	0	OpenSubtitles	risk-accepted:no-grant	0.11	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+буп	17	111	0	OpenSubtitles	risk-accepted:no-grant	0.41	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кий	16	247	0	OpenSubtitles	risk-accepted:no-grant	0.06	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+жа	16	217	0	OpenSubtitles	risk-accepted:no-grant	0.27	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+што	16	175	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+тэг	16	158	0	OpenSubtitles	risk-accepted:no-grant	0.57	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+гут	16	154	0	OpenSubtitles	risk-accepted:no-grant	0.27	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ити	16	145	0	OpenSubtitles	risk-accepted:no-grant	0.59	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+брп	16	124	0	OpenSubtitles	risk-accepted:no-grant	0.04	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ьрщт	16	121	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+паф	16	111	0	OpenSubtitles	risk-accepted:no-grant	0.20	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+буи	16	110	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.60	no	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+юсб	16	107	0	OpenSubtitles	risk-accepted:no-grant	0.02	no	fragment	shorter than 4 letters (3); previous rule: single-source
+деи	15	180	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.68	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ому	15	165	0	OpenSubtitles	risk-accepted:no-grant	0.58	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+рсьгмбфб	15	162	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+нар	15	159	0	OpenSubtitles	risk-accepted:no-grant	0.69	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+кьфщ	15	157	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+фай	15	157	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ешё	15	152	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+сис	15	152	0	OpenSubtitles	risk-accepted:no-grant	0.51	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+тоб	15	152	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+аби	15	151	0	OpenSubtitles	risk-accepted:no-grant	0.75	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+бхфьн	15	147	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	no vowel; previous rule: single-source
+шм	15	147	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+очу	15	140	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+мяб	15	137	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+гик	15	122	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кьрпйпн	15	122	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+хэш	15	114	0	OpenSubtitles	risk-accepted:no-grant	0.46	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ика	15	113	0	OpenSubtitles	risk-accepted:no-grant	0.68	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+сея	15	112	0	OpenSubtitles	risk-accepted:no-grant	0.31	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+хрьсчпхн	15	110	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	no vowel; previous rule: single-source
+ие	14	206	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+вою	14	173	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+вок	14	148	0	OpenSubtitles	risk-accepted:no-grant	0.48	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рьнщ	14	141	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+цнрнбш	14	140	0	OpenSubtitles	risk-accepted:no-grant	0.57	yes	fragment	no vowel; previous rule: proper-noun-evidence
+ине	14	137	0	OpenSubtitles	risk-accepted:no-grant	0.45	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+шэф	14	130	0	OpenSubtitles	risk-accepted:no-grant	0.27	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+пну	14	125	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+иву	14	123	0	OpenSubtitles	risk-accepted:no-grant	0.50	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+яф	14	122	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+дйкь	14	120	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+вао	14	117	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кьрпйб	14	109	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	no vowel; previous rule: single-source
+чсьнп	14	107	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	no vowel; previous rule: single-source
+пе	13	152	0	OpenSubtitles	risk-accepted:no-grant	0.39	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+куй	13	138	5	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.65	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+дои	13	136	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.73	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+оне	13	123	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+дхп	13	120	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+мож	13	115	0	OpenSubtitles	risk-accepted:no-grant	0.03	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+яву	13	105	0	OpenSubtitles	risk-accepted:no-grant	0.43	no	fragment	shorter than 4 letters (3); previous rule: single-source
+рее	13	104	0	OpenSubtitles	risk-accepted:no-grant	0.27	no	fragment	shorter than 4 letters (3); previous rule: single-source
+лнпрх	13	103	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	no vowel; previous rule: single-source
+био	12	197	0	OpenSubtitles	risk-accepted:no-grant	0.42	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+цто	12	132	0	OpenSubtitles	risk-accepted:no-grant	0.02	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+эи	12	130	0	OpenSubtitles	risk-accepted:no-grant	0.33	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+яде	12	123	0	OpenSubtitles	risk-accepted:no-grant	0.05	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ёнб	12	122	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+кия	12	116	0	OpenSubtitles	risk-accepted:no-grant	0.56	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ев	12	115	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+таи	12	114	0	OpenSubtitles	risk-accepted:no-grant	0.44	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+нэй	12	113	0	OpenSubtitles	risk-accepted:no-grant	0.77	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+вфсм	12	109	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	no vowel; previous rule: single-source
+осм	12	107	0	OpenSubtitles	risk-accepted:no-grant	0.06	no	fragment	shorter than 4 letters (3); previous rule: single-source
+ора	11	183	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.56	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ния	11	141	0	OpenSubtitles	risk-accepted:no-grant	0.61	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+хто	11	137	0	OpenSubtitles	risk-accepted:no-grant	0.07	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+уб	11	132	0	OpenSubtitles	risk-accepted:no-grant	0.25	yes	fragment	shorter than 4 letters (2); previous rule: single-source
+цэ	11	130	0	OpenSubtitles	risk-accepted:no-grant	0.73	yes	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+фуу	11	123	0	OpenSubtitles	risk-accepted:no-grant	0.41	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+аъд	11	122	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+лхмср	11	122	0	OpenSubtitles	risk-accepted:no-grant	0.80	yes	fragment	no vowel; previous rule: proper-noun-evidence
+дро	11	118	0	OpenSubtitles	risk-accepted:no-grant	0.60	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+внм	11	116	0	OpenSubtitles	risk-accepted:no-grant	0.01	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+деа	11	111	0	OpenSubtitles	risk-accepted:no-grant	0.51	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+рбт	11	109	0	OpenSubtitles	risk-accepted:no-grant	0.01	no	fragment	shorter than 4 letters (3); previous rule: single-source
+ант	11	108	0	OpenSubtitles	risk-accepted:no-grant	0.66	no	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+рсьгмб	11	105	0	OpenSubtitles	risk-accepted:no-grant	0.02	no	fragment	no vowel; previous rule: single-source
+амо	10	129	0	OpenSubtitles	risk-accepted:no-grant	0.65	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+орк	10	127	0	OpenSubtitles	risk-accepted:no-grant	0.30	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ать	10	120	0	OpenSubtitles	risk-accepted:no-grant	0.16	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+уюм	10	120	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ном	10	117	0	OpenSubtitles	risk-accepted:no-grant	0.56	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+кви	10	115	0	OpenSubtitles	risk-accepted:no-grant	0.78	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+рое	10	113	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+дую	10	107	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	shorter than 4 letters (3); previous rule: single-source
+тои	10	106	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.71	no	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ог	10	104	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.79	no	fragment	shorter than 4 letters (2); previous rule: proper-noun-evidence
+аза	10	103	0	OpenSubtitles	risk-accepted:no-grant	0.72	no	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+даи	10	103	0	OpenSubtitles	risk-accepted:no-grant	0.76	no	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+мьллпн	10	103	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	no vowel; previous rule: single-source
+арй	9	157	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+рав	9	142	0	OpenSubtitles	risk-accepted:no-grant	0.59	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+вои	9	133	0	OpenSubtitles	risk-accepted:no-grant	0.10	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+ссу	9	110	0	OpenSubtitles	risk-accepted:no-grant	0.01	no	fragment	shorter than 4 letters (3); previous rule: single-source
+гиг	9	104	0	OpenSubtitles	risk-accepted:no-grant	0.45	no	fragment	shorter than 4 letters (3); previous rule: single-source
+гео	8	141	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+ьнс	8	114	0	OpenSubtitles	risk-accepted:no-grant	0.50	yes	fragment	shorter than 4 letters (3); previous rule: proper-noun-evidence
+нэб	8	113	0	OpenSubtitles	risk-accepted:no-grant	0.38	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+збттй	7	117	0	OpenSubtitles	risk-accepted:no-grant	0.00	yes	fragment	no vowel; previous rule: single-source
+стг	7	104	0	OpenSubtitles	risk-accepted:no-grant	0.37	no	fragment	shorter than 4 letters (3); previous rule: single-source
+анг	6	117	0	OpenSubtitles	risk-accepted:no-grant	0.30	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+реб	6	116	0	OpenSubtitles	risk-accepted:no-grant	0.19	yes	fragment	shorter than 4 letters (3); previous rule: single-source
+бьл	6	110	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	fragment	shorter than 4 letters (3); previous rule: single-source
+охх	6	108	0	OpenSubtitles	risk-accepted:no-grant	0.38	no	fragment	shorter than 4 letters (3); previous rule: single-source

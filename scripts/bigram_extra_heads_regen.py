@@ -43,8 +43,8 @@ CELLS_MIN = 4
 CONV_RANK_LO = 10_132  # the bigram table's head cutoff H
 CONV_MIN_OCCURRENCES = 10
 
-# Harmony sets of the original rule implementation, ported verbatim (the duplicate front vowel
-# and the membership of я are part of the ported rule, not typos to fix silently).
+# Harmony sets of the original rule implementation, kept byte-identical (the duplicate front
+# vowel and the membership of я are intended).
 BACK_VOWELS = set("аоуыя")
 FRONT_VOWELS = set("әөүеиө")
 VOWELS = set("аәеёиоөуүыэюя")

@@ -1,10 +1,9 @@
 """Convert conversational corpora into the Leipzig ``id<TAB>sentence`` shape the
 bigram packer (``scripts/bigram_asset_pack.py``) accepts, with line deduplication.
 
-Why this exists. ``parse_sentence_row`` (scripts/bigram_pack.py) is deliberately strict:
-exactly two tab-separated fields, the first a positive decimal id. The conversational
-dumps (Tatoeba, OpenSubtitles) are plain one-sentence-per-line text. This script is the
-only place where they meet.
+``parse_sentence_row`` (scripts/bigram_pack.py) is strict: exactly two tab-separated
+fields, the first a positive decimal id. The conversational dumps (Tatoeba, OpenSubtitles)
+are plain one-sentence-per-line text. This script converts one shape into the other.
 
 Rules, each chosen to match an already-reviewed rule rather than invent a new one:
 

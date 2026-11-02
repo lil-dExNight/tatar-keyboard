@@ -110,8 +110,8 @@ class FragmentRuleTest(unittest.TestCase):
     def test_rus_word_without_vowels_is_fragment(self) -> None:
         # The length threshold is checked first: "щрн" (3 letters) is "shorter than 4
         # letters"; the no-vowel diagnosis goes to a word that passed the length check.
-        self.assertEqual(da.fragment_reason("щрнб", "rus"), "ни одной гласной")
-        self.assertTrue(da.fragment_reason("щрн", "rus").startswith("короче"))
+        self.assertEqual(da.fragment_reason("щрнб", "rus"), "no vowel")
+        self.assertTrue(da.fragment_reason("щрн", "rus").startswith("shorter"))
 
     def test_rus_normal_word_is_not_fragment(self) -> None:
         self.assertEqual(da.fragment_reason("привет", "rus"), "")
@@ -122,7 +122,7 @@ class FragmentRuleTest(unittest.TestCase):
         self.assertEqual(da.fragment_reason("ох", "tat"), "")
 
     def test_tat_word_without_vowels_is_fragment(self) -> None:
-        self.assertEqual(da.fragment_reason("щгл", "tat"), "ни одной гласной")
+        self.assertEqual(da.fragment_reason("щгл", "tat"), "no vowel")
         # The Tatar vowels ә, ө, ү count as vowels.
         self.assertEqual(da.fragment_reason("көр", "tat"), "")
 
@@ -292,7 +292,7 @@ class SelectPackContractTest(unittest.TestCase):
                            BASELINE_SHA256=bad_pins)
         self.assertNotEqual(code, 0)
         self.assertIsInstance(code, str)  # SystemExit carries the diagnosis
-        self.assertIn("не ассет 1.8.4", code)
+        self.assertIn("is not the 1.8.4 asset", code)
 
     def test_wrong_baseline_sha_stops_pack(self) -> None:
         code, _ = self._run_select()
@@ -303,13 +303,13 @@ class SelectPackContractTest(unittest.TestCase):
                            QUEUE=self.queues, OUT_DIR=self.out_dir,
                            BASELINE_SHA256=bad_pins)
         self.assertNotEqual(code, 0)
-        self.assertIn("не ассет 1.8.4", code)
+        self.assertIn("is not the 1.8.4 asset", code)
 
     def test_queue_with_unexpected_columns_stops(self) -> None:
         self.queues["rus"].write_text("word\tbogus\n", encoding="utf-8")
         code, _ = self._run_select()
         self.assertNotEqual(code, 0)
-        self.assertIn("неожиданные колонки", code)
+        self.assertIn("unexpected columns", code)
 
     def _write_conv_freq(self) -> None:
         self.out_dir.mkdir(parents=True, exist_ok=True)

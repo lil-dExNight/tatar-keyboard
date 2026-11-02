@@ -72,7 +72,8 @@ SPLIT_SEED = 20261028
 INTERVAL_SEED = 20261029
 
 # Realistic-arm latency model, integer milliseconds. The canonical lookup latency is the
-# pinned request-to-handoff p95 budget; the sweep brackets it on both sides.
+# Realistic-arm latency model, integer milliseconds. The canonical lookup latency is the
+# pinned p95 lookup budget; the sweep brackets it on both sides.
 KEY_INTERVAL_BASE_MS = 80
 KEY_INTERVAL_JITTER_MS = 120
 LOOKUP_LATENCY_MS = 16

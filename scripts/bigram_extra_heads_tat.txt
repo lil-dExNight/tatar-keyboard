@@ -4,13 +4,13 @@
 # not a dictionary: every word is already in tatar_top100k_v1.tdict.zlib. The list only decides
 # which words get stored successors.
 #
-# Why: heads are chosen by unigram frequency with a cutoff H, and frequent Tatar imperatives (the
-# bare verb stem) rank below it, so they had no next-word predictions.
+# Heads are chosen by unigram frequency below a cutoff H; frequent Tatar imperatives (the
+# bare verb stem) rank below it and would have no next-word predictions.
 #
 # The list is produced by a rule, not by hand; regenerate the whole file:
 #   python3 scripts/bigram_extra_heads_regen.py --corpus-dir DIR
 # The two rules and their parameters live in scripts/bigram_extra_heads_regen.py (docstring).
-# Words already inside the cutoff (H = 10 132) are left out; ShippedExtraHeadListTest checks that.
+# Words already inside the cutoff are left out; ShippedExtraHeadListTest checks that.
 # Do not add words by hand.
 #
 # word    rank    freq     cells   training pairs

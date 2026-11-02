@@ -1,21 +1,20 @@
-# Разговорная частота слов, измеренная миссией tt-dict-accept одним проходом по корпусам.
-# Одна строка — слово и число его вхождений в обучающей части разговорных корпусов ПОСЛЕ
-# фильтрации (`research/corpus/filters.py`). Ровно эта величина стоит в колонке `train_freq`
-# очереди приёмки; здесь она есть и для слов, которых в очереди нет, — для тех, что уже стоят
-# в поставляемом словаре.
+# Conversational frequency of the words the dictionary may carry.
+# One row is a word and its count in the training part of the conversational corpora after
+# filtering (`research/corpus/filters.py`). This is the value in the queue's train_freq column;
+# the file also covers words outside the queue, namely the ones already in the shipped
+# dictionary.
 #
-# Зачем этот файл коммитится. Досье разделяет два вопроса: СОСТАВ словаря режется вторым
-# независимым источником, ЧАСТОТЫ берутся из всего корпуса целиком, включая OpenSubtitles.
-# Значит разговорную частоту надо прибавить и поставляемым словам тоже, иначе шкалы
-# расходятся: у новичка частота из 482 млн токенов субтитров, у старожила — из письменного
-# Leipzig. Первая сборка этой миссии так и ошиблась, и на префиксе «пап» тройка стала
-# `папочка|папин|папочку`. Без этого файла пересборка требовала бы 1,5 ГБ корпуса на диске.
+# Why the file is committed: composition and frequency answer different questions. Composition
+# is cut by the second independent source, while frequencies come from the whole corpus,
+# OpenSubtitles included. Shipped words therefore need the conversational count as well, or the
+# two scales diverge between a new word and an old one. Without this file a rebuild would need
+# the corpora on disk.
 #
-# Строк только для слов, которые могут оказаться в ассете: поставляемый словарь плюс очередь.
-# Слова с нулевой разговорной частотой пропущены.
-# Источник: Tatoeba-v2026-07-08.tt.txt.gz OpenSubtitles-v2024.tt.txt.gz
-# Базовый ассет: 2d98ed359aa11261a5042a13c5ca9459c6e365c6ab4bf0563d0e3604a7485cae
-# Пересоздаётся: python3 research/corpus/measure_accept.py <tag> out/shipped-1.8.4 <корпуса>
+# Rows cover only words that can enter the asset: the shipped dictionary plus the queue. Words
+# with a zero conversational count are left out.
+# Source: Tatoeba-v2026-07-08.tt.txt.gz OpenSubtitles-v2024.tt.txt.gz
+# Baseline asset: 2d98ed359aa11261a5042a13c5ca9459c6e365c6ab4bf0563d0e3604a7485cae
+# Regenerate: python3 research/corpus/measure_accept.py <tag> out/shipped-1.8.4 <corpora>
 word	conv_freq
 а	26
 аааа	3

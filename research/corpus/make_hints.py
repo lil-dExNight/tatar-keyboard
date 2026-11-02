@@ -122,11 +122,11 @@ def main() -> int:
     parser.add_argument("queue")
     parser.add_argument("corpora", nargs="+")
     parser.add_argument("--os-lines", action="store_true",
-                        help="брать примеры и из OpenSubtitles (лицензии на это нет; "
-                             "включать только по решению оператора)")
+                        help="take examples from OpenSubtitles as well (no licence covers "
+                             "this; enable only by an explicit decision)")
     parser.add_argument("--no-tatoeba-lines", action="store_true",
-                        help="не класть в репозиторий ни одного предложения: подсказкой "
-                             "остаётся только список соседних слов с числами")
+                        help="write no sentence into the repository: the hint stays a list "
+                             "of neighbouring words with counts")
     args = parser.parse_args()
 
     queue_path = Path(args.queue)
@@ -156,16 +156,16 @@ def main() -> int:
         neighbours = [(other, count) for other, count in near.get(word, Counter()).most_common()
                       if other not in stop and count >= NEIGHBOUR_MIN_COUNT][:NEIGHBOURS_SHOWN]
         if neighbours:
-            hints[word] = "рядом: " + ", ".join(f"{other} {count}" for other, count in neighbours)
+            hints[word] = "near: " + ", ".join(f"{other} {count}" for other, count in neighbours)
 
     out = CL.OUT / f"hints_{args.tag}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(hints, ensure_ascii=False, indent=0, sort_keys=True) + "\n",
                    encoding="utf-8")
     from_tatoeba = sum(1 for word in hints if word in examples)
-    print(f"{out}: подсказок {len(hints)} на {len(targets)} слов, требующих подсказки; "
-          f"примеров-предложений {from_tatoeba}, списков соседей {len(hints) - from_tatoeba}; "
-          f"без подсказки осталось {len(targets) - len(hints)}")
+    print(f"{out}: {len(hints)} hints for {len(targets)} words that need one; "
+          f"{from_tatoeba} sentence examples, {len(hints) - from_tatoeba} neighbour lists; "
+          f"{len(targets) - len(hints)} left without a hint")
     return 0
 
 

@@ -9,11 +9,10 @@ took no part in ranking it), because that is literally "how often this word woul
 available to suggest". Train frequency breaks ties, then code-point order for determinism.
 
 No sentence from any corpus is written into the repository. The columns carry counts and
-provenance only. Example sentences would have been genuinely useful for review, but they are
-corpus text, and the largest source of that text -- OpenSubtitles -- grants no licence to
-redistribute it. Word forms with counts are facts about the text, not the text itself; whole
-sentences would be the text. That is why this file holds only counters, even though the
-project uses the source.
+provenance only. Example sentences would help the review, but they are corpus text, and the
+largest source of that text -- OpenSubtitles -- grants no licence to redistribute it. Word
+forms with counts are facts about the text, not the text itself; whole sentences would be the
+text. The queue therefore holds counters only.
 """
 from __future__ import annotations
 import sys
@@ -34,7 +33,7 @@ HEADER = ["word", "heldout_hits", "train_freq", "train_freq_clean", "sources",
 # provenance either way, so a word's origin never becomes indistinguishable.
 #
 # OpenSubtitles has no licence grant; the project uses it for both languages as an accepted
-# risk. Its status is deliberately NOT merged into "clean", so the queue keeps saying which
+# risk. Its status is not merged into "clean", so the queue keeps saying which
 # words carry that risk.
 LICENSE_RANK = {"clean": 0, "risk": 1, "unusable": 2}
 SOURCE_LICENSE = {
@@ -50,44 +49,43 @@ LICENSE_LABEL = {
 }
 
 PREAMBLE = """\
-# Очередь приёмки слов разговорного регистра. Одна строка — одно слово-кандидат.
-# Источник и метод: docs/CORPUS.md, решение по OpenSubtitles — docs/CORPUS-OS.md.
-# Слова НЕ добавлены ни в один поставляемый словарь.
+# Word acceptance queue for the conversational register. One row is one candidate word.
+# The sources and the filter rule are in research/corpus/filters.py; OpenSubtitles is used
+# as an accepted risk.
+# None of these words is in a shipped dictionary.
 #
-# approved заполняет ТОЛЬКО оператор лично, поимённо. Генератор всегда пишет её пустой;
-# правило записано в docs/TATAR-REVIEW-QUEUE.tsv: словарные наборы — не строки интерфейса.
-# approved: (пусто) | yes | no
+# approved is filled in by the reviewer alone, word by word. The generator always writes it
+# empty; a queue table is data, not an interface string.
+# approved: (empty) | yes | no
 #
-# Сортировка — по убыванию пользы: сначала heldout_hits (сколько раз слово встретилось в
-# отложенной разговорной выборке, не участвовавшей в его ранжировании), затем train_freq.
-# Список длинный намеренно: можно идти сверху вниз и остановиться в любой момент.
+# Order: descending usefulness. The primary key is heldout_hits, the occurrences in the
+# held-out conversational split, which took no part in ranking the word; train_freq breaks
+# ties. The list is long on purpose: work from the top and stop at any row.
 #
-# heldout_hits  — вхождений в отложенной разговорной выборке (10 % строк, после дедупликации)
-# train_freq    — вхождений в обучающей части разговорных корпусов, ВСЕХ вместе
-# train_freq_clean — из них вхождений только в корпусах с чистой лицензией (Tatoeba). Именно
-#                 это число останется, если решение по OpenSubtitles отменят. Ноль означает,
-#                 что слово держится на одних субтитрах, даже когда license_status = clean:
-#                 метка clean говорит, что словоформа встречается в Tatoeba, а НЕ что её
-#                 частота получена без OpenSubtitles.
-# sources       — из каких корпусов слово пришло
-# cap_ratio     — доля вхождений с заглавной буквы НЕ в начале строки; чем ближе к 1,
-#                 тем вероятнее это имя собственное, проскочившее фильтр. 0.00 — чисто.
-# enters_top100k — вошло бы слово в top-100k при слиянии частот (нижняя оценка)
-# license_status — под какой лицензией слово получено:
-#   clean:CC-BY-2.0-FR      — Tatoeba, грант есть
-#   risk-accepted:no-grant  — слово встречается только в OpenSubtitles. Лицензионного гранта у
-#                             OpenSubtitles нет вообще: это не «неясная» лицензия, а
-#                             отсутствующая. Оператор 2026-08-24 решил взять источник, зная это.
-#                             Строка помечена, чтобы происхождение слова оставалось видно;
-#                             вычитывается она наравне с чистыми.
-# Слова, встречающиеся ТОЛЬКО в QED (research only) или TED2020 (CC BY-NC-ND), в очередь
-# не попадают вовсе: их нельзя принять ни при каком решении оператора, и держать их здесь
-# значило бы тратить его время. Их число указано в docs/CORPUS.md.
+# heldout_hits     occurrences in the held-out conversational split (10 % of the rows after
+#                  deduplication)
+# train_freq       occurrences in the training part of the conversational corpora, all sources
+# train_freq_clean occurrences in the clean-licence corpora only (Tatoeba). This is the count
+#                  that survives if OpenSubtitles is dropped. Zero means the word rests on
+#                  subtitles alone even when license_status is clean: the clean label says the
+#                  form occurs in Tatoeba, not that its count is free of OpenSubtitles.
+# sources          the corpora the word came from
+# cap_ratio        share of occurrences capitalized outside the line start; the closer to 1, the
+#                  likelier a proper name that passed the filter. 0.00 is clean.
+# enters_top100k   whether the word would enter the top 100k of the merged ranking (lower bound)
+# license_status   the licence the word was taken under:
+#   clean:CC-BY-2.0-FR     Tatoeba, a real grant
+#   risk-accepted:no-grant OpenSubtitles only. OpenSubtitles grants no licence at all, so the
+#                          source is used as an accepted risk; the row keeps the origin visible
+#                          and is reviewed like the clean rows.
 #
-# Не попадают и слова, которые не доходят до top-100k даже при ВЕРХНЕЙ границе интервала
-# частот: отсечка словаря жёстко 100 000 записей, такое слово не войдёт в ассет ни при каком
-# допущении, и вычитывать его — работа, которая ничего не изменит. Сколько таких слов
-# отброшено, печатает сам генератор и записано в docs/CORPUS-OS.md.
+# Words seen only in QED (research use only) or TED2020 (CC BY-NC-ND) never enter the queue: no
+# decision could accept them, and keeping them would waste review time. The generator prints
+# their count.
+#
+# Words that miss the top 100k even at the upper frequency bound are left out as well: the
+# dictionary cutoff is 100 000 entries, so such a word cannot enter the asset, and the generator
+# prints how many were dropped.
 """
 
 def main():
@@ -97,8 +95,8 @@ def main():
 
     # Streaming split: the same dedup-then-every-tenth-line rule as the in-memory version, but
     # the lines are replayed from the files instead of being held in memory, because the
-    # Russian OpenSubtitles file does not fit in memory. selftest.py checks that the split is
-    # line-for-line identical.
+    # Russian OpenSubtitles file does not fit in memory. tests/make_ru_eval_set checks the
+    # split on a small corpus.
     split = Split(paths)
     norm = fast_normalizer(alpha)
     origin = defaultdict(set)

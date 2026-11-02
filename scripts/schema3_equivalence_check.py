@@ -54,7 +54,7 @@ class V3Index:
             _checksum,
         ) = bp.HEADER_V3.unpack_from(raw)
         if schema_id != bp.SCHEMA_ID_V3:
-            raise SystemExit(f"ожидался schema 3, получен {schema_id}")
+            raise SystemExit(f"expected schema 3, got {schema_id}")
         self.raw = raw
         self.head_count = head_count
         self.block_count = block_count
@@ -192,7 +192,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     for path in (args.v2, args.v3, args.dictionary):
         if not path.is_file():
-            print(f"error: нет файла {path}", file=sys.stderr)
+            print(f"error: no file {path}", file=sys.stderr)
             return 2
     return run(args.v2, args.v3, args.dictionary, args.language, args.top)
 

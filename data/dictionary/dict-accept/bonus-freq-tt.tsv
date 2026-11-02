@@ -1,5 +1,4 @@
-# Bonus frequencies of Tatar dictionary pool words from the extra corpora (the corpus-ingestion
-# experiment of research/prediction-engine.md, memo P3).
+# Bonus frequencies of Tatar dictionary pool words from the extra corpora.
 #
 # The pipeline merge stays exact integer arithmetic: the bonus of a pool word is
 #   max(1, round(base + sum_s W_s * freq_s(w) * T_base / T_s)) - base
@@ -13,7 +12,7 @@
 #   madlad: MADLAD-400 tt clean split (CC BY 4.0)
 #   ttwiki: tt.wikipedia pages dump, namespace 0, minimal markup strip (CC BY-SA 4.0)
 #   hplt:   HPLT 2.0 tat_Cyrl documents, prob >= 0.9 and tat_Cyrl segment share >= 0.5 (CC0)
-# Filtered list SHA-256: madlad 4a3cac8e0f734e3dca91b030df869ca705e0143bd79154849bf167b2f8018cdf, ttwiki f89bb8b6a4c87c861f8375e87d39861b8fd780b331309f642406fb4635014cc4, hplt 69bec508b8263a7a18e468c28e33a1e2b0fc004fb339cff2843b44c3ec640673
+# Filtered source pins: see the measurement report.
 # Weights W_s: hplt=6.0, madlad=0.25, ttwiki=0.25; tuned on the conv-dev development split (held-out
 # conversational rows minus the pinned eval lines), never on the pinned eval set.
 # word<TAB>bonus

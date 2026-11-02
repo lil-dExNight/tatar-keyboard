@@ -71,7 +71,7 @@ def build_pool(args) -> int:
     verdicts = rebuild_assets.verify_corpus(args.corpus_dir, manifest, RUSSIAN_TRAIN)
     bad = {name: verdict for name, verdict in verdicts.items() if verdict != "ok"}
     if bad:
-        print(f"error: корпуса не совпали с манифестом: {bad}", file=sys.stderr)
+        print(f"error: corpora do not match the manifest: {bad}", file=sys.stderr)
         return 2
 
     language = coverage.language_for("rus")

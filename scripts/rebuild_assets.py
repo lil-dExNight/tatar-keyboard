@@ -179,9 +179,9 @@ def load_corpus_manifest(path: Path) -> dict[str, tuple[int, str]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
-        raise CorpusManifestError(f"{path}: не читается: {error}") from error
+        raise CorpusManifestError(f"{path}: unreadable: {error}") from error
     if not isinstance(data, dict):
-        raise CorpusManifestError(f"{path}: ожидался JSON-объект наверху")
+        raise CorpusManifestError(f"{path}: expected a top-level JSON object")
     manifest: dict[str, tuple[int, str]] = {}
     for name, entry in data.items():
         if not (
@@ -194,8 +194,8 @@ def load_corpus_manifest(path: Path) -> dict[str, tuple[int, str]]:
             and isinstance(entry.get("source"), str)
         ):
             raise CorpusManifestError(
-                f"{path}: запись {name!r} обязана содержать size (целое >= 0), "
-                "sha256 (64 hex) и source"
+                f"{path}: entry {name!r} must have size (an int >= 0), "
+                "sha256 (64 hex) and source"
             )
         manifest[name] = (entry["size"], entry["sha256"])
     expected = set(corpus_names())
@@ -203,8 +203,8 @@ def load_corpus_manifest(path: Path) -> dict[str, tuple[int, str]]:
     stale = sorted(set(manifest) - expected)
     if absent or stale:
         raise CorpusManifestError(
-            f"{path}: записи не совпадают с корпусами пересборки; "
-            f"нет записей: {absent or '-'}, лишние: {stale or '-'}"
+            f"{path}: entries do not match the rebuild corpora; "
+            f"missing: {absent or '-'}, unexpected: {stale or '-'}"
         )
     return manifest
 
@@ -233,12 +233,12 @@ def verify_corpus(
             continue
         actual_size = path.stat().st_size
         if actual_size != size:
-            verdicts[name] = f"size: в манифесте {size}, у файла {actual_size}"
+            verdicts[name] = f"size: manifest {size}, file {actual_size}"
             continue
         actual_sha256 = _file_sha256(path)
         verdicts[name] = (
             "ok" if actual_sha256 == sha256
-            else f"sha256: в манифесте {sha256}, у файла {actual_sha256}"
+            else f"sha256: manifest {sha256}, file {actual_sha256}"
         )
     return verdicts
 
@@ -317,8 +317,8 @@ def build_admitted_wordforms(
         (json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"),
     )
     print(
-        f"стадия словоформ: основ {stats['stems']}, допущено форм "
-        f"{stats['admitted_forms']} из {stats['generated_rows']} порождённых строк",
+        f"wordform stage: {stats['stems']} stems, admitted "
+        f"{stats['admitted_forms']} of {stats['generated_rows']} generated rows",
         file=sys.stderr,
     )
     return out
@@ -361,16 +361,16 @@ def _pin_regions(text: str) -> list[tuple[int, int]]:
         stripped = line.strip()
         if stripped == PINS_MARKER_OPEN:
             if open_end is not None:
-                raise ContractError("вложенный маркер пинов")
+                raise ContractError("nested pin marker")
             open_end = offset + len(line)
         elif stripped == PINS_MARKER_CLOSE:
             if open_end is None:
-                raise ContractError("закрывающий маркер пинов без открывающего")
+                raise ContractError("closing pin marker without an opening one")
             regions.append((open_end, offset))
             open_end = None
         offset += len(line)
     if open_end is not None:
-        raise ContractError("открывающий маркер пинов без закрывающего")
+        raise ContractError("opening pin marker without a closing one")
     return regions
 
 
@@ -382,16 +382,16 @@ def _spec_block(text: str, spec: str, kind: str) -> tuple[int, int]:
     """
     targets = list(re.finditer(rf"val {spec} = {kind}\(", text))
     if len(targets) != 1:
-        raise ContractError(f"{spec}: ожидался ровно один блок {kind}, найдено {len(targets)}")
+        raise ContractError(f"{spec}: expected exactly one {kind} block, found {len(targets)}")
     regions = _pin_regions(text)
     enclosing = [region for region in regions if region[0] <= targets[0].start() < region[1]]
     if len(enclosing) != 1:
-        raise ContractError(f"{spec}: блок {kind} не стоит между маркерами пинов")
+        raise ContractError(f"{spec}: the {kind} block is not between pin markers")
     for start, end in regions:
         blocks = re.findall(r"val \w+ = \w+\(", text[start:end])
         if len(blocks) != 1:
             raise ContractError(
-                f"между маркерами пинов ожидался ровно один блок, найдено {len(blocks)}"
+                f"expected exactly one block between pin markers, found {len(blocks)}"
             )
     return enclosing[0]
 
@@ -399,26 +399,26 @@ def _spec_block(text: str, spec: str, kind: str) -> tuple[int, int]:
 def _read_number(block: str, field: str) -> int:
     matches = re.findall(rf"\b{field}\s*=\s*([\d_]+)", block)
     if len(matches) != 1:
-        raise ContractError(f"поле {field}: ожидалось ровно одно совпадение, найдено {len(matches)}")
+        raise ContractError(f"field {field}: expected exactly one match, found {len(matches)}")
     return int(matches[0].replace("_", ""))
 
 
 def _read_sha(block: str, field: str) -> str:
     matches = re.findall(rf'\b{field}\s*=\s*"([0-9a-f]{{64}})"', block)
     if len(matches) != 1:
-        raise ContractError(f"поле {field}: ожидалось ровно одно совпадение, найдено {len(matches)}")
+        raise ContractError(f"field {field}: expected exactly one match, found {len(matches)}")
     return matches[0]
 
 
 def _read_words(block: str, field: str) -> tuple[str, ...]:
     matches = re.findall(rf"\b{field}\s*=\s*listOf\((.*?)\)", block, re.DOTALL)
     if len(matches) != 1:
-        raise ContractError(f"поле {field}: ожидался ровно один список, найдено {len(matches)}")
+        raise ContractError(f"field {field}: expected exactly one list, found {len(matches)}")
     literals = re.findall(r'"(?:\\.|[^"\\])*"', matches[0])
     try:
         return tuple(json.loads(literal) for literal in literals)
     except json.JSONDecodeError as error:
-        raise ContractError(f"поле {field}: некорректная строка") from error
+        raise ContractError(f"field {field}: invalid string literal") from error
 
 
 def read_pins(
@@ -450,7 +450,7 @@ def _replace_number(block: str, field: str, value: int) -> str:
         rf"(\b{field}\s*=\s*)[\d_]+", rf"\g<1>{value:_}", block
     )
     if count != 1:
-        raise ContractError(f"поле {field} не заменено в блоке спецификации")
+        raise ContractError(f"field {field} was not replaced in the spec block")
     return block
 
 
@@ -461,7 +461,7 @@ def _replace_sha(block: str, field: str, value: str) -> str:
         rf'(\b{field}\s*=\s*)"[0-9a-f]{{64}}"', rf'\g<1>"{value}"', block
     )
     if count != 1:
-        raise ContractError(f"поле {field} не заменено в блоке спецификации")
+        raise ContractError(f"field {field} was not replaced in the spec block")
     return block
 
 
@@ -474,7 +474,7 @@ def _replace_words(block: str, field: str, words: tuple[str, ...]) -> str:
         flags=re.DOTALL,
     )
     if count != 1:
-        raise ContractError(f"поле {field} не заменено в блоке спецификации")
+        raise ContractError(f"field {field} was not replaced in the spec block")
     return block
 
 
@@ -513,7 +513,7 @@ def write_pins(
     _atomic_write_text(contract_path, text)
     for spec, pins in updates.items():
         if read_pins(contract_path, spec, kind, count_field, linked=bool(pins.dictionary_raw_sha256)) != pins:
-            raise ContractError(f"{spec}: после записи пины не совпали с записанными")
+            raise ContractError(f"{spec}: pins read back different after writing")
 
 
 # --- asset measurement ------------------------------------------------------------------------
@@ -561,7 +561,7 @@ def measure_bigram(asset_path: Path, dictionary_path: Path, tag: str) -> Pins:
         )
         head_count = len(parsed.head_words)
     else:
-        raise ContractError(f"неизвестный schema id таблицы биграмм: {schema_id}")
+        raise ContractError(f"unknown bigram table schema id: {schema_id}")
     return Pins(
         compressed_size=len(asset),
         compressed_sha256=hashlib.sha256(asset).hexdigest(),
@@ -638,14 +638,14 @@ def _pin_problems(measured: Pins, pinned: Pins) -> list[str]:
     for field in fields:
         actual, expected = getattr(measured, field), getattr(pinned, field)
         if actual != expected:
-            problems.append(f"{field}: в контракте {expected}, в ассете {actual}")
+            problems.append(f"{field}: contract {expected}, asset {actual}")
     return problems
 
 
 def load_known_drift(path: Path) -> dict[str, dict[str, object]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise SystemExit(f"{path}: ожидался JSON-объект наверху")
+        raise SystemExit(f"{path}: expected a top-level JSON object")
     for key, entry in data.items():
         if not isinstance(entry, dict) or not {
             "missing_top_heads",
@@ -653,8 +653,8 @@ def load_known_drift(path: Path) -> dict[str, dict[str, object]]:
             "reason",
         } <= set(entry):
             raise SystemExit(
-                f"{path}: запись {key!r} обязана содержать missing_top_heads, "
-                "unexpected_heads и reason"
+                f"{path}: entry {key!r} must have missing_top_heads, "
+                "unexpected_heads and reason"
             )
     return data
 
@@ -674,18 +674,18 @@ def run_check(
     bigram_contract = root / BIGRAM_CONTRACT
     for path in (dict_contract, bigram_contract):
         if not path.is_file():
-            print(f"error: нет файла контракта {path}", file=sys.stderr)
+            print(f"error: no contract file {path}", file=sys.stderr)
             return 2
     try:
         corpus_manifest = load_corpus_manifest(root / CORPUS_MANIFEST)
     except CorpusManifestError as error:
-        print(f"error: манифест корпусов: {error}", file=sys.stderr)
+        print(f"error: corpus manifest: {error}", file=sys.stderr)
         return 2
 
     known: dict[str, dict[str, object]] = {}
     if known_drift_path is not None:
         if not known_drift_path.is_file():
-            print(f"error: нет файла известных расхождений {known_drift_path}", file=sys.stderr)
+            print(f"error: no known-drift file {known_drift_path}", file=sys.stderr)
             return 2
         known = load_known_drift(known_drift_path)
 
@@ -704,14 +704,14 @@ def run_check(
                     dict_contract, dictionary.spec, "DictionaryArtifactSpec", "expectedEntryCount"
                 )
             except ContractError as error:
-                print(f"error: контракт не разобрался: {error}", file=sys.stderr)
+                print(f"error: unparsable contract: {error}", file=sys.stderr)
                 return 2
             try:
                 problems = _pin_problems(
                     measure_dictionary(asset_path, dictionary.tag), pinned
                 )
             except Exception as error:  # a broken asset is a check verdict, not a crash
-                problems = [f"ассет не читается: {error}"]
+                problems = [f"asset unreadable: {error}"]
             entry["verdict"] = "mismatch" if problems else "ok"
             entry["problems"] = problems
             failed = failed or bool(problems)
@@ -738,7 +738,7 @@ def run_check(
                     linked=True,
                 )
             except ContractError as error:
-                print(f"error: контракт не разобрался: {error}", file=sys.stderr)
+                print(f"error: unparsable contract: {error}", file=sys.stderr)
                 return 2
             try:
                 problems = _pin_problems(
@@ -761,7 +761,7 @@ def run_check(
                 )
             except Exception as error:  # a broken asset is a check verdict, not a crash
                 entry["verdict"] = "mismatch"
-                entry["problems"] = [f"ассет не читается: {error}"]
+                entry["problems"] = [f"asset unreadable: {error}"]
                 failed = True
                 report["bigrams"][bigram.tag] = entry  # type: ignore[index]
                 continue
@@ -774,7 +774,7 @@ def run_check(
             }
             if drift.outside:
                 problems.append(
-                    f"{drift.outside} голов вне словаря: "
+                    f"{drift.outside} heads outside the dictionary: "
                     + ", ".join(drift.outside_examples)
                 )
             entry["problems"] = problems
@@ -784,8 +784,8 @@ def run_check(
                 if known_entry is not None:
                     entry["verdict"] = "stale-known-drift"
                     entry["problems"] = problems + [
-                        "расхождения больше нет — запись в known_asset_drift.json "
-                        "устарела, уберите её"
+                        "the drift is gone; the known_asset_drift.json "
+                        "entry is stale, remove it"
                     ]
                     failed = True
                 else:
@@ -798,22 +798,22 @@ def run_check(
             else:
                 entry["verdict"] = "drift"
                 hint = (
-                    "не совпадает с known_asset_drift.json"
+                    "does not match known_asset_drift.json"
                     if known_entry is not None
-                    else "нет записи в known_asset_drift.json"
+                    else "no entry in known_asset_drift.json"
                     if known_drift_path is not None
-                    else "перезапустите с --allow-known-drift, если расхождение известно"
+                    else "rerun with --allow-known-drift if the drift is known"
                 )
                 entry["problems"] = problems + [
-                    f"головы разошлись со словарём: нет в таблице {drift.missing}, "
-                    f"лишних {drift.unexpected} ({hint})"
+                    f"heads diverged from the dictionary: missing {drift.missing}, "
+                    f"unexpected {drift.unexpected} ({hint})"
                 ]
                 failed = True
         report["bigrams"][bigram.tag] = entry  # type: ignore[index]
 
     for key in sorted(set(known) - used_drift_keys):
         # An entry for an asset no longer in the registry is stale too.
-        print(f"error: {known_drift_path}: запись {key!r} не относится ни к одному ассету",
+        print(f"error: {known_drift_path}: entry {key!r} matches no asset",
               file=sys.stderr)
         failed = True
 
@@ -842,11 +842,11 @@ def run_check(
             line = f"{section}/{tag}: {entry['verdict']}"
             if entry["verdict"] == "known-drift":
                 drift = entry["drift"]
-                line += (f" (нет в таблице {drift['missing_top_heads']}, "
-                         f"лишних {drift['unexpected_heads']})")
+                line += (f" (missing {drift['missing_top_heads']}, "
+                         f"unexpected {drift['unexpected_heads']})")
             print(line, file=sys.stderr)
     if corpus_entry["verdict"] == "not-checked":
-        print("corpus: манифест в порядке, файлы не проверялись (нет --corpus-dir)",
+        print("corpus: manifest is consistent, files not checked (no --corpus-dir)",
               file=sys.stderr)
     else:
         print(f"corpus: {corpus_entry['verdict']}", file=sys.stderr)
@@ -952,7 +952,7 @@ def _function_region(text: str, name: str) -> tuple[int, int]:
     """[start, end) of the `    def <name>(` method through the line before the next def/class."""
     matches = list(re.finditer(rf"\n    def {name}\(", text))
     if len(matches) != 1:
-        raise ContractError(f"{name}: ожидался ровно один метод, найдено {len(matches)}")
+        raise ContractError(f"{name}: expected exactly one method, found {len(matches)}")
     start = matches[0].start()
     following = re.search(r"\n    def |\nclass ", text[start + 1:])
     end = start + 1 + following.start() if following is not None else len(text)
@@ -970,7 +970,7 @@ def _rewrite_pin_literals(
         matches = list(re.finditer(pattern, body))
         if len(matches) != 1:
             raise ContractError(
-                f"{path}: калибровочный шаблон {pattern!r}: совпадений {len(matches)}"
+                f"{path}: calibration template {pattern!r}: {len(matches)} matches"
             )
         old = matches[0].group(1)
         new = _reformat_like(old, value) if isinstance(value, int) else value
@@ -1162,7 +1162,7 @@ def _run_step(argv: list[str], cwd: Path) -> None:
     print("+ " + " ".join(argv[1:]), file=sys.stderr)
     completed = subprocess.run(argv, cwd=cwd, check=False)
     if completed.returncode != 0:
-        raise SystemExit(f"шаг пересборки упал с кодом {completed.returncode}: {argv[1]}")
+        raise SystemExit(f"rebuild step failed with code {completed.returncode}: {argv[1]}")
 
 
 def _side_snapshot(root: Path, tags: frozenset[str]) -> dict[str, object]:
@@ -1239,10 +1239,10 @@ def run_rebuild(
         if not (root / WORDFORM_EXCEPTIONS).is_file():
             missing.append(str(root / WORDFORM_EXCEPTIONS))
     if missing:
-        print("error: не хватает входов пересборки:", file=sys.stderr)
+        print("error: missing rebuild inputs:", file=sys.stderr)
         for path in missing:
             print(f"  {path}", file=sys.stderr)
-        print("происхождение входов — в docstring скрипта", file=sys.stderr)
+        print("the origin of each input is in the script docstring", file=sys.stderr)
         return 2
 
     # The corpus bytes of the selected languages must match the committed manifest before
@@ -1250,12 +1250,12 @@ def run_rebuild(
     try:
         corpus_manifest = load_corpus_manifest(root / CORPUS_MANIFEST)
     except CorpusManifestError as error:
-        print(f"error: манифест корпусов: {error}", file=sys.stderr)
+        print(f"error: corpus manifest: {error}", file=sys.stderr)
         return 2
     corpus_verdicts = verify_corpus(corpus_dir, corpus_manifest, corpus_names(selected))
     bad_corpora = {name: v for name, v in corpus_verdicts.items() if v != "ok"}
     if bad_corpora:
-        print(f"error: корпуса не совпали с {CORPUS_MANIFEST}:", file=sys.stderr)
+        print(f"error: corpora do not match {CORPUS_MANIFEST}:", file=sys.stderr)
         for name, verdict in sorted(bad_corpora.items()):
             print(f"  {corpus_dir / name}: {verdict}", file=sys.stderr)
         return 1
@@ -1306,7 +1306,7 @@ def run_rebuild(
     write_pins(
         root / BIGRAM_CONTRACT, bigram_updates, "BigramArtifactSpec", "expectedHeadCount"
     )
-    print("пины переписаны в обоих контрактах", file=sys.stderr)
+    print("pins rewritten in both contracts", file=sys.stderr)
 
     # 3b. With --only, the unselected side must be byte-identical.
     if only is not None:
@@ -1316,7 +1316,7 @@ def run_rebuild(
         moved = [key for key, before in untouched.items() if after[key] != before]
         if moved:
             print(
-                f"error: --only {only}: невыбранная сторона изменилась:",
+                f"error: --only {only}: the unselected side changed:",
                 file=sys.stderr,
             )
             for key in moved:
@@ -1332,20 +1332,20 @@ def run_rebuild(
         except ContractError:
             raise
         except Exception as error:
-            raise SystemExit(f"шаг обновления калибровочных пинов упал: {error}") from error
+            raise SystemExit(f"calibration pin update step failed: {error}") from error
         if moved:
-            print("калибровочные пины переписаны:", file=sys.stderr)
+            print("calibration pins rewritten:", file=sys.stderr)
             for path in moved:
                 print(f"  {path}", file=sys.stderr)
         else:
-            print("калибровочные пины уже совпадают", file=sys.stderr)
+            print("calibration pins already match", file=sys.stderr)
 
     # 4. Verify the result with the --check procedure over all four assets, including the
     # untouched side.
     result = run_check(root, known_drift_path, stream)
     print(
-        "дальше руками: прогнать гейты (JVM + python + lintRelease + check-no-internet) и "
-        "обновить scripts/known_asset_drift.json, если расхождение голов изменилось",
+        "next, by hand: run the gates (JVM + python + lintRelease + check-no-internet) and "
+        "update scripts/known_asset_drift.json if the head drift changed",
         file=sys.stderr,
     )
     return result
@@ -1356,49 +1356,50 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="только проверка согласованности: ничего не пересобирает и не пишет",
+        help="consistency check only: rebuilds and writes nothing",
     )
     parser.add_argument(
         "--only",
         choices=("tatar", "russian"),
         default=None,
-        help="пересобрать только одну сторону: её словарь (у татарской — со стадией "
-        "словоформ), её таблицу биграмм и её пины; входы другой стороны не нужны, а её "
-        "ассеты и пины обязаны остаться побайтно теми же (снимок SHA-256 до и после). "
-        "Финальная проверка сверяет все четыре ассета. С --check не совместимо",
+        help="rebuild one side only: its dictionary (for Tatar, with the wordform "
+        "stage), its bigram table and its pins; the other side's inputs are not needed, "
+        "while its assets and pins must stay byte-identical (a SHA-256 snapshot before "
+        "and after). The final check verifies all four assets. Not valid with --check",
     )
     parser.add_argument(
         "--allow-known-drift",
         nargs="?",
         const=str(DEFAULT_KNOWN_DRIFT),
         default=None,
-        metavar="ФАЙЛ",
-        help="принять расхождения голов, ТОЧНО совпадающие с файлом известных "
-        "(по умолчанию %(const)s); другое число или устаревшая запись — провал",
+        metavar="FILE",
+        help="accept head drift only when it matches the known-drift file exactly "
+        "(default %(const)s); any other count, or a stale entry, fails",
     )
     parser.add_argument(
         "--baseline",
         type=Path,
-        help="каталог с ассетами 1.8.4 — обязателен для пересборки",
+        help="directory with the 1.8.4 assets; required for a rebuild",
     )
     parser.add_argument(
         "--corpus-dir",
         type=Path,
         default=None,
-        help="каталог с корпусами, перечисленными в data/corpus-manifest.json (для "
-        f"пересборки по умолчанию {DEFAULT_CORPUS_DIR}); с --check сверяет их с манифестом",
+        help="directory holding the corpora listed in data/corpus-manifest.json "
+        f"(rebuild default {DEFAULT_CORPUS_DIR}); with --check they are verified "
+        "against the manifest",
     )
     parser.add_argument(
         "--work-dir",
         type=Path,
         default=None,
-        help="куда класть сырые таблицы и отчёты (по умолчанию <root>/build/rebuild_assets)",
+        help="where to write raw tables and reports (default <root>/build/rebuild_assets)",
     )
     parser.add_argument(
         "--root",
         type=Path,
         default=ROOT,
-        help="корень дерева (по умолчанию — репозиторий скрипта; для тестов)",
+        help="tree root (default: the script's repository; for tests)",
     )
     return parser
 
@@ -1415,12 +1416,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         known_drift = root / known_drift
     if args.check:
         if args.only is not None:
-            print("error: --only относится к пересборке; --check всегда сверяет все "
-                  "четыре ассета", file=sys.stderr)
+            print("error: --only applies to rebuilds; --check always verifies all four assets",
+                  file=sys.stderr)
             return 2
         return run_check(root, known_drift, corpus_dir=args.corpus_dir)
     if args.baseline is None:
-        print("error: для пересборки нужен --baseline (или запустите --check)",
+        print("error: a rebuild needs --baseline (or run --check)",
               file=sys.stderr)
         return 2
     work_dir = args.work_dir if args.work_dir is not None else root / DEFAULT_WORK_DIR
@@ -1430,10 +1431,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             root, args.baseline, corpus_dir, work_dir, known_drift, only=args.only
         )
     except ContractError as error:
-        print(f"error: контракт не разобрался: {error}", file=sys.stderr)
+        print(f"error: unparsable contract: {error}", file=sys.stderr)
         return 2
     except wordform_gen.WordformError as error:
-        print(f"error: стадия словоформ: {error}", file=sys.stderr)
+        print(f"error: wordform stage: {error}", file=sys.stderr)
         return 2
 
 

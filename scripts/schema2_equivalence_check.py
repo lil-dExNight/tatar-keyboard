@@ -50,7 +50,7 @@ class V2BlockIndex:
             _checksum,
         ) = dp.HEADER.unpack_from(raw)
         if schema_id != dp.SCHEMA_ID_V2:
-            raise SystemExit(f"ожидался schema 2, получен {schema_id}")
+            raise SystemExit(f"expected schema 2, got {schema_id}")
         self.raw = raw
         self.entry_count = entry_count
         self.block_count = block_count
@@ -208,7 +208,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     for path in (args.v1, args.v2):
         if not path.is_file():
-            print(f"error: нет файла {path}", file=sys.stderr)
+            print(f"error: no file {path}", file=sys.stderr)
             return 2
     return run(args.v1, args.v2, args.language, args.top)
 

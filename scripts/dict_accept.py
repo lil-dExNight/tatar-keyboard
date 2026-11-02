@@ -60,9 +60,9 @@ VOWELS = {
 def fragment_reason(word: str, tag: str) -> str:
     """Why the word is a formal fragment; an empty string if it is not."""
     if len(word) < MIN_WORD_LEN[tag]:
-        return f"короче {MIN_WORD_LEN[tag]} букв ({len(word)})"
+        return f"shorter than {MIN_WORD_LEN[tag]} letters ({len(word)})"
     if not (set(word) & VOWELS[tag]):
-        return "ни одной гласной"
+        return "no vowel"
     return ""
 
 
@@ -70,13 +70,13 @@ def fragment_rule_text(tag: str) -> str:
     """One-line description of the fragment rule for this language, for file headers."""
     vowels = "".join(sorted(VOWELS[tag]))
     if MIN_WORD_LEN[tag] > 1:
-        return (f"короче {MIN_WORD_LEN[tag]} букв или без единой гласной "
+        return (f"shorter than {MIN_WORD_LEN[tag]} letters or without a vowel "
                 f"({vowels})")
-    return (f"без единой гласной ({vowels}); порога длины у татарского нет — "
-            "по длине там режутся живые слова")
+    return (f"no vowel ({vowels}); Tatar has no length threshold, because a length cut "
+            "removes real words")
 
-# Russian inflectional endings. The list is flat and deliberately broad: it only has to find a
-# stem. Precision comes from requiring several attested forms, which an invented stem lacks.
+# Russian inflectional endings. The list is broad: it only has to find a stem. Precision comes
+# from requiring several attested forms, which an invented stem lacks.
 RUSSIAN_ENDINGS = frozenset({
     "",
     # noun and adjective inflection
@@ -128,7 +128,7 @@ def read_queue(tag: str) -> list[Row]:
             fields = line.rstrip("\n").split("\t")
             if fields[0] == "word":
                 if fields[: len(HEADER)] != HEADER:
-                    raise SystemExit(f"{QUEUE[tag]}: неожиданные колонки {fields}")
+                    raise SystemExit(f"{QUEUE[tag]}: unexpected columns {fields}")
                 continue
             if not fields[0]:
                 continue
@@ -173,11 +173,11 @@ def prior_verdict(row: Row, tag: str, shipped: frozenset[str]) -> tuple[bool, st
     if "OpenSubtitles" in sources and "Tatoeba" in sources:
         return True, "two-corpora", row.sources
     if row.word in shipped:
-        return True, "shipped-word", "уже в поставляемом словаре"
+        return True, "shipped-word", "already in the shipped dictionary"
     if tag == "rus":
         count, stem, ending = paradigm_siblings(row.word, shipped)
         if count >= MIN_PARADIGM_SIBLINGS:
-            return True, "shipped-paradigm", f"{stem}|{ending} +{count} форм в словаре"
+            return True, "shipped-paradigm", f"{stem}|{ending} +{count} forms in the dictionary"
     return False, "single-source", row.sources
 
 
@@ -192,37 +192,35 @@ def decide(rows: list[Row], tag: str, shipped: frozenset[str]):
         passed, rule, detail = prior_verdict(row, tag, shipped)
         if row.word in EXCLUDED_WORDS:
             rejected.append((row, "operator-excluded",
-                             f"исключено оператором поимённо (прежнее правило: {rule})"))
+                             f"excluded by name (previous rule: {rule})"))
             continue
         if passed:
             accepted.append((row, rule, detail))
             continue
         reason = fragment_reason(row.word, tag)
         if reason:
-            rejected.append((row, "fragment", f"{reason}; прежнее правило: {rule}"))
+            rejected.append((row, "fragment", f"{reason}; previous rule: {rule}"))
             continue
-        accepted.append((row, "operator-widened", f"прежнее правило: {rule} ({detail})"))
+        accepted.append((row, "operator-widened", f"previous rule: {rule} ({detail})"))
     return accepted, rejected
 
 
 PREAMBLE = """\
-# {kind} машинной приёмкой. Миссия tt-dict-widen, отчёт — docs/DICT-WIDEN.md.
-# Ручной вычитки не было и не будет: оператор 2026-08-24 заменил её машинным правилом, а
-# затем, посмотрев сто случайных отклонённых, снял и планку второго источника.
+# Words {kind} by the machine acceptance rule.
 #
-# ПРАВИЛО 1.9.1: принимается ВСЁ, кроме формальных обрывков и слов, исключённых оператором.
-#   fragment         — формальный обрывок: {frag}
-#   operator-excluded — оператор назвал слово поимённо: {excl}
-# Прежняя планка 1.9.0 больше не решает судьбу слова, но считается и записана меткой, чтобы
-# происхождение строки было видно файлом:
-#   two-corpora      — встречается и в OpenSubtitles, и в Tatoeba
-#   shipped-word     — уже стоит в поставляемом словаре (в очереди таких нет по построению)
-#   shipped-paradigm — русский: основа стоит в поставляемом словаре ещё в >= {sib} формах
-#   operator-widened — прежняя планка отклоняла (single-source или cap_ratio >= {cap}),
-#                      принято решением оператора; прежняя причина стоит в rule_detail
+# The rule accepts every queue word except formal fragments and words excluded by hand:
+#   fragment          - a formal fragment: {frag}
+#   operator-excluded - named by hand: {excl}
+# The older second-source bar no longer decides a word but is still computed and recorded in
+# the rule column, so every row keeps its origin:
+#   two-corpora       - seen in both OpenSubtitles and Tatoeba
+#   shipped-word      - already in the shipped dictionary (the queue holds none by construction)
+#   shipped-paradigm  - Russian: the stem has {sib} or more forms in the shipped dictionary
+#   operator-widened  - the older bar refused it (single source, or cap_ratio >= {cap}) and the
+#                       word was accepted by hand; the older reason is in rule_detail
 #
-# Колонки — те же, что в очереди, плюс rule и rule_detail. Отклонённые НЕ удалены: изменить
-# правило и перезапустить `python3 scripts/dict_accept.py select` — одна команда.
+# The columns are the queue columns plus rule and rule_detail. Rejected rows stay in
+# rejected-*.tsv: change the rule and rerun `python3 scripts/dict_accept.py select`.
 """
 
 
@@ -242,12 +240,11 @@ def write_rows(path: Path, kind: str, decided, frag: str):
 
 
 SAMPLE_HEAD = """\
-# {n} случайных {kind} слов ({lang}) — образец на глаз оператору.
-# Выборка случайная и воспроизводимая: random.Random({seed}).sample по всему списку,
-# порядок оставлен как выпал, а не отсортирован по частоте: сортировка показала бы верхушку,
-# а вопрос стоит про всё множество.
-# Формат: слово <TAB> вхождений в обучающей части разговорных корпусов <TAB> правило.
-# Весь список — data/dictionary/dict-accept/{file}
+# {n} random {kind} words ({lang}) as a spot sample.
+# The draw is reproducible: random.Random({seed}).sample over the whole list, in draw order
+# rather than frequency order, because the question is about the whole set.
+# Format: word <TAB> occurrences in the training part of the conversational corpora <TAB> rule.
+# Full list: data/dictionary/dict-accept/{file}
 """
 
 SAMPLE_SEED = 20260824
@@ -292,19 +289,19 @@ def select(args) -> int:
                        "vowels": {t: "".join(sorted(v)) for t, v in VOWELS.items()}},
               "languages": {}}
     baseline = Path(args.baseline) if args.baseline else None
-    report["rule"]["baseline_dir"] = str(baseline) if baseline else "дерево (НЕ ПИННОВАНО)"
+    report["rule"]["baseline_dir"] = str(baseline) if baseline else "tree (NOT PINNED)"
     for tag in ("rus", "tat"):
         shipped = shipped_for_rule(tag, baseline)
         rows = read_queue(tag)
         accepted, rejected = decide(rows, tag, shipped)
         suffix = SUFFIX[tag]
         frag = fragment_rule_text(tag)
-        write_rows(OUT_DIR / f"accepted-{suffix}.tsv", "ПРИНЯТО", accepted, frag)
-        write_rows(OUT_DIR / f"rejected-{suffix}.tsv", "ОТКЛОНЕНО", rejected, frag)
-        lang_name = "русский" if tag == "rus" else "татарский"
-        write_sample(OUT_DIR / f"sample-accepted-{suffix}.txt", "ПРИНЯТЫХ", lang_name,
+        write_rows(OUT_DIR / f"accepted-{suffix}.tsv", "ACCEPTED", accepted, frag)
+        write_rows(OUT_DIR / f"rejected-{suffix}.tsv", "REJECTED", rejected, frag)
+        lang_name = "Russian" if tag == "rus" else "Tatar"
+        write_sample(OUT_DIR / f"sample-accepted-{suffix}.txt", "ACCEPTED", lang_name,
                      accepted, f"accepted-{suffix}.tsv")
-        write_sample(OUT_DIR / f"sample-rejected-{suffix}.txt", "ОТКЛОНЁННЫХ", lang_name,
+        write_sample(OUT_DIR / f"sample-rejected-{suffix}.txt", "REJECTED", lang_name,
                      rejected, f"rejected-{suffix}.tsv")
 
         def tally(decided):
@@ -366,24 +363,23 @@ def read_accepted(tag: str) -> dict[str, int]:
 
 
 CONV_FREQ_HEAD = """\
-# Разговорная частота слов, измеренная миссией tt-dict-accept одним проходом по корпусам.
-# Одна строка — слово и число его вхождений в обучающей части разговорных корпусов ПОСЛЕ
-# фильтрации (`research/corpus/filters.py`). Ровно эта величина стоит в колонке `train_freq`
-# очереди приёмки; здесь она есть и для слов, которых в очереди нет, — для тех, что уже стоят
-# в поставляемом словаре.
+# Conversational frequency of the words the dictionary may carry.
+# One row is a word and its count in the training part of the conversational corpora after
+# filtering (`research/corpus/filters.py`). This is the value in the queue's train_freq column;
+# the file also covers words outside the queue, namely the ones already in the shipped
+# dictionary.
 #
-# Зачем этот файл коммитится. Досье разделяет два вопроса: СОСТАВ словаря режется вторым
-# независимым источником, ЧАСТОТЫ берутся из всего корпуса целиком, включая OpenSubtitles.
-# Значит разговорную частоту надо прибавить и поставляемым словам тоже, иначе шкалы
-# расходятся: у новичка частота из 482 млн токенов субтитров, у старожила — из письменного
-# Leipzig. Первая сборка этой миссии так и ошиблась, и на префиксе «пап» тройка стала
-# `папочка|папин|папочку`. Без этого файла пересборка требовала бы 1,5 ГБ корпуса на диске.
+# Why the file is committed: composition and frequency answer different questions. Composition
+# is cut by the second independent source, while frequencies come from the whole corpus,
+# OpenSubtitles included. Shipped words therefore need the conversational count as well, or the
+# two scales diverge between a new word and an old one. Without this file a rebuild would need
+# the corpora on disk.
 #
-# Строк только для слов, которые могут оказаться в ассете: поставляемый словарь плюс очередь.
-# Слова с нулевой разговорной частотой пропущены.
-# Источник: {sources}
-# Базовый ассет: {baseline_sha}
-# Пересоздаётся: python3 research/corpus/measure_accept.py <tag> out/shipped-1.8.4 <корпуса>
+# Rows cover only words that can enter the asset: the shipped dictionary plus the queue. Words
+# with a zero conversational count are left out.
+# Source: {sources}
+# Baseline asset: {baseline_sha}
+# Regenerate: python3 research/corpus/measure_accept.py <tag> out/shipped-1.8.4 <corpora>
 """
 
 
@@ -406,8 +402,8 @@ def read_conv_freq(tag: str) -> dict[str, int]:
     path = conv_freq_path(tag)
     if not path.is_file():
         raise SystemExit(
-            f"{path} не существует. Собери его одним проходом по корпусам:\n"
-            f"  cd research/corpus && python3 measure_accept.py {tag} out/shipped-1.8.4 <корпуса>"
+            f"{path} does not exist. Build it in one pass over the corpora:\n"
+            f"  cd research/corpus && python3 measure_accept.py {tag} out/shipped-1.8.4 <corpora>"
         )
     out = {}
     with path.open(encoding="utf-8") as handle:
@@ -469,8 +465,8 @@ def load_baseline(tag: str, directory: Path):
     digest = hashlib.sha256(asset).hexdigest()
     if digest != BASELINE_SHA256[tag]:
         raise SystemExit(
-            f"{path}: SHA-256 {digest} — это не ассет 1.8.4 ({BASELINE_SHA256[tag]}). "
-            "Пересборка поверх пересобранного прибавила бы разговорную частоту дважды.")
+            f"{path}: SHA-256 {digest} is not the 1.8.4 asset ({BASELINE_SHA256[tag]}). "
+            "A rebuild on top of a rebuilt asset would add the conversational frequency twice.")
     parsed = dp.validate_raw(dp.decompress_asset(asset, language), language=language)
     return dict(zip(parsed.words, parsed.frequencies)), asset
 
@@ -490,23 +486,23 @@ def read_extra_entries(path: Path, tag: str) -> dict[str, int]:
             fields = line.rstrip("\n").split("\t")
             if len(fields) != 2 or not fields[0] or not fields[1]:
                 raise SystemExit(
-                    f"{path}:{line_number}: ожидалась строка слово<TAB>частота, "
-                    f"получено {len(fields)} полей")
+                    f"{path}:{line_number}: expected a word<TAB>frequency row, "
+                    f"got {len(fields)} fields")
             word, reason = cov.normalize_word(fields[0], language.alphabet)
             if reason is not None or word != fields[0]:
                 raise SystemExit(
-                    f"{path}:{line_number}: слово {fields[0]!r} не канонично "
-                    f"({reason or 'не NFC/нижний регистр'})")
+                    f"{path}:{line_number}: word {fields[0]!r} is not canonical "
+                    f"({reason or 'not NFC/lowercase'})")
             try:
                 frequency = int(fields[1])
             except ValueError:
                 raise SystemExit(
-                    f"{path}:{line_number}: частота {fields[1]!r} не число")
+                    f"{path}:{line_number}: frequency {fields[1]!r} is not a number")
             if not 0 < frequency <= 0xFFFF_FFFF:
                 raise SystemExit(
-                    f"{path}:{line_number}: частота {frequency} не положительный u32")
+                    f"{path}:{line_number}: frequency {frequency} is not a positive u32")
             if word in out:
-                raise SystemExit(f"{path}:{line_number}: дубль слова {word!r}")
+                raise SystemExit(f"{path}:{line_number}: duplicate word {word!r}")
             out[word] = frequency
     return out
 
@@ -627,35 +623,36 @@ def _atomic_write(path: Path, data: bytes) -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--json-out", default=None, help="куда положить те же числа файлом")
+    parser.add_argument("--json-out", default=None, help="write the same numbers to this file")
     sub = parser.add_subparsers(dest="command", required=True)
-    sel = sub.add_parser("select", help="прогнать правило и записать принятое/отклонённое")
+    sel = sub.add_parser("select", help="run the rule and write the accepted/rejected tables")
     sel.add_argument("--baseline", required=True,
-                     help="каталог с ассетами 1.8.4 — опора веток shipped-*; SHA-256 "
-                          "сверяется точно. Читать ассет из дерева нельзя: после 1.9.0 там "
-                          "лежит уже пересобранный словарь, и метки происхождения поехали бы")
+                     help="directory with the 1.8.4 assets, the base of the shipped-* branches; "
+                          "the SHA-256 is checked exactly. Reading the asset from the tree is "
+                          "refused: since 1.9.0 it holds a rebuilt dictionary, and the origin "
+                          "labels would drift")
     sel.set_defaults(func=select)
-    pk = sub.add_parser("pack", help="собрать ассеты из принятого")
+    pk = sub.add_parser("pack", help="build the assets from the accepted tables")
     pk.add_argument("--baseline", required=True,
-                    help="каталог с ассетами 1.8.4; SHA-256 сверяется точно")
+                    help="directory with the 1.8.4 assets; the SHA-256 is checked exactly")
     pk.add_argument("--write", action="store_true",
-                    help="записать ассеты в app/src/main/assets (без флага только измеряет)")
+                    help="write the assets to app/src/main/assets (without the flag, only measures)")
     pk.add_argument("--only", choices=("rus", "tat"), default=None,
-                    help="собрать только один язык; второй ассет не читается и не пишется")
+                    help="build one language only; the other asset is neither read nor written")
     pk.add_argument("--extra-entries", default=None, metavar="TSV",
-                    help="дополнительные записи слово<TAB>частота, вливаемые в состав "
-                         "(допущенные словоформы татарского); требует --only, потому что "
-                         "записи поязыковые")
+                    help="extra word<TAB>frequency entries merged into the composition "
+                         "(the admitted Tatar word forms); requires --only, because the "
+                         "entries are per language")
     pk.add_argument("--top", type=int, default=100_000,
-                    help="размер отсечки состава (по умолчанию %(default)s); требует --only, "
-                         "если отличается от умолчания")
+                    help="composition cutoff size (default %(default)s); requires --only "
+                         "when it differs from the default")
     pk.set_defaults(func=pack)
     args = parser.parse_args(argv)
     if args.command == "pack":
         if args.extra_entries is not None and args.only is None:
-            parser.error("--extra-entries требует --only (записи поязыковые)")
+            parser.error("--extra-entries requires --only (the entries are per language)")
         if args.top != 100_000 and args.only is None:
-            parser.error("--top, отличный от умолчания, требует --only")
+            parser.error("--top other than the default requires --only")
     return args.func(args)
 
 

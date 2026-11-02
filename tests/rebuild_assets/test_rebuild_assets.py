@@ -605,7 +605,7 @@ class OnlyModeTest(TwoSideTreeTest):
                                                                  encoding="utf-8")
         with self.assertRaises(SystemExit) as caught:
             self.run_rebuild("tatar")
-        self.assertIn("не ассет 1.8.4", str(caught.exception))
+        self.assertIn("is not the 1.8.4 asset", str(caught.exception))
 
     def test_only_russian_needs_no_tatar_inputs(self):
         # No tatar corpus, no words files, no exceptions table — the russian side is
@@ -614,7 +614,7 @@ class OnlyModeTest(TwoSideTreeTest):
         (self.corpora / "rus_corpus-sentences.txt").write_text("", encoding="utf-8")
         with self.assertRaises(SystemExit) as caught:
             self.run_rebuild("russian")
-        self.assertIn("шаг пересборки упал", str(caught.exception))
+        self.assertIn("rebuild step failed", str(caught.exception))
 
     def test_untouched_side_snapshot_detects_asset_and_pin_moves(self):
         snapshot = rebuild_assets._side_snapshot(self.root, frozenset({"rus"}))
@@ -683,12 +683,12 @@ class CorpusManifestRebuildTest(TwoSideTreeTest):
         self.write_corpora({"tt_corpus-sentences.txt": "1\tсу\n".encode("utf-8")})
         with self.assertRaises(SystemExit) as caught:
             self.run_rebuild("russian")
-        self.assertIn("шаг пересборки упал", str(caught.exception))
+        self.assertIn("rebuild step failed", str(caught.exception))
 
     def test_a_missing_manifest_stops_the_rebuild(self):
         self.write_corpora({})
         (self.root / rebuild_assets.CORPUS_MANIFEST).unlink()
-        self.assert_stops_without_writing("russian", 2, "манифест корпусов")
+        self.assert_stops_without_writing("russian", 2, "corpus manifest")
 
 
 class CorpusManifestFormatTest(unittest.TestCase):

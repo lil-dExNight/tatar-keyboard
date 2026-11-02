@@ -1,41 +1,40 @@
-# Очередь приёмки слов разговорного регистра. Одна строка — одно слово-кандидат.
-# Источник и метод: docs/CORPUS.md, решение по OpenSubtitles — docs/CORPUS-OS.md.
-# Слова НЕ добавлены ни в один поставляемый словарь.
+# Word acceptance queue for the conversational register. One row is one candidate word.
+# The sources and the filter rule are in research/corpus/filters.py; OpenSubtitles is used
+# as an accepted risk.
+# None of these words is in a shipped dictionary.
 #
-# approved заполняет ТОЛЬКО оператор лично, поимённо. Генератор всегда пишет её пустой;
-# правило записано в docs/TATAR-REVIEW-QUEUE.tsv: словарные наборы — не строки интерфейса.
-# approved: (пусто) | yes | no
+# approved is filled in by the reviewer alone, word by word. The generator always writes it
+# empty; a queue table is data, not an interface string.
+# approved: (empty) | yes | no
 #
-# Сортировка — по убыванию пользы: сначала heldout_hits (сколько раз слово встретилось в
-# отложенной разговорной выборке, не участвовавшей в его ранжировании), затем train_freq.
-# Список длинный намеренно: можно идти сверху вниз и остановиться в любой момент.
+# Order: descending usefulness. The primary key is heldout_hits, the occurrences in the
+# held-out conversational split, which took no part in ranking the word; train_freq breaks
+# ties. The list is long on purpose: work from the top and stop at any row.
 #
-# heldout_hits  — вхождений в отложенной разговорной выборке (10 % строк, после дедупликации)
-# train_freq    — вхождений в обучающей части разговорных корпусов, ВСЕХ вместе
-# train_freq_clean — из них вхождений только в корпусах с чистой лицензией (Tatoeba). Именно
-#                 это число останется, если решение по OpenSubtitles отменят. Ноль означает,
-#                 что слово держится на одних субтитрах, даже когда license_status = clean:
-#                 метка clean говорит, что словоформа встречается в Tatoeba, а НЕ что её
-#                 частота получена без OpenSubtitles.
-# sources       — из каких корпусов слово пришло
-# cap_ratio     — доля вхождений с заглавной буквы НЕ в начале строки; чем ближе к 1,
-#                 тем вероятнее это имя собственное, проскочившее фильтр. 0.00 — чисто.
-# enters_top100k — вошло бы слово в top-100k при слиянии частот (нижняя оценка)
-# license_status — под какой лицензией слово получено:
-#   clean:CC-BY-2.0-FR      — Tatoeba, грант есть
-#   risk-accepted:no-grant  — слово встречается только в OpenSubtitles. Лицензионного гранта у
-#                             OpenSubtitles нет вообще: это не «неясная» лицензия, а
-#                             отсутствующая. Оператор 2026-08-24 решил взять источник, зная это.
-#                             Строка помечена, чтобы происхождение слова оставалось видно;
-#                             вычитывается она наравне с чистыми.
-# Слова, встречающиеся ТОЛЬКО в QED (research only) или TED2020 (CC BY-NC-ND), в очередь
-# не попадают вовсе: их нельзя принять ни при каком решении оператора, и держать их здесь
-# значило бы тратить его время. Их число указано в docs/CORPUS.md.
+# heldout_hits     occurrences in the held-out conversational split (10 % of the rows after
+#                  deduplication)
+# train_freq       occurrences in the training part of the conversational corpora, all sources
+# train_freq_clean occurrences in the clean-licence corpora only (Tatoeba). This is the count
+#                  that survives if OpenSubtitles is dropped. Zero means the word rests on
+#                  subtitles alone even when license_status is clean: the clean label says the
+#                  form occurs in Tatoeba, not that its count is free of OpenSubtitles.
+# sources          the corpora the word came from
+# cap_ratio        share of occurrences capitalized outside the line start; the closer to 1, the
+#                  likelier a proper name that passed the filter. 0.00 is clean.
+# enters_top100k   whether the word would enter the top 100k of the merged ranking (lower bound)
+# license_status   the licence the word was taken under:
+#   clean:CC-BY-2.0-FR     Tatoeba, a real grant
+#   risk-accepted:no-grant OpenSubtitles only. OpenSubtitles grants no licence at all, so the
+#                          source is used as an accepted risk; the row keeps the origin visible
+#                          and is reviewed like the clean rows.
 #
-# Не попадают и слова, которые не доходят до top-100k даже при ВЕРХНЕЙ границе интервала
-# частот: отсечка словаря жёстко 100 000 записей, такое слово не войдёт в ассет ни при каком
-# допущении, и вычитывать его — работа, которая ничего не изменит. Сколько таких слов
-# отброшено, печатает сам генератор и записано в docs/CORPUS-OS.md.
+# Words seen only in QED (research use only) or TED2020 (CC BY-NC-ND) never enter the queue: no
+# decision could accept them, and keeping them would waste review time. The generator prints
+# their count.
+#
+# Words that miss the top 100k even at the upper frequency bound are left out as well: the
+# dictionary cutoff is 100 000 entries, so such a word cannot enter the asset, and the generator
+# prints how many were dropped.
 word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	enters_top100k	approved	reviewer	review_date	note
 яраббым	24	130	0	OpenSubtitles	risk-accepted:no-grant	0.76	yes				
 док	16	211	0	OpenSubtitles	risk-accepted:no-grant	0.70	yes				
