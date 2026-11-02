@@ -1,11 +1,11 @@
-A native Android keyboard (IME) where Tatar is a first-class language: the standard ЙЦУКЕН layout plus a dedicated, always-visible fifth row for <b>ә ө ү җ ң һ</b>. All 39 letters of the Tatar alphabet are one tap away — no long-pressing, no hunting through popups.
+A native Android keyboard (IME) with full Tatar support: the standard ЙЦУКЕН layout plus a dedicated, always-visible fifth row for <b>ә ө ү җ ң һ</b>. All 39 letters of the Tatar alphabet are one tap away.
 
 To enable the keyboard:
 
-* Open "Tatar Keyboard" from your launcher — a two-step onboarding walks you through enabling and selecting the keyboard
+* Open "Tatar Keyboard" from your launcher — a two-step setup walks you through enabling and selecting the keyboard
 * Or do it manually: system Settings → Languages &amp; input → On-screen keyboard → enable Tatar Keyboard, then switch to it from your current input method (usually via the keyboard icon or long-press space)
 
-<b>Tatar, done properly:</b>
+<b>Layout and languages:</b>
 
 * Tatar layout: ЙЦУКЕН + a visible fifth row with ә ө ү җ ң һ
 * Three languages: Tatar, Russian, English — switch with the globe key
@@ -15,27 +15,29 @@ To enable the keyboard:
 
 * As you type, up to three completions appear in the strip above the keyboard (four with the "Four suggestions" setting) — tap to insert
 * After a finished word, the strip predicts what comes next: type «мин » and see дә · аны · бу
-* Optional autocorrect: a mistyped word is fixed when you type a space; one tap on backspace undoes it
+* Optional autocorrect: a mistyped word is fixed when you type a space, punctuation or Enter; one tap on backspace undoes it
+* Autocorrect leaves a word alone if it is in the other language's dictionary and you have typed in that language since the keyboard started
 * Suggestions are on by default, can be switched off in settings, and are never shown in password or other private fields
-* The dictionaries live on your device — 100,000 word forms per language, plus conversational forms from open subtitle and sentence corpora
+* The dictionaries live on your device — about 100,000 word forms per language (110,000 for Tatar), plus conversational forms from open subtitle and sentence corpora
 
 <b>Emoji:</b>
 
 * A full emoji panel with categories and recently used emoji
 * Search by word in three languages — Tatar included: «этэч» finds 🐓, «көлү» finds 😄
-* Emoji suggestions in the strip: type «самолет » or «сәлам » and a matching emoji appears — tapping only adds it, your typed word is never replaced
+* Emoji whose skin-tone versions the system font cannot draw get no tone picker and never appear in search or in the strip
+* Emoji suggestions in the strip: type «самолет » or «сәлам » and a matching emoji appears — tapping adds it and keeps the word you typed
 * Emoji suggestions are on by default and can be switched off in settings
 
 <b>Personal dictionary:</b>
 
 * Optional (off by default): remembers words you type so they can be suggested later
 * Every saved word is visible and erasable in settings, per language
-* "Erase everything saved" deletes saved words, word pairs, learned emoji, recent emoji, text shortcuts and corrections at once
+* "Erase everything saved" deletes saved words, word pairs, learned emoji, sentence starts, recent emoji, text shortcuts and corrections at once
 * "Pause learning" stops the keyboard from remembering anything new without erasing what is saved
 
 <b>Everyday typing:</b>
 
-* Double-space → period, swipe on space to move the cursor, multi-touch
+* Double-space → period, swipe on space to move the cursor, several simultaneous touches without lost letters
 * Key-press preview, long-press alternatives popup, sound and vibration (all configurable)
 * Light and dark themes
 * Accessibility: full TalkBack support with Tatar letter descriptions
@@ -43,14 +45,14 @@ To enable the keyboard:
 
 <b>Privacy:</b>
 
-* No INTERNET permission at all — the keyboard physically cannot send what you type anywhere; this is verified by CI on every commit, on the source manifest and on the built APK
+* No INTERNET permission at all — the keyboard has no way to send what you type anywhere; this is verified by CI on every commit, on the source manifest and on the built APK
 * No ads, no analytics, no tracking SDKs
 * The only permission is Vibrate
 * Nothing is backed up off your device: cloud backup and device-to-device transfer are excluded for all app data
 * The personal dictionary and recent-emoji list live in an app folder that is decrypted only after you unlock the device
 
-<b>Lightweight:</b>
+<b>Size:</b>
 
-* The app is about 1.8 MB — dictionaries, prediction tables and emoji data included
+* The app is under 2 MB — dictionaries, prediction tables and emoji data included
 
-Free and open source under Apache-2.0. A fork of Simple Keyboard, which is based on the AOSP LatinIME keyboard.
+Open source under Apache-2.0. A fork of Simple Keyboard, which is based on the AOSP LatinIME keyboard.
