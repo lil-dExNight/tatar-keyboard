@@ -1,2 +1,0 @@
-• The dictionaries now include everyday conversational words such as "позвони", "послушай" and "хәтерлисеңме"
-• The Data sources screen now lists all three bundled sources

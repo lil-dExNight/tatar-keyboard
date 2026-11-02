@@ -1,3 +1,0 @@
-• Words from a damaged personal dictionary can now be brought back on the Saved words screen
-• The notice about unreadable words is no longer lost if the keyboard closes
-• Smaller app; next-word predictions stay the same

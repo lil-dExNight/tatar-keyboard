@@ -1,3 +1,0 @@
-• Tatar layout: the ₽ sign (long press on the currency key), an "АБВ" key back to letters, and Russian quotation marks
-• TalkBack announces the language when you switch layouts
-• Emoji search understands Tatar words: "көлү" finds 😄

@@ -1,1 +1,0 @@
-• The strip no longer goes empty after a word: free cells show the language's most common words (tt: һәм · белән · да; ru: я · не · в)

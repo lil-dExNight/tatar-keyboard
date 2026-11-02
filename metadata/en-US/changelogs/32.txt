@@ -1,3 +1,0 @@
-• Tatar: after a word and a space, the strip offers its word forms (татар → татарлар), and a whole word completes to its own forms first
-• Predictions at the start of a sentence and right after you tap a suggestion; a larger Tatar dictionary
-• Tatar typos: when nothing matches, the strip offers the nearest word (сцләм → сәләм)

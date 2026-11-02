@@ -1,3 +1,0 @@
-• The privacy policy and license links in the app open the right pages again
-• Undoing an autocorrection is more reliable; saved words you pick from the strip now count as used
-• Small fixes in settings texts and translations

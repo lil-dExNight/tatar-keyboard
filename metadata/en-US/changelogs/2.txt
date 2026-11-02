@@ -1,3 +1,0 @@
-• Tatar layout with an always-visible fifth row ә ө ү җ ң һ, plus Russian and English
-• Fixed a crash when opening settings or the language list
-• The language you choose now stays selected after the keyboard restarts

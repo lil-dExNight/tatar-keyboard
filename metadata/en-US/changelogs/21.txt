@@ -1,2 +1,0 @@
-• Smaller app: layouts for languages other than Tatar, Russian and English are gone
-• If you had one of them enabled, the keyboard switches to Tatar, Russian or English and keeps your settings

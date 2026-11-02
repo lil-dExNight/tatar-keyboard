@@ -1,3 +1,0 @@
-• Redesigned emoji panel: categories on top, one continuous scroll, larger emoji
-• Search emoji by Russian or English words, offline
-• What you type in emoji search never reaches the app's text field

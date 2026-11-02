@@ -1,3 +1,0 @@
-• Optional Tatar word suggestions: three completions above the keyboard, off by default, fully offline
-• Tapping a suggestion inserts the word with a space and keeps your capitalization
-• No suggestions in password, email and address fields

@@ -1,2 +1,0 @@
-• With the personal dictionary on, the keyboard learns which emoji you put after a word: use the same one twice and it is suggested after that word. Learned emoji are listed on the Saved words screen
-• Emoji picked from the suggestion strip now show up in recent emoji

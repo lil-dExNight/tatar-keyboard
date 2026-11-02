@@ -1,3 +1,0 @@
-• Glide typing: lifting your finger types the best word at once, one space after the previous word; tap an alternative to swap it, one backspace removes it
-• Glide typing works with suggestions off and when your finger rests on the first letter, and no longer turns сәләм into сәлләм
-• A fading trail and key highlight follow your finger while gliding

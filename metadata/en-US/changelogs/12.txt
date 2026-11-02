@@ -1,2 +1,0 @@
-• Suggestions come back after you delete a letter
-• Tapping a suggestion right after Backspace now inserts the word

@@ -1,3 +1,0 @@
-• A roomier emoji panel: search moved to a 🔍 button in the tab row, leaving more room for emoji
-• New setting Appearance → Emoji panel height: Same as keyboard, Larger or Max
-• Faster dictionary suggestions; the keyboard is better protected against misbehaving apps

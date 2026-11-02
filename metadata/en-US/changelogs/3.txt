@@ -1,3 +1,0 @@
-• Settings, first-run setup and TalkBack labels are now available in Tatar
-• TalkBack reads long-press letters and announces the language on the space bar and Shift changes
-• Redesigned setup and settings screens in light and dark themes

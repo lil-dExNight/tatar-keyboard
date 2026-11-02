@@ -1,3 +1,0 @@
-• The suggestion strip shows four cells
-• While glide typing, candidates appear as your finger moves; the word is typed when you lift it
-• Saved words entered by glide typing rise in the ranking, like suggestions you tap

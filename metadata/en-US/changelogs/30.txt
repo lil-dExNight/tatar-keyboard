@@ -1,2 +1,0 @@
-• Suggestions stay readable at any system font size
-• The emoji panel follows the "Bottom offset" setting and fits when the keyboard height is small

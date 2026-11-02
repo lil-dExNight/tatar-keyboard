@@ -1,3 +1,0 @@
-• Swipe left or right in the emoji panel to switch sections
-• Long-press an emoji to choose a skin tone
-• Tapping near the edge of a letter no longer types the neighboring letter

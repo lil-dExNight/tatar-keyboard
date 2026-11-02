@@ -1,1 +1,0 @@
-• Fixed: suggestions no longer disappear after you move the cursor (a tap in the text, a slide on the space bar or a swipe delete)

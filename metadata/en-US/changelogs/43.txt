@@ -1,2 +1,0 @@
-• The suggestion strip is back to three cells
-• While glide typing, suggestions appear when you lift your finger instead of changing as it moves

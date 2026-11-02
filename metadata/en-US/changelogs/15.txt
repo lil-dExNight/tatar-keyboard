@@ -1,3 +1,0 @@
-• A suggestion you can see is always one you can tap
-• Long-pressing a suggestion, the emoji key and emoji search now tell you when there is nothing to do
-• The autocorrect setting is translated into Russian again

@@ -1,3 +1,0 @@
-• The keyboard now tells you when saving, forgetting or erasing personal words fails
-• An unreadable personal dictionary is kept instead of silently wiped, and erasing all words removes everything
-• Forgetting the last saved word no longer closes the keyboard

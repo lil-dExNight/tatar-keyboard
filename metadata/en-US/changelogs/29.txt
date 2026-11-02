@@ -1,2 +1,0 @@
-• Tablets: the Tatar and Russian layouts have their Enter key back
-• Android 15: the emoji panel no longer slides under the navigation bar, so the "АБВ" and delete keys work again

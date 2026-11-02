@@ -1,2 +1,0 @@
-• Smaller app: dictionaries and prediction tables are packed more tightly
-• Suggestions and predictions stay exactly the same

@@ -1,2 +1,0 @@
-• Keyboard settings set by your organization's device policy now apply even if one of them has an invalid value
-• The language label on the space bar is centered exactly

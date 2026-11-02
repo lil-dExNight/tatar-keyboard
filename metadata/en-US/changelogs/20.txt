@@ -1,1 +1,0 @@
-• Common Tatar imperatives such as "кил", "кит" and "кайт" now get next-word predictions: "кил" suggests "әле"

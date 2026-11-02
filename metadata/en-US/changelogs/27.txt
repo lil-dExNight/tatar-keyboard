@@ -1,2 +1,0 @@
-• Fixed: next-word prediction and emoji suggestions now work on the first word in an empty field
-• Fixed: the suggestion strip no longer stays empty right after the keyboard starts

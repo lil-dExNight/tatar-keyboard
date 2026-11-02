@@ -1,2 +1,0 @@
-• Emoji suggestions: type a word and a space, and a matching emoji appears at the end of the suggestion strip; tap it to add it
-• Works in Russian and Tatar; off by default, turn on "Emoji suggestions" in settings

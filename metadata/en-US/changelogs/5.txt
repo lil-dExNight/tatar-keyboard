@@ -1,3 +1,0 @@
-• Emoji panel with categories and recently used emoji
-• Optional personal dictionary, next-word prediction and Tatar autocorrect (one Backspace undoes a correction)
-• Suggestions no longer disappear after a typo in the current word

@@ -1,3 +1,0 @@
-• Next-word prediction learned everyday speech on both layouts
-• Tatar: imperatives such as "шалтырат", "сөйлә" and "укы" now get predictions
-• Russian: conversational words such as "позвонишь", "прощай" and "погоди" now get predictions

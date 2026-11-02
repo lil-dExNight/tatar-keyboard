@@ -1,3 +1,0 @@
-• Russian word suggestions on the Russian layout
-• Suggestions follow the layout you type on, and switching is instant
-• "ё" and "е" are kept apart, so both spellings are suggested

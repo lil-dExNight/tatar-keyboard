@@ -1,3 +1,0 @@
-• Tatar emoji search now covers almost all emoji: "этэч" finds 🐓
-• Emoji suggestions are on by default and understand common misspellings: "йорэк" → ❤️
-• Emoji search no longer gets stuck after the keyboard is hidden, and predictions are more reliable

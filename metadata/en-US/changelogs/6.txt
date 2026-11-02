@@ -1,3 +1,0 @@
-• Longer space bar: the emoji panel now opens with a long press on the comma key (☺ hint)
-• Restyled emoji panel; its last row is no longer cut off
-• The ?123 key no longer misfires when pressed near its edge

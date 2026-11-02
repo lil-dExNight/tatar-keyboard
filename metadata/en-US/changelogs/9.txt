@@ -1,2 +1,0 @@
-• Emoji search: the cursor now sits right after the typed query
-• Emoji search: no more empty row under the search field; results appear as soon as you type
