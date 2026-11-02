@@ -1,11 +1,12 @@
 # Documentation index
 
-All documents are in English except the root `README.md`, which is bilingual.
+All documents are in English except the root `README.md`, which is bilingual, and
+`PRIVACY.ru.md`, the Russian privacy policy for RuStore.
 
 ## Repository root
 
 - [README.md](../README.md): user-facing overview, install and build instructions.
-- [PRIVACY.md](../PRIVACY.md): privacy policy; the app links to it.
+- [PRIVACY.md](../PRIVACY.md): privacy policy; the app links to it. [PRIVACY.ru.md](../PRIVACY.ru.md) is its Russian version.
 - [SECURITY.md](../SECURITY.md): how to report a vulnerability, supported versions, re-audit cadence.
 - [CHANGELOG.md](../CHANGELOG.md): user-facing changes per release.
 - [AGENTS.md](../AGENTS.md): build, test and release commands, hard constraints.

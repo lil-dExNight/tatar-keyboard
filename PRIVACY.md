@@ -4,6 +4,8 @@
 
 Tatar Keyboard keeps what you type **on your device**.
 
+Russian version: [PRIVACY.ru.md](PRIVACY.ru.md) (the policy linked in the RuStore listing).
+
 - The app's manifest contains no INTERNET permission, so the app itself sends nothing to any server. You can check this by running `aapt2 dump permissions` on the APK; a CI check also validates both the source manifest and the built APK on every commit. The only permission the app uses is VIBRATE (haptic feedback on key press).
 - Everything you type is processed on your device only. The keyboard works fully offline.
 - The text of a password field is never read into the keyboard's memory, not even by a cache reload that was queued before the password field opened.

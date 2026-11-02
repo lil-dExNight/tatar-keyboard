@@ -95,11 +95,11 @@ Markdown documents.
 5. No numbers that drift in prose: no test counts, APK sizes, SHA-256 values, p95 timings or rule
    counts. Real pins live in constants and assertions.
 6. Plain wording, no rhetoric. "Fail-closed" only where it literally describes failure behavior.
-7. Canonical English everywhere except the root `README.md` (which stays bilingual): plain
-   technical English, US spelling, the terms below, no calques from Russian. Tatar and Russian
-   appear only as quoted language data (`сәләм`, `ә`) or proper names. Not covered: localized
-   strings in `res/values-{ru,tt}/`, store texts in `metadata/{ru-RU,tt}/`, test data, and commit
-   messages.
+7. Canonical English everywhere except the root `README.md` (which stays bilingual) and
+   `PRIVACY.ru.md` (the Russian privacy policy for the RuStore listing): plain technical English,
+   US spelling, the terms below, no calques from Russian. Tatar and Russian appear only as quoted
+   language data (`сәләм`, `ә`) or proper names. Not covered: localized strings in
+   `res/values-{ru,tt}/`, store texts in `metadata/{ru-RU,tt}/`, test data, and commit messages.
 8. Upstream text stays: AOSP and Simple Keyboard license headers, javadoc and TODOs are not edited.
 9. A document has an owner and a lifetime. A finished plan or report is deleted in the change that
    finishes it. Live documents carry no gate tables and no run logs.

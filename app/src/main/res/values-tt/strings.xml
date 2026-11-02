@@ -244,4 +244,6 @@
     <string name="backup_import_failed_invalid">Бу файл бу клавиатураның күчермәсе түгел. Бернәрсә дә үзгәрмәде.</string>
     <string name="backup_import_failed_write">Күчермәне кире кайтарып булмады. Кабатлап карагыз.</string>
     <string name="backup_no_app">Бу җиһазда файл сайлый торган кушымта юк.</string>
+    <!-- No Tatar policy exists; Russian is the nearest language the user can read. -->
+    <string name="privacy_policy_url" translatable="false">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.ru.md</string>
 </resources>

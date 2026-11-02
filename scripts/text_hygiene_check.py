@@ -357,7 +357,7 @@ def resolve_link(md_path: str, target: str) -> str | None:
 
 
 def check_markdown(path: str, text: str, files: set[str], dirs: set[str]) -> Iterator[Finding]:
-    cyrillic_scope = path != "README.md"
+    cyrillic_scope = path not in ("README.md", "PRIVACY.ru.md")
     for number, raw in markdown_lines(text):
         without_code = MD_CODE_SPAN_RE.sub(" ", raw)
         targets = [m.group(1) for m in MD_LINK_RE.finditer(without_code)]

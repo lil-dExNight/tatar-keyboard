@@ -20,6 +20,6 @@
 
 <resources>
     <string name="english_ime_name" translatable="false">Tatar Keyboard</string>
-    <string name="privacy_policy_url" translatable="false">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.md</string>
+    <string name="privacy_policy_url">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.md</string>
     <string name="license_url" translatable="false">https://github.com/lil-dExNight/tatar-keyboard/blob/main/LICENSE</string>
 </resources>

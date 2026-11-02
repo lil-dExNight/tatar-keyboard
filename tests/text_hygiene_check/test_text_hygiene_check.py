@@ -197,6 +197,7 @@ class CyrillicTest(TreeTestCase):
 
     def test_markdown_scope(self):
         self.write("README.md", f"{RUSSIAN_PROSE}\n")
+        self.write("PRIVACY.ru.md", f"{RUSSIAN_PROSE}\n")
         self.write("docs/A.md", f"# A\n\n```\n{RUSSIAN_PROSE}\n```\n\n{RUSSIAN_PROSE}\n")
         self.assertEqual(self.findings(), [("docs/A.md", 7, "cyrillic")])
 
