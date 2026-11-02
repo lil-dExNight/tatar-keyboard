@@ -2,9 +2,8 @@
 
 Offline Android keyboard with a Tatar layout. It is a fork of Simple Keyboard (itself based on
 AOSP LatinIME): legacy Java code plus new Kotlin code. Application id `org.tatarkeyboard.ime`,
-source namespace `rkr.simplekeyboard.inputmethod`. Work happens on branch `main`.
-
-Documentation index: `docs/README.md`. Code map: `docs/ARCHITECTURE.md`.
+source namespace `rkr.simplekeyboard.inputmethod`, work on branch `main`. Documentation index:
+`docs/README.md`. Code map: `docs/ARCHITECTURE.md`.
 
 ## Commands
 
@@ -14,15 +13,15 @@ grep first in `PATH` (they use `stat -c`, `sha256sum` and `grep -P`):
 
 | Task | Command and note |
 |---|---|
-| JVM tests | `./gradlew test` (`--rerun-tasks` forces a full rerun); JUnit 4, no Robolectric. The `*CalibrationTest` suites are excluded from `test` and run in `./gradlew calibrationTest`; CI and `scripts/release_check.sh` run `test calibrationTest` together. |
+| JVM tests | `./gradlew test` (`--rerun-tasks` forces a full rerun); JUnit 4, no Robolectric. `*CalibrationTest` suites are excluded from `test` and run in `./gradlew calibrationTest`; CI and `scripts/release_check.sh` run `test calibrationTest` together. |
 | Python tests | `bash scripts/run_python_tests.sh` (one `unittest` module per process, in parallel; `TT_PYTHON_TEST_JOBS` sets the width); pytest is not used. |
 | Device tests | `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest`, `adb install -r` both APKs, then `adb shell am instrument -w -e class <test class> org.tatarkeyboard.ime.debug.test/android.test.InstrumentationTestRunner`; timing assertions need an idle device with the screen on, and `GlideUiDeviceTest` is calibrated for a 720x1640 screen and fails fast on any other. |
 | Emulator smoke test | `bash scripts/emulator-smoke.sh [--avd tt_suggest_a14] [--apk <path>] [--no-boot] [--outdir build/emulator-smoke/]`; installs and selects the IME, runs the typing, suggestion and emoji probes and prints `RESULT\|…` lines; on a debuggable package it writes the suggestions pref through `run-as`, while on a release APK the suggestion probes rely on suggestions being on by default and the learned-emoji probe is skipped. |
 | Device performance check | `bash scripts/device-perf-ritual.sh [--serial <id>] [--pkg org.tatarkeyboard.ime.debug] [--legs cold,pss,frames,warm,touch,suggest,first-suggestion,first-glide] [--enable-suggestions-ui] [--outdir build/device-perf-ritual]`; measures cold start, PSS, frame times, janky frames, warm show, touch handling, suggestion round trips, cold first suggestions and cold/warm on-screen glide latency on a 720x1640 device, prints `over_budget=` on each budgeted line and restores the device state on exit; first-glide uses the installed debug androidTest APK and reports SKIP when no runner targets the package; the opt-in legs battery,uimode,fontscale (idle power accounting, night-mode and font-scale probes) run only when listed in `--legs`; `--enable-suggestions-ui` turns suggestions on in a release build through its settings screen. |
-| Lint | `./gradlew lintRelease`; `abortOnError` is on, baseline `app/lint-baseline.xml`, rule classification `app/lint.xml`. |
+| Lint | `./gradlew lintRelease`; `abortOnError` is on, baseline `app/lint-baseline.xml`, rules classified in `app/lint.xml`. |
 | Error Prone | Runs inside Java compilation (`compile*JavaWithJavac`, plugin `net.ltgt.errorprone`); all findings are warnings, so review new ones in the compiler output. |
 | Release APK | `bash scripts/release_pack.sh [--no-sign] [--allow-dirty] [<output.apk>]`; unsigned build, zopfli `zipalign` before signing, then v2 signing with the key from `keystore.properties` (plain `./gradlew assembleRelease` skips the zopfli step). It refuses a tree whose build inputs differ from HEAD (`scripts/release-build-inputs.sh`), so commit first; `--allow-dirty` makes a measurement build that is never released (`artifact.freshness` rejects it only while the tree is still dirty). |
-| No-INTERNET and backup check | `bash scripts/check-no-internet.sh [<apk>]`; checks the source manifest, then the built APK (default: debug) with aapt2 for no INTERNET permission and no backup or device transfer. |
+| No-INTERNET and backup check | `bash scripts/check-no-internet.sh [<apk>]`; checks the source manifest, then the built APK (default: debug) with aapt2 for a missing INTERNET permission and no backup or device transfer. |
 | Release checker | `bash scripts/release_check.sh [--quick\|--full\|--checks <list>] [<apk>]`; runs the repository gates (JVM, lint, Python, no-INTERNET, asset consistency, text hygiene) plus artifact checks (size, pinned assets, dex profile rules, permissions, single signer, version, store changelog, delta to `dist/`) and prints a `RESULT\|…` block; `--checks <list>` runs only the listed artifact checks (version, store changelog and delta run only without `--checks`); CI runs `size,asset_pins,emoji_assets,tree_assets,exported_surface,no_secrets,permissions,critical_resources,no_reflection,arsc_stored,dex_layout,profiles` on the unsigned release APK, while signature and freshness stay local; `artifact.freshness` needs a clean tree and an APK built from HEAD or from an ancestor with no build-input change since. |
 | Asset consistency | `python3 scripts/rebuild_assets.py --check --allow-known-drift`; compares the bundled dictionaries and bigram tables with their pins without rebuilding; CI runs it as its own step. |
 | Reproducible build | Two `./gradlew clean assembleRelease --no-build-cache` runs must give byte-identical APKs (CI job `reproducible`), so keep `dependenciesInfo { includeInApk = false }` in `app/build.gradle`. Other builds use the local build cache (`org.gradle.caching` in `gradle.properties`); the release scripts bypass it. |
@@ -63,11 +62,11 @@ After any change to code or resources, all of these must pass:
 ## Assets and pins
 
 Bundled dictionaries (`*.tdict.zlib`) and bigram tables (`*.tatbigr.zlib`) are built by the
-python pipeline, never by hand; `scripts/rebuild_assets.py` is the single entry point. Their
-pinned size and SHA-256 live in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`;
-emoji assets are pinned in the python tests under `tests/emoji_*`. An asset change
-without recomputed pins fails the tests. Build, pins and known drift: `docs/ASSET-PIPELINE.md`;
-binary formats: `docs/ASSET-FORMATS.md`.
+python pipeline, never by hand; `scripts/rebuild_assets.py` is the single entry point. Pinned
+size and SHA-256 live in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`; emoji
+assets are pinned in the python tests under `tests/emoji_*`. An asset change without recomputed
+pins fails the tests. `docs/ASSET-PIPELINE.md` covers the build, the pins and known drift;
+`docs/ASSET-FORMATS.md` covers the binary formats.
 
 ## Documents and commits
 
@@ -107,8 +106,8 @@ Markdown documents.
 
 ### Terminology
 
-The right column lists the Russian source terms (quoted language data), which should not be
-translated literally.
+The Russian source terms in the right column are quoted language data; do not translate them
+literally.
 
 | Use | Avoid | Russian source term |
 |---|---|---|

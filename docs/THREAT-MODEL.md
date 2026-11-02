@@ -1,28 +1,28 @@
 # Threat model and residual-risk register
 
 The user-facing privacy statements live in the root `PRIVACY.md`. This document is the
-engineering side: what we protect, from whom, with which control, and which residual risks we
-accept. Keep it in sync with the code; when a control or a risk changes, edit the row.
+engineering side: what is protected, from whom, with which control, and which residual risks are
+accepted. Keep it in sync with the code; when a control or a risk changes, edit the row.
 
 ## 1. Scope
 
 An offline input method changes the usual mobile threat model. The network group reduces to one
 obligation: the app never holds `android.permission.INTERNET`, and that absence is checked on the
-source manifest, on the built APK, and at runtime on a device. The remaining groups carry the
-weight: storage (the learned personal data is the only persisted sensitive data), platform (an IME
+source manifest, on the built APK, and at runtime on a device. The remaining groups are
+storage (the learned personal data is the only persisted sensitive data), platform (an IME
 is a privileged system component, and every InputConnection call has an unauthenticated host app
 on the other end), code (binary parsers read on-device files), and privacy.
 
-System: a fork of Simple Keyboard / AOSP LatinIME (Java upstream code, new code in Kotlin), package
+The app is a fork of Simple Keyboard / AOSP LatinIME (Java upstream code, new code in Kotlin), package
 `org.tatarkeyboard.ime`, pure JVM (no NDK), no third-party runtime dependencies, exactly one
 permission (`VIBRATE`).
 
 ## 2. Assets, in order of sensitivity
 
-1. **The keystroke stream in every app**: messages, passwords, one-time codes. Every keystroke of
+1. The keystroke stream in every app: messages, passwords, one-time codes. Every keystroke of
    every app passes through the IME process by design; the question is whether any of it leaves
    the process. Every control below serves this asset.
-2. **The personal dictionary**: saved words, learned word pairs, learned emoji, refused
+2. The personal dictionary: saved words, learned word pairs, learned emoji, refused
    corrections, the sentence-initial overlay, plus the recent emoji and the user's text shortcuts. It
    reveals names, addresses, slang and habits, and it is the only persisted sensitive data. It is
    minimized in the file formats: usage counters instead of timestamps, words instead of
@@ -35,58 +35,58 @@ permission (`VIBRATE`).
    derivatives (the sentence-initial overlay, pending counters and salts);
    it is the only artifact of this data that leaves the app-private storage, and it moves only
    because the user picks a place for it.
-3. **The clipboard.** Since Android 10 the default IME may read the clipboard at any time. This
+3. The clipboard. Since Android 10 the default IME may read the clipboard at any time. This
    keyboard reads it in two places, both only while the keyboard window is shown and never while
-   the keyguard is: the paste key, an explicit user action, and the recent-clip cell: a fresh
+   the keyguard is: the paste key, an explicit user action, and the recent-clip cell. A fresh
    text clip can be offered in the strip's first cell (`RecentClipCell`), held in memory with a
    short freshness window, never offered in password fields or where suggestions may not run,
    never offered when the source app marked the clip sensitive
    (`ClipDescription.EXTRA_IS_SENSITIVE`, which password managers set), and a commit marks the run
    non-learnable. Nothing from the clipboard is ever stored or learned from (see the learning row
    in §5).
-4. **Surrounding text**: the window of the host field's text that the platform gives the IME for
+4. Surrounding text: the window of the host field's text that the platform gives the IME for
    predictions, capped at `Constants.EDITOR_CONTENTS_CACHE_SIZE` characters around the cursor. It
    lives only in the in-memory editor cache, is cleared at every session boundary, is never written
    to disk, and is never read from password fields.
-5. **User trust in the offline claim.** A single observed outbound connection would invalidate
+5. User trust in the offline claim. A single observed outbound connection would invalidate
    the product, hence the three-level evidence in §7.
 
 ## 3. Trust boundaries
 
-1. **Host apps over InputConnection.** Every `EditorInfo`, every surrounding-text answer and every
+1. Host apps over InputConnection. Every `EditorInfo`, every surrounding-text answer and every
    InputConnection call comes from an unauthenticated peer. It may lie, return malformed or null
    text, throw, churn start/finish-input rapidly, or return oversized answers.
-2. **Lock screen / Direct Boot.** Before the first unlock after boot, credential-encrypted storage
+2. Lock screen / Direct Boot. Before the first unlock after boot, credential-encrypted storage
    is unavailable. The keyboard must still type (it starts with the system) without touching
    anything personal. After the first unlock the stores are readable, but the keyguard can still
    be shown with the keyboard on top (a lock-screen quick reply): a person holding the locked
    device must not see or add to anything learned there.
-3. **Backup channels.** Since Android 12, cloud backup and device-to-device transfer are separate
+3. Backup channels. Since Android 12, cloud backup and device-to-device transfer are separate
    channels; closing one leaves the other open. The user-facing SAF export is a third channel of a
    different kind: the document provider on the other side of the picker is an unauthenticated app
    that can serve any bytes, so the picked file is untrusted input.
-4. **Overlays / tapjacking.** Other apps drawing over IME-owned UI to redirect or observe touches.
-5. **Accessibility.** A service holding the accessibility permission sees the rendered UI,
+4. Overlays / tapjacking. Other apps drawing over IME-owned UI to redirect or observe touches.
+5. Accessibility. A service holding the accessibility permission sees the rendered UI,
    including the suggestion strip.
-6. **logcat.** Process logs are readable through adb, bug reports and, on old Android versions,
+6. logcat. Process logs are readable through adb, bug reports and, on old Android versions,
    other apps.
-7. **The asset pipeline.** `scripts/*.py` turn corpora into the bundled dictionaries and bigram
+7. The asset pipeline. `scripts/*.py` turn corpora into the bundled dictionaries and bigram
    tables; a poisoned corpus or generator would reach every device.
-8. **The build supply chain.** The Gradle distribution, AGP/KGP and their dependencies, GitHub
+8. The build supply chain. The Gradle distribution, AGP/KGP and their dependencies, GitHub
    Actions, the SDK build-tools, the signing key.
 
 ## 4. Attacker classes
 
-1. **Passive network eavesdropper** (carrier, state firewall, compromised Wi-Fi). Defeated by
+1. Passive network eavesdropper (carrier, state firewall, compromised Wi-Fi). Defeated by
    design: nothing is transmitted. The obligation is to prove the absence (§7, network row).
-2. **Malicious host app.** Controls its end of the InputConnection: hostile `EditorInfo` and
+2. Malicious host app. Controls its end of the InputConnection: hostile `EditorInfo` and
    surrounding text, throwing methods, session churn, very large pastes. Cannot read the IME's
    memory or files; can only stress the boundary.
-3. **Physical-access attacker.** Holds the device, locked or unlocked; reads the screen, browses
+3. Physical-access attacker. Holds the device, locked or unlocked; reads the screen, browses
    settings, attempts backup extraction.
-4. **Corrupted local storage.** Bit rot, interrupted writes, or tampered store and dictionary
+4. Corrupted local storage. Bit rot, interrupted writes, or tampered store and dictionary
    files. Also the delivery route for the CVE-2015-4641/4642 class of the upstream code (§9).
-5. **Compromised dependency or build tool.** A poisoned artifact in the Gradle/AGP/SDK chain, a
+5. Compromised dependency or build tool. A poisoned artifact in the Gradle/AGP/SDK chain, a
    hijacked CI action, a swapped wrapper.
 
 ## 5. Controls
@@ -97,7 +97,7 @@ permission (`VIBRATE`).
 | Malicious host app | Surrounding text validated (out-of-range or inverted selection empties the caches; negative selection reports become `INVALID_CURSOR_POSITION`); host answers clamped to the cache window at every writer; editor calls that throw degrade silently (only `RuntimeException` is caught); outside a batch edit every editor call re-reads the bound field's connection (`RichInputConnection.refreshConnection`), so no call reaches a field that is no longer bound, and a batch keeps the connection it began on; large pastes go through the editor's `performContextMenuAction`; every batch edit in try/finally; dead-editor guards before any mutation; background reloads coalesced and applied on the UI thread, the reader using only the connection captured at the reload's gate check; a space-bar trackpad ends without restoring its selection when the keyboard closes or the field changes (`PointerTrackerQueue.Element.abandonSpaceTrackpad`, `LatinIME.resetSpaceTrackpad`); NaN/Infinity rejected in glide paths and strip hit-testing | `RichInputConnectionRobustnessTest`, `RichInputConnectionBindingTest`, `HostileHostRobustnessTest`, `HostileHostSuggestionChurnTest`, `BatchEditPairingContractTest`, `PointerTrackerQueueTest`, `SpaceTrackpadIntegrationContractTest`, `GlidePathTest`, `SuggestionStripStateTest`, `RecentClipCellTest` and `RecentClipControllerTest` (the clip offer window), `RecentClipSourceContractTest`, `InlineAutofillSourceContractTest` |
 | Physical access / locked device | `directBootAware="true"` on the IME service, gated by `UserManager.isUserUnlocked()` (unknown means locked): personal stores, recent emoji, pending counters and salts live in credential-protected `noBackupFilesDir` and are neither read nor written before unlock; the bundled dictionaries inflate into device-protected storage (`createDeviceProtectedStorageContext` in `AndroidDictionaryStorageFactory.kt` and `AndroidBigramStorageFactory.kt`), so typing works before unlock without exposing anything learned; while the keyguard is shown, also after the first unlock (`LatinIME.isKeyguardLocked`, unknown means locked), the suggestion strip, autocorrect and glide typing are off, nothing is learned (the learning predicate includes the strip's eligibility), the Recent tab is empty and not added to (`RecentEmojiGateState.allowsDisplay`, `allowsRecording`), the paste key and the edit-menu paste do nothing (`LatinIME.onBeforeClipboardPaste`), and the one-shot "turn on suggestions" offer, the only path to that setting outside the settings screen, does not appear (`OfferEnvironment.isKeyguardLocked`, pinned by `SuggestionsOfferControllerTest`); `FLAG_SECURE` on the settings activity and on the dialogs that show personal content (`DialogUtils.securePersonalContent`); obscured-touch filtering on every dialog (`DialogUtils.filterObscuredTouches`) | `DialogObscuredTouchContractTest`; the unlock checks in `PersonalStorePrivacyTest` and the other `*PrivacyTest` suites; `LockScreenPrivacySourceContractTest`; the keyguard cases in `RecentEmojiStoreTest`; `PasswordKeyObscuringTest` (TalkBack reads password keys as a dot on Android 7.x); `AtomicRecentEmojiFileOpsTest`; `ThemeContrastContractTest` (personal screens meet contrast) |
 | Backup extraction | `android:allowBackup="false"` and `dataExtractionRules` (`app/src/main/res/xml/data_extraction_rules.xml`) as a whitelist: no `<include>` element, and both `cloud-backup` and `device-transfer` exclude the `file`, `database`, `sharedpref`, `external`, `device_file`, `device_database` and `device_sharedpref` domains whole, with no path attribute; the personal stores and recent emoji live in `noBackupFilesDir`, which the platform never backs up; `fullBackupContent` must not return | `check-no-internet.sh` level 2 on the built APK: literal `allowBackup=false`, the rules file resolved through its resource id (survives release resource shrinking), no include, the same domain list in both sections; `BackupWhitelistSourceContractTest` |
-| User-carried backup file (SAF export/import) | Both directions run only from the settings screen through the system picker, with no new permission; the file is one zip whose manifest pins the size and SHA-256 of every entry. The importer never resolves archive paths against the filesystem: an entry classifies into a store identity (kind + subtype) and the destination file name is re-derived. It additionally demands canonical relative paths (no `..`, absolute, backslash, NUL or empty segments), no duplicates, no unknown paths, per-kind and total size caps read from the actual stream, exact manifest↔zip set equality, per-entry size and SHA-256 match, the supported format version, this app's package, a parseable settings document, and every personal file passing its store's strict binary validator; any failure rejects the whole file with nothing written. Personal files are written through the stores' own temp → fsync → atomic replace sequence on the store's worker, which republishes the live snapshots; settings cross as a parsed map (a strict XML subset: no DOCTYPE, no entities beyond the predefined five), applied through the SharedPreferences editor so every listener reloads; the enterprise-policy cache is neither exported nor imported, and policy is re-read after an import. The pending counters, salts, quarantined copies, the recent-emoji list and the sentence-initial overlay are not part of a backup. Export and import first open the store of every recognized personal file on the store worker (`BackupTarget.openPersonalStore`), so a damaged file is quarantined by its own store before anything reads it and stays out of the export; a store left not loaded makes the export fail and the import refuse before the journal is written. An import first writes a journal with the old and the new state; a process death mid-import is rolled back when the keyboard next starts or the user unlocks (`BackupCoordinator.recoverInterruptedImport`) and when the settings screen opens; a journal that fails validation is deleted rather than kept, and "Erase everything saved" deletes the journal before the stores, behind any queued rollback, so a rollback cannot bring erased data back | `BackupArchiveTest` (the path/integrity rejections), `BackupTransferTest` (round-trip byte-equality, restore-replaces, fail-closed, rollback after every mutation, journal discard and invalid-journal recovery, store priming and the not-loaded refusal), `PersonalDictionaryErasureTest` (the erase order and the recovery call sites), `PersonalEraseAllTest` (the full-folder sweep), `BackupJsonTest`, `BackupPreferencesXmlTest`, `PersonalReplaceAllTest` (the store swap and live republish) |
+| User-carried backup file (SAF export/import) | Both directions run only from the settings screen through the system picker, with no new permission; the file is one zip whose manifest pins the size and SHA-256 of every entry. The importer never resolves archive paths against the filesystem: an entry classifies into a store identity (kind + subtype) and the destination file name is re-derived. The importer also demands canonical relative paths (no `..`, absolute, backslash, NUL or empty segments), no duplicates, no unknown paths, per-kind and total size caps read from the actual stream, exact manifest↔zip set equality, per-entry size and SHA-256 match, the supported format version, this app's package, a parseable settings document, and every personal file passing its store's strict binary validator; any failure rejects the whole file with nothing written. Personal files are written through the stores' own temp → fsync → atomic replace sequence on the store's worker, which republishes the live snapshots; settings cross as a parsed map (a strict XML subset: no DOCTYPE, no entities beyond the predefined five), applied through the SharedPreferences editor so every listener reloads; the enterprise-policy cache is neither exported nor imported, and policy is re-read after an import. The pending counters, salts, quarantined copies, the recent-emoji list and the sentence-initial overlay are not part of a backup. Export and import first open the store of every recognized personal file on the store worker (`BackupTarget.openPersonalStore`), so a damaged file is quarantined by its own store before anything reads it and stays out of the export; a store left not loaded makes the export fail and the import refuse before the journal is written. An import first writes a journal with the old and the new state; a process death mid-import is rolled back when the keyboard next starts or the user unlocks (`BackupCoordinator.recoverInterruptedImport`) and when the settings screen opens; a journal that fails validation is deleted rather than kept, and "Erase everything saved" deletes the journal before the stores, behind any queued rollback, so a rollback cannot bring erased data back | `BackupArchiveTest` (the path/integrity rejections), `BackupTransferTest` (round-trip byte-equality, restore-replaces, fail-closed, rollback after every mutation, journal discard and invalid-journal recovery, store priming and the not-loaded refusal), `PersonalDictionaryErasureTest` (the erase order and the recovery call sites), `PersonalEraseAllTest` (the full-folder sweep), `BackupJsonTest`, `BackupPreferencesXmlTest`, `PersonalReplaceAllTest` (the store swap and live republish) |
 | Corrupted storage / hostile binary file | Validators that reject any malformed input for every shipped binary format (`TdictValidator`, `TatBigrValidator`, `TpersValidator`, `TpersbValidator`, `TpersemValidator`, `TcutValidator`, `TrefValidator`, `TsentValidator`); pinned size and SHA-256 of every bundled dictionary and bigram table in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`, plus the dictionary-to-bigram-table SHA-256 link; a personal file that fails validation or exceeds its size cap is quarantined, never silently deleted, with bounded salvage reads; a read that fails with an I/O error leaves the file untouched and the store not loaded (no learning, no writes, so nothing overwrites the file from empty memory) until the next prime retries; a `clearAll` before the first unlock leaves the store not loaded the same way; a pending-counter file that does not parse goes to its own quarantine slot without a user notice; hard caps on every store and file | `artifact.asset_pins`, `artifact.tree_assets`, `artifact.emoji_assets` in `release_check.sh`; `rebuild_assets.py --check --allow-known-drift` (also run by `release_check.sh`); the `*ValidatorTest` suites; `PersonalStoreLoadFailureTest`, `PendingCountersTest`; seeded parser fuzzing of the dictionary, bigram and counter-carrying personal validators (`SeededFuzzHarness` and the `*ValidatorFuzzTest` suites) |
 | Compromised dependency / build tool | No third-party runtime dependencies: only this code and the framework run in the APK; PGP and SHA-256 verification of the build-time dependency graph with the public keys committed (`gradle/verification-metadata.xml`, `gradle/verification-keyring.gpg`, `gradle/verification-keyring.keys`); `distributionSha256Sum` in `gradle/wrapper/gradle-wrapper.properties`; pinned SDK build-tools (`scripts/build-tools-pin.sh`); reproducible builds (`dependenciesInfo { includeInApk = false }` in `app/build.gradle`); CI actions pinned by commit SHA; no CI artifact upload on pull requests. At most one glide word index stays resident across languages and it is released when the keyboard is idle (`GlideIndexResidencySourceContractTest`, `MappedDictionaryEngineGlideTest`) | CI job `reproducible` (byte-compares two clean unsigned builds); `scripts/release_pack.sh` packs twice and compares; `artifact.signature` in `release_check.sh` (exactly one signer, equal to the release certificate); `artifact.critical_resources` (every resource looked up by name survives shrinking: the keyboard XML families, every `!string/` key text in the keyboard XML and the text tables, and the locale names, all kept by `res/raw/keep.xml`); `artifact.arsc_stored`; `artifact.no_secrets` (tracked tree and APK scanned for keystores, private keys and token patterns; also run in CI on the unsigned release APK); `artifact.no_reflection` (the sources carry no reflection or serialization entry point, so the R8 build needs no keep rules; each `Resources.getIdentifier` call site is listed in `scripts/no_reflection_allowlist.txt` with the family it resolves); `artifact.freshness` (the build inputs of `scripts/release-build-inputs.sh` match HEAD with no untracked file, and the APK's recorded commit is HEAD or an ancestor with no build-input change since; `release_pack.sh` refuses to pack a dirty tree); CI runs `size`, `asset_pins`, `emoji_assets`, `tree_assets`, `exported_surface`, `no_secrets`, `permissions`, `critical_resources`, `no_reflection`, `arsc_stored`, `dex_layout` and `profiles` on the unsigned release APK, and `rebuild_assets.py --check --allow-known-drift` as a separate step; `signature` and `freshness` run only locally |
 | logcat and other side channels | Logs carry metadata only: never typed text, field contents, cursor positions or the host package name; cursor traces sit behind the compile-time `TRACE` flag | `LogSafetySourceContractTest`: pins the reviewed set of log call sites in the input pipeline packages and fails on any new one |
@@ -106,32 +106,32 @@ permission (`VIBRATE`).
 
 ## 6. Deliberate decisions
 
-- **`directBootAware="true"` with unlock gating.** The IME must load before the first unlock (it
+- `directBootAware="true"` with unlock gating. The IME must load before the first unlock (it
   starts with the system, and the user may type a PIN). Bundled dictionaries sit in
   device-protected storage and are readable before unlock; everything learned sits in
   credential-protected `noBackupFilesDir` behind the `isUserUnlocked` check and is untouched until the first unlock.
   Dropping `directBootAware` is not planned.
-- **The IME window has no `filterTouchesWhenObscured`.** Key previews and popups are child windows
+- The IME window has no `filterTouchesWhenObscured`. Key previews and popups are child windows
   of the same window and would be filtered with it. Since Android 8.0 the platform blocks app
   overlays over the IME window. The absence is pinned by
   `SettingsTapjackingSourceContractTest.imeWindowLayoutsStayUnflagged`; every dialog does filter
   obscured touches.
-- **`SetupActivity` and `SettingsActivity` are exported.** The launcher icon and the system
+- `SetupActivity` and `SettingsActivity` are exported. The launcher icon and the system
   IME-settings entry point require it; neither reads intent extras. `SettingsHostActivity`, the
   broadcast receiver and the IME service (behind `BIND_INPUT_METHOD`) are not exported. The exact
   exported set is checked by `artifact.exported_surface` in `scripts/release_check.sh`, in CI
   on every push and in the release check.
-- **Logging is metadata-only, not absent.** `Log.e`/`Log.i` stay for diagnosis; typed text, field
+- Logging is metadata-only, not absent. `Log.e`/`Log.i` stay for diagnosis; typed text, field
   contents, cursor positions and host package names are never logged, enforced by
   `LogSafetySourceContractTest`.
-- **The "Saved words" screen has no separate password.** `FLAG_SECURE` keeps it out of screenshots
+- The "Saved words" screen has no separate password. `FLAG_SECURE` keeps it out of screenshots
   and the recent-apps thumbnail; it cannot keep out a person holding the unlocked phone. The
   physical-access attacker is accepted, and `PRIVACY.md` says so.
-- **No `IME_FLAG_NO_PERSONALIZED_LEARNING` on Android 7.0/7.1.** The flag exists from API 26; on
+- No `IME_FLAG_NO_PERSONALIZED_LEARNING` on Android 7.0/7.1. The flag exists from API 26; on
   API 24/25 no app can set it, so those fields are protected only by the other `mayLearn`
   conditions (password and private field types, postal addresses, the personal dictionary being
   off by default). Disclosed in `PRIVACY.md`; the gap closes with `minSdk` 26.
-- **The backup file is not encrypted.** Its point is to be carried by the user between devices
+- The backup file is not encrypted. Its point is to be carried by the user between devices
   and apps, and an encrypted format would need a password or a key the app manages. The settings
   screen says plainly, before any export, that the file holds the learned words and that anyone
   who can open it can read them. OS-level backup stays off; the file is the only backup.
@@ -151,9 +151,9 @@ permission (`VIBRATE`).
 
 ## 8. Residual-risk register
 
-Every accepted risk, with the reason and the event that should trigger a review. Risks that
-were accepted and then closed live in git history; the tests that pin them are named in the
-Check column of section 5.
+Every accepted risk is listed with the reason it was accepted and the event that should
+trigger a review. Risks that were accepted and then closed live in git history; the tests
+that pin them are named in the Check column of section 5.
 
 | Risk | Why accepted | Review when |
 |---|---|---|

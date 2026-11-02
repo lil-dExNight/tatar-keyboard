@@ -112,7 +112,7 @@ and unlock broadcasts, field start and window show drop. Once it is older than
 twice that age the check reads on the UI thread. A lock without a screen change (lockdown from
 the power menu) is therefore seen within twice that time.
 
-**Threads.** `SuggestionsController` owns all strip state and runs on the UI thread only. Each
+Threads: `SuggestionsController` owns all strip state and runs on the UI thread only. Each
 language has a `LanguageSlot` with one engine, and each engine runs lookups on its own single
 worker thread. A separate executor starts engines and prepares dictionaries. A failed preparation
 is retried once, at the next eligible input start (`LanguageSlot.preparationRetryUsed`); after a
@@ -121,19 +121,19 @@ idles the old engine instead of tearing it down. `LatinIME` publishes the new la
 table and glide geometry before the switch, and the engine that becomes active is handed both
 (`SuggestionsController.setActiveLanguage`).
 
-**Tokens.** `LatestOnlyPrefixEngine` keeps only the latest request; a new one supersedes a pending
+Tokens: `LatestOnlyPrefixEngine` keeps only the latest request; a new one supersedes a pending
 one. Each request gets a `LookupToken` (engine instance, serial, editor session, language, query,
 dictionary identity, `LookupKind`). The worker passes the result to `ResultHandoff`; the controller
 posts it to the UI thread and applies it only if `isCurrent(token)` still holds.
 
-**Lookup kinds** (`LookupKind`): `PREFIX` (word completion), `NEXT_WORD` (next-word prediction
+Lookup kinds (`LookupKind`): `PREFIX` (word completion), `NEXT_WORD` (next-word prediction
 after a committed word), `GLIDE` (glide decoding). At a sentence start (the field start, a line
 start, or '.', '!', '?', '…' followed by a space) the strip is filled synchronously: the personal
 sentence-initial overlay (`SentStartOverlayStore`, learned from sentence-initial commits through
 the shared learning gates) leads, then the static table (`SentStartIndex`,
 `assets/dictionaries/*_sentstart_v1.txt`), deduplicated, at most one cell per word.
 
-**Strip.** `SuggestionStripView` is one Canvas view with up to four cells
+The strip is one Canvas view, `SuggestionStripView`, with up to four cells
 (`SuggestionStripState.CELL_COUNT`): three are visible by default, the fourth-cell setting widens
 the strip to all four (`SuggestionStripState.visibleCellCount`; the engines always compose four
 candidates and the controller truncates the band). Cells fill the keyboard's dock content
@@ -149,13 +149,13 @@ URI, password, phonetic and filter variations). Cursor moves by the keyboard its
 slide, delete swipe, word-delete flick, the edit menu's arrows) drop this state
 (`InputLogic.onKeyboardCursorMove`).
 
-**Inline autofill** (API 30+, advertised in `method.xml`). A field that supports inline
+Inline autofill (API 30+, advertised in `method.xml`). A field that supports inline
 suggestions takes the strip over: `LatinIME.onCreateInlineSuggestionsRequest` answers with one
 presentation spec per cell (`InlineStripSpecs`, the cells' exact sizes, min equal to max). Specs
 and hosted cells use the dock content rectangle and keep platform order.
 `LatinIME.onInlineSuggestionsResponse` hosts the platform's content views in
 `InlineAutofillStripView`, a container inflated only then (`InlineAutofillBinder` keeps every
-autofill class behind the API gate). While a session is up the word strip is GONE but keeps
+autofill class behind the API gate). While a session is up the word strip is hidden but keeps
 updating. An empty response, field finish or window hide empties the host and puts current words
 back (`InputView.hideInlineAutofillStrip`). Responses require an unlocked user and no keyguard;
 a response while hidden is refused, and after a return only a newly delivered response can host
@@ -163,7 +163,7 @@ content. A late inflate from an ended session is rejected. Password fields host 
 other field, because login forms are the feature's main use; a response arriving while the emoji
 panel owns the surface is refused instead of hosted.
 
-**Word completion** (`CompositePrefixComputer.lookup`): the dictionary's exact candidates, at
+Word completion (`CompositePrefixComputer.lookup`): the dictionary's exact candidates, at
 most one personal-dictionary word that the dictionary did not return, then typo-recovery
 candidates. The exact pass carries the previous committed word (the `EditorSurface` cache read, by
 the next-word context rule) and orders its candidates in three tracks, each by frequency: the
@@ -184,7 +184,7 @@ one rank tag, ranked by frequency). Both apply the same-length bonus, which rank
 long as its variant before that variant's continuations: the Tatar policy in class #1 and in the
 tier, the Russian policy inside the tier only (`FuzzyEditPolicy.sameLengthBonusOnlyInDl1`).
 
-**Next-word prediction** (`CompositePrefixComputer.predict`): the bundled bigram successors (at
+Next-word prediction (`CompositePrefixComputer.predict`): the bundled bigram successors (at
 most four), then learned word pairs in the cells left free (at most `MAX_PERSONAL_BIGRAM_CELLS`;
 a duplicate keeps the bundled spelling), then the dictionary's most frequent words
 (`FallbackWords`), excluding everything shown. One learned pair may displace a bundled successor:
@@ -199,7 +199,7 @@ moment and holds no active-language word or only words predicted without the tab
 suggestions on, the last cell holds an emoji for the context word: a learned emoji first, else the
 static table (`EmojiSuggestIndex`).
 
-**Companion language.** The layout the user chose owns the strip; the companion, the first other
+Companion language: the layout the user chose owns the strip; the companion, the first other
 language of `DictionaryArtifactSpec.ALL` whose engine is warm and not pending release, may fill
 what the active language left. A companion engine is never prepared for this, so it answers only
 for a language already used since the keyboard started. For PREFIX the companion is asked after
@@ -213,7 +213,7 @@ and the companion gets no previous-word context; its typo recovery uses the acti
 neighbor table. It is never asked for a glide, a sentence start, an autocorrect preview strip or a
 text-shortcut strip.
 
-**Autocorrect** (opt-in `PREF_TATAR_AUTOCORRECT`, requires suggestions). The lookup that fills the
+Autocorrect (opt-in `PREF_TATAR_AUTOCORRECT`, requires suggestions). The lookup that fills the
 strip also yields an `AutocorrectAdvice` from edit class #1. The engine withholds it, on its
 worker, for a word in the personal dictionary and for an exact entry of the companion's dictionary
 (`CompanionLexicon`, which reads the companion live, so it protects only while that engine is
@@ -229,7 +229,7 @@ previewed again. The match is the exact pair; a different replacement named for 
 fires. A text-shortcut expansion's undo shares only the session list: the pair is user-managed
 content with its own screen.
 
-**Text shortcuts** (managed on the "Text shortcuts" settings screen; one list for all layouts,
+Text shortcuts (managed on the "Text shortcuts" settings screen; one list for all layouts,
 `TextShortcutStore`, `.tcut`). While the typed word is exactly a saved shortcut, the strip offers
 its expansion in the first cell; a space or punctuation replaces the word through the same
 separator-time commit path as autocorrect, so the same undo window covers it. A tap on the cell
@@ -237,7 +237,7 @@ commits like an accepted suggestion. An expansion is never learned from, and an 
 is not offered again in the same field session. A settings row opens a prefilled expansion editor;
 deletion and replacement of an existing normalized shortcut each require their own confirmation.
 
-**Recent-clip cell.** While the strip is otherwise idle (an empty prefix and no next-word context)
+The recent-clip cell: while the strip is otherwise idle (an empty prefix and no next-word context)
 and the clipboard holds a fresh text clip, the strip's first cell offers the clip's first line,
 truncated; a tap commits the full clip text (`InputLogic.commitClipText`). The clip is held in
 memory only (`RecentClipCell`), never written to disk or learned from. A generation-stamped timer
@@ -269,7 +269,7 @@ engine its catalog, and the engine maps and opens the table on its worker at the
 lookup, so a session that never predicts a next word never maps it. Pinned sizes and SHA-256 values
 are in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. Without a usable dictionary a
 language has no suggestions; without its bigram table next-word prediction has no bundled
-successors (see **Next-word prediction** above).
+successors (see next-word prediction above).
 
 ## Personal dictionary
 
@@ -284,37 +284,38 @@ text-shortcut store (`TextShortcutStore`, `.tcut`, one list for all layouts, man
 settings screen) shares the same directory and worker but holds managed content: pairs enter only
 from the settings screen, with no counters, no pending hashes and no learning.
 
-- **Learning gates.** `PersonalLearningGates.mayLearn`: suggestions eligible for the field (which
-  excludes `IME_FLAG_NO_PERSONALIZED_LEARNING`), personal dictionary on, user unlocked since boot,
-  not a postal-address field, learning not paused. `CleanRunMachine` reports only cleanly typed
+- Learning gates: `PersonalLearningGates.mayLearn` passes only when suggestions are eligible
+  for the field (which excludes `IME_FLAG_NO_PERSONALIZED_LEARNING`), the personal dictionary is
+  on, the user is unlocked since boot, the field is not a postal-address field and learning is
+  not paused. `CleanRunMachine` reports only cleanly typed
   words and pairs; the paste key and the edit-menu paste mark the run dirty
   (`SuggestionsController.onClipboardPaste`). A word counts as unknown to the dictionary when the
   exact pass for one of its proper prefixes was empty, whatever typo recovery showed
   (`CompositePrefixComputer.lastExactMissPrefix`). A pair is learned only where the first word
   would be the next-word context of the second, so never across a sentence end, a line break, a
   number or an emoji.
-- **Pending counters.** An entry is saved in plain text only after
+- Pending counters: an entry is saved in plain text only after
   `PendingCounters.LEARN_THRESHOLD` clean observations; until then only a truncated salted SHA-256
   is kept, and it expires.
-- **Writes** rewrite the whole file (temp, fsync, validate, atomic replace, directory fsync). The
+- Writes rewrite the whole file (temp, fsync, validate, atomic replace, directory fsync). The
   engine reads an immutable snapshot through a `@Volatile` field. A failed whole-file write
   suppresses the learning path's retries until the next flush boundary or a successful write, so
   a full disk costs one failed write per input session instead of one per typed word; pending
   counters keep accumulating in memory meanwhile.
-- **Loading.** A store opens on its worker after the unlock gate. Reading and validation fail
+- Loading: a store opens on its worker after the unlock gate. Reading and validation fail
   apart (`PersonalFileReads`): a read that throws (an I/O error) leaves the store not loaded, with
   an empty snapshot, no learning and no writes, so the file on disk is never overwritten from
   empty memory; the next `prime()` tries again. Words and pairs prime at engine creation, on each
   repaint of the "Saved words" screen and before a backup; learned emoji and refused corrections
   on each strip query; sentence starts at each sentence start; text shortcuts once on the strip's
   first lookup, on their own settings screen and before a backup. A `clearAll` before the first unlock also leaves the store not loaded.
-- **Quarantine.** Only a file that fails validation, or exceeds its size cap, is moved aside, not
+- Quarantine: only a file that fails validation, or exceeds its size cap, is moved aside, not
   deleted; the settings screen tells the user once and can restore what is readable. A failed
   move preserves the original file, and a failed purge rewrite preserves the original quarantined
   copy. A pending-counter file that does not parse moves to its own slot
   (`pending-*.bin.quarantine`) with no notice: it holds only salted hashes that relearn by
   themselves, and it is neither listed nor restored.
-- **Erase everything saved** (`PersonalErasure`, `PersonalEraseAll`). The settings screen first
+- Erase everything saved (`PersonalErasure`, `PersonalEraseAll`): the settings screen first
   deletes the import journal and its temp (if either stays, the erase stops), then clears the recent
   emoji, then has every store of every supported language (words, pairs, emoji, sentence starts,
   refused corrections) and the text-shortcut store run its `clearAll` (memory, file and whichever
@@ -323,8 +324,8 @@ from the settings screen, with no counters, no pending hashes and no learning.
   following links out of it. Success means every store reported success, the directory is empty and
   the recent-emoji file is absent or empty. The row is offered whenever the directory holds any file
   (`PersonalErasure.hasSavedFiles`), also when the screen lists nothing.
-- **Pause learning** (`PREF_INCOGNITO_MODE`) stops all writes; saved entries keep appearing.
-- **Backup restore.** `replaceAll` swaps a store's file for bytes from a backup archive (or deletes
+- Pause learning (`PREF_INCOGNITO_MODE`) stops all writes; saved entries keep appearing.
+- Backup restore: `replaceAll` swaps a store's file for bytes from a backup archive (or deletes
   it) on the store's worker, re-validating first, and re-publishes the snapshot, so an import takes
   effect in the live process. Import validates the archive and every recognized current file,
   writes a durable journal of the old and new states, then applies the new state through those
@@ -362,9 +363,9 @@ successor list holds at most `CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSO
 ahead of the bundled successors, only its first `GlideBigramRerank.MAX_RANKED_SUCCESSORS` entries
 rank, each rank applies the configured rank penalty once more, and an unranked word gets the penalty
 of one rank past the last, so a long successor list can neither outweigh every shape score nor
-overflow the penalty. The strip side is gated on the glide switch rather than the suggestions switch, because the
-candidates are corrections of the gesture, so they also appear with suggestions off, while
-typed-text suggestions stay off. The word takes the shift state: shift capitalizes it, Caps Lock
+overflow the penalty. The strip side is gated on the glide switch, not the suggestions switch, since the candidates
+are corrections of the gesture: they also appear with suggestions off, while typed-text
+suggestions stay off. The word takes the shift state: shift capitalizes it, Caps Lock
 types it in capitals.
 
 Letters and doubled letters: `GlideKeyGeometry` is built from the live keys and their long-press

@@ -18,7 +18,7 @@ described in [ASSET-FORMATS.md](ASSET-FORMATS.md).
 
 These inputs are not in the repository:
 
-- **Baseline dictionaries.** The two release 1.8.4 dictionary assets are the only valid starting
+- Baseline dictionaries. The two release 1.8.4 dictionary assets are the only valid starting
   point for a rebuild. `dict_accept.py` checks them against `BASELINE_SHA256` and stops if they
   do not match, because rebuilding on top of an already rebuilt asset would add the
   conversational frequencies a second time. Extract them into one directory, keeping their file
@@ -32,7 +32,7 @@ These inputs are not in the repository:
   ```
 
   (`6306014a` is the commit that set version 1.8.4.)
-- **Leipzig corpora** (CC BY 4.0), from https://wortschatz.uni-leipzig.de/en/download. The
+- Leipzig corpora (CC BY 4.0), from https://wortschatz.uni-leipzig.de/en/download. The
   rebuild reads the `*-sentences.txt` files named in `BIGRAMS[].train` and the Tatar
   `*-words.txt` files named in `WORDFORM_FREQUENCY_SOURCES` (both are in `rebuild_assets.py`).
   They are expected in `--corpus-dir`, which defaults to `~/corpora-leipzig` for a rebuild.
@@ -40,7 +40,7 @@ These inputs are not in the repository:
   baseline dictionaries carry its word frequencies (see `NOTICE.txt`), and
   `research/corpus/tt_merge_sim.py` uses its sentences as a development set when it selects
   the bonus weights.
-- **Held-out evaluation sets.** `app/src/test/resources/tt_eval_sentences.txt` (built by
+- Held-out evaluation sets. `app/src/test/resources/tt_eval_sentences.txt` (built by
   `scripts/make_eval_set.py`) is the held-out Tatar set: Tatoeba sentences from the
   conversational rows with `id % 10 == 1`, minus every sentence of the Leipzig training corpora.
   Its sentences are in no bigram, sentence-start or tuning input; `tt_merge_sim.py` reads it
@@ -51,7 +51,7 @@ These inputs are not in the repository:
   `ru_eval_sentences.txt` (`scripts/make_ru_eval_set.py`) is the Russian counterpart, built
   the same way against the Russian training corpora. The suggestion evaluations, the typo
   eval sets and the glide calibration set are built from these two files.
-- **Conversational training files** `tt_conv_train90-sentences.txt` and
+- Conversational training files `tt_conv_train90-sentences.txt` and
   `rus_conv_thinned60-sentences.txt`. `research/corpus/dl.sh` downloads the OPUS Tatoeba and
   OpenSubtitles dumps, and `research/corpus/make_conv_train.py` turns them into deduplicated
   Leipzig-format files. The line-id filter is applied by hand (Tatar: `id % 10 != 1`; Russian:
@@ -59,7 +59,7 @@ These inputs are not in the repository:
   results in `--corpus-dir`. The Tatar rows with `id % 10 == 1` are not in
   `tt_conv_train90-sentences.txt`, but `tt_merge_sim.py` tuned the bonus weights on them (minus
   the eval set lines), so of these rows only the eval set above is held out.
-- **Emoji sources**: `emoji-test.txt` (Unicode Emoji 15.1) and the CLDR 44 ru/en annotation
+- Emoji sources: `emoji-test.txt` (Unicode Emoji 15.1) and the CLDR 44 ru/en annotation
   files, saved in one `--cldr-dir` as `ru.xml`, `en.xml`, `derived-ru.xml` and
   `derived-en.xml`. The packers pin their SHA-256.
 
@@ -67,7 +67,7 @@ These inputs are in the repository:
 
 - `data/corpus-manifest.json`: the size and SHA-256 of every corpus file the rebuild reads
   (the Leipzig and conversational files above), with a short `source` note. Its entry set must equal the files named in `BIGRAMS[].train` and
-  `WORDFORM_FREQUENCY_SOURCES`. When a corpus is replaced on purpose, update its entry in the
+  `WORDFORM_FREQUENCY_SOURCES`. When you replace a corpus, update its entry in the
   same change as the rebuilt assets.
 - `data/dictionary/`: the word review queues (`*-conv-review.tsv`, `*-query-review.tsv`) and
   `dict-accept/`, which holds the accepted and rejected words (`accepted-*.tsv`,
@@ -94,7 +94,7 @@ python3 scripts/rebuild_assets.py --baseline /tmp/baseline-1.8.4 \
     [--corpus-dir DIR] [--work-dir DIR] [--allow-known-drift]
 ```
 
-The script first lists every missing input and stops if there are any. Then it compares the
+The script first lists every missing input and stops if there are any. It then compares the
 corpus files of the selected languages with `data/corpus-manifest.json` (size first, then
 SHA-256) and stops with exit code 1, before writing anything, if one differs. Then it runs:
 
@@ -197,11 +197,11 @@ read them, or the asset itself, and need no edit after a rebuild:
 
 A rebuild leaves the following to you. Each one fails its test until it is updated:
 
-- **Sentence-start tables.** Rebuild them with `sentstart_pack.py` when a word left the
+- Sentence-start tables. Rebuild them with `sentstart_pack.py` when a word left the
   dictionary (`*SentStartAssetTest` checks that every word is in it), then update the record
   count and SHA-256 in `tests/sentstart_pack/`, `TatarSentStartAssetTest` and
   `RussianSentStartAssetTest`.
-- **Query-review tables.** `data/dictionary/tt-query-review.tsv` and `ru-query-review.tsv`
+- Query-review tables. `data/dictionary/tt-query-review.tsv` and `ru-query-review.tsv`
   record the top candidates of the committed dictionaries for the queries in
   `tests/dictionary_pack/fixtures/manual_{tatar,russian}_queries.txt`. Print the new candidates
   with `dictionary_pack.py query-audit --asset <asset> --queries <queries>` (add
@@ -210,34 +210,34 @@ A rebuild leaves the following to you. Each one fails its test until it is updat
   date. `RealDictionaryPrefixIndexTest` compares live lookups with the recorded candidates;
   it, `LongPressRecoveryCalibrationTest` and `DictionaryIoStrategyCalibrationTest` also require
   the Tatar table to keep its row count.
-- **Extra bigram heads.** The ranks behind `scripts/bigram_extra_heads_tat.txt` depend on the
+- Extra bigram heads. The ranks behind `scripts/bigram_extra_heads_tat.txt` depend on the
   Tatar dictionary, and the regenerator reads the committed one. After a rebuild that changed
   the dictionary, run `scripts/bigram_extra_heads_regen.py --corpus-dir <dir>`, rebuild the
   Tatar side again (`--only tatar`) so the bigram table is packed with the new list, then
   update the word count and sample words in `ShippedExtraHeadListTest`
   (`tests/bigram_asset_pack/`), which also checks that no listed word is reached by the cutoff.
-- **Typo eval sets.** The mutated and valid-OOV sets of `scripts/typo_eval_pack.py` are built
+- Typo eval sets. The mutated and valid-OOV sets of `scripts/typo_eval_pack.py` are built
   over the dictionary. Regenerate the committed sets in `app/src/test/resources/` and update
   their row, byte and class counts and SHA-256 in `tests/typo_eval_pack/`,
   `TypoMutatedEvalTest`, `TtDl1TierCalibrationTest`, `RuTypoMutatedEvalTest` and
   `AutocorrectWideningCalibrationTest`.
-- **Measured results.** Hit, coverage, recall and probe counts measured on the committed assets
+- Measured results. Hit, coverage, recall and probe counts measured on the committed assets
   are pinned in `TtSuggestEvalTest`, `RuSuggestEvalTest`, `PersonalizationEvalTest`,
   `tests/personalization_eval/`, `TypoMutatedEvalTest`, `RuTypoMutatedEvalTest`,
   `TtDl1TierCalibrationTest`, `TtFullSubstitutionCalibrationTest`,
   `AutocorrectWideningCalibrationTest` and `GlideRecoveryCalibrationTest`. Re-pin them from a reviewed measurement; the thresholds
   these tests gate on do not move with the pins.
-- **Autocorrect floors.** `AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT` and
+- Autocorrect floors. `AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT` and
   `MIN_CANDIDATE_FREQUENCY_RU` must equal the frequency of a fixed-rank word;
   `AutocorrectFloorPinTest` reports the new value.
-- **Expected words.** Some tests assert concrete words of the committed assets: the
+- Expected words. Some tests assert concrete words of the committed assets: the
   top-frequency lists in `TdictPrefixIndexTopFrequentWordsTest` and `TtNextWordFillE2ETest`, the
   next-word rows in `TatBigrPrefixIndexTest`, the completions in
   `TdictPrefixIndexSameStemBoostTest` and `CursorMoveBandTest`, the dictionary membership cases
   in `EmptyPrefixProbeEquivalenceTest`, the Russian prefixes «при» to «привет» that must fill
   four cells in `ShippedIndexPrefixCoverageTest`, and the decoded words in `GlideEndToEndTest` and
   `GlideDecoderHostGeometryReuseTest`.
-- **Head drift.** `scripts/known_asset_drift.json` and the drift counts asserted in
+- Head drift. `scripts/known_asset_drift.json` and the drift counts asserted in
   `tests/rebuild_assets/`.
 
 Emoji assets have no storage contract. Their SHA-256 and count pins are in `tests/<packer>/` and

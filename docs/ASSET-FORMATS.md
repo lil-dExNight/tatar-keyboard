@@ -1,9 +1,9 @@
 # Asset and store formats
 
-Reference for the binary files the keyboard reads: the bundled dictionaries (TATDICT schema 2),
-the bundled bigram tables (TATBIGR schema 3), and the personal-dictionary files (TATPERS,
-TATPERSB, TATPERSE, TATREF). The plain-text assets are summarized at the end. How the bundled files
-are built is described in [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
+This reference covers the binary files the keyboard reads: the bundled dictionaries (TATDICT
+schema 2), the bundled bigram tables (TATBIGR schema 3), and the personal-dictionary files
+(TATPERS, TATPERSB, TATPERSE, TATREF). The plain-text assets are summarized at the end. For how
+the bundled files are built, see [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
 
 The code is the authority. The format constants are in `TdictFormat`
 (`DictionaryStorageContracts.kt`), `TatBigrFormat` (`BigramStorageContracts.kt`), and
@@ -31,9 +31,10 @@ paths below are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/la
 Assets: `assets/dictionaries/{tatar,russian}_top100k_v1.tdict.zlib`. The `top100k` in the name
 is frozen for compatibility; the real entry count is pinned in `expectedEntryCount`. Constants:
 `SCHEMA_ID = 2`, `FORMAT_VERSION = 1`, `HEADER_SIZE = 72`, `BLOCK_SIZE = 8`,
-`MAX_WORD_BYTES = 128`, and `MAX_RAW_SIZE`. `MAX_RAW_SIZE` is a safety bound on the inflated
-file and the in-memory validation buffer, not a size budget. There is no separate compressed-size
-cap; inflation is bounded by the pinned compressed size (see Validation below).
+`MAX_WORD_BYTES = 128`, and `MAX_RAW_SIZE`. `MAX_RAW_SIZE` bounds the inflated file and the
+in-memory validation buffer, to keep the reader from allocating without limit; it is not a
+budget the packer aims for. Inflation is bounded by the pinned compressed size (see
+Validation below), so the compressed size needs no separate cap.
 
 | Offset | Size | Field | Required value |
 |---:|---:|---|---|
@@ -68,8 +69,7 @@ position `i % 8`. The bigram tables depend on this index-based access.
 **Validation** (`storage/TdictValidator.kt`). `inflateAsset` accepts a single zlib stream with
 no preset dictionary and no trailing or concatenated data. It stops as soon as the input exceeds
 the pinned compressed size or the output exceeds `MAX_RAW_SIZE`. The compressed size, compressed
-SHA-256 and raw size must equal the pins. `validateRaw` then
-requires:
+SHA-256 and raw size must equal the pins. `validateRaw` then requires:
 
 - the file length equals the pinned raw size, and the header constants equal the spec;
 - entryCount is non-zero and equals the pin, and every section field has the value in the
@@ -86,8 +86,8 @@ requires:
 
 The runtime reader (`engine/TdictPrefixIndex.kt`, `open`) checks the header and the section
 arithmetic again on the memory-mapped file, and walks every entry unless the store hands it a
-validation token for the same content (`storage/StoreValidationToken.kt`): the token proves a
-full validation of that content already ran in this process, so the walk is skipped.
+validation token for the same content (`storage/StoreValidationToken.kt`). The token proves a
+full validation of that content already ran in this process; the reader skips the walk.
 
 **On the device.** The raw file is inflated into a temp file, fsynced, validated, and atomically
 renamed into device-protected storage under `files/dictionaries/` (Tatar) or
@@ -139,7 +139,7 @@ Four sections follow the header, with no padding between them:
    and does not re-rank them.
 
 **Validation** (`storage/TatBigrValidator.kt`). Inflation follows the same rules as for TATDICT,
-except that the input is bounded by `TatBigrFormat.MAX_COMPRESSED_SIZE` and the output by
+with the input bounded by `TatBigrFormat.MAX_COMPRESSED_SIZE` and the output by
 `TatBigrFormat.MAX_RAW_SIZE`. Then:
 
 - the header constants, headCount (non-zero, equal to the pin) and the linked dictionary SHA-256
@@ -156,14 +156,13 @@ except that the input is bounded by `TatBigrFormat.MAX_COMPRESSED_SIZE` and the 
 The validator does not have the dictionary, so it cannot check upper bounds on indices.
 `engine/TatBigrPrefixIndex.kt` (`open`) checks the header again, requires the linked SHA-256 to
 equal the raw SHA-256 of the dictionary that is actually loaded, and requires every head and
-success index to be below that dictionary's entryCount; a store validation token for the same
-content (see the TATDICT section above) skips that stream walk, and the header and
-dictionary-link checks always run. If the table does not match the
-dictionary, the language runs without it: next-word prediction has no table successors and
-answers from learned word pairs and the most frequent dictionary words only, word completion
-loses the previous-word boost, and typing is not affected.
-On the device, tables are staged, named and retained the same way as dictionaries, in
-`files/bigrams/` or `files/bigrams-ru/`, with the name
+success index to be below that dictionary's entryCount. A store validation token for the same
+content (see the TATDICT section above) skips that stream walk; the header and
+dictionary-link checks always run. If the table does not match the dictionary, the language runs
+without it: next-word prediction has no table successors and answers from learned word pairs and
+the most frequent dictionary words only, word completion loses the previous-word boost, and
+typing is not affected. On the device, tables are staged, named and retained the same way as
+dictionaries, in `files/bigrams/` or `files/bigrams-ru/`, with the name
 `<family>-<fileLanguageTag>-v<generation:6>-s3-f1-<rawSha256>.tatbigr`.
 
 ## Personal dictionary files: TATPERS, TATPERSB, TATPERSE
@@ -223,10 +222,10 @@ Error messages are constants and never contain user text. A write goes to a `.tm
 then atomically renamed over the target. A file that fails validation is moved to the language's
 single quarantine slot, `<file name>.quarantine`, and the store starts empty. The quarantined file
 can later be restored or discarded. A file that cannot be read at all (an I/O error, as opposed
-to content that fails validation) stays where it is and is never overwritten; the store stays
-not loaded until a later open reads it. The same directory also holds the pending learning counters
-(salted, truncated word hashes), their salt and the quarantine notice flags. Those files belong to
-`personalstore/` and are not covered here.
+to content that fails validation) stays where it is and is never overwritten; the store is
+not loaded until a later open reads it. The same directory also holds the pending learning
+counters (salted, truncated word hashes), their salt and the quarantine notice flags. Those
+files belong to `personalstore/` and are not covered here.
 
 ## Refused-correction files: TATREF
 
@@ -237,7 +236,7 @@ file per language in the same `noBackupFilesDir/personal/` directory, with the s
 words as UTF-8 in the normalized lookup form (NFC lowercase). A pair suppresses its correction once
 its count reaches the threshold.
 
-Unlike the other personal files the records are NOT sorted: the file order is the refusal order
+Unlike the other personal files, the records are not sorted: the file order is the refusal order
 (oldest first), because that order is the eviction order; past the cap the front of the file goes
 first, and a repeated refusal moves its pair to the back. Validation (`personal/TrefValidator.kt`)
 runs the same header, checksum, subtype-tag and strict-UTF-8 checks, rejects duplicates, self-pairs
@@ -247,7 +246,7 @@ silent: no screen lists the refused pairs.
 
 ## Sentence-initial overlay files: TATSENT
 
-`sentstart-<tag>-s1-f1.tsent` (magic `TATSENT\0`) holds the few words the user actually starts
+`sentstart-<tag>-s1-f1.tsent` (magic `TATSENT\0`) holds the few words the user starts
 sentences with, one file per language in the same `noBackupFilesDir/personal/` directory, with the
 same 72-byte header (subtype tag included) and the same record layout as `.tpers`
 (`wordByteLength u8`, `usageCount u16`, `lastUseSerial u32`, the word as entered). The cap is 8
@@ -256,12 +255,12 @@ admit one-letter words («я» opens Russian sentences). Records are sorted by t
 the strip order is by usage count, then last-use serial.
 
 Validation (`personal/TsentValidator.kt`) is the `.tpers` one with these bounds. Learning follows
-the personal dictionary's pending-counter discipline (`PendingCounters`): a word crosses into
+the personal dictionary's pending-counter discipline (`PendingCounters`): a word enters
 plaintext only after the shared learn threshold of sentence-initial commits, and the pending hashes
-and salt live in the store's own `pending-sentstart-<tag>-s1-f1.bin` and `salt-sentstart.bin`. The
-quarantine is the move to `<file name>.quarantine` with no notice: no screen lists the overlay, and
-the overlay relearns. The files do not classify into a backup kind, so an export never carries
-them.
+and salt live in the store's own `pending-sentstart-<tag>-s1-f1.bin` and `salt-sentstart.bin`. A
+file that fails validation is moved to `<file name>.quarantine` with no notice: no screen lists
+the overlay, and the overlay relearns. The files do not classify into a backup kind, so an export
+never carries them.
 
 ## Plain-text assets
 

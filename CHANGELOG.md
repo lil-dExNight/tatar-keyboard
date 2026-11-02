@@ -62,7 +62,7 @@ These hold for every release:
 ### Security
 
 - The suggestion strip no longer offers a copied clip that its source app marked as sensitive, such as a password or card number copied from a password manager.
-- On the lock screen the keyboard no longer reads the clipboard, neither for the paste key nor for the copied-clip cell, the edit-menu paste does nothing, and the one-time "turn on suggestions" offer no longer appears.
+- On the lock screen the keyboard no longer reads the clipboard, neither for the paste key nor for the copied-clip cell; the edit-menu paste does nothing, and the one-time "turn on suggestions" offer no longer appears.
 - On Android 7.0 and 7.1, TalkBack now reads character keys in password fields as "dot" unless spoken passwords are allowed in the system settings or headphones are connected.
 - An import interrupted by a restart is now rolled back the next time the keyboard starts, not only when the settings open; "Erase everything saved" also deletes the import journal, so the rollback cannot restore erased words, and a damaged journal no longer blocks later backups.
 
@@ -89,12 +89,12 @@ These hold for every release:
 ### Added
 
 - A "Fourth suggestion cell" setting: the strip above the keyboard shows four suggestions instead of three while it is on.
-- A personal sentence-start overlay: the words you actually open sentences with lead the strip at a sentence start, above the static table (they are never removed from it). Learned under the same privacy gates as the personal dictionary, eight entries at most, never backed up.
+- A personal sentence-start overlay: the words you actually open sentences with lead the strip at a sentence start, above the static table (they are never removed from it). It is learned under the same privacy gates as the personal dictionary, holds eight entries at most, and is never backed up.
 - The Russian sentence-start table now covers conversational openings (`я`, `ты`, `он` rank where they belong): measured hit rate on the held-out set went 3.1% → 18.7%.
 - A pause-learning marker on the spacebar while learning is paused.
 - Emoji search shows two rows of results while you type.
 - One-handed mode: a tap in the freed dock strip returns the keyboard to full width, a long-press opens the side picker.
-- A debug-build gesture recorder and a static web collector page for the real-gesture corpus (opt-in, discard-by-default, never in release builds).
+- A debug-build gesture recorder and a static web collector page for the real-gesture corpus (both are opt-in, discard by default, and never appear in release builds).
 - Emoji names are spoken in Tatar on the Tatar layout: the suggestion strip's emoji cell and the emoji search announcements read the curated Tatar names, falling back to Russian where an emoji has no Tatar name of its own (a Tatar word shared by several emoji, such as hearts or clocks, is not used as a name).
 
 ### Changed
@@ -148,7 +148,7 @@ These hold for every release:
 
 ### Removed
 
-- The fifth-row letter order `ә ө ү җ ң һ` is final by decision; the study instrument behind it (the debug-only Developer screen with the arm picker and the session log) is removed.
+- The fifth-row letter order `ә ө ү җ ң һ` is final; the study instrument behind it (the debug-only Developer screen with the arm picker and the session log) is removed.
 
 ## [3.9.1] — 2026-10-04
 
@@ -170,9 +170,9 @@ These hold for every release:
 - The shift key cycles the case of the selected text or the word before the cursor: lowercase, then Capitalized, then ALL CAPS.
 - Long-press the enter key for a text-editing menu: select all, cut, copy, paste, cursor left, cursor right.
 - Text shortcuts: your own abbreviation → phrase pairs (Settings → Preferences), expanded as you type, with undo.
-- A fresh clipboard clip can appear in the suggestion strip while the keyboard is open — never stored, never in password fields.
+- A fresh clipboard clip can appear in the suggestion strip while the keyboard is open; it is never stored and never appears in password fields.
 - After an autocorrect, the strip offers the word as you typed it for one-tap undo.
-- Undoing the same correction twice mutes it for good: the keyboard remembers refused corrections and never repeats them.
+- Undoing the same correction twice mutes it: the keyboard remembers refused corrections and never repeats them.
 - Backup and export: settings and learned words to a single file you choose (Settings → Backup and export).
 - Password managers can fill login fields from the suggestion strip on Android 11+ (inline autofill).
 - One-handed mode: the keyboard docks to the left or right at 85% width (Settings → Appearance).
@@ -437,7 +437,7 @@ These hold for every release:
 ### Added
 
 - Emoji suggestions for Russian and Tatar: after a word and a space, a matching emoji appears in the last cell; a tap adds it and never changes your word.
-- The word-to-emoji table is curated by hand; ambiguous words deliberately suggest nothing, and TalkBack reads the emoji by its short name.
+- The word-to-emoji table is curated by hand; ambiguous words suggest nothing, and TalkBack reads the emoji by its short name.
 - Off by default, with its own "Emoji suggestions" switch; not shown in password fields or on the English layout.
 
 ## [1.9.9] — 2026-09-01
