@@ -1,0 +1,3 @@
+• Russian labels and the millisecond unit no longer show extra quote marks; message grammar fixed
+• Tatar texts: typos fixed, layout and suggestion words now use җәем and тәкъдим
+• Store descriptions rewritten in a plainer voice, with exact dictionary sizes

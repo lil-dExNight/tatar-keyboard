@@ -3,13 +3,27 @@
 User-facing changes to Tatar Keyboard, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-These hold for every release and are not repeated in the entries below:
+These hold for every release:
 
 - The keyboard works fully offline. The app has no `INTERNET` permission; the only permission it
   requests is `VIBRATE`. Nothing you type leaves the device.
 - Every release is signed with the same certificate. Its SHA-256 digest is pinned as
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
+
+## [3.13.0] — 2026-11-02
+
+### Fixed
+
+- Several Russian labels and the millisecond unit no longer show extra quote marks.
+- The grammar of the "shortcut must be letters only" message.
+- Tatar: typos fixed in the emoji panel and store texts (Тулылы, бөтесе, күрсәнә), layout and suggestion words now use җәем and тәкъдим.
+
+### Changed
+
+- Tatar long-press letter hints on the Russian layout stay, and the fifth row stays; the store descriptions now state the exact dictionary sizes and the second-language autocorrect protection.
+- The privacy policy (version 1.12) now states that a password field's text is never read into the keyboard's memory, and how skin-tone emoji are filtered.
+- Store descriptions are rewritten in a plainer voice: "initial setup" instead of "onboarding", sizes under 2 MB, sentence starts in the erase-everything list.
 
 ## [3.12.0] — 2026-10-31
 
