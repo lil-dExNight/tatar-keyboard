@@ -203,7 +203,7 @@ class EmojiPanelStateTest {
         assertEquals(400 - floatingInsetPx - floatingPx, state.floatingTop())
         assertEquals(400 - gridTopPx, state.gridHeight())
 
-        assertTrue("первая установка инсета обязана считаться изменением",
+        assertTrue("the first inset must count as a change",
             state.setBottomInset(navBarPx))
 
         assertEquals(400 - navBarPx - floatingInsetPx, state.floatingBottom())
@@ -219,7 +219,7 @@ class EmojiPanelStateTest {
         state.setBottomInset(navBarPx)
         val insetTop = 400 - navBarPx
         assertTrue(
-            "низ плавающих клавиш ${state.floatingBottom()} не должен заходить за $insetTop",
+            "the floating keys' bottom ${state.floatingBottom()} must not pass $insetTop",
             state.floatingBottom() <= insetTop,
         )
         assertTrue(state.floatingTop() < state.floatingBottom())
@@ -233,7 +233,7 @@ class EmojiPanelStateTest {
         val floatingTop = state.floatingTop()
         val gridHeight = state.gridHeight()
 
-        assertFalse("нулевой инсет — не изменение", state.setBottomInset(0))
+        assertFalse("a zero inset is not a change", state.setBottomInset(0))
         assertEquals(floatingBottom, state.floatingBottom())
         assertEquals(floatingTop, state.floatingTop())
         assertEquals(gridHeight, state.gridHeight())
@@ -328,10 +328,10 @@ class EmojiPanelStateTest {
         val short = 140
         val state = configuredState(snapshotOf(50), height = short)
 
-        assertTrue("полоса обязана сжаться", state.tabBarHeight() < tabBarPx)
+        assertTrue("the tab row must shrink", state.tabBarHeight() < tabBarPx)
         assertEquals(state.tabBarHeight(), state.gridTop())
         assertTrue(
-            "сетке должно остаться не меньше пола ($floor): ${state.gridHeight()}",
+            "the grid must keep at least the floor ($floor): ${state.gridHeight()}",
             state.gridHeight() >= floor,
         )
     }
@@ -341,7 +341,7 @@ class EmojiPanelStateTest {
     fun bandsNeverShrinkBelowTheirFloor() {
         val state = configuredState(snapshotOf(50), height = 80)
         assertTrue(state.tabBarHeight() >= (tabBarPx * 0.6f).toInt())
-        assertTrue("полоса обязана остаться видимой", state.tabBarHeight() > 0)
+        assertTrue("the tab row must stay visible", state.tabBarHeight() > 0)
     }
 
     /**
@@ -351,10 +351,10 @@ class EmojiPanelStateTest {
     @Test
     fun bottomInsetCanTriggerTheSqueeze() {
         val state = configuredState(snapshotOf(50), height = 200)
-        assertEquals("без инсета всё ещё помещается", tabBarPx, state.tabBarHeight())
+        assertEquals("it still fits without an inset", tabBarPx, state.tabBarHeight())
 
         state.setBottomInset(96)
-        assertTrue("после резервирования навбара полоса обязана сжаться",
+        assertTrue("after the navbar is reserved the tab row must shrink",
             state.tabBarHeight() < tabBarPx)
     }
 

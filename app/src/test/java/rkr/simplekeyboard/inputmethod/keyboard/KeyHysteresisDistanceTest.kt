@@ -151,9 +151,9 @@ class KeyHysteresisDistanceTest {
     }
 
     /**
-     * Both halves of the pair now read the same. AOSP keeps the sliding-modifier one larger than
-     * the ordinary one; here the ordinary one has caught up with it, which is what HeliBoard does
-     * and is the state this fix intends. Fails loudly if either resource drifts.
+     * Both halves of the pair read the same. AOSP keeps the sliding-modifier one larger than
+     * the ordinary one; HeliBoard merges them, and so does this layout. Fails loudly if either
+     * resource drifts.
      */
     @Test
     fun theTwoHysteresisValuesAreBothThePlatformTouchSlop() {

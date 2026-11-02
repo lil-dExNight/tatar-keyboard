@@ -44,10 +44,10 @@ class EnterKeyPresenceTest {
 
         /** Resource-directory fallback chains, most specific first. */
         private val BUCKETS = linkedMapOf(
-            "телефон, портрет" to listOf("xml"),
-            "телефон, ландшафт" to listOf("xml-land", "xml"),
-            "планшет, портрет" to listOf("xml-sw600dp", "xml"),
-            "планшет, ландшафт" to listOf("xml-sw600dp-land", "xml-sw600dp", "xml-land", "xml"),
+            "phone, portrait" to listOf("xml"),
+            "phone, landscape" to listOf("xml-land", "xml"),
+            "tablet, portrait" to listOf("xml-sw600dp", "xml"),
+            "tablet, landscape" to listOf("xml-sw600dp-land", "xml-sw600dp", "xml-land", "xml"),
         )
 
         private const val ENTER = "enterKeyStyle"
@@ -120,7 +120,7 @@ class EnterKeyPresenceTest {
         val missing = ArrayList<String>()
         val styles = keyStyles("kbd_$layout", chain, HashSet(), missing)
         assertTrue(
-            "неразрешённые include в раскладке $layout при цепочке $chain: $missing",
+            "unresolved includes in layout $layout for chain $chain: $missing",
             missing.isEmpty(),
         )
         return styles
@@ -137,7 +137,7 @@ class EnterKeyPresenceTest {
             }
         }
         if (failures.isNotEmpty()) {
-            fail("нет клавиши Enter: ${failures.joinToString("; ")}")
+            fail("no Enter key: ${failures.joinToString("; ")}")
         }
     }
 
@@ -147,8 +147,8 @@ class EnterKeyPresenceTest {
         for (layout in SHIPPED_LAYOUTS) {
             for ((bucket, chain) in BUCKETS) {
                 val styles = stylesOf(layout, chain)
-                if (DELETE !in styles) failures.add("$layout / $bucket: нет delete")
-                if (SHIFT !in styles) failures.add("$layout / $bucket: нет shift")
+                if (DELETE !in styles) failures.add("$layout / $bucket: no delete")
+                if (SHIFT !in styles) failures.add("$layout / $bucket: no shift")
             }
         }
         if (failures.isNotEmpty()) {
@@ -166,11 +166,11 @@ class EnterKeyPresenceTest {
         for (name in listOf("rows_tatar", "rows_russian")) {
             val text = resolve(name, listOf("xml"))!!.readText()
             assertTrue(
-                "$name должен включать @xml/row_cyrillic4",
+                "$name must include @xml/row_cyrillic4",
                 text.contains("@xml/row_cyrillic4"),
             )
             assertTrue(
-                "$name не должен включать @xml/row_qwerty4 напрямую",
+                "$name must not include @xml/row_qwerty4 directly",
                 !text.contains("@xml/row_qwerty4"),
             )
         }
@@ -186,14 +186,14 @@ class EnterKeyPresenceTest {
         val file = resolve("row_cyrillic4", listOf("xml-sw600dp"))!!
         val elements = descendants(parse(file))
         val styles = elements.mapNotNull { it.getAttribute("latin:keyStyle").ifEmpty { null } }
-        assertTrue("планшетный row_cyrillic4 обязан нести enterKeyStyle", ENTER in styles)
+        assertTrue("the tablet row_cyrillic4 must carry enterKeyStyle", ENTER in styles)
         assertTrue(
-            "Spacer должен быть заменён клавишей Enter, а не соседствовать с ней",
+            "Spacer must be replaced by the Enter key, not sit next to it",
             elements.none { it.tagName == "Spacer" },
         )
         val enter = elements.single { it.getAttribute("latin:keyStyle") == ENTER }
         assertTrue(
-            "Enter обязан занимать остаток ряда (fillRight), иначе сумма ширин ломается",
+            "Enter must take the rest of the row (fillRight); otherwise the widths do not add up",
             enter.getAttribute("latin:keyWidth") == "fillRight",
         )
     }

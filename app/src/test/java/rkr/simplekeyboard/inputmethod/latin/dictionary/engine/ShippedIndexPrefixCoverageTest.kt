@@ -65,9 +65,9 @@ class ShippedIndexPrefixCoverageTest {
         }
     }
 
-    /** Four prefixes once seen with an empty strip, named so a regression is easy to read. */
+    /** Four prefixes that must fill all four cells. */
     @Test
-    fun theReportedPrefixesAllAnswerFromTheShippedRussianDictionary() {
+    fun thePrefixesAllFillFourCellsFromTheShippedRussianDictionary() {
         val loaded = russian ?: error("ru index did not load")
         loaded.index.updateKeyNeighbors(neighbourTable("ru"))
         for (prefix in listOf("при", "прив", "приве", "привет")) {

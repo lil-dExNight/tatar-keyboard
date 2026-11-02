@@ -419,7 +419,7 @@ class AutocorrectControllerTest {
     @Test
     fun inAFieldWithoutSuggestionsNoReplacementEverHappens() {
         // A password field, a field asking for no personalized learning, or any field that suppresses
-        // suggestions arrives here as "not eligible": the whole phase hangs off that one flag.
+        // suggestions arrives here as "not eligible": the whole autocorrect path depends on that flag.
         val h = Harness()
         h.controller.onStartInput(eligible = false)
         h.advise("китәп", "китап")
@@ -844,7 +844,7 @@ class AutocorrectControllerTest {
         assertEquals(without.editor.before, off.editor.before)
         assertEquals(without.editor.edits, off.editor.edits)
         assertEquals(without.strip.events, off.strip.events)
-        // Nothing was edited by this phase at all, and the text is what plain typing produces.
+        // Nothing was edited on this path, and the text is what plain typing produces.
         assertTrue(off.editor.edits.isEmpty())
         assertEquals("китәп бал", off.editor.before)
     }

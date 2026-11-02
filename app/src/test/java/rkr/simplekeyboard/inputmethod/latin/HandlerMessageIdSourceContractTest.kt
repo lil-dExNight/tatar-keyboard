@@ -26,7 +26,7 @@ import org.junit.Test
  * No `Handler` of this app may use 0 as a message id.
  *
  * `Handler.post(Runnable)` does not invent an id: it enqueues an ordinary `Message` whose `what` is
- * **0** and whose `callback` is the runnable. `Handler.removeMessages(int what)` matches on `what`
+ * 0 and whose `callback` is the runnable. `Handler.removeMessages(int what)` matches on `what`
  * ALONE — the callback is not part of the comparison — so `removeMessages(0)` deletes every posted
  * runnable still waiting on that handler.
  *
@@ -114,7 +114,7 @@ class HandlerMessageIdSourceContractTest {
         )
     }
 
-    /** Fail-capable: the same predicate against a deliberately broken input. */
+    /* Fail-capable: the same predicate against a deliberately broken input. */
     @Test
     fun theScanWouldCatchAZeroId() {
         val broken = "    private static final int MSG_UPDATE_SHIFT_STATE = 0;"

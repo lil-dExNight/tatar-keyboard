@@ -25,7 +25,7 @@ import java.io.File
  * Two rules that live in the wiring rather than in any pure class, pinned at the source level
  * because neither can be reached from a plain JVM test.
  *
- *  * Every text a keyboard surface draws is sized in **dp**, never in **sp**. Each surface is a
+ *  * Every text a keyboard surface draws is sized in dp, never in sp. Each surface is a
  *    row of fixed dp height (suggestion strip, tab row, search query row, section header), so sp
  *    text would grow with the system font scale inside a row that does not: at `font_scale 2.0`
  *    the strip cells truncate until they are indistinguishable. The letter keys use dp too.
@@ -42,7 +42,7 @@ class KeyboardSurfaceMetricsSourceContractTest {
 
     private fun source(relative: String): String {
         val file = File(mainSource(), relative)
-        assertTrue("нет файла $relative", file.isFile)
+        assertTrue("file $relative is missing", file.isFile)
         return file.readText()
     }
 
@@ -57,64 +57,64 @@ class KeyboardSurfaceMetricsSourceContractTest {
             "rkr/simplekeyboard/inputmethod/keyboard/KeyboardSwitcher.java"
     }
 
-    /** No keyboard surface may size text in sp. */
+    /* No keyboard surface may size text in sp. */
     @Test
     fun keyboardSurfacesSizeTheirTextInDpNotSp() {
         for (path in listOf(STRIP, PANEL, SEARCH)) {
             val text = source(path)
             assertEquals(
-                "$path обязан считать размеры текста в dp: COMPLEX_UNIT_SP найден",
+                "$path must size text in dp: COMPLEX_UNIT_SP found",
                 0,
                 Regex("COMPLEX_UNIT_SP").findAll(text).count(),
             )
             assertTrue(
-                "$path обязан применять COMPLEX_UNIT_DIP",
+                "$path must apply COMPLEX_UNIT_DIP",
                 text.contains("TypedValue.COMPLEX_UNIT_DIP"),
             )
         }
     }
 
-    /** The constants are named for the unit they carry, so the next reader cannot re-mix them up. */
+    /* The constants are named for the unit they carry, so the next reader cannot re-mix them up. */
     @Test
     fun textSizeConstantsAreNamedInDp() {
         for (path in listOf(STRIP, PANEL, SEARCH)) {
             val text = source(path)
             assertEquals(
-                "$path: константа размера текста всё ещё названа *_SP",
+                "$path: the text-size constant is still named *_SP",
                 0,
                 Regex("""TEXT_SIZE_SP""").findAll(text).count(),
             )
             assertTrue(
-                "$path: ожидалась константа *_TEXT_SIZE_DP",
+                "$path: expected a *_TEXT_SIZE_DP constant",
                 Regex("""TEXT_SIZE_DP""").containsMatchIn(text),
             )
         }
     }
 
-    /** The switcher hands the keyboard's bottom offset to the panel when it shows it. */
+    /* The switcher hands the keyboard's bottom offset to the panel when it shows it. */
     @Test
     fun switcherHandsTheBottomOffsetToThePanel() {
         val text = source(SWITCHER)
         assertTrue(
-            "KeyboardSwitcher обязан запоминать отступ, посчитанный для геометрии клавиатуры",
+            "KeyboardSwitcher must remember the offset computed for the keyboard geometry",
             text.contains("mKeyboardBottomOffset = keyboardBottomOffset"),
         )
         assertTrue(
-            "KeyboardSwitcher обязан передавать отступ панели при показе",
+            "KeyboardSwitcher must pass the panel offset when showing",
             text.contains("setKeyboardBottomOffsetPx(mKeyboardBottomOffset)"),
         )
     }
 
-    /** And the panel adds it to what it reserves at the bottom, on top of the bar overlap. */
+    /* And the panel adds it to what it reserves at the bottom, on top of the bar overlap. */
     @Test
     fun panelReservesTheBottomOffsetTogetherWithTheBarOverlap() {
         val text = source(PANEL)
         assertTrue(
-            "EmojiPanelView обязан принимать отступ клавиатуры",
+            "EmojiPanelView must accept the keyboard offset",
             text.contains("fun setKeyboardBottomOffsetPx("),
         )
         assertTrue(
-            "резерв обязан складывать перекрытие навбара и отступ клавиатуры",
+            "the reservation must add the navbar overlap and the keyboard offset",
             Regex("""overlap\.coerceAtLeast\(0\)\s*\+\s*keyboardBottomOffsetPx""")
                 .containsMatchIn(text),
         )

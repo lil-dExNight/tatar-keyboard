@@ -28,14 +28,14 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLea
  *
  * The semantics, as pinned here:
  *
- * 1. **While ON, nothing new is learned.** No write reaches the personal words store, the personal
+ * 1. While ON, nothing new is learned. No write reaches the personal words store, the personal
  *    bigrams store, the refused-corrections store, or the pending counters — the pending hashes are
  *    written only from the completion event, and every sink gates its event (and the acceptance
  *    bump, and the end-of-session flush) on the ONE predicate the incognito factor vetoes.
- * 2. **What is already saved keeps surfacing.** The READ side never consults the pause: the gates
+ * 2. What is already saved keeps surfacing. The READ side never consults the pause: the gates
  *    the engines are constructed with read the personal-dictionary setting and nothing else. Hiding
  *    learned words would be a different feature; turning the personal dictionary off does that.
- * 3. **Turning OFF resumes learning; nothing is retro-learned.** While the pause was on, no
+ * 3. Turning OFF resumes learning; nothing is retro-learned. While the pause was on, no
  *    observation reached any counter, so there is nothing to make up afterwards.
  *
  * The conjunction itself is the pure [PersonalLearningGates.mayLearn], exercised for real below;

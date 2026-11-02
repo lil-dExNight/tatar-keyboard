@@ -49,7 +49,7 @@ import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils
  * populated, and the editor text cache is never re-read from the field; the one normal control row
  * opens every column, so the matrix cannot be vacuously green.
  *
- * THE MATRIX — inputType/imeOptions held exactly as Android delivers them; every non-field factor
+ * Matrix: inputType/imeOptions held exactly as Android delivers them; every non-field factor
  * (the suggestions setting, a dictionary-bearing subtype, a known cursor, the personal-dictionary
  * setting, an unlocked device, incognito OFF) held permissive, so the row's own signals are what
  * decides:
@@ -80,7 +80,7 @@ import rkr.simplekeyboard.inputmethod.latin.utils.InputTypeUtils
  *   serves no surrounding text by contract; and the cache is in-memory only and dies on every
  *   session boundary regardless of the variant.
  *
- * WHAT PINS WHAT — the pre-existing suites this matrix extends (and deliberately does not
+ * Coverage: the pre-existing suites this matrix extends (and deliberately does not
  * duplicate):
  * - PersonalLearningGatesTest: the word sink's three event paths are gated in production; the ONE
  *   predicate carries every factor; eligibility carries `!mNoPersonalizedLearning` and the
@@ -130,21 +130,21 @@ class EditorInfoPrivacyMatrixTest {
         val stripExpected: Boolean,
         val cacheReloadExpected: Boolean,
     ) {
-        /** The very expression `InputAttributes.mIsPasswordField` and `LatinIME.isPasswordField` compute. */
+        /* The very expression `InputAttributes.mIsPasswordField` and `LatinIME.isPasswordField` compute. */
         val passwordClassified: Boolean =
             InputTypeUtils.isPasswordInputType(inputType) ||
                 InputTypeUtils.isVisiblePasswordInputType(inputType)
 
-        /** `inputClass == TYPE_CLASS_TEXT` — the gate of the non-text early return in `InputAttributes`. */
+        /* `inputClass == TYPE_CLASS_TEXT`: the gate of the non-text early return in `InputAttributes`. */
         val textClass: Boolean =
             (inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT
 
-        /** The very bit-check `InputAttributes` makes for the postal-address learning factor. */
+        /* The very bit-check `InputAttributes` makes for the postal-address learning factor. */
         val postalAddress: Boolean =
             (inputType and InputType.TYPE_MASK_VARIATION) ==
                 InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS
 
-        /** The very bit-check `InputAttributes.readNoPersonalizedLearning` makes. */
+        /* The very bit-check `InputAttributes.readNoPersonalizedLearning` makes. */
         val noPersonalizedLearning: Boolean =
             (imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0
 
@@ -164,7 +164,7 @@ class EditorInfoPrivacyMatrixTest {
          */
         val stripEligible: Boolean = fieldAllowsSuggestions && !noPersonalizedLearning
 
-        /** The REAL conjunction every learning write path consults, non-field factors permissive. */
+        /* The real conjunction every learning write path consults, non-field factors permissive. */
         val mayLearn: Boolean = PersonalLearningGates.mayLearn(
             suggestionsEligible = stripEligible,
             personalDictionaryOn = true,
@@ -173,7 +173,7 @@ class EditorInfoPrivacyMatrixTest {
             incognito = false,
         )
 
-        /** The REAL recent-emoji gate state, the non-field factors permissive. */
+        /* The real recent-emoji gate state, the non-field factors permissive. */
         val recentsAllowed: Boolean = RecentEmojiGateState(
             shouldShowSuggestions = fieldAllowsSuggestions,
             userUnlocked = true,
@@ -182,7 +182,7 @@ class EditorInfoPrivacyMatrixTest {
             incognito = false,
         ).allowsRecording
 
-        /** The cache reload runs unless the field is password-classified (`LatinIME.isPasswordField`). */
+        /* The cache reload runs unless the field is password-classified (`LatinIME.isPasswordField`). */
         val cacheReloaded: Boolean = !passwordClassified
     }
 
@@ -548,7 +548,7 @@ class EditorInfoPrivacyMatrixTest {
 
     private fun read(relativePath: String): String = File(sourceRoot(), relativePath).readText()
 
-    /** Plain durable ops over the real filesystem (no recording, no faults). */
+    /* Plain durable ops over the real filesystem (no recording, no faults). */
     private object RealOps : DurableFileOps {
         override fun createNewFile(file: File): Boolean = file.createNewFile()
         override fun syncFile(fileDescriptor: FileDescriptor) = fileDescriptor.sync()

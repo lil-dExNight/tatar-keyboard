@@ -39,24 +39,24 @@ import org.junit.Test
  *
  * Four rules:
  *
- * 1. **Pinned call-site set.** The exact set of `Log.d/e/i/v/w/wtf/println` call sites, normalized
+ * 1. Pinned call-site set. The exact set of `Log.d/e/i/v/w/wtf/println` call sites, normalized
  *    as `path::trimmed first line`, each group justified in [EXPECTED_CALL_SITES]. Any addition,
  *    removal, or edit of a log statement in the pipeline fails the test. To add a pipeline log,
  *    confirm it carries no composing/committed text, then pin it here with its justification.
  *
- * 2. **Text-carrier denylist.** Every call site's full statement (continuation lines and string
+ * 2. Text-carrier denylist. Every call site's full statement (continuation lines and string
  *    literals included — a literal like `"committing text: "` is a red flag too) is checked
  *    against name fragments that only travel with user text (see [TEXT_CARRIER_DENYLIST]).
  *    Updating the rule-1 pin does not bypass this rule. `text` also matches harmless substrings
  *    like `context`; reword the log rather than relaxing the list.
  *
- * 3. **Debug guards stay off.** Every `boolean DEBUG*` declaration in the scanned packages must
+ * 3. Debug guards stay off. Every `boolean DEBUG*` declaration in the scanned packages must
  *    resolve to the compile-time constant `false` (a chain into another DEBUG flag is followed).
  *    These flags guard AOSP's keystroke tracers in `PointerTracker` and `KeyboardState`. The
  *    tracers now log only key position, key kind and functional-key flags, but they once logged
  *    the typed character and committed text, so the flags stay pinned off.
  *
- * 4. **LatinIME's TRACE stays off.** `TRACE` gates the keystroke-position logs and the
+ * 4. LatinIME's TRACE stays off. `TRACE` gates the keystroke-position logs and the
  *    session-long method tracing there; the constant is pinned to `false`.
  *
  * Limits: this is a grep-level check. A rewrite like `if (DEBUG_LISTENER)` → `if (true)` trips
@@ -245,7 +245,7 @@ class LogSafetySourceContractTest {
         return result
     }
 
-    /** String and char literals removed, so parens/semicolons inside them never confuse the scan. */
+    /* String and char literals removed, so parens/semicolons inside them never confuse the scan. */
     private fun stripLiterals(line: String): String {
         val out = StringBuilder()
         var quote: Char? = null
@@ -269,7 +269,7 @@ class LogSafetySourceContractTest {
         return out.toString()
     }
 
-    /** The full Log statement starting at [startIndex]: lines until the `;` at paren depth zero
+    /* The full Log statement starting at [startIndex]: lines until the `;` at paren depth zero
      * (Java) or until the call's parens close at end of line (Kotlin needs no `;`). */
     private fun extractStatement(lines: List<String>, startIndex: Int, where: String): String {
         val parts = ArrayList<String>()

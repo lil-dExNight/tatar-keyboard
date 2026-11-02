@@ -25,8 +25,8 @@ import java.io.File
  * The wiring behind [CursorMoveBandTest], pinned in source shape because the classes that carry it
  * (`LatinIME`, `RichInputConnection`) cannot be instantiated without Android.
  *
- * The rule in one sentence: **every path that blanks the band for a cursor move must also ask for
- * it back once that move has settled** — except the emoji panel and the emoji search, which route
+ * The rule in one sentence: every path that blanks the band for a cursor move must also ask for
+ * it back once that move has settled — except the emoji panel and the emoji search, which route
  * through the same invalidation precisely to get a band that stays empty while they are up. Without
  * the re-derivation, a space slide, a delete swipe or a tap into the text leaves the strip blank
  * until the next keystroke.
@@ -160,7 +160,7 @@ class CursorMoveBandSourceContractTest {
 
     private fun kotlinBody(source: String, signature: String): String = balancedBody(source, signature)
 
-    /** The brace-balanced body of the declaration that starts with [signature]. */
+    /* The brace-balanced body of the declaration that starts with [signature]. */
     private fun balancedBody(source: String, signature: String): String {
         val start = source.indexOf(signature)
         assertTrue("declaration not found: $signature", start >= 0)

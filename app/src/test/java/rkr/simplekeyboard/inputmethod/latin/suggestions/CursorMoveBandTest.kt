@@ -198,7 +198,7 @@ class CursorMoveBandTest {
     // --- the three snapshots --------------------------------------------------------------------
 
     @Test
-    fun theThreeReportedPrefixesAllAnswerFromTheShippedRussianDictionary() {
+    fun theThreePrefixesAllAnswerFromTheShippedRussianDictionary() {
         val h = Harness()
         assertEquals(listOf("друг", "другой", "друга"), h.type("др"))
         assertEquals(listOf("друг", "другой", "друга"), h.type("дру"))
@@ -214,18 +214,18 @@ class CursorMoveBandTest {
         assertEquals(listOf("другой", "друга", "других", "другие"), h.type("друг"))
     }
 
-    // --- the defect ------------------------------------------------------------------------------
+    // --- cursor moves and the band ---------------------------------------------------------------
 
     @Test
     fun aCursorMoveThatLeavesTheWordAloneGetsTheBandBack() {
         val h = Harness()
         assertEquals(listOf("друг", "другой", "друга"), h.type("дру"))
         // The band is blanked the moment the move is seen: what it was painting is no longer bound
-        // to the live editor state, and that half is unchanged.
+        // to the live editor state.
         h.controller.onSelectionChanged()
         h.drain()
         assertEquals(emptyList<String>(), h.strip.cells)
-        // ...and it comes back once the move has settled, because the word under the cursor is the
+        // The band comes back once the move has settled, because the word under the cursor is the
         // same word the dictionary answered a moment ago.
         h.controller.onCursorMoveSettled()
         h.drain()
@@ -233,7 +233,7 @@ class CursorMoveBandTest {
     }
 
     @Test
-    fun everyOneOfTheThreeReportedPrefixesSurvivesACursorMove() {
+    fun everyOneOfTheThreePrefixesSurvivesACursorMove() {
         for (prefix in listOf("др", "дру", "друг")) {
             val h = Harness()
             val typed = h.type(prefix)

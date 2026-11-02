@@ -28,17 +28,14 @@ import org.w3c.dom.Element
 /**
  * The `?123` key must switch the layout from anywhere on the key, not only from its center.
  *
- * Pressing a modifier key (`?123`, shift) switches the layout at once
- * and arms `SWITCH_STATE_MOMENTARY_ALPHA_AND_SYMBOL`, which springs back on release as soon as
- * `PointerTracker` decides the finger left the key. That decision used to be made by
- * `keyHysteresisDistance` alone, measured *from the key edge*, so a press landing at the edge left
- * the key after 5dp of movement while a press in the center needed a whole half key width, so
- * the switch bounced back unless the press hit the middle.
+ * A press on a modifier key (`?123`, shift) switches the layout at once and arms
+ * `SWITCH_STATE_MOMENTARY_ALPHA_AND_SYMBOL`, which springs back on release once `PointerTracker`
+ * decides the finger left the key. Leaving is measured from the key edge plus
+ * `config_sliding_modifier_slop`, so an edge press survives the tremor a center press never sees.
  *
- * All coordinates below are measured, not invented: they come from the AVD `tatar_e5_test`
- * (1080x2280, density 440, 2.75 px/dp), where the `?123` hitbox is x in [0, 162), y in [2008, 2150)
- * and the switch was observed to bounce back at exactly 15px past the right edge and 14px past the
- * top edge.
+ * The coordinates below come from the AVD `tatar_e5_test` (1080x2280, density 440, 2.75 px/dp),
+ * where the `?123` hitbox is x in [0, 162), y in [2008, 2150) and the switch bounces back at
+ * exactly 15px past the right edge and 14px past the top edge without the slop.
  *
  * `PointerTracker` and `Key` cannot be loaded in a JVM unit test (their static initializers and
  * constructors need a live `Resources`), but [KeyDetector] is free of Android imports. The gesture
@@ -68,7 +65,7 @@ class SlidingModifierSlopTest {
         /** AVD `tatar_e5_test`: 1080x2280 at density 440, i.e. 2.75 px per dp. */
         private const val PX_PER_DP = 440.0 / 160.0
 
-        /** `res/values/config.xml` phone value, unchanged by this fix. */
+        /** `res/values/config.xml` phone value. */
         private const val HYSTERESIS_DP = 5.0
 
         /** Measured hitbox of `?123` on the letters keyboard (and of `АБВ` on the symbols one). */
@@ -130,19 +127,18 @@ class SlidingModifierSlopTest {
         error("config_sliding_modifier_slop is not defined in config-common.xml")
     }
 
-    // ---------------------------------------------------------------- the defect, as it was
+    // ---------------------------------------------------------------- behavior without the slop
 
     /**
-     * Characterizes the behavior this fix removes. With no slop -- the state of the fork before
-     * the fix -- a press 6px inside the right edge of `?123` leaves the key after the 15px of
-     * movement that was measured on the emulator, which is what springs the layout back.
+     * Without the slop, a press 6px inside the right edge of `?123` leaves the key after 15px
+     * of movement, which springs the layout back.
      */
     @Test
     fun withoutSlopAnEdgePressLeavesTheKeyOnTremor() {
         val det = detector(0.0)
         val down = Point(155, 2068) // 6px inside the right edge
         assertTrue(
-            "pre-fix behaviour: 15px past the edge already counts as leaving the key",
+            "without the slop, 15px past the edge already counts as leaving the key",
             leavesKey(det, SYMBOL_KEY, down, Point(176, 2068), downOnModifierKey = true),
         )
         assertEquals(
@@ -152,7 +148,7 @@ class SlidingModifierSlopTest {
         )
     }
 
-    // ---------------------------------------------------------------- the fix
+    // ---------------------------------------------------------------- behavior with the shipped slop
 
     @Test
     fun edgePressSurvivesTremorInEveryDirection() {

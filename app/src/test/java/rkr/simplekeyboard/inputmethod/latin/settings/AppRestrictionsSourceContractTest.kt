@@ -37,7 +37,7 @@ class AppRestrictionsSourceContractTest {
         val root = candidates.firstOrNull(File::isDirectory)
             ?: error("cannot locate app/src/main/java from ${File(".").absolutePath}")
         val file = File(root, "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java")
-        assertTrue("нет Settings.java", file.isFile)
+        assertTrue("Settings.java is missing", file.isFile)
         return file.readText()
     }
 
@@ -46,11 +46,11 @@ class AppRestrictionsSourceContractTest {
     fun colourRestrictionIsNullCheckedBeforeUse() {
         val text = settingsSource()
         assertTrue(
-            "цвет из ограничений обязан проверяться на null до startsWith",
+            "a restricted color must be null-checked before startsWith",
             Regex("""color\s*!=\s*null\s*&&\s*color\.startsWith""").containsMatchIn(text),
         )
         assertTrue(
-            "не должно остаться безусловного color.startsWith",
+            "no unconditional color.startsWith may remain",
             !Regex("""\n\s*if\s*\(\s*color\.startsWith""").containsMatchIn(text),
         )
     }
@@ -65,11 +65,11 @@ class AppRestrictionsSourceContractTest {
         val branch = text.substringAfter("case PREF_KEYBOARD_COLOR:").substringBefore("break;\n" +
             "                    case ")
         assertTrue(
-            "ветка цвета обязана снимать ключ, а не бросать исключение",
+            "the color branch must remove the key, not throw",
             branch.contains("prefsEditor.remove(key)"),
         )
         assertTrue(
-            "проглатывание NumberFormatException обязано быть объяснено комментарием",
+            "swallowing NumberFormatException must be explained by a comment",
             Regex("""catch\s*\(NumberFormatException[^)]*\)\s*\{[^}]*//""").containsMatchIn(text),
         )
     }

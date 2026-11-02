@@ -25,17 +25,16 @@ import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * Regression tests for two strip defects, reproduced from the symptom: (1) what the strip paints
- * must be tappable, and (2) the cursor bookkeeping must not mistake the keyboard's own backspace
- * for an external move, which used to leave the band empty.
+ * The strip must paint what it binds, and the cursor bookkeeping must not mistake the
+ * keyboard's own backspace for an external move.
  *
- * The fakes here differ from [SuggestionsControllerTest]'s in ONE deliberate way: the engine has
- * real latest-only token semantics (a fresh token per request, `isCurrent` true only for the newest
+ * The fakes here differ from [SuggestionsControllerTest]'s in one way: the engine has real
+ * latest-only token semantics (a fresh token per request, `isCurrent` true only for the newest
  * one, `finishInput()` invalidating the generation) instead of a constant token with
- * `isCurrent == true`. A fake that answers "yes, current" to every token cannot express a dropped
- * result, which is the state both symptoms live in.
+ * `isCurrent == true`. A fake that answers "yes, current" to every token cannot express a
+ * dropped result.
  */
-class TapReproTest {
+class StripPaintAndCursorBindingTest {
 
     // --- Fakes ---------------------------------------------------------------------------------
 

@@ -22,7 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * One class of defect: the user makes a gesture, nothing happens, and nothing says why.
+ * Silent gestures: the user makes a gesture, nothing happens, and nothing says why.
  *
  * The three cases here live in an `Activity` or in `LatinIME`, which need a device, so they are
  * pinned by source (as in `PersonalDictionaryFeedbackSourceContractTest`). The emoji search case

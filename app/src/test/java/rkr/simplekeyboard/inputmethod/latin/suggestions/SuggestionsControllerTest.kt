@@ -773,7 +773,7 @@ class SuggestionsControllerTest {
         assertTrue(h.editor.commits.isEmpty())
     }
 
-    // --- Regression: readiness / eligibility lifecycle ------------------------------------------
+    // --- readiness / eligibility lifecycle -------------------------------------------------------
 
     @Test
     fun eligibleStartWhileDictionaryNotReadyStaysHiddenUntilReadyPublish() {
@@ -957,7 +957,7 @@ class SuggestionsControllerTest {
         assertTrue(strip.visible)
     }
 
-    // --- Regression: atomic candidate binding --------------------------------------------------
+    // --- atomic candidate binding -----------------------------------------------------------------
 
     @Test
     fun tapOnStaleCandidateAfterTextChangeIsNoOp() {
