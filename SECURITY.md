@@ -20,17 +20,17 @@ release notes after the fix ships.
 
 ## Severity language (keyboard-specific)
 
-- **Critical** — any confirmed keystroke or user-data egress (network,
+- **Critical**: any confirmed keystroke or user-data egress (network,
   inter-process leak to another app, backup channel outside the whitelist).
   Response: embargo, immediate point release, disclosure only after the fix
   is available.
-- **High** — learned personal data (personal dictionary, learned pairs,
+- **High**: learned personal data (personal dictionary, learned pairs,
   learned emoji) exposed across a context boundary: readable by another app,
   written from password/`NO_PERSONALIZED_LEARNING` fields, or restored onto a
   device it did not originate from through an OS backup or transfer channel.
   The backup file the user exports and imports through the settings screen is
   the intended path between devices and is not such a channel.
-- **Normal** — local robustness issues with no data exposure (parser
+- **Normal**: local robustness issues with no data exposure (parser
   crashes on corrupt files, denial of service against the IME itself).
 
 ## Disclosure

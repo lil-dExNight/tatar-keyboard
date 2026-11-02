@@ -238,7 +238,7 @@ words as UTF-8 in the normalized lookup form (NFC lowercase). A pair suppresses 
 its count reaches the threshold.
 
 Unlike the other personal files the records are NOT sorted: the file order is the refusal order
-(oldest first), because that order is the eviction order — past the cap the front of the file goes
+(oldest first), because that order is the eviction order; past the cap the front of the file goes
 first, and a repeated refusal moves its pair to the back. Validation (`personal/TrefValidator.kt`)
 runs the same header, checksum, subtype-tag and strict-UTF-8 checks, rejects duplicates, self-pairs
 and over-length words, but checks no alphabet (a refused typed word is off-dictionary by
@@ -251,7 +251,7 @@ silent: no screen lists the refused pairs.
 sentences with, one file per language in the same `noBackupFilesDir/personal/` directory, with the
 same 72-byte header (subtype tag included) and the same record layout as `.tpers`
 (`wordByteLength u8`, `usageCount u16`, `lastUseSerial u32`, the word as entered). The cap is 8
-entries and 4 096 bytes, and the normalized length bounds are 1..24 code points — sentence starts
+entries and 4 096 bytes, and the normalized length bounds are 1..24 code points; sentence starts
 admit one-letter words («я» opens Russian sentences). Records are sorted by the normalized form;
 the strip order is by usage count, then last-use serial.
 

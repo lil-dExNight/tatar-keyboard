@@ -151,7 +151,7 @@ slide, delete swipe, word-delete flick, the edit menu's arrows) drop this state
 
 **Inline autofill** (API 30+, advertised in `method.xml`). A field that supports inline
 suggestions takes the strip over: `LatinIME.onCreateInlineSuggestionsRequest` answers with one
-presentation spec per cell (`InlineStripSpecs` — the cells' exact sizes, min equal to max). Specs
+presentation spec per cell (`InlineStripSpecs`, the cells' exact sizes, min equal to max). Specs
 and hosted cells use the dock content rectangle and keep platform order.
 `LatinIME.onInlineSuggestionsResponse` hosts the platform's content views in
 `InlineAutofillStripView`, a container inflated only then (`InlineAutofillBinder` keeps every
@@ -160,7 +160,7 @@ updating. An empty response, field finish or window hide empties the host and pu
 back (`InputView.hideInlineAutofillStrip`). Responses require an unlocked user and no keyguard;
 a response while hidden is refused, and after a return only a newly delivered response can host
 content. A late inflate from an ended session is rejected. Password fields host chips like any
-other field — login forms are the feature's main use — and a response arriving while the emoji
+other field, because login forms are the feature's main use; a response arriving while the emoji
 panel owns the surface is refused instead of hosted.
 
 **Word completion** (`CompositePrefixComputer.lookup`): the dictionary's exact candidates, at
@@ -226,7 +226,7 @@ Undoing the exact same correction (the same typed word replaced with the same wo
 in any session, persists the pair in the refused-corrections store (`RefusedCorrectionStore`,
 `.tref`, per language, capped and evicted oldest-first): that correction never fires and is never
 previewed again. The match is the exact pair; a different replacement named for the same word still
-fires. A text-shortcut expansion's undo shares only the session list — the pair is user-managed
+fires. A text-shortcut expansion's undo shares only the session list: the pair is user-managed
 content with its own screen.
 
 **Text shortcuts** (managed on the "Text shortcuts" settings screen; one list for all layouts,
@@ -362,8 +362,8 @@ successor list holds at most `CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSO
 ahead of the bundled successors, only its first `GlideBigramRerank.MAX_RANKED_SUCCESSORS` entries
 rank, each rank applies the configured rank penalty once more, and an unranked word gets the penalty
 of one rank past the last, so a long successor list can neither outweigh every shape score nor
-overflow the penalty. The strip side is gated on the glide switch, not the suggestions switch — the
-candidates are corrections of the gesture — so they also appear with suggestions off, while
+overflow the penalty. The strip side is gated on the glide switch rather than the suggestions switch, because the
+candidates are corrections of the gesture, so they also appear with suggestions off, while
 typed-text suggestions stay off. The word takes the shift state: shift capitalizes it, Caps Lock
 types it in capitals.
 

@@ -1,4 +1,4 @@
-# AGENTS.md — guide for agent sessions
+# Repository guide
 
 Offline Android keyboard with a Tatar layout. It is a fork of Simple Keyboard (itself based on
 AOSP LatinIME): legacy Java code plus new Kotlin code. Application id `org.tatarkeyboard.ime`,
@@ -48,7 +48,7 @@ After any change to code or resources, all of these must pass:
 - `bash scripts/run_python_tests.sh`
 - `./gradlew lintRelease`
 - `bash scripts/check-no-internet.sh` on the source and on the built APK
-- release APK size ≤ 3 145 728 B (checked by `scripts/release_check.sh`)
+- release APK size within `APK_SIZE_LIMIT` in `scripts/release_check.sh`
 - `python3 scripts/text_hygiene_check.py`
 
 ## Hard constraints
