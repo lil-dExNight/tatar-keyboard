@@ -41,11 +41,11 @@ import kotlin.math.ceil
  * ([SuggestionsController.unbindPaintedBand]), so no stale word can be tapped. The cost is a blank
  * band on every keystroke that moves the prefix, until the engine answers the lookup the same call
  * dispatched. Android composes at vsync: a blank and a repaint inside the same 16.7 ms interval
- * reach the screen as one frame, so the budget is one frame at 60 Hz (also the request-to-handoff
+ * reach the screen as one frame, so the budget is one frame at 60 Hz (also the request-to-delivery
  * budget of the input path).
  *
  * Measured on the REAL bundled Tatar dictionary over every proper prefix of common words. Not
- * measured: the [UiPoster] `Handler.post` from the handoff thread to the idle main looper, the
+ * measured: the [UiPoster] `Handler.post` from the worker thread to the idle main looper, the
  * same hop every repaint takes.
  */
 class BandBlankWindowCostTest {
@@ -78,7 +78,7 @@ class BandBlankWindowCostTest {
             val p95 = timings[ceil(timings.size * 0.95).toInt() - 1] / 1_000_000.0
             val worst = timings[timings.size - 1] / 1_000_000.0
             println(
-                "band blank window request-to-handoff " +
+                "band blank window request-to-delivery " +
                     "median=${format(median)} ms p95=${format(p95)} ms worst=${format(worst)} ms",
             )
             assertTrue("p95=$p95 ms is longer than one 60 Hz frame", p95 <= 16.7)

@@ -41,7 +41,7 @@ import kotlin.math.ceil
  * The rule adds exactly ONE thing to the input path: when the active language leaves a cell empty,
  * the other language's already-warm engine is asked the same query. That second lookup runs on the
  * other engine's own worker thread, so it is bounded by the same two budgets as the first lookup:
- * compute p95 <= 5 ms and request-to-handoff p95 <= 16 ms. This measures the second lookup against
+ * compute p95 <= 5 ms and request-to-delivery p95 <= 16 ms. This measures the second lookup against
  * both, on the REAL bundled Russian dictionary, over the REAL prefixes a Tatar-layout user leaves
  * the band under-filled with. How often the second lookup happens depends only on the two bundled
  * dictionaries, not on the runtime, so it is not measured here.
@@ -102,7 +102,7 @@ class LanguagePriorityCostTest {
             timings.sort()
             val p95 = timings[ceil(timings.size * 0.95).toInt() - 1] / 1_000_000.0
             println(
-                "lang-priority second lookup request-to-handoff p95=" +
+                "lang-priority second lookup request-to-delivery p95=" +
                     "${"%.3f".format(java.util.Locale.ROOT, p95)} ms",
             )
             assertTrue("p95=$p95 ms", p95 <= 16.0)

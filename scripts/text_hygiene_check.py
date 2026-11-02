@@ -31,14 +31,14 @@ DEFAULT_ALLOWLIST = "scripts/text_hygiene_allowlist.txt"
 RULES = {
     "doc-link": "comment cites a docs/*.md file that does not exist",
     "dated-note": "comment carries a YYYY-MM-DD date",
-    "history-word": "comment in app/src/main uses operator, handoff or uncommitted",
+    "history-word": "comment uses operator, handoff, uncommitted, agent, mission or campaign",
     "broken-link": "Markdown link or backticked docs/*.md path points to a missing file",
     "docs-non-md": "file under docs/ is not Markdown",
     "cyrillic": "Cyrillic prose outside quotes, backticks or a short run of words",
     "stale-allowlist": "allowlist entry matches no finding",
 }
 
-# Roots whose comments are checked by doc-link, dated-note and cyrillic.
+# Roots whose comments are checked by doc-link, dated-note, history-word and cyrillic.
 CODE_ROOTS = ("app/src/", "scripts/", "tests/", "research/", "baselineprofile/")
 # Extra files whose comments are checked by cyrillic only.
 CYRILLIC_EXTRA_ROOTS = (".github/",)
@@ -49,18 +49,18 @@ IGNORED_PREFIXES = (
     "app/src/main/assets/",
     "data/",
     "app/src/test/resources/",
-    "app/src/release/generated/",
-    "cleaning/",
 )
 IGNORED_SUFFIXES = ("-prof.txt",)
-WALK_SKIP_DIRS = {".git", ".gradle", ".idea", "build", "dist", "__pycache__", "node_modules"}
+WALK_SKIP_DIRS = {".git", ".gradle", ".idea", "build", "dist", "__pycache__", "node_modules", ".temp"}
 
 SLASH_COMMENT_EXTS = {".java", ".kt", ".kts", ".gradle"}
 HASH_COMMENT_EXTS = {".sh", ".yml", ".yaml"}
 
 DOC_PATH_RE = re.compile(r"docs/[A-Za-z0-9/_.-]+\.md")
 DATE_RE = re.compile(r"\b20\d\d-\d\d-\d\d\b")
-HISTORY_WORD_RE = re.compile(r"\b(operator|uncommitted|handoff)\b", re.IGNORECASE)
+HISTORY_WORD_RE = re.compile(
+    r"\b(operator|uncommitted|handoff|agent|mission|campaign)\b", re.IGNORECASE)
+WORKFLOW_WORD_RU_RE = re.compile(r"\b(?:мисси|кампани|фаз)[а-яё]*", re.IGNORECASE)
 CYRILLIC_RE = re.compile(r"[\u0400-\u052F]")
 MAX_CYRILLIC_RUN = 3
 
@@ -310,7 +310,6 @@ def check_comments(path: str, text: str, files: set[str], dirs: set[str]) -> Ite
                       or path.endswith(".gradle") or posixpath.basename(path) == ".gitignore")
     if not cyrillic_scope:
         return
-    history_scope = path.startswith(HISTORY_WORD_ROOT)
     for number, comment in comments_for(path, text):
         if in_code_root:
             for match in DOC_PATH_RE.finditer(comment):
@@ -319,8 +318,10 @@ def check_comments(path: str, text: str, files: set[str], dirs: set[str]) -> Ite
                     break
             if DATE_RE.search(comment):
                 yield Finding(path, number, "dated-note", excerpt(comment))
-        if history_scope and HISTORY_WORD_RE.search(comment):
-            yield Finding(path, number, "history-word", excerpt(comment))
+            if HISTORY_WORD_RE.search(comment):
+                yield Finding(path, number, "history-word", excerpt(comment))
+            if WORKFLOW_WORD_RU_RE.search(comment):
+                yield Finding(path, number, "history-word", excerpt(comment))
         if cyrillic_prose(comment):
             yield Finding(path, number, "cyrillic", excerpt(comment))
 

@@ -81,11 +81,11 @@ class RealBigramPrefixIndexTest {
             timings.sort()
             val p95Nanos = timings[ceil(timings.size * 0.95).toInt() - 1]
             println(
-                "bigram request-to-handoff p95=" +
+                "bigram request-to-delivery p95=" +
                     "${"%.3f".format(java.util.Locale.ROOT, p95Nanos / 1_000_000.0)} ms",
             )
             assertTrue(
-                "request-to-handoff p95=${p95Nanos / 1_000_000.0}ms",
+                "request-to-delivery p95=${p95Nanos / 1_000_000.0}ms",
                 p95Nanos <= 16_000_000L,
             )
         } finally {

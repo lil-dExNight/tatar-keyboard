@@ -122,8 +122,16 @@ class HistoryWordTest(TreeTestCase):
                    "operator fun plus(handoff: Int) = handoff\n")
         self.assertClean()
 
-    def test_outside_main_passes(self):
+    def test_workflow_word_outside_main_fails(self):
         self.write("app/src/test/java/T.kt", "// see the handoff\n")
+        self.assertEqual(self.findings(), [("app/src/test/java/T.kt", 1, "history-word")])
+
+    def test_workflow_word_in_script_comment_fails(self):
+        self.write("scripts/a.py", "# Миссия tt-dict-widen\n")
+        self.assertEqual(self.findings(), [("scripts/a.py", 1, "history-word")])
+
+    def test_phase_stays_allowed(self):
+        self.write("app/src/main/java/B.kt", "// two phases of validation\n")
         self.assertClean()
 
 
@@ -189,7 +197,6 @@ class CyrillicTest(TreeTestCase):
 
     def test_markdown_scope(self):
         self.write("README.md", f"{RUSSIAN_PROSE}\n")
-        self.write("cleaning/PLAN.md", f"{RUSSIAN_PROSE}\n")
         self.write("docs/A.md", f"# A\n\n```\n{RUSSIAN_PROSE}\n```\n\n{RUSSIAN_PROSE}\n")
         self.assertEqual(self.findings(), [("docs/A.md", 7, "cyrillic")])
 
@@ -214,7 +221,6 @@ class CyrillicTest(TreeTestCase):
         comment = f"// {RUSSIAN_PROSE} 2026-01-02 docs/GONE.md\n"
         self.write("app/src/main/assets/a.kt", comment)
         self.write("app/src/test/resources/r.kt", comment)
-        self.write("app/src/release/generated/g.kt", comment)
         self.write("metadata/en-US/a.md", f"{RUSSIAN_PROSE}\n")
         self.write("data/x.md", f"{RUSSIAN_PROSE}\n")
         self.assertClean()

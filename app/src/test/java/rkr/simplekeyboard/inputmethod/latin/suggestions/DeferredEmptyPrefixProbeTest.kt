@@ -107,7 +107,7 @@ class DeferredEmptyPrefixProbeTest {
             return true
         }
 
-        /** The worker handoff of the newest prefix lookup's answer. */
+        /** The worker delivery of the newest prefix lookup's answer. */
         fun answer(suggestions: List<String>, exactMiss: String? = null) {
             this.exactMiss = exactMiss
             callback?.onResult(serial, suggestions, LookupKind.PREFIX)

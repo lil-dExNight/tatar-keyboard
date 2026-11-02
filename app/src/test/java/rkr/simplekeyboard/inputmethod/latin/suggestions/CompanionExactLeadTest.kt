@@ -96,7 +96,7 @@ class CompanionExactLeadTest {
             return token
         }
 
-        /** The worker handoff of the newest request's answer. */
+        /** The worker delivery of the newest request's answer. */
         fun answer(suggestions: List<String>) {
             callback.onResult(requireNotNull(lastToken), suggestions, LookupKind.PREFIX)
         }
