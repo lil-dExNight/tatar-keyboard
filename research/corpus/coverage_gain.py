@@ -1,9 +1,10 @@
 """Held-out coverage on CONVERSATIONAL text: shipped dictionary vs dictionary + corpus.
 
-Split rule, fixed before any number was read: line index % 10 == 0 is HELD OUT, the other
-nine tenths are TRAIN. The split is by line and deterministic, so the test text never
-contributes to the frequencies being tested. Duplicate lines are dropped BEFORE splitting,
-so a subtitle repeated across uploads cannot appear in both halves.
+Split rule, fixed before any number was read: one line in ten is HELD OUT, the other
+nine tenths are TRAIN; the held-out residue is per language (stream.HELD_RESIDUE), and the
+Tatar residue matches the eval-set slice. The split is by line and deterministic, so the
+test text never contributes to the frequencies being tested. Duplicate lines are dropped
+BEFORE splitting, so a subtitle repeated across uploads cannot appear in both halves.
 
 Denominator: every held-out token that survives dict_tokens. A token is COVERED if the word
 is present in the dictionary being tested (the shipped 100k, or the merged 100k). This is
@@ -16,19 +17,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import corpuslib as CL
 import dictionary_coverage as cov
-from stream import Split
+from stream import Split, HELD_RESIDUE
 
-def split_lines(paths):
+def split_lines(paths, tag):
     """The same split, streamed. Superseded by measure_filtered.py, which also reports what the
     filter removed; kept as the plainest statement of the split rule."""
-    split = Split(paths)
+    split = Split(paths, held_residue=HELD_RESIDUE[tag])
     return ([line for line, _ in split.train()], [line for line, _ in split.held()])
 
 def main():
     tag = sys.argv[1]; paths = sys.argv[2:]
     lang = cov.language_for(tag); alpha = lang.alphabet
     shipped, B = CL.load_shipped(tag)
-    train, held = split_lines(paths)
+    train, held = split_lines(paths, tag)
 
     tr = Counter()
     for line in train:

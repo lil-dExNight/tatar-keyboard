@@ -35,6 +35,17 @@ Rules:
   (әлсерер); the -ыр/-ер monosyllable class (барыр, булыр, алыр, калыр,
   тулыр, йөрер) and the suppletive укы/ук- cluster (укый but укар, укмый)
   are exception rows.
+* Person paradigms (kaikki.org tables): the present and the -DI past carry
+  the type I/II endings (no 1pl); the future, the definite future and the
+  -GAн recent past take the predicative endings -мIн/-сIң/∅/-бIз/-сIз/-LAр
+  (язармын, язачакбыз, язганнар), the conditional takes -м/-ң/∅/-к/-гIз/-LAр
+  (язсам, язсак). The imperative adds 1pl -ыйк/-ик (vowel stems contract as
+  in the present: эшлик, укыйк) and 3sg/3pl -сын(нар)/-сен(нәр).
+* Nominal/adjective predicates take the predicative endings (татармын,
+  өйбез; 3sg is the bare stem, 3pl coincides with the plural). The
+  question clitic -мы/-ме stacks on every person form and nominal predicate
+  under the ``.q`` labels (язаммы, татармы); the joined spelling is informal,
+  so the attestation gate decides which of these ship.
 * Exceptions live in scripts/wordform_exceptions_tat.tsv (п→б/к→г voicing
   before vocalic possessives, suppletive pronouns, explicit per-label
   overrides).
@@ -312,6 +323,45 @@ PERSON_TYPE_II = (
     ("3pl", "LAр"),
 )
 
+# The predicative set (with 1pl -бIз) rides the future, the definite future
+# and the -GAн recent past (kaikki.org: язармын/язарбыз, язачаксыз,
+# язганмын/язганнар); the conditional set (1pl -к, 2pl -гIз) rides the
+# conditional (kaikki.org: язсам, язсак, язсагыз). The same predicative set
+# builds the nominal/adjective predicates (татармын, өйбез).
+PERSON_PREDICATIVE = (
+    ("1sg", "мIн"),
+    ("2sg", "сIң"),
+    ("3sg", None),
+    ("1pl", "бIз"),
+    ("2pl", "сIз"),
+    ("3pl", "LAр"),
+)
+PERSON_CONDITIONAL = (
+    ("1sg", "м"),
+    ("2sg", "ң"),
+    ("3sg", None),
+    ("1pl", "к"),
+    ("2pl", "гIз"),
+    ("3pl", "LAр"),
+)
+
+# Nominal/adjective predicative persons. 3sg is the bare stem (skipped as a
+# candidate, but the base of noun.pred.3sg.q: татармы), 3pl coincides with
+# noun.pl (татарлар "they are Tatars"). The endings attach to the plain stem,
+# never to the voiced possessive stem (китапмын, not *китабымын).
+NOUN_PREDICATIVE_PATTERNS = (
+    ("noun.pred.1sg", "мIн"),
+    ("noun.pred.2sg", "сIң"),
+    ("noun.pred.3sg", None),
+    ("noun.pred.1pl", "бIз"),
+    ("noun.pred.2pl", "сIз"),
+    ("noun.pred.3pl", "LAр"),
+)
+
+# The question clitic -мы/-ме stacks on person forms and nominal predicates
+# (язаммы, татармы); the pattern harmonizes on the person form itself.
+QUESTION_PATTERN = "мI"
+
 DERIV_PATTERNS = (
     ("deriv.ca", "чA"),  # language/manner: татарча; only ча/чә exists
     ("deriv.lik", "лIк"),  # дуслык, мөмкинлек; л does not assimilate in Tatar
@@ -332,19 +382,24 @@ _VERB_PERSON_TENSES = (
     ("verb.pres.neg", PERSON_TYPE_I),
     ("verb.past", PERSON_TYPE_II),
     ("verb.past.neg", PERSON_TYPE_II),
+    ("verb.rpast", PERSON_PREDICATIVE),
+    ("verb.rpast.neg", PERSON_PREDICATIVE),
+    ("verb.fut", PERSON_PREDICATIVE),
+    ("verb.fut.neg", PERSON_PREDICATIVE),
+    ("verb.deffut", PERSON_PREDICATIVE),
+    ("verb.cond", PERSON_CONDITIONAL),
+    ("verb.cond.neg", PERSON_CONDITIONAL),
 )
 
 VERB_LABELS = (
-    ["verb.imp.2sg", "verb.imp.2pl"]
-    + [f"{tense}.{person}" for tense, endings in _VERB_PERSON_TENSES for person, _ in endings]
+    ["verb.imp.2sg", "verb.imp.2pl", "verb.imp.1pl", "verb.imp.3sg", "verb.imp.3pl"]
     + [
-        "verb.rpast.3sg",
-        "verb.rpast.neg.3sg",
-        "verb.fut.3sg",
-        "verb.fut.neg.3sg",
-        "verb.deffut.3sg",
-        "verb.cond.3sg",
-        "verb.cond.neg.3sg",
+        f"{tense}.{person}{question}"
+        for tense, endings in _VERB_PERSON_TENSES
+        for person, _ in endings
+        for question in ("", ".q")
+    ]
+    + [
         "verb.ger.ip",
         "verb.ger.gac",
         "verb.ger.ganci",
@@ -363,6 +418,11 @@ NOUN_LABELS = (
     + ["noun.p3pl"]
     + [label for label, _ in NOUN_POST3_PATTERNS]
     + [label for label, _ in NOUN_PLURAL_CASE_PATTERNS]
+    + [
+        f"{label}{question}"
+        for label, _ in NOUN_PREDICATIVE_PATTERNS
+        for question in ("", ".q")
+    ]
     + ["noun.pron"]  # suppletive pronoun forms from the exceptions table
 )
 
@@ -534,6 +594,16 @@ def generate_noun_forms(
         forms.append((label, attach(poss3, pattern)))
     for label, pattern in NOUN_PLURAL_CASE_PATTERNS:
         forms.append((label, attach(plural, pattern)))
+    for label, pattern in NOUN_PREDICATIVE_PATTERNS:
+        form = stem if pattern is None else attach(stem, pattern, harmony)
+        # The predicative rows sit after _apply_overrides ran, so an override
+        # (plain or .q) replaces the generated person form here; the question
+        # clitic then stacks on the overridden base.
+        form = exceptions.overrides.get((stem, label), form)
+        forms.append((label, form))
+        forms.append(
+            (f"{label}.q", exceptions.overrides.get((stem, f"{label}.q"), attach(form, QUESTION_PATTERN)))
+        )
     return forms
 
 
@@ -543,9 +613,22 @@ def generate_verb_forms(
     """The ordered verb paradigm of [stem] as (label, form) pairs."""
     forms: list[tuple[str, str]] = [("verb.imp.2sg", stem)]
     forms.append(("verb.imp.2pl", attach(stem, "(IгIз~гIз)", harmony)))
+    # 1pl -ыйк/-ик (языйк, китик); vowel stems contract the final vowel as in
+    # the present (эшлик, укыйк), a bare vowel stem keeps a й glide (юйык).
+    if stem[-1] in VOWELS:
+        if len(stem) > 1:
+            imp_1pl = stem[:-1] + render_pattern("Yк", stem, harmony)
+        else:
+            imp_1pl = stem + "й" + render_pattern("Iк", stem, harmony)
+        forms.append(("verb.imp.1pl", imp_1pl))
+    else:
+        forms.append(("verb.imp.1pl", attach(stem, "Yк", harmony)))
+    forms.append(("verb.imp.3sg", attach(stem, "сIн", harmony)))
+    forms.append(("verb.imp.3pl", attach(stem, "сIннAр", harmony)))
 
     # Person-bearing bases; an override of the 3sg form re-derives the persons
-    # (override кара verb.pres.3sg=кара → карам/карасың/карасыз/каралар).
+    # (override кара verb.pres.3sg=кара → карам/карасың/карасыз/каралар;
+    # override бар verb.fut.3sg=барыр → барырмын/барырсың/барырбыз…).
     negated = attach(stem, "мA", harmony)
     bases = {
         "verb.pres": exceptions.overrides.get((stem, "verb.pres.3sg"))
@@ -556,27 +639,28 @@ def generate_verb_forms(
         or attach(stem, "DI", harmony),
         "verb.past.neg": exceptions.overrides.get((stem, "verb.past.neg.3sg"))
         or attach(negated, "DI"),
+        "verb.rpast": exceptions.overrides.get((stem, "verb.rpast.3sg"))
+        or attach(stem, "GAн", harmony),
+        "verb.rpast.neg": exceptions.overrides.get((stem, "verb.rpast.neg.3sg"))
+        or attach(negated, "GAн"),
+        "verb.fut": exceptions.overrides.get((stem, "verb.fut.3sg"))
+        or future_base(stem, harmony),
+        "verb.fut.neg": exceptions.overrides.get((stem, "verb.fut.neg.3sg"))
+        or attach(stem, "мAс", harmony),
+        "verb.deffut": exceptions.overrides.get((stem, "verb.deffut.3sg"))
+        or attach(stem, "(AчAк~ячAк)", harmony),
+        "verb.cond": exceptions.overrides.get((stem, "verb.cond.3sg"))
+        or attach(stem, "сA", harmony),
+        "verb.cond.neg": exceptions.overrides.get((stem, "verb.cond.neg.3sg"))
+        or attach(negated, "сA"),
     }
     for tense, endings in _VERB_PERSON_TENSES:
         base = bases[tense]
         for person, pattern in endings:
-            forms.append(
-                (f"{tense}.{person}", base if pattern is None else attach(base, pattern))
-            )
+            form = base if pattern is None else attach(base, pattern)
+            forms.append((f"{tense}.{person}", form))
+            forms.append((f"{tense}.{person}.q", attach(form, QUESTION_PATTERN)))
 
-    forms.append(("verb.rpast.3sg", attach(stem, "GAн", harmony)))
-    forms.append(("verb.rpast.neg.3sg", attach(negated, "GAн")))
-    forms.append(
-        (
-            "verb.fut.3sg",
-            exceptions.overrides.get((stem, "verb.fut.3sg"))
-            or future_base(stem, harmony),
-        )
-    )
-    forms.append(("verb.fut.neg.3sg", attach(stem, "мAс", harmony)))
-    forms.append(("verb.deffut.3sg", attach(stem, "(AчAк~ячAк)", harmony)))
-    forms.append(("verb.cond.3sg", attach(stem, "сA", harmony)))
-    forms.append(("verb.cond.neg.3sg", attach(negated, "сA")))
     forms.append(("verb.ger.ip", attach(stem, "(Iп~п)", harmony)))
     forms.append(("verb.ger.gac", attach(stem, "GAч", harmony)))
     forms.append(("verb.ger.ganci", attach(stem, "GAнчI", harmony)))
@@ -651,12 +735,35 @@ def read_word_list(path: Path) -> tuple[list[str], int]:
     return sorted(set(words)), skipped
 
 
+def label_family(label: str) -> str:
+    """The report family of a label: the question-clitic layer (``.q``) and the
+    nominal predicative persons count separately from the plain rows, so the
+    report shows how much volume the new families add."""
+    if label.endswith(".q"):
+        return label_family(label[:-2]) + ".q"
+    if label.startswith("noun.pred."):
+        return "noun.pred"
+    return label.split(".", 1)[0]
+
+
+def _family_counts(rows: Sequence[tuple[str, str, str]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for _a, _b, label in rows:
+        family = label_family(label)
+        counts[family] = counts.get(family, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def build_candidates(
     words: Sequence[str], exceptions: Exceptions
-) -> tuple[list[tuple[str, str, str]], dict[str, int]]:
+) -> tuple[list[tuple[str, str, str]], dict[str, object]]:
     """Generate (form, stem, label) candidate rows for every listed word."""
     rows: set[tuple[str, str, str]] = set()
-    stats = {"stems": 0, "stems_skipped_no_harmony": 0, "dual_harmony_stems": 0}
+    stats: dict[str, object] = {
+        "stems": 0,
+        "stems_skipped_no_harmony": 0,
+        "dual_harmony_stems": 0,
+    }
     for word in words:
         variants = harmony_variants(word)
         if not variants:
@@ -669,15 +776,19 @@ def build_candidates(
             if form == word:
                 continue  # the bare stem (verb.imp.2sg) is already a listed word
             rows.add((form, word, label))
-    stats["candidate_rows"] = len(rows)
-    return sorted(rows), stats
+    sorted_rows = sorted(rows)
+    stats["candidate_rows"] = len(sorted_rows)
+    stats["candidate_rows_by_family"] = _family_counts(sorted_rows)
+    return sorted_rows, stats
 
 
 # Probe stems covering back/front × vowel/voiced/voiceless/nasal finals plus
-# the hiatus possessive class (и/у-final); the suffix inventory for grouping is
-# read off their generated forms, so every surface suffix the generator can
-# produce is strippable — and nothing else.
-PROBE_STEMS = ("сабыр", "азап", "аман", "ала", "ел", "кит", "кем", "еле", "аби", "басу")
+# the hiatus possessive class (и/у-final) and the monosyllabic back consonant
+# class (сал: the simple future splits by syllable count, so only a
+# monosyllabic back probe yields the -ар person suffixes: саларсың); the
+# suffix inventory for grouping is read off their generated forms, so every
+# surface suffix the generator can produce is strippable — and nothing else.
+PROBE_STEMS = ("сабыр", "азап", "аман", "ала", "ел", "кит", "кем", "еле", "аби", "басу", "сал")
 
 
 def suffix_inventory() -> tuple[str, ...]:
@@ -692,7 +803,7 @@ def suffix_inventory() -> tuple[str, ...]:
 
 def build_groups(
     words: Sequence[str], exceptions: Exceptions
-) -> tuple[list[tuple[str, str, str]], dict[str, int]]:
+) -> tuple[list[tuple[str, str, str]], dict[str, object]]:
     """Group listed forms under listed stems: (stem, form, label) rows.
 
     A form is grouped under a stem only when stripping a known suffix reaches
@@ -712,7 +823,11 @@ def build_groups(
         return cache[stem]
 
     rows: list[tuple[str, str, str]] = []
-    stats = {"words": len(word_set), "ambiguous_skipped": 0, "too_short_skipped": 0}
+    stats: dict[str, object] = {
+        "words": len(word_set),
+        "ambiguous_skipped": 0,
+        "too_short_skipped": 0,
+    }
     for form in sorted(word_set):
         if len(form) < 3:
             stats["too_short_skipped"] += 1
@@ -738,6 +853,7 @@ def build_groups(
             stats["ambiguous_skipped"] += 1
     rows.sort()
     stats["grouped_forms"] = len(rows)
+    stats["grouped_forms_by_family"] = _family_counts(rows)
     stats["distinct_stems"] = len({stem for stem, _, _ in rows})
     return rows, stats
 

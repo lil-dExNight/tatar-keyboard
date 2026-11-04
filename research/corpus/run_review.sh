@@ -4,7 +4,7 @@
 set -u
 cd "$(dirname "$0")"
 RU="Tatoeba-v2026-07-08.ru.txt.gz OpenSubtitles-v2024.ru.txt.gz"
-TT="Tatoeba-v2026-07-08.tt.txt.gz OpenSubtitles-v2024.tt.txt.gz"
+TT="Tatoeba-v2026-10-31.tt.txt.gz OpenSubtitles-v2024.tt.txt.gz"
 echo "tat начато $(date +%T)"
 python3 make_review.py tat ../../data/dictionary/tt-conv-review.tsv $TT
 echo "rus начато $(date +%T)"

@@ -8,6 +8,11 @@ What is pinned and why:
   voiceless and nasal finals, the voicing exception (китап→китабы), the 3sg
   possessive override (су→суы), suppletive pronouns, vowel-stem present
   contraction (эшлә→эшли) and the derivational set (дуслык, мөмкинлек).
+* The newer label families, cross-checked against the kaikki.org Tatar verb
+  tables: person rows for the future/conditional/definite-future/recent-past
+  (язармын, язсак, язачакбыз, язганнар), the 1pl/3rd-person imperatives
+  (языйк, язсыннар), the nominal predicative persons (татармын, өйбез) and
+  the -мы/-ме question-clitic layer (``.q`` labels: язаммы, татармы).
 * The committed exceptions table (scripts/wordform_exceptions_tat.tsv) is
   pinned by byte SHA-256 and by row counts: editing the table must re-pin
   the tests, like the dictionary asset pins.
@@ -189,6 +194,18 @@ class GoldenNounParadigmTest(unittest.TestCase):
                 ("noun.pl.acc", "татарларны"),
                 ("noun.pl.loc", "татарларда"),
                 ("noun.pl.abl", "татарлардан"),
+                ("noun.pred.1sg", "татармын"),
+                ("noun.pred.1sg.q", "татармынмы"),
+                ("noun.pred.2sg", "татарсың"),
+                ("noun.pred.2sg.q", "татарсыңмы"),
+                ("noun.pred.3sg", "татар"),
+                ("noun.pred.3sg.q", "татармы"),
+                ("noun.pred.1pl", "татарбыз"),
+                ("noun.pred.1pl.q", "татарбызмы"),
+                ("noun.pred.2pl", "татарсыз"),
+                ("noun.pred.2pl.q", "татарсызмы"),
+                ("noun.pred.3pl", "татарлар"),
+                ("noun.pred.3pl.q", "татарлармы"),
             ],
         )
 
@@ -217,6 +234,18 @@ class GoldenNounParadigmTest(unittest.TestCase):
                 ("noun.pl.acc", "өйләрне"),
                 ("noun.pl.loc", "өйләрдә"),
                 ("noun.pl.abl", "өйләрдән"),
+                ("noun.pred.1sg", "өймен"),
+                ("noun.pred.1sg.q", "өйменме"),
+                ("noun.pred.2sg", "өйсең"),
+                ("noun.pred.2sg.q", "өйсеңме"),
+                ("noun.pred.3sg", "өй"),
+                ("noun.pred.3sg.q", "өйме"),
+                ("noun.pred.1pl", "өйбез"),
+                ("noun.pred.1pl.q", "өйбезме"),
+                ("noun.pred.2pl", "өйсез"),
+                ("noun.pred.2pl.q", "өйсезме"),
+                ("noun.pred.3pl", "өйләр"),
+                ("noun.pred.3pl.q", "өйләрме"),
             ],
         )
 
@@ -300,38 +329,140 @@ class GoldenNounParadigmTest(unittest.TestCase):
 
 class GoldenVerbParadigmTest(unittest.TestCase):
     def test_yaz_full_paradigm(self):
+        # The finite grid matches the kaikki.org язу table cell for cell,
+        # including the negative doublets kaikki lists under the same tags.
         self.assertEqual(
             gen.generate_verb_forms("яз", "back", EXC),
             [
                 ("verb.imp.2sg", "яз"),
                 ("verb.imp.2pl", "языгыз"),
+                ("verb.imp.1pl", "языйк"),
+                ("verb.imp.3sg", "язсын"),
+                ("verb.imp.3pl", "язсыннар"),
                 ("verb.pres.1sg", "язам"),
+                ("verb.pres.1sg.q", "язаммы"),
                 ("verb.pres.2sg", "язасың"),
+                ("verb.pres.2sg.q", "язасыңмы"),
                 ("verb.pres.3sg", "яза"),
+                ("verb.pres.3sg.q", "язамы"),
                 ("verb.pres.2pl", "язасыз"),
+                ("verb.pres.2pl.q", "язасызмы"),
                 ("verb.pres.3pl", "язалар"),
+                ("verb.pres.3pl.q", "язалармы"),
                 ("verb.pres.neg.1sg", "язмыйм"),
+                ("verb.pres.neg.1sg.q", "язмыйммы"),
                 ("verb.pres.neg.2sg", "язмыйсың"),
+                ("verb.pres.neg.2sg.q", "язмыйсыңмы"),
                 ("verb.pres.neg.3sg", "язмый"),
+                ("verb.pres.neg.3sg.q", "язмыймы"),
                 ("verb.pres.neg.2pl", "язмыйсыз"),
+                ("verb.pres.neg.2pl.q", "язмыйсызмы"),
                 ("verb.pres.neg.3pl", "язмыйлар"),
+                ("verb.pres.neg.3pl.q", "язмыйлармы"),
                 ("verb.past.1sg", "яздым"),
+                ("verb.past.1sg.q", "яздыммы"),
                 ("verb.past.2sg", "яздың"),
+                ("verb.past.2sg.q", "яздыңмы"),
                 ("verb.past.3sg", "язды"),
+                ("verb.past.3sg.q", "яздымы"),
                 ("verb.past.2pl", "яздыгыз"),
+                ("verb.past.2pl.q", "яздыгызмы"),
                 ("verb.past.3pl", "яздылар"),
+                ("verb.past.3pl.q", "яздылармы"),
                 ("verb.past.neg.1sg", "язмадым"),
+                ("verb.past.neg.1sg.q", "язмадыммы"),
                 ("verb.past.neg.2sg", "язмадың"),
+                ("verb.past.neg.2sg.q", "язмадыңмы"),
                 ("verb.past.neg.3sg", "язмады"),
+                ("verb.past.neg.3sg.q", "язмадымы"),
                 ("verb.past.neg.2pl", "язмадыгыз"),
+                ("verb.past.neg.2pl.q", "язмадыгызмы"),
                 ("verb.past.neg.3pl", "язмадылар"),
+                ("verb.past.neg.3pl.q", "язмадылармы"),
+                ("verb.rpast.1sg", "язганмын"),
+                ("verb.rpast.1sg.q", "язганмынмы"),
+                ("verb.rpast.2sg", "язгансың"),
+                ("verb.rpast.2sg.q", "язгансыңмы"),
                 ("verb.rpast.3sg", "язган"),
+                ("verb.rpast.3sg.q", "язганмы"),
+                ("verb.rpast.1pl", "язганбыз"),
+                ("verb.rpast.1pl.q", "язганбызмы"),
+                ("verb.rpast.2pl", "язгансыз"),
+                ("verb.rpast.2pl.q", "язгансызмы"),
+                ("verb.rpast.3pl", "язганнар"),
+                ("verb.rpast.3pl.q", "язганнармы"),
+                ("verb.rpast.neg.1sg", "язмаганмын"),
+                ("verb.rpast.neg.1sg.q", "язмаганмынмы"),
+                ("verb.rpast.neg.2sg", "язмагансың"),
+                ("verb.rpast.neg.2sg.q", "язмагансыңмы"),
                 ("verb.rpast.neg.3sg", "язмаган"),
+                ("verb.rpast.neg.3sg.q", "язмаганмы"),
+                ("verb.rpast.neg.1pl", "язмаганбыз"),
+                ("verb.rpast.neg.1pl.q", "язмаганбызмы"),
+                ("verb.rpast.neg.2pl", "язмагансыз"),
+                ("verb.rpast.neg.2pl.q", "язмагансызмы"),
+                ("verb.rpast.neg.3pl", "язмаганнар"),
+                ("verb.rpast.neg.3pl.q", "язмаганнармы"),
+                ("verb.fut.1sg", "язармын"),
+                ("verb.fut.1sg.q", "язармынмы"),
+                ("verb.fut.2sg", "язарсың"),
+                ("verb.fut.2sg.q", "язарсыңмы"),
                 ("verb.fut.3sg", "язар"),
+                ("verb.fut.3sg.q", "язармы"),
+                ("verb.fut.1pl", "язарбыз"),
+                ("verb.fut.1pl.q", "язарбызмы"),
+                ("verb.fut.2pl", "язарсыз"),
+                ("verb.fut.2pl.q", "язарсызмы"),
+                ("verb.fut.3pl", "язарлар"),
+                ("verb.fut.3pl.q", "язарлармы"),
+                ("verb.fut.neg.1sg", "язмасмын"),
+                ("verb.fut.neg.1sg.q", "язмасмынмы"),
+                ("verb.fut.neg.2sg", "язмассың"),
+                ("verb.fut.neg.2sg.q", "язмассыңмы"),
                 ("verb.fut.neg.3sg", "язмас"),
+                ("verb.fut.neg.3sg.q", "язмасмы"),
+                ("verb.fut.neg.1pl", "язмасбыз"),
+                ("verb.fut.neg.1pl.q", "язмасбызмы"),
+                ("verb.fut.neg.2pl", "язмассыз"),
+                ("verb.fut.neg.2pl.q", "язмассызмы"),
+                ("verb.fut.neg.3pl", "язмаслар"),
+                ("verb.fut.neg.3pl.q", "язмаслармы"),
+                ("verb.deffut.1sg", "язачакмын"),
+                ("verb.deffut.1sg.q", "язачакмынмы"),
+                ("verb.deffut.2sg", "язачаксың"),
+                ("verb.deffut.2sg.q", "язачаксыңмы"),
                 ("verb.deffut.3sg", "язачак"),
+                ("verb.deffut.3sg.q", "язачакмы"),
+                ("verb.deffut.1pl", "язачакбыз"),
+                ("verb.deffut.1pl.q", "язачакбызмы"),
+                ("verb.deffut.2pl", "язачаксыз"),
+                ("verb.deffut.2pl.q", "язачаксызмы"),
+                ("verb.deffut.3pl", "язачаклар"),
+                ("verb.deffut.3pl.q", "язачаклармы"),
+                ("verb.cond.1sg", "язсам"),
+                ("verb.cond.1sg.q", "язсаммы"),
+                ("verb.cond.2sg", "язсаң"),
+                ("verb.cond.2sg.q", "язсаңмы"),
                 ("verb.cond.3sg", "язса"),
+                ("verb.cond.3sg.q", "язсамы"),
+                ("verb.cond.1pl", "язсак"),
+                ("verb.cond.1pl.q", "язсакмы"),
+                ("verb.cond.2pl", "язсагыз"),
+                ("verb.cond.2pl.q", "язсагызмы"),
+                ("verb.cond.3pl", "язсалар"),
+                ("verb.cond.3pl.q", "язсалармы"),
+                ("verb.cond.neg.1sg", "язмасам"),
+                ("verb.cond.neg.1sg.q", "язмасаммы"),
+                ("verb.cond.neg.2sg", "язмасаң"),
+                ("verb.cond.neg.2sg.q", "язмасаңмы"),
                 ("verb.cond.neg.3sg", "язмаса"),
+                ("verb.cond.neg.3sg.q", "язмасамы"),
+                ("verb.cond.neg.1pl", "язмасак"),
+                ("verb.cond.neg.1pl.q", "язмасакмы"),
+                ("verb.cond.neg.2pl", "язмасагыз"),
+                ("verb.cond.neg.2pl.q", "язмасагызмы"),
+                ("verb.cond.neg.3pl", "язмасалар"),
+                ("verb.cond.neg.3pl.q", "язмасалармы"),
                 ("verb.ger.ip", "язып"),
                 ("verb.ger.gac", "язгач"),
                 ("verb.ger.ganci", "язганчы"),
@@ -455,6 +586,204 @@ class GoldenVerbParadigmTest(unittest.TestCase):
             gen.generate_all("б")
 
 
+class ImperativePersonsTest(unittest.TestCase):
+    """1pl/3sg/3pl imperatives; kaikki.org: языйк, китик, эшлик, язсыннар."""
+
+    def test_consonant_stems(self):
+        self.assertEqual(verb_forms("яз")["verb.imp.1pl"], "языйк")
+        self.assertEqual(verb_forms("яз")["verb.imp.3sg"], "язсын")
+        self.assertEqual(verb_forms("яз")["verb.imp.3pl"], "язсыннар")
+        kit = verb_forms("кит", "front")
+        self.assertEqual(kit["verb.imp.1pl"], "китик")
+        self.assertEqual(kit["verb.imp.3sg"], "китсен")
+        self.assertEqual(kit["verb.imp.3pl"], "китсеннәр")
+
+    def test_vowel_stems_contract(self):
+        # Like the present, the final vowel contracts before -ыйк/-ик.
+        eshla = verb_forms("эшлә", "front")
+        self.assertEqual(eshla["verb.imp.1pl"], "эшлик")
+        self.assertEqual(eshla["verb.imp.3sg"], "эшләсен")
+        self.assertEqual(eshla["verb.imp.3pl"], "эшләсеннәр")
+        self.assertEqual(verb_forms("укы")["verb.imp.1pl"], "укыйк")
+        self.assertEqual(verb_forms("кара")["verb.imp.1pl"], "карыйк")
+        self.assertEqual(verb_forms("ди", "front")["verb.imp.1pl"], "дик")
+
+    def test_bare_vowel_stem_keeps_glide(self):
+        # ю has no consonant to carry the ending: юйык, not *юыйк.
+        yu = verb_forms("ю", "back")
+        self.assertEqual(yu["verb.imp.1pl"], "юйык")
+        self.assertEqual(yu["verb.imp.3sg"], "юсын")
+        self.assertEqual(yu["verb.imp.3pl"], "юсыннар")
+
+
+class ExtendedPersonTensesTest(unittest.TestCase):
+    """Person rows of fut/cond/deffut/rpast; kaikki.org язу/китү tables."""
+
+    def test_future_persons(self):
+        fut = {p: verb_forms("яз")[f"verb.fut.{p}"] for p in
+               ("1sg", "2sg", "3sg", "1pl", "2pl", "3pl")}
+        self.assertEqual(
+            fut,
+            {"1sg": "язармын", "2sg": "язарсың", "3sg": "язар",
+             "1pl": "язарбыз", "2pl": "язарсыз", "3pl": "язарлар"},
+        )
+        kit = {p: verb_forms("кит", "front")[f"verb.fut.{p}"] for p in
+               ("1sg", "2sg", "3sg", "1pl", "2pl", "3pl")}
+        self.assertEqual(
+            kit,
+            {"1sg": "китәрмен", "2sg": "китәрсең", "3sg": "китәр",
+             "1pl": "китәрбез", "2pl": "китәрсез", "3pl": "китәрләр"},
+        )
+
+    def test_conditional_persons(self):
+        # The conditional has its own set: 1pl -к, 2pl -гыз (язсак, язсагыз).
+        cond = {p: verb_forms("яз")[f"verb.cond.{p}"] for p in
+                ("1sg", "2sg", "3sg", "1pl", "2pl", "3pl")}
+        self.assertEqual(
+            cond,
+            {"1sg": "язсам", "2sg": "язсаң", "3sg": "язса",
+             "1pl": "язсак", "2pl": "язсагыз", "3pl": "язсалар"},
+        )
+        kit = {p: verb_forms("кит", "front")[f"verb.cond.{p}"] for p in
+               ("1sg", "2sg", "3sg", "1pl", "2pl", "3pl")}
+        self.assertEqual(
+            kit,
+            {"1sg": "китсәм", "2sg": "китсәң", "3sg": "китсә",
+             "1pl": "китсәк", "2pl": "китсәгез", "3pl": "китсәләр"},
+        )
+
+    def test_deffut_and_rpast_persons(self):
+        self.assertEqual(verb_forms("яз")["verb.deffut.1sg"], "язачакмын")
+        self.assertEqual(verb_forms("яз")["verb.deffut.1pl"], "язачакбыз")
+        self.assertEqual(verb_forms("кит", "front")["verb.deffut.2sg"], "китәчәксең")
+        rpast = {p: verb_forms("яз")[f"verb.rpast.{p}"] for p in
+                 ("1sg", "2sg", "3sg", "1pl", "2pl", "3pl")}
+        self.assertEqual(
+            rpast,
+            {"1sg": "язганмын", "2sg": "язгансың", "3sg": "язган",
+             "1pl": "язганбыз", "2pl": "язгансыз", "3pl": "язганнар"},
+        )
+        # 3pl assimilates after the н-final -ган base (киткәннәр).
+        self.assertEqual(verb_forms("кит", "front")["verb.rpast.3pl"], "киткәннәр")
+        self.assertEqual(verb_forms("кит", "front")["verb.rpast.1sg"], "киткәнмен")
+
+    def test_negative_persons(self):
+        self.assertEqual(verb_forms("яз")["verb.fut.neg.1sg"], "язмасмын")
+        self.assertEqual(verb_forms("яз")["verb.fut.neg.3pl"], "язмаслар")
+        self.assertEqual(verb_forms("яз")["verb.cond.neg.1pl"], "язмасак")
+        self.assertEqual(verb_forms("яз")["verb.rpast.neg.2pl"], "язмагансыз")
+        self.assertEqual(verb_forms("кит", "front")["verb.fut.neg.2sg"], "китмәссең")
+        self.assertEqual(verb_forms("кит", "front")["verb.cond.neg.3pl"], "китмәсәләр")
+        self.assertEqual(verb_forms("эшлә", "front")["verb.fut.1pl"], "эшләрбез")
+        self.assertEqual(verb_forms("эшлә", "front")["verb.cond.1sg"], "эшләсәм")
+
+    def test_3sg_override_rederives_persons(self):
+        # The lexical future of бар is an exception row; its persons follow.
+        bar = verb_forms("бар")
+        self.assertEqual(bar["verb.fut.1sg"], "барырмын")
+        self.assertEqual(bar["verb.fut.2sg"], "барырсың")
+        self.assertEqual(bar["verb.fut.1pl"], "барырбыз")
+        self.assertEqual(bar["verb.fut.3pl"], "барырлар")
+        # The suppletive укы cluster drives every new family too (kaikki:
+        # укармын, укачаксыз, укмасбыз, укмаганнар).
+        uku = verb_forms("укы")
+        self.assertEqual(uku["verb.fut.1sg"], "укармын")
+        self.assertEqual(uku["verb.deffut.2pl"], "укачаксыз")
+        self.assertEqual(uku["verb.fut.neg.1pl"], "укмасбыз")
+        self.assertEqual(uku["verb.rpast.neg.3pl"], "укмаганнар")
+
+
+class NominalPredicativeTest(unittest.TestCase):
+    """Nominal/adjective predicative persons: татармын, өйбез, сумын."""
+
+    def test_person_grid(self):
+        su = noun_forms("су")
+        self.assertEqual(
+            {p: su[f"noun.pred.{p}"] for p in ("1sg", "2sg", "3sg", "1pl", "2pl", "3pl")},
+            {"1sg": "сумын", "2sg": "сусың", "3sg": "су",
+             "1pl": "субыз", "2pl": "сусыз", "3pl": "сулар"},
+        )
+        self.assertEqual(noun_forms("өй", "front")["noun.pred.1pl"], "өйбез")
+        self.assertEqual(noun_forms("өй", "front")["noun.pred.2sg"], "өйсең")
+
+    def test_predicative_ignores_voicing_exception(self):
+        # Predicative endings start with a consonant: китапмын, not *китабымын.
+        self.assertEqual(noun_forms("китап")["noun.pred.1sg"], "китапмын")
+
+    def test_pronouns_have_no_predicative(self):
+        labels = {label for label, _ in gen.generate_noun_forms("мин", "front", EXC)}
+        self.assertFalse(any(label.startswith("noun.pred") for label in labels))
+
+    def test_override_replaces_the_generated_person(self):
+        # noun.pred rows are emitted after _apply_overrides ran, so an explicit
+        # override row replaces the generated form; the question clitic stacks
+        # on the overridden base, and a .q-specific override wins outright.
+        exc = gen.Exceptions({}, {}, {("татар", "noun.pred.1sg"): "татарымын"})
+        forms = dict(gen.generate_noun_forms("татар", "back", exc))
+        self.assertEqual(forms["noun.pred.1sg"], "татарымын")
+        self.assertEqual(forms["noun.pred.1sg.q"], "татарымынмы")
+        self.assertEqual(forms["noun.pred.2sg"], "татарсың")  # untouched row
+        exc_q = gen.Exceptions({}, {}, {("татар", "noun.pred.3sg.q"): "татарлармы"})
+        forms_q = dict(gen.generate_noun_forms("татар", "back", exc_q))
+        self.assertEqual(forms_q["noun.pred.3sg.q"], "татарлармы")
+        self.assertEqual(forms_q["noun.pred.3sg"], "татар")
+
+    def test_bare_3sg_is_not_a_candidate_row(self):
+        rows, _stats = gen.build_candidates(["татар"], gen.EMPTY_EXCEPTIONS)
+        self.assertNotIn(("татар", "татар", "noun.pred.3sg"), set(rows))
+        self.assertIn(("татармы", "татар", "noun.pred.3sg.q"), set(rows))
+
+
+class QuestionCliticTest(unittest.TestCase):
+    """The -мы/-ме clitic over person forms and nominal predicates."""
+
+    def test_over_verb_persons(self):
+        forms = verb_forms("яз")
+        self.assertEqual(forms["verb.pres.1sg.q"], "язаммы")
+        self.assertEqual(forms["verb.pres.3sg.q"], "язамы")
+        self.assertEqual(forms["verb.past.3pl.q"], "яздылармы")
+        self.assertEqual(forms["verb.rpast.3sg.q"], "язганмы")
+        self.assertEqual(forms["verb.fut.3sg.q"], "язармы")
+        self.assertEqual(forms["verb.cond.1pl.q"], "язсакмы")
+        self.assertEqual(forms["verb.deffut.3sg.q"], "язачакмы")
+
+    def test_harmony_follows_the_person_form(self):
+        kit = verb_forms("кит", "front")
+        self.assertEqual(kit["verb.past.3sg.q"], "киттеме")
+        self.assertEqual(kit["verb.fut.2sg.q"], "китәрсеңме")
+        self.assertEqual(kit["verb.rpast.3pl.q"], "киткәннәрме")
+        self.assertEqual(verb_forms("эшлә", "front")["verb.pres.3sg.q"], "эшлиме")
+
+    def test_over_nominal_predicates(self):
+        self.assertEqual(noun_forms("татар")["noun.pred.1sg.q"], "татармынмы")
+        self.assertEqual(noun_forms("татар")["noun.pred.3sg.q"], "татармы")
+        self.assertEqual(noun_forms("су")["noun.pred.3sg.q"], "сумы")
+        self.assertEqual(noun_forms("өй", "front")["noun.pred.1pl.q"], "өйбезме")
+
+    def test_over_overridden_bases(self):
+        # кара keeps its bare present; the clitic stacks on the override.
+        self.assertEqual(verb_forms("кара")["verb.pres.3sg.q"], "карамы")
+        self.assertEqual(verb_forms("укы")["verb.pres.neg.1sg.q"], "укмыйммы")
+        self.assertEqual(verb_forms("бар")["verb.fut.1sg.q"], "барырмынмы")
+
+    def test_no_clitic_on_imperatives_or_nonfinite(self):
+        labels = {label for label, _ in gen.generate_verb_forms("яз", "back", EXC)}
+        for label in labels:
+            if label.endswith(".q"):
+                self.assertNotIn("imp", label)
+                self.assertNotIn("ger", label)
+                self.assertNotIn("part", label)
+        self.assertIn("verb.imp.2sg", labels)  # imperative rows exist, minus .q
+
+    def test_question_labels_are_known(self):
+        self.assertIn("verb.pres.1sg.q", gen.KNOWN_LABELS)
+        self.assertIn("noun.pred.1sg.q", gen.KNOWN_LABELS)
+        self.assertEqual(gen.label_family("verb.pres.1sg.q"), "verb.q")
+        self.assertEqual(gen.label_family("noun.pred.1sg.q"), "noun.pred.q")
+        self.assertEqual(gen.label_family("noun.pl"), "noun")
+        self.assertEqual(gen.label_family("deriv.ca"), "deriv")
+
+
 class GoldenDerivTest(unittest.TestCase):
     def test_derivational_set(self):
         dus = dict(gen.generate_deriv_forms("дус", "back"))
@@ -562,12 +891,47 @@ class CandidatesTest(unittest.TestCase):
             # stage keeps the attested one (советларга).
             ("советларга", "совет", "noun.pl.dat"),
             ("советләргә", "совет", "noun.pl.dat"),
+            # The newer families: fut/cond/deffut/rpast persons, 1pl/3rd-person
+            # imperatives, nominal predicates, the question-clitic layer.
+            ("язармын", "яз", "verb.fut.1sg"),
+            ("язарбыз", "яз", "verb.fut.1pl"),
+            ("китәрсез", "кит", "verb.fut.2pl"),
+            ("язсак", "яз", "verb.cond.1pl"),
+            ("язачаксың", "яз", "verb.deffut.2sg"),
+            ("язгансың", "яз", "verb.rpast.2sg"),
+            ("язганнар", "яз", "verb.rpast.3pl"),
+            ("языйк", "яз", "verb.imp.1pl"),
+            ("язсыннар", "яз", "verb.imp.3pl"),
+            ("эшлик", "эшлә", "verb.imp.1pl"),
+            ("татармын", "татар", "noun.pred.1sg"),
+            ("өйбез", "өй", "noun.pred.1pl"),
+            ("язаммы", "яз", "verb.pres.1sg.q"),
+            ("эшлиме", "эшлә", "verb.pres.3sg.q"),
+            ("татармы", "татар", "noun.pred.3sg.q"),
+            ("сумы", "су", "noun.pred.3sg.q"),
         }
         self.assertTrue(expected <= row_set, expected - row_set)
         # The bare stem itself is never a candidate row.
         self.assertNotIn(("яз", "яз", "verb.imp.2sg"), row_set)
+        self.assertNotIn(("татар", "татар", "noun.pred.3sg"), row_set)
         self.assertNotIn("минләр", {form for form, _, _ in rows})
         self.assertEqual(stats["stems"], len(WORD_LIST))
+
+    def test_family_counts(self):
+        _rows, stats = gen.build_candidates(WORD_LIST, EXC)
+        families = stats["candidate_rows_by_family"]
+        self.assertEqual(sum(families.values()), stats["candidate_rows"])
+        self.assertEqual(
+            families,
+            {
+                "deriv": 105,
+                "noun": 299,
+                "noun.pred": 70,
+                "noun.pred.q": 82,
+                "verb": 1122,
+                "verb.q": 930,
+            },
+        )
 
     def test_rows_sorted_and_unique(self):
         rows, _stats = gen.build_candidates(WORD_LIST, EXC)
@@ -584,7 +948,8 @@ class GroupTest(unittest.TestCase):
     def test_groups(self):
         words = WORD_LIST + [
             "татарлар", "татарның", "татарча", "язды", "язган", "эшләде",
-            "өйләр", "китаплар", "суны",
+            "өйләр", "китаплар", "суны", "татармын", "языйк", "язарсың",
+            "язаммы",
         ]
         rows, stats = gen.build_groups(words, EXC)
         groups = {(stem, form): label for stem, form, label in rows}
@@ -596,7 +961,13 @@ class GroupTest(unittest.TestCase):
         self.assertEqual(groups[("эшлә", "эшләде")], "verb.past.3sg")
         self.assertEqual(groups[("өй", "өйләр")], "noun.pl")
         self.assertEqual(groups[("су", "суны")], "noun.acc")
+        # The newer families strip and round-trip too.
+        self.assertEqual(groups[("татар", "татармын")], "noun.pred.1sg")
+        self.assertEqual(groups[("яз", "языйк")], "verb.imp.1pl")
+        self.assertEqual(groups[("яз", "язарсың")], "verb.fut.2sg")
+        self.assertEqual(groups[("яз", "язаммы")], "verb.pres.1sg.q")
         self.assertEqual(stats["grouped_forms"], len(rows))
+        self.assertEqual(sum(stats["grouped_forms_by_family"].values()), len(rows))
 
     def test_ambiguous_strips_skipped(self):
         # язам analyzes as яза+м (noun.p1 of яза) and as яз+ам

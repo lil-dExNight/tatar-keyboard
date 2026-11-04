@@ -431,8 +431,8 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
         # promote entries above the old cutoff and displace the same number from the tail:
         # words_added == 10 000 + words_displaced.
         self.assertEqual(self.report["tat"]["entries_after"], 110_000)
-        self.assertEqual(self.report["tat"]["words_added"], 21_288)
-        self.assertEqual(self.report["tat"]["words_displaced"], 11_288)
+        self.assertEqual(self.report["tat"]["words_added"], 21_268)
+        self.assertEqual(self.report["tat"]["words_displaced"], 11_268)
 
     def test_mozhna_pair_shows_single_word_on_prefix(self) -> None:
         # On the prefix `можн` there is no `можно | можна` pair: the curator excluded

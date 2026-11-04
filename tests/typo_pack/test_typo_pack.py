@@ -405,10 +405,10 @@ class CommittedInputsSmokeTest(unittest.TestCase):
     def test_real_build_matches_recorded_set_identity(self) -> None:
         typo_set, neighbor_map = pack.generate(DICTIONARY, LAYOUT_DIR)
         # The Kotlin calibration test asserts the same values; the asset rebuild rewrites both.
-        self.assertEqual(typo_set.size, 96072)
+        self.assertEqual(typo_set.size, 96083)
         self.assertEqual(
             typo_set.sha256,
-            "8cc4cd646de5096db95639cdbd638f99b2ee1c2bf330ba5dd58f5ad3210f0992",
+            "6809bf5bcc878da11614e1161a333bf40edd7a6e3c742899835a6d942530d84a",
         )
         self.assertEqual(typo_set.variant_p95, 3)
         self.assertEqual(len({frozenset((n, p)) for n, ps in neighbor_map.items() for p in ps}), 10)
@@ -708,19 +708,19 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
         # A dictionary rebuild rewrites all three identities; a geometry model change affects
         # only class #2 (classes #1 and #3 do not involve geometry).
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1)
-        self.assertEqual(one.size, 96072)
+        self.assertEqual(one.size, 96083)
         self.assertEqual(
-            one.sha256, "8cc4cd646de5096db95639cdbd638f99b2ee1c2bf330ba5dd58f5ad3210f0992"
+            one.sha256, "6809bf5bcc878da11614e1161a333bf40edd7a6e3c742899835a6d942530d84a"
         )
         two, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=2)
         self.assertEqual(two.size, 109645)
         self.assertEqual(
-            two.sha256, "8c06530b642536954303f99610501163b2628c66e83db44f994033022ecc25c3"
+            two.sha256, "0ff5fbb0dfc829cbacf2a03f9cdebc98a400ee3aa16f5d65599a4bdfcf7906a4"
         )
         three, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=3)
         self.assertEqual(three.size, 109632)
         self.assertEqual(
-            three.sha256, "93104acbec41605a4b01d67af9ddcacde0d2b99fd17a35e54e62e3c493bbecfa"
+            three.sha256, "e505604177cec4a14dffb18427c761a6e7298e43e397991ef6a9148894294964"
         )
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
@@ -729,12 +729,12 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1, prefix_code_points=5)
         self.assertEqual(one.size, 102506)
         self.assertEqual(
-            one.sha256, "8997b58f33a74d87e76d3f5175a9f0fad4777dcb1a6d335a032d287c25d2fc56"
+            one.sha256, "6b62d6de26ab7dec219c13738433346a23e169aa8a9d07cc3ab5b173afd89171"
         )
         two, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=2, prefix_code_points=5)
-        self.assertEqual(two.size, 104967)
+        self.assertEqual(two.size, 104966)
         self.assertEqual(
-            two.sha256, "01a9a4a1b0bbddcf8bee5ca01f78177c1316dc35c5cc5480e06b3dd855ee3955"
+            two.sha256, "ecda41033f2c03c4ea8264c7e62343e0098d916b7e42dbcf0c56d3ad3b2d0a63"
         )
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
@@ -744,13 +744,13 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
         four3, alphabet = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=4)
         self.assertEqual(four3.size, 109645)
         self.assertEqual(
-            four3.sha256, "edd860eadab9d43f4dea3b040e15c473774003b5e1f903f853d7e0d46c03edf1"
+            four3.sha256, "79a58bcf54547e04b3d64d68670303406e0dee500c7b897c61368c1f056dc02e"
         )
         self.assertEqual(len(alphabet), 39)
         four5, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=4, prefix_code_points=5)
-        self.assertEqual(four5.size, 104967)
+        self.assertEqual(four5.size, 104966)
         self.assertEqual(
-            four5.sha256, "12148b31ef3d40048aa9d56be20de8db78b9e4b1e28f7cc696ac779f9074b5d0"
+            four5.sha256, "d97087d4fbe023214a5b55b713ae5a45327466feb5fb9bd7b5c621443f90bc32"
         )
 
 

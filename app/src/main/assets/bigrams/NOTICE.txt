@@ -52,11 +52,10 @@ docs/ASSET-PIPELINE.md describes the rebuild.
 --------------------------------------------------------------------------------
 russian_bigrams_v1.tatbigr.zlib
 
-Derived from the Russian corpora rus_news_2022_1M, rus_news_2019_1M, and
-rus_wikipedia_2021_1M -- the same three corpora the russian_top100k_v1
-dictionary is built from. A fourth corpus, rus_news_2024_1M, was used only to
-measure the table's predictive usefulness before it was built and contributed
-no data to the shipped table itself.
+Derived from the Russian corpora rus_news_2022_1M, rus_news_2019_1M,
+rus_wikipedia_2021_1M, rus_news_2023_1M, and rus_news_2024_1M. The first
+three are the corpora the russian_top100k_v1 dictionary is built from; the
+two news corpora of 2023 and 2024 train only this table.
 Catalogue page: https://wortschatz.uni-leipzig.de/en/download/Russian
 
 The training input additionally contains a deduplicated, deterministically
@@ -78,10 +77,13 @@ the 33-letter Russian alphabet in place of the Tatar one and the shipped
 russian_top100k_v1 dictionary as the vocabulary both halves of every pair must
 belong to; this table keeps its own shape -- the top 10,000 head words by
 unigram frequency and the top 4 successors per head -- with the same binary
-format, the same SHA-256 and zlib settings. The conversational lines were
-deduplicated before counting, and no sentence from either collection is stored
-in the app -- the table holds word pairs and their ranks only. The pipeline
-is the same as for the Tatar table (docs/ASSET-PIPELINE.md).
+format, the same SHA-256 and zlib settings. Punctuation at token edges was
+removed before word normalization; internal punctuation still rejected the
+token, and sentence-terminal edges continued to break pair adjacency. The
+conversational lines were deduplicated before counting, and no sentence from
+either collection is stored in the app -- the table holds word pairs and
+their ranks only. The pipeline is the same as for the Tatar table
+(docs/ASSET-PIPELINE.md).
 
 --------------------------------------------------------------------------------
 The Leipzig-derived table data remains a separate CC BY 4.0 component; the

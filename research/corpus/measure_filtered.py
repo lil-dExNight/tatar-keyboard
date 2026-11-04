@@ -1,6 +1,8 @@
 """Filtered measurement: coverage gain, new words, and a full account of what filtering cut.
 
-Same held-out split as coverage_gain.py (line index % 10 == 0 held out, after dedup).
+Same held-out split as coverage_gain.py (one line in ten held out after dedup, the residue per
+language in stream.HELD_RESIDUE; the Tatar residue matches the eval-set slice, so the
+conversational frequency table never counts an eval line).
 Filters are applied to TRAIN only; the held-out text is never filtered, because it is the
 thing being predicted, not a source of frequencies.
 """
@@ -11,10 +13,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import corpuslib as CL, filters as F
 import dictionary_coverage as cov
-from stream import Split, TRAIN, HELD, fast_normalizer
+from stream import Split, TRAIN, HELD, HELD_RESIDUE, fast_normalizer
 
 def collect(paths, tag):
     lang = cov.language_for(tag); alpha = lang.alphabet
+    residue = HELD_RESIDUE[tag]
     seen = set(); train_lines = []; held_lines = []
     for p in paths:
         with CL.open_text(Path(p)) as fh:
@@ -22,7 +25,7 @@ def collect(paths, tag):
                 k = line.strip()
                 if not k or k in seen: continue
                 seen.add(k)
-                (held_lines if len(seen) % 10 == 0 else train_lines).append(line)
+                (held_lines if len(seen) % 10 == residue else train_lines).append(line)
     ev = F.CaseEvidence(); freq = Counter()
     for line in train_lines:
         first = True
@@ -47,7 +50,7 @@ def collect_split(paths, tag):
     """
     lang = cov.language_for(tag); alpha = lang.alphabet
     norm = fast_normalizer(alpha)
-    split = Split(paths)
+    split = Split(paths, held_residue=HELD_RESIDUE[tag])
     ev = F.CaseEvidence(); freq = Counter()
     observe = ev.observe
     edge = CL._EDGE

@@ -35,7 +35,7 @@ DEFAULT_WORKDIR = ROOT / "build" / "tt-suggestions"
 DEFAULT_OUT = ROOT / "app" / "src" / "test" / "resources" / "tt_eval_sentences.txt"
 CORPUS_MANIFEST = ROOT / "data" / "corpus-manifest.json"
 
-TATOEBA_FILE = "Tatoeba-v2026-07-08.tt.txt.gz"
+TATOEBA_FILE = "Tatoeba-v2026-10-31.tt.txt.gz"
 OPENSUBTITLES_FILE = "OpenSubtitles-v2024.tt.txt.gz"
 CONVERTER = "make_conv_train.py"
 
@@ -50,10 +50,10 @@ LEIPZIG_SENTENCE_FILES = (
 # Digest, size and line count of the converted training stream. Verified on every build;
 # a mismatch means the local corpus files or the converter no longer reproduce it.
 CONV_SENTENCES_SHA256 = (
-    "8420ec0a3c7f329094989ece7cee396ee0dfe987e5e131f91424d7e2e5826b49"
+    "153dc11bb4d3fdc8aa739c1996accf493621da1cd93c1d570bc92611946b9050"
 )
-CONV_SENTENCES_BYTES = 12_619_164
-CONV_SENTENCES_LINES = 218_552
+CONV_SENTENCES_BYTES = 13_258_192
+CONV_SENTENCES_LINES = 227_154
 
 # Pinned sampling seed. Changing it produces a new eval set, not a rebuild.
 SAMPLE_SEED = 20260919
@@ -70,7 +70,7 @@ EDGE_CHARS = "\"'«»„“”‘’()[]{}<>.,!?;:…—–-*_/\\|~`^&#№%+=@$"
 HEADER_LINES = (
     "# Tatar evaluation sentences for the suggestion engine.",
     "#",
-    "# Source: Tatoeba Tatar sentences, dump Tatoeba-v2026-07-08 (https://tatoeba.org/).",
+    "# Source: Tatoeba Tatar sentences, export 2026-10-31 (https://tatoeba.org/).",
     "# License: Creative Commons Attribution 2.0 France (CC BY 2.0 FR),",
     "# https://creativecommons.org/licenses/by/2.0/fr/ -- sentences are contributed by",
     "# Tatoeba's members; the license permits use, modification and redistribution on the",

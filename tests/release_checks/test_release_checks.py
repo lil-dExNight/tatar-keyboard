@@ -387,6 +387,7 @@ class ReleaseGateTest(unittest.TestCase):
         self.repo.write("scripts/run_python_tests.sh", "echo 'Ran 1 tests'\n")
         self.repo.write("scripts/check-no-internet.sh", "exit 0\n")
         self.repo.write("scripts/rebuild_assets.py", "")
+        self.repo.write("scripts/parity_check.py", "")
         self.repo.write("tests/stub/test_stub.py", "")
         self.apk = self.repo.apk("candidate.apk", None)
 
@@ -440,6 +441,23 @@ class ContinuousIntegrationChecksTest(unittest.TestCase):
     def test_the_size_limit_lives_only_in_the_release_checker(self) -> None:
         self.assertIn("size", self.ci_checks())
         self.assertNotIn(self.size_limit.group(1), self.workflow)
+
+    def test_ci_compiles_the_android_test_and_profile_modules(self) -> None:
+        # The androidTest sources and the profile generator are never on the paths of the
+        # other CI builds, so their compilation needs its own gradle invocations.
+        self.assertIn("./gradlew :app:assembleDebugAndroidTest", self.workflow)
+        self.assertIn("./gradlew :baselineprofile:assemble", self.workflow)
+
+    def test_the_scheduled_workflow_gates_key_expiry_and_cold_cache(self) -> None:
+        nightly = (ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8")
+        self.assertRegex(nightly, r"(?m)^\s*- cron: ")
+        self.assertIn("python3 scripts/key_expiry_check.py", nightly)
+        self.assertIn("clean assembleRelease -PskipReleaseSigning", nightly)
+        # A cache-priming action would defeat the cold-cache build.
+        self.assertNotIn("gradle/actions/setup-gradle", nightly)
+        # Every action reference is pinned to a full-length commit SHA.
+        for ref in re.findall(r"uses:\s*\S+@(\S+)", nightly):
+            self.assertRegex(ref, r"^[0-9a-f]{40}$")
 
 
 class SuggestionsDefaultInScriptsTest(unittest.TestCase):

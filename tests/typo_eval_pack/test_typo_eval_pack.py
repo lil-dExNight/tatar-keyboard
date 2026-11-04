@@ -274,9 +274,9 @@ class CommittedSetIdentityTest(unittest.TestCase):
         self.assertEqual(
             result.class_counts, {"sub": 2381, "del": 2381, "ins": 2381, "trans": 2381}
         )
-        self.assertEqual(len(result.data), 310498)
+        self.assertEqual(len(result.data), 310834)
         self.assertEqual(
-            result.sha256, "8b60e4b146981d737b351abbbdfd478a3aaa5eedb51a8769ff0cab54c5b5636e"
+            result.sha256, "80891b11c01776303adc1a1cb8fa0b3eadb8b534bb447f8186d6348a7000acd8"
         )
 
     def test_every_class_is_present(self) -> None:
@@ -384,14 +384,14 @@ class TatarValidOovSafetySetIdentityTest(unittest.TestCase):
         )
 
     def test_set_identity_and_strata(self) -> None:
-        self.assertEqual(self.result.size, 175)
-        self.assertEqual(len(self.result.data), 6157)
+        self.assertEqual(self.result.size, 220)
+        self.assertEqual(len(self.result.data), 7814)
         self.assertEqual(
-            self.result.sha256, "e843019198ef8df8d9d4feef1895e3048dbd842e1fc3c0820d7dce8caaa2761d"
+            self.result.sha256, "fc539f876541dce34c3706cefc00c0c2b05b60e8b559aa606a1693539a8b4dd2"
         )
         self.assertEqual(
             self.result.stratum_counts,
-            {"seen_form": 12, "new_form_of_seen_stem": 59, "unseen_stem": 104},
+            {"seen_form": 6, "new_form_of_seen_stem": 87, "unseen_stem": 127},
         )
 
     def test_committed_file_is_byte_identical(self) -> None:
@@ -455,9 +455,9 @@ class CliTest(unittest.TestCase):
             self.assertEqual(report["rows"], 9524)
             self.assertEqual(
                 report["set_sha256"],
-                "8b60e4b146981d737b351abbbdfd478a3aaa5eedb51a8769ff0cab54c5b5636e",
+                "80891b11c01776303adc1a1cb8fa0b3eadb8b534bb447f8186d6348a7000acd8",
             )
-            self.assertEqual(report["set_bytes"], 310498)
+            self.assertEqual(report["set_bytes"], 310834)
             self.assertEqual(report["substrate_words"], 2381)
             self.assertEqual(hashlib.sha256(out.read_bytes()).hexdigest(), report["set_sha256"])
 

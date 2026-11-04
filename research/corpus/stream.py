@@ -10,7 +10,9 @@ scripts:
     * a line is keyed by ``line.strip()``; empty keys are dropped;
     * a key already seen is dropped (deduplication happens BEFORE the split, so one subtitle
       repeated across uploads cannot land in both halves);
-    * counting unique lines from 1, every tenth one is HELD OUT and the other nine are TRAIN.
+    * counting unique lines from 1, one line in ten is HELD OUT and the other nine are TRAIN;
+      the held-out residue is per language (HELD_RESIDUE), so the Tatar frequency pass holds
+      out exactly the rows the eval set is built from.
 
 What changed is only WHERE the decision lives. [Split] makes one pass over the files, records
 one byte per physical line (0 = dropped, 1 = train, 2 = held), and then replays the files as
@@ -36,6 +38,13 @@ DROP, TRAIN, HELD = 0, 1, 2
 
 MAX_WORD_LENGTH = 64
 
+# The held-out residue of each language's conversational split: a unique line (counted from 1
+# after dedup, the same numbering make_conv_train.py gives its rows) is held out when
+# line % 10 == HELD_RESIDUE[tag]. Tatar holds out the id % 10 == 1 slice of the converted
+# stream, the slice scripts/make_eval_set.py builds the eval set from, so the conversational
+# frequency table never counts an eval line.
+HELD_RESIDUE = {"tat": 1, "rus": 0}
+
 
 def fast_normalizer(alphabet):
     """Return ``norm(raw) -> str | None`` equivalent to ``normalize_word(raw, alphabet)[0]``."""
@@ -58,8 +67,9 @@ def source_name(path: Path) -> str:
 class Split:
     """Deduplicated train/held split over gzipped corpora, held as one byte per line."""
 
-    def __init__(self, paths, capacity_hint: int | None = None) -> None:
+    def __init__(self, paths, capacity_hint: int | None = None, held_residue: int = 0) -> None:
         self.paths = [Path(p) for p in paths]
+        self.held_residue = held_residue
         if capacity_hint is None:
             # An estimate of compressed bytes per unique line; the table grows on its own if
             # the guess is low, so this only saves a rehash.
@@ -82,7 +92,7 @@ class Split:
                         self.dropped_lines += 1
                         continue
                     unique += 1
-                    if unique % 10 == 0:
+                    if unique % 10 == held_residue:
                         append(HELD)
                         self.held_lines += 1
                     else:

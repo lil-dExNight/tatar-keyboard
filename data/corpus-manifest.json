@@ -14,6 +14,16 @@
     "size": 197281873,
     "source": "Leipzig rus_news_2022_1M"
   },
+  "rus_news_2023_1M-sentences.txt": {
+    "sha256": "7b2193df0e39bea55479dd5205243792ea1db55c6c111cd0149382d101b297d6",
+    "size": 196851337,
+    "source": "Leipzig rus_news_2023_1M"
+  },
+  "rus_news_2024_1M-sentences.txt": {
+    "sha256": "ebbd52e9d86610b408cb9d054a1a1010dfbd595fdacd999829409a3f0ba4b7da",
+    "size": 200509212,
+    "source": "Leipzig rus_news_2024_1M"
+  },
   "rus_wikipedia_2021_1M-sentences.txt": {
     "sha256": "0427676fc54a18afd3b80e0fb7650d8b59a2fa9be5b9d2c77cb50a3a0a5b5f8e",
     "size": 189049129,
@@ -40,8 +50,8 @@
     "source": "Leipzig tat_web_2018_1M"
   },
   "tt_conv_train90-sentences.txt": {
-    "sha256": "21c0ee66d0f4fb77d00070e240339e2d57dcd57c67893c6a306c59422c38a405",
-    "size": 11361696,
-    "source": "research/corpus/make_conv_train.py over OPUS Tatoeba v2026-07-08 tt + OpenSubtitles v2024 tt, lines with id % 10 != 1"
+    "sha256": "49ff352a3b8f4530889c1c4caffcdde3afd4dff02a82d1840d50e6b0417d0fff",
+    "size": 11937875,
+    "source": "research/corpus/make_conv_train.py over the Tatoeba export 2026-10-31 tt + OpenSubtitles v2024 tt, lines with id % 10 != 1"
   }
 }

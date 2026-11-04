@@ -557,7 +557,7 @@ class ShippedExtraHeadListTest(unittest.TestCase):
         # and the conversational rule (frequency rank >= H and >= 10 occurrences
         # in the tt_conv_train90 training set); scripts/bigram_extra_heads_regen.py
         # regenerates the whole file.
-        self.assertEqual(2_614, len(words))
+        self.assertEqual(2_786, len(words))
         # Imperative-rule samples. The previous samples (кил, кит, сөйлә, утыр, укы) are gone
         # not by rejection but by promotion: the merged ranking moved them inside the cutoff,
         # where they are heads by frequency.

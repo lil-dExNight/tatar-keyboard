@@ -48,6 +48,20 @@ def build_dictionary_asset(directory: Path, words=WORDS, frequencies=FREQUENCIES
     return asset_path
 
 
+def build_companion_asset(directory: Path, words,
+                          name="tatar_companion_v1.tcomp.zlib",
+                          dictionary_name="tatar_top100k_v1.tdict.zlib") -> Path:
+    """A real companion list asset over [words], built with the packer APIs."""
+    import companion_list_pack
+
+    parsed = dictionary_pack.validate_asset(
+        (directory / dictionary_name).read_bytes())
+    built = companion_list_pack.build_list(parsed, len(words))
+    asset_path = directory / name
+    asset_path.write_bytes(built.compressed)
+    return asset_path
+
+
 def build_bigram_asset(directory: Path, heads, table, dictionary_asset: Path,
                        successes_per_head=2,
                        name="tatar_bigrams_v1.tatbigr.zlib") -> Path:
@@ -102,6 +116,22 @@ BIGRAM_BLOCK = """\
         // </generated pins>"""
 
 
+COMPANION_BLOCK = """\
+        // <generated pins>
+        val {spec} = CompanionListArtifactSpec(
+            family = "{family}",
+            expectedCompressedSize = 1,
+            expectedCompressedSha256 =
+                "{sha}",
+            expectedRawSize = 56,
+            expectedRawSha256 =
+                "{sha}",
+            expectedWordCount = 1,
+        )
+        // </generated pins>"""
+
+
+
 def write_fake_contracts(root: Path) -> None:
     dict_contract = root / rebuild_assets.DICT_CONTRACT
     dict_contract.parent.mkdir(parents=True, exist_ok=True)
@@ -119,6 +149,17 @@ def write_fake_contracts(root: Path) -> None:
         BIGRAM_BLOCK.format(spec="TATAR_BIGRAMS_V1", family="tatar_bigrams", sha=SHA0)
         + "\n"
         + BIGRAM_BLOCK.format(spec="RUSSIAN_BIGRAMS_V1", family="russian_bigrams", sha=SHA0)
+        + "\n",
+        encoding="utf-8",
+    )
+    companion_contract = root / rebuild_assets.COMPANION_CONTRACT
+    companion_contract.parent.mkdir(parents=True, exist_ok=True)
+    companion_contract.write_text(
+        COMPANION_BLOCK.format(
+            spec="TATAR_COMPANION_V1", family="tatar_companion", sha=SHA0)
+        + "\n"
+        + COMPANION_BLOCK.format(
+            spec="RUSSIAN_COMPANION_V1", family="russian_companion", sha=SHA0)
         + "\n",
         encoding="utf-8",
     )
@@ -141,6 +182,13 @@ def pin_everything(root: Path, dictionary: rebuild_assets.DictionaryAsset,
         )},
         "BigramArtifactSpec",
         "expectedHeadCount",
+    )
+    rebuild_assets.write_pins(
+        root / rebuild_assets.COMPANION_CONTRACT,
+        {companion.spec: rebuild_assets.measure_companion(root / companion.asset)
+         for companion in rebuild_assets.COMPANIONS},
+        "CompanionListArtifactSpec",
+        "expectedWordCount",
     )
 
 
@@ -191,14 +239,24 @@ class FakeTreeTest(unittest.TestCase):
             dictionary="tat", heads=3, successes_per_head=2,
             extra_heads=None, train=(),
         )
-        self._saved = (rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS)
+        self.companion = rebuild_assets.CompanionListAsset(
+            tag="tat", spec="TATAR_COMPANION_V1",
+            asset="app/src/main/assets/dictionaries/tatar_companion_v1.tcomp.zlib",
+            dictionary="tat", top=len(WORDS),
+        )
+        build_companion_asset(asset_dir, WORDS)
+        self._saved = (
+            rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS, rebuild_assets.COMPANIONS,
+        )
         rebuild_assets.DICTIONARIES = (self.dictionary,)
         rebuild_assets.BIGRAMS = (self.bigram,)
+        rebuild_assets.COMPANIONS = (self.companion,)
         self.addCleanup(self._restore)
         write_corpus_manifest(self.root)
 
     def _restore(self):
-        rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS = self._saved
+        (rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS,
+         rebuild_assets.COMPANIONS) = self._saved
 
     def run_check(self, known_drift=None) -> tuple[int, dict]:
         stream = io.StringIO()
@@ -350,6 +408,35 @@ class CheckTest(FakeTreeTest):
         self.assertEqual("mismatch", report["dictionaries"]["tat"]["verdict"])
         self.assertTrue(report["dictionaries"]["tat"]["problems"])
 
+    def test_red_when_the_dictionary_moved_but_the_companion_list_did_not(self):
+        # The fixture list holds all six words, so no frequency change can move its
+        # set: narrow the list to the top 3 first and pin the consistent tree.
+        rebuild_assets.COMPANIONS = (rebuild_assets.CompanionListAsset(
+            tag="tat", spec="TATAR_COMPANION_V1", asset=self.companion.asset,
+            dictionary="tat", top=3),)
+        asset_dir = self.root / "app/src/main/assets/dictionaries"
+        build_companion_asset(asset_dir, WORDS[:3])
+        pin_everything(self.root, self.dictionary, self.bigram)
+        code, report = self.run_check()
+        self.assertEqual(0, code, report)
+
+        # The frequencies flip: the top 3 are now the other three words. The
+        # dictionary, the table and every pin move together; only the list
+        # asset is not re-packed.
+        build_dictionary_asset(asset_dir, frequencies=list(reversed(FREQUENCIES)))
+        new_top3 = [WORDS[5], WORDS[4], WORDS[3]]
+        build_bigram_asset(self.root / "app/src/main/assets/bigrams",
+                           new_top3, {word: [(WORDS[0], 10)] for word in new_top3},
+                           asset_dir / "tatar_top100k_v1.tdict.zlib")
+        pin_everything(self.root, self.dictionary, self.bigram)
+
+        code, report = self.run_check()
+        self.assertEqual(1, code)
+        self.assertEqual("ok", report["dictionaries"]["tat"]["verdict"])
+        self.assertEqual("ok", report["bigrams"]["tat"]["verdict"])
+        self.assertEqual("mismatch", report["companions"]["tat"]["verdict"])
+        self.assertTrue(report["companions"]["tat"]["problems"])
+
     def test_red_when_the_fallback_pin_does_not_match_the_dictionary(self):
         pin_everything(self.root, self.dictionary, self.bigram)
         contract = self.root / rebuild_assets.DICT_CONTRACT
@@ -471,8 +558,8 @@ class PackArgvTest(unittest.TestCase):
             Path("/root"), Path("/corpora"), Path("/work"), rebuild_assets.BIGRAMS[0])
         text = " ".join(argv)
         self.assertIn("--heads 10132", text)
-        # Four successors per head (the table's K; unrelated to the number of strip cells).
-        self.assertIn("--successes-per-head 4", text)
+        # Eight successors per head (the table's K; unrelated to the number of strip cells).
+        self.assertIn("--successes-per-head 8", text)
         self.assertIn("--extra-heads /root/scripts/bigram_extra_heads_tat.txt", text)
         self.assertIn("--recover-punctuation", text)
         self.assertIn("--language tat", text)
@@ -486,11 +573,17 @@ class PackArgvTest(unittest.TestCase):
             Path("/root"), Path("/corpora"), Path("/work"), rebuild_assets.BIGRAMS[1])
         text = " ".join(argv)
         self.assertIn("--heads 10000", text)
-        self.assertIn("--successes-per-head 4", text)
+        self.assertIn("--successes-per-head 8", text)
         self.assertNotIn("--extra-heads", text)
-        self.assertNotIn("--recover-punctuation", text)
+        self.assertIn("--recover-punctuation", text)
         self.assertIn("--language rus", text)
-        for name in ("rus_news_2022_1M", "rus_news_2019_1M", "rus_wikipedia_2021_1M"):
+        for name in (
+            "rus_news_2022_1M",
+            "rus_news_2019_1M",
+            "rus_wikipedia_2021_1M",
+            "rus_news_2023_1M",
+            "rus_news_2024_1M",
+        ):
             self.assertIn(f"/corpora/{name}-sentences.txt", text)
         # Conversational input.
         self.assertIn("/corpora/rus_conv_thinned60-sentences.txt", text)
@@ -544,7 +637,13 @@ class TwoSideTreeTest(unittest.TestCase):
         build_bigram_asset(bigrams, ["мама"], {"мама": [("папа", 5)]},
                            dictionaries / "russian_top100k_v1.tdict.zlib",
                            name="russian_bigrams_v1.tatbigr.zlib")
-        self._saved = (rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS)
+        build_companion_asset(dictionaries, WORDS)
+        build_companion_asset(dictionaries, ["мама", "папа", "работа"],
+                              name="russian_companion_v1.tcomp.zlib",
+                              dictionary_name="russian_top100k_v1.tdict.zlib")
+        self._saved = (
+            rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS, rebuild_assets.COMPANIONS,
+        )
         rebuild_assets.DICTIONARIES = (
             rebuild_assets.DictionaryAsset(
                 tag="tat", spec="TATAR_TOP100K_V1",
@@ -565,6 +664,16 @@ class TwoSideTreeTest(unittest.TestCase):
                 dictionary="rus", heads=1, successes_per_head=2,
                 extra_heads=None, train=("rus_corpus-sentences.txt",)),
         )
+        rebuild_assets.COMPANIONS = (
+            rebuild_assets.CompanionListAsset(
+                tag="tat", spec="TATAR_COMPANION_V1",
+                asset="app/src/main/assets/dictionaries/tatar_companion_v1.tcomp.zlib",
+                dictionary="tat", top=len(WORDS)),
+            rebuild_assets.CompanionListAsset(
+                tag="rus", spec="RUSSIAN_COMPANION_V1",
+                asset="app/src/main/assets/dictionaries/russian_companion_v1.tcomp.zlib",
+                dictionary="rus", top=3),
+        )
         self.addCleanup(self._restore)
         self.baseline = self.root / "baseline"
         self.baseline.mkdir()
@@ -577,7 +686,8 @@ class TwoSideTreeTest(unittest.TestCase):
             self.root, {name: b"" for name in rebuild_assets.corpus_names()})
 
     def _restore(self):
-        rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS = self._saved
+        (rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS,
+         rebuild_assets.COMPANIONS) = self._saved
 
     def run_rebuild(self, only):
         return rebuild_assets.run_rebuild(
@@ -892,17 +1002,21 @@ class RealTreeTest(unittest.TestCase):
         report = json.loads(stream.getvalue())
         self.assertEqual(0, code, json.dumps(report, ensure_ascii=False, indent=2))
 
-    def test_strict_check_shows_the_known_russian_drift(self):
+    def test_strict_check_shows_the_known_tatar_drift(self):
         stream = io.StringIO()
         code = rebuild_assets.run_check(REPOSITORY_ROOT, None, stream)
         report = json.loads(stream.getvalue())
         self.assertEqual(1, code)
-        self.assertEqual("drift", report["bigrams"]["rus"]["verdict"])
-        # The remaining two come from the generator rule, not from a drift: «окей» and «берегись»
-        # have no in-vocabulary pair in the thinned conversational input and are dropped,
-        # not stored empty.
-        self.assertEqual(2, report["bigrams"]["rus"]["drift"]["missing_top_heads"])
-        self.assertEqual(0, report["bigrams"]["rus"]["drift"]["unexpected_heads"])
+        self.assertEqual("drift", report["bigrams"]["tat"]["verdict"])
+        # The remaining heads come from the generator rule, not from a drift: a head with
+        # no in-dictionary pair is dropped, not stored empty (the reason text of
+        # scripts/known_asset_drift.json names them).
+        self.assertEqual(12, report["bigrams"]["tat"]["drift"]["missing_top_heads"])
+        self.assertEqual(0, report["bigrams"]["tat"]["drift"]["unexpected_heads"])
+        # The Russian table keeps all 10,000 heads since the 2023/2024 news corpora and
+        # the edge-punctuation recovery joined the training input, so its strict verdict
+        # is "ok", not drift.
+        self.assertEqual("ok", report["bigrams"]["rus"]["verdict"])
 
     @classmethod
     def calibration_pins(cls):

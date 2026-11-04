@@ -5,7 +5,7 @@
 set -u
 cd "$(dirname "$0")"
 RU="Tatoeba-v2026-07-08.ru.txt.gz OpenSubtitles-v2024.ru.txt.gz"
-TT="Tatoeba-v2026-07-08.tt.txt.gz OpenSubtitles-v2024.tt.txt.gz"
+TT="Tatoeba-v2026-10-31.tt.txt.gz OpenSubtitles-v2024.tt.txt.gz"
 
 run(){ label="$1"; shift; echo "=== $label начато $(date +%T)"; "$@" > "out/$label.json" 2> "out/$label.err"; echo "=== $label готово $(date +%T) rc=$?"; }
 

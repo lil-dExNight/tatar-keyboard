@@ -40,7 +40,7 @@ RUSSIAN_REVIEW = ROOT / "data" / "dictionary" / "ru-query-review.tsv"
 # so they live here instead of in dictionary_pack.AUTOMATED_REVIEW_DATE (the date of the
 # first build).
 RUSSIAN_REVIEW_DATE = "2026-10-28"
-TATAR_REVIEW_DATE = "2026-10-28"
+TATAR_REVIEW_DATE = "2026-11-04"
 
 
 CONTRACT = (

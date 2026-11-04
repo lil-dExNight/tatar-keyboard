@@ -34,8 +34,46 @@ from typo_pack import splitmix64  # noqa: E402
 # GlobalTopFrequencyFallbackFactory / TdictPrefixIndex).
 CELL_COUNT = 4
 BIGRAM_MAX_RESULTS = 4
+# TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS: the context boost reads more packed successors
+# than the strip displays.
+CONTEXT_SUCCESSORS = 8
 TOP_WORD_POOL = 8
 MIN_SAME_STEM_BOOST_PREFIX_CODE_POINTS = 4
+
+# The production harmony twins of GlobalTopFrequencyFallbackFactory (Tatar only): the
+# front/back pair held in the fallback pool, offered in the shape that matches the committed
+# word's vowel harmony. Russian ships none, so the mirror of its chain skips the rule.
+HARMONY_TWINS = (("дә", "да"),)
+FRONT_VOWELS = frozenset("әеиөүэ")
+BACK_VOWELS = frozenset("аыоуюя")
+VOWELS = FRONT_VOWELS | BACK_VOWELS
+
+
+def last_vowel_is_front(word: str) -> bool | None:
+    """Mirror of ``TatarWordUtils.lastVowelIsFront``: the last vowel's harmony class.
+
+    None when the word has no vowel at all. A final у/ү/ю/я right after another vowel is a
+    diphthong glide and does not decide; the syllable nucleus before it does.
+    """
+    for index in range(len(word) - 1, -1, -1):
+        char = word[index]
+        if char in "уүюя" and index > 0 and word[index - 1] in VOWELS:
+            continue
+        if char in FRONT_VOWELS:
+            return True
+        if char in BACK_VOWELS:
+            return False
+    return None
+
+
+def _mismatching_twin(word: str, committed_front: bool) -> bool:
+    """True when [word] is a harmony twin of the wrong shape for the committed word."""
+    for front, back in HARMONY_TWINS:
+        if word == front and not committed_front:
+            return True
+        if word == back and committed_front:
+            return True
+    return False
 
 # Fixed bootstrap knobs; changing either changes the pinned CI strings in both harnesses.
 BOOTSTRAP_SEED = 20261001
@@ -190,8 +228,8 @@ class ChainMirror:
 
     def packed_successors(self, head: str) -> tuple[str, ...]:
         """The packed bigram successors of [head]: the raw table answer, at most
-        BIGRAM_MAX_RESULTS, in packing order. This is the context the prefix boost reads."""
-        return tuple(self._successes.get(head, ()))[:BIGRAM_MAX_RESULTS]
+        CONTEXT_SUCCESSORS, in packing order. This is the context the prefix boost reads."""
+        return tuple(self._successes.get(head, ()))[:CONTEXT_SUCCESSORS]
 
     def predict_top3(self, head: str) -> list[str]:
         """Mirror of the NEXT_WORD chain for a committed word: bigrams, then fallback."""
@@ -200,10 +238,15 @@ class ChainMirror:
             return cached
         shown = list(self._successes.get(head, ()))[:BIGRAM_MAX_RESULTS]
         if len(shown) < CELL_COUNT:
+            committed_front = last_vowel_is_front(head)
             for word in self._fallback_pool:
                 if len(shown) >= CELL_COUNT:
                     break
                 if word == head or word in shown:
+                    continue
+                if committed_front is not None and _mismatching_twin(
+                    word, committed_front
+                ):
                     continue
                 shown.append(word)
         self._predict_cache[head] = shown

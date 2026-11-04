@@ -36,15 +36,16 @@ import dictionary_coverage as coverage  # noqa: E402
 import dictionary_pack  # noqa: E402
 import wordform_gen  # noqa: E402
 from bigram_pack import select_heads  # noqa: E402
+import companion_list_pack  # noqa: E402
 
 STORAGE_DIR = Path("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/dictionary/storage")
 DICT_CONTRACT = STORAGE_DIR / "DictionaryStorageContracts.kt"
 BIGRAM_CONTRACT = STORAGE_DIR / "BigramStorageContracts.kt"
+COMPANION_CONTRACT = STORAGE_DIR / "CompanionListStorageContracts.kt"
 
 DEFAULT_KNOWN_DRIFT = Path("scripts/known_asset_drift.json")
 DEFAULT_CORPUS_DIR = Path.home() / "corpora-leipzig"
 DEFAULT_WORK_DIR = Path("build/rebuild_assets")
-
 
 @dataclass(frozen=True)
 class DictionaryAsset:
@@ -66,6 +67,35 @@ class BigramAsset:
     train: tuple[str, ...]  # *-sentences.txt names in the corpus directory
     recover_punctuation: bool = False
 
+
+@dataclass(frozen=True)
+class CompanionListAsset:
+    tag: str
+    spec: str  # constant name in CompanionListStorageContracts.kt
+    asset: str
+    dictionary: str  # tag of the dictionary the list derives from
+    top: int  # words kept, by stored frequency
+
+
+# Packing parameters of the shipped lists (words kept per language). Changing a
+# parameter changes the asset, so change it only together with a rebuild. The
+# lists derive from the committed dictionaries alone: no corpus, no baseline.
+COMPANIONS = (
+    CompanionListAsset(
+        tag="tat",
+        spec="TATAR_COMPANION_V1",
+        asset="app/src/main/assets/dictionaries/tatar_companion_v1.tcomp.zlib",
+        dictionary="tat",
+        top=20_000,
+    ),
+    CompanionListAsset(
+        tag="rus",
+        spec="RUSSIAN_COMPANION_V1",
+        asset="app/src/main/assets/dictionaries/russian_companion_v1.tcomp.zlib",
+        dictionary="rus",
+        top=20_000,
+    ),
+)
 
 # Tatar dictionary cutoff; at 100 000 no admitted word form makes the cut. The release APK size
 # limit is the only size limit, so run release_check.sh after changing it.
@@ -95,9 +125,9 @@ BIGRAMS = (
         asset="app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
         dictionary="tat",
         heads=10_132,
-        # Up to four successors per head. The strip shows three; the fourth is kept so a
-        # wider strip needs no repack.
-        successes_per_head=4,
+        # Up to eight successors per head. The strip shows three; the rest feed the
+        # context track of the prefix engine (successor ids boost matching completions).
+        successes_per_head=8,
         # Heads below the H cutoff, added by the rule described in the file header.
         extra_heads="scripts/bigram_extra_heads_tat.txt",
         # Two Leipzig corpora plus the conversational input: deduplicated Tatoeba +
@@ -121,18 +151,29 @@ BIGRAMS = (
         asset="app/src/main/assets/bigrams/russian_bigrams_v1.tatbigr.zlib",
         dictionary="rus",
         heads=10_000,
-        successes_per_head=4,
+        # Up to eight successors per head, as in the Tatar table: the strip shows
+        # three; the rest feed the context track of the prefix engine.
+        successes_per_head=8,
         extra_heads=None,
-        # Three Leipzig corpora plus the conversational input: deduplicated Tatoeba +
+        # Five Leipzig corpora plus the conversational input: deduplicated Tatoeba +
         # OpenSubtitles ru, thinned to 1/60 (lines with id % 60 == 0). Built with
-        # research/corpus/make_conv_train.py and an id filter and placed in --corpus-dir
-        # by hand; without it a full rebuild stops before any step runs.
+        # research/corpus/make_conv_train.py and an id filter and placed in --corpus-dir by
+        # hand; without it a full rebuild stops before any step runs. rus_news_2023_1M
+        # and rus_news_2024_1M were appended after the 2019/2022 news files and the 2021
+        # wikipedia file: additive refresh, the dictionary composition stays on the
+        # 1.8.4 baseline.
         train=(
             "rus_news_2022_1M-sentences.txt",
             "rus_news_2019_1M-sentences.txt",
             "rus_wikipedia_2021_1M-sentences.txt",
+            "rus_news_2023_1M-sentences.txt",
+            "rus_news_2024_1M-sentences.txt",
             "rus_conv_thinned60-sentences.txt",
         ),
+        # Edge punctuation retains its sentence boundaries but no longer discards whole
+        # words; the five-file measurement found the recovered in-vocabulary pairs at
+        # about a third of the canonical total, far above the enable threshold.
+        recover_punctuation=True,
     ),
 )
 
@@ -572,6 +613,22 @@ def measure_bigram(asset_path: Path, dictionary_path: Path, tag: str) -> Pins:
     )
 
 
+def measure_companion(asset_path: Path) -> Pins:
+    """Pins of a companion list: the compressed/raw sizes and SHA-256 values plus
+    the word count. The raw file is fully parsed back, so a truncated or corrupt
+    asset is a check verdict, not a crash."""
+    asset = asset_path.read_bytes()
+    raw = companion_list_pack.decompress_asset(asset)
+    words, _fields = companion_list_pack.parse_raw(raw)
+    return Pins(
+        compressed_size=len(asset),
+        compressed_sha256=hashlib.sha256(asset).hexdigest(),
+        raw_size=len(raw),
+        raw_sha256=hashlib.sha256(raw).hexdigest(),
+        count=len(words),
+    )
+
+
 # --- consistency check ------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -672,7 +729,8 @@ def run_check(
     """
     dict_contract = root / DICT_CONTRACT
     bigram_contract = root / BIGRAM_CONTRACT
-    for path in (dict_contract, bigram_contract):
+    companion_contract = root / COMPANION_CONTRACT
+    for path in (dict_contract, bigram_contract, companion_contract):
         if not path.is_file():
             print(f"error: no contract file {path}", file=sys.stderr)
             return 2
@@ -689,8 +747,9 @@ def run_check(
             return 2
         known = load_known_drift(known_drift_path)
 
-    report: dict[str, object] = {"dictionaries": {}, "bigrams": {}}
     failed = False
+    report: dict[str, object] = {"dictionaries": {}, "bigrams": {}, "companions": {}}
+    corpus_entry: dict[str, object] = {"manifest": str(CORPUS_MANIFEST)}
 
     for dictionary in DICTIONARIES:
         asset_path = root / dictionary.asset
@@ -817,13 +876,60 @@ def run_check(
               file=sys.stderr)
         failed = True
 
-    corpus_entry: dict[str, object] = {"manifest": str(CORPUS_MANIFEST)}
+    for companion in COMPANIONS:
+        asset_path = root / companion.asset
+        entry: dict[str, object] = {"asset": companion.asset, "spec": companion.spec}
+        dictionary_path = root / next(
+            d.asset for d in DICTIONARIES if d.tag == companion.dictionary
+        )
+        if not asset_path.is_file() or not dictionary_path.is_file():
+            entry["verdict"] = "missing"
+            failed = True
+        else:
+            try:
+                pinned = read_pins(
+                    companion_contract, companion.spec, "CompanionListArtifactSpec",
+                    "expectedWordCount",
+                )
+            except ContractError as error:
+                print(f"error: unparsable contract: {error}", file=sys.stderr)
+                return 2
+            try:
+                problems = _pin_problems(
+                    measure_companion(asset_path), pinned
+                )
+                # The list must still equal the top words of its dictionary: a rebuilt
+                # dictionary without a re-packed list is a divergence the check reports.
+                expected = companion_list_pack.select_words(
+                    dictionary_pack.validate_asset(
+                        dictionary_path.read_bytes(),
+                        language=coverage.language_for(companion.tag),
+                    ),
+                    companion.top,
+                )
+                actual, _fields = companion_list_pack.parse_raw(
+                    companion_list_pack.decompress_asset(asset_path.read_bytes())
+                )
+                # The body stores words in byte order, the selection is ranked; the word
+                # sets must be exactly equal.
+                if sorted(actual) != sorted(expected):
+                    problems = problems + [
+                        "the words are not the current top "
+                        f"{companion.top} of the dictionary"
+                    ]
+            except Exception as error:  # a broken asset is a check verdict, not a crash
+                problems = [f"asset unreadable: {error}"]
+            entry["verdict"] = "mismatch" if problems else "ok"
+            entry["problems"] = problems
+            failed = failed or bool(problems)
+        report["companions"][companion.tag] = entry  # type: ignore[index]
+
     if corpus_dir is None:
         corpus_entry["verdict"] = "not-checked"
     else:
         files = verify_corpus(corpus_dir, corpus_manifest, corpus_names())
-        corpus_entry["corpus_dir"] = str(corpus_dir)
         corpus_entry["files"] = files
+        corpus_entry["corpus_dir"] = str(corpus_dir)
         corpus_entry["verdict"] = (
             "ok" if all(v == "ok" for v in files.values())
             else "missing" if all(v in ("ok", "missing") for v in files.values())
@@ -837,7 +943,7 @@ def run_check(
     json.dump(report, stream, ensure_ascii=False, indent=2, sort_keys=True)
     stream.write("\n")
 
-    for section in ("dictionaries", "bigrams"):
+    for section in ("dictionaries", "bigrams", "companions"):
         for tag, entry in sorted(report[section].items()):  # type: ignore[union-attr]
             line = f"{section}/{tag}: {entry['verdict']}"
             if entry["verdict"] == "known-drift":
@@ -1131,6 +1237,23 @@ def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: Bigra
     return argv
 
 
+def companion_pack_argv(root: Path, companion: CompanionListAsset) -> list[str]:
+    """Command line that repacks one list; a separate function so tests can inspect it."""
+    return [
+        sys.executable,
+        str(root / "scripts/companion_list_pack.py"),
+        "build",
+        "--dictionary",
+        str(root / next(d.asset for d in DICTIONARIES if d.tag == companion.dictionary)),
+        "--language",
+        companion.tag,
+        "--top",
+        str(companion.top),
+        "--output",
+        str(root / companion.asset),
+    ]
+
+
 def dict_accept_argv(
     root: Path,
     baseline: Path,
@@ -1193,6 +1316,17 @@ def _side_snapshot(root: Path, tags: frozenset[str]) -> dict[str, object]:
         snapshot[f"pins:{bigram.spec}"] = read_pins(
             root / BIGRAM_CONTRACT, bigram.spec, "BigramArtifactSpec",
             "expectedHeadCount", linked=True,
+        )
+    for companion in COMPANIONS:
+        if companion.tag not in tags:
+            continue
+        asset = root / companion.asset
+        snapshot[f"asset:{companion.asset}"] = (
+            hashlib.sha256(asset.read_bytes()).hexdigest() if asset.is_file() else None
+        )
+        snapshot[f"pins:{companion.spec}"] = read_pins(
+            root / COMPANION_CONTRACT, companion.spec, "CompanionListArtifactSpec",
+            "expectedWordCount",
         )
     return snapshot
 
@@ -1284,6 +1418,12 @@ def run_rebuild(
         if bigram.tag not in selected:
             continue
         _run_step(bigram_pack_argv(root, corpus_dir, work_dir, bigram), cwd=root)
+    # 2b. Companion lists of the selected languages, derived from the dictionaries of
+    # step 1 alone: no corpus and no baseline input.
+    for companion in COMPANIONS:
+        if companion.tag not in selected:
+            continue
+        _run_step(companion_pack_argv(root, companion), cwd=root)
 
     # 3. Pins of the selected assets, one write per contract file.
     dict_updates = {
@@ -1306,7 +1446,16 @@ def run_rebuild(
     write_pins(
         root / BIGRAM_CONTRACT, bigram_updates, "BigramArtifactSpec", "expectedHeadCount"
     )
-    print("pins rewritten in both contracts", file=sys.stderr)
+    companion_updates = {
+        c.spec: measure_companion(root / c.asset)
+        for c in COMPANIONS
+        if c.tag in selected
+    }
+    write_pins(
+        root / COMPANION_CONTRACT, companion_updates, "CompanionListArtifactSpec",
+        "expectedWordCount",
+    )
+    print("pins rewritten in all three contracts", file=sys.stderr)
 
     # 3b. With --only, the unselected side must be byte-identical.
     if only is not None:

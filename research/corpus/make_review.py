@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import corpuslib as CL, filters as F
 import dictionary_coverage as cov
-from stream import Split, fast_normalizer
+from stream import Split, HELD_RESIDUE, fast_normalizer
 
 HEADER = ["word", "heldout_hits", "train_freq", "train_freq_clean", "sources",
           "license_status", "cap_ratio", "enters_top100k", "approved", "reviewer",
@@ -95,9 +95,9 @@ def main():
 
     # Streaming split: the same dedup-then-every-tenth-line rule as the in-memory version, but
     # the lines are replayed from the files instead of being held in memory, because the
-    # Russian OpenSubtitles file does not fit in memory. tests/make_ru_eval_set checks the
-    # split on a small corpus.
-    split = Split(paths)
+    # Russian OpenSubtitles file does not fit in memory. The held-out residue is per language
+    # (stream.HELD_RESIDUE); the Tatar residue matches the eval-set slice.
+    split = Split(paths, held_residue=HELD_RESIDUE[tag])
     norm = fast_normalizer(alpha)
     origin = defaultdict(set)
     # Counted separately from `freq`, because `freq` is the MERGED count and the merged count is

@@ -2,10 +2,11 @@
 """Tests for scripts/check_profiles.py.
 
 The parser is checked on golden lines of the profgen human-readable format and on malformed
-lines that must fail, the resolved-ratio math and the R8 mapping reader on stub data, the DEX
-reader on synthetic headers, and the profgen leg on fake binaries. The DEX reader also runs
-against the real debug APK; that test SKIPs when the APK was not built (same convention as
-tests/suggest_eval for absent corpus inputs).
+lines that must fail, the split (differ/subset) legs on fixture rule lists, the resolved-ratio
+math and the R8 mapping reader on stub data, the DEX reader on synthetic headers, and the
+profgen leg on fake binaries. The DEX reader also runs against the real debug APK; that test
+SKIPs when the APK was not built (same convention as tests/suggest_eval for absent corpus
+inputs).
 """
 from __future__ import annotations
 
@@ -187,6 +188,96 @@ class RatioTest(unittest.TestCase):
 
     def test_empty_rules_give_zero(self) -> None:
         self.assertEqual(cp.resolved_ratio(set(), {}, {"La;"}), (0, 0.0))
+
+
+def rules_of(lines: list[str]) -> list:
+    rules = []
+    for line in lines:
+        rule = cp.parse_rule(line, 1)
+        if rule is not None:
+            rules.append(rule)
+    return rules
+
+
+BASELINE_FIXTURE = rules_of([
+    "Lkotlin/Lazy;",
+    "Lfoo/App;",
+    "HSPLkotlin/LazyKt;->lazy(Lkotlin/jvm/functions/Function0;)Lkotlin/Lazy;",
+    "HPLfoo/App;->onCreate()V",
+])
+# The startup journey is a prefix of the full one; flags may differ between the passes.
+STARTUP_FIXTURE = rules_of([
+    "Lkotlin/Lazy;",
+    "SPLkotlin/LazyKt;->lazy(Lkotlin/jvm/functions/Function0;)Lkotlin/Lazy;",
+    "SPLfoo/App;->onCreate()V",
+])
+
+
+def legs_by_name(legs: list) -> dict:
+    return {name: (status, detail) for status, name, detail in legs}
+
+
+class SplitReportTest(unittest.TestCase):
+    def test_strict_subset_passes_both_legs(self) -> None:
+        legs = legs_by_name(cp.split_report(BASELINE_FIXTURE, STARTUP_FIXTURE, False))
+        status, detail = legs["differ"]
+        self.assertEqual(status, "PASS")
+        self.assertIn("baseline-only rules: 1", detail)
+        self.assertIn("startup-only rules: 0", detail)
+        status, detail = legs["subset"]
+        self.assertEqual(status, "PASS")
+        self.assertIn("all 3 startup rules", detail)
+
+    def test_byte_identical_files_fail_differ(self) -> None:
+        legs = legs_by_name(cp.split_report(BASELINE_FIXTURE, BASELINE_FIXTURE, True))
+        status, detail = legs["differ"]
+        self.assertEqual(status, "FAIL")
+        self.assertIn("byte-identical", detail)
+        # Equal sets are still a subset: the subset leg stays green, differ is the signal.
+        self.assertEqual(legs["subset"][0], "PASS")
+
+    def test_flags_only_difference_still_fails_differ(self) -> None:
+        same_rules_other_flags = rules_of([
+            "Lkotlin/Lazy;",
+            "Lfoo/App;",
+            "PLkotlin/LazyKt;->lazy(Lkotlin/jvm/functions/Function0;)Lkotlin/Lazy;",
+            "SPLfoo/App;->onCreate()V",
+        ])
+        legs = legs_by_name(cp.split_report(BASELINE_FIXTURE, same_rules_other_flags, False))
+        status, detail = legs["differ"]
+        self.assertEqual(status, "FAIL")
+        self.assertIn("same rule set", detail)
+        self.assertEqual(legs["subset"][0], "PASS")
+
+    def test_startup_only_rule_fails_subset(self) -> None:
+        startup_extra = STARTUP_FIXTURE + rules_of(["Lfoo/StartupOnly;"])
+        legs = legs_by_name(cp.split_report(BASELINE_FIXTURE, startup_extra, False))
+        status, detail = legs["subset"]
+        self.assertEqual(status, "FAIL")
+        self.assertIn("startup rules missing from baseline-prof.txt: 1", detail)
+        self.assertIn("Lfoo/StartupOnly;", detail)
+        self.assertEqual(legs["differ"][0], "PASS")
+
+    def test_rule_identity_ignores_flags(self) -> None:
+        hot = cp.parse_rule("HSPLfoo/Bar;->m(I)V", 1)
+        startup = cp.parse_rule("SLfoo/Bar;->m(I)V", 1)
+        assert hot is not None and startup is not None
+        self.assertEqual(cp.rule_identity(hot), cp.rule_identity(startup))
+        clazz = cp.parse_rule("Lfoo/Bar;", 1)
+        assert clazz is not None
+        self.assertEqual(cp.rule_identity(clazz), "Lfoo/Bar;")
+
+
+class ClassRuleSetsTest(unittest.TestCase):
+    def test_exact_and_fuzzy_partition(self) -> None:
+        rules = rules_of([
+            "Lkotlin/Lazy;",
+            "Lkotlin/*;",
+            "HSPLkotlin/LazyKt;->lazy()V",  # method rule, not a class rule
+        ])
+        exact, fuzzy = cp.class_rule_sets(rules)
+        self.assertEqual(exact, {"Lkotlin/Lazy;"})
+        self.assertEqual(fuzzy, {"Lkotlin/*;"})
 
 
 def minimal_dex(string_ids_size: int = 0, class_defs_size: int = 0, file_size: int = 0x70) -> bytes:

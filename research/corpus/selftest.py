@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import corpuslib as CL  # noqa: E402
 import dictionary_coverage as cov  # noqa: E402
 from measure_filtered import collect  # noqa: E402
-from stream import Split, TRAIN, HELD, fast_normalizer  # noqa: E402
+from stream import Split, TRAIN, HELD, HELD_RESIDUE, fast_normalizer  # noqa: E402
 
 
 def check_normalizer(paths, tag) -> int:
@@ -43,7 +43,7 @@ def check_normalizer(paths, tag) -> int:
 
 def check_split(paths, tag) -> tuple[int, int]:
     reference_train, reference_held, _freq, _ev = collect(paths, tag)
-    split = Split(paths)
+    split = Split(paths, held_residue=HELD_RESIDUE[tag])
     streamed_train = [line for line, _ in split.iter_lines(TRAIN)]
     streamed_held = [line for line, _ in split.iter_lines(HELD)]
     if streamed_train != reference_train:
