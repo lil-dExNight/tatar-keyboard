@@ -81,10 +81,12 @@ public class SettingsValues {
      */
     public final float mEmojiPanelHeightScale;
 
-    /** The one-handed dock side (a OneHandedMode SIDE_* value); KeyboardBuilder docks the grid. */
+    /** The effective one-handed dock side: the stored one, or off in landscape
+        (see OneHandedMode.effectiveSide). KeyboardBuilder docks the grid. */
     public final int mOneHandedSide;
 
     public final int mBottomOffsetPortrait;
+    public final int mBottomOffsetLandscape;
 
     public SettingsValues(final SharedPreferences prefs, final Resources res,
             final InputAttributes inputAttributes) {
@@ -110,9 +112,11 @@ public class SettingsValues {
         mKeyPreviewPopupDismissDelay = res.getInteger(R.integer.config_key_preview_linger_timeout);
         mKeyboardHeightScale = Settings.readKeyboardHeight(prefs, DEFAULT_SIZE_SCALE);
         mEmojiPanelHeightScale = Settings.readEmojiPanelHeight(prefs, EmojiPanelHeightPresets.SAME_SCALE);
-        mOneHandedSide = Settings.readOneHandedSide(prefs);
-        mBottomOffsetPortrait = Settings.readBottomOffsetPortrait(prefs);
         mDisplayOrientation = res.getConfiguration().orientation;
+        mOneHandedSide = OneHandedMode.effectiveSide(Settings.readOneHandedSide(prefs),
+                mDisplayOrientation == Configuration.ORIENTATION_LANDSCAPE);
+        mBottomOffsetPortrait = Settings.readBottomOffsetPortrait(prefs);
+        mBottomOffsetLandscape = Settings.readBottomOffsetLandscape(prefs);
         mShowSpecialChars = Settings.readShowSpecialChars(prefs);
         mShowNumberRow = Settings.readShowNumberRow(prefs);
         mShowEmojiKey = Settings.readShowEmojiKey(prefs);

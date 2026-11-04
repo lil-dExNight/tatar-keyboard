@@ -78,6 +78,19 @@ class EmojiPanelView @JvmOverloads constructor(
 
         /** The search cell in the tab row was tapped: enter the emoji-search mode. */
         fun onEmojiPanelSearch()
+
+        /**
+         * A Recent-category cell without a tone variant was long-pressed: offer to remove
+         * [sequence] from the recents (a confirmation, then the store removal, live outside the
+         * view).
+         */
+        fun onEmojiPanelRecentRemoved(sequence: String)
+
+        /**
+         * The Recent tab was long-pressed: offer to clear the recents (a confirmation, then the
+         * store erase, live outside the view).
+         */
+        fun onEmojiPanelClearRecents()
     }
 
     // internal, not private: the painters (EmojiPanelDrawing.kt) and gesture helpers
@@ -275,6 +288,16 @@ class EmojiPanelView @JvmOverloads constructor(
     private var popupBase: String = ""
 
     /**
+     * The emoji-name index the accessibility delegate speaks cell names from; EMPTY (and cells
+     * speak their sequence) until the index is bound. The lookup is a linear scan, so it runs only
+     * while a screen reader asks for a node, never while drawing.
+     */
+    internal var spokenNameIndex: EmojiSearchIndex = EmojiSearchIndex.EMPTY
+
+    /** The language the cell names are spoken in; see [setSpokenNames]. */
+    internal var spokenNameLanguage: String? = null
+
+    /**
      * True between the long press that opened the popup and the release that ends the same gesture.
      * The release of the opening press must not dismiss what it has just put on screen: the finger
      * is still on the anchor, which is outside the popup card. Keeping the popup up lets the two
@@ -318,9 +341,10 @@ class EmojiPanelView @JvmOverloads constructor(
     private val accessibilityHelper = EmojiPanelAccessibilityHelper()
 
     /**
-     * Opens the skin-tone popup when a press on a tone-capable cell outlives the platform long-press
-     * timeout. The pending tap is dropped, so the same press can never both insert the neutral
-     * emoji and open the popup.
+     * Runs when a press outlives the platform long-press timeout. Over a tone-capable cell it
+     * opens the skin-tone popup; over any other cell of the Recent section it asks for the entry
+     * to be removed. The pending tap is dropped either way, so the same press can never both
+     * insert the emoji and fire the long-press action.
      */
     internal val longPressRunnable = Runnable {
         val cell = state.downTarget()
@@ -328,22 +352,46 @@ class EmojiPanelView @JvmOverloads constructor(
             return@Runnable
         }
         val sequence = state.entryAt(cell)
-        if (!skinTones.hasTones(sequence)) {
+        if (skinTones.hasTones(sequence)) {
+            popupBase = sequence
+            var variant = 0
+            while (variant < popupVariants.size) {
+                popupVariants[variant] = skinTones.variantAt(sequence, variant)
+                variant++
+            }
+            if (state.openPopup(cell, EmojiSkinTones.VARIANT_COUNT)) {
+                popupOpenedThisGesture = true
+                // The app's key-press vibration toggle gates this too: the manager checks it.
+                AudioAndHapticFeedbackManager.getInstance().performLongPressHapticFeedback(this)
+                invalidate()
+                invalidateAccessibilityRootIfExploring()
+            }
             return@Runnable
         }
-        popupBase = sequence
-        var variant = 0
-        while (variant < popupVariants.size) {
-            popupVariants[variant] = skinTones.variantAt(sequence, variant)
-            variant++
-        }
-        if (state.openPopup(cell, EmojiSkinTones.VARIANT_COUNT)) {
-            popupOpenedThisGesture = true
-            // The app's key-press vibration toggle gates this too: the manager checks it.
+        // A toned cell keeps the tone picker; every other cell of the Recent section removes its
+        // entry, with a confirmation through the listener, like the strip's word dialogs.
+        if (isRecentCell(cell)) {
+            // Consumed like the popup's: a fast release must not still insert the emoji under
+            // the dialog.
+            state.cancelGesture()
             AudioAndHapticFeedbackManager.getInstance().performLongPressHapticFeedback(this)
-            invalidate()
-            invalidateAccessibilityRootIfExploring()
+            listener?.onEmojiPanelRecentRemoved(sequence)
         }
+    }
+
+    /**
+     * Runs when a press on the Recent tab outlives the platform long-press timeout: offer to
+     * clear the recents through the listener, with the same long-press haptic the popup uses.
+     */
+    internal val clearRecentsRunnable = Runnable {
+        if (state.isScrolling() || state.isSwiping()) {
+            return@Runnable
+        }
+        // Consumed like the popup's: a fast release must not still activate the Recent tab under
+        // the dialog.
+        state.cancelGesture()
+        AudioAndHapticFeedbackManager.getInstance().performLongPressHapticFeedback(this)
+        listener?.onEmojiPanelClearRecents()
     }
 
     private val deleteRepeatRunnable = object : Runnable {
@@ -409,8 +457,29 @@ class EmojiPanelView @JvmOverloads constructor(
         skinTones = tones
     }
 
-    /** Binds the published snapshot and precomputes the tab glyphs and the section titles. */
+    /**
+     * Binds the emoji-name index the accessibility delegate speaks cell names from, plus the
+     * language to speak them in (the asset language tag, as `EmojiSuggestIndex.assetLanguageOf`
+     * derives it from the subtype). Until the index arrives, or for an emoji it has no name for,
+     * a cell falls back to its own sequence.
+     */
+    fun setSpokenNames(names: EmojiSearchIndex, language: String?) {
+        spokenNameIndex = names
+        spokenNameLanguage = language
+        invalidateAccessibilityRootIfExploring()
+    }
+
+    /**
+     * Binds the published snapshot and precomputes the tab glyphs and the section titles. The
+     * scroll position survives a rebind: the layout rebuild resets it, so the offset the user
+     * was at is re-applied, clamped into the new content. A recents refresh (a removal or the
+     * clear) shrinks the content above or inside the Recent section; when the user was viewing
+     * that section, the restored offset is clamped to its top, so the grid never lands below
+     * where the entries went missing.
+     */
     fun setSnapshot(snapshot: EmojiSetSnapshot) {
+        val previousScrollY = state.scrollY()
+        val wasViewingRecents = hasRecentTab && previousScrollY < state.sectionTop(1)
         state.setColumns(currentColumns())
         state.setSnapshot(snapshot)
         val count = snapshot.categoryCount
@@ -419,6 +488,12 @@ class EmojiPanelView @JvmOverloads constructor(
         sectionTitles = Array(count) { categoryTitle(snapshot.categoryName(it)).toString() }
         hasRecentTab = count > 0 &&
             snapshot.categoryName(0) == EmojiDisplaySnapshots.RECENT_CATEGORY_NAME
+        if (previousScrollY > 0) {
+            state.setScrollY(previousScrollY)
+        }
+        if (wasViewingRecents && hasRecentTab) {
+            state.clampScrollToSection(0)
+        }
         invalidate()
         // A rebind rebuilds the whole content, so the virtual-node tree changed; refresh it, but
         // only while a screen reader is actually exploring.
@@ -450,10 +525,11 @@ class EmojiPanelView @JvmOverloads constructor(
     }
 
     /**
-     * Frees the bound snapshot and per-layout caches on the idle memory release
-     * ([rkr.simplekeyboard.inputmethod.latin.LatinIME] `MSG_DEALLOCATE_MEMORY`) or when input
-     * finishes; the paints and the [scroller] stay. The controller keeps the prepared snapshot for
-     * the process, so the next show re-binds it through [setSnapshot]. A no-op while visible.
+     * Frees the bound snapshot, the spoken-name index and the per-layout caches on the idle memory
+     * release ([rkr.simplekeyboard.inputmethod.latin.LatinIME] `MSG_DEALLOCATE_MEMORY`) or when
+     * input finishes; the paints and the [scroller] stay. The controller keeps the prepared
+     * snapshot for the process, so the next show re-binds it through [setSnapshot] and re-seeds
+     * the names through [setSpokenNames]. A no-op while visible.
      */
     fun releaseSnapshotCaches() {
         if (visibility == VISIBLE) {
@@ -470,6 +546,10 @@ class EmojiPanelView @JvmOverloads constructor(
         tabNames = emptyArray()
         sectionTitles = emptyArray()
         hasRecentTab = false
+        // The spoken-name index is a cache too: drop it so the release actually frees it. The
+        // next publish re-binds it through [setSpokenNames].
+        spokenNameIndex = EmojiSearchIndex.EMPTY
+        spokenNameLanguage = null
         invalidateAccessibilityRootIfExploring()
     }
 
@@ -668,7 +748,9 @@ class EmojiPanelView @JvmOverloads constructor(
                 if (!EmojiPanelState.isDelete(state.pressedTarget())) {
                     cancelDeleteRepeat()
                 }
-                if (!EmojiPanelState.isCell(state.pressedTarget())) {
+                // The armed long-press survives jitter on the armed target — the Recent tab is
+                // never a cell — and stops only when the finger leaves it.
+                if (state.pressedTarget() != state.downTarget()) {
                     cancelSkinTonePopupTimer()
                 }
                 if (changed) invalidate()
@@ -934,14 +1016,30 @@ class EmojiPanelView @JvmOverloads constructor(
     }
 
     /**
+     * True when compact cell [cell] belongs to the Recent section. Tone-less long presses there
+     * remove the entry, so a non-recent cell's long press stays a no-op outside the popup.
+     */
+    internal fun isRecentCell(cell: Int): Boolean =
+        hasRecentTab && EmojiPanelState.isCell(cell) &&
+            cell < state.sectionStartIndex(1)
+
+    /**
+     * The spoken text of one emoji sequence: its short name in the bound language when the bound
+     * index has one, the sequence itself otherwise. Used by the accessibility delegate and the
+     * remove-recent dialog's title, never while drawing.
+     */
+    fun spokenText(sequence: String): String =
+        spokenNameIndex.nameOf(sequence, spokenNameLanguage) ?: sequence
+
+    /**
      * The panel's [ExploreByTouchHelper], modelled on `SuggestionStripView`'s delegate. Its virtual
      * views are ONLY the visible cells, the category tabs, the search cell and the two functional
      * keys — the exact set [EmojiPanelState.virtualNodeCount] counts — enumerated from the same
      * hit-tests and geometry the touch path uses, with no second geometry of its own. A cell's
-     * contentDescription is the emoji sequence itself: the panel deliberately ships no emoji-name
-     * database for speech, so how a screen reader voices the sequence is left to the system. Tabs,
-     * the search cell and the functional keys get localized descriptions. A node click runs the
-     * same action as a finger tap through [activateForAccessibility], and the root node exposes
+     * contentDescription is the emoji's name from the search index in the bound language (the
+     * sequence itself until the index is bound, or for an emoji it does not name). Tabs, the
+     * search cell and the functional keys get localized descriptions. A node click runs the same
+     * action as a finger tap through [activateForAccessibility], and the root node exposes
      * ACTION_SCROLL_FORWARD/BACKWARD.
      */
     private inner class EmojiPanelAccessibilityHelper :
@@ -1016,9 +1114,10 @@ class EmojiPanelView @JvmOverloads constructor(
             when {
                 virtualViewId >= POPUP_ID_BASE -> {
                     val variant = virtualViewId - POPUP_ID_BASE
-                    // The variant speaks its own sequence, exactly as a grid cell does: the panel
-                    // ships no emoji-name database for speech.
-                    node.contentDescription = popupVariants.getOrElse(variant) { popupBase }
+                    // The variant speaks its name exactly as a grid cell does, with the same
+                    // sequence fallback.
+                    node.contentDescription =
+                        spokenText(popupVariants.getOrElse(variant) { popupBase })
                     tempBounds.set(
                         state.popupVariantLeft(variant),
                         state.popupTop(),
@@ -1060,8 +1159,10 @@ class EmojiPanelView @JvmOverloads constructor(
                     tempBounds.set(state.tabLeft(tab), 0, state.tabRight(tab), state.tabBarHeight())
                 }
                 virtualViewId in 0 until state.entryCount() -> {
-                    // The cell's spoken description is the sequence itself; no name database ships.
-                    node.contentDescription = state.entryAt(virtualViewId)
+                    // The cell speaks its name from the search index in the bound language; the
+                    // sequence itself is the fallback before the index arrives or for an emoji
+                    // the index does not name.
+                    node.contentDescription = spokenText(state.entryAt(virtualViewId))
                     boundsOfCell(virtualViewId, tempBounds)
                 }
                 else -> {

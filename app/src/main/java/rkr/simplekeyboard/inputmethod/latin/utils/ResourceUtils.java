@@ -74,9 +74,10 @@ public final class ResourceUtils {
 
     public static int getKeyboardBottomOffset(final Resources res,
             final SettingsValues settingsValues) {
-        return res.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT
-                ? (int)(settingsValues.mBottomOffsetPortrait * res.getDisplayMetrics().density)
-                : 0;
+        final int offsetDp = res.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT
+                ? settingsValues.mBottomOffsetPortrait
+                : settingsValues.mBottomOffsetLandscape;
+        return (int)(offsetDp * res.getDisplayMetrics().density);
     }
 
     public static boolean isValidFraction(final float fraction) {

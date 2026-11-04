@@ -43,7 +43,16 @@
     <string name="setup_step2_button">Choose</string>
 
     <string name="setup_done_title">Done!</string>
-    <string name="setup_done_hint">You can also type by sliding over the letters</string>
+    <!-- Names every gesture the done block teaches: glide, the space trackpad, the delete slide
+         and the word-delete flick. Kept one line so the block stays compact. -->
+    <string name="setup_done_hint">Slide over the letters to type a word. Slide on the space bar to move the cursor, and from the delete key to erase; a quick left flick deletes the whole word</string>
+
+    <!-- One line per gesture in the setup done-block card. The gesture name leads, then the
+         effect — the same pairing the Preferences "Gestures" card shows. -->
+    <string name="setup_gesture_glide">Glide: slide over the letters to type a word</string>
+    <string name="setup_gesture_space_trackpad">Space trackpad: slide on the space bar to move the cursor</string>
+    <string name="setup_gesture_delete_slide">Delete slide: slide from the delete key to erase more</string>
+    <string name="setup_gesture_word_delete_flick">Word-delete flick: a quick left flick from the delete key removes the last word</string>
     <!-- Hint doubles as the TalkBack label of the try-it field: glide one Tatar
          word, then type one and watch the strip answer. The words are Tatar on
          purpose in every locale — they are the product's point. -->

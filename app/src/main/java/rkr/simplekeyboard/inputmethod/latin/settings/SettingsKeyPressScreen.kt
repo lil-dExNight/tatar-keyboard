@@ -21,10 +21,11 @@ import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
 
 /**
- * The "Key press" settings screen and the three seek-bar value proxies, as `internal` extensions
- * on [SettingsHostActivity]. [bottomOffsetProxy] lives here too, although the Appearance screen
- * is its caller. The companion constant is referenced as `SettingsHostActivity.PERCENTAGE_FLOAT`
- * because companion members do not resolve unqualified through an extension receiver.
+ * The "Key press" settings screen and the seek-bar value proxies, as `internal` extensions
+ * on [SettingsHostActivity]. The two bottom-offset proxies live here too, although the
+ * Appearance screen is their caller. The companion constant is referenced as
+ * `SettingsHostActivity.PERCENTAGE_FLOAT` because companion members do not resolve unqualified
+ * through an extension receiver.
  */
 
 internal fun SettingsHostActivity.buildKeyPressScreen() {
@@ -113,6 +114,28 @@ internal fun SettingsHostActivity.keyLongpressTimeoutProxy() = object : SeekBarD
 internal fun SettingsHostActivity.bottomOffsetProxy() = object : SeekBarDialogHelper.ValueProxy {
     override fun readValue(key: String): Int =
             Settings.readBottomOffsetPortrait(prefs)
+
+    override fun readDefaultValue(key: String): Int = Settings.DEFAULT_BOTTOM_OFFSET
+
+    override fun writeValue(value: Int, key: String) {
+        prefs.edit().putInt(key, value).apply()
+    }
+
+    override fun writeDefaultValue(key: String) {
+        prefs.edit().remove(key).apply()
+    }
+
+    override fun getValueText(value: Int): String =
+            if (value < 0) getString(R.string.settings_system_default)
+            else getString(R.string.abbreviation_unit_dp, value)
+
+    override fun feedbackValue(value: Int) {}
+}
+
+internal fun SettingsHostActivity.bottomOffsetLandscapeProxy() =
+        object : SeekBarDialogHelper.ValueProxy {
+    override fun readValue(key: String): Int =
+            Settings.readBottomOffsetLandscape(prefs)
 
     override fun readDefaultValue(key: String): Int = Settings.DEFAULT_BOTTOM_OFFSET
 

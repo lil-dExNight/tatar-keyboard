@@ -153,6 +153,20 @@ internal class RecentEmojiStore(
     }
 
     /**
+     * Removes one sequence from the list. Gate discipline as [recordUse]: recording is not
+     * required, but the path gate still governs the medium, and a removal is marked dirty so the
+     * write happens at the next hide, exactly like a use. Removing a missing sequence is a no-op.
+     */
+    fun removeRecent(sequence: String, available: Set<String>) {
+        ensureLoaded(available)
+        val next = recents.without(sequence)
+        if (next != recents) {
+            recents = next
+            dirty = true
+        }
+    }
+
+    /**
      * Writes at most once per hide, only when the list changed and the device is unlocked. Because
      * it runs on the background executor, the write never touches the UI thread. A failed write
      * keeps the list dirty so a later hide may retry; no exception escapes and nothing is logged.

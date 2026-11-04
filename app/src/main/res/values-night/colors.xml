@@ -53,6 +53,9 @@
          trail's peak, faded per point by GlideTrail) so the ribbon keeps WCAG AA over
          the letter-key gray. -->
     <color name="tatar_glide_trail">#F2FFFFFF</color>
+    <!-- The refused glide's trail repaint: a light error pink at the same 95 % peak, kept over
+         the WCAG 1.4.11 non-text floor on both the letter-key gray and the board fill. -->
+    <color name="tatar_glide_trail_refused">#F2FFDAD6</color>
 
     <!-- Color resources for the app screens (dark). App-screen palette,
          kept separate from the keyboard tatar_* colors above. -->

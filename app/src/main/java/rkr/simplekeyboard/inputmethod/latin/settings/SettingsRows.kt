@@ -81,6 +81,20 @@ internal fun SettingsHostActivity.textRow(text: CharSequence): View {
 }
 
 /**
+ * Read-only reference row: title plus one-line summary, no chevron, no tap target. The
+ * "Gestures" card on the Preferences screen is built from these — a gesture is listed,
+ * not switched (its toggle, when it has one, sits in the Typing card).
+ */
+internal fun SettingsHostActivity.gestureRow(titleRes: Int, summaryRes: Int): View {
+    val row = inflateRow(R.layout.row_link, titleRes, summaryRes)
+    row.findViewById<View>(R.id.row_chevron).visibility = View.GONE
+    row.isClickable = false
+    row.isFocusable = false
+    row.foreground = null
+    return row
+}
+
+/**
  * Action row: accent-colored title, no chevron —
  * it opens a dialog on the same screen instead of navigating.
  */

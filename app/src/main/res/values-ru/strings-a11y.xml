@@ -71,6 +71,10 @@
     <!-- Announced when word suggestions become available; %s is the joined suggestion list. -->
     <string name="spoken_suggestions_available">Доступны подсказки: %s</string>
 
+    <!-- The recent-clip strip cell. TalkBack says what the cell does; the clip's own text is
+         never read aloud. -->
+    <string name="spoken_recent_clip_cell">Вставить из буфера обмена</string>
+
     <!-- Emoji-panel category tab names (TalkBack). The emoji cells are announced as their
          sequence (there is no emoji-name database); only the tabs and the two functional keys
          ("АБВ" reuses spoken_description_to_alpha, delete reuses spoken_description_delete)

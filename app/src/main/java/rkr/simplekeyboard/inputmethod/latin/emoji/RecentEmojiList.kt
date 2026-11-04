@@ -56,6 +56,27 @@ internal class RecentEmojiList private constructor(val entries: List<String>) {
         return RecentEmojiList(next)
     }
 
+    /**
+     * Returns the list with [sequence] dropped, order preserved. The same instance when the
+     * sequence is absent (or empty), so a no-op removal marks nothing dirty.
+     */
+    fun without(sequence: String): RecentEmojiList {
+        if (sequence.isEmpty() || entries.isEmpty()) return this
+        var present = false
+        for (entry in entries) {
+            if (entry == sequence) {
+                present = true
+                break
+            }
+        }
+        if (!present) return this
+        val kept = ArrayList<String>(entries.size - 1)
+        for (entry in entries) {
+            if (entry != sequence) kept.add(entry)
+        }
+        return if (kept.isEmpty()) EMPTY else RecentEmojiList(kept)
+    }
+
     /** Drops entries absent from [available] while preserving MRU order. */
     fun filteredTo(available: Set<String>): RecentEmojiList {
         if (entries.isEmpty()) return this

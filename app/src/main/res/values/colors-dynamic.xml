@@ -44,4 +44,6 @@
     <color name="dyn_key_hint_color">@color/tatar_key_hint_color</color>
     <color name="dyn_suggestion_emphasis">@color/tatar_suggestion_emphasis</color>
     <color name="dyn_glide_trail">@color/tatar_glide_trail</color>
+    <!-- The refused trail keeps the fixed error ink: the system palette offers no error role. -->
+    <color name="dyn_glide_trail_refused">@color/tatar_glide_trail_refused</color>
 </resources>

@@ -58,8 +58,10 @@
     <!-- Common keyboard configuration. -->
     <dimen name="config_keyboard_vertical_correction">0.0dp</dimen>
 
-    <!-- Bottom offset -->
+    <!-- Bottom offset slider ranges: portrait and landscape rows share the step. -->
     <integer name="config_max_bottom_offset_portrait">100</integer>
     <integer name="config_min_bottom_offset_portrait">0</integer>
+    <integer name="config_max_bottom_offset_landscape">100</integer>
+    <integer name="config_min_bottom_offset_landscape">0</integer>
     <integer name="config_bottom_offset_step">1</integer>
 </resources>

@@ -121,6 +121,13 @@ class SettingsHostActivity : Activity() {
     internal var detailLocale: String? = null
     internal var restrictionKeys: Set<String> = emptySet()
 
+    /**
+     * The fourth-cell row, built on the Appearance screen but gated by the Preferences master
+     * switch (the row widens the strip that switch owns). Null while that screen is not built,
+     * or after a rebuild resets it to the new row.
+     */
+    private var fourthCellRow: View? = null
+
     /** The SAF backup runner, started here for journal recovery and shut down with the activity. */
     private var backupCoordinatorInstance: BackupCoordinator? = null
 
@@ -412,7 +419,9 @@ class SettingsHostActivity : Activity() {
     private fun startBackupImport() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("*/*")
+            // Concatenated so no string literal embeds a block-comment opener: the naive
+            // comment stripper of the log-safety source test would blank the lines below.
+            .setType("*" + "/" + "*")
             .putExtra(Intent.EXTRA_MIME_TYPES,
                     arrayOf(BACKUP_MIME_TYPE, "application/octet-stream"))
         try {
@@ -463,18 +472,17 @@ class SettingsHostActivity : Activity() {
             linkRow(R.string.privacy_policy) { openUrl(getString(R.string.privacy_policy_url)) },
             linkRow(R.string.license) { openUrl(getString(R.string.license_url)) }))
     }
-
     private fun buildPreferencesScreen() {
-        val rows = ArrayList<View>()
-        // The suggestions cluster opens the card: the master switch and the rows it
-        // gates sit ahead of the typing-behavior toggles.
+        // Two themed cards: "Suggestions" (the strip and everything feeding it) and "Typing"
+        // (how keys and gestures behave). The rows keep their pref keys and dependencies; only
+        // the grouping changed.
+        val suggestionRows = ArrayList<View>()
         var personalDictionaryRow: View? = null
         var incognitoRow: View? = null
         var autocorrectRow: View? = null
         var emojiSuggestRow: View? = null
-        var fourthCellRow: View? = null
         var glideRow: View? = null
-        rows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, true,
+        suggestionRows.add(switchRow(Settings.PREF_TATAR_SUGGESTIONS, true,
                 R.string.tatar_suggestions, R.string.tatar_suggestions_summary) { checked ->
             personalDictionaryRow?.let {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY),
@@ -496,6 +504,9 @@ class SettingsHostActivity : Activity() {
                         disabledReason(isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
                                 R.string.row_needs_suggestions))
             }
+            // The fourth-cell row lives on the Appearance screen (beside the number row) and
+            // registers itself into this gate when it is built; toggling suggestions here
+            // greys it there on the next Appearance rebuild.
             fourthCellRow?.let {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
                         disabledReason(isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
@@ -507,19 +518,12 @@ class SettingsHostActivity : Activity() {
                 setRowEnabled(it, !isRestricted(Settings.PREF_GLIDE_TYPING))
             }
         }.apply { id = R.id.row_switch_tatar_suggestions })
-        // The fourth strip cell widens the same strip the master switch owns, so the row sits in
-        // this cluster and follows that switch. The default matches
-        // Settings.readStripFourthCellEnabled (off); a user-set value always wins.
-        val fourthCellSwitch = switchRow(Settings.PREF_STRIP_FOURTH_CELL, false,
-                R.string.strip_fourth_cell, R.string.strip_fourth_cell_summary)
-        fourthCellRow = fourthCellSwitch
-        rows.add(fourthCellSwitch)
         // The personal dictionary depends on the suggestion strip: without suggestions a saved
         // word has nowhere to appear, so the row follows the switch above it.
         val personalRow = switchRow(Settings.PREF_PERSONAL_DICTIONARY, false,
                 R.string.personal_dictionary, R.string.personal_dictionary_summary)
         personalDictionaryRow = personalRow
-        rows.add(personalRow)
+        suggestionRows.add(personalRow)
         // Pause learning (incognito) pauses learning that only runs while suggestions are on, so
         // the row follows the same switch. One switch pauses all personal learning at once. The
         // key is not declared in app_restrictions.xml, so isRestricted below never fires; the
@@ -527,7 +531,7 @@ class SettingsHostActivity : Activity() {
         val incognitoSwitch = switchRow(Settings.PREF_INCOGNITO_MODE, false,
                 R.string.incognito_mode, R.string.incognito_mode_summary)
         incognitoRow = incognitoSwitch
-        rows.add(incognitoSwitch)
+        suggestionRows.add(incognitoSwitch)
         // Autocorrection depends on suggestions for a different reason: it takes its candidate from
         // the same lookup that feeds the strip, so with suggestions off there is nothing to correct
         // from. It has its own switch because a suggestion only offers, while a correction changes
@@ -535,7 +539,7 @@ class SettingsHostActivity : Activity() {
         val autocorrectSwitch = switchRow(Settings.PREF_TATAR_AUTOCORRECT, false,
                 R.string.tatar_autocorrect, R.string.tatar_autocorrect_summary)
         autocorrectRow = autocorrectSwitch
-        rows.add(autocorrectSwitch)
+        suggestionRows.add(autocorrectSwitch)
         // Emoji suggestions depend on the suggestions switch because the emoji cell lives in the
         // same strip; they have their own switch because emoji among the words are a matter of
         // taste. The default matches Settings.readEmojiSuggestionsEnabled (on); a user-set value
@@ -543,7 +547,11 @@ class SettingsHostActivity : Activity() {
         val emojiSuggestSwitch = switchRow(Settings.PREF_EMOJI_SUGGESTIONS, true,
                 R.string.emoji_suggestions, R.string.emoji_suggestions_summary)
         emojiSuggestRow = emojiSuggestSwitch
-        rows.add(emojiSuggestSwitch)
+        suggestionRows.add(emojiSuggestSwitch)
+        addSectionHeader(getString(R.string.settings_section_suggestions))
+        addCard(suggestionRows, spacedFromPrevious = false)
+
+        val typingRows = ArrayList<View>()
         // Glide typing has its own row because tapping or sliding is the user's habit, not a
         // property of the words. It does not depend on the suggestions switch: the lift-commit is
         // typing, not a suggestion, and the gesture's own strip (the alternates, the refused
@@ -552,13 +560,13 @@ class SettingsHostActivity : Activity() {
         val glideSwitch = switchRow(Settings.PREF_GLIDE_TYPING, true,
                 R.string.glide_typing, R.string.glide_typing_summary)
         glideRow = glideSwitch
-        rows.add(glideSwitch)
-        rows.add(switchRow(Settings.PREF_AUTO_CAP, true,
+        typingRows.add(glideSwitch)
+        typingRows.add(switchRow(Settings.PREF_AUTO_CAP, true,
                 R.string.auto_cap, R.string.auto_cap_summary))
-        rows.add(switchRow(Settings.PREF_SHOW_SPECIAL_CHARS, true,
+        typingRows.add(switchRow(Settings.PREF_SHOW_SPECIAL_CHARS, true,
                 R.string.show_special_chars, R.string.show_special_chars_summary))
         var imeSwitchRow: View? = null
-        rows.add(switchRow(Settings.PREF_SHOW_LANGUAGE_SWITCH_KEY, true,
+        typingRows.add(switchRow(Settings.PREF_SHOW_LANGUAGE_SWITCH_KEY, true,
                 R.string.show_language_switch_key,
                 R.string.show_language_switch_key_summary) { checked ->
             imeSwitchRow?.let {
@@ -568,18 +576,33 @@ class SettingsHostActivity : Activity() {
             }
         })
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
-            rows.add(switchRow(Settings.PREF_USE_ON_SCREEN, false,
+            typingRows.add(switchRow(Settings.PREF_USE_ON_SCREEN, false,
                     R.string.pref_use_on_screen, R.string.pref_use_on_screen_summary))
         }
         val imeRow = switchRow(Settings.PREF_ENABLE_IME_SWITCH, false,
                 R.string.pref_enable_ime_switch, R.string.pref_enable_ime_switch_summary)
         imeSwitchRow = imeRow
-        rows.add(imeRow)
-        rows.add(switchRow(Settings.PREF_SPACE_SWIPE, true,
+        typingRows.add(imeRow)
+        typingRows.add(switchRow(Settings.PREF_SPACE_SWIPE, true,
                 R.string.space_swipe, R.string.space_swipe_summary))
-        rows.add(switchRow(Settings.PREF_DELETE_SWIPE, false,
+        typingRows.add(switchRow(Settings.PREF_DELETE_SWIPE, false,
                 R.string.delete_swipe, R.string.delete_swipe_summary))
-        addCard(rows)
+        addSectionHeader(getString(R.string.settings_section_typing))
+        addCard(typingRows, spacedFromPrevious = false)
+
+        // Read-only card: every gesture with a one-line description, so a gesture found by
+        // accident can be looked up on purpose. No switches here — the per-gesture toggles
+        // sit in the Typing card above.
+        addSectionHeader(getString(R.string.gestures_card_title))
+        addCard(listOf(
+                gestureRow(R.string.gesture_space_trackpad,
+                        R.string.gesture_space_trackpad_summary),
+                gestureRow(R.string.gesture_delete_slide,
+                        R.string.gesture_delete_slide_summary),
+                gestureRow(R.string.gesture_word_delete_flick,
+                        R.string.gesture_word_delete_flick_summary),
+                gestureRow(R.string.gesture_glide, R.string.gesture_glide_summary)),
+                spacedFromPrevious = false)
         // The IME-switch row depends on the language switch key.
         setRowEnabled(imeRow,
                 Settings.readShowLanguageSwitchKey(prefs)
@@ -605,11 +628,6 @@ class SettingsHostActivity : Activity() {
                 Settings.readTatarSuggestionsEnabled(prefs)
                         && !isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
                 disabledReason(isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
-                        R.string.row_needs_suggestions))
-        setRowEnabled(fourthCellSwitch,
-                Settings.readTatarSuggestionsEnabled(prefs)
-                        && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
-                disabledReason(isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
                         R.string.row_needs_suggestions))
         setRowEnabled(glideSwitch,
                 !isRestricted(Settings.PREF_GLIDE_TYPING))
@@ -1456,14 +1474,27 @@ class SettingsHostActivity : Activity() {
         return field
     }
 
-    // The "Key press" screen and the three seek-bar value proxies live in
+    // The "Key press" screen and the seek-bar value proxies live in
     // SettingsKeyPressScreen.kt.
 
     private fun buildAppearanceScreen() {
+        // The fourth strip cell widens the strip the Preferences screen's master switch owns,
+        // so the row follows that switch from afar: it is created here (beside the number row,
+        // another what-the-keyboard-shows toggle) and registered into the Preferences gate.
+        // The default matches Settings.readStripFourthCellEnabled (off); a user-set value wins.
+        val fourthCellSwitch = switchRow(Settings.PREF_STRIP_FOURTH_CELL, false,
+                R.string.strip_fourth_cell, R.string.strip_fourth_cell_summary)
+        fourthCellRow = fourthCellSwitch
+        setRowEnabled(fourthCellSwitch,
+                Settings.readTatarSuggestionsEnabled(prefs)
+                        && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
+                disabledReason(isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
+                        R.string.row_needs_suggestions))
         addCard(listOf(
             themeRow(),
             switchRow(Settings.PREF_SHOW_NUMBER_ROW, false,
                     R.string.show_number_row, R.string.show_number_row_summary),
+            fourthCellSwitch,
             switchRow(Settings.PREF_SHOW_EMOJI_KEY, true,
                     R.string.show_emoji_key, R.string.show_emoji_key_summary),
             keyboardHeightRow(),
@@ -1474,7 +1505,13 @@ class SettingsHostActivity : Activity() {
                     resources.getInteger(R.integer.config_min_bottom_offset_portrait),
                     resources.getInteger(R.integer.config_max_bottom_offset_portrait),
                     resources.getInteger(R.integer.config_bottom_offset_step),
-                    bottomOffsetProxy())))
+                    bottomOffsetProxy()),
+            valueRow(Settings.PREF_BOTTOM_OFFSET_LANDSCAPE,
+                    R.string.prefs_bottom_offset_landscape_settings,
+                    resources.getInteger(R.integer.config_min_bottom_offset_landscape),
+                    resources.getInteger(R.integer.config_max_bottom_offset_landscape),
+                    resources.getInteger(R.integer.config_bottom_offset_step),
+                    bottomOffsetLandscapeProxy())))
     }
 
     // ---------------------------------------------------------------------

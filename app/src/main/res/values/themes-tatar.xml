@@ -69,6 +69,7 @@
         <item name="keyPreviewOffset">@dimen/config_key_preview_offset_lxx</item>
         <item name="languageOnSpacebarTextColor">@color/tatar_key_text_inactive_color</item>
         <item name="glideTrailColor">@color/tatar_glide_trail</item>
+        <item name="glideTrailRefusedColor">@color/tatar_glide_trail_refused</item>
     </style>
     <style
         name="MoreKeysKeyboard.Tatar"

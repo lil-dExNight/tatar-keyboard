@@ -121,4 +121,9 @@
         android:title="@string/prefs_bottom_offset_portrait_settings"
         android:restrictionType="integer"
         android:defaultValue="0" />
+    <restriction
+        android:key="pref_bottom_offset_landscape"
+        android:title="@string/prefs_bottom_offset_landscape_settings"
+        android:restrictionType="integer"
+        android:defaultValue="0" />
 </restrictions>

@@ -58,6 +58,7 @@
     <string name="one_handed_mode_full">Во всю ширину</string>
     <string name="globe_menu_emoji">Эмодзи</string>
     <string name="prefs_bottom_offset_portrait_settings">Сдвиг снизу</string>
+    <string name="prefs_bottom_offset_landscape_settings">Сдвиг снизу (альбомный режим)</string>
     <string name="keyboard_color">Цвет клавиатуры</string>
     <string name="show_special_chars">Специальные символы</string>
     <string name="show_special_chars_summary">Дополнительные символы на некоторых раскладках</string>
@@ -77,7 +78,20 @@
     <string name="space_swipe">Двигать курсор пробелом</string>
     <string name="space_swipe_summary">Проведите пальцем по пробелу</string>
     <string name="delete_swipe">Стирание свайпом</string>
-    <string name="delete_swipe_summary">Проведите от клавиши стирания, чтобы стереть больше</string>
+    <string name="delete_swipe_summary">Проведите от клавиши стирания, чтобы стереть больше. Быстрый рывок влево удаляет всё последнее слово</string>
+    <!-- Section headers that split the Preferences screen into themed cards -->
+    <string name="settings_section_suggestions">Подсказки</string>
+    <string name="settings_section_typing">Набор</string>
+    <!-- The read-only "Gestures" card on the Preferences screen: one row per gesture, no switches -->
+    <string name="gestures_card_title">Жесты</string>
+    <string name="gesture_space_trackpad">Пробел как трекпад</string>
+    <string name="gesture_space_trackpad_summary">Ведите по пробелу, чтобы двигать курсор</string>
+    <string name="gesture_delete_slide">Стирание скольжением</string>
+    <string name="gesture_delete_slide_summary">Ведите от клавиши стирания — буквы стираются одна за другой</string>
+    <string name="gesture_word_delete_flick">Рывок, стирающий слово</string>
+    <string name="gesture_word_delete_flick_summary">Быстрый рывок влево от клавиши стирания удаляет всё последнее слово</string>
+    <string name="gesture_glide">Набор свайпом</string>
+    <string name="gesture_glide_summary">Ведите пальцем по буквам, чтобы набрать слово</string>
     <string name="tatar_suggestions">Подсказки слов</string>
     <string name="tatar_suggestions_summary">Слова появляются над клавиатурой при наборе</string>
     <string name="row_needs_suggestions">Сначала включите «Подсказки слов»</string>
@@ -124,6 +138,7 @@
     <string name="personal_dictionary_add">Добавить слово\u2026</string>
     <string name="personal_dictionary_add_hint">Слово</string>
     <string name="personal_dictionary_add_action">Добавить</string>
+    <string name="personal_dictionary_add_title">Добавить «%1$s» в личный словарь?</string>
     <string name="personal_dictionary_add_rejected">Не удалось сохранить. Нужно от 3 до 24 татарских букв.</string>
     <string name="personal_dictionary_add_rejected_ru">Не удалось сохранить. Нужно от 3 до 24 русских букв.</string>
     <string name="personal_dictionary_delete">Удалить</string>
@@ -236,6 +251,8 @@
     <string name="clear_recent_emoji_confirm">Очистить список недавних эмодзи?</string>
     <string name="clear_recent_emoji_action">Очистить</string>
     <string name="clear_recent_emoji_failed">Не удалось очистить недавние эмодзи. Попробуйте ещё раз.</string>
+    <string name="remove_recent_emoji_title">Убрать «%1$s» из недавних?</string>
+    <string name="remove_recent_emoji_action">Убрать</string>
     <string name="keyboard_languages">Языки клавиатуры</string>
     <string name="keyboard_languages_summary">Добавить или убрать язык</string>
     <string name="user_languages">Ваши языки</string>
@@ -245,7 +262,7 @@
     <string name="change_keyboard">Сменить клавиатуру</string>
     <string name="privacy_policy">Политика конфиденциальности</string>
     <string name="license">Лицензия</string>
-    <string name="personal_dictionary_not_saved">Это слово из встроенного словаря. Забыть можно только слова, которые клавиатура запомнила из вашего набора.</string>
+    <string name="personal_dictionary_no_language">У этой раскладки нет личного словаря. Слова можно сохранять при наборе на татарском или русском.</string>
     <string name="emoji_unavailable">Эмодзи сейчас недоступны. Может помочь перезапуск клавиатуры.</string>
     <string name="no_app_for_link">На устройстве нет приложения, которое открывает ссылки.</string>
     <string name="personal_dictionary_empty_ready">Пока ничего не сохранено. Набранные слова будут появляться здесь.</string>
@@ -275,5 +292,5 @@
     <string name="backup_import_failed_invalid">Это не резервная копия этой клавиатуры. Ничего не изменено.</string>
     <string name="backup_import_failed_write">Не удалось восстановить резервную копию. Попробуйте ещё раз.</string>
     <string name="backup_no_app">На устройстве нет приложения для выбора файлов.</string>
-    <string name="privacy_policy_url" translatable="false">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.ru.md</string>
+    <string name="privacy_policy_url">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.ru.md</string>
 </resources>

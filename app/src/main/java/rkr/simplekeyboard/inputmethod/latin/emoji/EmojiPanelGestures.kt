@@ -22,20 +22,40 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
  * can reach them.
  */
 
-/** Arms the skin-tone long press, but only over a cell whose emoji actually has tones. */
+/**
+ * Arms the long-press timer: over a cell whose emoji has tones, for the skin-tone popup; over a
+ * Recent-section cell without tones, for removing its entry; over the Recent tab, for clearing
+ * the recents. Every other target disarms.
+ */
 internal fun EmojiPanelView.maybeArmLongPress(target: Int) {
     cancelSkinTonePopupTimer()
-    if (skinTones.isEmpty || !EmojiPanelState.isCell(target) || state.isPopupOpen()) {
+    if (state.isPopupOpen()) {
         return
     }
-    if (!skinTones.hasTones(state.entryAt(target))) {
+    if (EmojiPanelState.isCell(target)) {
+        val hasTonePicker = !skinTones.isEmpty && skinTones.hasTones(state.entryAt(target))
+        val removal = !hasTonePicker && isRecentCell(target)
+        if (hasTonePicker || removal) {
+            postDelayed(longPressRunnable, longPressTimeoutMs)
+        }
         return
     }
-    postDelayed(longPressRunnable, longPressTimeoutMs)
+    // The Recent tab (tab 0 whenever the recents are shown) long-press clears the recents.
+    if (EmojiPanelState.isTab(target) && hasRecentTab &&
+        EmojiPanelState.tabIndexOf(target) == 0
+    ) {
+        postDelayed(clearRecentsRunnable, longPressTimeoutMs)
+    }
 }
 
+/**
+ * Cancels every armed panel long-press — the skin-tone popup and the Recent-tab clear. Called on
+ * every stop condition (move off the target, up, cancel, hide, release), so at most one long
+ * press can ever fire per gesture.
+ */
 internal fun EmojiPanelView.cancelSkinTonePopupTimer() {
     removeCallbacks(longPressRunnable)
+    removeCallbacks(clearRecentsRunnable)
 }
 
 /**

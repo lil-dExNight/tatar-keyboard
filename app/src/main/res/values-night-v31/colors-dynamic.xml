@@ -42,4 +42,7 @@
     <color name="dyn_key_hint_color">#E6FFFFFF</color>
     <color name="dyn_suggestion_emphasis">@android:color/system_accent1_100</color>
     <color name="dyn_glide_trail">@android:color/system_accent1_100</color>
+    <!-- The refused trail keeps the fixed error ink (the system palette offers no error role);
+         a literal, like the other fixed slots, since the v31 tiers never reference tatar_*. -->
+    <color name="dyn_glide_trail_refused">#F2FFDAD6</color>
 </resources>

@@ -37,6 +37,14 @@ interface EmojiSurface {
     fun refreshAfterRecentsCleared(base: EmojiSetSnapshot) {}
 
     /**
+     * One recent entry was removed. If the panel is currently shown, re-bind [snapshot] (the same
+     * base with the recents minus the removed entry) so the cell disappears through the same path
+     * a category change uses; if the panel is not shown, this is a no-op. Defaulted so existing
+     * fakes need not implement it.
+     */
+    fun refreshAfterRecentRemoved(snapshot: EmojiSetSnapshot) {}
+
+    /**
      * Enter the emoji search with [index] bound: the panel steps aside, the letter keyboard comes
      * back and the search view takes the suggestion strip's place. Defaulted so existing fakes need
      * not implement it.
@@ -48,6 +56,14 @@ interface EmojiSurface {
      * cell offers the five tones. Defaulted so existing fakes need not implement it.
      */
     fun bindSkinTones(tones: EmojiSkinTones) {}
+
+    /**
+     * The emoji-name index finished loading (for the search, or started for the panel's spoken
+     * cell names). Bind [names] and [language] to the panel view so TalkBack reads names instead
+     * of raw sequences; the view falls back to the sequence until this arrives. Defaulted so
+     * existing fakes need not implement it.
+     */
+    fun bindSpokenNames(names: EmojiSearchIndex, language: String?) {}
 
     /**
      * The search cell was tapped and no search can be opened, now or later in this process.
@@ -207,14 +223,35 @@ class EmojiPanelController internal constructor(
 
     private var destroyed = false
 
+    /**
+     * The asset language tag the panel's spoken cell names use (`tt` picks the Tatar name,
+     * anything else the Russian one), set from the active subtype when the panel is shown. Null
+     * until then, which speaks the Russian channel — the same default the search uses.
+     */
+    private var spokenNameLanguage: String? = null
+
     fun preparationState(): EmojiPanelPreparation = preparation
 
     /**
-     * The emoji key was pressed.
+     * Sets the language the panel's spoken cell names use (the asset language tag of the active
+     * subtype) and re-binds the already-loaded index under it. The IME calls this on every panel
+     * show, so a subtype switch re-announces in the new language without reloading anything.
+     */
+    fun setSpokenNameLanguage(language: String?) {
+        spokenNameLanguage = language
+        val loaded = searchIndex
+        if (loaded != null && !loaded.isEmpty) {
+            surface.bindSpokenNames(loaded, language)
+        }
+    }
+
+    /**
+     * The emoji key was pressed. The press feedback is the ordinary key-down path's, identical
+     * for every press; the panel show adds none of its own.
      *
      * @return true when the caller should show the panel or has already handed off a request that
      *   will show it once ready; false when the panel will not show in this process (the key is a
-     *   no-op that only gives haptic feedback).
+     *   no-op).
      */
     fun onEmojiKeyPressed(): Boolean {
         if (destroyed) return false
@@ -290,6 +327,10 @@ class EmojiPanelController internal constructor(
         searchLoading = false
         if (destroyed) return
         searchIndex = loaded
+        // The panel's spoken cell names ride along on the same load, filtered the same way.
+        if (!loaded.isEmpty) {
+            surface.bindSpokenNames(loaded, spokenNameLanguage)
+        }
         if (pendingSearch) {
             pendingSearch = false
             // Answer the tap that armed this either way, including when the index is unusable.
@@ -347,6 +388,39 @@ class EmojiPanelController internal constructor(
             backgroundExecutor.execute { store.recordUse(sequence, available) }
         } catch (_: Throwable) {
             // Never crash typing; a missed record is acceptable, a crash is not.
+        }
+    }
+
+    /**
+     * One recent entry was removed through a long press on its cell: the store drops it on the
+     * background executor (the list is owned there) and any shown panel re-binds the base
+     * snapshot with the remaining recents on the UI thread. The removal is persisted by the next
+     * hide's flush, like every other list change.
+     */
+    fun onRecentRemoved(sequence: String) {
+        val store = recentStore ?: return
+        val backgroundExecutor = backgroundExecutor() ?: return
+        val available = availableSequences
+        try {
+            backgroundExecutor.execute {
+                store.removeRecent(sequence, available)
+                try {
+                    val base = snapshot
+                    if (base != null) {
+                        val remaining = store.currentRecents(available)
+                        uiPoster.post {
+                            if (!destroyed) {
+                                surface.refreshAfterRecentRemoved(
+                                    EmojiDisplaySnapshots.withRecents(base, remaining),
+                                )
+                            }
+                        }
+                    }
+                } catch (_: Throwable) {
+                }
+            }
+        } catch (_: Throwable) {
+            // Never crash typing; a missed removal is acceptable, a crash is not.
         }
     }
 
@@ -501,6 +575,9 @@ class EmojiPanelController internal constructor(
      * fails for any reason.
      */
     private fun publish(base: EmojiSetSnapshot) {
+        // The spoken cell names come from the search index: make sure it is loading (one load per
+        // process, off the UI thread), so a screen reader gets names from the first panel show.
+        ensureSpokenNamesIndex()
         val store = recentStore
         if (store == null) {
             surface.showPanel(base)
@@ -525,6 +602,37 @@ class EmojiPanelController internal constructor(
             }
         } catch (_: Throwable) {
             surface.showPanel(base)
+        }
+    }
+
+    /**
+     * Starts the search-index load when it has not been attempted, without answering any search
+     * tap: the panel's spoken cell names need the index, and [onSearchIndexLoaded] binds it. A
+     * load already in flight, a usable one already loaded, or the cached-unusable verdict all
+     * leave this untouched; the spoken names then stay on the sequence fallback.
+     */
+    private fun ensureSpokenNamesIndex() {
+        if (searchIndex != null || searchLoading) return
+        val backgroundExecutor = backgroundExecutor() ?: return
+        val source = try {
+            searchIndexSourceFactory()
+        } catch (_: Throwable) {
+            null
+        } ?: return
+        searchLoading = true
+        val available = availableSequences
+        try {
+            backgroundExecutor.execute {
+                val built = try {
+                    val raw = source.load()
+                    if (available.isEmpty()) raw else raw.filterTo(available)
+                } catch (_: Throwable) {
+                    EmojiSearchIndex.EMPTY
+                }
+                uiPoster.post { onSearchIndexLoaded(built) }
+            }
+        } catch (_: Throwable) {
+            searchLoading = false
         }
     }
 
@@ -556,6 +664,7 @@ class EmojiPanelController internal constructor(
          * gets the answer on the store's worker, or false at once when the erase cannot be queued.
          */
         @JvmStatic
+        @JvmOverloads
         fun clearRecents(context: Context, onFinished: (Boolean) -> Unit = {}) {
             val live = liveInstance
             if (live != null) {

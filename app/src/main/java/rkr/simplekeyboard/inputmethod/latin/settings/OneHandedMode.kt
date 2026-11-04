@@ -24,7 +24,9 @@ package rkr.simplekeyboard.inputmethod.latin.settings
  * the balloon clamp band follow on their own. Strip views stay full width but their cells use
  * the key-grid content span; the emoji panel stays full width. Stored as the
  * `pref_one_handed_side` int and
- * applied on the keyboard's next rebuild, like the keyboard-height preset.
+ * applied on the keyboard's next rebuild, like the keyboard-height preset. In landscape the
+ * mode reads as off — thumb reach is not the constraint there, so the dock would only waste
+ * width — while the stored side survives untouched for the return to portrait.
  *
  * Pure value holder with no Android imports, so the math is unit-tested on the JVM.
  */
@@ -58,6 +60,14 @@ object OneHandedMode {
     /** Guards against a damaged or foreign pref value; an unknown side must read as off. */
     @JvmStatic
     fun isValidSide(side: Int): Boolean = side in SIDE_OFF..SIDE_RIGHT
+
+    /**
+     * The side a keyboard build must use: the stored side, or [SIDE_OFF] in landscape, where
+     * thumb reach is not the constraint. The stored value is untouched; a portrait build reads
+     * it again as-is.
+     */
+    @JvmStatic
+    fun effectiveSide(side: Int, isLandscape: Boolean): Int = if (isLandscape) SIDE_OFF else side
 
     /**
      * The scale the dock applies on a screen of [fullWidthPx]: [WIDTH_SCALE], clamped up so the

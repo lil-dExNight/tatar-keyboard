@@ -28,7 +28,14 @@
     <string name="setup_step2_button">Выбрать</string>
 
     <string name="setup_done_title">Готово!</string>
-    <string name="setup_done_hint">Можно печатать и свайпом: ведите пальцем по буквам</string>
+    <string name="setup_done_hint">Печатать можно и свайпом: ведите пальцем по буквам. По пробелу — курсор, от клавиши стирания — стирание, быстрый рывок влево удаляет слово целиком</string>
+
+    <!-- One line per gesture in the done-block card: gesture name first, then the effect,
+         in the same order as the Preferences "Gestures" card. -->
+    <string name="setup_gesture_glide">Набор свайпом: ведите по буквам, чтобы набрать слово</string>
+    <string name="setup_gesture_space_trackpad">Пробел-трекпад: ведите по пробелу, чтобы двигать курсор</string>
+    <string name="setup_gesture_delete_slide">Стирание скольжением: ведите от клавиши стирания, чтобы стереть больше</string>
+    <string name="setup_gesture_word_delete_flick">Рывок, стирающий слово: быстрый рывок влево от клавиши стирания удаляет последнее слово</string>
     <string name="setup_test_field_hint">Попробуйте: проведите по «сәләм»\nили напечатайте «бел»</string>
     <string name="setup_done_button">Открыть настройки</string>
 

@@ -195,6 +195,50 @@
                 android:text="@string/setup_done_hint"
                 android:textAppearance="?android:attr/textAppearanceMedium" />
 
+            <!-- Gesture cheatsheet: the four gestures this keyboard has, one line each,
+                 the same texts the Preferences "Gestures" card shows. Read-only TextViews
+                 inside one card; nothing here is a tap target. -->
+            <LinearLayout
+                android:id="@+id/setup_gestures_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="vertical"
+                android:background="@drawable/app_card_bg"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/gestures_card_title"
+                    android:textAppearance="?android:attr/textAppearanceMedium" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/setup_gesture_glide"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/setup_gesture_space_trackpad"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/setup_gesture_delete_slide"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/setup_gesture_word_delete_flick"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+            </LinearLayout>
+
             <!-- The word-suggestions switch: the same pref the settings screen
                  writes (wired in SetupActivity), so the card and the settings row
                  never disagree. The Switch is the tap and TalkBack target; the

@@ -109,6 +109,7 @@
     <string name="one_handed_mode_full">Full width</string>
     <string name="globe_menu_emoji">Emoji</string>
     <string name="prefs_bottom_offset_portrait_settings">Bottom offset</string>
+    <string name="prefs_bottom_offset_landscape_settings">Bottom offset (landscape)</string>
     <string name="keyboard_color">Keyboard color</string>
     <string name="show_special_chars">Show special characters</string>
     <!-- Description for option to show extra characters; only affects layouts with extra
@@ -136,7 +137,7 @@
     <string name="space_swipe_summary">Slide along the space bar</string>
     <string name="delete_swipe">Delete by sliding</string>
     <!-- Description for option to delete more text by swiping on the delete key -->
-    <string name="delete_swipe_summary">Slide from the delete key to erase more</string>
+    <string name="delete_swipe_summary">Slide from the delete key to erase more. A quick flick left deletes the whole last word</string>
     <!-- Option to show word suggestions above the keyboard while typing -->
     <string name="tatar_suggestions">Word suggestions</string>
     <!-- Description for the word suggestions option -->
@@ -206,6 +207,19 @@
     <string name="glide_typing">Glide typing</string>
     <!-- Description for the glide typing option -->
     <string name="glide_typing_summary">Slide your finger over the letters to type a word</string>
+    <!-- Section headers that split the Preferences screen into themed cards -->
+    <string name="settings_section_suggestions">Suggestions</string>
+    <string name="settings_section_typing">Typing</string>
+    <!-- Read-only "Gestures" card on the Preferences screen: one row per gesture, no switches -->
+    <string name="gestures_card_title">Gestures</string>
+    <string name="gesture_space_trackpad">Space bar trackpad</string>
+    <string name="gesture_space_trackpad_summary">Slide on the space bar to move the cursor</string>
+    <string name="gesture_delete_slide">Delete slide</string>
+    <string name="gesture_delete_slide_summary">Slide from the delete key to erase letter by letter</string>
+    <string name="gesture_word_delete_flick">Word-delete flick</string>
+    <string name="gesture_word_delete_flick_summary">A quick left flick from the delete key removes the whole last word</string>
+    <string name="gesture_glide">Glide typing</string>
+    <string name="gesture_glide_summary">Slide over the letters to type a word</string>
     <!-- Option to remember words the user types and suggest them later -->
     <string name="personal_dictionary">Personal dictionary</string>
     <!-- Description for the personal dictionary option -->
@@ -224,6 +238,8 @@
     <string name="personal_dictionary_add_hint">Word</string>
     <!-- Affirmative button of the add-word dialog -->
     <string name="personal_dictionary_add_action">Add</string>
+    <!-- Title of the dialog offering to save the long-pressed strip word. %1$s is the word as it will be saved. -->
+    <string name="personal_dictionary_add_title">Add \u201c%1$s\u201d to the personal dictionary?</string>
     <!-- Shown when the typed word cannot go into the Tatar personal dictionary -->
     <string name="personal_dictionary_add_rejected">Cannot save. Use 3 to 24 Tatar letters only.</string>
     <!-- Shown when the typed word cannot go into the Russian personal dictionary -->
@@ -378,6 +394,11 @@
     <string name="clear_recent_emoji_action">Clear</string>
     <!-- Shown when the recent emoji could not be cleared -->
     <string name="clear_recent_emoji_failed">Could not clear recent emoji. Try again.</string>
+    <!-- Title of the dialog that removes one emoji from the recent list; %s is the emoji's
+         spoken name (or the emoji itself when no name is known). -->
+    <string name="remove_recent_emoji_title">Remove \u201c%1$s\u201d from recents?</string>
+    <!-- Affirmative button of the remove-one-recent dialog. Names the action, like Clear. -->
+    <string name="remove_recent_emoji_action">Remove</string>
     <!-- Title of the preference item that opens the keyboard languages screen -->
     <string name="keyboard_languages">Keyboard languages</string>
     <!-- Summary of the preference item that opens the keyboard languages screen -->
@@ -389,8 +410,8 @@
     <string name="change_keyboard">Change keyboard</string>
     <string name="privacy_policy">Privacy Policy</string>
     <string name="license">License</string>
-    <!-- Shown when a long press lands on a word the keyboard did not learn from you. The word itself is never named: the message can appear over any app. -->
-    <string name="personal_dictionary_not_saved">This word is from the built-in dictionary. Only words learned from your typing can be forgotten.</string>
+    <!-- Shown when a long press asks to save or forget a word on a layout that has no personal dictionary. The word itself is never named: the message can appear over any app. -->
+    <string name="personal_dictionary_no_language">This layout has no personal dictionary. Words can be saved while typing in Tatar or Russian.</string>
     <!-- Shown when the emoji key or the panel's search cell has nothing to open. Names no file and no cause. -->
     <string name="emoji_unavailable">Emoji are not available right now. Restarting the keyboard may help.</string>
     <!-- Shown when a link row is tapped and no app on the device can open links. -->

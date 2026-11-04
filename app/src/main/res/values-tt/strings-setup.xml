@@ -27,7 +27,14 @@
     <string name="setup_step2_button">Сайлау</string>
 
     <string name="setup_done_title">Әзер!</string>
-    <string name="setup_done_hint">Шудырып та язып була: бармакны хәрефләр буйлап йөртегез</string>
+    <string name="setup_done_hint">Шудырып та язып була: бармакны хәрефләр буйлап йөртегез. Буш урын буйлап — курсор, бетерү төймәсеннән — бетерү, тиз сулга тарту сүзне тулысынча бетерә</string>
+
+    <!-- One line per gesture in the done-block card: gesture name first, then the effect,
+         in the same order as the Preferences "Gestures" card. -->
+    <string name="setup_gesture_glide">Шудырып язу: сүз язу өчен хәрефләр буйлап йөртегез</string>
+    <string name="setup_gesture_space_trackpad">Буш урын-трекпад: курсорны күчерү өчен буш урын буйлап йөртегез</string>
+    <string name="setup_gesture_delete_slide">Шудырып бетерү: күбрәк бетерү өчен бетерү төймәсеннән шудырыгыз</string>
+    <string name="setup_gesture_word_delete_flick">Сүзне бетерүче тарту: бетерү төймәсеннән тиз сулга тарту соңгы сүзне бетерә</string>
     <string name="setup_test_field_hint">Сынап карагыз: «сәләм» буйлап шудырыгыз\nяки «бел» дип языгыз</string>
     <string name="setup_done_button">Көйләүләрне ачу</string>
 

@@ -57,6 +57,7 @@ object BackupPreferenceSchema {
         Settings.PREF_KEY_LONGPRESS_TIMEOUT to ValueType.INT,
         Settings.PREF_ONE_HANDED_SIDE to ValueType.INT,
         Settings.PREF_BOTTOM_OFFSET_PORTRAIT to ValueType.INT,
+        Settings.PREF_BOTTOM_OFFSET_LANDSCAPE to ValueType.INT,
         // The packed color int the restriction loader writes.
         Settings.PREF_KEYBOARD_COLOR to ValueType.INT,
         // Floats.

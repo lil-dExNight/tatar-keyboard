@@ -72,6 +72,11 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     public static final String PREF_EMOJI_PANEL_HEIGHT = "pref_emoji_panel_height";
     public static final String PREF_BOTTOM_OFFSET_PORTRAIT = "pref_bottom_offset_portrait";
     /**
+     * The same offset for landscape, in dp, default 0. Read only in landscape orientation
+     * (see {@link #readBottomOffsetLandscape}); the portrait key never applies there.
+     */
+    public static final String PREF_BOTTOM_OFFSET_LANDSCAPE = "pref_bottom_offset_landscape";
+    /**
      * The one-handed dock side: one of the {@link OneHandedMode} SIDE_* values as an int
      * (0 = off, the default). The settings row writes it; a managed restriction writes the same
      * int. An out-of-range value reads as off — see {@link #readOneHandedSide}.
@@ -238,6 +243,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
                         break;
                     case PREF_KEY_LONGPRESS_TIMEOUT:
                     case PREF_BOTTOM_OFFSET_PORTRAIT:
+                    case PREF_BOTTOM_OFFSET_LANDSCAPE:
                     case PREF_ONE_HANDED_SIDE:
                         Log.i(TAG, "Loading restriction: " + key);
                         prefsEditor.putInt(key, appRestrictions.getInt(key));
@@ -566,12 +572,17 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
                 EmojiPanelHeightPresets.SAME_SCALE, EmojiPanelHeightPresets.MAX_SCALE, defaultValue);
     }
 
-    // The slider range the offset row writes within; mirrors config_min/max_bottom_offset_portrait.
+    // The slider range both offset rows write within; mirrors config_min/max_bottom_offset_portrait.
     private static final int MIN_BOTTOM_OFFSET = 0;
     private static final int MAX_BOTTOM_OFFSET = 100;
 
     public static int readBottomOffsetPortrait(final SharedPreferences prefs) {
         return clampStoredInt(readIntTolerant(prefs, PREF_BOTTOM_OFFSET_PORTRAIT, DEFAULT_BOTTOM_OFFSET),
+                MIN_BOTTOM_OFFSET, MAX_BOTTOM_OFFSET);
+    }
+
+    public static int readBottomOffsetLandscape(final SharedPreferences prefs) {
+        return clampStoredInt(readIntTolerant(prefs, PREF_BOTTOM_OFFSET_LANDSCAPE, DEFAULT_BOTTOM_OFFSET),
                 MIN_BOTTOM_OFFSET, MAX_BOTTOM_OFFSET);
     }
 

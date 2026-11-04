@@ -142,6 +142,9 @@
         <attr name="showMoreKeysKeyboardAtTouchedPoint" format="boolean" />
         <!-- Color of the fading glide trail drawn under the fingertip. -->
         <attr name="glideTrailColor" format="color" />
+        <!-- Color the fading trail takes when the glide is refused (no word committed): the
+             refusal's visual half on API levels where the haptic tick does not vibrate. -->
+        <attr name="glideTrailRefusedColor" format="color" />
     </declare-styleable>
 
     <declare-styleable name="MoreKeysKeyboardView">

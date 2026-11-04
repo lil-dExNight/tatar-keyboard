@@ -57,6 +57,7 @@
     <string name="one_handed_mode_full">Тулы киңлек</string>
     <string name="globe_menu_emoji">Эмодзи</string>
     <string name="prefs_bottom_offset_portrait_settings">Астан чигенеш</string>
+    <string name="prefs_bottom_offset_landscape_settings">Астан чигенеш (горизонталь режим)</string>
     <string name="keyboard_color">Клавиатура төсе</string>
     <string name="show_special_chars">Махсус билгеләр</string>
     <string name="show_special_chars_summary">Кайбер җәемнәрдә өстәмә билгеләр</string>
@@ -76,7 +77,20 @@
     <string name="space_swipe">Курсорны буш урын белән күчерү</string>
     <string name="space_swipe_summary">Бармакны буш урын буйлап йөртегез</string>
     <string name="delete_swipe">Шудырып бетерү</string>
-    <string name="delete_swipe_summary">Күбрәк бетерү өчен бетерү төймәсеннән бармакны шудырыгыз</string>
+    <string name="delete_swipe_summary">Күбрәк бетерү өчен бетерү төймәсеннән бармакны шудырыгыз. Тиз сулга тарту соңгы сүзне тулысынча бетерә</string>
+    <!-- Section headers that split the Preferences screen into themed cards -->
+    <string name="settings_section_suggestions">Тәкъдимнәр</string>
+    <string name="settings_section_typing">Язу</string>
+    <!-- The read-only "Gestures" card on the Preferences screen: one row per gesture, no switches -->
+    <string name="gestures_card_title">Ишарәләр</string>
+    <string name="gesture_space_trackpad">Буш урын — трекпад</string>
+    <string name="gesture_space_trackpad_summary">Курсорны күчерү өчен буш урын буйлап йөртегез</string>
+    <string name="gesture_delete_slide">Шудырып бетерү</string>
+    <string name="gesture_delete_slide_summary">Бетерү төймәсеннән шудырыгыз — хәрефләр бер-бер артлы бетерелә</string>
+    <string name="gesture_word_delete_flick">Сүзне бетерүче тарту</string>
+    <string name="gesture_word_delete_flick_summary">Бетерү төймәсеннән тиз сулга тарту соңгы сүзне тулысынча бетерә</string>
+    <string name="gesture_glide">Шудырып язу</string>
+    <string name="gesture_glide_summary">Сүз язу өчен бармакны хәрефләр буйлап шудырыгыз</string>
     <string name="tatar_suggestions">Сүз тәкъдимнәре</string>
     <string name="tatar_suggestions_summary">Язганда клавиатура өстендә сүзләр күренә</string>
     <string name="row_needs_suggestions">Башта «Сүз тәкъдимнәре»н кабызыгыз</string>
@@ -123,6 +137,7 @@
     <string name="personal_dictionary_add">Сүз өстәү\u2026</string>
     <string name="personal_dictionary_add_hint">Сүз</string>
     <string name="personal_dictionary_add_action">Өстәү</string>
+    <string name="personal_dictionary_add_title">«%1$s» сүзен шәхси сүзлеккә өстәргәме?</string>
     <string name="personal_dictionary_add_rejected">Саклап булмады. 3 тән 24 кә кадәр татар хәрефе генә кулланыгыз.</string>
     <string name="personal_dictionary_add_rejected_ru">Саклап булмады. 3 тән 24 кә кадәр рус хәрефе генә кулланыгыз.</string>
     <string name="personal_dictionary_delete">Бетерү</string>
@@ -205,6 +220,8 @@
     <string name="clear_recent_emoji_confirm">Соңгы эмодзилар исемлеген чистартыргамы?</string>
     <string name="clear_recent_emoji_action">Чистарту</string>
     <string name="clear_recent_emoji_failed">Соңгы эмодзиларны чистартып булмады. Кабатлап карагыз.</string>
+    <string name="remove_recent_emoji_title">«%1$s» соңгылардан алыргамы?</string>
+    <string name="remove_recent_emoji_action">Алу</string>
     <string name="keyboard_languages">Клавиатура телләре</string>
     <string name="keyboard_languages_summary">Тел өстәү яки бетерү</string>
     <string name="user_languages">Сезнең телләр</string>
@@ -214,7 +231,7 @@
     <string name="change_keyboard">Клавиатураны алыштыру</string>
     <string name="privacy_policy">Хосусыйлык сәясәте</string>
     <string name="license">Лицензия</string>
-    <string name="personal_dictionary_not_saved">Бу сүз клавиатураның үз сүзлегеннән. Сездән өйрәнелгән сүзләрне генә онытып була.</string>
+    <string name="personal_dictionary_no_language">Бу җәемдә шәхси сүзлек юк. Сүзләр татарча яки русча язганда саклана ала.</string>
     <string name="emoji_unavailable">Эмодзилар хәзергә юк. Клавиатураны яңадан җибәрү ярдәм итә ала.</string>
     <string name="no_app_for_link">Бу җиһазда сылтамаларны ача торган кушымта юк.</string>
     <string name="personal_dictionary_empty_ready">Әлегә сакланган сүзләр юк. Сез язган сүзләр монда күренер.</string>
@@ -245,5 +262,5 @@
     <string name="backup_import_failed_write">Күчермәне кире кайтарып булмады. Кабатлап карагыз.</string>
     <string name="backup_no_app">Бу җиһазда файл сайлый торган кушымта юк.</string>
     <!-- No Tatar policy exists; Russian is the nearest language the user can read. -->
-    <string name="privacy_policy_url" translatable="false">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.ru.md</string>
+    <string name="privacy_policy_url">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.ru.md</string>
 </resources>

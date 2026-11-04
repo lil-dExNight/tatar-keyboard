@@ -166,6 +166,18 @@ internal class EmojiPanelState {
         return setScrollY(sectionTop[category])
     }
 
+    /**
+     * Clamps the scroll so the top of section [section] stays in the viewport — the clamp a
+     * recents refresh applies, because the content above the section shrinks or vanishes when the
+     * Recent category loses entries (the snapshot swap resets the scroll to the top otherwise).
+     */
+    fun clampScrollToSection(section: Int): Boolean {
+        if (section !in 0 until sectionCount()) return false
+        val top = sectionTop[section]
+        if (scrollY <= top) return false
+        return setScrollY(top)
+    }
+
     // --- Bands --------------------------------------------------------------------------------
 
     /**
