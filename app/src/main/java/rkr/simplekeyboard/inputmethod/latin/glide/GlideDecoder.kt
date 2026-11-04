@@ -29,17 +29,21 @@ import kotlin.math.sqrt
  * channel sigmas and the frequency exponent are tuned on a synthetic gesture set.
  *
  * Pipeline of one [decode]:
- *  1. Extremity pruning: the two keys nearest the gesture's start x the two nearest its end
- *     select up to four buckets of the [GlideWordIndex].
+ *  1. Extremity pruning: the keys nearest the gesture's start (up to
+ *     [GlideConstants.startExtremityNeighbors]) and its end (up to
+ *     [GlideConstants.endExtremityNeighbors]) select the start x end buckets of the
+ *     [GlideWordIndex].
  *  2. Length pruning: a candidate stays only when its plain or looped ideal-path length lies
  *     within [GlideConstants.lengthThreshold] x key radius of the gesture's length.
  *  3. Scoring against the candidate's ideal path (the looped variant when the word has a
  *     doubled letter, the plain one otherwise; a twinless doubled word keeps the better of
  *     both, see [scoreCandidate]): shape distance (bbox-normalized pointwise L1
  *     over the resampled paths, Gaussian with [GlideConstants.shapeStd]) x location distance
- *     (absolute pointwise L1/2, Gaussian with [GlideConstants.locationStdFactor] x key radius)
- *     x a frequency weight. The location sigma widens when the gesture is faster than the
- *     candidate's normative duration (the speed channel, see [scoreVariant]). A per-key dwell
+ *     (pointwise x/y errors, two Gaussians with [GlideConstants.locationStdXFactor] /
+ *     [GlideConstants.locationStdYFactor] sigmas x key radius)
+ *     x a frequency weight. The location sigmas widen when the gesture is faster than the
+ *     candidate's normative duration — its Fitts-law duration over letter transitions (the
+ *     speed channel, see [scoreVariant]). A per-key dwell
  *     mask marks locally slow segments relative to the gesture's average speed; dwell at a doubled
  *     letter admits the plain ideal path and applies a likelihood ratio. The confidence competes
  *     for the top-N; cheap fail-fast checks (frequency alone, then shape alone) skip the expensive
@@ -65,25 +69,27 @@ class GlideDecoder(
     private val constants: GlideConstants = GlideConstants(),
 ) {
     /**
-     * Tuning knobs of the classifier. [lengthThreshold], [sampleCount], [extremityNeighbors] and
-     * [frequencyWeight] carry the AnySoftKeyboard PR #1870 study values (as ported through
-     * FlorisBoard). The sigmas, the frequency exponent, the speed channel and the length channel
-     * are tuned per language on the train split of the synthetic gesture set; the constructor
-     * defaults are the Tatar set (the study's sigma values, 22.08 / 0.5109, lie on the same
-     * plateau), and [RUSSIAN] carries the Russian set.
+     * Tuning knobs of the classifier. [lengthThreshold], [sampleCount] and [frequencyWeight]
+     * carry the AnySoftKeyboard PR #1870 study values (as ported through FlorisBoard); the
+     * study's 2-neighbor extremity prune is widened to 3 here (the measured lift-off overshoot
+     * costs recall at 2). The sigmas, the frequency exponent, the speed channel and the length
+     * channel are tuned per language on the train split of the synthetic gesture set; the
+     * constructor defaults are the Tatar set, and [RUSSIAN] carries the Russian set.
      */
     class GlideConstants(
         /** Gaussian sigma of the shape channel, in bbox-normalized units x sample count. */
         val shapeStd: Float = 11.04f,
-        /** Gaussian sigma of the location channel, as a factor of the key radius. */
-        val locationStdFactor: Float = 0.18f,
         /**
-         * Normative gesture speed, in key radii per ms: the duration a careful user takes per unit
-         * of ideal-path length. A gesture faster than a candidate's normative duration trusts that
-         * candidate's location channel less — its sigma widens by min(normative/actual,
-         * [speedWidenMax]). 0f disables the speed channel.
+         * Gaussian sigma of the location channel's x error, as a factor of the key radius. The
+         * keyboard is wide and flat: a user's horizontal error (row drift, wide target keys)
+         * spreads wider than the vertical one, so the channel splits its sigma per axis.
          */
-        val normativeSpeedRadiiPerMs: Float = 0.016f,
+        val locationStdXFactor: Float = 0.24f,
+        /**
+         * Gaussian sigma of the location channel's y error, as a factor of the key radius; see
+         * [locationStdXFactor]. The pair (x, y) is tuned per language on the train split.
+         */
+        val locationStdYFactor: Float = 0.13f,
         /** Widening cap of the location sigma under a fast gesture; 1f disables the adaptation. */
         val speedWidenMax: Float = 1.5f,
         /** Minimum duration of a slow segment that can contribute to the per-key dwell mask. */
@@ -93,10 +99,11 @@ class GlideDecoder(
         /** Likelihood ratio for a doubled candidate when its doubled key carries dwell evidence. */
         val doubledDwellLikelihoodRatio: Float = 4f,
         /**
-         * Hard cutoff of the location channel, in UNWIDENED sigmas: a candidate whose mean
-         * per-point location distance lies past it is out, whatever the speed channel did to the
-         * sigma. Without it, a widened sigma could rescue a candidate whose probability underflowed
-         * to zero — a gesture far off the keys must keep returning nothing.
+         * Hard cutoff of the location channel, in UNWIDENED sigmas: a candidate is out once its
+         * mean per-point location error passes it — meanX^2/sigmaX^2 + meanY^2/sigmaY^2 > C^2,
+         * each axis measured against its own sigma — whatever the speed channel did to the sigma.
+         * Without it, a widened sigma could rescue a candidate whose probability underflowed to
+         * zero — a gesture far off the keys must keep returning nothing.
          */
         val locationCutoffSigmas: Float = 8f,
         /**
@@ -110,8 +117,20 @@ class GlideDecoder(
         val lengthThreshold: Float = 8.42f,
         /** Resampled path resolution shared by both channels. */
         val sampleCount: Int = 200,
-        /** Keys considered nearest to the gesture's start (and end) in extremity pruning. */
-        val extremityNeighbors: Int = 2,
+        /**
+         * Keys considered nearest to the gesture's START in extremity pruning. The touch-down
+         * offset is the smaller of the two endpoint errors, so the start keeps the study's
+         * 2-neighbor set; the bucket-count budget (a hard host-decode p95) is spent where the
+         * recall is: the lift-off.
+         */
+        val startExtremityNeighbors: Int = 2,
+        /**
+         * Keys considered nearest to the gesture's END (lift-off) in extremity pruning: real
+         * lift-offs overshoot the last key's center by up to a radius, so 3 neighbors keep the
+         * true end key in the bucket set (measured on the calibration set: the 2-neighbor set
+         * loses ~6 % of plain targets before ranking).
+         */
+        val endExtremityNeighbors: Int = 3,
         /** Scale of the frequency weight: weight = frequencyWeight x (frequency/maxFrequency)^gamma. */
         val frequencyWeight: Float = 255f,
         /**
@@ -138,7 +157,8 @@ class GlideDecoder(
             @JvmField
             val RUSSIAN = GlideConstants(
                 shapeStd = 8.28f,
-                locationStdFactor = 0.11f,
+                locationStdXFactor = 0.22f,
+                locationStdYFactor = 0.12f,
             )
         }
     }
@@ -174,13 +194,19 @@ class GlideDecoder(
     private val idealSegLens = FloatArray(GlideIdealPaths.MAX_POINTS)
     private val idealInvSegLens = FloatArray(GlideIdealPaths.MAX_POINTS)
     private val idealStats = FloatArray(4)
-    private val startKeys: IntArray = IntArray(constants.extremityNeighbors)
-    private val endKeys: IntArray = IntArray(constants.extremityNeighbors)
+    private val startKeys: IntArray = IntArray(constants.startExtremityNeighbors)
+    private val endKeys: IntArray = IntArray(constants.endExtremityNeighbors)
     private val topScores = FloatArray(TOP_N)
     private val topEntries = IntArray(TOP_N)
-    // The extremity-pruning merge arms: 2 nearest start keys x 2 nearest end keys.
-    private val mergeEnd = IntArray(constants.extremityNeighbors * constants.extremityNeighbors)
-    private val mergeCursor = IntArray(constants.extremityNeighbors * constants.extremityNeighbors)
+    // The extremity-pruning merge arms: nearest start keys x nearest end keys. The head entry
+    // and frequency of each arm are cached (an arm's head changes only when the arm advances),
+    // so the per-candidate selection scan compares cached values, not fresh CSR reads.
+    private val mergeArmCapacity =
+        constants.startExtremityNeighbors * constants.endExtremityNeighbors
+    private val mergeEnd = IntArray(mergeArmCapacity)
+    private val mergeCursor = IntArray(mergeArmCapacity)
+    private val mergeHeadEntry = IntArray(mergeArmCapacity)
+    private val mergeHeadFrequency = LongArray(mergeArmCapacity)
     private val dwellMask = LongArray((geometry.keyCount + 63) ushr 6)
     private val dwellKey = IntArray(1)
     private var dwellMaskValid = false
@@ -235,33 +261,44 @@ class GlideDecoder(
 
         val radius = geometry.keyRadius
         val maxDistance = constants.lengthThreshold * radius
-        val locationStd = constants.locationStdFactor * radius
-        val locationCutoff = constants.locationCutoffSigmas * locationStd
+        // Anisotropic location sigmas: x and y carry their own Gaussian.
+        val locationStdX = constants.locationStdXFactor * radius
+        val locationStdY = constants.locationStdYFactor * radius
         // The speed channel: the gesture's wall-clock duration. A nonpositive or NaN duration
         // (a digitizer that repeats timestamps) leaves the location sigma unadapted.
         val userDurationMs = path.ts[path.size - 1] - path.ts[0]
-        val normativeSpeed = constants.normativeSpeedRadiiPerMs * radius
         val lengthStd = constants.lengthStdFactor * radius
         val lengthInvTwoSigmaSq = (1.0 / (2.0 * lengthStd * lengthStd)).toFloat()
-        // Gaussian factors: p = factor * exp(-distance^2 * invTwoSigmaSq); their product at
-        // distance 0 is the best either channel can do, which the fail-fast checks consume.
+        // Gaussian factors: p = factor * exp(-distance^2 * invTwoSigmaSq); the location channel's
+        // peak is the PRODUCT of the per-axis peaks, which the fail-fast checks consume.
         val shapeFactor = (1.0 / (constants.shapeStd * SQRT_2_PI)).toFloat()
-        val locationFactor = (1.0 / (locationStd * SQRT_2_PI)).toFloat()
+        val locationXFactor = (1.0 / (locationStdX * SQRT_2_PI)).toFloat()
+        val locationYFactor = (1.0 / (locationStdY * SQRT_2_PI)).toFloat()
         val shapeInvTwoSigmaSq =
             (1.0 / (2.0 * constants.shapeStd * constants.shapeStd)).toFloat()
-        val locationInvTwoSigmaSq = (1.0 / (2.0 * locationStd * locationStd)).toFloat()
-        val maxChannelProduct = shapeFactor * locationFactor
+        val locationXInvTwoSigmaSq =
+            (1.0 / (2.0 * locationStdX * locationStdX)).toFloat()
+        val locationYInvTwoSigmaSq =
+            (1.0 / (2.0 * locationStdY * locationStdY)).toFloat()
+        val maxChannelProduct = shapeFactor * locationXFactor * locationYFactor
 
         val startCount = geometry.findClosestKeys(path.firstX, path.firstY, startKeys)
         val endCount = geometry.findClosestKeys(path.lastX, path.lastY, endKeys)
         topScores.fill(Float.POSITIVE_INFINITY)
         var topCount = 0
-
+        // The arm-tail floor: within one arm the entries are frequency-descending, so once an
+        // arm's head frequency cannot pass fail-fast #1 even with the dwell ratio's headroom,
+        // the arm's whole tail cannot either — the arm is exhausted. Verdict-exact (the floor
+        // rounds down to the equality bound, so only entries the per-candidate check also
+        // rejects are cut). A plain local recompute, no closure: the decode path must not
+        // allocate.
+        var armFrequencyFloor = 0L
         // The pair buckets hold their entries frequency-first (build-time sort), and the visit
-        // merges the ≤ 4 arms into one global frequency-descending walk: the fail-fast bound
-        // tightens after the first few scored candidates, so most survivors are rejected without
-        // ever paying the scoring cost. Verdict-exact (a rejected candidate cannot reach the
-        // top-N even with a perfect match) and deterministic (frequency, then entry index).
+        // merges the ≤ start x end neighbor-count arms into one global frequency-descending walk:
+        // fail-fast bound tightens after the first few scored candidates, so most survivors are
+        // rejected without ever paying the scoring cost. Verdict-exact (a rejected candidate
+        // cannot reach the top-N even with a perfect match) and deterministic (frequency, then
+        // entry index).
         var armCount = 0
         for (s in 0 until startCount) {
             for (e in 0 until endCount) {
@@ -270,6 +307,9 @@ class GlideDecoder(
                 if (rangeStart < rangeEnd) {
                     mergeEnd[armCount] = rangeEnd
                     mergeCursor[armCount] = rangeStart
+                    val headEntry = index.pairEntryAt(rangeStart)
+                    mergeHeadEntry[armCount] = headEntry
+                    mergeHeadFrequency[armCount] = index.frequencyAt(headEntry)
                     armCount++
                 }
             }
@@ -279,10 +319,14 @@ class GlideDecoder(
             var bestFrequency = -1L
             var bestEntry = Int.MAX_VALUE
             for (arm in 0 until armCount) {
-                val cursor = mergeCursor[arm]
-                if (cursor >= mergeEnd[arm]) continue
-                val entry = index.pairEntryAt(cursor)
-                val frequency = index.frequencyAt(entry)
+                if (mergeCursor[arm] >= mergeEnd[arm]) continue
+                val frequency = mergeHeadFrequency[arm]
+                if (frequency <= armFrequencyFloor) {
+                    // The arm's tail is frequency-descending past the floor: exhaust it.
+                    mergeCursor[arm] = mergeEnd[arm]
+                    continue
+                }
+                val entry = mergeHeadEntry[arm]
                 if (frequency > bestFrequency || (frequency == bestFrequency && entry < bestEntry)) {
                     bestArm = arm
                     bestFrequency = frequency
@@ -290,7 +334,13 @@ class GlideDecoder(
                 }
             }
             if (bestArm < 0) break
-            mergeCursor[bestArm]++
+            val nextCursor = mergeCursor[bestArm] + 1
+            mergeCursor[bestArm] = nextCursor
+            if (nextCursor < mergeEnd[bestArm]) {
+                val headEntry = index.pairEntryAt(nextCursor)
+                mergeHeadEntry[bestArm] = headEntry
+                mergeHeadFrequency[bestArm] = index.frequencyAt(headEntry)
+            }
             val entry = bestEntry
             lastCandidateCount++
             val plain = index.plainLengthAt(entry)
@@ -300,11 +350,26 @@ class GlideDecoder(
             ) {
                 continue
             }
+            val previousWorst = if (topCount == TOP_N) topScores[TOP_N - 1] else Float.NaN
             topCount = scoreCandidate(
-                path, index, entry, topCount, shapeFactor, locationFactor,
-                shapeInvTwoSigmaSq, locationInvTwoSigmaSq, maxChannelProduct,
-                userDurationMs, normativeSpeed, locationCutoff, userLength, lengthInvTwoSigmaSq,
+                path, index, entry, topCount, shapeFactor,
+                locationXFactor, locationYFactor,
+                shapeInvTwoSigmaSq, locationXInvTwoSigmaSq, locationYInvTwoSigmaSq,
+                maxChannelProduct, userDurationMs, userLength, lengthInvTwoSigmaSq,
             )
+            if (topCount == TOP_N && topScores[TOP_N - 1] != previousWorst) {
+                // Reject when maxChannelProduct x frequencyWeight x dwellRatio <=
+                // 1/topScores[k-1]; solve for the frequency at equality (gamma root in double
+                // precision, floor-rounded so the cut stays inside the per-candidate check).
+                val needed = 1.0 / (
+                    topScores[TOP_N - 1].toDouble() * maxChannelProduct *
+                        constants.frequencyWeight * constants.doubledDwellLikelihoodRatio
+                    )
+                armFrequencyFloor = if (needed >= 1.0) 0L else {
+                    val root = Math.pow(needed, 1.0 / constants.frequencyExponent)
+                    Math.floor(index.maxFrequency * root).toLong()
+                }
+            }
         }
 
         for (slot in 0 until topCount) {
@@ -325,20 +390,27 @@ class GlideDecoder(
         entry: Int,
         topCount: Int,
         shapeFactor: Float,
-        locationFactor: Float,
+        locationXFactor: Float,
+        locationYFactor: Float,
         shapeInvTwoSigmaSq: Float,
-        locationInvTwoSigmaSq: Float,
+        locationXInvTwoSigmaSq: Float,
+        locationYInvTwoSigmaSq: Float,
         maxChannelProduct: Float,
         userDurationMs: Float,
-        normativeSpeed: Float,
-        locationCutoff: Float,
         userLength: Float,
         lengthInvTwoSigmaSq: Float,
     ): Int {
         val samples = constants.sampleCount
         val frequencyRatio = index.frequencyAt(entry).toDouble() / index.maxFrequency
+        // The exponent is 0.25 (the tuned value): two square roots replace Math.pow, which the
+        // fail-fast path would otherwise call per surviving candidate.
         var frequencyWeight =
-            (constants.frequencyWeight * Math.pow(frequencyRatio, constants.frequencyExponent.toDouble())).toFloat()
+            if (constants.frequencyExponent == 0.25f) {
+                (constants.frequencyWeight * sqrt(sqrt(frequencyRatio))).toFloat()
+            } else {
+                (constants.frequencyWeight *
+                    Math.pow(frequencyRatio, constants.frequencyExponent.toDouble())).toFloat()
+            }
         // Dwell is alternative evidence to a loop: it lets the doubled candidate use its plain
         // path even when the undoubled twin exists, and supplies an independent likelihood ratio.
         val doubled = index.loopLengthAt(entry) >= 0f
@@ -356,15 +428,17 @@ class GlideDecoder(
         // its plain variant equals the twin's path, so frequency alone must not choose between
         // them. A twinless doubled word always keeps the better of its plain and looped paths.
         var best = scoreVariant(
-            index, entry, topCount, doubled, shapeFactor, locationFactor,
-            shapeInvTwoSigmaSq, locationInvTwoSigmaSq, frequencyWeight, samples,
-            userDurationMs, normativeSpeed, locationCutoff, userLength, lengthInvTwoSigmaSq,
+            index, entry, topCount, doubled, shapeFactor,
+            locationXFactor, locationYFactor,
+            shapeInvTwoSigmaSq, locationXInvTwoSigmaSq, locationYInvTwoSigmaSq,
+            frequencyWeight, samples, userDurationMs, userLength, lengthInvTwoSigmaSq,
         )
         if (doubled && (index.isTwinlessAt(entry) || dwellAtDouble)) {
             val plain = scoreVariant(
-                index, entry, topCount, false, shapeFactor, locationFactor,
-                shapeInvTwoSigmaSq, locationInvTwoSigmaSq, frequencyWeight, samples,
-                userDurationMs, normativeSpeed, locationCutoff, userLength, lengthInvTwoSigmaSq,
+                index, entry, topCount, false, shapeFactor,
+                locationXFactor, locationYFactor,
+                shapeInvTwoSigmaSq, locationXInvTwoSigmaSq, locationYInvTwoSigmaSq,
+                frequencyWeight, samples, userDurationMs, userLength, lengthInvTwoSigmaSq,
             )
             if (plain < best) best = plain
         }
@@ -443,12 +517,16 @@ class GlideDecoder(
      * Scores one candidate against one ideal path ([loopedOnly] selects the doubled-letter loop)
      * and returns its confidence, or POSITIVE_INFINITY when a fail-fast check rejects it.
      *
-     * The speed channel: when the gesture's [userDurationMs] is shorter than this ideal path's
-     * normative duration (its length over [normativeSpeed]), the location sigma widens by their
-     * ratio (capped by [GlideConstants.speedWidenMax]) — a fast gesture's location evidence is
-     * trusted less. Widening only lowers the location channel's peak, so the caller's fail-fast
-     * checks against the un-widened factors remain exact (the widened peak can never beat them);
-     * the variant-level checks below use the widened factors.
+     * The speed channel: when the gesture's [userDurationMs] is shorter than the word's
+     * normative duration ([GlideWordIndex.normativeDurationMsAt], the Fitts-law duration of its
+     * letter transitions), both location sigmas widen by their ratio (capped by
+     * [GlideConstants.speedWidenMax]) — a fast gesture's location evidence is trusted less.
+     * Widening only lowers the location channel's peak, so the caller's fail-fast checks
+     * against the un-widened factors remain exact (the widened peak can never beat them); the
+     * variant-level checks below use the widened factors.
+     *
+     * The location channel: the x and y error of every sample are scored by their own Gaussians
+     * (p = pX * pY), so the two sums accumulate independently in the fused walk.
      */
     private fun scoreVariant(
         index: GlideWordIndex,
@@ -456,14 +534,14 @@ class GlideDecoder(
         topCount: Int,
         loopedOnly: Boolean,
         shapeFactor: Float,
-        locationFactor: Float,
+        locationXFactor: Float,
+        locationYFactor: Float,
         shapeInvTwoSigmaSq: Float,
-        locationInvTwoSigmaSq: Float,
+        locationXInvTwoSigmaSq: Float,
+        locationYInvTwoSigmaSq: Float,
         frequencyWeight: Float,
         samples: Int,
         userDurationMs: Float,
-        normativeSpeed: Float,
-        locationCutoff: Float,
         userLength: Float,
         lengthInvTwoSigmaSq: Float,
     ): Float {
@@ -474,21 +552,26 @@ class GlideDecoder(
         if (points < 0) return Float.POSITIVE_INFINITY
         val totalLength =
             if (loopedOnly) index.loopLengthAt(entry) else index.plainLengthAt(entry)
-        var variantLocationFactor = locationFactor
-        var variantLocationInvTwoSigmaSq = locationInvTwoSigmaSq
-        if (userDurationMs > 0f && userDurationMs.isFinite() && normativeSpeed > 0f) {
-            // The normative duration uses the PLAIN length even for the looped variant: the
-            // normative models the letter route, not the loop embellishment — otherwise the looped
-            // candidate would buy extra location slack on every fast gesture, eroding the twin rule.
-            val normativeMs = index.plainLengthAt(entry) / normativeSpeed
+        var variantLocationXFactor = locationXFactor
+        var variantLocationYFactor = locationYFactor
+        var variantLocationXInvTwoSigmaSq = locationXInvTwoSigmaSq
+        var variantLocationYInvTwoSigmaSq = locationYInvTwoSigmaSq
+        if (userDurationMs > 0f && userDurationMs.isFinite()) {
+            // The normative duration is the word's letter route (the Fitts duration is over
+            // letters, not loop embellishment), so the looped variant buys no extra location
+            // slack on a fast gesture — the twin rule keeps its teeth.
+            val normativeMs = index.normativeDurationMsAt(entry)
             if (normativeMs > userDurationMs) {
                 val widen = minOf(normativeMs / userDurationMs, constants.speedWidenMax)
                 if (widen > 1f) {
-                    variantLocationFactor /= widen
-                    variantLocationInvTwoSigmaSq /= widen * widen
+                    variantLocationXFactor /= widen
+                    variantLocationYFactor /= widen
+                    variantLocationXInvTwoSigmaSq /= widen * widen
+                    variantLocationYInvTwoSigmaSq /= widen * widen
                 }
             }
         }
+        val variantLocationFactor = variantLocationXFactor * variantLocationYFactor
         // Normalization factors from the raw polyline's bbox; the fused loop below needs them
         // before it starts (the user path is normalized the same way, see decode()).
         val idealWidth = idealStats[1] - idealStats[0]
@@ -514,9 +597,11 @@ class GlideDecoder(
         // points on the fly (the same segment walk the resampler runs, segment lengths cached
         // by the writer), with both channels accumulating against them. The shape bail ends
         // the walk early; location's own bail is subsumed (a shape-bailed candidate never
-        // pays for location samples either).
+        // pays for location samples either). The location x/y sums are separate (anisotropic
+        // sigmas); the post-walk cutoff gates on their means.
         var shapeDistance = 0f
-        var locationSum = 0f
+        var locationXSum = 0f
+        var locationYSum = 0f
         var k = 0
         if (totalLength <= 0f) {
             // A degenerate ideal path (every letter on one key): every sample is that point.
@@ -528,7 +613,8 @@ class GlideDecoder(
                 shapeDistance += (if (dx < 0f) -dx else dx) + (if (dy < 0f) -dy else dy)
                 val lx = idealX[0] - userX[k]
                 val ly = idealY[0] - userY[k]
-                locationSum += (if (lx < 0f) -lx else lx) + (if (ly < 0f) -ly else ly)
+                locationXSum += if (lx < 0f) -lx else lx
+                locationYSum += if (ly < 0f) -ly else ly
                 k++
             }
         } else {
@@ -571,7 +657,8 @@ class GlideDecoder(
                 shapeDistance += (if (dx < 0f) -dx else dx) + (if (dy < 0f) -dy else dy)
                 val lx = ix - userX[k]
                 val ly = iy - userY[k]
-                locationSum += (if (lx < 0f) -lx else lx) + (if (ly < 0f) -ly else ly)
+                locationXSum += if (lx < 0f) -lx else lx
+                locationYSum += if (ly < 0f) -ly else ly
                 k++
             }
         }
@@ -586,16 +673,33 @@ class GlideDecoder(
             return Float.POSITIVE_INFINITY
         }
         if (topCount == TOP_N) {
-            // Location check: the fused walk has already accumulated the full location sum,
+            // Location check: the fused walk has already accumulated the full location sums,
             // so this bound is checked once here instead of inside the loop.
             val needed = 1.0 /
                 (topScores[TOP_N - 1].toDouble() * shapeProbability * frequencyWeight)
             if (needed >= variantLocationFactor) return Float.POSITIVE_INFINITY
         }
-        val locationDistance = locationSum / (2f * samples)
-        if (locationDistance > locationCutoff) return Float.POSITIVE_INFINITY
-        val locationProbability =
-            gaussian(locationDistance, variantLocationFactor, variantLocationInvTwoSigmaSq)
+        // The hard location cutoff: the candidate is out once its mean per-point location error
+        // passes locationCutoffSigmas anisotropic sigmas — meanX^2/(2 sigmaX^2) + meanY^2/(2
+        // sigmaY^2) > C^2/2 — checked once on the accumulated sums (the mean's 1/samples^2 is
+        // folded into the weights) with the UNWIDENED sigmas, so the speed channel's widening
+        // cannot rescue a gesture drawn far off the keys.
+        val invSamples = 1f / samples
+        val cutoffXWeight = locationXInvTwoSigmaSq * invSamples * invSamples
+        val cutoffYWeight = locationYInvTwoSigmaSq * invSamples * invSamples
+        val cutoffLimit = 0.5f * constants.locationCutoffSigmas * constants.locationCutoffSigmas
+        if (cutoffXWeight * locationXSum * locationXSum +
+            cutoffYWeight * locationYSum * locationYSum > cutoffLimit
+        ) {
+            return Float.POSITIVE_INFINITY
+        }
+        val locationXDistance = locationXSum * invSamples
+        val locationYDistance = locationYSum * invSamples
+        val locationProbability = gaussianXy(
+            locationXDistance, locationYDistance,
+            variantLocationXFactor * variantLocationYFactor,
+            variantLocationXInvTwoSigmaSq, variantLocationYInvTwoSigmaSq,
+        )
         if (locationProbability <= 0f) return Float.POSITIVE_INFINITY
         // The length channel: an unnormalized Gaussian bump over the path-length mismatch; it
         // peaks at 1, so the fail-fast bounds above stay exact.
@@ -609,6 +713,19 @@ class GlideDecoder(
     private fun gaussian(distance: Float, factor: Float, invTwoSigmaSq: Float): Float {
         val exponent = -distance * distance * invTwoSigmaSq
         return factor * Math.exp(exponent.toDouble()).toFloat()
+    }
+
+    /** The anisotropic location probability: per-axis Gaussians, p = pX * pY. */
+    private fun gaussianXy(
+        distanceX: Float,
+        distanceY: Float,
+        factorProduct: Float,
+        invTwoSigmaSqX: Float,
+        invTwoSigmaSqY: Float,
+    ): Float {
+        val exponent = -distanceX * distanceX * invTwoSigmaSqX -
+            distanceY * distanceY * invTwoSigmaSqY
+        return factorProduct * Math.exp(exponent.toDouble()).toFloat()
     }
 
     companion object {

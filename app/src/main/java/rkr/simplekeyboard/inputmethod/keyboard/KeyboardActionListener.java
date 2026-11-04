@@ -93,6 +93,13 @@ public interface KeyboardActionListener {
     void onSpaceTrackpadSelectionEnd();
     void onSpaceTrackpadFinish(boolean cancelled);
 
+    /**
+     * Called once per keyboard session at the first glide-eligible letter-key down (the decider's
+     * TRACKING entry), long before any gesture arms: the receiver starts the glide index build so
+     * an early glide does not pay it mid-gesture. Later touches of the session never emit it.
+     */
+    default void onGlideTrackingStarted() {}
+
     /** Called once when a touch becomes an armed glide; ordinary taps never emit it. */
     default void onGlideArmed() {}
 

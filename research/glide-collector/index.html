@@ -13,9 +13,13 @@
     downloads the JSONL file and sends it themselves;
   - the page has no text fields and never sees anything the participant types elsewhere.
 
-  The prompt pools are the 20 most frequent 4–7-letter words of the repository's own tt/ru
-  evaluation corpora whose letters all sit on base keys of the respective layout (proper-name
-  forms excluded).
+  The prompt pools start from the 20 most frequent 4–7-letter words of the repository's own
+  tt/ru evaluation corpora whose letters all sit on base keys of the respective layout
+  (proper-name forms excluded), plus probe classes the decoder handles specially: doubled
+  letters (one key visited twice), alias letters (Tatar ъ traces over the ь key, Russian ё over
+  е — both are long-press letters without a key of their own) and the Tatar extra-row letters
+  һ/ә. The gate below maps an alias letter to its base key and treats a doubled letter as one
+  key visit, so these words are traceable exactly as the app decodes them.
 -->
 <html lang="en">
 <head>
@@ -123,9 +127,18 @@ var LAYOUTS = {
       letterRow('фывапролджэ', 9.091),
       bottomRow(),
     ],
+    /* Letters without a key of their own trace over their base key (in the app they are the
+     * base key's long-press letters and the decoder's aliases): the hard sign rides ь. */
+    aliases: { 'ъ': 'ь' },
     prompts: ['белән', 'минем', 'миңа', 'өчен', 'түгел', 'моны', 'аның', 'алар', 'кирәк',
               'нәрсә', 'синең', 'генә', 'гына', 'сиңа', 'идем', 'сезнең', 'монда', 'кеше',
-              'безнең', 'инде'],
+              'безнең', 'инде',
+              /* Doubled letters (one key visited twice in a row). */
+              'сәлләм', 'милли', 'теллә', 'әллә', 'җилләр',
+              /* The hard sign, traced over the ь key. */
+              'вәгъдә', 'мәгълүм', 'тәкъдим', 'тәъмин', 'вәҗһ',
+              /* The extra-row letters һ and ә. */
+              'һөнәр', 'һөҗүм', 'мөһим', 'һәрбер', 'бәләкәй', 'тәрәзә'],
   },
   ru: {
     rows: [
@@ -133,9 +146,15 @@ var LAYOUTS = {
       letterRow('фывапролджэ', 9.091),
       bottomRow(),
     ],
+    /* ё has no key of its own on this layout; it traces over е. */
+    aliases: { 'ё': 'е' },
     prompts: ['меня', 'тебя', 'было', 'есть', 'почему', 'очень', 'тебе', 'сегодня', 'этом',
               'надо', 'когда', 'много', 'сказал', 'тому', 'больше', 'были', 'если', 'чтобы',
-              'лучше', 'хочу'],
+              'лучше', 'хочу',
+              /* Doubled letters (one key visited twice in a row). */
+              'русский', 'суббота', 'длинный', 'группа', 'ранний',
+              /* ё, traced over the е key. */
+              'своё', 'пришёл', 'нашёл', 'лёгкий', 'тёмный', 'зелёный'],
   },
 };
 
@@ -228,16 +247,24 @@ function resampleGesture(xs, ys, ts, keyRadius, n) {
 /* ---------------------------------------------------------------------------
  * The decoder-free correctness gate: the trace starts on the prompt's first key,
  * finishes on its last key and passes every letter's key in order (within one key
- * radius of the center). Failed traces are not stored; the participant retries.
+ * radius of the center). An alias letter (ъ, ё) maps to its base key, and a letter
+ * whose key equals the previous letter's — a doubled letter, or a letter right after
+ * its own alias — is one key visit, exactly as the app's decoder reads the gesture.
+ * Failed traces are not stored; the participant retries.
  * ------------------------------------------------------------------------- */
-function gateTrace(tr, prompt, centers, radius) {
+function gateTrace(tr, prompt, centers, radius, aliases) {
   if (tr.x.length < 5) return 'too few samples — swipe through the letters';
   if (tr.t[tr.t.length - 1] - tr.t[0] < 80) return 'too fast — swipe a little slower';
+  aliases = aliases || {};
   var chain = [];
+  var prevKeyChar = null;
   for (var i = 0; i < prompt.length; i++) {
-    var c = centers[prompt.charAt(i)];
+    var keyChar = aliases[prompt.charAt(i)] || prompt.charAt(i);
+    var c = centers[keyChar];
     if (!c) return 'this word is not traceable on the layout';
+    if (keyChar === prevKeyChar) continue; // a doubled letter is one key visit
     chain.push(c);
+    prevKeyChar = keyChar;
   }
   var dStart = Math.hypot(tr.x[0] - chain[0].x, tr.y[0] - chain[0].y);
   if (dStart > radius) return 'start on the first letter';
@@ -327,7 +354,7 @@ if (typeof document !== 'undefined') (function () {
 
   function nextPrompt() {
     var pool = LAYOUTS[state.lang].prompts;
-    // Every pool word's letters all sit on base keys of its layout, so any draw is traceable.
+    // Every pool word traces on the layout's keys, alias letters (ъ, ё) riding their base key.
     state.prompt = pool[Math.floor(Math.random() * pool.length)];
     promptEl.textContent = state.prompt;
   }
@@ -409,7 +436,8 @@ if (typeof document !== 'undefined') (function () {
     state.trace = null;
     if (!tr) return;
     var radiusPx = state.geometry.radius * state.scale;
-    var problem = gateTrace(tr, state.prompt, gridCentersToPx(), radiusPx);
+    var problem = gateTrace(tr, state.prompt, gridCentersToPx(), radiusPx,
+                            LAYOUTS[state.lang].aliases);
     if (problem) {
       setStatus(problem + ' — try again', 'bad');
       clearTraceSoon('#b00020');

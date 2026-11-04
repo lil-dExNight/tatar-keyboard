@@ -53,6 +53,15 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY, val maxAlpha: Int = MAX_A
     var fadingOut = false
         private set
 
+    /**
+     * Set when the glide this trail belongs to was refused (no word committed): the view
+     * repaints the fading trail in the error color, the refusal's visual half below API 29
+     * (where the haptic tick does not vibrate). Cleared by [clear], so the next gesture's first
+     * point — which clears a fading ring — always starts unmarked.
+     */
+    var refused = false
+        private set
+
     /** Gesture-relative millisecond when the fade started. */
     private var fadeStartMs = 0f
 
@@ -83,6 +92,16 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY, val maxAlpha: Int = MAX_A
         size = 0
         start = 0
         fadingOut = false
+        refused = false
+    }
+
+    /**
+     * Marks the trail refused (see [refused]). A no-op on an empty ring: there is nothing to
+     * repaint, and a stale mark must not survive into the next gesture's trail.
+     */
+    fun markRefused() {
+        if (size == 0) return
+        refused = true
     }
 
     fun isEmpty(): Boolean = size == 0

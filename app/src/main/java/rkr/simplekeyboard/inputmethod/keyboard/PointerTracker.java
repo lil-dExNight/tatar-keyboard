@@ -89,6 +89,12 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     // Whether the current field and layout can decode a glide; set by the IME. Without it a slide
     // is ordinary sliding key input. UI thread only.
     private static boolean sGlideAvailable;
+    // Set once the session's first glide-eligible letter-key down has notified the listener (the
+    // engine-side index build), so later touches pay one static check and taps never reach the
+    // engine. Re-armed on every keyboard (re)load in {@link #setGlideAvailable}: a fresh field,
+    // a language switch or a lock transition each opens a new session for this purpose, and the
+    // next show after the 10 s idle release (MSG_DEALLOCATE_MEMORY) re-runs updateKeyNeighbors.
+    private static boolean sGlidePrewarmSent;
     // The {@link KeyDetector} is set whenever the down event is processed. Also this is updated
     // when new {@link Keyboard} is set by {@link #setKeyDetector(KeyDetector)}.
     private KeyDetector mKeyDetector = new KeyDetector();
@@ -221,6 +227,9 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     /** Sets whether the current field and layout can decode a glide. UI thread only. */
     public static void setGlideAvailable(final boolean available) {
         sGlideAvailable = available;
+        // A keyboard (re)load opens a new session: the next glide-eligible down re-offers the
+        // index prewarm (the engine-side build is idempotent while the index is resident).
+        sGlidePrewarmSent = false;
     }
 
     public static void setKeyDetector(final KeyDetector keyDetector) {
@@ -674,6 +683,13 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
                 && Character.isLetter(key.getCode());
         mGlideDecider.onDown(x, y, eventTime, glideEligible);
         if (glideEligible) {
+            // The session's first eligible down starts the decoder's index build now, so a glide
+            // that arms within the first words does not pay the build mid-gesture. Once per
+            // session: later touches (every tap is an eligible down) pay the flag check only.
+            if (!sGlidePrewarmSent) {
+                sGlidePrewarmSent = true;
+                sListener.onGlideTrackingStarted();
+            }
             // Lazy buffer (see the field): allocated on the first eligible down, then reused.
             // Every glide terminal leaves it empty; this clear covers the one exception (a
             // TRACKING gesture that ended before arming keeps its early points).

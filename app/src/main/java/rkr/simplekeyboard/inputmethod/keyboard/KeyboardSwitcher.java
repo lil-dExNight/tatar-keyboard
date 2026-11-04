@@ -45,6 +45,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSetSnapshot;
 import rkr.simplekeyboard.inputmethod.latin.settings.EmojiPanelHeightPresets;
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings;
 import rkr.simplekeyboard.inputmethod.latin.settings.SettingsValues;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.LookupTracer;
 import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale;
 import rkr.simplekeyboard.inputmethod.latin.utils.CapsModeUtils;
 import rkr.simplekeyboard.inputmethod.latin.utils.LanguageOnSpacebarUtils;
@@ -73,6 +74,10 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
 
     /** Held so a panel created after the table arrived (or recreated later) still gets it. */
     private EmojiSkinTones mEmojiSkinTones;
+
+    /** The emoji-name index and language the panel's spoken cell names use; held like the tones. */
+    private EmojiSearchIndex mEmojiSpokenNames;
+    private String mEmojiSpokenNameLanguage;
     private LatinIME mLatinIME;
     private RichInputMethodManager mRichImm;
 
@@ -190,6 +195,9 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
             final int currentAutoCapsState, final int currentRecapitalizeState) {
         // Trace span for the per-layout build. A Trace begin/end pair costs about 10 µs, so
         // markers wrap only coarse spans, never short methods or anything that runs per frame.
+        // The async keyboardLoad slice fires only on this method's first run of the process:
+        // the cold-start attribution, alongside the per-load TT#loadKeyboard span.
+        LookupTracer.traceStartupBegin(LookupTracer.StartupSlice.KEYBOARD_LOAD);
         Trace.beginSection("TT#loadKeyboard");
         try {
             final KeyboardLayoutSet.Builder builder = new KeyboardLayoutSet.Builder(
@@ -219,6 +227,7 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
             }
         } finally {
             Trace.endSection();
+            LookupTracer.traceStartupEnd(LookupTracer.StartupSlice.KEYBOARD_LOAD);
         }
     }
 
@@ -512,6 +521,9 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
             if (mEmojiSkinTones != null) {
                 panel.setSkinTones(mEmojiSkinTones);
             }
+            if (mEmojiSpokenNames != null) {
+                panel.setSpokenNames(mEmojiSpokenNames, mEmojiSpokenNameLanguage);
+            }
             mEmojiPanelShown = true;
             mKeyboardView.setVisibility(View.GONE);
         } finally {
@@ -532,6 +544,35 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         if (panel != null) {
             panel.setSkinTones(tones);
         }
+    }
+
+    /**
+     * Binds the emoji-name index and spoken language to the panel, like
+     * {@link #bindEmojiSkinTones}: the index is loaded once per process and outlives every show,
+     * so it is held for panels created after it arrived.
+     */
+    public void bindEmojiSpokenNames(final EmojiSearchIndex names, final String language) {
+        mEmojiSpokenNames = names;
+        mEmojiSpokenNameLanguage = language;
+        if (mCurrentInputView == null) {
+            return;
+        }
+        final EmojiPanelView panel = mCurrentInputView.getEmojiPanelView();
+        if (panel != null) {
+            panel.setSpokenNames(names, language);
+        }
+    }
+
+    /**
+     * The spoken text of [sequence] for a dialog title: the bound name in the bound language, or
+     * the sequence itself. Delegates to the panel view, which owns the index and the fallback.
+     */
+    public String spokenTextOfEmoji(final String sequence) {
+        if (mCurrentInputView == null) {
+            return sequence;
+        }
+        final EmojiPanelView panel = mCurrentInputView.getEmojiPanelView();
+        return panel != null ? panel.spokenText(sequence) : sequence;
     }
 
     public boolean isEmojiSearchShown() {
@@ -622,6 +663,17 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         }
     }
 
+    // Implements {@link EmojiPanelView.Listener}. Insertion goes solely through the ordinary
+    // text-input path; the panel never commits text itself. The use is then recorded in the
+    // recent-emoji list through the gated, serialized controller path.
+    @Override
+    public void onEmojiPanelPick(final String sequence) {
+        if (mLatinIME != null) {
+            mLatinIME.onTextInput(sequence);
+            mLatinIME.onEmojiInserted(sequence);
+        }
+    }
+
     // Implements {@link EmojiPanelView.Listener}. The search cell opens the emoji-search mode,
     // where the letter keyboard comes back and the query is typed into the keyboard itself.
     @Override
@@ -631,14 +683,21 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         }
     }
 
-    // Implements {@link EmojiPanelView.Listener}. Insertion goes solely through the ordinary
-    // text-input path; the panel never commits text itself. The use is then recorded in the
-    // recent-emoji list through the gated, serialized controller path.
+    // Implements {@link EmojiPanelView.Listener}. A Recent cell without a tone variant was
+    // long-pressed: the IME shows the confirmation dialog and routes the removal.
     @Override
-    public void onEmojiPanelPick(final String sequence) {
+    public void onEmojiPanelRecentRemoved(final String sequence) {
         if (mLatinIME != null) {
-            mLatinIME.onTextInput(sequence);
-            mLatinIME.onEmojiInserted(sequence);
+            mLatinIME.showRemoveRecentEmojiDialog(sequence);
+        }
+    }
+
+    // Implements {@link EmojiPanelView.Listener}. The Recent tab was long-pressed: the IME shows
+    // the confirmation dialog and routes the erase.
+    @Override
+    public void onEmojiPanelClearRecents() {
+        if (mLatinIME != null) {
+            mLatinIME.showClearRecentEmojiDialog();
         }
     }
 
@@ -683,6 +742,10 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         if (mEmojiPanelShown || mEmojiSearchShown || mCurrentInputView == null) {
             return;
         }
+        // The spoken-name index mirrors the controller's search index release: the next show
+        // re-binds whatever the controller still holds, after the idle reload rebuilt it.
+        mEmojiSpokenNames = null;
+        mEmojiSpokenNameLanguage = null;
         final EmojiPanelView panel = mCurrentInputView.getEmojiPanelView();
         if (panel != null) {
             panel.releaseSnapshotCaches();

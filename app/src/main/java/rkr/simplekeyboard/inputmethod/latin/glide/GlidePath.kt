@@ -24,8 +24,13 @@ import kotlin.math.sqrt
  * space; `t` is the sample timestamp in milliseconds — the decoder reads total duration for the
  * speed channel and segment durations for the per-key dwell mask.
  *
- * On overflow, the interior point with the smallest arc-length reduction is removed. This keeps
- * the buffer bounded while preserving the first point, last point and total gesture duration.
+ * On overflow, every second interior point is dropped in one in-place pass, halving the buffer
+ * (a full buffer of N points drops to N/2 + 1: the first point, the even interior points and the
+ * last point). A least-cost removal per sample costs O(N) scan plus array moves on every sample
+ * past capacity — on the UI thread, per MOVE event; halving pays one O(N) pass per N/2 samples,
+ * which is O(1) amortized. Either rule keeps the buffer bounded while preserving the first
+ * point, the last point, the sample order (timestamps stay monotonic) and the total gesture
+ * duration.
  *
  * An instance is confined to one thread (the decoder's is the engine worker), so the buffers
  * need no synchronization.
@@ -39,8 +44,8 @@ class GlidePath(val capacity: Int = MAX_POINTS) {
         private set
 
     /**
-     * Appends one sample, thinning an interior point first when full. Returns false for a
-     * non-finite sample or zero capacity.
+     * Appends one sample, halving the buffer first when full (see the class doc). Returns false
+     * for a non-finite sample or zero capacity.
      */
     fun addPoint(x: Float, y: Float, t: Float): Boolean {
         if (!x.isFinite() || !y.isFinite() || !t.isFinite()) return false
@@ -50,7 +55,7 @@ class GlidePath(val capacity: Int = MAX_POINTS) {
                 // These capacities cannot retain an interior sample; keep whichever ends fit.
                 1 -> size = 0
                 2 -> size = 1
-                else -> thinOnePoint()
+                else -> halveInteriorPoints()
             }
         }
         xs[size] = x
@@ -68,30 +73,29 @@ class GlidePath(val capacity: Int = MAX_POINTS) {
         return addPoint(x, y, t)
     }
 
-    /** Removes the interior point whose removal least reduces the polyline's arc length. */
-    private fun thinOnePoint() {
-        var removal = 1
-        var lowestCost = Float.POSITIVE_INFINITY
-        for (i in 1 until size - 1) {
-            val beforeX = xs[i] - xs[i - 1]
-            val beforeY = ys[i] - ys[i - 1]
-            val afterX = xs[i + 1] - xs[i]
-            val afterY = ys[i + 1] - ys[i]
-            val directX = xs[i + 1] - xs[i - 1]
-            val directY = ys[i + 1] - ys[i - 1]
-            val cost = sqrt(beforeX * beforeX + beforeY * beforeY) +
-                sqrt(afterX * afterX + afterY * afterY) -
-                sqrt(directX * directX + directY * directY)
-            if (cost < lowestCost) {
-                lowestCost = cost
-                removal = i
-            }
+    /**
+     * Drops every second interior point in one in-place pass, keeping the first point, the
+     * even-numbered interior points and the last point: a full buffer of N points drops to
+     * N/2 + 1, so the next overflow is N/2 - 1 samples away (O(1) amortized). The retained
+     * points keep their relative order, so the timestamps stay monotonic and the total gesture
+     * duration (last minus first timestamp) is untouched. Reads and writes interleave safely:
+     * the write index never passes the read index. Allocates nothing.
+     */
+    private fun halveInteriorPoints() {
+        val last = size - 1
+        var write = 1
+        var read = 2
+        while (read < last) {
+            xs[write] = xs[read]
+            ys[write] = ys[read]
+            ts[write] = ts[read]
+            write++
+            read += 2
         }
-        val count = size - removal - 1
-        System.arraycopy(xs, removal + 1, xs, removal, count)
-        System.arraycopy(ys, removal + 1, ys, removal, count)
-        System.arraycopy(ts, removal + 1, ts, removal, count)
-        size--
+        xs[write] = xs[last]
+        ys[write] = ys[last]
+        ts[write] = ts[last]
+        size = write + 1
     }
 
     fun clear() {

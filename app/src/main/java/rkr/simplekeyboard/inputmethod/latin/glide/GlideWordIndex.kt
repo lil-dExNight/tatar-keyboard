@@ -22,7 +22,7 @@ import kotlin.math.sqrt
  * The per-dictionary glide index: a start/end key-pair index over the inventory's words, built
  * once on the engine worker, when a gesture arms or when an unprepared decode needs it, and
  * immutable afterwards. It makes
- * extremity pruning (the two keys nearest the gesture's start x the two nearest its end) a
+ * extremity pruning (the keys nearest the gesture's start x the keys nearest its end) a
  * range lookup instead of a dictionary scan.
  *
  * Layout (all flat arrays, no per-word objects):
@@ -37,6 +37,8 @@ import kotlin.math.sqrt
  *  - [plainLengths]/[loopLengths]: the word's ideal-path arc length, plain and with the
  *    doubled-letter loop detour (-1 when the word has no doubled letter) — the length channel
  *    of the pruner is then two float reads per candidate;
+ *  - [normativeDurations]: the word's Fitts-law normative duration in ms (see
+ *    [normativeDurationMsAt]) — the speed channel's per-candidate reference;
  *  - [pairOffsets]/[pairEntries]: CSR buckets keyed by firstKey x lastKey, entry indices in
  *    frequency-descending order with dictionary-order ties;
  *  - [twinless]: a bit per entry, set on a word with a doubled letter whose collapsed key
@@ -56,6 +58,7 @@ class GlideWordIndex private constructor(
     private val sameLetterAsPrevious: LongArray,
     private val frequencies: IntArray,
     private val plainLengths: FloatArray,
+    private val normativeDurations: FloatArray,
     private val loopLengths: FloatArray,
     private val pairOffsets: IntArray,
     private val pairEntries: IntArray,
@@ -65,6 +68,7 @@ class GlideWordIndex private constructor(
     val retainedByteEstimate: Long
         get() = keySeqStarts.size * 4L + keySeqPool.size + sameLetterAsPrevious.size * 8L +
             frequencies.size * 4L + plainLengths.size * 4L + loopLengths.size * 4L +
+            normativeDurations.size * 4L +
             pairOffsets.size * 4L + pairEntries.size * 4L + twinless.size * 8L
 
     /** Start (inclusive) of the pair bucket's entry range in the CSR table. */
@@ -105,6 +109,14 @@ class GlideWordIndex private constructor(
     fun loopLengthAt(entry: Int): Float = loopLengths[entry]
 
     /**
+     * The word's Fitts-law normative duration in ms: a·N + b·Σ log2(D/W + 1) over the word's
+     * letter transitions (N = letters - 1). The SHARK2 speed prior, replacing the
+     * length-over-speed normative: words with many long hops or narrow target keys take longer
+     * to draw "at the norm". The a/b coefficients are [FITTMS_A]/[FITTMS_B].
+     */
+    fun normativeDurationMsAt(entry: Int): Float = normativeDurations[entry]
+
+    /**
      * True when [entry] has a doubled letter and no indexed word has its key sequence with every
      * run of one key collapsed to a single visit.
      */
@@ -114,6 +126,14 @@ class GlideWordIndex private constructor(
     companion object {
         /** Most keys a geometry may hold: the pool stores a key index per signed byte. */
         private const val MAX_KEY_COUNT = 127
+
+        /** Fitts intercept per letter transition, in ms (SHARK2's a). */
+        internal const val FITTMS_A = 83.0
+
+        /** Fitts slope per letter transition, in ms (SHARK2's b). */
+        internal const val FITTMS_B = 127.0
+
+        private val LOG2 = Math.log(2.0)
 
         /**
          * Builds the index over [inventory] for [geometry]. Two walks of the inventory would
@@ -213,6 +233,7 @@ class GlideWordIndex private constructor(
             for (pair in 0 until keyCount * keyCount) cursors[pair] = pairOffsets[pair]
             val plainLengths = FloatArray(entryCount)
             val loopLengths = FloatArray(entryCount) { -1f }
+            val normativeDurations = FloatArray(entryCount)
             for (entry in 0 until entryCount) {
                 val start = keySeqStarts[entry]
                 val end = keySeqStarts[entry + 1]
@@ -225,13 +246,15 @@ class GlideWordIndex private constructor(
                 val loopLength =
                     idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, true)
                 if (loopLength >= 0f) loopLengths[entry] = loopLength
+                normativeDurations[entry] =
+                    fittsDurationMs(keySeqPool, start, end, geometry)
             }
             sortPairBuckets(pairEntries, pairOffsets, frequencies)
             val twinless = twinlessBits(keySeqStarts, keySeqPool, loopLengths, entryCount)
             return GlideWordIndex(
                 wordCount, skipped, maxFrequency, keyCount, keySeqStarts, keySeqPool,
-                sameLetterAsPrevious, frequencies, plainLengths, loopLengths, pairOffsets,
-                pairEntries, twinless,
+                sameLetterAsPrevious, frequencies, plainLengths, normativeDurations,
+                loopLengths, pairOffsets, pairEntries, twinless,
             )
         }
 
@@ -430,6 +453,44 @@ class GlideWordIndex private constructor(
                 previousKey = key
             }
             return if (withLoops && !hasDouble) -1f else total
+        }
+
+        /**
+         * The Fitts-law normative duration of one word, in ms: a·N + b·Σ log2(D/W + 1) over the
+         * letter-to-letter transitions (D: center-to-center distance, W: the TARGET key's width,
+         * N = letters - 1; a = [FITTMS_A], b = [FITTMS_B]). SHARK2's speed prior: the
+         * decoder's speed channel compares the gesture's wall-clock duration against it. Doubled
+         * letters contribute no transition (a loop is an embellishment, not a letter hop), and a
+         * one-letter word has no transitions at all: its normative is 0, which the speed channel
+         * reads as no reference — a one-key glide is a tap, there is no hop to be fast on.
+         */
+        private fun fittsDurationMs(
+            keySeq: ByteArray,
+            start: Int,
+            end: Int,
+            geometry: GlideKeyGeometry,
+        ): Float {
+            var transitions = 0
+            var logSum = 0.0
+            var previousKey = -1
+            var previousX = 0f
+            var previousY = 0f
+            for (position in start until end) {
+                val key = keySeq[position].toInt() and 0xff
+                if (key == previousKey) continue // a doubled letter: no letter-to-letter hop
+                val x = geometry.centerX(key)
+                val y = geometry.centerY(key)
+                if (previousKey >= 0) {
+                    val d = distance(previousX, previousY, x, y)
+                    val w = 2f * geometry.halfWidth(key)
+                    logSum += Math.log((d / w + 1f).toDouble()) / LOG2
+                    transitions++
+                }
+                previousKey = key
+                previousX = x
+                previousY = y
+            }
+            return (FITTMS_A * transitions + FITTMS_B * logSum).toFloat()
         }
 
         private fun distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {

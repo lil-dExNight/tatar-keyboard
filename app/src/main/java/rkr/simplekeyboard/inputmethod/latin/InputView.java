@@ -493,6 +493,17 @@ public final class InputView extends FrameLayout {
     }
 
     /**
+     * Forwards the recent-clip cell marker to the strip if it exists; never creates it — the same
+     * discipline as {@link #setSuggestionStripEmphasis}, and the marker is always republished
+     * with the next strip update anyway.
+     */
+    public void setSuggestionStripClipCell(final int cell) {
+        if (mSuggestionStripView != null) {
+            mSuggestionStripView.setClipCell(cell);
+        }
+    }
+
+    /**
      * Pushes the visible strip cell count (the user's fourth-cell setting). Stored even when the
      * strip is not inflated yet, so the count survives lazy creation; never creates the strip.
      */

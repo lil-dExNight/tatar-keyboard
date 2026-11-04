@@ -67,6 +67,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
+import kotlin.Unit;
 import kotlin.jvm.functions.Function2;
 
 import rkr.simplekeyboard.inputmethod.R;
@@ -90,6 +91,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.LearningKeyguardScope;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalAdd;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramDictionaries;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramLearning;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaries;
@@ -105,6 +107,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorr
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.RefusedCorrectionStores;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.TextShortcutStores;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController;
+import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelView;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchIndex;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSearchQuery;
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSkinTones;
@@ -140,6 +143,7 @@ import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferFlagStore;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferPresenter;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.PersonalEmojiSink;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.RecentClipCell;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.LookupTracer;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.ResultCallback;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.StripSurface;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState;
@@ -451,7 +455,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // its cost rationale sit in KeyboardSwitcher.loadKeyboard.
         Trace.beginSection("TT#onCreate");
         try {
+            // One-time cold-start slice, like the other three of LookupTracer.StartupSlice.
+            LookupTracer.traceStartupBegin(LookupTracer.StartupSlice.SETTINGS_INIT);
             Settings.init(this);
+            LookupTracer.traceStartupEnd(LookupTracer.StartupSlice.SETTINGS_INIT);
             RichInputMethodManager.init(this);
             mRichImm = RichInputMethodManager.getInstance();
             mRichImm.setSubtypeChangeHandler(this);
@@ -542,6 +549,14 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
+            public void setClipCellMarker(final int cell) {
+                final InputView inputView = getInputViewForSuggestions();
+                if (inputView != null) {
+                    inputView.setSuggestionStripClipCell(cell);
+                }
+            }
+
+            @Override
             public void setVisibleCellCount(final int cells) {
                 final InputView inputView = getInputViewForSuggestions();
                 if (inputView != null) {
@@ -587,12 +602,17 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 // lazily created strip gets both or neither.
                 strip.setOnSuggestionLongPressListener(
                         (cellId, suggestion) -> {
-                            // An emoji cell holds no word, so there is nothing to forget and
-                            // no "not a saved word" dialog is shown.
+                            // An emoji cell holds no word, so a long press on it does nothing.
                             if (!containsAnyLetter(suggestion)) {
                                 return;
                             }
-                            showForgetPersonalWordDialog(suggestion);
+                            // The recent-clip cell is not a word either: the clip is RAM-only,
+                            // and nothing about it is ever offered to a store.
+                            if (mSuggestionsController != null
+                                    && mSuggestionsController.isRecentClipCell(suggestion)) {
+                                return;
+                            }
+                            onStripWordLongPress(suggestion);
                         });
             }
         };
@@ -748,15 +768,25 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
-            public boolean glideStartsSentence() {
-                // Same cache and cache-start flag as isAtSentenceStart. The setting and the
-                // field's sentence-caps flag are what the shift state's auto-caps reads, so the
-                // word is capitalized exactly where a typed space would have shifted the keyboard.
+            public boolean glideAutoCapsWord() {
+                // The editor's own caps-mode flags, consumed like the typed path's auto-caps
+                // shift state reads them (the setting, the field flags, the text), but on the
+                // text as the commit leaves it: where the commit prepends a space, the word
+                // lands at a word start the live shift state cannot see yet — a sentence start
+                // in a CAP_SENTENCES field, a word start in a CAP_WORDS field.
                 final EditorInfo editorInfo = getCurrentInputEditorInfo();
-                return mSettings.getCurrent().mAutoCap && editorInfo != null
-                        && (editorInfo.inputType & InputType.TYPE_TEXT_FLAG_CAP_SENTENCES) != 0
-                        && TatarWordUtils.INSTANCE.glideStartsSentence(
-                                mInputLogic.mConnection.getCachedTextBeforeCursor(),
+                if (!mSettings.getCurrent().mAutoCap || editorInfo == null) {
+                    return false;
+                }
+                final CharSequence beforeCursor =
+                        mInputLogic.mConnection.getCachedTextBeforeCursor();
+                if ((editorInfo.inputType & InputType.TYPE_TEXT_FLAG_CAP_WORDS) != 0
+                        && TatarWordUtils.INSTANCE.glideNeedsLeadingSpace(beforeCursor)) {
+                    // "сүз" glides "сүз Яңа" where typed letters would shift after the space.
+                    return true;
+                }
+                return (editorInfo.inputType & InputType.TYPE_TEXT_FLAG_CAP_SENTENCES) != 0
+                        && TatarWordUtils.INSTANCE.glideStartsSentence(beforeCursor,
                                 mInputLogic.mConnection.cacheReachedTextStart());
             }
 
@@ -817,9 +847,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                     : GlideDecoder.GlideConstants.RUSSIAN;
             // Every shipped-language engine gets a top-frequency fallback for next-word
             // prediction, built from its own dictionary. It only fills empty cells and never
-            // displaces pair successors, word forms or the emoji cell.
+            // displaces pair successors, word forms or the emoji cell. The language's harmony
+            // twins come from its dictionary spec, so a language without a pair keeps the plain
+            // pool.
             final FallbackWordsFactory fallbackWordsFactory = dictionaryArtifact != null
-                    ? GlobalTopFrequencyFallbackFactory.INSTANCE : null;
+                    ? new GlobalTopFrequencyFallbackFactory(dictionaryArtifact.getHarmonyTwins())
+                    : null;
             // The autocorrect candidate floor is per language, derived from the language's shipped
             // dictionary and pinned against it by AutocorrectFloorPinTest.
             final long autocorrectFloor = tatarEngine
@@ -934,8 +967,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
             return TatarWordUtils.PrefixCasing.LOWER;
         });
-        // A refused glide gives the cursor gestures' tick: one pulse, none with vibration off.
-        mSuggestionsController.setGlideRefusalFeedback(LatinImeKeyFeedback::hapticTickFeedback);
+        // A refused glide gives the cursor gestures' tick (one pulse, none with vibration off)
+        // and repaints its fading trail in the error ink — the visual half is the only feedback
+        // below API 29, where the tick does not vibrate.
+        mSuggestionsController.setGlideRefusalFeedback(() -> {
+            LatinImeKeyFeedback.hapticTickFeedback();
+            final MainKeyboardView keyboardView = mKeyboardSwitcher.getMainKeyboardView();
+            if (keyboardView != null) {
+                keyboardView.markGlideTrailRefused();
+            }
+        });
         // A strip tap that took effect gives the same tick: one pulse per tap, throttled like
         // the key feedback, none with vibration off.
         mSuggestionsController.setSuggestionTapFeedback(LatinImeKeyFeedback::hapticTickFeedback);
@@ -1044,6 +1085,20 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             @Override
             public void onEmojiSearchUnavailable() {
                 LatinIME.this.onEmojiSearchUnavailable();
+            }
+
+            @Override
+            public void refreshAfterRecentRemoved(final EmojiSetSnapshot snapshot) {
+                // One recent was removed while the panel is open: re-bind through the same show
+                // path so the cell disappears without recreating the input view.
+                if (mKeyboardSwitcher.isEmojiPanelShown()) {
+                    mKeyboardSwitcher.showEmojiPanel(snapshot);
+                }
+            }
+
+            @Override
+            public void bindSpokenNames(final EmojiSearchIndex names, final String language) {
+                mKeyboardSwitcher.bindEmojiSpokenNames(names, language);
             }
 
             @Override
@@ -1287,13 +1342,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * "Forget «X»?" for a word the personal dictionary holds.
+     * The strip long-press router for a word cell: a word the personal dictionary holds gets
+     * "Forget «X»?", a word the manual-add filter accepts gets "Add «X»?", and every other
+     * outcome answers with a dialog, so a long press is never silently ignored.
      *
-     * <p>The word is looked up by its normalized form, not by the shown string, which may have
-     * been capitalized to match the typed prefix. Dialog rules: see
-     * {@link #showSuggestionsUnavailableDialog()}.</p>
+     * <p>The saved lookup runs by the word's normalized form, not by the shown string, which may
+     * have been capitalized to match the typed prefix; the add check runs the same filter the
+     * settings screen's "Add word" applies, against the active language's alphabet.</p>
      */
-    private void showForgetPersonalWordDialog(final String shownWord) {
+    private void onStripWordLongPress(final String shownWord) {
         if (!Settings.readPersonalDictionaryEnabled(mDevicePrefs)) {
             // The personal dictionary is off by default, so tell the user how to turn it on
             // instead of ignoring the long press.
@@ -1303,16 +1360,32 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final String subtypeId = activeDictionarySubtype();
         if (subtypeId == null) {
             // The active layout has no personal dictionary.
-            showNotASavedWordDialog();
+            showPersonalDictionaryNoLanguageDialog();
             return;
         }
         final String savedForm = PersonalForget.savedFormOf(this, subtypeId, shownWord);
-        if (savedForm == null) {
-            // A bundled dictionary word. Saved words look the same in the strip, so answer
-            // instead of ignoring the long press.
-            showNotASavedWordDialog();
+        final String addableForm = savedForm != null ? null
+                : PersonalAdd.addableNormalizedForm(subtypeId, shownWord);
+        switch (PersonalAdd.actionFor(savedForm, addableForm)) {
+        case FORGET:
+            showForgetPersonalWordDialog(subtypeId, savedForm, shownWord);
+            return;
+        case ADD:
+            showAddPersonalWordDialog(subtypeId, shownWord);
+            return;
+        default:
+            // NOT_ADDABLE: the manual-add filter rejects the word.
+            showPersonalWordNotAddableDialog(subtypeId);
             return;
         }
+    }
+
+    /**
+     * "Forget «X»?" for a word the personal dictionary holds; [savedForm] is the saved spelling
+     * the lookup found. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
+     */
+    private void showForgetPersonalWordDialog(final String subtypeId, final String savedForm,
+            final String shownWord) {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView == null) {
             return;
@@ -1335,6 +1408,93 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // The title names the saved word, so the dialog window also gets FLAG_SECURE, as the
         // settings screen's word dialogs do.
         DialogUtils.securePersonalContent(dialog);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /**
+     * "Add «X»?" for a strip word the personal dictionary does not hold yet. The word is saved as
+     * shown (trimmed): it entered the strip through the typed prefix's casing, and the title
+     * shows exactly what is saved. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
+     */
+    private void showAddPersonalWordDialog(final String subtypeId, final String shownWord) {
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView == null) {
+            return;
+        }
+        final IBinder windowToken = mainKeyboardView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        final String trimmed = shownWord.trim();
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setTitle(getString(R.string.personal_dictionary_add_title, trimmed))
+                .setPositiveButton(R.string.personal_dictionary_add_action, (di, which) ->
+                        PersonalAdd.confirmAdd(this, subtypeId, trimmed,
+                                () -> mHandler.post(this::showPersonalAddFailedDialog)))
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        // The title names the word, so the dialog window also gets FLAG_SECURE, as the settings
+        // screen's word dialogs do.
+        DialogUtils.securePersonalContent(dialog);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /**
+     * Says that the long-pressed word cannot be saved, naming the letters the active language's
+     * dictionary accepts (the same message the settings screen's "Add word" shows). The word
+     * itself is never named: the message can appear over any app. Dialog rules: see
+     * {@link #showSuggestionsUnavailableDialog()}.
+     */
+    private void showPersonalWordNotAddableDialog(final String subtypeId) {
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView == null) {
+            return;
+        }
+        final IBinder windowToken = mainKeyboardView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setMessage(PersonalSubtypes.RUSSIAN.equals(subtypeId)
+                        ? R.string.personal_dictionary_add_rejected_ru
+                        : R.string.personal_dictionary_add_rejected)
+                .setPositiveButton(android.R.string.ok, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /**
+     * Says that the active layout has no personal dictionary, so a long press can neither forget
+     * nor save the word. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
+     */
+    private void showPersonalDictionaryNoLanguageDialog() {
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView == null) {
+            return;
+        }
+        final IBinder windowToken = mainKeyboardView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setMessage(R.string.personal_dictionary_no_language)
+                .setPositiveButton(android.R.string.ok, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
         mOptionsDialog = dialog;
         dialog.show();
     }
@@ -1394,30 +1554,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
-     * Says that the long-pressed word is not one of the user's saved words. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
-     */
-    private void showNotASavedWordDialog() {
-        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
-        if (mainKeyboardView == null) {
-            return;
-        }
-        final IBinder windowToken = mainKeyboardView.getWindowToken();
-        if (windowToken == null) {
-            return;
-        }
-        final AlertDialog dialog = new AlertDialog.Builder(
-                DialogUtils.getPlatformDialogThemeContext(this))
-                .setMessage(R.string.personal_dictionary_not_saved)
-                .setPositiveButton(android.R.string.ok, null)
-                .create();
-        dialog.setCancelable(true);
-        dialog.setCanceledOnTouchOutside(true);
-        attachDialogToInputWindow(dialog, windowToken);
-        mOptionsDialog = dialog;
-        dialog.show();
-    }
-
-    /**
      * Says that emoji are not available, so the emoji key or search cell has nothing to open.
      * Shown on every press, not once, since the key stays on the keyboard. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
      */
@@ -1443,6 +1579,120 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
+     * "Remove «X» from recents?" for a Recent cell the user long-pressed. The removal goes to the
+     * controller, which drops the entry on its background executor and re-binds the shown panel.
+     * The dialog is attached to the emoji panel's own window token: the letter keyboard is GONE
+     * while the panel is up, so its token would be the wrong anchor. Dialog rules: see
+     * {@link #showSuggestionsUnavailableDialog()}.
+     */
+    public void showRemoveRecentEmojiDialog(final String sequence) {
+        final EmojiPanelView panel = visibleEmojiPanel();
+        if (panel == null) {
+            return;
+        }
+        final IBinder windowToken = panel.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setTitle(getString(R.string.remove_recent_emoji_title, spokenTextForDialog(sequence)))
+                .setPositiveButton(R.string.remove_recent_emoji_action, (di, which) -> {
+                    if (mEmojiPanelController != null) {
+                        mEmojiPanelController.onRecentRemoved(sequence);
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        // The title names the long-pressed emoji, so the dialog window also gets FLAG_SECURE, as
+        // the settings screen's word dialogs do.
+        DialogUtils.securePersonalContent(dialog);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /**
+     * "Clear the recent emoji?" for a long press on the Recent tab inside the panel; the same
+     * erase the settings screen offers, routed through the live controller so the shown panel
+     * refreshes too. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
+     */
+    public void showClearRecentEmojiDialog() {
+        final EmojiPanelView panel = visibleEmojiPanel();
+        if (panel == null) {
+            return;
+        }
+        final IBinder windowToken = panel.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setTitle(R.string.clear_recent_emoji)
+                .setMessage(R.string.clear_recent_emoji_confirm)
+                .setPositiveButton(R.string.clear_recent_emoji_action, (di, which) ->
+                        EmojiPanelController.clearRecents(LatinIME.this, cleared -> {
+                            // The answer arrives on the store's worker; only a failure needs the
+                            // user told, so the notice is posted to the UI thread.
+                            if (!cleared) {
+                                mHandler.post(this::showClearRecentEmojiFailedDialog);
+                            }
+                            return Unit.INSTANCE;
+                        }))
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /** The shown emoji panel, or null when the panel is not the visible keyboard surface. */
+    private EmojiPanelView visibleEmojiPanel() {
+        final View view = mKeyboardSwitcher.getVisibleKeyboardView();
+        return view instanceof EmojiPanelView ? (EmojiPanelView) view : null;
+    }
+
+    /**
+     * Says that the recent emoji could not be cleared. Posted from the store's worker, so the
+     * keyboard window may be gone by then; the anchor is the panel while it is shown, like the
+     * other panel dialogs. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
+     */
+    private void showClearRecentEmojiFailedDialog() {
+        final EmojiPanelView panel = visibleEmojiPanel();
+        final View anchor = panel != null ? panel : mKeyboardSwitcher.getMainKeyboardView();
+        if (anchor == null) {
+            return;
+        }
+        final IBinder windowToken = anchor.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setMessage(R.string.clear_recent_emoji_failed)
+                .setPositiveButton(android.R.string.ok, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /**
+     * The name of [sequence] in the active subtype's language, the sequence itself when no name
+     * is known — the same text TalkBack says for the cell, so the remove dialog's title names
+     * what the user long-pressed the way they heard it.
+     */
+    private String spokenTextForDialog(final String sequence) {
+        return mKeyboardSwitcher.spokenTextOfEmoji(sequence);
+    }
+
+    /**
      * Says that a word the user asked to forget is still saved. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
      * Posted from the store's worker, so the keyboard window may be gone by then.
      */
@@ -1458,6 +1708,31 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final AlertDialog dialog = new AlertDialog.Builder(
                 DialogUtils.getPlatformDialogThemeContext(this))
                 .setMessage(R.string.personal_dictionary_delete_failed)
+                .setPositiveButton(android.R.string.ok, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /**
+     * Says that a word the user asked to save was not written. Dialog rules: see {@link #showSuggestionsUnavailableDialog()}.
+     * Posted from the store's worker, so the keyboard window may be gone by then.
+     */
+    private void showPersonalAddFailedDialog() {
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView == null) {
+            return;
+        }
+        final IBinder windowToken = mainKeyboardView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setMessage(R.string.personal_dictionary_save_failed)
                 .setPositiveButton(android.R.string.ok, null)
                 .create();
         dialog.setCancelable(true);
@@ -3019,6 +3294,22 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 getCurrentRecapitalizeState());
     }
 
+    /**
+     * Starts glide index preparation at the session's first glide-eligible letter-key down, so
+     * the build has the whole typing session before the first gesture instead of running
+     * mid-gesture.
+     */
+    @Override
+    public void onGlideTrackingStarted() {
+        if (noteLiveLock()) {
+            return;
+        }
+        final SuggestionsController controller = mSuggestionsController;
+        if (controller != null) {
+            controller.onGlideTrackingStarted();
+        }
+    }
+
     /** Starts engine index preparation when PointerTracker arms a glide. */
     @Override
     public void onGlideArmed() {
@@ -3078,7 +3369,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // retried), so tell the user instead of ignoring the press.
         if (!mEmojiPanelController.onEmojiKeyPressed()) {
             showEmojiUnavailableDialog();
+            return;
         }
+        // The spoken cell names follow the active subtype's language, like the search results.
+        mEmojiPanelController.setSpokenNameLanguage(EmojiSuggestIndex.assetLanguageOf(
+                mRichImm.getCurrentSubtype().getLocale()));
     }
 
     /**

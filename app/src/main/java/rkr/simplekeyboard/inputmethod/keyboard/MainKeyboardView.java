@@ -123,6 +123,9 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     // Fed through {@link DrawingProxy#onGlideTrailPoint}; preallocated, zero-allocation draw.
     private final GlideTrail mGlideTrail;
     private final Paint mGlideTrailPaint = new Paint();
+    // The refused glide's trail repaint (see {@link #markGlideTrailRefused}): same geometry and
+    // alpha ramp as {@link #mGlideTrailPaint}, in the theme's error ink.
+    private final Paint mGlideTrailRefusedPaint = new Paint();
     // The system animator scale, read once with the gesture's first trail point and dropped at
     // the lift; {@link #onGlideTrailEnd} consults it, so the draw pass never re-reads it.
     private MotionPolicy mGlideMotionPolicy;
@@ -184,6 +187,11 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         mGlideTrailPaint.setStrokeCap(Paint.Cap.ROUND);
         mGlideTrailPaint.setStrokeJoin(Paint.Join.ROUND);
         mGlideTrailPaint.setAntiAlias(true);
+        // Same stroke, error ink. The per-segment alpha comes from the trail's fade math in the
+        // draw pass (setAlpha overrides the color's own alpha), so only the RGB matters here.
+        mGlideTrailRefusedPaint.set(mGlideTrailPaint);
+        mGlideTrailRefusedPaint.setColor(mainKeyboardViewAttr.getColor(
+                R.styleable.MainKeyboardView_glideTrailRefusedColor, glideTrailColor));
         mLanguageOnSpacebarTextRatio = mainKeyboardViewAttr.getFraction(
                 R.styleable.MainKeyboardView_languageOnSpacebarTextRatio, 1, 1, 1.0f);
         mLanguageOnSpacebarTextColor = mainKeyboardViewAttr.getColor(
@@ -444,6 +452,22 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
             mGlideTrailStartTime = eventTime;
         }
         mGlideTrail.addPoint(x, y, (float) (eventTime - mGlideTrailStartTime));
+        invalidate();
+    }
+
+    /**
+     * The glide this trail belongs to was refused (no word committed): the fading trail repaints
+     * in the theme's error ink. Called from LatinIME's glide refusal feedback — the refusal's
+     * visual half below API 29, where the haptic tick does not vibrate. A no-op when the trail
+     * is not fading: already gone (a slow decode past the fade, or animations off, which clears
+     * at the lift), or a later gesture is already drawing a live trail that a late refusal for
+     * the previous gesture must not repaint in the error ink.
+     */
+    public void markGlideTrailRefused() {
+        if (!mGlideTrail.getFadingOut()) {
+            return;
+        }
+        mGlideTrail.markRefused();
         invalidate();
     }
 
@@ -709,7 +733,8 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         if (size - first < 2) {
             return;
         }
-        final Paint paint = mGlideTrailPaint;
+        // A refused glide's trail repaints in the error ink for the rest of its fade.
+        final Paint paint = mGlideTrail.getRefused() ? mGlideTrailRefusedPaint : mGlideTrailPaint;
         final float fadeFactor = mGlideTrail.fadeFactor(nowMs);
         // Per-segment drawLine with a preallocated paint: no allocation on the draw path.
         for (int i = first; i < size - 1; i++) {
