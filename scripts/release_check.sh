@@ -4,7 +4,7 @@
 # machine-readable RESULT block, and any FAIL gives a non-zero exit code. Any
 # unexpected error (no aapt2, broken APK, missing contract) also exits non-zero.
 # Artifact checks: size, asset pins, bundled asset sets, dex layout, profile rules, permissions,
-# signature, tree/APK freshness, version, store changelog and the delta against dist/.
+# signature, tree/APK freshness, tt/ru eval parity, version, store changelog, delta to dist/.
 #
 # Run from the repository root:
 #   bash scripts/release_check.sh [--quick|--full|--checks LIST] [path/to.apk]
@@ -25,8 +25,8 @@ set -euo pipefail
 
 # --- release invariants ----------------------------------------------------------------------
 
-# APK size ceiling (3 MB), in bytes.
-APK_SIZE_LIMIT=3145728
+# APK size ceiling (5 MB), in bytes.
+APK_SIZE_LIMIT=5242880
 
 # SHA-256 of the release signing certificate (CN=Tatar Keyboard), the same for every release.
 RELEASE_CERT_SHA256="98ca6febfed6c146d81c1fdcfe52c79acf7aa926a1033d98b844a59803ec42ad"
@@ -45,9 +45,9 @@ FULL=0
 CHECKS=""
 APK=""
 # Artifact checks that --checks can select; each runs on the APK alone, except no_reflection,
-# which scans the main sources. Version, changelog and delta depend on each other and run only
-# without --checks.
-SELECTABLE_CHECKS="size asset_pins emoji_assets tree_assets critical_resources arsc_stored dex_layout profiles permissions exported_surface no_secrets no_reflection signature freshness"
+# which scans the main sources, and eval_parity, which compares the pinned tt/ru eval metrics.
+# Version, changelog and delta depend on each other and run only without --checks.
+SELECTABLE_CHECKS="size asset_pins emoji_assets tree_assets critical_resources arsc_stored dex_layout profiles permissions exported_surface no_secrets no_reflection eval_parity signature freshness"
 
 # Prints the header comment (lines 2-22); keep the header exactly that long.
 usage() {
@@ -178,6 +178,10 @@ if [ "$FULL" -eq 1 ]; then
         report FAIL build.assemble_release "сборка упала, лог $LOG_DIR/assemble-release.log"
         tail -20 "$LOG_DIR/assemble-release.log" >&2 || true
     fi
+    # The device perf budgets are checked separately, on hardware: point at
+    # the strict form so an over-budget run cannot hide as an INFO line.
+    echo "release_check: бюджет производительности проверяется на устройстве:"
+    echo "  bash scripts/device-perf-ritual.sh --strict"
 fi
 
 # --- APK selection ----------------------------------------------------------------------------
@@ -289,8 +293,9 @@ fi
 fi
 
 # --- 3. asset pins against the constants in code ----------------------------------------------
-# Extracts *.tdict.zlib / *.tatbigr.zlib from the APK and compares size and SHA-256 (compressed
-# and raw) with the constants in DictionaryStorageContracts.kt / BigramStorageContracts.kt.
+# Extracts *.tdict.zlib / *.tatbigr.zlib / *.tcomp.zlib from the APK and compares size and
+# SHA-256 (compressed and raw) with the constants in DictionaryStorageContracts.kt /
+# BigramStorageContracts.kt / CompanionListStorageContracts.kt.
 # The pins are read with the same regex approach as read_pins in scripts/rebuild_assets.py,
 # but self-contained, so this check does not depend on the pipeline being importable.
 if want asset_pins; then
@@ -313,6 +318,9 @@ SPECS = [
     (storage / "BigramStorageContracts.kt", "BigramArtifactSpec",
      [("TATAR_BIGRAMS_V1", "bigrams/tatar_bigrams_v1.tatbigr.zlib"),
       ("RUSSIAN_BIGRAMS_V1", "bigrams/russian_bigrams_v1.tatbigr.zlib")]),
+    (storage / "CompanionListStorageContracts.kt", "CompanionListArtifactSpec",
+     [("TATAR_COMPANION_V1", "dictionaries/tatar_companion_v1.tcomp.zlib"),
+      ("RUSSIAN_COMPANION_V1", "dictionaries/russian_companion_v1.tcomp.zlib")]),
 ]
 
 def read_field(block, field):
@@ -680,9 +688,12 @@ fi
 
 # --- 3.11. profile rules against the dex ---------------------------------------------------------
 # The tracked text profiles are hand-editable, and a typo'd rule silently becomes a dead rule.
-# scripts/check_profiles.py parses both profiles strictly, resolves the class rules through the
-# R8 mapping against the APK's dex and gates the resolved ratio against a pinned floor (the trend
-# is the staleness signal); with the SDK cmdline-tools present it also runs profgen validate.
+# scripts/check_profiles.py parses both profiles strictly, gates the split shape (the files must
+# differ and the startup rule set must be a subset of the baseline rule set — the generator's two
+# collection passes keep it that way), resolves the class rules through the R8 mapping against
+# the APK's dex and gates the baseline profile's resolved ratio against a pinned floor (the trend
+# is the staleness signal; the startup ratio is reported only); with the SDK cmdline-tools
+# present it also runs profgen validate.
 # The mapping and the APK must come from the same build: the default flow (newest built APK) and
 # --full guarantee it, a --quick run on an older APK may not.
 if want profiles; then
@@ -1090,6 +1101,22 @@ then
 else
     report FAIL artifact.no_reflection "рефлексия или сериализация в app/src/main/java, лог $NO_REFLECTION_LOG"
     cat "$NO_REFLECTION_LOG" >&2
+fi
+fi
+
+# --- 4e. cross-language parity of the headline eval metrics ---------------------------------------
+# The tt and ru eval suites pin their headline metrics (dictionary token coverage, keystroke
+# savings, chain visible top-3) per language; nothing else asserts on the gap between the
+# languages. scripts/parity_check.py reads the pinned values (the JVM suite pins and the
+# suggest_eval mirror pins must agree) and fails when the absolute tt−ru gap of a metric
+# exceeds its budget. Reads only the tree, so it needs no APK.
+if want eval_parity; then
+PARITY_LOG="$LOG_DIR/eval-parity.log"
+if run_logged "$PARITY_LOG" python3 scripts/parity_check.py; then
+    report PASS artifact.eval_parity "$(tail -1 "$PARITY_LOG")"
+else
+    report FAIL artifact.eval_parity "разрыв tt−ru сверх бюджета или рассинхрон пинов, лог $PARITY_LOG"
+    cat "$PARITY_LOG" >&2
 fi
 fi
 

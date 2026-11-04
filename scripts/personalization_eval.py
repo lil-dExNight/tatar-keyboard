@@ -28,6 +28,12 @@ a clean run and a non-empty in-sentence context):
 * ``fixed``: realistic plus the deferred empty-prefix observation rule — when the run has
   no qualifying empty-prefix observation, binary-search the shortest proper prefix with an
   empty exact pass (emptiness is monotone in prefix length) and feed it retroactively.
+* ``sessions``: multi-session priming of the repetition split — one session per prime
+  pass, each primed under the fixed arm with a flush between passes; the flush drops
+  every pending entry whose serial lags the current one by more than LIFETIME_SERIALS
+  (PendingCounters.prunedForFlush), so progress earned in an early pass decays. The arm
+  sweeps the lifetime (500 = the production value, 2000, and no pruning at all) and
+  reports only the graduation counters.
 
 Learning rules mirrored from the stores: a word graduates after 3 clean completions
 (PendingCounters.LEARN_THRESHOLD), a pair after 2 clean observations with a context known to
@@ -37,14 +43,23 @@ at usage 1, pairs at usage 0 with the frequency at the threshold; taps bump usag
 re-observations bump pair frequency. Eligibility: 3..24 code points per word, 1..24 per pair
 member, per-language alphabet (the eval sets already satisfy it). Words are keyed directly —
 the production salted hash is injective at this scale. One continuous session: pending
-flush-pruning (LIFETIME_SERIALS) never fires. Graduations are frozen at measure start; usage
-and pair-frequency counters keep tracking during the measure walk.
+flush-pruning (LIFETIME_SERIALS) never fires, except in the multi-session arm. Graduations
+are frozen at measure start; usage and pair-frequency counters keep tracking during the
+measure walk.
 
 Measure-half reports, per split x arm: completion top-1/top-3 on graduated-word tokens
-against the dictionary-only control, next-word top-1/top-3 with learned pairs filling their
-at-most-2 free cells, a chain-order arm where a learned pair with usage >= 3 may displace
-bigram successor #3 (quantifying the suppression surface), keystroke-savings deltas against
-the per-split control, and strip-reorder counters per graduated-word occurrence.
+against the dictionary-only control (the merged strip promotes a graduated word to cell 0
+when the dictionary's top exact candidate is below PROMOTION_TOP_FREQUENCY_GATE), next-word
+top-1/top-3 with learned pairs filling their at-most-3 free cells, a precedence arm where
+the first learned pair with at least PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY clean
+observations takes composed cell 2 (quantifying the suppression surface), keystroke-savings
+deltas against the per-split control, and strip-reorder counters per graduated-word
+occurrence.
+
+Pollution counters per measure walk: how often a personal cell was shown and how often it
+hit the typed/target word — the completion cells of the merged strip and the NEXT_WORD cells
+of the two predict arms, counting only cells whose word comes from the personal sources
+(graduated words and learned pairs), never dictionary duplicates they merely restyled.
 
 Output: ``PERS|metric|value`` lines, byte-identical across runs. The Tatar control replay of
 the full eval set reproduces the pinned chain counters of ``TtSuggestEvalTest``; the JVM
@@ -99,7 +114,19 @@ CELL_COUNT = suggest_chain.CELL_COUNT
 BIGRAM_MAX_RESULTS = suggest_chain.BIGRAM_MAX_RESULTS
 TOP_WORD_POOL = suggest_chain.TOP_WORD_POOL
 MAX_PERSONAL_BIGRAM_CELLS = 3
-PAIR_DISPLACE_MIN_USAGE = 3
+# The promotion and precedence thresholds of the shipped merge (CompositePrefixComputer).
+PROMOTION_MIN_USAGE = 1
+PROMOTION_TOP_FREQUENCY_GATE = 10_000
+PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY = 5
+PERSONAL_BIGRAM_PRECEDENCE_INDEX = 2
+
+# The pending-entry flush lifetime: PendingCounters.LIFETIME_SERIALS of the production store.
+LIFETIME_SERIALS = 500
+# The multi-session arm cuts the repetition split's prime stream into one session per
+# prime pass, flushing the pending tables between passes; the sweep brackets the
+# production lifetime and the no-pruning limit.
+SPLIT_SESSIONS = REP_PRIME_PASSES
+LIFETIME_SERIALS_SWEEP = (500, 2_000, None)
 
 SPLITS = ("hash", "chrono", "rep")
 ARMS = ("oracle", "realistic", "fixed")
@@ -177,6 +204,19 @@ class PendingModel:
     def drop(self, key) -> None:
         self._counts.pop(key, None)
         self._serials.pop(key, None)
+
+    def prune_for_flush(self, lifetime_serials: int | None = LIFETIME_SERIALS) -> int:
+        """PendingCounters.prunedForFlush: drop everything lagging the current serial by more
+        than [lifetime_serials]; ``None`` disables pruning. Returns the number of entries
+        dropped. Eviction stays untouched: the flush prune only ages entries out."""
+        if lifetime_serials is None:
+            return 0
+        cutoff = self._next_serial - lifetime_serials
+        stale = [key for key, serial in self._serials.items() if serial <= cutoff]
+        for key in stale:
+            del self._counts[key]
+            del self._serials[key]
+        return len(stale)
 
 
 class WordEntries:
@@ -290,6 +330,14 @@ class PersonalModel:
     @property
     def pair_pending_evictions(self) -> int:
         return self._pair_pending.evictions
+
+    def flush_pending(self, lifetime_serials: int | None = LIFETIME_SERIALS) -> tuple[int, int]:
+        """The session boundary: prunedForFlush on both pending tables (the graduated
+        entries and their counters are untouched; only in-flight progress ages out).
+        Returns the (word, pair) pending counts dropped by this flush."""
+        word_prunes = self._word_pending.prune_for_flush(lifetime_serials)
+        pair_prunes = self._pair_pending.prune_for_flush(lifetime_serials)
+        return word_prunes, pair_prunes
 
     def _eligible(self, word: str, min_code_points: int, max_code_points: int) -> bool:
         if not min_code_points <= len(word) <= max_code_points:
@@ -440,15 +488,18 @@ def prime_pass(
     arm: str,
     alphabet: frozenset[str],
     latency_ms: int = LOOKUP_LATENCY_MS,
+    model: PersonalModel | None = None,
 ) -> tuple[PersonalModel, PrimeStats, CoalescingWorker | None]:
     """Replay the prime stream through the clean-run model under one observation arm.
 
     Every word is typed letter by letter and committed with a separator (no taps while
     priming), so every run is clean; a word completion is reported when a proper prefix of
     the word was observed with an empty exact pass. Pairs are reported at every clean
-    in-line completion with the previous word as the context.
+    in-line completion with the previous word as the context. A [model] keeps the learning
+    state across calls (the multi-session arm's sessions share one model).
     """
-    model = PersonalModel(lambda word: chain.frequency_of(word) > 0, alphabet)
+    if model is None:
+        model = PersonalModel(lambda word: chain.frequency_of(word) > 0, alphabet)
     stats = PrimeStats()
     worker = None if arm == "oracle" else CoalescingWorker(latency_ms)
     intervals = interval_stream_ms() if worker is not None else None
@@ -496,6 +547,32 @@ def prime_pass(
     return model, stats, worker
 
 
+def session_priming(
+    chain: suggest_chain.ChainMirror,
+    prime_lines: Sequence[str],
+    alphabet: frozenset[str],
+    lifetime_serials: int | None,
+) -> tuple[PersonalModel, list[tuple[int, int]]]:
+    """The multi-session arm: prime the stream session by session under the fixed arm,
+    flushing the pending tables between sessions. A flush drops every pending entry whose
+    serial lags the current one by more than [lifetime_serials] (``None`` keeps everything),
+    exactly the production flush prune; the graduated words and pairs survive it. Returns
+    the model and the per-flush (word, pair) prune counts."""
+    sessions: list[list[str]] = [[] for _ in range(SPLIT_SESSIONS)]
+    for index, line in enumerate(prime_lines):
+        sessions[index * SPLIT_SESSIONS // max(len(prime_lines), 1)].append(line)
+    model = PersonalModel(lambda word: chain.frequency_of(word) > 0, alphabet)
+    prunes: list[tuple[int, int]] = []
+    for session_lines in sessions:
+        if not session_lines:
+            continue
+        model, _, _ = prime_pass(
+            chain, session_lines, "fixed", alphabet, LOOKUP_LATENCY_MS, model
+        )
+        prunes.append(model.flush_pending(lifetime_serials))
+    return model, prunes
+
+
 # --------------------------------------------------------------------------------------
 # The merged strip and the personalized NEXT_WORD chain.
 # --------------------------------------------------------------------------------------
@@ -535,7 +612,15 @@ def personal_candidates(model: PersonalModel, prefix: str) -> list[str]:
 def merged_strip(
     engine: Engine, model: PersonalModel, prefix: str, context: str | None = None
 ) -> list[str]:
-    """Merge the context-armed exact lookup with personal completion candidates.
+    """Merge the context-armed exact lookup with personal completion candidates, mirroring
+    ``CompositePrefixComputer.merge``.
+
+    A graduated personal word leads the strip when its usage is at least
+    PROMOTION_MIN_USAGE and the dictionary's exact answer is weak: no exact candidate, or
+    its top exact candidate below PROMOTION_TOP_FREQUENCY_GATE (the lastTopExactFrequency
+    gate). The promotion moves the word exactly one cell up, so the exact cells then start
+    from index 0 and a fourth exact candidate leaves the strip. Below the gate (or without
+    the promotion) the personal word takes the cell right after the exact candidates.
 
     A personal word that duplicates a dictionary candidate only restyles the cell; the
     harness stores normalized == raw forms, so that case changes nothing and returns the
@@ -550,11 +635,24 @@ def merged_strip(
             break
     if personal_only is None:
         return dictionary
+    exact_count = len(dictionary)
+    top_exact_frequency = engine.chain.frequency_of(dictionary[0]) if dictionary else 0
+    promoted = (
+        model.words.usage[personal_only] >= PROMOTION_MIN_USAGE
+        and (
+            exact_count == 0
+            or top_exact_frequency < PROMOTION_TOP_FREQUENCY_GATE
+        )
+    )
     cells: list[str] = []
-    if dictionary:
+    if promoted:
+        cells.append(personal_only)
+    elif dictionary:
         cells.append(dictionary[0])
-    cells.append(personal_only)
-    for index in range(1 if dictionary else 0, len(dictionary)):
+        cells.append(personal_only)
+    else:
+        cells.append(personal_only)
+    for index in range(1 if dictionary and not promoted else 0, exact_count):
         if len(cells) >= CELL_COUNT:
             return cells
         cells.append(dictionary[index])
@@ -572,43 +670,93 @@ def pair_successors(model: PersonalModel, context: str) -> list[tuple[str, int, 
     return ranked
 
 
-def personalized_predict(engine: Engine, model: PersonalModel, head: str) -> list[str]:
-    """CompositePrefixComputer.predict: bigram successors, then learned pairs in their
-    at-most-3 free cells (a pair already shown is skipped), then fallback."""
+def _merged_successors(
+    engine: Engine, model: PersonalModel, head: str, precedence: bool
+) -> list[str]:
+    """``CompositePrefixComputer.withPersonalPairs``: the bigram successors, then the
+    learned pairs in their at-most-3 free cells, then (with [precedence]) the precedence
+    move. The precedence gate reads the raw successor count — production requires three or
+    more bundled successors before the move, whatever the learned pairs filled — and the
+    search domain is the pre-fallback answer, exactly as production; the fallback is applied
+    by the caller."""
     result = list(engine.successes.get(head, ()))[:BIGRAM_MAX_RESULTS]
+    raw_successor_count = len(result)
+    matches = pair_successors(model, head)
     if len(result) < CELL_COUNT:
         room = min(MAX_PERSONAL_BIGRAM_CELLS, CELL_COUNT - len(result))
         extras: list[str] = []
-        for word, _, _ in pair_successors(model, head):
+        for word, _, _ in matches:
             if len(extras) >= room:
                 break
             if word in result or word in extras:
                 continue
             extras.append(word)
         result = result + extras
+    if not precedence or raw_successor_count <= PERSONAL_BIGRAM_PRECEDENCE_INDEX:
+        return result
+    for word, _, frequency in matches:
+        if frequency < PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY:
+            continue
+        existing_index = -1
+        for index, cell in enumerate(result):
+            if cell == word:
+                existing_index = index
+                break
+        if 0 <= existing_index <= PERSONAL_BIGRAM_PRECEDENCE_INDEX:
+            continue
+        cells = list(result[:PERSONAL_BIGRAM_PRECEDENCE_INDEX])
+        cells.append(word if existing_index < 0 else result[existing_index])
+        for index in range(PERSONAL_BIGRAM_PRECEDENCE_INDEX, len(result)):
+            if len(cells) >= CELL_COUNT:
+                break
+            if index != existing_index:
+                cells.append(result[index])
+        return cells
+    return result
+
+
+def personalized_predict(engine: Engine, model: PersonalModel, head: str) -> list[str]:
+    """``CompositePrefixComputer.predict`` without the precedence move: bigram
+    successors, then the learned pairs in their at-most-3 free cells, then the fallback.
+    The arm measures the strip before the shipped precedence rule."""
+    result = _merged_successors(engine, model, head, precedence=False)
     if len(result) < CELL_COUNT:
+        committed_front = suggest_chain.last_vowel_is_front(head)
         for word in engine.fallback_pool:
             if len(result) >= CELL_COUNT:
                 break
             if word == head or word in result:
+                continue
+            if committed_front is not None and suggest_chain._mismatching_twin(
+                word, committed_front
+            ):
                 continue
             result.append(word)
     return result
 
 
 def displace_predict(engine: Engine, model: PersonalModel, head: str) -> list[str]:
-    """The chain-order arm: the top learned pair with usage >= PAIR_DISPLACE_MIN_USAGE may
-    displace bigram successor #4 when the successors fill all four cells."""
-    base = personalized_predict(engine, model, head)
-    if len(list(engine.successes.get(head, ()))[:BIGRAM_MAX_RESULTS]) < CELL_COUNT:
-        return base
-    learned = pair_successors(model, head)
-    if not learned:
-        return base
-    top_word, top_usage, _ = learned[0]
-    if top_usage < PAIR_DISPLACE_MIN_USAGE or top_word in base:
-        return base
-    return base[: CELL_COUNT - 1] + [top_word]
+    """The precedence arm: the full production ``predict`` composition — the merged
+    bigram/pair answer with the precedence move applied, then the fallback. The move
+    gives the first learned pair whose frequency is at least
+    PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY and is not already visible in the first
+    three composed cells composed index PERSONAL_BIGRAM_PRECEDENCE_INDEX; it keys on
+    frequencyCount (clean typed observations), never on the accepted-prediction usage
+    counter."""
+    result = _merged_successors(engine, model, head, precedence=True)
+    if len(result) < CELL_COUNT:
+        committed_front = suggest_chain.last_vowel_is_front(head)
+        for word in engine.fallback_pool:
+            if len(result) >= CELL_COUNT:
+                break
+            if word == head or word in result:
+                continue
+            if committed_front is not None and suggest_chain._mismatching_twin(
+                word, committed_front
+            ):
+                continue
+            result.append(word)
+    return result
 
 
 # --------------------------------------------------------------------------------------
@@ -631,6 +779,12 @@ class MeasureStats:
         self.nw_true_learned_suppressed = 0
         self.nw_suppressed_full_strip = 0
         self.nw_disp_gained = 0
+        # Pollution counters: a cell is personal when its word comes from the personal
+        # sources; a hit when the word is the typed/target one.
+        self.comp_personal_shown = 0
+        self.comp_personal_hit = 0
+        self.nw_personal_shown = 0
+        self.nw_personal_hit = 0
         # Completion counters on graduated-word tokens (prime-end attribution).
         self.gwt_tokens = 0
         self.gwt_typed = 0
@@ -651,6 +805,18 @@ class MeasureStats:
         self.reord_max_changes = 0
         self.reord_promo_buckets = [0, 0, 0]  # 0, 1, 2+ promotions per occurrence
         self.reord_max_promo = 0
+
+
+def _count_strip_pollution(
+    stats: MeasureStats, strip: Sequence[str], target: str, personal: frozenset[str]
+) -> None:
+    """A cell is personal when its word comes from the personal sources; a hit when it
+    equals the typed/target word."""
+    for cell in strip[:CELL_COUNT]:
+        if cell in personal:
+            stats.comp_personal_shown += 1
+            if cell == target:
+                stats.comp_personal_hit += 1
 
 
 def _strip_changes(strips: Sequence[Sequence[str]]) -> int:
@@ -684,6 +850,7 @@ def measure_walk(
     frozen: pending counters do not run during the measure pass.
     """
     stats = MeasureStats()
+    personal_words = frozenset(model.words.usage)
     for line in lines:
         words = line.split(" ")
         previous: str | None = None
@@ -692,9 +859,16 @@ def measure_walk(
                 stats.gwt_tokens += 1
             tapped_next = False
             if previous is not None:
-                stats.nw_pairs += 1
                 pers = personalized_predict(engine, model, previous)
                 disp = displace_predict(engine, model, previous)
+                stats.nw_pairs += 1
+                # Pollution: only cells whose word is a learned pair of this context count.
+                pair_words = {pair_word for pair_word, _, _ in pair_successors(model, previous)}
+                for cell in pers[:CELL_COUNT]:
+                    if cell in pair_words:
+                        stats.nw_personal_shown += 1
+                        if cell == word:
+                            stats.nw_personal_hit += 1
                 if pers and word == pers[0]:
                     stats.nw_pers_top1 += 1
                 if word in pers[:suggest_eval.SHOWN_RESULTS]:
@@ -738,6 +912,7 @@ def measure_walk(
                 )
                 for k in range(1, len(word)):
                     strip_pers = merged_strip(engine, model, word[:k], previous)
+                    _count_strip_pollution(stats, strip_pers, word, personal_words)
                     if is_graduated:
                         strip_ctrl = engine.chain.prefix_top3(word[:k], successors)
                         if k in stats.comp_typed:
@@ -762,7 +937,9 @@ def measure_walk(
                 if is_graduated:
                     if hit_prefix is None and len(word) > 1:
                         # The full-word strip is still painted before the separator.
-                        strips_pers.append(merged_strip(engine, model, word, previous))
+                        full_strip = merged_strip(engine, model, word, previous)
+                        _count_strip_pollution(stats, full_strip, word, personal_words)
+                        strips_pers.append(full_strip)
                         strips_ctrl.append(engine.chain.prefix_top3(word, successors))
                     changes_pers = _strip_changes(strips_pers)
                     stats.reord_changes_pers += changes_pers
@@ -1002,8 +1179,15 @@ def run(
             emit(f"{prefix}.comp_ctrl_engine_top4_hits", walk.comp_ctrl_engine_top4_hits)
             emit(f"{prefix}.comp_accept", walk.comp_accept)
             emit(f"{prefix}.comp_accept_pct", _pct(walk.comp_accept, walk.gwt_typed))
+            emit(f"{prefix}.comp_accept_top1", walk.comp_accept_top1)
             emit(
                 f"{prefix}.comp_accept_top1_pct", _pct(walk.comp_accept_top1, walk.comp_accept)
+            )
+            emit(f"{prefix}.comp_personal_shown", walk.comp_personal_shown)
+            emit(f"{prefix}.comp_personal_hit", walk.comp_personal_hit)
+            emit(
+                f"{prefix}.comp_personal_hit_pct",
+                _pct(walk.comp_personal_hit, walk.comp_personal_shown),
             )
             emit(f"{prefix}.comp_never", walk.comp_never)
             emit(f"{prefix}.nw_pairs", walk.nw_pairs)
@@ -1036,6 +1220,12 @@ def run(
             emit(f"{prefix}.nw_true_learned_suppressed", walk.nw_true_learned_suppressed)
             emit(f"{prefix}.nw_suppressed_full_strip", walk.nw_suppressed_full_strip)
             emit(f"{prefix}.nw_disp_gained", walk.nw_disp_gained)
+            emit(f"{prefix}.nw_personal_shown", walk.nw_personal_shown)
+            emit(f"{prefix}.nw_personal_hit", walk.nw_personal_hit)
+            emit(
+                f"{prefix}.nw_personal_hit_pct",
+                _pct(walk.nw_personal_hit, walk.nw_personal_shown),
+            )
             emit(f"{prefix}.ks_pers_keys", walk.keystrokes)
             emit(f"{prefix}.ks_pers_pct", _pct(ks_base - walk.keystrokes, ks_base))
             pers_pct = suggest_eval.percent(ks_base - walk.keystrokes, ks_base)
@@ -1068,10 +1258,33 @@ def run(
         emit(f"{split}.unseen_stem.rhs_x1000", rhs_x1000)
         emit(f"{split}.unseen_stem.gate_pass", 1 if fixed_cov * 1000 >= rhs_x1000 else 0)
 
+        if split == "rep":
+            # The multi-session arm: SPLIT_SESSIONS sessions over the prime stream, a
+            # pending flush between them, LIFETIME_SERIALS swept from the production value
+            # to the no-pruning limit.
+            for lifetime in LIFETIME_SERIALS_SWEEP:
+                session_model, flush_prunes = session_priming(
+                    engine.chain, prime_lines, alphabet, lifetime
+                )
+                cell = f"{split}.sessions_l{'inf' if lifetime is None else lifetime}"
+                emit(f"{cell}.grad_words", len(session_model.words.usage))
+                emit(f"{cell}.grad_pairs", session_model.pairs.size())
+                emit(
+                    f"{cell}.grad_unseen_tokens",
+                    sum(
+                        1
+                        for word in prime_tokens
+                        if word in unseen and word in session_model.words.usage
+                    ),
+                )
+                emit(f"{cell}.word_flush_prunes", sum(p[0] for p in flush_prunes))
+                emit(f"{cell}.pair_flush_prunes", sum(p[1] for p in flush_prunes))
+
         if split == "hash":
             checks, mismatches = empty_store_churn_check(engine, measure_lines)
             emit(f"{split}.empty_store.strip_checks", checks)
             emit(f"{split}.empty_store.strip_mismatches", mismatches)
+
         if split in ("hash", "rep"):
             # The latency sweep of the realistic arm. The rep half is where graduations
             # exist, so only it shows the graduation-coverage loss; the hash half shows the
