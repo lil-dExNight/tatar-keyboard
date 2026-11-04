@@ -69,29 +69,34 @@ position `i % 8`. The bigram tables depend on this index-based access.
 **Validation** (`storage/TdictValidator.kt`). `inflateAsset` accepts a single zlib stream with
 no preset dictionary and no trailing or concatenated data. It stops as soon as the input exceeds
 the pinned compressed size or the output exceeds `MAX_RAW_SIZE`. The compressed size, compressed
-SHA-256 and raw size must equal the pins. `validateRaw` then requires:
+SHA-256 and raw size must equal the pins. Both validation tiers then require:
 
 - the file length equals the pinned raw size, and the header constants equal the spec;
 - entryCount is non-zero and equals the pin, and every section field has the value in the
   table above (overflow-checked, within u32);
-- the checksum matches, and the SHA-256 of the whole file equals the pinned raw SHA-256;
-- the first block offset equals blocksOffset, and block offsets strictly increase within the
-  file;
-- `firstLength` is 1..128, `prefixLength` ≤ `firstLength`, `suffixLength` ≥ 1,
-  prefix + suffix ≤ 128 bytes, and every varint is minimal;
-- every word is strict UTF-8, 1..64 code points, NFC lowercase, and in the Tatar alphabet (a
-  superset of the Russian alphabet, so the Russian file passes the same check);
-- words strictly increase, so there are no duplicates, and every frequency is > 0;
-- each block ends exactly where the next one starts, and the last block ends at end of file.
+- the checksum matches, and the SHA-256 of the whole file equals the pinned raw SHA-256.
+
+The full tier, `validateRaw`, additionally walks the file: the first block offset equals
+blocksOffset, block offsets strictly increase within the file; `firstLength` is 1..128,
+`prefixLength` ≤ `firstLength`, `suffixLength` ≥ 1, prefix + suffix ≤ 128 bytes, and every
+varint is minimal; every word is strict UTF-8, 1..64 code points, NFC lowercase, and in the
+Tatar alphabet (a superset of the Russian alphabet, so the Russian file passes the same check);
+words strictly increase, so there are no duplicates, and every frequency is > 0; each block ends
+exactly where the next one starts, and the last block ends at end of file. The pinned-content
+tier, `verifyPinnedContent`, stops after the shared checks: a file whose size and SHA-256 match
+the pinned artifact is exactly the file the full walk accepted at publication, so the walk adds
+value only on never-before-seen bytes.
 
 The runtime reader (`engine/TdictPrefixIndex.kt`, `open`) checks the header and the section
 arithmetic again on the memory-mapped file, and walks every entry unless the store hands it a
 validation token for the same content (`storage/StoreValidationToken.kt`). The token proves a
 full validation of that content already ran in this process; the reader skips the walk.
 
-**On the device.** The raw file is inflated into a temp file, fsynced, validated, and atomically
-renamed into device-protected storage under `files/dictionaries/` (Tatar) or
-`files/dictionaries-ru/` (Russian). The final name is
+**On the device.** The raw file is inflated into a temp file, fsynced, validated in full, and
+atomically renamed into device-protected storage under `files/dictionaries/` (Tatar) or
+`files/dictionaries-ru/` (Russian). A process start that finds the final file already present
+re-verifies it by the pinned-content tier; any mismatch deletes the file and republishes, which
+validates fresh bytes in full. The final name is
 `<family>-v<generation:6>-s<schemaId>-f<formatVersion>-<rawSha256>.tdict`, so a new schema or new
 content produces a new name. After an update the asset is inflated once, and retention deletes
 the old file after its last lease is closed. There is no migration code.
@@ -140,18 +145,20 @@ Four sections follow the header, with no padding between them:
 
 **Validation** (`storage/TatBigrValidator.kt`). Inflation follows the same rules as for TATDICT,
 with the input bounded by `TatBigrFormat.MAX_COMPRESSED_SIZE` and the output by
-`TatBigrFormat.MAX_RAW_SIZE`. Then:
+`TatBigrFormat.MAX_RAW_SIZE`. Both validation tiers require:
 
 - the header constants, headCount (non-zero, equal to the pin) and the linked dictionary SHA-256
   equal the spec, and the reserved bytes are zero;
 - every section offset has its required value, and fileSize equals the file length;
-- the checksum matches, and the SHA-256 of the whole file equals the pinned raw SHA-256;
-- block `firstDictIndex` values strictly increase; stream offsets never decrease and stay inside
-  their sections; the first block's offsets are 0;
-- head indices strictly increase, every varint is minimal, and every count is ≥ 1;
-- each delta stream ends exactly where the next block's stream starts, each success stream
-  starts at its record's offset, the counts sum to pairCount, and the success stream ends
-  exactly at the end of its section.
+- the checksum matches, and the SHA-256 of the whole file equals the pinned raw SHA-256.
+
+The full tier, `validateRaw`, additionally walks the streams: block `firstDictIndex` values
+strictly increase; stream offsets never decrease and stay inside their sections; the first
+block's offsets are 0; head indices strictly increase, every varint is minimal, and every count
+is ≥ 1; each delta stream ends exactly where the next block's stream starts, each success stream
+starts at its record's offset, the counts sum to pairCount, and the success stream ends exactly
+at the end of its section. The pinned-content tier, `verifyPinnedContent`, stops after the shared
+checks; see the TATDICT section for when the store uses which tier.
 
 The validator does not have the dictionary, so it cannot check upper bounds on indices.
 `engine/TatBigrPrefixIndex.kt` (`open`) checks the header again, requires the linked SHA-256 to
@@ -162,7 +169,8 @@ dictionary-link checks always run. If the table does not match the dictionary, t
 without it: next-word prediction has no table successors and answers from learned word pairs and
 the most frequent dictionary words only, word completion loses the previous-word boost, and
 typing is not affected. On the device, tables are staged, named and retained the same way as
-dictionaries, in `files/bigrams/` or `files/bigrams-ru/`, with the name
+dictionaries, including the pinned-content re-verification of an already published file, in
+`files/bigrams/` or `files/bigrams-ru/`, with the name
 `<family>-<fileLanguageTag>-v<generation:6>-s3-f1-<rawSha256>.tatbigr`.
 
 ## Personal dictionary files: TATPERS, TATPERSB, TATPERSE
@@ -257,10 +265,42 @@ the strip order is by usage count, then last-use serial.
 Validation (`personal/TsentValidator.kt`) is the `.tpers` one with these bounds. Learning follows
 the personal dictionary's pending-counter discipline (`PendingCounters`): a word enters
 plaintext only after the shared learn threshold of sentence-initial commits, and the pending hashes
-and salt live in the store's own `pending-sentstart-<tag>-s1-f1.bin` and `salt-sentstart.bin`. A
+and salt live in the store's own `pending-sentstart-<tag>-s1-f1.bin` and `salt-sentstart-<tag>-s1-f1.bin`. A
 file that fails validation is moved to `<file name>.quarantine` with no notice: no screen lists
 the overlay, and the overlay relearns. The files do not classify into a backup kind, so an export
 never carries them.
+
+## TATCOMP schema 1: cold-companion word lists
+
+Assets: `assets/dictionaries/{tatar,russian}_companion_v1.tcomp.zlib`, one per shipped language.
+The list is the top-frequency words of that language's bundled dictionary — the exact list, not a
+probabilistic filter, because a false positive would suppress a legitimate correction. The
+autocorrect companion guard consults it while the other language's engine is cold (see
+`SuggestionsController.companionLexiconFor`); it is never read on the suggestion path.
+Constants: `TatCompFormat` in `storage/CompanionListStorageContracts.kt`.
+
+The file is a 56-byte header followed by `wordCount` word rows, then the whole file is
+zlib-compressed:
+
+| Offset | Size | Field | Required value |
+|---:|---:|---|---|
+| 0 | 8 | magic `TATCOMP\0` | |
+| 8 / 10 / 12 / 14 | 2 each | schemaId / formatVersion / headerSize / checksumAlgorithm | 1 / 1 / 56 / 1 |
+| 16 | 4 | wordCount | the pinned `expectedWordCount` |
+| 20 | 4 | bodySize | `HEADER_SIZE + bodySize` = file length |
+| 24 | 32 | SHA-256 checksum | of the whole file with this field zeroed |
+
+Every word row is a u8 byte length followed by the UTF-8 bytes of an NFC lowercase word. The rows
+are strictly ascending in unsigned UTF-8 byte order, so a membership probe is a binary search.
+
+Validation (`engine/CompanionListReader.kt`) follows the same fail-closed rule as the dictionary
+validator: every header field is checked against the contract, the compressed size and SHA-256
+and the raw size are pinned, the checksum must verify, and any violation throws. A rejected list
+protects nothing — an unlisted word stays correctable, exactly as before the list existed.
+Inflation is bounded by the pinned raw size, so a corrupt stream cannot allocate without limit.
+
+The list is read whole into memory once per process (it is the top of a frequency list, not the
+dictionary), never copied into device-protected storage.
 
 ## Plain-text assets
 
@@ -285,6 +325,7 @@ in the `NOTICE.txt` in each asset directory.
 |---|---|---|
 | dictionaries | compressed size and SHA-256, raw size and SHA-256, entry count | `DictionaryArtifactSpec.TATAR_TOP100K_V1` / `RUSSIAN_TOP100K_V1`, `storage/DictionaryStorageContracts.kt` |
 | bigram tables | the same values, with head count instead of entry count, plus the linked dictionary's raw SHA-256 | `BigramArtifactSpec.TATAR_BIGRAMS_V1` / `RUSSIAN_BIGRAMS_V1`, `storage/BigramStorageContracts.kt` |
+| cold-companion lists | compressed size and SHA-256, raw size and SHA-256, word count | `CompanionListArtifactSpec.TATAR_COMPANION_V1` / `RUSSIAN_COMPANION_V1`, `storage/CompanionListStorageContracts.kt` |
 | plain-text assets | SHA-256 and line or record counts | `tests/<packer>/test_*.py` and the JVM asset and emoji tests |
 
 `scripts/rebuild_assets.py` rewrites the storage-contract pins, and its `--check` mode compares

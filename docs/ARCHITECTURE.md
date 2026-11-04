@@ -116,7 +116,9 @@ Threads: `SuggestionsController` owns all strip state and runs on the UI thread 
 language has a `LanguageSlot` with one engine, and each engine runs lookups on its own single
 worker thread. A separate executor starts engines and prepares dictionaries. A failed preparation
 is retried once, at the next eligible input start (`LanguageSlot.preparationRetryUsed`); after a
-second failure the language waits for the suggestions setting to go off and on. Switching language
+second failure the language waits for the suggestions setting to go off and on. A failed deferred
+bigram attach gets the same one retry, re-armed by the engine idling at the next field start; a
+second failure leaves that engine without the table until it is restarted. Switching language
 idles the old engine instead of tearing it down. `LatinIME` publishes the new layout's key-neighbor
 table and glide geometry before the switch, and the engine that becomes active is handed both
 (`SuggestionsController.setActiveLanguage`).
@@ -140,7 +142,9 @@ candidates and the controller truncates the band). Cells fill the keyboard's doc
 rectangle. A right dock mirrors only ranked bands across the visible grid, putting the leading
 candidate nearest the right thumb; undo, recent-clip and emoji-only offers keep their documented
 order. Drawing, hit testing and accessibility use `SuggestionStripState`'s shared geometry. A tap
-commits the word with a space; a punctuation mark that
+commits the word with a space; a long press on a word cell offers to forget the word when the
+personal dictionary holds it and to add it when the manual-add filter accepts it, and answers
+with an explanation otherwise (`LatinIME.onStripWordLongPress`). A punctuation mark that
 attaches to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ",
 "сүз?! "), tracked by the cursor position in `InputLogic`. A space typed there is swallowed and
 counts as the first space of a double-space period. Two quick spaces give a period only in a
@@ -182,16 +186,25 @@ language. When the exact pass is empty and the prefix has at least four code poi
 engines also run the shared DL-1 tier (substitution, deletion, insertion and transposition under
 one rank tag, ranked by frequency). Both apply the same-length bonus, which ranks a candidate as
 long as its variant before that variant's continuations: the Tatar policy in class #1 and in the
-tier, the Russian policy inside the tier only (`FuzzyEditPolicy.sameLengthBonusOnlyInDl1`).
+tier, the Russian policy inside the tier only (`FuzzyEditPolicy.sameLengthBonusOnlyInDl1`). Both
+policies also arm the geometry-neighbor bonus (`FuzzyEditPolicy.geometryNeighborBonus`): inside
+the tier a substitution whose typed and replacement letters sit on adjacent keys of the published
+layout (`KeyNeighborTable` derives the adjacency from the key rectangles, centers within a radius
+normalized per axis by the keys' half-extents) ranks before a non-neighbor substitution at the
+same length tier.
 
 Next-word prediction (`CompositePrefixComputer.predict`): the bundled bigram successors (at
 most four), then learned word pairs in the cells left free (at most `MAX_PERSONAL_BIGRAM_CELLS`;
 a duplicate keeps the bundled spelling), then the dictionary's most frequent words
-(`FallbackWords`), excluding everything shown. One learned pair may displace a bundled successor:
+(`FallbackWords`), excluding everything shown. When the language's fallback pool holds a
+front/back harmony pair (Tatar: `дә`/`да`, pinned in `DictionaryArtifactSpec.harmonyTwins`),
+only the twin matching the committed word's vowel harmony is offered (last vowel front → `дә`,
+else `да`; no deciding vowel keeps the pool order) and the next pool word takes the freed slot.
+One learned pair may displace a bundled successor:
 with three or more successors, the first pair observed at least
 `PERSONAL_BIGRAM_PRECEDENCE_MIN_FREQUENCY` times and not already in the first three cells takes
 the third cell, and the fourth successor leaves the strip. Without a bigram table (not attached
-yet, or the attach failed) predict still answers with learned pairs and the fallback; only the
+yet, or the attach failed twice) predict still answers with learned pairs and the fallback; only
 bundled successors and the completion's context track are missing. The engine reports such an
 answer (`EngineHandle.nextWordWithoutTable`), and when the table attaches later,
 `SuggestionsController.onBigramTableReady` asks again if the strip still shows that NEXT_WORD
@@ -214,10 +227,13 @@ neighbor table. It is never asked for a glide, a sentence start, an autocorrect 
 text-shortcut strip.
 
 Autocorrect (opt-in `PREF_TATAR_AUTOCORRECT`, requires suggestions). The lookup that fills the
-strip also yields an `AutocorrectAdvice` from edit class #1. The engine withholds it, on its
+strip also yields an `AutocorrectAdvice` from edit class #1 and the DL-1 tier; a tier match fires
+only when it is one of the previous word's packed bigram successors (the context-successor guard,
+inactive at a sentence start). The engine withholds it, on its
 worker, for a word in the personal dictionary and for an exact entry of the companion's dictionary
-(`CompanionLexicon`, which reads the companion live, so it protects only while that engine is
-warm). On a space or punctuation
+(`CompanionLexicon`: the companion's bundled cold-companion word list first — it answers from the
+first keystroke and keeps protecting after a release — plus the companion's live engine while it
+is warm). On a space or punctuation
 `LatinImeAutocorrect` has the controller replace the word before the separator reaches
 `InputLogic`; one backspace right after undoes it (`RevertWindow`). While the undo window is open,
 the strip's first cell offers the typed word back in quotes (a tap reverts, like the backspace).
@@ -239,11 +255,13 @@ deletion and replacement of an existing normalized shortcut each require their o
 
 The recent-clip cell: while the strip is otherwise idle (an empty prefix and no next-word context)
 and the clipboard holds a fresh text clip, the strip's first cell offers the clip's first line,
-truncated; a tap commits the full clip text (`InputLogic.commitClipText`). The clip is held in
-memory only (`RecentClipCell`), never written to disk or learned from. A generation-stamped timer
-clears the text and removes the painted cell at the freshness deadline. The direct-paste size
-limit rejects oversized clips before text materialization and before the editor commit. The
-clipboard listener is registered only while the input view is shown, the clipboard is not read
+truncated; a tap commits the full clip text (`InputLogic.commitClipText`). The cell paints a small
+drawn clipboard marker (`SuggestionStripState.clipCell`), TalkBack names the action instead of
+reading the clip aloud (`spoken_recent_clip_cell`), and a long press on it is not a word gesture.
+The clip is held in memory only (`RecentClipCell`), never written to disk or learned from. A
+generation-stamped timer clears the text and removes the painted cell at the freshness deadline.
+The direct-paste size limit rejects oversized clips before text materialization and before the
+editor commit. The clipboard listener is registered only while the input view is shown, the clipboard is not read
 while the session or the live keyguard check says locked (`LatinIME.capturePrimaryClipForOffer`),
 and the cell is never offered where suggestions may not run (`LatinIME.onWindowShown`/
 `onWindowHidden`) or for a clip its source app marked sensitive
@@ -256,20 +274,24 @@ Each language has a dictionary (`*.tdict.zlib`, TATDICT schema 2) and a bigram t
 word indices and names the dictionary's raw SHA-256 in its header, so it opens only against its own
 dictionary. Formats: [ASSET-FORMATS.md](ASSET-FORMATS.md); build: [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
 
-On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, validate it
-(`TdictValidator`, `TatBigrValidator`) and publish it to device-protected storage: temp file,
-fsync, validate, atomic rename, directory fsync. Every process start validates the published file
-again before activating it; the first activation after that check or a publication reuses its
-result while the file keeps the recorded length and modification time, and every later activation
-validates again. The lease carries a process-local validation token (`StoreValidationToken`), so
-the engine's open repeats only the header and section checks and skips the structural walk the
-store already ran. `MappedDictionaryEngine` maps the file read-only
-(`FileChannel.map`) and reads it in place. The bigram table attaches lazily: publication hands the
-engine its catalog, and the engine maps and opens the table on its worker at the first next-word
-lookup, so a session that never predicts a next word never maps it. Pinned sizes and SHA-256 values
-are in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. Without a usable dictionary a
-language has no suggestions; without its bigram table next-word prediction has no bundled
-successors (see next-word prediction above).
+On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, validate it in
+full (`TdictValidator.validateRaw`, `TatBigrValidator.validateRaw`) and publish it to
+device-protected storage: temp file, fsync, validate, atomic rename, directory fsync. A process
+start that finds the final file already present re-verifies it by the pinned-content tier
+(`verifyPinnedContent`: size, header constants, section arithmetic, checksum and pinned raw
+SHA-256), without the structural walk; a pinned SHA-256 match implies the walk's outcome, so the
+walk runs only on freshly written bytes: publication, and the mismatch fall-through that
+deletes a verify failure and republishes. The first activation after that check or a publication
+reuses its recorded result while the file keeps the recorded length and modification time, and
+every later activation validates in full again. The lease carries a process-local validation
+token (`StoreValidationToken`), so the engine's open repeats only the header and section checks
+and skips the structural walk the store already ran. `MappedDictionaryEngine` maps the file
+read-only (`FileChannel.map`) and reads it in place. The bigram table attaches lazily: publication
+hands the engine its catalog, and the engine maps and opens the table on its worker at the first
+next-word lookup, so a session that never predicts a next word never maps it. Pinned sizes and
+SHA-256 values are in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. Without a
+usable dictionary a language has no suggestions; without its bigram table next-word prediction
+has no bundled successors (see next-word prediction above).
 
 ## Personal dictionary
 
@@ -355,12 +377,16 @@ symbols pages included, a slide is ordinary sliding key input. On lift the path 
 `SuggestionsController.onGlideInput` and to the engine as a `GLIDE` request; nothing is decoded
 while the finger moves. `GlideDecoder` is a SHARK2-style statistical classifier (shape and location
 channels plus a frequency weight), ported with attribution from FlorisBoard's
-`StatisticalGlideTypingClassifier`. Its word index is built lazily on the engine worker
-(`GlideDecoderHost`); only one language keeps an index in memory. The top word is committed on lift
+`StatisticalGlideTypingClassifier`. Its word index is built on the engine worker
+(`GlideDecoderHost`): the build starts at the keyboard session's first glide-eligible letter-key
+down (`PointerTracker` re-arms the once-per-session offer on every keyboard load), again when a
+gesture arms if the index is not resident yet, and on demand at decode. Only one language keeps
+an index in memory, and the 10 s idle release drops it. The top word is committed on lift
 (`InputLogic.commitGlideWord`); the other candidates appear in the strip and a tap replaces the
 word. The decode's N-best is reranked by the previous committed word (`GlideBigramRerank`): the
-successor list holds at most `CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS` learned pairs
-ahead of the bundled successors, only its first `GlideBigramRerank.MAX_RANKED_SUCCESSORS` entries
+successor list holds the bundled table's first successor, then at most
+`CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS` learned pairs, then the remaining bundled
+successors; only its first `GlideBigramRerank.MAX_RANKED_SUCCESSORS` entries
 rank, each rank applies the configured rank penalty once more, and an unranked word gets the penalty
 of one rank past the last, so a long successor list can neither outweigh every shape score nor
 overflow the penalty. The strip side is gated on the glide switch, not the suggestions switch, since the candidates
@@ -393,16 +419,21 @@ word. One backspace right after a glide deletes the whole word with the space it
 (`LatinImeGlide`), and the gesture's remaining candidates re-bind to the emptied position, so a
 tap commits one of them instead of re-gliding.
 
-Capitals: with auto-capitalization on and a field that asks for sentence caps
-(`TYPE_TEXT_FLAG_CAP_SENTENCES`), a word whose prepended space follows '.', '!' or '?' starts
-with a capital. In a field without that flag the word stays lower case, as typed letters do there:
-the field flags decide for both.
+Capitals: with auto-capitalization on, the editor's caps-mode flags decide for glided words as
+they do for typed letters. In a sentence-caps field (`TYPE_TEXT_FLAG_CAP_SENTENCES`) a word whose
+prepended space follows '.', '!' or '?' starts with a capital; in a per-word caps field
+(`TYPE_TEXT_FLAG_CAP_WORDS`) every word does — the commit's own prepended space is exactly the
+word start the live shift state cannot see yet, so the glide path evaluates the field flags on
+the text as the commit leaves it (`EditorSurface.glideAutoCapsWord`). In a field without those
+flags the word stays lower case, as typed letters do there: the field flags decide for both.
 
 Refused glide: the commit is refused when a letter follows the cursor, when the trailing word or
 the cursor changed between the gesture and the decode result, or when the before-cursor cache is
 empty although the cursor is past the text start (it then requests a reload). A refusal gives one
 haptic tick (`GlideRefusalFeedback`, wired to `AudioAndHapticFeedbackManager.performTickFeedback`,
-which honors the vibrate setting and vibrates on API 29+ only). A letter after the cursor, like an
+which honors the vibrate setting and vibrates on API 29+ only) and repaints the gesture's fading
+trail in the theme's error ink (`MainKeyboardView.markGlideTrailRefused`, the visual half below
+API 29). A letter after the cursor, like an
 unknown cursor, refuses before the decode and leaves the strip as it was; one that appears by the
 decode result shows no candidates either, since a tap on one would be refused the same way. For a
 stale or unknown cache the strip shows the decoded candidates (`REFUSED_GLIDE` binding); a tap
