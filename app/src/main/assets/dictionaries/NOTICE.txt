@@ -57,6 +57,15 @@ filtered to the words the shipped Tatar dictionary carries, and the top 64
 were written as a plain word/frequency table (scripts/sentstart_pack.py).
 
 --------------------------------------------------------------------------------
+tatar_companion_v1.tcomp.zlib
+
+Derived from tatar_top100k_v1.tdict.zlib in this directory: the top 20 000
+entries of that dictionary by stored frequency, re-packed as a sorted exact
+word list (scripts/companion_list_pack.py). The list carries no text beyond
+the dictionary's own word forms, so its sources and license are those of the
+dictionary above.
+
+--------------------------------------------------------------------------------
 russian_top100k_v1.tdict.zlib
 
 Derived from the Russian corpora rus_news_2022_1M, rus_news_2019_1M, and
@@ -84,6 +93,15 @@ sentence of the three corpora and of the conversational stream was counted
 with the same normalization as the dictionary above, the counts were filtered
 to the words the shipped Russian dictionary carries, and the top 64 were
 written as a plain word/frequency table (scripts/sentstart_pack.py).
+
+--------------------------------------------------------------------------------
+russian_companion_v1.tcomp.zlib
+
+Derived from russian_top100k_v1.tdict.zlib in this directory: the top 20 000
+entries of that dictionary by stored frequency, re-packed as a sorted exact
+word list (scripts/companion_list_pack.py). The list carries no text beyond
+the dictionary's own word forms, so its sources and license are those of the
+dictionary above.
 
 --------------------------------------------------------------------------------
 The dictionary data remains a separate CC BY 4.0 component; the application's

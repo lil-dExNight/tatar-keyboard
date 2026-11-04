@@ -154,7 +154,8 @@ class MappedDictionaryEngine private constructor(
      * Hands the published bigram catalog over without opening the table: the mapping and the open
      * walk run lazily on the engine worker at the first NEXT_WORD lookup. A missing, corrupt or
      * vanished table leaves NEXT_WORD without the table's successors, exactly as with
-     * [attachBigramSource].
+     * [attachBigramSource]; a failed attempt is retried once at the next field start
+     * ([finishInput] re-arms it), and the second failure is terminal for this engine.
      */
     fun deferBigramAttach(catalog: PublishedBigramTableCatalog) {
         computer.deferBigramAttach { attachBigramSource(catalog, mapper) }
@@ -189,9 +190,14 @@ class MappedDictionaryEngine private constructor(
     val lastNextWordWithoutTable: Boolean
         get() = computer.lastNextWordWithoutTable
 
+    /**
+     * Idles the engine: the in-flight lookup generation and the verdicts computed for it go.
+     * Also the field-start boundary that re-arms a failed deferred bigram attach for its one
+     * retry; the retry itself runs on the worker, at the next NEXT_WORD lookup.
+     */
     fun finishInput() {
-        // Idling the engine invalidates the generation, so the verdicts computed for it go too.
         computer.clearLookupVerdicts()
+        computer.rearmBigramAttachRetry()
         engine.finishInput()
     }
 
@@ -361,6 +367,7 @@ class MappedDictionaryEngine private constructor(
             personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
             glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
             autocorrectMinCandidateFrequency: Long = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+            traceHook: LookupTraceHook = LookupTraceHook.NONE,
         ): MappedDictionaryEngine? {
             val lease = try {
                 catalog.acquireLatestForActivation()
@@ -370,7 +377,7 @@ class MappedDictionaryEngine private constructor(
             return startOwnedLease(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
                 suffixTable, fuzzyEditPolicy, fallbackWordsFactory,
-                personalBigrams, glideConstants, autocorrectMinCandidateFrequency,
+                personalBigrams, glideConstants, autocorrectMinCandidateFrequency, traceHook,
             )
         }
 
@@ -387,6 +394,7 @@ class MappedDictionaryEngine private constructor(
             personalBigrams: PersonalBigramSource,
             glideConstants: GlideDecoder.GlideConstants,
             autocorrectMinCandidateFrequency: Long,
+            traceHook: LookupTraceHook,
         ): MappedDictionaryEngine? {
             val dictionary = lease.dictionary
             val identity = DictionaryIdentity(
@@ -448,6 +456,7 @@ class MappedDictionaryEngine private constructor(
                     executor,
                     resultHandoff,
                     resources::release,
+                    traceHook,
                 )
                 return MappedDictionaryEngine(identity, engine, computer, resources, mapper)
             } catch (_: Throwable) {

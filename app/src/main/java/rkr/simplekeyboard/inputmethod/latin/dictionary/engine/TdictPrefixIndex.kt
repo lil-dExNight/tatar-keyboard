@@ -275,7 +275,7 @@ internal class TdictPrefixIndex private constructor(
     // Context boost: the previous committed word's packed bigram successors as dictionary entry
     // indices (copied out of the caller's array at lookup entry), and the exact pass's third
     // track, which ranks ahead of the same-stem and other tracks. Worker-confined like the rest.
-    private val contextSuccessorIds = IntArray(TatBigrPrefixIndex.MAX_RESULTS)
+    private val contextSuccessorIds = IntArray(TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS)
     private var contextSuccessorCount = 0
     private val contextTrackIndices = IntArray(MAX_RESULTS)
     private val contextTrackFrequencies = LongArray(MAX_RESULTS)
@@ -359,21 +359,35 @@ internal class TdictPrefixIndex private constructor(
     // same-length bonus and frequency decide, never the family.
     private var fuzzyCurrentClass = EDIT_CLASS_LONG_PRESS
 
+    // The geometry-neighbor bit of the variant pass currently running, set by each variant
+    // consumer before it scans and read by scanVariantBlock like fuzzyCurrentClass. Only the
+    // substitution family can raise it (it alone carries a typed->replacement letter pair), and
+    // only when the policy arms FuzzyEditPolicy.geometryNeighborBonus.
+    private var fuzzyCurrentNeighbor = false
+
     // Autocorrect accumulator, private to one computeAutocorrectAdvice() call. It counts whole-word
     // matches: how many variants of the typed word are dictionary entries, and which one. Anything
-    // but exactly one means no replacement.
+    // but exactly one means no replacement. autocorrectMatchClass is the edit class that counted
+    // the match: the context-successor guard applies to DL-1 tier matches only.
     private var autocorrectMatchCount = 0
     private var autocorrectMatchIndex = NO_ENTRY
+    private var autocorrectMatchClass = EDIT_CLASS_EXACT
     private var autocorrectProbesUsed = 0
 
     // Allocated once, so neither a lambda nor any object is created per lookup or per variant.
     private val fuzzyConsumer =
-        FuzzyPrefixVariants.VariantConsumer { bytes, length -> scanVariantBlock(bytes, length) }
+        FuzzyPrefixVariants.VariantConsumer { bytes, length ->
+            fuzzyCurrentNeighbor = false
+            scanVariantBlock(bytes, length)
+        }
 
-    // The name predates the tier: the consumer serves all four DL-1 families, and the committed
-    // baseline profiles reference this property's synthetic lambda name.
+    // The name predates the tier: the consumer serves the DL-1 deletion, insertion and
+    // transposition families (the substitution family has its own consumer below), and the
+    // committed baseline profiles reference this property's synthetic lambda name. These families
+    // carry no typed->replacement letter pair, so the geometry-neighbor bit stays off for them.
     private val substitutionProbeConsumer =
         FuzzyPrefixVariants.PositionedVariantConsumer { position, bytes, length ->
+            fuzzyCurrentNeighbor = false
             probeAndScanVariant(position, bytes, length)
         }
 
@@ -501,6 +515,10 @@ internal class TdictPrefixIndex private constructor(
      *  - the word is absent from the dictionary;
      *  - exactly one variant of it is a dictionary word, counted before any frequency filter, so
      *    an ambiguous typo is left alone rather than resolved by frequency;
+     *  - the context-successor guard: a match from the DL-1 tier fires only when it is one of the
+     *    previous committed word's packed bigram successors; the guard is inactive on an unarmed
+     *    lookup (sentence start, or the previous word heads no bigram entry) and never applies
+     *    to a class #1 match;
      *  - that candidate's frequency is at least this engine's per-language floor
      *    (`autocorrectMinCandidateFrequency`, see [AutocorrectPolicy]).
      *
@@ -510,7 +528,8 @@ internal class TdictPrefixIndex private constructor(
      *
      * Class #1 costs one binary search per variant and scans no block. The DL-1 tier is probe-first
      * like the display pass: per-position narrowed no-cache probes and whole-word equality, never
-     * a range scan. Short words skip the pass entirely.
+     * a range scan. Short words skip the pass entirely. The guard is a membership test over the
+     * already-armed successor list; it scans no block either.
      */
     private fun computeAutocorrectAdvice(
         normalizedPrefixUtf8: ImmutableUtf8Prefix,
@@ -528,6 +547,7 @@ internal class TdictPrefixIndex private constructor(
         if (typedEntry < entryCount && wordEquals(typedEntry, exactScratch, prefixLength)) return
         autocorrectMatchCount = 0
         autocorrectMatchIndex = NO_ENTRY
+        autocorrectMatchClass = EDIT_CLASS_EXACT
         autocorrectProbesUsed = 0
 
         if (EDIT_CLASS_LONG_PRESS in fuzzyPolicy.autocorrectClasses) {
@@ -550,7 +570,7 @@ internal class TdictPrefixIndex private constructor(
             var failed = FuzzyPrefixVariants.generateFullSubstitutionVariants(
                 exactScratch, prefixLength, table.nodes, autocorrectCodePointScratch,
                 autocorrectVariantScratch, MAX_FUZZY_PROBES - autocorrectProbesUsed,
-                autocorrectProbeConsumer,
+                autocorrectSubstitutionProbeConsumer,
             ) < 0
             if (!failed && autocorrectMatchCount < 2) {
                 failed = FuzzyPrefixVariants.generateDeletionVariants(
@@ -579,6 +599,16 @@ internal class TdictPrefixIndex private constructor(
 
         if (autocorrectMatchCount != 1) return
         val candidate = autocorrectMatchIndex
+        // The context-successor guard on DL-1 tier matches: with the previous word's packed
+        // successors armed, the replacement must be one of them. A class #1 match stays
+        // unguarded, and an unarmed lookup guards nothing. The membership test reads only the
+        // armed scratch, so it costs no extra block scan.
+        if (autocorrectMatchClass == EDIT_CLASS_SUBSTITUTION &&
+            contextSuccessorCount > 0 &&
+            !isContextSuccessor(candidate)
+        ) {
+            return
+        }
         val frequency = frequencyAt(candidate)
         if (frequency < autocorrectMinCandidateFrequency) return
         lastAutocorrectAdvice = AutocorrectAdvice(
@@ -600,11 +630,39 @@ internal class TdictPrefixIndex private constructor(
         if (entry == autocorrectMatchIndex) return
         autocorrectMatchCount++
         autocorrectMatchIndex = entry
+        autocorrectMatchClass = EDIT_CLASS_LONG_PRESS
     }
 
     /** Probe-first whole-word consumer of the class #4 autocorrect variants. */
     private val autocorrectProbeConsumer =
         FuzzyPrefixVariants.PositionedVariantConsumer { position, bytes, length ->
+            probeAutocorrectWholeWord(position, bytes, length)
+        }
+
+    // The two lambdas below are declared after the profiled ones (fuzzyConsumer,
+    // substitutionProbeConsumer, autocorrectConsumer, autocorrectProbeConsumer) on purpose: the
+    // committed baseline profile references those by synthetic lambda ordinal, so a new lambda
+    // inserted above them would renumber them away from their profile entries.
+    // The tracked profiles predate the current signatures and regenerate with the profile split work.
+
+    /**
+     * The substitution family's consumer in the display tier: the one DL-1 family whose variants
+     * carry a typed->replacement letter pair, so it alone computes the geometry-neighbor bit
+     * (when the policy arms it) before the shared probe-and-scan.
+     */
+    private val fullSubstitutionProbeConsumer =
+        FuzzyPrefixVariants.SubstitutionVariantConsumer {
+            position, typedCodePoint, replacementCodePoint, bytes, length ->
+            val table = neighborTable
+            fuzzyCurrentNeighbor = fuzzyPolicy.geometryNeighborBonus &&
+                table != null &&
+                table.areGeometricNeighbors(typedCodePoint, replacementCodePoint)
+            probeAndScanVariant(position, bytes, length)
+        }
+
+    /** The autocorrect path has no rank key, so its substitution consumer ignores the letters. */
+    private val autocorrectSubstitutionProbeConsumer =
+        FuzzyPrefixVariants.SubstitutionVariantConsumer { position, _, _, bytes, length ->
             probeAutocorrectWholeWord(position, bytes, length)
         }
 
@@ -629,6 +687,7 @@ internal class TdictPrefixIndex private constructor(
         if (probe == autocorrectMatchIndex) return
         autocorrectMatchCount++
         autocorrectMatchIndex = probe
+        autocorrectMatchClass = EDIT_CLASS_SUBSTITUTION
     }
 
     /**
@@ -747,8 +806,9 @@ internal class TdictPrefixIndex private constructor(
      * points, under a policy with EDIT_CLASS_SUBSTITUTION): the shared DL-1 tier: substitution,
      * deletion, insertion and transposition, one existence probe per variant, survivors scanned.
      * Every tier candidate is tagged EDIT_CLASS_SUBSTITUTION, so the same-length bonus (if the
-     * policy enables it for this class), then frequency descending, then code point ascending
-     * decide inside the tier; the family never ranks. The tier replaces the class-#1-over-#4
+     * policy enables it for this class), the geometry-neighbor bit (if the policy arms it, for
+     * the substitution family only), then frequency descending, then code point ascending decide
+     * inside the tier; the family never ranks. The tier replaces the class-#1-over-#4
      * priority on domain B only, and the substitution family is a superset of class #1, so no
      * long-press candidate is lost. The strip is empty on domain B, so a wrong guess displaces
      * nothing. Exact candidates
@@ -773,6 +833,7 @@ internal class TdictPrefixIndex private constructor(
         fuzzyPrefixLength = prefixLength
         fuzzyVariantsUsed = 0
         fuzzyProbesUsed = 0
+        fuzzyCurrentNeighbor = false
         // The enabled passes share one budget: variants scanned across all of them stay within
         // MAX_FUZZY_VARIANTS (for the tier only survivors count; its probes count against
         // MAX_FUZZY_PROBES). Each candidate is tagged with a rank key derived from
@@ -805,7 +866,7 @@ internal class TdictPrefixIndex private constructor(
             computeProbeRanges(codePointCount)
             var failed = FuzzyPrefixVariants.generateFullSubstitutionVariants(
                 exactScratch, prefixLength, table.nodes, codePointScratch, variantScratch,
-                MAX_FUZZY_PROBES - fuzzyProbesUsed, substitutionProbeConsumer,
+                MAX_FUZZY_PROBES - fuzzyProbesUsed, fullSubstitutionProbeConsumer,
             ) < 0 || fuzzyOverBudget
             if (!failed) {
                 failed = FuzzyPrefixVariants.generateDeletionVariants(
@@ -1008,20 +1069,27 @@ internal class TdictPrefixIndex private constructor(
                 fuzzyCount = insertRanked(
                     fuzzyIndices, fuzzyFrequencies, fuzzyClasses, fuzzyCount, fuzzyRemaining,
                     index, frequency,
-                    fuzzyRankKey(fuzzyCurrentClass, verdict == SCAN_TAKE_SAME_LENGTH),
+                    fuzzyRankKey(
+                        fuzzyCurrentClass,
+                        verdict == SCAN_TAKE_SAME_LENGTH,
+                        fuzzyCurrentNeighbor,
+                    ),
                 )
             },
         )
     }
 
     /**
-     * Rank key of a typo-recovery candidate: edit class ascending, then (under
-     * [FuzzyEditPolicy.sameLengthBonus]) a same-length candidate before its continuations; ties go
-     * to [insertRanked] (frequency descending, code point ascending). Packed as `class * 2 - bonus`,
-     * so one int comparison covers both keys.
+     * Rank key of a typo-recovery candidate: edit class ascending; then (under
+     * [FuzzyEditPolicy.sameLengthBonus]) a same-length candidate before its continuations; then
+     * (under [FuzzyEditPolicy.geometryNeighborBonus], for the substitution family only) a
+     * geometric-neighbor substitution before a non-neighbor one. Ties go to [insertRanked]
+     * (frequency descending, code point ascending). Packed as `class * 4 - sameLength * 2 -
+     * neighbor`, so one int comparison covers all three keys, and with the bonus disarmed
+     * (neighbor always false) the order is exactly the old `class * 2 - sameLength` one.
      */
-    private fun fuzzyRankKey(editClass: Int, sameLength: Boolean): Int =
-        editClass * 2 - if (sameLength) 1 else 0
+    private fun fuzzyRankKey(editClass: Int, sameLength: Boolean, neighbor: Boolean): Int =
+        editClass * 4 - (if (sameLength) 2 else 0) - if (neighbor) 1 else 0
 
     /** Bounded insertion sort shared by both levels; returns the new count. */
     private fun insertRanked(

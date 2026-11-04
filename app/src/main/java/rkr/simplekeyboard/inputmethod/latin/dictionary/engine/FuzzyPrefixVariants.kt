@@ -60,6 +60,21 @@ internal object FuzzyPrefixVariants {
     }
 
     /**
+     * VariantConsumer of the substitution family: on top of the edited position it receives the
+     * typed code point and the letter replacing it, so the engine can tag a geometric-neighbor
+     * substitution in the rank key (see FuzzyEditPolicy.geometryNeighborBonus).
+     */
+    fun interface SubstitutionVariantConsumer {
+        fun onVariant(
+            position: Int,
+            typedCodePoint: Int,
+            replacementCodePoint: Int,
+            variantUtf8: ByteArray,
+            length: Int,
+        )
+    }
+
+    /**
      * Edit class #1: replace one letter with a long-press partner, in every position that has one.
      *
      * Decodes the first [prefixLength] bytes of [prefixUtf8] into [codePointScratch], then for every
@@ -122,7 +137,7 @@ internal object FuzzyPrefixVariants {
         codePointScratch: IntArray,
         variantScratch: ByteArray,
         maxVariants: Int,
-        consumer: PositionedVariantConsumer,
+        consumer: SubstitutionVariantConsumer,
     ): Int {
         val codePointCount = decodeCodePoints(prefixUtf8, prefixLength, codePointScratch)
         if (codePointCount < 0) return -1
@@ -137,7 +152,7 @@ internal object FuzzyPrefixVariants {
                 }
                 codePointScratch[position] = letter
                 val length = encodeCodePoints(codePointScratch, codePointCount, variantScratch)
-                consumer.onVariant(position, variantScratch, length)
+                consumer.onVariant(position, original, letter, variantScratch, length)
                 emitted++
             }
             // Restore this position before moving on, so exactly one letter differs per variant.

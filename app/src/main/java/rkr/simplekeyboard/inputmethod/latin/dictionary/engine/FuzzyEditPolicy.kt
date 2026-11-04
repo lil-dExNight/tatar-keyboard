@@ -32,13 +32,22 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
  * the shared DL-1 tier.
  *
  * [autocorrectClasses] are the edit classes autocorrect may draw from. The default is class #1
- * alone, and the display classes never change it implicitly.
+ * alone, and the display classes never change it implicitly. Both shipped policies add the DL-1
+ * tier; its matches fire under the context-successor guard of
+ * [TdictPrefixIndex.computeAutocorrectAdvice], class #1 matches stay unguarded.
+ *
+ * [geometryNeighborBonus] arms the DL-1 tier's geometry bit: a substitution candidate whose typed
+ * and replacement letters sit on adjacent keys of the published layout (the center-distance rule
+ * of [KeyNeighborTable]) ranks before a non-neighbor candidate of the same class and length tier.
+ * It adds no edit class and never changes which candidates exist — only their order. Off, the
+ * tier ranks exactly as without the bit.
  */
 class FuzzyEditPolicy(
     val editClasses: IntArray,
     val sameLengthBonus: Boolean,
     val autocorrectClasses: IntArray = intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
     val sameLengthBonusOnlyInDl1: Boolean = false,
+    val geometryNeighborBonus: Boolean = false,
 ) {
     init {
         require(editClasses.isNotEmpty()) { "a fuzzy policy needs at least one edit class" }
@@ -62,7 +71,9 @@ class FuzzyEditPolicy(
         /**
          * The Tatar configuration: class #1 on the always-on domain, the DL-1 tier (all four
          * distance-1 families, one rank tag) on the empty-exact >= 4-code-point domain, and the
-         * same-length bonus. See [TdictPrefixIndex.collectFuzzy].
+         * same-length bonus. See [TdictPrefixIndex.collectFuzzy]. Autocorrect draws from class #1
+         * and the DL-1 tier; tier matches fire under the context-successor guard. Inside the tier
+         * a substitution between geometrically adjacent keys ranks before a non-neighbor one.
          */
         @JvmField
         val TATAR = FuzzyEditPolicy(
@@ -71,12 +82,20 @@ class FuzzyEditPolicy(
                 TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
             ),
             true,
+            intArrayOf(
+                TdictPrefixIndex.EDIT_CLASS_LONG_PRESS,
+                TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
+            ),
+            geometryNeighborBonus = true,
         )
 
         /**
          * The Russian configuration: class #1 on the always-on domain and the DL-1 tier on the
          * empty-exact >= 4-code-point domain. The same-length bonus applies only inside the tier,
-         * so class #1 outside that domain ranks exactly as under [DEFAULT].
+         * so class #1 outside that domain ranks exactly as under [DEFAULT]. Autocorrect draws
+         * from class #1 and the DL-1 tier under the same context-successor guard as [TATAR].
+         * The geometry-neighbor bonus is armed like [TATAR]'s: the Russian eval measured the
+         * same trade (sub top-1 up, the other classes within their floors).
          */
         @JvmField
         val RUSSIAN = FuzzyEditPolicy(
@@ -85,7 +104,12 @@ class FuzzyEditPolicy(
                 TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
             ),
             true,
+            intArrayOf(
+                TdictPrefixIndex.EDIT_CLASS_LONG_PRESS,
+                TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
+            ),
             sameLengthBonusOnlyInDl1 = true,
+            geometryNeighborBonus = true,
         )
     }
 }

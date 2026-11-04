@@ -29,6 +29,9 @@ internal class SuggestionStripState {
     // The autocorrect preview's emphasized cell: the correction the next separator would insert.
     // [NO_CELL] on every ordinary strip.
     private var emphasizedCell = NO_CELL
+    // The recent-clip cell: painted with the clipboard marker instead of reading as a plain
+    // suggestion. [NO_CELL] on every word strip.
+    private var clipCell = NO_CELL
     /** The cells that are drawn and tappable; the rest keep their content but stay inert. */
     private var visibleCellCount = DEFAULT_VISIBLE_CELL_COUNT
     // The docked key-grid span in view coordinates. A zero right edge means the view's full width.
@@ -40,9 +43,10 @@ internal class SuggestionStripState {
         changed = setSuggestion(1, second) || changed
         changed = setSuggestion(2, third) || changed
         changed = setSuggestion(3, fourth) || changed
-        // A fresh publication describes the whole strip, emphasis included: the caller that
-        // publishes the words re-applies it right after this.
+        // A fresh publication describes the whole strip, emphasis and clip marker included: the
+        // caller that publishes the words re-applies both right after this.
         changed = clearEmphasis() || changed
+        changed = clearClipCell() || changed
         return cancelGesture() || changed
     }
 
@@ -102,6 +106,30 @@ internal class SuggestionStripState {
     private fun clearEmphasis(): Boolean {
         if (emphasizedCell == NO_CELL) return false
         emphasizedCell = NO_CELL
+        return true
+    }
+
+    /** The recent-clip cell, or [NO_CELL] when the strip shows no clip offer. */
+    fun clipCell(): Int = clipCell
+
+    fun isClipCell(cell: Int): Boolean = cell == clipCell && cell != NO_CELL
+
+    /**
+     * Marks [cell] the recent-clip cell (it draws the clipboard marker); [NO_CELL] clears. An
+     * empty or out-of-range cell is refused, like emphasis: a marker on nothing would paint over
+     * a blank. Returns true on a visual change.
+     */
+    fun setClipCell(cell: Int): Boolean {
+        if (cell == NO_CELL) return clearClipCell()
+        if (cell !in 0 until visibleCellCount || !isCellPopulated(cell)) return false
+        if (clipCell == cell) return false
+        clipCell = cell
+        return true
+    }
+
+    private fun clearClipCell(): Boolean {
+        if (clipCell == NO_CELL) return false
+        clipCell = NO_CELL
         return true
     }
 
@@ -219,9 +247,10 @@ internal class SuggestionStripState {
 
     companion object {
         /**
-         * Four cells at most; the Tatar bigram table packs four successors per word
-         * (`TatBigrPrefixIndex.MAX_RESULTS` reads them), and the engines compose four candidates.
-         * How many of them the strip shows is [visibleCellCount].
+         * Four cells at most; the NEXT_WORD display serves the first
+         * `TatBigrPrefixIndex.MAX_PREDICT_RESULTS` successors of a head (whatever the table
+         * stores), and the engines compose four candidates. How many of them the strip shows is
+         * [visibleCellCount].
          */
         const val CELL_COUNT = 4
         /** The shipped strip width; the fourth-cell setting widens it to [CELL_COUNT]. */

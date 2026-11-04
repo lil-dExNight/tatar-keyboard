@@ -80,17 +80,51 @@ fun interface ResultHandoff {
     fun handOff(result: LookupResult)
 }
 
+/**
+ * Trace seam of the lookup round trip's worker half; the suggestions controller's tracer
+ * implements it. Each request is stamped with [issuedCookie] at enqueue, and the drain loop
+ * reports the request's two worker boundaries back under that cookie. [NONE] (the default)
+ * stamps nothing and reports nothing; every method tolerates any thread, and a cookie the
+ * tracer has superseded is dropped there.
+ */
+interface LookupTraceHook {
+    /** The cookie of the lookup being issued on the caller's thread, or 0 when none is open. */
+    fun issuedCookie(): Int
+
+    /** The worker took the request: its queue slice ends and its compute slice begins. */
+    fun workerStart(cookie: Int)
+
+    /** The worker's compute of the request finished; its result is being delivered. */
+    fun workerHandoff(cookie: Int)
+
+    companion object {
+        val NONE: LookupTraceHook = object : LookupTraceHook {
+            override fun issuedCookie(): Int = 0
+            override fun workerStart(cookie: Int) {}
+            override fun workerHandoff(cookie: Int) {}
+        }
+    }
+}
+
 class LatestOnlyPrefixEngine internal constructor(
     val dictionaryIdentity: DictionaryIdentity,
     computer: PrefixComputer,
     private val executor: EngineExecutor,
     private val resultHandoff: ResultHandoff,
     private val releaseResources: () -> Unit = {},
+    private val traceHook: LookupTraceHook = LookupTraceHook.NONE,
 ) {
     private enum class State { ACTIVE, DESTROYING, DESTROYED }
 
-    /** [glidePath] is the decode payload of a [LookupKind.GLIDE] request; null otherwise. */
-    private data class Request(val token: LookupToken, val glidePath: GlidePath? = null)
+    /**
+     * [glidePath] is the decode payload of a [LookupKind.GLIDE] request; null otherwise.
+     * [traceCookie] is the tracer's cookie at enqueue time; 0 keeps the worker untraced.
+     */
+    private data class Request(
+        val token: LookupToken,
+        val glidePath: GlidePath? = null,
+        val traceCookie: Int = 0,
+    )
 
     private val lock = Any()
     private val destroyLock = Any()
@@ -209,6 +243,9 @@ class LatestOnlyPrefixEngine internal constructor(
             }
             return null
         }
+        // Stamped on the caller's thread, after its tracer opened the round trip: the drain
+        // loop reports this request's worker boundaries under this cookie.
+        val traceCookie = traceHook.issuedCookie()
         var submission: Submission? = null
         val token = synchronized(lock) {
             if (state != State.ACTIVE) return@synchronized null
@@ -230,7 +267,7 @@ class LatestOnlyPrefixEngine internal constructor(
                 kind,
                 immutableContext,
             )
-            val request = Request(token, glidePath)
+            val request = Request(token, glidePath, traceCookie)
             currentToken = token
             if (activeWorkerId != 0L) {
                 pendingRequest = request
@@ -400,6 +437,7 @@ class LatestOnlyPrefixEngine internal constructor(
         var request = submission.request
         try {
             while (true) {
+                traceHook.workerStart(request.traceCookie)
                 val lookup = synchronized(lock) { computer }
                 val suggestions = try {
                     when (request.token.kind) {
@@ -442,6 +480,9 @@ class LatestOnlyPrefixEngine internal constructor(
                     }
                     Completion(handoff, next)
                 }
+                // A suppressed (stale) result has no delivery: its cookie was already dropped
+                // by the tracer when the superseding lookup opened.
+                if (completion.handoff != null) traceHook.workerHandoff(request.traceCookie)
                 handOff(completion.handoff)
                 request = completion.next ?: return
             }

@@ -62,10 +62,10 @@ internal class CompositePrefixComputer(
 
     init {
         // The glide bigram channel reranks the N-best against the context word's successors:
-        // the learned pairs rank above the bundled table's successors (the prefix merge's
-        // personal-over-dictionary convention), a duplicate keeps its personal rank, and the raw
-        // table answers, not the merged NEXT_WORD list. The provider runs on the engine worker,
-        // inside the decode; a missing or broken source answers empty and the channel stays off.
+        // the learned pairs rank above the bundled table's successors except the first (see
+        // mergeGlideSuccessors), and the raw table answers, not the merged NEXT_WORD list. The
+        // provider runs on the engine worker, inside the decode; a missing or broken source
+        // answers empty and the channel stays off.
         glideHost?.bigramSuccessorsProvider = { contextWord ->
             val source = bigramSource ?: runPendingBigramAttach()
             val bundled = if (source == null) {
@@ -89,13 +89,7 @@ internal class CompositePrefixComputer(
             if (personal.isEmpty()) {
                 bundled
             } else {
-                // The learned pairs are capped so they cannot push the bundled successors past
-                // the ranks the rerank reads (GlideBigramRerank.MAX_RANKED_SUCCESSORS).
-                val learned = minOf(personal.size, MAX_GLIDE_LEARNED_SUCCESSORS)
-                val merged = ArrayList<String>(learned + bundled.size)
-                for (index in 0 until learned) merged.add(personal[index].normalizedForm)
-                for (word in bundled) if (!merged.contains(word)) merged.add(word)
-                merged
+                mergeGlideSuccessors(personal.map { it.normalizedForm }, bundled)
             }
         }
     }
@@ -153,8 +147,10 @@ internal class CompositePrefixComputer(
 
     // Scratch of the context-armed lookup: the previous committed word's packed bigram successors
     // as dictionary entry indices, filled by the bigram source and consumed by the primary within
-    // one lookup call. Worker-confined like the verdicts above.
-    private val contextSuccessorIdScratch = IntArray(TatBigrPrefixIndex.MAX_RESULTS)
+    // one lookup call. Worker-confined like the verdicts above. Sized for the context boost's
+    // wider read, not the display's: the primary copies out what its own scratch holds.
+    private val contextSuccessorIdScratch =
+        IntArray(TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS)
 
     /**
      * Two-stage readiness: the bigram table is not open yet when this computer is handed to
@@ -169,17 +165,35 @@ internal class CompositePrefixComputer(
     @Volatile
     private var pendingBigramAttach: (() -> Unit)? = null
 
+    /**
+     * The attach whose first attempt failed, kept for its single retry: re-armed into
+     * [pendingBigramAttach] at an eligible field start, cleared by a successful run (or an eager
+     * [attachBigramSource]). The second failure leaves both slots null for good.
+     */
+    @Volatile
+    private var failedBigramAttach: (() -> Unit)? = null
+
+    /**
+     * True once the failed attach's single retry has been handed out: no further re-arm will
+     * run anything, so a repeatedly broken table is paid for exactly twice per engine.
+     */
+    @Volatile
+    private var bigramAttachRetrySpent: Boolean = false
+
     fun attachBigramSource(source: NextWordComputer) {
         // An eager attach replaces a deferred one: predict reads bigramSource first, so the
-        // pending attach could never fire anyway, but keeping it would pin its catalog.
+        // pending attach could never fire anyway, but keeping it would pin its catalog. The
+        // failed-attach retry goes too: the eager attach is the success it was waiting for.
         pendingBigramAttach = null
+        failedBigramAttach = null
+        bigramAttachRetrySpent = false
         bigramSource = source
     }
 
     /**
      * Defers the bigram attach to the first [predict], which runs it on the engine worker: the
-     * mapping and the table walk happen there. One-shot; a failed attach is terminal, as with an
-     * eager attach.
+     * mapping and the table walk happen there. A failed attempt is retried exactly once, at the
+     * next eligible field start; see [runPendingBigramAttach].
      */
     fun deferBigramAttach(attach: () -> Unit) {
         pendingBigramAttach = attach
@@ -199,10 +213,10 @@ internal class CompositePrefixComputer(
      *  - the fallback fills what is still free, excluding everything shown.
      *
      * With no bigram source (none attached yet, or the attach failed), only the bigram
-     * successors drop out of the chain; learned pairs and the fallback still answer.
-     * A failed attach is terminal: it is consumed and never retried, so its absence costs one
-     * null read per predict and nothing else. The first predict after a deferred attach was set
-     * runs it inline.
+     * successors drop out of the chain; learned pairs and the fallback still answer. A failed
+     * deferred attach is retried once at the next eligible field start and terminal after a
+     * second failure, so its absence costs one null read per predict and nothing else. The first
+     * predict after a deferred attach was set runs it inline.
      */
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
         val source = bigramSource ?: runPendingBigramAttach()
@@ -225,9 +239,12 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * Runs the deferred bigram attach, once, inside the calling [predict]. Consumed before
-     * running, so a failing attach never retries: the source stays null and [predict] answers
-     * without the bigram successors.
+     * Runs the deferred bigram attach inside the calling [predict]. Consumed before running.
+     * Failure is "still no source" however it is reported — a thrown table walk, or an attach
+     * that returns without wiring anything (a missing, corrupt or vanished table) — and is
+     * parked in [failedBigramAttach] for exactly one retry at the next eligible field start
+     * ([rearmBigramAttachRetry]); after that second failure the source stays null for the rest
+     * of the engine's life, like a missing table.
      */
     private fun runPendingBigramAttach(): NextWordComputer? {
         val pending = pendingBigramAttach ?: return null
@@ -237,7 +254,21 @@ internal class CompositePrefixComputer(
         } catch (_: Throwable) {
             // The attach reports its own failure; prediction keeps answering empty.
         }
+        failedBigramAttach = if (bigramSource == null && !bigramAttachRetrySpent) pending else null
         return bigramSource
+    }
+
+    /**
+     * Re-arms the failed deferred attach for its single retry, mirroring the dictionary-preparation
+     * retry: the controller calls this at an eligible field start, and the retry runs on the
+     * engine worker at the next NEXT_WORD lookup. No-op when no failure is outstanding or the
+     * one retry was already spent: a second failure never gets re-armed again.
+     */
+    fun rearmBigramAttachRetry() {
+        val failed = failedBigramAttach ?: return
+        if (bigramAttachRetrySpent) return
+        bigramAttachRetrySpent = true
+        pendingBigramAttach = failed
     }
 
     /**
@@ -562,8 +593,30 @@ internal class CompositePrefixComputer(
 
         /**
          * Most learned pairs the glide bigram channel reads per context word: as many as the
-         * bundled table answers, so both fit the ranks the rerank reads.
+         * bundled table's display answer, so both fit the ranks the rerank reads.
          */
-        internal const val MAX_GLIDE_LEARNED_SUCCESSORS = TatBigrPrefixIndex.MAX_RESULTS
+        internal const val MAX_GLIDE_LEARNED_SUCCESSORS = TatBigrPrefixIndex.MAX_PREDICT_RESULTS
+
+        /**
+         * The glide channel's merged successor list: the first [MAX_GLIDE_LEARNED_SUCCESSORS] of
+         * [learned] (normalized forms in personal order) enter behind the bundled table's FIRST
+         * successor — at rank 0 a learned pair would take the x1 penalty slot and outrank every
+         * bundled successor on a single observation. A duplicate keeps the earlier rank. With no
+         * bundled answer the learned pairs are the whole list.
+         */
+        internal fun mergeGlideSuccessors(learned: List<String>, bundled: List<String>): List<String> {
+            val capped = minOf(learned.size, MAX_GLIDE_LEARNED_SUCCESSORS)
+            val merged = ArrayList<String>(capped + bundled.size)
+            if (bundled.isNotEmpty()) merged.add(bundled[0])
+            for (index in 0 until capped) {
+                val form = learned[index]
+                if (form !in merged) merged.add(form)
+            }
+            for (index in 1 until bundled.size) {
+                val word = bundled[index]
+                if (word !in merged) merged.add(word)
+            }
+            return merged
+        }
     }
 }

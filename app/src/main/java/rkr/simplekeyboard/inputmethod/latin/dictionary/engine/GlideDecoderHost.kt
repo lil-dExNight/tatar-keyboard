@@ -117,6 +117,9 @@ internal class GlideDecoderHost(
         if (count == 0) return emptyList()
         // The bigram channel: rerank the N-best against the committed context word. A missing or
         // unknown context word (the table has no such head) leaves the decode order untouched.
+        // The channel fires on every context row: a conditionally-fired variant (only when the
+        // N-best held a mined confusion pair, at a weaker rank penalty) measured no held-out gain
+        // over the always-on channel on the calibration rows and was rejected.
         if (!contextWord.isNullOrEmpty() && count > 1) {
             val successors = try {
                 bigramSuccessorsProvider(contextWord)

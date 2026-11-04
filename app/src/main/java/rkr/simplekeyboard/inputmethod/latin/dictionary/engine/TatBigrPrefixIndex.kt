@@ -50,9 +50,9 @@ internal interface BigramDictionary {
  */
 internal fun interface PackedSuccessorSource {
     /**
-     * Writes the context word's packed successor entry indices into [sink], at most
-     * [TatBigrPrefixIndex.MAX_RESULTS], and returns their count; 0 when the word heads no entry
-     * or the read fails.
+     * Writes the context word's packed successor entry indices into [sink] — at most
+     * [TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS] of them, or [sink]'s size when smaller — and
+     * returns their count; 0 when the word heads no entry or the read fails.
      */
     fun collectSuccessorIds(normalizedContextWordUtf8: ImmutableUtf8Prefix, sink: IntArray): Int
 }
@@ -68,8 +68,9 @@ internal fun interface PackedSuccessorSource {
  * the head-block index for the last block whose first index is ≤ the query's, stream-decode the
  * block's delta-varint head indices (≤ [HEAD_BLOCK_SIZE] - 1 varints) to find the head, then
  * skip/decode the u8-counted varint successor ids in the same block and resolve them through the
- * dictionary: at most [MAX_RESULTS] strings, in packing order (count descending, ties by code
- * point ascending). No re-ranking happens here.
+ * dictionary: [predict] answers at most [MAX_PREDICT_RESULTS] strings, [collectSuccessorIds]
+ * writes at most [MAX_CONTEXT_SUCCESSORS] ids, both in packing order (count descending, ties by
+ * code point ascending). No re-ranking happens here.
  */
 internal class TatBigrPrefixIndex private constructor(
     private val bytes: ByteBuffer,
@@ -94,7 +95,7 @@ internal class TatBigrPrefixIndex private constructor(
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
         if (!resolveHeadSuccessors(normalizedContextWordUtf8)) return emptyList()
         return try {
-            val count = minOf(MAX_RESULTS, headStoredCount)
+            val count = minOf(MAX_PREDICT_RESULTS, headStoredCount)
             var successCursor = headSuccessCursor
             ArrayList<String>(count).also { result ->
                 repeat(count) {
@@ -114,7 +115,7 @@ internal class TatBigrPrefixIndex private constructor(
     ): Int {
         if (!resolveHeadSuccessors(normalizedContextWordUtf8)) return 0
         return try {
-            val count = minOf(minOf(MAX_RESULTS, headStoredCount), sink.size)
+            val count = minOf(minOf(MAX_CONTEXT_SUCCESSORS, headStoredCount), sink.size)
             var successCursor = headSuccessCursor
             for (slot in 0 until count) {
                 decodeVarint(successCursor)
@@ -231,9 +232,13 @@ internal class TatBigrPrefixIndex private constructor(
         private const val U32_BYTES = 4
         private const val BLOCK_RECORD_BYTES = 12
         private const val HEAD_BLOCK_SIZE = 64
-        // One per strip cell (SuggestionStripState.CELL_COUNT). The Tatar table is packed with up
-        // to four successors per head; all four are read.
-        internal const val MAX_RESULTS = 4
+        // One per strip cell (SuggestionStripState.CELL_COUNT): the NEXT_WORD display serves at
+        // most this many of a head's successors, whatever the table stores.
+        internal const val MAX_PREDICT_RESULTS = 4
+
+        // The packed successor ids the context boost reads per head. Wider than the display
+        // read: the exact pass may be armed with more successors than the strip has cells.
+        internal const val MAX_CONTEXT_SUCCESSORS = 8
         internal const val MAX_WORD_BYTES = 128
         private const val MAX_U32 = 0xffff_ffffL
         private const val HEX_DIGITS = "0123456789abcdef"

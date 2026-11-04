@@ -303,6 +303,8 @@ class MappedEngineHandle private constructor(
                 personalBigrams = personalBigrams,
                 glideConstants = glideConstants,
                 autocorrectMinCandidateFrequency = autocorrectMinCandidateFrequency,
+                // The worker half of the round trip's slices; below API 29 this is DISABLED.
+                traceHook = LookupTracer.ATRACE,
             ) ?: return null
             return MappedEngineHandle(engine)
         }

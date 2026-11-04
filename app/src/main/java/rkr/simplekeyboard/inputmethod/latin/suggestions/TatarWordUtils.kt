@@ -548,6 +548,25 @@ object TatarWordUtils {
     fun toLookupBytes(normalized: String): ByteArray = normalized.toByteArray(Charsets.UTF_8)
 
     /**
+     * True when [word]'s last vowel is a front one (ә е и ө ү э), false when it is a back one
+     * (а ы о у я ю), null when the word has no vowel at all. The vowel harmony rule the Tatar
+     * suffix system follows, so the runtime classification stays the same as the wordform
+     * generator's. A final у/ү/ю/я right after another vowel is a diphthong glide and does not
+     * decide: the syllable nucleus does (эшләү is front, барау is back).
+     */
+    @JvmStatic
+    fun lastVowelIsFront(word: String): Boolean? {
+        val vowels = "әеиөүэаыоуюя"
+        for (index in word.length - 1 downTo 0) {
+            val ch = word[index]
+            if (ch in "уүюя" && index > 0 && word[index - 1] in vowels) continue
+            if (ch in "әеиөүэ") return true
+            if (ch in "аыоюя") return false
+        }
+        return null
+    }
+
+    /**
      * The casing shape of the prefix the user actually typed, as classified by [classifyCasing].
      *
      * The bundled dictionary stores NFC lowercase words only, so for its candidates (and typo

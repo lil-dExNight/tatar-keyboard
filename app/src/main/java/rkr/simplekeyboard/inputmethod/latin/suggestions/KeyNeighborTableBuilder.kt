@@ -40,7 +40,14 @@ object KeyNeighborTableBuilder {
             val moreKeys = key.moreKeys
             val partnerCodePoints =
                 if (moreKeys == null) IntArray(0) else IntArray(moreKeys.size) { moreKeys[it].mCode }
-            raw.add(KeyNeighborTable.RawKey(key.code, partnerCodePoints))
+            // The rectangle feeds the geometric adjacency of the DL-1 neighbor bonus, the same
+            // crossing GlideKeyGeometryBuilder makes for the glide decoder.
+            raw.add(
+                KeyNeighborTable.RawKey(
+                    key.code, partnerCodePoints,
+                    key.x, key.y, key.x + key.width, key.y + key.height,
+                ),
+            )
         }
         return KeyNeighborTable.build(subtypeId, true, raw)
     }

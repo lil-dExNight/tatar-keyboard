@@ -111,11 +111,18 @@ interface EditorSurface {
     fun cursorPosition(): Int = -1
 
     /**
-     * True when auto-capitalization is on and a glide committed now gets its leading space into a
-     * sentence start ([TatarWordUtils.glideStartsSentence]), so a lower-case gesture is committed
-     * with an initial capital. Defaults to false.
+     * True when the editor's own auto-capitalization capitalizes a glide word committed now, so a
+     * lower-case gesture is committed with an initial capital. The editor's caps-mode flags are
+     * consumed like the typed path's auto-caps shift does — but evaluated on the text as the
+     * commit leaves it, because the commit itself may prepend the separating space the live shift
+     * state cannot see yet: `TYPE_TEXT_FLAG_CAP_SENTENCES` covers a leading space that starts a
+     * sentence ([TatarWordUtils.glideStartsSentence]), `TYPE_TEXT_FLAG_CAP_WORDS` any commit that
+     * prepends a space (the word then lands after whitespace, i.e. at a word start, exactly where
+     * typed letters capitalize per word). Positions the keyboard's auto-shift already reflects
+     * (an empty field, text ending in whitespace) need no answer here: the shift gate covers
+     * them. Defaults to false.
      */
-    fun glideStartsSentence(): Boolean = false
+    fun glideAutoCapsWord(): Boolean = false
 
     /**
      * Commit path of a glide lift: [commitPredictedWord]'s live re-checks without the

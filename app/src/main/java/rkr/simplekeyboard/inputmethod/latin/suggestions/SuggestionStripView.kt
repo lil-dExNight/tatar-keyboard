@@ -87,6 +87,11 @@ class SuggestionStripView @JvmOverloads constructor(
      * loop must stay allocation-free.
      */
     private val pressedCellRect = RectF()
+    /**
+     * The recent-clip cell's clipboard marker, drawn at the cell's leading edge from primitives
+     * (no font glyph). The rect is a field for the same reason as [pressedCellRect].
+     */
+    private val clipMarkerRect = RectF()
     private val pressedCellInsetPx = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP,
         PRESSED_CELL_INSET_DP,
@@ -132,9 +137,45 @@ class SuggestionStripView @JvmOverloads constructor(
         UNDERLINE_THICKNESS_DP,
         resources.displayMetrics,
     )
+    private val clipMarkerInsetPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        CLIP_MARKER_INSET_DP,
+        resources.displayMetrics,
+    )
+    private val clipMarkerWidthPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        CLIP_MARKER_WIDTH_DP,
+        resources.displayMetrics,
+    )
+    private val clipMarkerHeightPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        CLIP_MARKER_HEIGHT_DP,
+        resources.displayMetrics,
+    )
+    private val clipMarkerStrokePx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        CLIP_MARKER_STROKE_DP,
+        resources.displayMetrics,
+    )
+    private val clipMarkerCornerPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        CLIP_MARKER_CORNER_DP,
+        resources.displayMetrics,
+    )
+    /**
+     * The width the clip cell's text gives up for the marker: the leading inset, the glyph and
+     * the gap between them. [rebuildDisplaySuggestions] ellipsizes against the reduced width and
+     * [onDraw] shifts the text's center by half of it, so the marker never runs under the text.
+     */
+    private val clipMarkerReservePx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        CLIP_MARKER_INSET_DP + CLIP_MARKER_WIDTH_DP + CLIP_MARKER_GAP_DP,
+        resources.displayMetrics,
+    )
     private var pressedColor = DEFAULT_PRESSED_COLOR
     private var separatorColor = DEFAULT_SEPARATOR_COLOR
     private var emphasisColor = DEFAULT_EMPHASIS_COLOR
+    private var markerColor = DEFAULT_SEPARATOR_COLOR
     private var listener: OnSuggestionClickListener? = null
     private var longPressListener: OnSuggestionLongPressListener? = null
     private var touchSequenceAccepted = false
@@ -164,6 +205,12 @@ class SuggestionStripView @JvmOverloads constructor(
                 textPaint.color,
             ),
             SEPARATOR_ALPHA,
+        )
+        // The clip marker keeps the functional color at full strength: the separators are meant
+        // to recede, the marker is what tells the clip cell from a suggestion.
+        markerColor = stripAttributes.getColor(
+            R.styleable.SuggestionStripView_functionalTextColor,
+            textPaint.color,
         )
         // The preview's correction cell: the theme accent if defined, else the plain text color;
         // bold and the underline still mark the cell.
@@ -307,6 +354,18 @@ class SuggestionStripView @JvmOverloads constructor(
         invalidate()
     }
 
+    /**
+     * Marks the recent-clip cell, which [onDraw] paints with the clipboard marker;
+     * [SuggestionStripState.NO_CELL] on every word strip. Called in the same publication as
+     * [setSuggestions], after the emphasis; the marker reserves text width, so the cells are
+     * re-ellipsized here.
+     */
+    fun setClipCell(cell: Int) {
+        if (!state.setClipCell(cell)) return
+        rebuildDisplaySuggestions()
+        invalidate()
+    }
+
     /** Drops every reference and transient state that must not survive view replacement. */
     fun release() {
         clearSpokenLabels()
@@ -379,7 +438,11 @@ class SuggestionStripView @JvmOverloads constructor(
         while (cell < state.visibleCellCount()) {
             val suggestion = displaySuggestions[cell]
             if (suggestion != null) {
-                val center = (state.cellLeft(cell, width) + state.cellRight(cell, width)) / 2f
+                val isClip = state.isClipCell(cell)
+                // The clip cell's text shifts right by half the marker's reserve, so the marker
+                // at the leading edge never runs under it.
+                val center = (state.cellLeft(cell, width) + state.cellRight(cell, width)) / 2f +
+                    if (isClip) clipMarkerReservePx / 2f else 0f
                 if (state.isEmphasized(cell)) {
                     // The preview's correction cell: bold accent text plus an underline under
                     // the drawn (ellipsized) text, whose width was measured at content-set time.
@@ -397,9 +460,54 @@ class SuggestionStripView @JvmOverloads constructor(
                 } else {
                     canvas.drawText(suggestion, center, textBaseline, textPaint)
                 }
+                if (isClip) {
+                    drawClipMarker(canvas, state.cellLeft(cell, width).toFloat())
+                }
             }
             cell++
         }
+    }
+
+    /**
+     * The recent-clip cell's marker: a small clipboard glyph (a stroked board, its clip tab and
+     * two content lines) at the cell's leading edge, vertically centered. Primitives only, so no
+     * font carries the glyph; everything writes into the pre-allocated paint and rect fields.
+     */
+    private fun drawClipMarker(canvas: Canvas, cellLeftPx: Float) {
+        val left = cellLeftPx + clipMarkerInsetPx
+        val top = height / 2f - clipMarkerHeightPx / 2f
+        decorationPaint.color = markerColor
+        decorationPaint.strokeWidth = clipMarkerStrokePx
+        decorationPaint.style = Paint.Style.STROKE
+        clipMarkerRect.set(left, top, left + clipMarkerWidthPx, top + clipMarkerHeightPx)
+        canvas.drawRoundRect(clipMarkerRect, clipMarkerCornerPx, clipMarkerCornerPx, decorationPaint)
+        // The clip tab straddles the board's top edge, filled.
+        decorationPaint.style = Paint.Style.FILL
+        val tabWidth = clipMarkerWidthPx * CLIP_MARKER_TAB_WIDTH_FRACTION
+        val tabHeight = clipMarkerStrokePx * 2f
+        clipMarkerRect.set(
+            left + (clipMarkerWidthPx - tabWidth) / 2f,
+            top - tabHeight / 2f,
+            left + (clipMarkerWidthPx + tabWidth) / 2f,
+            top + tabHeight / 2f,
+        )
+        canvas.drawRoundRect(clipMarkerRect, tabHeight / 2f, tabHeight / 2f, decorationPaint)
+        // Two content lines inside the board. drawLine ignores the paint's style, so the FILL
+        // set for the tab needs no restore here — but the pressed-cell rect of the next frame
+        // does, which is why the tab step already restored it.
+        val lineInset = clipMarkerStrokePx * 2f
+        val firstLineY = top + clipMarkerHeightPx * CLIP_MARKER_FIRST_LINE_FRACTION
+        val secondLineY = top + clipMarkerHeightPx * CLIP_MARKER_SECOND_LINE_FRACTION
+        canvas.drawLine(
+            left + lineInset, firstLineY,
+            left + clipMarkerWidthPx - lineInset, firstLineY,
+            decorationPaint,
+        )
+        canvas.drawLine(
+            left + lineInset, secondLineY,
+            left + clipMarkerWidthPx - lineInset, secondLineY,
+            decorationPaint,
+        )
     }
 
     @Suppress("ClickableViewAccessibility")
@@ -514,7 +622,10 @@ class SuggestionStripView @JvmOverloads constructor(
                 val paint = if (state.isEmphasized(cell)) emphasisTextPaint else textPaint
                 val availableWidth = (
                     state.cellRight(cell, width) - state.cellLeft(cell, width)
-                ).toFloat() - horizontalTextPaddingPx * 2f
+                ).toFloat() - horizontalTextPaddingPx * 2f -
+                    // The clip cell gives its marker's reserve up front, so the ellipsized text
+                    // (shifted right in onDraw) still clears the glyph.
+                    if (state.isClipCell(cell)) clipMarkerReservePx else 0f
                 val display = TextUtils.ellipsize(
                     suggestion,
                     paint,
@@ -638,6 +749,16 @@ class SuggestionStripView @JvmOverloads constructor(
         private const val DEFAULT_SEPARATOR_COLOR = 0x30000000
         private const val DEFAULT_EMPHASIS_COLOR = Color.BLACK
         private const val UNDERLINE_THICKNESS_DP = 1.5f
+        // The clip cell's clipboard marker: leading inset, glyph size and the gap to the text.
+        private const val CLIP_MARKER_INSET_DP = 8f
+        private const val CLIP_MARKER_WIDTH_DP = 10f
+        private const val CLIP_MARKER_HEIGHT_DP = 13f
+        private const val CLIP_MARKER_GAP_DP = 6f
+        private const val CLIP_MARKER_STROKE_DP = 1f
+        private const val CLIP_MARKER_CORNER_DP = 1.5f
+        private const val CLIP_MARKER_TAB_WIDTH_FRACTION = 0.44f
+        private const val CLIP_MARKER_FIRST_LINE_FRACTION = 0.45f
+        private const val CLIP_MARKER_SECOND_LINE_FRACTION = 0.68f
 
         private fun withAlpha(color: Int, alpha: Int): Int =
             color and 0x00ffffff or (alpha shl 24)

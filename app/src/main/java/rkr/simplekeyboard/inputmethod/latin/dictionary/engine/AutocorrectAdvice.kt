@@ -42,9 +42,10 @@ class AutocorrectAdvice(
 }
 
 /**
- * Exact whole-word membership in the companion language's bundled dictionary, asked on the
- * engine worker before a verdict is published: a word of the other language the user writes in
- * is not a typo. Must be safe to call off the UI thread.
+ * Exact whole-word membership in the companion language, asked on the engine worker before a
+ * verdict is published: a word of the other language the user writes in is not a typo. The
+ * answer comes from the companion's dictionary once its engine is warm, and from the companion's
+ * bundled cold-companion list before that. Must be safe to call off the UI thread.
  */
 fun interface CompanionLexicon {
     fun containsWord(normalizedWord: String): Boolean
@@ -69,7 +70,7 @@ object AutocorrectPolicy {
      * `AutocorrectFloorPinTest` pins it against the shipped asset; a rebuilt dictionary that moves
      * the rank-10 000 frequency fails that test until this constant is re-derived the same way.
      */
-    const val MIN_CANDIDATE_FREQUENCY_TT: Long = 3_283L
+    const val MIN_CANDIDATE_FREQUENCY_TT: Long = 3_284L
 
     /**
      * Minimum candidate frequency of the Russian engine: the frequency of the rank-10 000 word of

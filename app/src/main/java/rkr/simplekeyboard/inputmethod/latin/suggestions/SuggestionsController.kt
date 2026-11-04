@@ -18,12 +18,15 @@ package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 import android.content.Context
 import android.os.Handler
+import android.view.Choreographer
+import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardSwitcher
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.CompanionLexicon
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.EmptyPrefixProber
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ValidatedCompanionList
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SentenceStartSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource
@@ -31,10 +34,11 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TextShortcutSource
-import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramPreparationResult
-import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramPreparationResult
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.CompanionListArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalLearningPredicate
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PreparationResult
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog
 import rkr.simplekeyboard.inputmethod.latin.emoji.AssetEmojiSuggestPreparation
@@ -68,6 +72,13 @@ interface StripSurface {
      * display rebuild, which must happen even if a label lookup fails). Default no-op.
      */
     fun setEmphasizedCell(cell: Int) {}
+
+    /**
+     * The recent-clip cell: drawn with the clipboard marker, so the paste offer does not read as
+     * a plain suggestion. Called in the same publication as [showSuggestions], after the
+     * emphasis; [SuggestionStripState.NO_CELL] on every word strip. Default no-op.
+     */
+    fun setClipCellMarker(cell: Int) {}
 
     /**
      * The visible cell count (the user's fourth-cell setting), pushed when LatinIME (re)loads the
@@ -136,11 +147,17 @@ class SuggestionsController internal constructor(
     // Per language: the production factory resolves the table through the artifact registry.
     private val sentStartPreparationFactory: (ExecutorService, String) -> SentStartPreparation? =
         { _, _ -> null },
+    // Per language: the production factory resolves the list through the artifact registry.
+    private val coldCompanionPreparationFactory: (ExecutorService, String) -> ColdCompanionPreparation? =
+        { _, _ -> null },
     // Perfetto tracing of the lookup round trip; DISABLED in plain-JVM tests (no android.os.Trace).
     private val lookupTracer: LookupTracer = LookupTracer.DISABLED,
     private val recentClipScheduler: RecentClipExpiryScheduler? = null,
     private val oneHandedSide: () -> Int = { OneHandedMode.SIDE_OFF },
     private val listenToDockChanges: Boolean = false,
+    // The recent-clip cell's spoken label, resolved from resources at publication time. Default
+    // none: TalkBack then speaks the cell's own text.
+    private val clipCellSpokenLabel: () -> String? = { null },
 ) {
     /** Production entry point. */
     constructor(
@@ -170,6 +187,13 @@ class SuggestionsController internal constructor(
                 AssetSentStartPreparation(context, executor, assetPath)
             }
         },
+        { executor, subtypeId ->
+            // The artifact registry decides which language ships a cold-companion list; a
+            // language absent from it gets no load and no cold protection.
+            CompanionListArtifactSpec.forSubtype(subtypeId)?.let { spec ->
+                AssetColdCompanionPreparation(context, executor, spec)
+            }
+        },
         LookupTracer.ATRACE,
         RecentClipExpiryScheduler { delayMillis, task -> uiHandler.postDelayed(task, delayMillis) },
         {
@@ -177,6 +201,8 @@ class SuggestionsController internal constructor(
                 ?: OneHandedMode.SIDE_OFF
         },
         true,
+        // Resolved at each publication, so a locale change between sessions is picked up.
+        { context.getString(R.string.spoken_recent_clip_cell) },
     )
 
     /** Test entry point: injects a synchronous poster + executor and pre-marks the dictionary. */
@@ -299,8 +325,7 @@ class SuggestionsController internal constructor(
     // The cookie of the one outstanding traced lookup. At most one active-language request is
     // awaited (a new request supersedes the old one and the engine drops the stale result), so a
     // superseded trip ends where its replacement begins.
-    private var traceLookupCookie: Int = NO_TRACE_COOKIE
-    private var traceCookieSerial: Int = 0
+    private var traceLookupCookie: Int = LookupTracer.NO_COOKIE
 
     // The latest prefix a lookup was requested for. Not what is on screen; see [displayedPrefix].
     private var pendingPrefix: String = ""
@@ -509,6 +534,17 @@ class SuggestionsController internal constructor(
 
     /** The languages whose one-per-process load was requested; a failure is not retried. */
     private val sentStartPreparationRequested = HashSet<String>()
+
+    // --- Cold-companion word lists, per language: the autocorrect guard's answer while the
+    // other language's engine is still cold. Loaded once per process, off the UI thread, only
+    // when an engine is actually published (the guard's first question); a missing, broken or
+    // still-loading list protects nothing, exactly as before it existed.
+    /** The loaded lists by language; a language absent here has never finished loading. */
+    @Volatile
+    private var coldCompanionLists: Map<String, ValidatedCompanionList> = emptyMap()
+
+    /** The languages whose one-per-process list load was requested; a failure is not retried. */
+    private val coldCompanionLoadRequested = HashSet<String>()
 
     /**
      * The personal sentence-initial overlay, read live at every sentence-start fill; null (the
@@ -1333,6 +1369,8 @@ class SuggestionsController internal constructor(
         val active = dictionaryPreparation(slot) ?: return
         slot.preparationRequested = true
         slot.preparationRequestedByExplicitEnable = explicitEnable
+        // One-time cold-start slice; the retry after a failure is not traced.
+        lookupTracer.startupBegin(LookupTracer.StartupSlice.DICTIONARY_PUBLISH)
         active.prepare { result ->
             // The callback runs on the background executor. Marshal onto the serialized UI owner
             // before touching any controller state.
@@ -1346,6 +1384,7 @@ class SuggestionsController internal constructor(
      * the one-shot message of [DictionaryUnavailableListener].
      */
     private fun onPreparationResult(slot: LanguageSlot, result: PreparationResult) {
+        lookupTracer.startupEnd(LookupTracer.StartupSlice.DICTIONARY_PUBLISH)
         if (destroyed) return
         when (result) {
             is PreparationResult.Published -> {
@@ -1521,6 +1560,9 @@ class SuggestionsController internal constructor(
         if (slot.releasePending) return
         val backgroundExecutor = backgroundExecutor() ?: return
         slot.starting = true
+        // One-time cold-start slice, closed in publishEngine (or in the catch below when the
+        // start could not even be dispatched).
+        lookupTracer.startupBegin(LookupTracer.StartupSlice.ENGINE_START)
         val callback = ResultCallback { token, suggestions, kind ->
             uiPoster.post { applyResult(slot, token, suggestions, kind) }
         }
@@ -1536,10 +1578,13 @@ class SuggestionsController internal constructor(
             }
         } catch (_: Throwable) {
             slot.starting = false
+            lookupTracer.startupEnd(LookupTracer.StartupSlice.ENGINE_START)
         }
     }
 
     private fun publishEngine(slot: LanguageSlot, handle: EngineHandle?) {
+        // Ends the engineStart slice on failure (null) too: a failed start still was one.
+        lookupTracer.startupEnd(LookupTracer.StartupSlice.ENGINE_START)
         slot.starting = false
         if (destroyed) {
             // onDestroy already ran; this start is racing a torn-down controller. Release the
@@ -1563,7 +1608,13 @@ class SuggestionsController internal constructor(
         slot.engine = handle
         // The lexicon reads the companion live, so a companion that warms up later counts at once.
         handle.setCompanionLexicon(companionLexiconFor(slot))
-        // Started after the engine is assigned, so the bigram table cannot delay publication.
+        // The cold-companion list of every OTHER language is the guard's cold half: started
+        // here because the guard's first question is asked by an engine worker, so a list is
+        // needed exactly when an engine exists to be guarded.
+        for (spec in DictionaryArtifactSpec.ALL) {
+            if (spec.languageTag == slot.subtypeId) continue
+            maybePrepareColdCompanion(spec.languageTag)
+        }
         // Regardless of `eligible`: the engine stays warm across an ineligible editor, and the
         // deferred attach has no visible effect.
         maybePrepareBigramTable(slot, handle)
@@ -1682,10 +1733,22 @@ class SuggestionsController internal constructor(
 
     /**
      * What [slot]'s engine checks on its worker before it advises a correction: membership in
-     * the dictionary of the language that fills the strip next to it. A cold companion answers
-     * false, as it fills nothing.
+     * the dictionary of the language that fills the strip next to it. A warm companion answers
+     * from its full dictionary; a cold one answers from the bundled cold-companion list first,
+     * so a valid word of the other language is protected from the very first keystroke of a
+     * session, before the companion engine ever warms. Both halves are read live, so a companion
+     * that warms up later counts at once, and a release ends only the warm half: the bundled
+     * list is not the engine's and keeps protecting its words.
      */
     private fun companionLexiconFor(slot: LanguageSlot) = CompanionLexicon { normalizedWord ->
+        // The cold half: the bundled list of every OTHER language (the languages whose engine
+        // may fill the strip next to this one), consulted before the warm-engine half.
+        for (spec in DictionaryArtifactSpec.ALL) {
+            if (spec.languageTag == slot.subtypeId) continue
+            if (coldCompanionLists[spec.languageTag]?.containsWord(normalizedWord) == true) {
+                return@CompanionLexicon true
+            }
+        }
         companionSlotFor(slot.subtypeId)?.engine?.containsWord(normalizedWord) == true
     }
 
@@ -2022,28 +2085,37 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * Opens the async Perfetto slice of a lookup round trip, closing any slice still open: that
-     * request was just superseded, and the engine never delivers its stale result. See
-     * [LookupTracer] for what may be traced.
+     * Opens the async Perfetto slice of a lookup round trip; the tracer itself closes any trip
+     * still open, as that request was just superseded and the engine never delivers its stale
+     * result. See [LookupTracer] for the sub-slices of the trip.
      */
     private fun beginLookupTrace() {
-        endLookupTrace()
-        val cookie = if (traceCookieSerial == Int.MAX_VALUE) 1 else traceCookieSerial + 1
-        traceCookieSerial = cookie
-        traceLookupCookie = cookie
-        lookupTracer.beginAsync(cookie)
+        traceLookupCookie = lookupTracer.beginLookup()
     }
 
     /**
-     * Closes the outstanding lookup slice, if any. Called where the answer arrives ([applyResult])
-     * and at every boundary that cancels an in-flight request without replacing it, so a canceled
-     * trip never shows as a long open slice. Ending an unopened cookie is ignored by the platform.
+     * Closes the outstanding lookup slices, if any. Called at every boundary that cancels an
+     * in-flight request without replacing it, so a canceled trip never shows as a long open
+     * slice. The arrival boundary is [applyResult], which opens the frame slice instead.
      */
     private fun endLookupTrace() {
         val cookie = traceLookupCookie
-        if (cookie == NO_TRACE_COOKIE) return
-        traceLookupCookie = NO_TRACE_COOKIE
-        lookupTracer.endAsync(cookie)
+        if (cookie == LookupTracer.NO_COOKIE) return
+        traceLookupCookie = LookupTracer.NO_COOKIE
+        lookupTracer.cancelLookup(cookie)
+    }
+
+    /**
+     * Ends the apply→frame slice at the frame that paints the strip. The first callback fires in
+     * the same frame pass the apply's invalidate is drawn in, before the traversal, so the slice
+     * closes one callback later, when that frame is on screen. Traced trips only: an untraced
+     * cookie is [LookupTracer.NO_COOKIE] and the caller skips this.
+     */
+    private fun traceAppliedFrame(cookie: Int) {
+        val choreographer = Choreographer.getInstance()
+        choreographer.postFrameCallback {
+            choreographer.postFrameCallback { lookupTracer.frameDrawn(cookie) }
+        }
     }
 
     /**
@@ -2208,6 +2280,26 @@ class SuggestionsController internal constructor(
             suspendForLock()
             return
         }
+        prewarmActiveGlideIndex()
+    }
+
+    /**
+     * The keyboard session's first glide-eligible letter-key down (PointerTracker via LatinIME,
+     * UI thread): starts the index build at the tap, so the session's first glide does not pay
+     * the build mid-gesture. PointerTracker fires this once per session (re-armed on every
+     * keyboard load); the engine-side build itself is idempotent while the index is resident,
+     * and the single-language residency rule is the same as at arming. Nothing is suspended or
+     * cleared: no gesture exists yet, and a lock is handled by LatinIME's noteLiveLock and by
+     * [onGlideInput]'s own gate.
+     */
+    fun onGlideTrackingStarted() {
+        if (destroyed) return
+        if (keyguardGate.isLocked()) return
+        prewarmActiveGlideIndex()
+    }
+
+    /** The shared prewarm tail: the residency drop first, then the idempotent build. */
+    private fun prewarmActiveGlideIndex() {
         if (!glideEligible || !glideGate.isOn()) return
         val activeEngine = usableEngine() ?: return
         releaseGlideIndexesExcept(activeLanguage)
@@ -2302,8 +2394,9 @@ class SuggestionsController internal constructor(
      *
      * Casing follows the prefix path's display rule, taken from the shift gate (a gesture types
      * no letters to read casing from); the committed and the shown forms both carry it. A lower-case
-     * gesture whose leading space starts a sentence ([EditorSurface.glideStartsSentence]) gets an
-     * initial capital, as a typed space would have shifted the keyboard. With zero
+     * gesture the editor's auto-caps capitalizes ([EditorSurface.glideAutoCapsWord]: a leading
+     * space into a sentence start, or any space-prepending commit in a CAP_WORDS field) gets an
+     * initial capital, as a typed letter at that position would have. With zero
      * candidates nothing is committed. With exactly one there are no alternatives; with
      * suggestions on the strip is then derived afresh as if the word had been typed (the
      * committed word is the trailing word), with suggestions off it stays hidden. An empty decode
@@ -2329,7 +2422,7 @@ class SuggestionsController internal constructor(
             return
         }
         var casing = glideShiftGate.glideCasing()
-        if (casing == TatarWordUtils.PrefixCasing.LOWER && editor.glideStartsSentence()) {
+        if (casing == TatarWordUtils.PrefixCasing.LOWER && editor.glideAutoCapsWord()) {
             casing = TatarWordUtils.PrefixCasing.INITIAL_CAPS
         }
         // The decode's N-best in the committed casing, capped at the committed head plus one
@@ -2506,6 +2599,43 @@ class SuggestionsController internal constructor(
     }
 
     /**
+     * Starts [language]'s one-per-process background load of its cold-companion list, at most
+     * once. A factory or executor failure is silent and terminal: a cold companion then
+     * protects nothing, exactly as before the list existed.
+     */
+    private fun maybePrepareColdCompanion(language: String) {
+        if (destroyed || language in coldCompanionLoadRequested) return
+        val backgroundExecutor = backgroundExecutor() ?: return
+        val preparation = coldCompanionPreparationFactory(backgroundExecutor, language)
+            ?: return
+        coldCompanionLoadRequested.add(language)
+        try {
+            preparation.prepare { list ->
+                // Same marshal-onto-UI rule as the sentence-start load above.
+                uiPoster.post { onColdCompanionReady(language, list) }
+            }
+        } catch (_: Throwable) {
+            // Silent: the guard falls back to the warm-engine half alone.
+        }
+    }
+
+    /**
+     * [language]'s list finished loading. It is published even if the user has switched away:
+     * the guard reads the map live from the engine worker, so the next verdict of the other
+     * language's engine is protected from here on. No strip repaint follows, because the list
+     * only withholds corrections; it never fills a cell.
+     */
+    private fun onColdCompanionReady(language: String, list: ValidatedCompanionList?) {
+        if (destroyed) return
+        val loaded = list ?: return
+        // Copy-on-write: the engine worker reads the map without a lock, so the new map is
+        // published only once it is complete.
+        val next = HashMap(coldCompanionLists)
+        next[language] = loaded
+        coldCompanionLists = next
+    }
+
+    /**
      * [language]'s table finished loading. The source is stored even if the user has switched
      * away. A sentence start reached before the table arrived showed the reserved empty strip;
      * fill it now, but only if the language is still active and the live editor state is still a
@@ -2625,7 +2755,25 @@ class SuggestionsController internal constructor(
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = false
         showBand(listOf(offer), ranked = false)
+        // The clipboard marker tells the cell from a suggestion, and TalkBack says what the cell
+        // does instead of reading the clip's text aloud.
+        strip.setClipCellMarker(0)
+        strip.setSpokenCellLabels(clipCellSpokenLabel(), null, null, null)
         return true
+    }
+
+    /**
+     * True when [suggestion] is the live recent-clip cell's text: the same state check the tap
+     * path makes. The strip's long-press router asks, because the clip is not a word — it is
+     * RAM-only, and nothing about it is ever saved or learned.
+     */
+    fun isRecentClipCell(suggestion: String): Boolean {
+        val offer = recentClip.offerText() ?: return false
+        return displayedSessionId == sessionId
+            && displayedPrefix == null && displayedContextWord == null
+            && displayedGlideAlternativesFor == null
+            && bandBaseCells.size == 1 && bandBaseCells[0] == suggestion
+            && suggestion == offer
     }
 
 
@@ -2649,10 +2797,15 @@ class SuggestionsController internal constructor(
             applyCompanionResult(slot, token, suggestions, kind)
             return
         }
-        // The arrival ends the round trip. The engine drops stale handoffs, so an active-slot
-        // result here answers the newest request; ending before the currency guards keeps a
-        // session-crossed answer from leaving its slice open.
-        endLookupTrace()
+        // The arrival ends the round trip and opens its frame slice. The engine drops stale
+        // deliveries, so an active-slot result here answers the newest request; ending before
+        // the currency guards keeps a session-crossed answer from leaving its slice open.
+        val appliedCookie = traceLookupCookie
+        traceLookupCookie = LookupTracer.NO_COOKIE
+        lookupTracer.lookupApplied(appliedCookie)
+        if (appliedCookie != LookupTracer.NO_COOKIE) {
+            traceAppliedFrame(appliedCookie)
+        }
         if (sessionId != requestSessionId) return
         val activeEngine = usableEngine() ?: return
         if (!activeEngine.isCurrent(token)) return
@@ -3381,9 +3534,6 @@ class SuggestionsController internal constructor(
         // Sentinel for "no request is outstanding". [sessionId] starts at 0 and only ever grows,
         // so this can never be mistaken for a live generation.
         private const val NO_SESSION = -1L
-
-        // Sentinel for "no lookup slice is open"; real cookies are serials starting at 1.
-        private const val NO_TRACE_COOKIE = -1
 
         /**
          * The [displayedContextWord]/[pendingContextWord] binding of a sentence-start strip: the
