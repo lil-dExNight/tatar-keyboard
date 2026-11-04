@@ -30,6 +30,15 @@ data class InflatedAsset(
     val rawSize: Long,
 )
 
+/**
+ * Two tiers: the full [validateRaw] walks every block, word and varint over one in-memory copy
+ * of the raw file (bounded by [DictionaryArtifactSpec.maxRawSize], because the front-coded
+ * blocks are easier to walk over a byte array), while [verifyPinnedContent] checks the bounds,
+ * the header constants, the section arithmetic, the embedded checksum and a streaming SHA-256
+ * against the pinned raw SHA-256 through one fixed-size buffer. A pinned SHA-256 match implies
+ * the walk's outcome, so activation uses the fast tier; publication and any hash mismatch (which
+ * deletes the bad file and republishes fresh bytes) use the full one.
+ */
 class TdictValidator {
     fun inflateAsset(
         source: java.io.InputStream,
@@ -101,99 +110,32 @@ class TdictValidator {
         return InflatedAsset(compressedSize, compressedSha, rawSize)
     }
 
+    fun verifyPinnedContent(file: File, spec: DictionaryArtifactSpec): ValidatedDictionary {
+        val header = verifyHeaderStreaming(file, spec)
+        return ValidatedDictionary(
+            rawSize = header.length,
+            entryCount = header.entryCount,
+            schemaId = spec.schemaId,
+            formatVersion = spec.formatVersion,
+            rawSha256 = spec.expectedRawSha256,
+        )
+    }
+
     fun validateRaw(file: File, spec: DictionaryArtifactSpec): ValidatedDictionary {
-        val length = file.length()
-        if (length > spec.maxRawSize) {
-            throw DictionaryValidationException("raw size limit exceeded")
-        }
-        if (length < TdictFormat.HEADER_SIZE) {
-            throw DictionaryValidationException("raw dictionary is shorter than its header")
-        }
-        if (length != spec.expectedRawSize) {
-            throw DictionaryValidationException("unexpected raw size")
-        }
-
-        // The raw file is bounded by the size limit above, so validating from memory is simpler
-        // and faster than a seek per word.
-        val bytes = readExactly(file, length)
-            ?: throw DictionaryValidationException("raw dictionary changed while reading")
-        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        val magic = ByteArray(8)
-        buffer.get(magic)
-        if (!magic.contentEquals(TdictFormat.MAGIC.toByteArray(StandardCharsets.US_ASCII))) {
-            throw DictionaryValidationException("wrong dictionary magic")
-        }
-        val schemaId = buffer.short.toInt() and 0xffff
-        val formatVersion = buffer.short.toInt() and 0xffff
-        val headerSize = buffer.short.toInt() and 0xffff
-        val checksumAlgorithm = buffer.short.toInt() and 0xffff
-        val entryCount = buffer.int.toLong() and TdictFormat.MAX_U32
-        val blockCount = buffer.int.toLong() and TdictFormat.MAX_U32
-        val blockIndexOffset = buffer.int.toLong() and TdictFormat.MAX_U32
-        val blocksOffset = buffer.int.toLong() and TdictFormat.MAX_U32
-        val blocksSize = buffer.int.toLong() and TdictFormat.MAX_U32
-        val declaredFileSize = buffer.int.toLong() and TdictFormat.MAX_U32
-        val storedChecksum = ByteArray(TdictFormat.CHECKSUM_SIZE)
-        buffer.get(storedChecksum)
-
-        if (schemaId != spec.schemaId || schemaId != TdictFormat.SCHEMA_ID) {
-            throw DictionaryValidationException("unsupported schema id")
-        }
-        if (formatVersion != spec.formatVersion ||
-            formatVersion != TdictFormat.FORMAT_VERSION
-        ) {
-            throw DictionaryValidationException("unsupported format version")
-        }
-        if (headerSize != TdictFormat.HEADER_SIZE) {
-            throw DictionaryValidationException("unexpected header size")
-        }
-        if (checksumAlgorithm != TdictFormat.CHECKSUM_ALGORITHM_SHA256) {
-            throw DictionaryValidationException("unsupported checksum algorithm")
-        }
-        if (entryCount == 0L || entryCount != spec.expectedEntryCount) {
-            throw DictionaryValidationException("unexpected entry count")
-        }
-
-        val expectedBlockCount = checkedAdd(
-            entryCount,
-            (TdictFormat.BLOCK_SIZE - 1).toLong(),
-        ) / TdictFormat.BLOCK_SIZE
-        val expectedBlocksOffset = checkedAdd(
-            TdictFormat.HEADER_SIZE.toLong(),
-            checkedMultiply(4L, blockCount),
-        )
-        val expectedFileSize = checkedAdd(expectedBlocksOffset, blocksSize)
-        if (expectedBlocksOffset > TdictFormat.MAX_U32 ||
-            expectedFileSize > TdictFormat.MAX_U32
-        ) {
-            throw DictionaryValidationException("section arithmetic exceeds u32")
-        }
-        if (blockCount != expectedBlockCount ||
-            blockIndexOffset != TdictFormat.HEADER_SIZE.toLong() ||
-            blocksOffset != expectedBlocksOffset ||
-            declaredFileSize != expectedFileSize ||
-            declaredFileSize != length
-        ) {
-            throw DictionaryValidationException("noncanonical section layout")
-        }
-
-        val zeroedChecksum = zeroedWindowDigest(
-            bytes,
-            TdictFormat.CHECKSUM_OFFSET,
-            TdictFormat.CHECKSUM_SIZE,
-        )
-        if (!MessageDigest.isEqual(storedChecksum, zeroedChecksum)) {
-            throw DictionaryValidationException("SHA-256 checksum mismatch")
-        }
-        val rawSha = MessageDigest.getInstance("SHA-256").digest(bytes).toHex()
-        if (!constantTimeHexEquals(rawSha, spec.expectedRawSha256)) {
-            throw DictionaryValidationException("unexpected raw SHA-256")
-        }
+        val header = verifyHeaderAndPinnedRawSha(file, spec)
+        val bytes = header.raw
+        val entryCount = header.entryCount
+        val blockCount = header.blockCount
+        val blocksOffset = header.blocksOffset
+        val blocksSize = header.blocksSize
+        val fileSize = header.fileSize
 
         val blockCountInt = blockCount.toInt()
         val entryCountInt = entryCount.toInt()
-        val fileSize = declaredFileSize.toInt()
-        val blockOffsets = IntArray(blockCountInt) { buffer.getInt(TdictFormat.HEADER_SIZE + it * 4) }
+        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        val blockOffsets = IntArray(blockCountInt) {
+            buffer.getInt(TdictFormat.HEADER_SIZE + it * 4)
+        }
         if (blockOffsets[0] != blocksOffset.toInt()) {
             throw DictionaryValidationException("first block offset must equal the blocks offset")
         }
@@ -212,7 +154,7 @@ class TdictValidator {
         var wordIndex = 0
         for (block in 0 until blockCountInt) {
             val blockStart = blockOffsets[block]
-            val blockEnd = if (block + 1 < blockCountInt) blockOffsets[block + 1] else fileSize
+            val blockEnd = if (block + 1 < blockCountInt) blockOffsets[block + 1] else fileSize.toInt()
             val inBlock = minOf(
                 TdictFormat.BLOCK_SIZE,
                 entryCountInt - block * TdictFormat.BLOCK_SIZE,
@@ -282,13 +224,233 @@ class TdictValidator {
         }
 
         return ValidatedDictionary(
-            rawSize = length,
+            rawSize = header.length,
             entryCount = entryCount,
-            schemaId = schemaId,
-            formatVersion = formatVersion,
-            rawSha256 = rawSha,
+            schemaId = spec.schemaId,
+            formatVersion = spec.formatVersion,
+            rawSha256 = spec.expectedRawSha256,
         )
     }
+
+    /**
+     * [verifyPinnedContent]'s phase: the same bounds, header, section-arithmetic, checksum and
+     * raw SHA-256 checks as [verifyHeaderAndPinnedRawSha], but streamed through one fixed-size
+     * buffer instead of an in-memory copy of the file. Returns the decoded header only; the
+     * raw bytes are not kept.
+     */
+    private fun verifyHeaderStreaming(
+        file: File,
+        spec: DictionaryArtifactSpec,
+    ): VerifiedRawHeader {
+        val length = file.length()
+        if (length > spec.maxRawSize) {
+            throw DictionaryValidationException("raw size limit exceeded")
+        }
+        if (length < TdictFormat.HEADER_SIZE) {
+            throw DictionaryValidationException("raw dictionary is shorter than its header")
+        }
+        if (length != spec.expectedRawSize) {
+            throw DictionaryValidationException("unexpected raw size")
+        }
+
+        val header = ByteArray(TdictFormat.HEADER_SIZE)
+        FileInputStream(file).use { stream ->
+            readExact(stream, header, TdictFormat.HEADER_SIZE)
+            val decoded = decodeAndCheckHeader(header, length, spec)
+
+            val rawDigest = MessageDigest.getInstance("SHA-256")
+            rawDigest.update(header)
+            val checksumDigest = MessageDigest.getInstance("SHA-256")
+            checksumDigest.update(header, 0, TdictFormat.CHECKSUM_OFFSET)
+            checksumDigest.update(ByteArray(TdictFormat.CHECKSUM_SIZE))
+            var remaining = length - TdictFormat.HEADER_SIZE
+            val buffer = ByteArray(VERIFY_BUFFER_SIZE)
+            while (remaining > 0) {
+                val count = minOf(VERIFY_BUFFER_SIZE.toLong(), remaining).toInt()
+                readExact(stream, buffer, count)
+                rawDigest.update(buffer, 0, count)
+                checksumDigest.update(buffer, 0, count)
+                remaining -= count
+            }
+            if (stream.read() != -1) {
+                throw DictionaryValidationException("raw dictionary changed while reading")
+            }
+            if (!MessageDigest.isEqual(decoded.storedChecksum, checksumDigest.digest())) {
+                throw DictionaryValidationException("SHA-256 checksum mismatch")
+            }
+            if (!constantTimeHexEquals(rawDigest.digest().toHex(), spec.expectedRawSha256)) {
+                throw DictionaryValidationException("unexpected raw SHA-256")
+            }
+            return VerifiedRawHeader(
+                length,
+                ByteArray(0),
+                decoded.entryCount,
+                decoded.blockCount,
+                decoded.blocksOffset,
+                decoded.blocksSize,
+                decoded.fileSize,
+            )
+        }
+    }
+
+    /** Reads exactly [count] bytes into [target] or throws: the file changed under the reader. */
+    private fun readExact(stream: java.io.InputStream, target: ByteArray, count: Int) {
+        var offset = 0
+        while (offset < count) {
+            val got = stream.read(target, offset, count - offset)
+            if (got < 0) throw DictionaryValidationException("raw dictionary changed while reading")
+            offset += got
+        }
+    }
+    /**
+     * The shared phase of [validateRaw] and [verifyPinnedContent]: bounds and pins the file,
+     * decodes and checks the header and the section arithmetic, verifies the embedded checksum
+     * and the pinned raw SHA-256. Returns the decoded header with the verified raw bytes, so the
+     * full walk reads them without a second file read.
+     */
+    private fun verifyHeaderAndPinnedRawSha(
+        file: File,
+        spec: DictionaryArtifactSpec,
+    ): VerifiedRawHeader {
+        val length = file.length()
+        if (length > spec.maxRawSize) {
+            throw DictionaryValidationException("raw size limit exceeded")
+        }
+        if (length < TdictFormat.HEADER_SIZE) {
+            throw DictionaryValidationException("raw dictionary is shorter than its header")
+        }
+        if (length != spec.expectedRawSize) {
+            throw DictionaryValidationException("unexpected raw size")
+        }
+
+        // The raw file is bounded by the size limit above, so validating from memory is simpler
+        // and faster than a seek per word.
+        val bytes = readExactly(file, length)
+            ?: throw DictionaryValidationException("raw dictionary changed while reading")
+        val decoded = decodeAndCheckHeader(bytes, length, spec)
+
+        val zeroedChecksum = zeroedWindowDigest(
+            bytes,
+            TdictFormat.CHECKSUM_OFFSET,
+            TdictFormat.CHECKSUM_SIZE,
+        )
+        if (!MessageDigest.isEqual(decoded.storedChecksum, zeroedChecksum)) {
+            throw DictionaryValidationException("SHA-256 checksum mismatch")
+        }
+        val rawSha = MessageDigest.getInstance("SHA-256").digest(bytes).toHex()
+        if (!constantTimeHexEquals(rawSha, spec.expectedRawSha256)) {
+            throw DictionaryValidationException("unexpected raw SHA-256")
+        }
+
+        return VerifiedRawHeader(
+            length,
+            bytes,
+            decoded.entryCount,
+            decoded.blockCount,
+            decoded.blocksOffset,
+            decoded.blocksSize,
+            decoded.fileSize,
+        )
+    }
+
+    /**
+     * Decodes the header of a bounded, length-pinned file and checks the constants, the entry
+     * count and the section arithmetic. Shared by both verification phases.
+     */
+    private fun decodeAndCheckHeader(
+        bytes: ByteArray,
+        length: Long,
+        spec: DictionaryArtifactSpec,
+    ): DecodedHeader {
+        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        val magic = ByteArray(8)
+        buffer.get(magic)
+        if (!magic.contentEquals(TdictFormat.MAGIC.toByteArray(StandardCharsets.US_ASCII))) {
+            throw DictionaryValidationException("wrong dictionary magic")
+        }
+        val schemaId = buffer.short.toInt() and 0xffff
+        val formatVersion = buffer.short.toInt() and 0xffff
+        val headerSize = buffer.short.toInt() and 0xffff
+        val checksumAlgorithm = buffer.short.toInt() and 0xffff
+        val entryCount = buffer.int.toLong() and TdictFormat.MAX_U32
+        val blockCount = buffer.int.toLong() and TdictFormat.MAX_U32
+        val blockIndexOffset = buffer.int.toLong() and TdictFormat.MAX_U32
+        val blocksOffset = buffer.int.toLong() and TdictFormat.MAX_U32
+        val blocksSize = buffer.int.toLong() and TdictFormat.MAX_U32
+        val declaredFileSize = buffer.int.toLong() and TdictFormat.MAX_U32
+        val storedChecksum = ByteArray(TdictFormat.CHECKSUM_SIZE)
+        buffer.get(storedChecksum)
+
+        if (schemaId != spec.schemaId || schemaId != TdictFormat.SCHEMA_ID) {
+            throw DictionaryValidationException("unsupported schema id")
+        }
+        if (formatVersion != spec.formatVersion ||
+            formatVersion != TdictFormat.FORMAT_VERSION
+        ) {
+            throw DictionaryValidationException("unsupported format version")
+        }
+        if (headerSize != TdictFormat.HEADER_SIZE) {
+            throw DictionaryValidationException("unexpected header size")
+        }
+        if (checksumAlgorithm != TdictFormat.CHECKSUM_ALGORITHM_SHA256) {
+            throw DictionaryValidationException("unsupported checksum algorithm")
+        }
+        if (entryCount == 0L || entryCount != spec.expectedEntryCount) {
+            throw DictionaryValidationException("unexpected entry count")
+        }
+
+        val expectedBlockCount = checkedAdd(
+            entryCount,
+            (TdictFormat.BLOCK_SIZE - 1).toLong(),
+        ) / TdictFormat.BLOCK_SIZE
+        val expectedBlocksOffset = checkedAdd(
+            TdictFormat.HEADER_SIZE.toLong(),
+            checkedMultiply(4L, blockCount),
+        )
+        val expectedFileSize = checkedAdd(expectedBlocksOffset, blocksSize)
+        if (expectedBlocksOffset > TdictFormat.MAX_U32 ||
+            expectedFileSize > TdictFormat.MAX_U32
+        ) {
+            throw DictionaryValidationException("section arithmetic exceeds u32")
+        }
+        if (blockCount != expectedBlockCount ||
+            blockIndexOffset != TdictFormat.HEADER_SIZE.toLong() ||
+            blocksOffset != expectedBlocksOffset ||
+            declaredFileSize != expectedFileSize ||
+            declaredFileSize != length
+        ) {
+            throw DictionaryValidationException("noncanonical section layout")
+        }
+        return DecodedHeader(
+            entryCount,
+            blockCount,
+            blocksOffset,
+            blocksSize,
+            declaredFileSize,
+            storedChecksum,
+        )
+    }
+
+    /** The header fields both tiers check, plus the stored checksum bytes. */
+    private class DecodedHeader(
+        val entryCount: Long,
+        val blockCount: Long,
+        val blocksOffset: Long,
+        val blocksSize: Long,
+        val fileSize: Long,
+        val storedChecksum: ByteArray,
+    )
+
+    /** The decoded and fully pinned header [verifyHeaderAndPinnedRawSha] hands the walk. */
+    private class VerifiedRawHeader(
+        val length: Long,
+        val raw: ByteArray,
+        val entryCount: Long,
+        val blockCount: Long,
+        val blocksOffset: Long,
+        val blocksSize: Long,
+        val fileSize: Long,
+    )
 
     /** Last canonical varint's end offset, set by [readCanonicalVarint]. */
     private var varintEnd = 0
@@ -384,6 +546,7 @@ class TdictValidator {
 
     companion object {
         private const val BUFFER_SIZE = 8 * 1024
+        private const val VERIFY_BUFFER_SIZE = 64 * 1024
         private const val MAX_CANONICAL_WORD_BYTES = 64 * 2
         private const val ALPHABET = "аәбвгдеёжҗзийклмнңоөпрстуүфхһцчшщъыьэюя"
         private const val ALPHABET_TABLE_SIZE = 0x500

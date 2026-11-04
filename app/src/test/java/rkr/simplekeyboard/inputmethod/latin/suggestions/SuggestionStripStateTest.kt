@@ -22,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 
@@ -294,27 +295,13 @@ class SuggestionStripStateTest {
 
     @Test
     fun hotHitAndGestureStateMachineAllocatesZeroBytesAfterWarmup() {
-        val bean = ManagementFactory.getThreadMXBean() as ThreadMXBean
-        if (!bean.isThreadAllocatedMemorySupported) return
-        bean.isThreadAllocatedMemoryEnabled = true
         val state = SuggestionStripState()
         state.setSuggestions("бер", "ике", "өч", null)
-        repeat(100_000) {
+        assertZeroAllocationPerCall {
             state.onDown(activePointer, 150f, 20f, 360, height)
             state.onMove(activePointer, 151f, 20f, 360, height)
             state.onUp(activePointer, 151f, 20f, 360, height)
         }
-
-        val threadId = Thread.currentThread().id
-        val before = bean.getThreadAllocatedBytes(threadId)
-        repeat(100_000) {
-            state.onDown(activePointer, 150f, 20f, 360, height)
-            state.onMove(activePointer, 151f, 20f, 360, height)
-            state.onUp(activePointer, 151f, 20f, 360, height)
-        }
-        val allocated = bean.getThreadAllocatedBytes(threadId) - before
-
-        assertEquals(0L, allocated)
     }
 
     @Test
@@ -421,25 +408,79 @@ class SuggestionStripStateTest {
     }
 
     @Test
+    fun theClipMarkerSticksToPopulatedCellsAndReportsChange() {
+        val state = SuggestionStripState()
+        state.setSuggestions("сәләм дөнья", null, null, null)
+
+        assertEquals(SuggestionStripState.NO_CELL, state.clipCell())
+        assertFalse(state.isClipCell(0))
+
+        // A populated cell accepts the marker; setting it twice reports no new change.
+        assertTrue(state.setClipCell(0))
+        assertTrue(state.isClipCell(0))
+        assertEquals(0, state.clipCell())
+        assertFalse(state.setClipCell(0))
+
+        // An empty cell refuses: the marker stays where it was. So does an out-of-range index.
+        assertFalse(state.setClipCell(1))
+        assertEquals(0, state.clipCell())
+        assertFalse(state.setClipCell(7))
+        assertEquals(0, state.clipCell())
+        // NO_CELL is the explicit clear.
+        assertTrue(state.setClipCell(SuggestionStripState.NO_CELL))
+        assertEquals(SuggestionStripState.NO_CELL, state.clipCell())
+        assertFalse(state.isClipCell(0))
+    }
+
+    @Test
+    fun everyPublicationResetsTheClipMarker() {
+        val state = SuggestionStripState()
+        state.setSuggestions("сәләм дөнья", null, null, null)
+        assertTrue(state.setClipCell(0))
+
+        // A fresh publication describes the whole band, clip marker included — even one whose
+        // words happen to be identical, so the reset itself counts as the visual change.
+        assertTrue(state.setSuggestions("сәләм дөнья", null, null, null))
+        assertEquals(SuggestionStripState.NO_CELL, state.clipCell())
+
+        // And once nothing is marked, an identical republish is again a no-op.
+        assertFalse(state.setSuggestions("сәләм дөнья", null, null, null))
+
+        assertTrue(state.setClipCell(0))
+        assertTrue(state.clear())
+        assertEquals(SuggestionStripState.NO_CELL, state.clipCell())
+    }
+
+    @Test
     fun emphasisChangesAllocateZeroBytesAfterWarmup() {
+        val state = SuggestionStripState()
+        state.setSuggestions("китәп", "китап", null, null)
+        assertZeroAllocationPerCall {
+            state.setEmphasis(1)
+            state.setEmphasis(SuggestionStripState.NO_CELL)
+        }
+    }
+
+    /**
+     * Asserts [block] allocates nothing per call, after a warmup. One-time runtime costs land in
+     * an unpredictable window (their timing depends on which tests ran before this one), so
+     * several windows are measured: a per-call allocation would make EVERY window nonzero, while
+     * a steady state proves itself with one clean window.
+     */
+    private fun assertZeroAllocationPerCall(block: () -> Unit) {
         val bean = ManagementFactory.getThreadMXBean() as ThreadMXBean
         if (!bean.isThreadAllocatedMemorySupported) return
         bean.isThreadAllocatedMemoryEnabled = true
-        val state = SuggestionStripState()
-        state.setSuggestions("китәп", "китап", null, null)
-        repeat(100_000) {
-            state.setEmphasis(1)
-            state.setEmphasis(SuggestionStripState.NO_CELL)
-        }
-
+        repeat(100_000) { block() }
         val threadId = Thread.currentThread().id
-        val before = bean.getThreadAllocatedBytes(threadId)
-        repeat(100_000) {
-            state.setEmphasis(1)
-            state.setEmphasis(SuggestionStripState.NO_CELL)
+        val windows = mutableListOf<Long>()
+        repeat(5) {
+            val before = bean.getThreadAllocatedBytes(threadId)
+            repeat(100_000) { block() }
+            val allocated = bean.getThreadAllocatedBytes(threadId) - before
+            if (allocated == 0L) return
+            windows.add(allocated)
         }
-        val allocated = bean.getThreadAllocatedBytes(threadId) - before
-
-        assertEquals(0L, allocated)
+        fail("every measured window allocated: $windows")
     }
 }

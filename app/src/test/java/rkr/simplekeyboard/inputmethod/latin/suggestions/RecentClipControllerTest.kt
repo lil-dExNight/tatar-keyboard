@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,6 +40,9 @@ class RecentClipControllerTest {
     companion object {
         /** The fake sentence-start table's content; shown initial-caps by the controller. */
         private val SENT_START = listOf("бу", "ул", "ә")
+
+        /** The stand-in for the localized "paste from clipboard" label the production wiring reads. */
+        private const val CLIP_LABEL = "paste from clipboard"
     }
 
     // --- Fakes ---------------------------------------------------------------------------------
@@ -50,9 +54,28 @@ class RecentClipControllerTest {
         val events = mutableListOf<String>()
         var listener: SuggestionTapListener? = null
 
+        /**
+         * The clip-marker cell of the latest band, mirroring the view's state: reset by every
+         * publication, re-set by the controller's marker call.
+         */
+        var clipMarkerCell = SuggestionStripState.NO_CELL
+
+        /** The spoken labels of the latest publication. */
+        var spokenLabels: List<String?> = listOf(null, null, null, null)
+
         override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
             bands.add(listOf(first, second, third, fourth))
             events.add("show")
+            clipMarkerCell = SuggestionStripState.NO_CELL
+            spokenLabels = listOf(null, null, null, null)
+        }
+
+        override fun setClipCellMarker(cell: Int) {
+            clipMarkerCell = cell
+        }
+
+        override fun setSpokenCellLabels(first: String?, second: String?, third: String?, fourth: String?) {
+            spokenLabels = listOf(first, second, third, fourth)
         }
 
         override fun reserve() {
@@ -216,6 +239,7 @@ class RecentClipControllerTest {
                 }
             },
             oneHandedSide = { oneHandedSide },
+            clipCellSpokenLabel = { CLIP_LABEL },
         )
 
         init {
@@ -359,6 +383,73 @@ class RecentClipControllerTest {
         h.start()
 
         assertEquals(listOf("өйгә", null, null, null), h.strip.lastBand())
+    }
+
+    @Test
+    fun theClipCellCarriesTheMarkerAndTheSpokenLabel() {
+        val h = Harness()
+        h.clip("сәләм дөнья")
+
+        h.start()
+
+        assertEquals(0, h.strip.clipMarkerCell)
+        assertEquals(
+            "TalkBack says what the cell does, not the clip's text",
+            listOf(CLIP_LABEL, null, null, null),
+            h.strip.spokenLabels,
+        )
+    }
+
+    @Test
+    fun aWordBandCarriesNoMarkerAndNoLabel() {
+        val h = Harness()
+        h.editor.before = "сүз "
+        h.engine.nextWordByContext["сүз"] = listOf("өйгә")
+        h.clip("сәләм")
+
+        h.start()
+
+        assertEquals(SuggestionStripState.NO_CELL, h.strip.clipMarkerCell)
+        assertEquals(listOf(null, null, null, null), h.strip.spokenLabels)
+    }
+
+    @Test
+    fun theLongPressRouterRecognizesTheLiveClipCell() {
+        val h = Harness()
+        h.clip("сәләм")
+        h.start()
+
+        assertTrue(h.controller.isRecentClipCell("сәләм"))
+        assertFalse("a different string on the same strip is not the clip cell",
+            h.controller.isRecentClipCell("сәлам"))
+    }
+
+    @Test
+    fun aWordBandShowingTheSameTextIsNotTheClipCell() {
+        // The recognition is state-based, never string-based: the same text as an engine
+        // suggestion is a word, and the long press may offer its dialogs for it.
+        val h = Harness()
+        h.clip("сәләм")
+        h.start()
+        h.editor.before = "сүз "
+        h.engine.nextWordByContext["сүз"] = listOf("сәләм")
+
+        h.controller.onTextChanged()
+
+        assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
+        assertFalse(h.controller.isRecentClipCell("сәләм"))
+    }
+
+    @Test
+    fun aConsumedClipIsNoLongerTheClipCell() {
+        val h = Harness()
+        h.clip("сәләм")
+        h.start()
+        assertTrue(h.controller.isRecentClipCell("сәләм"))
+
+        h.tap("сәләм")
+
+        assertFalse(h.controller.isRecentClipCell("сәләм"))
     }
 
     @Test

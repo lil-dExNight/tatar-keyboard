@@ -1,3 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@xml/keyboard_layout_set_*,@xml/kbd_*,@xml/rows_*,@xml/rowkeys_*,@xml/row_*,@string/*" />
+    tools:keep="@xml/keyboard_layout_set_*,@xml/kbd_*,@xml/rows_*,@xml/rowkeys_*,@xml/row_*,@string/change_keyboard,@string/edit_menu_copy,@string/edit_menu_cursor_left,@string/edit_menu_cursor_right,@string/edit_menu_cut,@string/edit_menu_paste,@string/edit_menu_select_all,@string/globe_menu_emoji,@string/label_pause_key,@string/label_wait_key,@string/locale_name_en_US,@string/locale_name_tt_RU,@string/one_handed_mode_full,@string/one_handed_mode_left,@string/one_handed_mode_right" />

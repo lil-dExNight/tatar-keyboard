@@ -3,12 +3,17 @@
 
 Legs: (1) parse both tracked profiles in app/src/main/generated/baselineProfiles/ with a strict
 parser of the profgen human-readable format — a line that does not parse fails, because a typo'd
-rule silently becomes a dead rule; (2) resolve the class rules against the release APK: each rule
-is translated through the R8 mapping of the same build (the tracked profile names pre-R8 classes)
-and looked up in the class descriptors of the APK's classes*.dex, read by a minimal DEX parser
-(header, string_ids, type_ids, class_defs) — the resolved ratio is gated against
-RESOLVED_RATIO_FLOOR; (3) when the SDK cmdline-tools profgen binary is found, `profgen validate`
-runs on both profiles as a bonus leg — its exit code is always 0, so stderr output is a failure.
+rule silently becomes a dead rule; (2) split: the generator collects the two files in two passes
+(a minimal startup journey with includeInStartupProfile=true, then the full journey set for the
+baseline profile only), so the files must differ and the startup rule set must be a subset of the
+baseline rule set — rule identity ignores the H/S/P flags, which legitimately differ between the
+passes; (3) resolve the class rules against the release APK: each rule is translated through the
+R8 mapping of the same build (the tracked profile names pre-R8 classes) and looked up in the
+class descriptors of the APK's classes*.dex, read by a minimal DEX parser (header, string_ids,
+type_ids, class_defs) — the baseline profile's resolved ratio is gated against
+RESOLVED_RATIO_FLOOR, the startup profile's ratio is reported for its trend; (4) when the SDK
+cmdline-tools profgen binary is found, `profgen validate` runs on both profiles as a bonus leg —
+its exit code is always 0, so stderr output is a failure.
 Usage: check_profiles.py [--apk PATH] [--mapping PATH] [--profgen PATH]. Exit: 0 pass, 1 failure.
 """
 
@@ -25,18 +30,21 @@ from pathlib import Path
 from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILE_PATHS = (
-    ROOT / "app/src/main/generated/baselineProfiles/baseline-prof.txt",
-    ROOT / "app/src/main/generated/baselineProfiles/startup-prof.txt",
-)
+BASELINE_PROFILE = ROOT / "app/src/main/generated/baselineProfiles/baseline-prof.txt"
+STARTUP_PROFILE = ROOT / "app/src/main/generated/baselineProfiles/startup-prof.txt"
+PROFILE_PATHS = (BASELINE_PROFILE, STARTUP_PROFILE)
 DEFAULT_APK = ROOT / "app/build/outputs/apk/release/app-release-unsigned.apk"
 # The mapping must come from the same build as the APK; a stale one shifts the ratio.
 DEFAULT_MAPPING = ROOT / "app/build/outputs/mapping/release/mapping.txt"
 
-# Resolved-ratio floor for the class rules. R8 inlines or removes many profiled classes, so the
-# ratio sits well below 1 by design; its downward trend is the staleness signal, not the value.
-# The floor pins the current level with headroom for ordinary profile churn: a drop below it
-# means the tracked profile stopped matching the shipped code.
+# Resolved-ratio floor for the class rules of the baseline profile. R8 inlines or removes many
+# profiled classes, so the ratio sits well below 1 by design; its downward trend is the staleness
+# signal, not the value. The floor pins the current level (39.3% on the pre-split merged set of
+# 722 class rules; the split does not change the baseline journey set, so the level carries over)
+# with headroom for ordinary profile churn: a drop below it means the tracked profile stopped
+# matching the shipped code. The startup profile's ratio is reported but not floored: its class
+# set is small, so a ratio floor on it is brittle, and the differ/subset legs already pin its
+# shape; if a regeneration shows a stable startup level, pin it here as a second floor.
 RESOLVED_RATIO_FLOOR = 0.35
 
 DEX_ENTRY_RE = re.compile(r"classes\d*\.dex")
@@ -205,6 +213,50 @@ def parse_profile(path: Path) -> list[Rule]:
 
 
 # ----------------------------------------------------------------------------------------------
+# Split legs: the generator collects the two tracked files in two passes (a minimal startup
+# journey with includeInStartupProfile=true, then the full journey set for the baseline profile
+# only), so the files must differ and the startup rule set must be a subset of the baseline rule
+# set. Identity ignores the H/S/P flags: a method exercised in both passes can legitimately
+# carry different flags in each file.
+
+
+def rule_identity(rule: Rule) -> str:
+    """Flag-free identity of a rule: the class descriptor, or class + method signature."""
+    if rule.is_class_rule:
+        return rule.class_descriptor
+    return f"{rule.class_descriptor}->{rule.method_name}({rule.params}){rule.return_type}"
+
+
+def split_report(baseline_rules: list[Rule], startup_rules: list[Rule],
+                 byte_identical: bool) -> list[tuple[str, str, str]]:
+    """The differ/subset legs for the two tracked profiles, as (status, name, detail) triples."""
+    baseline_ids = {rule_identity(rule) for rule in baseline_rules}
+    startup_ids = {rule_identity(rule) for rule in startup_rules}
+    legs = []
+    if startup_ids == baseline_ids:
+        kind = ("byte-identical" if byte_identical
+                else "the same rule set, differing only in flags or comments")
+        legs.append(("FAIL", "differ",
+                     f"baseline-prof.txt and startup-prof.txt are {kind}: the startup profile"
+                     " is not split from the baseline profile — regenerate both with"
+                     " ./gradlew :app:generateBaselineProfile (two-pass generator)"))
+    else:
+        legs.append(("PASS", "differ",
+                     f"baseline-only rules: {len(baseline_ids - startup_ids)},"
+                     f" startup-only rules: {len(startup_ids - baseline_ids)}"))
+    missing = sorted(startup_ids - baseline_ids)
+    if missing:
+        legs.append(("FAIL", "subset",
+                     f"startup rules missing from baseline-prof.txt: {len(missing)} (first:"
+                     f" {missing[0]}) — regenerate both profiles with"
+                     " ./gradlew :app:generateBaselineProfile"))
+    else:
+        legs.append(("PASS", "subset",
+                     f"all {len(startup_ids)} startup rules are in the baseline profile"))
+    return legs
+
+
+# ----------------------------------------------------------------------------------------------
 # Minimal DEX reader. Only the structures needed to list the class descriptors, all u32 fields
 # little-endian: the header (magic "dex\n0NN\0", file_size at 0x20, header_size 0x70 at 0x24,
 # endian tag 0x12345678 at 0x28) points to string_ids (size at 0x38, offset at 0x3C; each item
@@ -318,6 +370,13 @@ def resolved_ratio(class_rules: set[str], mapping: dict[str, str], descriptors: 
     return resolved, resolved / len(class_rules)
 
 
+def class_rule_sets(rules: list[Rule]) -> tuple[set[str], set[str]]:
+    """The (exact, fuzzy) class-rule descriptors of one parsed profile."""
+    fuzzy = {rule.class_descriptor for rule in rules if rule.is_class_rule and rule.is_fuzzy}
+    exact = {rule.class_descriptor for rule in rules if rule.is_class_rule} - fuzzy
+    return exact, fuzzy
+
+
 # ----------------------------------------------------------------------------------------------
 # profgen bonus leg: `profgen validate` always exits 0, so stderr output is the failure signal.
 
@@ -369,7 +428,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     failures = 0
-    rules: list[Rule] = []
+    parsed_by_path: dict[Path, list[Rule]] = {}
     for path in PROFILE_PATHS:
         if not path.is_file():
             report("FAIL", "parse", f"{path.name}: file not found ({path})")
@@ -389,9 +448,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         classes = sum(1 for rule in parsed if rule.is_class_rule)
         report("PASS", "parse",
                f"{path.name}: {len(parsed)} rules ({classes} class, {len(parsed) - classes} method)")
-        rules.extend(parsed)
+        parsed_by_path[path] = parsed
     if failures:
         return 1
+
+    byte_identical = BASELINE_PROFILE.read_bytes() == STARTUP_PROFILE.read_bytes()
+    for status, name, detail in split_report(parsed_by_path[BASELINE_PROFILE],
+                                             parsed_by_path[STARTUP_PROFILE], byte_identical):
+        report(status, name, detail)
+        if status == "FAIL":
+            failures += 1
 
     try:
         descriptors, dex_count = apk_class_descriptors(args.apk)
@@ -409,26 +475,38 @@ def main(argv: Sequence[str] | None = None) -> int:
     if status == "FAIL":
         failures += 1
 
-    class_rules = {rule.class_descriptor for rule in rules if rule.is_class_rule}
-    fuzzy = sorted(rule.class_descriptor for rule in rules if rule.is_class_rule and rule.is_fuzzy)
-    exact = class_rules - set(fuzzy)
-    if not exact:
-        report("FAIL", "resolved", "no class rules in the tracked profiles, nothing to resolve")
+    baseline_exact, baseline_fuzzy = class_rule_sets(parsed_by_path[BASELINE_PROFILE])
+    startup_exact, startup_fuzzy = class_rule_sets(parsed_by_path[STARTUP_PROFILE])
+    if not baseline_exact:
+        report("FAIL", "resolved", "no class rules in baseline-prof.txt, nothing to resolve")
         return 1
     try:
         mapping = load_r8_mapping(args.mapping)
     except (DexError, OSError) as error:
         report("FAIL", "mapping", f"{error} (the mapping must come from the same build as the APK)")
         return 1
-    resolved, ratio = resolved_ratio(exact, mapping, descriptors)
-    extra = f", {len(fuzzy)} wildcard rules excluded" if fuzzy else ""
-    detail = (f"{resolved}/{len(exact)} class rules resolve in the APK dex "
-              f"(ratio {ratio:.1%}, floor {RESOLVED_RATIO_FLOOR:.1%}){extra}")
+    resolved, ratio = resolved_ratio(baseline_exact, mapping, descriptors)
+    startup_resolved, startup_ratio = resolved_ratio(startup_exact, mapping, descriptors)
+    extra = ""
+    if baseline_fuzzy or startup_fuzzy:
+        extra = (f", wildcard rules excluded: {len(baseline_fuzzy)} baseline,"
+                 f" {len(startup_fuzzy)} startup")
+    detail = (f"baseline-prof.txt: {resolved}/{len(baseline_exact)} class rules resolve in the"
+              f" APK dex (ratio {ratio:.1%}, floor {RESOLVED_RATIO_FLOOR:.1%});"
+              f" startup-prof.txt: {startup_resolved}/{len(startup_exact)}"
+              f" (ratio {startup_ratio:.1%}, trend only){extra}")
     if ratio < RESOLVED_RATIO_FLOOR:
         report("FAIL", "resolved", detail + " — the tracked profile went stale or lost classes")
         failures += 1
     else:
         report("PASS", "resolved", detail)
+    if not startup_exact and not startup_fuzzy:
+        # A startup profile without class rules gives the dex layout nothing: the split
+        # broke or the file is a leftover from before the two-pass generator.
+        report("FAIL", "resolved",
+               "startup-prof.txt carries no class rules — regenerate both profiles with"
+               " ./gradlew :app:generateBaselineProfile")
+        failures += 1
     return 1 if failures else 0
 
 

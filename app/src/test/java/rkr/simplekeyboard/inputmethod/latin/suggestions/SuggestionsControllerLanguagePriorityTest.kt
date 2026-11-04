@@ -25,6 +25,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.CompanionLexicon
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ValidatedCompanionList
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
@@ -200,6 +201,9 @@ class SuggestionsControllerLanguagePriorityTest {
         val executor = DirectExecutorService()
         val engines = LinkedHashMap<String, FakeEngine>()
         val callbacks = LinkedHashMap<String, ResultCallback>()
+        val pendingColdDeliveries =
+            HashMap<String, ArrayDeque<(ValidatedCompanionList?) -> Unit>>()
+
 
         val controller = SuggestionsController(
             strip,
@@ -213,9 +217,21 @@ class SuggestionsControllerLanguagePriorityTest {
             { _: ExecutorService, _: String -> FakePreparation() },
             false,
             { _: ExecutorService, _: String -> null },
+            coldCompanionPreparationFactory = { _, subtypeId ->
+                // Deferred delivery: the callback is kept, so a test publishes the list after
+                // the engine already started, exactly like a slow background load.
+                val captured = ArrayDeque<(ValidatedCompanionList?) -> Unit>()
+                pendingColdDeliveries[subtypeId] = captured
+                ColdCompanionPreparation { onResult -> captured.addLast(onResult) }
+            },
         )
 
         fun engine(subtypeId: String): FakeEngine = engines.getValue(subtypeId)
+
+        /** Finishes [subtypeId]'s pending list load with [list]; a no-op with no pending load. */
+        fun deliverColdList(subtypeId: String, list: ValidatedCompanionList?) {
+            pendingColdDeliveries[subtypeId]?.removeFirstOrNull()?.invoke(list)
+        }
 
         /** Delivers [suggestions] as the newest result of [subtypeId]'s engine. */
         fun deliver(
@@ -427,20 +443,72 @@ class SuggestionsControllerLanguagePriorityTest {
         assertTrue(tatarLexicon.containsWord("мама"))
     }
 
+    /**
+     * The cold-companion list: while the other language's engine is cold, a word of that
+     * language is protected by its bundled list, so a valid Russian word typed on the Tatar
+     * layout is not corrected before ru ever warms. An unlisted word stays correctable.
+     */
     @Test
-    fun aReleasedOtherLanguageProtectsNoWord() {
+    fun aColdOtherLanguageProtectsItsListedWordsThroughTheList() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true, subtypeId = tatar)
+
+        // The Russian list load finishes with "мама" but not "мыла": both are valid Russian
+        // words, only one is in the top-frequency list.
+        h.deliverColdList(russian, ValidatedCompanionList(listOf("мама")))
+
+        val tatarLexicon = requireNotNull(h.engine(tatar).receivedLexicon)
+        assertTrue(tatarLexicon.containsWord("мама"))
+        assertFalse(tatarLexicon.containsWord("мыла"))
+
+        // The warm engine takes over exactly the same guard once it exists.
+        h.controller.onSubtypeChanged(eligible = true, subtypeId = russian)
+        h.engine(russian).words += "мыла"
+        h.controller.onSubtypeChanged(eligible = true, subtypeId = tatar)
+        assertTrue(tatarLexicon.containsWord("мыла"))
+    }
+
+    /**
+     * A list that arrives after the engine was published still protects: the guard reads the
+     * live map from the engine worker, so the load finishing late changes the answer at once.
+     */
+    @Test
+    fun aListArrivingAfterPublicationProtectsAtOnce() {
+        val h = Harness()
+        h.controller.onStartInput(eligible = true, subtypeId = tatar)
+
+        val tatarLexicon = requireNotNull(h.engine(tatar).receivedLexicon)
+        assertFalse("no list yet, no cold protection", tatarLexicon.containsWord("мама"))
+
+        // The one-per-process load finishes now; the guard sees it without any re-wiring.
+        h.deliverColdList(russian, ValidatedCompanionList(listOf("мама")))
+        assertTrue(tatarLexicon.containsWord("мама"))
+    }
+
+    /**
+     * Releasing the other language's engine ends only the warm half of the guard: a word the
+     * engine alone knew stays correctable again, while a word of its bundled list stays
+     * protected — the list is not the engine's and outlives the release.
+     */
+    @Test
+    fun aReleasedOtherLanguageStillProtectsItsListedWords() {
         val h = Harness()
         // Glide off, so turning suggestions off schedules every engine's release.
         h.controller.onStartInput(eligible = true, subtypeId = tatar, glideEligible = false)
         h.controller.onSubtypeChanged(eligible = true, subtypeId = russian, glideEligible = false)
         h.controller.onSubtypeChanged(eligible = true, subtypeId = tatar, glideEligible = false)
-        h.engine(russian).words += "мама"
+        h.deliverColdList(russian, ValidatedCompanionList(listOf("мама")))
+        h.engine(russian).words += "мыла"
+
         val tatarLexicon = requireNotNull(h.engine(tatar).receivedLexicon)
         assertTrue(tatarLexicon.containsWord("мама"))
+        assertTrue(tatarLexicon.containsWord("мыла"))
 
         h.controller.onSuggestionsSettingDisabled()
 
-        assertFalse(tatarLexicon.containsWord("мама"))
+        assertTrue("the bundled list survives the release", tatarLexicon.containsWord("мама"))
+        assertFalse("the released engine's own word is exposed again",
+            tatarLexicon.containsWord("мыла"))
     }
 
     @Test

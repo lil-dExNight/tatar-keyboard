@@ -38,8 +38,12 @@ class AtomicBigramStore(
     private val temporaryPrefix: String = supportedArtifacts.first().temporaryFilePrefix
     private val finalFilePattern: Regex = supportedArtifacts.first().finalFilePattern
 
-    /** Full raw validations run by this store instance. */
+    /** Verifications and validations of published raw files run by this store instance. */
     internal var validationCount: Int = 0
+        private set
+
+    /** Full structural walks run by this store instance (publication and revalidation). */
+    internal var fullValidationCount: Int = 0
         private set
 
     fun ensurePublished(spec: BigramArtifactSpec): BigramPreparationResult {
@@ -97,8 +101,9 @@ class AtomicBigramStore(
             if (previousCount == Int.MAX_VALUE) return null
             sharedState.leaseCounts[file.name] = previousCount + 1
             sharedState.validations.remove(file.name)
-            // The validation above (run now, or recorded at publication) covered this content in
-            // this process, so the engine may skip its structural walk. See StoreValidationToken.
+            // The validation above (in full, or the pinned-content check recorded for this
+            // content) covered this content in this process, so the engine may skip its
+            // structural walk. See StoreValidationToken.
             val token = StoreValidationToken.issue(
                 validated.rawSha256,
                 validated.rawSize,
@@ -152,7 +157,10 @@ class AtomicBigramStore(
         val destination = File(directory, spec.finalFileName)
         if (destination.isFile) {
             try {
-                val validated = validate(destination, spec)
+                // Steady-state rerun: the file under its final name was published by a full
+                // validation, so a pinned-content check is enough to reactivate it. Any mismatch
+                // falls through to republish, which validates fresh bytes in full.
+                val validated = verify(destination, spec)
                 recordValidation(sharedState, destination, spec, validated)
                 enforceStableRetention(directory, destination.name, sharedState)
                 return BigramPreparationResult.Published(
@@ -302,7 +310,13 @@ class AtomicBigramStore(
 
     private fun validate(file: File, spec: BigramArtifactSpec): ValidatedBigramTable {
         validationCount++
+        fullValidationCount++
         return validator.validateRaw(file, spec)
+    }
+
+    private fun verify(file: File, spec: BigramArtifactSpec): ValidatedBigramTable {
+        validationCount++
+        return validator.verifyPinnedContent(file, spec)
     }
 
     private fun recordValidation(
@@ -378,7 +392,6 @@ class AtomicBigramStore(
         rawSize = rawSize,
         headCount = headCount,
         pairCount = pairCount,
-        successVocabularyCount = successVocabularyCount,
         schemaId = schemaId,
         formatVersion = formatVersion,
         rawSha256 = rawSha256,
@@ -420,7 +433,7 @@ private class SharedBigramStorageState {
     val lock = Any()
     val leaseCounts = mutableMapOf<String, Int>()
 
-    /** Publication-time validations by file name; same rules as in [AtomicDictionaryStore]. */
+    /** Validations by file name; same rules as in [AtomicDictionaryStore]. */
     val validations = mutableMapOf<String, RecordedBigramValidation>()
 }
 

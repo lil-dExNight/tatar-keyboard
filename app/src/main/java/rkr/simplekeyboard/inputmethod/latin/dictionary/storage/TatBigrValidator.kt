@@ -3,6 +3,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.zip.DataFormatException
@@ -15,7 +16,6 @@ data class ValidatedBigramTable(
     val rawSize: Long,
     val headCount: Long,
     val pairCount: Long,
-    val successVocabularyCount: Long,
     val schemaId: Int,
     val formatVersion: Int,
     val rawSha256: String,
@@ -23,9 +23,12 @@ data class ValidatedBigramTable(
 
 /**
  * Strict validator for the TATBIGR schema-3 format. Like [TdictValidator] it has two phases:
- * inflate with digest, then validate the decompressed structure. The structural phase reads the
- * whole raw file into memory, bounded by [TatBigrFormat.MAX_RAW_SIZE], because the varint streams
- * are easier to walk over a byte array.
+ * inflate with digest, then validate the decompressed structure, and the same two tiers: the
+ * full [validateRaw] walks every varint stream over one in-memory copy of the raw file (bounded
+ * by [TatBigrFormat.MAX_RAW_SIZE], because the streams are easier to walk over a byte array),
+ * while [verifyPinnedContent] checks the header, the dictionary link, the section arithmetic,
+ * the embedded checksum and a streaming SHA-256 against the pinned raw SHA-256 through one
+ * fixed-size buffer.
  *
  * It cannot check that an index is below the vocabulary size: the vocabulary is the linked
  * dictionary. It checks that the header names the dictionary pinned by
@@ -102,7 +105,215 @@ class TatBigrValidator {
         return InflatedAsset(compressedSize, compressedSha, rawSize)
     }
 
+    fun verifyPinnedContent(file: File, spec: BigramArtifactSpec): ValidatedBigramTable {
+        val header = verifyHeaderStreaming(file, spec)
+        return ValidatedBigramTable(
+            rawSize = header.length,
+            headCount = header.headCount,
+            pairCount = header.pairCount,
+            schemaId = spec.schemaId,
+            formatVersion = spec.formatVersion,
+            rawSha256 = spec.expectedRawSha256,
+        )
+    }
+
+    /**
+     * [verifyPinnedContent]'s phase: the same bounds, header, dictionary-link, section-
+     * arithmetic, checksum and raw SHA-256 checks as [verifyHeaderAndPinnedRawSha], but streamed
+     * through one fixed-size buffer instead of an in-memory copy of the file.
+     */
+    private fun verifyHeaderStreaming(
+        file: File,
+        spec: BigramArtifactSpec,
+    ): VerifiedBigramHeader {
+        val length = file.length()
+        if (length > spec.maxRawSize) {
+            throw BigramValidationException("raw size limit exceeded")
+        }
+        if (length < TatBigrFormat.HEADER_SIZE) {
+            throw BigramValidationException("raw table is shorter than its header")
+        }
+        if (length != spec.expectedRawSize) {
+            throw BigramValidationException("unexpected raw size")
+        }
+
+        val header = ByteArray(TatBigrFormat.HEADER_SIZE)
+        FileInputStream(file).use { stream ->
+            readExact(stream, header, TatBigrFormat.HEADER_SIZE)
+            val decoded = decodeAndCheckHeader(header, length, spec)
+
+            val rawDigest = MessageDigest.getInstance("SHA-256")
+            rawDigest.update(header)
+            val checksumDigest = MessageDigest.getInstance("SHA-256")
+            checksumDigest.update(header, 0, TatBigrFormat.CHECKSUM_OFFSET)
+            checksumDigest.update(ByteArray(TatBigrFormat.CHECKSUM_SIZE))
+            var remaining = length - TatBigrFormat.HEADER_SIZE
+            val buffer = ByteArray(VERIFY_BUFFER_SIZE)
+            while (remaining > 0) {
+                val count = minOf(VERIFY_BUFFER_SIZE.toLong(), remaining).toInt()
+                readExact(stream, buffer, count)
+                rawDigest.update(buffer, 0, count)
+                checksumDigest.update(buffer, 0, count)
+                remaining -= count
+            }
+            if (stream.read() != -1) {
+                throw BigramValidationException("raw table changed while reading")
+            }
+            if (!MessageDigest.isEqual(decoded.storedChecksum, checksumDigest.digest())) {
+                throw BigramValidationException("SHA-256 checksum mismatch")
+            }
+            if (!constantTimeHexEquals(rawDigest.digest().toHex(), spec.expectedRawSha256)) {
+                throw BigramValidationException("unexpected raw SHA-256")
+            }
+            return VerifiedBigramHeader(
+                length,
+                // The streaming tier walks nothing, so it hands the walk no bytes; parity with
+                // TdictValidator's streaming header.
+                ByteArray(0),
+                decoded.headCount,
+                decoded.pairCount,
+                decoded.blockCount,
+                decoded.blockIndexOffset,
+                decoded.headDeltasOffset,
+                decoded.headDeltasSize,
+                decoded.countsOffset,
+                decoded.successIdsOffset,
+                decoded.successIdsSize,
+            )
+        }
+    }
+
+    /** Reads exactly [count] bytes into [target] or throws: the file changed under the reader. */
+    private fun readExact(stream: java.io.InputStream, target: ByteArray, count: Int) {
+        var offset = 0
+        while (offset < count) {
+            val got = stream.read(target, offset, count - offset)
+            if (got < 0) throw BigramValidationException("raw table changed while reading")
+            offset += got
+        }
+    }
+
     fun validateRaw(file: File, spec: BigramArtifactSpec): ValidatedBigramTable {
+        val header = verifyHeaderAndPinnedRawSha(file, spec)
+        val raw = header.raw
+        val blockIndexOffset = header.blockIndexOffset
+        val headDeltasOffset = header.headDeltasOffset
+        val headDeltasSize = header.headDeltasSize
+        val countsOffset = header.countsOffset
+        val successIdsOffset = header.successIdsOffset
+        val successIdsSize = header.successIdsSize
+        val headCount = header.headCount
+        val pairCount = header.pairCount
+        val blockCount = header.blockCount
+
+        // Structural walk: block records strictly increasing, head deltas >= 1 and minimal-form,
+        // counts >= 1 summing to pairCount, success ids minimal-form, every stream ending exactly
+        // on its block boundary. Index upper bounds are checked against the real dictionary in
+        // TatBigrPrefixIndex.open — see the class KDoc.
+        var previousFirstIndex = -1L
+        var previousDeltaOffset = 0L
+        var previousSuccessOffset = 0L
+        for (block in 0 until blockCount.toInt()) {
+            val firstIndex = u32(raw, blockIndexOffset + 12 * block)
+            val deltaOffset = u32(raw, blockIndexOffset + 12 * block + 4)
+            val successOffset = u32(raw, blockIndexOffset + 12 * block + 8)
+            if (firstIndex <= previousFirstIndex) {
+                throw BigramValidationException("block first indices are not strictly increasing")
+            }
+            if (deltaOffset > headDeltasSize || deltaOffset < previousDeltaOffset ||
+                successOffset > successIdsSize || successOffset < previousSuccessOffset
+            ) {
+                throw BigramValidationException("block stream offsets are not canonical")
+            }
+            if (block == 0 && (deltaOffset != 0L || successOffset != 0L)) {
+                throw BigramValidationException("the first block's stream offsets must be zero")
+            }
+            previousFirstIndex = firstIndex
+            previousDeltaOffset = deltaOffset
+            previousSuccessOffset = successOffset
+        }
+
+        var successCursor = successIdsOffset.toInt()
+        var pairTotal = 0L
+        var previousHeadIndex = -1L
+        for (block in 0 until blockCount.toInt()) {
+            val first = block * TatBigrFormat.HEAD_BLOCK_SIZE
+            val blockHeads = minOf(TatBigrFormat.HEAD_BLOCK_SIZE.toLong(), headCount - first).toInt()
+            val deltaEnd = (headDeltasOffset + if (block + 1 < blockCount) {
+                u32(raw, blockIndexOffset + 12 * (block + 1) + 4)
+            } else {
+                headDeltasSize
+            }).toInt()
+            if (successCursor.toLong() != successIdsOffset + u32(raw, blockIndexOffset + 12 * block + 8)) {
+                throw BigramValidationException("block success stream does not start on its boundary")
+            }
+
+            var cursor = (headDeltasOffset + u32(raw, blockIndexOffset + 12 * block + 4)).toInt()
+            var headIndex = u32(raw, blockIndexOffset + 12 * block)
+            if (headIndex <= previousHeadIndex) {
+                throw BigramValidationException("head indices are not strictly increasing")
+            }
+            for (position in 0 until blockHeads) {
+                if (position > 0) {
+                    val packed = decodeVarint(raw, cursor, deltaEnd)
+                    cursor = (packed and 0xffff_ffffL).toInt()
+                    val delta = packed ushr 32
+                    if (delta < 1) {
+                        throw BigramValidationException("head index delta is not positive")
+                    }
+                    headIndex += delta
+                    if (headIndex <= previousHeadIndex) {
+                        throw BigramValidationException("head indices are not strictly increasing")
+                    }
+                }
+                previousHeadIndex = headIndex
+
+                val count = raw[(countsOffset + first + position).toInt()].toInt() and 0xff
+                if (count < 1) {
+                    throw BigramValidationException("a head has an empty success range")
+                }
+                if (pairTotal + count > pairCount) {
+                    throw BigramValidationException("success counts do not add up to pairCount")
+                }
+                repeat(count) {
+                    val packed = decodeVarint(
+                        raw, successCursor, (successIdsOffset + successIdsSize).toInt(),
+                    )
+                    successCursor = (packed and 0xffff_ffffL).toInt()
+                }
+                pairTotal += count
+            }
+            if (cursor != deltaEnd) {
+                throw BigramValidationException("block head delta stream does not end on its boundary")
+            }
+        }
+        if (pairTotal != pairCount) {
+            throw BigramValidationException("success counts do not add up to pairCount")
+        }
+        if (successCursor.toLong() != successIdsOffset + successIdsSize) {
+            throw BigramValidationException("success id stream does not end exactly at its section end")
+        }
+
+        return ValidatedBigramTable(
+            rawSize = header.length,
+            headCount = headCount,
+            pairCount = pairCount,
+            schemaId = spec.schemaId,
+            formatVersion = spec.formatVersion,
+            rawSha256 = spec.expectedRawSha256,
+        )
+    }
+
+    /**
+     * The shared phase of [validateRaw]: bounds and pins the file, decodes and checks the
+     * header, the linked dictionary SHA-256 and the section arithmetic, verifies the embedded
+     * checksum and the pinned raw SHA-256. Returns the decoded header with the verified raw
+     * bytes, so the full walk reads them without a second file read.
+     */
+    private fun verifyHeaderAndPinnedRawSha(
+        file: File,
+        spec: BigramArtifactSpec,
+    ): VerifiedBigramHeader {
         val length = file.length()
         if (length > spec.maxRawSize) {
             throw BigramValidationException("raw size limit exceeded")
@@ -115,7 +326,46 @@ class TatBigrValidator {
         }
         val raw = readExactly(file, length)
             ?: throw BigramValidationException("raw table changed while reading")
+        val decoded = decodeAndCheckHeader(raw, length, spec)
 
+        val zeroedChecksum = zeroedWindowDigest(
+            raw,
+            TatBigrFormat.CHECKSUM_OFFSET,
+            TatBigrFormat.CHECKSUM_SIZE,
+        )
+        if (!MessageDigest.isEqual(decoded.storedChecksum, zeroedChecksum)) {
+            throw BigramValidationException("SHA-256 checksum mismatch")
+        }
+        val rawSha = MessageDigest.getInstance("SHA-256").digest(raw).toHex()
+        if (!constantTimeHexEquals(rawSha, spec.expectedRawSha256)) {
+            throw BigramValidationException("unexpected raw SHA-256")
+        }
+
+        return VerifiedBigramHeader(
+            length,
+            raw,
+            decoded.headCount,
+            decoded.pairCount,
+            decoded.blockCount,
+            decoded.blockIndexOffset,
+            decoded.headDeltasOffset,
+            decoded.headDeltasSize,
+            decoded.countsOffset,
+            decoded.successIdsOffset,
+            decoded.successIdsSize,
+        )
+    }
+
+    /**
+     * Decodes the header of a bounded, length-pinned file and checks the constants, the linked
+     * dictionary SHA-256, the reserved bytes and the section arithmetic. Shared by both
+     * verification phases.
+     */
+    private fun decodeAndCheckHeader(
+        raw: ByteArray,
+        length: Long,
+        spec: BigramArtifactSpec,
+    ): DecodedHeader {
         val magic = raw.copyOfRange(0, 8)
         if (!magic.contentEquals(TatBigrFormat.MAGIC.toByteArray(Charsets.US_ASCII))) {
             throw BigramValidationException("wrong bigram table magic")
@@ -175,160 +425,52 @@ class TatBigrValidator {
         ) {
             throw BigramValidationException("noncanonical section layout")
         }
-        // Every success id takes at least one byte, so a larger pairCount can never add up; the
-        // bound also caps the distinct-success scratch below.
+        // Every success id takes at least one byte, so a larger pairCount can never add up.
         if (pairCount > successIdsSize) {
             throw BigramValidationException("success counts do not add up to pairCount")
         }
-
-        val zeroedChecksum = zeroedWindowDigest(
-            raw,
-            TatBigrFormat.CHECKSUM_OFFSET,
-            TatBigrFormat.CHECKSUM_SIZE,
-        )
-        if (!MessageDigest.isEqual(
-                raw.copyOfRange(TatBigrFormat.CHECKSUM_OFFSET, TatBigrFormat.CHECKSUM_OFFSET + 32),
-                zeroedChecksum,
-            )
-        ) {
-            throw BigramValidationException("SHA-256 checksum mismatch")
-        }
-        val rawSha = MessageDigest.getInstance("SHA-256").digest(raw).toHex()
-        if (!constantTimeHexEquals(rawSha, spec.expectedRawSha256)) {
-            throw BigramValidationException("unexpected raw SHA-256")
-        }
-
-        // Structural walk: block records strictly increasing, head deltas >= 1 and minimal-form,
-        // counts >= 1 summing to pairCount, success ids minimal-form, every stream ending exactly
-        // on its block boundary. Index upper bounds are checked against the real dictionary in
-        // TatBigrPrefixIndex.open — see the class KDoc.
-        var previousFirstIndex = -1L
-        var previousDeltaOffset = 0L
-        var previousSuccessOffset = 0L
-        for (block in 0 until blockCount.toInt()) {
-            val firstIndex = u32(raw, (blockIndexOffset + 12 * block))
-            val deltaOffset = u32(raw, (blockIndexOffset + 12 * block + 4))
-            val successOffset = u32(raw, (blockIndexOffset + 12 * block + 8))
-            if (firstIndex <= previousFirstIndex) {
-                throw BigramValidationException("block first indices are not strictly increasing")
-            }
-            if (deltaOffset > headDeltasSize || deltaOffset < previousDeltaOffset ||
-                successOffset > successIdsSize || successOffset < previousSuccessOffset
-            ) {
-                throw BigramValidationException("block stream offsets are not canonical")
-            }
-            if (block == 0 && (deltaOffset != 0L || successOffset != 0L)) {
-                throw BigramValidationException("the first block's stream offsets must be zero")
-            }
-            previousFirstIndex = firstIndex
-            previousDeltaOffset = deltaOffset
-            previousSuccessOffset = successOffset
-        }
-
-        var successCursor = successIdsOffset.toInt()
-        var pairTotal = 0L
-        var previousHeadIndex = -1L
-        // Success ids as u32 bits in an Int, kept for the distinct count.
-        val successes = IntArray(pairCount.toInt())
-        for (block in 0 until blockCount.toInt()) {
-            val first = block * TatBigrFormat.HEAD_BLOCK_SIZE
-            val blockHeads = minOf(TatBigrFormat.HEAD_BLOCK_SIZE.toLong(), headCount - first).toInt()
-            val deltaEnd = (headDeltasOffset + if (block + 1 < blockCount) {
-                u32(raw, blockIndexOffset + 12 * (block + 1) + 4)
-            } else {
-                headDeltasSize
-            }).toInt()
-            if (successCursor.toLong() != successIdsOffset + u32(raw, blockIndexOffset + 12 * block + 8)) {
-                throw BigramValidationException("block success stream does not start on its boundary")
-            }
-
-            var cursor = (headDeltasOffset + u32(raw, blockIndexOffset + 12 * block + 4)).toInt()
-            var headIndex = u32(raw, blockIndexOffset + 12 * block)
-            if (headIndex <= previousHeadIndex) {
-                throw BigramValidationException("head indices are not strictly increasing")
-            }
-            for (position in 0 until blockHeads) {
-                if (position > 0) {
-                    val packed = decodeVarint(raw, cursor, deltaEnd)
-                    cursor = (packed and 0xffff_ffffL).toInt()
-                    val delta = packed ushr 32
-                    if (delta < 1) {
-                        throw BigramValidationException("head index delta is not positive")
-                    }
-                    headIndex += delta
-                    if (headIndex <= previousHeadIndex) {
-                        throw BigramValidationException("head indices are not strictly increasing")
-                    }
-                }
-                previousHeadIndex = headIndex
-
-                val count = raw[(countsOffset + first + position).toInt()].toInt() and 0xff
-                if (count < 1) {
-                    throw BigramValidationException("a head has an empty success range")
-                }
-                if (pairTotal + count > pairCount) {
-                    throw BigramValidationException("success counts do not add up to pairCount")
-                }
-                repeat(count) {
-                    val packed = decodeVarint(
-                        raw, successCursor, (successIdsOffset + successIdsSize).toInt(),
-                    )
-                    successCursor = (packed and 0xffff_ffffL).toInt()
-                    successes[(pairTotal + it).toInt()] = (packed ushr 32).toInt()
-                }
-                pairTotal += count
-            }
-            if (cursor != deltaEnd) {
-                throw BigramValidationException("block head delta stream does not end on its boundary")
-            }
-        }
-        if (pairTotal != pairCount) {
-            throw BigramValidationException("success counts do not add up to pairCount")
-        }
-        if (successCursor.toLong() != successIdsOffset + successIdsSize) {
-            throw BigramValidationException("success id stream does not end exactly at its section end")
-        }
-
-        val distinctSuccesses = countDistinct(successes)
-
-        return ValidatedBigramTable(
-            rawSize = length,
-            headCount = headCount,
-            pairCount = pairCount,
-            successVocabularyCount = distinctSuccesses,
-            schemaId = schemaId,
-            formatVersion = formatVersion,
-            rawSha256 = rawSha,
+        return DecodedHeader(
+            headCount,
+            pairCount,
+            blockCount,
+            blockIndexOffset,
+            headDeltasOffset,
+            headDeltasSize,
+            countsOffset,
+            successIdsOffset,
+            successIdsSize,
+            raw.copyOfRange(TatBigrFormat.CHECKSUM_OFFSET, TatBigrFormat.CHECKSUM_OFFSET + 32),
         )
     }
 
-    /**
-     * Distinct u32 values in [ids]: a bit set over 0..max when it takes at most as many bytes as
-     * [ids] (the case for dictionary word indices), otherwise a sort. Reorders [ids].
-     */
-    private fun countDistinct(ids: IntArray): Long {
-        var max = 0L
-        for (id in ids) max = maxOf(max, id.toLong() and 0xffff_ffffL)
-        if (max < 32L * ids.size) {
-            val bits = LongArray((max / 64 + 1).toInt())
-            var distinct = 0L
-            for (id in ids) {
-                val word = id ushr 6
-                val mask = 1L shl id
-                if (bits[word] and mask == 0L) {
-                    bits[word] = bits[word] or mask
-                    distinct++
-                }
-            }
-            return distinct
-        }
-        ids.sort()
-        var distinct = 0L
-        for (index in ids.indices) {
-            if (index == 0 || ids[index] != ids[index - 1]) distinct++
-        }
-        return distinct
-    }
+    /** The header fields both tiers check, plus the stored checksum bytes. */
+    private class DecodedHeader(
+        val headCount: Long,
+        val pairCount: Long,
+        val blockCount: Long,
+        val blockIndexOffset: Long,
+        val headDeltasOffset: Long,
+        val headDeltasSize: Long,
+        val countsOffset: Long,
+        val successIdsOffset: Long,
+        val successIdsSize: Long,
+        val storedChecksum: ByteArray,
+    )
+
+    /** The decoded and fully pinned header; [raw] carries bytes only for the full walk. */
+    private class VerifiedBigramHeader(
+        val length: Long,
+        val raw: ByteArray,
+        val headCount: Long,
+        val pairCount: Long,
+        val blockCount: Long,
+        val blockIndexOffset: Long,
+        val headDeltasOffset: Long,
+        val headDeltasSize: Long,
+        val countsOffset: Long,
+        val successIdsOffset: Long,
+        val successIdsSize: Long,
+    )
 
     /** Canonical minimal-form u32 varint; returns (value shl 32) or nextOffset. */
     private fun decodeVarint(raw: ByteArray, offset: Int, limit: Int): Long {
@@ -360,5 +502,6 @@ class TatBigrValidator {
 
     companion object {
         private const val BUFFER_SIZE = 8 * 1024
+        private const val VERIFY_BUFFER_SIZE = 64 * 1024
     }
 }

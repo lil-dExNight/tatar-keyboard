@@ -90,4 +90,25 @@ class SuggestionStripDecorationContractTest {
             viewSource().contains("private const val TEXT_SIZE_DP = 18f"),
         )
     }
+
+    @Test
+    fun theClipCellPaintsAClipboardMarkerFromPrimitives() {
+        val text = viewSource()
+        val body = onDrawBody(text)
+        assertTrue("the cell loop asks the state which cell is the clip cell",
+            body.contains("state.isClipCell(cell)"))
+        assertTrue("the marker is a drawn glyph, not a font character",
+            body.contains("private fun drawClipMarker(canvas: Canvas, cellLeftPx: Float)"))
+        val marker = text.substringAfter("private fun drawClipMarker(")
+            .substringBefore("@Suppress(\"ClickableViewAccessibility\")")
+        assertTrue("a rounded-rect board", marker.contains("canvas.drawRoundRect("))
+        assertTrue("and its content lines", marker.contains("canvas.drawLine("))
+        assertTrue("its rect is a field, never allocated in the draw loop",
+            text.contains("private val clipMarkerRect = RectF()"))
+        assertFalse(marker.contains("RectF("))
+        // The text gives the marker's width up at ellipsize time, so the two never overlap.
+        val rebuild = text.substringAfter("private fun rebuildDisplaySuggestions()")
+        assertTrue("the clip cell's text width loses the marker's reserve",
+            rebuild.contains("if (state.isClipCell(cell)) clipMarkerReservePx else 0f"))
+    }
 }

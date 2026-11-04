@@ -3,9 +3,10 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 import java.io.File
 
 /**
- * Proof that a store fully validated a published file's content in this process, handed to the
- * engine through the lease so the reader (`TdictPrefixIndex.open`, `TatBigrPrefixIndex.open`)
- * can skip its structural walk and repeat only the header and section-arithmetic checks.
+ * Proof that a store validated a published file's content in full or verified it against the
+ * pinned content in this process, handed to the engine through the lease so the reader
+ * (`TdictPrefixIndex.open`, `TatBigrPrefixIndex.open`) can skip its structural walk and repeat
+ * only the header and section-arithmetic checks.
  *
  * A token vouches for content (raw SHA-256 and size), not for a path. [matches] also requires
  * the process-local serial to be in the issuance registry, so a fabricated token never matches.

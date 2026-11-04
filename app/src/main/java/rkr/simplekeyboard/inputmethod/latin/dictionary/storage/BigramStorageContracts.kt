@@ -90,15 +90,15 @@ data class BigramArtifactSpec(
             subtypeId = PersonalSubtypes.TATAR_RU,
             storageDirectoryName = "bigrams",
             assetPath = "bigrams/tatar_bigrams_v1.tatbigr.zlib",
-            expectedCompressedSize = 106_128,
+            expectedCompressedSize = 212_223,
             expectedCompressedSha256 =
-                "7863e3c734ee38c6b582d1e36e5598c73cebc0f55beaae7c84b5aa855497bc3f",
-            expectedRawSize = 166_789,
+                "c5d07358e2a1f5c0f18cd05f1218a33af157f6ba1588c72e225e18949b1c6004",
+            expectedRawSize = 306_632,
             expectedRawSha256 =
-                "cf2549b0c30906dc8e79f5fc92b88243d4c8f3925f47545bfa7b9d750617d19e",
+                "f56240733a15881ebd3dc4a295e7655bfafd81073ca6b8f19974f102d0c17a8b",
             expectedDictionaryRawSha256 =
-                "263ac0eff1a6a7507c130ff11c852b11708714c25ce813118b3f390b9eaf1dd5",
-            expectedHeadCount = 12_739,
+                "811d7f8c571c6b4dfb7e66b05b2688037eeb02eb3c857c8eba9b1ee9d85819af",
+            expectedHeadCount = 12_906,
         )
         // </generated pins>
 
@@ -112,15 +112,15 @@ data class BigramArtifactSpec(
             subtypeId = PersonalSubtypes.RUSSIAN,
             storageDirectoryName = "bigrams-ru",
             assetPath = "bigrams/russian_bigrams_v1.tatbigr.zlib",
-            expectedCompressedSize = 63_312,
+            expectedCompressedSize = 134_274,
             expectedCompressedSha256 =
-                "aa25f6292f4d645c6c1fbb52a2744dfdfcf923f835cb1e42c04dac22250ae817",
-            expectedRawSize = 131_662,
+                "11dcdd1e751f6e5455ac643f09ca432b59802cfd4d1191a574a4a537b467f610",
+            expectedRawSize = 242_234,
             expectedRawSha256 =
-                "20a228481952097b0001a057bb4615aba1b60ba2bf0becd3cdc27538532fb667",
+                "a4a2c15d886df27b83d19e6d2554cd62a092edee5ac8b1aa14207596d19c46ed",
             expectedDictionaryRawSha256 =
                 "f05499a3b4c3c2811c6ee8e9084dfaf472951a289a20dde2ab8cb098cb5a15b2",
-            expectedHeadCount = 9_998,
+            expectedHeadCount = 10_000,
         )
         // </generated pins>
     }
@@ -140,7 +140,6 @@ data class PublishedBigramTable(
     val rawSize: Long,
     val headCount: Long,
     val pairCount: Long,
-    val successVocabularyCount: Long,
     val schemaId: Int,
     val formatVersion: Int,
     val rawSha256: String,
@@ -163,8 +162,8 @@ interface PublishedBigramTableCatalog {
 class BigramTableLease internal constructor(
     val table: PublishedBigramTable,
     /**
-     * Proof the store fully validated [table]'s content in this process; null from a hand-built
-     * catalog. See [StoreValidationToken].
+     * Proof the store validated [table]'s content in full or verified it against the pinned
+     * content in this process; null from a hand-built catalog. See [StoreValidationToken].
      */
     val validationToken: StoreValidationToken? = null,
     private val release: () -> Unit,

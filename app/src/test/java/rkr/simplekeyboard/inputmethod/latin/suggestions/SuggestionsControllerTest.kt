@@ -182,6 +182,12 @@ class SuggestionsControllerTest {
             prewarmCount++
         }
 
+        var releaseCount = 0
+
+        override fun releaseGlideIndex() {
+            releaseCount++
+        }
+
         override fun destroy(timeoutMs: Long): Boolean {
             destroyCount++
             return destroyResult
@@ -310,6 +316,64 @@ class SuggestionsControllerTest {
         assertEquals(1, h.engine.prewarmCount)
         assertTrue(h.engine.requestedPrefixes.isEmpty())
         assertTrue(h.engine.requestedContexts.isEmpty())
+    }
+
+    @Test
+    fun glideIndexPrewarmsAtTheSessionsFirstTrackingDownWithoutStartingLookup() {
+        val h = Harness()
+        h.controller.setGlideGate(GlideGate { true })
+        h.controller.onStartInput(eligible = true)
+
+        assertEquals(0, h.engine.prewarmCount)
+        h.controller.onGlideTrackingStarted()
+
+        assertEquals(1, h.engine.prewarmCount)
+        assertTrue(h.engine.requestedPrefixes.isEmpty())
+        assertTrue(h.engine.requestedContexts.isEmpty())
+    }
+
+    @Test
+    fun glideTrackingStartPrewarmObeysTheGates() {
+        // Glide preference off: the tracking down prewarms nothing.
+        val gateOff = Harness()
+        gateOff.controller.setGlideGate(GlideGate { false })
+        gateOff.controller.onStartInput(eligible = true)
+        gateOff.controller.onGlideTrackingStarted()
+        assertEquals(0, gateOff.engine.prewarmCount)
+
+        // A field where glide is not eligible: nothing (the engine was never even started).
+        val ineligible = Harness()
+        ineligible.controller.setGlideGate(GlideGate { true })
+        ineligible.controller.onStartInput(eligible = false, glideEligible = false)
+        ineligible.controller.onGlideTrackingStarted()
+        assertEquals(0, ineligible.engine.prewarmCount)
+
+        // Locked: nothing.
+        val locked = Harness()
+        locked.controller.setGlideGate(GlideGate { true })
+        locked.controller.setKeyguardGate(KeyguardGate { true })
+        locked.controller.onStartInput(eligible = true)
+        locked.controller.onGlideTrackingStarted()
+        assertEquals(0, locked.engine.prewarmCount)
+    }
+
+    @Test
+    fun glideTrackingStartPrewarmKeepsTheSingleLanguageResidency() {
+        // The session's first tracking down on a freshly active language drops the previous
+        // language's index before prewarming, exactly as an arming glide does.
+        val h = Harness()
+        h.controller.setGlideGate(GlideGate { true })
+        h.controller.onStartInput(eligible = true)
+        h.controller.onGlideTrackingStarted()
+        assertEquals(1, h.engine.prewarmCount)
+        assertEquals(0, h.engine.releaseCount)
+
+        h.controller.onStartInput(eligible = true, subtypeId = "ru")
+        // The same fake serves every slot in this harness; ru publishes synchronously.
+        h.controller.signalDictionaryReadyForTest()
+        h.controller.onGlideTrackingStarted()
+        assertEquals(2, h.engine.prewarmCount)
+        assertEquals("the left language's index is dropped", 1, h.engine.releaseCount)
     }
 
     @Test

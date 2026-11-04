@@ -618,6 +618,6 @@ class SuggestionsControllerBigramAttachTest {
     }
 
     private fun fakeTable() = rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedBigramTable(
-        1, "tt", java.io.File("unused"), 1, 1, 1, 1, 2, 1, "0".repeat(64),
+        1, "tt", java.io.File("unused"), 1, 1, 1, 2, 1, "0".repeat(64),
     )
 }

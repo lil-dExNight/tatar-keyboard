@@ -90,6 +90,9 @@ class GlideEndToEndTest {
         /** Whether the field asks for sentence caps (`TYPE_TEXT_FLAG_CAP_SENTENCES`). */
         var capSentencesField: Boolean = true
 
+        /** Whether the field asks for per-word caps (`TYPE_TEXT_FLAG_CAP_WORDS`). */
+        var capWordsField: Boolean = false
+
         /** Whether the editor knows the cursor position. */
         var knownCursor: Boolean = true
 
@@ -98,8 +101,14 @@ class GlideEndToEndTest {
 
         override fun cursorPosition(): Int = text.length
 
-        override fun glideStartsSentence(): Boolean =
-            autoCap && capSentencesField && TatarWordUtils.glideStartsSentence(cache, !cacheLost)
+        override fun glideAutoCapsWord(): Boolean {
+            // The production rule, modeled: the field's caps flags consumed on the text as the
+            // commit leaves it (a prepended space is a word start for CAP_WORDS, and may start a
+            // sentence for CAP_SENTENCES).
+            if (!autoCap) return false
+            if (capWordsField && TatarWordUtils.glideNeedsLeadingSpace(cache)) return true
+            return capSentencesField && TatarWordUtils.glideStartsSentence(cache, !cacheLost)
+        }
 
         override fun cachedWordBeforeCursor(): String = TatarWordUtils.extractTrailingWord(cache)
         override fun hasKnownCursor(): Boolean = knownCursor
@@ -1216,6 +1225,57 @@ class GlideEndToEndTest {
         assertEquals("сүз. СӘЛӘМ", h.editor.text)
     }
 
+    // --- Per-word capitalization (TYPE_TEXT_FLAG_CAP_WORDS) ------------------------------------
+
+    @Test
+    fun aGlideAfterAWordIsCapitalizedInACapWordsField() {
+        // "сүз" (no trailing space): the live shift state sees a cursor right after a letter,
+        // where CAP_WORDS does not shift, but the commit prepends the space and the word lands
+        // at a word start — exactly where typed letters capitalize per word.
+        val h = tatarHarnessWith("сүз")
+        h.editor.autoCap = true
+        h.editor.capSentencesField = false // isolate: no sentence caps involved
+        h.editor.capWordsField = true
+        h.glideSalam()
+        assertEquals("сүз Сәләм", h.editor.text)
+        for (cell in h.strip.shown.last().filterNotNull()) {
+            assertTrue("an alternative is capitalized too, was $cell", cell[0].isUpperCase())
+        }
+    }
+
+    @Test
+    fun aGlideAfterAWordStaysLowerCaseInACapWordsFieldWithAutoCapOff() {
+        val h = tatarHarnessWith("сүз")
+        h.editor.capWordsField = true
+        h.glideSalam()
+        assertEquals("сүз сәләм", h.editor.text)
+    }
+
+    @Test
+    fun aGlideAfterAWordStaysLowerCaseInASentenceCapsOnlyField() {
+        // The field flags win, as for typed letters: CAP_SENTENCES alone capitalizes only after
+        // sentence-final punctuation, so a glide right after a word stays lower case.
+        val h = tatarHarnessWith("сүз")
+        h.editor.autoCap = true
+        h.glideSalam()
+        assertEquals("сүз сәләм", h.editor.text)
+        for (cell in h.strip.shown.last().filterNotNull()) {
+            assertFalse("an alternative stays lower case too, was $cell", cell[0].isUpperCase())
+        }
+    }
+
+    @Test
+    fun aGlideAtAFieldStartInACapWordsFieldFollowsTheShiftGate() {
+        // An empty field is a word start the live keyboard already auto-shifts for; the seam
+        // stays out of it (no space is prepended) and the shift gate's answer carries through.
+        val h = tatarHarnessWith("")
+        h.editor.autoCap = true
+        h.editor.capWordsField = true
+        h.controller.setGlideShiftStateGate(ShiftStateGate { TatarWordUtils.PrefixCasing.INITIAL_CAPS })
+        h.glideSalam()
+        assertEquals("Сәләм", h.editor.text)
+    }
+
     // --- Feedback for a refused glide ---------------------------------------------------------
 
     @Test
@@ -1429,13 +1489,14 @@ class GlideEndToEndTest {
             // The production NEXT_WORD shapes (see TtNextWordFillE2ETest): bigrams and fallback.
             tatarComputer = CompositePrefixComputer(
                 tatarIndex, PersonalCandidateSource.EMPTY,
-                GlobalTopFrequencyFallbackFactory.createFallbackWords(tatarIndex),
+                GlobalTopFrequencyFallbackFactory(DictionaryArtifactSpec.TATAR_TOP100K_V1.harmonyTwins)
+                    .createFallbackWords(tatarIndex),
             ).also {
                 it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V1, tatarIndex))
             }
             russianComputer = CompositePrefixComputer(
                 russianIndex, PersonalCandidateSource.EMPTY,
-                GlobalTopFrequencyFallbackFactory.createFallbackWords(russianIndex),
+                GlobalTopFrequencyFallbackFactory.INSTANCE.createFallbackWords(russianIndex),
             )
         }
 

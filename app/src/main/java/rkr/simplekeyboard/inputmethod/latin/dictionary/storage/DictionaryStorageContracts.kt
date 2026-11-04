@@ -32,6 +32,14 @@ data class DictionaryArtifactSpec(
     val expectedEntryCount: Long,
     /** The top-frequency next-word fallback, precomputed and pinned with [expectedRawSha256]. */
     val fallbackWords: List<String> = emptyList(),
+
+    /**
+     * The front/back word pairs of the fallback pool the harmony rule picks between by the
+     * committed word's vowel harmony (Tatar: дә/да). Empty for languages without such a pair,
+     * which keeps their fallback pool order untouched.
+     */
+    val harmonyTwins: List<Pair<String, String>> = emptyList(),
+
     /**
      * The next-word table of this language, or null when the language ships none. Keeping it here
      * leaves one language registry for both artifact kinds; [init] requires the language tags to
@@ -104,14 +112,15 @@ data class DictionaryArtifactSpec(
             storageDirectoryName = "dictionaries",
             generation = 1,
             assetPath = "dictionaries/tatar_top100k_v1.tdict.zlib",
-            expectedCompressedSize = 597_072,
+            expectedCompressedSize = 597_694,
             expectedCompressedSha256 =
-                "eecdb508ae671d6cda8104d5d4ce00a0af791bc7d4784389511aa34a555ec4e9",
-            expectedRawSize = 1_308_890,
+                "cc4fbc4321ccbf89d7e4d38783c9367776b2ee07c2db94f650b6d15d8122addf",
+            expectedRawSize = 1_310_349,
             expectedRawSha256 =
-                "263ac0eff1a6a7507c130ff11c852b11708714c25ce813118b3f390b9eaf1dd5",
+                "811d7f8c571c6b4dfb7e66b05b2688037eeb02eb3c857c8eba9b1ee9d85819af",
             expectedEntryCount = 110_000,
             fallbackWords = listOf("һәм", "белән", "да", "дә", "бу", "ул", "дип", "өчен"),
+            harmonyTwins = listOf("дә" to "да"),
             bigrams = BigramArtifactSpec.TATAR_BIGRAMS_V1,
             sentStartAssetPath = "dictionaries/tatar_sentstart_v1.txt",
             personalAlphabet = PersonalSubtypes.TATAR_RU_ALPHABET,
@@ -140,9 +149,7 @@ data class DictionaryArtifactSpec(
             expectedRawSha256 =
                 "f05499a3b4c3c2811c6ee8e9084dfaf472951a289a20dde2ab8cb098cb5a15b2",
             expectedEntryCount = 100_000,
-            fallbackWords = listOf(
-                "я", "не", "в", "и", "что", "ты", "на", "это",
-            ),
+            fallbackWords = listOf("я", "не", "в", "и", "что", "ты", "на", "это"),
             bigrams = BigramArtifactSpec.RUSSIAN_BIGRAMS_V1,
             sentStartAssetPath = "dictionaries/russian_sentstart_v1.txt",
             personalAlphabet = PersonalSubtypes.RUSSIAN_ALPHABET,
@@ -293,8 +300,8 @@ class DictionaryStorageController internal constructor(
 class DictionaryFileLease internal constructor(
     val dictionary: PublishedDictionary,
     /**
-     * Proof the store fully validated [dictionary]'s content in this process; null from a
-     * hand-built catalog. See [StoreValidationToken].
+     * Proof the store validated [dictionary]'s content in full or verified it against the pinned
+     * content in this process; null from a hand-built catalog. See [StoreValidationToken].
      */
     val validationToken: StoreValidationToken? = null,
     private val release: () -> Unit,

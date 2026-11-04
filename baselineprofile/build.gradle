@@ -1,7 +1,8 @@
 // Baseline Profile generator module (dev-only).
-// Runs BaselineProfileRule against :app on a connected emulator and writes the baseline and
-// startup profiles to app/src/main/generated/baselineProfiles/ (mergeIntoMain in
-// app/build.gradle), which AGP reads for every variant.
+// Runs BaselineProfileRule against :app on a connected emulator in two collection passes
+// (minimal startup journey → both profiles; full journey set → baseline profile only) and
+// writes the baseline and startup profiles to app/src/main/generated/baselineProfiles/
+// (mergeIntoMain in app/build.gradle), which AGP reads for every variant.
 // Nothing from this module is compiled into or packaged with the app.
 plugins {
     id 'com.android.test'

@@ -161,7 +161,6 @@ class SuggestionsControllerBigramLanguageSwitchTest {
                 rawSize = 96,
                 headCount = 1,
                 pairCount = 1,
-                successVocabularyCount = 1,
                 schemaId = 2,
                 formatVersion = 1,
                 rawSha256 = "0".repeat(64),

@@ -38,19 +38,35 @@ import java.util.Locale;
 import kotlin.Unit;
 
 /**
- * Baseline Profile generator for the IME (dev-only, never packaged). The system starts the
- * IME process when an editable field gains focus, so each iteration cold-kills the app,
- * focuses the try-it field of SetupActivity and then runs these journeys with real taps:
+ * Baseline Profile generator for the IME (dev-only, never packaged). Generation runs two
+ * collection passes against one cold-start vehicle (the system starts the IME process when
+ * an editable field gains focus, so each iteration cold-kills the app and focuses the
+ * try-it field of SetupActivity):
  * <ul>
- *   <li>type "сәлам" and commit a word completion from the suggestion strip;</li>
- *   <li>type "сәлам" + SPACE and commit the emoji suggestion cell (👋);</li>
- *   <li>type "сәлам" + SPACE and commit a next-word prediction;</li>
- *   <li>glide "сәлам" in one stroke and commit the glide candidate;</li>
- *   <li>open the emoji panel (long-press comma) and commit an emoji.</li>
+ *   <li><b>Startup pass</b> ({@code includeInStartupProfile = true}): the minimal startup
+ *   journey — process start, SetupActivity, field focus, the keyboard's first rendered
+ *   frame. Its rules land in BOTH startup-prof.txt (the dex layout input) and the merged
+ *   baseline-prof.txt.</li>
+ *   <li><b>Baseline pass</b> ({@code includeInStartupProfile = false}): the full journey
+ *   set below, with real taps:
+ *   <ul>
+ *     <li>type "сәлам" and commit a word completion from the suggestion strip;</li>
+ *     <li>type "сәлам" + SPACE and commit the emoji suggestion cell (👋);</li>
+ *     <li>type "сәлам" + SPACE and commit a next-word prediction;</li>
+ *     <li>glide "сәлам" in one stroke and commit the glide candidate;</li>
+ *     <li>open the emoji panel (long-press comma) and commit an emoji.</li>
+ *   </ul>
+ *   Its rules land only in baseline-prof.txt, so the startup profile stays a strict
+ *   subset of the baseline profile and the dex layout stops pulling every exercised
+ *   class into classes.dex. scripts/check_profiles.py gates both properties.</li>
  * </ul>
+ * Each pass is its own test method: the library reports the written file through the
+ * instrumentation status bundle, which the test engine keeps per test case, so two
+ * passes in one test would register only the second pass's file with the Gradle plugin.
  * Word suggestions, emoji suggestions and glide typing are on by default; a reused emulator
- * may have word suggestions off, so the first iteration checks the switch in the settings UI
- * (the release APK is not debuggable, so prefs cannot be seeded via run-as).
+ * may have word suggestions off, so the first iteration of the baseline pass checks the
+ * switch in the settings UI (the release APK is not debuggable, so prefs cannot be seeded
+ * via run-as). The startup pass never types, so it skips that check.
  *
  * Run: ./gradlew :app:generateBaselineProfile on a connected API 34 emulator (device
  * pinning: see baselineprofile/build.gradle).
@@ -81,17 +97,35 @@ public class ImeBaselineProfileGenerator {
     // in killProcess(), so checking once per generation run is enough.
     private boolean mSuggestionsEnsured;
 
+    /** Pass 1: the minimal startup journey, written to both the startup profile (the
+     *  dex layout input) and the merged baseline profile. */
     @Test
-    public void generate() {
+    public void generateStartupProfile() {
         requireEmulatorDevice();
         baselineProfileRule.collect(
                 PACKAGE_NAME,
                 /* maxIterations = */ 15,
                 /* stableIterations = */ 3,
-                /* outputFilePrefix = */ null,
+                /* outputFilePrefix = */ "startup",
                 /* includeInStartupProfile = */ true,
                 scope -> {
-                    runCuj(scope);
+                    runStartupJourney(scope);
+                    return Unit.INSTANCE;
+                });
+    }
+
+    /** Pass 2: the full journey set, written to the baseline profile only. */
+    @Test
+    public void generateBaselineProfile() {
+        requireEmulatorDevice();
+        baselineProfileRule.collect(
+                PACKAGE_NAME,
+                /* maxIterations = */ 15,
+                /* stableIterations = */ 3,
+                /* outputFilePrefix = */ "baseline",
+                /* includeInStartupProfile = */ false,
+                scope -> {
+                    runBaselineJourney(scope);
                     return Unit.INSTANCE;
                 });
     }
@@ -132,8 +166,21 @@ public class ImeBaselineProfileGenerator {
                 || fingerprint.contains("emulator");
     }
 
-    private void runCuj(MacrobenchmarkScope scope) {
+    /**
+     * The minimal startup journey: cold process start to the keyboard's first rendered
+     * frame, nothing else. Its rules land in both profiles, so every step here must stay
+     * a part of the baseline journey below — check_profiles.py requires the startup
+     * profile to be a strict subset of the baseline profile. No typing happens, so the
+     * suggestions-switch check is the baseline pass's job, not this one's.
+     */
+    private void runStartupJourney(MacrobenchmarkScope scope) {
         UiDevice device = scope.getDevice();
+        coldStart(scope, device);
+        focusTryItField(scope, device);
+        device.pressHome();
+    }
+
+    private void coldStart(MacrobenchmarkScope scope, UiDevice device) {
         // Cold start: the IME process must be (re)started by the system below.
         // NOTE: Macrobenchmark's kill flushes ART profiles and FORCE-STOPS the
         // package, and force-stopping the *selected* IME resets
@@ -141,8 +188,13 @@ public class ImeBaselineProfileGenerator {
         // (re)applied AFTER the kill, never before it.
         scope.killProcess();
         enableAndSelectIme(device);
-        ensureSuggestionsEnabled(scope, device);
+    }
 
+    /**
+     * Launches SetupActivity and focuses the try-it field, which binds and cold-starts
+     * the IME; returns once the keyboard had time to render its first frame.
+     */
+    private void focusTryItField(MacrobenchmarkScope scope, UiDevice device) {
         startSetupActivity(scope, device);
 
         UiObject2 field = device.wait(
@@ -162,6 +214,14 @@ public class ImeBaselineProfileGenerator {
         field.click();
         // Give the keyboard time to appear and render its first frame.
         SystemClock.sleep(2_500);
+    }
+
+    /** The full journey: the startup path, then the typing/emoji/glide interactions. */
+    private void runBaselineJourney(MacrobenchmarkScope scope) {
+        UiDevice device = scope.getDevice();
+        coldStart(scope, device);
+        ensureSuggestionsEnabled(scope, device);
+        focusTryItField(scope, device);
 
         // Type the Tatar word "сәлам" with real key taps (coordinates as screen
         // fractions, calibrated on the 1080x2280 API 34 AVD; see KeyGeom).

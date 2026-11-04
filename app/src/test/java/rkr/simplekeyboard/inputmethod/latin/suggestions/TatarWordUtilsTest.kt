@@ -21,6 +21,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils.PrefixCasing
@@ -828,5 +829,34 @@ class TatarWordUtilsTest {
         assertEquals(3, TatarWordUtils.caseCycleWordLength("сүз", "", true))
         assertEquals("a word not touching index 0 needs no provenance",
             3, TatarWordUtils.caseCycleWordLength("x сүз", "", false))
+    }
+
+    // --- lastVowelIsFront -----------------------------------------------------------------------
+
+    @Test
+    fun theLastVowelDecidesTheHarmony() {
+        // Front: ә е и ө ү э; back: а ы о у я ю. Only the LAST vowel counts.
+        assertEquals(true, TatarWordUtils.lastVowelIsFront("сәләм"))
+        assertEquals(true, TatarWordUtils.lastVowelIsFront("эш"))
+        assertEquals(true, TatarWordUtils.lastVowelIsFront("китеп"))
+        assertEquals(false, TatarWordUtils.lastVowelIsFront("дөнья"))
+        assertEquals(false, TatarWordUtils.lastVowelIsFront("юл"))
+        assertEquals(false, TatarWordUtils.lastVowelIsFront("татар"))
+    }
+
+    @Test
+    fun aFinalGlideVowelDoesNotDecideTheHarmony() {
+        // A final у/ү/ю/я right after another vowel is a diphthong glide: the syllable nucleus
+        // before it decides (эшләү is front, барау is back; дию is front, аю is back).
+        assertEquals(true, TatarWordUtils.lastVowelIsFront("эшләү"))
+        assertEquals(true, TatarWordUtils.lastVowelIsFront("дию"))
+        assertEquals(false, TatarWordUtils.lastVowelIsFront("барау"))
+        assertEquals(false, TatarWordUtils.lastVowelIsFront("аю"))
+    }
+
+    @Test
+    fun aWordWithNoVowelHasNoHarmony() {
+        assertNull(TatarWordUtils.lastVowelIsFront("ттт"))
+        assertNull(TatarWordUtils.lastVowelIsFront(""))
     }
 }
