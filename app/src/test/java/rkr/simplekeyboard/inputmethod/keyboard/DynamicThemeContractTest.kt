@@ -66,6 +66,10 @@ class DynamicThemeContractTest {
         ContrastPair("dyn_key_functional_text_color", "dyn_keyboard_background", SEARCH_HINT_ALPHA),
         // The trail also crosses the gaps between keys.
         ContrastPair("dyn_glide_trail", "dyn_keyboard_background"),
+        // The refused glide's error ink is a transient state signal (WCAG 1.4.11), over the
+        // letter keys and over the gaps alike.
+        ContrastPair("dyn_glide_trail_refused", "dyn_key_normal"),
+        ContrastPair("dyn_glide_trail_refused", "dyn_keyboard_background"),
     )
 
     @Test

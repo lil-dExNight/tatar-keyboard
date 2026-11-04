@@ -35,12 +35,69 @@ class TatBigrValidatorTest {
 
         assertEquals(2, validated.headCount)
         assertEquals(3, validated.pairCount)
-        assertEquals(2, validated.successVocabularyCount)
         assertEquals(BigramTestFixtures.sha256(artifact.raw), validated.rawSha256)
     }
 
     @Test
-    fun countsDistinctSuccessesWhenIndicesAreSparse() {
+    fun fastTierAcceptsAValidFileAndAnswersThePins() {
+        val artifact = BigramTestFixtures.artifact()
+        val rawFile = inflate(artifact)
+
+        val verified = validator.verifyPinnedContent(rawFile, artifact.spec)
+
+        assertEquals(artifact.spec.expectedRawSize, verified.rawSize)
+        assertEquals(artifact.spec.expectedHeadCount, verified.headCount)
+        assertEquals(artifact.spec.expectedRawSha256, verified.rawSha256)
+    }
+
+    @Test
+    fun fastTierRejectsATamperedFileWithoutTheWalk() {
+        val artifact = BigramTestFixtures.artifact()
+        val tampered = inflate(artifact)
+        tampered.writeBytes(
+            // A bit flip whose checksum and raw SHA-256 no longer match, so the fast tier
+            // refuses at the pinned raw SHA-256, before any stream is walked.
+            artifact.raw.copyOf().also { it[it.size / 2] = (it[it.size / 2].toInt() xor 1).toByte() },
+        )
+
+        assertValidationFails { validator.verifyPinnedContent(tampered, artifact.spec) }
+    }
+
+    @Test
+    fun fastTierRejectsAWrongLength() {
+        val artifact = BigramTestFixtures.artifact()
+        val rawFile = temporaryFolder.newFile("short.tatbigr")
+        rawFile.writeBytes(artifact.raw.copyOf(artifact.raw.size - 1))
+
+        assertValidationFails { validator.verifyPinnedContent(rawFile, artifact.spec) }
+    }
+
+    @Test
+    fun fastTierRejectsATamperedCommittedTable() {
+        val spec = BigramArtifactSpec.TATAR_BIGRAMS_V1
+        val asset = locateCommittedAsset("tatar_bigrams_v1.tatbigr.zlib").readBytes()
+        val rawFile = temporaryFolder.newFile("tampered.tatbigr")
+        rawFile.outputStream().use { output ->
+            validator.inflateAsset(asset.inputStream(), output, spec)
+        }
+        rawFile.writeBytes(
+            rawFile.readBytes().also { it[it.size / 2] = (it[it.size / 2].toInt() xor 1).toByte() },
+        )
+
+        assertValidationFails { validator.verifyPinnedContent(rawFile, spec) }
+    }
+
+    @Test
+    fun fastTierRejectsAStaleDictionaryLink() {
+        val artifact = BigramTestFixtures.artifact()
+        val rawFile = inflate(artifact)
+
+        val wrongDictionary = artifact.spec.copy(expectedDictionaryRawSha256 = "0".repeat(64))
+        assertValidationFails { validator.verifyPinnedContent(rawFile, wrongDictionary) }
+    }
+
+    @Test
+    fun acceptsSparseSuccessIndicesAcrossManyBlocks() {
         val heads = listOf("аб" to listOf("аба", "яя"), "аба" to listOf("яя"))
         val filler = (0 until 400).map { "в" + "а".repeat(it % 20) + "б".repeat(it / 20) }
         val dictionaryWords = listOf("аб", "аба") + filler + "яя"
@@ -51,7 +108,6 @@ class TatBigrValidatorTest {
         val validated = validator.validateRaw(file, spec)
 
         assertEquals(3, validated.pairCount)
-        assertEquals(2, validated.successVocabularyCount)
     }
 
     @Test
@@ -379,8 +435,7 @@ class TatBigrValidatorTest {
         assertEquals(spec.expectedRawSize, validated.rawSize)
         assertEquals(successIds.size.toLong(), validated.pairCount)
         assertEquals(header.getInt(20).toLong(), validated.pairCount)
-        assertEquals(successIds.toSet().size.toLong(), validated.successVocabularyCount)
-        assertTrue(validated.successVocabularyCount < validated.pairCount)
+        assertTrue(successIds.toSet().size < validated.pairCount)
     }
 
     private fun locateCommittedAsset(assetFileName: String): File {

@@ -57,6 +57,10 @@ class ThemeContrastContractTest {
         ContrastPair("tatar_key_functional_text_color", "tatar_keyboard_background", SEARCH_HINT_ALPHA),
         // The trail also crosses the gaps between keys.
         ContrastPair("tatar_glide_trail", "tatar_keyboard_background"),
+        // The refused glide's error ink is a transient state signal (WCAG 1.4.11), over the
+        // letter keys and over the gaps alike.
+        ContrastPair("tatar_glide_trail_refused", "tatar_key_normal"),
+        ContrastPair("tatar_glide_trail_refused", "tatar_keyboard_background"),
     )
 
     @Test

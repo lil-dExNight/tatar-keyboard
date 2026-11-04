@@ -5,7 +5,9 @@
 # Legs, one machine-readable RESULT|... line per measurement (stdout and
 # $OUTDIR/result.txt; raw evidence such as meminfo dumps, framestats, traces and
 # screencaps goes to $OUTDIR). Every budgeted line carries budget_* and
-# over_budget=true|false:
+# over_budget=true|false; --strict turns an over_budget=true INFO into FAIL,
+# while measurement-only lines (the PSS smaps split and the battery no-section
+# row) stay INFO either way:
 #   cold) cold start: process start (field 22 of /proc/<pid>/stat, CLK_TCK=100,
 #      CLOCK_BOOTTIME, corrected to CLOCK_MONOTONIC) -> first FrameCompleted of
 #      the InputMethod window (gfxinfo framestats). Host field: Chrome's omnibox
@@ -76,12 +78,25 @@
 #      androidTest APK; without an installed runner it reports SKIP.
 #   battery) opt-in, never interleaved with the USB-power perf legs: it
 #      simulates the unplugged state (`dumpsys battery unplug`, restored on
-#      exit). Idle protocol: keyboard hidden, batterystats reset, then a
+#      exit). Sub-legs, all joined by --legs battery:
+#      battery.idle: keyboard hidden, batterystats reset, then a
 #      --battery-seconds window; the utime+stime delta of /proc/<pid>/stat
 #      (format-stable, clock ticks converted with CLK_TCK) must stay under an
 #      observability ceiling and the wake lock, sensor and alarm counts of the
 #      per-package batterystats dump must be zero. Active protocol: reset, then
 #      the 32-event tt script, cpu_ms per event on the result line.
+#      battery.screenoff: the same idle protocol with the screen off (sleep ->
+#      window -> wake); the CPU delta over suspend (the /proc tick counters
+#      count CLOCK_BOOTTIME ticks, so the suspended window is still attributed)
+#      and the zero wakelock/sensor/alarm assertion are separate from the
+#      screen-on idle leg, so a wake source that only bites in suspend shows
+#      here. --battery-screenoff-seconds sets the window (default 120).
+#      battery.suggest-off: the active typing protocol with the word-suggestions
+#      switch turned off through the settings UI (restored on exit); cpu_ms per
+#      event contrasted with battery.active.
+#      battery.dealloc: the 10 s idle deallocate pass alone — the window from
+#      hide to the timer plus margin (--battery-dealloc-seconds), cpu_ms delta
+#      held to the idle legs' ceiling.
 #   uimode) opt-in probe: screencaps before and after `cmd uimode night yes`
 #      (flipped back right away), the byte-diff count of the two PNGs on the
 #      result line; 0 means the palette did not follow the night flip.
@@ -126,8 +141,14 @@
 #   --warm-runs <n>   warm-show iterations (default 5)
 #   --first-suggestion-runs <n>  cold first-suggestion iterations (default 5)
 #   --battery-seconds <n>  idle window of the battery leg (default 150)
+#   --battery-screenoff-seconds <n>  screen-off idle window of the battery
+#                     leg (default 120)
+#   --battery-dealloc-seconds <n>  deallocate-pass window of the battery leg
+#                     (default 12)
 #   --enable-suggestions-ui  turn suggestions on through the settings screen
 #                     instead of the run-as pref write
+#   --strict          every budgeted line with over_budget=true becomes FAIL;
+#                     the default is advisory (INFO with over_budget=true)
 #
 # Exit code: 0 with no FAIL line, 1 otherwise. The script is idempotent: the
 # pre-run state (default IME, enabled IMEs, stay-on-while-plugged, screen
@@ -147,8 +168,12 @@ FRAME_RUNS=3
 WARM_RUNS=5
 FIRST_SUGGESTION_RUNS=5
 BATTERY_SECONDS=150
-SUGGESTIONS_UI=0
+BATTERY_SCREENOFF_SECONDS=120
+BATTERY_DEALLOC_SECONDS=12
 ADB="${ADB:-$HOME/Android/Sdk/platform-tools/adb}"
+
+SUGGESTIONS_UI=0
+STRICT=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -163,12 +188,17 @@ while [ $# -gt 0 ]; do
         --warm-runs) WARM_RUNS="$2"; shift 2 ;;
         --first-suggestion-runs) FIRST_SUGGESTION_RUNS="$2"; shift 2 ;;
         --battery-seconds) BATTERY_SECONDS="$2"; shift 2 ;;
+        --battery-screenoff-seconds) BATTERY_SCREENOFF_SECONDS="$2"; shift 2 ;;
         --enable-suggestions-ui) SUGGESTIONS_UI=1; shift ;;
+        --strict) STRICT=1; shift ;;
+        --battery-dealloc-seconds) BATTERY_DEALLOC_SECONDS="$2"; shift 2 ;;
         *) echo "unknown flag: $1" >&2; exit 2 ;;
     esac
 done
 case "$COLD_TRIGGER" in ''|tap|switch) : ;; *) echo "bad --cold-trigger: $COLD_TRIGGER" >&2; exit 2 ;; esac
 case "$BATTERY_SECONDS" in ''|*[!0-9]*) echo "bad --battery-seconds: $BATTERY_SECONDS" >&2; exit 2 ;; esac
+case "$BATTERY_SCREENOFF_SECONDS" in ''|*[!0-9]*) echo "bad --battery-screenoff-seconds: $BATTERY_SCREENOFF_SECONDS" >&2; exit 2 ;; esac
+case "$BATTERY_DEALLOC_SECONDS" in ''|*[!0-9]*) echo "bad --battery-dealloc-seconds: $BATTERY_DEALLOC_SECONDS" >&2; exit 2 ;; esac
 leg_on() { case ",$LEGS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
 # Budgets printed with the RESULT lines. The PSS ceiling of a debuggable build is
@@ -182,12 +212,16 @@ FRAME_BUDGET_MS=16.7
 JANK_BUDGET_PCT=1.0
 PSS_BUDGET_DEBUG_KB=114000
 PSS_BUDGET_RELEASE_KB=69000
-# Idle-window CPU ceiling of the battery leg: an observability assertion (it
+# Idle-window CPU ceiling of the battery legs: an observability assertion (it
 # catches a stuck worker or a wake loop), not a tuned budget. The debug build
-# gets its own ceiling: it runs the JIT and more GC, and the 10 s deallocate
-# pass fires inside the window by design.
+# gets its own ceiling: it runs the JIT and more GC. The deallocate pass has
+# its own sub-leg, so the idle windows below it measure the steady idle.
 BATTERY_IDLE_CPU_BUDGET_MS=1000
 BATTERY_IDLE_CPU_BUDGET_DEBUG_MS=2000
+# The deallocate pass of the idle release: the 10 s timer of
+# LatinIME.DELAY_DEALLOCATE_MEMORY_MILLIS plus margin, so the pass's CPU lands
+# inside the window on a loaded device. Held to the same idle ceiling.
+DEALLOC_TIMER_MS=10000
 CLK_TCK=$(getconf CLK_TCK 2>/dev/null || echo 100)
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -214,10 +248,19 @@ SHELL() { A shell "$@"; }
 SHOT() { A exec-out screencap -p > "$OUTDIR/$1" 2>/dev/null; }
 
 result() { # result PASS|FAIL|SKIP|INFO <check> <detail>
-    local line="RESULT|$1|$2|$3"
+    local status="$1"
+    # --strict: an advisory budget breach (INFO with over_budget=true) is a
+    # FAIL. Only budgeted lines carry over_budget, so measurement-only INFO
+    # lines (the PSS smaps split and the battery no-section row) stay INFO in
+    # strict mode.
+    if [ "$STRICT" = 1 ] && [ "$status" = INFO ] \
+            && printf '%s' "$3" | grep -q 'over_budget=true'; then
+        status=FAIL
+    fi
+    local line="RESULT|$status|$2|$3"
     echo "$line"
     echo "$line" >> "$RESULTS"
-    [ "$1" = "FAIL" ] && FAILURES=$((FAILURES + 1)) || true
+    [ "$status" = "FAIL" ] && FAILURES=$((FAILURES + 1)) || true
 }
 log() { echo "ritual: $*" >&2; }
 
@@ -233,11 +276,12 @@ log "state on entry: ime=$PREV_IME stayon=$PREV_STAYON wakefulness=$PREV_AWAKE f
 WOKEN=0
 IME_ID=""
 IME_WAS_ENABLED=1
-SUGG_UI_RESTORE=""     # "false" when the UI switch was turned on by this run
+SUGG_UI_RESTORE=""     # target state of the switch when this run flipped it ("false"/"true")
 ATRACE_ON=0
 BATTERY_ON=0           # the battery leg simulated unplug; reset restores the real state
 UIMODE_ON=0            # the uimode probe flipped night mode
 FONTSCALE_ON=0         # the fontscale probe overrode font_scale
+SCREENOFF=0           # the battery.screenoff leg slept the screen; restore wakes first
 restore() {
     log "restoring device state"
     [ "$ATRACE_ON" = 1 ] && SHELL atrace --async_stop >/dev/null 2>&1 || true
@@ -250,6 +294,12 @@ restore() {
             ''|null) SHELL settings delete system font_scale >/dev/null 2>&1 || true ;;
             *) SHELL settings put system font_scale "$PREV_FONTSCALE" >/dev/null 2>&1 || true ;;
         esac
+    fi
+    if [ "$SCREENOFF" = 1 ]; then
+        # The screenoff leg slept the screen; the suggestions restore below drives the settings
+        # UI and needs a lit screen, so wake before it rather than after.
+        SHELL input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+        SCREENOFF=0
     fi
     if [ -n "$SUGG_UI_RESTORE" ]; then
         set_suggestions_ui "$SUGG_UI_RESTORE" >/dev/null \
@@ -1310,6 +1360,16 @@ if leg_on first-glide; then
                             warm_results=$((warm_results + 1)) ;;
                         *) continue ;;
                     esac
+                    # --strict applies to the streamed budgeted lines too: the
+                    # over_budget=true INFO becomes FAIL and counts.
+                    if [ "$STRICT" = 1 ]; then
+                        case "$metric" in
+                            *"over_budget=true"*)
+                                metric=${metric/RESULT|INFO|/RESULT|FAIL|}
+                                FAILURES=$((FAILURES + 1))
+                                ;;
+                        esac
+                    fi
                     echo "$metric"
                     echo "$metric" >> "$RESULTS"
                     ;;
@@ -1326,6 +1386,48 @@ fi
 
 # ── leg: battery observability (opt-in; simulates the unplugged state) ───────
 
+# battery_idle_result <check-name> <batterystats-file> <cpu-delta> <window-s>:
+# the shared verdict of the two idle legs — CPU delta under the observability
+# ceiling, and zero wake locks, sensors and alarms in the per-package dump.
+battery_idle_result() { # <check> <stats-file> <cpu-delta> <window-s>
+    local check="$1" wl sensor alarm recognized
+    read -r wl sensor alarm recognized <<<"$(battery_counts "$2" "$PKG_UID")"
+    if [ "$recognized" = no ]; then
+        result INFO "$check" "batterystats has no $PKG_UID section; raw wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$3 budget_cpu_ms=$BATTERY_CPU_BUDGET over_budget=false window_s=$4 build=$BUILD"
+    elif [ "$wl" = 0 ] && [ "$sensor" = 0 ] && [ "$alarm" = 0 ] && [ "$3" -le "$BATTERY_CPU_BUDGET" ]; then
+        result PASS "$check" "wakelocks=0 sensors=0 alarms=0 cpu_ms_delta=$3 budget_cpu_ms=$BATTERY_CPU_BUDGET window_s=$4 build=$BUILD"
+    else
+        result FAIL "$check" "wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$3 budget_cpu_ms=$BATTERY_CPU_BUDGET window_s=$4 build=$BUILD"
+    fi
+}
+
+# battery_active <check> <suggest-state>: the 32-event tt typing script with the
+# CPU delta over it; run with the suggestions switch in the wanted state so the
+# two arms (on = battery.active, off = battery.suggest-off) contrast the strip
+# work against the plain typing path.
+battery_active() { # <check> <label>
+    SHELL dumpsys batterystats reset >/dev/null 2>&1
+    if raise_keyboard_over_setup && globe_to tt; then
+        sleep 2
+        pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+        cpu_before=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+        type_text tt "$FRAME_SCRIPT" 0.35
+        sleep 1
+        cpu_after=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+        if [ -n "${cpu_before:-}" ] && [ -n "${cpu_after:-}" ]; then
+            cpu_delta=$((cpu_after - cpu_before))
+            n_events=$(python3 -c "print(len('$FRAME_SCRIPT'))")
+            per=$(python3 -c "print(f'{$cpu_delta / $n_events:.1f}')")
+            result INFO "$1" "cpu_ms=$cpu_delta events=$n_events cpu_ms_per_event=$per $2 build=$BUILD"
+        else
+            result FAIL "$1" "process stat unreadable (pid='${pid:-}')"
+        fi
+        hide_keyboard || true
+    else
+        result FAIL "$1" "keyboard or tt layout not ready over SetupActivity"
+    fi
+}
+
 if leg_on battery; then
     BATTERY_ON=1
     select_ours
@@ -1335,6 +1437,29 @@ if leg_on battery; then
     PKG_UID="u0a$(( ${APPID:-10000} - 10000 ))"
     if raise_keyboard_over_setup; then
         hide_keyboard || true
+        # deallocate pass: the 10 s idle timer fires once the keyboard is
+        # hidden; the window spans the timer plus margin, so the pass's CPU is
+        # attributed explicitly instead of hiding inside the long idle window.
+        SHELL dumpsys batterystats reset >/dev/null 2>&1
+        pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+        cpu_before=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+        if [ -z "$pid" ] || [ -z "${cpu_before:-}" ]; then
+            result FAIL battery.dealloc "process stat unreadable (pid='${pid:-}')"
+        else
+            log "battery deallocate window: ${BATTERY_DEALLOC_SECONDS}s"
+            sleep "$BATTERY_DEALLOC_SECONDS"
+            cpu_after=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+            if [ -z "${cpu_after:-}" ]; then
+                result FAIL battery.dealloc "process $pid gone after the deallocate window"
+            else
+                cpu_delta=$((cpu_after - cpu_before))
+                if [ "$cpu_delta" -le "$BATTERY_CPU_BUDGET" ]; then
+                    result PASS battery.dealloc "cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_CPU_BUDGET window_s=$BATTERY_DEALLOC_SECONDS timer_ms=$DEALLOC_TIMER_MS build=$BUILD"
+                else
+                    result FAIL battery.dealloc "cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_CPU_BUDGET window_s=$BATTERY_DEALLOC_SECONDS timer_ms=$DEALLOC_TIMER_MS build=$BUILD"
+                fi
+            fi
+        fi
         SHELL dumpsys battery unplug >/dev/null 2>&1
         SHELL dumpsys batterystats reset >/dev/null 2>&1
         sleep 2        # let the reset settle out of the window
@@ -1350,41 +1475,57 @@ if leg_on battery; then
             if [ -z "${cpu_after:-}" ]; then
                 result FAIL battery.idle "process $pid gone after the idle window"
             else
-                read -r wl sensor alarm recognized <<<"$(battery_counts "$OUTDIR/batterystats.txt" "$PKG_UID")"
                 cpu_delta=$((cpu_after - cpu_before))
-                if [ "$recognized" = no ]; then
-                    result INFO battery.idle "batterystats has no $PKG_UID section; raw wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$cpu_delta window_s=$BATTERY_SECONDS build=$BUILD"
-                elif [ "$wl" = 0 ] && [ "$sensor" = 0 ] && [ "$alarm" = 0 ] && [ "$cpu_delta" -le "$BATTERY_CPU_BUDGET" ]; then
-                    result PASS battery.idle "wakelocks=0 sensors=0 alarms=0 cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_CPU_BUDGET window_s=$BATTERY_SECONDS build=$BUILD"
-                else
-                    result FAIL battery.idle "wakelocks=$wl sensors=$sensor alarms=$alarm cpu_ms_delta=$cpu_delta budget_cpu_ms=$BATTERY_CPU_BUDGET window_s=$BATTERY_SECONDS build=$BUILD"
-                fi
+                battery_idle_result battery.idle "$OUTDIR/batterystats.txt" "$cpu_delta" "$BATTERY_SECONDS"
             fi
         fi
-        # The active protocol runs on real power with the screen back on: the idle
-        # window's simulated unplug let the device sleep.
+        # screen-off idle: the same protocol with the screen asleep, so a wake
+        # source that only bites in suspend (a wakelock held while hidden, an
+        # alarm that fires only without a foreground activity) shows here. The
+        # /proc tick counters run on CLOCK_BOOTTIME, so the suspended window is
+        # still attributed to the process.
+        SHELL dumpsys batterystats reset >/dev/null 2>&1
+        sleep 2        # let the reset settle out of the window
+        pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+        cpu_before=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+        if [ -z "$pid" ] || [ -z "${cpu_before:-}" ]; then
+            result FAIL battery.screenoff "process stat unreadable (pid='${pid:-}')"
+        else
+            log "battery screen-off idle window: ${BATTERY_SCREENOFF_SECONDS}s"
+            SHELL input keyevent KEYCODE_SLEEP >/dev/null 2>&1
+            SCREENOFF=1    # cleared only after a confirmed wake, so restore can wake first
+            sleep "$BATTERY_SCREENOFF_SECONDS"
+            SHELL input keyevent KEYCODE_WAKEUP >/dev/null 2>&1
+            SCREENOFF=0
+            sleep 1     # let the wakeup settle before reading /proc
+            cpu_after=$(proc_cpu_ms "$pid" 2>/dev/null || true)
+            SHELL dumpsys batterystats "$PKG" > "$OUTDIR/batterystats-screenoff.txt" 2>/dev/null
+            if [ -z "${cpu_after:-}" ]; then
+                result FAIL battery.screenoff "process $pid gone after the screen-off window"
+            else
+                cpu_delta=$((cpu_after - cpu_before))
+                battery_idle_result battery.screenoff "$OUTDIR/batterystats-screenoff.txt" "$cpu_delta" "$BATTERY_SCREENOFF_SECONDS"
+            fi
+        fi
+        # The active protocols run on real power with the screen back on: the
+        # idle window's simulated unplug let the device sleep.
         SHELL dumpsys battery reset >/dev/null 2>&1; BATTERY_ON=0
         SHELL "input keyevent KEYCODE_WAKEUP; input keyevent 82" >/dev/null 2>&1
         sleep 1
         # active protocol: the 32-event tt script, CPU per event
-        SHELL dumpsys batterystats reset >/dev/null 2>&1
-        if raise_keyboard_over_setup && globe_to tt; then
-            sleep 2
-            pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
-            cpu_before=$(proc_cpu_ms "$pid" 2>/dev/null || true)
-            type_text tt "$FRAME_SCRIPT" 0.35
-            sleep 1
-            cpu_after=$(proc_cpu_ms "$pid" 2>/dev/null || true)
-            if [ -n "${cpu_before:-}" ] && [ -n "${cpu_after:-}" ]; then
-                cpu_delta=$((cpu_after - cpu_before))
-                n_events=$(python3 -c "print(len('$FRAME_SCRIPT'))")
-                per=$(python3 -c "print(f'{$cpu_delta / $n_events:.1f}')")
-                result INFO battery.active "cpu_ms=$cpu_delta events=$n_events cpu_ms_per_event=$per build=$BUILD"
-            else
-                result FAIL battery.active "process stat unreadable (pid='${pid:-}')"
+        battery_active battery.active "suggestions=default"
+        # suggestions-off arm: the same typing script with the strip quiet. The
+        # switch is driven through the settings UI (works for both build types);
+        # the exit restore target stays the one --enable-suggestions-ui claimed
+        # when that flag is in play, otherwise the state found here.
+        before=$(set_suggestions_ui false)
+        if [ $? = 0 ]; then
+            if [ -z "$SUGG_UI_RESTORE" ] && [ "$before" = "true" ]; then
+                SUGG_UI_RESTORE=true
             fi
+            battery_active battery.suggest-off "suggestions=off"
         else
-            result FAIL battery.active "keyboard or tt layout not ready over SetupActivity"
+            result FAIL battery.suggest-off "suggestions switch could not be turned off (found '${before:-no row}')"
         fi
     else
         result FAIL battery.idle "keyboard did not raise over SetupActivity"

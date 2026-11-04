@@ -630,7 +630,7 @@ class PersonalDictionaryStoreWriteTest {
 
     /** The on-disk pending count of [word] (already normalized), keyed with the salt on disk. */
     private fun pendingCountOnDisk(directory: File, word: String): Int {
-        val salt = File(directory, "salt.bin").readBytes()
+        val salt = File(directory, "salt-$subtype-s1-f1.bin").readBytes()
         val counters = PendingCounters.parse(File(directory, "pending-$subtype-s1-f1.bin").readBytes())
         return counters.countOf(PendingCounters.keyOf(salt, word))
     }

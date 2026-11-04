@@ -378,7 +378,7 @@ class PersonalGoldenExportTest {
                 "forget" -> store.forget(op[1]) { outcome = it.toString() }
                 "clear" -> store.clearAll { outcome = it.toString() }
             }
-            File(dir, "salt.bin").takeIf { it.isFile }?.let { salt = hex(it.readBytes()) }
+            File(dir, "salt-${PersonalSubtypes.TATAR_RU}-s1-f1.bin").takeIf { it.isFile }?.let { salt = hex(it.readBytes()) }
             steps.add("""{"outcome":"$outcome","files":${dumpDir(dir)},"snapshot":${jsonList(snapshotWords(store.snapshot))}}""")
         }
         w.line("""{"kind":"wordStore","subtype":"tt_RU","salt":${json(salt)},"ops":${jsonOps(ops)},"steps":[${steps.joinToString(",")}]}""")
@@ -412,7 +412,7 @@ class PersonalGoldenExportTest {
                 "forget" -> store.forget(op[1], op[2]) { outcome = it.toString() }
                 "clear" -> store.clearAll { outcome = it.toString() }
             }
-            File(dir, "salt-bigrams.bin").takeIf { it.isFile }?.let { salt = hex(it.readBytes()) }
+            File(dir, "salt-bigrams-${PersonalSubtypes.TATAR_RU}-s1-f1.bin").takeIf { it.isFile }?.let { salt = hex(it.readBytes()) }
             val snap = store.snapshot
             val rows = (0 until snap.size).map { "${snap.contextAt(it)}|${snap.successorRawFormAt(it)}" }
             steps.add("""{"outcome":"$outcome","files":${dumpDir(dir)},"snapshot":${jsonList(rows)}}""")

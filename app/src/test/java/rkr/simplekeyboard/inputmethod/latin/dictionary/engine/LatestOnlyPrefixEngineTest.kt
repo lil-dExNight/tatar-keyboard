@@ -84,6 +84,81 @@ class LatestOnlyPrefixEngineTest {
     }
 
     @Test
+    fun workerBoundariesCarryTheCookieStampedAtEnqueue() {
+        val executor = ManualEngineExecutor()
+        val events = mutableListOf<String>()
+        val hook = object : LookupTraceHook {
+            var issued = 42
+            override fun issuedCookie(): Int = issued
+            override fun workerStart(cookie: Int) {
+                events += "workerStart:$cookie"
+            }
+
+            override fun workerHandoff(cookie: Int) {
+                events += "workerHandoff:$cookie"
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity,
+            PrefixComputer { events += "compute:${it.decodeUtf8()}"; listOf("result") },
+            executor,
+            ResultHandoff { events += "deliver" },
+            traceHook = hook,
+        )
+
+        engine.request(1, "tt", utf8("а"))
+        executor.runAll()
+
+        assertEquals(
+            listOf("workerStart:42", "compute:а", "workerHandoff:42", "deliver"),
+            events,
+        )
+    }
+
+    @Test
+    fun staleRequestKeepsItsOwnCookieAndSkipsTheDeliveryBoundary() {
+        val executor = ManualEngineExecutor()
+        val events = mutableListOf<String>()
+        var issued = 7
+        val hook = object : LookupTraceHook {
+            override fun issuedCookie(): Int = issued
+            override fun workerStart(cookie: Int) {
+                events += "workerStart:$cookie"
+            }
+
+            override fun workerHandoff(cookie: Int) {
+                events += "workerHandoff:$cookie"
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity,
+            PrefixComputer { events += "compute:${it.decodeUtf8()}"; listOf("result") },
+            executor,
+            ResultHandoff { events += "deliver" },
+            traceHook = hook,
+        )
+
+        engine.request(1, "tt", utf8("а"))
+        issued = 8
+        engine.request(1, "tt", utf8("аб"))
+        executor.runAll()
+
+        // The stale "а" was stamped 7 at its own enqueue and reports only its worker start:
+        // its result is suppressed, so the delivery boundary never fires for it.
+        assertEquals(
+            listOf(
+                "workerStart:7",
+                "compute:а",
+                "workerStart:8",
+                "compute:аб",
+                "workerHandoff:8",
+                "deliver",
+            ),
+            events,
+        )
+    }
+
+    @Test
     fun editorSubtypeAndPrefixChangesGuardRunningResult() {
         val changes = listOf(
             Triple(2L, "tt", "а"),
@@ -591,7 +666,8 @@ class LatestOnlyPrefixEngineTest {
             PrefixComputer { emptyList() },
             executor,
             ResultHandoff {},
-        ) { releases.incrementAndGet() }
+            releaseResources = { releases.incrementAndGet() },
+        )
         val outcomes = Collections.synchronizedList(mutableListOf<Boolean>())
         val destroyers = (0 until 8).map { index ->
             Thread({ outcomes += engine.destroy(2, TimeUnit.SECONDS) }, "destroy-$index")
@@ -695,7 +771,8 @@ class LatestOnlyPrefixEngineTest {
             PrefixComputer { emptyList() },
             executor,
             ResultHandoff {},
-        ) { releases++ }
+            releaseResources = { releases++ },
+        )
         engine.request(1, "tt", utf8("а"))
 
         assertFalse(engine.destroy(0, TimeUnit.MILLISECONDS))

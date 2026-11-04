@@ -34,10 +34,11 @@ import java.security.MessageDigest
  * The NEXT_WORD strip's engine answer after a committed word, end to end on the real shipped
  * assets with the production wiring (bigram successors and the global top-frequency fallback).
  *
- * `сәләм` and `сәләмә` are not bigram heads, so both answers are
- * `[һәм, белән, да, дә]`, the global top words. A bigram head (кил) still gets only its four
- * stored successors
- * (`TatBigrPrefixIndex.MAX_RESULTS`). The strip's visible cell count is the controller's
+ * `сәләм` and `сәләмә` are not bigram heads, so both answers are the global top words with the
+ * harmony twin rule applied: the last vowel (ә) is front, so `дә` stays, `да` drops and the next
+ * pool word (`бу`) takes its slot: `[һәм, белән, дә, бу]`. A bigram head (кил) still gets only
+ * its four stored successors
+ * (`TatBigrPrefixIndex.MAX_PREDICT_RESULTS`). The strip's visible cell count is the controller's
  * business; these pins cover the composed answer.
  */
 class TtNextWordFillE2ETest {
@@ -55,28 +56,39 @@ class TtNextWordFillE2ETest {
     @Test
     fun committingSyalamFillsAllFourCellsFromTheTopWords() {
         assertEquals(
-            listOf("һәм", "белән", "да", "дә"),
+            listOf("һәм", "белән", "дә", "бу"),
             tatarPredict("сәләм"),
         )
     }
 
     @Test
     fun committingSyalamaFillsAllFourCellsFromTheTopWords() {
-        // сәләмә: no successors, so the whole strip is the fill.
+        // сәләмә: no successors, so the whole strip is the fill; last vowel ә keeps the front
+        // twin and drops да.
         assertEquals(
-            listOf("һәм", "белән", "да", "дә"),
+            listOf("һәм", "белән", "дә", "бу"),
             tatarPredict("сәләмә"),
         )
     }
 
     @Test
+    fun aBackHarmonyContextKeepsTheBackTwin() {
+        // доп: last vowel о (back), a dictionary word but not a bigram head — да stays, дә
+        // drops, and the next pool word (бу) takes the freed slot.
+        assertEquals(
+            listOf("һәм", "белән", "да", "бу"),
+            tatarPredict("доп"),
+        )
+    }
+
+    @Test
     fun aBigramHeadStillShowsOnlyItsSuccessors() {
-        // кил is a head with 4 stored successors; the strip is the four of them, with no
+        // кил is a head with 8 stored successors; the strip is the first four of them, with no
         // fallback cell.
         // The successor дә is ALSO a top-8 word: the dedup rule is exercised here structurally
         // (it must not appear twice, and the fallback never runs at all).
         val result = tatarPredict("кил")
-        assertEquals(listOf("монда", "әле", "дә", "һәм"), result)
+        assertEquals(listOf("монда", "әле", "дә", "мин"), result)
         assertEquals(result.distinct(), result)
         assertFalse(result.contains("да"))
     }
@@ -114,11 +126,13 @@ class TtNextWordFillE2ETest {
             russianIndex = openDictionary(DictionaryArtifactSpec.RUSSIAN_TOP100K_V1)
             tatarComputer = CompositePrefixComputer(
                 requireNotNull(tatarIndex), PersonalCandidateSource.EMPTY,
-                GlobalTopFrequencyFallbackFactory.createFallbackWords(requireNotNull(tatarIndex)),
+                GlobalTopFrequencyFallbackFactory(DictionaryArtifactSpec.TATAR_TOP100K_V1.harmonyTwins)
+                    .createFallbackWords(requireNotNull(tatarIndex)),
             ).also { it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V1, requireNotNull(tatarIndex))) }
             russianComputer = CompositePrefixComputer(
                 requireNotNull(russianIndex), PersonalCandidateSource.EMPTY,
-                GlobalTopFrequencyFallbackFactory.createFallbackWords(requireNotNull(russianIndex)),
+                GlobalTopFrequencyFallbackFactory.INSTANCE
+                    .createFallbackWords(requireNotNull(russianIndex)),
             ).also { it.attachBigramSource(openBigrams(BigramArtifactSpec.RUSSIAN_BIGRAMS_V1, requireNotNull(russianIndex))) }
         }
 

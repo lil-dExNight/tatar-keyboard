@@ -9,14 +9,19 @@ import java.io.File
 /**
  * The shipped fuzzy policies as executable pins:
  *
- *  - [FuzzyEditPolicy.DEFAULT]: class #1 (long-press partner) only, no same-length bonus. The
- *    fallback of an engine opened without an explicit policy; no shipped engine runs it.
+ *  - [FuzzyEditPolicy.DEFAULT]: class #1 (long-press partner) only, no same-length bonus, no
+ *    geometry-neighbor bonus. The fallback of an engine opened without an explicit policy; no
+ *    shipped engine runs it.
  *  - [FuzzyEditPolicy.TATAR]: class #1 on the always-on domain, the DL-1 tier (substitution,
  *    deletion, insertion and transposition under one rank tag, gated on an empty exact pass at
- *    >= 4 code points) on the tier domain, and the same-length bonus. Autocorrect stays class #1.
+ *    >= 4 code points) on the tier domain, the same-length bonus, and the geometry-neighbor
+ *    bonus (a substitution between adjacent keys ranks before a non-neighbor one inside the
+ *    tier). Autocorrect draws from class #1 and the DL-1 tier, the tier under the
+ *    context-successor guard.
  *  - [FuzzyEditPolicy.RUSSIAN]: class #1 plus the DL-1 tier on the same gated domain, with the
  *    same-length bonus only inside that tier. Class #1 outside it ranks exactly as under DEFAULT.
- *    Autocorrect stays class #1.
+ *    The geometry-neighbor bonus is armed like TATAR's. Autocorrect matches the Tatar policy,
+ *    guard included.
  */
 class TdictPrefixIndexShippedFuzzyClassesTest {
     private val table = TatarLayoutTestFixtures.tatarNeighborTable()
@@ -44,6 +49,7 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
             FuzzyEditPolicy.DEFAULT.editClasses.toList(),
         )
         assertFalse(FuzzyEditPolicy.DEFAULT.sameLengthBonus)
+        assertFalse(FuzzyEditPolicy.DEFAULT.geometryNeighborBonus)
     }
 
     /**
@@ -59,12 +65,14 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
         )
         assertTrue(FuzzyEditPolicy.TATAR.sameLengthBonus)
         assertFalse(FuzzyEditPolicy.TATAR.sameLengthBonusOnlyInDl1)
+        assertTrue(FuzzyEditPolicy.TATAR.geometryNeighborBonus)
     }
 
     /**
      * Source contract, part 3: the RUSSIAN policy carries class #1 (always-on domain) and
      * EDIT_CLASS_SUBSTITUTION (the DL-1 tier on the gated domain). Its same-length bonus applies
-     * only inside the tier, leaving class #1 ranked as under DEFAULT. Autocorrect stays class #1.
+     * only inside the tier, leaving class #1 ranked as under DEFAULT. Autocorrect draws from
+     * class #1 and the DL-1 tier under the context-successor guard.
      */
     @Test
     fun theRussianPolicyRunsClassesOneAndFourWithTierOnlySameLengthBonus() {
@@ -74,8 +82,9 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
         )
         assertTrue(FuzzyEditPolicy.RUSSIAN.sameLengthBonus)
         assertTrue(FuzzyEditPolicy.RUSSIAN.sameLengthBonusOnlyInDl1)
+        assertTrue(FuzzyEditPolicy.RUSSIAN.geometryNeighborBonus)
         assertEquals(
-            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
             FuzzyEditPolicy.RUSSIAN.autocorrectClasses.toList(),
         )
     }

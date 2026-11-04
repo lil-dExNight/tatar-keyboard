@@ -29,6 +29,56 @@ class TdictValidatorTest {
     }
 
     @Test
+    fun fastTierAcceptsAValidFileAndAnswersThePins() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val rawFile = inflate(artifact)
+
+        val verified = validator.verifyPinnedContent(rawFile, artifact.spec)
+
+        assertEquals(artifact.spec.expectedRawSize, verified.rawSize)
+        assertEquals(artifact.spec.expectedEntryCount, verified.entryCount)
+        assertEquals(artifact.spec.expectedRawSha256, verified.rawSha256)
+    }
+
+    @Test
+    fun fastTierRejectsATamperedFileWithoutTheWalk() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val tampered = inflate(artifact)
+        tampered.writeBytes(
+            // A bit flip whose checksum and raw SHA-256 no longer match, so the fast tier
+            // refuses at the pinned raw SHA-256, before any word is walked.
+            artifact.raw.copyOf().also { it[it.size / 2] = (it[it.size / 2].toInt() xor 1).toByte() },
+        )
+
+        assertValidationFails { validator.verifyPinnedContent(tampered, artifact.spec) }
+    }
+
+    @Test
+    fun fastTierRejectsAWrongLength() {
+        val artifact = DictionaryTestFixtures.artifact()
+        val rawFile = temporaryFolder.newFile("short.tdict")
+        rawFile.writeBytes(artifact.raw.copyOf(artifact.raw.size - 1))
+
+        assertValidationFails { validator.verifyPinnedContent(rawFile, artifact.spec) }
+    }
+
+    @Test
+    fun fastTierRejectsATamperedCommittedDictionary() {
+        val spec = DictionaryArtifactSpec.TATAR_TOP100K_V1
+        val asset = locateCommittedAsset().readBytes()
+        val rawFile = temporaryFolder.newFile("tampered.tdict")
+        rawFile.outputStream().use { output ->
+            validator.inflateAsset(asset.inputStream(), output, spec)
+        }
+        val bytes = rawFile.readBytes()
+        rawFile.writeBytes(
+            bytes.copyOf().also { it[it.size / 2] = (it[it.size / 2].toInt() xor 1).toByte() },
+        )
+
+        assertValidationFails { validator.verifyPinnedContent(rawFile, spec) }
+    }
+
+    @Test
     fun acceptsCommittedTop100kAssetWithFrozenProvenance() {
         val asset = locateCommittedAsset().readBytes()
         val rawFile = temporaryFolder.newFile("top100k.tdict")

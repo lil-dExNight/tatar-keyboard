@@ -9,6 +9,7 @@ import org.junit.BeforeClass
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.BigramTableIdentity
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.CompositePrefixComputer
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ImmutableUtf8Prefix
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TatBigrPrefixIndex
@@ -47,7 +48,10 @@ import kotlin.math.sqrt
  * Further gates live alongside: [gatesSpeedAdaptationOnTheRealDictionary] (the speed channel
  * beats the unadapted decoder on the fast-persona class), [gatesPerLanguageConstants] (the
  * per-language constants never lose to the shared set on either language),
- * [gatesBigramChannel] (the bigram channel beats the plain decode on held-out context rows)
+ * [gatesBigramChannel] (the bigram channel is improve-or-flat against the plain decode on each
+ * language's held-out context rows, strictly improving on the Tatar rows), [gatesLearnedPairMergeOnHeldOutRows] (learned pairs enter
+ * the channel's successor list behind the bundled table's first successor and never lose to the
+ * table alone on held-out rows)
  * and the alias-fold pair [gatesAliasDoubledClassOnTheRussianBench] /
  * [gatesRussianHeldOutIsImproveOrFlat] (alias-folded words decode without a loop; the Russian
  * held-out split is improve-or-flat).
@@ -715,18 +719,24 @@ class GlideRecoveryCalibrationTest {
         }
 
         val shapeStds = listOf(5.52f, 8.28f, 11.04f, 16.56f, 22.08f)
-        val locationFactors = listOf(0.1277f, 0.18f, 0.2555f, 0.5109f)
+        val locationGms = listOf(0.1277f, 0.18f, 0.2555f, 0.5109f)
         println("Glide tuning surface (train split, top-3 %, gamma = shipped 0.25):")
-        println("shapeStd\\locFactor " + locationFactors.joinToString(" ") { "%8.4f".format(it) })
+        println("shapeStd\\locXY(gm) " + locationGms.joinToString(" ") { "%8.4f".format(it) })
         for (shapeStd in shapeStds) {
             val row = StringBuilder("%13.2f ".format(java.util.Locale.ROOT, shapeStd))
-            for (locationFactor in locationFactors) {
+            for (locationGm in locationGms) {
+                // The isotropic-equivalent grid point: the swept value is the geometric mean of
+                // the x/y sigmas (the channel peak matches a scalar sigma of that value), split
+                // around it at the keyboard's flat y/x aspect.
+                val aspect = sqrt(Y_ASPECT.toDouble()).toFloat()
                 row.append(
                     "%9.4f".format(
                         java.util.Locale.ROOT,
                         top3OnTrain(
                             GlideDecoder.GlideConstants(
-                                shapeStd = shapeStd, locationStdFactor = locationFactor,
+                                shapeStd = shapeStd,
+                                locationStdXFactor = locationGm / aspect,
+                                locationStdYFactor = locationGm * aspect,
                             ),
                         ),
                     ),
@@ -748,8 +758,9 @@ class GlideRecoveryCalibrationTest {
 
     /**
      * The speed-channel tuning surface: top-1 on the TRAIN split per persona class over the
-     * (normative speed x widen cap) grid, diagnostic only. The shipped values were chosen here;
-     * the held-out gate is [gatesSpeedAdaptationOnTheRealDictionary].
+     * widening-cap grid, diagnostic only. The normative reference is the index's per-word
+     * Fitts-law duration (no swept knob); the shipped cap was chosen here, and the held-out gate
+     * is [gatesSpeedAdaptationOnTheRealDictionary].
      */
     @Test
     fun tuningSurfaceSpeedChannelOnTheTrainSplit() {
@@ -775,23 +786,16 @@ class GlideRecoveryCalibrationTest {
             return DoubleArray(3) { if (count[it] == 0) 0.0 else top[it].toDouble() / count[it] * 100.0 }
         }
 
-        println("Glide speed surface (train split, top-1 % per persona normal/fast/slow):")
-        for (speed in listOf(0.012f, 0.016f, 0.02f, 0.024f, 0.03f)) {
-            val row = StringBuilder("normative=%6.3f ".format(java.util.Locale.ROOT, speed))
-            for (widen in listOf(1.0f, 1.5f, 2.0f, 3.0f)) {
-                val top = top1PerPersona(
-                    GlideDecoder.GlideConstants(
-                        normativeSpeedRadiiPerMs = speed, speedWidenMax = widen,
-                    ),
-                )
-                row.append(
-                    " w=%3.1f:%5.2f/%5.2f/%5.2f".format(
-                        java.util.Locale.ROOT, widen, top[0], top[1], top[2],
-                    ),
-                )
-            }
-            println(row.toString())
+        val row = StringBuilder("Glide speed surface (train split, top-1 % per persona normal/fast/slow):")
+        for (widen in listOf(1.0f, 1.5f, 2.0f, 3.0f)) {
+            val top = top1PerPersona(GlideDecoder.GlideConstants(speedWidenMax = widen))
+            row.append(
+                " w=%3.1f:%5.2f/%5.2f/%5.2f".format(
+                    java.util.Locale.ROOT, widen, top[0], top[1], top[2],
+                ),
+            )
         }
+        println(row.toString())
     }
 
     // ---- Per-language constants and the length channel. ----
@@ -830,7 +834,7 @@ class GlideRecoveryCalibrationTest {
         russianVocabulary, russianEvalLines, emptyList(),
     )
 
-    /** (top1, top3) percentages over the selected split and code-point length interval. */
+    /** (top1, top3) percentages and the row count over the selected split and length interval. */
     private fun measureTop(
         bench: LanguageBench,
         constants: GlideDecoder.GlideConstants,
@@ -859,7 +863,7 @@ class GlideRecoveryCalibrationTest {
                 }
             }
         }
-        return doubleArrayOf(top1 * 100.0 / count, top3 * 100.0 / count)
+        return doubleArrayOf(top1 * 100.0 / count, top3 * 100.0 / count, count.toDouble())
     }
 
     /**
@@ -898,21 +902,24 @@ class GlideRecoveryCalibrationTest {
             }
             println("Glide ${bench.name} sigma grid (train split, top-1 %):")
             val shapeStds = listOf(6.9f, 8.28f, 9.66f, 11.04f)
-            val locationFactors = listOf(0.09f, 0.11f, 0.1277f, 0.15f, 0.18f)
+            val locationGms = listOf(0.09f, 0.11f, 0.1277f, 0.15f, 0.18f)
             val lengthSigmas2 = listOf(4f, 6f)
+            val gridAspect = sqrt(Y_ASPECT.toDouble()).toFloat()
             for (lengthSigma in lengthSigmas2) {
                 println("  lengthStdFactor=$lengthSigma:")
-                println("  shapeStd\\locFactor " + locationFactors.joinToString(" ") { "%8.4f".format(it) })
+                println("  shapeStd\\locXY(gm) " + locationGms.joinToString(" ") { "%8.4f".format(it) })
                 for (shapeStd in shapeStds) {
                     val row = StringBuilder("  %13.2f ".format(java.util.Locale.ROOT, shapeStd))
-                    for (locationFactor in locationFactors) {
+                    for (locationGm in locationGms) {
                         row.append(
                             "%9.4f".format(
                                 java.util.Locale.ROOT,
                                 measureTop(
                                     bench,
                                     GlideDecoder.GlideConstants(
-                                        shapeStd = shapeStd, locationStdFactor = locationFactor,
+                                        shapeStd = shapeStd,
+                                        locationStdXFactor = locationGm / gridAspect,
+                                        locationStdYFactor = locationGm * gridAspect,
                                         lengthStdFactor = lengthSigma,
                                     ),
                                     heldOut = false,
@@ -922,6 +929,31 @@ class GlideRecoveryCalibrationTest {
                     }
                     println(row.toString())
                 }
+            }
+            // The anisotropic surface: x/y splits around the shipped pair's geometric mean, at
+            // the language's shipped shape sigma. The shipped pair sits on the y/x=0.55 row, up
+            // to the constants' two-decimal rounding.
+            val shipped = languageConstants(bench)
+            val shippedGm = sqrt(
+                (shipped.locationStdXFactor * shipped.locationStdYFactor).toDouble(),
+            ).toFloat()
+            println(
+                "  anisotropic split (x, y) around the shipped " +
+                    "gm=${fmt(shippedGm.toDouble())}, shapeStd=${shipped.shapeStd}:",
+            )
+            for (aspects in listOf(0.55f, 0.7f, 0.85f, 1.0f, 1.18f, 1.45f)) {
+                val top = measureTop(
+                    bench,
+                    GlideDecoder.GlideConstants(
+                        shapeStd = shipped.shapeStd,
+                        locationStdXFactor = shippedGm / sqrt(aspects.toDouble()).toFloat(),
+                        locationStdYFactor = shippedGm * sqrt(aspects.toDouble()).toFloat(),
+                    ),
+                    heldOut = false,
+                )
+                println(
+                    "  y/x=$aspects: top1=${fmt(top[0])}% top3=${fmt(top[1])}%",
+                )
             }
         }
     }
@@ -955,7 +987,8 @@ class GlideRecoveryCalibrationTest {
 
     /**
      * The per-language gate compares constants on 5+ cp held-out rows; 2-4 cp results are
-     * reported separately. Per-language values were chosen on
+     * reported and floored (the short-word class guard: a tuned-for-long-words change must not
+     * quietly erode two-letter glide decoding). Per-language values were chosen on
      * [tuningSurfacePerLanguageAndLengthChannel].
      */
     @Test
@@ -982,12 +1015,23 @@ class GlideRecoveryCalibrationTest {
                 bench, languageConstants, heldOut = true, maxCodePoints = 4,
             )
             println(
-                "Glide ${bench.name} held-out 2-4cp: shared top1=${fmt(shortShared[0])}% " +
+                "Glide ${bench.name} held-out 2-4cp: n=${shortShared[2].toInt()} " +
+                    "shared top1=${fmt(shortShared[0])}% " +
                     "top3=${fmt(shortShared[1])}% | per-language top1=${fmt(shortPerLanguage[0])}% " +
                     "top3=${fmt(shortPerLanguage[1])}%",
             )
-            assertTrue("${bench.name} short-word top-1 is zero", shortPerLanguage[0] > 0.0)
-            assertTrue("${bench.name} short-word top-3 is zero", shortPerLanguage[1] > 0.0)
+            val shortPins = if (bench.name == "tt") TT_SHORT_TOP1_PIN to TT_SHORT_TOP3_PIN
+            else RU_SHORT_TOP1_PIN to RU_SHORT_TOP3_PIN
+            assertTrue(
+                "${bench.name} short-word top-1 ${fmt(shortPerLanguage[0])}% below the " +
+                    "${shortPins.first}% floor",
+                shortPerLanguage[0] >= shortPins.first,
+            )
+            assertTrue(
+                "${bench.name} short-word top-3 ${fmt(shortPerLanguage[1])}% below the " +
+                    "${shortPins.second}% floor",
+                shortPerLanguage[1] >= shortPins.second,
+            )
             if (perLanguage[0] < shared[0]) {
                 failures++
                 lines.add(
@@ -1111,8 +1155,8 @@ class GlideRecoveryCalibrationTest {
         check(sequenceStart < sequenceEnd) { "selected word is absent from the glide index" }
         val firstKey = index.keySeqAt(sequenceStart)
         val lastKey = index.keySeqAt(sequenceEnd - 1)
-        val startKeys = IntArray(constants.extremityNeighbors)
-        val endKeys = IntArray(constants.extremityNeighbors)
+        val startKeys = IntArray(constants.startExtremityNeighbors)
+        val endKeys = IntArray(constants.endExtremityNeighbors)
         val startCount = bench.geometry.findClosestKeys(path.firstX, path.firstY, startKeys)
         val endCount = bench.geometry.findClosestKeys(path.lastX, path.lastY, endKeys)
         var startFound = false
@@ -1209,24 +1253,43 @@ class GlideRecoveryCalibrationTest {
     // ---- The bigram channel on the glide N-best. ----
 
     /**
-     * Top-1 on the context rows of one split with the channel at [rankPenalty] (1f: off — the
-     * plain decode). The oracle is the bundled Tatar bigram table, as in production.
+     * One decoded context row, frozen: the channel's input (the plain decode's words and scores)
+     * plus the row's successors, so every configuration of the sweeps reuses one decode.
      */
-    private fun contextRowTop1(rankPenalty: Float, heldOut: Boolean): Pair<Double, Int> {
-        val bigrams = tatarBigrams!!
-        val words = selectWords(vocabulary, evalLines, tatarGeneratorGeometry)
-        val (_, paths) = renderSet(words, tatarGeneratorGeometry, tatarContextPairs)
-        val decoder = sharedDecoder()
+    private class ContextSnapshot(
+        val path: GeneratedPath,
+        val heldOut: Boolean,
+        val words: Array<String?>,
+        val scores: FloatArray,
+        val count: Int,
+        val successors: List<String>,
+    ) {
+        val word: String get() = path.rowWord
+    }
+
+    /** Decodes every context row of the bench once with the plain (channel-off) decoder. */
+    private fun contextSnapshots(
+        bench: LanguageBench = tatarBench(),
+        bigrams: TatBigrPrefixIndex = tatarBigrams!!,
+    ): List<ContextSnapshot> {
+        val constants = if (bench.name == "tt") {
+            GlideDecoder.GlideConstants.TATAR
+        } else {
+            GlideDecoder.GlideConstants.RUSSIAN
+        }
+        val decoder = GlideDecoder(bench.geometry, bench.inventory, constants)
+        decoder.preloadIndex(bench.wordIndex)
         val reusablePath = GlidePath(1024)
-        val adjusted = FloatArray(GlideDecoder.TOP_N)
-        var top1 = 0
-        var count = 0
-        for (path in paths) {
+        val result = ArrayList<ContextSnapshot>()
+        for (path in bench.paths) {
             if (path.rowContext.isEmpty()) continue
-            if (isHeldOut(path.rowWord) != heldOut) continue
-            count++
-            val found = decodePath(path, decoder, reusablePath)
-            if (found <= 0) continue
+            val count = decodePath(path, decoder, reusablePath)
+            val snapshotWords = arrayOfNulls<String>(count)
+            val snapshotScores = FloatArray(count)
+            for (slot in 0 until count) {
+                snapshotWords[slot] = decodeResult.words[slot]
+                snapshotScores[slot] = decodeResult.scores[slot]
+            }
             val successors = try {
                 bigrams.predict(
                     ImmutableUtf8Prefix.copyOf(path.rowContext.toByteArray(Charsets.UTF_8)),
@@ -1234,44 +1297,121 @@ class GlideRecoveryCalibrationTest {
             } catch (_: RuntimeException) {
                 emptyList()
             }
-            GlideBigramRerank.rerank(decodeResult, successors, rankPenalty, adjusted)
-            if (decodeResult.words[0] == path.rowWord) top1++
+            result.add(
+                ContextSnapshot(path, isHeldOut(path.rowWord), snapshotWords, snapshotScores, count, successors),
+            )
         }
-        return (top1 * 100.0 / count) to count
+        return result
+    }
+
+    /** The bigram channel applied to a copy of the snapshot with an explicit successor list. */
+    private fun applyChannel(
+        snap: ContextSnapshot,
+        successors: List<String>,
+        penalty: Float,
+        reused: GlideResult,
+        adjusted: FloatArray,
+    ) {
+        reused.reset()
+        for (slot in 0 until snap.count) {
+            reused.words[slot] = snap.words[slot]
+            reused.scores[slot] = snap.scores[slot]
+        }
+        reused.count = snap.count
+        GlideBigramRerank.rerank(reused, successors, penalty, adjusted)
+    }
+
+    /** The bigram channel applied to a copy of the snapshot when [fire] holds. */
+    private fun applyChannel(
+        snap: ContextSnapshot,
+        fire: Boolean,
+        penalty: Float,
+        reused: GlideResult,
+        adjusted: FloatArray,
+    ) = applyChannel(snap, if (fire) snap.successors else emptyList(), penalty, reused, adjusted)
+
+    /** Top-1 hit of [reused]'s current order against the snapshot's word. */
+    private fun top1Hit(reused: GlideResult, snap: ContextSnapshot): Boolean =
+        reused.count > 0 && reused.words[0] == snap.word
+
+    /** The two languages' channel inputs: the bench and its bundled bigram table. */
+    private fun languageChannels(): List<Pair<LanguageBench, TatBigrPrefixIndex>> = listOf(
+        tatarBench() to tatarBigrams!!,
+        russianBench() to russianBigrams!!,
+    )
+
+    /** The per-language constants of the bench's engine (the shipped set of its language). */
+    private fun languageConstants(bench: LanguageBench): GlideDecoder.GlideConstants =
+        if (bench.name == "tt") GlideDecoder.GlideConstants.TATAR else GlideDecoder.GlideConstants.RUSSIAN
+
+    /**
+     * Top-1 on [snapshots] with the channel at [rankPenalty] (1f: off — the plain decode, the
+     * rerank is a no-op at it). The oracle is the language's bundled bigram table, as in
+     * production.
+     */
+    private fun contextRowTop1(snapshots: List<ContextSnapshot>, rankPenalty: Float): Pair<Double, Int> {
+        val reused = GlideResult()
+        val adjusted = FloatArray(GlideDecoder.TOP_N)
+        var top1 = 0
+        for (snap in snapshots) {
+            applyChannel(snap, true, rankPenalty, reused, adjusted)
+            if (top1Hit(reused, snap)) top1++
+        }
+        return (top1 * 100.0 / snapshots.size) to snapshots.size
     }
 
     /**
-     * The bigram-channel tuning surface: context-row top-1 on the TRAIN split over the
-     * rank-penalty grid. Diagnostic only; the gate is [gatesBigramChannel].
+     * The bigram-channel tuning surface: context-row top-1 on each language's TRAIN split over
+     * the rank-penalty grid. Diagnostic only; the gate is [gatesBigramChannel].
      */
     @Test
     fun tuningSurfaceBigramChannelOnTheTrainSplit() {
-        println("Glide bigram channel (train context rows, top-1 %):")
-        for (penalty in listOf(1.0f, 1.25f, 1.5f, 2.0f, 3.0f, 4.0f)) {
-            val (top1, count) = contextRowTop1(penalty, heldOut = false)
-            println("  rankPenalty=%4.2f top1=%s%% (n=%d)".format(java.util.Locale.ROOT, penalty, fmt(top1), count))
+        for ((bench, bigrams) in languageChannels()) {
+            val train = contextSnapshots(bench, bigrams).filter { !it.heldOut }
+            println("Glide ${bench.name} bigram channel (train context rows, top-1 %):")
+            for (penalty in listOf(1.0f, 1.25f, 1.5f, 2.0f, 3.0f, 4.0f)) {
+                val (top1, count) = contextRowTop1(train, penalty)
+                println(
+                    "  rankPenalty=%4.2f top1=%s%% (n=%d)".format(
+                        java.util.Locale.ROOT, penalty, fmt(top1), count,
+                    ),
+                )
+            }
         }
     }
 
     /**
-     * The bigram-channel gate: on the HELD-OUT context rows the channel (the shipped rank
-     * penalty) must beat the plain decode's top-1. Non-context rows never see the channel (no
-     * context word), so they are unchanged by construction —
-     * [gatesRecoveryAndLatencyOnTheRealDictionary] covers them.
+     * The bigram-channel gate: on each language's HELD-OUT context rows the channel (the shipped
+     * per-language rank penalty) must not lose to the plain decode's top-1; on the Tatar rows it
+     * must strictly improve. Non-context rows never see the channel (no context word), so they
+     * are unchanged by construction — [gatesRecoveryAndLatencyOnTheRealDictionary] covers them.
      */
     @Test
     fun gatesBigramChannel() {
-        val (without, count) = contextRowTop1(1.0f, heldOut = true)
-        val (with, _) = contextRowTop1(GlideDecoder.GlideConstants.TATAR.bigramRankPenalty, heldOut = true)
-        println(
-            "Glide bigram channel held-out: top1_without=${fmt(without)}% " +
-                "top1_with=${fmt(with)}% (n=$count)",
-        )
-        assertTrue(
-            "the bigram channel must improve held-out context-row top-1 " +
-                "(${fmt(with)}% vs ${fmt(without)}% without)",
-            with > without,
-        )
+        for ((bench, bigrams) in languageChannels()) {
+            val heldOutRows = contextSnapshots(bench, bigrams).filter { it.heldOut }
+            val (without, count) = contextRowTop1(heldOutRows, 1.0f)
+            val (with, _) = contextRowTop1(heldOutRows, languageConstants(bench).bigramRankPenalty)
+            println(
+                "Glide ${bench.name} bigram channel held-out: top1_without=${fmt(without)}% " +
+                    "top1_with=${fmt(with)}% (n=$count)",
+            )
+            if (bench.name == "tt") {
+                // The Tatar channel's held-out gain on the pinned set is a real effect, not
+                // noise: the gate is strict there.
+                assertTrue(
+                    "tt: the bigram channel must strictly improve held-out context-row top-1 " +
+                        "(${fmt(with)}% vs ${fmt(without)}% without)",
+                    with > without,
+                )
+            } else {
+                assertTrue(
+                    "${bench.name}: the bigram channel must not regress held-out context-row " +
+                        "top-1 (${fmt(with)}% vs ${fmt(without)}% without)",
+                    with >= without,
+                )
+            }
+        }
     }
 
     private fun keyFoldedWord(word: String, geometry: GlideKeyGeometry): String {
@@ -1341,7 +1481,7 @@ class GlideRecoveryCalibrationTest {
             }
             assertTrue("Russian $name held-out context rows are missing", rows.isNotEmpty())
             val gain = (reranked.count { it } - baseline.count { it }) * 100.0 / rows.size
-            val ci = GlideConfusionPairs.pairedGainCi(reranked, baseline)
+            val ci = GlideTestFixtures.pairedGainCi(reranked, baseline)
             val baselineHits = baseline.count { it }
             val rerankedHits = reranked.count { it }
             println(
@@ -1357,142 +1497,233 @@ class GlideRecoveryCalibrationTest {
                 assertEquals(1, baselineHits)
                 assertEquals("the existing rerank is not an accepted alias improvement", 1, rerankedHits)
                 assertTrue("the paired alias CI must not be reported as positive", ci[0] <= 0.0)
-                assertEquals(20, retained)
-                assertEquals("every retained alias target must be committed or visible", 20, visible + rerankedHits)
+                assertEquals("retained alias targets moved", 20, retained)
+                assertEquals(
+                    "every retained alias target is top-1 or visible in the rerank window",
+                    retained,
+                    visible + rerankedHits,
+                )
                 assertEquals(0, foldOutside)
                 assertEquals(0, targetSuccessor)
             } else {
                 assertEquals(385, rows.size)
-                assertEquals(336, baselineHits)
+                assertEquals("Russian non-alias plain baseline moved", 338, baselineHits)
                 assertTrue("Russian non-alias top-1 regressed", rerankedHits >= baselineHits)
-                assertEquals(338, rerankedHits)
+                assertEquals(340, rerankedHits)
             }
         }
     }
 
-    // ---- The pair-conditional variant of the bigram channel: the measurement surface. ----
+    // ---- Learned pairs in the channel's successor list (the production merge rule). ----
 
     /**
-     * One decoded context row, frozen: the channel's input (the plain decode's words and scores)
-     * plus the row's successors, so every configuration of the sweep reuses one decode.
+     * The eval sentences read as the user's learned-pair history: context word -> its successors
+     * with counts, in the personal order (count descending, then the word ascending). Only
+     * dictionary successors count: the bench decoder owns no personal words, so a successor
+     * outside the dictionary could never surface in its N-best.
      */
-    private class ContextSnapshot(
-        val path: GeneratedPath,
-        val heldOut: Boolean,
-        val words: Array<String?>,
-        val scores: FloatArray,
-        val count: Int,
-        val successors: List<String>,
-    ) {
-        val word: String get() = path.rowWord
+    private fun learnedPairStats(bench: LanguageBench): Map<String, List<Pair<String, Int>>> {
+        val counts = HashMap<String, HashMap<String, Int>>()
+        for (line in bench.sentences) {
+            if (line.isEmpty() || line.startsWith("#")) continue
+            val tokens = line.split(" ")
+            for (i in 0 until tokens.size - 1) {
+                if (tokens[i + 1] in bench.wordSet) {
+                    counts.getOrPut(tokens[i]) { HashMap() }.merge(tokens[i + 1], 1, Int::plus)
+                }
+            }
+        }
+        return counts.mapValues { (_, successors) ->
+            successors.entries.map { it.key to it.value }
+                .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+        }
     }
 
-    /** Decodes every context row once with the plain (channel-off) decoder. */
-    private fun contextSnapshots(
-        bench: LanguageBench = tatarBench(),
-        bigrams: TatBigrPrefixIndex = tatarBigrams!!,
-    ): List<ContextSnapshot> {
-        val constants = if (bench.name == "tt") {
-            GlideDecoder.GlideConstants.TATAR
-        } else {
-            GlideDecoder.GlideConstants.RUSSIAN
-        }
-        val decoder = GlideDecoder(bench.geometry, bench.inventory, constants)
-        decoder.preloadIndex(bench.wordIndex)
-        val reusablePath = GlidePath(1024)
-        val result = ArrayList<ContextSnapshot>()
-        for (path in bench.paths) {
-            if (path.rowContext.isEmpty()) continue
-            val count = decodePath(path, decoder, reusablePath)
-            val snapshotWords = arrayOfNulls<String>(count)
-            val snapshotScores = FloatArray(count)
-            for (slot in 0 until count) {
-                snapshotWords[slot] = decodeResult.words[slot]
-                snapshotScores[slot] = decodeResult.scores[slot]
-            }
-            val successors = try {
-                bigrams.predict(
-                    ImmutableUtf8Prefix.copyOf(path.rowContext.toByteArray(Charsets.UTF_8)),
-                )
-            } catch (_: RuntimeException) {
-                emptyList()
-            }
-            result.add(
-                ContextSnapshot(path, isHeldOut(path.rowWord), snapshotWords, snapshotScores, count, successors),
-            )
-        }
-        return result
-    }
-
-    /** The bigram channel applied to a copy of the snapshot when [fire] holds. */
-    private fun applyChannel(
+    /** The row's learned pairs: the context word's history, its own pair decremented out. */
+    private fun learnedPairsOf(
+        stats: Map<String, List<Pair<String, Int>>>,
         snap: ContextSnapshot,
-        fire: Boolean,
-        penalty: Float,
-        reused: GlideResult,
-        adjusted: FloatArray,
-    ) {
-        reused.reset()
-        for (slot in 0 until snap.count) {
-            reused.words[slot] = snap.words[slot]
-            reused.scores[slot] = snap.scores[slot]
-        }
-        reused.count = snap.count
-        if (fire) GlideBigramRerank.rerank(reused, snap.successors, penalty, adjusted)
+    ): List<Pair<String, Int>> {
+        val successors = stats[snap.path.rowContext] ?: return emptyList()
+        return successors.map { if (it.first == snap.word) it.first to it.second - 1 else it }
+            .filter { it.second > 0 }
     }
-
-    /** Top-1 hit of [reused]'s current order against the snapshot's word. */
-    private fun top1Hit(reused: GlideResult, snap: ContextSnapshot): Boolean =
-        reused.count > 0 && reused.words[0] == snap.word
 
     /**
-     * The tuning surface of the pair-conditional variant on the TRAIN context rows: top-1 per
-     * (mined set x firing rule x rank penalty) cell, with the firing rate. The FUTO diagnostic
-     * evaluates the selected cell (PAIR_SET_MUTUAL, PAIR_RANK_ONE_ONLY, PAIR_RANK_PENALTY), chosen
-     * from this surface by train top-1, ties broken toward the wider set, the wider firing rule
-     * and the weaker penalty. Diagnostic only — it prints, it does not assert.
+     * The merged successor list of one merge rule: [learned] pairs (word, usage) in personal
+     * order and [bundled] successors in table order, where [rankOf] maps a learned pair's
+     * personal index and usage to its effective rank, clamped into the rerank's window. Bundled
+     * successors fill the unclaimed ranks in order, skipping the words a pair claims; when they
+     * run out, the remaining pairs keep their order at the tail. The list position is the rank
+     * the rerank reads, so a rule never touches [GlideBigramRerank] itself.
+     */
+    private fun mergedSuccessors(
+        learned: List<Pair<String, Int>>,
+        bundled: List<String>,
+        rankOf: (personalIndex: Int, usage: Int) -> Int,
+    ): List<String> {
+        val claims = learned
+            .take(CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS)
+            .mapIndexed { index, (word, usage) ->
+                Triple(
+                    minOf(rankOf(index, usage), GlideBigramRerank.MAX_RANKED_SUCCESSORS - 1),
+                    index, word,
+                )
+            }
+            .sortedWith(compareBy({ it.first }, { it.second }))
+        val claimedWords = claims.mapTo(HashSet()) { it.third }
+        val merged = ArrayList<String>(GlideBigramRerank.MAX_RANKED_SUCCESSORS)
+        var claimIndex = 0
+        var bundledIndex = 0
+        while (merged.size < GlideBigramRerank.MAX_RANKED_SUCCESSORS) {
+            if (claimIndex < claims.size && claims[claimIndex].first <= merged.size) {
+                merged.add(claims[claimIndex].third)
+                claimIndex++
+                continue
+            }
+            var tookBundled = false
+            while (bundledIndex < bundled.size) {
+                val word = bundled[bundledIndex++]
+                if (word !in claimedWords && word !in merged) {
+                    merged.add(word)
+                    tookBundled = true
+                    break
+                }
+            }
+            if (!tookBundled) {
+                while (claimIndex < claims.size &&
+                    merged.size < GlideBigramRerank.MAX_RANKED_SUCCESSORS
+                ) {
+                    merged.add(claims[claimIndex++].third)
+                }
+                break
+            }
+        }
+        return merged
+    }
+
+    /**
+     * The learned-pair merge-rule surface: context-row top-1 per rule on each language's TRAIN
+     * rows, over all context rows and over the rows that carry a learned pair (the only rows a
+     * merge rule can move). The eval sentences stand in for the user's learned-pair history with
+     * the row's own pair decremented out. `floor1` is the shipped rule
+     * ([CompositePrefixComputer.mergeGlideSuccessors]), `learned_first` the previous one.
+     * Diagnostic only — it prints, it does not assert; the held-out comparison is
+     * [gatesLearnedPairMergeOnHeldOutRows].
      */
     @Test
-    fun tuningSurfacePairConditionalOnTheTrainSplit() {
-        val snapshots = contextSnapshots().filter { !it.heldOut }
-        val pairs = minedPairs()
-        val reused = GlideResult()
-        val adjusted = FloatArray(GlideDecoder.TOP_N)
-        var plain = 0
-        var blanket = 0
-        for (snap in snapshots) {
-            applyChannel(snap, false, 1f, reused, adjusted)
-            if (top1Hit(reused, snap)) plain++
-            applyChannel(snap, true, GlideDecoder.GlideConstants.TATAR.bigramRankPenalty, reused, adjusted)
-            if (top1Hit(reused, snap)) blanket++
-        }
-        println(
-            "Glide train context rows n=${snapshots.size}: plain=${fmt(pct(plain, snapshots.size))}% " +
-                "blanket=${fmt(pct(blanket, snapshots.size))}%",
+    fun tuningSurfaceLearnedPairRankOnTheTrainSplit() {
+        val rules = ArrayList<Pair<String, (List<Pair<String, Int>>, List<String>) -> List<String>>>()
+        rules.add("bundled_only" to { _, bundled -> bundled })
+        rules.add(
+            "learned_first" to { learned, bundled ->
+                mergedSuccessors(learned, bundled) { index, _ -> index }
+            },
         )
-        println("Glide pair-conditional surface (train context rows, top-1 %, firing rate %):")
-        for (setName in listOf("union", "mutual")) {
-            val keys = if (setName == "union") pairs.union else pairs.mutual
-            for (rankOneOnly in listOf(false, true)) {
-                val row = StringBuilder("  set=$setName rankOneOnly=$rankOneOnly")
-                for (penalty in listOf(1.5f, 2f, 3f, 4f, 6f, 8f)) {
-                    var top1 = 0
-                    var fired = 0
-                    for (snap in snapshots) {
-                        val fire = GlideConfusionPairs.holdsMinedPair(keys, snap.words, snap.count, rankOneOnly)
-                        if (fire) fired++
-                        applyChannel(snap, fire, penalty, reused, adjusted)
-                        if (top1Hit(reused, snap)) top1++
-                    }
-                    row.append(
-                        "  p=%4.2f:%s/%s".format(
-                            java.util.Locale.ROOT, penalty,
-                            fmt(pct(top1, snapshots.size)), fmt(pct(fired, snapshots.size)),
-                        ),
+        rules.add(
+            "floor1" to { learned, bundled ->
+                CompositePrefixComputer.mergeGlideSuccessors(learned.map { it.first }, bundled)
+            },
+        )
+        rules.add(
+            "floor2" to { learned, bundled ->
+                mergedSuccessors(learned, bundled) { index, _ -> index + 2 }
+            },
+        )
+        for (scale in listOf(2, 3, 5, 8)) {
+            rules.add(
+                "usage$scale" to { learned, bundled ->
+                    mergedSuccessors(learned, bundled) { _, usage -> scale / usage }
+                },
+            )
+        }
+        for ((bench, bigrams) in languageChannels()) {
+            val rows = contextSnapshots(bench, bigrams).filter { !it.heldOut }
+            val stats = learnedPairStats(bench)
+            val penalty = languageConstants(bench).bigramRankPenalty
+            val reused = GlideResult()
+            val adjusted = FloatArray(GlideDecoder.TOP_N)
+            val learned = rows.map { learnedPairsOf(stats, it) }
+            val covered = learned.count { it.isNotEmpty() }
+            println(
+                "Glide ${bench.name} learned-pair merge surface " +
+                    "(train context rows n=${rows.size}, with a learned pair: $covered):",
+            )
+            for ((name, merge) in rules) {
+                var top1All = 0
+                var top1Covered = 0
+                for ((index, snap) in rows.withIndex()) {
+                    applyChannel(
+                        snap, merge(learned[index], snap.successors), penalty, reused, adjusted,
                     )
+                    if (top1Hit(reused, snap)) {
+                        top1All++
+                        if (learned[index].isNotEmpty()) top1Covered++
+                    }
                 }
-                println(row.toString())
+                println(
+                    "  %-14s all=%s%% covered=%s%%".format(
+                        java.util.Locale.ROOT, name,
+                        fmt(pct(top1All, rows.size)), fmt(pct(top1Covered, maxOf(1, covered))),
+                    ),
+                )
             }
+        }
+    }
+
+    /**
+     * The learned-pair merge gate: on each language's HELD-OUT context rows the shipped merge
+     * rule ([CompositePrefixComputer.mergeGlideSuccessors]) must not lose to the bundled table
+     * alone, with the eval sentences standing in for the user's learned-pair history. The rules
+     * were compared on [tuningSurfaceLearnedPairRankOnTheTrainSplit].
+     */
+    @Test
+    fun gatesLearnedPairMergeOnHeldOutRows() {
+        for ((bench, bigrams) in languageChannels()) {
+            val rows = contextSnapshots(bench, bigrams).filter { it.heldOut }
+            val stats = learnedPairStats(bench)
+            val penalty = languageConstants(bench).bigramRankPenalty
+            val reused = GlideResult()
+            val adjusted = FloatArray(GlideDecoder.TOP_N)
+            var bundledTop1 = 0
+            var mergedTop1 = 0
+            var covered = 0
+            for (snap in rows) {
+                applyChannel(snap, snap.successors, penalty, reused, adjusted)
+                val bundledHit = top1Hit(reused, snap)
+                if (bundledHit) bundledTop1++
+                val learned = learnedPairsOf(stats, snap)
+                val mergedHit = if (learned.isEmpty()) {
+                    bundledHit
+                } else {
+                    covered++
+                    applyChannel(
+                        snap,
+                        CompositePrefixComputer.mergeGlideSuccessors(
+                            learned.map { it.first }, snap.successors,
+                        ),
+                        penalty, reused, adjusted,
+                    )
+                    top1Hit(reused, snap)
+                }
+                if (mergedHit) mergedTop1++
+            }
+            println(
+                "Glide ${bench.name} learned-pair merge held-out: n=${rows.size} " +
+                    "covered=$covered bundled=${fmt(pct(bundledTop1, rows.size))}% " +
+                    "merged=${fmt(pct(mergedTop1, rows.size))}%",
+            )
+            assertTrue(
+                "${bench.name}: the gate is vacuous — no held-out context row carries a " +
+                    "learned pair",
+                covered > 0,
+            )
+            assertTrue(
+                "${bench.name}: the learned-pair merge must not regress held-out context-row " +
+                    "top-1 (${fmt(pct(mergedTop1, rows.size))}% vs " +
+                    "${fmt(pct(bundledTop1, rows.size))}% without)",
+                mergedTop1 >= bundledTop1,
+            )
         }
     }
 
@@ -1816,10 +2047,10 @@ class GlideRecoveryCalibrationTest {
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts; the
         // asset rebuild rewrites both). Loop and eligible dwell rows make rows outnumber words.
-        private const val SET_SIZE = 5117
-        private const val SET_BYTES = 13956801
+        private const val SET_SIZE = 5110
+        private const val SET_BYTES = 14000219
         private const val SET_SHA256 =
-            "5eb32845ef22b85c7c60ab400e48dd45de14ea591930ac4db13b40ba4a82f75a"
+            "2218ef5143e88eb78a1583fb269ffc78cacdaec0c9a9ebb0acf8241d185132d0"
 
         // The per-class split of gatesRecoveryAndLatencyOnTheRealDictionary.
         private const val CLASS_COUNT = 7
@@ -1828,25 +2059,33 @@ class GlideRecoveryCalibrationTest {
             "doubled_dwell_at_double", "doubled_dwell_elsewhere",
         )
         private val TT_PRUNING_BASELINE = PruningBaseline(
-            counts = intArrayOf(2395, 227, 196, 31, 21, 229, 229),
-            bucketHits = intArrayOf(2255, 206, 182, 28, 21, 212, 212),
-            pruningHits = intArrayOf(2252, 206, 182, 28, 21, 212, 212),
+            counts = intArrayOf(2383, 225, 189, 36, 19, 226, 226),
+            bucketHits = intArrayOf(2307, 214, 181, 34, 19, 216, 216),
+            pruningHits = intArrayOf(2303, 214, 181, 34, 19, 216, 216),
         )
         private val RU_PRUNING_BASELINE = PruningBaseline(
             counts = intArrayOf(1109, 99, 97, 2, 35, 100, 100),
-            bucketHits = intArrayOf(1049, 92, 89, 2, 32, 92, 92),
-            pruningHits = intArrayOf(1049, 92, 89, 2, 32, 92, 92),
+            bucketHits = intArrayOf(1072, 96, 95, 2, 35, 98, 98),
+            pruningHits = intArrayOf(1072, 96, 95, 2, 35, 98, 98),
         )
 
         // Recovery and host-latency gates.
         private const val RECOVERY_TOP3_MIN = 60.0
         private const val RECOVERY_TOP1_MIN = 35.0
         private const val HOST_P95_MS = 2.0
-        private const val NO_DWELL_TWIN_TOP1_PIN = 6.4516
-        private const val PLAIN_TOP1_PIN = 85.9290
+        private const val NO_DWELL_TWIN_TOP1_PIN = 8.3333
+        private const val PLAIN_TOP1_PIN = 88.1420
         private const val PLAIN_TOP3_PIN = 93.4447
-        private const val ALIAS_TOP1_PIN = 95.2381
+        private const val ALIAS_TOP1_PIN = 89.4737
         private const val ALIAS_TOP3_PIN = 100.0
+
+        // The short-word class guard (2-4 cp held-out, per-language constants): floors at the
+        // per-language column of gatesPerLanguageConstants' 2-4cp printout minus a 1 pp drift
+        // tolerance (the printout carries the slice sizes).
+        private const val TT_SHORT_TOP1_PIN = 83.6154
+        private const val TT_SHORT_TOP3_PIN = 93.9833
+        private const val RU_SHORT_TOP1_PIN = 88.2308
+        private const val RU_SHORT_TOP3_PIN = 94.3846
 
         // The alias-fold gates: the alias_doubled class floor and the measured Russian held-out
         // baselines.
@@ -1854,22 +2093,26 @@ class GlideRecoveryCalibrationTest {
         private const val RU_HELD_OUT_TOP1_PIN = 87.3540
         private const val RU_HELD_OUT_TOP3_PIN = 93.2555
 
-        // The pair-conditional variant's selected cell on the train surface (every cell tied, so
-        // the tie-break chose the wider set, the wider firing rule and the weaker penalty); the
-        // FUTO diagnostic's context slice evaluates the same arm.
-        internal const val PAIR_SET_MUTUAL = false
-        internal const val PAIR_RANK_ONE_ONLY = false
-        internal const val PAIR_RANK_PENALTY = 1.5f
+        // The pair-conditional variant of the bigram channel (fire only when the N-best holds a
+        // mined confusion pair, at a weaker rank penalty) was tuned on this suite and REJECTED:
+        // on the held-out context rows its best cell came within [0.0, +1.1] pp of the always-on
+        // channel at the shipped penalty, with the train-chosen cell a row worse — too small and
+        // too uncertain a gain for a bundled pair-set asset. The machinery (the pair mining, the
+        // firing probe and the tuning surface) is removed; the channel fires on every context row.
 
         // The shared constant set (one set serving both languages): the per-language gate
         // compares the per-language constants against it on each language's held-out split.
         private val SHARED = GlideDecoder.GlideConstants(
             shapeStd = 11.04f,
-            locationStdFactor = 0.18f,
-            normativeSpeedRadiiPerMs = 0.016f,
+            locationStdXFactor = 0.24f,
+            locationStdYFactor = 0.13f,
             speedWidenMax = 1.5f,
             lengthStdFactor = Float.POSITIVE_INFINITY,
         )
+
+        // The y/x aspect the tuning surfaces sweep: the swept location value is the geometric
+        // mean of the two sigmas, and this ratio splits x from y around it.
+        private const val Y_ASPECT = 0.55f
 
         private val geometry = GlideTestFixtures.tatarGeometry()
         private val russianGeometry = GlideTestFixtures.russianGeometry()
@@ -2000,21 +2243,6 @@ class GlideRecoveryCalibrationTest {
         private fun locate(vararg paths: String): File =
             paths.map(::File).firstOrNull(File::isFile)
                 ?: error("cannot locate committed test resource")
-
-        // ---- Confusion-pair mining (the pair-conditional channel's offline half). ----
-
-        private var minedPairsCache: GlideConfusionPairs.Mined? = null
-
-        /** The mined sets, computed once per class run (the mining decodes the whole dictionary). */
-        private fun minedPairs(): GlideConfusionPairs.Mined {
-            minedPairsCache?.let { return it }
-            val mined = GlideConfusionPairs.mine(TdictGlideInventory(realIndex!!), geometry)
-            println(
-                "Glide mining: union=${mined.union.size} mutual=${mined.mutual.size} pairs",
-            )
-            minedPairsCache = mined
-            return mined
-        }
 
         private fun pct(count: Int, total: Int): Double =
             if (total == 0) 0.0 else count * 100.0 / total

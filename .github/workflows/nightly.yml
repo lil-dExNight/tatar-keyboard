@@ -1,0 +1,55 @@
+name: Nightly
+
+on:
+  schedule:
+    # Weekly, Monday 03:00 UTC — off-peak for the shared runner pool.
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+
+# Every action is pinned to a full-length commit SHA, with its tag in the trailing comment.
+# A floating tag follows wherever upstream moves it, so a compromised action repository would
+# reach this pipeline silently. To update an action, resolve the new tag's commit (dereference
+# annotated tags) and change the pin together with its comment.
+
+jobs:
+  # The scheduled checks that push runs cannot see: an expiring dependency-verification key
+  # only fails a cold-cache build, and the everyday CI jobs run with the Gradle cache warm.
+  scheduled:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The trusted keys of gradle/verification-metadata.xml are committed in
+      # gradle/verification-keyring.gpg, so this gate needs no keyserver and only the gpg
+      # binary the runner image carries. An expired or expiring key fails the job before
+      # the cold-cache build wastes its time on unverifiable artifacts.
+      - name: Check trusted verification keys for expiry
+        run: python3 scripts/key_expiry_check.py
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      # No Gradle cache setup here: priming the cache would defeat the cold-cache build below.
+
+      # gradle-wrapper.jar is intentionally not tracked (upstream gitignores gradle/);
+      # restore it from the official distribution, pinned by sha256.
+      - name: Restore gradle-wrapper.jar
+        run: |
+          curl -fsSL -o gradle/wrapper/gradle-wrapper.jar \
+            https://raw.githubusercontent.com/gradle/gradle/v9.6.0/gradle/wrapper/gradle-wrapper.jar
+          echo "497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
+
+      # A fresh GRADLE_USER_HOME proves the committed verification metadata suffices to
+      # download and verify every dependency from nothing: no cached artifact, no cached
+      # verification key. Dependency verification is the only consumer of the network in
+      # this build. -PskipReleaseSigning keeps the unsigned-APK path (no keystore on the
+      # runner) while exercising the full dependency set of the release build.
+      - name: Cold-cache release build
+        env:
+          GRADLE_USER_HOME: /tmp/gradle-nightly-home
+        run: ./gradlew clean assembleRelease -PskipReleaseSigning --console=plain

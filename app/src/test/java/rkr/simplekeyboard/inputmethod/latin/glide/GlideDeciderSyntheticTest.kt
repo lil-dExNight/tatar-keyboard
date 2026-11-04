@@ -140,18 +140,22 @@ class GlideDeciderSyntheticTest {
             if (decoderRank in 1..3) decoderTop3++
 
             val decider = deciderForGeometry(geometry)
-            decider.onDown(path.xs[0], path.ys[0], path.ts[0].toLong(), eligible = true)
+            decider.onDown(path.xs[0], path.ys[0], 0L, eligible = true)
             var previousKey = geometry.keyIndexOfLetter(
                 Character.toLowerCase(word.codePointAt(0)),
             )
             var letterOffset = Character.charCount(word.codePointAt(0))
+            // The Fitts-normative fixture timing stays below the short-onset speed floor on
+            // purpose (the decoder's speed channel must not fire on it), so the decider replay
+            // runs on its own fast clock: 50 ms per letter hop, twice past the short-onset
+            // velocity threshold. The decode still runs the fixture path itself.
             for (index in 1 until path.size) {
                 val codePoint = word.codePointAt(letterOffset)
                 val key = geometry.keyIndexOfLetter(Character.toLowerCase(codePoint))
                 decider.onMove(
                     path.xs[index],
                     path.ys[index],
-                    path.ts[index].toLong(),
+                    index * 50L,
                     enteredDifferentLetterKey = key != previousKey,
                 )
                 previousKey = key

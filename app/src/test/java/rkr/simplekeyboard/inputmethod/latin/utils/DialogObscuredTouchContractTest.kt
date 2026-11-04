@@ -34,8 +34,9 @@ import java.io.File
  *
  * A related rule lives here too: the activity-wide FLAG_SECURE does not extend
  * to dialog windows, so the dialogs that render personal content — the settings side's word and
- * pair dialogs, and the IME-side forget-word dialog whose title names the saved word — set it on
- * their own window through [DialogUtils.securePersonalContent].
+ * pair dialogs, and the IME-side forget-word and remove-recent-emoji dialogs whose titles name
+ * the saved word or the long-pressed emoji — set it on their own window through
+ * [DialogUtils.securePersonalContent].
  */
 class DialogObscuredTouchContractTest {
 
@@ -126,13 +127,19 @@ class DialogObscuredTouchContractTest {
                 javaBody(activity, signature).contains("DialogUtils.securePersonalContent(dialog)"),
             )
         }
-        // The IME-side forget-word dialog names the saved word in its title, so it secures its
+        // The IME-side forget-word dialog names the saved word in its title, and the
+        // remove-recent-emoji dialog names the long-pressed emoji in its, so both secure their
         // window the same way.
-        assertTrue(
-            "the IME-side forget-word dialog must secure its dialog's window",
-            javaBody(read(LATIN_IME), "private void showForgetPersonalWordDialog(")
-                .contains("DialogUtils.securePersonalContent(dialog)"),
-        )
+        val ime = read(LATIN_IME)
+        for (signature in listOf(
+            "private void showForgetPersonalWordDialog(",
+            "public void showRemoveRecentEmojiDialog(",
+        )) {
+            assertTrue(
+                "$signature must secure its dialog's window",
+                javaBody(ime, signature).contains("DialogUtils.securePersonalContent(dialog)"),
+            )
+        }
     }
 
     // --- helpers ---------------------------------------------------------------------------------

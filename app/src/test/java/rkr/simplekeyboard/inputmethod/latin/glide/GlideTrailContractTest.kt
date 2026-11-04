@@ -179,6 +179,61 @@ class GlideTrailContractTest {
         assertTrue(config.contains("<dimen name=\"config_glide_trail_stroke_width\">"))
     }
 
+    @Test
+    fun aRefusedGlideRepaintsTheTrailInTheErrorInk() {
+        // The refusal path reaches the view directly from LatinIME's refusal feedback, not
+        // through the pointer feed: by the time a commit is refused the lift has already ended
+        // the trail, and the mark repaints the fading ring.
+        val mark = viewSource.substringAfter("public void markGlideTrailRefused()")
+        assertTrue("an empty trail repaints nothing (no stale mark, no stray invalidate)",
+            mark.contains("if (mGlideTrail.isEmpty())"))
+        assertTrue("the mark lands on the trail", mark.contains("mGlideTrail.markRefused();"))
+        val draw = viewSource.substringAfter("private void drawGlideTrail(final Canvas canvas)")
+        assertTrue("the draw pass picks the error ink for a refused trail",
+            draw.contains("mGlideTrail.getRefused() ? mGlideTrailRefusedPaint : mGlideTrailPaint"))
+        assertTrue("the refused paint is configured once from the theme attr",
+            viewSource.contains("R.styleable.MainKeyboardView_glideTrailRefusedColor"))
+        val latinIme = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
+        )
+        val refusal = latinIme.substringAfter("setGlideRefusalFeedback(")
+            .substringBefore("setSuggestionTapFeedback(")
+        assertTrue("the refusal feedback keeps the haptic tick",
+            refusal.contains("LatinImeKeyFeedback.hapticTickFeedback();"))
+        assertTrue("and marks the trail refused",
+            refusal.contains("keyboardView.markGlideTrailRefused();"))
+
+        val attrs = read(
+            "src/main/res/values/attrs.xml",
+            "app/src/main/res/values/attrs.xml",
+        )
+        assertTrue(attrs.contains("<attr name=\"glideTrailRefusedColor\" format=\"color\" />"))
+        val tatar = read(
+            "src/main/res/values/themes-tatar.xml",
+            "app/src/main/res/values/themes-tatar.xml",
+        )
+        assertTrue(tatar.contains(
+            "<item name=\"glideTrailRefusedColor\">@color/tatar_glide_trail_refused</item>"))
+        val dynamic = read(
+            "src/main/res/values/themes-dynamic.xml",
+            "app/src/main/res/values/themes-dynamic.xml",
+        )
+        assertTrue(dynamic.contains(
+            "<item name=\"glideTrailRefusedColor\">@color/dyn_glide_trail_refused</item>"))
+        val colors = read(
+            "src/main/res/values/colors.xml",
+            "app/src/main/res/values/colors.xml",
+        )
+        assertTrue(colors.contains("<color name=\"tatar_glide_trail_refused\">#FFB00020</color>"))
+        val nightColors = read(
+            "src/main/res/values-night/colors.xml",
+            "app/src/main/res/values-night/colors.xml",
+        )
+        assertTrue("the dark palette carries its own refused ink",
+            nightColors.contains("<color name=\"tatar_glide_trail_refused\">#F2FFDAD6</color>"))
+    }
+
     /** The body of one method, from its declaration to the next one (good enough for pins). */
     private fun methodBody(name: String): String {
         // The " void " prefix skips javadoc {@link} references to the same method.

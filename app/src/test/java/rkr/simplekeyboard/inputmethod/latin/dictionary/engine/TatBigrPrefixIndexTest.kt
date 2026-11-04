@@ -50,6 +50,32 @@ class TatBigrPrefixIndexTest {
     }
 
     @Test
+    fun eightStoredSuccessesArmTheContextReadButNotTheDisplay() {
+        val heads = listOf("аб" to listOf("а", "б", "в", "г", "д", "е", "ж", "з"))
+        val dictionary = fixtureDictionary(heads)
+        val raw = BigramTestFixtures.raw(heads)
+        val index = requireNotNull(
+            TatBigrPrefixIndex.open(
+                ByteBuffer.wrap(raw), EngineTestFixtures.bigramIdentity, dictionary,
+                heads.size.toLong(), raw.size.toLong(),
+            ),
+        )
+
+        // The NEXT_WORD display keeps the strip's four successors.
+        assertEquals(listOf("а", "б", "в", "г"), predict(index, "аб"))
+        // The context read fills the widened sink: all eight, in packing order.
+        val ids = IntArray(TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS)
+        val count = index.collectSuccessorIds(
+            ImmutableUtf8Prefix.copyOf("аб".toByteArray(Charsets.UTF_8)), ids,
+        )
+        assertEquals(8, count)
+        assertEquals(
+            listOf("а", "б", "в", "г", "д", "е", "ж", "з"),
+            (0 until count).map { dictionary.wordAt(ids[it]) },
+        )
+    }
+
+    @Test
     fun moreThanFourStoredSuccessesAreCappedToFour() {
         val index = EngineTestFixtures.bigramIndex(
             listOf("аб" to listOf("а", "б", "в", "г", "д", "е")),
@@ -216,16 +242,15 @@ class TatBigrPrefixIndexTest {
             spec.expectedHeadCount,
             decompressed.size.toLong(),
         )
-        assertTrue(index != null)
         // "мин" (I/me) is an extremely common Tatar word and, if present as a head at all, must
-        // return at most MAX_RESULTS successors without throwing.
+        // return at most MAX_PREDICT_RESULTS successors without throwing.
         val results = index!!.predict(ImmutableUtf8Prefix.copyOf("мин".toByteArray(Charsets.UTF_8)))
-        assertTrue(results.size <= TatBigrPrefixIndex.MAX_RESULTS)
+        assertTrue(results.size <= TatBigrPrefixIndex.MAX_PREDICT_RESULTS)
         // The imperative "кил" is an extra-list head; its successor row is pinned by the schema-3
-        // equivalence check, so the reader must serve it. The shipped table stores K = 4
-        // successors per head and MAX_RESULTS reads them all.
+        // equivalence check, so the reader must serve it. The shipped table stores K = 8
+        // successors per head; MAX_PREDICT_RESULTS caps the served row at the strip width.
         assertEquals(
-            listOf("монда", "әле", "дә", "һәм"),
+            listOf("монда", "әле", "дә", "мин"),
             index.predict(ImmutableUtf8Prefix.copyOf("кил".toByteArray(Charsets.UTF_8))),
         )
     }

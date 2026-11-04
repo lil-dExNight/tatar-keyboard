@@ -1,8 +1,9 @@
 /*
  * Copyright (C) 2026 Tatar Keyboard contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
- * in compliance with the License. You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -17,13 +18,10 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.text.Normalizer
-import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SentStartOverlayTestFixtures.Entry
 
 /**
  * The `.tsent` validator: the golden fixture and every rejection rule, mirrored on
@@ -113,7 +111,7 @@ class TsentValidatorTest {
     fun rejectsInvalidUtf8Word() {
         val bytes = build(listOf(Entry("әби")))
         bytes[TsentFormat.HEADER_SIZE + TsentFormat.RECORD_HEADER_SIZE] = 0xFF.toByte()
-        assertRejected(refreshEmbeddedChecksum(bytes))
+        assertRejected(SentStartOverlayTestFixtures.refreshEmbeddedChecksum(bytes))
     }
 
     @Test
@@ -140,7 +138,7 @@ class TsentValidatorTest {
         // The header's payload size is bumped so only the trailing-byte rule can fire.
         val buffer = ByteBuffer.wrap(grown).order(ByteOrder.LITTLE_ENDIAN)
         buffer.putInt(TsentFormat.PAYLOAD_SIZE_OFFSET, grown.size - TsentFormat.HEADER_SIZE)
-        assertRejected(refreshEmbeddedChecksum(grown))
+        assertRejected(SentStartOverlayTestFixtures.refreshEmbeddedChecksum(grown))
     }
 
     private fun assertRejected(bytes: ByteArray) {
@@ -151,13 +149,6 @@ class TsentValidatorTest {
             // Expected: every violation is the constant-message exception.
         }
     }
-
-    // ---- the `.tsent` image builder, mirrored on PersonalDictionaryTestFixtures -------------------
-
-    private data class Entry(val word: String, val count: Int = 1, val serial: Long = 1L)
-
-    private fun normalized(word: String): String =
-        Normalizer.normalize(word, Normalizer.Form.NFC).lowercase(Locale.ROOT)
 
     private fun build(
         entries: List<Entry>,
@@ -170,42 +161,7 @@ class TsentValidatorTest {
         magic: String = TsentFormat.MAGIC,
         entryCountOverride: Long? = null,
         payloadSizeOverride: Long? = null,
-        refreshChecksum: Boolean = true,
-    ): ByteArray {
-        val ordered = if (sort) entries.sortedWith(compareBy { normalized(it.word) }) else entries
-        val encoded = ordered.map { it.word.toByteArray(StandardCharsets.UTF_8) }
-        val payloadSize = encoded.sumOf { TsentFormat.RECORD_HEADER_SIZE + it.size }.toLong()
-        val fileSize = TsentFormat.HEADER_SIZE + payloadSize.toInt()
-
-        val buffer = ByteBuffer.allocate(fileSize).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.put(magic.toByteArray(StandardCharsets.US_ASCII))
-        buffer.putShort(schemaId.toShort())
-        buffer.putShort(formatVersion.toShort())
-        buffer.putShort(headerSize.toShort())
-        buffer.putShort(checksumAlgorithm.toShort())
-        buffer.putInt((entryCountOverride ?: ordered.size.toLong()).toInt())
-        buffer.putInt((payloadSizeOverride ?: payloadSize).toInt())
-        val tag = ByteArray(TsentFormat.SUBTYPE_TAG_SIZE)
-        val tagBytes = subtypeTag.toByteArray(StandardCharsets.US_ASCII)
-        tagBytes.copyInto(tag, 0, 0, minOf(tagBytes.size, tag.size))
-        buffer.put(tag)
-        buffer.put(ByteArray(TsentFormat.CHECKSUM_SIZE))
-        ordered.forEachIndexed { index, entry ->
-            val bytes = encoded[index]
-            buffer.put(bytes.size.toByte())
-            buffer.putShort(entry.count.toShort())
-            buffer.putInt(entry.serial.toInt())
-            buffer.put(bytes)
-        }
-        val image = buffer.array()
-        return if (refreshChecksum) refreshEmbeddedChecksum(image) else image
-    }
-
-    private fun refreshEmbeddedChecksum(input: ByteArray): ByteArray {
-        val result = input.copyOf()
-        result.fill(0, TsentFormat.CHECKSUM_OFFSET, TsentFormat.CHECKSUM_OFFSET + TsentFormat.CHECKSUM_SIZE)
-        val checksum = MessageDigest.getInstance("SHA-256").digest(result)
-        checksum.copyInto(result, TsentFormat.CHECKSUM_OFFSET)
-        return result
-    }
+    ): ByteArray = SentStartOverlayTestFixtures.build(
+        entries, subtypeTag, sort, schemaId, formatVersion, headerSize, checksumAlgorithm,
+        magic, entryCountOverride, payloadSizeOverride)
 }

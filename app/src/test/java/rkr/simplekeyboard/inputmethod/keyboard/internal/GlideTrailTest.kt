@@ -2,6 +2,7 @@ package rkr.simplekeyboard.inputmethod.keyboard.internal
 
 import com.sun.management.ThreadMXBean
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -151,6 +152,47 @@ class GlideTrailTest {
         assertEquals(1, trail.size)
         assertEquals(500f, trail.xAt(0), 0f)
         assertEquals(1f, trail.fadeFactor(2_000f), 0f)
+    }
+
+    // --- The refused mark (the fading trail repaints in the error color) -------------------------
+
+    @Test
+    fun aRefusedMarkSurvivesTheFadeAndClearResetsIt() {
+        val trail = GlideTrail()
+        for (i in 0 until 10) {
+            trail.addPoint(i.toFloat(), 0f, i * 16f)
+        }
+        trail.startFadeOut(1_000f)
+        trail.markRefused()
+        assertTrue(trail.refused)
+        // The mark changes only the paint the view picks: the fade math is untouched.
+        assertTrue(trail.fadingOut)
+        assertEquals(0.5f, trail.fadeFactor(1_000f + GlideTrail.FADE_OUT_MS / 2), 0.001f)
+        assertEquals(10, trail.size)
+        trail.clear()
+        assertFalse(trail.refused)
+    }
+
+    @Test
+    fun aNewGestureDropsTheRefusedMark() {
+        val trail = GlideTrail()
+        for (i in 0 until 10) {
+            trail.addPoint(i.toFloat(), 0f, i * 16f)
+        }
+        trail.startFadeOut(1_000f)
+        trail.markRefused()
+        // The next gesture's first point clears the fading ring — the mark goes with it, or the
+        // new gesture's trail would paint as refused.
+        trail.addPoint(500f, 500f, 2_000f)
+        assertFalse(trail.refused)
+        assertEquals(1, trail.size)
+    }
+
+    @Test
+    fun anEmptyTrailTakesNoRefusedMark() {
+        val trail = GlideTrail()
+        trail.markRefused()
+        assertFalse("nothing to repaint, and no stale mark for the next gesture", trail.refused)
     }
 
     @Test

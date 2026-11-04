@@ -1,0 +1,176 @@
+/*
+ * Copyright (C) 2026 Tatar Keyboard contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
+
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import rkr.simplekeyboard.inputmethod.latin.dictionary.SeededFuzzHarness
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SentStartOverlayTestFixtures.Entry
+import java.util.Random
+
+/**
+ * Seeded fuzzing of [TsentValidator] (the `.tsent` sentence-start overlay). See
+ * [SeededFuzzHarness].
+ *
+ * The base image is a valid 8-entry Tatar fixture (the overlay's own cap), so the record loop and
+ * the UTF-8, casing, alphabet, length and ordering checks are reachable. Shapes: bit flips,
+ * truncations, inflation of the two u32 header fields (entryCount, payloadSize), random garbage,
+ * and payload corruption with the checksum refreshed half the time; only refreshed mutations may
+ * validate.
+ */
+class TsentValidatorFuzzTest {
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
+
+    private val validator = TsentValidator()
+
+    private val baseImage = SentStartOverlayTestFixtures.build(
+        SeededFuzzHarness.tatarWords(8).mapIndexed { index, word ->
+            Entry(word, count = index % 7 + 1, serial = index + 1L)
+        },
+    )
+
+    @Test
+    fun baseImageValidates() {
+        val validated = validator.validate(writeBytes(baseImage), PersonalSubtypes.TATAR_RU)
+        assertEquals(8, validated.entryCount)
+    }
+
+    @Test
+    fun fuzzBitFlipsNeverEscapeTheIntegrityGate() {
+        val file = writeBytes(baseImage)
+        val random = Random(SEED_BIT_FLIPS)
+        repeat(2_500) { iteration ->
+            val mutated = SeededFuzzHarness.flipBits(random, baseImage)
+            file.writeBytes(mutated.bytes)
+            SeededFuzzHarness.assertCleanOrValidationFailure(
+                "bit-flips", SEED_BIT_FLIPS, iteration, mutated.detail,
+                SentStartOverlayValidationException::class.java, mustReject = true,
+            ) {
+                validator.validate(file, PersonalSubtypes.TATAR_RU)
+            }
+        }
+    }
+
+    @Test
+    fun fuzzTruncationsNeverValidate() {
+        val file = writeBytes(baseImage)
+        val random = Random(SEED_TRUNCATIONS)
+        repeat(2_000) { iteration ->
+            val mutated = SeededFuzzHarness.truncate(random, baseImage)
+            file.writeBytes(mutated.bytes)
+            SeededFuzzHarness.assertCleanOrValidationFailure(
+                "truncations", SEED_TRUNCATIONS, iteration, mutated.detail,
+                SentStartOverlayValidationException::class.java, mustReject = true,
+            ) {
+                validator.validate(file, PersonalSubtypes.TATAR_RU)
+            }
+        }
+    }
+
+    @Test
+    fun fuzzCountAndSizeFieldInflationStaysUnderTheCaps() {
+        val file = writeBytes(baseImage)
+        val random = Random(SEED_INFLATION)
+        repeat(2_000) { iteration ->
+            val mutated = SeededFuzzHarness.inflateFields(random, baseImage, U32_FIELD_OFFSETS)
+            // Half the iterations also refresh the checksum: the count/size guards precede the
+            // checksum gate, but this arm additionally reaches the record loop with a mutated
+            // count that slipped under the cap (a random value can land below it).
+            val bytes = if (random.nextBoolean()) {
+                SentStartOverlayTestFixtures.refreshEmbeddedChecksum(mutated.bytes)
+            } else {
+                mutated.bytes
+            }
+            file.writeBytes(bytes)
+            SeededFuzzHarness.assertCleanOrValidationFailure(
+                "inflation", SEED_INFLATION, iteration, mutated.detail,
+                SentStartOverlayValidationException::class.java, mustReject = true,
+            ) {
+                validator.validate(file, PersonalSubtypes.TATAR_RU)
+            }
+        }
+    }
+
+    @Test
+    fun fuzzRandomGarbageNeverValidates() {
+        val file = writeBytes(baseImage)
+        val random = Random(SEED_GARBAGE)
+        repeat(2_000) { iteration ->
+            val mutated = SeededFuzzHarness.garbage(random, 2_048)
+            file.writeBytes(mutated.bytes)
+            SeededFuzzHarness.assertCleanOrValidationFailure(
+                "garbage", SEED_GARBAGE, iteration, mutated.detail,
+                SentStartOverlayValidationException::class.java, mustReject = true,
+            ) {
+                validator.validate(file, PersonalSubtypes.TATAR_RU)
+            }
+        }
+    }
+
+    @Test
+    fun fuzzValidImageMutationReachesStructuralChecks() {
+        val file = writeBytes(baseImage)
+        val random = Random(SEED_VALID_IMAGE_MUTATION)
+        var validatedCleanly = 0
+        repeat(3_000) { iteration ->
+            val refresh = random.nextBoolean()
+            val corrupted = SeededFuzzHarness.corruptBytes(
+                random,
+                baseImage,
+                // The refresh zeroes and rewrites the checksum field: a corruption landing only
+                // there would be wiped, recreating the valid base image.
+                excluding = if (refresh) CHECKSUM_RANGE else null,
+            )
+            val bytes =
+                if (refresh) SentStartOverlayTestFixtures.refreshEmbeddedChecksum(corrupted.bytes) else corrupted.bytes
+            file.writeBytes(bytes)
+            SeededFuzzHarness.assertCleanOrValidationFailure(
+                "valid-image-mutation", SEED_VALID_IMAGE_MUTATION, iteration,
+                corrupted.detail + " refresh=$refresh",
+                SentStartOverlayValidationException::class.java, mustReject = !refresh,
+            ) {
+                validator.validate(file, PersonalSubtypes.TATAR_RU)
+                validatedCleanly++
+            }
+        }
+        // Pin the exact deterministic count of clean validations (refreshed corruptions that
+        // landed only in bytes the structure leaves free) so a future validator change that
+        // makes the fuzz shallower forces a review here.
+        assertEquals(89, validatedCleanly)
+    }
+
+    private fun writeBytes(bytes: ByteArray) =
+        temporaryFolder.newFile("fuzz-${System.nanoTime()}.tsent").also { it.writeBytes(bytes) }
+
+    private companion object {
+        const val SEED_BIT_FLIPS = 0x5EED_8001L
+        const val SEED_TRUNCATIONS = 0x5EED_8002L
+        const val SEED_INFLATION = 0x5EED_8003L
+        const val SEED_GARBAGE = 0x5EED_8004L
+        const val SEED_VALID_IMAGE_MUTATION = 0x5EED_8005L
+
+        /** entryCount and payloadSize, the only u32 header fields (offsets per TsentFormat). */
+        val U32_FIELD_OFFSETS = intArrayOf(16, 20)
+
+        /** The embedded-checksum field, excluded from corruptions that get refreshed. */
+        val CHECKSUM_RANGE = TsentFormat.CHECKSUM_OFFSET until
+            (TsentFormat.CHECKSUM_OFFSET + TsentFormat.CHECKSUM_SIZE)
+    }
+}

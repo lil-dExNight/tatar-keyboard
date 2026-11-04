@@ -100,6 +100,30 @@ class RuSuggestEvalTest {
         assertEquals(PIN_CP1_TOP1_HITS, top1HitsPerLength[1])
         assertEquals(PIN_CP2_TOP1_HITS, top1HitsPerLength[2])
         assertEquals(PIN_CP3_TOP1_HITS, top1HitsPerLength[3])
+        assertTrue(
+            "cp1 top-1 ${top1HitsPerLength[1]} under the floor of $PIN_CP1_TOP1_HITS",
+            top1HitsPerLength[1] >= PIN_CP1_TOP1_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "cp2 top-1 ${top1HitsPerLength[2]} under the floor of $PIN_CP2_TOP1_HITS",
+            top1HitsPerLength[2] >= PIN_CP2_TOP1_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "cp3 top-1 ${top1HitsPerLength[3]} under the floor of $PIN_CP3_TOP1_HITS",
+            top1HitsPerLength[3] >= PIN_CP3_TOP1_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "cp1 visible top-3 ${visibleTop3HitsPerLength[1]} under the floor of $PIN_CP1_VISIBLE_TOP3_HITS",
+            visibleTop3HitsPerLength[1] >= PIN_CP1_VISIBLE_TOP3_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "cp2 visible top-3 ${visibleTop3HitsPerLength[2]} under the floor of $PIN_CP2_VISIBLE_TOP3_HITS",
+            visibleTop3HitsPerLength[2] >= PIN_CP2_VISIBLE_TOP3_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "cp3 visible top-3 ${visibleTop3HitsPerLength[3]} under the floor of $PIN_CP3_VISIBLE_TOP3_HITS",
+            visibleTop3HitsPerLength[3] >= PIN_CP3_VISIBLE_TOP3_HITS * QUALITY_FLOOR,
+        )
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
         assertEquals(PIN_CP1_TOP1_PCT, format(top1HitsPerLength[1] * 100.0 / wordsPerLength[1]))
         assertEquals(PIN_CP2_TOP1_PCT, format(top1HitsPerLength[2] * 100.0 / wordsPerLength[2]))
@@ -277,7 +301,7 @@ class RuSuggestEvalTest {
         val index = requireNotNull(dictionaryIndex)
         val bigrams = requireNotNull(bigramIndex)
         index.updateKeyNeighbors(null)
-        val ids = IntArray(TatBigrPrefixIndex.MAX_RESULTS)
+        val ids = IntArray(TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS)
         val moments = IntArray(evalLines.size)
         val baseTop1 = IntArray(evalLines.size)
         val boostTop1 = IntArray(evalLines.size)
@@ -444,9 +468,17 @@ class RuSuggestEvalTest {
         assertEquals(PIN_CHAIN_TOP1_HITS, top1Hits)
         assertEquals(PIN_CHAIN_VISIBLE_TOP3_HITS, visibleHits)
         assertEquals(PIN_CHAIN_ENGINE_TOP4_HITS, engineHits)
-        assertEquals("7.8594", format(ratePct(top1Hits, pairs)))
-        assertEquals("15.7412", format(ratePct(visibleHits, pairs)))
-        assertEquals("18.6520", format(ratePct(engineHits, pairs)))
+        assertTrue(
+            "chain top-1 $top1Hits under the floor of $PIN_CHAIN_TOP1_HITS",
+            top1Hits >= PIN_CHAIN_TOP1_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "chain visible top-3 $visibleHits under the floor of $PIN_CHAIN_VISIBLE_TOP3_HITS",
+            visibleHits >= PIN_CHAIN_VISIBLE_TOP3_HITS * QUALITY_FLOOR,
+        )
+        assertEquals("9.0461", format(ratePct(top1Hits, pairs)))
+        assertEquals("16.8831", format(ratePct(visibleHits, pairs)))
+        assertEquals("19.3462", format(ratePct(engineHits, pairs)))
     }
 
     @Test
@@ -464,7 +496,7 @@ class RuSuggestEvalTest {
         val index = requireNotNull(dictionaryIndex)
         return CompositePrefixComputer(
             index, PersonalCandidateSource.EMPTY,
-            GlobalTopFrequencyFallbackFactory.createFallbackWords(index),
+            GlobalTopFrequencyFallbackFactory.INSTANCE.createFallbackWords(index),
         ).also { it.attachBigramSource(requireNotNull(bigramIndex)) }
     }
 
@@ -494,23 +526,28 @@ class RuSuggestEvalTest {
     private fun formatSigned(value: Double): String = "%+.4f".format(java.util.Locale.ROOT, value)
 
     companion object {
+        // Quality floors beside the exact pins: a headline metric must stay within 5% of its
+        // pinned value, so a dictionary rebuild cannot be re-pinned through a silent quality
+        // drop.
+        private const val QUALITY_FLOOR = 0.95
+
         // Pins over the committed assets and eval set; re-pin when either changes (see class KDoc).
         private const val PIN_EVAL_LINES = 1_000
         private const val PIN_UNIQUE_WORDS = 2_218
         private const val PIN_PAIRS = 4_466
         private const val PIN_COVERED = 4_010
-        private const val PIN_TOP1_HITS = 349
-        private const val PIN_BIGRAM_VISIBLE_TOP3_HITS = 673
-        private const val PIN_BIGRAM_ENGINE_TOP4_HITS = 794
+        private const val PIN_TOP1_HITS = 402
+        private const val PIN_BIGRAM_VISIBLE_TOP3_HITS = 724
+        private const val PIN_BIGRAM_ENGINE_TOP4_HITS = 825
         private const val PIN_COVERED_PCT = "89.7895"
-        private const val PIN_TOP1_PCT = "7.8146"
-        private const val PIN_VISIBLE_TOP3_PCT = "15.0694"
-        private const val PIN_VISIBLE_TOP3_COVERED_PCT = "16.7830"
-        private const val PIN_ENGINE_TOP4_PCT = "17.7788"
-        private const val PIN_ENGINE_TOP4_COVERED_PCT = "19.8005"
-        private const val PIN_CHAIN_TOP1_HITS = 351
-        private const val PIN_CHAIN_VISIBLE_TOP3_HITS = 703
-        private const val PIN_CHAIN_ENGINE_TOP4_HITS = 833
+        private const val PIN_TOP1_PCT = "9.0013"
+        private const val PIN_VISIBLE_TOP3_PCT = "16.2114"
+        private const val PIN_VISIBLE_TOP3_COVERED_PCT = "18.0549"
+        private const val PIN_ENGINE_TOP4_PCT = "18.4729"
+        private const val PIN_ENGINE_TOP4_COVERED_PCT = "20.5736"
+        private const val PIN_CHAIN_TOP1_HITS = 404
+        private const val PIN_CHAIN_VISIBLE_TOP3_HITS = 754
+        private const val PIN_CHAIN_ENGINE_TOP4_HITS = 864
         private const val PIN_CP1_WORDS = 2_218
         private const val PIN_CP2_WORDS = 2_210
         private const val PIN_CP3_WORDS = 2_179
@@ -537,22 +574,22 @@ class RuSuggestEvalTest {
         // bootstrap (the seed and rounds are shared with scripts/suggest_chain.py).
         private const val PIN_CTXBOOST_CP2PLUS_MOMENTS = 15_636
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS = 5_968
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS = 6_270
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS = 6_483
         private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_HITS = 9_096
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS = 9_224
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS = 9_326
         private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_HITS = 9_800
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_HITS = 9_906
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_HITS = 9_994
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT = "38.1683"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT = "40.0998"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_DELTA = "+1.9314"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO = "+1.5925"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI = "+2.2991"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT = "41.4620"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_DELTA = "+3.2937"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO = "+2.7930"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI = "+3.8073"
         private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_PCT = "58.1734"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT = "58.9921"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_DELTA = "+0.8186"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT = "59.6444"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_DELTA = "+1.4710"
         private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_PCT = "62.6759"
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_PCT = "63.3538"
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_DELTA = "+0.6779"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_PCT = "63.9166"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_DELTA = "+1.2407"
 
         // Bootstrap knobs, shared with scripts/suggest_chain.py; changing them re-pins the CI.
         private const val BOOTSTRAP_SEED = 20261001L

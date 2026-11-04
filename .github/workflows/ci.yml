@@ -72,19 +72,53 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
+      # The instrumentation tests never resolve an external artifact: they compile against the
+      # legacy android.test.runner/base jars in the installed platform's optional/ directory.
+      # When the runner image's platform package lacks those jars, the androidTest sources cannot
+      # compile at all — fail loudly instead of letting the step skip silently. The fix is a newer
+      # runner image (whose platform carries the jars) or an explicit SDK install of the pinned
+      # platform before this step; do not drop the jars from the compileOnly configuration.
+      - name: Check legacy instrumentation jars
+        run: |
+          set -eu
+          platform_dir="$ANDROID_SDK_ROOT/platforms"
+          found=$(find "$platform_dir" -path '*/optional/android.test.runner.jar' -type f | head -1 || true)
+          if [ -z "$found" ]; then
+            echo "ERROR: no android.test.runner.jar under $platform_dir/*/optional" >&2
+            echo "the runner image lacks the legacy instrumentation jars; :app:assembleDebugAndroidTest cannot compile" >&2
+            echo "fix: use a runner image with the platform's optional/ jars, or install the pinned platform into the SDK before this step" >&2
+            exit 1
+          fi
+          echo "legacy jars present: $found"
+
+      # The device legs (the perf ritual's first-glide leg, the device tests) install this APK;
+      # compiling it in CI catches source-level breakage that JVM tests and assembleDebug miss
+      # (androidTest sources are never on the test or debug compile paths).
+      - name: Build debug androidTest APK
+        run: ./gradlew :app:assembleDebugAndroidTest --console=plain
+
+      # The profile generator module: never packaged, but its sources must compile against
+      # :app, so a break in the generator or its journey declarations surfaces here. A
+      # com.android.test module has no debug variant, so the plain assemble task covers both
+      # of its variants.
+      - name: Build baseline-profile module
+        run: ./gradlew :baselineprofile:assemble --console=plain
+
       # keystore.properties is gitignored, so assembleRelease produces an unsigned APK
       # (see signingConfig in app/build.gradle). The gates below check size, permissions
       # and backup rules, not the signature; the signature is verified locally with apksigner.
       - name: Build release APK (unsigned)
         run: ./gradlew assembleRelease
 
-      # The release checks that need no keystore: the APK size limit, the bundled dictionaries
-      # and bigram tables against their pins, the emoji, dictionary and bigram assets byte for
-      # byte against the tree, the exported components against the golden set, no keystore,
-      # private key or token in the tracked tree or the APK, exactly the VIBRATE permission,
+      # The release checks that need no keystore: the APK size limit, the bundled dictionaries,
+      # bigram tables and companion lists against their pins, the emoji, dictionary and bigram
+      # assets byte for byte against the tree, the exported components against the golden set,
+      # no keystore, private key or token in the tracked tree or the APK, exactly the VIBRATE
+      # permission,
       # the resources read by name surviving shrinking, no reflection entry point in the
       # sources, an uncompressed resources.arsc, the startup dex split with the baseline
-      # profile, and the profile rules resolved through this build's R8 mapping.
+      # profile, the profile rules resolved through this build's R8 mapping, and the
+      # cross-language parity of the pinned headline eval metrics.
       # The size limit is the release limit applied to the AGP APK, a stricter bound: the
       # released APK is smaller, because zopfli recompression saves more than the v2 signing
       # block adds.
@@ -93,7 +127,7 @@ jobs:
       # checks cannot be selected with --checks and run only in a local run without --checks;
       # the delta also needs dist/.
       - name: Check size, assets, exported surface, secrets, permissions, shrinking and profiles (release APK)
-        run: bash scripts/release_check.sh --checks size,asset_pins,emoji_assets,tree_assets,exported_surface,no_secrets,permissions,critical_resources,no_reflection,arsc_stored,dex_layout,profiles app/build/outputs/apk/release/app-release-unsigned.apk
+        run: bash scripts/release_check.sh --checks size,asset_pins,emoji_assets,tree_assets,exported_surface,no_secrets,permissions,critical_resources,no_reflection,arsc_stored,dex_layout,profiles,eval_parity app/build/outputs/apk/release/app-release-unsigned.apk
 
       # Both levels: source manifest + aapt2 dump permissions on the built APK. Checked on
       # debug and release, since the release merged manifest could differ if a

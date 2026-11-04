@@ -153,7 +153,59 @@ class TdictPrefixIndexContextBoostTest {
         assertEquals(listOf("балайт", "балак", "балалы", "балалар"), lookup(index, "бала"))
     }
 
-    // --- End-to-end through the packed bigram table ----------------------------------------------
+    @Test
+    fun aTablePackedWithEightSuccessorsArmsTheContextTrackWithAllEight() {
+        // A K=8 packing: the context read delivers all eight stored successor ids, the
+        // NEXT_WORD display keeps the strip's four, and the exact pass's context track
+        // surfaces its own four — the strongest members by frequency, not packing order.
+        // Sorted byte order: дан < казан < казанган < казанда < казанлы < казанна < казанни <
+        // казанның < казанчит < казанчы (г < д < л < н < ч; а < и < ы).
+        val entries = listOf(
+            "дан" to 100L,
+            "казан" to 90L,
+            "казанган" to 7L,
+            "казанда" to 80L,
+            "казанлы" to 5L,
+            "казанна" to 4L,
+            "казанни" to 3L,
+            "казанның" to 70L,
+            "казанчит" to 50L,
+            "казанчы" to 6L,
+        )
+        val dictionary = EngineTestFixtures.index(entries)
+        val packed = listOf(
+            "казанган", "казанчы", "казанлы", "казанна", "казанни", "казанның", "казанда", "казан",
+        )
+        val bigrams = bigramsOf(
+            dictionary, listOf("дан" to packed), entries.map { it.first },
+        )
+
+        // The NEXT_WORD display: the strip's four, in packing order.
+        assertEquals(
+            listOf("казанган", "казанчы", "казанлы", "казанна"),
+            bigrams.predict(ImmutableUtf8Prefix.copyOf("дан".toByteArray(Charsets.UTF_8))),
+        )
+        // The context read: all eight ids, in packing order.
+        val ids = IntArray(TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS)
+        val count = bigrams.collectSuccessorIds(
+            ImmutableUtf8Prefix.copyOf("дан".toByteArray(Charsets.UTF_8)), ids,
+        )
+        assertEquals(8, count)
+        assertEquals(packed, (0 until count).map { dictionary.wordAt(ids[it]) })
+
+        // The unarmed order: the four strongest continuations of "ка".
+        assertEquals(
+            listOf("казан", "казанда", "казанның", "казанчит"),
+            lookup(dictionary, "ка"),
+        )
+        // Every armed successor is a context-track member, so the non-member казанчит (50)
+        // yields its cell to the weakest surfacing member (казанган, 7): the track ranks the
+        // members by frequency and keeps the strip's four cells.
+        assertEquals(
+            listOf("казан", "казанда", "казанның", "казанган"),
+            lookupArmed(dictionary, "ка", ids, count),
+        )
+    }
 
     private fun bigramsOf(
         dictionary: TdictPrefixIndex,
@@ -187,7 +239,7 @@ class TdictPrefixIndexContextBoostTest {
         val bigrams = bigramsOf(
             dictionary, listOf("дан" to listOf("казанган")), entries.map { it.first },
         )
-        val ids = IntArray(TatBigrPrefixIndex.MAX_RESULTS)
+        val ids = IntArray(TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS)
         val count = bigrams.collectSuccessorIds(
             ImmutableUtf8Prefix.copyOf("дан".toByteArray(Charsets.UTF_8)), ids,
         )
@@ -212,7 +264,7 @@ class TdictPrefixIndexContextBoostTest {
         val bigrams = bigramsOf(
             dictionary, listOf("дан" to listOf("капка")), listOf("дан", "капка"),
         )
-        val ids = IntArray(TatBigrPrefixIndex.MAX_RESULTS)
+        val ids = IntArray(TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS)
         // Not a head, not a dictionary word, and the empty word: all yield nothing.
         assertEquals(
             0,

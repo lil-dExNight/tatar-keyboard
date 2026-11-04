@@ -250,6 +250,7 @@ class BackupPreferencesXmlTest {
             "pref_key_longpress_timeout" to int,
             "pref_one_handed_side" to int,
             "pref_bottom_offset_portrait" to int,
+            "pref_bottom_offset_landscape" to int,
             "pref_keyboard_color" to int,
             "pref_keypress_sound_volume" to float,
             "pref_keyboard_height" to float,

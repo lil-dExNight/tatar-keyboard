@@ -343,7 +343,7 @@ class PersonalBigramStoreWriteTest {
         assertTrue("the pair lives only in the pending counters", store.snapshot.isEmpty)
         val pending = File(directory, "pending-bigrams-$subtype-s1-f1.bin")
         assertTrue("the pending counters are written at the flush", pending.isFile)
-        assertTrue("the salt exists", File(directory, "salt-bigrams.bin").isFile)
+        assertTrue("the salt exists", File(directory, "salt-bigrams-$subtype-s1-f1.bin").isFile)
         // NOTHING on disk may carry the words themselves: the pending counters hold only salted
         // truncated hashes, and the store file does not exist yet.
         for (file in directory.listFiles().orEmpty()) {
@@ -426,7 +426,7 @@ class PersonalBigramStoreWriteTest {
 
         replaceFails = false
         store.flush() // the boundary: the counters reach the disk and the suppression lifts
-        val salt = File(directory, "salt-bigrams.bin").readBytes()
+        val salt = File(directory, "salt-bigrams-$subtype-s1-f1.bin").readBytes()
         val counters =
             PendingCounters.parse(File(directory, "pending-bigrams-$subtype-s1-f1.bin").readBytes())
         assertEquals(
@@ -810,7 +810,7 @@ class PersonalBigramStoreWriteTest {
         assertTrue(reopened.snapshot.isEmpty)
         assertFalse(destinationFile(directory).exists())
         assertFalse(File(directory, "pending-bigrams-$subtype-s1-f1.bin").exists())
-        assertFalse(File(directory, "salt-bigrams.bin").exists())
+        assertFalse(File(directory, "salt-bigrams-$subtype-s1-f1.bin").exists())
         assertFalse(File(directory, quarantineName()).exists())
         assertFalse(File(directory, "quarantine-notice-bigrams-$subtype-s1-f1.flag").exists())
         assertNoTemp(directory)

@@ -445,6 +445,61 @@ class EmojiPanelStateTest {
         assertTrue(state.maxScrollY() > 0)
     }
 
+    // --- Clamp to a section (a recents refresh shrinks the content above it) --------------------
+
+    @Test
+    fun clampScrollToSectionPullsTheSectionTopBackIntoView() {
+        val recents = listOf("r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7")
+        val base = multiCategorySnapshot(50, 20, 40, 40)
+        val state = configuredState(EmojiDisplaySnapshots.withRecents(base, recents))
+
+        // The refresh arrives while the user is deep inside the (shrinking) Recent section; the
+        // view re-applies the old offset, which may now sit below where the entries went.
+        val deepInsideRecents = state.sectionGridTop(0) + state.cellHeight() * 2
+        state.setScrollY(deepInsideRecents)
+        val newSnapshot = EmojiDisplaySnapshots.withRecents(base, recents.take(2))
+        state.setSnapshot(newSnapshot)
+        state.setScrollY(deepInsideRecents)
+
+        assertTrue(state.clampScrollToSection(0))
+        assertEquals(state.sectionTop(0), state.scrollY())
+        assertTrue(state.sectionTop(1) > state.scrollY())
+    }
+
+    @Test
+    fun clampScrollToSectionNeverScrollsDownAndIsANoOpAboveTheSectionTop() {
+        val state = configuredState(multiCategorySnapshot(50, 20, 40, 40))
+        state.setScrollY(0)
+        assertFalse(state.clampScrollToSection(1))
+        state.setScrollY(state.sectionTop(1) - 1)
+        assertFalse(state.clampScrollToSection(1))
+        state.setScrollY(state.sectionTop(1) + 100)
+        assertTrue(state.clampScrollToSection(1))
+        assertEquals(state.sectionTop(1), state.scrollY())
+        // Out of range and empty states are no-ops.
+        assertFalse(state.clampScrollToSection(-1))
+        assertFalse(state.clampScrollToSection(99))
+        assertFalse(EmojiPanelState().clampScrollToSection(0))
+    }
+
+    @Test
+    fun clampScrollToSectionIsANoOpWhenTheSectionTopIsAlreadyBelowTheScroll() {
+        val state = configuredState(multiCategorySnapshot(50, 20), height = 300)
+        val last = state.sectionCount() - 1
+        state.setScrollY(state.maxScrollY())
+        // The last section's top sits beyond max scroll (the trailing floating-key space), so
+        // the offset is already above it and the clamp correctly leaves it at max scroll.
+        assertTrue(state.sectionTop(last) > state.maxScrollY())
+        assertFalse(state.clampScrollToSection(last))
+        assertEquals(state.maxScrollY(), state.scrollY())
+
+        // A reachable section top clamps onto it exactly.
+        val reachable = configuredState(multiCategorySnapshot(50, 20, 40, 40), height = 300)
+        reachable.setScrollY(reachable.sectionTop(2) + 100)
+        assertTrue(reachable.clampScrollToSection(2))
+        assertEquals(reachable.sectionTop(2), reachable.scrollY())
+    }
+
     // --- Virtual node count = visible cells + tabs + search + 2 functional keys -----------------
 
     private fun expectedVisibleCells(state: EmojiPanelState): Int {
@@ -651,6 +706,24 @@ class EmojiPanelStateTest {
         val y = (gridTopPx + headerPx + 5).toFloat()
         assertEquals(0, state.onDown(1, 5f, y))
         assertEquals(0, state.pressedTarget())
+        assertEquals(0, state.onUp(1, 5f, y))
+    }
+
+    /**
+     * The long-press actions (recent removal, recents clear, skin-tone popup) consume the press:
+     * one action per press, so a release after the consumption activates nothing — not the cell,
+     * not a tab, not a section jump.
+     */
+    @Test
+    fun aCanceledGestureActivatesNothingOnUp() {
+        val state = configuredState(multiCategorySnapshot(80, 80, 80))
+        val y = (gridTopPx + headerPx + 5).toFloat()
+        assertEquals(0, state.onDown(1, 5f, y))
+        state.cancelGesture()
+        assertEquals(EmojiPanelState.NO_TARGET, state.onUp(1, 5f, y))
+        assertEquals(0, state.consumeSwipe())
+        // The press after it starts fresh and still works.
+        assertEquals(0, state.onDown(1, 5f, y))
         assertEquals(0, state.onUp(1, 5f, y))
     }
 

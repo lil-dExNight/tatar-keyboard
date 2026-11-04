@@ -385,7 +385,7 @@ class PersonalEmojiStoreWriteTest {
         assertTrue("the entry lives only in the pending counters", store.snapshot.isEmpty)
         val pending = File(directory, "pending-emoji-$subtype-s1-f1.bin")
         assertTrue("the pending counters are written at the flush", pending.isFile)
-        assertTrue("the salt exists", File(directory, "salt-emoji.bin").isFile)
+        assertTrue("the salt exists", File(directory, "salt-emoji-$subtype-s1-f1.bin").isFile)
         // NOTHING on disk may carry the word or the emoji themselves: the pending counters hold
         // only salted truncated hashes, and the store file does not exist yet.
         for (file in directory.listFiles().orEmpty()) {
@@ -485,7 +485,7 @@ class PersonalEmojiStoreWriteTest {
 
         replaceFails = false
         store.flush() // the boundary: the counters reach the disk and the suppression lifts
-        val salt = File(directory, "salt-emoji.bin").readBytes()
+        val salt = File(directory, "salt-emoji-$subtype-s1-f1.bin").readBytes()
         val counters =
             PendingCounters.parse(File(directory, "pending-emoji-$subtype-s1-f1.bin").readBytes())
         assertEquals(
@@ -837,7 +837,7 @@ class PersonalEmojiStoreWriteTest {
         assertTrue(reopened.snapshot.isEmpty)
         assertFalse(destinationFile(directory).exists())
         assertFalse(File(directory, "pending-emoji-$subtype-s1-f1.bin").exists())
-        assertFalse(File(directory, "salt-emoji.bin").exists())
+        assertFalse(File(directory, "salt-emoji-$subtype-s1-f1.bin").exists())
         assertFalse(File(directory, quarantineName()).exists())
         assertFalse(File(directory, "quarantine-notice-emoji-$subtype-s1-f1.flag").exists())
         assertNoTemp(directory)

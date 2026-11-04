@@ -46,41 +46,50 @@ class SilentGestureSourceContractTest {
     private fun bodyOf(source: String, from: String, to: String) =
         source.substringAfter(from).substringBefore(to)
 
-    // --- 1. Long press on a suggestion that is not a saved word ---------------------------------
+    // --- 1. Long press on a suggestion cell ------------------------------------------------------
 
     /**
      * Long-pressing a suggestion cell offers "Forget «X»?" for a word the personal dictionary
-     * holds. For an ordinary dictionary word the lookup finds nothing; without feedback the same
-     * gesture would show a dialog on one word and nothing on the next.
+     * holds and "Add «X»?" for a word it could still take. For a word it cannot take, and on a
+     * layout with no personal dictionary at all, the gesture is answered with an explanation;
+     * without feedback the same gesture would show a dialog on one word and nothing on the next.
      */
     @Test
-    fun aLongPressOnAnOrdinaryWordIsAnsweredRatherThanIgnored() {
-        val body = bodyOf(ime, "private void showForgetPersonalWordDialog(",
-            "private void showSuggestionsUnavailableDialog(")
-        val branch = bodyOf(body, "if (savedForm == null) {", "}")
-        assertTrue(
-            "the not-a-saved-word branch must answer the gesture, not just return: <$branch>",
-            branch.contains("showNotASavedWordDialog()"),
-        )
+    fun aLongPressOnAWordCellIsAlwaysAnswered() {
+        val router = bodyOf(ime, "private void onStripWordLongPress(",
+            "private void showForgetPersonalWordDialog(")
         // The default state of the keyboard: the personal dictionary ships off, so this gate is
         // the one almost every long press actually reaches.
-        val offGate = bodyOf(body, "if (!Settings.readPersonalDictionaryEnabled(mDevicePrefs)) {", "}")
+        val offGate = bodyOf(router, "if (!Settings.readPersonalDictionaryEnabled(mDevicePrefs)) {", "}")
         assertTrue(
-            "the saved-words-are-off gate must answer the gesture too: <$offGate>",
+            "the saved-words-are-off gate must answer the gesture: <$offGate>",
             offGate.contains("showPersonalDictionaryOffDialog()"),
         )
-        val noSubtype = bodyOf(body, "if (subtypeId == null) {", "}")
+        val noSubtype = bodyOf(router, "if (subtypeId == null) {", "}")
         assertTrue(
             "a layout with no personal dictionary must answer it too: <$noSubtype>",
-            noSubtype.contains("showNotASavedWordDialog()"),
+            noSubtype.contains("showPersonalDictionaryNoLanguageDialog()"),
+        )
+        assertTrue(
+            "a saved word routes to the forget dialog",
+            router.contains("case FORGET:") && router.contains("showForgetPersonalWordDialog("),
+        )
+        assertTrue(
+            "an unsaved addable word routes to the add dialog",
+            router.contains("case ADD:") && router.contains("showAddPersonalWordDialog("),
+        )
+        assertTrue(
+            "and a word the filter rejects gets the explanation",
+            router.contains("showPersonalWordNotAddableDialog("),
         )
         assertTrue("the off-dialog it names must exist",
             ime.contains("private void showPersonalDictionaryOffDialog()"))
-        assertTrue("and the dialog it names must exist",
-            ime.contains("private void showNotASavedWordDialog()"))
-        assertTrue("it must carry a message string",
-            bodyOf(ime, "private void showNotASavedWordDialog()", "\n    }")
-                .contains("R.string.personal_dictionary_not_saved"))
+        assertTrue("the no-language dialog it names must exist and carry its message",
+            bodyOf(ime, "private void showPersonalDictionaryNoLanguageDialog()", "\n    }")
+                .contains("R.string.personal_dictionary_no_language"))
+        assertTrue("the not-addable dialog reuses the manual-add rejection message",
+            bodyOf(ime, "private void showPersonalWordNotAddableDialog(", "\n    }")
+                .contains("R.string.personal_dictionary_add_rejected"))
     }
 
     // --- 2. The emoji key when the panel will never show ----------------------------------------
@@ -98,7 +107,7 @@ class SilentGestureSourceContractTest {
             body.contains("mEmojiPanelController.onEmojiKeyPressed();"),
         )
         assertTrue("the answer must be acted on",
-            body.contains("if (!mEmojiPanelController.onEmojiKeyPressed())"))
+            body.contains("if (!mEmojiPanelController.onEmojiKeyPressed("))
         assertTrue("and it must reach the user",
             body.contains("showEmojiUnavailableDialog()"))
         assertTrue("the dialog it names must exist",
@@ -125,7 +134,8 @@ class SilentGestureSourceContractTest {
     @Test
     fun everyNewMessageExistsInAllThreeLanguages() {
         val keys = listOf(
-            "personal_dictionary_not_saved",
+            "personal_dictionary_no_language",
+            "personal_dictionary_add_title",
             "personal_dictionary_off_nothing_to_forget",
             "emoji_unavailable",
             "no_app_for_link",
@@ -148,7 +158,7 @@ class SilentGestureSourceContractTest {
         val banned = Regex("""\.tpers|\.tdict|/data/|files/|errno|SIGSEGV|IOException|0x[0-9a-fA-F]+""")
         for (dir in listOf("values", "values-ru", "values-tt")) {
             val text = File(res, "$dir/strings.xml").readText()
-            for (key in listOf("personal_dictionary_not_saved",
+            for (key in listOf("personal_dictionary_no_language",
                 "personal_dictionary_off_nothing_to_forget", "emoji_unavailable",
                 "no_app_for_link", "personal_dictionary_empty_ready")) {
                 val value = Regex("""<string name="$key">(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)

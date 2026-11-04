@@ -85,11 +85,16 @@ class ClampedPreferenceReadsSourceContractTest {
         val body = readerBody(
             "public static int readBottomOffsetPortrait(", "public static final int DEFAULT_BOTTOM_OFFSET")
         assertTrue(body.contains("clampStoredInt("))
-        // The clamp bounds mirror the slider's configured range; the two must not drift apart.
+        // The clamp bounds mirror both sliders' configured range (the portrait and landscape
+        // rows share one range in Settings.java); the values must not drift apart.
         val config = File(sourceRoot(), "res/values/config-common.xml").readText()
         assertEquals(configInt(config, "config_min_bottom_offset_portrait"),
             sourceInt(settings, "MIN_BOTTOM_OFFSET"))
         assertEquals(configInt(config, "config_max_bottom_offset_portrait"),
+            sourceInt(settings, "MAX_BOTTOM_OFFSET"))
+        assertEquals(configInt(config, "config_min_bottom_offset_landscape"),
+            sourceInt(settings, "MIN_BOTTOM_OFFSET"))
+        assertEquals(configInt(config, "config_max_bottom_offset_landscape"),
             sourceInt(settings, "MAX_BOTTOM_OFFSET"))
     }
 

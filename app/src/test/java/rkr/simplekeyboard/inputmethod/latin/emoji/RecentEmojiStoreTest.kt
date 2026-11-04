@@ -291,6 +291,74 @@ class RecentEmojiStoreTest {
         assertEquals("A", ops.content)
     }
 
+    // --- Removing one entry --------------------------------------------------------------------
+
+    @Test
+    fun removeRecentDropsTheEntryAndPersistsOnTheNextHide() {
+        val ops = FakeFileOps()
+        val store = storeWith(ops, FakeGate(open))
+        val available = setOf("A", "B", "C")
+        store.recordUse("A", available)
+        store.recordUse("B", available)
+        store.recordUse("C", available)
+        store.flushOnHide()
+
+        store.removeRecent("B", available)
+        assertEquals(listOf("C", "A"), store.currentRecents(available))
+        assertTrue(store.isDirty())
+
+        store.flushOnHide()
+        assertEquals("C${RecentEmojiList.SEPARATOR}A", ops.content)
+        assertFalse(store.isDirty())
+    }
+
+    @Test
+    fun removeRecentOfAMissingEntryIsANoOpThatDirtiesNothing() {
+        val ops = FakeFileOps()
+        val store = storeWith(ops, FakeGate(open))
+        store.recordUse("A", setOf("A"))
+        store.flushOnHide()
+        val writesBefore = ops.writeCount
+
+        store.removeRecent("Z", setOf("A"))
+        assertFalse(store.isDirty())
+        store.flushOnHide()
+        assertEquals(writesBefore, ops.writeCount)
+        assertEquals(listOf("A"), store.currentRecents(setOf("A")))
+    }
+
+    @Test
+    fun removingTheLastEntryEmptiesTheListAndTheMedium() {
+        val ops = FakeFileOps()
+        val store = storeWith(ops, FakeGate(open))
+        store.recordUse("A", setOf("A"))
+        store.removeRecent("A", setOf("A"))
+        store.flushOnHide()
+        assertTrue(store.currentRecents(setOf("A")).isEmpty())
+        assertTrue(ops.content.isNullOrEmpty())
+    }
+
+    @Test
+    fun removeRecentWhileLockedKeepsTheRemovalPendingAndNeverTouchesThePath() {
+        val ops = FakeFileOps()
+        val gate = FakeGate(open)
+        val store = storeWith(ops, gate)
+        store.recordUse("A", setOf("A"))
+        store.flushOnHide()
+
+        gate.state = open.copy(userUnlocked = false)
+        store.removeRecent("A", setOf("A"))
+        // The list in memory is updated, but a locked path is never written: the removal stays
+        // pending, like a failed write, and the next unlocked hide lands it.
+        assertTrue(store.isDirty())
+        store.flushOnHide()
+        assertEquals("A", ops.content)
+
+        gate.state = open
+        store.flushOnHide()
+        assertTrue(ops.content.isNullOrEmpty())
+    }
+
     @Test
     fun anEntryRecordedBeforeTheSetWasKnownIsHiddenOnceTheSetLacksIt() {
         val ops = FakeFileOps()

@@ -194,8 +194,7 @@ class StoreValidationTokenSkipTest {
         val tableFile = temporaryFolder.newFile("table.tatbigr").also { it.writeBytes(tableRaw) }
         val table = PublishedBigramTable(
             1, "tt", tableFile, tableRaw.size.toLong(), HEADS.size.toLong(),
-            HEADS.sumOf { it.second.size }.toLong(),
-            HEADS.flatMap { it.second }.toSet().size.toLong(), 3, 1,
+            HEADS.sumOf { it.second.size }.toLong(), 3, 1,
             BigramTestFixtures.sha256(tableRaw),
         )
         val token =

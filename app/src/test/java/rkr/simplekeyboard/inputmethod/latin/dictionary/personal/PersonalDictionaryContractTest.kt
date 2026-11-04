@@ -72,13 +72,14 @@ class PersonalDictionaryContractTest {
 
     @Test
     fun thereAreExactlyTwoWritePathsAndBothAreNamedInTheContract() {
-        // Path 1 — the explicit "Add word…" of the settings screen.
+        // Path 1 — the explicit adds: "Add word…" on the settings screen and the strip's
+        // long-press "Add «X»?" (PersonalAdd). Both go through the store's manual add.
         val manual = mainFiles().filter { it.readText().contains("addManually(") }
             .map { it.name }
             .sorted()
         assertEquals(
-            "the store that defines it and the screen controller that calls it, nothing else",
-            listOf("PersonalDictionaryScreenController.kt", "PersonalDictionaryStore.kt"),
+            "the store that defines it and the two explicit callers, nothing else",
+            listOf("PersonalAdd.kt", "PersonalDictionaryScreenController.kt", "PersonalDictionaryStore.kt"),
             manual,
         )
 

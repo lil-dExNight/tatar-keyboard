@@ -27,11 +27,11 @@ import javax.xml.parsers.DocumentBuilderFactory
  * Structural contract: every SHIPPED layout must have the three keys a keyboard cannot work
  * without — Enter, delete and shift — at EVERY screen bucket the app has resources for.
  *
- * The failure this guards against is visible only after include resolution: if the Cyrillic
- * layouts take their bottom row from `@xml/row_qwerty4`, on sw600dp that resolves to
- * `xml-sw600dp/row_qwerty4.xml`, which ends in a `<Spacer>` (tablet QWERTY has Enter in its
- * second row), and the Tatar and Russian layouts lose Enter. So the test walks the includes the
- * way the resource system does.
+ * The failure this guards against is visible only after include resolution: every layout
+ * takes its bottom row from `@xml/row_qwerty4`, whose tablet variant ends in a `<Spacer>`
+ * (the tablet rows carry Enter in the second row instead), so a layout whose tablet rows
+ * lack Enter loses the key at sw600dp and keeps it everywhere else. So the test walks the
+ * includes the way the resource system does.
  *
  * The walk models Android's qualifier precedence: smallestWidth outranks orientation, so a tablet
  * in landscape prefers `xml-sw600dp` over `xml-land`.
@@ -157,44 +157,25 @@ class EnterKeyPresenceTest {
     }
 
     /**
-     * The Cyrillic layouts must go through their OWN bottom row. Pins the seam itself: pointing
-     * `rows_tatar`/`rows_russian` back at `@xml/row_qwerty4` would drop Enter on every tablet;
-     * the test above would catch it, but only this one says where to look.
+     * The tablet Cyrillic rows follow the tablet QWERTY: delete and Enter move to the right
+     * edges of the first two letter rows and the bottom row is the shared
+     * `@xml/row_qwerty4` — whose tablet variant ends in a Spacer, so a tablet rows file
+     * without its own Enter would lose the key. The test above walks the includes and would
+     * catch that; this one says where to look.
      */
     @Test
-    fun cyrillicLayoutsUseTheirOwnBottomRow() {
+    fun tabletCyrillicRowsCarryEnterAndDeleteAboveTheSharedBottomRow() {
         for (name in listOf("rows_tatar", "rows_russian")) {
-            val text = resolve(name, listOf("xml"))!!.readText()
+            val file = resolve(name, listOf("xml-sw600dp"))
+            assertTrue("$name must have a tablet variant in xml-sw600dp", file != null)
+            val text = file!!.readText()
+            assertTrue("$name must carry Enter in its own rows", text.contains(ENTER))
+            assertTrue("$name must carry delete in its own rows", text.contains(DELETE))
+            assertTrue("$name must carry shift in its own rows", text.contains(SHIFT))
             assertTrue(
-                "$name must include @xml/row_cyrillic4",
-                text.contains("@xml/row_cyrillic4"),
-            )
-            assertTrue(
-                "$name must not include @xml/row_qwerty4 directly",
-                !text.contains("@xml/row_qwerty4"),
+                "$name must share the tablet bottom row",
+                text.contains("@xml/row_qwerty4"),
             )
         }
-    }
-
-    /**
-     * The tablet Cyrillic bottom row keeps the width budget the Spacer used to hold:
-     * 10 + 9 + [63] + 9 + 9 = 100 %p (the invariant is written down in `key_space_7kw.xml`).
-     * Enter takes the trailing 9 %p through `fillRight`, so the row still adds up.
-     */
-    @Test
-    fun tabletCyrillicBottomRowReplacesSpacerWithEnter() {
-        val file = resolve("row_cyrillic4", listOf("xml-sw600dp"))!!
-        val elements = descendants(parse(file))
-        val styles = elements.mapNotNull { it.getAttribute("latin:keyStyle").ifEmpty { null } }
-        assertTrue("the tablet row_cyrillic4 must carry enterKeyStyle", ENTER in styles)
-        assertTrue(
-            "Spacer must be replaced by the Enter key, not sit next to it",
-            elements.none { it.tagName == "Spacer" },
-        )
-        val enter = elements.single { it.getAttribute("latin:keyStyle") == ENTER }
-        assertTrue(
-            "Enter must take the rest of the row (fillRight); otherwise the widths do not add up",
-            enter.getAttribute("latin:keyWidth") == "fillRight",
-        )
     }
 }

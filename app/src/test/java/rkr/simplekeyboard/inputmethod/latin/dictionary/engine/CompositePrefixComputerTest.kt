@@ -266,7 +266,9 @@ class CompositePrefixComputerTest {
     // --- The context boost of the exact pass -----------------------------------------------------
 
     @Test
-    fun theContextWordResolvesToPackedIdsThatArmThePrimary() {
+    fun theContextScratchCarriesTheWiderReadNotTheDisplayCap() {
+        // A table packed with eight successors per head: the scratch hands all eight ids to the
+        // primary, while the NEXT_WORD display (the same table's predict) keeps four.
         val received = mutableListOf<Pair<IntArray, Int>>()
         val primary = object : ContextBoostedPrefixComputer {
             override val lastExactCount = 1
@@ -284,15 +286,14 @@ class CompositePrefixComputerTest {
         }
         val bigrams = object : NextWordComputer, PackedSuccessorSource {
             override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> =
-                emptyList()
+                (0 until 4).map { "сүз$it" }
 
             override fun collectSuccessorIds(
                 normalizedContextWordUtf8: ImmutableUtf8Prefix,
                 sink: IntArray,
             ): Int {
-                sink[0] = 42
-                sink[1] = 7
-                return 2
+                for (slot in 0 until 8) sink[slot] = 10 + slot
+                return 8
             }
         }
         val computer = CompositePrefixComputer(primary, PersonalCandidateSource.EMPTY)
@@ -301,7 +302,10 @@ class CompositePrefixComputerTest {
         val result = computer.lookup(prefix("ка"), prefix("дан"))
 
         assertEquals(listOf("казанган", "казан"), result)
-        assertEquals(listOf(intArrayOf(42, 7).toList() to 2), received.map { it.first.toList() to it.second })
+        assertEquals(
+            listOf((0 until 8).map { 10 + it } to 8),
+            received.map { it.first.toList() to it.second },
+        )
     }
 
     @Test
@@ -698,42 +702,52 @@ class CompositePrefixComputerTest {
         assertSame(bigrams, computer.predict(prefix("өй")))
     }
 
-    // --- the glide channel's successor source (learned pairs above the bundled table) ---------
+    // --- the glide channel's successor source (learned pairs behind the table's top answer) ---
 
     @Test
-    fun learnedPairsRankAboveBundledSuccessorsInTheGlideChannel() {
-        // The no-loop path decodes to the twin ("ала") and the channel penalty is forced
-        // decisive, so the glide answer's leader is the context word's first successor: "ала"
-        // from the bundled table alone, the learned pair "алла" once it merges in ahead of it.
+    fun theTopBundledSuccessorKeepsRankZeroAheadOfLearnedPairsInTheGlideChannel() {
+        // The bundled table's top successor keeps rank 0 and the learned pairs follow it: at
+        // rank 0 a learned pair would take the x1 penalty slot and outrank every bundled
+        // successor on a single observation. The no-loop path decodes to the twin ("ала"), so
+        // with the channel penalty forced decisive a rank-0 "алла" would flip the leader — from
+        // rank 1 the table's answer holds.
         val geometry = GlideTestFixtures.tatarGeometry()
         val path = GlideTestFixtures.idealPath("алла", geometry)!!
-        fun computerWith(personal: PersonalBigramSource): CompositePrefixComputer {
-            val host = GlideDecoderHost(
-                ListGlideInventory(listOf("алла" to 7466L, "ала" to 36L)),
-                glideConstants = GlideDecoder.GlideConstants(bigramRankPenalty = 1e6f),
-            )
-            host.updateGlideGeometry(geometry)
-            return CompositePrefixComputer(
-                FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
-                personalBigrams = personal, glideHost = host,
-            ).also { it.attachBigramSource(NextWordComputer { listOf("ала") }) }
-        }
-
-        assertEquals("ала", computerWith(PersonalBigramSource.EMPTY).decodeGlide(path, null)[0])
-        assertEquals("ала", computerWith(PersonalBigramSource.EMPTY).decodeGlide(path, "кук")[0])
-        assertEquals(
-            "алла",
-            computerWith(fakeBigrams("алла" to "алла")).decodeGlide(path, "кук")[0],
+        val host = GlideDecoderHost(
+            ListGlideInventory(listOf("алла" to 7466L, "ала" to 36L)),
+            glideConstants = GlideDecoder.GlideConstants(bigramRankPenalty = 1e6f),
         )
+        host.updateGlideGeometry(geometry)
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams("алла" to "алла"), glideHost = host,
+        ).also { it.attachBigramSource(NextWordComputer { listOf("ала") }) }
+
+        assertEquals(listOf("ала", "алла"), host.bigramSuccessorsProvider("кук"))
+        assertEquals("ала", computer.decodeGlide(path, "кук")[0])
+        // A learned pair duplicating the top successor keeps the single rank-0 entry.
+        val duplicate = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = fakeBigrams("ала" to "ала", "алла" to "алла"), glideHost = host,
+        ).also { it.attachBigramSource(NextWordComputer { listOf("ала") }) }
+        assertEquals(listOf("ала", "алла"), host.bigramSuccessorsProvider("кук"))
+        assertEquals("ала", duplicate.decodeGlide(path, "кук")[0])
+        // With no learned pairs the provider answers the bundled list itself.
+        val bare = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            personalBigrams = PersonalBigramSource.EMPTY, glideHost = host,
+        ).also { it.attachBigramSource(NextWordComputer { listOf("ала") }) }
+        assertEquals(listOf("ала"), host.bigramSuccessorsProvider("кук"))
+        assertEquals("ала", bare.decodeGlide(path, "кук")[0])
     }
 
     /**
      * A context word with a thousand learned pairs: the glide channel reads only the strongest
-     * [CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS] of them, so the bundled successors
-     * keep their ranks and the list fits the ranks the rerank reads.
+     * [CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS] of them, so the merged list fits the
+     * ranks the rerank reads ([GlideBigramRerank.MAX_RANKED_SUCCESSORS]).
      */
     @Test
-    fun theGlideChannelCapsTheLearnedPairsAheadOfTheBundledSuccessors() {
+    fun theGlideChannelCapsTheLearnedPairsBehindTheTopBundledSuccessor() {
         val learned = (0 until 1000).map { "сүз$it" to "сүз$it" }.toTypedArray()
         val host = GlideDecoderHost(ListGlideInventory(listOf("ала" to 36L)))
         CompositePrefixComputer(
@@ -744,11 +758,11 @@ class CompositePrefixComputerTest {
         val successors = host.bigramSuccessorsProvider("кук")
 
         assertEquals(
-            listOf("сүз0", "сүз1", "сүз2", "сүз3", "ала", "алма"),
+            listOf("ала", "сүз0", "сүз1", "сүз2", "сүз3", "алма"),
             successors,
         )
         assertTrue(
-            CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS + TatBigrPrefixIndex.MAX_RESULTS <=
+            CompositePrefixComputer.MAX_GLIDE_LEARNED_SUCCESSORS + TatBigrPrefixIndex.MAX_PREDICT_RESULTS <=
                 GlideBigramRerank.MAX_RANKED_SUCCESSORS,
         )
     }
@@ -828,12 +842,66 @@ class CompositePrefixComputerTest {
         assertEquals(filled.distinct(), filled)
     }
 
-    // --- failed bigram attach: terminal, but the rest of the chain still answers -----------------
+    @Test
+    fun theRealFallbackKeepsTheHarmonyTwinMatchingTheCommittedWord() {
+        // The Tatar pool pins both twins: да (back) and дә (front). A front-vowel committed
+        // word (сәләм, last vowel ә) keeps дә, drops да, and the next pool word (бу) takes the
+        // freed slot; a back-vowel one (ул, last vowel у) keeps да and drops дә.
+        val fallback = GlobalTopFrequencyFallback(
+            listOf("һәм", "белән", "да", "дә", "бу", "ул"),
+            listOf("дә" to "да"),
+        )
+        assertEquals(
+            listOf("һәм", "белән", "дә", "бу"),
+            fallback.fallbackWords(prefix("сәләм"), emptyList(), 4),
+        )
+        assertEquals(
+            listOf("һәм", "белән", "да", "бу"),
+            fallback.fallbackWords(prefix("китап"), emptyList(), 4),
+        )
+    }
+
+    @Test
+    fun theRealFallbackTwinRuleLeavesCommittedTwinAndVowellessWordsAlone() {
+        // Committing a twin itself: the committed word drops by exclusion, and the OTHER twin
+        // mismatches the committed word's own harmony, so it drops too — дә commits (front), so
+        // да drops and бу fills. A back-vowel word (китап) keeps да, drops дә, and with бу
+        // shown the 5-word pool is spent. A vowelless word keeps the pool order.
+        val fallback = GlobalTopFrequencyFallback(
+            listOf("һәм", "белән", "да", "дә", "бу"),
+            listOf("дә" to "да"),
+        )
+        assertEquals(
+            listOf("һәм", "белән", "бу"),
+            fallback.fallbackWords(prefix("дә"), emptyList(), 4),
+        )
+        assertEquals(
+            listOf("һәм", "белән", "да"),
+            fallback.fallbackWords(prefix("китап"), listOf("бу"), 4),
+        )
+        assertEquals(
+            listOf("һәм", "белән", "да", "дә", "бу"),
+            fallback.fallbackWords(prefix("ттт"), emptyList(), 5),
+        )
+    }
+
+    @Test
+    fun theRealFallbackWithoutTwinsAnswersThePlainPool() {
+        // The Russian pool holds no twin pair, so the default (empty) twin list changes
+        // nothing: the committed word and the shown drop out, the pool order stands.
+        val fallback = GlobalTopFrequencyFallback(listOf("я", "не", "в", "и"))
+        assertEquals(
+            listOf("я", "не", "в", "и"),
+            fallback.fallbackWords(prefix("тюлень"), emptyList(), 4),
+        )
+    }
+
+    // --- failed bigram attach: one retry at the next field start, terminal after the second ----
 
     @Test
     fun aFailedDeferredAttachAnswersFromPairsAndFallback() {
         // The attach throws (a corrupt table's open walk fails inside it): the failure is
-        // terminal for the bigram successors only — pairs and the fallback still answer.
+        // table-shaped only — pairs and the fallback still answer.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             fakeFallback(listOf("һәм")),
@@ -858,9 +926,9 @@ class CompositePrefixComputerTest {
     }
 
     @Test
-    fun aFailedAttachIsConsumedAndNeverRetried() {
-        // Terminal means terminal: the attach ran once, and later predictions do not run it
-        // again — a failing table open must not be paid on every NEXT_WORD lookup.
+    fun aFailedAttachIsNotRetriedWithoutRearming() {
+        // A failure stays parked until the field-start signal re-arms it: later predictions do
+        // not run it again — a failing table open must not be paid on every NEXT_WORD lookup.
         var attachRuns = 0
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
@@ -879,9 +947,79 @@ class CompositePrefixComputerTest {
     }
 
     @Test
+    fun aFailedAttachSucceedsOnItsOneRetryAtTheNextFieldStart() {
+        // Fail-then-succeed: the first attempt throws, the field-start re-arm (what the
+        // controller's finishInput signal drives) runs the same attach again, and the second
+        // attempt attaches the table — the successors join the chain from then on.
+        var attempts = 0
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeFallback(listOf("һәм")),
+        )
+        computer.deferBigramAttach {
+            attempts++
+            if (attempts == 1) throw IllegalStateException("table is broken")
+            computer.attachBigramSource(NextWordComputer { listOf("йорт") })
+        }
+
+        assertEquals(listOf("һәм"), computer.predict(prefix("өй")))
+        computer.rearmBigramAttachRetry()
+        assertEquals(listOf("йорт", "һәм"), computer.predict(prefix("өй")))
+        computer.rearmBigramAttachRetry()
+        assertEquals(2, attempts)
+        assertEquals(listOf("йорт", "һәм"), computer.predict(prefix("өй")))
+    }
+
+    @Test
+    fun aFailedAttachIsTerminalAfterTheSecondFailure() {
+        // Fail-twice: the re-armed retry fails too, and the engine stays table-less for the
+        // rest of its life — exactly one extra attempt is ever paid.
+        var attempts = 0
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeFallback(listOf("һәм")),
+        )
+        computer.deferBigramAttach {
+            attempts++
+            throw IllegalStateException("table is broken")
+        }
+
+        computer.predict(prefix("өй"))
+        computer.rearmBigramAttachRetry()
+        assertEquals(listOf("һәм"), computer.predict(prefix("өй")))
+        computer.rearmBigramAttachRetry()
+        computer.predict(prefix("өй"))
+
+        assertEquals(2, attempts)
+        assertEquals(listOf("һәм"), computer.predict(prefix("өй")))
+    }
+
+    @Test
+    fun anEagerAttachCancelsTheFailedAttachRetry() {
+        // The eager attach is the success the retry was waiting for: it clears the parked
+        // failure, and a later re-arm cannot resurrect a spent attach.
+        var attempts = 0
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
+            fakeFallback(listOf("һәм")),
+        )
+        computer.deferBigramAttach {
+            attempts++
+            throw IllegalStateException("table is broken")
+        }
+
+        computer.predict(prefix("өй"))
+        computer.attachBigramSource(NextWordComputer { listOf("йорт") })
+        computer.rearmBigramAttachRetry()
+
+        assertEquals(listOf("йорт", "һәм"), computer.predict(prefix("өй")))
+        assertEquals(1, attempts)
+    }
+
+    @Test
     fun aLateSuccessfulAttachStillFeedsTheChain() {
-        // The failing case is terminal, but a deferred attach that succeeds on the first
-        // predict feeds the successors into the chain ahead of pairs and the fallback.
+        // A deferred attach that succeeds on the first predict feeds the successors into the
+        // chain ahead of pairs and the fallback.
         val computer = CompositePrefixComputer(
             FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY,
             fakeFallback(listOf("һәм")),

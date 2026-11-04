@@ -183,6 +183,28 @@ class PersonalDictionaryFeedbackSourceContractTest {
             dialog.contains("attachDialogToInputWindow(dialog, windowToken)"))
     }
 
+    // --- the IME's own "Add word" (the strip's long press) -----------------------------------------
+
+    @Test
+    fun addingFromTheBandAlsoHasSomewhereToReportFailure() {
+        val add =
+            mainFile("rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/PersonalAdd.kt")
+        assertTrue("the seam exists and carries nothing but the fact",
+            add.contains("onFailed: Runnable? = null"))
+        assertTrue("and it fires only when the word did not reach the disk",
+            add.contains("if (!saved) onFailed?.run()"))
+
+        assertTrue("the IME passes one in",
+            ime.contains("PersonalAdd.confirmAdd(this, subtypeId, trimmed,"))
+        assertTrue("marshalled onto the UI thread, like every other store notification here",
+            ime.contains("() -> mHandler.post(this::showPersonalAddFailedDialog)"))
+        val dialog = bodyOf(ime, "private void showPersonalAddFailedDialog() {",
+            "\n    /**")
+        assertTrue(dialog.contains("R.string.personal_dictionary_save_failed"))
+        assertTrue("attached to the input window like every dialog this service owns",
+            dialog.contains("attachDialogToInputWindow(dialog, windowToken)"))
+    }
+
     // --- fail-capability -------------------------------------------------------------------------
 
     /**

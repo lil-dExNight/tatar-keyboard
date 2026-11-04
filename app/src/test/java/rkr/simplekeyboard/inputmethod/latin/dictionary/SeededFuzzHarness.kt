@@ -21,9 +21,9 @@ import java.nio.ByteOrder
 import java.util.Random
 
 /**
- * Shared seeded-mutation harness for the five validator fuzz tests (`TdictValidatorFuzzTest`,
- * `TatBigrValidatorFuzzTest`, `TpersValidatorFuzzTest`, `TpersbValidatorFuzzTest`,
- * `TpersemValidatorFuzzTest`).
+ * Shared seeded-mutation harness for the format fuzz tests: the `...ValidatorFuzzTest` suites of
+ * the bundled (`Tdict`, `TatBigr`) and personal (`Tpers`, `Tpersb`, `Tpersem`, `Tcut`, `Tref`,
+ * `Tsent`) formats, plus `PendingCountersFuzzTest` for the `pending-*.bin` counter files.
  *
  * Mutators draw only from the caller's seeded [java.util.Random], so a seed plus an iteration
  * index reproduces the exact byte image. Each [MutatedImage.detail] names the offsets touched,

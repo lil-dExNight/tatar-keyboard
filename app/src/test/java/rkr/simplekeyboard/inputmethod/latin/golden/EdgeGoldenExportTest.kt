@@ -38,8 +38,9 @@ import java.util.concurrent.TimeUnit
  * the controller's casing gate and the autocorrect-preview policy, the typo-recovery budget abort,
  * and NEXT_WORD on non-dictionary / invalid contexts.
  *
- * EDGE_GOLDEN_OUT must name a directory that already contains keys-tt.tsv / keys-ru.tsv (the
- * canonical key geometry). Nothing here reaches the APK.
+ * The key geometry (keys-tt.tsv / keys-ru.tsv) comes from the committed, pinned copies under
+ * src/test/resources/golden (see KeyGeometryTsvTest); a same-named file in the output directory
+ * overrides them for a parity run against another port's own export. Nothing here reaches the APK.
  *
  *   EDGE_GOLDEN_OUT=/path/to/dir ./gradlew :app:testDebugUnitTest --tests '*EdgeGoldenExportTest*' --rerun
  *
@@ -69,7 +70,7 @@ class EdgeGoldenExportTest {
 
         File(out, "edge.jsonl").bufferedWriter(Charsets.UTF_8).use { w ->
             for (lang in listOf("tt", "ru")) {
-                val e = openLanguage(lang, File(out, "keys-$lang.tsv"))
+                val e = openLanguage(lang, KeyGeometryTsv.locate(lang, out))
                 exportPrefixEdges(w, e)
                 exportBudgetSweep(w, e)
                 exportNextWordEdges(w, e)
@@ -155,7 +156,8 @@ class EdgeGoldenExportTest {
         val computer = CompositePrefixComputer(
             index,
             PersonalCandidateSource.EMPTY,
-            GlobalTopFrequencyFallbackFactory.createFallbackWords(index),
+            GlobalTopFrequencyFallbackFactory(dictSpec.harmonyTwins)
+                .createFallbackWords(index),
             PersonalBigramSource.EMPTY,
             null,
         )
@@ -166,7 +168,7 @@ class EdgeGoldenExportTest {
     }
 
     private fun readKeyNeighbors(lang: String, file: File): KeyNeighborTable {
-        require(file.isFile) { "missing ${file.name} — run ios/tools/export-key-geometry and copy it" }
+        require(file.isFile) { "missing ${file.name} — the pinned copy lives under src/test/resources/golden" }
         val keys = file.readLines(Charsets.UTF_8).filter { it.isNotBlank() }.map { line ->
             val f = line.split('\t')
             val more = if (f.size > 5 && f[5].isNotEmpty()) f[5].split(',').map { it.toInt(16) }.toIntArray() else IntArray(0)

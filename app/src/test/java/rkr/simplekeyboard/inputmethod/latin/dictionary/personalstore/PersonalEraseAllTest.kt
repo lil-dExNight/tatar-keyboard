@@ -71,8 +71,12 @@ class PersonalEraseAllTest {
         }
         assertTrue(TcutFormat.shortcutsFileName() in names)
         assertTrue(TcutFormat.shortcutsFileName() + ".quarantine" in names)
-        assertTrue("salt.bin" in names && "salt-bigrams.bin" in names)
-        assertTrue("salt-emoji.bin" in names && "salt-sentstart.bin" in names)
+        for (subtype in languages) {
+            assertTrue("salt-$subtype-s1-f1.bin" in names)
+            assertTrue("salt-bigrams-$subtype-s1-f1.bin" in names)
+            assertTrue("salt-emoji-$subtype-s1-f1.bin" in names)
+            assertTrue("salt-sentstart-$subtype-s1-f1.bin" in names)
+        }
 
         val answers = mutableListOf<Boolean>()
         eraser(directory, stores).run { answers.add(it) }
@@ -229,6 +233,11 @@ class PersonalEraseAllTest {
         File(directory, ".personal-tt_RU.1.0.tmp").writeBytes(byteArrayOf(1))
         File(directory, ".personal-emoji-ru.1.0.tmp").writeBytes(byteArrayOf(1))
         File(directory, "future-format.bin").writeBytes(byteArrayOf(1))
+        // The shared salt files of an older build: orphaned, and the sweep still removes them.
+        File(directory, "salt.bin").writeBytes(byteArrayOf(1))
+        File(directory, "salt-bigrams.bin").writeBytes(byteArrayOf(1))
+        File(directory, "salt-emoji.bin").writeBytes(byteArrayOf(1))
+        File(directory, "salt-sentstart.bin").writeBytes(byteArrayOf(1))
         File(directory, "nested").mkdir()
         File(directory, "nested/inner.bin").writeBytes(byteArrayOf(1))
         return result

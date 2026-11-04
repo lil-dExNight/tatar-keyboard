@@ -88,6 +88,52 @@ class AtomicBigramStoreTest {
     }
 
     @Test
+    fun rerunOnAnExistingFileUsesThePinnedContentTierWithoutTheWalk() {
+        val artifact = BigramTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("fast-rerun")
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, false)
+        assertEquals(1, harness.store.fullValidationCount)
+
+        val result = harness.store.ensurePublished(artifact.spec)
+
+        assertPublished(result, 1, true)
+        assertEquals(2, harness.store.validationCount)
+        assertEquals(1, harness.store.fullValidationCount)
+    }
+
+    @Test
+    fun aTamperedPublishedFileIsCaughtByTheFastTierAndRepublishedInFull() {
+        val artifact = BigramTestFixtures.artifact()
+        val directory = temporaryFolder.newFolder("fast-tampered")
+        val harness = harness(directory, listOf(artifact))
+        assertPublished(harness.store.ensurePublished(artifact.spec), 1, false)
+        val final = File(directory, artifact.spec.finalFileName)
+        final.writeBytes(
+            artifact.raw.copyOf().also { it[it.size / 2] = (it[it.size / 2].toInt() xor 1).toByte() },
+        )
+
+        val result = harness.store.ensurePublished(artifact.spec)
+
+        assertPublished(result, 1, false)
+        assertEquals(2, harness.store.fullValidationCount)
+        assertTrue(artifact.raw.contentEquals(final.readBytes()))
+    }
+
+    @Test
+    fun publicationOfANewVersionRunsTheFullWalk() {
+        val v1 = BigramTestFixtures.artifact(1)
+        val v2 = BigramTestFixtures.artifact(2, headsToSuccesses = listOf("аб" to listOf("аба")))
+        val directory = temporaryFolder.newFolder("full-walk")
+        val harness = harness(directory, listOf(v1, v2))
+
+        assertPublished(harness.store.ensurePublished(v1.spec), 1, false)
+        assertPublished(harness.store.ensurePublished(v2.spec), 2, false)
+
+        assertEquals(2, harness.store.fullValidationCount)
+    }
+
+    @Test
     fun aFileWithAnotherLengthAfterPublicationIsValidatedAndRejected() {
         val artifact = BigramTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("reuse-length")

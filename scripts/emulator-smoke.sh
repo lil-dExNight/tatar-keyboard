@@ -5,7 +5,9 @@
 # the globe key tt -> ru -> en -> tt, open the emoji panel (long press on comma)
 # and commit an emoji, and require an empty crash buffer. Additional probes on the
 # tt layout (word-form suggestions, predictions after an accepted suggestion,
-# learned emoji, emoji panel BACK) are described where they are defined.
+# learned emoji, emoji panel BACK) are described where they are defined. Four UX legs
+# follow them — one-handed dock, number row, night mode and a landscape rotation; each
+# restores the state it toggled, and they are described where they are defined.
 #
 # Flags:
 #   --avd <name>     AVD (default tt_suggest_a14)
@@ -698,15 +700,32 @@ else
 fi
 SHOT smoke-final.png
 
-# Reopen SetupActivity, tap the try-it field, wait for the keyboard, settle 2 s.
-# Shared by panel-back-reopen and the learned-emoji-tt rounds. Each round restarts the
-# activity because BACK hides the WHOLE IME window by platform design, and a further
-# BACK lands on SetupActivity and closes it.
+# Reopen SetupActivity, scroll the try-it field into view, tap it, wait for the keyboard,
+# settle 2 s. Shared by panel-back-reopen, the learned-emoji-tt rounds and the landscape
+# leg. Each round restarts the activity because BACK hides the WHOLE IME window by
+# platform design, and a further BACK lands on SetupActivity and closes it.
 refocus_tryit() {
     SHELL am start --activity-clear-task -n "$PKG/$SETUP_ACTIVITY" >/dev/null 2>&1
     sleep 3
     local b x1 y1 x2 y2
     b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+    if [ -z "$b" ]; then
+        # In landscape the field is below the fold: uiautomator reports only the visible
+        # children of the setup ScrollView, so the field is absent from the dump. Scroll
+        # the ScrollView toward the bottom (the swipe crosses the gestures card, a plain
+        # text card with no tap targets), then re-dump: one scroll step is enough because
+        # the done block is not taller than the visible window, so the field lands inside
+        # it before the ScrollView stops.
+        local sb sx1 sy1 sx2 sy2
+        sb=$(DUMP_UI | grep -oP '<node[^>]*setup_root[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+        if [ -n "$sb" ]; then
+            read -r sx1 sy1 sx2 sy2 <<<"$(echo "$sb" | tr '[],' '    ')"
+            SHELL input swipe $(( (sx1 + sx2) / 2 )) $(( (sy1 + 3 * sy2) / 4 )) \
+                $(( (sx1 + sx2) / 2 )) $(( sy1 + (sy2 - sy1) / 8 )) 400
+            sleep 1
+            b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+        fi
+    fi
     if [ -n "$b" ]; then
         read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
         SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
@@ -818,7 +837,7 @@ else
     SHELL am force-stop "$PKG" || true
     sleep 1
     # (run-as execs its command directly, without a shell, so the glob needs sh -c.)
-    A shell "run-as $PKG sh -c 'rm -f /data/data/$PKG/no_backup/personal/personal-emoji-* /data/data/$PKG/no_backup/personal/salt-emoji.bin'" \
+    A shell "run-as $PKG sh -c 'rm -f /data/data/$PKG/no_backup/personal/personal-emoji-* /data/data/$PKG/no_backup/personal/salt-emoji*'" \
         2>/dev/null || true
     # The AVD disk persists across runs: the probe's ☀️ picks land in the recent-emoji
     # list, and a ☀️ at the top of recents would change what the emoji-panel probe commits
@@ -928,8 +947,257 @@ PYEOF
         A shell "run-as $PKG rm -f /data/data/$PKG/no_backup/recent_emoji_v1" 2>/dev/null || true
     fi
     # (run-as execs its command directly, without a shell, so the glob needs sh -c.)
-    A shell "run-as $PKG sh -c 'rm -f /data/data/$PKG/no_backup/personal/personal-emoji-* /data/data/$PKG/no_backup/personal/salt-emoji.bin'" \
+    A shell "run-as $PKG sh -c 'rm -f /data/data/$PKG/no_backup/personal/personal-emoji-* /data/data/$PKG/no_backup/personal/salt-emoji*'" \
         2>/dev/null || true
+fi
+
+# ── UX legs: one-handed dock, number row, night mode, landscape ──
+# Each leg toggles one setting, checks the keyboard's reaction and restores the state it
+# found, so the next run starts from the same AVD state. The pref legs rewrite the prefs
+# file through run-as like the suggestions seed at the top; a leg that cannot write the
+# prefs is a SKIP, not a FAIL. The scenario leaves the tt layout active, and the probes
+# below rely on it.
+
+# patch_prefs <in.xml> <out.xml> <name> <type> <value>: set or add ONE pref entry and keep
+# the rest of the file; with no usable input file write a minimal stub. The prefs file
+# keeps one XML element per entry, so a typed regex rewrite is safe.
+patch_prefs() {
+    python3 - "$1" "$2" "$3" "$4" "$5" <<'PYEOF'
+import re
+import sys
+from pathlib import Path
+
+src, dst, name, ptype, value = sys.argv[1:6]
+xml = Path(src).read_text(encoding="utf-8") if Path(src).is_file() else ""
+entry = f'<{ptype} name="{name}" value="{value}" />'
+pattern = re.compile(rf'<{ptype} name="{name}" value="[^"]*" ?/>')
+if pattern.search(xml):
+    xml = pattern.sub(entry, xml)
+elif "</map>" in xml:
+    xml = xml.replace("</map>", f"    {entry}\n</map>", 1)
+else:
+    xml = ("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n"
+           f"<map>\n    {entry}\n</map>\n")
+Path(dst).write_text(xml, encoding="utf-8")
+PYEOF
+}
+
+# write_pref <name> <type> <value>: rewrite the pref via run-as. The pre-write file is
+# saved under $OUTDIR, so restore_pref puts back exactly what the leg found.
+write_pref() {
+    [ "$PREFS_ACCESS" = 1 ] || return 1
+    A shell "run-as $PKG cat $PREFS_PATH" 2>/dev/null | tr -d '\r' \
+        > "$OUTDIR/prefs-before-$1.xml" || true
+    patch_prefs "$OUTDIR/prefs-before-$1.xml" "$OUTDIR/prefs-set-$1.xml" "$1" "$2" "$3"
+    A shell "run-as $PKG sh -c 'cat > $PREFS_PATH'" < "$OUTDIR/prefs-set-$1.xml"
+}
+
+# reload_ime: make the IME re-read the prefs file (a live process caches it in memory) and
+# re-select it — force-stopping the selected IME resets default_input_method, as at the top.
+reload_ime() {
+    SHELL am force-stop "$PKG" || true
+    sleep 1
+    SHELL ime enable "$IME_ID" >/dev/null 2>&1 || true
+    SHELL ime set "$IME_ID" >/dev/null 2>&1 || true
+    sleep 1
+}
+
+# restore_pref <name>: put back the file write_pref saved, with the process stopped first —
+# a live process would flush its in-memory prefs over the restored file. An empty saved
+# file means the prefs file did not exist before the leg, so the restore removes it.
+restore_pref() {
+    SHELL am force-stop "$PKG" || true
+    sleep 1
+    if [ -s "$OUTDIR/prefs-before-$1.xml" ]; then
+        A shell "run-as $PKG sh -c 'cat > $PREFS_PATH'" < "$OUTDIR/prefs-before-$1.xml" || true
+    else
+        A shell "run-as $PKG rm -f $PREFS_PATH" 2>/dev/null || true
+    fi
+    SHELL ime enable "$IME_ID" >/dev/null 2>&1 || true
+    SHELL ime set "$IME_ID" >/dev/null 2>&1 || true
+    sleep 1
+}
+
+# ── one-handed dock ──
+# The dock scales the key grid to 85% and moves it to the chosen side; with the right dock
+# the freed 15% strip is on the LEFT. The probe is the moved ә: full-width ә is the first
+# key of the extra row (center x = 0.0833); docked right, the same key's center moves to
+# 0.15 + 0.85 × 0.0833 ≈ 0.2208, where the full-width layout has ө — so an ә from that
+# pixel exists only with the dock in place. The y is the extra row's center, unchanged:
+# the dock is horizontal. The probe must stay clear of the strip at x < 0.15: a tap there
+# is the exit handle and writes the pref back to off.
+if [ "$PREFS_ACCESS" != 1 ]; then
+    result SKIP one-handed-dock "prefs cannot be written via run-as"
+else
+    oh_detail=""
+    oh_field=""
+    write_pref pref_one_handed_side int 2 || oh_detail="the pref write failed"
+    if [ -z "$oh_detail" ]; then
+        reload_ime
+        refocus_tryit || oh_detail="keyboard did not come up with the dock on"
+    fi
+    if [ -z "$oh_detail" ]; then
+        TAPF 0.2208 0.665              # ә of the right-docked tt layout
+        sleep 0.6
+        oh_field=$(field_text)
+        SHELL input keyevent KEYCODE_DEL
+        sleep 0.4
+    fi
+    restore_pref pref_one_handed_side
+    if [ -n "$oh_detail" ]; then
+        result FAIL one-handed-dock "$oh_detail"
+    elif [ "$oh_field" = "__NOFIELD__" ]; then
+        result FAIL one-handed-dock "try-it поле не найдено в дампе"
+    elif echo "$oh_field" | grep -qE '[әӘ] *$'; then
+        result PASS one-handed-dock "ә из x=0.2208: док сдвинул сетку (в полной ширине там ө); в поле: '$oh_field'"
+    else
+        result FAIL one-handed-dock "из точки докованной ә пришло не ә; в поле: '$oh_field'"
+    fi
+fi
+
+# ── number row ──
+# pref_show_number_row=true prepends the shared row_qwerty0 (1234567890) to the letter
+# rows. The kbd's two cases share the keyboard's total height (same base height, same
+# bonusHeight; rowHeight 20%p vs 16.667%p), so the rows compress in place instead of
+# growing upward: the digit row centers at y ≈ 0.660, where the row-less layout has ү in
+# the extra row. The probe taps 5 (the digit row's middle key): a 5 in the field exists
+# only with the row on; with it off the same pixel types ү.
+if [ "$PREFS_ACCESS" != 1 ]; then
+    result SKIP number-row "prefs cannot be written via run-as"
+else
+    nr_detail=""
+    nr_field=""
+    write_pref pref_show_number_row boolean true || nr_detail="the pref write failed"
+    if [ -z "$nr_detail" ]; then
+        reload_ime
+        refocus_tryit || nr_detail="keyboard did not come up with the number row on"
+    fi
+    if [ -z "$nr_detail" ]; then
+        TAPF 0.45 0.6599               # 5 in the digit row (with the row off: ү)
+        sleep 0.6
+        nr_field=$(field_text)
+        SHELL input keyevent KEYCODE_DEL
+        sleep 0.4
+    fi
+    restore_pref pref_show_number_row
+    if [ -n "$nr_detail" ]; then
+        result FAIL number-row "$nr_detail"
+    elif [ "$nr_field" = "__NOFIELD__" ]; then
+        result FAIL number-row "try-it поле не найдено в дампе"
+    elif echo "$nr_field" | grep -qE '5 *$'; then
+        result PASS number-row "цифра 5 из ряда цифр (y=0.66); в поле: '$nr_field'"
+    else
+        result FAIL number-row "из точки цифры 5 пришло не 5 (без ряда там ү); в поле: '$nr_field'"
+    fi
+fi
+
+# ── night mode ──
+# `cmd uimode night yes` flips the configuration's uiMode; the keyboard theme follows
+# (values-night/), so the keyboard area's pixels must change wholesale. The crop starts
+# below the suggestion strip, whose content does not depend on the theme. Both shots show
+# the same fresh tt keyboard (the activity restarts between them), so any large delta is
+# the theme. The saved mode is restored, not a hardcoded one, so a reused AVD keeps the
+# state the script found.
+NIGHT_CROP="1080x760+0+1440"
+NIGHT_DIFF_MIN=100000
+crop_diff() {                                # crop_diff <crop> before.png after.png → AE
+    local out
+    out=$(compare -metric AE \
+        <(convert "$2" -crop "$1" +repage png:-) \
+        <(convert "$3" -crop "$1" +repage png:-) null: 2>&1 || true)
+    echo "$out" | grep -oP '\d+' | head -1 || echo 0
+}
+if [ "$HAVE_MAGICK" != 1 ]; then
+    result SKIP night-mode "нет ImageMagick для пиксельной дельты"
+else
+    nm_saved=$(SHELL cmd uimode night | tr -d '\r' | grep -oP '(yes|no|auto)' | head -1 || true)
+    nm_saved="${nm_saved:-no}"
+    nm_detail=""
+    refocus_tryit || nm_detail="keyboard did not come up for the day shot"
+    if [ -z "$nm_detail" ]; then
+        SHOT smoke-night-off.png
+        SHELL cmd uimode night yes || true
+        sleep 2                         # the config change recreates the activity
+        refocus_tryit || nm_detail="keyboard did not come up for the night shot"
+    fi
+    if [ -z "$nm_detail" ]; then
+        SHOT smoke-night-on.png
+    fi
+    SHELL cmd uimode night "$nm_saved" || true
+    sleep 1
+    if [ -n "$nm_detail" ]; then
+        result FAIL night-mode "$nm_detail"
+    else
+        nm_diff=$(crop_diff "$NIGHT_CROP" "$OUTDIR/smoke-night-off.png" "$OUTDIR/smoke-night-on.png")
+        if [ "$nm_diff" -ge "$NIGHT_DIFF_MIN" ]; then
+            result PASS night-mode "тема переключилась: $nm_diff px (порог $NIGHT_DIFF_MIN)"
+        else
+            result FAIL night-mode "клавиатура не изменилась: $nm_diff px (порог $NIGHT_DIFF_MIN)"
+        fi
+    fi
+fi
+
+# ── landscape rotate + one typed check ──
+# user_rotation=1 with the accelerometer off forces landscape. In landscape the try-it
+# field sits below the fold of the setup ScrollView, so refocus_tryit scrolls the field
+# into the dump and taps it. The tap targets are NOT screen fractions here: TAPF's cached
+# portrait size would land them off-screen, so the probe reads the IME's visible frame
+# from dumpsys (the InsetsSource of type ime; the InputMethod window's own mFrame covers
+# the whole screen, and its " Frames:" line does not even exist on every image) and
+# computes the extra row's ә from it (frame + 44dp strip + one of five equal rows). The
+# rotation values are restored to what the script found.
+ls_saved_acc=$(SHELL settings get system accelerometer_rotation | tr -d '\r' || true)
+ls_saved_rot=$(SHELL settings get system user_rotation | tr -d '\r' || true)
+SHELL settings put system accelerometer_rotation 0 || true
+SHELL settings put system user_rotation 1 || true
+sleep 2
+ls_detail=""
+ls_field=""
+refocus_tryit || ls_detail="keyboard did not come up in landscape"
+if [ -z "$ls_detail" ]; then
+    ls_frame=$(SHELL dumpsys window 2>/dev/null | tr -d '\r' | python3 -c '
+import re
+import sys
+
+text = sys.stdin.read()
+m = re.search(
+    r"InsetsSource id=\d+ type=ime frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]",
+    text)
+if m:
+    print(" ".join(m.groups()))
+')
+    if [ -z "$ls_frame" ]; then
+        ls_detail="IME frame not found in dumpsys window"
+    fi
+fi
+if [ -z "$ls_detail" ]; then
+    read -r ls_l ls_t ls_r ls_b <<<"$ls_frame"
+    # 44dp of strip at density 2.75 above five equal rows; ә is the extra row's first
+    # key. The frame's bottom pad (the empty window tail behind the navigation bar) only
+    # shifts the row arithmetic, and ә's key is twice as tall as the shift.
+    ls_rowh=$(( (ls_b - ls_t - 121) / 5 ))
+    ls_x=$(python3 -c "print(round($ls_l + ($ls_r - $ls_l) * 0.08333))")
+    ls_y=$(( ls_t + 121 + ls_rowh / 2 ))
+    SHELL input tap "$ls_x" "$ls_y"
+    sleep 0.6
+    ls_field=$(field_text)
+    SHELL input keyevent KEYCODE_DEL
+    sleep 0.4
+fi
+# Restore the accelerometer BEFORE user_rotation: with auto-rotate already on, the
+# user_rotation write re-evaluates the orientation and this image resets
+# accelerometer_rotation to 0, so the reverse order loses the saved value.
+SHELL settings put system accelerometer_rotation "${ls_saved_acc:-1}" || true
+SHELL settings put system user_rotation "${ls_saved_rot:-0}" || true
+sleep 2
+if [ -n "$ls_detail" ]; then
+    result FAIL landscape-type "$ls_detail"
+elif [ "$ls_field" = "__NOFIELD__" ]; then
+    result FAIL landscape-type "try-it поле не найдено в дампе"
+elif echo "$ls_field" | grep -qE '[әӘ] *$'; then
+    result PASS landscape-type "ә набрана в landscape ($ls_frame); в поле: '$ls_field'"
+else
+    result FAIL landscape-type "в landscape пришло не ә; в поле: '$ls_field'"
 fi
 
 # ── crash buffer ──

@@ -22,8 +22,13 @@ import android.os.SystemClock
 import android.test.InstrumentationTestCase
 import android.util.Log
 import android.view.MotionEvent
+import android.view.ViewGroup
 import android.widget.EditText
 import rkr.simplekeyboard.inputmethod.R
+import rkr.simplekeyboard.inputmethod.keyboard.Key
+import rkr.simplekeyboard.inputmethod.keyboard.KeyboardSwitcher
+import rkr.simplekeyboard.inputmethod.latin.common.Constants
+import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -39,7 +44,10 @@ import kotlin.math.ceil
  * a loop at that key, so the loop-free сәләм path commits сәләм and сәлләм is an alternative.
  *
  * Events are injected with `Instrumentation.sendPointerSync` into the live IME window, with
- * real wall-clock holds. The host takes the strip screenshot during the logged pause.
+ * real wall-clock holds. Keys and the strip are found on the live views (the
+ * PasswordFieldSwitchDeviceTest pattern), so no screen geometry is assumed; the latency arm is
+ * the exception — its budgets are calibrated to the reference display and it skips anywhere
+ * else. The host takes the strip screenshot during the logged pause.
  */
 class GlideUiDeviceTest : InstrumentationTestCase() {
 
@@ -48,13 +56,6 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
     private var startedActivity: android.app.Activity? = null
 
     override fun setUp() {
-        // Every tap coordinate below is calibrated for the POCO C71's 720x1640 px display;
-        // on any other geometry the probes miss and the run wedges, so fail fast here.
-        val metrics = instrumentation.targetContext.resources.displayMetrics
-        if (metrics.widthPixels != 720 || metrics.heightPixels != 1640) {
-            fail("the tap coordinates are calibrated for a 720x1640 px display (POCO C71); " +
-                "the actual display is ${metrics.widthPixels}x${metrics.heightPixels} px")
-        }
         val context = instrumentation.targetContext
         val prefs = rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
             .getDeviceSharedPreferences(context)
@@ -84,21 +85,26 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
 
     /**
      * The same с-ә-л-ә-м gesture with a small loop at л: the doubled word «сәлләм» must win.
-     * The loop is ±16 px x / ±24 px y around the л key, matching the ideal path's quarter-key
-     * detour.
+     * The loop is a quarter-key detour around the л key, matching the ideal path's detour.
      */
     fun testALoopAtTheDoubledLetterDeliversTheDoubledWord() {
         val field = prepareField()
+        val s = letterKey('с')
+        val e = letterKey('ә')
+        val l = letterKey('л')
+        val m = letterKey('м')
+        val dx = l.width / 4f
+        val dy = l.height / 4f
         val path = listOf(
-            234f to 1396f, // с
-            60f to 1110f, // ә
-            491f to 1301f, // л
-            507f to 1325f, // the loop: bottom-right
-            507f to 1277f, // top-right
-            475f to 1277f, // top-left
-            475f to 1325f, // bottom-left
-            60f to 1110f, // ә
-            297f to 1396f, // м
+            s.cx to s.cy, // с
+            e.cx to e.cy, // ә
+            l.cx to l.cy, // л
+            (l.cx + dx) to (l.cy + dy), // the loop: bottom-right
+            (l.cx + dx) to (l.cy - dy), // top-right
+            (l.cx - dx) to (l.cy - dy), // top-left
+            (l.cx - dx) to (l.cy + dy), // bottom-left
+            e.cx to e.cy, // ә
+            m.cx to m.cy, // м
         )
         drivePath(instrumentation, path, holdMs = 0L)
         Thread.sleep(1500)
@@ -110,14 +116,15 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
 
     /** Measures lift-to-first-visible-word after idle index release and while warm. */
     fun testFirstVisibleGlideAfterIdleAndWarmDecode() {
+        // The budgets below are calibrated on the 720x1640 reference device (the leg of
+        // device-perf-ritual.sh); anywhere else the behavior arms above still run, but this
+        // method skips rather than measure against another device's envelope.
+        if (!isReferenceDisplay()) {
+            Log.i(TAG, "skipped: the latency budgets are calibrated to the 720x1640 reference display")
+            return
+        }
         val field = prepareField()
-        val path = listOf(
-            234f to 1396f, // с
-            60f to 1110f, // ә
-            491f to 1301f, // л
-            60f to 1110f, // ә
-            297f to 1396f, // м
-        )
+        val path = listOf('с', 'ә', 'л', 'ә', 'м').map { letterKey(it).let { k -> k.cx to k.cy } }
 
         // Populate the index so every cold sample below measures a real idle
         // release rather than the process's very first glide.
@@ -183,11 +190,20 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         // the gesture is driven (a stale keyboard window from a previous run would eat it).
         var probes = 0
         while (probes < 10) {
-            val fieldNow = IntArray(2)
             field.getLocationOnScreen(fieldLocation)
             tap(instrumentation, fieldLocation[0] + field.width / 2f, fieldLocation[1] + field.height / 2f)
             Thread.sleep(700)
-            tap(instrumentation, 234f, 1396f) // с
+            // The keyboard window may lag the field focus; an unreadable key is retried like
+            // a missed tap.
+            val s = liveKey {
+                Character.isLetter(it.code) && Character.toLowerCase(it.code) == 'с'.code
+            }
+            if (s == null) {
+                probes++
+                Thread.sleep(1000)
+                continue
+            }
+            tap(instrumentation, s.cx, s.cy)
             Thread.sleep(700)
             if (field.text.toString().endsWith("с")) break
             field.text.clear()
@@ -296,15 +312,9 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
     private fun driveUiGesture(holdMs: Long) {
         val field = prepareField()
 
-        // The gesture: down on с, rest 800 ms, then ә → л → ә → м, lift. Screen coordinates of
-        // the live 720x1640 layout (from a device screenshot).
-        val path = listOf(
-            234f to 1396f, // с
-            60f to 1110f, // ә
-            491f to 1301f, // л
-            60f to 1110f, // ә
-            297f to 1396f, // м
-        )
+        // The gesture: down on с, rest 800 ms, then ә → л → ә → м, lift. The keys are found on
+        // the live keyboard view, so no screen geometry is assumed.
+        val path = listOf('с', 'ә', 'л', 'ә', 'м').map { letterKey(it).let { k -> k.cx to k.cy } }
         drivePath(instrumentation, path, holdMs)
         // The decode lands on the strip; the marker log gives the host the screencap window.
         Thread.sleep(1500)
@@ -320,7 +330,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
 
         // Tap the LEFT strip cell: the alternatives hold candidates 2..4, and the doubled twin
         // сәлләм is the first of them (the committed plain word is no longer in the strip).
-        tap(instrumentation, 120f, 980f)
+        tapLeftStripCell()
         Thread.sleep(1500)
         val after = field.text.toString()
         Log.i(TAG, "field after the alternative tap: '$after'")
@@ -330,13 +340,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         )
 
         // Chaining: a second glide right after prepends exactly one space.
-        val second = listOf(
-            540f to 1301f, // д
-            414f to 1301f, // о
-            360f to 1206f, // н
-            487f to 1396f, // ь
-            98f to 1396f, // я
-        )
+        val second = listOf('д', 'о', 'н', 'ь', 'я').map { letterKey(it).let { k -> k.cx to k.cy } }
         drivePath(instrumentation, second, holdMs = 0L)
         Thread.sleep(1500)
         val chained = field.text.toString()
@@ -360,7 +364,7 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
 
     /**
      * One gesture: down on the first point, an optional rest, the drag through the rest, lift.
-     * Screen coordinates of the live 720x1640 layout (from a device screenshot).
+     * The points are screen coordinates (see [letterKey]).
      */
     private fun drivePath(
         instrumentation: Instrumentation,
@@ -388,7 +392,70 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
 
     /** One tap on the keyboard's own delete key (bottom-right of the letters block). */
     private fun pressDelete(instrumentation: Instrumentation) {
-        tap(instrumentation, 663f, 1396f)
+        val delete = liveKey { it.code == Constants.CODE_DELETE }
+        assertNotNull("no delete key on the live keyboard", delete)
+        tap(instrumentation, delete!!.cx, delete.cy)
+    }
+
+    /** One tap in the middle of the suggestion strip's left cell, found on the live view. */
+    private fun tapLeftStripCell() {
+        var x = 0f
+        var y = 0f
+        var found = false
+        instrumentation.runOnMainSync {
+            val view = KeyboardSwitcher.getInstance().mainKeyboardView
+            val strip = (view?.parent as? ViewGroup)
+                ?.findViewById<SuggestionStripView>(R.id.suggestion_strip_view)
+            if (strip != null && strip.isShown && strip.width > 0) {
+                val origin = IntArray(2)
+                strip.getLocationOnScreen(origin)
+                // An eighth of the width lands in the leftmost cell for any visible cell count.
+                x = origin[0] + strip.width / 8f
+                y = origin[1] + strip.height / 2f
+                found = true
+            }
+        }
+        assertTrue("the suggestion strip is not showing", found)
+        tap(instrumentation, x, y)
+    }
+
+    /** One letter key's center and size on the live keyboard, in screen coordinates. */
+    private class LiveKey(val cx: Float, val cy: Float, val width: Float, val height: Float)
+
+    /** Finds the live key typing [letter] (case-insensitively: the keyboard may be shifted). */
+    private fun letterKey(letter: Char): LiveKey {
+        val key = liveKey {
+            Character.isLetter(it.code) && Character.toLowerCase(it.code) == letter.code
+        }
+        assertNotNull("no key for '$letter' on the live keyboard", key)
+        return key!!
+    }
+
+    private fun liveKey(predicate: (Key) -> Boolean): LiveKey? {
+        var found: LiveKey? = null
+        instrumentation.runOnMainSync {
+            val view = KeyboardSwitcher.getInstance().mainKeyboardView
+            val keyboard = view?.keyboard
+            if (view != null && view.isShown && keyboard != null) {
+                val key = keyboard.sortedKeys.firstOrNull(predicate)
+                if (key != null) {
+                    val origin = IntArray(2)
+                    view.getLocationOnScreen(origin)
+                    found = LiveKey(
+                        origin[0] + view.paddingLeft + key.x + key.width / 2f,
+                        origin[1] + view.paddingTop + key.y + key.height / 2f,
+                        key.width.toFloat(), key.height.toFloat(),
+                    )
+                }
+            }
+        }
+        return found
+    }
+
+    /** The latency budgets are calibrated to the 720x1640 reference display. */
+    private fun isReferenceDisplay(): Boolean {
+        val metrics = instrumentation.targetContext.resources.displayMetrics
+        return metrics.widthPixels == REFERENCE_WIDTH_PX && metrics.heightPixels == REFERENCE_HEIGHT_PX
     }
 
     private fun tap(instrumentation: Instrumentation, x: Float, y: Float) {
@@ -409,6 +476,8 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
 
     companion object {
         private const val TAG = "GlideUi"
+        private const val REFERENCE_WIDTH_PX = 720
+        private const val REFERENCE_HEIGHT_PX = 1640
         private const val LATENCY_RUNS = 5
         private const val IDLE_RELEASE_MS = 12_000L
         private const val VISIBLE_TIMEOUT_SECONDS = 30L

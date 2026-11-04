@@ -20,43 +20,45 @@ class GlideDecoderTest {
     private fun decoderOf(entries: List<Pair<String, Long>>): GlideDecoder =
         GlideDecoder(geometry, ListGlideInventory(entries))
 
-    /** The ideal center-to-center path of [word] over the fixture geometry (no noise). Each hop
-     * takes its normative duration (the decoder's normative speed over the hop's length), so the
-     * speed channel neither fires nor dampens on these paths. */
+    /** The ideal center-to-center path of [word] over the fixture geometry (no noise). Each
+     * letter hop takes its Fitts-law normative duration (the index's a + b x log2(D/W + 1) per
+     * transition, W the target key's width); a looped doubled letter's detour points keep the
+     * key's arrival time — a loop is an embellishment, not a letter hop. The speed channel
+     * neither fires nor dampens on these paths. */
     private fun idealPath(word: String, withLoop: Boolean = false): GlidePath {
         val path = GlidePath()
-        val speed = GlideDecoder.GlideConstants().normativeSpeedRadiiPerMs * geometry.keyRadius
-        var t = 0f
+        var t = 0.0
         var previous = -1
         var previousX = 0f
         var previousY = 0f
-        var first = true
-        fun add(x: Float, y: Float) {
-            if (!first) {
-                val dx = x - previousX
-                val dy = y - previousY
-                t += kotlin.math.sqrt(dx * dx + dy * dy) / speed
-            }
-            first = false
-            previousX = x
-            previousY = y
-            path.addPoint(x, y, t)
-        }
         for (offset in 0 until word.length) {
             val codePoint = word.codePointAt(offset)
             val key = geometry.keyIndexOfLetter(codePoint)
             check(key >= 0) { "fixture word has an unmappable letter" }
+            val x = geometry.centerX(key)
+            val y = geometry.centerY(key)
+            if (previous >= 0 && codePoint != previous) {
+                val dx = x - previousX
+                val dy = y - previousY
+                val d = kotlin.math.sqrt(dx * dx + dy * dy)
+                val w = 2f * geometry.halfWidth(key)
+                t += GlideWordIndex.FITTMS_A +
+                    GlideWordIndex.FITTMS_B * Math.log((d / w + 1f).toDouble()) / Math.log(2.0)
+            }
             if (withLoop && codePoint == previous) {
                 val dx = geometry.halfWidth(key) / 2
                 val dy = geometry.halfHeight(key) / 2
-                add(geometry.centerX(key) + dx, geometry.centerY(key) + dy)
-                add(geometry.centerX(key) + dx, geometry.centerY(key) - dy)
-                add(geometry.centerX(key) - dx, geometry.centerY(key) - dy)
-                add(geometry.centerX(key) - dx, geometry.centerY(key) + dy)
+                val tMs = t.toFloat()
+                path.addPoint(x + dx, y + dy, tMs)
+                path.addPoint(x + dx, y - dy, tMs)
+                path.addPoint(x - dx, y - dy, tMs)
+                path.addPoint(x - dx, y + dy, tMs)
             } else {
-                add(geometry.centerX(key), geometry.centerY(key))
+                path.addPoint(x, y, t.toFloat())
             }
             previous = codePoint
+            previousX = x
+            previousY = y
         }
         return path
     }
@@ -247,6 +249,39 @@ class GlideDecoderTest {
     }
 
     @Test
+    fun aGestureDrawnFarOffTheKeysYieldsNoCandidates() {
+        // The hard location cutoff's documented guarantee: a gesture far off every candidate's
+        // keys returns nothing. The path starts and ends exactly on the candidates' first and
+        // last keys (extremity pruning admits them) but detours two key heights above the
+        // keyboard in between — a mean location error far past the cutoff — and is drawn fast,
+        // which engages the speed channel's sigma widening: the cutoff is computed on the
+        // unwidened sigmas precisely so the widening cannot rescue such a candidate.
+        val decoder = decoderOf(
+            listOf(
+                "йцукенгшщх" to 100L,
+                "йцукенгшщзх" to 50L,
+            ),
+        )
+        val startKey = geometry.keyIndexOfLetter('й'.code)
+        val endKey = geometry.keyIndexOfLetter('х'.code)
+        val startX = geometry.centerX(startKey)
+        val startY = geometry.centerY(startKey)
+        val endX = geometry.centerX(endKey)
+        val apexY = startY - 2f * GlideTestFixtures.KEY_HEIGHT
+        // Arc-proportional timestamps (uniform speed, no dwell), 600 ms total against the
+        // candidates' ~2.3 s normative: the sigma widening caps out.
+        val legY = startY - apexY
+        val totalLength = 2f * legY + (endX - startX)
+        val totalMs = 600f
+        val path = GlidePath()
+        path.addPoint(startX, startY, 0f)
+        path.addPoint(startX, apexY, totalMs * legY / totalLength)
+        path.addPoint(endX, apexY, totalMs * (legY + endX - startX) / totalLength)
+        path.addPoint(endX, startY, totalMs)
+        assertEquals(0, decodeWords(decoder, path).size)
+    }
+
+    @Test
     fun emptyDegenerateAndPrunedInputsYieldNoCandidates() {
         val decoder = decoderOf(listOf("сәләм" to 36L, "салым" to 7466L))
         // Empty path.
@@ -309,7 +344,7 @@ class GlideDecoderTest {
         )
         decodeWords(decoder, idealPath("сәләм"))
         // Only words whose first key is among the 2 nearest to the start AND whose last key is
-        // among the 2 nearest to the end are visited: strictly fewer than the whole inventory.
+        // among the 3 nearest to the end are visited: strictly fewer than the whole inventory.
         assertTrue(decoder.lastCandidateCount in 1 until 5)
         assertTrue(decoder.lastScoredCount <= decoder.lastCandidateCount)
     }
@@ -365,11 +400,15 @@ class GlideDecoderTest {
             assertEquals(expected.count, actual.count)
             for (i in 0 until actual.count) {
                 assertEquals(expected.words[i], actual.words[i])
+                // The overflow rule halves the buffer in one pass (GlidePath), so a deep overflow
+                // retains ~half the samples the old least-cost rule kept and its early segments
+                // are coarser — the 2048-sample path (six halvings) deviates ~2%. The words and
+                // their order are the hard pin; the score tolerance absorbs the coarsening.
                 assertEquals(
                     "score delta at $sampleCount samples",
                     expected.scores[i],
                     actual.scores[i],
-                    expected.scores[i] * 0.01f,
+                    expected.scores[i] * 0.03f,
                 )
             }
             assertEquals(reference.xs[0], thinned.xs[0], 0f)

@@ -72,4 +72,55 @@ class KeyNeighborTableTest {
     fun tableCarriesItsSubtypeId() {
         assertEquals("tt_RU", LongPressTestFixtures.tatarNeighborTable().subtypeId)
     }
+
+    @Test
+    fun geometricNeighborsFollowTheLayoutGeometry() {
+        val table = TatarLayoutTestFixtures.tatarNeighborTable()
+        // Cross-row pairs of the layout-derived relation (TypoMutatedEvalTest's literal).
+        assertTrue(table.areGeometricNeighbors('к'.code, 'а'.code))
+        assertTrue(table.areGeometricNeighbors('у'.code, 'ө'.code))
+        assertTrue(table.areGeometricNeighbors('ү'.code, 'н'.code))
+        // Same-row adjacent keys, the physically closest pairs.
+        assertTrue(table.areGeometricNeighbors('к'.code, 'е'.code))
+        assertTrue(table.areGeometricNeighbors('ә'.code, 'ө'.code))
+        // The rule is symmetric.
+        assertTrue(table.areGeometricNeighbors('а'.code, 'к'.code))
+        // Distant keys are not neighbors: one key over on the same row, the near-miss across
+        // rows (ү↔к), and keys two rows apart.
+        assertFalse(table.areGeometricNeighbors('к'.code, 'н'.code))
+        assertFalse(table.areGeometricNeighbors('ү'.code, 'к'.code))
+        assertFalse(table.areGeometricNeighbors('ә'.code, 'а'.code))
+        // A more-key-only letter has no rectangle and joins no pair, in either direction.
+        assertFalse(table.areGeometricNeighbors('ё'.code, 'е'.code))
+        assertFalse(table.areGeometricNeighbors('е'.code, 'ё'.code))
+        // A key is never its own neighbor.
+        assertFalse(table.areGeometricNeighbors('к'.code, 'к'.code))
+        // The full relation over the node set: the 32 cross-row pairs of the layout-derived
+        // geometric map (TypoMutatedEvalTest.GEOMETRIC_NEIGHBORS) plus the 33 same-row adjacent
+        // pairs the radius admits. More-key-only letters (ё, ъ) contribute nothing.
+        var pairs = 0
+        for (first in table.nodes) {
+            for (second in table.nodes) {
+                if (first < second && table.areGeometricNeighbors(first, second)) pairs++
+            }
+        }
+        assertEquals(65, pairs)
+    }
+
+    @Test
+    fun keysWithoutGeometryJoinNoGeometricPair() {
+        // The legacy fixture form (no rectangle) keeps the long-press pairs and the node set but
+        // carries no geometric adjacency, so the neighbor bonus can never fire on it.
+        val table = LongPressTestFixtures.tatarNeighborTable()
+        assertFalse(table.areGeometricNeighbors('а'.code, 'ә'.code))
+        assertFalse(table.areGeometricNeighbors('к'.code, 'е'.code))
+    }
+
+    @Test
+    fun aNonAlphabetElementCarriesNoGeometricPair() {
+        val table = KeyNeighborTable.build(
+            "tt_RU", false, listOf(LongPressTestFixtures.rawKey('а', 'ә')),
+        )
+        assertFalse(table.areGeometricNeighbors('а'.code, 'ә'.code))
+    }
 }

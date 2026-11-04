@@ -123,8 +123,9 @@ class TdictPrefixIndexTopFrequentWordsTest {
             DictionaryArtifactSpec.RUSSIAN_TOP100K_V1 to requireNotNull(russianIndex),
         )
         for ((spec, index) in dictionaries) {
-            val scanned = GlobalTopFrequencyFallbackFactory.createFallbackWords(index)
-            val precomputed = GlobalTopFrequencyFallbackFactory.createFallbackWords(
+            val factory = GlobalTopFrequencyFallbackFactory(spec.harmonyTwins)
+            val scanned = factory.createFallbackWords(index)
+            val precomputed = factory.createFallbackWords(
                 PrecomputedTopFrequencySource(spec.fallbackWords),
             )
             for (context in listOf("", "кил", spec.fallbackWords.first())) {

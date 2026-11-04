@@ -214,7 +214,8 @@ class TtDl1TierCalibrationTest {
     /**
      * Per-class top-3 recovery on the mutated set, under the production Tatar wiring. Bars:
      * del >= 45 % (previous pin 19.8 %), ins >= 70 % (0 %), trans >= 60 % (0 %), sub >= 90.0 %
-     * (pin 91.6 %, tolerance -1.6 pp). The fuzzy budget must never trip on the eval set.
+     * (pin 92.8 % with the geometry-neighbor bonus armed, tolerance -2.8 pp). The fuzzy budget
+     * must never trip on the eval set.
      */
     @Test
     fun gateRecoveryPerClassMeetsThePreregisteredBars() {
@@ -489,10 +490,10 @@ class TtDl1TierCalibrationTest {
         // TypoMutatedEvalTest pins; re-pin when an input changes.
         private const val PIN_SUBSTRATE_WORDS = 2_381
         private const val PIN_SET_ROWS = 9_524
-        private const val PIN_SET_BYTES = 310_498
+        private const val PIN_SET_BYTES = 310_834
         private const val PIN_SET_SHA256 =
-            "8b60e4b146981d737b351abbbdfd478a3aaa5eedb51a8769ff0cab54c5b5636e"
-        private const val PIN_EVAL_PREFIXES_GE4 = 7_451
+            "80891b11c01776303adc1a1cb8fa0b3eadb8b534bb447f8186d6348a7000acd8"
+        private const val PIN_EVAL_PREFIXES_GE4 = 7_599
 
         private val neighborTable = TatarLayoutTestFixtures.tatarNeighborTable()
         private val ALPHABET: IntArray get() = neighborTable.nodes

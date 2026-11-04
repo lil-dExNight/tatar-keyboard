@@ -9,7 +9,8 @@ import org.junit.Test
  * Engine behavior of the DL-1 typo tier: the activation gate (empty exact pass AND >= 4 code
  * points), the probe-first cost shape (one probe per variant, scans only for survivors), the
  * shared budgets (exceeding one drops the whole fuzzy level), and the ranking inside the tier
- * (one class tag for every family: the same-length bonus, then frequency). The calibration on
+ * (one class tag for every family: the same-length bonus, then the geometry-neighbor bit of the
+ * substitution family, then frequency). The calibration on
  * the real asset lives in [TtFullSubstitutionCalibrationTest]; the policy pins in
  * [TdictPrefixIndexShippedFuzzyClassesTest].
  */
@@ -77,9 +78,35 @@ class TdictPrefixIndexDl1TierTest {
     @Test
     fun frequencyDecidesInsideTheDl1Tier() {
         // Typed "кумеш" (5 cp): the tier's substitution family finds both "күмеш" (у→ү) and
-        // "көмеш" (у→ө) under one class tag, so frequency descending decides inside the tier.
+        // "көмеш" (у→ө) under one class tag. Here the geometry-neighbor bonus and frequency agree
+        // (у→ө is a key-neighbor pair and the more frequent word); the case where they disagree
+        // is pinned by theGeometryNeighborBonusRanksANeighborSubstitutionBeforeANonNeighbor.
         val index = index(listOf("күмеш" to 5L, "көмеш" to 9_999L), FuzzyEditPolicy.TATAR)
         assertEquals(listOf("көмеш", "күмеш"), lookup(index, "кумеш"))
+    }
+
+    @Test
+    fun theGeometryNeighborBonusRanksANeighborSubstitutionBeforeANonNeighbor() {
+        // Typed "кумеш" (5 cp): "көмеш" (у→ө) and "күмеш" (у→ү) are both one substitution away
+        // under one class tag and both same-length. у and ө are adjacent keys (the extra row sits
+        // over the home row), у and ү are not (a long-press pair only). The bonus outranks
+        // frequency: "көмеш" at 1 before "күмеш" at 9 999.
+        val index = index(listOf("күмеш" to 9_999L, "көмеш" to 1L), FuzzyEditPolicy.TATAR)
+        assertEquals(listOf("көмеш", "күмеш"), lookup(index, "кумеш"))
+    }
+
+    @Test
+    fun theGeometryNeighborBonusStaysInsideTheTier() {
+        // A policy without the bonus flag (here: the same policy with the flag off) keeps the
+        // pure frequency order even when the table carries the geometry.
+        val policy = FuzzyEditPolicy(
+            FuzzyEditPolicy.TATAR.editClasses,
+            FuzzyEditPolicy.TATAR.sameLengthBonus,
+            FuzzyEditPolicy.TATAR.autocorrectClasses,
+            geometryNeighborBonus = false,
+        )
+        val index = index(listOf("күмеш" to 9_999L, "көмеш" to 1L), policy)
+        assertEquals(listOf("күмеш", "көмеш"), lookup(index, "кумеш"))
     }
 
     @Test

@@ -20,7 +20,7 @@ class FuzzyPrefixVariantsFullSubstitutionTest {
         val bytes = prefix.toByteArray(Charsets.UTF_8)
         val emitted = FuzzyPrefixVariants.generateFullSubstitutionVariants(
             bytes, bytes.size, alphabet, codePointScratch, variantScratch, maxVariants,
-        ) { _, v, len -> collected.add(String(v, 0, len, Charsets.UTF_8)) }
+        ) { _, _, _, v, len -> collected.add(String(v, 0, len, Charsets.UTF_8)) }
         return emitted to collected
     }
 

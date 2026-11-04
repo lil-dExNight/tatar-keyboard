@@ -26,9 +26,7 @@ import java.io.File
  * successors in count order, the same shape the bundled schema-3 table stores, with the record's
  * own pair decremented out) and each record whose target word follows another token of its
  * prompt gets that token as its context. On those records the printout compares the plain
- * decode, the blanket bigram channel and the pair-conditional variant (confusion pairs mined
- * from the lexicon's ideal paths — see GlideConfusionPairs — with the calibration surface's
- * selected firing rule and penalty).
+ * decode and the bigram channel.
  */
 class FutoRealGestureDiagnosticTest {
 
@@ -114,7 +112,7 @@ class FutoRealGestureDiagnosticTest {
         val decoder = GlideDecoder(geometry, ListGlideInventory(entries))
         val result = GlideResult()
         val path = GlidePath(2048 + 8)
-        // Every record decodes once; the context-free metrics and both channels evaluate the
+        // Every record decodes once; the context-free metrics and the channel evaluate the
         // same frozen N-best.
         val snapshots = ArrayList<Triple<Array<String?>, FloatArray, Int>>(records.size)
         for ((_, coords) in records) {
@@ -179,10 +177,7 @@ class FutoRealGestureDiagnosticTest {
         // target's in-prompt predecessor as the context. The oracle is matched-domain by
         // construction and each record's own prompt voted in it, so the record's own pair is
         // decremented out (leave-one-out); identical prompts from other records stay — the slice
-        // reads as a ceiling of the mechanism on real gestures, not a deployable estimate. The
-        // confusion pairs are mined from the lexicon's ideal paths; the firing rule and the
-        // conditional penalty are the calibration surface's. The blanket15 arm (always fire at the
-        // conditional penalty) separates the firing condition from the penalty strength.
+        // reads as a ceiling of the mechanism on real gestures, not a deployable estimate.
         val pairCounts = HashMap<String, HashMap<String, Int>>()
         for (tokens in sentences) {
             for (i in 0 until tokens.size - 1) {
@@ -194,20 +189,13 @@ class FutoRealGestureDiagnosticTest {
         val pairStats = pairCounts.mapValues { (_, counts) ->
             counts.entries.map { it.key to it.value }
         }
-        val mined = GlideConfusionPairs.mine(ListGlideInventory(entries), geometry)
-        val keys = if (GlideRecoveryCalibrationTest.PAIR_SET_MUTUAL) mined.mutual else mined.union
         val reused = GlideResult()
         val adjusted = FloatArray(GlideDecoder.TOP_N)
         var contextCount = 0
-        var fired = 0
         var plainContextTop1 = 0
         var blanketContextTop1 = 0
-        var blanket15ContextTop1 = 0
-        var pairContextTop1 = 0
         val plainMarks = ArrayList<Boolean>()
         val blanketMarks = ArrayList<Boolean>()
-        val blanket15Marks = ArrayList<Boolean>()
-        val pairMarks = ArrayList<Boolean>()
         for (i in records.indices) {
             val context = contexts[i] ?: continue
             contextCount++
@@ -226,51 +214,16 @@ class FutoRealGestureDiagnosticTest {
             )
             blanketMarks.add(reused.count > 0 && reused.words[0] == word)
             if (blanketMarks.last()) blanketContextTop1++
-            refill(reused, words, scores, count)
-            GlideBigramRerank.rerank(
-                reused, successors, GlideRecoveryCalibrationTest.PAIR_RANK_PENALTY, adjusted,
-            )
-            blanket15Marks.add(reused.count > 0 && reused.words[0] == word)
-            if (blanket15Marks.last()) blanket15ContextTop1++
-            val fire = GlideConfusionPairs.holdsMinedPair(
-                keys, words, count, GlideRecoveryCalibrationTest.PAIR_RANK_ONE_ONLY,
-            )
-            if (fire) fired++
-            refill(reused, words, scores, count)
-            if (fire) {
-                GlideBigramRerank.rerank(
-                    reused, successors, GlideRecoveryCalibrationTest.PAIR_RANK_PENALTY, adjusted,
-                )
-            }
-            pairMarks.add(reused.count > 0 && reused.words[0] == word)
-            if (pairMarks.last()) pairContextTop1++
         }
         if (contextCount > 0) {
-            val pairGain = (pairContextTop1 - plainContextTop1) * 100.0 / contextCount
             val blanketGain = (blanketContextTop1 - plainContextTop1) * 100.0 / contextCount
-            val blanket15Gain = (blanket15ContextTop1 - plainContextTop1) * 100.0 / contextCount
-            val ciPair = GlideConfusionPairs.pairedGainCi(
-                pairMarks.toBooleanArray(), plainMarks.toBooleanArray(),
-            )
-            val ciBlanket = GlideConfusionPairs.pairedGainCi(
+            val ciBlanket = GlideTestFixtures.pairedGainCi(
                 blanketMarks.toBooleanArray(), plainMarks.toBooleanArray(),
             )
-            val ciPairVsBlanket15 = GlideConfusionPairs.pairedGainCi(
-                pairMarks.toBooleanArray(), blanket15Marks.toBooleanArray(),
-            )
             println(
-                "FUTO context slice: n=$contextCount mined_pairs union=${mined.union.size} " +
-                    "mutual=${mined.mutual.size} fired=${percent(fired, contextCount)}%",
-            )
-            println(
-                "FUTO context top1: plain=${percent(plainContextTop1, contextCount)}% " +
+                "FUTO context top1: n=$contextCount plain=${percent(plainContextTop1, contextCount)}% " +
                     "blanket=${percent(blanketContextTop1, contextCount)}% " +
-                    "(${signed(blanketGain)} pp, CI [${signed(ciBlanket[0])}, ${signed(ciBlanket[1])}]) " +
-                    "blanket@cond_penalty=${percent(blanket15ContextTop1, contextCount)}% " +
-                    "(${signed(blanket15Gain)} pp) " +
-                    "pair=${percent(pairContextTop1, contextCount)}% " +
-                    "(${signed(pairGain)} pp, CI [${signed(ciPair[0])}, ${signed(ciPair[1])}]) " +
-                    "pair_vs_blanket15 CI [${signed(ciPairVsBlanket15[0])}, ${signed(ciPairVsBlanket15[1])}]",
+                    "(${signed(blanketGain)} pp, CI [${signed(ciBlanket[0])}, ${signed(ciBlanket[1])}])",
             )
         } else {
             println("FUTO context slice: no record carries an in-prompt context token")

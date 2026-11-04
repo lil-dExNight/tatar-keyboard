@@ -536,7 +536,7 @@ class PersonalDictionarySilentFailureTest {
     private fun pendingFile(directory: File): File? =
         directory.listFiles { file -> file.name.startsWith("pending-") }?.firstOrNull()
 
-    private fun saltFile(directory: File) = File(directory, "salt.bin")
+    private fun saltFile(directory: File) = File(directory, "salt-$subtype-s1-f1.bin")
 
     /** Flips one payload byte so the checksum no longer matches; returns the unreadable bytes. */
     private fun corruptTheDictionary(directory: File): ByteArray {

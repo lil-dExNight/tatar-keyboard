@@ -65,6 +65,25 @@ class RecentEmojiListTest {
     }
 
     @Test
+    fun withoutDropsTheEntryAndPreservesOrder() {
+        val list = RecentEmojiList.of("A", "B", "C")
+        assertEquals(listOf("A", "C"), list.without("B").entries)
+        // The front entry drops cleanly.
+        assertEquals(listOf("B", "C"), list.without("A").entries)
+        // The last entry drops cleanly, down to the empty list.
+        assertEquals(listOf("A", "B"), list.without("C").entries)
+        assertTrue(RecentEmojiList.of("A").without("A").isEmpty)
+    }
+
+    @Test
+    fun withoutReturnsTheSameInstanceWhenNothingMatches() {
+        val list = RecentEmojiList.of("A", "B")
+        assertSame(list, list.without("C"))
+        assertSame(list, list.without(""))
+        assertSame(RecentEmojiList.EMPTY, RecentEmojiList.EMPTY.without("A"))
+    }
+
+    @Test
     fun twentyFifthInsertEvictsTheOldestEntry() {
         var list = RecentEmojiList.EMPTY
         // Insert e0..e23 so the list is full (24) with e23 at the front, e0 at the back.

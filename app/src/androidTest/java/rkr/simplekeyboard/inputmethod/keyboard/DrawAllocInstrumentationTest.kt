@@ -86,7 +86,6 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
     override fun setUp() {
         // Every tap coordinate below is calibrated for the POCO C71's 720x1640 px display;
         // on any other geometry the probes miss and the run wedges, so fail fast here.
-        // (Same guard as GlideUiDeviceTest.)
         val metrics = instrumentation.targetContext.resources.displayMetrics
         if (metrics.widthPixels != 720 || metrics.heightPixels != 1640) {
             fail(
@@ -538,10 +537,12 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
             val inputView = requireNotNull(inputViewOf(view)) {
                 "the keyboard view must sit inside the InputView"
             }
-            // Four live cells, one emphasized: the fullest strip that is ever painted. The
-            // fourth-cell setting is opted into through the production push, then the production
-            // entry point paints the words (and inflates the strip stub on first use); the paired
-            // setEmphasis runs the (one-off, unmeasured) ellipsize rebuild.
+            // Four live cells, one emphasized and one carrying the recent-clip marker: the
+            // fullest strip that is ever painted. The fourth-cell setting is opted into through
+            // the production push, then the production entry point paints the words (and
+            // inflates the strip stub on first use); the paired setEmphasis and setClipCell
+            // run the (one-off, unmeasured) ellipsize rebuilds, and the marker's primitive
+            // drawing joins the measured strip window (drawClipMarker allocates nothing).
             inputView.setSuggestionStripCellCount(SuggestionStripState.CELL_COUNT)
             val strip = requireNotNull(
                 inputView.showSuggestionStrip(
@@ -549,6 +550,7 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
                 ),
             ) { "the suggestion strip must inflate" }
             strip.setEmphasis(0)
+            inputView.setSuggestionStripClipCell(2)
             keyboardView = view
             stripView = strip
             probeKeys = findLetterKeys(view, PROBED_LETTERS)
@@ -786,8 +788,8 @@ class DrawAllocInstrumentationTest : InstrumentationTestCase() {
     companion object {
         private const val TAG = "DrawAlloc"
 
-        // Screen coordinates of the live 720x1640 layout (from a device screenshot; the same
-        // grid GlideUiDeviceTest uses): с ә л ә м, and the delete key.
+        // Screen coordinates of the live 720x1640 layout (from a device screenshot):
+        // с ә л ә м, and the delete key.
         private const val PROBE_TAP_X = 234f
         private const val PROBE_TAP_Y = 1396f
         private val LETTER_TAPS = floatArrayOf(

@@ -92,10 +92,16 @@ class EmojiPanelAccessibilitySourceContractTest {
     }
 
     @Test
-    fun cellContentDescriptionIsTheSequenceItselfAndNoNameDatabaseIsShipped() {
-        // The contract deliberately supplies no emoji-name database; a cell speaks its own sequence.
-        assertTrue(panel.contains("node.contentDescription = state.entryAt(virtualViewId)"))
-        // No asset/resource list of emoji names is referenced anywhere in the panel.
+    fun cellContentDescriptionIsTheSpokenNameWithASequenceFallback() {
+        // A cell speaks its short name from the search index in the bound language; the sequence
+        // itself is the fallback before the index is bound, or for an emoji it does not name.
+        assertTrue(panel.contains("fun spokenText(sequence: String): String ="))
+        assertTrue(panel.contains("spokenNameIndex.nameOf(sequence, spokenNameLanguage) ?: sequence"))
+        assertTrue(panel.contains("node.contentDescription = spokenText(state.entryAt(virtualViewId))"))
+        assertTrue(panel.contains("spokenText(popupVariants.getOrElse(variant) { popupBase })"))
+        // The names arrive through the controller's surface seam, never a second asset read.
+        assertTrue(panel.contains("fun setSpokenNames(names: EmojiSearchIndex, language: String?)"))
+        // No other emoji-name database is referenced anywhere in the panel.
         for (forbidden in listOf("emoji_names", "cldr", "R.array.")) {
             assertFalse("panel references a name list via $forbidden", panel.contains(forbidden))
         }
@@ -207,6 +213,10 @@ class EmojiPanelAccessibilitySourceContractTest {
         assertTrue(releaseCaches.contains("state.setSnapshot(EmojiSetSnapshot.EMPTY)"))
         assertTrue(releaseCaches.contains("tabLabels = emptyArray()"))
         assertTrue(releaseCaches.contains("tabNames = emptyArray()"))
+        // The spoken-name index goes with the rest, or the idle release would not free it; the
+        // next publish re-seeds it through setSpokenNames.
+        assertTrue(releaseCaches.contains("spokenNameIndex = EmojiSearchIndex.EMPTY"))
+        assertTrue(releaseCaches.contains("spokenNameLanguage = null"))
         // No-op while shown so it never blanks a live grid.
         assertTrue(releaseCaches.contains("if (visibility == VISIBLE)"))
         assertFalse("panel must hold no offscreen Bitmap", panel.contains("Bitmap"))
@@ -227,5 +237,46 @@ class EmojiPanelAccessibilitySourceContractTest {
         val finishBody = latinIme.substringAfter("void onFinishInputViewInternal(final boolean finishingInput)")
             .substringBefore("protected void deallocateMemory()")
         assertTrue(finishBody.contains("mKeyboardSwitcher.releaseEmojiPanelCaches()"))
+    }
+
+    // --- Spoken cell names (the search index's ru/tt channels) ----------------------------------
+
+    @Test
+    fun spokenNamesFlowFromTheSharedSearchIndexThroughTheSwitcherToThePanel() {
+        val controller = java("rkr/simplekeyboard/inputmethod/latin/emoji/EmojiPanelController.kt")
+        // The controller starts the one-per-process index load when the panel is published and
+        // binds the names through the surface seam, alongside the search's own load.
+        val publish = controller.substringAfter("private fun publish(")
+            .substringBefore("private fun ensureSpokenNamesIndex()")
+        assertTrue(publish.contains("ensureSpokenNamesIndex()"))
+        val load = controller.substringAfter("private fun onSearchIndexLoaded(")
+            .substringBefore("fun searchIndexOrNull()")
+        assertTrue(load.contains("surface.bindSpokenNames(loaded, spokenNameLanguage)"))
+        // The language follows the active subtype, exactly like the search results'.
+        val show = latinIme.substringAfter("public void showEmojiPanel()")
+            .substringBefore("public void onEmojiSearchUnavailable()")
+        assertTrue(show.contains("mEmojiPanelController.setSpokenNameLanguage("))
+        assertTrue(show.contains("EmojiSuggestIndex.assetLanguageOf("))
+        // The switcher holds the index like the tone table and re-binds it on every show.
+        assertTrue(keyboardSwitcher.contains("public void bindEmojiSpokenNames("))
+        val showPanel = keyboardSwitcher.substringAfter("public void showEmojiPanel(final EmojiSetSnapshot snapshot)")
+            .substringBefore("public void bindEmojiSkinTones(")
+        assertTrue(showPanel.contains("panel.setSpokenNames(mEmojiSpokenNames, mEmojiSpokenNameLanguage)"))
+        // The idle release drops the held copy, like the controller drops its index.
+        val release = keyboardSwitcher.substringAfter("public void releaseEmojiPanelCaches()")
+            .substringBefore("public View onCreateInputView()")
+        assertTrue(release.contains("mEmojiSpokenNames = null"))
+    }
+
+    @Test
+    fun spokenNameLookupStaysOffTheDrawPathAndNeverShipsASecondAsset() {
+        val drawBody = panel.substringAfter("override fun onDraw")
+            .substringBefore("@Suppress(\"ClickableViewAccessibility\")")
+        assertFalse("onDraw must not look up spoken names", drawBody.contains("spokenText"))
+        assertFalse("onDraw must not touch the name index", drawBody.contains("nameOf"))
+        // The lookup is delegated to EmojiSearchIndex.nameOf; no second parse or asset read.
+        for (forbidden in listOf("EmojiSearchIndex.parse", "assets.open")) {
+            assertFalse("panel must not $forbidden", panel.contains(forbidden))
+        }
     }
 }

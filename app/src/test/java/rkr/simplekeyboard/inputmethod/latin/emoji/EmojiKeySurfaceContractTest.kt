@@ -188,4 +188,33 @@ class EmojiKeySurfaceContractTest {
         val mapper = java("rkr/simplekeyboard/inputmethod/accessibility/KeyDescriptionMapper.kt")
         assertTrue(mapper.contains("Constants.CODE_EMOJI -> R.string.spoken_description_emoji"))
     }
+
+    @Test
+    fun everyEmojiKeyPressGetsExactlyTheStandardDownFeedbackAndTheShowAddsNone() {
+        val latinIme = java("rkr/simplekeyboard/inputmethod/latin/LatinIME.java")
+        val feedback = listOf(
+            File(sourceRoot(), "java/rkr/simplekeyboard/inputmethod/latin/LatinImeKeyFeedback.java"),
+            File("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinImeKeyFeedback.java"),
+        ).firstOrNull(File::isFile)?.readText()
+            ?: error("cannot locate LatinImeKeyFeedback.java")
+        // The key never reads dead because the ordinary down path already answers every press:
+        // PointerTracker's down event calls onPressKey, which routes every code — the emoji key
+        // included — through the one manager-gated feedback.
+        val onPressKey = latinIme.substringAfter("public void onPressKey(final int primaryCode")
+            .substringBefore("public void onReleaseKey")
+        assertTrue(
+            "every key press, the emoji key included, gets the standard down feedback",
+            onPressKey.contains("LatinImeKeyFeedback.hapticAndAudioFeedback(this, primaryCode, repeatCount)"),
+        )
+        assertFalse(
+            "the standard feedback must not exclude the emoji key",
+            feedback.substringAfter("static void hapticAndAudioFeedback(").contains("CODE_EMOJI"),
+        )
+        // Exactly once: no second feedback may come from the panel-show path.
+        assertFalse("no arming-press feedback may exist", feedback.contains("performFirstPressFeedback"))
+        val show = latinIme.substringAfter("public void showEmojiPanel()")
+            .substringBefore("The search cell in the emoji panel's tab row was tapped")
+        assertTrue(show.contains("mEmojiPanelController.onEmojiKeyPressed()"))
+        assertFalse("the panel show must not add press feedback", show.contains("Feedback"))
+    }
 }

@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidate
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
@@ -221,13 +222,20 @@ class TdictPrefixIndexAutocorrectTest {
                 words.contains(normalizedWord)
         }
 
-    // --- the autocorrect edit-class policy (measured, not shipped widened) ----------------------
+    // --- the autocorrect edit-class policy -------------------------------------------------------
 
-    /** The widened arm: display {1, 4} + autocorrect {1, 4}. */
+    /** The widened arm: display {1, 4} + autocorrect {1, 4} — what both shipped policies run. */
     private val widenedPolicy = FuzzyEditPolicy(
         intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
         true,
         intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+    )
+
+    /** The pre-widening arm: the shipped display classes with autocorrect held at class #1. */
+    private val class1OnlyPolicy = FuzzyEditPolicy(
+        intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+        true,
+        intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
     )
 
     private fun policyIndex(
@@ -240,15 +248,16 @@ class TdictPrefixIndexAutocorrectTest {
     }
 
     @Test
-    fun theDefaultAutocorrectClassesAreClass1OnlyEverywhere() {
-        // Every shipped autocorrect class set is {1}, including the Tatar policy (its display
-        // classes are irrelevant to autocorrect).
+    fun theShippedAutocorrectClassesArePinned() {
+        // DEFAULT stays class #1 only; the shipped Tatar policy autocorrects from class #1 and
+        // the DL-1 tier, the tier under the context-successor guard (the widening calibration
+        // carries the measured evidence).
         assertEquals(
             listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
             FuzzyEditPolicy.DEFAULT.autocorrectClasses.toList(),
         )
         assertEquals(
-            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
+            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
             FuzzyEditPolicy.TATAR.autocorrectClasses.toList(),
         )
     }
@@ -258,10 +267,10 @@ class TdictPrefixIndexAutocorrectTest {
         // "барди" is absent and NOT reachable by class #1 (р/д are no long-press pair and the
         // other letters' partners lead nowhere), but one substitution (д→р at position 2) lands
         // exactly on "барти" — nothing else in its substitution space is a dictionary word. The
-        // default policy never fires here.
+        // class-#1-only policy never fires here.
         val entries = listOf("барти" to 5_000L)
         val widened = policyIndex(entries, widenedPolicy)
-        val current = policyIndex(entries, FuzzyEditPolicy.TATAR)
+        val current = policyIndex(entries, class1OnlyPolicy)
 
         assertNull(advise(current, "барди"))
         val advice = advise(widened, "барди")
@@ -312,7 +321,7 @@ class TdictPrefixIndexAutocorrectTest {
         )
         for ((typed, expected) in cases) {
             val widened = policyIndex(listOf(expected to 5_000L), widenedPolicy)
-            val current = policyIndex(listOf(expected to 5_000L), FuzzyEditPolicy.TATAR)
+            val current = policyIndex(listOf(expected to 5_000L), class1OnlyPolicy)
 
             assertNull("CURRENT corrected $typed", advise(current, typed))
             assertEquals(typed, expected, advise(widened, typed)?.replacement)
@@ -354,5 +363,59 @@ class TdictPrefixIndexAutocorrectTest {
         val index = policyIndex(listOf("алта" to 5_000L), widenedPolicy)
         advise(index, "әлтә")
         assertEquals(65, index.lastAutocorrectProbeCount)
+    }
+
+    // --- the context-successor guard on DL-1 tier matches -----------------------------------------
+
+    /** The armed advise: [ids] plays the previous word's packed bigram successors. */
+    private fun adviseArmed(
+        index: TdictPrefixIndex,
+        word: String,
+        ids: IntArray,
+        count: Int,
+    ): AutocorrectAdvice? {
+        index.lookup(ImmutableUtf8Prefix.copyOf(word.toByteArray(Charsets.UTF_8)), ids, count)
+        return index.lastAutocorrectAdvice
+    }
+
+    private fun entryOf(index: TdictPrefixIndex, word: String): Int {
+        val bytes = word.toByteArray(Charsets.UTF_8)
+        val entry = index.indexOfWord(bytes, bytes.size)
+        assertTrue("$word is a fixture entry", entry >= 0)
+        return entry
+    }
+
+    @Test
+    fun aDl1MatchFiresWhenItIsAContextSuccessor() {
+        // "барди" -> "барти" is the substitution-only case; armed with its own entry the guard
+        // passes and the verdict is the unarmed one.
+        val index = policyIndex(listOf("барти" to 5_000L), widenedPolicy)
+        val advice = adviseArmed(index, "барди", intArrayOf(entryOf(index, "барти")), 1)
+        assertEquals("барти", advice?.replacement)
+    }
+
+    @Test
+    fun aDl1MatchIsRefusedWhenItIsNotAContextSuccessor() {
+        // The same match with a successor list that names an unrelated word: the guard refuses.
+        val index = policyIndex(listOf("азнак" to 5_000L, "барти" to 5_000L), widenedPolicy)
+        assertNull(adviseArmed(index, "барди", intArrayOf(entryOf(index, "азнак")), 1))
+    }
+
+    @Test
+    fun aDl1MatchWithoutContextStaysUnguarded() {
+        // An empty successor list (sentence start, or the previous word heads no bigram entry)
+        // disengages the guard: the verdict is the unarmed one.
+        val index = policyIndex(listOf("барти" to 5_000L), widenedPolicy)
+        assertEquals("барти", adviseArmed(index, "барди", IntArray(TatBigrPrefixIndex.MAX_CONTEXT_SUCCESSORS), 0)?.replacement)
+    }
+
+    @Test
+    fun aClass1MatchIsNeverGuarded() {
+        // "китәп" -> "китап" is class #1 (а↔ә); the DL-1 tier would reach the same entry, the
+        // cross-class dedup keeps the class-#1 tag, and a successor list that names an unrelated
+        // word changes nothing.
+        val index = policyIndex(listOf("азнак" to 5_000L, "китап" to 5_000L), widenedPolicy)
+        val advice = adviseArmed(index, "китәп", intArrayOf(entryOf(index, "азнак")), 1)
+        assertEquals("китап", advice?.replacement)
     }
 }

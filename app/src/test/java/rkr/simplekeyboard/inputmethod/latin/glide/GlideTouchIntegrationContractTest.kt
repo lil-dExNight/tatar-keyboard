@@ -124,12 +124,33 @@ class GlideTouchIntegrationContractTest {
         assertTrue(down.contains("mGlideDecider.onDown(x, y, eventTime, glideEligible);"))
         assertTrue(down.contains("mGlideStartTime = eventTime;"))
         assertTrue(down.contains("path.addPoint(x, y, eventTime, mGlideStartTime);"))
-        assertFalse("key down must not prewarm the glide index", down.contains("onGlideArmed"))
+        assertFalse("key down must not arm a glide", down.contains("onGlideArmed"))
         assertFalse(trackerSource.contains("mGlidePath.addPoint(x, y, (float) eventTime)"))
         val gate = down.substringAfter("final boolean glideEligible").substringBefore(";")
         assertTrue("a glide arms only where it can be decoded", gate.contains("sGlideAvailable"))
         assertTrue("a glide never starts on the symbols pages",
             gate.contains("mKeyboard != null && mKeyboard.mId.isAlphabetKeyboard()"))
+    }
+
+    @Test
+    fun theSessionsFirstEligibleDownPrewarmsTheGlideIndexOnce() {
+        // The index build moves from mid-gesture (arming) to the session's first glide-eligible
+        // letter-key down; every later touch of the session pays the flag check only.
+        val down = methodBody("onDownEventInternal")
+        val eligible = down.indexOf("if (glideEligible) {")
+        val onceGate = down.indexOf("if (!sGlidePrewarmSent) {")
+        val notify = down.indexOf("sListener.onGlideTrackingStarted();")
+        assertTrue("the prewarm offer sits inside the eligible branch", eligible >= 0)
+        assertTrue("the once-per-session gate sits after the eligible branch opens",
+            onceGate > eligible)
+        assertTrue("the offer fires behind the gate", notify > onceGate)
+        assertTrue("the gate fires once", down.contains("sGlidePrewarmSent = true;"))
+        // A keyboard (re)load — a fresh field, a language switch, the show after the 10 s idle
+        // release — re-arms the offer; the engine-side build is idempotent while resident.
+        val setAvailable = trackerSource.substringAfter("public static void setGlideAvailable(")
+            .substringBefore("public static void setKeyDetector")
+        assertTrue("the session gate re-arms on every keyboard load",
+            setAvailable.contains("sGlidePrewarmSent = false;"))
     }
 
     @Test
@@ -155,15 +176,18 @@ class GlideTouchIntegrationContractTest {
         )
         assertTrue(listener.contains("default void onGlideInput("))
         assertTrue(listener.contains("default void onGlideArmed()"))
+        assertTrue(listener.contains("default void onGlideTrackingStarted()"))
         val latinIme = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
         )
         assertTrue(latinIme.contains("public void onGlideInput("))
         assertTrue(latinIme.contains("public void onGlideArmed()"))
+        assertTrue(latinIme.contains("public void onGlideTrackingStarted()"))
         // The receiver forwards to the suggestions controller.
         assertTrue(latinIme.contains("controller.onGlideInput(path);"))
         assertTrue(latinIme.contains("controller.onGlideArmed();"))
+        assertTrue(latinIme.contains("controller.onGlideTrackingStarted();"))
         assertTrue(latinIme.contains("setGlideGate("))
         assertTrue(latinIme.contains("setGlideShiftStateGate("))
         val shiftGate = latinIme.substringAfter("setGlideShiftStateGate(").substringBefore("});")
@@ -290,9 +314,11 @@ class GlideTouchIntegrationContractTest {
         assertTrue(onGlide.contains("pendingGlideCursor = cursor"))
         assertTrue(onGlide.contains("val trailingWord = editor.cachedWordBeforeCursor()"))
         assertTrue(onGlide.contains("val cursor = editor.cursorPosition()"))
-        // A lower-case gesture whose leading space starts a sentence is capitalized.
+        // A lower-case gesture the editor's auto-caps capitalizes (a leading space into a
+        // sentence start, or any space-prepending commit in a CAP_WORDS field) gets an initial
+        // capital.
         assertTrue(apply.contains(
-            "if (casing == TatarWordUtils.PrefixCasing.LOWER && editor.glideStartsSentence()) {"))
+            "if (casing == TatarWordUtils.PrefixCasing.LOWER && editor.glideAutoCapsWord()) {"))
         // The alternatives tap replaces in-editor, keeping the leading space exactly as committed.
         assertTrue(controller.contains("editor.replaceGlideLiftedWord(glideAlternativesFor, suggestion,"))
         // The undo carries the leading-space flag.
@@ -319,7 +345,7 @@ class GlideTouchIntegrationContractTest {
         assertFalse("the commit takes the trailing word captured at the gesture",
             surfaces.contains("chainedAfter"))
         assertTrue(surfaces.contains("fun cursorPosition(): Int = -1"))
-        assertTrue(surfaces.contains("fun glideStartsSentence(): Boolean = false"))
+        assertTrue(surfaces.contains("fun glideAutoCapsWord(): Boolean = false"))
         assertTrue(surfaces.contains("const val GLIDE_COMMIT_REFUSED = 0"))
         assertTrue(surfaces.contains("const val GLIDE_COMMIT_PREPENDED = 2"))
 
@@ -404,14 +430,15 @@ class GlideTouchIntegrationContractTest {
     @Test
     fun aRefusedGlideTicksThroughTheKeyFeedbackTick() {
         // The vibrator cannot run in a JVM test: pin that the controller's seam is wired to the
-        // cursor gestures' tick, created once as a method reference, and that the tick honors
-        // the vibrate setting.
+        // cursor gestures' tick and that the tick honors the vibrate setting. The tick vibrates
+        // on API 29+ only; the trail repaint half is pinned in GlideTrailContractTest.
         val latinIme = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinIME.java",
         )
-        assertTrue(latinIme.contains(
-            "mSuggestionsController.setGlideRefusalFeedback(LatinImeKeyFeedback::hapticTickFeedback);"))
+        val refusal = latinIme.substringAfter("mSuggestionsController.setGlideRefusalFeedback(")
+            .substringBefore("mSuggestionsController.setSuggestionTapFeedback(")
+        assertTrue(refusal.contains("LatinImeKeyFeedback.hapticTickFeedback();"))
         val keyFeedback = read(
             "src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinImeKeyFeedback.java",
             "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/LatinImeKeyFeedback.java",

@@ -229,6 +229,87 @@ class EmojiRecentAndFlingSourceContractTest {
         }
     }
 
+    // --- The in-panel clear-recents long-press --------------------------------------------------
+
+    @Test
+    fun theInPanelClearFollowsTheSameDialogRulesAsTheSettingsOne() {
+        val latinIme = java("rkr/simplekeyboard/inputmethod/latin/LatinIME.java")
+        val clear = latinIme.substringAfter("public void showClearRecentEmojiDialog()")
+            .substringBefore("private EmojiPanelView visibleEmojiPanel()")
+        // The affirmative button names the destructive action; only the dismissive button is
+        // the platform string, exactly like the settings screen's dialog.
+        assertTrue(clear.contains("R.string.clear_recent_emoji"))
+        assertTrue(clear.contains("R.string.clear_recent_emoji_confirm"))
+        assertTrue(clear.contains("setPositiveButton(R.string.clear_recent_emoji_action"))
+        assertFalse(clear.contains("setPositiveButton(android.R.string.ok"))
+        assertTrue(clear.contains("setNegativeButton(android.R.string.cancel"))
+        // The erase goes through the same single storage entry point.
+        assertTrue(clear.contains("EmojiPanelController.clearRecents("))
+        // Both panel dialogs attach to the IME window through the one existing helper.
+        assertTrue(clear.contains("attachDialogToInputWindow"))
+        // A failed erase is answered too, like the settings screen's: the callback posts the
+        // failure notice (the existing string, in a dialog under the IME's dialog rules) to the
+        // UI thread.
+        assertTrue("a false answer must not be dropped", clear.contains("if (!cleared)"))
+        assertTrue(clear.contains("mHandler.post("))
+        val failed = latinIme.substringAfter("private void showClearRecentEmojiFailedDialog()")
+            .substringBefore("\n    }")
+        assertTrue(failed.contains("R.string.clear_recent_emoji_failed"))
+        assertTrue(failed.contains("attachDialogToInputWindow"))
+    }
+
+    @Test
+    fun theLongPressTimersSurviveJitterAndStopOnlyWhenTheFingerLeavesTheTarget() {
+        // A tab is never a cell, so a cell-based cancel condition would kill the Recent-tab
+        // clear press on the first jitter move. The armed long-press stops only when the finger
+        // leaves the armed target.
+        val moveBlock = onTouchBody().substringAfter("MotionEvent.ACTION_MOVE ->")
+            .substringBefore("MotionEvent.ACTION_POINTER_DOWN ->")
+        assertTrue(moveBlock.contains("if (state.pressedTarget() != state.downTarget()) {"))
+        assertFalse(moveBlock.contains("if (!EmojiPanelState.isCell(state.pressedTarget())) {"))
+    }
+
+    @Test
+    fun theLongPressActionsConsumeTheGestureBeforeNotifying() {
+        // One action per press: when the removal or the clear fires, the gesture is canceled
+        // before the listener runs, so a fast release under the dialog cannot still insert the
+        // emoji or activate the Recent tab.
+        val longPress = panel.substringAfter("internal val longPressRunnable = Runnable {")
+            .substringBefore("internal val clearRecentsRunnable = Runnable {")
+        val removal = longPress.substringAfter("if (isRecentCell(cell)) {")
+        assertTrue(
+            "the removal consumes the gesture before notifying",
+            removal.indexOf("state.cancelGesture()") in 0 until removal.indexOf("onEmojiPanelRecentRemoved"),
+        )
+        val clear = panel.substringAfter("internal val clearRecentsRunnable = Runnable {")
+            .substringBefore("private val deleteRepeatRunnable")
+        assertTrue(
+            "the clear consumes the gesture before notifying",
+            clear.indexOf("state.cancelGesture()") in 0 until clear.indexOf("onEmojiPanelClearRecents()"),
+        )
+    }
+
+    @Test
+    fun theRemoveOneRecentDialogRoutesThroughTheControllerAndNamesItsAction() {
+        val latinIme = java("rkr/simplekeyboard/inputmethod/latin/LatinIME.java")
+        val remove = latinIme.substringAfter("public void showRemoveRecentEmojiDialog(final String sequence)")
+            .substringBefore("public void showClearRecentEmojiDialog()")
+        assertTrue(remove.contains("setPositiveButton(R.string.remove_recent_emoji_action"))
+        assertFalse(remove.contains("setPositiveButton(android.R.string.ok"))
+        assertTrue(remove.contains("setNegativeButton(android.R.string.cancel"))
+        assertTrue(remove.contains("mEmojiPanelController.onRecentRemoved(sequence)"))
+        // The title names the emoji the way TalkBack announces it.
+        assertTrue(remove.contains("R.string.remove_recent_emoji_title, spokenTextForDialog(sequence)"))
+        // The strings exist in the base and both project locales.
+        for (dir in listOf("values", "values-ru", "values-tt")) {
+            val strings = File(sourceRoot(), "res/$dir/strings.xml").readText()
+            assertTrue("$dir is missing remove_recent_emoji_title",
+                strings.contains("<string name=\"remove_recent_emoji_title\">"))
+            assertTrue("$dir is missing remove_recent_emoji_action",
+                strings.contains("<string name=\"remove_recent_emoji_action\">"))
+        }
+    }
+
     // --- The emoji package writes no log, stdout or network ------------------------------------
 
     @Test

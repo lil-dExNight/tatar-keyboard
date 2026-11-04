@@ -31,8 +31,10 @@ import java.nio.ByteBuffer
  *
  *   GOLDEN_OUT=/path/to/dir ./gradlew :app:testDebugUnitTest --tests '*GoldenExportTest*'
  *
- * The directory must already contain keys-tt.tsv / keys-ru.tsv, the canonical key geometry both
- * ports build their KeyNeighborTable from. Output is deterministic UTF-8 JSON Lines.
+ * The key geometry (keys-tt.tsv / keys-ru.tsv, the canonical rectangles both ports build their
+ * KeyNeighborTable from) comes from the committed, pinned copies under src/test/resources/golden
+ * (see KeyGeometryTsvTest); a same-named file in the output directory overrides them for a
+ * parity run against another port's own export. Output is deterministic UTF-8 JSON Lines.
  */
 class GoldenExportTest {
 
@@ -49,7 +51,7 @@ class GoldenExportTest {
 
         exportText(File(out, "text.jsonl"), evalWords)
         for (lang in listOf("tt", "ru")) {
-            val engine = openLanguage(lang, File(out, "keys-$lang.tsv"))
+            val engine = openLanguage(lang, KeyGeometryTsv.locate(lang, out))
             exportFormats(File(out, "formats-$lang.jsonl"), engine)
             exportPrefix(File(out, "prefix-$lang.jsonl"), engine, queryWords(lang, engine, evalWords))
             exportNextWord(File(out, "nextword-$lang.jsonl"), engine)
@@ -117,7 +119,8 @@ class GoldenExportTest {
         val computer = CompositePrefixComputer(
             index,
             PersonalCandidateSource.EMPTY,
-            GlobalTopFrequencyFallbackFactory.createFallbackWords(index),
+            GlobalTopFrequencyFallbackFactory(dictSpec.harmonyTwins)
+                .createFallbackWords(index),
             PersonalBigramSource.EMPTY,
             null,
         )
@@ -126,7 +129,7 @@ class GoldenExportTest {
     }
 
     private fun readKeyNeighbors(lang: String, file: File): KeyNeighborTable {
-        require(file.isFile) { "missing ${file.name} — run ios/tools/export-key-geometry and copy it" }
+        require(file.isFile) { "missing ${file.name} — the pinned copy lives under src/test/resources/golden" }
         val keys = file.readLines(Charsets.UTF_8).filter { it.isNotBlank() }.map { line ->
             val f = line.split('\t')
             val more = if (f.size > 5 && f[5].isNotEmpty()) f[5].split(',').map { it.toInt(16) }.toIntArray() else IntArray(0)

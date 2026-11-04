@@ -20,8 +20,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidate
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatBigrValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules
 import java.io.File
@@ -40,7 +44,9 @@ import java.nio.ByteBuffer
  * (typo recovery off, as in the eval configuration). The pinned counters below are the
  * Python harness's printed values; both sides pin the same numbers, which is the parity
  * channel. Re-pin both together when the assets, the eval set or the harness constants
- * change.
+ * change. The repetition split's measure walk is mirrored for one quality gate: the
+ * keystroke lift of the primed state over the dictionary-only control never drops below
+ * 80% of the lift pinned python-side.
  */
 class PersonalizationEvalTest {
 
@@ -112,6 +118,14 @@ class PersonalizationEvalTest {
             }
         }
 
+        /** A tap on a graduated word's strip cell: usage += 1, if the word is graduated. */
+        fun noteUse(word: String) {
+            val current = usage[word] ?: return
+            usage[word] = current + 1
+            serials[word] = nextSerial
+            nextSerial++
+        }
+
         fun size(): Int = usage.size
     }
 
@@ -156,6 +170,14 @@ class PersonalizationEvalTest {
         fun noteObservation(context: String, word: String) {
             val counters = byContext[context]?.get(word) ?: return
             counters[1] += 1
+            serials[context to word] = nextSerial
+            nextSerial++
+        }
+
+        /** A tap on a graduated pair's NEXT_WORD cell: usage += 1, if the pair is graduated. */
+        fun noteUse(context: String, word: String) {
+            val counters = byContext[context]?.get(word) ?: return
+            counters[0] += 1
             serials[context to word] = nextSerial
             nextSerial++
         }
@@ -444,6 +466,138 @@ class PersonalizationEvalTest {
         return PrimeRun(model, outcome)
     }
 
+    /**
+     * The personal completion candidates of a model, in the harness's candidate order (usage
+     * descending, then the word ascending). Unlike the production source contract the record
+     * equal to the prefix stays in the list: the harness's candidates include it, and the merge
+     * drops it only when it duplicates a dictionary candidate.
+     */
+    private fun modelBackedSource(model: PersonalModel): PersonalCandidateSource =
+        object : PersonalCandidateSource {
+            override fun candidatesFor(normalizedPrefix: String): List<PersonalCandidate> =
+                model.words.usage.entries
+                    .filter { it.key.startsWith(normalizedPrefix) }
+                    .sortedWith(
+                        compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key },
+                    )
+                    .map { PersonalCandidate(it.key, it.key, usageCount = it.value) }
+
+            override fun isEmpty(): Boolean = model.words.usage.isEmpty()
+        }
+
+    /**
+     * The NEXT_WORD tap answer of the measure walk: the bundled successors, then the learned
+     * pairs in their at-most-three free cells (usage descending, then frequency, then the word),
+     * then the top-frequency fallback. The precedence move of the shipped predict is not
+     * applied: the walk measures the strip before it.
+     */
+    private fun nextWordTapAnswer(
+        head: String,
+        model: PersonalModel,
+        bigrams: TatBigrPrefixIndex,
+        fallback: FallbackWords,
+    ): List<String> {
+        val merged = ArrayList<String>(CompositePrefixComputer.CELL_COUNT)
+        merged.addAll(
+            bigrams.predict(ImmutableUtf8Prefix.copyOf(head.toByteArray(Charsets.UTF_8)))
+        )
+        if (merged.size < CompositePrefixComputer.CELL_COUNT) {
+            val room = minOf(
+                CompositePrefixComputer.MAX_PERSONAL_BIGRAM_CELLS,
+                CompositePrefixComputer.CELL_COUNT - merged.size,
+            )
+            val extras = ArrayList<String>(room)
+            val ranked = model.pairs.byContext[head]
+                ?.entries
+                ?.sortedWith(
+                    compareByDescending<Map.Entry<String, IntArray>> { it.value[0] }
+                        .thenByDescending { it.value[1] }
+                        .thenBy { it.key },
+                )
+                .orEmpty()
+            for ((word, _) in ranked) {
+                if (extras.size >= room) break
+                if (merged.contains(word) || extras.contains(word)) continue
+                extras.add(word)
+            }
+            merged.addAll(extras)
+        }
+        if (merged.size < CompositePrefixComputer.CELL_COUNT) {
+            merged.addAll(
+                fallback.fallbackWords(
+                    ImmutableUtf8Prefix.copyOf(head.toByteArray(Charsets.UTF_8)),
+                    merged,
+                    CompositePrefixComputer.CELL_COUNT - merged.size,
+                )
+            )
+        }
+        return merged
+    }
+
+    /**
+     * Replay the measure stream with the prime-end personal state and count keystrokes: the tap
+     * semantics of the harness's measure_walk. A NEXT_WORD cell costs one tap (a graduated pair
+     * behind the tapped cell bumps its usage), a completion costs the first prefix whose strip
+     * shows the word plus one tap (the saved word bumps its usage), and an unshown word is typed
+     * in full (a clean typed observation re-bumps the pair's frequency).
+     */
+    private fun replayMeasureStreamKeystrokes(model: PersonalModel, lines: List<String>): Int {
+        val index = requireNotNull(dictionaryIndex)
+        val bigrams = requireNotNull(bigramIndex)
+        val fallback = GlobalTopFrequencyFallbackFactory(
+            DictionaryArtifactSpec.TATAR_TOP100K_V1.harmonyTwins,
+        ).createFallbackWords(index)
+        val chain = CompositePrefixComputer(
+            index, modelBackedSource(model), fallback,
+        ).also { it.attachBigramSource(bigrams) }
+        var keystrokes = 0
+        for (line in lines) {
+            val words = line.split(" ")
+            var previous: String? = null
+            for (word in words) {
+                var tapped = false
+                if (previous != null &&
+                    nextWordTapAnswer(previous, model, bigrams, fallback).contains(word)
+                ) {
+                    tapped = true
+                    keystrokes += 1
+                    model.pairs.noteUse(previous, word)
+                }
+                if (!tapped) {
+                    var hitPrefix = -1
+                    for (codePoints in 1 until word.length) {
+                        val query = ImmutableUtf8Prefix.copyOf(
+                            word.substring(0, codePoints).toByteArray(Charsets.UTF_8)
+                        )
+                        val strip = if (previous == null) {
+                            chain.lookup(query)
+                        } else {
+                            chain.lookup(
+                                query,
+                                ImmutableUtf8Prefix.copyOf(
+                                    previous.toByteArray(Charsets.UTF_8)
+                                ),
+                            )
+                        }
+                        if (strip.contains(word)) {
+                            hitPrefix = codePoints
+                            break
+                        }
+                    }
+                    if (hitPrefix >= 0) {
+                        keystrokes += hitPrefix + 1
+                        model.words.noteUse(word)
+                    } else {
+                        keystrokes += word.length
+                        if (previous != null) model.pairs.noteObservation(previous, word)
+                    }
+                }
+                previous = word
+            }
+        }
+        return keystrokes
+    }
+
     /** SplitMix64 sentence-hash halves: `splitmix64(SPLIT_SEED ^ fnv1a64(line)) % 2`. */
     private fun hashHalves(lines: List<String>): Pair<List<String>, List<String>> =
         lines.partition { line ->
@@ -610,6 +764,35 @@ class PersonalizationEvalTest {
         assertEquals(PIN_REP_SWEEP_L200_STALED, deadCell.staledLookups)
     }
 
+    /**
+     * The keystroke lift of the primed personal state over the dictionary-only control on the
+     * repetition split's measure stream, floored at 80% of the pinned lift: a silent quality
+     * drop cannot be re-pinned through. The lift itself is pinned python-side (the
+     * rep.ctrl.ks_simulated_keys and rep.oracle.ks_pers_keys rows of
+     * scripts/personalization_eval.py); the control arm is the fourth-cell keystroke walk
+     * TtSuggestEvalTest pins on the same wiring.
+     */
+    @Test
+    fun keystrokeLiftOfThePrimedModelStaysAboveTheFloor() {
+        val index = requireNotNull(dictionaryIndex)
+        val (prime, measure) = splitStreams("rep", evalLines)
+        // Fresh models: the walk bumps usage and frequency counters, and the shared PRIME_RUNS
+        // models keep their prime-end state for the counter pins.
+        val controlModel = PersonalModel { word -> index.frequencyOf(word) > 0L }
+        val primedModel = runPrimePass(prime, Arm.ORACLE, LOOKUP_LATENCY_MS).model
+        val controlKeys = replayMeasureStreamKeystrokes(controlModel, measure)
+        val personalizedKeys = replayMeasureStreamKeystrokes(primedModel, measure)
+        val lift = controlKeys - personalizedKeys
+        emit("rep.ctrl.ks_simulated_keys", controlKeys)
+        emit("rep.oracle.ks_pers_keys", personalizedKeys)
+        emit("rep.oracle.ks_lift_keys", lift)
+        assertEquals(PIN_REP_CTRL_KS_SIMULATED_KEYS, controlKeys)
+        assertTrue(
+            "keystroke lift $lift keys under 80% of the pinned $PIN_REP_KS_LIFT_KEYS",
+            lift * 5 >= PIN_REP_KS_LIFT_KEYS * 4,
+        )
+    }
+
     companion object {
         // Harness constants, shared with scripts/personalization_eval.py; changing them
         // re-pins every counter on both sides.
@@ -639,66 +822,74 @@ class PersonalizationEvalTest {
         private val ARM_ORDER = listOf(Arm.ORACLE, Arm.REALISTIC, Arm.FIXED)
         private val ALPHABET: Set<Int> = PersonalSubtypes.TATAR_RU_ALPHABET
 
-        // Graduation-counter pins, shared with tests/personalization_eval. The hash/chrono
-        // halves carry no repeated word, so no word reaches the learn threshold of 3 there.
+        // Graduation-counter pins, shared with tests/personalization_eval. The hash half
+        // carries no repeated word; the chrono half graduates exactly one repeated word.
         private val PIN_GRAD_WORDS = mapOf(
             "hash.oracle" to 0, "hash.realistic" to 0, "hash.fixed" to 0,
-            "chrono.oracle" to 0, "chrono.realistic" to 0, "chrono.fixed" to 0,
-            "rep.oracle" to 197, "rep.realistic" to 197, "rep.fixed" to 197,
+            "chrono.oracle" to 1, "chrono.realistic" to 1, "chrono.fixed" to 1,
+            "rep.oracle" to 192, "rep.realistic" to 192, "rep.fixed" to 192,
         )
         private val PIN_GRAD_PAIRS = mapOf(
-            "hash.oracle" to 41, "hash.realistic" to 41, "hash.fixed" to 41,
+            "hash.oracle" to 33, "hash.realistic" to 33, "hash.fixed" to 33,
             "chrono.oracle" to 42, "chrono.realistic" to 42, "chrono.fixed" to 42,
-            "rep.oracle" to 82, "rep.realistic" to 82, "rep.fixed" to 82,
+            "rep.oracle" to 81, "rep.realistic" to 81, "rep.fixed" to 81,
         )
         private val PIN_OBSERVED_LOOKUPS = mapOf(
-            "hash.oracle" to 14_783L, "hash.realistic" to 14_783L, "hash.fixed" to 14_783L,
-            "chrono.oracle" to 14_541L, "chrono.realistic" to 14_541L, "chrono.fixed" to 14_541L,
-            "rep.oracle" to 86_991L, "rep.realistic" to 86_991L, "rep.fixed" to 86_991L,
+            "hash.oracle" to 14_740L, "hash.realistic" to 14_740L, "hash.fixed" to 14_740L,
+            "chrono.oracle" to 14_586L, "chrono.realistic" to 14_586L, "chrono.fixed" to 14_586L,
+            "rep.oracle" to 89_169L, "rep.realistic" to 89_169L, "rep.fixed" to 89_169L,
         )
         private val PIN_EMPTY_OBSERVATIONS = mapOf(
-            "hash.oracle" to 875L, "hash.realistic" to 875L, "hash.fixed" to 875L,
-            "chrono.oracle" to 830L, "chrono.realistic" to 830L, "chrono.fixed" to 830L,
-            "rep.oracle" to 4_953L, "rep.realistic" to 4_953L, "rep.fixed" to 4_953L,
+            "hash.oracle" to 788L, "hash.realistic" to 788L, "hash.fixed" to 788L,
+            "chrono.oracle" to 808L, "chrono.realistic" to 808L, "chrono.fixed" to 808L,
+            "rep.oracle" to 5_010L, "rep.realistic" to 5_010L, "rep.fixed" to 5_010L,
         )
         private val PIN_WORD_COMPLETIONS = mapOf(
-            "hash" to 115L, "chrono" to 95L, "rep" to 603L,
+            "hash" to 93L, "chrono" to 87L, "rep" to 591L,
         )
         private val PIN_PAIR_OBSERVATIONS = mapOf(
-            "hash" to 2_209L, "chrono" to 2_173L, "rep" to 13_005L,
+            "hash" to 2_224L, "chrono" to 2_173L, "rep" to 13_419L,
         )
         private val PIN_PAIRS_DROPPED_UNKNOWN_CONTEXT = mapOf(
-            "hash" to 0L, "chrono" to 0L, "rep" to 1L,
+            "hash" to 0L, "chrono" to 0L, "rep" to 0L,
         )
         private val PIN_WORD_PENDING_EVICTIONS = mapOf(
             "hash" to 0L, "chrono" to 0L, "rep" to 0L,
         )
         private val PIN_PAIR_PENDING_EVICTIONS = mapOf(
-            "hash" to 1_852L, "chrono" to 1_800L, "rep" to 11_997L,
+            "hash" to 1_887L, "chrono" to 1_798L, "rep" to 12_400L,
         )
         private val PIN_FIX_PROBES = mapOf(
-            "hash" to 52L, "chrono" to 40L, "rep" to 342L,
+            "hash" to 54L, "chrono" to 38L, "rep" to 369L,
         )
         private val PIN_PRIME_UNSEEN_TOKENS = mapOf(
-            "hash" to 83L, "chrono" to 72L, "rep" to 447L,
+            "hash" to 67L, "chrono" to 58L, "rep" to 417L,
         )
         private val PIN_UNSEEN_STEM = mapOf(
             "hash" to listOf(0L, 0L, 0L),
             "chrono" to listOf(0L, 0L, 0L),
-            "rep" to listOf(405L, 405L, 405L),
+            "rep" to listOf(366L, 366L, 366L),
         )
 
-        private const val PIN_REP_SWEEP_L100_GRAD_WORDS = 152
-        private const val PIN_REP_SWEEP_L100_OBSERVED = 70_377L
+        private const val PIN_REP_SWEEP_L100_GRAD_WORDS = 155
+        private const val PIN_REP_SWEEP_L100_OBSERVED = 72_173L
         private const val PIN_REP_SWEEP_L100_DROPPED = 0L
-        private const val PIN_REP_SWEEP_L100_STALED = 19_105L
+        private const val PIN_REP_SWEEP_L100_STALED = 19_578L
         private const val PIN_REP_SWEEP_L200_GRAD_WORDS = 0
         private const val PIN_REP_SWEEP_L200_OBSERVED = 0L
-        private const val PIN_REP_SWEEP_L200_DROPPED = 28_247L
-        private const val PIN_REP_SWEEP_L200_STALED = 71_749L
+        private const val PIN_REP_SWEEP_L200_DROPPED = 29_009L
+        private const val PIN_REP_SWEEP_L200_STALED = 73_579L
+
+        // The keystroke lift of the primed state over the dictionary-only control on the
+        // repetition split. The control count is cross-pinned with the fourth-cell keystroke
+        // arm of TtSuggestEvalTest; the lift is pinned python-side (PIN_REP_KS_PERS_KEYS in
+        // tests/personalization_eval) and floored here at 80%.
+        private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_095
+        private const val PIN_REP_KS_LIFT_KEYS = 1_084
 
         private lateinit var evalLines: List<String>
         private var dictionaryIndex: TdictPrefixIndex? = null
+        private var bigramIndex: TatBigrPrefixIndex? = null
         private lateinit var PRIME_RUNS: Map<Pair<String, Arm>, PrimeRun>
 
         /** One SplitMix64 output for [state] (matches scripts/typo_pack.py bit for bit). */
@@ -755,6 +946,32 @@ class PersonalizationEvalTest {
                 dictionaryIndex?.updateKeyNeighbors(null)
             } finally {
                 dictRawFile.delete()
+            }
+
+            // The committed bigram table, resolved through the dictionary like
+            // TtSuggestEvalTest does: the measure walk's NEXT_WORD tap answers read it.
+            val bigramSpec = BigramArtifactSpec.TATAR_BIGRAMS_V1
+            val bigramAsset = locate(
+                "src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
+                "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
+            )
+            val bigramRawFile = File.createTempFile("tt-personalization-eval-bigrams-", ".tatbigr")
+            try {
+                bigramRawFile.outputStream().use { output ->
+                    TatBigrValidator().inflateAsset(bigramAsset.inputStream(), output, bigramSpec)
+                }
+                val validated = TatBigrValidator().validateRaw(bigramRawFile, bigramSpec)
+                val identity = BigramTableIdentity(
+                    bigramSpec.generation, bigramSpec.fileLanguageTag, validated.schemaId,
+                    validated.formatVersion, validated.rawSha256,
+                )
+                bigramIndex = TatBigrPrefixIndex.open(
+                    ByteBuffer.wrap(bigramRawFile.readBytes()), identity,
+                    requireNotNull(dictionaryIndex), validated.headCount, validated.rawSize,
+                )
+                check(bigramIndex != null)
+            } finally {
+                bigramRawFile.delete()
             }
 
             // The nine priming passes are independent of each other and of test order.

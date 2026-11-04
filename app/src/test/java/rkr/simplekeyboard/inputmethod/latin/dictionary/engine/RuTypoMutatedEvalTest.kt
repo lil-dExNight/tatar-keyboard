@@ -20,7 +20,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
-import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LongPressTestFixtures.rawKey
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripState
@@ -168,13 +167,32 @@ class RuTypoMutatedEvalTest {
 
         // The hit path is the completion path: TdictPrefixIndex.lookup returns the strip cells
         // (at most MAX_RESULTS), exact candidates first, typo-recovery candidates only in cells
-        // the exact pass left empty. The production arm carries the layout-derived neighbor
-        // table (KeyNeighborTableBuilder.fromKeyboard on device, the equivalent fixture here);
-        // the control arm has no table, so only the exact pass runs.
+        // the exact pass left empty. Three arms: the production wiring (the RUSSIAN policy, which
+        // arms the geometry-neighbor bonus, and the layout-derived neighbor table), the same
+        // wiring with the bonus flag off (isolates the geometry bit's contribution), and the
+        // exact-only control (no table at all).
         index.updateKeyNeighbors(neighborTable)
         val withFuzzy = countHits(index)
         index.updateKeyNeighbors(null)
         val exactOnly = countHits(index)
+
+        val noBonusPolicy = FuzzyEditPolicy(
+            FuzzyEditPolicy.RUSSIAN.editClasses,
+            FuzzyEditPolicy.RUSSIAN.sameLengthBonus,
+            FuzzyEditPolicy.RUSSIAN.autocorrectClasses,
+            sameLengthBonusOnlyInDl1 = FuzzyEditPolicy.RUSSIAN.sameLengthBonusOnlyInDl1,
+            geometryNeighborBonus = false,
+        )
+        val noBonusIndex = requireNotNull(
+            TdictPrefixIndex.open(
+                ByteBuffer.wrap(dictionaryRaw), dictionaryIdentity,
+                dictionaryEntryCount, dictionaryRawSize,
+                fuzzyEditPolicy = noBonusPolicy,
+                autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
+            ),
+        )
+        noBonusIndex.updateKeyNeighbors(neighborTable)
+        val noBonus = countHits(noBonusIndex)
 
         val rowsPerClass = rows.groupingBy { it.editClass }.eachCount()
         var totalTop1 = 0
@@ -183,6 +201,9 @@ class RuTypoMutatedEvalTest {
         var totalExactTop1 = 0
         var totalExactVisible = 0
         var totalExactEngine = 0
+        var totalNoBonusTop1 = 0
+        var totalNoBonusVisible = 0
+        var totalNoBonusEngine = 0
         for (className in CLASS_NAMES) {
             val classRows = rowsPerClass.getValue(className)
             val top1 = withFuzzy.top1PerClass.getValue(className)
@@ -191,12 +212,18 @@ class RuTypoMutatedEvalTest {
             val exactTop1 = exactOnly.top1PerClass.getValue(className)
             val exactVisible = exactOnly.visibleTop3PerClass.getValue(className)
             val exactEngine = exactOnly.engineTop4PerClass.getValue(className)
+            val noBonusTop1 = noBonus.top1PerClass.getValue(className)
+            val noBonusVisible = noBonus.visibleTop3PerClass.getValue(className)
+            val noBonusEngine = noBonus.engineTop4PerClass.getValue(className)
             totalTop1 += top1
             totalVisible += visible
             totalEngine += engine
             totalExactTop1 += exactTop1
             totalExactVisible += exactVisible
             totalExactEngine += exactEngine
+            totalNoBonusTop1 += noBonusTop1
+            totalNoBonusVisible += noBonusVisible
+            totalNoBonusEngine += noBonusEngine
             println("EVAL|typo_${className}_rows|$classRows")
             println("EVAL|typo_${className}_top1_hits|$top1")
             println("EVAL|typo_${className}_top1_pct|${format(top1 * 100.0 / classRows)}")
@@ -204,10 +231,14 @@ class RuTypoMutatedEvalTest {
             println("EVAL|typo_${className}_visible_top3_pct|${format(visible * 100.0 / classRows)}")
             println("EVAL|typo_${className}_engine_top4_hits|$engine")
             println("EVAL|typo_${className}_engine_top4_pct|${format(engine * 100.0 / classRows)}")
+            println("EVAL|typo_${className}_top1_hits_nobonus|$noBonusTop1")
+            println("EVAL|typo_${className}_visible_top3_hits_nobonus|$noBonusVisible")
+            println("EVAL|typo_${className}_engine_top4_hits_nobonus|$noBonusEngine")
             println("EVAL|typo_${className}_top1_hits_exactonly|$exactTop1")
             println("EVAL|typo_${className}_visible_top3_hits_exactonly|$exactVisible")
             println("EVAL|typo_${className}_engine_top4_hits_exactonly|$exactEngine")
             assertTrue(top1 <= visible && visible <= engine)
+            assertTrue(noBonusTop1 <= noBonusVisible && noBonusVisible <= noBonusEngine)
         }
         println("EVAL|typo_total_rows|${rows.size}")
         println("EVAL|typo_total_top1_hits|$totalTop1")
@@ -219,6 +250,9 @@ class RuTypoMutatedEvalTest {
         println("EVAL|typo_total_top1_hits_exactonly|$totalExactTop1")
         println("EVAL|typo_total_visible_top3_hits_exactonly|$totalExactVisible")
         println("EVAL|typo_total_engine_top4_hits_exactonly|$totalExactEngine")
+        println("EVAL|typo_total_top1_hits_nobonus|$totalNoBonusTop1")
+        println("EVAL|typo_total_visible_top3_hits_nobonus|$totalNoBonusVisible")
+        println("EVAL|typo_total_engine_top4_hits_nobonus|$totalNoBonusEngine")
         println("EVAL|typo_fuzzy_over_budget|${withFuzzy.overBudget}")
         println("EVAL|typo_fuzzy_over_budget_exactonly|${exactOnly.overBudget}")
 
@@ -231,13 +265,35 @@ class RuTypoMutatedEvalTest {
             PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY, exactOnly.engineTop4PerClass.getValue("del"),
         )
 
-        // The production arm: the DL-1 tier recovers all four classes. The counts are exact
-        // pins over the committed set; the pre-registered bars are the floor a re-pin must
-        // never drop below silently.
-        assertEquals(PIN_SUB_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("sub"))
-        assertEquals(PIN_DEL_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("del"))
-        assertEquals(PIN_INS_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("ins"))
-        assertEquals(PIN_TRANS_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("trans"))
+        // The bonus-off arm is the pre-bonus ranking exactly: its counts keep the old pins, so a
+        // rank drift with the flag off fails here. The production arm carries the armed bonus and
+        // pins the post-bonus counts (re-pinned when the bit was added; see the delta prints
+        // above).
+        assertEquals(PIN_SUB_ENGINE_TOP4_HITS, noBonus.engineTop4PerClass.getValue("sub"))
+        assertEquals(PIN_DEL_ENGINE_TOP4_HITS, noBonus.engineTop4PerClass.getValue("del"))
+        assertEquals(PIN_INS_ENGINE_TOP4_HITS, noBonus.engineTop4PerClass.getValue("ins"))
+        assertEquals(PIN_TRANS_ENGINE_TOP4_HITS, noBonus.engineTop4PerClass.getValue("trans"))
+        assertEquals(PIN_SUB_ENGINE_TOP4_HITS_GEO, withFuzzy.engineTop4PerClass.getValue("sub"))
+        assertEquals(PIN_DEL_ENGINE_TOP4_HITS_GEO, withFuzzy.engineTop4PerClass.getValue("del"))
+        assertEquals(PIN_INS_ENGINE_TOP4_HITS_GEO, withFuzzy.engineTop4PerClass.getValue("ins"))
+        assertEquals(PIN_TRANS_ENGINE_TOP4_HITS_GEO, withFuzzy.engineTop4PerClass.getValue("trans"))
+        val recovered = withFuzzy.engineTop4PerClass
+        assertTrue(
+            "sub recovery ${recovered.getValue("sub")} under the floor of $PIN_SUB_ENGINE_TOP4_HITS",
+            recovered.getValue("sub") >= PIN_SUB_ENGINE_TOP4_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "del recovery ${recovered.getValue("del")} under the floor of $PIN_DEL_ENGINE_TOP4_HITS",
+            recovered.getValue("del") >= PIN_DEL_ENGINE_TOP4_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "ins recovery ${recovered.getValue("ins")} under the floor of $PIN_INS_ENGINE_TOP4_HITS",
+            recovered.getValue("ins") >= PIN_INS_ENGINE_TOP4_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "trans recovery ${recovered.getValue("trans")} under the floor of $PIN_TRANS_ENGINE_TOP4_HITS",
+            recovered.getValue("trans") >= PIN_TRANS_ENGINE_TOP4_HITS * QUALITY_FLOOR,
+        )
         for ((className, bar) in CLASS_BARS) {
             val pct = withFuzzy.engineTop4PerClass.getValue(className) * 100.0 /
                 rowsPerClass.getValue(className)
@@ -450,14 +506,25 @@ class RuTypoMutatedEvalTest {
         private const val PIN_SET_SHA256 =
             "abf3988db71591bdde26562439c08a5c50ac4e3338ff4681384854144872108d"
 
+        // Quality floors beside the exact pins: per-class recovery must stay within 5% of its
+        // pinned count, so a dictionary rebuild cannot be re-pinned through a silent quality
+        // drop. The bars of CLASS_BARS stay the coarser pre-registered floor in percent.
+        private const val QUALITY_FLOOR = 0.95
+
         // The recovery counts, measured on the committed Russian dictionary under the production
-        // wiring (the RUSSIAN policy); the exact-only control recovers last-position deletions
-        // as prefix hits and nothing else. Re-pin when the dictionary, the eval set, the layout
-        // or the ranking change, and never below the bars of CLASS_BARS.
+        // wiring (the RUSSIAN policy). The un-suffixed pins hold the bonus-off arm (the pre-bonus
+        // ranking); the _GEO pins hold the production arm with the geometry-neighbor bonus armed;
+        // the exact-only control recovers last-position deletions as prefix hits and nothing
+        // else. Re-pin when the dictionary, the eval set, the layout or the ranking change, and
+        // never below the bars of CLASS_BARS.
         private const val PIN_SUB_ENGINE_TOP4_HITS = 1_902
         private const val PIN_DEL_ENGINE_TOP4_HITS = 1_635
         private const val PIN_INS_ENGINE_TOP4_HITS = 2_041
         private const val PIN_TRANS_ENGINE_TOP4_HITS = 1_916
+        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 1_909
+        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_627
+        private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_040
+        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 1_915
         private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 274
 
         // The pre-registered per-class recovery bars (engine top-4, percent of each class).
@@ -474,27 +541,59 @@ class RuTypoMutatedEvalTest {
         private const val PIN_VALID_OOV_UNSEEN_STEM_WORDS = 65
         private const val PIN_VALID_OOV_SEEN_FORM_FALSE_REPLACEMENTS = 0
         private const val PIN_VALID_OOV_NEW_FORM_FALSE_REPLACEMENTS = 0
-        private const val PIN_VALID_OOV_UNSEEN_STEM_FALSE_REPLACEMENTS = 0
-        private const val PIN_VALID_OOV_FALSE_REPLACEMENTS = 0
+        private const val PIN_VALID_OOV_UNSEEN_STEM_FALSE_REPLACEMENTS = 2
+        private const val PIN_VALID_OOV_FALSE_REPLACEMENTS = 2
 
         private val SAFETY_STRATA = listOf("seen_form", "new_form_of_seen_stem", "unseen_stem")
         private val CLASS_NAMES = listOf("sub", "del", "ins", "trans")
 
         // The Russian layout: the letter keys of rows_russian.xml in layout order with the
         // long-press partners of rowkeys_russian*.xml. Production builds the same table from
-        // the live keyboard via KeyNeighborTableBuilder.fromKeyboard.
+        // the live keyboard via KeyNeighborTableBuilder.fromKeyboard. The rectangles are the
+        // device model of scripts/typo_pack.py on the 100 000-unit reference grid (the x edges
+        // are shared with the Tatar home rows) with the shipped 4-row y model (rowHeight 25%p,
+        // vertical gap 6.905%p of the keyboard height): row pitch 25 000, key height 18 095.
+        // They let the table's geometric adjacency fire exactly the pairs the eval's sub class
+        // mutates through, plus the same-row adjacent keys.
         private val RUSSIAN_LAYOUT_KEYS: List<KeyNeighborTable.RawKey> = listOf(
-            // й ц у к е н г ш щ з х
-            rawKey('й'), rawKey('ц'), rawKey('у', 'ү'), rawKey('к'), rawKey('е', 'ё'),
-            rawKey('н', 'ң'), rawKey('г', 'һ'), rawKey('ш'), rawKey('щ'), rawKey('з'),
-            rawKey('х', 'һ'),
-            // ф ы в а п р о л д ж э
-            rawKey('ф'), rawKey('ы'), rawKey('в'), rawKey('а', 'ә'), rawKey('п'), rawKey('р'),
-            rawKey('о', 'ө'), rawKey('л'), rawKey('д'), rawKey('ж', 'җ'), rawKey('э', 'ә'),
-            // я ч с м и т ь б ю
-            rawKey('я'), rawKey('ч'), rawKey('с'), rawKey('м'), rawKey('и'), rawKey('т'),
-            rawKey('ь', 'ъ'), rawKey('б'), rawKey('ю'),
+            // й ц у к е н г ш щ з х (row top 0)
+            geoKey(870, 0, 8222, 'й'), geoKey(9961, 0, 17313, 'ц'),
+            geoKey(19052, 0, 26404, 'у', 'ү'), geoKey(28143, 0, 35495, 'к'),
+            geoKey(37234, 0, 44586, 'е', 'ё'), geoKey(46325, 0, 53676, 'н', 'ң'),
+            geoKey(55415, 0, 62767, 'г', 'һ'), geoKey(64506, 0, 71858, 'ш'),
+            geoKey(73597, 0, 80949, 'щ'), geoKey(82688, 0, 90040, 'з'),
+            geoKey(91779, 0, 99130, 'х', 'һ'),
+            // ф ы в а п р о л д ж э (row top 25000)
+            geoKey(870, 25000, 8222, 'ф'), geoKey(9961, 25000, 17313, 'ы'),
+            geoKey(19052, 25000, 26404, 'в'), geoKey(28143, 25000, 35495, 'а', 'ә'),
+            geoKey(37234, 25000, 44586, 'п'), geoKey(46325, 25000, 53676, 'р'),
+            geoKey(55415, 25000, 62767, 'о', 'ө'), geoKey(64506, 25000, 71858, 'л'),
+            geoKey(73597, 25000, 80949, 'д'), geoKey(82688, 25000, 90040, 'ж', 'җ'),
+            geoKey(91779, 25000, 99130, 'э', 'ә'),
+            // я ч с м и т ь б ю (row top 50000)
+            geoKey(11670, 50000, 18642, 'я'), geoKey(20381, 50000, 27353, 'ч'),
+            geoKey(29092, 50000, 36064, 'с'), geoKey(37803, 50000, 44775, 'м'),
+            geoKey(46514, 50000, 53485, 'и'), geoKey(55224, 50000, 62196, 'т'),
+            geoKey(63935, 50000, 70907, 'ь', 'ъ'), geoKey(72646, 50000, 79618, 'б'),
+            geoKey(81357, 50000, 88329, 'ю'),
         )
+
+        /** One Russian letter key with its rectangle; the key height is the 4-row model's. */
+        private fun geoKey(
+            left: Int,
+            top: Int,
+            right: Int,
+            base: Char,
+            vararg partners: Char,
+        ): KeyNeighborTable.RawKey =
+            KeyNeighborTable.RawKey(
+                base.code,
+                IntArray(partners.size) { partners[it].code },
+                left, top, right, top + RUSSIAN_KEY_HEIGHT,
+            )
+
+        private const val RUSSIAN_KEY_HEIGHT = 18_095
+
         private val neighborTable = KeyNeighborTable.build("ru", true, RUSSIAN_LAYOUT_KEYS)
 
         private lateinit var setText: String
@@ -503,6 +602,13 @@ class RuTypoMutatedEvalTest {
         private lateinit var safetyText: String
         private lateinit var safetyRows: List<SafetyRow>
         private var russianIndex: TdictPrefixIndex? = null
+
+        // The validated dictionary, kept for opening the bonus-off control arm of
+        // [typoRecoveryBaselinePerEditClass] without a second asset inflation.
+        private lateinit var dictionaryRaw: ByteArray
+        private lateinit var dictionaryIdentity: DictionaryIdentity
+        private var dictionaryEntryCount = 0L
+        private var dictionaryRawSize = 0L
 
         @JvmStatic
         @BeforeClass
@@ -552,9 +658,13 @@ class RuTypoMutatedEvalTest {
                     validated.formatVersion,
                     validated.rawSha256,
                 )
+                dictionaryRaw = rawFile.readBytes()
+                dictionaryIdentity = identity
+                dictionaryEntryCount = validated.entryCount
+                dictionaryRawSize = validated.rawSize
                 russianIndex = requireNotNull(
                     TdictPrefixIndex.open(
-                        ByteBuffer.wrap(rawFile.readBytes()), identity,
+                        ByteBuffer.wrap(dictionaryRaw), identity,
                         validated.entryCount, validated.rawSize,
                         fuzzyEditPolicy = FuzzyEditPolicy.RUSSIAN,
                         autocorrectMinCandidateFrequency = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,

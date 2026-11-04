@@ -132,10 +132,10 @@ class TtFullSubstitutionCalibrationTest {
         // on the committed asset; the asset rebuild rewrites them (scripts/rebuild_assets.py).
         val class4w3 = buildSubstitutionSet(3)
         assertEquals(109_645, class4w3.rows.size)
-        assertEquals("edd860eadab9d43f4dea3b040e15c473774003b5e1f903f853d7e0d46c03edf1", class4w3.sha256)
+        assertEquals("79a58bcf54547e04b3d64d68670303406e0dee500c7b897c61368c1f056dc02e", class4w3.sha256)
         val class4w5 = buildSubstitutionSet(5)
-        assertEquals(104_967, class4w5.rows.size)
-        assertEquals("12148b31ef3d40048aa9d56be20de8db78b9e4b1e28f7cc696ac779f9074b5d0", class4w5.sha256)
+        assertEquals(104_966, class4w5.rows.size)
+        assertEquals("d97087d4fbe023214a5b55b713ae5a45327466feb5fb9bd7b5c621443f90bc32", class4w5.sha256)
     }
 
     @Test
@@ -384,9 +384,10 @@ class TtFullSubstitutionCalibrationTest {
      * The default policy — which no shipped engine runs — never fires class #4. "апаси" (а for с
      * on "спаси(бо)") has zero exact continuations in the Russian asset; under DEFAULT the strip
      * stays empty — while the SAME dictionary under the TATAR policy paints the pinned class-#4
-     * strip, proving the pin discriminates. Note the same-length bonus at work: the same-length
-     * words "спаси"/"упаси" outrank the much more frequent continuation "спасибо", which takes
-     * only the fourth cell.
+     * strip, proving the pin discriminates. Two bonuses shape the strip: the same-length bonus
+     * keeps the same-length words above the much more frequent continuation "спасибо", and the
+     * geometry-neighbor bonus orders inside the same-length group — "спаси" (а→с, cross-row
+     * neighbors) and "апачи" (с→ч, same-row neighbors) before the non-neighbor "упаси" (а→у).
      */
     @Test
     fun theDefaultPolicyKeepsClass4OffTheRussianDictionary() {
@@ -398,7 +399,7 @@ class TtFullSubstitutionCalibrationTest {
         assertEquals(emptyList<String>(), defaultResult)
         assertEquals(
             "premise: the case discriminates — the TATAR policy paints the class-#4 strip",
-            listOf("спаси", "упаси", "апачи", "спасибо"),
+            listOf("спаси", "апачи", "упаси", "спасибо"),
             russianAsTatar.lookup(typo),
         )
     }
@@ -456,23 +457,25 @@ class TtFullSubstitutionCalibrationTest {
     companion object {
         private const val SEED = 20260727L
 
-        // Pins over the committed dictionary and eval set; re-pin when an input changes.
-        private const val PIN_BASE_W5 = 43_419
-        private const val PIN_CAND_W5 = 30_080
+        // Pins over the committed dictionary and eval set; re-pin when an input changes. The
+        // candidate-arm counts moved up when the geometry-neighbor bonus was armed: neighbor
+        // substitutions reach the strip's four cells more often.
+        private const val PIN_BASE_W5 = 43_420
+        private const val PIN_CAND_W5 = 30_327
         private const val PIN_BASE_W5_SUBSET = 98_071
-        private const val PIN_CAND_W5_SUBSET = 101_418
-        private const val PIN_EVAL_PREFIXES_GE4 = 7_451
-        private const val PIN_EXACT_EMPTY = 1_406
-        private const val PIN_CLASS4_FILLED = 1_052
+        private const val PIN_CAND_W5_SUBSET = 101_417
+        private const val PIN_EVAL_PREFIXES_GE4 = 7_599
+        private const val PIN_EXACT_EMPTY = 1_405
+        private const val PIN_CLASS4_FILLED = 1_024
 
         // Pins of the same-set lift measurement.
-        private const val PIN_LIFT_BASE_W5_WHOLE = 532
-        private const val PIN_LIFT_CAND_W5_WHOLE = 30_089
-        private const val PIN_LIFT_ACTIVE_ROWS = 101_418
-        private const val PIN_LIFT_BASE_W5_ACTIVE = 523
-        private const val PIN_LIFT_CAND_W5_ACTIVE = 30_080
-        private const val PIN_LIFT_BASE_W3_WHOLE = 114
-        private const val PIN_LIFT_CAND_W3_WHOLE = 118
+        private const val PIN_LIFT_BASE_W5_WHOLE = 533
+        private const val PIN_LIFT_CAND_W5_WHOLE = 30_336
+        private const val PIN_LIFT_ACTIVE_ROWS = 101_417
+        private const val PIN_LIFT_BASE_W5_ACTIVE = 524
+        private const val PIN_LIFT_CAND_W5_ACTIVE = 30_327
+        private const val PIN_LIFT_BASE_W3_WHOLE = 116
+        private const val PIN_LIFT_CAND_W3_WHOLE = 120
 
         private val neighborTable = TatarLayoutTestFixtures.tatarNeighborTable()
         private lateinit var vocabulary: List<String>

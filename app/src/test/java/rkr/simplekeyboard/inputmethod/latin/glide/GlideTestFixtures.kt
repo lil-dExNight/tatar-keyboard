@@ -134,16 +134,16 @@ internal object GlideTestFixtures {
     fun tatarKeyRadius(): Int = tatarRawKeys().minOf { minOf(it.right - it.left, it.bottom - it.top) }
 
     /** The ideal center-to-center path of [word] over [geometry] (no noise); null when a letter
-     * has no key. Each hop takes its normative duration (the decoder's normative speed over the
-     * hop's length), so the speed channel neither fires nor dampens on these paths. Shared by the
-     * engine-level and the controller-level glide tests. */
+     * has no key. Each letter hop takes its Fitts-law normative duration (the index's
+     * a + b x log2(D/W + 1) per transition, W the target key's width; a doubled letter's repeat
+     * visit adds no transition), so the speed channel neither fires nor dampens on these paths.
+     * Shared by the engine-level and the controller-level glide tests. */
     fun idealPath(word: String, geometry: GlideKeyGeometry): GlidePath? {
         val path = GlidePath()
-        val speed = GlideDecoder.GlideConstants().normativeSpeedRadiiPerMs * geometry.keyRadius
-        var t = 0f
+        var t = 0.0
+        var previousKey = -1
         var previousX = 0f
         var previousY = 0f
-        var first = true
         var offset = 0
         while (offset < word.length) {
             val codePoint = word.codePointAt(offset)
@@ -152,15 +152,18 @@ internal object GlideTestFixtures {
             if (key < 0) return null
             val x = geometry.centerX(key)
             val y = geometry.centerY(key)
-            if (!first) {
+            if (previousKey >= 0 && key != previousKey) {
                 val dx = x - previousX
                 val dy = y - previousY
-                t += kotlin.math.sqrt(dx * dx + dy * dy) / speed
+                val d = kotlin.math.sqrt(dx * dx + dy * dy)
+                val w = 2f * geometry.halfWidth(key)
+                t += GlideWordIndex.FITTMS_A +
+                    GlideWordIndex.FITTMS_B * Math.log((d / w + 1f).toDouble()) / Math.log(2.0)
             }
-            first = false
+            previousKey = key
             previousX = x
             previousY = y
-            path.addPoint(x, y, t)
+            path.addPoint(x, y, t.toFloat())
         }
         return path
     }
@@ -181,6 +184,44 @@ internal object GlideTestFixtures {
                 subtypeTag = "tt_RU",
             ),
         )
+    }
+
+    /**
+     * Paired bootstrap of the top-1 gain ([variant] minus [baseline]), in percentage points: the
+     * rows are resampled with replacement from a deterministic SplitMix64 stream; the interval is
+     * the 2.5/97.5 percentiles of the resampled gain.
+     */
+    fun pairedGainCi(
+        variant: BooleanArray,
+        baseline: BooleanArray,
+        resamples: Int = 10_000,
+    ): DoubleArray {
+        val n = variant.size
+        val gains = DoubleArray(resamples)
+        var stream = splitmix64(0xB00757A7L)
+        for (r in 0 until resamples) {
+            var variantHits = 0
+            var baselineHits = 0
+            for (i in 0 until n) {
+                stream = splitmix64(stream)
+                val pick = java.lang.Long.remainderUnsigned(stream, n.toLong()).toInt()
+                if (variant[pick]) variantHits++
+                if (baseline[pick]) baselineHits++
+            }
+            gains[r] = (variantHits - baselineHits) * 100.0 / n
+        }
+        gains.sort()
+        return doubleArrayOf(
+            gains[(resamples * 0.025).toInt()],
+            gains[(resamples * 0.975).toInt()],
+        )
+    }
+
+    private fun splitmix64(seed: Long): Long {
+        var z = seed + -7046029254386353131L // 0x9E3779B97F4A7C15
+        z = (z xor (z ushr 30)) * -4658895280553007687L // 0xBF58476D1CE4E5B9
+        z = (z xor (z ushr 27)) * -7723592293110705685L // 0x94D049BB133111EB
+        return z xor (z ushr 31)
     }
 }
 

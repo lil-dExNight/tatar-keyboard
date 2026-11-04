@@ -51,11 +51,19 @@ class GlidePathTest {
         val source = GlidePath(16)
         repeat(16) { source.addPoint(it.toFloat(), 0f, it.toFloat()) }
         val target = GlidePath(8)
-        assertEquals(8, source.copyInto(target))
-        assertEquals(8, target.size)
+        assertEquals(7, source.copyInto(target))
+        assertEquals(7, target.size)
+        // The overflow halving's exact retained set for 16 points into capacity 8 (see
+        // GlidePath.halveInteriorPoints): three halvings, each keeping the first point, the
+        // even interior points and the last point of the buffer it saw.
+        val expected = floatArrayOf(0f, 7f, 10f, 12f, 13f, 14f, 15f)
+        for (i in expected.indices) {
+            assertEquals("xs[$i]", expected[i], target.xs[i], 0f)
+            // The timestamp array must stay in lockstep with the coordinates.
+            assertEquals("ts[$i]", expected[i], target.ts[i], 0f)
+        }
         assertEquals(0f, target.xs[0], 0f)
-        assertEquals(15f, target.xs[7], 0f)
-        assertEquals(15f, target.ts[7] - target.ts[0], 0f)
+        assertEquals(15f, target.ts[6] - target.ts[0], 0f)
     }
 
     @Test
@@ -121,17 +129,50 @@ class GlidePathTest {
                 val y = if (i % 32 < 16) (i % 16).toFloat() else (16 - i % 16).toFloat()
                 assertTrue(path.addPoint(i.toFloat(), y, i.toFloat()))
             }
-            assertEquals(GlidePath.MAX_POINTS, path.size)
+            // After the first overflow the size oscillates between capacity/2 + 2 (just past a
+            // halving) and the capacity: bounded, never over-thinned.
+            assertTrue("size stays bounded and ample, was ${path.size}",
+                path.size in (GlidePath.MAX_POINTS / 2 + 2)..GlidePath.MAX_POINTS)
             assertEquals(0f, path.xs[0], 0f)
             assertEquals(0f, path.ys[0], 0f)
             assertEquals(0f, path.ts[0], 0f)
             assertEquals((sampleCount - 1).toFloat(), path.xs[path.size - 1], 0f)
             assertEquals((sampleCount - 1).toFloat(), path.ts[path.size - 1], 0f)
+            // Every retained point is a whole source sample: the halving must not skew the
+            // x/y/t arrays against each other, and the retained timestamps stay monotonic.
+            for (i in 0 until path.size) {
+                val sample = path.xs[i].toInt()
+                assertEquals("ts[$i]", sample.toFloat(), path.ts[i], 0f)
+                val expectedY =
+                    if (sample % 32 < 16) (sample % 16).toFloat() else (16 - sample % 16).toFloat()
+                assertEquals("ys[$i]", expectedY, path.ys[i], 0f)
+                if (i > 0) {
+                    assertTrue("ts monotonic at $i", path.ts[i] > path.ts[i - 1])
+                }
+            }
         }
     }
 
     @Test
-    fun overflowRemovesTheLeastArcLengthSignificantInteriorPoint() {
+    fun overflowHalvesTheInteriorInOnePass() {
+        val path = GlidePath(8)
+        for (i in 0 until 9) {
+            assertTrue(path.addPoint(i * 10f, i * 3f, i * 5f))
+        }
+        // The 9th add halves the full buffer [0..7]: first point, even interior points and the
+        // last point survive, then the new sample appends.
+        assertEquals(6, path.size)
+        val expectedX = floatArrayOf(0f, 20f, 40f, 60f, 70f, 80f)
+        for (i in expectedX.indices) {
+            val sample = expectedX[i] / 10f
+            assertEquals("xs[$i]", expectedX[i], path.xs[i], 0f)
+            assertEquals("ys[$i]", sample * 3f, path.ys[i], 0f)
+            assertEquals("ts[$i]", sample * 5f, path.ts[i], 0f)
+        }
+    }
+
+    @Test
+    fun overflowAtTheSmallestUsefulCapacityKeepsBothEnds() {
         val path = GlidePath(3)
         path.addPoint(0f, 0f, 0f)
         path.addPoint(1f, 0f, 1f)

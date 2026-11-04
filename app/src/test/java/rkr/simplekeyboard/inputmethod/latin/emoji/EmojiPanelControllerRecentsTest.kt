@@ -20,6 +20,7 @@ import java.io.File
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -86,7 +87,7 @@ class EmojiPanelControllerRecentsTest {
     }
 
     private fun controllerWith(
-        surface: FakeSurface,
+        surface: EmojiSurface,
         executor: ManualExecutor?,
         ops: FakeFileOps,
     ): EmojiPanelController {
@@ -231,4 +232,170 @@ class EmojiPanelControllerRecentsTest {
         assertEquals(listOf(beam), last.entriesOf(0))
         assertEquals(base.categoryCount + 1, last.categoryCount)
     }
+
+    // --- Removing one entry --------------------------------------------------------------------
+
+    private class RecordingSurface : EmojiSurface {
+        val shown = ArrayList<EmojiSetSnapshot>()
+        val refreshed = ArrayList<EmojiSetSnapshot>()
+        var spokenNamesBound = 0
+        var boundLanguage: String? = null
+
+        override fun showPanel(snapshot: EmojiSetSnapshot) {
+            shown.add(snapshot)
+        }
+
+        override fun refreshAfterRecentRemoved(snapshot: EmojiSetSnapshot) {
+            refreshed.add(snapshot)
+        }
+
+        override fun bindSpokenNames(names: EmojiSearchIndex, language: String?) {
+            spokenNamesBound++
+            boundLanguage = language
+        }
+    }
+
+    @Test
+    fun onRecentRemovedDropsTheEntryAndRefreshesTheShownPanel() {
+        val surface = RecordingSurface()
+        val executor = ManualExecutor()
+        val ops = FakeFileOps()
+        val controller = controllerWith(surface, executor, ops)
+
+        controller.onEmojiKeyPressed()
+        executor.runAll()
+        controller.onEmojiInserted(grin)
+        controller.onEmojiInserted(beam)
+        executor.runAll()
+
+        controller.onRecentRemoved(grin)
+        executor.runAll()
+
+        // The shown panel is refreshed through the same snapshot path, minus the removed entry.
+        assertEquals(1, surface.refreshed.size)
+        val refreshed = surface.refreshed.last()
+        assertEquals(EmojiDisplaySnapshots.RECENT_CATEGORY_NAME, refreshed.categoryName(0))
+        assertEquals(listOf(beam), refreshed.entriesOf(0))
+        // The removal is persisted by the next hide's flush, like every other change.
+        controller.onPanelHidden()
+        executor.runAll()
+        assertFalse(ops.content!!.contains(grin))
+        assertTrue(ops.content!!.contains(beam))
+    }
+
+    @Test
+    fun onRecentRemovedWithoutAStoreOrPanelIsANoOp() {
+        // No recents store: nothing to remove, no refresh.
+        val surface = RecordingSurface()
+        val controller = EmojiPanelController(
+            surface,
+            EmojiUiPoster { it.run() },
+            { ManualExecutor() },
+            { EmojiSnapshotSource { base } },
+        )
+        controller.onRecentRemoved(grin)
+        assertEquals(0, surface.refreshed.size)
+    }
+
+    @Test
+    fun removingTheLastRecentRefreshesToTheBaseSnapshotWithoutARecentsCategory() {
+        val surface = RecordingSurface()
+        val executor = ManualExecutor()
+        val controller = controllerWith(surface, executor, FakeFileOps())
+
+        controller.onEmojiKeyPressed()
+        executor.runAll()
+        controller.onEmojiInserted(grin)
+        executor.runAll()
+
+        controller.onRecentRemoved(grin)
+        executor.runAll()
+
+        val refreshed = surface.refreshed.last()
+        // An empty recents list shows the base snapshot unchanged: no Recent category.
+        assertEquals(base.categoryCount, refreshed.categoryCount)
+        assertEquals("smileys", refreshed.categoryName(0))
+    }
+
+    // --- The press needs no arming callback ------------------------------------------------------
+
+    @Test
+    fun thePressApiCarriesNoArmingCallbackAndEveryPressIsAnsweredAlike() {
+        // The press feedback is the ordinary key-down path's, identical for every press, so the
+        // press API carries no feedback callback: the panel show adds none of its own.
+        val pressShapes = EmojiPanelController::class.java.declaredMethods
+            .filter { it.name == "onEmojiKeyPressed" }
+        assertEquals(1, pressShapes.size)
+        assertEquals(0, pressShapes.single().parameterCount)
+
+        val surface = FakeSurface()
+        val executor = ManualExecutor()
+        val controller = controllerWith(surface, executor, FakeFileOps())
+
+        // First press (NOT_PREPARED): the deferred show is armed and the one preparation queued.
+        assertTrue(controller.onEmojiKeyPressed())
+        assertEquals(1, executor.queued)
+        // A press while PREPARING re-arms the same show; no second preparation is queued.
+        assertTrue(controller.onEmojiKeyPressed())
+        assertEquals(1, executor.queued)
+        assertEquals(0, surface.shown.size)
+
+        executor.runAll()
+        assertEquals(1, surface.shown.size)
+
+        // READY from here on: the press shows the panel again with no new preparation.
+        assertTrue(controller.onEmojiKeyPressed())
+        executor.runAll()
+        assertEquals(2, surface.shown.size)
+    }
+
+    // --- Spoken cell names ----------------------------------------------------------------------
+
+    @Test
+    fun publishingThePanelBindsTheSpokenNamesOnceTheIndexLoads() {
+        val surface = RecordingSurface()
+        val executor = ManualExecutor()
+        val controller = EmojiPanelController(
+            surface,
+            EmojiUiPoster { it.run() },
+            { executor },
+            { EmojiSnapshotSource { base } },
+            { null },
+            { EmojiSearchIndexSource { index } },
+        )
+
+        controller.setSpokenNameLanguage("tt")
+        controller.onEmojiKeyPressed()
+        // The panel publish queues two tasks: the recents read and the spoken-name index load.
+        executor.runAll()
+
+        assertEquals(1, surface.spokenNamesBound)
+        assertEquals("tt", surface.boundLanguage)
+    }
+
+    @Test
+    fun setSpokenNameLanguageRebindsTheLoadedIndexUnderTheNewLanguage() {
+        val surface = RecordingSurface()
+        val controller = EmojiPanelController(
+            surface,
+            EmojiUiPoster { it.run() },
+            { ManualExecutor() },
+            { EmojiSnapshotSource { base } },
+            { null },
+            { EmojiSearchIndexSource { index } },
+        )
+
+        controller.setSpokenNameLanguage("ru")
+        // Not loaded yet: nothing is bound, the sequence fallback speaks.
+        assertEquals(0, surface.spokenNamesBound)
+
+        controller.onEmojiKeyPressed()
+        assertEquals(0, surface.spokenNamesBound)
+        controller.setSpokenNameLanguage("tt")
+        assertEquals(0, surface.spokenNamesBound)
+    }
+
+    private val index = EmojiSearchIndex.parse(
+        "$grin\tулыбка\tулыбка smile\tелмаю\n$beam\tулыбка лучами\tулыбка smile beam\n",
+    )
 }

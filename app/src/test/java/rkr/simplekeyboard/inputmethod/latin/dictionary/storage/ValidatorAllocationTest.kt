@@ -10,9 +10,9 @@ import java.io.File
 import java.lang.management.ManagementFactory
 
 /**
- * Allocation ceiling of raw validation on the bundled files: one in-memory copy of the raw file,
- * plus the distinct-success scratch for a bigram table, plus a fixed margin. Prints the median
- * time and bytes of [RUNS] runs after [WARMUP_RUNS] warm-up runs.
+ * Allocation ceiling of raw validation on the bundled files: one in-memory copy of the raw file
+ * plus a fixed margin. Prints the median time and bytes of [RUNS] runs after [WARMUP_RUNS]
+ * warm-up runs.
  */
 class ValidatorAllocationTest {
     @get:Rule
@@ -35,20 +35,17 @@ class ValidatorAllocationTest {
     }
 
     @Test
-    fun bigramValidationAllocatesAtMostOneRawCopyAndTheSuccessScratch() {
+    fun bigramValidationAllocatesAtMostOneRawCopy() {
         val failures = ArrayList<String>()
         for (spec in listOf(BigramArtifactSpec.TATAR_BIGRAMS_V1, BigramArtifactSpec.RUSSIAN_BIGRAMS_V1)) {
             val raw = inflate(spec.assetPath) { input, output ->
                 TatBigrValidator().inflateAsset(input, output, spec)
             }
             val validator = TatBigrValidator()
-            val validated = validator.validateRaw(raw, spec)
-            val pairCount = validated.pairCount
             val (millis, bytes) = measure { validator.validateRaw(raw, spec) }
-            val ceiling = raw.length() + 4 * pairCount + MARGIN_BYTES
+            val ceiling = raw.length() + MARGIN_BYTES
             println(
-                "VALIDATE|tatbigr|${spec.family}|raw=${raw.length()}|median_ms=$millis|bytes=$bytes" +
-                    "|distinct=${validated.successVocabularyCount}",
+                "VALIDATE|tatbigr|${spec.family}|raw=${raw.length()}|median_ms=$millis|bytes=$bytes",
             )
             if (bytes > ceiling) failures += "${spec.family}: $bytes B > $ceiling B"
         }

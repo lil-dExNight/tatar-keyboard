@@ -90,7 +90,7 @@ class MappedDictionaryEngineTest {
                 fallbackWordsFactory = FallbackWordsFactory { source ->
                     factoryCalls++
                     assertTrue(source is PrecomputedTopFrequencySource)
-                    GlobalTopFrequencyFallbackFactory.createFallbackWords(source)
+                    GlobalTopFrequencyFallbackFactory.INSTANCE.createFallbackWords(source)
                 },
             ),
         )
@@ -123,7 +123,7 @@ class MappedDictionaryEngineTest {
                 ManualEngineExecutor()
             },
             mapper = DictionaryMapper { file, _ -> ByteBuffer.wrap(file.readBytes()) },
-            fallbackWordsFactory = GlobalTopFrequencyFallbackFactory,
+            fallbackWordsFactory = GlobalTopFrequencyFallbackFactory.INSTANCE,
         )
 
         assertNull(engine)
@@ -443,7 +443,7 @@ class MappedDictionaryEngineTest {
         val published = mutableListOf<LookupResult>()
         val engine = requireNotNull(startWithDictionaryOnly(executor, published))
         val corruptFile = temporaryFolder.newFile("corrupt.tatbigr").also { it.writeBytes(byteArrayOf(1, 2, 3)) }
-        val corruptTable = PublishedBigramTable(1, "tt", corruptFile, 3, 1, 1, 1, 3, 1, "0".repeat(64))
+        val corruptTable = PublishedBigramTable(1, "tt", corruptFile, 3, 1, 1, 3, 1, "0".repeat(64))
         var closed = false
         val catalog = bigramCatalog(corruptTable) { closed = true }
 
@@ -606,13 +606,13 @@ class MappedDictionaryEngineTest {
     }
 
     @Test
-    fun deferredBigramAttachFailsClosedOnCorruptTableAndIsTerminal() {
+    fun deferredBigramAttachFailsClosedOnCorruptTableAndStaysParkedUntilRearmed() {
         val executor = ManualEngineExecutor()
         val published = mutableListOf<LookupResult>()
         val engine = requireNotNull(startWithDictionaryOnly(executor, published))
         val corruptFile =
             temporaryFolder.newFile("corrupt-deferred.tatbigr").also { it.writeBytes(byteArrayOf(1, 2, 3)) }
-        val corruptTable = PublishedBigramTable(1, "tt", corruptFile, 3, 1, 1, 1, 3, 1, "0".repeat(64))
+        val corruptTable = PublishedBigramTable(1, "tt", corruptFile, 3, 1, 1, 3, 1, "0".repeat(64))
         var acquisitions = 0
         var closed = 0
         val catalog = object : PublishedBigramTableCatalog {
@@ -633,10 +633,102 @@ class MappedDictionaryEngineTest {
         assertEquals(emptyList<String>(), published.single().suggestions)
         assertEquals("a failed attach must close the lease it acquired", 1, closed)
 
-        // Terminal, exactly like the eager path: the next lookup does not retry the attach.
+        // Parked, not terminal: the next lookup does not retry the attach by itself.
         engine.requestNextWord(2, "tt", utf8("аб"))
         executor.runAll()
         assertEquals(1, acquisitions)
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun aFailedDeferredAttachIsRetriedOnceAtTheNextFieldStartAndCanSucceed() {
+        // Fail-then-succeed through the controller's own signal: finishInput (which every field
+        // start and session boundary drives) re-arms the failed attach, and the next NEXT_WORD
+        // lookup runs it on the worker — the good table wires in and the successors answer.
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val engine = requireNotNull(startWithDictionaryOnly(executor, published))
+        val corruptFile =
+            temporaryFolder.newFile("corrupt-retry.tatbigr").also { it.writeBytes(byteArrayOf(1, 2, 3)) }
+        val corruptTable = PublishedBigramTable(1, "tt", corruptFile, 3, 1, 1, 3, 1, "0".repeat(64))
+        var brokenLeases = 0
+        val brokenCatalog = object : PublishedBigramTableCatalog {
+            private var lease: BigramTableLease? = BigramTableLease(corruptTable) { brokenLeases++ }
+
+            override fun acquireLatestForActivation(): BigramTableLease? =
+                lease.also { lease = null }
+
+            override fun cleanupReleasedVersions() = Unit
+        }
+        engine.deferBigramAttach(brokenCatalog)
+        engine.requestNextWord(1, "tt", utf8("аб"))
+        executor.runAll()
+        assertEquals(emptyList<String>(), published.last().suggestions)
+        assertEquals(1, brokenLeases)
+
+        // The field start: the engine is idled (the controller's boundary signal), which
+        // re-arms the failed attach; a good table publishes before the next lookup.
+        engine.finishInput()
+        val goodCatalog = object : PublishedBigramTableCatalog {
+            private var lease: BigramTableLease? =
+                BigramTableLease(bigramFixture(listOf("аб" to listOf("аба")))) {}
+
+            override fun acquireLatestForActivation(): BigramTableLease? =
+                lease.also { lease = null }
+
+            override fun cleanupReleasedVersions() = Unit
+        }
+        engine.deferBigramAttach(goodCatalog)
+
+        engine.requestNextWord(2, "tt", utf8("аб"))
+        executor.runAll()
+
+        assertEquals(listOf("аба"), published.last().suggestions)
+        assertFalse(engine.lastNextWordWithoutTable)
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun aFailedDeferredAttachIsTerminalAfterTheSecondFailure() {
+        // Fail-twice: the re-armed retry fails too, and further field starts never re-arm it
+        // again — the engine stays table-less until it is restarted.
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val engine = requireNotNull(startWithDictionaryOnly(executor, published))
+        val corruptFile =
+            temporaryFolder.newFile("corrupt-twice.tatbigr").also { it.writeBytes(byteArrayOf(1, 2, 3)) }
+        val corruptTable = PublishedBigramTable(1, "tt", corruptFile, 3, 1, 1, 3, 1, "0".repeat(64))
+        var acquisitions = 0
+        val catalog = object : PublishedBigramTableCatalog {
+            private var lease: BigramTableLease? =
+                BigramTableLease(bigramFixture(listOf("аб" to listOf("аба")))) {}
+            private var broken: BigramTableLease? = BigramTableLease(corruptTable) {}
+
+            override fun acquireLatestForActivation(): BigramTableLease? {
+                acquisitions++
+                // The first two attempts hand out the corrupt lease; later ones would hand out
+                // a good one, which the engine must never ask for again.
+                return if (acquisitions <= 2) broken.also { broken = null } else lease
+            }
+
+            override fun cleanupReleasedVersions() = Unit
+        }
+        engine.deferBigramAttach(catalog)
+        engine.requestNextWord(1, "tt", utf8("аб"))
+        executor.runAll()
+        assertEquals(1, acquisitions)
+
+        engine.finishInput()
+        engine.requestNextWord(2, "tt", utf8("аб"))
+        executor.runAll()
+        assertEquals(2, acquisitions)
+
+        // A third field start, then a lookup: no third attempt, the answer stays table-less.
+        engine.finishInput()
+        engine.requestNextWord(3, "tt", utf8("аб"))
+        executor.runAll()
+        assertEquals(2, acquisitions)
+        assertTrue(engine.lastNextWordWithoutTable)
         assertTrue(engine.destroy(1, TimeUnit.SECONDS))
     }
 
@@ -664,7 +756,6 @@ class MappedDictionaryEngineTest {
         return PublishedBigramTable(
             1, "tt", file, raw.size.toLong(), headsToSuccesses.size.toLong(),
             headsToSuccesses.sumOf { it.second.size }.toLong(),
-            headsToSuccesses.flatMap { it.second }.toSet().size.toLong(),
             3, 1,
             BigramTestFixtures.sha256(raw),
         )

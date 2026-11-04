@@ -201,28 +201,30 @@ class MixEvalTest {
     }
 
     /**
-     * Words of one shipped dictionary that the other language's engine alone autocorrects into
-     * its own word (one long-press partner away). With the companion lexicon, the first
-     * dictionary's exact membership, none of them gets advice.
+     * Words of one shipped dictionary a single edit away from a word of the other language.
+     * Under the armed DL-1 autocorrect tier all but телами are ambiguous typos that the
+     * single-candidate rule refuses even without the lexicon; with the companion lexicon — the
+     * first dictionary's exact membership — none of them gets advice.
      */
     @Test
     fun theCompanionLexiconKeepsTheOtherLanguagesWordsUncorrected() {
         val tatar = requireNotNull(tatarIndex)
         val russian = requireNotNull(russianIndex)
-        // (active index, its layout table, companion index, word of the companion language)
+        // (active index, its layout table, companion index, word of the companion language,
+        // lone correction of the active engine, null where the typo is ambiguous and refused)
         val cases = listOf(
-            CrossCase(tatar, tatarTable, russian, "кузен", "күзен"),
+            CrossCase(tatar, tatarTable, russian, "кузен", null),
             CrossCase(tatar, tatarTable, russian, "телами", "теләми"),
-            CrossCase(tatar, tatarTable, russian, "халате", "халәте"),
-            CrossCase(russian, russianTable, tatar, "җизни", "жизни"),
-            CrossCase(russian, russianTable, tatar, "сөтен", "сотен"),
+            CrossCase(tatar, tatarTable, russian, "халате", null),
+            CrossCase(russian, russianTable, tatar, "җизни", null),
+            CrossCase(russian, russianTable, tatar, "сөтен", null),
         )
         for (case in cases) {
             case.active.updateKeyNeighbors(case.table)
             val computer = CompositePrefixComputer(case.active, PersonalCandidateSource.EMPTY)
             computer.lookup(prefixOf(case.word))
             assertEquals(
-                "the active engine alone corrects ${case.word}",
+                "the active engine alone on ${case.word}",
                 case.correctionAlone, computer.lastAutocorrectAdvice?.replacement,
             )
             computer.companionLexicon = CompanionLexicon(case.companion::containsWordCold)
@@ -236,7 +238,7 @@ class MixEvalTest {
         val table: KeyNeighborTable,
         val companion: TdictPrefixIndex,
         val word: String,
-        val correctionAlone: String,
+        val correctionAlone: String?,
     )
 
     private class MixLine(val expectedLead: String, val sentence: String)

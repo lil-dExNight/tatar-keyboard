@@ -29,8 +29,10 @@ import kotlin.math.sqrt
 
 /**
  * Glide golden-vector exporter (`glide.jsonl`). Inert unless GLIDE_GOLDEN_OUT names an existing
- * directory holding keys-tt.tsv / keys-ru.tsv; its output feeds the iOS port's parity suite.
- * Nothing here reaches the APK.
+ * directory; its output feeds the iOS port's parity suite. The key geometry (keys-tt.tsv /
+ * keys-ru.tsv) comes from the committed, pinned copies under src/test/resources/golden (see
+ * KeyGeometryTsvTest); a same-named file in the output directory overrides them for a parity
+ * run against another port's own export. Nothing here reaches the APK.
  *
  *   GLIDE_GOLDEN_OUT=/path/to/dir ./gradlew :app:testDebugUnitTest --tests '*GlideGoldenExportTest*'
  *
@@ -59,8 +61,8 @@ class GlideGoldenExportTest {
             val fixtureRu = Geo("fixture-ru", "ru", GlideTestFixtures.russianRawKeys())
             // The key files carry rectangles only; the long-press keys come from the fixture of
             // the same layout, so the aliases match the built keyboard.
-            val keysTt = Geo("keys-tt", "tt", withMoreKeys(readKeys(File(out, "keys-tt.tsv")), fixtureTt.raw))
-            val keysRu = Geo("keys-ru", "ru", withMoreKeys(readKeys(File(out, "keys-ru.tsv")), fixtureRu.raw))
+            val keysTt = Geo("keys-tt", "tt", withMoreKeys(readKeys(KeyGeometryTsv.locate("tt", out)), fixtureTt.raw))
+            val keysRu = Geo("keys-ru", "ru", withMoreKeys(readKeys(KeyGeometryTsv.locate("ru", out)), fixtureRu.raw))
 
             val ttWords = selectWords(tatar.second, fixtureTt.raw, evalLines, true)
             val ruWords = selectWords(russian.second, keysRu.raw, emptyList(), false)
@@ -131,9 +133,9 @@ class GlideGoldenExportTest {
         if (geo.id == "fixture-tt") {
             // The generator mirror must reproduce the pinned calibration set byte for byte;
             // the asset rebuild rewrites the pins (scripts/rebuild_assets.py).
-            assertEquals(5117, words.size)
-            assertEquals(13956801, bytes.size)
-            assertEquals("5eb32845ef22b85c7c60ab400e48dd45de14ea591930ac4db13b40ba4a82f75a", sha)
+            assertEquals(5110, words.size)
+            assertEquals(14000219, bytes.size)
+            assertEquals("2218ef5143e88eb78a1583fb269ffc78cacdaec0c9a9ebb0acf8241d185132d0", sha)
         }
         w.write("{\"kind\":\"set\",\"id\":${json(geo.id)},\"words\":${words.size},\"rows\":${paths.size}," +
             "\"bytes\":${bytes.size},\"sha256\":${json(sha)}}\n")

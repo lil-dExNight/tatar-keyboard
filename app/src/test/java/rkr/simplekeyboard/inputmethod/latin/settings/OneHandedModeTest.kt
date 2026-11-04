@@ -30,10 +30,10 @@ import org.w3c.dom.Element
  * background-colored and free of key hitboxes, answering only the exit handle
  * (see [OneHandedExitHandleTest]).
  *
- * The geometry math (scale, dock paddings, the fifth-row floor, left/right symmetry) is pure and
- * tested directly; the wiring (the pref's path into the keyboard builder, the strip's hitbox
- * caps, the full-width surface views and docked strip cells) is pinned at the source level — this
- * project's JVM suite runs without Robolectric on purpose.
+ * The geometry math (scale, dock paddings, the fifth-row floor, left/right symmetry, the
+ * landscape gate) is pure and tested directly; the wiring (the pref's path into the keyboard
+ * builder, the strip's hitbox caps, the full-width surface views and docked strip cells) is
+ * pinned at the source level — this project's JVM suite runs without Robolectric on purpose.
  */
 class OneHandedModeTest {
 
@@ -107,7 +107,20 @@ class OneHandedModeTest {
         assertEquals(off, OneHandedMode.SIDE_DEFAULT)
     }
 
-    // --- The layout contract: every Tatar layout file keeps the fifth-row floor ---------
+    @Test
+    fun landscapeReadsTheModeAsOff() {
+        assertEquals(off, OneHandedMode.effectiveSide(left, true))
+        assertEquals(off, OneHandedMode.effectiveSide(right, true))
+        assertEquals(off, OneHandedMode.effectiveSide(off, true))
+        // A damaged pref value reads as off in both orientations.
+        assertEquals(off, OneHandedMode.effectiveSide(7, true))
+        assertEquals(left, OneHandedMode.effectiveSide(left, false))
+        assertEquals(right, OneHandedMode.effectiveSide(right, false))
+        assertEquals(off, OneHandedMode.effectiveSide(off, false))
+    }
+
+    // --- The layout contract: the phone files keep the fifth-row floor, the tablet file ---
+    // --- keeps the extra row on top at the tablet pitch ----------------------------------
 
     private fun resRoot(): File {
         val candidates = listOf(File("src/main/res"), File("app/src/main/res"))
@@ -143,16 +156,22 @@ class OneHandedModeTest {
         return width.removeSuffix("%p").toFloatOrNull()?.div(100f)
     }
 
-    private fun tatarRowFiles(): List<File> {
+    /**
+     * The phone buckets are the floor's home: the floor constant derives from the phone
+     * layout's key pitch on the 720 px device-test width. The tablet rows are narrower in
+     * %p but never narrower in physical terms (a 600 dp-wide tablet at the tablet pitch still
+     * gives keys far above the floor), so the floor stays phone-derived.
+     */
+    private fun phoneTatarRowFiles(): List<File> {
         val root = resRoot()
-        val dirs = listOf("xml", "xml-land", "xml-sw600dp", "xml-sw600dp-land")
-        return dirs.mapNotNull { File(root, "$it/rows_tatar.xml").takeIf(File::isFile) }
+        return listOf("xml", "xml-land")
+            .mapNotNull { dir -> File(root, "$dir/rows_tatar.xml").takeIf(File::isFile) }
     }
 
     @Test
-    fun everyTatarLayoutFileKeepsTheFifthRowFloorUnderTheScale() {
-        val files = tatarRowFiles()
-        assertTrue("rows_tatar.xml must exist in at least one resource bucket", files.isNotEmpty())
+    fun everyPhoneTatarLayoutFileKeepsTheFifthRowFloorUnderTheScale() {
+        val files = phoneTatarRowFiles()
+        assertTrue("rows_tatar.xml must exist in at least one phone bucket", files.isNotEmpty())
         for (file in files) {
             // getElementsByTagName, not the DFS above: document order matters — the first row
             // is the fifth (extra letters) row; the row's keyWidth is its keys' pitch, and a
@@ -179,10 +198,11 @@ class OneHandedModeTest {
     }
 
     @Test
-    fun theFloorIsTheNarrowestKeyTheTatarLayoutShips() {
+    fun theFloorIsTheNarrowestKeyThePhoneTatarLayoutShips() {
         // The floor constant derives from the narrowest shipped key pitch: the smallest %p width
-        // among rows_tatar.xml's rows and per-key overrides, on the 720 px reference width.
-        for (file in tatarRowFiles()) {
+        // among the phone rows_tatar.xml's rows and per-key overrides, on the 720 px reference
+        // width.
+        for (file in phoneTatarRowFiles()) {
             val fractions = descendants(parse(file))
                     .filter { it.tagName == "Row" || it.tagName == "Key" }
                     .mapNotNull(::widthFraction)
@@ -191,6 +211,35 @@ class OneHandedModeTest {
             assertEquals("${file.name}: the floor drifted from the narrowest shipped key",
                     narrowest!! * 720, OneHandedMode.MIN_FIFTH_ROW_KEY_WIDTH_PX, 0.05f)
         }
+    }
+
+    /**
+     * The tablet Tatar rows keep the phone's structure where it matters: the extra row stays
+     * the FIRST row (the layout probes of scripts/emulator-smoke.sh tap it by that position)
+     * and reuses the shared six keys — the tablet pitch lives on the include, so there is no
+     * tablet rowkeys copy to drift from the phone one.
+     */
+    @Test
+    fun tabletTatarRowsKeepTheExtraRowOnTop() {
+        val file = File(resRoot(), "xml-sw600dp/rows_tatar.xml")
+        assertTrue("the tablet Tatar rows must ship in xml-sw600dp", file.isFile)
+        val rowNodes = parse(file).getElementsByTagName("Row")
+        val firstRow = rowNodes.item(0) as Element
+        val includes = descendants(firstRow).filter { it.tagName == "include" }
+        assertEquals("the first tablet row is the extra row alone", 1, includes.size)
+        assertEquals("the first tablet row must be the extra Tatar letters",
+                "@xml/rowkeys_tatar_extra",
+                includes[0].getAttribute("latin:keyboardLayout"))
+        assertTrue("the tablet extra-row pitch must be a %p width on the include",
+                includes[0].getAttribute("latin:keyWidth").endsWith("%p"))
+        val rowkeys = listOf("xml-sw600dp", "xml")
+                .map { dir -> File(resRoot(), "$dir/rowkeys_tatar_extra.xml") }
+                .firstOrNull(File::isFile)
+                ?: error("rowkeys_tatar_extra.xml must resolve through the tablet chain")
+        val keys = descendants(parse(rowkeys)).filter { it.tagName == "Key" }
+        assertEquals("the extra row is six keys", 6, keys.size)
+        assertTrue("an extra-row key must not override the include's width",
+                keys.none { it.hasAttribute("latin:keyWidth") })
     }
 
     // --- The wiring (source contracts) --------------------------------------------------
@@ -217,7 +266,27 @@ class OneHandedModeTest {
         assertTrue(settings.contains("PREF_ONE_HANDED_SIDE = \"pref_one_handed_side\""))
         assertTrue(settings.contains("public static int readOneHandedSide(final SharedPreferences prefs)"))
         assertTrue(settings.contains("OneHandedMode.isValidSide(side)"))
-        assertTrue(settingsValues.contains("mOneHandedSide = Settings.readOneHandedSide(prefs)"))
+        assertTrue(settingsValues.contains(
+            "mOneHandedSide = OneHandedMode.effectiveSide(Settings.readOneHandedSide(prefs),"))
+    }
+
+    /**
+     * The landscape gate reads the orientation that SettingsValues already carries. The stored
+     * side must survive: the settings row and the exit handle read and write the PREF, never
+     * the gated field.
+     */
+    @Test
+    fun theOrientationIsReadBeforeTheSideItGates() {
+        val body = settingsValues.substringAfter("public SettingsValues(")
+        val orientationAt = body.indexOf(
+            "mDisplayOrientation = res.getConfiguration().orientation")
+        val sideAt = body.indexOf("mOneHandedSide = OneHandedMode.effectiveSide(")
+        assertTrue("SettingsValues must gate the one-handed side on the display orientation",
+                orientationAt >= 0 && sideAt >= 0)
+        assertTrue("the orientation must be read before the side it gates",
+                orientationAt < sideAt)
+        assertTrue(settingsValues.contains(
+            "mDisplayOrientation == Configuration.ORIENTATION_LANDSCAPE"))
     }
 
     @Test

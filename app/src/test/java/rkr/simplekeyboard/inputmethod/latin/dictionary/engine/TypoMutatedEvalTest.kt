@@ -286,6 +286,24 @@ class TypoMutatedEvalTest {
 
     // ---- Today's recovery baseline. ----
 
+    /**
+     * The fixture table carries the layout geometry, so every neighbor pair the mutation
+     * generator draws from is a geometric neighbor the engine's bonus recognizes. This ties the
+     * eval's sub class to the rank-key bit: a drift between the fixture and the pinned literal
+     * fails here before any recovery number moves.
+     */
+    @Test
+    fun theFixtureTableRecognizesEveryEvalNeighborPair() {
+        for ((letter, neighbors) in GEOMETRIC_NEIGHBORS) {
+            for (neighbor in neighbors) {
+                assertTrue(
+                    "${letter.toChar()}->${neighbor.toChar()}",
+                    neighborTable.areGeometricNeighbors(letter, neighbor),
+                )
+            }
+        }
+    }
+
     @Test
     fun typoRecoveryBaselinePerEditClass() {
         val index = requireNotNull(tatarIndex)
@@ -295,13 +313,30 @@ class TypoMutatedEvalTest {
 
         // The hit path is the completion path: TdictPrefixIndex.lookup returns the strip cells
         // (at most MAX_RESULTS = 4), exact candidates first, typo-recovery candidates only in
-        // cells the exact pass left empty. The production arm carries the layout-derived neighbor
-        // table (KeyNeighborTableBuilder.fromKeyboard on device, the equivalent fixture here);
-        // the control arm has no table, so only the exact pass runs.
+        // cells the exact pass left empty. Three arms: the production wiring (the TATAR policy,
+        // which arms the geometry-neighbor bonus, and the layout-derived neighbor table), the
+        // same wiring with the bonus flag off (isolates the geometry bit's contribution), and
+        // the exact-only control (no table at all).
         index.updateKeyNeighbors(neighborTable)
         val withFuzzy = countHits(index, set.rows)
         index.updateKeyNeighbors(null)
         val exactOnly = countHits(index, set.rows)
+
+        val noBonusPolicy = FuzzyEditPolicy(
+            FuzzyEditPolicy.TATAR.editClasses,
+            FuzzyEditPolicy.TATAR.sameLengthBonus,
+            FuzzyEditPolicy.TATAR.autocorrectClasses,
+            geometryNeighborBonus = false,
+        )
+        val noBonusIndex = requireNotNull(
+            TdictPrefixIndex.open(
+                ByteBuffer.wrap(dictionaryRaw), dictionaryIdentity,
+                dictionaryEntryCount, dictionaryRawSize, TatarSuffixRules,
+                noBonusPolicy, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+            ),
+        )
+        noBonusIndex.updateKeyNeighbors(neighborTable)
+        val noBonus = countHits(noBonusIndex, set.rows)
 
         val rowsPerClass = set.rows.groupingBy { it.editClass }.eachCount()
         var totalTop1 = 0
@@ -310,6 +345,9 @@ class TypoMutatedEvalTest {
         var totalExactTop1 = 0
         var totalExactVisible = 0
         var totalExactEngine = 0
+        var totalNoBonusTop1 = 0
+        var totalNoBonusVisible = 0
+        var totalNoBonusEngine = 0
         for ((className, _) in CLASS_TAGS) {
             val classRows = rowsPerClass.getValue(className)
             val top1 = withFuzzy.top1PerClass.getValue(className)
@@ -318,12 +356,18 @@ class TypoMutatedEvalTest {
             val exactTop1 = exactOnly.top1PerClass.getValue(className)
             val exactVisible = exactOnly.visibleTop3PerClass.getValue(className)
             val exactEngine = exactOnly.engineTop4PerClass.getValue(className)
+            val noBonusTop1 = noBonus.top1PerClass.getValue(className)
+            val noBonusVisible = noBonus.visibleTop3PerClass.getValue(className)
+            val noBonusEngine = noBonus.engineTop4PerClass.getValue(className)
             totalTop1 += top1
             totalVisible += visible
             totalEngine += engine
             totalExactTop1 += exactTop1
             totalExactVisible += exactVisible
             totalExactEngine += exactEngine
+            totalNoBonusTop1 += noBonusTop1
+            totalNoBonusVisible += noBonusVisible
+            totalNoBonusEngine += noBonusEngine
             println("EVAL|typo_${className}_rows|$classRows")
             println("EVAL|typo_${className}_top1_hits|$top1")
             println("EVAL|typo_${className}_top1_pct|${format(top1 * 100.0 / classRows)}")
@@ -331,10 +375,14 @@ class TypoMutatedEvalTest {
             println("EVAL|typo_${className}_visible_top3_pct|${format(visible * 100.0 / classRows)}")
             println("EVAL|typo_${className}_engine_top4_hits|$engine")
             println("EVAL|typo_${className}_engine_top4_pct|${format(engine * 100.0 / classRows)}")
+            println("EVAL|typo_${className}_top1_hits_nobonus|$noBonusTop1")
+            println("EVAL|typo_${className}_visible_top3_hits_nobonus|$noBonusVisible")
+            println("EVAL|typo_${className}_engine_top4_hits_nobonus|$noBonusEngine")
             println("EVAL|typo_${className}_top1_hits_exactonly|$exactTop1")
             println("EVAL|typo_${className}_visible_top3_hits_exactonly|$exactVisible")
             println("EVAL|typo_${className}_engine_top4_hits_exactonly|$exactEngine")
             assertTrue(top1 <= visible && visible <= engine)
+            assertTrue(noBonusTop1 <= noBonusVisible && noBonusVisible <= noBonusEngine)
         }
         println("EVAL|typo_total_rows|${set.rows.size}")
         println("EVAL|typo_total_top1_hits|$totalTop1")
@@ -346,15 +394,43 @@ class TypoMutatedEvalTest {
         println("EVAL|typo_total_top1_hits_exactonly|$totalExactTop1")
         println("EVAL|typo_total_visible_top3_hits_exactonly|$totalExactVisible")
         println("EVAL|typo_total_engine_top4_hits_exactonly|$totalExactEngine")
+        println("EVAL|typo_total_top1_hits_nobonus|$totalNoBonusTop1")
+        println("EVAL|typo_total_visible_top3_hits_nobonus|$totalNoBonusVisible")
+        println("EVAL|typo_total_engine_top4_hits_nobonus|$totalNoBonusEngine")
 
-        assertEquals(PIN_SUB_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("sub"))
-        assertEquals(PIN_DEL_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("del"))
-        assertEquals(PIN_INS_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("ins"))
-        assertEquals(PIN_TRANS_ENGINE_TOP4_HITS, withFuzzy.engineTop4PerClass.getValue("trans"))
+        // The bonus-off arm is the pre-bonus ranking exactly: its counts keep the old pins, so a
+        // rank drift with the flag off fails here. The production arm carries the armed bonus and
+        // pins the post-bonus counts (re-pinned when the bit was added; see the delta prints
+        // above).
+        assertEquals(PIN_SUB_ENGINE_TOP4_HITS, noBonus.engineTop4PerClass.getValue("sub"))
+        assertEquals(PIN_DEL_ENGINE_TOP4_HITS, noBonus.engineTop4PerClass.getValue("del"))
+        assertEquals(PIN_INS_ENGINE_TOP4_HITS, noBonus.engineTop4PerClass.getValue("ins"))
+        assertEquals(PIN_TRANS_ENGINE_TOP4_HITS, noBonus.engineTop4PerClass.getValue("trans"))
+        assertEquals(PIN_SUB_ENGINE_TOP4_HITS_GEO, withFuzzy.engineTop4PerClass.getValue("sub"))
+        assertEquals(PIN_DEL_ENGINE_TOP4_HITS_GEO, withFuzzy.engineTop4PerClass.getValue("del"))
+        assertEquals(PIN_INS_ENGINE_TOP4_HITS_GEO, withFuzzy.engineTop4PerClass.getValue("ins"))
+        assertEquals(PIN_TRANS_ENGINE_TOP4_HITS_GEO, withFuzzy.engineTop4PerClass.getValue("trans"))
         assertEquals(PIN_SUB_ENGINE_TOP4_HITS_EXACTONLY, exactOnly.engineTop4PerClass.getValue("sub"))
         assertEquals(PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY, exactOnly.engineTop4PerClass.getValue("del"))
         assertEquals(PIN_INS_ENGINE_TOP4_HITS_EXACTONLY, exactOnly.engineTop4PerClass.getValue("ins"))
         assertEquals(PIN_TRANS_ENGINE_TOP4_HITS_EXACTONLY, exactOnly.engineTop4PerClass.getValue("trans"))
+        val recovered = withFuzzy.engineTop4PerClass
+        assertTrue(
+            "sub recovery ${recovered.getValue("sub")} under the floor of $PIN_SUB_ENGINE_TOP4_HITS",
+            recovered.getValue("sub") >= PIN_SUB_ENGINE_TOP4_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "del recovery ${recovered.getValue("del")} under the floor of $PIN_DEL_ENGINE_TOP4_HITS",
+            recovered.getValue("del") >= PIN_DEL_ENGINE_TOP4_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "ins recovery ${recovered.getValue("ins")} under the floor of $PIN_INS_ENGINE_TOP4_HITS",
+            recovered.getValue("ins") >= PIN_INS_ENGINE_TOP4_HITS * QUALITY_FLOOR,
+        )
+        assertTrue(
+            "trans recovery ${recovered.getValue("trans")} under the floor of $PIN_TRANS_ENGINE_TOP4_HITS",
+            recovered.getValue("trans") >= PIN_TRANS_ENGINE_TOP4_HITS * QUALITY_FLOOR,
+        )
     }
 
     private class HitCount(
@@ -549,32 +625,44 @@ class TypoMutatedEvalTest {
         // Pins over the committed dictionary, eval set and layout; re-pin when an input changes.
         private const val PIN_SUBSTRATE_WORDS = 2_381
         private const val PIN_SET_ROWS = 9_524
-        private const val PIN_SET_BYTES = 310_498
+        private const val PIN_SET_BYTES = 310_834
         private const val PIN_SET_SHA256 =
-            "8b60e4b146981d737b351abbbdfd478a3aaa5eedb51a8769ff0cab54c5b5636e"
+            "80891b11c01776303adc1a1cb8fa0b3eadb8b534bb447f8186d6348a7000acd8"
 
-        // Measured baseline recovery counts (the production arm, then the exact-only control).
-        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_194
-        private const val PIN_DEL_ENGINE_TOP4_HITS = 1_841
-        private const val PIN_INS_ENGINE_TOP4_HITS = 2_340
-        private const val PIN_TRANS_ENGINE_TOP4_HITS = 2_177
+        // Quality floors beside the exact pins: per-class recovery must stay within 5% of its
+        // pinned count, so a dictionary rebuild cannot be re-pinned through a silent quality
+        // drop.
+        private const val QUALITY_FLOOR = 0.95
+
+        // Measured baseline recovery counts. The un-suffixed pins hold the bonus-off arm (the
+        // pre-bonus ranking); the _GEO pins hold the production arm (the TATAR policy with the
+        // geometry-neighbor bonus armed); then the exact-only control.
+        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_186
+        private const val PIN_DEL_ENGINE_TOP4_HITS = 1_831
+        private const val PIN_INS_ENGINE_TOP4_HITS = 2_332
+        private const val PIN_TRANS_ENGINE_TOP4_HITS = 2_161
+        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 2_197
+        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_826
+        private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_331
+        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_157
         private const val PIN_SUB_ENGINE_TOP4_HITS_EXACTONLY = 0
-        private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 349
+        // The exact-only control: only a last-position deletion can be a prefix hit.
+        private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 326
         private const val PIN_INS_ENGINE_TOP4_HITS_EXACTONLY = 0
         private const val PIN_TRANS_ENGINE_TOP4_HITS_EXACTONLY = 0
         private const val PIN_AUTOCORRECT_FALSE_TRIGGERS = 0
 
-        private const val PIN_VALID_OOV_ROWS = 175
-        private const val PIN_VALID_OOV_SET_BYTES = 6_157
+        private const val PIN_VALID_OOV_ROWS = 220
+        private const val PIN_VALID_OOV_SET_BYTES = 7_814
         private const val PIN_VALID_OOV_SET_SHA256 =
-            "e843019198ef8df8d9d4feef1895e3048dbd842e1fc3c0820d7dce8caaa2761d"
-        private const val PIN_VALID_OOV_SEEN_FORM_WORDS = 12
-        private const val PIN_VALID_OOV_NEW_FORM_WORDS = 59
-        private const val PIN_VALID_OOV_UNSEEN_STEM_WORDS = 104
+            "fc539f876541dce34c3706cefc00c0c2b05b60e8b559aa606a1693539a8b4dd2"
+        private const val PIN_VALID_OOV_SEEN_FORM_WORDS = 6
+        private const val PIN_VALID_OOV_NEW_FORM_WORDS = 87
+        private const val PIN_VALID_OOV_UNSEEN_STEM_WORDS = 127
         private const val PIN_VALID_OOV_SEEN_FORM_FALSE_REPLACEMENTS = 0
-        private const val PIN_VALID_OOV_NEW_FORM_FALSE_REPLACEMENTS = 2
-        private const val PIN_VALID_OOV_UNSEEN_STEM_FALSE_REPLACEMENTS = 0
-        private const val PIN_VALID_OOV_FALSE_REPLACEMENTS = 2
+        private const val PIN_VALID_OOV_NEW_FORM_FALSE_REPLACEMENTS = 1
+        private const val PIN_VALID_OOV_UNSEEN_STEM_FALSE_REPLACEMENTS = 3
+        private const val PIN_VALID_OOV_FALSE_REPLACEMENTS = 4
 
         private val SAFETY_STRATA = listOf("seen_form", "new_form_of_seen_stem", "unseen_stem")
         private val neighborTable = TatarLayoutTestFixtures.tatarNeighborTable()
@@ -584,6 +672,13 @@ class TypoMutatedEvalTest {
         internal lateinit var substrate: List<String>
         private lateinit var safetyText: String
         private lateinit var safetyRows: List<SafetyRow>
+
+        // The validated dictionary, kept for opening the bonus-off control arm of
+        // [typoRecoveryBaselinePerEditClass] without a second asset inflation.
+        private lateinit var dictionaryRaw: ByteArray
+        private lateinit var dictionaryIdentity: DictionaryIdentity
+        private var dictionaryEntryCount = 0L
+        private var dictionaryRawSize = 0L
 
         @JvmStatic
         @BeforeClass
@@ -617,6 +712,10 @@ class TypoMutatedEvalTest {
                     validated.rawSha256,
                 )
                 val raw = rawFile.readBytes()
+                dictionaryRaw = raw
+                dictionaryIdentity = identity
+                dictionaryEntryCount = validated.entryCount
+                dictionaryRawSize = validated.rawSize
                 // The production Tatar wiring: suffix rules + the TATAR fuzzy policy.
                 tatarIndex = requireNotNull(
                     TdictPrefixIndex.open(

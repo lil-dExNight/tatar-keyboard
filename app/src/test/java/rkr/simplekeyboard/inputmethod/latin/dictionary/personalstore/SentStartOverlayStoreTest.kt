@@ -154,7 +154,7 @@ class SentStartOverlayStoreTest {
         replaceFails = false
         store.flush() // the boundary: the counters reach the disk and the suppression lifts
         assertEquals("the flush did not need another whole-file write", 1, overlayReplacements)
-        val salt = File(directory, "salt-sentstart.bin").readBytes()
+        val salt = File(directory, "salt-sentstart-$subtype-s1-f1.bin").readBytes()
         val counters = PendingCounters.parse(pendingFile(directory).readBytes())
         assertEquals(
             "six commits were counted, none lost",

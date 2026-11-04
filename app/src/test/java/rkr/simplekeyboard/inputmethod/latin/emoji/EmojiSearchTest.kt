@@ -193,6 +193,42 @@ class EmojiSearchTest {
         }
     }
 
+    /**
+     * Searchability sweep: every emoji of the shipped index is findable by the first four
+     * characters of its own (Russian) name — the whole name when shorter. A name prefix is the
+     * strongest signal the index has (the name bucket ranks first), so the only way an emoji
+     * falls out is the MAX_RESULTS cap on a prefix many names share; the known collisions of
+     * that kind are documented below, and a new one fails here until it is documented or the
+     * name is fixed. At least 99% of the set must be findable.
+     */
+    @Test
+    fun everyEmojiIsFindableByAPrefixOfItsOwnName() {
+        val lines = File(sourceRoot(), "assets/emoji/emoji_search_v1.txt")
+            .readText(Charsets.UTF_8).split('\n').filter { it.isNotEmpty() }
+        val index = EmojiSearchIndex.parse(lines.joinToString("\n") + "\n")
+        val misses = ArrayList<String>()
+        for (line in lines) {
+            val fields = line.split('\t')
+            val sequence = fields[0]
+            val name = fields[1]
+            val query = name.substring(0, name.offsetByCodePoints(0, minOf(4, name.codePointCount(0, name.length))))
+            if (sequence !in results(index, query)) {
+                misses += "$sequence\t$name\t$query"
+            }
+        }
+        // Known collisions (sequence, name, query): none — no name prefix collides beyond the
+        // result cap today. A new miss lands here; document it or fix the name.
+        val knownCollisions = emptyList<String>()
+        assertEquals(
+            "new searchability collisions (sequence, name, query)",
+            knownCollisions, misses,
+        )
+        assertTrue(
+            "findable by own-name prefix: ${lines.size - misses.size} of ${lines.size} (< 99%)",
+            misses.size * 100 <= lines.size,
+        )
+    }
+
     @Test
     fun theShippedIndexIsCreditedInTheNoticeBesideIt() {
         val notice = File(sourceRoot(), "assets/emoji/NOTICE.txt").readText()

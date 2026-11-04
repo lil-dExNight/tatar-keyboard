@@ -80,7 +80,8 @@ class TtNextWordPredictP95Test {
             val index = openDictionary(DictionaryArtifactSpec.TATAR_TOP100K_V1)
             tatarComputer = CompositePrefixComputer(
                 index, PersonalCandidateSource.EMPTY,
-                GlobalTopFrequencyFallbackFactory.createFallbackWords(index),
+                GlobalTopFrequencyFallbackFactory(DictionaryArtifactSpec.TATAR_TOP100K_V1.harmonyTwins)
+                    .createFallbackWords(index),
             ).also {
                 it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V1, index))
             }

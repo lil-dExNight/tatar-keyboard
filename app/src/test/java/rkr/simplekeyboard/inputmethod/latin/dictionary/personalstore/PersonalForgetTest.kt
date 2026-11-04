@@ -74,12 +74,14 @@ class PersonalForgetTest {
     }
 
     @Test
-    fun anOrdinaryDictionaryWordIsNotOwnedAndTheGestureDoesNothing() {
+    fun anOrdinaryDictionaryWordIsNotOwnedAndGetsTheAddOffer() {
         val snapshot = snapshotOf("Гүзәл")
         assertEquals(-1, snapshot.indexOfNormalized(PersonalWordFilter.normalize("китап")))
-        assertTrue("the production path returns null for a word it does not own, and the caller " +
-            "returns without showing anything",
-            ime.contains("if (savedForm == null) {"))
+        assertEquals("the production decision for an unsaved but addable word",
+            PersonalAdd.Action.ADD,
+            PersonalAdd.actionFor(null, PersonalAdd.addableNormalizedForm("tt_RU", "китап")))
+        assertTrue("and the router dispatches on the two lookups",
+            ime.contains("PersonalAdd.actionFor(savedForm, addableForm)"))
     }
 
     @Test
@@ -138,14 +140,16 @@ class PersonalForgetTest {
 
     @Test
     fun theDialogNeverCommitsTextAndIsGatedBySetting() {
-        val dialog = ime.substringAfter("private void showForgetPersonalWordDialog(")
-            .substringBefore("private void showSuggestionsUnavailableDialog()")
+        val router = ime.substringAfter("private void onStripWordLongPress(")
+            .substringBefore("private void showForgetPersonalWordDialog(")
         assertTrue("gated by the personal-dictionary setting",
-            dialog.contains("Settings.readPersonalDictionaryEnabled(mDevicePrefs)"))
+            router.contains("Settings.readPersonalDictionaryEnabled(mDevicePrefs)"))
+        val dialogs = ime.substringAfter("private void showForgetPersonalWordDialog(")
+            .substringBefore("private void showSuggestionsUnavailableDialog()")
         assertTrue("attached to the IME window like the subtype picker",
-            dialog.contains("attachDialogToInputWindow(dialog, windowToken)"))
+            dialogs.contains("attachDialogToInputWindow(dialog, windowToken)"))
         assertFalse("a long press must never insert text",
-            dialog.contains("commitText") || dialog.contains("commitSuggestion"))
+            dialogs.contains("commitText") || dialogs.contains("commitSuggestion"))
         assertTrue("and erasure unbinds what the band shows",
             File(sourceRoot(),
                 "java/rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/PersonalForget.kt")
@@ -156,7 +160,7 @@ class PersonalForgetTest {
     fun theSavedSpellingIsWhatTheDialogTitleShows() {
         assertTrue("the title takes the SAVED form, not the string on screen",
             ime.contains("getString(R.string.personal_dictionary_forget_title, savedForm)"))
-        assertNull("and a word that is not owned produces no dialog at all",
+        assertNull("and the lookup answers null for a word the dictionary does not own",
             snapshotOf("Гүзәл").let {
                 val index = it.indexOfNormalized("китап")
                 if (index >= 0) it.rawFormAt(index) else null
