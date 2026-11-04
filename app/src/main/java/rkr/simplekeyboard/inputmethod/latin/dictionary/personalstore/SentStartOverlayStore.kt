@@ -161,7 +161,7 @@ internal class SentStartOverlayStore(
         val countersGone = directory != null &&
             deleted { deleteFile(directory, File(directory, pendingFileName())) }
         val saltGone = directory != null &&
-            deleted { deleteFile(directory, File(directory, SALT_FILE_NAME)) }
+            deleted { deleteFile(directory, File(directory, saltFileName())) }
         val quarantineGone = directory != null &&
             deleted { deleteFile(directory, File(directory, quarantineFileName())) }
         // The notice marks and the pending quarantine slot go too, outside the answer below; see
@@ -339,17 +339,17 @@ internal class SentStartOverlayStore(
     }
 
     /**
-     * The salt for the pending hashes: random bytes in this store's own salt file, created on
-     * first use and deleted by [clearAll], so erasing one feature does not invalidate another's
-     * progress. Returns null when it can be neither read nor created; then nothing is counted
-     * (see [PersonalDictionaryStore.saltOrCreate]).
+     * The salt for the pending hashes: random bytes in this subtype's own salt file, created on
+     * first use and deleted by [clearAll], so erasing one feature or language does not invalidate
+     * another's progress. Returns null when it can be neither read nor created; then nothing is
+     * counted (see [PersonalDictionaryStore.saltOrCreate]).
      */
     private fun saltOrCreate(): ByteArray? {
         salt?.let { return it }
         return try {
             val directory = directoryProvider.personalDirectory()
             ensureDirectory(directory)
-            val file = File(directory, SALT_FILE_NAME)
+            val file = File(directory, saltFileName())
             val existing = if (file.isFile && file.length() == SALT_SIZE.toLong()) {
                 file.readBytes()
             } else {
@@ -468,6 +468,8 @@ internal class SentStartOverlayStore(
 
     private fun pendingFileName(): String = "pending-sentstart-$subtypeId-s1-f1.bin"
 
+    private fun saltFileName(): String = "salt-sentstart-$subtypeId-s1-f1.bin"
+
     /**
      * Removes this subtype's `.tsent` file. Fails only by throwing; callers handle it with `try`
      * or [deleted].
@@ -539,7 +541,6 @@ internal class SentStartOverlayStore(
         private const val TEMP_SUFFIX = ".tmp"
         private const val MAX_TEMP_ATTEMPTS = 100
         private const val FREE_SPACE_RESERVE_BYTES = 64L * 1024L
-        private const val SALT_FILE_NAME = "salt-sentstart.bin"
         private const val SALT_SIZE = 16
 
         /**

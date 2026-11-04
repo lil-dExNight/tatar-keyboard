@@ -212,7 +212,7 @@ internal class PersonalEmojiStore(
         val countersGone = directory != null &&
             deleted { deleteFile(directory, File(directory, pendingFileName())) }
         val saltGone = directory != null &&
-            deleted { deleteFile(directory, File(directory, SALT_FILE_NAME)) }
+            deleted { deleteFile(directory, File(directory, saltFileName())) }
         val quarantineGone = directory != null &&
             deleted { deleteFile(directory, File(directory, quarantineFileName())) }
         // The notice marks and the pending quarantine slot go too, outside the answer below; see
@@ -504,15 +504,15 @@ internal class PersonalEmojiStore(
     }
 
     /**
-     * The salt for the pending hashes, in this store's own `salt-emoji.bin`, so erasing one feature
-     * does not invalidate another's progress. See `PersonalDictionaryStore.saltOrCreate`.
+     * The salt for the pending hashes, in this subtype's own salt file, so erasing one feature
+     * or language does not invalidate another's progress. See `PersonalDictionaryStore.saltOrCreate`.
      */
     private fun saltOrCreate(): ByteArray? {
         salt?.let { return it }
         return try {
             val directory = directoryProvider.personalDirectory()
             ensureDirectory(directory)
-            val file = File(directory, SALT_FILE_NAME)
+            val file = File(directory, saltFileName())
             val existing = if (file.isFile && file.length() == SALT_SIZE.toLong()) {
                 file.readBytes()
             } else {
@@ -640,6 +640,8 @@ internal class PersonalEmojiStore(
 
     private fun pendingFileName(): String = "pending-emoji-$subtypeId-s1-f1.bin"
 
+    private fun saltFileName(): String = "salt-emoji-$subtypeId-s1-f1.bin"
+
     /** Removes this subtype's `.tpersem` file. Fails only by throwing. */
     private fun deleteFile() {
         val directory = directoryProvider.personalDirectory()
@@ -691,7 +693,6 @@ internal class PersonalEmojiStore(
         private const val TEMP_SUFFIX = ".tmp"
         private const val MAX_TEMP_ATTEMPTS = 100
         private const val FREE_SPACE_RESERVE_BYTES = 64L * 1024L
-        private const val SALT_FILE_NAME = "salt-emoji.bin"
         private const val SALT_SIZE = 16
 
         /** Appended to the ordinary file name for the quarantine slot. See [PersonalDictionaryStore]. */

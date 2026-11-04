@@ -272,7 +272,7 @@ internal class PersonalDictionaryStore(
         val countersGone = directory != null &&
             deleted { deleteFile(directory, File(directory, pendingFileName())) }
         val saltGone = directory != null &&
-            deleted { deleteFile(directory, File(directory, SALT_FILE_NAME)) }
+            deleted { deleteFile(directory, File(directory, saltFileName())) }
         // The quarantined file (see [quarantine]) holds the user's words, so a copy left behind is
         // a failed erasure.
         val quarantineGone = directory != null &&
@@ -638,16 +638,16 @@ internal class PersonalDictionaryStore(
     }
 
     /**
-     * The salt for the pending hashes: random bytes in `salt.bin`, created on first use and deleted
-     * by [clearAll]. Returns null when it can be neither read nor created; then nothing is counted
-     * (no learning rather than unsalted keys).
+     * The salt for the pending hashes: random bytes in this subtype's own salt file, created on
+     * first use and deleted by [clearAll]. Returns null when it can be neither read nor created;
+     * then nothing is counted (no learning rather than unsalted keys).
      */
     private fun saltOrCreate(): ByteArray? {
         salt?.let { return it }
         return try {
             val directory = directoryProvider.personalDirectory()
             ensureDirectory(directory)
-            val file = File(directory, SALT_FILE_NAME)
+            val file = File(directory, saltFileName())
             val existing = if (file.isFile && file.length() == SALT_SIZE.toLong()) {
                 file.readBytes()
             } else {
@@ -782,6 +782,8 @@ internal class PersonalDictionaryStore(
 
     private fun pendingFileName(): String = "pending-$subtypeId-s1-f1.bin"
 
+    private fun saltFileName(): String = "salt-$subtypeId-s1-f1.bin"
+
     /**
      * Removes this subtype's `.tpers` file. Fails only by throwing; callers handle it with `try` or
      * [deleted].
@@ -830,7 +832,6 @@ internal class PersonalDictionaryStore(
         private const val TEMP_SUFFIX = ".tmp"
         private const val MAX_TEMP_ATTEMPTS = 100
         private const val FREE_SPACE_RESERVE_BYTES = 64L * 1024L
-        private const val SALT_FILE_NAME = "salt.bin"
         private const val SALT_SIZE = 16
 
         /**
