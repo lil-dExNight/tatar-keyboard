@@ -11,6 +11,45 @@ These hold for every release:
   `RELEASE_CERT_SHA256` in `scripts/release_check.sh`; compare it with the output of
   `apksigner verify --print-certs <apk>`.
 
+
+## [3.14.0] — 2026-11-04
+
+### Added
+
+- Autocorrect works in both languages: single-edit typos are corrected when the replacement
+  fits the previous word, and valid words of the other language are left alone even before
+  its dictionary warms up (bundled companion lists).
+- Next-word suggestions use eight packed successors per head, and the дә/да choice follows
+  the vowel harmony of the committed word.
+- A long-press on a suggestion offers saving the word to the personal dictionary.
+- TalkBack announces emoji names instead of raw sequences; a single recent emoji can be
+  removed and recents can be cleared from the panel.
+- A compact gestures card in setup and settings names the space trackpad, the delete slide,
+  the word-delete flick and glide typing.
+- Tablet layouts (sw600dp) for the Tatar and Russian keyboards, and a landscape bottom
+  offset.
+
+### Changed
+
+- Glide decoding is retuned (separate x/y sigmas, Fitts-law duration, a short-word class);
+  refused glides leave a mark on the fading trail below Android 10 and respect
+  capitals-only fields.
+- The dictionary activates at process start by hash only (3.8x faster); the full structural
+  walk runs at publication, quarantine and on any mismatch.
+- Fresh Tatoeba and Leipzig corpora feed both dictionaries; the Tatar eval set is
+  re-aligned with the training-frequency leak closed.
+
+### Fixed
+
+- Clearing one language's learned data no longer orphans the other language's in-flight
+  learning progress (per-language salt files).
+- A saved word with initial capitals now takes the glide pair boost it earned.
+- The expired dependency-verification keys are rotated, so cold-cache builds keep passing.
+
+### Removed
+
+- The unused per-screen row_cyrillic4 layout overrides.
+
 ## [3.13.0] — 2026-11-02
 
 ### Fixed

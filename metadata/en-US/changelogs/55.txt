@@ -1,0 +1,6 @@
+• Autocorrect in both languages, with next-word and second-language protection
+• Smarter glide typing; refused glides now leave a visible mark
+• Long-press a suggestion to save it to the personal dictionary
+• TalkBack reads emoji names; remove a single recent or clear them all
+• Tablet layouts, landscape fix, and a gestures guide in settings
+• Faster startup: the dictionary now validates by hash
