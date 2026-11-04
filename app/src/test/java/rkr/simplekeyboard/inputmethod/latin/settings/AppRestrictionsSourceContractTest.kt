@@ -16,6 +16,7 @@
 
 package rkr.simplekeyboard.inputmethod.latin.settings
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -28,7 +29,8 @@ import java.io.File
  *
  * The loader takes a `Bundle` and a `SharedPreferences.Editor`, neither of which exists on a plain
  * JVM, so the guard is pinned at the source level — the same way the other settings contracts in
- * this package are.
+ * this package are. The policy surface is pinned here too: which keys the loader writes values
+ * for and which app_restrictions.xml declares.
  */
 class AppRestrictionsSourceContractTest {
 
@@ -38,6 +40,16 @@ class AppRestrictionsSourceContractTest {
             ?: error("cannot locate app/src/main/java from ${File(".").absolutePath}")
         val file = File(root, "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java")
         assertTrue("Settings.java is missing", file.isFile)
+        return file.readText()
+    }
+
+    private fun restrictionsXml(): String {
+        val candidates = listOf(
+            File("src/main/res/xml/app_restrictions.xml"),
+            File("app/src/main/res/xml/app_restrictions.xml"))
+        val file = candidates.firstOrNull(File::isFile)
+            ?: error("cannot locate app/src/main/res/xml/app_restrictions.xml " +
+                "from ${File(".").absolutePath}")
         return file.readText()
     }
 
@@ -71,6 +83,31 @@ class AppRestrictionsSourceContractTest {
         assertTrue(
             "swallowing NumberFormatException must be explained by a comment",
             Regex("""catch\s*\(NumberFormatException[^)]*\)\s*\{[^}]*//""").containsMatchIn(text),
+        )
+    }
+
+    /**
+     * No restriction branch writes the suggestions pref; a delivered-but-unhandled key can still
+     * disable the settings row (details in the assertion messages).
+     */
+    @Test
+    fun noRestrictionKeyMapsToTheSuggestionsMasterSwitch() {
+        assertTrue(
+            "the literal checked against the XML must be the constant's actual value",
+            settingsSource().contains(
+                "PREF_TATAR_SUGGESTIONS = \"pref_tatar_suggestions\""),
+        )
+        assertFalse(
+            "app_restrictions.xml must not declare the suggestions pref: a delivered-but-" +
+                "unhandled key is still recorded in ACTIVE_RESTRICTIONS and disables the " +
+                "settings row while the setup switch keeps writing",
+            restrictionsXml().contains("android:key=\"pref_tatar_suggestions\""),
+        )
+        assertFalse(
+            "loadRestrictions must not handle PREF_TATAR_SUGGESTIONS: a handled key would let " +
+                "a policy value override the setup switch's write, so that write would need " +
+                "the settings row's gate",
+            settingsSource().contains("case PREF_TATAR_SUGGESTIONS:"),
         )
     }
 }

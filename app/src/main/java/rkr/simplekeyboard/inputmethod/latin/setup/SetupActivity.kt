@@ -164,7 +164,11 @@ class SetupActivity : Activity() {
         }
 
         // The same switch the settings screen shows: one pref, read live on
-        // entry, so the card and the settings row never disagree.
+        // entry, so the card and the settings row never disagree. The write
+        // needs no restriction check: no restriction branch ever writes a
+        // value for this pref (pinned by AppRestrictionsSourceContractTest).
+        // A delivered-but-unhandled key could still disable the settings row
+        // (the loader records every delivered key), not flip the switch value.
         val prefs = PreferenceManagerCompat.getDeviceSharedPreferences(this)
         val suggestionsSwitch = findViewById<Switch>(R.id.setup_suggestions_switch)
         suggestionsSwitch.isChecked = AppSettings.readTatarSuggestionsEnabled(prefs)

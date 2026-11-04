@@ -27,15 +27,21 @@ import org.junit.Test
  * Checked from source because these JVM tests have no Android framework to observe logcat with.
  * Scanned packages, `.java` and `.kt` alike:
  *
+ *   * `accessibility/`
+ *   * `compat/`
+ *   * `event/`
  *   * `keyboard/` (incl. `keyboard/internal/`)
  *   * `latin/` top level (LatinIME, RichInputConnection and the small root classes — the
  *     subpackages are scan roots of their own, so the root is not recursed)
  *   * `latin/dictionary/`
  *   * `latin/emoji/`
  *   * `latin/inputlogic/`
+ *   * `latin/settings/` (incl. `latin/settings/backup/`)
  *   * `latin/setup/`
  *   * `latin/suggestions/`
  *   * `latin/utils/`
+ *
+ * `accessibility/`, `compat/`, `event/` and `latin/settings/backup/` carry no Log call sites.
  *
  * Four rules:
  *
@@ -300,11 +306,15 @@ class LogSafetySourceContractTest {
         const val LATIN_ROOT = "rkr/simplekeyboard/inputmethod/latin"
 
         val SCAN_PACKAGES = listOf(
+            "rkr/simplekeyboard/inputmethod/accessibility",
+            "rkr/simplekeyboard/inputmethod/compat",
+            "rkr/simplekeyboard/inputmethod/event",
             "rkr/simplekeyboard/inputmethod/keyboard",
             LATIN_ROOT,
             "rkr/simplekeyboard/inputmethod/latin/dictionary",
             "rkr/simplekeyboard/inputmethod/latin/emoji",
             "rkr/simplekeyboard/inputmethod/latin/inputlogic",
+            "rkr/simplekeyboard/inputmethod/latin/settings",
             "rkr/simplekeyboard/inputmethod/latin/setup",
             "rkr/simplekeyboard/inputmethod/latin/suggestions",
             "rkr/simplekeyboard/inputmethod/latin/utils",
@@ -397,6 +407,14 @@ class LogSafetySourceContractTest {
          * errors. Positions and flags only, never a payload.
          *
          * latin/SystemBroadcastReceiver.java — fixed-string locale-change notice (reachable).
+         *
+         * latin/settings/Settings.java — restriction-loading notices: the case branches log
+         * the matched policy constant name (PREF_AUTO_CAP and friends); the default branch
+         * logs an unrecognized policy-supplied key name. Restriction values are never logged.
+         * The preference-changed warning is a fixed string.
+         *
+         * latin/settings/SettingsHostActivity.kt — fixed-string browser-missing error
+         * (reachable).
          *
          * latin/setup/SetupActivity.kt — a fixed-string setup-wizard error with the caught
          * exception (reachable).
@@ -541,6 +559,21 @@ class LogSafetySourceContractTest {
             "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"selection delete refused: nothing is selected\");",
             // latin/SystemBroadcastReceiver.java — fixed string (reachable).
             "rkr/simplekeyboard/inputmethod/latin/SystemBroadcastReceiver.java::Log.i(TAG, \"System locale changed\");",
+            // latin/settings/Settings.java — reachable, fixed strings plus restriction key
+            // names: case branches log the matched policy constant (e.g. PREF_AUTO_CAP), the
+            // default branch an unrecognized policy-supplied name; values are never logged.
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.w(TAG, \"onSharedPreferenceChanged called before loadSettings.\");",
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.i(TAG, \"Loading restriction: \" + key);",
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.i(TAG, \"Loading restriction: \" + key);",
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.i(TAG, \"Loading restriction: \" + key);",
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.i(TAG, \"Loading restriction: \" + key);",
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.i(TAG, \"Loading restriction: \" + key);",
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.i(TAG, \"Loading restriction: \" + key);",
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.i(TAG, \"Loading restriction: \" + key);",
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.i(TAG, \"Ignoring permissive restriction: \" + key);",
+            "rkr/simplekeyboard/inputmethod/latin/settings/Settings.java::Log.e(TAG, \"Unhandled restriction: \" + key);",
+            // latin/settings/SettingsHostActivity.kt — fixed string (reachable).
+            "rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt::Log.e(TAG, \"Browser not found\")",
             // latin/setup/SetupActivity.kt — fixed string + the caught exception (reachable).
             "rkr/simplekeyboard/inputmethod/latin/setup/SetupActivity.kt::Log.e(TAG, \"Exception in check if input method is enabled\", e)",
             // latin/utils/ApplicationUtils.java — fixed strings + the caught exception (reachable).

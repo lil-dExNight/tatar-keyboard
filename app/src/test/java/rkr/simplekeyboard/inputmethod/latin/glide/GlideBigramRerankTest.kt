@@ -103,4 +103,54 @@ class GlideBigramRerankTest {
         // adjusted: китап 1000 x 2^8, сәләм 1500 x 2, алма 1900
         assertEquals(listOf("алма", "сәләм", "китап"), wordsOf(result))
     }
+
+    // --- the lookup-form comparison of the rank lookup -----------------------------------------
+
+    @Test
+    fun aCasedSuccessorStillTakesItsRank() {
+        // A personal word's saved casing ("Миша", the raw form the decoder's wordAt returns)
+        // must match its normalized successor spelling ("миша"): it takes the rank-0 boost
+        // and overtakes the absent leader, as in aSuccessorBeatsAnAbsentLeader.
+        val result = resultOf("китап" to 1000f, "Миша" to 1200f)
+        GlideBigramRerank.rerank(result, listOf("миша"), 2f, FloatArray(GlideDecoder.TOP_N))
+        // adjusted: Миша 1200, китап 1000 x 2
+        assertEquals(listOf("Миша", "китап"), wordsOf(result))
+    }
+
+    @Test
+    fun anUnrelatedCasedWordStillTakesThePenalty() {
+        // The fold changes only the spelling comparison: a cased word that is no successor
+        // keeps the absent penalty (one past the last rank), so the channel still flips the
+        // order, as in aSuccessorBeatsAnAbsentLeader.
+        val result = resultOf("Миша" to 1000f, "сәләм" to 1200f)
+        GlideBigramRerank.rerank(result, listOf("сәләм"), 2f, FloatArray(GlideDecoder.TOP_N))
+        // adjusted: Миша 1000 x 2, сәләм 1200
+        assertEquals(listOf("сәләм", "Миша"), wordsOf(result))
+    }
+
+    @Test
+    fun aCasedSuccessorListEntryStillMatchesTheLowercaseNBest() {
+        // The mirror case: the fold is symmetric, so a successor spelled with casing matches
+        // the decode's lowercase N-best. The production successor list is normalized (the
+        // bundled table stores and the learned pairs hand the lookup form), so this pins the
+        // seam's contract rather than a wired path.
+        val result = resultOf("китап" to 1000f, "сәләм" to 1500f, "алма" to 1900f)
+        GlideBigramRerank.rerank(
+            result, listOf("Алма", "Сәләм"), 2f, FloatArray(GlideDecoder.TOP_N),
+        )
+        // adjusted: алма 1900, сәләм 1500 x 2, китап 1000 x 4
+        assertEquals(listOf("алма", "сәләм", "китап"), wordsOf(result))
+    }
+
+    @Test
+    fun casedSuccessorsKeepTheRankArithmetic() {
+        // Successors with distinct casings among a full ranked list: the rank comes from the
+        // list position, and the fold decides only whether a candidate matches at all, so the
+        // penalty arithmetic is the one the rank-order test pins with lowercase spellings.
+        val result = resultOf("китап" to 1000f, "сәләм" to 1500f, "алма" to 1900f)
+        val successors = listOf("a", "b", "АЛМА", "сәләм", "e", "f", "g", "h")
+        GlideBigramRerank.rerank(result, successors, 2f, FloatArray(GlideDecoder.TOP_N))
+        // adjusted: алма 1900 x 4 (rank 2), сәләм 1500 x 8 (rank 3), китап 1000 x 256 (absent).
+        assertEquals(listOf("алма", "сәләм", "китап"), wordsOf(result))
+    }
 }

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="6" by="lint 9.2.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.2.1)" variant="all" version="9.2.1">
+<issues format="6" by="lint 9.4.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.4.1)" variant="all" version="9.4.1">
 
     <issue
         id="ApplySharedPref"
@@ -8,7 +8,7 @@
         errorLine2="                                                                          ~~~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/Settings.java"
-            line="352"
+            line="506"
             column="75"/>
     </issue>
 
@@ -19,7 +19,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardView.java"
-            line="152"
+            line="164"
             column="17"/>
     </issue>
 
@@ -30,7 +30,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/latin/InputAttributes.java"
-            line="140"
+            line="108"
             column="35"/>
     </issue>
 
@@ -41,7 +41,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt"
-            line="691"
+            line="1438"
             column="48"/>
     </issue>
 
@@ -52,7 +52,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt"
-            line="691"
+            line="1438"
             column="48"/>
     </issue>
 
@@ -63,20 +63,18 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="24"
+            line="25"
             column="9"/>
     </issue>
 
     <issue
         id="InflateParams"
         message="Avoid passing `null` as the view root (needed to resolve layout parameters on the inflated layout&apos;s root element)"
-        url="https://www.bignerdranch.com/blog/understanding-androids-layoutinflater-inflate/"
-        urls="https://www.bignerdranch.com/blog/understanding-androids-layoutinflater-inflate/"
         errorLine1="                R.layout.input_view, null);"
         errorLine2="                                     ~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardSwitcher.java"
-            line="594"
+            line="700"
             column="38"/>
     </issue>
 
@@ -87,7 +85,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="46"
+            line="53"
             column="13"/>
     </issue>
 
@@ -98,7 +96,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="57"
+            line="64"
             column="13"/>
     </issue>
 
@@ -109,19 +107,19 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="63"
+            line="70"
             column="13"/>
     </issue>
 
     <issue
         id="DiscouragedApi"
         message="Use of this function is discouraged because resource reflection makes it harder to perform build optimizations and compile-time verification of code. It is much more efficient to retrieve resources by identifier (e.g. `R.foo.bar`) than by name (e.g. `getIdentifier(&quot;bar&quot;, &quot;foo&quot;, null)`)."
-        errorLine1="            return resources.getIdentifier(keyboardLayoutSetName, &quot;xml&quot;, packageName);"
-        errorLine2="                             ~~~~~~~~~~~~~">
+        errorLine1="                    name -> resources.getIdentifier(name, &quot;xml&quot;, packageName),"
+        errorLine2="                                      ~~~~~~~~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardLayoutSet.java"
-            line="281"
-            column="30"/>
+            line="323"
+            column="39"/>
     </issue>
 
     <issue
@@ -159,25 +157,23 @@
 
     <issue
         id="UseRequiresApi"
-        message="Use `@RequiresApi(Build.VERSION_CODES.S) instead of `@TargetApi` to propagate the requirement to callers of `setTextAroundCursor`"
+        message="Use `@RequiresApi(Build.VERSION_CODES.S)` instead of `@TargetApi` to propagate the requirement to callers of `setTextAroundCursor`"
         errorLine1="    @TargetApi(Build.VERSION_CODES.S)"
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java"
-            line="117"
+            line="230"
             column="5"/>
     </issue>
 
     <issue
         id="DataExtractionRules"
         message="The attribute `android:dataExtractionRules` only applies for Android 12 and higher; since `minSdkVersion` is API 24 you should also set `android:fullBackupContent`"
-        url="https://developer.android.com/about/versions/12/backup-restore#xml-changes"
-        urls="https://developer.android.com/about/versions/12/backup-restore#xml-changes,https://goo.gle/DataExtractionRules"
         errorLine1="        android:dataExtractionRules=&quot;@xml/data_extraction_rules&quot;"
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="23"
+            line="24"
             column="38"/>
     </issue>
 
@@ -188,7 +184,7 @@
         errorLine2="            ~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/keyboard/KeyboardSwitcher.java"
-            line="74"
+            line="89"
             column="13"/>
     </issue>
 
@@ -199,7 +195,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/layout/settings_screen.xml"
-            line="26"
+            line="27"
             column="5"/>
     </issue>
 
@@ -210,7 +206,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/layout/setup_activity.xml"
-            line="27"
+            line="26"
             column="5"/>
     </issue>
 
@@ -221,33 +217,29 @@
         errorLine2=" ~~~~~~~~">
         <location
             file="src/main/res/layout/row_text_input.xml"
-            line="22"
+            line="21"
             column="2"/>
     </issue>
 
     <issue
         id="Autofill"
         message="Missing `autofillHints` attribute"
-        url="https://developer.android.com/guide/topics/text/autofill.html"
-        urls="https://developer.android.com/guide/topics/text/autofill.html"
         errorLine1="&lt;EditText xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;"
         errorLine2=" ~~~~~~~~">
         <location
             file="src/main/res/layout/row_text_input.xml"
-            line="22"
+            line="21"
             column="2"/>
     </issue>
 
     <issue
         id="Autofill"
         message="Missing `autofillHints` attribute"
-        url="https://developer.android.com/guide/topics/text/autofill.html"
-        urls="https://developer.android.com/guide/topics/text/autofill.html"
         errorLine1="            &lt;EditText"
         errorLine2="             ~~~~~~~~">
         <location
             file="src/main/res/layout/setup_activity.xml"
-            line="188"
+            line="252"
             column="14"/>
     </issue>
 
@@ -258,7 +250,7 @@
         errorLine2="                   ~~~~~~~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/keyboard/MainKeyboardView.java"
-            line="492"
+            line="618"
             column="20"/>
     </issue>
 
@@ -269,7 +261,7 @@
         errorLine2="                   ~~~~~~~~~~~~">
         <location
             file="src/main/java/rkr/simplekeyboard/inputmethod/keyboard/MoreKeysKeyboardView.java"
-            line="240"
+            line="272"
             column="20"/>
     </issue>
 
@@ -280,7 +272,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/layout/row_switch.xml"
-            line="50"
+            line="51"
             column="13"/>
     </issue>
 
@@ -291,7 +283,7 @@
         errorLine2=" ~~~~~~~~">
         <location
             file="src/main/res/layout/row_text_input.xml"
-            line="22"
+            line="21"
             column="2"/>
     </issue>
 

@@ -16,6 +16,8 @@
 
 package rkr.simplekeyboard.inputmethod.latin.glide
 
+import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
+
 /**
  * The bigram channel on a decode's N-best (the SHARK2 language-model channel): each candidate's
  * confidence is multiplied by the Gaussian-transformed bigram probability of the previous
@@ -24,6 +26,11 @@ package rkr.simplekeyboard.inputmethod.latin.glide
  * log-spaced ladder is an exponential penalty per rank — score x [rankPenalty]^rank, with an
  * absent candidate one rank past the last successor. Only the first [MAX_RANKED_SUCCESSORS]
  * successors rank, so the largest penalty is [rankPenalty]^[MAX_RANKED_SUCCESSORS].
+ *
+ * The rank lookup compares lookup forms (NFC lowercase, [TatarWordUtils.normalizeForLookup]):
+ * the N-best may carry a personal word's saved casing ("Миша") while the successor list carries
+ * the normalized spelling ("миша"), so a raw string comparison would hand a cased successor the
+ * absent penalty. Both sides are folded once per rerank, never inside the scoring loop.
  *
  * The channel touches only the current gesture's N-best and the previous committed word; it never
  * revises committed text.
@@ -46,11 +53,15 @@ object GlideBigramRerank {
         val count = result.count
         if (count <= 1 || rankPenalty <= 1f || successors.isEmpty()) return
         val ranked = minOf(successors.size, MAX_RANKED_SUCCESSORS)
+        // The fold runs once per rerank, over the two ≤ TOP_N-sized sides; on already-normalized
+        // text it returns the same string instance, so only the two small arrays allocate.
+        val normalizedSuccessors = Array(ranked) { TatarWordUtils.normalizeForLookup(successors[it]) }
+        val normalizedWords = Array(count) { TatarWordUtils.normalizeForLookup(result.words[it]!!) }
         for (slot in 0 until count) {
+            val word = normalizedWords[slot]
             var rank = ranked
-            val word = result.words[slot]
             for (index in 0 until ranked) {
-                if (successors[index] == word) {
+                if (normalizedSuccessors[index] == word) {
                     rank = index
                     break
                 }
