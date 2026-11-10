@@ -146,10 +146,12 @@ class EmojiToneProbeTest {
 
     private class FakeFileOps(var content: String? = null) : RecentEmojiFileOps {
         override fun read(file: File): String? = content
-        override fun writeAtomic(file: File, content: String) {
+        override fun writeAtomic(file: File, content: String): Boolean {
             this.content = content
+            return true
         }
         override fun isAbsentOrEmpty(file: File): Boolean = content.isNullOrEmpty()
+        override fun removeTemp(file: File): Boolean = true
     }
 
     private val openGate = RecentEmojiGate {

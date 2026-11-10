@@ -66,11 +66,14 @@ class EmojiPanelControllerRecentsTest {
         var writeCount = 0
         var failWrites = false
         override fun read(file: File): String? = content
-        override fun writeAtomic(file: File, content: String) {
+        override fun writeAtomic(file: File, content: String): Boolean {
             writeCount++
-            if (!failWrites) this.content = content
+            if (failWrites) return false
+            this.content = content
+            return true
         }
         override fun isAbsentOrEmpty(file: File): Boolean = content.isNullOrEmpty()
+        override fun removeTemp(file: File): Boolean = true
     }
 
     private val grin = "\uD83D\uDE00"
@@ -124,6 +127,38 @@ class EmojiPanelControllerRecentsTest {
         // Persisted exactly once on hide, and it carries the inserted emoji.
         assertEquals(1, ops.writeCount)
         assertTrue(ops.content!!.contains(grin))
+    }
+
+    @Test
+    fun recentsContinuationFromAnOldEditorDoesNotShowThePanel() {
+        val surface = FakeSurface()
+        val executor = ManualExecutor()
+        val postedToUi = ArrayDeque<Runnable>()
+        val store = RecentEmojiStore(
+            RecentEmojiFileProvider { File("recent_emoji_controller_test") },
+            FakeFileOps(),
+            openGate,
+        )
+        val controller = EmojiPanelController(
+            surface,
+            EmojiUiPoster { postedToUi.addLast(it) },
+            { executor },
+            { EmojiSnapshotSource { base } },
+            { store },
+        )
+
+        controller.onEmojiKeyPressed()
+        executor.runAll()
+        // Publish the prepared base, which starts the recents continuation on the worker.
+        postedToUi.removeFirst().run()
+        executor.runAll()
+        assertEquals(1, postedToUi.size)
+
+        // The recents read has finished, but its UI publication belongs to the old editor.
+        controller.onEditorSessionChanged()
+        postedToUi.removeFirst().run()
+
+        assertTrue(surface.shown.isEmpty())
     }
 
     @Test

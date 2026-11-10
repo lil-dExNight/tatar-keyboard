@@ -221,6 +221,10 @@ class EmojiPanelController internal constructor(
     // Same latest-only deferred shape as [pendingSearch], for the panel show.
     private var pendingShow = false
 
+    // Incremented whenever the editor or input view changes. Recents callbacks carry the generation
+    // that armed them, so a worker finishing for an old editor cannot publish over the new one.
+    private var editorGeneration = 0L
+
     private var destroyed = false
 
     /**
@@ -352,8 +356,9 @@ class EmojiPanelController internal constructor(
         searchIndex = null
     }
 
-    /** Drops the single deferred show without letting it fire later. */
+    /** Drops deferred shows and invalidates their already-running recents reads. */
     private fun cancelPendingShow() {
+        editorGeneration++
         pendingShow = false
         pendingSearch = false
     }
@@ -589,6 +594,7 @@ class EmojiPanelController internal constructor(
             return
         }
         val available = availableSequences
+        val publicationGeneration = editorGeneration
         try {
             backgroundExecutor.execute {
                 val recents = try {
@@ -597,7 +603,9 @@ class EmojiPanelController internal constructor(
                     emptyList<String>()
                 }
                 uiPoster.post {
-                    if (!destroyed) surface.showPanel(EmojiDisplaySnapshots.withRecents(base, recents))
+                    if (!destroyed && publicationGeneration == editorGeneration) {
+                        surface.showPanel(EmojiDisplaySnapshots.withRecents(base, recents))
+                    }
                 }
             }
         } catch (_: Throwable) {

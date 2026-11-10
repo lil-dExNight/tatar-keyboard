@@ -487,6 +487,15 @@ class EmojiSearchView @JvmOverloads constructor(
         super.onVisibilityChanged(changedView, visibility)
         if (visibility != VISIBLE) {
             cancelGesture()
+            setQuery("")
+        }
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility != VISIBLE) {
+            cancelGesture()
+            setQuery("")
         }
     }
 
@@ -500,7 +509,10 @@ class EmojiSearchView @JvmOverloads constructor(
 
     private fun dispatchTarget(target: Int) {
         when {
-            target == CLOSE_TARGET -> listener?.onEmojiSearchClosed()
+            target == CLOSE_TARGET -> {
+                setQuery("")
+                listener?.onEmojiSearchClosed()
+            }
             target >= 0 -> listener?.onEmojiSearchPick(index.resultAt(target))
         }
     }

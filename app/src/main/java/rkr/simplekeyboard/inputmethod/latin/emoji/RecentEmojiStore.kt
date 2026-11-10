@@ -16,8 +16,17 @@
 
 package rkr.simplekeyboard.inputmethod.latin.emoji
 
+import android.annotation.SuppressLint
+import android.annotation.TargetApi
+import android.os.Build
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
+
+/** The temp sibling's suffix, shared by the writer and the erase sweep. */
+private const val RECENT_EMOJI_TEMP_SUFFIX = ".tmp"
 
 /**
  * The single file the recents store owns. Production resolves it under the base (credential-
@@ -33,11 +42,20 @@ interface RecentEmojiFileOps {
     /** The medium's content, or null when it is absent or unreadable. */
     fun read(file: File): String?
 
-    /** Atomically replaces the medium with [content]. Called only off the UI thread. */
-    fun writeAtomic(file: File, content: String)
+    /**
+     * Atomically replaces the medium with [content]: temp fsync, atomic rename, directory fsync.
+     * True only when every stage succeeded. A failure before the rename leaves the previous
+     * medium in place; a directory-sync failure after the rename leaves the new content installed
+     * but not proven durable, so the caller keeps the change pending and retries. Off the UI
+     * thread only.
+     */
+    fun writeAtomic(file: File, content: String): Boolean
 
     /** True when the medium is absent or empty; false when it holds data or cannot be checked. */
     fun isAbsentOrEmpty(file: File): Boolean
+
+    /** Removes the temp sibling an interrupted write may leave; true when no temp remains. */
+    fun removeTemp(file: File): Boolean
 }
 
 /** The environment gate, re-read on every store operation (so it is honoured on the executor). */
@@ -107,7 +125,7 @@ internal class RecentEmojiStore(
     private var recents = RecentEmojiList.EMPTY
     private var dirty = false
 
-    /** Number of medium saves performed on hide; a JVM test counter. Clearing does not count. */
+    /** Number of durable medium saves performed on hide; a JVM test counter. Clearing does not count. */
     var saveCount = 0
         private set
 
@@ -168,25 +186,32 @@ internal class RecentEmojiStore(
 
     /**
      * Writes at most once per hide, only when the list changed and the device is unlocked. Because
-     * it runs on the background executor, the write never touches the UI thread. A failed write
-     * keeps the list dirty so a later hide may retry; no exception escapes and nothing is logged.
+     * it runs on the background executor, the write never touches the UI thread. Only a durable
+     * write clears the changed flag and counts a save; a failed or interrupted write keeps the
+     * list dirty so a later hide retries. A failure after the rename may leave the new content
+     * installed without proven durability; the retry then writes the same content again. No
+     * exception escapes and nothing is logged.
      */
     fun flushOnHide() {
         if (!dirty) return
         if (!gate.current().allowsPathAccess) return
-        try {
+        val saved = try {
             fileOps.writeAtomic(fileProvider.file(), recents.serialize())
+        } catch (_: Throwable) {
+            false
+        }
+        if (saved) {
             dirty = false
             saveCount++
-        } catch (_: Throwable) {
-            // Keep dirty; a later hide retries. Never crash, never log.
         }
     }
 
     /**
-     * Empties the in-memory list, the changed flag (so no hide resurrects it) and the medium. True
-     * only when the medium is absent or empty afterwards; a locked path is left untouched and
-     * answers false. Never throws, never logs.
+     * Empties the in-memory list, the changed flag (so no hide resurrects it) and the medium, and
+     * sweeps the temp file an interrupted write may have stranded. True only when the medium is
+     * durably absent or empty and no temp remains afterwards: a failed empty write is tolerated
+     * only when the medium already was clear. A locked path is left untouched and answers false.
+     * Never throws, never logs.
      */
     fun clear(): Boolean {
         recents = RecentEmojiList.EMPTY
@@ -195,8 +220,13 @@ internal class RecentEmojiStore(
         return try {
             if (!gate.current().allowsPathAccess) return false
             val file = fileProvider.file()
-            fileOps.writeAtomic(file, "")
-            fileOps.isAbsentOrEmpty(file)
+            val wasClear = fileOps.isAbsentOrEmpty(file)
+            val written = fileOps.writeAtomic(file, "")
+            val mediumCleared = fileOps.isAbsentOrEmpty(file)
+            // The temp is swept even when the medium write failed, so no leftover survives the
+            // erase silently; a temp that cannot be removed fails the whole erase.
+            val tempRemoved = fileOps.removeTemp(file)
+            mediumCleared && (written || wasClear) && tempRemoved
         } catch (_: Throwable) {
             // Never crash, never log; the caller reports the failure.
             false
@@ -209,16 +239,15 @@ internal class RecentEmojiStore(
 
 /**
  * Production [RecentEmojiFileOps]: reads the whole (tiny, <= 512 `char`) file and replaces it
- * atomically by writing a sibling temp file, fsyncing it and renaming it over the destination.
+ * atomically through [AtomicRecentEmojiWriter]: temp fsync, rename, directory fsync.
  *
- * It uses only `java.io`, so the emoji package owns this credential-protected file end to end
- * without a device-protected seam. Never throws and never logs; a failure leaves the previous
- * medium in place. The medium is a plain file under the base context's `noBackupFilesDir`, which is
- * not a subdirectory of `files/` and so is outside every backup domain.
+ * It uses only JDK file APIs, so the emoji package owns this credential-protected file end to end
+ * without a device-protected seam. Never throws and never logs; a failure before the rename
+ * leaves the previous medium in place. The medium is a plain file under the base context's
+ * `noBackupFilesDir`, which is not a subdirectory of `files/` and so is outside every backup
+ * domain.
  */
 internal object AtomicRecentEmojiFileOps : RecentEmojiFileOps {
-
-    private const val TEMP_SUFFIX = ".tmp"
 
     /**
      * Read cap: the medium holds at most [RecentEmojiList.MAX_CHARS] UTF-16 `char` (under 2 KiB
@@ -226,6 +255,8 @@ internal object AtomicRecentEmojiFileOps : RecentEmojiFileOps {
      * is read, so a bloated file never reaches memory.
      */
     private const val MAX_MEDIUM_BYTES = 4096L
+
+    private val writer = AtomicRecentEmojiWriter()
 
     override fun read(file: File): String? =
         try {
@@ -245,28 +276,107 @@ internal object AtomicRecentEmojiFileOps : RecentEmojiFileOps {
             false
         }
 
-    override fun writeAtomic(file: File, content: String) {
-        val parent = file.parentFile ?: return
-        if (!parent.isDirectory && !parent.mkdirs() && !parent.isDirectory) return
-        val temp = File(parent, file.name + TEMP_SUFFIX)
-        try {
-            FileOutputStream(temp).use { out ->
-                out.write(content.toByteArray(Charsets.UTF_8))
-                out.flush()
-                out.fd.sync()
-            }
-            if (!temp.renameTo(file)) {
-                file.delete()
-                if (!temp.renameTo(file)) {
-                    temp.delete()
-                }
-            }
+    override fun writeAtomic(file: File, content: String): Boolean = writer.write(file, content)
+
+    override fun removeTemp(file: File): Boolean {
+        val parent = file.parentFile ?: return true
+        val temp = File(parent, file.name + RECENT_EMOJI_TEMP_SUFFIX)
+        return try {
+            !temp.exists() || (temp.delete() && !temp.exists())
         } catch (_: Throwable) {
-            try {
-                temp.delete()
-            } catch (_: Throwable) {
-                // Best effort; leave the previous medium in place.
-            }
+            false
+        }
+    }
+}
+
+/**
+ * The replacement sequence behind [AtomicRecentEmojiFileOps.writeAtomic]: write and fsync the
+ * temp sibling, atomically rename it over the destination, then fsync the directory so the rename
+ * itself survives a crash. Every stage is injectable, so a test can fail the write, the temp
+ * sync, the rename or the directory sync deterministically, without filesystem permission tricks.
+ *
+ * True only when every stage succeeded. A failure before the rename leaves the previous medium in
+ * place and sweeps the temp. A directory-sync failure after the rename leaves the NEW content
+ * installed but not proven durable: the answer is still false, the caller keeps the change dirty
+ * and retries, which is safe because rewriting the same content is idempotent. Never throws to
+ * the caller, never logs.
+ */
+internal class AtomicRecentEmojiWriter(
+    private val writeAndSyncTemp: (File, ByteArray) -> Unit = { temp, bytes ->
+        FileOutputStream(temp).use { out ->
+            out.write(bytes)
+            out.flush()
+            out.fd.sync()
+        }
+    },
+    private val rename: (File, File) -> Boolean = { temp, file -> temp.renameTo(file) },
+    private val syncDirectory: (File) -> Unit = { directory -> syncDirectoryEntry(directory) },
+) {
+    fun write(file: File, content: String): Boolean {
+        val parent = file.parentFile ?: return false
+        if (!parent.isDirectory && !parent.mkdirs() && !parent.isDirectory) return false
+        val temp = File(parent, file.name + RECENT_EMOJI_TEMP_SUFFIX)
+        try {
+            writeAndSyncTemp(temp, content.toByteArray(Charsets.UTF_8))
+        } catch (_: Throwable) {
+            deleteTemp(temp)
+            return false
+        }
+        // The destination may change only now that the replacement is durable in the temp file.
+        // POSIX rename(2) replaces the old medium atomically; it is never deleted first.
+        val renamed = try {
+            rename(temp, file)
+        } catch (_: Throwable) {
+            false
+        }
+        if (!renamed) {
+            deleteTemp(temp)
+            return false
+        }
+        return try {
+            syncDirectory(parent)
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun deleteTemp(temp: File) {
+        try {
+            temp.delete()
+        } catch (_: Throwable) {
+            // Best effort; erase-all reports a leftover through removeTemp.
+        }
+    }
+}
+
+/**
+ * fsyncs the directory entry itself, the counterpart of the temp's `fd.sync()`. On Android 26+
+ * the NIO channel opens the directory read-only; below 26 `java.nio.file` does not exist, so
+ * libcore's `FileInputStream` (which opens directories read-only there) does the job. A plain JVM
+ * reports `SDK_INT == 0` (android.jar stubs; a device always reports >= 1) and takes the NIO
+ * branch, because the desktop JDK refuses directories in `FileInputStream`. Failures throw to
+ * the writer's stage handling; nothing is logged.
+ */
+private fun syncDirectoryEntry(directory: File) {
+    if (Build.VERSION.SDK_INT >= 26 || Build.VERSION.SDK_INT == 0) {
+        RecentEmojiDirectorySyncNio.sync(directory)
+    } else {
+        FileInputStream(directory).use { input -> input.fd.sync() }
+    }
+}
+
+/**
+ * The API 26+ directory sync, isolated in its own class so a runtime below 26 never loads it.
+ * `File.toPath` and `FileChannel.open` exist only there.
+ */
+// @RequiresApi lives in androidx.annotation, which the app does not depend on.
+@SuppressLint("UseRequiresApi")
+@TargetApi(Build.VERSION_CODES.O)
+private object RecentEmojiDirectorySyncNio {
+    fun sync(directory: File) {
+        FileChannel.open(directory.toPath(), StandardOpenOption.READ).use { channel ->
+            channel.force(true)
         }
     }
 }

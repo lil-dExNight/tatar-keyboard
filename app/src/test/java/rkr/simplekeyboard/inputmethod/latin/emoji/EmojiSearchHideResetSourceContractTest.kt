@@ -41,6 +41,9 @@ class EmojiSearchHideResetSourceContractTest {
     private val keyboardSwitcher by lazy {
         java("rkr/simplekeyboard/inputmethod/keyboard/KeyboardSwitcher.java")
     }
+    private val searchView by lazy {
+        java("rkr/simplekeyboard/inputmethod/latin/emoji/EmojiSearchView.kt")
+    }
 
     private fun onWindowHiddenBody() =
         latinIme.substringAfter("public void onWindowHidden()").substringBefore("void onFinishInputInternal()")
@@ -61,6 +64,17 @@ class EmojiSearchHideResetSourceContractTest {
             .substringBefore("public void onEmojiPanelBackToKeyboard()")
         assertTrue(body.contains("mEmojiSearchShown = false"))
         assertTrue(body.contains("hideEmojiSearch()"))
+    }
+
+    @Test
+    fun closeAndInputWindowHideClearTheViewSideQuery() {
+        val close = searchView.substringAfter("private fun dispatchTarget(")
+            .substringBefore("private fun cancelGesture()")
+        assertTrue(close.indexOf("setQuery(\"\")") in 0 until close.indexOf("onEmojiSearchClosed()"))
+
+        val windowHide = searchView.substringAfter("override fun onWindowVisibilityChanged(")
+            .substringBefore("override fun onDetachedFromWindow()")
+        assertTrue(windowHide.contains("setQuery(\"\")"))
     }
 
     @Test

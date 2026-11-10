@@ -334,6 +334,24 @@ class EmojiPanelStateTest {
             "the grid must keep at least the floor ($floor): ${state.gridHeight()}",
             state.gridHeight() >= floor,
         )
+
+        val rowHeight = state.tabBarHeight()
+        val tabCenterX = (state.tabLeft(0) + state.tabRight(0)) / 2f
+        val pillInset = 4f
+        val pill = emojiTabPillSize(
+            (state.tabRight(0) - state.tabLeft(0)).toFloat(),
+            rowHeight,
+            pillInset,
+        )
+        val pillCenterY = emojiTabCenterY(rowHeight)
+        assertEquals(pillInset, pillCenterY - pill / 2f, 0f)
+        assertEquals(rowHeight - pillInset, pillCenterY + pill / 2f, 0f)
+        assertTrue(EmojiPanelState.isTab(state.targetAt(tabCenterX, rowHeight - 0.5f)))
+        // The next pixel belongs to the section header, so it must not activate a tab.
+        assertEquals(
+            EmojiPanelState.NO_TARGET,
+            state.targetAt(tabCenterX, rowHeight + 0.5f),
+        )
     }
 
     /** The squeeze has a floor of its own: the band never shrinks away to nothing. */

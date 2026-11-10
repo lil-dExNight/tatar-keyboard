@@ -62,20 +62,27 @@ internal fun EmojiPanelView.drawSkinTonePopup(canvas: Canvas) {
     }
 }
 
+internal fun emojiTabCenterY(tabRowHeight: Int): Float = tabRowHeight / 2f
+
+internal fun emojiTabPillSize(slotWidth: Float, tabRowHeight: Int, insetPx: Float): Float =
+    minOf(slotWidth, tabRowHeight.toFloat()) - 2 * insetPx
+
 /** The tab row plus the search cell at its right end; the active tab sits under a round pill. */
 internal fun EmojiPanelView.drawTabRow(canvas: Canvas, pressed: Int) {
-    if (tabBarPx <= 0) return
+    val tabRowHeight = state.tabBarHeight()
+    if (tabRowHeight <= 0) return
+    val tabCenterY = emojiTabCenterY(tabRowHeight)
     val tabs = state.tabCount()
     val active = state.activeCategory()
-    val baseline = tabBarPx / 2f - (tabFontMetrics.ascent + tabFontMetrics.descent) / 2f
+    val baseline = tabCenterY - (tabFontMetrics.ascent + tabFontMetrics.descent) / 2f
     var tab = 0
     while (tab < tabs) {
         val left = state.tabLeft(tab).toFloat()
         val right = state.tabRight(tab).toFloat()
-        val pill = minOf(right - left, tabBarPx.toFloat()) - 2 * tabPillInsetPx
+        val pill = emojiTabPillSize(right - left, tabRowHeight, tabPillInsetPx)
         if (pill > 0f) {
             val centerX = (left + right) / 2f
-            val centerY = tabBarPx / 2f
+            val centerY = tabCenterY
             keyRect.set(
                 centerX - pill / 2f,
                 centerY - pill / 2f,
@@ -90,7 +97,7 @@ internal fun EmojiPanelView.drawTabRow(canvas: Canvas, pressed: Int) {
             }
         }
         if (tab == 0 && hasRecentTab) {
-            drawClockIcon(canvas, (left + right) / 2f, tabBarPx / 2f)
+            drawClockIcon(canvas, (left + right) / 2f, tabCenterY)
         } else {
             canvas.drawText(tabLabels[tab], (left + right) / 2f, baseline, tabPaint)
         }
@@ -102,10 +109,10 @@ internal fun EmojiPanelView.drawTabRow(canvas: Canvas, pressed: Int) {
     val searchRight = state.searchCellRight().toFloat()
     if (searchRight > searchLeft) {
         if (EmojiPanelState.isSearch(pressed)) {
-            val pill = minOf(searchRight - searchLeft, tabBarPx.toFloat()) - 2 * tabPillInsetPx
+            val pill = emojiTabPillSize(searchRight - searchLeft, tabRowHeight, tabPillInsetPx)
             if (pill > 0f) {
                 val centerX = (searchLeft + searchRight) / 2f
-                val centerY = tabBarPx / 2f
+                val centerY = tabCenterY
                 keyRect.set(
                     centerX - pill / 2f,
                     centerY - pill / 2f,
@@ -115,7 +122,7 @@ internal fun EmojiPanelView.drawTabRow(canvas: Canvas, pressed: Int) {
                 canvas.drawRoundRect(keyRect, pill / 2f, pill / 2f, pressedPaint)
             }
         }
-        drawSearchIcon(canvas, (searchLeft + searchRight) / 2f, tabBarPx / 2f)
+        drawSearchIcon(canvas, (searchLeft + searchRight) / 2f, tabCenterY)
     }
 }
 

@@ -20,7 +20,9 @@ import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 /**
  * Recent-emoji store: the three-factor gate, the "write once per hide, only when changed"
@@ -29,15 +31,27 @@ import org.junit.Test
  */
 class RecentEmojiStoreTest {
 
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
+
     /** An in-memory medium that counts reads and writes and can be told to fail a read or write. */
     private class FakeFileOps : RecentEmojiFileOps {
         var content: String? = null
         var readCount = 0
         var writeCount = 0
+        var tempRemovalCount = 0
         var throwOnRead = false
+        var throwOnWrite = false
 
         /** A write that leaves the previous medium in place, like a failed atomic replace. */
         var failWrites = false
+
+        /** A post-rename directory-sync failure: the new content is installed, yet not durable. */
+        var writeReturnsFalseAfterInstalling = false
+
+        /** A temp leftover an interrupted write may have stranded; removal can be refused too. */
+        var tempRemains = false
+        var failTempRemoval = false
 
         override fun read(file: File): String? {
             readCount++
@@ -45,12 +59,25 @@ class RecentEmojiStoreTest {
             return content
         }
 
-        override fun writeAtomic(file: File, content: String) {
+        override fun writeAtomic(file: File, content: String): Boolean {
             writeCount++
-            if (!failWrites) this.content = content
+            if (throwOnWrite) throw RuntimeException("simulated process death during the write")
+            if (writeReturnsFalseAfterInstalling) {
+                this.content = content
+                return false
+            }
+            if (failWrites) return false
+            this.content = content
+            return true
         }
 
         override fun isAbsentOrEmpty(file: File): Boolean = content.isNullOrEmpty()
+
+        override fun removeTemp(file: File): Boolean {
+            tempRemovalCount++
+            if (!failTempRemoval) tempRemains = false
+            return !tempRemains
+        }
     }
 
     private class FakeGate(var state: RecentEmojiGateState) : RecentEmojiGate {
@@ -197,6 +224,69 @@ class RecentEmojiStoreTest {
         assertEquals(2, store.saveCount)
     }
 
+    // --- Only durable writes clear the dirty flag and count a save ----------------------------
+
+    @Test
+    fun aRefusedWriteStaysDirtyAndRetriesOnTheNextHide() {
+        val ops = FakeFileOps().apply {
+            content = "A"
+            failWrites = true
+        }
+        val store = storeWith(ops, FakeGate(open))
+        store.recordUse("B", setOf("A", "B"))
+        store.flushOnHide()
+
+        assertTrue(store.isDirty())
+        assertEquals(0, store.saveCount)
+        // The previous medium is untouched by the failed write.
+        assertEquals("A", ops.content)
+
+        ops.failWrites = false
+        store.flushOnHide()
+        assertFalse(store.isDirty())
+        assertEquals(1, store.saveCount)
+        assertEquals(2, ops.writeCount)
+        assertEquals("B${RecentEmojiList.SEPARATOR}A", ops.content)
+    }
+
+    @Test
+    fun aWriteInterruptedByProcessDeathStaysDirtyAndCountsNoSave() {
+        val ops = FakeFileOps().apply { throwOnWrite = true }
+        val store = storeWith(ops, FakeGate(open))
+        store.recordUse("A", setOf("A"))
+
+        store.flushOnHide() // must not throw
+        assertTrue(store.isDirty())
+        assertEquals(0, store.saveCount)
+
+        ops.throwOnWrite = false
+        store.flushOnHide()
+        assertFalse(store.isDirty())
+        assertEquals(1, store.saveCount)
+        assertEquals("A", ops.content)
+    }
+
+    @Test
+    fun aPostRenameDurabilityFailureStaysDirtyAlthoughTheNewContentIsInstalled() {
+        val ops = FakeFileOps().apply { writeReturnsFalseAfterInstalling = true }
+        val store = storeWith(ops, FakeGate(open))
+        store.recordUse("A", setOf("A"))
+        store.flushOnHide()
+
+        // The rename installed the new content, but the directory sync failed: no save counts
+        // and the change stays pending even though the medium already shows it.
+        assertEquals("A", ops.content)
+        assertTrue(store.isDirty())
+        assertEquals(0, store.saveCount)
+
+        ops.writeReturnsFalseAfterInstalling = false
+        store.flushOnHide()
+        assertFalse(store.isDirty())
+        assertEquals(1, store.saveCount)
+        assertEquals(2, ops.writeCount)
+        assertEquals("A", ops.content)
+    }
+
     // --- Erased never resurrects ---------------------------------------------------------------
 
     @Test
@@ -251,7 +341,67 @@ class RecentEmojiStoreTest {
         // Locked device: the path is never touched, so no write happens and nothing is confirmed.
         assertFalse(store.clear())
         assertEquals(0, ops.writeCount)
+        assertEquals(0, ops.tempRemovalCount)
         assertFalse(store.isDirty())
+    }
+
+    // --- Erase also sweeps the temp an interrupted write stranded ------------------------------
+
+    @Test
+    fun clearRemovesTheTempLeftoverOfAnInterruptedWrite() {
+        val ops = FakeFileOps().apply {
+            content = "A"
+            tempRemains = true
+        }
+        val store = storeWith(ops, FakeGate(open))
+        assertTrue(store.clear())
+        assertEquals("", ops.content)
+        assertFalse(ops.tempRemains)
+        assertEquals(1, ops.tempRemovalCount)
+    }
+
+    @Test
+    fun clearFailsWhileTheTempLeftoverRemains() {
+        val ops = FakeFileOps().apply {
+            content = "A"
+            tempRemains = true
+            failTempRemoval = true
+        }
+        val store = storeWith(ops, FakeGate(open))
+        // The medium itself is empty now, but the stranded temp still counts as not erased.
+        assertFalse(store.clear())
+        assertEquals("", ops.content)
+        assertTrue(ops.tempRemains)
+    }
+
+    @Test
+    fun clearSweepsTheTempEvenWhenTheMediumWriteFails() {
+        val ops = FakeFileOps().apply {
+            content = "A"
+            failWrites = true
+            tempRemains = true
+        }
+        val store = storeWith(ops, FakeGate(open))
+        assertFalse(store.clear())
+        assertEquals(1, ops.tempRemovalCount)
+        assertFalse(ops.tempRemains)
+        assertEquals("A", ops.content)
+    }
+
+    @Test
+    fun clearFailsWhileTheErasedStateIsNotProvenDurable() {
+        val ops = FakeFileOps().apply {
+            content = "A"
+            writeReturnsFalseAfterInstalling = true
+        }
+        val store = storeWith(ops, FakeGate(open))
+        // The file reads empty, but the erase's rename was never directory-synced: report failure
+        // rather than promise an erase a crash could undo.
+        assertFalse(store.clear())
+        assertEquals("", ops.content)
+
+        ops.writeReturnsFalseAfterInstalling = false
+        assertTrue(store.clear())
     }
 
     // --- Fail-closed reads ---------------------------------------------------------------------
@@ -366,5 +516,38 @@ class RecentEmojiStoreTest {
         store.recordUse("T", emptySet())
         assertEquals(listOf("T"), store.currentRecents(emptySet()))
         assertTrue(store.currentRecents(setOf("A")).isEmpty())
+    }
+
+    // --- Erase-all on the real medium: the stranded temp decides the answer ---------------------
+
+    @Test
+    fun eraseAllOnTheRealMediumRemovesTheTempLeftover() {
+        val file = File(temporaryFolder.root, "recent_emoji_v1")
+        AtomicRecentEmojiFileOps.writeAtomic(file, "A")
+        // A write the process died in the middle of: the temp holds the uninstalled replacement.
+        val temp = File(temporaryFolder.root, "recent_emoji_v1.tmp")
+        temp.writeText("B")
+        val store = RecentEmojiStore(
+            RecentEmojiFileProvider { file }, AtomicRecentEmojiFileOps, FakeGate(open))
+
+        assertTrue(store.clear())
+        assertTrue(AtomicRecentEmojiFileOps.isAbsentOrEmpty(file))
+        assertFalse(temp.exists())
+    }
+
+    @Test
+    fun eraseAllOnTheRealMediumFailsWhileTheTempRemains() {
+        val file = File(temporaryFolder.root, "recent_emoji_v1")
+        AtomicRecentEmojiFileOps.writeAtomic(file, "A")
+        // A non-empty directory in the temp's place can neither be written nor deleted.
+        val temp = temporaryFolder.newFolder("recent_emoji_v1.tmp")
+        File(temp, "stranded").writeText("B")
+        val store = RecentEmojiStore(
+            RecentEmojiFileProvider { file }, AtomicRecentEmojiFileOps, FakeGate(open))
+
+        assertFalse(store.clear())
+        // The failed erase never cost the previous medium.
+        assertEquals("A", AtomicRecentEmojiFileOps.read(file))
+        assertTrue(temp.exists())
     }
 }
