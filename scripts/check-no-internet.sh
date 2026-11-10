@@ -92,7 +92,7 @@ check_backup_apk() {
 
     # data-extraction-rules (API 31+): both sections, whitelist, all domains excluded.
     _check_rules_tree "$apk" "$aapt2" "$der_file" "data-extraction-rules" \
-        "cloud-backup device-transfer" 2
+        "cloud-backup device-transfer"
 
     echo "Level 2 OK: backup closed as a whitelist (allowBackup=false, dataExtractionRules with no <include>, all domains excluded) in $apk"
 }
@@ -108,9 +108,9 @@ _resolve_res_file() {
 }
 
 # Verify one backup rule file inside the APK is the whitelist edition.
-# Args: <apk> <aapt2> <file-in-apk> <expected-root> <space-separated-sections> <per-domain-count>
+# Args: <apk> <aapt2> <file-in-apk> <expected-root> <space-separated-sections>
 _check_rules_tree() {
-    local apk="$1" aapt2="$2" file="$3" root="$4" sections="$5" per="$6"
+    local apk="$1" aapt2="$2" file="$3" root="$4" sections="$5"
     local tree
     tree=$("$aapt2" dump xmltree --file "$file" "$apk")
 
@@ -123,22 +123,38 @@ _check_rules_tree() {
         echo "ERROR: $file in $apk contains an <include> element — backup is not a whitelist" >&2
         exit 1
     fi
-    # Every required section present.
-    local section
+    # Count domains within each section, not across the whole document: an exclusion
+    # under cloud-backup does not close device-transfer (or the reverse).
+    local section section_tree domain got
     for section in $sections; do
         if ! grep -qF "E: $section" <<<"$tree"; then
             echo "ERROR: $file in $apk is missing the <$section> section" >&2
             exit 1
         fi
-    done
-    # Every data domain excluded, once per section.
-    local domain got
-    for domain in "${BACKUP_DOMAINS[@]}"; do
-        got=$(grep -cF "domain=\"$domain\"" <<<"$tree" || true)
-        if [ "$got" -ne "$per" ]; then
-            echo "ERROR: $file in $apk excludes domain '$domain' $got time(s), expected $per" >&2
-            exit 1
-        fi
+        section_tree=$(awk -v wanted="$section" '
+            {
+                line = $0
+                indent = match(line, /[^ ]/) ? RSTART - 1 : length(line)
+                if (active && indent <= section_indent && line ~ /^ *E: /) exit
+                if (active) {
+                    print line
+                } else {
+                    trimmed = line
+                    sub(/^ */, "", trimmed)
+                    if (trimmed ~ "^E: " wanted "([ (]|$)") {
+                        active = 1
+                        section_indent = indent
+                    }
+                }
+            }
+        ' <<<"$tree")
+        for domain in "${BACKUP_DOMAINS[@]}"; do
+            got=$(grep -cF "domain=\"$domain\"" <<<"$section_tree" || true)
+            if [ "$got" -ne 1 ]; then
+                echo "ERROR: $file in $apk excludes domain '$domain' in <$section> $got time(s), expected 1" >&2
+                exit 1
+            fi
+        done
     done
 }
 

@@ -1201,8 +1201,9 @@ else
 fi
 
 # ── crash buffer ──
-A logcat -b crash -d > "$OUTDIR/logcat-crash.txt" 2>&1 || true
-if grep -qE 'FATAL EXCEPTION|AndroidRuntime' "$OUTDIR/logcat-crash.txt"; then
+if ! A logcat -b crash -d > "$OUTDIR/logcat-crash.txt" 2>&1; then
+    result FAIL crash-log "не удалось прочитать crash-буфер: $(tail -1 "$OUTDIR/logcat-crash.txt")"
+elif grep -qE 'FATAL EXCEPTION|AndroidRuntime' "$OUTDIR/logcat-crash.txt"; then
     result FAIL crash-log "$(grep -cE 'FATAL EXCEPTION' "$OUTDIR/logcat-crash.txt") FATAL в crash-буфере"
 else
     result PASS crash-log "crash-буфер пуст"

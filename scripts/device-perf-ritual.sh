@@ -271,7 +271,8 @@ PREV_ENABLED=$(SHELL settings get secure enabled_input_methods 2>/dev/null | tr 
 PREV_STAYON=$(SHELL settings get global stay_on_while_plugged_in 2>/dev/null | tr -d '\r')
 PREV_AWAKE=$(SHELL dumpsys power 2>/dev/null | grep -oP 'mWakefulness=\K\w+' | head -1)
 PREV_FONTSCALE=$(SHELL settings get system font_scale 2>/dev/null | tr -d '\r')
-log "state on entry: ime=$PREV_IME stayon=$PREV_STAYON wakefulness=$PREV_AWAKE font_scale=$PREV_FONTSCALE"
+PREV_NIGHT=$(SHELL cmd uimode night 2>/dev/null | tr -d '\r' | grep -oP '(yes|no|auto)' | head -1)
+log "state on entry: ime=$PREV_IME stayon=$PREV_STAYON wakefulness=$PREV_AWAKE font_scale=$PREV_FONTSCALE night=$PREV_NIGHT"
 
 WOKEN=0
 IME_ID=""
@@ -282,11 +283,17 @@ BATTERY_ON=0           # the battery leg simulated unplug; reset restores the re
 UIMODE_ON=0            # the uimode probe flipped night mode
 FONTSCALE_ON=0         # the fontscale probe overrode font_scale
 SCREENOFF=0           # the battery.screenoff leg slept the screen; restore wakes first
+restore_night_mode() {
+    case "$PREV_NIGHT" in
+        yes|no|auto) SHELL cmd uimode night "$PREV_NIGHT" >/dev/null 2>&1 || true ;;
+        *) log "WARNING: original night mode unavailable; cannot restore it" ;;
+    esac
+}
 restore() {
     log "restoring device state"
     [ "$ATRACE_ON" = 1 ] && SHELL atrace --async_stop >/dev/null 2>&1 || true
     [ "$BATTERY_ON" = 1 ] && SHELL dumpsys battery reset >/dev/null 2>&1 || true
-    [ "$UIMODE_ON" = 1 ] && SHELL cmd uimode night no >/dev/null 2>&1 || true
+    [ "$UIMODE_ON" = 1 ] && restore_night_mode
     if [ "$FONTSCALE_ON" = 1 ]; then
         # a never-set font_scale reads back null; delete restores the default
         # instead of pinning an explicit value
@@ -311,7 +318,8 @@ restore() {
         SHELL ime disable "$IME_ID" >/dev/null 2>&1 || true
     fi
     case "$PREV_STAYON" in
-        ''|null|0) : ;;                       # was off; we never turned it off
+        '') log "WARNING: original stay-on-while-plugged value unavailable; cannot restore it" ;;
+        null) SHELL settings delete global stay_on_while_plugged_in >/dev/null 2>&1 || true ;;
         *) SHELL settings put global stay_on_while_plugged_in "$PREV_STAYON" >/dev/null 2>&1 || true ;;
     esac
     if [ "$WOKEN" = 1 ] && [ "$PREV_AWAKE" != "Awake" ]; then
@@ -361,7 +369,7 @@ VER=$(SHELL dumpsys package "$PKG" 2>/dev/null | grep -m1 versionName | grep -oP
     echo "package: $PKG  versionName: $VER  battery: ${BATTERY}%"
     echo "ime: $IME_ID  neutral: $NEUTRAL_IME  run-as: $RUN_AS_OK  build: $BUILD"
     echo "legs: $LEGS  cold trigger: $COLD_TRIGGER  suggestions via UI: $SUGGESTIONS_UI"
-    echo "prev ime: $PREV_IME  prev stayon: $PREV_STAYON  prev wakefulness: $PREV_AWAKE"
+    echo "prev ime: $PREV_IME  prev stayon: $PREV_STAYON  prev wakefulness: $PREV_AWAKE  prev night: $PREV_NIGHT"
     if [ -d "$ROOT/.git" ]; then
         dirty=clean; [ -n "$(git -C "$ROOT" status --porcelain)" ] && dirty=dirty
         echo "git: $(git -C "$ROOT" rev-parse --short HEAD) $dirty"
@@ -1545,8 +1553,8 @@ if leg_on uimode; then
         sleep 2
         keyboard_shown || { tap_node setup_test_field >/dev/null 2>&1 && wait_keyboard 5 || true; }
         SHOT uimode-night.png
-        SHELL cmd uimode night no >/dev/null 2>&1
-        sleep 2        # restore() sets night no again when this probe ran
+        restore_night_mode
+        sleep 2        # restore() applies the same saved mode again on exit
         diff_bytes=$(cmp -l "$OUTDIR/uimode-light.png" "$OUTDIR/uimode-night.png" 2>/dev/null | wc -l)
         result INFO uimode "night_flip pixel_diff_bytes=$diff_bytes (0 means stale palette — investigate)"
     else
